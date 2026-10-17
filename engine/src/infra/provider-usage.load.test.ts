@@ -9,6 +9,7 @@ import {
   getProviderUsageSnapshotWithPluginMock,
   resetProviderUsageSnapshotWithPluginMock,
 } from "./provider-usage-plugin-runtime.test-mocks.js";
+import { overlayAccountLiveState } from "./provider-usage.account-state.js";
 import { loadProviderUsageSummary } from "./provider-usage.load.js";
 import { ignoredErrors } from "./provider-usage.shared.js";
 import { loadUsageWithAuth, usageNow } from "./provider-usage.test-support.js";
@@ -313,13 +314,71 @@ describe("provider-usage.load", () => {
     });
 
     expect(summary.providers).toEqual([
-      { provider: "anthropic", displayName: "Claude", windows: [], error: "auth failed" },
+      { provider: "anthropic", displayName: "Claude", windows: [], error: "auth failed", signInNeeded: true },
       {
         provider: "openai",
         displayName: "openai",
         windows: [{ label: "5h", usedPercent: 12 }],
       },
     ]);
+  });
+
+  it("keeps mixed account states when the usage endpoint returns 429 for every account", async () => {
+    const now = usageNow;
+    const resetAt = now + 25 * 3_600_000;
+    resolveProviderUsageSnapshotWithPluginMock.mockImplementation(async ({ context }) => ({
+      provider: "anthropic",
+      displayName: "Claude",
+      windows: context.authProfileId === "anthropic:ready" ? [{ label: "5h", usedPercent: 20 }] : [],
+      error: "HTTP 429: Rate limited. Please try again later.",
+    }));
+    const summary = await loadProviderUsageSummary({
+      now,
+      providers: ["anthropic"],
+      auth: ["rejected", "limited", "ready"].map((id) => ({
+        provider: "anthropic" as const,
+        token: `token-${id}`,
+        authProfileId: `anthropic:${id}`,
+      })),
+      authStore: {
+        version: 1,
+        profiles: {},
+        usageStats: {
+          "anthropic:rejected": {
+            disabledUntil: now + 60_000,
+            disabledReason: "auth_permanent",
+          },
+          "anthropic:limited": {
+            blockedUntil: resetAt,
+            blockedReason: "subscription_limit",
+            blockedSource: "provider_retry_after",
+          },
+        },
+      },
+      config: {},
+      env: {},
+    });
+    expect(summary.providers).toHaveLength(3);
+    expect(summary.providers[0]).toMatchObject({
+      authProfileId: "anthropic:rejected",
+      signInNeeded: true,
+    });
+    expect(summary.providers[0]?.rateLimitedUntil).toBeUndefined();
+    expect(summary.providers[0]?.ready).toBeUndefined();
+    expect(summary.providers[1]).toMatchObject({
+      authProfileId: "anthropic:limited",
+      rateLimitedUntil: resetAt,
+    });
+    expect(summary.providers[1]?.signInNeeded).toBeUndefined();
+    expect(summary.providers[2]).toMatchObject({
+      authProfileId: "anthropic:ready",
+      ready: true,
+      windows: [{ label: "5h", usedPercent: 20 }],
+    });
+    expect(summary.providers[2]?.rateLimitedUntil).toBeUndefined();
+    expect(summary.providers.every((row) => row.error === "HTTP 429: Rate limited. Please try again later.")).toBe(
+      true,
+    );
   });
 
   it("throws when fetch is unavailable", async () => {
@@ -339,3 +398,88 @@ describe("provider-usage.load", () => {
     }
   });
 });
+
+const USAGE_429 = "HTTP 429: Rate limited. Please try again later.";
+const RESET_AT = usageNow + 25 * 3_600_000;
+
+function claudeAccount(
+  id: string,
+  extra: Partial<ProviderUsageSnapshot> = {},
+): ProviderUsageSnapshot {
+  return {
+    provider: "anthropic",
+    displayName: "Claude",
+    authProfileId: `anthropic:${id}`,
+    windows: [],
+    error: USAGE_429,
+    ...extra,
+  };
+}
+
+describe("overlayAccountLiveState", () => {
+  it("maps mixed accounts when the usage endpoint returns 429 for every row", () => {
+    const summary: UsageSummary = {
+      updatedAt: usageNow,
+      providers: [
+        claudeAccount("rejected"),
+        claudeAccount("limited"),
+        claudeAccount("ready", { windows: [{ label: "5h", usedPercent: 20 }] }),
+      ],
+    };
+    const overlaid = overlayAccountLiveState(
+      summary,
+      {
+        "anthropic:rejected": {
+          disabledUntil: usageNow + 60_000,
+          disabledReason: "auth_permanent",
+        },
+        "anthropic:limited": {
+          blockedUntil: RESET_AT,
+          blockedReason: "subscription_limit",
+          blockedSource: "provider_retry_after",
+        },
+      },
+      usageNow,
+    );
+    expect(overlaid.providers.map((row) => ({
+      id: row.authProfileId,
+      signInNeeded: row.signInNeeded,
+      rateLimitedUntil: row.rateLimitedUntil,
+      ready: row.ready,
+    }))).toEqual([
+      { id: "anthropic:rejected", signInNeeded: true, rateLimitedUntil: undefined, ready: undefined },
+      { id: "anthropic:limited", signInNeeded: undefined, rateLimitedUntil: RESET_AT, ready: undefined },
+      { id: "anthropic:ready", signInNeeded: undefined, rateLimitedUntil: undefined, ready: true },
+    ]);
+    expect(overlaid.providers.every((row) => row.error === USAGE_429)).toBe(true);
+    expect(overlaid.providers.filter((row) => row.rateLimitedUntil === RESET_AT)).toHaveLength(1);
+  });
+
+  it("treats 401, 403 and invalid grant as sign-in, not as a shared rate limit", () => {
+    const summary: UsageSummary = {
+      updatedAt: usageNow,
+      providers: [
+        claudeAccount("one", { error: "HTTP 401: unauthorized" }),
+        claudeAccount("two", { error: "HTTP 403: login rejected" }),
+        claudeAccount("three", { error: "invalid_grant" }),
+      ],
+    };
+    const overlaid = overlayAccountLiveState(summary, undefined, usageNow);
+    expect(overlaid.providers.every((row) => row.signInNeeded === true)).toBe(true);
+    expect(overlaid.providers.every((row) => row.ready !== true && row.rateLimitedUntil === undefined)).toBe(
+      true,
+    );
+  });
+
+  it("does not mark every account rate-limited when only the usage probe is 429", () => {
+    const summary: UsageSummary = {
+      updatedAt: usageNow,
+      providers: [claudeAccount("a"), claudeAccount("b"), claudeAccount("c")],
+    };
+    const overlaid = overlayAccountLiveState(summary, {}, usageNow);
+    expect(overlaid.providers.every((row) => row.ready === true)).toBe(true);
+    expect(overlaid.providers.every((row) => row.rateLimitedUntil === undefined)).toBe(true);
+    expect(overlaid.providers.every((row) => row.signInNeeded !== true)).toBe(true);
+  });
+});
+

@@ -105,7 +105,7 @@ describe("status popovers", () => {
     expect(stale.classList.contains("staleT5")).toBe(true);
     expect(stale.querySelector(".aLeftT5")?.textContent).toMatch(/^80% left · resets /);
     expect(stale.querySelector(".meterT5 i")?.getAttribute("style")).toBe("width: 20%;");
-    expect(stale.querySelector(".aLineT5")?.textContent).toBe("Rate limited · last reading 12 min ago. Branch checks again in 5 min.");
+    expect(stale.querySelector(".aLineT5")?.textContent).toBe("Usage unavailable · last reading 12 min ago. Branch checks again in 5 min.");
     expect(fresh.classList.contains("staleT5")).toBe(false);
     expect(fresh.querySelector(".aLeftT5")?.textContent).toMatch(/^45% left · resets /);
     expect(fresh.querySelector(".aLineT5")).toBeNull();
@@ -146,6 +146,27 @@ describe("status popovers", () => {
     await act(async () => root?.render(<VersionPopover above={above} onClose={() => {}} update={update} version="1.0.0" onWhatsNew={() => {}} onRemind={() => {}} />));
     expect(host.textContent).toContain("Ready to install on the computer running Branch: open Branch there to install it.");
     expect(button(host, "Install when idle")).toBeUndefined();
+  });
+});
+
+describe("usage popover: each account's real state", () => {
+  it("shows sign in again, rate limited until a time, and ready on the same list after a usage 429", async () => {
+    const resetAt = new Date(2026, 9, 3, 13, 0).getTime();
+    const usage = { updatedAt: Date.now(), providers: [
+      { provider: "anthropic", displayName: "Claude", accountEmail: "one@example.test", authProfileId: "anthropic:one", signInNeeded: true, error: "HTTP 403: login rejected" },
+      { provider: "anthropic", displayName: "Claude", accountEmail: "two@example.test", authProfileId: "anthropic:two", rateLimitedUntil: resetAt, error: "HTTP 429: Rate limited. Please try again later." },
+      { provider: "anthropic", displayName: "Claude", accountEmail: "three@example.test", authProfileId: "anthropic:three", ready: true, windows: [{ label: "5h", usedPercent: 20, resetAt: resetAt }] },
+    ] };
+    const host = await show(<UsagePopover above={above} onClose={() => {}} limits={readLimits(usage, new Date(2026, 9, 2, 12, 0).getTime())} request={vi.fn(async () => usage) as never} onOpenUsage={() => {}} />);
+    const rows = [...host.querySelectorAll(".acctT5")];
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.textContent).toContain("Sign in again to show usage.");
+    expect(rows[0]?.querySelector("[data-testid=usage-signin]")).toBeTruthy();
+    expect(rows[1]?.textContent).toContain("Rate limited until 1 PM Sat");
+    expect(rows[2]?.textContent).toMatch(/80% left/);
+    expect(host.textContent).not.toMatch(/HTTP 429/);
+    expect(host.textContent.split("Rate limited until").length - 1).toBe(1);
+    expect(host.textContent.split("Sign in again to show usage.").length - 1).toBe(1);
   });
 });
 
