@@ -428,7 +428,7 @@ export function Composer(props: Props) {
       }} />
       <input ref={fileInput} type="file" multiple hidden data-local="" onChange={(e) => { void draft.addFiles([...(e.target.files ?? [])], "file"); e.target.value = ""; }} />
     </form>
-    <Row engine={engine} menu={menu === "plus" || menu === "ring" ? null : menu} setMenu={setMenu} close={close} conv={conv} current={current} currentRef={currentRef} thinking={thinking}
+    <Row engine={engine} menu={menu === "plus" || menu === "ring" || menu === "mic" ? null : menu} setMenu={setMenu} close={close} conv={conv} current={current} currentRef={currentRef} thinking={thinking}
       mode={mode} asSet={asSet} admin={admin} noModel={noModel} trunkName={trunkName} lockdown={props.lockdown} onToggleLockdown={props.onToggleLockdown}
       pickMode={(m) => void pickMode(m)} patch={patch} onOpen={onOpen} onToast={toast} onProblem={setProblem}
       topics={props.row?.isMain && props.topics.length ? props.topics : []} target={topic ?? null} onTarget={(key) => { setTarget(key); setMenu(null); }} />
