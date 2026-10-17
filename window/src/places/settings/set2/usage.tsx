@@ -993,7 +993,7 @@ function MovingInOut({ engine, lv }: { engine: WindowEngine; lv: number }) {
   return (
     <Sec title="Moving in and out">
       <Ctl title="Move in from another assistant" sub="Bring in memories from other coding apps." help="Memory and instructions from Claude Code or Hermes Agent, as the engine finds them on this computer."><Btn sm onClick={() => setMove(true)}>Move in…</Btn></Ctl>
-      <Ctl title="Show other assistants’ conversations" sub="Show other coding-app conversations without copying them." help="Claude Code, Codex, OpenCode and other assistants on this computer and your paired computers, in their own group in the list. Shown, not copied. Off until you choose: it reads other assistants’ conversation history on this computer.">
+      <Ctl title="Show other assistants’ conversations" sub="Show other coding-app conversations without copying them." help="Claude Code, Codex, OpenCode and other assistants on this computer and your paired computers, in their own group in the list. Shown, not copied. Off until you choose: it reads other assistants’ conversation history on this computer." off={present.length || busy ? undefined : "No other assistants were found on this computer."}>
         <Switch label="Show other assistants’ conversations" checked={all} disabled={busy || !present.length} onChange={(v) => void setAll(v)} />
       </Ctl>
       {plugins.error ? <p className="hint s2-err" role="alert">{plugins.error}</p> : null}
@@ -1166,7 +1166,7 @@ function KeepingMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
       <Ctl title="Conversation storage" sub="Transcripts, databases and the archive."><Btn sm onClick={() => setStore(true)}>See it</Btn></Ctl>
       <Ctl title="Compress older transcripts" sub="Packs older transcripts into the archive." help="Packs older transcripts into the archive. Off until you choose: it uses processor and disk while it works."><Switch label="Compress older transcripts" checked={compress} disabled={config.loading} onChange={(v) => void config.set(`${M}.coldStorage.enabled`, v)} /></Ctl>
       <Ctl title="After" sub="At least 1 day."><Num label="After" unit="days" min={1} placeholder="30" value={asNum(str(g("coldStorage.afterDays")))} onCommit={(v) => void config.set(`${M}.coldStorage.afterDays`, v === null ? null : Math.round(v))} /></Ctl>
-      <Ctl title="Run now" sub={!compress ? "Turn on “Compress older transcripts” first." : cold.error ?? cold.note ?? "Packs transcripts older than the time above, now."}><Btn sm disabled={!compress || cold.busy} onClick={runCold}>Run now</Btn></Ctl>
+      <Ctl title="Run now" sub={compress ? cold.error ?? cold.note ?? "Packs transcripts older than the time above, now." : undefined} off={compress ? undefined : "Turn on “Compress older transcripts” first."}><Btn sm disabled={!compress || cold.busy} onClick={runCold}>Run now</Btn></Ctl>
       <Ctl title="Delete uploaded files after" sub="Files you and chat apps send in." help="Files you and chat apps send in. Pictures Trunks make are not affected. Off until you choose: it deletes files.">
         <Pick label="Delete uploaded files after" value={typeof ttl === "number" ? String(ttl) : "never"} options={[{ id: "never", label: "Never" }, ...[1, 6, 12, 24, 48, 72, 168].map((h) => ({ id: String(h), label: `${h} hour${h > 1 ? "s" : ""}` }))]} onChange={(v) => void config.set("attachments.ttlHours", v === "never" ? null : Number(v))} />
       </Ctl>

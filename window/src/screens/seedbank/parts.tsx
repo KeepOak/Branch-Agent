@@ -3,6 +3,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
+import { AppLogo } from "../../places/customize/app-logos";
 import { Glyph } from "../../places/customize/glyphs";
 import { Icon } from "../../shell/icons";
 import { kindOf, shortCount, type Entry } from "./catalog";
@@ -21,10 +22,11 @@ export function Soon({ need, reason, className, label, children }: { need: strin
   return <Coming need={need} unwired reason={reason} where={where} hidden={!shown}><button type="button" className={className} aria-label={label}>{children}</button></Coming>;
 }
 
-const GLYPH = { skills: "bolt", mcp: "plug", plugins: "puzzle" } as const;
+const GLYPH = { skills: "bolt", plugins: "puzzle" } as const;
 export function ItemIcon({ entry, size }: { entry: Entry; size: number }) {
   if (entry.source.type === "template") return <span className="sb-face" style={{ width: size, height: size }}><Face size={size} label={entry.name} pebbleLook={{ colour: entry.source.template.colour }} /></span>;
-  const glyph = entry.kind === "skills" || entry.kind === "mcp" || entry.kind === "plugins" ? GLYPH[entry.kind] : null;
+  if (entry.kind === "mcp") return <AppLogo name={entry.name} size={size} />;   /* A-141: the app's logo, or a monogram tile */
+  const glyph = entry.kind === "skills" || entry.kind === "plugins" ? GLYPH[entry.kind] : null;
   return <span className="sb-tile" aria-hidden="true" style={{ width: size, height: size }}>{glyph ? <Glyph name={glyph} size={Math.round(size * 0.5)} /> : <Icon name="sun" size={Math.round(size * 0.5)} />}</span>;
 }
 

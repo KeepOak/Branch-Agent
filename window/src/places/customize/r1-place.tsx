@@ -50,7 +50,7 @@ export function CustomizeR1Place({ engine, openConversation, openSettings, level
         <input type="search" placeholder="Search tools, skills, agents…" aria-label="Search tools, skills and agents" value={query} onChange={e => setQuery(e.target.value)} /></label></div>
     <div className="cz">
       <ToolsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} getting={false} setGetting={() => undefined}
-        openConversation={openConversation} variant="r1" usePrompt={usePrompt} query={query} toCommunity={toCommunity} />
+        openConversation={openConversation} openSettings={openSettings} variant="r1" usePrompt={usePrompt} query={query} toCommunity={toCommunity} />
     </div>
   </>;
   return <PlaceScroll>

@@ -33,7 +33,6 @@ async function toLastStepWithHello(engine: WindowEngine) {
   const shown = await show(engine);
   await act(async () => button(shown.host, "Get started").click());
   await flush();
-  await act(async () => button(shown.host, "Continue").click());
   await act(async () => button(shown.host, "Say hello").click());
   await flush();
   await act(async () => button(shown.host, "Continue").click());
@@ -58,10 +57,10 @@ describe("onboarding model", () => {
     expect(MODES.every((m) => m.line.length > 0)).toBe(true);
     expect(freshState().mode).toBe("ask");
   });
-  it("holds Continue on Your models until a hello worked", () => {
-    expect(primary({ ...freshState(1) })).toMatchObject({ ok: false, why: "Say hello first." });
-    expect(primary({ ...freshState(1), hello: "busy" }).ok).toBe(false);
-    expect(primary({ ...freshState(1), hello: { ok: false, error: "x" } }).ok).toBe(false);
+  it("lets Continue go on Your models without a hello or an account", () => {
+    expect(primary({ ...freshState(1) })).toMatchObject({ label: "Continue", ok: true });
+    expect(primary({ ...freshState(1), hello: "busy" }).ok).toBe(true);
+    expect(primary({ ...freshState(1), hello: { ok: false, error: "x" } }).ok).toBe(true);
     expect(primary({ ...freshState(1), hello: { ok: true, seconds: "1.4", modelRef: "m" } }).ok).toBe(true);
     expect(primary(freshState(0)).label).toBe("Get started");
   });
@@ -115,26 +114,23 @@ describe("Onboarding", () => {
     expect(host.textContent).toContain("Runs on this computer");
   });
 
-  it("says hello with a real model call and only then lets you continue", async () => {
+  it("says hello with a real model call and lets Continue go without one", async () => {
     const { engine, request } = fakeEngine({ "branch.setup.detect": DETECT, "branch.setup.activate": { ok: true, modelRef: "anthropic/claude-opus", latencyMs: 1400 } });
     const { host } = await show(engine);
     await act(async () => button(host, "Get started").click());
     await flush();
     expect(calls(request, "branch.setup.detect")).toEqual([{ agentId: "main" }]);
     expect([...host.querySelectorAll(".r1-ob-row b")].map((b) => b.textContent)).toEqual(["Claude", "ChatGPT"]);
-    expect(button(host, "Continue").getAttribute("aria-disabled")).toBe("true");
-    await act(async () => button(host, "Continue").click());
-    expect(host.querySelector("h1")?.textContent).toBe("Your models");
+    expect(button(host, "Continue").getAttribute("aria-disabled")).toBeNull();
     await act(async () => button(host, "Say hello").click());
     await flush();
     expect(calls(request, "branch.setup.activate")).toEqual([{ agentId: "main", kind: "claude-cli", modelRef: "anthropic/claude-opus" }]);
     expect(host.querySelector(".r1-ob-hello")?.textContent).toContain("Claude answered in 1.4 s");
-    expect(button(host, "Continue").getAttribute("aria-disabled")).toBeNull();
     await act(async () => button(host, "Continue").click());
     expect(host.querySelector("h1")?.textContent).toBe("How much may it do?");
   });
 
-  it("shows the real failure with Try again and Use another model, and keeps Continue held", async () => {
+  it("shows the real failure with Try again and Use another model, and still lets Continue go", async () => {
     const { engine } = fakeEngine({ "branch.setup.detect": DETECT, "branch.setup.activate": { ok: false, error: "401 unauthorized token" } });
     const { host } = await show(engine, { startAt: 1 });
     await act(async () => button(host, "Say hello").click());
@@ -142,16 +138,18 @@ describe("Onboarding", () => {
     expect(host.querySelector(".r1-ob-hello")?.textContent).toContain("Sign in to the model account again.");
     expect(button(host, "Try again")).toBeTruthy();
     expect(button(host, "Use another model")).toBeTruthy();
-    expect(button(host, "Continue").getAttribute("aria-disabled")).toBe("true");
+    expect(button(host, "Continue").getAttribute("aria-disabled")).toBeNull();
   });
 
   it("says when no model is on this computer and offers Add one; examples are Coming", async () => {
-    const { engine } = fakeEngine({ "branch.setup.detect": { candidates: [] } });
+    const { engine, request } = fakeEngine({ "branch.setup.detect": { candidates: [] } });
     const { host } = await show(engine, { startAt: 1 });
-    expect(host.textContent).toContain("No models on this computer yet.");
+    await flush();
+    expect(host.textContent).toContain("No models on this computer yet. A free local model will be set up so you can chat without an account.");
     expect(button(host, "Add one")).toBeTruthy();
     expect(button(host, "Say hello")).toBeUndefined();
     expect(button(host, "Try it with examples").getAttribute("aria-disabled")).toBe("true");
+    expect(calls(request, "branch.setup.activate")).toEqual([{ kind: "no-key-default", agentId: "main" }]);
   });
 
   it("saves Ask first as tools.exec.mode and never offers Full access; Plan first is Coming", async () => {
@@ -212,7 +210,6 @@ async function toLastStepNamed(engine: WindowEngine, name: string) {
   await typeName(shown.host, name);
   await act(async () => button(shown.host, "Get started").click());
   await flush();
-  await act(async () => button(shown.host, "Continue").click());
   await act(async () => button(shown.host, "Say hello").click());
   await flush();
   await act(async () => button(shown.host, "Continue").click());
