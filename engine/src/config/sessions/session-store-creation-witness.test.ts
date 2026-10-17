@@ -1,0 +1,116 @@
+import fs from "node:fs";
+import path from "node:path";
+import { afterEach, expect, it } from "vitest";
+import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { readDatabasePathIdentitySync } from "../../infra/sqlite-worker-identity.js";
+import {
+  createSqliteWorkerOperationAdmission,
+  type SqliteWorkerAdmissionRequest,
+} from "../../infra/sqlite-worker-operation-admission.js";
+import { resolveBranchAgentSqlitePath } from "../../state/branch-agent-db.paths.js";
+import { closeBranchAgentDatabasesAsync } from "../../state/branch-agent-db.js";
+import type { AgentDatabaseRequestExecutionSource } from "../../state/branch-agent-execution-contract.js";
+import { captureBranchAgentDatabaseExecution } from "../../state/branch-agent-execution.js";
+import { closeBranchStateDatabaseAsync } from "../../state/branch-state-db.js";
+import { loadSessionEntryForAdmission } from "./session-accessor.sqlite-entry-admission.js";
+import { prepareSessionEntryMutationDatabases } from "./session-accessor.entry-mutation.js";
+import { readSessionEntryInWorker } from "./session-entry-read-runtime.js";
+
+const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
+  afterEach(async () => {
+    await closeBranchAgentDatabasesAsync();
+    await closeBranchStateDatabaseAsync();
+    cleanup();
+  }),
+);
+
+function absentTrunk(agentId = "hazel") {
+  const env = { BRANCH_STATE_DIR: fs.realpathSync(tempDirs.make("just-created-trunk-")) };
+  const options = { agentId, env };
+  return {
+    ...options,
+    path: resolveBranchAgentSqlitePath(options),
+    scope: { agentId, env, sessionKey: `agent:${agentId}:main` },
+  };
+}
+
+function source(
+  beforeGrant: (request: SqliteWorkerAdmissionRequest) => void = () => {},
+): AgentDatabaseRequestExecutionSource {
+  return {
+    assertCurrent() {},
+    createAdmission(binding) {
+      return () => ({
+        nativeLocations: binding.nativeLocations,
+        admission: createSqliteWorkerOperationAdmission((request, grant) => {
+          beforeGrant(request);
+          binding.authorize(request);
+          if (!grant()) {
+            throw new Error("Just-created Trunk fixture lost admission");
+          }
+        }, binding.attachment),
+      });
+    },
+  };
+}
+
+async function concurrentFirstOpen(options: {
+  agentId: string;
+  env: NodeJS.ProcessEnv;
+  path: string;
+}) {
+  const observed = readDatabasePathIdentitySync(options.path);
+  expect(observed.key.startsWith("path:")).toBe(true);
+  const sibling = captureBranchAgentDatabaseExecution(options, {
+    expectedCreationIdentity: observed,
+  });
+  const preparing = sibling.prepare(source());
+  return {
+    observed,
+    preparing,
+    async [Symbol.asyncDispose]() {
+      await preparing.catch(() => undefined);
+      await sibling.release();
+    },
+  };
+}
+
+it("prepares sessions.create after a concurrent first-open reserves the new Trunk store", async () => {
+  const options = absentTrunk();
+  await using opener = await concurrentFirstOpen(options);
+  expect(opener.preparing).toBeInstanceOf(Promise);
+  await using preparation = prepareSessionEntryMutationDatabases(
+    [{ scope: options.scope, assertCurrent: () => {} }],
+    Promise.resolve(),
+  );
+  await expect(preparation.preparations[0]).resolves.toEqual(
+    expect.objectContaining({ execution: expect.anything() }),
+  );
+});
+
+it("admits the new Trunk conversation after a concurrent first-open reserves its store", async () => {
+  const options = absentTrunk("juniper");
+  await using opener = await concurrentFirstOpen(options);
+  expect(opener.preparing).toBeInstanceOf(Promise);
+  const admitted = await loadSessionEntryForAdmission(options.scope);
+  try {
+    expect(admitted.entry).toBeUndefined();
+    admitted.databaseClaim.assertCurrent();
+  } finally {
+    await admitted.databaseClaim.release();
+  }
+});
+
+it("reads the new Trunk conversation after a concurrent first-open reserves its store", async () => {
+  const options = absentTrunk("cedar");
+  await using opener = await concurrentFirstOpen(options);
+  expect(opener.preparing).toBeInstanceOf(Promise);
+  await expect(readSessionEntryInWorker(options.scope, () => {})).resolves.toBeUndefined();
+});
+
+it("still reports a real store identity failure for a just-created Trunk", async () => {
+  const options = absentTrunk("willow");
+  fs.mkdirSync(path.dirname(options.path), { recursive: true });
+  fs.mkdirSync(options.path);
+  await expect(loadSessionEntryForAdmission(options.scope)).rejects.toThrow(/regular file/);
+});
