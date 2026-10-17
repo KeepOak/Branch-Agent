@@ -15,10 +15,10 @@ vi.mock("../../shell/use-status", () => ({ useLimits: () => null, useUpdate: () 
 vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
 vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as const, SettingsFrame: ({ page, onPage, keepLevel }: { page: string; onPage: (page: string) => void; keepLevel?: boolean }) => <div data-testid="classic-settings" data-page={page} data-keep-level={keepLevel ? "" : undefined}>Classic settings<button type="button" onClick={() => onPage("general")}>General</button></div> }));
 // One stub slot per page the real R1 Settings re-hosts from Classic (plugged.ts REHOSTED), the native History & backups
-// page's own rows, and Chat apps.
+// page's own rows, Chat apps, and Your card (a page that draws only its own card).
 vi.mock("../settings/pages/plugged", async () => {
   const { REHOSTED, R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
-  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, who: R1_PAGES.who, instructions: R1_PAGES.instructions, learning: R1_PAGES.learning, remote: R1_PAGES.remote, signins: R1_PAGES.signins, updates: R1_PAGES.updates, voice: R1_PAGES.voice, developer: R1_PAGES.developer, chatapps: { component: () => null } } };
+  return { R1_PAGES: { card: { cards: { "Your card": { component: () => null } } }, ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, who: R1_PAGES.who, instructions: R1_PAGES.instructions, learning: R1_PAGES.learning, remote: R1_PAGES.remote, signins: R1_PAGES.signins, updates: R1_PAGES.updates, voice: R1_PAGES.voice, developer: R1_PAGES.developer, chatapps: { component: () => null } } };
 });
 vi.mock("../settings", () => ({
   SettingsFrame: ({ engine, page, pages, onPage }: { engine: { id?: string }; page?: string; pages?: Record<string, unknown>; onPage?: (page: string) => void }) => (

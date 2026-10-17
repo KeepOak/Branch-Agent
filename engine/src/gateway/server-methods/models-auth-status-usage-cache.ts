@@ -123,11 +123,25 @@ function retainLastGoodReading(
         return provider;
       }
       // A reading kept across several failed checks keeps its first age.
-      return {
+      // Live account state (sign-in, cooldown, ready) comes from this check, not the kept windows.
+      const next = {
         ...kept,
         readingAt: kept.readingAt ?? lastGood.updatedAt,
         staleReason: provider.error,
       };
+      delete next.signInNeeded;
+      delete next.rateLimitedUntil;
+      delete next.ready;
+      if (provider.signInNeeded) {
+        next.signInNeeded = true;
+      }
+      if (typeof provider.rateLimitedUntil === "number") {
+        next.rateLimitedUntil = provider.rateLimitedUntil;
+      }
+      if (provider.ready) {
+        next.ready = true;
+      }
+      return next;
     }),
   };
 }

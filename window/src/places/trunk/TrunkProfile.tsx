@@ -10,6 +10,7 @@ import { PairDialog } from "../customize/pairing";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
+import { menuAtLevel } from "../../shell/menu-level";
 import { Icon } from "../../shell/icons";
 import { notify } from "../../shell/notify";
 import { Switch } from "../../shell/Popover";
@@ -182,7 +183,7 @@ function ProfileBody({ engine, level, onClose, openPlace, openSettings, openConv
         {data.notes.map((n) => <p key={n} className="tk-hint" role="status">{n}</p>)}
         {error && <p className="tk-error" role="alert">{error}</p>}
       </div>
-      {more && <Menu at={more} label={`More for ${row.name}`} testid="trunk-more" onClose={() => setMore(null)} items={moreItems} />}
+      {more && <Menu at={more} label={`More for ${row.name}`} testid="trunk-more" onClose={() => setMore(null)} items={menuAtLevel(moreItems, shows(level, "technical"))} />}
     </Dialog></Layer>
   );
 }

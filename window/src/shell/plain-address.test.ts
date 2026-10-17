@@ -3,7 +3,7 @@
 // Regular no toast or banner shows a hostname, an IP address or a URL; Advanced keeps the exact words.
 import { afterEach, describe, expect, it } from "vitest";
 import { clearBanner, currentBanner, raiseBanner } from "./Banner";
-import { dismiss, getToasts, notify } from "./notify";
+import { dismiss, getToasts, notify, osNotice } from "./notify";
 import { plainAddresses, rememberHostnames } from "./plain-address";
 
 afterEach(() => { clearBanner(); for (const toast of getToasts()) dismiss(toast.id); localStorage.clear(); });
@@ -44,5 +44,27 @@ describe("no hostnames, IP addresses or URLs at Regular", () => {
     rememberHostnames("studio-box");
     raiseBanner({ icon: "alert", title: "Can’t reach studio-box", text: "Branch keeps trying." });
     expect(currentBanner()?.title).toBe("Can’t reach studio-box");
+  });
+
+  it("rewrites a toast already showing once the hostname arrives", () => {
+    notify("Couldn’t reach desk-one");
+    expect(getToasts()[0]?.text).toBe("Couldn’t reach desk-one");
+    rememberHostnames("desk-one");
+    expect(getToasts()[0]?.text).toBe("Couldn’t reach this computer");
+  });
+
+  it("rewrites a banner already showing once the hostname arrives", () => {
+    raiseBanner({ icon: "alert", title: "Can’t reach desk-two", text: "Branch keeps trying." });
+    expect(currentBanner()?.title).toBe("Can’t reach desk-two");
+    rememberHostnames("desk-two");
+    expect(currentBanner()?.title).toBe("Can’t reach this computer");
+  });
+
+  it("an OS notice never shows a hostname or address", () => {
+    rememberHostnames("desk-one");
+    expect(osNotice("Can’t reach desk-one", "Tried ws://10.0.0.5:18789/gateway")).toEqual({
+      title: "Can’t reach this computer",
+      body: "Tried the link",
+    });
   });
 });
