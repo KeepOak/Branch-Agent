@@ -83,6 +83,7 @@ For LiteLLM, the small source stroke widths are unified at 1.35 source units bef
 
 | Plugin                   | Source package                                                                 | Icon                 |
 | ------------------------ | ------------------------------------------------------------------------------ | -------------------- |
+| `bitwarden`              | [`simple-icons@16.31.0`](https://www.npmjs.com/package/simple-icons/v/16.31.0) | `bitwarden.svg`      |
 | `brave`                  | [`simple-icons@16.31.0`](https://www.npmjs.com/package/simple-icons/v/16.31.0) | `brave.svg`          |
 | `diagnostics-otel`       | [`simple-icons@16.31.0`](https://www.npmjs.com/package/simple-icons/v/16.31.0) | `opentelemetry.svg`  |
 | `diagnostics-prometheus` | [`simple-icons@16.31.0`](https://www.npmjs.com/package/simple-icons/v/16.31.0) | `prometheus.svg`     |

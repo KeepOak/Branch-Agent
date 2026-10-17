@@ -1,0 +1,132 @@
+{
+  "id": "bitwarden",
+  "categories": [
+    "security"
+  ],
+  "name": "Bitwarden",
+  "description": "Bitwarden SecretRef resolver and the list of saved sign-ins Branch may fill, by reference only.",
+  "cliCommands": [
+    {
+      "name": "bitwarden",
+      "description": "Manage the Bitwarden integration",
+      "hasSubcommands": true
+    }
+  ],
+  "activation": {
+    "onStartup": false,
+    "onCommands": [
+      "bitwarden"
+    ],
+    "onConfigPaths": [
+      "plugins.entries.bitwarden.config"
+    ]
+  },
+  "commandAliases": [
+    {
+      "name": "bitwarden",
+      "cliCommand": "bitwarden"
+    }
+  ],
+  "secretProviderIntegrations": {
+    "bitwarden": {
+      "providerAlias": "bitwarden",
+      "displayName": "Bitwarden",
+      "description": "Resolve Branch Agent exec SecretRefs from a Bitwarden vault using the bw CLI.",
+      "source": "exec",
+      "command": "${node}",
+      "args": [
+        "./bitwarden-secret-ref-resolver.js"
+      ],
+      "timeoutMs": 90000,
+      "noOutputTimeoutMs": 90000,
+      "maxOutputBytes": 1048576,
+      "passEnv": [
+        "HOME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "TEMP",
+        "TMP",
+        "BRANCH_HOME",
+        "BRANCH_PROFILE",
+        "BRANCH_STATE_DIR",
+        "PATH",
+        "BRANCH_BITWARDEN_BW",
+        "BW_SESSION",
+        "BITWARDENCLI_APPDATA_DIR",
+        "NODE_EXTRA_CA_CERTS",
+        "SYSTEMROOT",
+        "WINDIR"
+      ]
+    }
+  },
+  "configGroups": [
+    {
+      "id": "bitwarden-connection",
+      "title": "Bitwarden connection",
+      "order": 10,
+      "properties": [
+        "providerAlias"
+      ]
+    },
+    {
+      "id": "sign-ins",
+      "title": "Sign-ins Branch may fill",
+      "order": 20,
+      "properties": [
+        "signIns"
+      ]
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "providerAlias": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+        "default": "bitwarden"
+      },
+      "signIns": {
+        "type": "object",
+        "maxProperties": 64,
+        "propertyNames": {
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "item",
+            "sites"
+          ],
+          "properties": {
+            "item": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?!\\s*-)"
+            },
+            "sites": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "totp": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        }
+      }
+    }
+  }
+}
