@@ -55,10 +55,6 @@ function waitForManualPromptFallback(signal?: AbortSignal): Promise<null> {
   });
 }
 
-function isCallbackPortBusy(error: unknown): boolean {
-  return error instanceof Error && (error as { code?: unknown }).code === "EADDRINUSE";
-}
-
 function parseAuthorizationCode(input: string, state: string): string | undefined {
   const parsed = parseOAuthAuthorizationInput(input);
   if (parsed.state && parsed.state !== state) {
@@ -120,8 +116,6 @@ export async function loginOpenAICodex(options: {
   onProgress?: (message: string) => void;
   // Manual entry races the browser callback; either can complete the login.
   onManualCodeInput?: () => Promise<string>;
-  // Only a browser on another computer may continue by pasting when the callback port is busy.
-  allowManualEntryWithoutCallback?: boolean;
   originator?: string;
   signal?: AbortSignal;
   assertCurrent?: () => void;
@@ -151,14 +145,10 @@ export async function loginOpenAICodex(options: {
         contentType: "text/html; charset=utf-8",
       }),
     });
-  } catch (error) {
-    // An unavailable callback still permits manual entry; retired owners do not.
+  } catch {
+    // An unavailable callback port still permits manual entry; retired owners do not.
     options.assertCurrent?.();
     throwIfOAuthLoginAborted(options.signal);
-    // A same-computer sign-in cannot finish through a busy port; say so before opening the browser.
-    if (!options.allowManualEntryWithoutCallback && isCallbackPortBusy(error)) {
-      throw error;
-    }
   }
   let cancelWait!: () => void;
   const cancelledWait = new Promise<null>((resolve) => {

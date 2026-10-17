@@ -1,5 +1,4 @@
 // Anthropic OAuth tests cover token exchange and refresh behavior.
-import { createServer } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const startOAuthLoopbackCallbackServer = vi.hoisted(() =>
@@ -65,29 +64,6 @@ describe("Anthropic OAuth token responses", () => {
     await expect(loginPromise).rejects.toThrow("Login cancelled");
     expect(onAuth).not.toHaveBeenCalled();
     expect(close).toHaveBeenCalledOnce();
-  });
-
-  it("says plainly when another app holds the Claude callback port", async () => {
-    const blocker = createServer();
-    await new Promise<void>((resolve, reject) => {
-      blocker.once("error", reject);
-      blocker.listen(53692, "127.0.0.1", resolve);
-    });
-    const onAuth = vi.fn();
-    const onPrompt = vi.fn(async () => "unused-code");
-    try {
-      await expect(anthropicOAuthProvider.login({ onAuth, onPrompt })).rejects.toMatchObject({
-        code: "EADDRINUSE",
-        message:
-          "Branch can't finish the sign-in because another app is using the sign-in port (53692). Close it and try again.",
-      });
-      expect(onAuth).not.toHaveBeenCalled();
-      expect(onPrompt).not.toHaveBeenCalled();
-    } finally {
-      await new Promise<void>((resolve) => {
-        blocker.close(() => resolve());
-      });
-    }
   });
 
   it("does not echo token payload values when refresh JSON parsing fails", async () => {

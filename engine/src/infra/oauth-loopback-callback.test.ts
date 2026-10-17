@@ -214,48 +214,6 @@ describe("OAuth loopback callback server", () => {
     await expect(aborted.waitForCallback()).rejects.toThrow("cancelled");
   });
 
-  it("lets one sign-in own a callback port and tells a second one to try again", async () => {
-    const first = await start();
-    await expect(start("127.0.0.1", {}, first.port)).rejects.toMatchObject({
-      name: "OAuthCallbackPortBusyError",
-      code: "EADDRINUSE",
-      reason: "sign_in_in_progress",
-      message: "Another sign-in is in progress. Try again in a moment.",
-    });
-  });
-
-  it("starts a waiting sign-in once the earlier one on its port closes", async () => {
-    const first = await start();
-    const second = start("127.0.0.1", {}, first.port);
-    setTimeout(() => void first.callback.close(), 100);
-    const { callback } = await second;
-    const response = await fetch(
-      callbackUrl("127.0.0.1", first.port, "?code=next-code&state=state-1234567890"),
-    );
-    expect(response.status).toBe(200);
-    await expect(callback.waitForCallback()).resolves.toMatchObject({ code: "next-code" });
-  });
-
-  it("says plainly when another app holds the callback port", async () => {
-    const port = await getClaimedPort();
-    const blocker = createServer();
-    await new Promise<void>((resolve, reject) => {
-      blocker.once("error", reject);
-      blocker.listen(port, "127.0.0.1", resolve);
-    });
-    try {
-      await expect(start("127.0.0.1", {}, port)).rejects.toMatchObject({
-        code: "EADDRINUSE",
-        reason: "port_in_use",
-        message: `Branch can't finish the sign-in because another app is using the sign-in port (${port}). Close it and try again.`,
-      });
-    } finally {
-      await new Promise<void>((resolve) => {
-        blocker.close(() => resolve());
-      });
-    }
-  });
-
   it("retains provider callback parameters and waits for the verified browser outcome", async () => {
     const started = await start("127.0.0.1", { deferResponse: true });
     const responsePromise = fetch(

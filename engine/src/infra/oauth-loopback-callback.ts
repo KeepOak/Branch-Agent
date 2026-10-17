@@ -2,7 +2,6 @@ import type { LookupAddress } from "node:dns";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createDeferredCore } from "../shared/deferred.js";
 import { oauthErrorHtml, renderOAuthPage } from "../shared/oauth-page.js";
-import { hasErrnoCode } from "./errno.js";
 import { OAUTH_PAGE_CSP } from "./oauth-page-csp.js";
 
 type OAuthLoopbackCallbackResult =
@@ -21,33 +20,6 @@ type LoopbackLookup = (
   hostname: string,
   options: { all: true; verbatim: true },
 ) => Promise<LookupAddress[]>;
-
-// Codex CLI's login server retries a busy callback port 10 times, 200 ms apart, before reporting it.
-const CALLBACK_PORT_BIND_ATTEMPTS = 10;
-const CALLBACK_PORT_RETRY_DELAY_MS = 200;
-// One sign-in owns a callback port at a time in this process; a second one waits its turn.
-const activeCallbackPorts = new Set<number>();
-
-type OAuthCallbackPortBusyReason = "sign_in_in_progress" | "port_in_use";
-
-/** The callback port stayed busy; `code` keeps listen-error checks in callers working. */
-export class OAuthCallbackPortBusyError extends Error {
-  readonly code = "EADDRINUSE";
-  readonly reason: OAuthCallbackPortBusyReason;
-  readonly port: number;
-
-  constructor(reason: OAuthCallbackPortBusyReason, port: number, options?: ErrorOptions) {
-    super(
-      reason === "sign_in_in_progress"
-        ? "Another sign-in is in progress. Try again in a moment."
-        : `Branch can't finish the sign-in because another app is using the sign-in port (${port}). Close it and try again.`,
-      options,
-    );
-    this.name = "OAuthCallbackPortBusyError";
-    this.reason = reason;
-    this.port = port;
-  }
-}
 
 function unbracket(hostname: string): string {
   return hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
@@ -238,17 +210,9 @@ export async function startOAuthLoopbackCallbackServer(params: {
   let binding = true;
   let timeout: NodeJS.Timeout | undefined;
   let closePromise: Promise<void> | undefined;
-  let reservedPort = false;
-  const releasePort = () => {
-    if (reservedPort) {
-      reservedPort = false;
-      activeCallbackPorts.delete(port);
-    }
-  };
   const callback = createDeferredCore<OAuthLoopbackCallbackResult>();
   void callback.promise.catch(() => undefined);
-  const close = () =>
-    binding ? Promise.resolve() : (closePromise ??= closeServers(servers).finally(releasePort));
+  const close = () => (binding ? Promise.resolve() : (closePromise ??= closeServers(servers)));
   const cleanup = () => {
     if (timeout) {
       clearTimeout(timeout);
@@ -402,7 +366,7 @@ export async function startOAuthLoopbackCallbackServer(params: {
     onAbort();
     throw new Error("OAuth callback cancelled");
   }
-  const listenOnAllAddresses = async () => {
+  try {
     // A partial localhost bind lets browsers choose an unserved family, so fail as one unit.
     for (const address of addresses) {
       const server = createServer(handleRequest);
@@ -417,43 +381,10 @@ export async function startOAuthLoopbackCallbackServer(params: {
         throw new Error("OAuth callback cancelled");
       }
     }
-  };
-  try {
-    for (let attempt = 1; ; attempt += 1) {
-      if (!activeCallbackPorts.has(port)) {
-        activeCallbackPorts.add(port);
-        reservedPort = true;
-        try {
-          await listenOnAllAddresses();
-          break;
-        } catch (error) {
-          await closeServers(servers.splice(0));
-          releasePort();
-          if (!hasErrnoCode(error, "EADDRINUSE")) {
-            throw error;
-          }
-          if (attempt >= CALLBACK_PORT_BIND_ATTEMPTS) {
-            throw new OAuthCallbackPortBusyError("port_in_use", port, { cause: error });
-          }
-        }
-      } else if (attempt >= CALLBACK_PORT_BIND_ATTEMPTS) {
-        throw new OAuthCallbackPortBusyError("sign_in_in_progress", port);
-      }
-      await waitForAbortable(
-        new Promise<void>((resolve) => {
-          setTimeout(resolve, CALLBACK_PORT_RETRY_DELAY_MS).unref?.();
-        }),
-        params.signal,
-      );
-      if (settled) {
-        throw new Error("OAuth callback cancelled");
-      }
-    }
   } catch (error) {
     binding = false;
     cleanup();
     await closeServers(servers);
-    releasePort();
     throw error;
   }
   binding = false;

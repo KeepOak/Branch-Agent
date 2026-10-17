@@ -218,7 +218,6 @@ export async function loginOpenAICodexOAuth(params: {
       },
       onPrompt,
       originator: openAICodexOAuthOriginator,
-      allowManualEntryWithoutCallback: isRemote,
       onManualCodeInput:
         params.onManualCodeInput ??
         createManualCodeInputHandler({
