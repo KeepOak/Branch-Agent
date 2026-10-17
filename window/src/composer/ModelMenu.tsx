@@ -119,7 +119,7 @@ export function ModelMenu(p: Props) {
         {!p.loading && !p.error && p.models.length === 0 ? (
           allAccounts.length > 0 ? <p className="c-pp">No models are allowed here.</p> : (
             <p className="c-pp">
-              No model account connected yet.{" "}
+              A free local model is used until you add an account. Connecting an account makes answers smarter and faster.{" "}
               <button type="button" className="c-link" disabled={!p.onOpen} title={p.onOpen ? undefined : NO_ROUTE} onClick={() => open("settings/accounts/add")}>Add an account</button>
             </p>
           )

@@ -15,6 +15,7 @@ import { agentEntry, denyList, denyPatch, Dot, Grey, list, PermRow, Pill, rec, S
 import { Glyph } from "./glyphs";
 import { KindHead, TechnicalOnly } from "./kind-chrome";
 import { AgentsTeamwork } from "./agent-teamwork";
+import { useToolSetup, type Setup } from "./tool-setup";
 import type { ToolsCtx } from "./tools";
 
 // ---- Command-line tools ----
@@ -197,13 +198,30 @@ export function AddAgent({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
 }
 
 // ---- Toolsets ----
-type Group = { id: string; label: string; tools: { id: string; profiles: string[] }[] };
+type Tool = { id: string; label: string; profiles: string[] };
+type Group = { id: string; label: string; tools: Tool[] };
+/** A tool's name for people: the catalogue's label when it has its own, else the id in words ("web_search" → "Web search"). */
+const plainName = (id: string, label: string) => (label && label !== id ? label : id.replace(/[_-]+/g, " ").replace(/^./, c => c.toUpperCase()));
+const readTool = (t: Record<string, unknown>): Tool => ({ id: str(t.id), label: plainName(str(t.id), str(t.label)), profiles: Array.isArray(t.defaultProfiles) ? t.defaultProfiles.map(String) : [] });
 /** Groups a Trunk made (the catalogue's non-core groups), listed under "Made by Trunks". */
 function readMadeGroups(result: unknown): Group[] {
-  return list(rec(result).groups).filter(g => str(g.source) !== "core" && str(g.source) !== "").map(g => ({ id: str(g.id), label: str(g.label), tools: list(g.tools).map(t => ({ id: str(t.id), profiles: Array.isArray(t.defaultProfiles) ? t.defaultProfiles.map(String) : [] })) }));
+  return list(rec(result).groups).filter(g => str(g.source) !== "core" && str(g.source) !== "").map(g => ({ id: str(g.id), label: str(g.label), tools: list(g.tools).map(readTool) }));
 }
 function readGroups(result: unknown): Group[] {
-  return list(rec(result).groups).filter(g => str(g.source) === "core").map(g => ({ id: str(g.id), label: str(g.label), tools: list(g.tools).map(t => ({ id: str(t.id), profiles: Array.isArray(t.defaultProfiles) ? t.defaultProfiles.map(String) : [] })) }));
+  return list(rec(result).groups).filter(g => str(g.source) === "core").map(g => ({ id: str(g.id), label: str(g.label), tools: list(g.tools).map(readTool) }));
+}
+/** "1 tool" / "4 tools", then the first four: their names at Regular and Advanced, their ids at Technical (A-138). */
+function toolLine(ctx: ToolsCtx, g: Group): string {
+  const names = g.tools.map(t => (shows(ctx.level, "technical") ? t.id : t.label));
+  return `${g.tools.length} ${g.tools.length === 1 ? "tool" : "tools"}: ${names.slice(0, 4).join(", ")}${names.length > 4 ? "…" : ""}`;
+}
+/** "Needs setup", with why in its tooltip (the preview's skill pill, pill warn). */
+function NeedsSetup({ setup }: { setup: Setup }) {
+  return <span aria-label={`Needs setup: ${setup.why}`}><Pill tone="warn" title={setup.why}>Needs setup</Pill></span>;
+}
+/** "Set up" opens the Settings page where the missing service or sign-in is added. Absent where nothing can open Settings. */
+function SetUp({ ctx, setup, label }: { ctx: ToolsCtx; setup: Setup; label: string }) {
+  return ctx.openSettings ? <button type="button" className="btn sm" style={{ whiteSpace: "nowrap" }} aria-label={`Set up ${label}`} onClick={() => ctx.openSettings?.(setup.page)}>Set up</button> : null;
 }
 function profileOf(ctx: ToolsCtx): { value: string; by: string } {
   const file = ctx.config.data?.file ?? {};
@@ -228,7 +246,13 @@ export function Toolsets({ ctx }: { ctx: ToolsCtx }) {
   const profile = profileOf(ctx);
   const file = ctx.config.data?.file ?? {};
   const deny = denyList(file, ctx.whose);
-  const toolOn = (t: { id: string; profiles: string[] }, g: Group) => groupOn(ctx, g, ctx.whose) && !deny.includes(t.id) && (profile.value === "full" || t.profiles.includes(profile.value));
+  const toolOn = (t: Tool, g: Group) => groupOn(ctx, g, ctx.whose) && !deny.includes(t.id) && (profile.value === "full" || t.profiles.includes(profile.value));
+  // A-140: a toolset that is on but has a tool whose service or sign-in is missing says so, from the engine's state.
+  const setups = useToolSetup(ctx.engine, ctx.whose ?? ctx.engine.agentId ?? null);
+  const needOf = (g: Group): Setup | undefined => g.tools.filter(t => toolOn(t, g)).map(t => setups.get(t.id)).find(Boolean);
+  const setGroup = (g: Group, on: boolean) => { const p = denyPatch(ctx.whose, withItem(deny, groupKey(g), !on)); void ctx.config.patch(p.raw, p.replacePaths); };
+  const onCount = groups.filter(g => groupOn(ctx, g, ctx.whose)).length;
+  const needCount = groups.filter(g => needOf(g)).length;
   const total = groups.reduce((n, g) => n + g.tools.length, 0);
   const on = groups.reduce((n, g) => n + g.tools.filter(t => toolOn(t, g)).length, 0);
   const setProfile = (v: string) => { const value = v === "same" ? null : v; void ctx.config.patch(ctx.whose ? { agents: { entries: { [ctx.whose]: { tools: { profile: value } } } } } : { tools: { profile: value } }); };
@@ -236,7 +260,7 @@ export function Toolsets({ ctx }: { ctx: ToolsCtx }) {
   const options = [{ id: "minimal", name: "Minimal" }, { id: "coding", name: "Coding" }, { id: "messaging", name: "Messaging" }, { id: "full", name: "Full" }, ...(ctx.whose ? [{ id: "same", name: "Same as every Trunk" }] : [])];
   const madeByTrunks = readMadeGroups(ctx.catalog.data).filter(g => !ctx.query.trim() || g.label.toLowerCase().includes(ctx.query.trim().toLowerCase()));
   return <>
-    <KindHead ctx={ctx} kind="Toolsets" count={`${on} of ${total} on`}>
+    <KindHead ctx={ctx} kind="Toolsets" count={`${onCount} on${needCount ? ` · ${needCount} ${needCount === 1 ? "needs" : "need"} setup` : ""}`}>
       <div className="cz-toolset-head"><b>Starting set</b>
         <Seg label="Starting set" value={ctx.whose && profile.by !== "this Trunk" ? "same" : profile.value} change={setProfile} options={options} disabled={ctx.config.busy || !ctx.config.data ? "Loading settings" : undefined} />
         <small>Full gives every tool; it doesn’t give Full access permission.</small>
@@ -248,26 +272,31 @@ export function Toolsets({ ctx }: { ctx: ToolsCtx }) {
       {ctx.catalog.data != null && !groups.length && <EmptyLine icon={<Glyph name="grid" size={22} />}>No toolsets yet.</EmptyLine>}
       {madeByTrunks.length > 0 && <h3 className="cz-h3">Made by Trunks</h3>}
       {madeByTrunks.map(g => <button key={g.id} type="button" className="t9-item" aria-current={g.id === group?.id} onClick={() => setChosen(g.id)}>
-        <span className="cz-tile"><Glyph name="grid" size={16} /></span><span className="grow"><b>{g.label}</b><small>{g.tools.length} {g.tools.length === 1 ? "tool" : "tools"}: {g.tools.slice(0, 4).map(t => t.id).join(", ")}</small></span>
+        <span className="cz-tile"><Glyph name="grid" size={16} /></span><span className="grow"><b>{g.label}</b><small>{toolLine(ctx, g)}</small></span>
       </button>)}
-      {groups.map(g => <button key={g.id} type="button" className="t9-item" aria-current={g.id === group?.id} onClick={() => setChosen(g.id)}>
-        <span className="cz-tile"><Glyph name="grid" size={16} /></span><span className="grow"><b>{g.label}</b><small>{g.tools.length} tools: {g.tools.slice(0, 4).map(t => t.id).join(", ")}{g.tools.length > 4 ? "…" : ""}</small></span><Dot on={groupOn(ctx, g, ctx.whose)} />
-      </button>)}
+      {groups.map(g => { const need = needOf(g); return <div key={g.id} className="cz-rowline" role="listitem" data-toolset={g.id}>
+        <button type="button" className="t9-item" aria-current={g.id === group?.id} onClick={() => setChosen(g.id)}>
+          <span className="cz-tile"><Glyph name="grid" size={16} /></span><span className="grow"><b>{g.label}</b><small>{toolLine(ctx, g)}</small></span>{need && <NeedsSetup setup={need} />}
+        </button>
+        {need && <SetUp ctx={ctx} setup={need} label={g.label} />}
+        <Switch label={`${g.label} on or off`} on={groupOn(ctx, g, ctx.whose)} onChange={on => setGroup(g, on)} />
+      </div>; })}
     </KindHead>
-    {group ? <ToolsetDetail key={group.id} ctx={ctx} group={group} /> : <div className="t9-detail cz-empty-detail" />}
+    {group ? <ToolsetDetail key={group.id} ctx={ctx} group={group} need={needOf(group)} /> : <div className="t9-detail cz-empty-detail" />}
   </>;
 }
 
-function ToolsetDetail({ ctx, group }: { ctx: ToolsCtx; group: Group }) {
+function ToolsetDetail({ ctx, group, need }: { ctx: ToolsCtx; group: Group; need?: Setup }) {
   const file = ctx.config.data?.file ?? {};
   const setGroup = (agentId: string | null, on: boolean) => { const p = denyPatch(agentId, withItem(denyList(file, agentId), groupKey(group), !on)); void ctx.config.patch(p.raw, p.replacePaths); };
   const deny = denyList(file, ctx.whose);
   const setTool = (tool: string, never: boolean) => { const p = denyPatch(ctx.whose, withItem(deny, tool, never)); void ctx.config.patch(p.raw, p.replacePaths); };
   return <div className="t9-detail" data-testid="toolset-detail">
-    <div className="t9-dh"><span className="cz-tile big"><Glyph name="grid" /></span><span className="grow"><b>{group.label}</b><small>Comes with Branch · {group.tools.length} tools</small></span>
+    <div className="t9-dh"><span className="cz-tile big"><Glyph name="grid" /></span><span className="grow"><b>{group.label}</b><small>Comes with Branch · {group.tools.length} {group.tools.length === 1 ? "tool" : "tools"}</small></span>
       <Switch label={`${group.label} on or off`} on={groupOn(ctx, group, ctx.whose)} onChange={on => setGroup(ctx.whose, on)} /></div>
+    {need && <div className="cz-line" data-testid="toolset-setup"><span><NeedsSetup setup={need} /> {need.why}</span><SetUp ctx={ctx} setup={need} label={group.label} /></div>}
     {ctx.config.writeError && <p role="alert" className="cz-error">{ctx.config.writeError}</p>}
     {!ctx.whose && <Sec title="Which Trunks may use it"><WhoChips trunks={ctx.trunks} may={id => groupOn(ctx, group, id)} toggle={ctx.config.busy ? undefined : (id, on) => setGroup(id, on)} reason="Saving…" /></Sec>}
-    <Sec title="In this toolset">{group.tools.map(t => <PermRow key={t.id} name={t.id} value={deny.includes(t.id) ? "never" : "allowed"} disabled={ctx.config.busy} change={v => setTool(t.id, v === "never")} />)}</Sec>
+    <Sec title="In this toolset">{group.tools.map(t => <PermRow key={t.id} name={shows(ctx.level, "technical") ? t.id : t.label} value={deny.includes(t.id) ? "never" : "allowed"} disabled={ctx.config.busy} change={v => setTool(t.id, v === "never")} />)}</Sec>
   </div>;
 }

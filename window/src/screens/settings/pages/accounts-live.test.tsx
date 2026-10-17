@@ -58,7 +58,8 @@ const pick = async (el: HTMLSelectElement, value: string) => {
   await settle();
 };
 const row = (id: string) => host.querySelector<HTMLElement>(`[data-row="${id}"]`);
-const button = (scope: ParentNode | null, text: string) => [...(scope ?? document).querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === text || b.getAttribute("aria-label") === text);
+// A greyed menu item says why under its label (Private #1093 item 7), so a menu item is found by its label line.
+const button = (scope: ParentNode | null, text: string) => [...(scope ?? document).querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === text || b.getAttribute("aria-label") === text || b.querySelector(".mi-text > span")?.textContent === text);
 const calls = (request: ReturnType<typeof engineOf>["request"], method: string) => request.mock.calls.filter(([m]) => m === method).map(([, p]) => p);
 
 async function mount(onPage = vi.fn(), env = engineOf()) {
@@ -116,7 +117,8 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     await mount();
     const level = (name: string) => click([...host.querySelectorAll(".r1s-level button")].find((b) => b.textContent === name));
     const more = () => row("accounts.order.list")!.querySelector<HTMLButtonElement>("button[aria-label^='More for']");
-    const menuItems = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')].map((b) => b.textContent);
+    // A menu item greyed by a real condition says why under its label, so each item is read by its label line.
+    const menuItems = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')].map((b) => b.querySelector(".mi-text > span")?.textContent ?? b.textContent);
     const sel = () => row("accounts.order.select")!;
     await level("Advanced");
     await click(more());

@@ -413,7 +413,11 @@ export const SystemAgentSetupActivateParamsSchema = closedObject({
   modelTarget: Type.Optional(Type.Literal("utility")),
   /** Agent that owns the verified and persisted inference route. */
   agentId: Type.Optional(NonEmptyString),
-  kind: Type.Union([...SetupInferenceKind.anyOf, Type.Literal("api-key")]),
+  kind: Type.Union([
+    ...SetupInferenceKind.anyOf,
+    Type.Literal("api-key"),
+    Type.Literal("no-key-default"),
+  ]),
   /** Exact detected model for this route; prevents detect/activate drift. */
   modelRef: Type.Optional(NonEmptyString),
   /** Manual step only: opaque provider-auth choice returned by detection. */
