@@ -5,14 +5,16 @@
 //   node desktop/scripts/release-installers.mjs --assets <release-assets> --version <version> --target <target> --out <dir>
 // win32-x64: a per-user Inno Setup installer (no admin prompt; each update lands in a version folder under that root).
 // darwin-arm64: a .dmg holding the already-signed Branch Agent.app and an Applications link.
-// linux-x64: a per-user AppImage (install.sh puts it at ~/.local/bin/branch-agent), built with a pinned appimagetool.
+// linux-x64: a per-user AppImage (install.sh and the in-app updater) plus Branch-Linux.deb, the downloadable package.
+// The component-release native job builds both by running this script; the versioned AppImage name is unchanged.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { installerAssetName, recordInstaller } from "./release-inventory.mjs";
+import { buildLinuxDeb } from "./linux-deb.mjs";
+import { installerAssetName, publicDownloadName, recordInstaller } from "./release-inventory.mjs";
 import { createSigner, statusLine } from "./release-signing.mjs";
 import { WINDOWS_APP_USER_MODEL_ID, WINDOWS_LAUNCHER, WINDOWS_LAUNCHER_EXE, WINDOWS_LAUNCHER_RESOURCE, WINDOWS_LAUNCHER_REVISION,
   WINDOWS_LAUNCHER_REVISION_FILE, WINDOWS_POINTER, windowsLauncherScript } from "./windows-launcher.mjs";
@@ -216,6 +218,8 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
     mkdirSync(payload);
     run(process.platform === "win32" ? join(process.env.SYSTEMROOT ?? "C:\\Windows", "System32", "tar.exe") : "tar", ["-xzf", archive, "-C", payload]);
     const file = resolve(out, installerName(version, target));
+    const download = resolve(out, publicDownloadName(target));
+    const files = [];
     if (target === "win32-x64") {
       if (!existsSync(join(payload, "Branch Agent.exe"))) throw new Error("The Windows package has no Branch Agent.exe at its root");
       signer.signApp(join(payload, "Branch Agent.exe"));
@@ -225,6 +229,9 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
       writeFileSync(script, "\ufeff" + innoSetupScript({ version, source: root, out: resolve(out) }));
       run(innoCompiler(), ["/Qp", script]);
     } else if (target === "linux-x64") {
+      // The AppImage step renames the package away. The deb has to be packed first, from the same tree.
+      buildLinuxDeb({ payload, version, out: download });
+      files.push(download);
       const appDir = assembleAppDir(payload, join(work, "Branch-Agent.AppDir"));
       const tool = await fetchPinned(APPIMAGE_TOOLS.appimagetool, work, request);
       const runtime = await fetchPinned(APPIMAGE_TOOLS.runtime, work, request);
@@ -239,7 +246,13 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
     if (!existsSync(file)) throw new Error(`The installer was not written: ${file}`);
     const signed = signer.signInstaller(file);
     console.log(`${signed ? "signed" : "unsigned"} installer: ${file}`);
-    return file;
+    if (target !== "linux-x64") {
+      copyFileSync(file, download);
+      files.push(download);
+    }
+    if (!existsSync(download)) throw new Error(`The download was not written: ${download}`);
+    console.log(`download: ${download}`);
+    return [file, ...files];
   } finally {
     signer.dispose();
     rmSync(work, { recursive: true, force: true });
@@ -248,8 +261,11 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const file = await main();
-    // The target's release proof lists the installer, so publish attaches it and checks its bytes.
-    if (file) { const { assets, target } = parseArgs(process.argv.slice(2)); await recordInstaller(assets, target, file); }
+    const files = await main();
+    // The target's release proof lists each installer, so publish attaches them and checks their bytes.
+    if (files?.length) {
+      const { assets, target } = parseArgs(process.argv.slice(2));
+      for (const file of files) await recordInstaller(assets, target, file);
+    }
   } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exit(1); }
 }

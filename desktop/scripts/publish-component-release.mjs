@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { addInstallScripts, fileDigest, verifyReleaseDirectory } from "./release-inventory.mjs";
+import { addInstallScripts, fileDigest, PUBLIC_DOWNLOAD_NAMES, verifyReleaseDirectory } from "./release-inventory.mjs";
 
 const repository = "KeepOak/Branch-Agent";
 const execute = promisify(execFile);
@@ -151,6 +151,27 @@ async function restorePreviousLatest(previous, tag, request) {
   return { exposed: false, reason: `Restored Latest to ${previous.tag_name}; kept ${tag}` };
 }
 
+const DOWNLOAD_LINKS = [
+  ["Windows", PUBLIC_DOWNLOAD_NAMES["win32-x64"]],
+  ["macOS", PUBLIC_DOWNLOAD_NAMES["darwin-arm64"]],
+  ["Linux (.deb)", PUBLIC_DOWNLOAD_NAMES["linux-x64"]],
+];
+
+/** Release-page notes. The three stable downloads lead, then the existing build summary. */
+export function releaseNotes({ commit, version }) {
+  const base = `https://github.com/${repository}/releases/download/v${version}`;
+  return [
+    "Download:",
+    "",
+    ...DOWNLOAD_LINKS.map(([label, name]) => `- [${label}](${base}/${name})`),
+    "",
+    `Branch Agent built from ${commit}.`,
+    "",
+    "Native Windows x64, macOS arm64 and Linux x64 packages; verified engine, renderer and desktop app update components. Existing data and credentials are retained. Installed desktop apps take the new desktop app on their next start.",
+    "",
+  ].join("\n");
+}
+
 export async function publishRelease(directory, commit, version, request = gh, download = fetch, options = {}) {
   const proof = await verifyReleaseDirectory(directory, commit, version);
   assert.deepEqual(proof.targets, ["darwin-arm64", "linux-x64", "win32-x64"], "All native release targets must pass");
@@ -165,7 +186,7 @@ export async function publishRelease(directory, commit, version, request = gh, d
   await writeFile(join(directory, "SHA256SUMS"), checksums);
   const names = [...Object.keys(proof.inventory), "SHA256SUMS"].sort();
   const notes = join(directory, "release-notes.txt");
-  await writeFile(notes, `Branch Agent built from ${commit}.\n\nNative Windows x64, macOS arm64 and Linux x64 packages; verified engine, renderer and desktop app update components. Existing data and credentials are retained. Installed desktop apps take the new desktop app on their next start.\n`);
+  await writeFile(notes, releaseNotes({ commit, version }));
   await request(["release", "create", tag, ...names.map(name => join(directory, name)), "--repo", repository,
     "--target", commit, "--verify-tag", "--draft", "--title", `Branch Agent ${version}`, "--notes-file", notes]);
   const downloaded = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), "branch-release-readback-"));
