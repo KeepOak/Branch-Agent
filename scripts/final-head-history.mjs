@@ -100,6 +100,16 @@ function mergeTree(repoDir, left, right) {
   return matches ? matches[matches.length - 1].toLowerCase() : null;
 }
 
+// True when `sha`'s tree equals a clean merge of `parents`, false when it does not,
+// null when this checkout cannot prove it (missing objects, conflicts, or no merge result).
+export function commitTreeMatchesCleanMerge(repoDir, sha, parents) {
+  if (!repoDir || !isFullSha(sha) || !Array.isArray(parents) || parents.length < 2) return null;
+  const expected = cleanMergeTree(repoDir, parents);
+  const actual = commitTree(repoDir, sha);
+  if (!expected || !actual) return null;
+  return expected === actual;
+}
+
 // Tree of a clean merge of every parent, folding extra parents through a dangling commit.
 function cleanMergeTree(repoDir, parents) {
   let current = parents[0];
@@ -155,9 +165,7 @@ export function explainFinalHeadDrift({ repoDir, namedSha, headSha } = {}) {
         return failure(`Final head ${short(named)} is not the current head ${short(head)} because ${short(sha)} merges something other than main`);
       }
     }
-    const expected = cleanMergeTree(repoDir, parents);
-    const actual = commitTree(repoDir, sha);
-    if (!expected || !actual || expected !== actual) {
+    if (commitTreeMatchesCleanMerge(repoDir, sha, parents) !== true) {
       return failure(`Final head ${short(named)} is not the current head ${short(head)} because ${short(sha)} changes files beyond the merge of main`);
     }
   }

@@ -131,11 +131,11 @@ export function shardProblems(shardResult) {
 // The gate's own review: protected files (its workflows, CODEOWNERS, invoked scripts) need the reviewer marker for this head.
 export function gateFileProblems({
   changedFiles, body, headSha, protectedPaths,
-  commits, files, baseRef, request, prNumber, baselineGrew,
+  commits, files, baseRef, request, prNumber, baselineGrew, repoDir,
 }) {
   const review = evaluateGateChangeReview({
     changedFiles, body: body ?? '', headSha, protectedPaths,
-    commits, files, baseRef, request, prNumber, baselineGrew,
+    commits, files, baseRef, request, prNumber, baselineGrew, repoDir,
   });
   if (review.ok) return [];
   return [problem(
@@ -281,6 +281,7 @@ export function runPreflight(input) {
       changedFiles, body, headSha: input.headSha, protectedPaths,
       commits: input.prCommits, files: input.files, baseRef: input.baseRef,
       request: input.request, prNumber: input.prNumber, baselineGrew: input.baselineGrew,
+      repoDir: input.repoDir,
     }),
     ...desktopCoverageProblems({ files: input.files ?? [], desktopWorkflow: input.desktopWorkflow ?? null }),
     ...personalInfoProblems(input.addedLines ?? []),
