@@ -70,8 +70,19 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-function session(): SaplingSession {
-  const rows = [{ key: "agent:oak:main", agentId: "oak", isMain: true, sessionId: "s-main", updatedAt: 10 }];
+// A Trunk with one topic: topics default to the column, which folds the list to the rail above 760 px on its own.
+const oak = {
+  id: "trunk:oak", kind: "trunk", name: "Oak", threadKey: "agent:oak:main", isDefault: true,
+  lastActivityAt: 10, preview: { kind: "message", text: "General last line", at: 10 },
+  unreadTopics: 0, threadUnread: false, needsYou: false, working: false, topicCount: 1,
+};
+const trip = { key: "agent:oak:trip", contactId: "trunk:oak", title: "Lisbon trip", status: "active", unread: false };
+
+function session(withTopics = false): SaplingSession {
+  const rows = [
+    { key: "agent:oak:main", agentId: "oak", isMain: true, sessionId: "s-main", updatedAt: 10 },
+    ...(withTopics ? [{ key: "agent:oak:trip", agentId: "oak", parentSessionKey: "agent:oak:main", sessionId: "s-trip", updatedAt: 20 }] : []),
+  ];
   const snapshot = {
     status: { phase: "connected" }, sessionKey: "agent:oak:main", mainKey: "agent:oak:main", name: "Oak",
     history: [], live: [], pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null,
@@ -82,7 +93,8 @@ function session(): SaplingSession {
     if (method === "agents.list") return { defaultId: "oak", agents: [{ id: "oak", kind: "agent", name: "Oak" }] };
     if (method === "sessions.subscribe") return { list: { sessions: rows } };
     if (method === "sessions.list") return { sessions: rows };
-    if (method === "contacts.list") return { contacts: [] };
+    if (method === "contacts.list") return { contacts: withTopics ? [oak] : [] };
+    if (method === "contacts.topics") return { topics: withTopics ? [trip] : [] };
     if (method === "rooms.list") return { rooms: [] };
     if (method === "peers.list" || method === "a2a.peers.list") return { peers: [] };
     if (method === "channels.status") return { channelOrder: [] };
@@ -101,7 +113,7 @@ function session(): SaplingSession {
   } as unknown as SaplingSession;
 }
 
-async function windowAt(width: number) {
+async function windowAt(width: number, withTopics = false) {
   vi.stubGlobal("innerWidth", width);
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: false, media: query, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {} }));
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} unobserve() {} });
@@ -110,7 +122,7 @@ async function windowAt(width: number) {
   localStorage.setItem("branch.layout", JSON.stringify({ sideW: SIDEBAR, rail: false, hidden: false }));
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
-  await act(async () => root!.render(<WindowShell session={session()} url="ws://127.0.0.1:19661" />));
+  await act(async () => root!.render(<WindowShell session={session(withTopics)} url="ws://127.0.0.1:19661" />));
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   return host;
 }
@@ -137,6 +149,52 @@ describe("the window folds the list for the Trunk's browser at half a screen (#1
     await act(async () => (host.querySelector("[data-testid=list-toggle]") as HTMLElement).click());
     expect(frame().classList.contains("rail")).toBe(false);
     expect(host.querySelector(".br-chrome-st")).toBeTruthy();
+  });
+
+  it("Ctrl B folds the list again while the browser is open, still without saving it", async () => {
+    const host = await windowAt(960);
+    const frame = () => host.querySelector<HTMLElement>(".frame")!;
+    await openBrowser(host);
+    await act(async () => (host.querySelector("[data-testid=list-toggle]") as HTMLElement).click());
+    expect(frame().classList.contains("rail")).toBe(false);
+    await act(async () => (host.querySelector("[data-testid=list-toggle]") as HTMLElement).click());
+    expect(frame().classList.contains("rail")).toBe(true);
+    expect(host.querySelector(".br-chrome-st")).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem("branch.layout") ?? "{}")).toMatchObject({ rail: false, hidden: false });
+  });
+
+  it("brings the full list back for a Trunk with topics at 960 px, with Ctrl B and with Show the full list", async () => {
+    const host = await windowAt(960, true);
+    const frame = () => host.querySelector<HTMLElement>(".frame")!;
+    const toggle = () => act(async () => (host.querySelector("[data-testid=list-toggle]") as HTMLElement).click());
+    await vi.waitFor(() => expect(host.querySelector(".topicsT5")).toBeTruthy());
+    await openBrowser(host);
+    expect(frame().classList.contains("rail")).toBe(true);
+    await toggle();
+    expect(frame().classList.contains("rail")).toBe(false);
+    expect(host.querySelector(".br-chrome-st")).toBeTruthy();
+    await toggle();
+    expect(frame().classList.contains("rail")).toBe(true);
+    // The rail's own menu: Show the full list does the same as Ctrl B.
+    await act(async () => (host.querySelector("[data-testid=new]") as HTMLElement).click());
+    const item = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((el) => /Show the full list/.test(el.textContent ?? ""));
+    expect(item).toBeTruthy();
+    await act(async () => item!.click());
+    expect(frame().classList.contains("rail")).toBe(false);
+    expect(JSON.parse(localStorage.getItem("branch.layout") ?? "{}")).toMatchObject({ rail: false, hidden: false });
+  });
+
+  it("hides the side resize handle while the browser shows the list as the rail, and brings it back with the list", async () => {
+    const host = await windowAt(960);
+    const handle = () => host.querySelector("[data-testid=side-resizer]");
+    expect(handle()).toBeTruthy();
+    await openBrowser(host);
+    expect(host.querySelector(".frame")!.classList.contains("rail")).toBe(true);
+    // Left at the full list's edge (about 288 px), the handle would sit over the page and save the layout when dragged.
+    expect(handle()).toBeNull();
+    await act(async () => (host.querySelector("[data-testid=list-toggle]") as HTMLElement).click());
+    expect(handle()).toBeTruthy();
+    expect((handle() as HTMLElement).style.left).toBe(`calc(${SIDEBAR - 4}px)`); // jsdom folds calc(292px - 4px)
   });
 
   it("leaves the list alone at 1440 px, where the browser already has a readable page", async () => {

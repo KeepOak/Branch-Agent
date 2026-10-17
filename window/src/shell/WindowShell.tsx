@@ -503,9 +503,13 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const settingsAutoRail = route.kind === "settings" && !isNarrow && !settingsListExpanded;
   // An open Trunk's browser in a half-screen window shows the list as the face rail, so its page keeps a readable
   // width (#1103); Ctrl B or Show the full list brings the list back until the browser closes. Never saved.
+  // Ctrl B folds it again, also unsaved. When topics fold the list too, showing it in full asks topics to unfold as well,
+  // and folding it again hands that back, so a Trunk with topics doesn't keep the rail.
   const [browserFullList, setBrowserFullList] = useState(false);
-  useEffect(() => { if (stage !== "Browser") setBrowserFullList(false); }, [stage]);
-  const browserAutoRail = stage === "Browser" && route.kind === "chat" && !dedicated && !isNarrow && !layout.hidden && !layout.rail && !browserFullList && browserFit(windowWidth, layout.sideW).rail;
+  const browserOpenedTopicList = useRef(false);
+  useEffect(() => { if (stage !== "Browser") { setBrowserFullList(false); browserOpenedTopicList.current = false; } }, [stage]);
+  const browserCanFold = stage === "Browser" && route.kind === "chat" && !dedicated && !isNarrow && !layout.hidden && !layout.rail && browserFit(windowWidth, layout.sideW).rail;
+  const browserAutoRail = browserCanFold && !browserFullList;
   const rail = layout.rail || ((topicAutoRail || settingsAutoRail || browserAutoRail) && !layout.hidden);
   useEffect(() => {
     setAllTopics((value) => value && (!topicContact || value.contactId !== topicContact.id || openKey !== topicContact.threadKey) ? null : value);
@@ -1043,11 +1047,21 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   const narrow = () => isNarrow;
   const compact = isNarrow || layout.focus;
+  // The browser's fold (#1103): show the full list while the browser is open, unfolding topics' rail too, and fold it again.
+  const showBrowserFullList = () => {
+    setBrowserFullList(true);
+    if (topicAutoRail && !layout.rail) { browserOpenedTopicList.current = true; setFullListFor(topicContact?.id ?? null); }
+  };
+  const foldForBrowser = () => {
+    setBrowserFullList(false);
+    if (browserOpenedTopicList.current) { browserOpenedTopicList.current = false; setFullListFor(null); }
+  };
   const toggleList = () => {
     if (narrow()) { setSlideOpen((o) => !o); return; }
     if (settingsAutoRail) { setSettingsListExpanded(true); if (layout.hidden || layout.rail) setLayout({ hidden: false, rail: false }); return; }
     if (route.kind === "settings" && !layout.hidden && !layout.rail) { setSettingsListExpanded(!settingsListExpanded); return; }
-    if (browserAutoRail) { setBrowserFullList(true); return; }
+    if (browserAutoRail) { showBrowserFullList(); return; }
+    if (browserCanFold) { foldForBrowser(); return; }
     if (topicAutoRail && !layout.rail) { setFullListFor(topicContact?.id ?? null); return; }
     setLayout(toggleListLayout(layout));
   };
@@ -1129,6 +1143,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     savePrefs(p);
   };
   const focusSearch = () => {
+    if (browserAutoRail) setBrowserFullList(true);
     if (settingsAutoRail) setSettingsListExpanded(true);
     if (topicAutoRail) setFullListFor(topicContact?.id ?? null);
     if (rail || layout.hidden) {
@@ -1667,7 +1682,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         }}
         onNew={(e) => showMenu(e, "new", [
           ...newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }),
-          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { if (browserAutoRail) { setBrowserFullList(true); return; } if (settingsAutoRail) setSettingsListExpanded(true); if (topicAutoRail && !layout.rail) setFullListFor(topicContact?.id ?? null); else setLayout({ rail: false }); } }] : []),
+          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { if (browserAutoRail) { showBrowserFullList(); return; } if (settingsAutoRail) setSettingsListExpanded(true); if (topicAutoRail && !layout.rail) setFullListFor(topicContact?.id ?? null); else setLayout({ rail: false }); } }] : []),
         ], "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
@@ -1712,7 +1727,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           extras={rowExtras(rowCard.card.row)}
         />
       ) : null}
-      {layout.focus || layout.hidden || settingsAutoRail ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
+      {layout.focus || layout.hidden || settingsAutoRail || browserAutoRail ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
       {slideOpen ? <div className="slide-scrim" onClick={() => setSlideOpen(false)} /> : null}
       <main className={mainClass} id="main">
         {lockdown.on ? <LockdownBanner onTurnOff={toggleLockdown} /> : null}
