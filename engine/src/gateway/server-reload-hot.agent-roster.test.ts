@@ -122,12 +122,41 @@ function editRoster(mutate: (config: BranchConfig) => void): BranchConfig {
   return next;
 }
 
+it.each(["add", "remove"])("refreshes every Trunk when a heartbeat model is %s", async (change) => {
+  const withHeartbeat = editRoster((c) => {
+    c.agents!.defaults!.heartbeat = { agentId: "elm", model: "openai/gpt-5.5" };
+  });
+  const previous = change === "add" ? rosterConfig : withHeartbeat;
+  const next = structuredClone(change === "add" ? withHeartbeat : rosterConfig);
+  next.agents!.entries!.birch = { name: "Birch" };
+  setRuntimeConfigSnapshot(previous);
+  const { handlers } = createRosterHandlers();
+  try {
+    const plan = buildGatewayReloadPlan(diffConfigPaths(previous, next));
+    expect(await handlers.applyHotReload(plan, next)).toBe("applied");
+    expect(refreshPreparedModelRuntimeSnapshots).toHaveBeenCalledOnce();
+    expect(vi.mocked(refreshPreparedModelRuntimeSnapshots).mock.calls[0]?.[1]?.agentIds).toBeUndefined();
+  } finally {
+    handlers.stopRestartRetries();
+  }
+});
+
 it.each<{ change: string; next: BranchConfig; refreshed: string[] | null }>([
   {
     change: "Trunk add",
     next: editRoster((c) => {
       c.agents!.entries!.birch = { name: "Birch", model: "openai/gpt-5.5" };
       c.agents!.ownership = "explicit";
+    }),
+    refreshed: ["birch"],
+  },
+  {
+    change: "first Trunk add with pinned heartbeat owner",
+    next: editRoster((c) => {
+      c.agents!.entries!.birch = { name: "Birch" };
+      c.agents!.ownership = "explicit";
+      c.agents!.defaults!.heartbeat = { agentId: "elm" };
+      c.agents!.defaults!.systemAgent = { agentId: "elm" };
     }),
     refreshed: ["birch"],
   },

@@ -59,7 +59,12 @@ export function resolveModelRuntimeRefreshAgentIds(params: {
     return bounded;
   }
   const agentIds = resolveReloadAgentIds(
-    params.changedPaths.filter(isProviderAuthRelevantReloadPath),
+    params.changedPaths.filter(
+      (path) =>
+        // First-create pins the heartbeat owner by adding this container. Its model
+        // selector is checked below; owner-only bookkeeping must not refresh the fleet.
+        path !== "agents.defaults.heartbeat" && isProviderAuthRelevantReloadPath(path),
+    ),
   );
   if (!agentIds) {
     return undefined;

@@ -461,6 +461,7 @@ export const agentsHandlers: GatewayRequestHandlers = {
           errorShape(
             ErrorCodes.UNAVAILABLE,
             `agent config was saved but is not active (${applicationStatus})`,
+            { details: { committed: true, agentId: result.agentId, applicationStatus } },
           ),
         );
         return;
@@ -477,11 +478,13 @@ export const agentsHandlers: GatewayRequestHandlers = {
       });
       // Creation is already committed. A failed or slow worker warm-up must not
       // make this successful create appear retryable to the client.
-      void warmAgentSessionAdmission(result.agentId, context.getRuntimeConfig()).catch((error) => {
-        context.logGateway.warn(
-          `agent ${result.agentId} session admission warm-up failed: ${formatErrorMessage(error)}`,
-        );
-      });
+      void warmAgentSessionAdmission(result.agentId, context.getRuntimeConfig()).catch(
+        (error: unknown) => {
+          context.logGateway.warn(
+            `agent ${result.agentId} session admission warm-up failed: ${formatErrorMessage(error)}`,
+          );
+        },
+      );
       respond(
         true,
         {
