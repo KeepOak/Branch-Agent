@@ -3267,10 +3267,10 @@ describe("gateway restart deferral preflight", () => {
     expect(getDeferredChannelReloads?.()).toEqual([]);
   });
 
-  it("reports admitted run blockers before waiting and when forcing after timeout", async () => {
+  it("reports admitted run blockers before waiting and restarts after the run drains", async () => {
     restartTesting.resetRestartSignalState();
     const logReload = { info: vi.fn(), warn: vi.fn() };
-    const { requestGatewayRestart } = createReloadHandlersForTest(logReload);
+    const { requestGatewayRestart, stopRestartRetries } = createReloadHandlersForTest(logReload);
     hoisted.activeAgentRunCount.value = 1;
     hoisted.activeEmbeddedRunSessionIds.push("session-issue-82433");
     hoisted.activeEmbeddedRunSessionKeys.push("agent:main:issue-82433");
@@ -3294,25 +3294,23 @@ describe("gateway restart deferral preflight", () => {
       await vi.advanceTimersByTimeAsync(300_000);
       await Promise.resolve();
 
-      expect(signalSpy).toHaveBeenCalledTimes(1);
-      expect(consumeGatewayRestartIntent()).toEqual({
-        force: true,
-        waitMs: 300_000,
-        reason: "config reload forced restart",
-      });
+      expect(signalSpy).not.toHaveBeenCalled();
+      expect(consumeGatewayRestartIntent()).toBeNull();
       expect(hoisted.markRestartAbortedMainSessions).not.toHaveBeenCalled();
-      expect(logReload.warn.mock.calls).toEqual(
-        expect.arrayContaining([
-          [
-            "config change requires gateway restart (gateway.port) — deferring until 1 admitted agent run(s) complete",
-          ],
-          [
-            "restart timeout after 300000ms with 1 admitted agent run(s) still active; forcing restart",
-          ],
-        ]),
+      expect(logReload.warn.mock.calls.flat()).not.toEqual(
+        expect.arrayContaining([expect.stringContaining("forcing restart")]),
       );
+
+      hoisted.activeAgentRunCount.value = 0;
+      await vi.advanceTimersByTimeAsync(500);
+      await Promise.resolve();
+
+      expect(signalSpy).toHaveBeenCalledTimes(1);
+      expect(consumeGatewayRestartIntent()).toBeNull();
+      expect(hoisted.markRestartAbortedMainSessions).not.toHaveBeenCalled();
     } finally {
       hoisted.activeAgentRunCount.value = 0;
+      stopRestartRetries();
       vi.useRealTimers();
       process.removeListener("SIGUSR2", signalSpy);
       restartTesting.resetRestartSignalState();
