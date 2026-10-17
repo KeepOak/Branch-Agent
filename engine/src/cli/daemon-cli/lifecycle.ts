@@ -571,8 +571,12 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
     }) => {
       let failed: string | undefined;
       let failedHints: string[] | undefined;
-      let failedCode: string | undefined;
-      const fail = (message: string, hints?: string[], code?: string) => {
+      let failedCode: "restart-health-failed" | "still-starting" | undefined;
+      const fail = (
+        message: string,
+        hints?: string[],
+        code?: "restart-health-failed" | "still-starting",
+      ) => {
         failed = message;
         failedHints = hints;
         failedCode = code;
