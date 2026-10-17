@@ -22,6 +22,7 @@ import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, 
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
 import { plainDialogText, STOP_FAILED_PLAIN, UPDATE_FAILED_PLAIN } from "./plain-dialog";
 import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
+import { askFirstLaunchInWindow, FIRST_LAUNCH_DOWNLOAD, FIRST_LAUNCH_RETRY, FIRST_LAUNCH_WATCH_CANCEL, firstLaunchProgressScript, needsFirstLaunchComponents, runFirstLaunchInstall } from "./first-launch-install";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
@@ -1401,9 +1402,29 @@ async function start(): Promise<void> {
   await refuseOrphanedEngine();
   adoptGatewayPort(cfg.gatewayPort);
   await recoverComponentUpdate(cfg);
-  if (!existsSync(join(cfg.windowDir, "index.html")) || !existsSync(join(cfg.dataDir, "engine-current.txt")) && !existsSync(join(cfg.engineDir, "branch.mjs"))) {
-    log("Installing verified GitHub components for first launch");
-    await refreshComponentUpdate(cfg, fetch, { desktop: install, underSwapGuard, log });
+  if (needsFirstLaunchComponents(cfg)) {
+    log("First launch needs verified GitHub components");
+    const starting = win;
+    const ac = new AbortController();
+    const outcome = await runFirstLaunchInstall(cfg, fetch, {
+      desktop: install, underSwapGuard, log, signal: ac.signal,
+      onProgress: update => {
+        const pct = update.total ? Math.round((update.bytes / update.total) * 100) : 0;
+        const line = `Downloading ${update.name}… ${pct}%`;
+        log(line);
+        if (starting && !starting.isDestroyed()) void starting.webContents.executeJavaScript(firstLaunchProgressScript(line)).catch(() => undefined);
+      },
+      watchCancel: async () => {
+        if (!starting || starting.isDestroyed()) return;
+        await starting.webContents.executeJavaScript(FIRST_LAUNCH_WATCH_CANCEL).catch(() => undefined);
+      },
+      ask: async prompt => {
+        if (!starting || starting.isDestroyed()) return false;
+        return askFirstLaunchInWindow(starting, prompt.message, prompt.kind === "retry" ? FIRST_LAUNCH_RETRY : FIRST_LAUNCH_DOWNLOAD)
+          .then(ok => { if (!ok) ac.abort(); return ok; });
+      },
+    });
+    log(`first-launch components: ${outcome}`);
   }
   servedWindowDir = cfg.windowDir;
   server = await serveWindow(() => servedWindowDir, cfg.windowPort);

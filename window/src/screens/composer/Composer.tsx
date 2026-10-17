@@ -23,6 +23,7 @@ import { buildExtras, planSend, sendTooltip, type Reply } from "../../composer/s
 import { newPick, pickText, reconcilePicks, resolveSend, trimMessage, type Message, type SkillPick } from "../../composer/skill-picks";
 import { Drawer } from "../../composer/SlashDrawer";
 import { useBackground } from "../../composer/useBackground";
+import { FreeModelSetup } from "../../composer/FreeModelSetup";
 import { FREE_MODEL_READY } from "../../composer/no-key-default";
 import { hasNoModel, useConversation } from "../../composer/useConversation";
 import { useDraft } from "../../composer/useDraft";
@@ -388,6 +389,7 @@ export function Composer(props: Props) {
     {notes.map((n, i) => isNoUsableModelError(n)
       ? <ConnectModelNotice key={i} onOpen={onOpen} className="r1c-connect" />
       : <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"}>{isPreparationPending(n) ? preparationLabel(trunkName) : shortReason(n)}</p>)}
+    {noModel ? <FreeModelSetup engine={engine} onReady={() => void conv.reload()} /> : null}
     {conv.noKeyError ? <p className="r1c-note bad" role="alert" data-testid="no-key-failed">{conv.noKeyError} <button type="button" className="r1c-undo" data-local="" onClick={() => void conv.retryNoKey()}>Try again</button></p> : null}
     {draft.note ? <p className="r1c-note">{draft.note}</p> : null}
     {improved && draft.text === improved.after ? <p className="r1c-note" role="status">Improved your draft · <button type="button" className="r1c-undo" data-local="" onClick={() => { draft.setText(improved.before); setImproved(null); box.current?.focus(); }}>Undo</button></p> : null}

@@ -1164,3 +1164,49 @@ test("prune retains a process working directly in an old release folder", { skip
     await exited;
   }
 }));
+
+const launch = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "first-launch-install.js")));
+
+test("first-launch prompt names the size and Cancel", () => {
+  const message = launch.firstLaunchAskMessage("695 MB");
+  assert.match(message, /695 MB/);
+  assert.equal(launch.FIRST_LAUNCH_CANCEL, "Cancel");
+  assert.match(launch.firstLaunchAskScript(message, launch.FIRST_LAUNCH_DOWNLOAD), /Cancel/);
+  assert.equal(launch.formatDownloadSize(695 * 1024 * 1024), "695 MB");
+});
+
+test("first launch does not download archives until the owner agrees", async () => fixture(async ({ cfg, request, requests }) => {
+  await rm(join(cfg.windowDir, "index.html"));
+  const asks = [];
+  const outcome = await launch.runFirstLaunchInstall(cfg, request, {
+    ask: async prompt => { asks.push(prompt); return false; },
+  });
+  assert.equal(outcome, "cancelled");
+  assert.equal(asks.length, 1);
+  assert.equal(asks[0].kind, "confirm");
+  assert.match(asks[0].message, /MB|GB/);
+  assert.deepEqual(asks[0].buttons, ["Download", "Cancel"]);
+  assert.equal(requests.some(url => String(url).includes(".tar.gz")), false);
+  assert.equal(requests.some(url => String(url).endsWith(".json") || String(url).includes(".json")), true);
+  assert.equal(await exists(join(cfg.dataDir, "component-update-pending.json")), false);
+}));
+
+test("first launch downloads after yes and cancel during download publishes nothing", async () => fixture(async ({ cfg, request, requests }) => {
+  await rm(join(cfg.windowDir, "index.html"));
+  const ac = new AbortController();
+  const gated = async (url, options) => {
+    if (String(url).includes(".tar.gz")) ac.abort();
+    return request(url, options);
+  };
+  const outcome = await launch.runFirstLaunchInstall(cfg, gated, { ask: async () => true, signal: ac.signal });
+  assert.equal(outcome, "cancelled");
+  assert.equal(await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8"), cfg.engineDir + "\n");
+  assert.equal(await exists(join(cfg.dataDir, "component-update-pending.json")), false);
+  assert.equal(requests.some(url => String(url).includes(".tar.gz")), true);
+}));
+
+test("first launch is skipped when the window is already installed", async () => fixture(async ({ cfg, request, requests }) => {
+  assert.equal(launch.needsFirstLaunchComponents(cfg), false);
+  assert.equal(await launch.runFirstLaunchInstall(cfg, request, { ask: async () => true }), "skipped");
+  assert.equal(requests.length, 0);
+}));
