@@ -1,0 +1,30 @@
+# Opt-in paid-key and embeddings uses. One entry per line: path<TAB>kind<TAB>reason
+# kind is paid-key, embeddings-endpoint, embeddings-default, or * for every kind at that path.
+# A directory prefix ends with /. Only genuine user-opt-in paths belong here.
+# A TODO reason marks a known default this PR does not change.
+
+engine/extensions/openai/	*	OpenAI plugin runs only when the user selects the OpenAI provider
+engine/extensions/anthropic/	*	Anthropic plugin runs only when the user selects Anthropic
+engine/extensions/google/	*	Gemini plugin runs only when the user selects Google or Gemini
+engine/extensions/mistral/	*	Mistral plugin runs only when the user selects Mistral
+engine/extensions/voyage/	*	Voyage plugin runs only when the user selects Voyage
+engine/extensions/acpx/	paid-key	ACP Codex bridge reads OPENAI_API_KEY only for Codex API-key auth
+engine/extensions/qa-lab/	embeddings-endpoint	QA mock OpenAI server implements /v1/embeddings; it is not a paid host
+engine/packages/ai/src/providers/google-interactions-shared.ts	paid-key	Gemini transport reads GEMINI_API_KEY or GOOGLE_API_KEY only when the Google provider is selected
+engine/scripts/	*	Operator, benchmark, i18n and e2e scripts; they are not the default app runtime
+engine/src/agents/live-auth-keys.ts	paid-key	Live-test API-key discovery; not the product default path
+engine/src/commands/onboard-inference-ambient.ts	paid-key	Onboarding lists ambient keys so the user can pick a backend; it does not call a paid API by itself
+engine/src/plugins/contracts/tts-contract-suites.ts	paid-key	TTS contract test doubles; not the product default path
+engine/src/system-agent/overview.ts	paid-key	Setup overview reports whether keys exist; it does not call paid APIs
+engine/packages/memory-host-sdk/src/host/batch-provider-common.ts	embeddings-endpoint	Shared OpenAI-compatible batch path used by a configured embeddings provider
+engine/src/gateway/embeddings-http.ts	embeddings-endpoint	Gateway serves /v1/embeddings to clients; it does not call a paid host by itself
+engine/src/gateway/server-http.ts	embeddings-endpoint	Routes the gateway OpenAI-compatible embeddings endpoint
+
+# Findings: default still uses a paid key or paid embeddings. Listed, not fixed, in this PR.
+engine/src/agents/memory-search.ts	embeddings-default	TODO: DEFAULT_MEMORY_EMBEDDING_PROVIDER is openai; do not change product behaviour here
+engine/extensions/memory-core/src/memory/embeddings.ts	embeddings-default	TODO: DEFAULT_MEMORY_EMBEDDING_PROVIDER is openai; do not change product behaviour here
+engine/src/gateway/embeddings-http.ts	embeddings-default	TODO: DEFAULT_MEMORY_EMBEDDING_PROVIDER is openai; do not change product behaviour here
+engine/src/secrets/runtime-config-collectors-memory.ts	embeddings-default	TODO: DEFAULT_MEMORY_EMBEDDING_PROVIDER is openai; do not change product behaviour here
+engine/extensions/memory-lancedb/config.ts	embeddings-default	TODO: embedding.provider falls back to openai; do not change product behaviour here
+engine/src/config/defaults.ts	paid-key	TODO: hasAnthropicDefaultSignal reads ANTHROPIC_API_KEY to apply Anthropic defaults; do not change product behaviour here
+window/src/places/settings/set2/advanced.tsx	embeddings-default	TODO: memory.search.provider UI default and display fallback are openai; do not change product behaviour here
