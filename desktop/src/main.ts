@@ -128,7 +128,8 @@ log(`launch v${app.getVersion()} pid ${process.pid}`);
 installDiskFullGuard(process, error => {
   const detail = error.stack ?? String(error);
   log(`uncaught main-process error: ${detail}`);
-  if (!HIDDEN) dialog.showErrorBox("A JavaScript error occurred in the main process", `Uncaught Exception:\n${detail}`);
+  // One plain sentence and a next step; the stack stays in the log line above (Private #1089).
+  if (!HIDDEN) dialog.showErrorBox("Branch hit a problem", "Branch hit a problem it couldn’t recover from. Quit Branch and open it again; the details are in its log.");
 });
 
 // Own profile and lock, apart from the old installed Branch Agent app.
@@ -1781,7 +1782,7 @@ async function restartEngine(): Promise<void> {
   catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`update failed: ${msg}`);
-    if (!quitting && (serviceEngine || !engineRunning()) && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", msg);
+    if (!quitting && (serviceEngine || !engineRunning()) && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", "Branch keeps the version it has. Try the update again later; the details are in its log.");
   }
 }
 
@@ -1910,7 +1911,7 @@ async function stopCompletely(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log(`stop completely failed: ${message}`);
-    if (!HIDDEN) dialog.showErrorBox("Branch couldn't stop its engine", message);
+    if (!HIDDEN) dialog.showErrorBox("Branch couldn't stop its engine", "Try again in a moment, or restart this computer. The details are in Branch's log.");
   }
 }
 
