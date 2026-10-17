@@ -8,7 +8,7 @@ import { errorText, record, type RecordValue } from "./adapter";
 import { configStore, pathKeys, type ConfigPath } from "./config-store";
 import { Icon } from "../../shell/icons";
 import { PIN_MAX, type Pins } from "./pins";
-import { isDevNote, shownWhy } from "../../shell/shown-why";
+import { isComingWhy, isDevNote, shownWhy } from "../../shell/shown-why";
 import { plainCopy } from "./internals";
 import "./kit.css";
 
@@ -192,9 +192,20 @@ function PinBtn({ title }: { title: string }) {
   );
 }
 
+/** `coming`: the row waits for a later update (its `off` names what the engine still lacks). */
+type CtlProps = Parameters<typeof CtlRow>[0] & { coming?: boolean };
+
+/** One settings row (CtlRow). A Coming row (`coming`, or an `off` that says it "comes in a later update") shows only at
+ *  Technical, like every Coming row (Private #1093 item 4, screens/settings/rows.ts COMING_FROM). A row greyed for a
+ *  real condition shows at every level with its reason. */
+export function Ctl({ coming, ...props }: CtlProps) {
+  const level = useLevel();
+  return (coming || isComingWhy(props.off)) && level < 2 ? null : <CtlRow {...props} />;
+}
+
 /** One settings row: title, sub-line and the control on the right. `off` greys the control and says why on its own line.
  *  Every row with a plain title has a pin, except General's Pinned list itself (noPin). */
-export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, after, noPin }: {
+function CtlRow({ title, sub, help, children, off, keep, icon, stack, id, after, noPin }: {
   title: ReactNode; sub?: ReactNode; help?: string; children?: ReactNode; off?: string; keep?: Keep; icon?: ReactNode; stack?: boolean; id?: string; after?: ReactNode; noPin?: boolean;
 }) {
   const level = useLevel();

@@ -63,19 +63,16 @@ it("draws the preview's Trunks card: rows with Edit and •••, A new Trunk, 
   expect(onPage).toHaveBeenCalledWith("seedbank");
 });
 
-it("puts the preview's ••• menu on each Trunk, with Who it knows, and greys what nothing stands behind yet", async () => {
+it("puts the preview's ••• menu on each Trunk, with Who it knows, and only what works today below Technical", async () => {
   const { request } = await mount("regular");
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="More for Birch"]')!.click());
   const items = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')];
   // An item greyed by a real condition says why under its label (Private #1093 item 7), so the label is the item's first line.
   const label = (b: HTMLButtonElement) => (b.querySelector(".mi-text > span") ?? b.querySelector(":scope > span"))?.textContent;
-  expect(items.map(label)).toEqual(["Change picture…", "Pause", "Make default", "Share this Trunk…", "Who it knows", "Show it how, once", "Package…",
-    "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…", "Remove Trunk…"]);
-  expect(items.filter((b) => b.disabled).map(label)).toEqual(["Pause", "Show it how, once", "Package…", "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…"]);
-  // These are Coming: no visible "later update" line at Regular, only the tooltip they already had.
-  for (const b of items.filter((x) => x.disabled)) expect(b.getAttribute("aria-describedby"), label(b)).toBeNull();
+  expect(items.map(label)).toEqual(["Change picture…", "Make default", "Share this Trunk…", "Who it knows", "Remove Trunk…"]);
+  expect(items.filter((b) => b.disabled).map(label)).toEqual([]);
+  // The Coming items are hidden below Technical, so no "later update" line shows at Regular.
   expect(document.querySelector('[role="menu"]')?.textContent).not.toContain("later update");
-  for (const why of Object.values(SETTINGS_MENU_COMING)) expect(why).toMatch(/ comes in a later update\.$/);
   expect(visibleDevNotes(document.body)).toEqual([]);
   // The default Trunk's Remove is greyed with the preview's own line.
   await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
@@ -91,6 +88,21 @@ it("puts the preview's ••• menu on each Trunk, with Who it knows, and grey
   await act(async () => button("Share this Trunk…").click());
   await settle();
   expect(request).toHaveBeenCalledWith("trunks.template.export", { agentId: "birch" });
+});
+
+it("shows the ••• menu's Coming items (Pause, Package…, Copy seed and the rest), greyed, at Technical only (Private #1093)", async () => {
+  const COMING = ["Pause", "Show it how, once", "Package…", "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…"];
+  for (const why of Object.values(SETTINGS_MENU_COMING)) expect(why).toMatch(/ comes in a later update\.$/);
+  const menuItems = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')];
+  await mount("advanced");
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="More for Birch"]')!.click());
+  expect(menuItems().map((b) => b.textContent).filter((t) => COMING.includes(t ?? ""))).toEqual([]);
+  await act(async () => root.unmount()); root = createRoot(host);
+  await mount("technical");
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="More for Birch"]')!.click());
+  expect(menuItems().map((b) => b.textContent)).toEqual(["Change picture…", "Pause", "Make default", "Share this Trunk…", "Who it knows", "Show it how, once", "Package…",
+    "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…", "Remove Trunk…"]);
+  expect(menuItems().filter((b) => b.disabled).map((b) => b.textContent)).toEqual(COMING);
 });
 
 it("draws Defaults for every Trunk and Trunks’ own databases (all Coming) and the folder defaults inside the Trunks card at Technical only", async () => {

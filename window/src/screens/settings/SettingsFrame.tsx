@@ -17,11 +17,10 @@ import { RowView, Segmented } from "./RowView";
 import { mergeRows, type PageSlots, type SlotControl } from "./slots";
 import { NOTHING_MATCHES, SEARCH_PLACEHOLDER, firstHit, searchSettings, type SearchHit, type SearchInput } from "./search";
 import { INVALID_CONFIG, useSchemaHints } from "./useRow";
+import { LEVEL_KEY, LEVEL_WORD, levelOfWord, savedLevel } from "./level-now";
 import "../../glass/glass.css";
 import "./settings.css";
 
-const LEVEL_WORD = ["regular", "advanced", "technical"] as const;
-const LEVEL_KEY = "branch.level";
 export const SECTION_COMING = (card: string) => `${card} comes to this page in a later update.`;
 /** What a page is for, for a page with nothing at the level shown: the empty state says what would go here. */
 const NOTHING_AT_REGULAR: Partial<Record<PageId, string>> = {
@@ -31,12 +30,6 @@ export const ASK_COMING = "Asking a Trunk from Settings comes in a later update.
 export const MAKE_DEFAULT_COMING = "Making a Trunk the default from Settings comes in a later update.";
 const FINE = "Fine-tune each part";
 const NO_SLOTS: PageSlots = {};
-
-/** The level kept in this window's storage, or null when there is none or storage is blocked (it must never throw
- *  while Settings draws). */
-function savedLevel(): string | null {
-  try { return typeof localStorage === "undefined" ? null : localStorage.getItem(LEVEL_KEY); } catch { return null; }
-}
 
 /** What config.get says is wrong with an invalid settings file, one line each. */
 function configIssues(issues: unknown): string[] {
@@ -54,8 +47,7 @@ export function useLevel(engine: WindowEngine): [Level, (level: Level) => void] 
   const store = lookStore(engine);
   const snap = useSyncExternalStore((fn) => store.subscribe(fn), () => store.snap, () => store.snap);
   useEffect(() => { if (store.snap.where === "loading") void store.load(); }, [store]);
-  const word = snap.look.level ?? savedLevel();
-  const level = Math.max(0, LEVEL_WORD.indexOf(word as (typeof LEVEL_WORD)[number])) as Level;
+  const level = levelOfWord(snap.look.level ?? savedLevel());
   const set = (next: Level) => {
     try { localStorage.setItem(LEVEL_KEY, LEVEL_WORD[next]); } catch { /* storage off: the look store still keeps it */ }
     void store.set("level", LEVEL_WORD[next]).catch(() => undefined);
@@ -348,7 +340,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
                 [...(scroller.current?.querySelectorAll<HTMLElement>(".r1s-custom h2") ?? [])].find((h) => h.textContent?.trim() === t)?.scrollIntoView?.({ block: "start" });
               }}>{t}</button></li>) : sections.map((s) => <li key={s.card}><button type="button" className="r1s-link" data-local="" onClick={() => { setHelp(false); setJump(`sec-${shownPage}-${s.card}`); }}>{s.card || spec.title}</button></li>)}</ul>
               {/* Ask a Trunk sends the question to the default Trunk's conversation with chat.send (the window's session.send). */}
-              <Coming engine={engine} need="chat.send" unwired={!props.onAsk} reason={props.onAsk ? undefined : ASK_COMING}>
+              <Coming engine={engine} need="chat.send" unwired={!props.onAsk} reason={props.onAsk ? undefined : ASK_COMING} hidden={level < COMING_FROM}>
                 <button type="button" className="r1s-btn" onClick={() => props.onAsk?.(`Help me with Settings › ${spec.title}.`)}>Ask a Trunk</button>
               </Coming>
             </div>

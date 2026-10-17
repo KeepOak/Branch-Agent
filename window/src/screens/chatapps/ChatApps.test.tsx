@@ -24,7 +24,8 @@ it("shows only the R1 four at Regular and Advanced, and all 74 real catalogue en
   for (const level of ["regular", "advanced"]) {
     localStorage.setItem("branch.level", level);
     const shown = await render();
-    expect([...shown.host.querySelectorAll(".r1-ca-card")].map(c => c.querySelector("b")?.textContent), level).toEqual(["Telegram", "Discord", "WhatsApp (your number)", "Slack"]);
+    // WhatsApp (your number) is Coming on this engine (its channel isn't listed), and Coming waits for Technical (item 7).
+    expect([...shown.host.querySelectorAll(".r1-ca-card")].map(c => c.querySelector("b")?.textContent), level).toEqual(["Telegram", "Discord", "Slack"]);
     expect(shown.host.querySelector("[data-later-rows]"), level).toBeNull();
     expect(shown.host.querySelector<HTMLInputElement>('input[aria-label="Search chat apps"]')!.placeholder).toBe("Search chat apps");
     await act(async () => root.unmount()); shown.host.remove();
@@ -46,7 +47,10 @@ it("shows only the R1 four at Regular and Advanced, and all 74 real catalogue en
 });
 it("does not advertise setup when the gateway lacks the methods", async () => {
   const regular = await render({}, ["channels.status"]);
-  expect([...regular.host.querySelectorAll('.r1-ca-card[aria-disabled="true"]')]).toHaveLength(4);
+  // Every card is Coming on this engine: below Technical none is drawn, and neither is the empty Every chat app list.
+  expect(regular.host.querySelectorAll(".r1-ca-card")).toHaveLength(0);
+  expect(regular.host.querySelector("#r1-ca-all")).toBeNull();
+  expect(regular.host.querySelector('[aria-label="Your phone"]')).toBeNull();
   await act(async () => root.unmount()); regular.host.remove();
   localStorage.setItem("branch.level", "technical");
   const { host, setup } = await render({}, ["channels.status"]);
