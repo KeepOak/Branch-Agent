@@ -144,6 +144,11 @@ vi.mock("./launchd-recovery.js", () => ({
   recoverInstalledLaunchAgent: (args: { result: "started" | "restarted" }) =>
     recoverInstalledLaunchAgent(args),
 }));
+vi.mock("./service-start-fallback.js", () => ({
+  GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE:
+    "Gateway could not start through the service or as this app's child.",
+  recoverGatewayAsAppChild: vi.fn(async () => null),
+}));
 
 vi.mock("./start-repair.js", () => ({
   repairLoadedGatewayServiceForStart: (args: unknown) => repairLoadedGatewayServiceForStart(args),

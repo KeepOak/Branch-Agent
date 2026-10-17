@@ -1,2 +1,7 @@
+engine:src/cli/daemon-cli/lifecycle-fallback.test.ts
+engine:src/cli/daemon-cli/lifecycle-readiness.test.ts
+engine:src/cli/daemon-cli/lifecycle.gateway-owner.test.ts
 engine:src/cli/daemon-cli/lifecycle.missing-service.test.ts
+engine:src/cli/daemon-cli/lifecycle.test.ts
 engine:src/cli/daemon-cli/missing-service-install.test.ts
+engine:src/cli/daemon-cli/service-start-fallback.test.ts

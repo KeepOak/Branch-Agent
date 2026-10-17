@@ -46,6 +46,10 @@ import {
   createGatewayLifecycleMutationAudit,
 } from "./lifecycle-audit.js";
 import { installMissingGatewayService } from "./missing-service-install.js";
+import {
+  GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE,
+  recoverGatewayAsAppChild,
+} from "./service-start-fallback.js";
 import { resolveGatewayConfigPorts, resolveGatewayLifecycleContext } from "./lifecycle-context.js";
 import {
   runServiceRestart,
@@ -80,6 +84,20 @@ function postRestartHealthAttempts(): number {
   return process.platform === "win32"
     ? Math.ceil(WINDOWS_POST_RESTART_HEALTH_TIMEOUT_MS / DEFAULT_RESTART_HEALTH_DELAY_MS)
     : DEFAULT_RESTART_HEALTH_ATTEMPTS;
+}
+
+async function recoverFromFailedService<TResult extends "started" | "restarted">(params: {
+  result: TResult;
+  reason: string;
+  service: ReturnType<typeof resolveGatewayService>;
+  port: number;
+}) {
+  return await recoverGatewayAsAppChild({
+    result: params.result,
+    reason: params.reason,
+    service: params.service,
+    port: params.port,
+  });
 }
 
 async function handleSystemScopeSystemdGateway(
@@ -292,13 +310,38 @@ export async function runDaemonStart(opts: DaemonLifecycleOptions = {}) {
         state,
         issues,
       }),
-    postStartCheck: ({ fail, warnings }) =>
-      verifyGatewayStartReadiness({
+    postStartCheck: async ({ fail, warnings }) => {
+      let failed: string | undefined;
+      await verifyGatewayStartReadiness({
         service,
         expectedPort,
         resolveContext: () => resolveGatewayLifecycleContext(service),
-        fail,
+        fail: (message) => {
+          failed = message;
+        },
         warnings,
+      });
+      if (!failed) {
+        return;
+      }
+      const recovered = await recoverFromFailedService({
+        result: "started",
+        reason: failed,
+        service,
+        port: expectedPort ?? (await resolveGatewayConfigPorts()).fallback,
+      });
+      if (recovered) {
+        warnings.push(recovered.message);
+        return;
+      }
+      fail(GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE);
+    },
+    onStartFailed: async ({ error }) =>
+      await recoverFromFailedService({
+        result: "started",
+        reason: String(error),
+        service,
+        port: expectedPort ?? (await resolveGatewayConfigPorts()).fallback,
       }),
     expectedPort,
     opts,
@@ -514,12 +557,18 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
     },
     postRestartCheck: async ({
       warnings,
-      fail,
+      fail: reportFail,
       stdout,
       warn,
       activationAccepted: accepted,
       preserveDefinition: preserved,
     }) => {
+      let failed: string | undefined;
+      const fail = (message: string) => {
+        failed = message;
+        throw new Error(message);
+      };
+      try {
       if (preserved) {
         preserveDefinition = true;
         managedRestartPort = managedRestartContext.port;
@@ -649,6 +698,30 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
             : undefined,
       );
       throw new Error("unreachable after gateway restart failure");
+      } catch (err) {
+        if (!failed) {
+          throw err;
+        }
+        const recovered = await recoverFromFailedService({
+          result: "restarted",
+          reason: failed,
+          service,
+          port: managedRestartPort,
+        });
+        if (recovered) {
+          warnings.push(recovered.message);
+          return;
+        }
+        reportFail(GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE);
+        throw new Error("unreachable after gateway restart failure", { cause: err });
+      }
     },
+    onRestartFailed: async ({ error }) =>
+      await recoverFromFailedService({
+        result: "restarted",
+        reason: String(error),
+        service,
+        port: managedRestartPort,
+      }),
   });
 }

@@ -41,6 +41,11 @@ vi.mock("./lifecycle-core.js", () => ({
   runServiceUninstall: vi.fn(),
 }));
 vi.mock("./start-repair.js", () => ({ repairLoadedGatewayServiceForStart: vi.fn() }));
+vi.mock("./service-start-fallback.js", () => ({
+  GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE:
+    "Gateway could not start through the service or as this app's child.",
+  recoverGatewayAsAppChild: vi.fn(async () => null),
+}));
 vi.mock("./restart-health.js", () => ({
   DEFAULT_RESTART_HEALTH_ATTEMPTS: 120,
   DEFAULT_RESTART_HEALTH_DELAY_MS: 500,

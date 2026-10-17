@@ -63,6 +63,11 @@ vi.mock("./launchd-recovery.js", () => ({
 vi.mock("./missing-service-install.js", () => ({
   installMissingGatewayService: (args: unknown) => installMissingGatewayService(args),
 }));
+vi.mock("./service-start-fallback.js", () => ({
+  GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE:
+    "Gateway could not start through the service or as this app's child.",
+  recoverGatewayAsAppChild: vi.fn(async () => null),
+}));
 vi.mock("./lifecycle-audit.js", () => ({
   appendGatewayLifecycleAudit: vi.fn(),
   createGatewayLifecycleMutationAudit: vi.fn(() => vi.fn()),

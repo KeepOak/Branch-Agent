@@ -60,6 +60,11 @@ vi.mock("../../infra/restart.js", () => ({
 vi.mock("../../gateway/call.js", () => ({ callGatewayCli: vi.fn() }));
 vi.mock("../../gateway/probe.js", () => ({ probeGateway: vi.fn() }));
 vi.mock("./launchd-recovery.js", () => ({ recoverInstalledLaunchAgent: vi.fn() }));
+vi.mock("./service-start-fallback.js", () => ({
+  GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE:
+    "Gateway could not start through the service or as this app's child.",
+  recoverGatewayAsAppChild: vi.fn(async () => null),
+}));
 vi.mock("./lifecycle-audit.js", () => ({
   appendGatewayLifecycleAudit: vi.fn(),
   createGatewayLifecycleMutationAudit: vi.fn(() => vi.fn()),

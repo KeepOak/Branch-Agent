@@ -238,6 +238,10 @@ export async function runServiceStart(params: {
   ) => Promise<ServiceRecoveryResult<"started"> | null>;
   /** Runs after the service process is started, before start reports success. */
   postStartCheck?: (ctx: StartPostCheckContext) => Promise<void>;
+  /** When start throws, try an unmanaged child before reporting failure. */
+  onStartFailed?: (
+    ctx: ServiceRecoveryContext & { error: unknown },
+  ) => Promise<ServiceRecoveryResult<"started"> | null>;
   expectedPort?: number;
 }) {
   const json = Boolean(params.opts?.json);
@@ -368,6 +372,22 @@ export async function runServiceStart(params: {
     const serviceLoaded = startResult.state.loadState.status === "loaded";
     await emitStarted({ loaded: serviceLoaded });
   } catch (err) {
+    try {
+      const handled = await params.onStartFailed?.({ json, stdout, warn, fail, error: err });
+      if (handled) {
+        emitMessage({
+          ok: true,
+          result: "started",
+          message: handled.message,
+          warnings: mergeWarnings(warnings, handled.warnings),
+          service: buildDaemonServiceSnapshot(params.service, handled.loaded ?? false),
+        });
+        return;
+      }
+    } catch (fallbackErr) {
+      fail(`${params.serviceNoun} start failed: ${String(fallbackErr)}`, params.renderStartHints());
+      return;
+    }
     fail(`${params.serviceNoun} start failed: ${String(err)}`, params.renderStartHints());
   }
 }
@@ -468,6 +488,10 @@ export async function runServiceRestart(params: {
   ) => Promise<ServiceRecoveryResult<"restarted"> | null>;
   postRestartCheck?: (ctx: RestartPostCheckContext) => Promise<GatewayServiceRestartResult | void>;
   onNotLoaded?: (ctx: ServiceRecoveryContext) => Promise<ServiceRecoveryResult<"restarted"> | null>;
+  /** When restart throws, try an unmanaged child before reporting failure. */
+  onRestartFailed?: (
+    ctx: ServiceRecoveryContext & { error: unknown },
+  ) => Promise<ServiceRecoveryResult<"restarted"> | null>;
   restartOwnedProcess?: (
     ctx: ServiceRecoveryContext,
   ) => Promise<ServiceRecoveryResult<"restarted"> | null>;
@@ -688,6 +712,22 @@ export async function runServiceRestart(params: {
     // A non-exiting runtime unwinds after emission; never replace that result.
     if (postCheckFailed) {
       throw err;
+    }
+    try {
+      const handled = await params.onRestartFailed?.({ json, stdout, warn, fail, error: err });
+      if (handled) {
+        emitMessage({
+          ok: true,
+          result: "restarted",
+          message: handled.message,
+          service: buildDaemonServiceSnapshot(params.service, handled.loaded === true),
+          warnings: mergeWarnings(warnings, handled.warnings),
+        });
+        return true;
+      }
+    } catch (fallbackErr) {
+      fail(`${params.serviceNoun} restart failed: ${String(fallbackErr)}`, params.renderStartHints());
+      return false;
     }
     const hints = params.renderStartHints();
     fail(`${params.serviceNoun} restart failed: ${String(err)}`, hints);

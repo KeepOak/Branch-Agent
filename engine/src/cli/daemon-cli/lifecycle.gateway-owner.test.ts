@@ -98,6 +98,11 @@ vi.mock("./lifecycle-audit.js", () => ({
   createServiceLifecycleMutationAudit: () => undefined,
   appendServiceLifecycleRepairAudit: vi.fn(),
 }));
+vi.mock("./service-start-fallback.js", () => ({
+  GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE:
+    "Gateway could not start through the service or as this app's child.",
+  recoverGatewayAsAppChild: vi.fn(async () => null),
+}));
 vi.mock("../../infra/restart-intent.js", async (original) => ({
   ...(await original<typeof import("../../infra/restart-intent.js")>()),
   prepareGatewayRestartIntentLegacyProcess: async () => undefined,
