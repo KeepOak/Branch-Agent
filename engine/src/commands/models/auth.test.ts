@@ -1,8 +1,8 @@
 // Model auth tests cover provider auth status, expiry, and display helpers.
 
-import { CANCEL_SYMBOL } from "@clack/prompts";
 import { MAX_DATE_TIMESTAMP_MS } from "@branch/normalization-core/number-coercion";
 import { isRecord } from "@branch/normalization-core/record-coerce";
+import { CANCEL_SYMBOL } from "@clack/prompts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../../config/config.js";
 import type { ConfigWriteOptions } from "../../config/io.js";
@@ -1170,6 +1170,34 @@ describe("modelsAuthLoginCommand", () => {
     expect(mocks.updateConfig).not.toHaveBeenCalled();
   });
 
+  it("starts an owned login through setup hooks without runtime provider discovery", async () => {
+    mocks.resolvePluginSetupRegistry.mockReturnValue({
+      providers: [
+        {
+          provider: {
+            id: "openai",
+            label: "OpenAI",
+            auth: [{ id: "oauth", kind: "oauth", label: "Sign in", run: runProviderAuth }],
+          },
+        },
+      ],
+    });
+    mocks.resolvePluginProvidersCore.mockImplementation(() => {
+      throw new Error("Catalog discovery must not block login");
+    });
+    await runModelsAuthLoginFlowCore({
+      provider: "openai",
+      method: "oauth",
+      ownerPluginId: "openai",
+      credentialOnly: true,
+      config: currentConfig,
+      runtime: createRuntime(),
+      prompter: mocks.createClackPrompter(),
+    });
+    expect(runProviderAuth).toHaveBeenCalledOnce();
+    expect(mocks.resolvePluginProvidersCore).not.toHaveBeenCalled();
+  });
+
   it("loads the owning plugin for an explicit provider even in a clean config", async () => {
     const runtime = createRuntime();
     const runClaudeCliMigration = vi.fn().mockResolvedValue({
@@ -1674,7 +1702,16 @@ describe("modelsAuthLoginCommand", () => {
   });
 
   it("writes pasted Anthropic setup-tokens and logs the preference note", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ account: { uuid: "fake-account", email: "owner@example.test" } }), { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ account: { uuid: "fake-account", email: "owner@example.test" } }),
+            { status: 200 },
+          ),
+      ),
+    );
     const runtime = createRuntime();
     mocks.clackPassword.mockResolvedValue(`sk-ant-oat01-${"a".repeat(80)}`);
 
@@ -1690,9 +1727,7 @@ describe("modelsAuthLoginCommand", () => {
       },
       agentDir: "/tmp/branch/agents/main",
     });
-    expect(runtime.log).toHaveBeenCalledWith(
-      "Anthropic setup-token auth is supported in Branch.",
-    );
+    expect(runtime.log).toHaveBeenCalledWith("Anthropic setup-token auth is supported in Branch.");
     expect(runtime.log).toHaveBeenCalledWith(
       "Branch Agent prefers Claude CLI reuse when it is available on the host.",
     );
@@ -1702,10 +1737,23 @@ describe("modelsAuthLoginCommand", () => {
   });
 
   it("honors an explicit Anthropic profile id before email identity", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ account: { email: "owner@example.test" } }), { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ account: { email: "owner@example.test" } }), {
+            status: 200,
+          }),
+      ),
+    );
     mocks.clackPassword.mockResolvedValue(`sk-ant-oat01-${"a".repeat(80)}`);
-    await modelsAuthPasteTokenCommand({ provider: "anthropic", profileId: "anthropic:work" }, createRuntime());
-    expect(mocks.upsertAuthProfileWithLock).toHaveBeenCalledWith(expect.objectContaining({ profileId: "anthropic:work" }));
+    await modelsAuthPasteTokenCommand(
+      { provider: "anthropic", profileId: "anthropic:work" },
+      createRuntime(),
+    );
+    expect(mocks.upsertAuthProfileWithLock).toHaveBeenCalledWith(
+      expect.objectContaining({ profileId: "anthropic:work" }),
+    );
   });
 
   it("writes pasted tokens to the requested agent store", async () => {

@@ -170,6 +170,7 @@ export const systemAgentHandlers: GatewayRequestHandlers = {
       const { params, respond, context, client } = options;
       const { sessionId, ...activation } = params;
       await startSetupActivationWizard({
+        client,
         sessionId,
         ownerKey: resolveSystemAgentSessionOwnerKey({ client }),
         assertCurrent: readGatewayRequestMutationAuthority(options).assertCurrent,
@@ -184,9 +185,10 @@ export const systemAgentHandlers: GatewayRequestHandlers = {
   "branch.setup.activate.start": defineValidatedGatewayHandler(
     "branch.setup.activate.start",
     validateSystemAgentSetupActivateStartParams,
-    async ({ params, respond, context }) => {
+    async ({ params, respond, context, client }) => {
       const { sessionId, ...activation } = params;
       await startSetupActivationWizard({
+        client,
         sessionId,
         activation,
         timeoutMs: PROVIDER_AUTH_SESSION_TIMEOUT_MS,
@@ -344,9 +346,13 @@ export const systemAgentHandlers: GatewayRequestHandlers = {
         respond(
           false,
           undefined,
-          errorShape(ErrorCodes.INVALID_REQUEST, "Branch Agent session belongs to another caller.", {
-            details: buildSystemAgentSessionInvalidatedErrorDetails(),
-          }),
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            "Branch Agent session belongs to another caller.",
+            {
+              details: buildSystemAgentSessionInvalidatedErrorDetails(),
+            },
+          ),
         );
         return undefined;
       }

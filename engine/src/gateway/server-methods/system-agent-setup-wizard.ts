@@ -1,5 +1,7 @@
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import { WizardSession } from "../../wizard/session.js";
+import { bindWizardLoginOwner } from "../server-wizard-sessions.js";
+import type { GatewayClient } from "./client-types.js";
 import {
   createAdmittedWizardSession,
   respondSetupAdmissionBusy,
@@ -157,6 +159,7 @@ export function rejectExistingSetupWizardSession(params: {
 }
 
 export async function startSetupActivationWizard(params: {
+  client?: GatewayClient | null;
   sessionId: string;
   ownerKey?: string;
   assertCurrent?: () => void;
@@ -216,6 +219,9 @@ export async function startSetupActivationWizard(params: {
       undefined,
     );
     return;
+  }
+  if (params.client) {
+    bindWizardLoginOwner(session, params.client);
   }
   params.context.wizardSessions.set(params.sessionId, session);
   // Return ownership before any prompt so cancellation survives a lost start reply.

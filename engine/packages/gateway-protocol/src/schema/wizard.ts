@@ -42,10 +42,10 @@ export const WizardNextParamsSchema = closedObject({
 });
 
 /** Cancels a wizard or closes input when its client view is discarded. */
-export const WizardCancelParamsSchema = closedObject({
-  sessionId: NonEmptyString,
-  closeInput: Type.Optional(Type.Boolean()),
-});
+export const WizardCancelParamsSchema = Type.Union([
+  closedObject({ sessionId: NonEmptyString, closeInput: Type.Optional(Type.Boolean()) }),
+  closedObject({ all: Type.Literal(true) }),
+]);
 
 export const WizardStatusParamsSchema = closedObject({
   sessionId: NonEmptyString,

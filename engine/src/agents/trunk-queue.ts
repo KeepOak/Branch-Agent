@@ -12,6 +12,7 @@ import {
 } from "./trunk-queue-run-fence.js";
 import {
   errorText,
+  rec,
   isTrunkUnavailableError,
   type TrunkAvailability,
 } from "./trunk-queue-status.js";
@@ -572,6 +573,11 @@ async function claimAndDispatch(
     return undefined;
   }
   if (!(await waitForTrunkIdle(params.gateway, params.agentId, params.idleWaitMs ?? 0))) {
+    return undefined;
+  }
+  // Check account/model access before changing attempts or claiming any job.
+  const auth = rec(await params.gateway.request("models.authStatus", { agentId: params.agentId }));
+  if (rec(auth.modelReadiness).ready === false || auth.unavailable) {
     return undefined;
   }
   const item = claimNextQueueItem(params.agentId, params.env, now());

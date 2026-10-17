@@ -154,6 +154,29 @@ describe("models.authLogin ownership", () => {
     vi.resetAllMocks();
   });
 
+  it.each(["user", "system"])(
+    "recovers the %s owner's running login without its session id and leaves other owners alone",
+    async (identity) => {
+      hooks.login.mockImplementation(async (options: ModelsAuthLoginFlowOptions) => {
+        await options.prompter.text({ message: "Continue login" });
+        return result;
+      });
+      const h = harness();
+      if (identity === "user") {
+        h.client.authenticatedUserId = "owner";
+      } else {
+        h.client.internal = { operatorRoleActor: { kind: "system" } };
+      }
+      await h.start();
+      const other = { ...h.client, authenticatedUserId: "other", internal: undefined };
+      await h.invoke("wizard.cancel", { all: true }, other);
+      expect(h.tracker.wizardSessions.get("login")?.getStatus()).toBe("running");
+      await h.invoke("wizard.cancel", { all: true }, { ...h.client });
+      expect(h.tracker.findRunningWizard()).toBeNull();
+      expect((await h.start()).mock.calls[0]?.[0]).toBe(true);
+    },
+  );
+
   it.each([
     { ...choice, credentialOnly: false },
     { ...choice, pluginId: "replacement" },

@@ -74,6 +74,7 @@ export type ModelProviderCapability = {
 };
 
 export type ModelAuthStatusResult = {
+  modelReadiness?: import("./model-readiness.js").ModelReadiness;
   /** Snapshot build time, ms since epoch. 0 = never loaded (UI fallback sentinel). */
   ts: number;
   providers: ModelAuthStatusProvider[];

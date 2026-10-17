@@ -95,6 +95,7 @@ function Rows({ row, data, level, edit, openPlace, showFiles }: { row: TrunkRow;
   return (
     <div className="tk-rows">
       <Row icon={<Icon name="monitor" small />} label="Its computer" value={where} onClick={() => edit("computers")} />
+      {row.modelWarning ? <p role="status" className="hint">{row.modelWarning}</p> : null}
       <Row icon={<LineIcon name="spark" />} label="Model" value={model} onClick={() => edit("may")} />
       <Row icon={<LineIcon name="shield" />} label="May do" value={mayLine} onClick={() => edit("may")} />
       <Row icon={<LineIcon name="plug" />} label="Its tools" value="" onClick={openPlace && (() => { requestCustomize({ kind: "Toolsets" }); openPlace("customize"); })} />

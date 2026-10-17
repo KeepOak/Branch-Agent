@@ -1,13 +1,27 @@
 import type { OAuthCredential } from "branch/plugin-sdk/provider-auth";
 // Openai tests cover setup api plugin behavior.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildOpenAISetupProvider } from "./setup-api.js";
+
+const authRuns = vi.hoisted(() => ({ device: vi.fn().mockResolvedValue({ profiles: [] }) }));
+vi.mock("./openai-chatgpt-provider.js", () => ({
+  buildOpenAIChatGPTAuthMethodRuns: () => ({ "device-code": authRuns.device }),
+}));
+vi.mock("./openai-provider.js", () => {
+  throw new Error("Live catalog provider must not load before a device code");
+});
 
 function authMethodIds(provider: ReturnType<typeof buildOpenAISetupProvider>) {
   return provider.auth.map((method) => method.id);
 }
 
 describe("OpenAI setup auth provider", () => {
+  it("starts device auth without loading the live catalog provider", async () => {
+    const method = buildOpenAISetupProvider().auth.find((entry) => entry.id === "device-code")!;
+    const context = {} as Parameters<typeof method.run>[0];
+    await expect(method.run(context)).resolves.toEqual({ profiles: [] });
+    expect(authRuns.device).toHaveBeenCalledWith(context);
+  });
   it("retains exact personal-account matching on both setup sign-in methods", () => {
     const credentialFor = (userId: string): OAuthCredential => ({
       type: "oauth",

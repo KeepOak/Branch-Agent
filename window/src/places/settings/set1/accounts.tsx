@@ -134,6 +134,7 @@ export function AccountsPage(props: SettingsPageProps) {
   const owner = scope || props.engine.agentId;
   const agent = owner ? { agentId: owner } : {};
   const status = useResource<RecordValue>(props.engine, "models.authStatus", agent);
+  const trunks = useResource<RecordValue>(props.engine, "agents.list", {});
   const [add, setAdd] = useState<AddStart | null>(null);
   useEffect(() => {
     const consume = () => {
@@ -148,9 +149,11 @@ export function AccountsPage(props: SettingsPageProps) {
   const providers = providersOf(status.data?.providers);
   const caps = list(status.data?.providerCapabilities);
   const all = accountsOf(providers);
+  const trunkWarnings = scope ? [] : list(trunks.data?.agents).filter((row) => text(record(row.modelReadiness).message));
   return (
     <Page title={props.title} lede="Manage model accounts and the order Branch uses them." help="Your model accounts, the order Branch uses them in, which Trunks use each, and your keepoak.com account.">
       <AccountsStatus loading={status.loading} error={status.error} count={all.length} unavailable={record(status.data?.unavailable).message} />
+      {trunkWarnings.length ? trunkWarnings.map((row) => <p key={text(row.id)} role="status" className="hint">{text(record(row.identity).name) || text(row.name) || text(row.id)}: {text(record(row.modelReadiness).message)}</p>) : text(record(status.data?.modelReadiness).message) ? <p role="status" className="hint">{text(record(status.data?.modelReadiness).message)}</p> : null}
       <OrderSection {...props} all={all} reload={status.reload} onAdd={setAdd} agent={agent} />
       {!status.loading && !status.error ? <div className="acts">
         {signInOffers(caps, providers).map((id) => (
