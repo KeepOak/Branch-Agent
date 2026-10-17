@@ -55,7 +55,7 @@ const RAW: RegExp[] = [
   /\bgateway (?:closed|not connected)\b/i, // a socket close
   /\bCannot read propert|\bis not a function\b|\bis not defined\b|\bUnexpected token\b|\bnpm ERR!|\bfetch failed\b|\bFailed to fetch\b|\bsocket hang up\b|\bNo API key found\b/i,
   /\bagent:[\w-]+:[\w:.-]+/, // a session key
-  // issue 1700's id shapes (connect/friendly-error.ts), so words that skip friendlyError() still never show an id.
+  // PR 1700 id shapes (connect/friendly-error.ts), so words that skip friendlyError() still never show an id.
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i, // a UUID
   /\b[0-9a-f]{16,}\b/i, // a long hex id
   /\b(?:request[\s_-]*id|runId|sessionKey|agentId|gatewayCode)\b/i, // a named id

@@ -20,6 +20,7 @@ import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, showTrayStatus } from "./resident-window";
 import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
+import { plainDialogText, STOP_FAILED_PLAIN, UPDATE_FAILED_PLAIN } from "./plain-dialog";
 import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
@@ -128,7 +129,8 @@ log(`launch v${app.getVersion()} pid ${process.pid}`);
 installDiskFullGuard(process, error => {
   const detail = error.stack ?? String(error);
   log(`uncaught main-process error: ${detail}`);
-  if (!HIDDEN) dialog.showErrorBox("A JavaScript error occurred in the main process", `Uncaught Exception:\n${detail}`);
+  // One plain sentence and a next step; the stack stays in the log line above (Private #1089).
+  if (!HIDDEN) dialog.showErrorBox("Branch hit a problem", "Branch hit a problem it couldn’t recover from. Quit Branch and open it again; the details are in its log.");
 });
 
 // Own profile and lock, apart from the old installed Branch Agent app.
@@ -1781,7 +1783,7 @@ async function restartEngine(): Promise<void> {
   catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`update failed: ${msg}`);
-    if (!quitting && (serviceEngine || !engineRunning()) && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", msg);
+    if (!quitting && (serviceEngine || !engineRunning()) && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", plainDialogText(msg, UPDATE_FAILED_PLAIN));
   }
 }
 
@@ -1910,7 +1912,7 @@ async function stopCompletely(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log(`stop completely failed: ${message}`);
-    if (!HIDDEN) dialog.showErrorBox("Branch couldn't stop its engine", message);
+    if (!HIDDEN) dialog.showErrorBox("Branch couldn't stop its engine", plainDialogText(message, STOP_FAILED_PLAIN));
   }
 }
 
