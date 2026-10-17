@@ -12,6 +12,7 @@ import type { Fact } from "./memory-data";
 import { Grey, GreySwitch, plural, Row, Section, when } from "./parts";
 import { BringInDialog } from "./memory-bring-dialog";
 import { BRING_IN_WRITE_REASON } from "./memory-import";
+import { plainError } from "../../shell/plain-error";
 
 export type MemoryStatus = {
   agentId?: string; provider?: string;
@@ -106,7 +107,7 @@ export function MemoryHealth({ engine, agentId, status, check }: { engine: Windo
   const title = checked ? `Search index: checked ${when(e!.checkedAtMs)}` : "Search index: not checked yet";
   const line = !e ? "" : !checked ? "It checks itself in the background and rebuilds a damaged index." : e.ok ? "Nothing to repair. It checks itself in the background and rebuilds a damaged index." : e.error ?? "";
   return <Section title="Memory health" testid="memory-health">
-    {status.error && <p className="lib-bad" role="alert">{status.error}</p>}
+    {status.error && <p className="lib-bad" role="alert">{plainError(status.error)}</p>}
     <div className="lib-plain">
       {e && <Row icon="search" title={title} line={line}><button type="button" className="btn sm" disabled={status.loading} onClick={check}>Check now</button></Row>}
       <Row icon="clock" title="Loads when a conversation starts" line="What a Trunk learns now shows from its next conversation, so each one starts the same." />
