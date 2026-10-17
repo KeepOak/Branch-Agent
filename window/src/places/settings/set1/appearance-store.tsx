@@ -16,14 +16,37 @@ import { accentVars, BUILTIN, DEFAULT_THEME, isHex, pairOfDefinition, varsOf, ty
 export const LOOK_PREF = "ui.window.look";
 const ENGINE_PREFS = { accent: "ui.accent", fontUi: "ui.fontUi", fontChat: "ui.fontChat", themeExtra: "ui.window.themeExtra" } as const;
 type EngineKey = keyof typeof ENGINE_PREFS;
-const DEVICE_KEYS = ["size"] as const;
-/** A look key kept on this device only (text size), never sent to the engine. */
+const DEVICE_KEYS = ["size", "scale"] as const;
+/** A look key kept on this device only (text size, interface scale), never sent to the engine. */
 export const isDeviceKey = (key: string): boolean => (DEVICE_KEYS as readonly string[]).includes(key);
 /** Where a look key's value is kept in the snapshot: this device, its own engine pref (accent, fonts), or the look. */
 export function lookHolder(snap: Pick<LookSnap, "look" | "device" | "prefs">, key: string): RecordValue {
   return isDeviceKey(key) ? snap.device : key in ENGINE_PREFS ? (snap.prefs as RecordValue) : snap.look;
 }
 const LOCAL = "branch.look";
+
+/** Interface scale steps (Private #1100; Hermes Appearance › Typography, UI Scale 90-175%). */
+export const SCALES = [90, 100, 110, 125, 150, 175] as const;
+/** The interface scale kept on this device, as a percentage from SCALES (100 when unset or unreadable). */
+export function scaleOf(device: RecordValue): number {
+  const n = Number(device.scale ?? 100);
+  return (SCALES as readonly number[]).includes(n) ? n : 100;
+}
+/** The next scale step from `current`: 1 bigger, -1 smaller, 0 back to 100%. */
+export function stepScale(current: number, dir: 1 | -1 | 0): number {
+  if (dir === 0) return 100;
+  const i = (SCALES as readonly number[]).indexOf(current);
+  const at = i < 0 ? SCALES.indexOf(100) : i;
+  return SCALES[Math.max(0, Math.min(SCALES.length - 1, at + dir))];
+}
+type ZoomBridge = { set: (factor: number) => void };
+const zoomBridge = (): ZoomBridge | undefined => (window as unknown as { branchDesktop?: { zoom?: ZoomBridge } }).branchDesktop?.zoom;
+/** Scales the whole window: the desktop app zooms the page itself (menus and popovers stay where they belong);
+ *  a plain browser tab gets CSS zoom on the root from the look's <style> (lookCss). */
+function applyScale(root: HTMLElement, pct: number) {
+  zoomBridge()?.set(pct / 100);
+  if (pct === 100) root.removeAttribute("data-scale"); else root.setAttribute("data-scale", String(pct));
+}
 const STYLE_ID = "branch-look";
 const SCENE_FILES: Record<string, string> = {
   spring: "/assets/grove-spring.webp", autumn: "/assets/grove-autumn.webp", winter: "/assets/grove-winter.webp", night: "/assets/grove-night.webp",
@@ -105,6 +128,8 @@ function lookCss(s: Saved): string {
   if (ui) out.push(`:root:root{--sans:${ui}}`);
   if (chat) out.push(`:root:root{--chat-font:${chat}}`, ".thread{font-family:var(--chat-font)}");
   out.push(':root[data-size="larger"] body{font-size:17.5px}', ':root[data-size="largest"] body{font-size:19.6px}');
+  const scale = scaleOf(s.device);
+  if (scale !== 100 && !zoomBridge()) out.push(`:root:root{zoom:${scale / 100}}`);
   out.push(":root.still-k *,:root.still-k *::before,:root.still-k *::after{animation-play-state:paused!important}");
   return out.join("\n");
 }
@@ -130,6 +155,7 @@ export function applyLook(s: Saved) {
   style.textContent = lookCss(s);
   const size = String(s.device.size ?? "Regular");
   if (size === "Regular") root.removeAttribute("data-size"); else root.setAttribute("data-size", size);
+  applyScale(root, scaleOf(s.device));
   root.classList.toggle("contrast17", s.look.contrast === true);
   if (typeof s.look.reduceTransparency === "boolean") root.dataset.transparency = s.look.reduceTransparency ? "reduce" : "full";
   else root.removeAttribute("data-transparency");
@@ -252,6 +278,13 @@ export class LookStore {
     return next;
   }
 
+  /** Takes this device's rows another window saved; nothing is written back, so two windows never echo. */
+  takeDevice(device: RecordValue) {
+    this.snap = { ...this.snap, device };
+    applyLook(this.preview === undefined ? this.snap : { ...this.snap, palette: this.preview });
+    this.listeners.forEach((fn) => fn());
+  }
+
   /** Shows colours on the whole window while the editor is open; undefined puts the chosen theme back. */
   setPreviewFn = (palette: Pair | null | undefined) => {
     this.preview = palette;
@@ -280,6 +313,41 @@ export function useLook(engine: WindowEngine) {
     return lookHolder(snap, key)[key] ?? fallback;
   };
   return { snap, store, val };
+}
+
+/** Sets the interface scale on this device (the store when the window has one, else this window's copy). */
+export function setScale(pct: number): void {
+  const value = pct === 100 ? null : String(pct);
+  if (single) { void single.set("scale", value).catch(() => undefined); return; }
+  const saved = readLocal();
+  const device = { ...saved.device };
+  if (value === null) delete device.scale; else device.scale = value;
+  writeLocal({ ...saved, device });
+  applyLook({ ...saved, device });
+}
+
+/** Ctrl (⌘ on a Mac) with + or = makes the window bigger, with - smaller, with 0 back to 100%, as in a browser.
+ *  Another window changing the scale reaches this one through storage. Returns the undo. */
+export function installScaleKeys(target: Window = window): () => void {
+  const onKey = (e: KeyboardEvent) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || document.querySelector("[data-listening]")) return;
+    const k = e.key, c = e.code ?? "";
+    const dir: 1 | -1 | 0 | null = k === "+" || k === "=" || c === "NumpadAdd" ? 1 : k === "-" || k === "_" || c === "NumpadSubtract" ? -1 : k === "0" || c === "Digit0" || c === "Numpad0" ? 0 : null;
+    if (dir === null) return;
+    e.preventDefault();
+    const now = scaleOf(single ? single.snap.device : readLocal().device);
+    const next = stepScale(now, dir);
+    if (next !== now) setScale(next);
+  };
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== LOCAL) return;
+    const saved = readLocal();
+    if (single) single.takeDevice(saved.device);
+    else applyLook(saved);
+  };
+  target.addEventListener("keydown", onKey);
+  target.addEventListener("storage", onStorage);
+  return () => { target.removeEventListener("keydown", onKey); target.removeEventListener("storage", onStorage); };
 }
 
 /** Applies the look kept in this window before the engine answers (call once at start, after applySavedTheme). */
