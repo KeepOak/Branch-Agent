@@ -1,5 +1,5 @@
 // Starts the Branch engine gateway as a child process (as the early copy's start.sh does) and stops it by PID.
-import { spawn, execFileSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync, openSync, closeSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer, type Server, type Socket } from "node:net";
@@ -621,11 +621,21 @@ export async function waitForReady(cfg: DesktopConfig, child: ChildProcess, ms: 
   throw new GatewayReadinessTimeoutError();
 }
 
-/** Stops one engine process group by pid. Windows taskkill is immediate; other platforms signal the group. */
+/** Stops one engine process group by pid. Windows ends the process, then its tree; other platforms signal the group. */
 export function stopEnginePid(pid: number, signal: "SIGTERM" | "SIGKILL" = "SIGTERM"): void {
   try {
-    if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10_000 });
-    else process.kill(-pid, signal);
+    if (process.platform === "win32") {
+      // TerminateProcess returns immediately. A synchronous taskkill that hits its timeout
+      // stalls every other engine on this thread, long enough to blow a fixture deadline.
+      try { process.kill(pid, signal); } catch { /* already gone */ }
+      const killer = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+      killer.unref();
+      const timer = setTimeout(() => { try { killer.kill(); } catch { /* already gone */ } }, 2_000);
+      timer.unref();
+      killer.once("close", () => clearTimeout(timer));
+      return;
+    }
+    process.kill(-pid, signal);
   } catch {
     // already gone
   }

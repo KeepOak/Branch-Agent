@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
-import { execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import nodeTest from "node:test";
@@ -149,7 +149,13 @@ function killTree(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return;
   try {
     if (process.platform === "win32") {
-      execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10_000 });
+      // End the process immediately. A synchronous taskkill timeout stalls every other test on this thread.
+      try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+      const killer = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+      killer.unref();
+      const timer = setTimeout(() => { try { killer.kill(); } catch { /* already gone */ } }, 2_000);
+      timer.unref();
+      killer.once("close", () => clearTimeout(timer));
       return;
     }
     try { process.kill(-pid, "SIGKILL"); } catch { /* not a group leader, or already gone */ }
@@ -213,7 +219,7 @@ starts.push(process.pid);const tmp=file+"."+process.pid+".tmp";fs.writeFileSync(
 const peers=starts.filter(p=>p!==process.pid&&(()=>{try{process.kill(p,0);return true;}catch{return false;}})());
 fs.writeFileSync(root+"/launch-"+process.pid+".json",JSON.stringify({port:Number(process.argv.at(-1)),standby:process.env.BRANCH_GATEWAY_STANDBY==="1",token:process.env.BRANCH_GATEWAY_TOKEN,peers}));
 let listener;const sockets=new Set();let exiting=false;
-function drop(socket){if(!socket)return;socket.on("error",()=>{});try{socket.resetAndDestroy();}catch{try{socket.destroy();}catch{}}}
+function drop(socket){if(!socket)return;sockets.delete(socket);socket.on("error",()=>{});try{socket.resetAndDestroy();}catch{try{socket.destroy();}catch{}}}
 // Exit only after the reset sockets are gone and the listen handle has closed. A timer
 // that exits first lets Windows finish those sockets with a FIN, and the port stays
 // unbindable longer than the next engine is willing to wait.
