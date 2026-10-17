@@ -206,15 +206,15 @@ describe("R1-04 composer", () => {
 
   it("shows the failure and Try again when a free model is not ready", async () => {
     const { host, request } = await mount({ models: false, activate: "fail" });
-    await vi.waitFor(() => expect(host.querySelector('[data-testid="connect-model"]')).not.toBeNull());
-    const failed = host.querySelector('[data-testid="connect-model"]')!;
+    await vi.waitFor(() => expect(host.querySelector('[data-testid="no-key-failed"]')).not.toBeNull());
+    const failed = host.querySelector('[data-testid="no-key-failed"]')!;
     expect(failed.textContent).toContain("Connect a model to get answers");
-    expect([...failed.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Connect a model", "Try again"]);
+    expect(failed.querySelector("button")?.textContent).toBe("Try again");
     expect(host.querySelector("textarea")?.getAttribute("placeholder")).not.toBe("Getting a free model ready…");
     await type(host, "Hello");
     expect(button("Send")?.disabled).toBe(true);
     expect(button("Send")?.title).toBe("Connect a model to get answers");
-    await act(async () => [...failed.querySelectorAll("button")].find((b) => b.textContent === "Try again")!.click());
+    await act(async () => failed.querySelector("button")!.click());
     expect(request.mock.calls.filter((c) => c[0] === "branch.setup.activate").length).toBe(2);
   });
 

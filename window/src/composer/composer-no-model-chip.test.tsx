@@ -42,7 +42,7 @@ async function mount(models: unknown[] = []) {
 describe("composer chip with no connected model", () => {
   it("does not put a model name on the chip when models.list is empty", async () => {
     const { host, onOpen } = await mount();
-    await vi.waitFor(() => expect(host.querySelector('[data-testid="connect-model"]')).not.toBeNull());
+    await vi.waitFor(() => expect(host.querySelector('[data-testid="no-model"]')).not.toBeNull());
     const tune = host.querySelector<HTMLButtonElement>('[data-testid="tune-button"]')!;
     expect(tune).toBeTruthy();
     expect(tune.getAttribute("aria-label")).toContain("No model");
