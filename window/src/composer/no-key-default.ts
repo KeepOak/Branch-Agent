@@ -1,10 +1,10 @@
+import { CONNECT_MODEL_ANSWERS, friendlyModelError } from "./connect-model";
 import type { WindowEngine } from "./engine";
 
 /** Shown while a free local model is being set up. Chat stays open; send waits until it answers. */
 export const FREE_MODEL_READY = "Getting a free model ready…";
-/** Shown when this computer cannot start a free local model. Never a raw engine error. */
-export const FREE_MODEL_FAILED =
-  "A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster.";
+/** Shown when this computer cannot start a free local model. Same words as every other no-model path. */
+export const FREE_MODEL_FAILED = CONNECT_MODEL_ANSWERS;
 /** Suggestion, never a requirement. */
 export const ACCOUNT_FASTER = "Connecting an account makes answers smarter and faster.";
 export const NO_KEY_DEFAULT_KIND = "no-key-default";
@@ -18,7 +18,7 @@ const last = new WeakMap<object, EnsureNoKeyResult>();
 const inflight = new WeakMap<object, Promise<EnsureNoKeyResult>>();
 
 function friendlyError(value: unknown): string {
-  return typeof value === "string" && value.trim() ? value.trim() : FREE_MODEL_FAILED;
+  return typeof value === "string" && value.trim() ? friendlyModelError(value.trim()) : FREE_MODEL_FAILED;
 }
 
 /** Ask the engine to use a free local model when none is connected. Safe to call more than once. */

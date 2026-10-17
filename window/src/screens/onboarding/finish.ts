@@ -9,6 +9,7 @@ import { freshChoices } from "../../setup/setup-model";
 import { recordSetup } from "../../setup/use-setup-engine";
 import { DAY_ONE_TEMPLATES, type ListedTemplate } from "../seedbank/templates";
 import { carried, failedStep, greeting, mainSessionOf, ownerTimeZone, type OnboardingState } from "./model";
+import { rememberSessionName } from "./session-name";
 import { trunkDisplayName } from "../../connect/trunk-name";
 
 export type Made = { templateId: string; agentId: string; name: string };
@@ -71,10 +72,12 @@ export function profileIdOf(value: unknown): string {
   return typeof profile?.id === "string" ? profile.id : "";
 }
 
-/** Saves the name where Settings › People keeps it (users.setDisplayName). No profile means nothing to write. */
+/** Saves the name where Settings › People keeps it (users.setDisplayName). No profile means nothing to write
+ *  on the engine; the name is still remembered in this window for greetings. */
 export async function saveDisplayName(engine: WindowEngine, name: string): Promise<void> {
   const displayName = name.trim();
   if (!displayName) return;
+  rememberSessionName(displayName);
   const profileId = profileIdOf(await engine.request("users.self", {}));
   if (!profileId) return;
   await engine.request("users.setDisplayName", { profileId, displayName });

@@ -13,6 +13,9 @@ export type ModeRow = {
   gap?: string;
 };
 
+/** Shown wherever Plan first is off: the one thing that turns it on. */
+export const PLAN_FIRST_REASON = "Update Branch to use Plan first.";
+
 export const MODE_ROWS: readonly ModeRow[] = [
   {
     engine: "workspace",
@@ -31,7 +34,7 @@ export const MODE_ROWS: readonly ModeRow[] = [
     name: "Plan first",
     icon: "plan",
     line: "Writes a plan and waits for your OK before doing anything.",
-    gap: "Plan first isn't available with this version of Branch.",
+    gap: PLAN_FIRST_REASON,
   },
   {
     engine: "read-only",
