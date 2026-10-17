@@ -11,8 +11,10 @@ import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
 import { menuAtLevel } from "../../shell/menu-level";
 import { notify } from "../../shell/notify";
 import { whoItKnowsItems } from "../../shell/who-it-knows-menu";
+import { Coming } from "../../glass/coming";
 import { shows } from "../../places-nav/level";
 import type { PlaceProps } from "../../places-nav/PlaceFrame";
+import { EXAMPLES_READY_EVENT, EXAMPLES_REASON, examplesConversationKey, examplesHint, startTryExamples, TRY_EXAMPLES_METHOD, useTryExamples } from "../../screens/onboarding/try-examples";
 import type { useResource, Trunks } from "../library/data";
 import { Status } from "../library/ui";
 import { RequestGeneration } from "../library/data";
@@ -71,6 +73,7 @@ function TrunkRowView({ row, roster, open, menu, knows, settings }: { row: Trunk
 export function TrunksTab(props: Props) {
   const { engine, level, trunks, openSettings } = props;
   const roster = trunks.data ? readRoster(trunks.data) : null;
+  const examples = useTryExamples();
   const [open, setOpen] = useState<Open>(null);
   const [menu, setMenu] = useState<{ at: MenuAnchor; row: TrunkRow } | null>(null);
   const [known, setKnown] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
@@ -127,7 +130,23 @@ export function TrunksTab(props: Props) {
     <div className="tk-toolbar">
       <button type="button" className="btn pri" disabled={busy || !roster || !write} title={write ? undefined : WRITE_WHY} onClick={() => setAdding(true)}><Icon name="plus" small />{busy ? "Making…" : "A new Trunk"}</button>
       <button type="button" className="btn" onClick={() => openNewGroupChat()}><Icon name="users" small />New group chat</button>
+      <Coming engine={engine} need={TRY_EXAMPLES_METHOD} reason={EXAMPLES_REASON} where="Try it with examples">
+        <button type="button" className="btn" disabled={examples.status === "busy"} onClick={() => startTryExamples((method, params) => engine.request(method, params))}><Icon name="spark" small />{examples.status === "busy" ? "Loading examples…" : "Try it with examples"}</button>
+      </Coming>
     </div>
+    {examples.status === "error" ? <p role="alert" className="tk-error">{examples.message}</p> : null}
+    {examples.status === "ready" ? (
+      <div className="tk-examples" aria-label="Example Trunks">
+        <p className="tk-hint">{examplesHint(examples.examples.length)}</p>
+        {examples.examples.length ? <div className="tk-list">{examples.examples.map((item) => (
+          <div className="tk-example" key={item.id}><span className="tk-grow"><b>{item.name}</b>{item.pitch ? <small>{item.pitch}</small> : null}</span></div>
+        ))}</div> : null}
+        {roster?.defaultId ? <button type="button" className="btn sm" data-local="" onClick={() => {
+          const sessionKey = examplesConversationKey(roster.defaultId, roster.mainKey);
+          if (sessionKey) window.dispatchEvent(new CustomEvent(EXAMPLES_READY_EVENT, { detail: { sessionKey } }));
+        }}>Open the conversation</button> : null}
+      </div>
+    ) : null}
     <Status {...trunks} />
     {error && !adding && <p role="alert" className="tk-error">{error}</p>}
     {roster && <div className="tk-list">{roster.agents.map((row) => <TrunkRowView key={row.id} row={row} roster={roster} open={setOpen} menu={showMenu} knows={(e, trunk) => void showKnown(e, trunk)} settings={Boolean(props.settings)} />)}</div>}

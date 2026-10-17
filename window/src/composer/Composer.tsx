@@ -151,6 +151,8 @@ export function Composer(props: Props) {
   const chipName = composerChipLabel(current, "", conv.modelsLoaded);
   // No model set up: the engine names a default model but none is connected (models.list has none usable), or none at all.
   const noModel = hasNoModel(conv, currentRef);
+  const waitingForFreeModel = noModel && !conv.noKeySettled && !conv.noKeyError;
+  const freeModelBlocked = waitingForFreeModel || Boolean(conv.noKeyError);
   const admin = isAdmin(engine?.scopes ?? []);
   const mode: EngineMode | null = isEngineMode(row.permissionMode) ? row.permissionMode : null;
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;
@@ -215,7 +217,6 @@ export function Composer(props: Props) {
       setProblem(draft.text.trim().startsWith("!") ? "Lockdown is on: commands can't run." : "Lockdown is on: Trunks cannot run or send anything.");
       return;
     }
-    if (noModel && plan.kind !== "command" && !draft.text.trim().startsWith("/")) return;
     if (nextAsJob && draft.files.length) {
       setProblem("A job starts with words. Send attachments in this conversation instead.");
       return;
@@ -230,12 +231,12 @@ export function Composer(props: Props) {
       draft.clear();
       return;
     }
+    if (freeModelBlocked && plan.kind !== "command") return;
     if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") {
       void runBackground(plan.text);
       return;
     }
-    if (noModel && plan.kind !== "command") return;
     if (props.draftAgentId) {
       void Promise.resolve(sendMessage(draftMessage(), { files: draft.files, people: draft.people, replyTo: props.replyTo })).then((created) => {
         if (created) draft.clear();
@@ -416,7 +417,7 @@ export function Composer(props: Props) {
   const hasDraft = draft.text.trim().length > 0 || draft.files.length > 0;
   const stopMode = working && !hasDraft;
   // Sessions and history arrive before the engine finishes starting; sending waits for this Trunk.
-  const ready = hasDraft && !disabled && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && (!noModel || draft.text.trim().startsWith("/"));
+  const ready = hasDraft && !disabled && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && !freeModelBlocked;
   // The session row's estimatedCostUsd is the latest run, not the conversation total.
   const [usageCost, setUsageCost] = useState<{ key: string; value: number } | null>(null);
   useEffect(() => {
@@ -542,7 +543,7 @@ export function Composer(props: Props) {
           data-has-draft={draft.text.trim() || draft.files.length ? "" : undefined}
           rows={1}
           value={draft.text}
-          placeholder={noModel && !conv.noKeyError ? FREE_MODEL_READY : props.placeholder ?? `Message ${name}`}
+          placeholder={waitingForFreeModel ? FREE_MODEL_READY : noModel ? "Connect a model to start" : props.placeholder ?? `Message ${name}`}
           aria-label={`Message ${name}`}
           onChange={(e) => {
             draft.setText(e.target.value);

@@ -2,8 +2,10 @@
 // clear glass dialog (README item 48). Only its props are adapted here: the rows open R1 routes, and the commands R1 has
 // no home for yet say Coming instead of doing nothing.
 import { useMemo } from "react";
+import { availability } from "../../connect/capabilities";
 import type { Conversation, ConversationList } from "../../connect/conversations";
 import type { SaplingSession } from "../../connect/session";
+import { EXAMPLES_REASON, startTryExamples, TRY_EXAMPLES_METHOD } from "../onboarding/try-examples";
 import type { PlaceId } from "../../places-nav/routes";
 import { openNewTrunkSheet } from "../../places/trunk/new-trunk-sheet";
 import { conversationActions } from "../../shell/conversation-actions";
@@ -80,6 +82,14 @@ export function FindAnything(p: FindAnythingProps) {
     openSettings: p.onSettings,
     toggleLockdown: p.onToggleLockdown,
     lockdownOn: p.lockdownOn,
+    tryExamples: () => {
+      if (availability(session.engine, TRY_EXAMPLES_METHOD) === "no") {
+        notify(`Coming · ${EXAMPLES_REASON}`);
+        return;
+      }
+      startTryExamples((method, params) => session.request(method, params));
+      p.onSettings("trunks");
+    },
   }), p.onPlace);
   return <div className="r1-find">
     <Palette rows={rows} request={request} rowName={rowName} onClose={p.onClose}

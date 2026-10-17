@@ -3,6 +3,7 @@
 // "Start from a template" row instead of the job tiles, each row with only Edit and •••, the preview's ••• menu with Who
 // it knows in it, and at Advanced the "Defaults for every Trunk" and "Trunks’ own databases" cards; no "Groups and Grafted
 // agents" card.
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -14,6 +15,7 @@ import { searchSettings } from "../search";
 import { mergeRows } from "../slots";
 import { SettingsFrame } from "../SettingsFrame";
 import { R1_PAGES } from "./plugged";
+import { EXAMPLES_READY_EVENT, resetTryExamples } from "../../onboarding/try-examples";
 import { TRUNK_DEFAULTS, TRUNK_ROWS } from "./trunks-live";
 
 vi.mock("../../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span role="img" aria-label={label} /> }));
@@ -27,13 +29,13 @@ beforeEach(() => {
   host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
+afterEach(async () => { resetTryExamples(); await act(async () => root.unmount()); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 
 const ROSTER = { defaultId: "oak", mainKey: "main", agents: [{ id: "oak", identity: { name: "Oak", theme: "Helps" } }, { id: "birch", identity: { name: "Birch", theme: "Reads" } }] };
 const CONFIG = { hash: "h1", valid: true, config: { agents: { defaults: { userTimezone: "UTC" }, entries: { oak: { default: true } } } } };
 function engineOf() {
-  const request = vi.fn(async (method: string, _params: Record<string, unknown> = {}) => method === "agents.list" ? ROSTER : method === "config.get" ? CONFIG : method === "trunks.template.export" ? { ok: true } : {});
-  const engine = { request, onEvent: () => () => undefined, sessionKey: "s", agentId: "oak", scopes: ["operator.admin"], features: { methods: ["agents.list", "config.get", "config.patch", "trunks.template.export"], events: [] } } as unknown as WindowEngine;
+  const request = vi.fn(async (method: string, _params: Record<string, unknown> = {}): Promise<unknown> => method === "agents.list" ? ROSTER : method === "config.get" ? CONFIG : method === "trunks.template.export" ? { ok: true } : {});
+  const engine = { request, onEvent: () => () => undefined, sessionKey: "s", agentId: "oak", scopes: ["operator.admin"], features: { methods: ["agents.list", "config.get", "config.patch", "trunks.template.export", "trunks.template.starters"], events: [] } } as unknown as WindowEngine;
   return { engine, request };
 }
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50)); });
@@ -138,4 +140,36 @@ it("adds the page's rows to the R1 table, so R1 search finds them on Settings �
   const hits = searchSettings("Working folder", { level: 2, hints: {}, rows: merged }).settings;
   expect(hits.filter((h) => h.kind === "row" && h.page === "trunks").map((h) => h.id)).toEqual(["trunks.defaults.cwd"]);
   expect(searchSettings("template", { level: 0, hints: {}, rows: merged }).settings.map((h) => h.id)).toContain("trunks.templates.start");
+  expect(searchSettings("examples", { level: 0, hints: {}, rows: merged }).settings.map((h) => h.id)).toContain("trunks.list.examples");
+});
+
+it("Try it with examples lists the engine's example Trunks at Regular and opens that conversation", async () => {
+  const { request } = await mount("regular");
+  request.mockImplementation(async (method: string) => {
+    if (method === "trunks.template.starters") return { offer: [{ id: "home-desk", name: "Home Desk", pitch: "I keep family and home admin moving." }, { id: "spend-saver", name: "Spend Saver", description: "Finds savings." }] };
+    if (method === "agents.list") return ROSTER;
+    if (method === "config.get") return CONFIG;
+    return {};
+  });
+  const tryIt = button("Try it with examples");
+  expect(tryIt.disabled).toBe(false);
+  expect(tryIt.getAttribute("aria-disabled")).not.toBe("true");
+  await act(async () => tryIt.click());
+  await settle();
+  expect(request).toHaveBeenCalledWith("trunks.template.starters", {});
+  const offer = host.querySelector('[aria-label="Example Trunks"]')!;
+  expect([...offer.querySelectorAll("b")].map((b) => b.textContent)).toEqual(["Home Desk", "Spend Saver"]);
+  expect(offer.textContent).toContain("I keep family and home admin moving.");
+  expect(offer.textContent).toContain("Finds savings.");
+  const keys: string[] = [];
+  const hear = (event: Event) => { const key = (event as CustomEvent<{ sessionKey?: string }>).detail?.sessionKey; if (key) keys.push(key); };
+  window.addEventListener(EXAMPLES_READY_EVENT, hear);
+  await act(async () => button("Open the conversation").click());
+  window.removeEventListener(EXAMPLES_READY_EVENT, hear);
+  expect(keys).toEqual(["agent:oak:main"]);
+});
+
+it("keeps Open the conversation at its own width under the example Trunks instead of stretching across the card", () => {
+  const css = readFileSync("src/places/trunk/trunk.css", "utf8");
+  expect(css).toMatch(/\.tk-examples > \.btn \{[^}]*justify-self: start;/);
 });
