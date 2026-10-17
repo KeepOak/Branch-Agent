@@ -1,0 +1,37 @@
+// @vitest-environment jsdom
+// Private #1089 (Linux pass, Regular): the Asks history, the Details and Helpers panels, and the Lockdown line put the
+// engine's raw error on screen. They now read plain at Regular; Advanced keeps the exact words.
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { WindowEngine } from "../../connect/engine";
+import { CapabilityProvider } from "../../connect/capabilities";
+import { AskHistory } from "./index";
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+const RAW = /unknown method|ECONNREFUSED|127\.0\.0\.1|ENOENT|EACCES|\/home\/|\/opt\/|TypeError|:\d+:\d+|INVALID_REQUEST/;
+const FAILURES = [
+  "connect ECONNREFUSED 127.0.0.1:18789",
+  "ENOENT: no such file or directory, open '/home/alex/.branch/workspace/notes.md'",
+  "TypeError: Cannot read properties of undefined (reading 'path')\n    at runTool (/app/engine/dist/tools/run.js:41:12)",
+];
+let root: Root; let host: HTMLDivElement;
+beforeEach(() => { localStorage.clear(); vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} }); vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))); host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; localStorage.clear(); vi.unstubAllGlobals(); });
+const settle = async () => { for (let i = 0; i < 6; i += 1) await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
+const failing = (message: string) => ({ features: { methods: ["approval.history", "exec.approval.grants.list", "exec.approval.grants.revoke"], events: [] }, sessionKey: "agent:main:main", agentId: "main", scopes: ["operator.admin"], onEvent: () => () => {}, request: vi.fn(async () => { throw new Error(message); }) }) as unknown as WindowEngine;
+
+describe("R1 panels never show a raw engine error at Regular (Private #1089)", () => {
+  it.each(FAILURES)("Asks history: %j", async (raw) => {
+    const engine = failing(raw);
+    await act(async () => root.render(<CapabilityProvider engine={engine}><AskHistory engine={engine} /></CapabilityProvider>));
+    await settle();
+    expect(host.textContent).not.toMatch(RAW);
+  });
+  it("Advanced keeps the exact words", async () => {
+    localStorage.setItem("branch.level", "advanced");
+    const engine = failing(FAILURES[0]);
+    await act(async () => root.render(<CapabilityProvider engine={engine}><AskHistory engine={engine} /></CapabilityProvider>));
+    await settle();
+    expect(host.textContent).toContain("ECONNREFUSED");
+  });
+});
