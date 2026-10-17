@@ -8,6 +8,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { configStore } from "../../places/settings/config-store";
 import { lockdownAllowsAnswer } from "../../thread/approval-guard";
 import { callFor, KINDS, LIST_OF, listItems, readAsk, settledBy, settledFromEvent, type Ask, type AskKind, type Reply, type Settled } from "./model";
+import { plainError } from "../../shell/plain-error";
 
 export type AskState = {
   ask: Ask;
@@ -25,7 +26,8 @@ export const readLockdown = (snap: unknown): boolean => {
   return security?.lockdown === true;
 };
 const listen = (engine: WindowEngine, fn: Parameters<WindowEngine["onEvent"]>[0]) => (typeof engine.onEvent === "function" ? engine.onEvent(fn) : () => undefined);
-const errorText = (e: unknown) => (e instanceof Error ? e.message : typeof e === "string" ? e : "The engine didn’t take the answer.");
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const errorText = (e: unknown) => (e instanceof Error || typeof e === "string" ? plainError(e) : "The engine didn’t take the answer.");
 const EVENT_KIND = new Map<string, [AskKind, "requested" | "resolved"]>(
   KINDS.flatMap((kind) => {
     const base = kind === "question" ? "question" : `${kind}.approval`;
