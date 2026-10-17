@@ -5,7 +5,7 @@ export const LLAMA_CPP_PROVIDER_INSTALL_COMMAND =
 
 /** Shown in the UI and logs when no on-device embedder can run. */
 export const LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE =
-  "Search by meaning is off because this computer can't run it yet. Branch still finds memories by matching words. To turn it on, open Settings › Advanced › Meaning search uses.";
+  "Search by meaning is off until this computer has the small model that powers it. Branch still finds memories by matching words.";
 
 export const MISSING_LOCAL_MEMORY_EMBEDDING_PROVIDER_MESSAGE = [
   LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE,

@@ -110,9 +110,8 @@ embeddings. Set `provider` explicitly to use OpenAI, Bedrock, DeepInfra, Gemini,
 GitHub Copilot, Mistral, Ollama, Voyage, or an OpenAI-compatible `/v1/embeddings`
 endpoint. Legacy configs that still say `provider: "auto"` resolve to `local`.
 If this computer cannot run local embeddings, meaning search stays off and the
-app says `Search by meaning is off because this computer can't run it yet.
-Branch still finds memories by matching words. To turn it on, open Settings ›
-Advanced › Meaning search uses.`
+app says `Search by meaning is off until this computer has the small model
+that powers it. Branch still finds memories by matching words.`
 
 <Warning>
 Changing the embedding provider, model, provider settings, sources, scope,
