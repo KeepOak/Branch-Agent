@@ -55,6 +55,15 @@ const legacyExecAllowlistEntrySchema = z
 function createExecApprovalsSchema(allowlistEntry: z.ZodType<ExecAllowlistEntry>, legacy: boolean) {
   const agentSchema = persistedExecApprovalPolicySchema.extend({
     allowlist: z.array(allowlistEntry).optional(),
+    askFirst: z
+      .array(
+        z.looseObject({
+          id: z.string().min(1).optional(),
+          pattern: z.string().refine((value) => value.trim().length > 0),
+          argPattern: z.string().optional(),
+        }),
+      )
+      .optional(),
     mcpTools: z
       .array(
         z.looseObject({
@@ -159,6 +168,7 @@ const diagnosticFields = new Set([
   "askFallback",
   "autoAllowSkills",
   "allowlist",
+  "askFirst",
   "mcpTools",
   "server",
   "tool",
@@ -203,7 +213,9 @@ function formatPersistedExecApprovalsIssue(issue: z.core.$ZodIssue, parsed: unkn
       location += ` entry #${ordinal}`;
     } else if (
       index === 3 &&
-      (issuePath[2] === "allowlist" || issuePath[2] === "mcpTools") &&
+      (issuePath[2] === "allowlist" ||
+        issuePath[2] === "askFirst" ||
+        issuePath[2] === "mcpTools") &&
       typeof segment === "number" &&
       Number.isSafeInteger(segment) &&
       segment >= 0

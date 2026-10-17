@@ -65,8 +65,8 @@ for matching, prompting, and binding restrictions.
 
 ## Inspecting the effective policy
 
-| Command                                                          | What it shows                                                                                         |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Command                                                        | What it shows                                                                                         |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `branch approvals get` / `--gateway` / `--node <id\|name\|ip>` | Requested policy, host policy sources, and the effective result.                                      |
 | `branch exec-policy show`                                      | Terminal tool policies and local command approvals; add `--session <key>` for a session tool preview. |
 | `branch exec-policy set` / `preset`                            | Synchronize the local requested policy with the local host approvals document in one step.            |
@@ -516,6 +516,39 @@ Each allowlist entry supports:
 | `lastUsedAt`       | Last-used timestamp                                                      |
 | `lastUsedCommand`  | Last command that matched; omitted for generated hashed argv entries     |
 | `lastResolvedPath` | Last resolved binary path                                                |
+
+### Ask-first rules
+
+`agents.<agentId>.askFirst` lists commands that must always ask, even when an
+allowlist or **Always allow** entry covers them. Rules use the same `pattern`
+and `argPattern` matching as allowlist entries. Rules under `agents.*` apply
+to every agent.
+
+```json
+{
+  "version": 1,
+  "agents": {
+    "main": {
+      "allowlist": [{ "pattern": "git" }],
+      "askFirst": [{ "pattern": "git", "argPattern": "^push( |$)" }]
+    }
+  }
+}
+```
+
+With these rules, `git status` runs without a prompt and `git push origin main`
+asks every time. Precedence is `security: deny`, then ask-first, then allowlist and
+**Always allow** entries, then `exec.ask`.
+
+- A match raises `ask` to `always` for that command, so it prompts in
+  `allowlist` and `full` security. The prompt offers **Allow once** and
+  **Deny** only, and auto-review does not answer it.
+- A match in any segment of a chain counts. When ask-first rules exist, a
+  command Branch Agent cannot parse, or a shell wrapper such as `bash -c`, also
+  asks.
+- On timeout, `askFallback` applies as it does for `ask: always`.
+- Ask-first rules apply on the gateway host. A full-access session that
+  bypasses host approval floors also skips them.
 
 ## MCP tool grants
 

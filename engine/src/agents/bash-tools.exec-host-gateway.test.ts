@@ -22,6 +22,7 @@ import type {
   ExecApprovalsDefaults,
   ExecApprovalsFile,
   ExecAsk,
+  ExecAskFirstRule,
   ExecCommandSegment,
   ExecSecurity,
   ExecSegmentSatisfiedBy,
@@ -66,6 +67,7 @@ type MockAllowlistResult = {
 type MockExecHostApprovalContext = {
   approvals: {
     allowlist: ExecAllowlistEntry[];
+    askFirst?: ExecAskFirstRule[];
     file: ExecApprovalsFile;
     agent?: Required<ExecApprovalsDefaults>;
   };
@@ -91,7 +93,7 @@ const evaluateShellAllowlistWithAuthorizationMock = vi.hoisted(() =>
 );
 const hasDurableExecApprovalMock = vi.hoisted(() => vi.fn(() => true));
 const hasExactCommandDurableExecApprovalMock = vi.hoisted(() => vi.fn(() => false));
-const requiresExecApprovalMock = vi.hoisted(() => vi.fn(() => false));
+const requiresExecApprovalMock = vi.hoisted(() => vi.fn((_policy?: { ask: ExecAsk }) => false));
 const buildEnforcedShellCommandMock = vi.hoisted(() =>
   vi.fn<() => { ok: boolean; reason?: string; command?: string }>(),
 );
@@ -715,6 +717,59 @@ describe("processGatewayAllowlist", () => {
     await runGatewayAllowlist({ command, autoReview: true });
     expect(defaultExecAutoReviewerMock).not.toHaveBeenCalled();
     expect(createExecApprovalRequestRouteMock).toHaveBeenCalledOnce();
+  });
+
+  describe("ask-first rules over always-allow", () => {
+    async function configureAlwaysAllowedNode(askFirst: ExecAskFirstRule[]) {
+      const command = "node --version";
+      const { authorizationPlan } = await configurePlanBackedCommand({
+        command,
+        allowlistSatisfied: true,
+        satisfiedBy: "allowlist",
+        hostAsk: "off",
+      });
+      const enforced = buildAuthorizedShellCommandFromPlan({
+        plan: authorizationPlan,
+        mode: "enforced",
+        segmentSatisfiedBy: ["allowlist"],
+      });
+      if (!enforced.ok) {
+        throw new Error(enforced.reason);
+      }
+      buildEnforcedShellCommandMock.mockReturnValue({ ok: true, command: enforced.command });
+      requiresExecApprovalMock.mockImplementation((policy) => policy?.ask === "always");
+      const entry: ExecAllowlistEntry = { pattern: "node", source: "allow-always" };
+      mockHostPolicy({
+        approvals: { allowlist: [entry], askFirst, file: { version: 1, agents: {} } },
+        hostAsk: "off",
+      });
+      return { command, enforcedCommand: enforced.command };
+    }
+
+    it("runs a command in an always-allowed scope without prompting", async () => {
+      const { command, enforcedCommand } = await configureAlwaysAllowedNode([
+        { pattern: "node", argPattern: "^--inspect" },
+      ]);
+      const result = await runGatewayAllowlist({ command });
+      expect(result.execCommandOverride).toBe(enforcedCommand);
+      expect(requiresExecApprovalMock).toHaveBeenCalledWith(
+        expect.objectContaining({ ask: "off" }),
+      );
+      expect(createExecApprovalRequestRouteMock).not.toHaveBeenCalled();
+    });
+
+    it("still prompts when an ask-first rule matches the always-allowed command", async () => {
+      const { command } = await configureAlwaysAllowedNode([
+        { pattern: "node", argPattern: "^--version$" },
+      ]);
+      await runGatewayAllowlist({ command, autoReview: true });
+      expect(requiresExecApprovalMock).toHaveBeenCalledWith(
+        expect.objectContaining({ ask: "always" }),
+      );
+      expect(defaultExecAutoReviewerMock).not.toHaveBeenCalled();
+      expect(createExecApprovalRequestRouteMock).toHaveBeenCalledOnce();
+      expect(runExecProcessMock).not.toHaveBeenCalled();
+    });
   });
 
   it.each([

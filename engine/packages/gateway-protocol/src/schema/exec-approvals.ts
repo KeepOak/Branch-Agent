@@ -23,6 +23,16 @@ const ExecApprovalsAllowlistEntrySchema = closedObject({
   lastResolvedPath: Type.Optional(Type.String()),
 });
 
+/**
+ * One ask-first rule. Commands it matches always prompt with Allow once or Deny,
+ * even when an allowlist or allow-always entry covers them.
+ */
+const ExecApprovalsAskFirstRuleSchema = closedObject({
+  id: Type.Optional(NonEmptyString),
+  pattern: Type.String(),
+  argPattern: Type.Optional(Type.String()),
+});
+
 const ExecApprovalsPolicyFields = {
   security: Type.Optional(Type.String()),
   ask: Type.Optional(Type.String()),
@@ -56,6 +66,7 @@ const ExecApprovalsDefaultsSchema = closedObject(ExecApprovalsPolicyFields);
 const ExecApprovalsAgentSchema = closedObject({
   ...ExecApprovalsPolicyFields,
   allowlist: Type.Optional(Type.Array(ExecApprovalsAllowlistEntrySchema)),
+  askFirst: Type.Optional(Type.Array(ExecApprovalsAskFirstRuleSchema)),
   mcpTools: Type.Optional(
     Type.Array(
       closedObject({

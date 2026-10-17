@@ -5,7 +5,7 @@ import type { ApprovalScope } from "../../packages/gateway-protocol/src/schema/a
 import type { ExecApprovalRequestParams } from "../../packages/gateway-protocol/src/schema/exec-approvals.js";
 import type { CommandExplanationSummary } from "./command-analysis/explain.js";
 import type { ExecApprovalPolicySnapshot } from "./exec-approval-policy-snapshot.js";
-import type { ExecAllowlistEntry, McpToolGrant } from "./exec-approvals.types.js";
+import type { ExecAllowlistEntry, ExecAskFirstRule, McpToolGrant } from "./exec-approvals.types.js";
 
 export type ExecHost = "sandbox" | "gateway" | "node";
 export type ExecTarget = "auto" | ExecHost;
@@ -239,6 +239,7 @@ export type ExecApprovalsDefaults = Partial<Omit<ExecApprovalPolicySnapshot, "al
 
 export type ExecApprovalsAgent = ExecApprovalsDefaults & {
   allowlist?: ExecAllowlistEntry[];
+  askFirst?: ExecAskFirstRule[];
   mcpTools?: McpToolGrant[];
 };
 
@@ -272,6 +273,8 @@ export type ExecApprovalsResolved = {
     askFallback: string | null;
   };
   allowlist: ExecAllowlistEntry[];
+  /** Ask-first rules from the wildcard and exact agent; a match always prompts. */
+  askFirst?: ExecAskFirstRule[];
   file: ExecApprovalsFile;
 };
 

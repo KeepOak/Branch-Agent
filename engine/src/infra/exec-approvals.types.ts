@@ -12,3 +12,6 @@ export type McpToolGrant = NonNullable<ExecApprovalsAgent["mcpTools"]>[number];
 export type ExecAllowlistEntry = NonNullable<ExecApprovalsAgent["allowlist"]>[number];
 
 export type AllowAlwaysPattern = Pick<ExecAllowlistEntry, "pattern" | "argPattern">;
+
+// Ask-first rules use allowlist pattern semantics; a match always prompts.
+export type ExecAskFirstRule = NonNullable<ExecApprovalsAgent["askFirst"]>[number];
