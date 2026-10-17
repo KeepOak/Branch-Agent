@@ -5,6 +5,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
+import { CheckedAt, useCheckedAt } from "../checked-at";
 import { Acts, Btn, Ctl, Hint, Page, Pill, Plist, Sec, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
@@ -18,6 +19,7 @@ import { Icon } from "../../../shell/icons";
 import { DesktopCtl } from "../desktop-ctl";
 import { useDesktopControls } from "../../../connect/desktop-controls";
 import { shownWhy } from "../../../shell/shown-why";
+import { trunkDisplayName } from "../../../connect/trunk-name";
 
 const PAIR_EVENTS = ["device.pair", "node.pair", "node"];
 const ALLOW_DELAY_MS = 1500;
@@ -84,6 +86,20 @@ export function ComputerPage(props: SettingsPageProps) {
   );
 }
 
+/** One block of the top of the page, for the R1 Devices page's cards: the requests waiting for a yes, the computers
+ *  Trunks may use (with Keep this computer awake and Add a computer), which Trunk uses which, or the build folders. */
+export function ComputerBlock(props: SettingsPageProps & { part: "waiting" | "computers" | "which" | "build" }) {
+  const lv = lvOf(props.level);
+  const agents = useLive<RecordValue>(props.engine, "agents.list", {}, ["agents"]);
+  const nodes = useLive<RecordValue>(props.engine, "node.list", {}, PAIR_EVENTS);
+  const { reload } = nodes;
+  useEffect(() => { const again = () => void reload(); window.addEventListener("branch:computers-changed", again); return () => window.removeEventListener("branch:computers-changed", again); }, [reload]);
+  if (props.part === "waiting") return <Waiting {...props} lv={lv} />;
+  if (props.part === "computers") return <Computers {...props} lv={lv} nodes={nodes} agents={rec(agents.data)} />;
+  if (props.part === "build") return <BuildCleanup engine={props.engine} />;
+  return <WhichTrunk {...props} nodes={list(rec(nodes.data).nodes)} agents={list(rec(agents.data).agents)} defaultId={rec(agents.data).defaultId} />;
+}
+
 /** Waiting for your yes: Allow (on after 1.5 s, so a stray click can't allow) and Don't allow (asks first). */
 function Waiting({ engine, lv }: SettingsPageProps & { lv: number }) {
   const devices = useLive<RecordValue>(engine, "device.pair.list", {}, PAIR_EVENTS);
@@ -142,13 +158,16 @@ type Node = RecordValue;
 
 /** Which Trunks are pinned to a computer (by node id or name). */
 function usersOf(node: Node, agents: RecordValue, cfgAgents: RecordValue[]): string[] {
-  const names = new Map(list(agents.agents).map((a) => [str(a.id), str(rec(a.identity).name) || str(a.name) || str(a.id)]));
+  const names = new Map(list(agents.agents).map((a) => [str(a.id), trunkDisplayName(a)]));
   const id = str(node.nodeId); const name = str(node.displayName);
   return cfgAgents.filter((a) => { const pin = str(rec(rec(a.tools).exec).node); return pin && (pin === id || pin === name); }).map((a) => names.get(str(a.id)) ?? str(a.id));
 }
 
 function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: number; nodes: Res; agents: RecordValue }) {
   const status = useLive<RecordValue>(engine, "computer.status", {}, []);
+  // Refresh stamps "Checked at" only when both reads succeed (checked-at.tsx: a check that failed shows no time).
+  const [checked, stamp] = useCheckedAt();
+  const refresh = () => { void Promise.all([nodes.reload(), status.reload()]).then((oks) => { if (oks.every(Boolean)) stamp(); }, () => undefined); };
   const config = useConfig(engine);
   // Each Trunk's own entry, keyed by id in agents.entries.
   const cfgAgents = Object.entries(rec(config.get("agents.entries"))).map(([id, entry]) => ({ ...rec(entry), id }));
@@ -167,7 +186,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
   return (
     <Sec title="Computers they may use">
       {nodes.error ? <p className="hint s2-err" role="alert">{nodes.error}</p> : null}
-      {lv >= 1 ? <FindRow find={find} onFind={setFind} onRefresh={() => { void nodes.reload(); void status.reload(); }} /> : null}
+      {lv >= 1 ? <FindRow find={find} onFind={setFind} onRefresh={refresh} checked={checked} /> : null}
       {lv >= 1 && paired.length && !all.length ? <Hint>No computer matches.</Hint> : null}
       {here.length || (usableHere && !find.q) ? <div className="s2-grp">On this computer</div> : null}
       <div className="s2-comps">
@@ -220,7 +239,7 @@ function arrange(nodes: Node[], f: Find): Node[] {
     .filter((n) => f.show === "All" || (f.show === "Online") === (n.connected === true))
     .sort((a, b) => f.sort === "A to Z" ? name(a).localeCompare(name(b)) : f.sort === "Online first" ? on(b) - on(a) : on(a) - on(b));
 }
-function FindRow({ find, onFind, onRefresh }: { find: Find; onFind: (f: Find) => void; onRefresh: () => void }) {
+function FindRow({ find, onFind, onRefresh, checked }: { find: Find; onFind: (f: Find) => void; onRefresh: () => void; checked: number | null }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const items: MenuItem[] = [
     { kind: "head", label: "Sort by" },
@@ -233,6 +252,7 @@ function FindRow({ find, onFind, onRefresh }: { find: Find; onFind: (f: Find) =>
       <input className="inp" type="search" placeholder="Find a computer…" aria-label="Find a computer" value={find.q} onChange={(e) => onFind({ ...find, q: e.target.value })} />
       <Btn sm ghost aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.bottom + 4 }); }}><Icon name="sliders" small />{find.sort} · {find.show}</Btn>
       <button type="button" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={onRefresh}><Ico name="retry" s /></button>
+      <CheckedAt at={checked} />
       {menu ? <Menu at={menu} items={items} label="Sort and show" onClose={() => setMenu(null)} /> : null}
     </div>
   );
@@ -396,7 +416,7 @@ function PinDialog({ engine, nodes, agents, defaultId, onClose }: Pick<SettingsP
       <p className="hint">A Trunk can use several computers side by side. A Trunk with no settings of its own follows the default.</p>
       <Plist>
         {ordered.map((a) => {
-          const id = str(a.id); const name = str(rec(a.identity).name) || str(a.name) || id;
+          const id = str(a.id); const name = trunkDisplayName(a);
           const hasEntry = id in entries;
           const pinned = pinnedNode(entries, id);
           return (

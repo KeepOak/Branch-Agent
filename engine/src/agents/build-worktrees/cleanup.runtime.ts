@@ -17,7 +17,7 @@ export function parseGitHubRepository(originUrl: string): string | null {
   return match ? match[1] + "/" + match[2] : null;
 }
 
-/** lsof -F n output: one "n<path>" line per process working folder. */
+/** lsof -F n output: one "n<path>" line per open file, working folders and executables included. */
 export function parseLsofWorkingDirectories(output: string): string[] {
   return output
     .split(/\r?\n/)
@@ -25,32 +25,60 @@ export function parseLsofWorkingDirectories(output: string): string[] {
     .map((line) => line.slice(1));
 }
 
-async function linuxWorkingDirectories(): Promise<string[] | null> {
+/** Every open file of every process, not just working folders: an editor or a log tail holds a worktree too. */
+export const LSOF_OPEN_FILES_ARGV: readonly string[] = ["lsof", "-w", "-n", "-P", "-F", "n"];
+const LSOF_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+
+type RunCommand = typeof runCommandWithTimeout;
+
+/** Working folders and open files of each process under a /proc tree (Linux). */
+export async function readProcOpenPaths(procRoot = "/proc"): Promise<string[] | null> {
   let pids: string[];
   try {
-    pids = (await fs.readdir("/proc")).filter((name) => /^\d+$/.test(name));
+    pids = (await fs.readdir(procRoot)).filter((name) => /^\d+$/.test(name));
   } catch {
     return null;
   }
-  const dirs: string[] = [];
+  const paths: string[] = [];
   for (const pid of pids) {
     try {
-      dirs.push(await fs.readlink(path.join("/proc", pid, "cwd")));
+      paths.push(await fs.readlink(path.join(procRoot, pid, "cwd")));
     } catch {
       // Processes owned by other users or already gone.
     }
+    let fds: string[];
+    try {
+      fds = await fs.readdir(path.join(procRoot, pid, "fd"));
+    } catch {
+      continue;
+    }
+    for (const fd of fds) {
+      try {
+        const target = await fs.readlink(path.join(procRoot, pid, "fd", fd));
+        // Sockets, pipes and anon inodes read as "socket:[123]" and the like.
+        if (target.startsWith("/")) {
+          paths.push(target.replace(/ \(deleted\)$/, ""));
+        }
+      } catch {
+        // Closed while reading.
+      }
+    }
   }
-  return dirs;
+  return paths;
 }
 
-async function lsofWorkingDirectories(): Promise<string[] | null> {
+export async function lsofOpenPaths(
+  run: RunCommand = runCommandWithTimeout,
+): Promise<string[] | null> {
   try {
-    const result = await runCommandWithTimeout(
-      ["lsof", "-w", "-n", "-P", "-a", "-d", "cwd", "-F", "n"],
-      {
-        timeoutMs: PROCESS_LIST_TIMEOUT_MS,
-      },
-    );
+    const result = await run([...LSOF_OPEN_FILES_ARGV], {
+      timeoutMs: PROCESS_LIST_TIMEOUT_MS,
+      maxOutputBytes: LSOF_MAX_OUTPUT_BYTES,
+    });
+    // A cut-off or timed-out list could miss a holder; treat it as no list, which keeps every worktree.
+    if (result.outputLimitExceeded || result.stdoutTruncatedBytes || result.termination !== "exit") {
+      return null;
+    }
     // lsof exits 1 when some processes could not be read but still prints the rest.
     return result.stdout ? parseLsofWorkingDirectories(result.stdout) : null;
   } catch {
@@ -58,7 +86,10 @@ async function lsofWorkingDirectories(): Promise<string[] | null> {
   }
 }
 
-/** Working folders of running processes. Windows has no cheap list; its locked move-aside covers it. */
+/**
+ * Folders and files that running processes hold open (working folders included). Windows has no cheap list;
+ * its move-aside fails while any file is open, which covers it.
+ */
 export async function listProcessWorkingDirectories(
   platform: NodeJS.Platform = process.platform,
 ): Promise<string[] | null> {
@@ -66,9 +97,9 @@ export async function listProcessWorkingDirectories(
     return null;
   }
   if (platform === "linux") {
-    return (await linuxWorkingDirectories()) ?? (await lsofWorkingDirectories());
+    return (await readProcOpenPaths()) ?? (await lsofOpenPaths());
   }
-  return await lsofWorkingDirectories();
+  return await lsofOpenPaths();
 }
 
 export type PullRequestHead = { state: PullRequestState; headSha: string | null };

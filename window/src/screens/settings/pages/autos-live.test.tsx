@@ -2,7 +2,8 @@
 // Settings › Automations is a native R1 page (#1049, section D blockers 1 and 2): it never hands the window to Classic
 // Settings or Classic Advanced, and it draws the approved preview's cards in the preview's order at each level
 // (preview.html PG autos, rendered at Regular, Advanced and Technical: nothing at Regular but "These settings show at
-// Advanced", then Automations and Steps and nudges), with the preview's row words.
+// Advanced", then Automations and Steps and nudges), with the preview's row words. Regular and Advanced show only what
+// works today (Private #1093 item 4), so the rows that wait for a later update show from Technical, after the working ones.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -38,9 +39,10 @@ async function mount(engine: WindowEngine, level: "regular" | "advanced" | "tech
 const remount = async () => { await act(async () => root.unmount()); root = createRoot(host); forgetLookStore(); };
 const cards = () => [...host.querySelectorAll<HTMLElement>(".r1s-sec")].map((s) => s.querySelector(":scope > h2")?.textContent ?? "");
 const labels = (card: string) => [...host.querySelectorAll<HTMLElement>(`.r1s-sec[aria-label="${card}"] .r1s-row > b`)].map((b) => b.textContent);
-const ADVANCED = ["Run on GitHub Actions while this computer is off", "Report only what changed", "Checks and retries in procedures", "Procedures that start themselves", "Start when a USB device is plugged in",
-  "Reach webhooks from outside", "Use what the trigger sent", "Checks before a run and event triggers", "Tell me when an automation keeps failing", "After failures in a row", "At most every", "Count skipped runs",
-  "Send alerts to", "How", "Catch up on runs missed while Branch was off", "Keep each run’s own conversation for", "Run history"];
+const ADVANCED = ["Checks before a run and event triggers", "Tell me when an automation keeps failing", "After failures in a row", "At most every", "Count skipped runs",
+  "Send alerts to", "How", "Catch up on runs missed while Branch was off", "Keep each run’s own conversation for"];
+const LATER = ["Run on GitHub Actions while this computer is off", "Report only what changed", "Checks and retries in procedures", "Procedures that start themselves",
+  "Start when a USB device is plugged in", "Reach webhooks from outside", "Use what the trigger sent", "Run history"];
 
 it("is an R1 Settings page, never Classic Advanced", () => {
   expect(r1SettingsPage("autos", R1_PAGES)).toBe(true);
@@ -48,21 +50,21 @@ it("is an R1 Settings page, never Classic Advanced", () => {
   expect(PAGES.autos.cards).toEqual(["Automations", "Steps and nudges"]);
 });
 
-it("draws the preview's cards: none at Regular, then Automations and Steps and nudges", async () => {
+it("draws the preview's cards: none at Regular, the working Automations rows at Advanced, every row at Technical", async () => {
   const { engine } = engineOf();
   await mount(engine, "regular");
   expect(cards()).toEqual([]);
   expect(host.querySelector(".r1s-empty")?.textContent).toContain("These settings show at Advanced.");
   await remount();
   await mount(engine, "advanced");
-  expect(cards()).toEqual(["Automations", "Steps and nudges"]);
+  expect(cards()).toEqual(["Automations"]);
   expect(labels("Automations")).toEqual(ADVANCED);
-  expect(labels("Steps and nudges")).toEqual(["Steps for other apps", "Nudge a long task that stops early"]);
   await remount();
   await mount(engine, "technical");
   expect(cards()).toEqual(["Automations", "Steps and nudges"]);
-  expect(labels("Automations")).toEqual([...ADVANCED.slice(0, 13), "Recipient", "Chat-app account", ...ADVANCED.slice(13), "Private addresses allowed for web addresses",
-    "Chat commands", "Hooks", "Which Trunk answers", "Schedules", "Flow search", "Loop a prompt"]);
+  expect(labels("Automations")).toEqual([...ADVANCED.slice(0, 6), "Recipient", "Chat-app account", ...ADVANCED.slice(6), "Private addresses allowed for web addresses",
+    "Chat commands", "Hooks", "Which Trunk answers", "Schedules", ...LATER, "Flow search", "Loop a prompt"]);
+  expect(labels("Steps and nudges")).toEqual(["Steps for other apps", "Nudge a long task that stops early"]);
 });
 
 it("keeps Classic's working failure-alert controls on the keys Classic uses", async () => {

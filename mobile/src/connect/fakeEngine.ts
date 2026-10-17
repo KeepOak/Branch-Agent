@@ -2,9 +2,9 @@
 // protocol (connect.challenge, the connect request, hello-ok or a PAIRING_REQUIRED error) and checks the
 // phone's Ed25519 signature over the engine's v3 device-auth payload, so the engine's own client code in
 // PhoneGateway runs exactly as it would against a computer. After the handshake it answers the reads the
-// Chats screen makes (sessions.subscribe, sessions.list, agents.list, sessions.search), the Chat screen's
-// chat.history, chat.send, chat.abort and sessions.patch, the approvals' exec/plugin .approval.list and
-// .approval.resolve, and pushes events. A reply streamed with `streamReply` reaches each connection the way the
+// Chats screen makes (sessions.subscribe, sessions.list, agents.list, sessions.search), the Computers
+// screen's environments.list, the Chat screen's chat.history, chat.send, chat.abort and sessions.patch,
+// the approvals' exec/plugin .approval.list and .approval.resolve, and pushes events. A reply streamed with `streamReply` reaches each connection the way the
 // engine sends it: the whole text in that connection's first frame for the run and in replacements, and only the
 // addition once the connection holds the frame before it. Approval events and methods follow the engine's
 // per-connection rules: only a connection holding operator.approvals hears *.approval.* or may list and resolve,
@@ -43,6 +43,8 @@ export type FakeEngine = {
   requests: Array<{ method: string; params: unknown }>;
   /** The sessions.list rows the engine reports from now on. */
   setSessions: (rows: unknown[]) => void;
+  /** The environments.list rows the engine reports from now on. */
+  setEnvironments: (rows: unknown[]) => void;
   /** Pushes one event to every connected phone, as it is. A `final`, `error` or `aborted` chat event ends that run's reply. */
   emit: (event: string, payload?: unknown) => void;
   /**
@@ -79,26 +81,67 @@ export type FakeEngine = {
 /** One pending approval as the engine lists it (approval-record-lookup.ts listVisiblePendingApprovalRequests). */
 export type FakeApproval = { id: string; request: Record<string, unknown>; createdAtMs: number; expiresAtMs: number };
 
+/** Methods a real engine lists on hello; the fake engine answers these. */
+export const FAKE_ENGINE_METHODS = [
+  'sessions.subscribe',
+  'sessions.list',
+  'agents.list',
+  'environments.list',
+  'sessions.search',
+  'chat.history',
+  'chat.send',
+  'chat.abort',
+  'sessions.patch',
+  'plugin.approval.request',
+  'exec.approval.list',
+  'plugin.approval.list',
+  'exec.approval.resolve',
+  'plugin.approval.resolve',
+  'computer.status',
+  'computer.invoke',
+  'sessions.describe',
+  'sessions.goal.update',
+  'browser.request',
+  'talk.session.create',
+  'talk.session.close',
+] as const;
+
+/** 1×1 PNG; tests and screenshots use the snapshot payload's width and height as the picture size. */
+export const FAKE_SCREEN_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
 export type FakeEngineOptions = {
   version?: string;
   bootstrapToken?: string;
   deviceToken?: string;
   sessions?: unknown[];
+  /** The environments.list rows. */
+  environments?: unknown[];
   /** The agents.list payload. */
   agents?: unknown;
   approvals?: { exec?: FakeApproval[]; plugin?: FakeApproval[] };
+  /** Methods listed on hello.features. Omit chat.send to stand in for an engine that can't take attachments. */
+  methods?: readonly string[];
+  /** hello.policy.attachments; null leaves it off. */
+  attachmentPolicy?: { maxBytes: number; maxImageBytes: number } | null;
 };
 
 export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   const version = options.version ?? '2026.10.8';
   const bootstrapToken = options.bootstrapToken ?? 'boot-1';
   const deviceToken = options.deviceToken ?? 'device-token-1';
+  const methods = options.methods ?? FAKE_ENGINE_METHODS;
+  const attachmentPolicy = options.attachmentPolicy === undefined ? { maxBytes: 20 * 1024 * 1024, maxImageBytes: 6 * 1024 * 1024 } : options.attachmentPolicy;
   let decision: 'pending' | 'approved' = 'pending';
   /** The pairing code's record was removed (Deny, run out, used): nothing brings it back. */
   let codeGone = false;
   let revoked = false;
   let refusal: { code: string; message: string } | null = null;
   let sessions = options.sessions ?? [];
+  let environments = options.environments ?? [];
+  const goals = new Map<string, { id: string; status: string }>();
+  let browserTabs: Array<{ targetId: string; title: string; url: string; type: string }> = [];
+  let tabSeq = 0;
   const agents = options.agents ?? { defaultId: 'main', mainKey: 'main', scope: 'per-sender', agents: [{ id: 'main', name: 'Branch Agent' }] };
   const failures = new Map<string, { message: string; details?: unknown; code?: string }>();
   const histories = new Map<string, { messages: unknown[]; inFlightRun?: unknown }>();
@@ -145,6 +188,8 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
         return { ok: true, payload: { sessions } };
       case 'agents.list':
         return { ok: true, payload: agents };
+      case 'environments.list':
+        return { ok: true, payload: { environments } };
       case 'sessions.search': {
         // The last line of each chat stands in for its transcript.
         const q = String((params as { query?: unknown } | null)?.query ?? '').toLowerCase();
@@ -192,6 +237,70 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
         return { ok: true, payload: approvals.exec };
       case 'plugin.approval.list':
         return { ok: true, payload: approvals.plugin };
+      case 'sessions.describe': {
+        const key = String((params as { key?: unknown } | null)?.key ?? '');
+        const row = (sessions as Array<Record<string, unknown>>).find((s) => s.key === key) ?? { key };
+        const stored = goals.get(key);
+        const inferred = row.hasActiveRun === true && !stored ? { id: `goal-${key}`, status: 'active' } : stored;
+        return { ok: true, payload: { session: { ...row, ...(inferred ? { goal: inferred } : {}) } } };
+      }
+      case 'sessions.goal.update': {
+        const p = (params ?? {}) as { sessionKey?: string; goalId?: string; action?: string };
+        const key = String(p.sessionKey ?? '');
+        const id = String(p.goalId ?? '');
+        if (p.action === 'pause' || p.action === 'resume') goals.set(key, { id, status: p.action === 'pause' ? 'paused' : 'active' });
+        return { ok: true, payload: { ok: true } };
+      }
+      case 'browser.request': {
+        const p = (params ?? {}) as { path?: string; body?: Record<string, unknown> };
+        const path = String(p.path ?? '');
+        const body = p.body ?? {};
+        if (path === '/') return { ok: true, payload: { running: true } };
+        if (path === '/tabs') return { ok: true, payload: { tabs: browserTabs } };
+        if (path === '/tabs/open') {
+          const url = String(body.url ?? 'about:blank');
+          const id = `tab-${++tabSeq}`;
+          browserTabs = [...browserTabs, { targetId: id, title: url === 'about:blank' ? 'New tab' : url, url, type: 'page' }];
+          return { ok: true, payload: { targetId: id } };
+        }
+        if (path === '/navigate') {
+          const id = String(body.targetId ?? '');
+          const url = String(body.url ?? '');
+          browserTabs = browserTabs.map((t) => (t.targetId === id ? { ...t, url, title: url } : t));
+          return { ok: true, payload: { ok: true } };
+        }
+        if (path === '/act') return { ok: true, payload: { ok: true } };
+        return { ok: true, payload: {} };
+      }
+      case 'computer.status':
+        return { ok: true, payload: { available: true, configured: true, computerUse: { provider: { generation: 'driver-one' } } } };
+      case 'computer.invoke': {
+        const command = String((params as { command?: unknown } | null)?.command ?? '');
+        if (command === 'screen.snapshot') {
+          return {
+            ok: true,
+            payload: {
+              payload: { format: 'png', base64: FAKE_SCREEN_PNG, displayFrameId: 'frame-1', width: 1280, height: 800 },
+            },
+          };
+        }
+        return { ok: true, payload: { payload: { ok: true } } };
+      }
+      case 'talk.session.create': {
+        const sessionId = `talk-${++asked}`;
+        return {
+          ok: true,
+          payload: {
+            sessionId,
+            relaySessionId: sessionId,
+            provider: 'local',
+            voice: 'Oak',
+            audio: { inputEncoding: 'pcm16', outputEncoding: 'pcm16', inputSampleRateHz: 24000, outputSampleRateHz: 24000 },
+          },
+        };
+      }
+      case 'talk.session.close':
+        return { ok: true, payload: { ok: true } };
       case 'exec.approval.resolve':
       case 'plugin.approval.resolve': {
         const { id, decision } = (params ?? {}) as { id?: string; decision?: string };
@@ -218,6 +327,9 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
     delivered: [],
     setSessions: (rows) => {
       sessions = rows;
+    },
+    setEnvironments: (rows) => {
+      environments = rows;
     },
     emit: (event, payload = {}) => {
       const { runId, state } = (payload ?? {}) as { runId?: unknown; state?: unknown };
@@ -391,10 +503,15 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
                 type: 'hello-ok',
                 protocol: 4,
                 server: { version },
-                features: { methods: [], events: [] },
+                features: { methods: [...methods], events: [] },
                 snapshot: {},
                 auth: { method: knownDevice ? 'device-token' : 'bootstrap-token', role: 'operator', scopes: params.scopes, deviceToken },
-                policy: { maxPayload: 1_048_576, maxBufferedBytes: 1_048_576, tickIntervalMs: 3_600_000 },
+                policy: {
+                  maxPayload: 1_048_576,
+                  maxBufferedBytes: 1_048_576,
+                  tickIntervalMs: 3_600_000,
+                  ...(attachmentPolicy ? { attachments: attachmentPolicy } : {}),
+                },
               },
             });
             return;

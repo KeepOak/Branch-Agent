@@ -3,23 +3,24 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, powerMoni
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { totalmem } from "node:os";
+import { homedir, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
-import { attachOrStartEngine, engineAnswers, readEngineHealth, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
-import { createRunKeepAwake, POWER_STATE_REFRESH_MS, writePowerState } from "./keep-awake";
+import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopEnginePid, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
+import { appHoldsSleepBlock, claimServiceKeepAwake, createRunKeepAwake, handOffKeepAwake, POWER_STATE_REFRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, writePowerState } from "./keep-awake";
+import { applyGuestWebPreferences, BRANCH_BROWSER_PARTITION, guestAttachDecision, guestPermissionDecision, guestUrlDecision, popupDecision, r1WebPreferences } from "./browser-guest-policy";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 import { admissionRollbackBudgetMs, measuredBudgetMs, readColdStarts, recordColdStart, rollbackReadyBudgetMs, standbyReadyBudgetMs } from "./readiness-budget";
 import { readPreparedNormalProfile } from "./profile-migration";
-import { createGatewayCrashSupervisor } from "./gateway-supervisor";
+import { createGatewayCrashSupervisor, createServiceEngineWatch } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, showTrayStatus } from "./resident-window";
 import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
-import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
+import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
@@ -27,9 +28,9 @@ import { desktopOs, START_IN_TRAY } from "./desktop-os";
 import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
-import { confirmDesktopUpdate, handOffDesktopUpdate, runsFromAppImage, type DesktopInstall } from "./desktop-update";
+import { confirmDesktopUpdate, ensureWindowsLauncher, handOffDesktopUpdate, pruneWindowsInstall, runsFromAppImage, windowsRelaunchDetails, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
-import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
+import { candidateCheckSkippedLine, candidateMinFreeBytes, HEALTH_MEMORY_MAX_AGE_MS, measureAvailableMemory } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
 import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
 import { readTail, recentLines, reportReadme } from "./diagnostics-report";
@@ -39,7 +40,8 @@ import { DISK_FULL_MESSAGE, diskIsFull, installDiskFullGuard, onDiskFullChange, 
 /** How much of each log the report reads from the end. The time window then keeps only recent lines. */
 const REPORT_TAIL_BYTES = 4 * 1024 * 1024;
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
-import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
+import { clearEngineRecords, findSurvivingEngine, retireRecordedEngines } from "./engine-records";
+import { fallbackEngineSurvivesQuit, quitLeavesFallbackEngine } from "./fallback-engine";
 import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
@@ -247,7 +249,10 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
   restart: async () => {
     // An update in progress owns the engine; spending restart attempts against it would exhaust the budget.
     if (updateLock.held) { recoveryDeferred = true; log(`gateway exit during an update (${updateLock.purpose}); recovery waits for it`); return; }
-    if (quitting || engineServing()) return;
+    if (quitting) return;
+    // The engine service is brought back by its service manager, never by a second engine inside the app.
+    if (serviceEngine) return restartServiceEngine();
+    if (engineServing()) return;
     const lock = updateLock.acquire(RECOVERY)!;
     try {
       // A live engine that never became ready (a failed update's new engine slow to exit) is not serving: stop it.
@@ -272,11 +277,26 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
     }
   },
 });
-const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
+const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate, appliesWhenIdle: () => controls.settings().autoApplyUpdates });
 let tray: Tray | undefined;
 /** Said once in Settings when this computer runs the engine inside the app (engine-service takeChildModeNotice). */
 let childModeNotice: string | undefined;
-const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, TRAY_ICON), onChange: settings => {
+/**
+ * The service fallback was started detached, or this launch attached to one the last session left running.
+ * Quit leaves it only while Keep working stays on (quitLeavesFallbackEngine).
+ */
+let fallbackDetached = false;
+/** Pid of a fallback this launch attached to and does not own as a child. Quit kills it when Keep working is off. */
+let attachedFallbackPid: number | undefined;
+/** "Remove the app, keep my data" (Private #1102): this quit leaves nothing running, not even a kept fallback engine. */
+let removingApp = false;
+const removeAppSteps = {
+  // The always-on service runs the engine with the app's own node, so it goes before the app (`branch gateway uninstall`).
+  ...(cfg.alwaysOn && (process.env.BRANCH_SUPERVISOR_MODE ?? "").trim().toLowerCase() !== "external"
+    ? { service: () => runEngineServiceAction(cfg, serviceEngineDir(), token, "uninstall", log) } : {}),
+  quit: () => { removingApp = true; app.quit(); },
+};
+const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, TRAY_ICON, removeAppSteps), onChange: settings => {
   if (engineUpdateReady) sendToBranchWindows("branch-desktop:engine-update", settings.autoApplyUpdates ? "auto-wait" : "ready");
   keepAwake.refresh();
   void autoApply.tick();
@@ -286,7 +306,7 @@ linger: process.platform === "linux" && cfg.alwaysOn ? {
   get: () => runEngineLinger(cfg, serviceEngineDir(), token, "status"),
   set: async on => { await runEngineLinger(cfg, serviceEngineDir(), token, on ? "on" : "off"); },
 } : undefined,
-notes: () => childModeNotice ? { keepWorking: `Branch runs inside the app on this computer because its background service couldn't be installed (${childModeNotice}). Quitting Branch stops your Trunks.` } : {},
+notes: () => childModeNotice ? { keepWorking: childModeSettingsLine(childModeNotice, fallbackDetached && controls.settings().keepWorking) } : {},
 });
 /** True on battery power (false before the app is ready, or where Electron can't say). */
 function onBatteryPower(): boolean {
@@ -335,6 +355,21 @@ async function probeWindowState(): Promise<WindowState> {
     unsavedDraftFiles: states.some(s => s.unsavedDraftFiles), ...(counts.length ? { workingTrunks: Math.max(...counts) } : {}) };
 }
 
+let windowSilentLogged = false;
+/** A window that answers the activity check, and one that does not, are both logged once per change (Private #1047). */
+function answered(state: WindowState): WindowState {
+  windowSilentLogged = false;
+  return state;
+}
+/** An unanswered window check is unknown, not busy: the engine's own activity decides, so a silent window never blocks an update. */
+function windowSilent(error: unknown): undefined {
+  if (!windowSilentLogged) {
+    windowSilentLogged = true;
+    log(`auto-apply: no window answered the activity check (${error instanceof Error ? error.message : String(error)}); using the engine's own activity`);
+  }
+  return undefined;
+}
+
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const windowBuild = (dir: string): string => { try { return readFileSync(join(dir, "branch-build.txt"), "utf8").trim(); } catch { return ""; } };
 const engineRunning = (): boolean => Boolean(gateway && gateway.exitCode === null && gateway.signalCode === null);
@@ -351,7 +386,7 @@ const engineServing = (): boolean => engineRunning() && gateway === readyGateway
  * engine's state lock means the standby can only bind and become ready after the old engine has released state.
  * A staged desktop app is never applied here; it waits for the next natural launch.
  */
-async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false): Promise<void> {
+async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false, drain = false): Promise<void> {
   if (serviceEngine) return swapServiceEngineInPlace(label, explicit, held, handoffOnly);
   // `held`: the caller (Undo) already holds the update lock and keeps it; otherwise the swap takes it.
   if (!gateway || !win || (held ? !updateLock.holds(held) : updateLock.held)) throw new Error("The desktop is not ready to update");
@@ -401,7 +436,8 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     const stopped = Date.now();
     if (handoff === "drain") {
       try {
-        if (explicit) log(`update ${label}: old engine ${await drainStopGateway(priorGateway)}`);
+        // Drain: the owner's click, or an auto-apply past its cap at a gap. Otherwise the old engine stops only while idle.
+        if (explicit || drain) log(`update ${label}: old engine ${await drainStopGateway(priorGateway)}`);
         else await stopGatewayCleanly(priorGateway);
       } catch (error) {
         resumeSupervision();
@@ -496,7 +532,7 @@ async function swapServiceEngineInPlace(label: string, explicit: boolean, held?:
       workRunning: serviceWork,
       warmStandby: async () => {
         // The machine-load rule: a second engine only when there is room for it; otherwise the restart with its rollback.
-        const { bytes, measure } = availableMemory();
+        const { bytes, measure } = await measureAvailableMemory();
         if (bytes < candidateMinFreeBytes()) { log(`update ${label}: ${candidateCheckSkippedLine(bytes, measure)}`); return "slow"; }
         return checkCandidateBeside(cfg, selected, token, standbyReadyTimeoutMs());
       },
@@ -714,19 +750,22 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   // Gone for good (its state lock released) before the old engine is asked to reclaim the state.
   await killGatewayAndWait(selected.child);
   const failedEngine = resolveEngineDir(cfg);
+  // The branch command, the next launch and crash recovery name the engine that runs again, not the failed standby.
+  if (lastGoodEngineDir) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${lastGoodEngineDir}\n`));
   try {
-    if (portClash) log(`update ${label}: standby port ${selected.port} was taken before the standby could bind it; the release stays eligible`);
+    // A retry of the build that already serves (its earlier confirmation failed) never rejects that build.
+    if (failedEngine === lastGoodEngineDir) log(`update ${label}: the standby ran the build that already serves; keeping it selected`);
+    else if (portClash) log(`update ${label}: standby port ${selected.port} was taken before the standby could bind it; the release stays eligible`);
     else if (error instanceof GatewayReadinessTimeoutError) {
       standbyFailures.set(label, STANDBY_ATTEMPTS);
       log(`update ${label}: handoff readiness budget expired; the next attempt uses the guarded swap`);
     }
     else await rejectFailedComponentUpdate(cfg, failedEngine);
   } catch (recordError) { log(`update ${label}: failure could not be recorded: ${String(recordError)}`); }
-  await rollbackComponentUpdate(cfg).catch(rollbackError => log(`update ${label}: component rollback: ${String(rollbackError)}`));
+  // Never back past the build that serves: a pending journal may name an older build than the one that runs.
+  await settleFailedComponentUpdate(cfg, lastGoodEngineDir).catch(rollbackError => log(`update ${label}: component rollback: ${String(rollbackError)}`));
   servedWindowDir = cfg.windowDir;
   gateway = prior;
-  // The branch command and the next launch name the engine that runs again, not the failed standby.
-  if (lastGoodEngineDir) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${lastGoodEngineDir}\n`));
   if (prior.pid !== undefined) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prior.pid)));
   const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
   // Rollback has reclaimed the state. The old engine must keep its full readiness budget without the retire timer.
@@ -751,7 +790,7 @@ async function prepareUpdateStandby(label: string, explicit: boolean): Promise<v
   // A warmed child cannot be given a fresh Electron-owned driver lease on promotion.
   // Preserve computer control by using the guarded stop/start path for this case.
   if (macComputerDriver && screenControlEnabled()) return;
-  if (availableMemory().bytes < candidateMinFreeBytes() || !standbyProfileReady()) return;
+  if ((await measureAvailableMemory()).bytes < candidateMinFreeBytes() || !standbyProfileReady()) return;
   const failures = standbyFailures.get(label) ?? 0;
   // Automatic updates never wait for a click that may not be offered: one failed standby is enough to fall back.
   if (failures >= STANDBY_ATTEMPTS || (!explicit && failures > 0)) {
@@ -759,7 +798,7 @@ async function prepareUpdateStandby(label: string, explicit: boolean): Promise<v
     return;
   }
   try {
-    standby = await prepareStandbyGateway(cfg, resolveEngineDir(cfg), token, standbyWarmTimeoutMs());
+    standby = await prepareStandbyGateway(cfg, resolveEngineDir(cfg), token, standbyWarmTimeoutMs(), fallbackDetached);
     standbyFailures.delete(label);
     log(`update ${label}: standby engine ${standby.child.pid} prepared on port ${standby.port} while the current engine kept serving`);
   } catch (error) {
@@ -818,7 +857,7 @@ async function candidatePassed(label: string, explicit: boolean, signal?: AbortS
   const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   if (!version || candidateCheckedFor === version) return true;
   // The machine-load rule: a second engine only when there is room for it; otherwise the plain swap with its rollback.
-  const { bytes: available, measure } = availableMemory();
+  const { bytes: available, measure } = await measureAvailableMemory();
   if (available < candidateMinFreeBytes()) { log(`update ${label}: ${candidateCheckSkippedLine(available, measure)}`); return true; }
   const candidate = resolveEngineDir(cfg);
   if (explicit) sendToBranchWindows("branch-desktop:engine-update", "preparing");
@@ -838,14 +877,15 @@ async function candidatePassed(label: string, explicit: boolean, signal?: AbortS
 }
 
 const autoApply = createAutoApplyUpdate({
+  // A staged engine/window pair, or a staged desktop app (it waits for the same idle gap, then relaunches).
   pendingVersion: async () => {
-    const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+    const version = (await readComponentUpdateStatus(cfg)).pendingVersion;
     return version === withdrawnUpdateVersion ? null : version;
   },
   enabled: () => controls.settings().autoApplyUpdates && !updateLock.held,
   seamlessHandoff,
   // Private #951: no automatic update starts under 10% free disk or 20% free RAM.
-  health: () => readUpdateHealth(cfg.dataDir, availableMemory().bytes, totalmem()),
+  health: async () => readUpdateHealth(cfg.dataDir, (await measureAvailableMemory({ maxAgeMs: HEALTH_MEMORY_MAX_AGE_MS })).bytes, totalmem()),
   // Runs in flight mark a machine running Trunk work, whose updates are batched (hourly at most, only when idle).
   activeRuns: async () => {
     // The service engine has no app channel: its runs come from the same read as `activity` (Private #454 E).
@@ -868,13 +908,19 @@ const autoApply = createAutoApplyUpdate({
     }
     if (!gateway) throw new Error("The gateway is not running");
     // The approval RPCs themselves count as gateway work; sample after they settle.
-    const window = await probeWindowState();
+    const window = await probeWindowState().then(answered, windowSilent);
     const engine = await gatewayActivity(gateway);
-    return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window.pendingApprovals,
-      streaming: engine.pendingReplies > 0 || window.streaming, unsavedDraftFiles: window.unsavedDraftFiles };
+    return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window?.pendingApprovals ?? 0,
+      streaming: engine.pendingReplies > 0 || Boolean(window?.streaming), unsavedDraftFiles: window?.unsavedDraftFiles ?? false };
   },
-  restart: async (version, handoffOnly) => {
-    await swapEngineInPlace(version, false, undefined, handoffOnly);
+  restart: async (version, handoffOnly, drain) => {
+    if ((await readComponentUpdateStatus(cfg)).componentsPendingVersion !== version) {
+      // Only a staged desktop app is left: it has no standby, so it applies by a relaunch at the gap the caller checked.
+      if (handoffOnly) throw new Error("a staged desktop app has no standby to hand off to");
+      await relaunchForDesktopUpdate();
+      return;
+    }
+    await swapEngineInPlace(version, false, undefined, handoffOnly, drain);
     if ((await readComponentUpdateStatus(cfg)).currentVersion !== version) throw new Error("The new release was not confirmed");
   },
   onApplied: async version => {
@@ -891,6 +937,18 @@ const autoApply = createAutoApplyUpdate({
   },
   log,
 });
+
+/**
+ * A staged desktop app applies at an idle gap (the auto-apply check already saw no Trunk working): the helper swaps it
+ * in once this app has exited and relaunches it. The normal quit runs, so the engine stops as on any quit.
+ */
+async function relaunchForDesktopUpdate(): Promise<void> {
+  if (!install) throw new Error("this copy of Branch Agent cannot update itself");
+  const handed = await handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), process.argv.slice(1), false);
+  if (!handed) throw new Error("the staged desktop update could not be handed to the update helper");
+  log("desktop update staged; handing off to the update helper at an idle gap and quitting");
+  app.quit();
+}
 
 /**
  * A staged engine/window pair waits for the in-place swap; until then the window server keeps serving the build
@@ -947,6 +1005,75 @@ const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(
   "<!doctype html><title>Branch Agent</title><body style=\"-webkit-app-region:drag;font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f8;color:#333\">Starting Branch…</body>",
 )}`;
 
+// The R1 browser guest. Only R1 windows may host the webview tag. A guest may attach only on the Branch partition,
+// with no preload, no Node and the sandbox on. Guests get no permissions and no downloads, and popups become tabs.
+let browserGuestSessionReady = false
+
+function installBrowserGuestHost(host: Electron.WebContents): void {
+  installBrowserGuestSession()
+  host.on("will-attach-webview", (event, webPreferences, params) => {
+    if (!guestAttachDecision(params)) {
+      event.preventDefault()
+      return
+    }
+    applyGuestWebPreferences(webPreferences as Record<string, unknown>)
+  })
+}
+
+function installBrowserGuestSession(): void {
+  if (browserGuestSessionReady) return
+  browserGuestSessionReady = true
+  const guests = session.fromPartition(BRANCH_BROWSER_PARTITION)
+  guests.setPermissionRequestHandler((_contents, _permission, callback) => callback(guestPermissionDecision()))
+  guests.setPermissionCheckHandler(() => guestPermissionDecision())
+  guests.on("will-download", (event) => event.preventDefault())
+  app.on("web-contents-created", (_event, contents) => {
+    if (contents.getType() !== "webview" || contents.session !== guests) return
+    contents.setWindowOpenHandler(({ url }) => {
+      if (popupDecision(url) === "open-tab") contents.hostWebContents?.send("branch-desktop:browser-open-tab", url)
+      return { action: "deny" }
+    })
+    const refuseBlocked = (event: Electron.Event, url: string) => {
+      if (guestUrlDecision(url) === "block") event.preventDefault()
+    }
+    contents.on("will-navigate", refuseBlocked)
+    contents.on("will-redirect", refuseBlocked)
+  })
+}
+
+/** A second R1 window that shows one page from the browser pane, sharing the guest partition (cookies and logins). */
+function openBrowserPopout(url: string): void {
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 760,
+    title: TEST_COPY ? "Test — Branch Agent" : "Branch Agent",
+    show: false,
+    icon: ICON,
+    ...titleBarOptions(),
+    webPreferences: {
+      ...r1WebPreferences(join(__dirname, "preload.js")),
+      backgroundThrottling: !HIDDEN,
+    },
+  });
+  installBrowserGuestHost(win.webContents);
+  win.once("ready-to-show", () => win.show());
+  const target = new URL(windowUrl());
+  target.searchParams.set("browser", "popout");
+  target.searchParams.set("url", url);
+  void win.loadURL(target.toString());
+}
+
+ipcMain.handle("branch-desktop:browser-popout", (event, url: unknown) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner || !isOwnedComponentWindow(event, owner.webContents, windowUrl())) {
+    throw new Error("Only a Branch window can open a browser window");
+  }
+  if (typeof url !== "string" || popupDecision(url) !== "open-tab") {
+    throw new Error("That address isn't allowed in the browser.");
+  }
+  openBrowserPopout(url);
+});
+
 function createWindow(): BrowserWindow {
   // First launch opens maximized; later launches restore the last state, size, position and display.
   const place = placeWindow(readWindowState(cfg.dataDir), screen.getAllDisplays());
@@ -960,16 +1087,17 @@ function createWindow(): BrowserWindow {
     // Windows: no native title bar; the window's header carries the minimise, maximise and close buttons.
     ...titleBarOptions(),
     webPreferences: {
-      preload: join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
+      ...r1WebPreferences(join(__dirname, "preload.js")),
       // Idle CPU: keep Chromium's throttling, except in the hidden test run where the page counts as hidden.
       backgroundThrottling: !HIDDEN,
     },
   });
   w.setMenuBarVisibility(false);
+  // Windows: pinning this window to the taskbar pins the stable launcher, not this version folder's exe.
+  const relaunch = install && !TEST_COPY && process.platform === "win32" ? windowsRelaunchDetails(install) : undefined;
+  if (relaunch) w.setAppDetails(relaunch);
   if (place.maximized) w.once("show", () => w.maximize());
+  installBrowserGuestHost(w.webContents)
   if (TEST_COPY) w.on("page-title-updated", (event, title) => { event.preventDefault(); w.setTitle(`Test — ${title}`); });
   if (!HIDDEN && !QUIET && !TEST_COPY) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
   trackWindowState(w, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds);
@@ -1020,11 +1148,12 @@ function openConversationWindow(key: string): void {
     icon: ICON,
     ...titleBarOptions(),
     webPreferences: {
-      preload: join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true,
+      ...r1WebPreferences(join(__dirname, "preload.js")),
       backgroundThrottling: !HIDDEN,
     },
   });
   pendingSavedConversationKeys = pendingSavedConversationKeys.filter((saved) => saved !== key);
+  installBrowserGuestHost(child.webContents);
   conversationWindows.set(key, child);
   saveConversationWindows();
   child.on("closed", () => {
@@ -1240,8 +1369,19 @@ async function start(): Promise<void> {
   log(`starting page shown after ${Date.now() - launchStarted} ms`);
   const desktopVersion = await confirmDesktopUpdate(cfg);
   if (desktopVersion) log(`desktop update ${desktopVersion} started; confirmed`);
-  // Engines the last session started and left running (a crash mid-update): retire them before starting our own.
-  await retireRecordedEngines(cfg.dataDir, log);
+  if (install) await pruneWindowsInstall(install, log).catch((error: unknown) => log(`desktop version prune: ${String(error)}`));
+  // Shortcuts open the stable launcher at the install root, never a version folder that a prune can remove.
+  if (install && !TEST_COPY) void ensureWindowsLauncher(cfg, install, log).catch((error: unknown) => log(`windows launcher: ${String(error)}`));
+  // A fallback the last session left running (Keep working on) is attached to. Every other recorded engine is retired.
+  // Keep working off, and Always on off, retire them all, as before.
+  const survivor = fallbackEngineSurvivesQuit(cfg.alwaysOn === true, controls.settings().keepWorking)
+    ? await findSurvivingEngine(cfg.dataDir, cfg.gatewayPort) : undefined;
+  // Set before the window loads, so a quit during startup leaves this engine and its record.
+  if (survivor) {
+    fallbackDetached = true;
+    attachedFallbackPid = survivor.pid;
+  }
+  await retireRecordedEngines(cfg.dataDir, log, survivor?.pid);
   // Always on: an engine service already serving the gateway port is attached to, never replaced.
   for (const port of cfg.alwaysOn ? [cfg.windowPort] : [cfg.gatewayPort, cfg.windowPort]) {
     if (!(await portIsFree(port))) throw new Error(`port ${port} is already in use; is Branch Agent already running?`);
@@ -1257,7 +1397,9 @@ async function start(): Promise<void> {
   server = await serveWindow(() => servedWindowDir, cfg.windowPort);
   await win.loadURL(windowUrl());
   log(`window loaded after ${Date.now() - launchStarted} ms`);
-  if (await (cfg.alwaysOn ? attachServiceEngine() : bootSelectedEngine())) {
+  if (survivor) {
+    log(`attached to the engine left running when Branch was closed (pid ${survivor.pid}, port ${survivor.port})`);
+  } else if (await (cfg.alwaysOn ? attachServiceEngine() : bootSelectedEngine())) {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");
   }
@@ -1314,6 +1456,43 @@ async function refuseOrphanedEngine(): Promise<void> {
 /** True while the window talks to the per-user engine service rather than a child of this app. */
 let serviceEngine = false;
 const SERVICE_ENGINE_WATCH_MS = 5_000;
+/** The engine stopped its own service after a crash storm: the owner restarts it (or reopens the app), not the watch. */
+let serviceStormed = false;
+/**
+ * The service engine is not this app's child: its death shows only as /readyz going quiet. A minute without an
+ * answer (six checks ten seconds apart, five seconds each) counts as down; a busy engine answers within that.
+ */
+const serviceWatch = createServiceEngineWatch({
+  probe: () => engineAnswers(cfg.gatewayPort, 5_000),
+  paused: () => quitting || !serviceEngine || updateLock.held,
+  down: error => gatewaySupervisor.down(error),
+  up: () => { serviceStormed = false; gatewaySupervisor.up(); },
+  log,
+  misses: 6,
+  intervalMs: 10_000,
+});
+
+/** Crash recovery for the engine service, under the update lock like a child's restart. */
+async function restartServiceEngine(): Promise<void> {
+  const lock = updateLock.acquire(RECOVERY)!;
+  try {
+    const probe = () => engineAnswers(cfg.gatewayPort);
+    const result = await restartStoppedServiceEngine({
+      probe,
+      stormed: () => serviceStormed,
+      quitting: () => quitting,
+      startService: () => runEngineServiceAction(cfg, serviceEngineDir(), token, "start", log),
+      waitForService: () => waitForEngineAnswer(probe, READY_TIMEOUT_MS),
+      log,
+    });
+    if (result === "restarted") {
+      gatewayRecoveryError = undefined;
+      handWindowToGateway(true);
+    }
+  } finally {
+    await updateLock.release(lock);
+  }
+}
 
 /**
  * Always on (Private #454 B): attach to the running service engine, or install and start it and then attach. Only a
@@ -1323,6 +1502,7 @@ const SERVICE_ENGINE_WATCH_MS = 5_000;
 async function attachServiceEngine(): Promise<boolean> {
   const stateDir = join(cfg.dataDir, "home", ".branch");
   const showStorm = (message: string) => {
+    serviceStormed = true;
     gatewayRecoveryError = message;
     log(`engine service: ${message}`);
     sendToBranchWindows("branch-desktop:gateway-recovery-failed", message);
@@ -1333,17 +1513,34 @@ async function attachServiceEngine(): Promise<boolean> {
   const engineDir = resolveEngineDir(cfg);
   const probe = () => engineAnswers(cfg.gatewayPort);
   let rolledBack = false;
+  // macOS privacy: launchd cannot run a service whose folders sit on another volume, so that computer runs the child.
+  const home = homedir();
+  const logPaths = serviceLogPaths(home);
+  // An externally supervised launch (BRANCH_SUPERVISOR_MODE=external) is refused service install and uninstall alike.
+  const externallySupervised = (process.env.BRANCH_SUPERVISOR_MODE ?? "").trim().toLowerCase() === "external";
   const result = await attachOrStartEngine({
     dataDir: cfg.dataDir,
     probe,
     installService: () => runEngineServiceAction(cfg, engineDir, token, "install", log),
     startService: () => runEngineServiceAction(cfg, engineDir, token, "start", log),
     waitForService: () => waitForEngineAnswer(probe, READY_TIMEOUT_MS),
-    spawnChild: async () => { rolledBack = await bootSelectedEngine(); },
+    spawnChild: async () => {
+      // Keep working on: this child is detached and quit leaves it. Off: today's child, which quit stops.
+      fallbackDetached = fallbackEngineSurvivesQuit(true, controls.settings().keepWorking);
+      rolledBack = await bootSelectedEngine();
+    },
+    volumeBlock: () => serviceVolumeBlock([cfg.dataDir, stateDir, engineDir], home, nodeVolumeReader),
+    logMark: () => serviceLogSizes(logPaths),
+    cannotRunReason: async mark => serviceCannotRunReason(await readServiceLogsSince(logPaths, mark), [join(stateDir, "service-env"), cfg.nodePath],
+      process.platform === "darwin" ? await launchdJob() : undefined),
+    uninstallService: externallySupervised ? undefined : () => runEngineServiceAction(cfg, engineDir, token, "uninstall", log),
     log,
   });
   if (result.mode === "child") return rolledBack;
   serviceEngine = true;
+  // The service holds the sleep blocker. Drop any hold taken before attach, and claim power for this app at once.
+  keepAwake.update(false);
+  claimServiceKeepAwake(stateDir);
   // publish-engine.sh never removes the folder named here, and the service runs from it. An engine that was already
   // running keeps its record: after a window-only update the service still runs the folder it started from.
   const running = result.via === "attached" ? serviceEngineDir() : engineDir;
@@ -1365,6 +1562,8 @@ async function attachServiceEngine(): Promise<boolean> {
   }, SERVICE_ENGINE_WATCH_MS);
   timer.unref();
   app.once("will-quit", () => clearInterval(timer));
+  // A service that stopped answering (it died and its manager did not bring it back) is restarted with backoff.
+  serviceWatch.start();
   return false;
 }
 
@@ -1381,8 +1580,11 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
     log(`Mac computer driver unavailable: ${describeDriverError(error)}`);
     return undefined;
   });
+  // A quit that arrived while this start waited never leaves an engine behind it.
+  if (quitting && !prepared) throw new Error("Branch Agent is quitting");
   const spawned = Date.now();
-  const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint);
+  const macComputerReason = !prepared && screenControlEnabled() && !macComputerEndpoint ? macComputerDriver?.reason : undefined;
+  const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint, macComputerReason, fallbackDetached);
   const preparedPid = prepared?.child.pid;
   if (preparedPid !== undefined) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "gateway.pid"), String(preparedPid)));
   if (prepared) {
@@ -1592,9 +1794,9 @@ async function serviceWork(): Promise<ServiceWork> {
 /** The engine's live state for the tray, from the engine calls the app already makes. */
 function liveEngineState(): Promise<EngineLiveState> {
   return readEngineLiveState({
-    engineUp: async () => serviceEngine ? engineAnswers(cfg.gatewayPort) : engineServing(),
+    engineUp: async () => serviceEngine || (fallbackDetached && !engineRunning()) ? engineAnswers(cfg.gatewayPort) : engineServing(),
     // Honest health: an engine whose agent can't answer says so instead of looking Ready (or Stopped).
-    health: () => readEngineHealth(serviceEngine ? cfg.gatewayPort : gatewayPort),
+    health: () => readEngineHealth(serviceEngine || (fallbackDetached && !engineRunning()) ? cfg.gatewayPort : gatewayPort),
     window: () => probeWindowState(),
     engineRuns: serviceEngine || !gateway ? undefined : async () => {
       const activity = await gatewayActivity(gateway!);
@@ -1638,7 +1840,7 @@ function watchTrayStatus(): void {
     void liveEngineState().then(state => {
       working = state.running && state.workingTrunks > 0;
       showTrayStatus(tray, state);
-      keepAwake.update(working);
+      keepAwake.update(appHoldsSleepBlock(serviceEngine) && working);
       notifier.observe(state);
     }).finally(() => { reading = false; schedule(working); });
   };
@@ -1651,6 +1853,7 @@ function watchTrayStatus(): void {
 function watchPowerSource(): void {
   const stateDir = join(cfg.dataDir, "home", ".branch");
   const tell = () => {
+    if (serviceEngine) claimServiceKeepAwake(stateDir);
     writePowerState(stateDir, onBatteryPower());
     keepAwake.refresh();
   };
@@ -1661,7 +1864,11 @@ function watchPowerSource(): void {
   }
   const timer = setInterval(tell, POWER_STATE_REFRESH_MS);
   timer.unref();
-  app.once("will-quit", () => clearInterval(timer));
+  // serviceEngine is still false here; it becomes true only after the service attaches. The interval checks the
+  // live flag so the claim stays inside the engine's 20 second window for the whole time this app is open.
+  const claim = setInterval(() => { if (serviceEngine) claimServiceKeepAwake(stateDir); }, SERVICE_KEEP_AWAKE_CLAIM_MS);
+  claim.unref();
+  app.once("will-quit", () => { clearInterval(timer); clearInterval(claim); });
 }
 
 /** Tray "Pause all work": the window stops every live run through the same calls as its own Pause all. */
@@ -1699,12 +1906,19 @@ async function stopCompletely(): Promise<void> {
 
 /** Quitting stops an idle engine cleanly, so the next launch skips the stale-lease integrity pass. */
 let quitAfterCleanStop = false;
+/** The detached fallback stays up. Keep working off, Always on off, and a handoff in flight still stop it. */
+function fallbackKept(): boolean {
+  if (removingApp) return false;
+  return quitLeavesFallbackEngine(fallbackDetached, controls.settings().keepWorking, retiring.size > 0);
+}
 function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
-  if (quitAfterCleanStop || !gateway || !engineRunning() || typeof event?.preventDefault !== "function") return false;
+  // A detached fallback is left running on purpose: quit must not wait on its drain.
+  if (fallbackKept() || quitAfterCleanStop || !gateway || !engineRunning() || typeof event?.preventDefault !== "function") return false;
   event.preventDefault();
   quitting = true;
   quitAfterCleanStop = true;
   gatewaySupervisor.close();
+  serviceWatch.stop();
   stopGatewayCleanly(gateway, 15_000).then(() => log("gateway stopped cleanly for quit"),
     error => log(`quit: clean stop skipped: ${error instanceof Error ? error.message : String(error)}`)).finally(() => app.quit());
   return true;
@@ -1713,23 +1927,35 @@ function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
 function shutdown(): void {
   quitting = true;
   admissionWatch?.abort();
-  // Quit is instant with the engine service: it keeps working and drains on its own timeline.
-  log(serviceEngine ? "quit; the engine service keeps running" : `quit; stopping gateway pid ${gateway?.pid}`);
+  const keep = fallbackKept();
+  const keptPid = gateway?.pid ?? attachedFallbackPid;
+  // Quit is instant with the engine service, and with a detached fallback: each keeps working on its own.
+  log(keep ? `quit; the fallback engine keeps running${keptPid ? ` (pid ${keptPid})` : ""}`
+    : serviceEngine ? "quit; the engine service keeps running" : `quit; stopping gateway pid ${gateway?.pid}`);
   gatewaySupervisor.close();
+  serviceWatch.stop();
   stopEngineWatch?.();
   stopComponentWatch?.();
   autoApply.stop();
   stopWindowWatch?.();
   controls.dispose();
-  keepAwake.dispose();
+  if (serviceEngine) handOffKeepAwake(join(cfg.dataDir, "home", ".branch"), keepAwake);
+  else keepAwake.dispose();
   stopCandidate();
   stopWarmingStandby();
-  // A quit mid-handoff stops the stepped-down engine too; a crash leaves its record for the next launch.
-  for (const child of retiring.keys()) stopGateway(child);
+  // A standby is not the fallback engine. Quit always stops it.
   if (standby) stopGateway(standby.child);
   standby = undefined;
-  if (gateway) stopGateway(gateway);
-  clearEngineRecords(cfg.dataDir);
+  if (keep) {
+    // Leave the fallback and its record so the next launch can attach. A handoff in flight never reaches here.
+    gateway?.unref();
+  } else {
+    // A quit mid-handoff stops the stepped-down engine too; a crash leaves its record for the next launch.
+    for (const child of retiring.keys()) stopGateway(child);
+    if (gateway) stopGateway(gateway);
+    else if (attachedFallbackPid !== undefined) stopEnginePid(attachedFallbackPid);
+    clearEngineRecords(cfg.dataDir);
+  }
   void macComputerDriver?.stop();
   server?.close();
   // The next launch starts on the configured port; never leave a moved, dead port for the branch command to dial.
@@ -1740,7 +1966,8 @@ if (!app.requestSingleInstanceLock()) {
   log("another Branch Agent window is open; quitting");
   app.quit();
 } else {
-  app.on("before-quit", () => { quitting = true; });
+  // From the first quit request on, no crash restart is scheduled or started: quit never turns into a restart loop.
+  app.on("before-quit", () => { quitting = true; gatewaySupervisor.close(); serviceWatch.stop(); });
   app.on("second-instance", () => {
     if (win && !win.isDestroyed() && !HIDDEN) {
       if (win.isMinimized()) win.restore();

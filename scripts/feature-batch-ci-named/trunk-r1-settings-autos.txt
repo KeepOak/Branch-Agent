@@ -1,3 +1,2 @@
-window:src/screens/settings/pages/autos-live.test.tsx
-window:src/screens/settings/rows.test.ts
 window:src/screens/frame/R1Window.test.tsx
+window:src/screens/settings/pages/autos-live.test.tsx

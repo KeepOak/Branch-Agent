@@ -1,14 +1,13 @@
-// Seedbank's pieces (preview item 28: .mkRowP17, .mkCardP17, .mkAddP17, .mkSeedP17, item 45 Adapters tiles, and the
-// Coming to Branch tiles from R1-15).
+// Seedbank's pieces (preview item 28: .mkRowP17, .mkCardP17, .mkAddP17, .mkSeedP17, and item 45 Adapters tiles).
 import { type ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
+import { AppLogo } from "../../places/customize/app-logos";
 import { Glyph } from "../../places/customize/glyphs";
 import { Icon } from "../../shell/icons";
 import { kindOf, shortCount, type Entry } from "./catalog";
 import { seedText } from "./seed";
-import { UPCOMING, UPCOMING_COMING } from "./upcoming";
 import { addCall } from "./useSeedbank";
 
 /** A control Seedbank doesn't wire yet: drawn through <Coming unwired>, so it has the Coming look and reason, swallows
@@ -18,10 +17,11 @@ export function Soon({ need, reason, className, label, children }: { need: strin
   return <Coming need={need} unwired reason={reason} where={where}><button type="button" className={className} aria-label={label}>{children}</button></Coming>;
 }
 
-const GLYPH = { skills: "bolt", mcp: "plug", plugins: "puzzle" } as const;
+const GLYPH = { skills: "bolt", plugins: "puzzle" } as const;
 export function ItemIcon({ entry, size }: { entry: Entry; size: number }) {
   if (entry.source.type === "template") return <span className="sb-face" style={{ width: size, height: size }}><Face size={size} label={entry.name} pebbleLook={{ colour: entry.source.template.colour }} /></span>;
-  const glyph = entry.kind === "skills" || entry.kind === "mcp" || entry.kind === "plugins" ? GLYPH[entry.kind] : null;
+  if (entry.kind === "mcp") return <AppLogo name={entry.name} size={size} />;   /* A-141: the app's logo, or a monogram tile */
+  const glyph = entry.kind === "skills" || entry.kind === "plugins" ? GLYPH[entry.kind] : null;
   return <span className="sb-tile" aria-hidden="true" style={{ width: size, height: size }}>{glyph ? <Glyph name={glyph} size={Math.round(size * 0.5)} /> : <Icon name="sun" size={Math.round(size * 0.5)} />}</span>;
 }
 
@@ -102,20 +102,6 @@ export function Adapters({ brief }: { brief: boolean }) {
       <b className="g-label">{a.name}</b><small className="sb-slot g-label">{a.slot}</small><p className="g-label" data-lines>{a.what}</p>
       <span className="sb-using g-label">Using: Default</span>
       <span className="sb-coming"><span className="sb-pill g-label">Coming</span><small className="g-label">{ADAPTERS_COMING}</small></span>
-    </div>)}</div>
-  </>;
-}
-
-/** R1-15: the features moved out of the main window until they work, one Coming tile each, drawn like the Adapters. No
- *  buttons; each tile still registers in the dev Coming list by the engine call it waits for. */
-export function UpcomingFeatures({ brief }: { brief: boolean }) {
-  return <>
-    <p className="sb-lead g-label" data-lines>Features on their way into Branch, and where each one will live.{brief ? "" : " They show up in their place once the engine they need is ready."}</p>
-    <div className="sb-adapters sb-upcoming">{(brief ? UPCOMING.slice(0, 3) : UPCOMING).map(u => <div key={u.id} className="sb-card sb-adapter" role="group" aria-label={u.name + ", coming"} data-need={u.need}>
-      <Coming need={u.need} unwired hidden reason={UPCOMING_COMING} where={"Seedbank › Coming to Branch › " + u.name}><span /></Coming>
-      <span className="sb-tile" aria-hidden="true" style={{ width: 36, height: 36 }}><Icon name={u.icon} size={18} /></span>
-      <b className="g-label">{u.name}</b><small className="sb-slot g-label">{u.where}</small><p className="g-label" data-lines>{u.what}</p>
-      <span className="sb-coming"><span className="sb-pill g-label">Coming</span><small className="g-label">{UPCOMING_COMING}</small></span>
     </div>)}</div>
   </>;
 }

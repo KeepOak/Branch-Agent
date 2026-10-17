@@ -4,8 +4,9 @@ import { parseFacts } from "../library/memory-data";
 import { loadTrunkData, type TrunkData } from "./data";
 import { entryOf, rec, str, strs } from "./model";
 import { scheduleWords } from "../automations/model";
+import { isEngineJob } from "../../connect/engine-jobs";
 
-type Automation = { id: string; name: string; when: string; enabled: boolean };
+export type Automation = { id: string; name: string; when: string; enabled: boolean };
 /** `facts`: the bullets in its MEMORY.md (agents.files.get), as Library › Memory counts them; null when unread. */
 /** `working`: what one of its conversations is doing now ("" when it says nothing), or null when none is running. */
 export type ProfileData = TrunkData & { automations: Automation[] | null; week: number | null; facts: number | null; working: string | null; notes: string[] };
@@ -18,9 +19,10 @@ export function scheduleText(schedule: unknown): string {
   return scheduleWords(rec(schedule));
 }
 
-function readAutomations(result: unknown, agentId: string): Automation[] {
+/** cron.list read into one Trunk's routines (engine jobs left out); the details panel reads the same list. */
+export function readAutomations(result: unknown, agentId: string): Automation[] {
   const jobs = Array.isArray(rec(result).jobs) ? (rec(result).jobs as unknown[]).map(rec) : [];
-  return jobs.filter((j) => str(j.agentId) === agentId).map((j) => ({ id: str(j.id), name: str(j.displayName) || str(j.name), when: scheduleText(j.schedule), enabled: j.enabled === true }));
+  return jobs.filter((j) => str(j.agentId) === agentId && !isEngineJob(j)).map((j) => ({ id: str(j.id), name: str(j.displayName) || str(j.name), when: scheduleText(j.schedule), enabled: j.enabled === true }));
 }
 
 /** Whether a conversation with this Trunk is running now, with what its run says it is doing (sessions.list). */

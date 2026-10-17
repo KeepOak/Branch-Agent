@@ -8,6 +8,7 @@ import { CapabilityProvider } from "../../connect/capabilities";
 import type { ConversationList } from "../../connect/conversations";
 import type { SaplingSession } from "../../connect/session";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
+import { FIND_ANYTHING_EVENT } from "../find/find-event";
 import { Sidebar, type SidebarProps } from "./Sidebar";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span data-face={label} /> }));
@@ -44,7 +45,7 @@ async function render(methods: string[], extra: Partial<SidebarProps> = {}) {
   const engine = { request, features: { methods, events: [] } };
   const session = { request, onGatewayEvent: () => () => undefined, engine, gatewayUrl: "ws://127.0.0.1:1", open: vi.fn(async () => undefined), send: vi.fn() } as unknown as SaplingSession;
   const props: SidebarProps = {
-    session, ready: true, list: { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [] }) } as unknown as ConversationList,
+    onNewTrunk: vi.fn(), session, ready: true, list: { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [] }) } as unknown as ConversationList,
     sessions: [ledger] as unknown as SidebarProps["sessions"], mainKey: "main", currentKey: null, waiting: new Map(), searchRef: { current: null },
     onOpen: vi.fn(), onSettings: vi.fn(), onPlace: vi.fn(), ...extra,
   };
@@ -67,15 +68,14 @@ describe("R1 sidebar, the Coming contract", () => {
 
     await click(host.querySelector('[aria-label="More for Ledger"]'));
     expect(undeclared()).toEqual([]);
-    for (const label of ["Pin", "Read", "Archive", "Delete conversation…"]) expect(row(label).getAttribute("aria-disabled"), label).toBe("true");
+    for (const label of ["Pin", "Mark as read", "Archive", "Delete"]) expect(row(label).getAttribute("aria-disabled"), label).toBe("true");
     await click(row("Pin"));
     await press(document.querySelector(".g-menu")!, "p");
     await press(document.querySelector(".g-menu")!, "d");
     expect(request).not.toHaveBeenCalled();
     expect(needs()).toEqual(expect.arrayContaining(["sessions.patch", "contacts.markRead", "sessions.delete"]));
-    await click(row("Ledger"));
     expect(undeclared()).toEqual([]);
-    expect(row("Pause").title).toBe("Pausing a Trunk needs an engine method it doesn't have yet.");
+    expect(row("Pause").title).toBe("Pause comes in a later update.");
     expect(needs()).toEqual(expect.arrayContaining(["chat.send", "agents.update", "agents.delete"]));
     await press(document.querySelector(".g-menu")!, "Escape");
 
@@ -107,14 +107,10 @@ describe("R1 sidebar, the Coming contract", () => {
     await click(host.querySelector('[aria-label="More for Ledger"]'));
     expect(row("Pin").getAttribute("aria-disabled")).toBeNull();
     expect(row("Pin").dataset.need).toBe("sessions.patch");
-    await click(row("Move to"));
-    expect(row("Group…").getAttribute("aria-disabled")).toBeNull();
-    expect(row("Group…").dataset.need).toBe("sessions.groups.list sessions.patch");
-    await press(document.querySelector(".g-menu")!, "ArrowLeft");
-    await click(row("Ledger"));
+    expect(row("Move to group…").getAttribute("aria-disabled")).toBeNull();
+    expect(row("Move to group…").dataset.need).toBe("sessions.groups.list sessions.patch");
     expect(row("Pause").getAttribute("aria-disabled")).toBe("true");
     expect(comingControls()).toEqual(expect.arrayContaining([expect.objectContaining({ need: ["agents.update"], where: "Pause" })]));
-    await press(document.querySelector(".g-menu")!, "ArrowLeft");
     await click(row("Pin"));
     expect(request).toHaveBeenCalledWith("sessions.patch", expect.objectContaining({ key: "agent:ledger:main", pinned: true }));
   });
@@ -129,5 +125,27 @@ describe("R1 sidebar, the Coming contract", () => {
     expect(row("Take the full tour").getAttribute("aria-disabled")).toBeNull();
     await click(row("Take the full tour"));
     expect(onTour).toHaveBeenCalledTimes(1);
+  });
+
+  it("Find anything opens when the engine can search, and stays Coming when it cannot", async () => {
+    const opened = vi.fn();
+    window.addEventListener(FIND_ANYTHING_EVENT, opened);
+    try {
+      await render([]);
+      const off = host.querySelector<HTMLButtonElement>('button[aria-label="Find anything"]')!;
+      expect(off.getAttribute("aria-disabled")).toBe("true");
+      expect(off.getAttribute("data-coming")).toBe("Coming in a later update.");
+      await click(off);
+      expect(opened).not.toHaveBeenCalled();
+
+      await render(["sessions.search"]);
+      const on = host.querySelector<HTMLButtonElement>('button[aria-label="Find anything"]')!;
+      expect(on.getAttribute("aria-disabled")).toBeNull();
+      expect(on.dataset.need).toBe("sessions.search");
+      await click(on);
+      expect(opened).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(FIND_ANYTHING_EVENT, opened);
+    }
   });
 });

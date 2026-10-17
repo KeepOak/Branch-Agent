@@ -3,9 +3,11 @@
 // rewritten); this file only draws it the approved way and joins the parts. Every control is wired or shows Coming.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactElement } from "react";
 import type { Conversation as ListRow } from "../../connect/conversations";
-import { isPreparationPending, preparationLabel } from "../../connect/preparation-status";
+import { isPreparationPending, isPreparationStalled, preparationLabel } from "../../connect/preparation-status";
 import { PASTED_TEXT_CHIP_CHARS } from "../../composer/attachments";
+import { COMPOSE_EVENT } from "../../composer/Composer";
 import { folderContext } from "../../composer/context";
+import { safeStorage, saveDraft } from "../../composer/drafts";
 import { DockRow, type Goal } from "../../composer/DockRow";
 import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "../../composer/engine";
 import { Icon, StopMark } from "../../composer/icons";
@@ -26,7 +28,9 @@ import { useHistoryKeys } from "../../composer/useHistoryKeys";
 import { useWaitingLine } from "../../composer/useWaitingLine";
 import { vimKey, type VimMode } from "../../composer/vim";
 import { DictationStrip, TALK_EVENT, useDictation, useVoiceCatalog, useVoiceNote, VoiceNoteStrip, VoiceScreen } from "../../composer/VoiceParts";
+import { availability } from "../../connect/capabilities";
 import { Coming } from "../../glass/coming";
+import { Popover } from "../../glass/Popover";
 import { Ring } from "../../glass/Ring";
 import type { Limits } from "../../shell/status-data";
 import { shortReason } from "../../thread/format";
@@ -41,6 +45,8 @@ import "./composer.css";
 import { ComposerPet } from "../pet/ComposerPet";
 
 export const VOICE_OFF = "Off until you choose: it uses the microphone. Turn it on in Settings › Voice.";
+/** The mic while dictation has no voice service (Private #1095, B-097): it says so and opens Settings › Voice & calls. */
+export const TURN_ON_VOICE = "Turn on voice in Settings";
 export const IMPROVE_COMING = "This engine can’t improve a draft with your model.";
 /** Improve asks the side model about the draft, not the conversation's Trunk. */
 export const IMPROVE_NEED = "sessions.companion.ask";
@@ -83,9 +89,11 @@ type Props = {
   placeholder?: string;
   /** The first Trunk waiting on a yes, for the roaming pet's tip (QUEUE item 18). */
   petWaiting?: string | null;
+  /** The window already shows the Trunk getting ready (frame/StartupLine.tsx), so the composer adds no second line for it. */
+  startupShown?: boolean;
 };
 
-type Menu = RowMenu | "plus" | "ring" | null;
+type Menu = RowMenu | "plus" | "ring" | "mic" | null;
 
 function readGoal(row: Record<string, unknown>): Goal | null {
   const g = rec(row.goal);
@@ -111,7 +119,20 @@ export function Composer(props: Props) {
   const textNow = useRef("");
   useEffect(() => { setTarget(null); setMenu(null); }, [sessionKey]);
   const box = useRef<HTMLTextAreaElement>(null), fileInput = useRef<HTMLInputElement>(null), folderInput = useRef<HTMLInputElement>(null);
-  const plus = useRef<HTMLButtonElement>(null), ring = useRef<HTMLButtonElement>(null);
+  // Places fill this box with branch:compose (Customize's Use). The open conversation takes the words; any other one keeps them as its draft.
+  useEffect(() => {
+    const fill = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionKey?: unknown; text?: unknown }>).detail;
+      if (typeof detail?.sessionKey !== "string" || typeof detail.text !== "string") return;
+      if (detail.sessionKey === sessionKey) {
+        draft.setText(detail.text);
+        requestAnimationFrame(() => box.current?.focus());
+      } else saveDraft(safeStorage(), detail.sessionKey, detail.text);
+    };
+    window.addEventListener(COMPOSE_EVENT, fill);
+    return () => window.removeEventListener(COMPOSE_EVENT, fill);
+  }, [sessionKey, draft.setText]);
+  const plus = useRef<HTMLButtonElement>(null), ring = useRef<HTMLButtonElement>(null), mic = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setMenu(null), []);
   // HANDOFF R1-04: at a dock 300 px wide or less, Dictate and Improve fold into the + menu (size only, read from a ref).
   const dock = useRef<HTMLDivElement>(null);
@@ -355,7 +376,7 @@ export function Composer(props: Props) {
   const summary = ringSummary(usage, runningCount, context);
   const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : noModel ? "Connect a model to start." : working && hasDraft ? sendTooltip(queueMode) : undefined;
   const placeholder = noModel ? "Connect a model to start" : props.placeholder ?? `Message ${name}`;
-  const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n));
+  const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n) && !(props.startupShown && (isPreparationPending(n) || isPreparationStalled(n))));
 
   return <div ref={dock} className="r1c" data-tight={tight || undefined} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }} onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)} onDrop={onDrop}>
     {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
@@ -386,7 +407,10 @@ export function Composer(props: Props) {
       {hasText && !tight ? <Coming engine={engine} need={IMPROVE_NEED} reason={IMPROVE_COMING} where="Improve my draft"><button type="button" className="r1c-btn" aria-label="Improve my draft" title={improving ? "Improving…" : "Improve my draft"} aria-busy={improving || undefined} disabled={improving} onClick={() => void improve()}><Icon name="spark" /></button></Coming> : null}
       {dict.on || tight ? null : voice.dictation
         ? <button type="button" className="r1c-btn" data-need="talk.catalog" aria-label="Dictate into the box" title="Dictate into the box" onClick={() => void dict.start()}><Icon name="mic" /></button>
-        : <Later need="talk.catalog" reason={VOICE_OFF} where="Dictate into the box"><button type="button" className="r1c-btn" aria-label="Dictate into the box"><Icon name="mic" /></button></Later>}
+        : voice.loaded && availability(engine, "talk.catalog") !== "no"
+          // The engine answers, but no voice service is on yet: the mic says how to turn one on (never a dead button).
+          ? <button type="button" ref={mic} className="r1c-btn" data-need="talk.catalog" aria-label="Dictate into the box" title={TURN_ON_VOICE} aria-haspopup="dialog" aria-expanded={menu === "mic"} onClick={() => setMenu(menu === "mic" ? null : "mic")}><Icon name="mic" /></button>
+          : <Later need="talk.catalog" reason={VOICE_OFF} where="Dictate into the box"><button type="button" className="r1c-btn" aria-label="Dictate into the box"><Icon name="mic" /></button></Later>}
       <Ring ref={ring} usage={usage?.percent ?? null} context={context?.percent ?? null} running={runningCount} label={summary} open={menu === "ring"} onOpen={() => setMenu(menu === "ring" ? null : "ring")} />
       {stopMode
         ? <button type="submit" className="r1c-send stop" data-need="chat.abort" aria-label="Stop" title="Stop"><StopMark /></button>
@@ -404,7 +428,7 @@ export function Composer(props: Props) {
       }} />
       <input ref={fileInput} type="file" multiple hidden data-local="" onChange={(e) => { void draft.addFiles([...(e.target.files ?? [])], "file"); e.target.value = ""; }} />
     </form>
-    <Row engine={engine} menu={menu === "plus" || menu === "ring" ? null : menu} setMenu={setMenu} close={close} conv={conv} current={current} currentRef={currentRef} thinking={thinking}
+    <Row engine={engine} menu={menu === "plus" || menu === "ring" || menu === "mic" ? null : menu} setMenu={setMenu} close={close} conv={conv} current={current} currentRef={currentRef} thinking={thinking}
       mode={mode} asSet={asSet} admin={admin} noModel={noModel} trunkName={trunkName} lockdown={props.lockdown} onToggleLockdown={props.onToggleLockdown}
       pickMode={(m) => void pickMode(m)} patch={patch} onOpen={onOpen} onToast={toast} onProblem={setProblem}
       topics={props.row?.isMain && props.topics.length ? props.topics : []} target={topic ?? null} onTarget={(key) => { setTarget(key); setMenu(null); }} />
@@ -413,6 +437,14 @@ export function Composer(props: Props) {
       onInsert={insert} onBackground={() => void runBackground(draft.text)} onOpen={onOpen} onCall={() => setTalking(true)}
       tight={tight} engine={engine} onImprove={hasText && !improving ? () => void improve() : undefined} onDictate={tight && voice.dictation && !dict.on ? () => void dict.start() : undefined}
       onVoiceNote={typeof MediaRecorder !== "undefined" && navigator.mediaDevices ? () => void note.start() : undefined} /> : null}
+    {menu === "mic" ? <Popover anchor={mic} label="Voice" onClose={close} width={260} placement="above">
+      <div className="r1c-menu" data-testid="mic-off">
+        <section className="r1c-sec">
+          <p className="c-pp"><b>{TURN_ON_VOICE}</b></p>
+          <button type="button" className="btn sm" data-local="" onClick={() => { setMenu(null); onOpen("settings/voice"); }}>Open Settings</button>
+        </section>
+      </div>
+    </Popover> : null}
     {menu === "ring" ? <RingPopover anchor={ring} onClose={close} engine={engine} sessionKey={sessionKey} name={trunkName} working={working} offline={offline}
       context={context} row={props.row} running={props.running} limits={props.limits} onOpen={onOpen} onOpenConversation={(key) => { setMenu(null); props.onOpenConversation(key); }} /> : null}
     {searching ? <HistorySearch anchor={box} engine={engine} sent={history.sentList()} draft={draft.text} onPreview={draft.setText} onDone={(t) => { setSearching(false); draft.setText(t); requestAnimationFrame(() => box.current?.focus()); }} /> : null}

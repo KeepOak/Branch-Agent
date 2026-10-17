@@ -9,7 +9,6 @@ import { APPEARANCE_ROWS } from "./pages/appearance";
 import { AUTOS_ROWS } from "./pages/autos";
 import { CUSTOMIZE_ROWS } from "./pages/customize";
 import { GENERAL_ROWS } from "./pages/general";
-import { MEMORY_ROWS } from "./pages/memory";
 
 export type RowSource =
   /** An engine config path: config.get, saved with config.patch through the window's one config store. */
@@ -58,6 +57,9 @@ export type Row = {
   codec?: Codec;
   /** The value shown when nothing is stored and the schema has no default. */
   fallback?: unknown;
+  /** A slot row whose control is a list that names its own items (computers, connections): drawn without the row's own
+   *  label and help, which still name it for search and the level. */
+  bare?: true;
 };
 
 /** One config.schema uiHints entry. */
@@ -93,16 +95,34 @@ export function rowLevel(row: Row, hints: UiHints): Level {
   return !row.ownerLevel && hintOf(row, hints)?.advanced && row.level < 1 ? 1 : row.level;
 }
 
-/** Every row of the R1 Settings pages. Pages add their list here. */
-export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS, ...MEMORY_ROWS, ...AUTOS_ROWS];
+/** "How much to show" that first shows what waits for a later update: Regular and Advanced show only what works today
+ *  (Private #1093 item 4); Technical shows everything, Coming included. */
+export const COMING_FROM: Level = 2;
 
-/** The rows of one card at this level, in table order. A row above the level is hidden. */
-export function cardRows(page: PageId, card: string, level: Level, hints: UiHints, rows: Row[] = ROWS): Row[] {
-  return rows.filter((row) => row.page === page && row.card === card && rowLevel(row, hints) <= level);
+/** A row that waits for a later update: Coming by its source, or (when the page's controls are given) a slot row its
+ *  page has no control for, which RowView draws as Coming. */
+export function comingRow(row: Row, controls?: Readonly<Record<string, unknown>>): boolean {
+  return row.source.kind === "coming" || (controls !== undefined && row.source.kind === "slot" && !controls[row.id]);
+}
+
+/** The level a row first shows at: its own, and at least Technical while it is Coming (Regular and Advanced hide Coming rows). Its
+ *  Advanced or Technical tag still comes from rowLevel. */
+export function shownLevel(row: Row, hints: UiHints, controls?: Readonly<Record<string, unknown>>): Level {
+  const level = rowLevel(row, hints);
+  return comingRow(row, controls) && level < COMING_FROM ? COMING_FROM : level;
+}
+
+/** Every row of the R1 Settings pages. Pages add their list here. */
+export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS, ...AUTOS_ROWS];
+
+/** The rows of one card at this level, in table order. A row above the level is hidden, and so is a Coming row at
+ *  Regular. */
+export function cardRows(page: PageId, card: string, level: Level, hints: UiHints, rows: Row[] = ROWS, controls?: Readonly<Record<string, unknown>>): Row[] {
+  return rows.filter((row) => row.page === page && row.card === card && shownLevel(row, hints, controls) <= level);
 }
 
 /** The lowest level at which a page shows a row, or null when the table has none for it. */
-export function pageFirstLevel(page: PageId, hints: UiHints, rows: Row[] = ROWS): Level | null {
-  const levels = rows.filter((row) => row.page === page).map((row) => rowLevel(row, hints));
+export function pageFirstLevel(page: PageId, hints: UiHints, rows: Row[] = ROWS, controls?: Readonly<Record<string, unknown>>): Level | null {
+  const levels = rows.filter((row) => row.page === page).map((row) => shownLevel(row, hints, controls));
   return levels.length ? (Math.min(...levels) as Level) : null;
 }

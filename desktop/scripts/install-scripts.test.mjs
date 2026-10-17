@@ -282,6 +282,7 @@ test("install.sh never uses sudo and passes shellcheck when it is installed", { 
   const ps1 = readFileSync(fileURLToPath(new URL("../install/install.ps1", import.meta.url)), "utf8");
   assert.match(ps1, /Get-FileHash/);
   assert.match(ps1, /\/CURRENTUSER/);
+  assert.match(ps1, /current\.txt/, "the installed path follows the version pointer");
   assert.doesNotMatch(ps1, /RunAs/);
   const check = spawnSync("shellcheck", ["-s", "sh", script], { encoding: "utf8" });
   if (check.error?.code === "ENOENT") return;

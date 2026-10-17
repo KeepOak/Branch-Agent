@@ -25,10 +25,17 @@ export function isConflict(error: unknown): boolean {
   return type === "agent_file_conflict" || type === "personal_file_conflict" || /changed since it was read/i.test(errorText(error));
 }
 
+/** Branch's own starter text for a file that does not exist yet. A missing file never opens on the template the engine may
+ *  send for it, which carries another product's name and links. A file that exists is shown exactly as saved. */
+export const STARTERS: Readonly<Record<string, string>> = {
+  "SOUL.md": "# Soul\n\nHow this Trunk talks, what it will do, and what it will not. Keep it short and plain.\n",
+};
+
 export async function readFile(engine: WindowEngine, agentId: string, name: string): Promise<FileState> {
   const f = record(record(await engine.request("agents.files.get", { agentId, name })).file);
   const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-  return { name, path: str(f.path), content: str(f.content) ?? "", hash: str(f.hash) ?? null, missing: f.missing === true };
+  const missing = f.missing === true;
+  return { name, path: str(f.path), content: missing ? (STARTERS[name] ?? "") : (str(f.content) ?? ""), hash: str(f.hash) ?? null, missing };
 }
 
 export function writeFile(engine: WindowEngine, agentId: string, name: string, content: string, on: Doc) {
