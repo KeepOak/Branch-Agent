@@ -503,14 +503,23 @@ describe("Doctor with a deleted agent database", () => {
       );
       const migration = result.stepReceipts.find((receipt) => receipt.id === "media-persistence");
       if (deleteFiles) {
-        expect(migration).toMatchObject({ outcome: "refused" });
-        expect(migration?.warnings.join("\n")).toContain(
-          "unavailable while agent retired is deleted",
-        );
-        expect(() => throwIfDoctorStateMigrationRefused(result.stepReceipts)).toThrow(
-          "Later repairs were not run",
-        );
-        expect(fs.existsSync(execPath)).toBe(true);
+        // A deletion still removing its files skips that agent; every later repair still runs.
+        expect(() => throwIfDoctorStateMigrationRefused(result.stepReceipts)).not.toThrow();
+        expect(migration).toMatchObject({ outcome: "warning" });
+        expect(migration?.warnings.join("\n")).toContain("Skipped deleted agent retired");
+        expect(migration?.warnings.join("\n")).not.toContain("is unavailable while agent");
+        for (const id of [
+          "session-entry-state",
+          "transcript-directives",
+          "profile-workspace",
+          "plugin-migration-preparation",
+        ]) {
+          expect(["completed", "skipped", "warning"], id).toContain(
+            result.stepReceipts.find((receipt) => receipt.id === id)?.outcome,
+          );
+        }
+        expect(fs.existsSync(execPath)).toBe(false);
+        expect(fs.readFileSync(retainedPath).equals(before)).toBe(true);
       } else {
         expect(() => throwIfDoctorStateMigrationRefused(result.stepReceipts)).not.toThrow();
         expect(migration).toMatchObject({ outcome: "warning" });

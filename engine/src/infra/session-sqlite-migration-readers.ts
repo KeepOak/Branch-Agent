@@ -4,8 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { TextDecoder } from "node:util";
-import { safeStatSync } from "@openclaw/fs-safe/path";
 import { isRecord } from "@branch/normalization-core/record-coerce";
+import { safeStatSync } from "@openclaw/fs-safe/path";
 import {
   classifySessionFileEntry,
   migrateSessionFileEntryToCurrentVersion,
@@ -33,6 +33,7 @@ import {
 import type { BranchConfig } from "../config/types.branch.js";
 import { readAgentDatabaseAdmissionRefusal } from "../state/agent-database-admission.js";
 import { createRetainedAgentDatabaseMatcher } from "../state/agent-deletion-discovery.js";
+import { createFencedAgentDeletionMatcher } from "../state/agent-deletion-journal.js";
 import { resolveBranchAgentSqlitePath } from "../state/branch-agent-db.js";
 import { tableExists, tableHasColumn } from "../state/branch-state-db-schema-helpers.js";
 import { openNodeSqliteDatabase } from "./node-sqlite.js";
@@ -570,9 +571,11 @@ export function projectExistingAgentDatabaseTargets(
   const isRetained = createRetainedAgentDatabaseMatcher(env, () =>
     resolveConfiguredAgentDatabaseTargets(cfg, { env }),
   );
+  const isFencedDeletion = createFencedAgentDeletionMatcher({ env });
   return targets.flatMap((target) => {
     if (
       isRetained(target.storePath, target.agentId) ||
+      isFencedDeletion(target.storePath, target.agentId) ||
       readAgentDatabaseAdmissionRefusal(target.agentId, { env })
     ) {
       return [];
@@ -580,6 +583,7 @@ export function projectExistingAgentDatabaseTargets(
     const sqlitePath = resolveTargetSqlitePath(target, env);
     if (
       isRetained(sqlitePath, target.agentId) ||
+      isFencedDeletion(sqlitePath, target.agentId) ||
       seenPaths.has(sqlitePath) ||
       !fs.existsSync(sqlitePath)
     ) {

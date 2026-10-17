@@ -8,6 +8,7 @@ import { isSessionArchiveArtifactName } from "../config/sessions/artifacts.js";
 import { listSqliteTargetCandidatePathsInDirectory } from "../config/sessions/session-sqlite-target-paths.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { createAgentDatabaseDeletionClassifier } from "../state/agent-deletion-discovery.js";
+import { createFencedAgentDeletionMatcher } from "../state/agent-deletion-journal.js";
 import { readAgentDatabaseDeletionSnapshot } from "../state/agent-deletion-journal.read.js";
 import type { AgentDeletionJournalDisposition } from "../state/agent-deletion-journal.types.js";
 import { unregisterBranchAgentDatabase } from "../state/branch-agent-db-registry.js";
@@ -178,6 +179,14 @@ export function discoverAgentDatabaseMigrationTargets(params: {
     }
   }
   const configuredPathMatcher = createBranchAgentDatabasePathMatcher();
+  // Deletions that remove files, or have not finished, fence their stores against every
+  // claim. Doctor skips those agents so one deleted agent cannot block other repairs.
+  let findFencedDeletion: ReturnType<typeof createFencedAgentDeletionMatcher> = () => undefined;
+  try {
+    findFencedDeletion = createFencedAgentDeletionMatcher({ env: params.env });
+  } catch (error) {
+    failure(activeStateDir, `Could not read the agent deletion journal: ${String(error)}`);
+  }
   const targets: AgentDatabaseMigrationTarget[] = [];
   const retainedTargets: AgentDatabaseMigrationTarget[] = [];
   const unverifiedTargets: AgentDatabaseMigrationTarget[] = [];
@@ -292,6 +301,14 @@ export function discoverAgentDatabaseMigrationTargets(params: {
           `Held agent ${sanitizeForLog(typeof deletion === "string" ? candidate.agentId : deletion.agentId)} database ${sanitizeForLog(pathname)} (${typeof deletion === "string" ? (deletion === "held" ? "deletion journal reconstructed" : "deletion journal unavailable") : "retained-by-deletion"}); run ${formatCliCommand("branch doctor --fix", params.env)} to inspect restoration.`,
         );
       }
+      continue;
+    }
+    const fencedDeletion = findFencedDeletion(pathname, candidate.agentId);
+    if (fencedDeletion) {
+      seenTargets.add(targetIdentity);
+      warnings.push(
+        `Skipped deleted agent ${sanitizeForLog(fencedDeletion.agentId)} database ${sanitizeForLog(pathname)} (${fencedDeletion.cleanupCompleted ? "deleted" : "deletion in progress"}); other repairs continue.`,
+      );
       continue;
     }
     seenTargets.add(targetIdentity);

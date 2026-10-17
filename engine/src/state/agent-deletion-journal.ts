@@ -338,6 +338,44 @@ export function readAgentDeletionJournal(
   );
 }
 
+/** List every recorded deletion, pending or complete, without initializing the journal. */
+export function listAgentDeletionJournalEntries(
+  options: BranchStateDatabaseOptions = {},
+  purpose: AgentDeletionJournalPurpose = "runtime",
+): AgentDeletionJournalEntry[] {
+  return (
+    withExistingBranchStateDatabaseCurrentReadOnly(
+      (database) => readAgentDeletionPathFenceRows(database.db, purpose).rows.map(fromRow),
+      options,
+    ) ?? []
+  );
+}
+
+/**
+ * Match stores fenced by a deletion that removes files or has not finished.
+ * Retained (kept-files, completed) deletions are classified separately as held stores.
+ * Maintenance skips matches so one deleted agent cannot block repairs for the others.
+ */
+export function createFencedAgentDeletionMatcher(
+  options: BranchStateDatabaseOptions = {},
+): (pathname: string, agentId?: string) => AgentDeletionJournalEntry | undefined {
+  const fenced = listAgentDeletionJournalEntries(options).filter(
+    (entry) => !entry.cleanupCompleted || entry.deleteFiles,
+  );
+  return (pathname, agentId) => {
+    const ownerId = agentId === undefined ? undefined : normalizeAgentId(agentId);
+    const resolved = path.resolve(pathname);
+    return fenced.find(
+      (entry) =>
+        entry.agentId === ownerId ||
+        [entry.agentDir, entry.sessionsDir, ...entry.databasePaths].some((fence) => {
+          const fencePath = path.resolve(fence);
+          return resolved === fencePath || isPathInside(fencePath, resolved);
+        }),
+    );
+  };
+}
+
 export function beginAgentDeletionJournal(
   entry: Omit<
     AgentDeletionJournalEntry,
