@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadPhoneGateway } from "./load-phone-gateway.js";
+import { loadPhoneGateway, nobleCiphersUnavailableReason } from "./load-phone-gateway.js";
 import {
   createPairingRelaySession,
   decryptPairingFrame,
@@ -135,7 +135,12 @@ describe("pairing relay", () => {
     phone.close();
   });
 
-  it("does not put a phone bootstrap token on the relay hop", async () => {
+  const hopSkip = nobleCiphersUnavailableReason();
+  (hopSkip ? it.skip : it)(
+    hopSkip
+      ? `does not put a phone bootstrap token on the relay hop (skipped: ${hopSkip})`
+      : "does not put a phone bootstrap token on the relay hop",
+    async () => {
     const PhoneGateway = await loadPhoneGateway();
     const relay = await listenPairingRelay();
     opened.push(relay);
@@ -250,5 +255,6 @@ describe("pairing relay", () => {
       }),
     ).toBe(false);
     expect(decryptPairingFrame(session.key, rawFromPhone[0]!).toString("utf8")).toContain(token);
-  });
+    },
+  );
 });
