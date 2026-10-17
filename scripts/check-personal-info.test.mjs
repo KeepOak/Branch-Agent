@@ -75,8 +75,8 @@ test('relative and module paths through home/ are not Linux home directories', (
   assert.deepEqual(types("from '~/home/HomeScreen'"), []);
   assert.deepEqual(types('src/screens/home/HomeScreen'), []);
   assert.deepEqual(types('.../screens/home/HomeScreen'), []);
-  assert.deepEqual(types('../Users/example/Code'), []);
-  assert.deepEqual(types('./Users/example/Code'), []);
+  assert.deepEqual(types('../Users/example/Code'), ['macos-user-path']);
+  assert.deepEqual(types('./Users/example/Code'), ['macos-user-path']);
 });
 
 test('absolute user home directories still fail on each OS path style', () => {
@@ -88,6 +88,16 @@ test('absolute user home directories still fail on each OS path style', () => {
   assert.deepEqual(types('See C:/Users/example/Code/Branch'), ['windows-user-profile']);
   assert.deepEqual(types('See C:\\Users\\example\\Code\\Branch'), ['windows-user-profile']);
   assert.deepEqual(types('file:///D:/Users/example/spec.html'), ['windows-user-profile']);
+  assert.deepEqual(types('../../home/example/.branch'), ['linux-user-path']);
+  assert.deepEqual(types('/./home/example/.branch'), ['linux-user-path']);
+  assert.deepEqual(types('/../home/example/.branch'), ['linux-user-path']);
+  assert.deepEqual(types('/var/../home/example/.branch'), ['linux-user-path']);
+  assert.deepEqual(types('/tmp/foo/../../home/example/.ssh'), ['linux-user-path']);
+  assert.deepEqual(types('file:///./home/example/spec.html'), ['linux-user-path']);
+  assert.deepEqual(types('file:///var/../home/example/spec.html'), ['linux-user-path']);
+  assert.deepEqual(types('/./Users/example/Code'), ['macos-user-path']);
+  assert.deepEqual(types('/../Users/example/Code'), ['macos-user-path']);
+  assert.deepEqual(types('/var/../Users/example/Code'), ['macos-user-path']);
 });
 
 test('a source diff with a relative home/ import is clean; an absolute home path is not', () => {

@@ -73,16 +73,12 @@ const WINDOWS_USER = new RegExp(
   String.raw`(?:^|[^A-Za-z0-9])([A-Za-z]:[/\\]+Users[/\\]+)(${PATH_USER})`,
   'gi',
 );
-// `.@~` are relative/module prefixes (`../Users/<name>`, `@/Users/<name>`),
-// not an absolute /Users/<user> root. `:` stays excluded so drive paths stay Windows.
 const MAC_USER = new RegExp(
-  String.raw`(?:^|[^A-Za-z0-9_:.@~])(\/Users\/)(${PATH_USER})`,
+  String.raw`(?:^|[^A-Za-z0-9_:])(\/Users\/)(${PATH_USER})`,
   'g',
 );
-// Same prefix rule for Linux: `../home/<name>` and `./home/<name>` are source
-// imports, not `/home/<user>` directories.
 const LINUX_USER = new RegExp(
-  String.raw`(?:^|[^A-Za-z0-9_.@~])(\/home\/)(${PATH_USER})`,
+  String.raw`(?:^|[^A-Za-z0-9_])(\/home\/)(${PATH_USER})`,
   'g',
 );
 const EMAIL = /\b([A-Za-z0-9._%+-]+)@([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,})\b/g;
@@ -106,6 +102,13 @@ export function isPlaceholderUser(raw) {
   if (user.startsWith('<') && user.endsWith('>') && user.length > 2) return true;
   if (/^%[A-Za-z][A-Za-z0-9_]+%$/.test(user)) return true;
   return user === '~' || user === '$HOME' || user === '$USER' || user === '$USERNAME';
+}
+
+// Source-module names such as homeModel or HomeScreen, not a username.
+export function isSourceIdentifier(raw) {
+  const name = String(raw ?? '');
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) return false;
+  return /[a-z]/.test(name) && /[A-Z]/.test(name);
 }
 
 export function isAllowlistedDiffPath(filePath) {
@@ -192,11 +195,11 @@ export function findPersonalInfo(text) {
     return { match: `${found[1]}${found[2]}`, offset: found[0].startsWith(found[1]) ? 0 : found[0].length - found[1].length - found[2].length };
   }));
   hits.push(...collectRegexHits(text, MAC_USER, 'macos-user-path', (found) => {
-    if (isPlaceholderUser(found[2])) return null;
+    if (isPlaceholderUser(found[2]) || isSourceIdentifier(found[2])) return null;
     return { match: `${found[1]}${found[2]}`, offset: found[0].indexOf(found[1]) };
   }));
   hits.push(...collectRegexHits(text, LINUX_USER, 'linux-user-path', (found) => {
-    if (isPlaceholderUser(found[2])) return null;
+    if (isPlaceholderUser(found[2]) || isSourceIdentifier(found[2])) return null;
     return { match: `${found[1]}${found[2]}`, offset: found[0].indexOf(found[1]) };
   }));
   hits.push(...collectRegexHits(text, EMAIL, 'email', (found) => {
