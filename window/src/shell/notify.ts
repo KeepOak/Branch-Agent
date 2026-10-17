@@ -2,7 +2,7 @@
 // the old, except outcomes that must not be lost (`keep`), which wait their turn. A toast stays 6 s, pauses
 // while the pointer or keyboard focus is on it, and its × closes it. It is never the only effect of a control.
 import { clearBanner } from "./Banner";
-import { plainAddresses } from "./plain-address";
+import { plainError } from "./plain-error";
 export type ToastAction = { label: string; run: () => void };
 export type ToastTone = "plain" | "bad";
 export type Toast = { id: number; text: string; line?: string; action?: ToastAction; tone: ToastTone; keep: boolean };
@@ -85,8 +85,8 @@ function emit(): void {
 export function notify(text: string, options: NotifyOptions = {}): number {
   clearBanner();
   const id = nextId++;
-  // No hostname, IP address or URL at Regular (walkthrough B-026).
-  const toast: Toast = { id, text: plainAddresses(text), tone: options.tone ?? "plain", line: options.line === undefined ? undefined : plainAddresses(options.line), action: options.action, keep: options.keep === true };
+  // No hostname, IP address or URL (walkthrough B-026) and no raw error, code or path (Private #1089) at Regular.
+  const toast: Toast = { id, text: plainError(text), tone: options.tone ?? "plain", line: options.line === undefined ? undefined : plainError(options.line), action: options.action, keep: options.keep === true };
   toasts = [...toasts.filter((t) => t.keep), toast];
   emit();
   return id;
