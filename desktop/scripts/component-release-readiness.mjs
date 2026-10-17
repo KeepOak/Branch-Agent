@@ -6,6 +6,9 @@ import { actionsRunIdFromCheckRun, RECHECK_CHECK } from "../../scripts/merge-gat
 
 export const WORKFLOW_RUN_EVENT = "workflow_run";
 export const GITHUB_RATE_LIMIT_FAILURE = /API rate limit exceeded/i;
+export const JOB_LOG_FETCH_CAP = 10;
+export const CATCH_UP_RUN_NAME = "component-release-catch-up";
+export const CATCH_UP_LATCH_REASONS = new Set(["failed-checks", "checks-unavailable"]);
 
 export const PUSH_BACKUP_MIN_AGE_MS = 25 * 60 * 1000;
 export const CATCH_UP_MAX_WAIT_MS = 26 * 60 * 1000;
@@ -79,6 +82,48 @@ export function decideCatchUp({ mainCommit, latestCommit, publishedAt, now = Dat
 
 // A failed publish still catches up when that commit is the live Latest release.
 // Rolling Latest back means this commit is not the update apps should follow.
+export function isCatchUpMarkedRun(run) {
+  if (!run) return false;
+  if (run.catch_up === true || run.inputs?.catch_up === true || run.inputs?.catch_up === "true") return true;
+  return String(run.display_title ?? "") === CATCH_UP_RUN_NAME
+    || String(run.name ?? "") === CATCH_UP_RUN_NAME;
+}
+
+export function hasCatchUpDispatch(workflowRuns, headSha) {
+  const head = typeof headSha === "string" ? headSha : "";
+  return (workflowRuns ?? []).some((run) => {
+    if (head && run.head_sha && run.head_sha !== head) return false;
+    return isCatchUpMarkedRun(run);
+  });
+}
+
+// Failed-checks and listing-unavailable retries dispatch at most once per main head.
+// Over-cap never dispatches: the listing is incomplete, so a retry would loop.
+export function decideSkipReasonCatchUp({ skipReason, mainCommit, workflowRuns } = {}) {
+  if (skipReason === "checks-over-cap") {
+    return {
+      dispatch: false,
+      reason: "Check runs exceed the cap; not dispatching catch-up",
+    };
+  }
+  if (!CATCH_UP_LATCH_REASONS.has(skipReason)) {
+    return {
+      dispatch: true,
+      reason: "Catch-up latch does not apply",
+    };
+  }
+  if (hasCatchUpDispatch(workflowRuns, mainCommit)) {
+    return {
+      dispatch: false,
+      reason: `Catch-up already dispatched for ${mainCommit}; not dispatching again`,
+    };
+  }
+  return {
+    dispatch: true,
+    reason: `No catch-up dispatch yet for ${mainCommit}; dispatching once`,
+  };
+}
+
 export function catchUpAfterFailedPublish({ latestCommit, releasedCommit } = {}) {
   const released = typeof releasedCommit === "string" ? releasedCommit : "";
   const latest = typeof latestCommit === "string" ? latestCommit : "";
@@ -129,23 +174,61 @@ export function checkRunDiagnosticText(run) {
   return [output.title, output.summary, output.text, annotations].filter(Boolean).join("\n");
 }
 
-export function isGithubRateLimitFailure(run) {
-  return GITHUB_RATE_LIMIT_FAILURE.test(checkRunDiagnosticText(run));
+export function isGithubRateLimitFailure(run, jobLogText) {
+  if (GITHUB_RATE_LIMIT_FAILURE.test(checkRunDiagnosticText(run))) return true;
+  return GITHUB_RATE_LIMIT_FAILURE.test(String(jobLogText ?? ""));
+}
+
+export function actionsJobIdFromCheckRun(checkRun) {
+  const fromUrl = String(checkRun?.details_url ?? checkRun?.html_url ?? "").match(/\/actions\/runs\/\d+\/job\/(\d+)/);
+  return fromUrl ? Number(fromUrl[1]) : null;
+}
+
+export function getJobLog(repo, jobId, { gh = defaultGh } = {}) {
+  return String(gh(["api", `repos/${repo}/actions/jobs/${jobId}/logs`]) ?? "");
+}
+
+// Fetch logs only for failed Actions jobs that are not already ignored. Cap the
+// number of fetches. A failed or skipped fetch stays a real failure.
+export function fetchFailedActionJobLogs(checkRuns, { readJobLog, cap = JOB_LOG_FETCH_CAP } = {}) {
+  const logs = new Map();
+  if (!readJobLog) return logs;
+  let fetches = 0;
+  for (const run of checkRuns ?? []) {
+    if (run?.conclusion !== "failure") continue;
+    if (isIgnoredReleaseCheckRun(run)) continue;
+    const jobId = actionsJobIdFromCheckRun(run);
+    if (jobId == null) continue;
+    if (fetches >= cap) {
+      logs.set(run.id, { ok: false, reason: "cap" });
+      continue;
+    }
+    fetches += 1;
+    try {
+      logs.set(run.id, { ok: true, text: String(readJobLog(jobId) ?? "") });
+    } catch {
+      logs.set(run.id, { ok: false, reason: "fetch-failed" });
+    }
+  }
+  return logs;
 }
 
 // Recheck and other workflow_run jobs attach to main for other pull-request heads.
-// A 403 whose check output is only GitHub's rate-limit text is not a product failure.
-export function isIgnoredReleaseCheckRun(run, workflow) {
+// A 403 whose check output or Actions job log is only GitHub's rate-limit text is
+// not a product failure. A missing log is a real failure.
+export function isIgnoredReleaseCheckRun(run, workflow, jobLog) {
   if (!run) return false;
   if (run.name === RECHECK_CHECK) return true;
   const event = run.event ?? workflow?.event;
   if (event === WORKFLOW_RUN_EVENT) return true;
-  return isGithubRateLimitFailure(run);
+  if (isGithubRateLimitFailure(run, jobLog?.ok ? jobLog.text : "")) return true;
+  return false;
 }
 
-export function failedCheckRuns(checkRuns) {
+export function failedCheckRuns(checkRuns, { readJobLog, jobLogs } = {}) {
+  const logs = jobLogs ?? fetchFailedActionJobLogs(checkRuns, { readJobLog });
   return latestChecksByName(checkRuns).filter((run) => (
-    run.conclusion === "failure" && !isIgnoredReleaseCheckRun(run)
+    run.conclusion === "failure" && !isIgnoredReleaseCheckRun(run, null, logs.get(run.id))
   ));
 }
 
@@ -174,8 +257,9 @@ function workflowAttemptBlocks(run) {
   return Number.isFinite(attempt) && attempt > 1 && run.status !== "completed";
 }
 
-export function blockingCheckRuns(checkRuns, { readWorkflowRun } = {}) {
-  const considered = (checkRuns ?? []).filter((run) => !isIgnoredReleaseCheckRun(run));
+export function blockingCheckRuns(checkRuns, { readWorkflowRun, readJobLog, jobLogs } = {}) {
+  const logs = jobLogs ?? fetchFailedActionJobLogs(checkRuns, { readJobLog });
+  const considered = (checkRuns ?? []).filter((run) => !isIgnoredReleaseCheckRun(run, null, logs.get(run.id)));
   const blocking = [];
   for (const group of checksGroupedByName(considered).values()) {
     const newest = newestCheckInGroup(group);
@@ -268,12 +352,16 @@ export function resolveFailedReleaseChecks({
   allowRerun = process.env.GITHUB_EVENT_NAME !== "pull_request",
   listCheckRuns,
   readWorkflowRun,
+  readJobLog,
   rerunFailedJobs,
   gh = defaultGh,
 } = {}) {
   const list = listCheckRuns ?? (() => listCommitCheckRuns(repo, sha, { gh }));
   const readRun = readWorkflowRun ?? (runId => getWorkflowRun(repo, runId, { gh }));
   const rerun = rerunFailedJobs ?? (runId => rerunFailedWorkflowJobs(repo, runId, { gh }));
+  const readLog = readJobLog !== undefined
+    ? readJobLog
+    : (listCheckRuns ? undefined : (jobId => getJobLog(repo, jobId, { gh })));
 
   // One listing decides. A failed listing skips this release. The next scheduled run tries again.
   let listed;
@@ -294,7 +382,8 @@ export function resolveFailedReleaseChecks({
       reason: overCap ? "checks-over-cap" : "checks-unavailable",
     };
   }
-  const firstBlocking = blockingCheckRuns(listed, { readWorkflowRun: readRun });
+  const jobLogs = fetchFailedActionJobLogs(listed, { readJobLog: readLog });
+  const firstBlocking = blockingCheckRuns(listed, { readWorkflowRun: readRun, jobLogs });
   if (firstBlocking.length === 0) {
     return { skip: false, failedCount: 0, reran: [], alreadyRetried: [], reason: "no-failed-checks" };
   }
@@ -306,7 +395,7 @@ export function resolveFailedReleaseChecks({
   // At most one rerun per failed workflow run. Nothing waits here: the next scheduled run decides.
   const reran = [];
   const alreadyRetried = [];
-  const firstFailed = failedCheckRuns(listed);
+  const firstFailed = failedCheckRuns(listed, { jobLogs });
   for (const runId of uniqueWorkflowRunIds(firstFailed)) {
     const names = firstFailed.filter((check) => workflowRunIdFromCheck(check) === runId).map((check) => check.name);
     let run = null;
@@ -342,6 +431,21 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const decision = catchUpAfterFailedPublish({
       latestCommit: argValue(process.argv, "--latest"),
       releasedCommit: argValue(process.argv, "--released"),
+    });
+    process.stdout.write(`${JSON.stringify(decision)}\n`);
+    process.exit(0);
+  }
+  if (process.argv[2] === "decide-skip-catch-up") {
+    const runsRaw = argValue(process.argv, "--runs");
+    let workflowRuns;
+    if (runsRaw !== "") {
+      const parsed = JSON.parse(runsRaw);
+      workflowRuns = Array.isArray(parsed) ? parsed : parsed?.workflow_runs;
+    }
+    const decision = decideSkipReasonCatchUp({
+      skipReason: argValue(process.argv, "--reason"),
+      mainCommit: argValue(process.argv, "--main"),
+      workflowRuns,
     });
     process.stdout.write(`${JSON.stringify(decision)}\n`);
     process.exit(0);

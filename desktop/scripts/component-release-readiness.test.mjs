@@ -6,14 +6,17 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   CATCH_UP_MAX_WAIT_MS,
+  CATCH_UP_RUN_NAME,
   CATCH_UP_WINDOW_BUFFER_MS,
   CHECK_RUN_PAGE_CAP,
   CHECK_RUN_PAGE_SIZE,
   CHECK_RUN_TOTAL_CAP,
+  JOB_LOG_FETCH_CAP,
   PUSH_BACKUP_MIN_AGE_MS,
   blockingCheckRuns,
   catchUpAfterFailedPublish,
   decideCatchUp,
+  decideSkipReasonCatchUp,
   failedCheckRuns,
   getWorkflowRun,
   listCommitCheckRuns,
@@ -75,7 +78,8 @@ test("component-release workflow keeps the schedule and uses push as a 25-minute
   assert.match(readiness, /resolve-failed-checks --sha/);
   assert.match(readiness, /\$decision_skip" == "true" && "\$failed_checks" == "0"/);
   assert.match(readiness, /Could not confirm checks at \$main_commit/);
-  assert.match(readiness, /cooldown\|failed-checks\|checks-unavailable/);
+  assert.match(readiness, /cooldown\|failed-checks\|checks-unavailable\|checks-over-cap/);
+  assert.match(readiness, /decision_reason" == "checks-over-cap"/);
 });
 
 test("failed publish catches up only while that commit is still Latest", () => {
@@ -196,7 +200,9 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
   assert.match(catchUp, /timeout-minutes: 30/);
   assert.match(catchUp, /max_sleep_seconds=\$\(\(26 \* 60\)\)/);
   assert.match(catchUp, /decide-catch-up/);
-  assert.match(catchUp, /gh workflow run component-release\.yml --ref main/);
+  assert.match(catchUp, /gh workflow run component-release\.yml --ref main -f catch_up=true/);
+  assert.match(catchUp, /decide-skip-catch-up/);
+  assert.doesNotMatch(catchUp, /skip_reason == 'checks-over-cap'/);
   assert.match(catchUp, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
   assert.doesNotMatch(catchUp, /check-runs/);
   assert.doesNotMatch(catchUp, /contents: write/);
@@ -222,7 +228,9 @@ test("workflow_dispatch force is ignored on any other event and does not skip do
   const dispatch = workflow.slice(workflow.indexOf("workflow_dispatch:"), workflow.indexOf("\npermissions:"));
   assert.match(dispatch, /dry_run:/);
   assert.match(dispatch, /force:/);
+  assert.match(dispatch, /catch_up:/);
   assert.match(dispatch, /default: false\n        type: boolean/);
+  assert.match(workflow, /run-name: \$\{.*inputs\.catch_up && 'component-release-catch-up'/);
   const readinessJob = workflow.slice(workflow.indexOf("\n  readiness:"), workflow.indexOf("\n  readiness-rehearsal:"));
   const rehearsalJob = workflow.slice(workflow.indexOf("\n  readiness-rehearsal:"), workflow.indexOf("\n  identity:"));
   assert.match(readinessJob, /FORCE_RELEASE: \$\{.*github\.event_name == 'workflow_dispatch' && inputs\.force/);
@@ -508,6 +516,33 @@ test("a genuine newest-run failure of a push check still blocks", () => {
   assert.equal(decision.reason, "failed-checks");
 });
 
+function trackNonMergeCheck({
+  id = 117528834505,
+  jobId = 39944449648,
+  output = { title: "Process completed with exit code 1.", summary: "" },
+} = {}) {
+  return {
+    id,
+    name: "Track non-merge-commit landing",
+    conclusion: "failure",
+    status: "completed",
+    started_at: "2026-10-17T19:57:00Z",
+    output,
+    details_url: `https://github.com/KeepOak/Branch-Agent/actions/runs/39075575277/job/${jobId}`,
+  };
+}
+
+const RATE_LIMIT_JOB_LOG = [
+  "2026-10-17T19:57:12.001Z ##[error]HTTP 403: API rate limit exceeded for installation ID 1",
+  "Process completed with exit code 1.",
+].join("\n");
+
+const ASSERTION_JOB_LOG = [
+  "AssertionError: expected 1 to equal 2",
+  "    at Test.fn (scripts/detect-non-merge-commit.test.mjs:10:10)",
+  "Process completed with exit code 1.",
+].join("\n");
+
 test("a GitHub rate-limit failure in check output does not block", () => {
   const checks = [{
     id: 20,
@@ -532,6 +567,106 @@ test("a GitHub rate-limit failure in check output does not block", () => {
   });
   assert.equal(decision.skip, false);
   assert.equal(decision.failedCount, 0);
+});
+
+test("an Actions job with empty check output and a rate-limit log does not block", () => {
+  const fetched = [];
+  const checks = [trackNonMergeCheck({ output: { title: "", summary: "" } })];
+  const readJobLog = jobId => {
+    fetched.push(jobId);
+    return RATE_LIMIT_JOB_LOG;
+  };
+  assert.equal(blockingCheckRuns(checks, { readJobLog }).length, 0);
+  assert.deepEqual(fetched, [39944449648]);
+  const { decision } = resolveFailedChecks({
+    listCheckRuns: () => checks,
+    readJobLog,
+    readWorkflowRun: () => {
+      throw new Error("a rate-limit job log should not load a workflow run");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a rate-limit job log should not rerun");
+    },
+  });
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+});
+
+test("an Actions job whose check output is exit code 1 and whose log is a rate limit does not block", () => {
+  const checks = [trackNonMergeCheck()];
+  const { decision } = resolveFailedChecks({
+    listCheckRuns: () => checks,
+    readJobLog: () => RATE_LIMIT_JOB_LOG,
+    readWorkflowRun: () => {
+      throw new Error("a rate-limit job log should not load a workflow run");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a rate-limit job log should not rerun");
+    },
+  });
+  assert.equal(blockingCheckRuns(checks, { readJobLog: () => RATE_LIMIT_JOB_LOG }).length, 0);
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+});
+
+test("an Actions job log with a real assertion failure still blocks", () => {
+  const checks = [trackNonMergeCheck()];
+  assert.equal(blockingCheckRuns(checks, { readJobLog: () => ASSERTION_JOB_LOG }).length, 1);
+  const { decision } = resolveFailedChecks({
+    allowRerun: false,
+    listCheckRuns: () => checks,
+    readJobLog: () => ASSERTION_JOB_LOG,
+    readWorkflowRun: () => {
+      throw new Error("rehearsal should not load workflow runs");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a genuine job-log failure should not rerun in rehearsal");
+    },
+  });
+  assert.equal(decision.skip, true);
+  assert.equal(decision.failedCount, 1);
+  assert.equal(decision.reason, "failed-checks");
+});
+
+test("a failed Actions job log fetch is treated as a real failure", () => {
+  const checks = [trackNonMergeCheck({ output: { title: "", summary: "" } })];
+  const readJobLog = () => {
+    throw new Error("API rate limit exceeded for installation");
+  };
+  assert.equal(blockingCheckRuns(checks, { readJobLog }).length, 1);
+  const { decision } = resolveFailedChecks({
+    allowRerun: false,
+    listCheckRuns: () => checks,
+    readJobLog,
+    readWorkflowRun: () => {
+      throw new Error("rehearsal should not load workflow runs");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a failed log fetch should not rerun in rehearsal");
+    },
+  });
+  assert.equal(decision.skip, true);
+  assert.equal(decision.failedCount, 1);
+  assert.equal(decision.reason, "failed-checks");
+});
+
+test("job log fetches stop at the cap and leftover failures stay blocking", () => {
+  assert.equal(JOB_LOG_FETCH_CAP, 10);
+  const fetched = [];
+  const checks = Array.from({ length: JOB_LOG_FETCH_CAP + 1 }, (_, index) => trackNonMergeCheck({
+    id: 117528834505 + index,
+    jobId: 39944449648 + index,
+    output: { title: "Process completed with exit code 1.", summary: "" },
+  }));
+  const blocking = blockingCheckRuns(checks, {
+    readJobLog: jobId => {
+      fetched.push(jobId);
+      return RATE_LIMIT_JOB_LOG;
+    },
+  });
+  assert.equal(fetched.length, JOB_LOG_FETCH_CAP);
+  assert.equal(blocking.length, 1);
+  assert.equal(blocking[0].id, checks[JOB_LOG_FETCH_CAP].id);
 });
 
 test("a genuine failure without rate-limit output still blocks", () => {
@@ -711,6 +846,66 @@ test("more than 300 check runs skips the release and does not request another pa
   assert.equal(decision.reason, "checks-over-cap");
   assert.equal(decisionCalls.length, 1);
   assert.match(logs.join("\n"), /exceed 300/);
+});
+
+test("catch-up after failed-checks dispatches once per main head SHA", () => {
+  const sha = "94ba4df41aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const next = "4373e741cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const marked = { head_sha: sha, display_title: CATCH_UP_RUN_NAME, name: CATCH_UP_RUN_NAME };
+  const first = decideSkipReasonCatchUp({
+    skipReason: "failed-checks",
+    mainCommit: sha,
+    workflowRuns: [],
+  });
+  assert.equal(first.dispatch, true);
+  const second = decideSkipReasonCatchUp({
+    skipReason: "failed-checks",
+    mainCommit: sha,
+    workflowRuns: [marked],
+  });
+  assert.equal(second.dispatch, false);
+  assert.match(second.reason, /already dispatched/);
+  const unavailable = decideSkipReasonCatchUp({
+    skipReason: "checks-unavailable",
+    mainCommit: sha,
+    workflowRuns: [marked],
+  });
+  assert.equal(unavailable.dispatch, false);
+  const freshHead = decideSkipReasonCatchUp({
+    skipReason: "failed-checks",
+    mainCommit: next,
+    workflowRuns: [marked],
+  });
+  assert.equal(freshHead.dispatch, true);
+  const overCap = decideSkipReasonCatchUp({
+    skipReason: "checks-over-cap",
+    mainCommit: sha,
+    workflowRuns: [],
+  });
+  assert.equal(overCap.dispatch, false);
+  assert.match(overCap.reason, /exceed the cap/);
+  const run = args => JSON.parse(execFileSync(process.execPath, [helper, "decide-skip-catch-up", ...args], {
+    encoding: "utf8",
+    windowsHide: true,
+  }));
+  const cliBlocked = run([
+    "--main", sha,
+    "--reason", "failed-checks",
+    "--runs", JSON.stringify({ workflow_runs: [marked] }),
+  ]);
+  assert.equal(cliBlocked.dispatch, false);
+  const cliFresh = run([
+    "--main", next,
+    "--reason", "checks-unavailable",
+    "--runs", JSON.stringify({ workflow_runs: [marked] }),
+  ]);
+  assert.equal(cliFresh.dispatch, true);
+  const cliOverCap = run([
+    "--main", sha,
+    "--reason", "checks-over-cap",
+    "--runs", JSON.stringify({ workflow_runs: [] }),
+  ]);
+  assert.equal(cliOverCap.dispatch, false);
 });
 
 test("a failed check listing skips the release and is not retried", () => {
