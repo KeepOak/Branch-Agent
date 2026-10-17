@@ -25,25 +25,54 @@ export function readToken(cfg: DesktopConfig): string {
   }
 }
 
+const REBINDABLE_PORT_ATTEMPTS = 32;
+
+type LoopbackProbe = ReturnType<typeof createServer> & { closeAllConnections?: () => void };
+
+function releaseProbe(probe: LoopbackProbe): Promise<void> {
+  return new Promise((resolve) => {
+    try { probe.closeAllConnections?.(); } catch { /* no connections */ }
+    probe.close(() => resolve());
+  });
+}
+
 /** Resolves true when nothing listens on 127.0.0.1:port. */
 export function portIsFree(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const probe = createServer();
     probe.once("error", () => resolve(false));
-    probe.listen(port, "127.0.0.1", () => probe.close(() => resolve(true)));
+    probe.listen(port, "127.0.0.1", () => { void releaseProbe(probe).then(() => resolve(true)); });
   });
 }
 
-/** A loopback port nothing listens on right now: the OS picks it for a throwaway listener. */
-export function freeLoopbackPort(): Promise<number> {
-  return new Promise((resolve, reject) => {
+/**
+ * A loopback port that can be bound again after this probe closes.
+ * bind(0) can hand back a port Windows will not take on an explicit listen
+ * (an excluded ephemeral range). Those ports are skipped. A port that failed
+ * the explicit bind is never returned.
+ */
+export async function freeLoopbackPort(): Promise<number> {
+  for (let attempt = 0; attempt < REBINDABLE_PORT_ATTEMPTS; attempt++) {
     const probe = createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const port = (probe.address() as { port: number }).port;
-      probe.close(() => resolve(port));
+    const picked = await new Promise<number | undefined>((resolve) => {
+      probe.once("error", () => resolve(undefined));
+      probe.listen(0, "127.0.0.1", () => {
+        const address = probe.address();
+        resolve(address && typeof address === "object" ? address.port : undefined);
+      });
     });
-  });
+    if (picked === undefined) continue;
+    await releaseProbe(probe);
+    const check = createServer();
+    const rebound = await new Promise<boolean>((resolve) => {
+      check.once("error", () => resolve(false));
+      check.listen(picked, "127.0.0.1", () => resolve(true));
+    });
+    if (!rebound) continue;
+    await releaseProbe(check);
+    return picked;
+  }
+  throw new Error("No loopback port could be bound again after it was closed");
 }
 
 /**

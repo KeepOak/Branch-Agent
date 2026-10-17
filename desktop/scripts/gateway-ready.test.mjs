@@ -1,12 +1,29 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { createServer } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
 const { GatewayReadinessTimeoutError, killGatewayAndWait, waitForReady } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+
+test("a handed-out loopback port can be bound again on that exact port", async () => {
+  const { freeLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const port = await freeLoopbackPort();
+  const server = createNetServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, "127.0.0.1", resolve);
+    });
+    assert.equal(server.address().port, port);
+  } finally {
+    try { server.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } });
+  }
+});
 
 test("a child that never emits exit cannot hold the update lock indefinitely", async () => {
   const child = Object.assign(new EventEmitter(), { pid: undefined, exitCode: null, signalCode: null });
