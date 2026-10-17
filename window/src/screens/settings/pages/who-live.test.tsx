@@ -55,7 +55,7 @@ describe("R1 Settings › Who uses Branch is a native R1 page with the preview's
     expect(host.querySelector(".r1s-custom, .r1s-classic, [data-classic]")).toBeNull();
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Who uses Branch");
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(["People"]);
-    // Both People rows are Coming, so Regular hides them (rows.ts COMING_FROM); they show from Advanced.
+    // Both People rows are Coming, so Regular hides them (rows.ts COMING_FROM); they show at Technical.
     expect(labels(sections()[0])).toEqual([]);
     expect([...sections()[0].querySelectorAll("button")].map((b) => b.textContent)).toEqual(expect.arrayContaining(["Groups", "Signing in from other devices", "What you share"]));
     // The preview opens People with everyone who uses Branch and Invite someone, with no heading of its own.
@@ -65,9 +65,13 @@ describe("R1 Settings › Who uses Branch is a native R1 page with the preview's
     expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(["People"]);
   });
 
-  it("draws all three cards at Advanced in order, with the fourteen sign-in rows", async () => {
+  it("draws the working cards at Advanced, and all three at Technical in order, with the fourteen sign-in rows", async () => {
     await mount();
     await setLevel("Advanced");
+    // Signing in to Branch waits for a later update: it shows with every Coming row, at Technical (Private #1093 item 4).
+    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS.filter((c) => c !== "Signing in to Branch"));
+    expect(labels(sections()[0])).toEqual([]);
+    await setLevel("Technical");
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
     expect(labels(sections()[0])).toEqual(["Ask for a PIN when switching person", "Keep conversations separate"]);
     expect(labels(sections()[2])).toHaveLength(14);
@@ -77,7 +81,7 @@ describe("R1 Settings › Who uses Branch is a native R1 page with the preview's
     const seen: unknown[] = [];
     window.addEventListener("branch:navigate-place", (e) => seen.push((e as CustomEvent).detail));
     const { request } = await mount();
-    await setLevel("Advanced");
+    await setLevel("Technical");
     expect(undeclaredControls(host.querySelector(".r1s-col")!).filter((e) => !e.closest("[data-classic-block]")).map((e) => e.outerHTML.slice(0, 120))).toEqual([]);
     await click([...host.querySelectorAll("button")].find((b) => b.textContent === "What you share"));
     expect(seen).toContainEqual({ place: "people", tab: "Shared" });

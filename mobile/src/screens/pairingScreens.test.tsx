@@ -32,6 +32,8 @@ describe('pairing screens', () => {
     await fireEvent.press(screen.getByTestId('pair-button'));
     expect(screen.getByTestId('camera-permission')).toBeOnTheScreen();
     expect(screen.getByText('Allow camera')).toBeOnTheScreen();
+    expect(screen.getByText('Connect to your Branch')).toBeOnTheScreen();
+    expect(screen.getByTestId('connect-code')).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByTestId('enter-code'));
     expect(screen.getByTestId('enter-code-screen')).toBeOnTheScreen();
