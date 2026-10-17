@@ -763,12 +763,25 @@ function carryFailure(message, brokenAt = null) {
 
 const MERGE_BLOB_FETCHES = 40;
 
+// commit-tree exits when the runner has no user.email. This identity is not a person.
+// GIT_CONFIG_* keeps a developer or runner gitconfig from changing the synthetic commits.
+const GATE_GIT_ENV = {
+  GIT_AUTHOR_NAME: 'merge-gate',
+  GIT_AUTHOR_EMAIL: 'merge-gate@invalid',
+  GIT_COMMITTER_NAME: 'merge-gate',
+  GIT_COMMITTER_EMAIL: 'merge-gate@invalid',
+  GIT_CONFIG_NOSYSTEM: '1',
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  HOME: mkdtempSync(path.join(tmpdir(), 'merge-gate-home-')),
+};
+
 function gitResult(repoDir, args, input) {
   const binary = Buffer.isBuffer(input);
   try {
     const stdout = execFileSync('git', ['-C', repoDir, '-c', 'commit.gpgsign=false', ...args], {
       encoding: binary ? 'buffer' : 'utf8',
       input,
+      env: { ...process.env, ...GATE_GIT_ENV },
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
       maxBuffer: 16 * 1024 * 1024,

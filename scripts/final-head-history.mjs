@@ -4,6 +4,9 @@
 // whose other parents are on the current base (origin/main, or the pull request base
 // when this checkout is GitHub's merge commit), and its tree must be that merge alone.
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 const SHA = /^[0-9a-f]{40}$/i;
 
@@ -15,10 +18,23 @@ export function isFullSha(value) {
   return typeof value === 'string' && SHA.test(value);
 }
 
+// commit-tree (the extra-parent fold) exits when the runner has no user.email.
+// This identity is not a person, and the empty config ignores the runner's gitconfig.
+const GATE_GIT_ENV = {
+  GIT_AUTHOR_NAME: 'merge-gate',
+  GIT_AUTHOR_EMAIL: 'merge-gate@invalid',
+  GIT_COMMITTER_NAME: 'merge-gate',
+  GIT_COMMITTER_EMAIL: 'merge-gate@invalid',
+  GIT_CONFIG_NOSYSTEM: '1',
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  HOME: mkdtempSync(path.join(tmpdir(), 'merge-gate-home-')),
+};
+
 function tryGit(repoDir, args) {
   try {
     const stdout = execFileSync('git', ['-C', repoDir, '-c', 'commit.gpgsign=false', ...args], {
       encoding: 'utf8',
+      env: { ...process.env, ...GATE_GIT_ENV },
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

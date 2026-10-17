@@ -2821,6 +2821,31 @@ test('a gate-change-reviewed marker carries across one merge of main', () => {
   assert.equal(direct.carriedFrom, MARKER_M);
 });
 
+test('a clean merge still carries when the process has no git identity', () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'gate-no-ident-'));
+  const env = {
+    ...process.env,
+    HOME: home,
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_GLOBAL: '/dev/null',
+  };
+  delete env.GIT_AUTHOR_NAME;
+  delete env.GIT_AUTHOR_EMAIL;
+  delete env.GIT_COMMITTER_NAME;
+  delete env.GIT_COMMITTER_EMAIL;
+  const file = fileURLToPath(new URL('./merge-gate-trusted.test.mjs', import.meta.url));
+  try {
+    execFileSync(process.execPath, [
+      '--test',
+      '--test-name-pattern',
+      '^a gate-change-reviewed marker carries across one merge of main$',
+      file,
+    ], { env, encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test('a gate-change-reviewed marker carries across two merges of main', () => {
   const result = carryReview({
     headSha: MERGE_TWO,
