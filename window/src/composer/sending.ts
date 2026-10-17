@@ -1,6 +1,7 @@
 // What Send does with the draft (DESIGN-SPEC §4.3.1 Interactions and "Sending while it works").
 import { toChatAttachments, type DraftFile } from "./attachments";
 import type { SendExtras } from "./engine";
+import { FREE_MODEL_READY } from "./no-key-default";
 import { commandWord } from "./slash";
 import type { Person } from "./DockRow";
 import { mentionsIn } from "./useDraft";
@@ -28,6 +29,24 @@ export function planSend(text: string, hasFiles: boolean, working: boolean, queu
   if (queueMode === "interrupt") return { kind: "send", queueMode: "interrupt" };
   const steerFirst = queueMode === "steer" || queueMode === "";
   return steerFirst !== alt ? { kind: "send", queueMode: "steer" } : { kind: "wait" };
+}
+
+/** Why Enter or Send must wait. Null means the send can go. Never drop a press with no words. */
+export const STILL_LOADING_MODELS = "Still loading models. Try again in a moment.";
+export const BRANCH_RECONNECTING = "Offline: Branch is reconnecting.";
+
+export function sendHoldReason(input: {
+  offline?: boolean;
+  loadingModels?: boolean;
+  preparing?: boolean;
+  noKeyError?: string | null;
+  waitingForFreeModel?: boolean;
+}): string | null {
+  if (input.offline) return BRANCH_RECONNECTING;
+  if (input.preparing || input.loadingModels) return STILL_LOADING_MODELS;
+  if (input.noKeyError) return input.noKeyError;
+  if (input.waitingForFreeModel) return FREE_MODEL_READY;
+  return null;
 }
 
 /** The Send button's tooltip while it works with a draft: both actions, in the order Enter and Ctrl Enter do them. */

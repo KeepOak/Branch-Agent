@@ -4,6 +4,25 @@ import { str, type Rec, type WindowEngine } from "./engine";
 
 export function useModelAccounts(engine: WindowEngine | undefined, agentId: string, working: boolean): Account[] {
   const [state, setState] = useState<{ engine?: WindowEngine; agentId: string; accounts: Account[] }>({ agentId: "", accounts: [] });
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!engine) return;
+    const bump = ({ event }: { event: string }) => {
+      if (event === "config.changed" || event === "agents.changed" || event === "chat.metadata.changed") setTick((n) => n + 1);
+    };
+    const off = engine.onEvent(bump);
+    const onFocus = () => {
+      if (typeof document !== "undefined" && document.visibilityState && document.visibilityState !== "visible") return;
+      setTick((n) => n + 1);
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      off();
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [engine]);
   useEffect(() => {
     if (!engine || !agentId) return;
     let live = true;
@@ -12,7 +31,7 @@ export function useModelAccounts(engine: WindowEngine | undefined, agentId: stri
       () => { if (live) setState({ engine, agentId, accounts: [] }); },
     );
     return () => { live = false; };
-  }, [engine, agentId, working]);
+  }, [engine, agentId, working, tick]);
   return state.engine === engine && state.agentId === agentId ? state.accounts : [];
 }
 
