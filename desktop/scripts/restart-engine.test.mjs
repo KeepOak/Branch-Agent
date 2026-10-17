@@ -30,13 +30,14 @@ async function stopEngine(root, pid) {
 }
 const servingOn = async (port) => (await originalFetch(`http://127.0.0.1:${port}/readyz`).then(response => response.status, () => 0)) === 200;
 const EVENTUALLY_DEFAULT_MS = 8000;
-// Windows keeps a closed listening socket reserved. A connection to that socket can accept
-// once and send nothing, and that connection keeps the reservation, so the next engine
-// never binds. The fixture engine resets its sockets and closes its listener before it
-// exits, retries a refused bind without connecting, and a test stops an engine by asking
-// for that close. bind(0) can also return a port an explicit listen will never take; only
-// a port that bound again is handed out. Linux and macOS free the socket at once. This
-// deadline stays past a slow Windows bind plus waitForGatewayPort (40 × 250ms).
+// Windows will not bind a port that still has a FIN_WAIT, ESTABLISHED or LAST_ACK socket.
+// The fixture must not FIN one: an idle keep-alive timeout, a client half-close, or
+// process.exit while a socket is still open all do. It resets every socket, then exits
+// only after the listener's close callback, so the next engine can bind that same port.
+// A refused bind is retried without connecting and without close(); a connection to a
+// just-closed socket can accept once and keep the port reserved. bind(0) can also return
+// a port an explicit listen will never take; only a port that bound again is handed out.
+// This deadline stays past a slow Windows bind plus waitForGatewayPort (40 × 250ms).
 const WINDOWS_FIXTURE_DEADLINE_MS = 75_000 + 10_000 + 5_000;
 function fixtureDeadline(timeout = EVENTUALLY_DEFAULT_MS) {
   return process.platform === "win32" ? Math.max(timeout, WINDOWS_FIXTURE_DEADLINE_MS) : timeout;
@@ -185,7 +186,11 @@ starts.push(process.pid);const tmp=file+"."+process.pid+".tmp";fs.writeFileSync(
 const peers=starts.filter(p=>p!==process.pid&&(()=>{try{process.kill(p,0);return true;}catch{return false;}})());
 fs.writeFileSync(root+"/launch-"+process.pid+".json",JSON.stringify({port:Number(process.argv.at(-1)),standby:process.env.BRANCH_GATEWAY_STANDBY==="1",token:process.env.BRANCH_GATEWAY_TOKEN,peers}));
 let listener;const sockets=new Set();let exiting=false;
-function shutdown(code){if(exiting)return;exiting=true;clearInterval(closeWatch);for(const socket of sockets){try{socket.resetAndDestroy();}catch{try{socket.destroy();}catch{}}}let left=false;const done=()=>{if(left)return;left=true;process.exit(code);};const timer=setTimeout(done,400);if(typeof timer.unref==="function")timer.unref();if(!listener){done();return;}try{listener.close(()=>{clearTimeout(timer);done();});}catch{done();}}
+function drop(socket){if(!socket)return;socket.on("error",()=>{});try{socket.resetAndDestroy();}catch{try{socket.destroy();}catch{}}}
+// Exit only after the reset sockets are gone and the listen handle has closed. A timer
+// that exits first lets Windows finish those sockets with a FIN, and the port stays
+// unbindable longer than the next engine is willing to wait.
+function shutdown(code){if(exiting)return;exiting=true;clearInterval(closeWatch);if(!listener){process.exit(code);return;}let left=false;let again;const done=()=>{if(left)return;left=true;clearInterval(again);process.exit(code);};for(const socket of sockets)drop(socket);try{listener.close(()=>done());}catch{done();return;}again=setInterval(()=>{if(left)return;for(const socket of sockets)drop(socket);},20);}
 try{fs.unlinkSync(root+"/close-"+process.pid);}catch{}
 const closeWatch=setInterval(()=>{const mark=root+"/close-"+process.pid;if(!fs.existsSync(mark))return;try{fs.unlinkSync(mark);}catch{}shutdown(0);},15);
 if(starts.length===2&&fs.existsSync(root+"/fail-next"))shutdown(1);
@@ -208,7 +213,7 @@ if(m.type==="branch-desktop:drain-stop"&&!(globalThis.fenced&&fs.existsSync(root
 if(m.type==="branch-desktop:stop-if-idle"&&!fs.existsSync(root+"/busy"))setTimeout(()=>shutdown(0),20);});
 // refuse-agents: the staged engine listens and answers /readyz, but its agents stay refused (database inspection pending).
 const refusing=()=>fs.existsSync(root+"/refuse-agents")&&process.cwd().endsWith("staged-engine");
-listener=http.createServer((q,r)=>{if(refusing()&&q.url==="/startupz"){r.writeHead(503,{"content-type":"application/json"}).end(JSON.stringify({ok:false,status:"starting",pendingReason:"agent-database-inspection"}));return;}const agents=refusing()?JSON.stringify({ready:true,failing:[],agentDatabases:[{agentId:"coordinator",code:"agent-database-inspection-pending"}]}):undefined;r.writeHead(globalThis.rollbackReadyAt&&Date.now()<globalThis.rollbackReadyAt?503:globalThis.fenced&&fs.existsSync(root+"/fence-readyz")?503:starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end(agents);});listener.on("connection",socket=>{sockets.add(socket);socket.on("close",()=>sockets.delete(socket));});
+listener=http.createServer((q,r)=>{if(exiting){drop(q.socket);return;}if(refusing()&&q.url==="/startupz"){r.writeHead(503,{"content-type":"application/json"}).end(JSON.stringify({ok:false,status:"starting",pendingReason:"agent-database-inspection"}));return;}const agents=refusing()?JSON.stringify({ready:true,failing:[],agentDatabases:[{agentId:"coordinator",code:"agent-database-inspection-pending"}]}):undefined;r.writeHead(globalThis.rollbackReadyAt&&Date.now()<globalThis.rollbackReadyAt?503:globalThis.fenced&&fs.existsSync(root+"/fence-readyz")?503:starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end(agents);});listener.keepAliveTimeout=0;listener.headersTimeout=0;listener.requestTimeout=0;listener.httpAllowHalfOpen=true;listener.on("connection",socket=>{if(exiting){drop(socket);return;}sockets.add(socket);socket.on("close",()=>sockets.delete(socket));socket.on("error",()=>{});});
 // As a standby since #411: it takes the state over only on its launcher's take-over message, then says so.
 if(process.env.BRANCH_GATEWAY_STANDBY==="1")process.on("message",m=>{if(m?.type!=="branch-desktop:take-over"||globalThis.tookOver)return;globalThis.tookOver=true;if(fs.existsSync(root+"/released-"+starts[0]))fs.writeFileSync(root+"/took-over-after-step-down-"+process.pid,"1");fs.writeFileSync(root+"/took-over-"+process.pid,JSON.stringify({oldEngineAlive:(()=>{try{process.kill(starts[0],0);return true;}catch{return false;}})()}));process.send?.({type:"branch-desktop:taking-over",pid:process.pid,port:Number(process.argv.at(-1))});});
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
