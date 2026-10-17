@@ -205,6 +205,10 @@ function migrateLegacyMemorySearchFlatKeys(
   }
 }
 
+function isRemoteMemoryEmbeddingModelName(value: unknown): boolean {
+  return typeof value === "string" && /^text-embedding-/i.test(value.trim());
+}
+
 function rewriteLegacyMemorySearchAutoProvider(
   memorySearch: Record<string, unknown> | null,
   pathLabel: string,
@@ -215,6 +219,14 @@ function rewriteLegacyMemorySearchAutoProvider(
   }
   memorySearch.provider = "local";
   changes.push(`Moved ${pathLabel}.provider from legacy "auto" to "local".`);
+  if (!isRemoteMemoryEmbeddingModelName(memorySearch.model)) {
+    return;
+  }
+  const model = String(memorySearch.model).trim();
+  delete memorySearch.model;
+  changes.push(
+    `Removed ${pathLabel}.model ("${model}") so local embeddings use their default model.`,
+  );
 }
 
 function migrateCanonicalMemorySearches(

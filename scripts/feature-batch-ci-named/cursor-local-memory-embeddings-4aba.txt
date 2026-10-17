@@ -1,5 +1,6 @@
 engine:extensions/memory-core/src/memory/embeddings.test.ts
 engine:extensions/memory-core/src/memory/generic-embedding-provider.integration.test.ts
+engine:extensions/memory-core/src/memory/manager-local-unavailable-keyword.test.ts
 engine:src/agents/memory-search.test.ts
 engine:src/cli/capability-cli.test.ts
 engine:src/commands/doctor-config-flow.legacy-composition.test.ts

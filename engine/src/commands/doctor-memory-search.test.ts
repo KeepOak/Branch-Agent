@@ -58,7 +58,7 @@ const resolveManifestOwnerBasePolicyBlock = vi.hoisted(() =>
 const getMissingLocalMemoryEmbeddingProviderMessage = vi.hoisted(() =>
   vi.fn(
     () =>
-      "Memory search is off: no local embedding model is available\n" +
+      "Search by meaning is off because this computer can't run it yet. Branch still finds memories by matching words. To turn it on, open Settings › Advanced › Meaning search uses.\n" +
       "Local GGUF embeddings are provided by the official llama.cpp provider plugin.\n" +
       "Install it with: branch plugins install @branch/llama-cpp-provider\n" +
       "Then restart Branch Agent and retry: branch memory status --deep",
@@ -395,7 +395,7 @@ describe("noteMemorySearchHealth", () => {
 
     expect(note).toHaveBeenCalledTimes(1);
     expectFirstNoteContains(
-      "Memory search is off: no local embedding model is available",
+      "Search by meaning is off because this computer can't run it yet. Branch still finds memories by matching words. To turn it on, open Settings › Advanced › Meaning search uses.",
       "branch plugins install @branch/llama-cpp-provider",
       "branch memory status --deep",
     );

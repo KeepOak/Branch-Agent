@@ -220,9 +220,9 @@ describe("Library › Memory", () => {
     expect(button("Write past nights")).toBeUndefined();
   });
   it("shows a plain memory search error at Regular when no local embedding model is available", async () => {
-    const { engine } = engineOf(base((m) => m === "doctor.memory.status" ? { embedding: { ok: false, checked: true, error: "Memory search is off: no local embedding model is available" } } : undefined));
+    const { engine } = engineOf(base((m) => m === "doctor.memory.status" ? { embedding: { ok: false, checked: true, error: "Search by meaning is off because this computer can't run it yet. Branch still finds memories by matching words. To turn it on, open Settings › Advanced › Meaning search uses." } } : undefined));
     await mount(engine, "regular");
-    expect(host.textContent).toContain("Memory search is off: no local embedding model is available");
+    expect(host.textContent).toContain("Search by meaning is off because this computer can't run it yet. Branch still finds memories by matching words. To turn it on, open Settings › Advanced › Meaning search uses.");
   });
   it("shows the overnight cleanup row with the Seasons link before it has run", async () => {
     const open = vi.fn();

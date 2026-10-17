@@ -1769,12 +1769,13 @@ describe("legacy memory search config migrate", () => {
     expect(res.config?.memory?.search).toEqual({
       enabled: true,
       provider: "local",
-      model: "text-embedding-3-small",
       query: { maxResults: 9 },
       store: { fts: { tokenizer: "trigram" }, vector: { enabled: false } },
     });
     expect(res.changes).toEqual(
       expect.arrayContaining([
+        'Moved memory.search.provider from legacy "auto" to "local".',
+        'Removed memory.search.model ("text-embedding-3-small") so local embeddings use their default model.',
         "Removed memory.search.chunkSize (memory.search.chunking.tokens already set).",
         "Moved memory.search.chunkOverlap → memory.search.chunking.overlap.",
         "Removed memory.search.maxResults (memory.search.query.maxResults already set).",

@@ -239,7 +239,7 @@ export const MODEL_FIELD_HELP: Record<string, string> = {
   "memory.search.store.vector.enabled":
     "Controls the sqlite-vec semantic index. Keep this advanced override when root and per-agent vector policies differ.",
   "memory.search.fallback":
-    'Backup provider used when primary embeddings fail: "openai", "gemini", "voyage", "mistral", "bedrock", "lmstudio", "ollama", "local", or "none". Defaults to "none". Paid remotes are never chosen automatically, including from a ChatGPT or OAuth login; set one here only if you want that backup.',
+    'Backup provider used when primary embeddings fail: "openai", "gemini", "voyage", "mistral", "bedrock", "lmstudio", "ollama", "local", or "none". Defaults to "none". A paid backup is used only when you also set memory.search.provider yourself; auto and unset ignore it. A ChatGPT or OAuth login is not enough.',
   "memory.search.store.vector.extensionPath":
     "Overrides the auto-discovered sqlite-vec extension library path (`.dylib`, `.so`, or `.dll`). Use this when your runtime cannot find sqlite-vec automatically or you pin a known-good build.",
   "memory.search.query.maxResults":

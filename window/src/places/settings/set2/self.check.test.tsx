@@ -48,8 +48,8 @@ it("shows failed checks in plain language without leaking terminal instructions"
   expect(document.body.textContent).not.toContain("branch doctor");
 });
 it("shows a plain memory search error when no local embedding model is available", async () => {
-  await show("regular", { ok: true }, { embedding: { ok: false, checked: true, error: "Memory search is off: no local embedding model is available" } });
-  expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Memory search is off: no local embedding model is available");
+  await show("regular", { ok: true }, { embedding: { ok: false, checked: true, error: "Search by meaning is off because this computer can't run it yet. Branch still finds memories by matching words. To turn it on, open Settings › Advanced › Meaning search uses." } });
+  expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Search by meaning is off because this computer can't run it yet. Branch still finds memories by matching words. To turn it on, open Settings › Advanced › Meaning search uses.");
 });
 it("does not claim skipped memory checks worked", async () => {
   await show("regular", { ok: true }, { embedding: { ok: true, checked: false } });

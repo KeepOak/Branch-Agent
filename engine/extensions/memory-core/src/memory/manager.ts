@@ -502,6 +502,9 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
       ) {
         this.clearEmbeddingBootstrapFailureAfterRecovery();
       }
+      if (this.embeddingBootstrapFailure) {
+        this.vector.semanticAvailable = false;
+      }
     };
     this.syncing = this.syncOutcomes.track(run, true).finally(() => {
       this.syncing = null;

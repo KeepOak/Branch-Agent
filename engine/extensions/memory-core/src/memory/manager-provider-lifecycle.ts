@@ -118,6 +118,7 @@ export abstract class MemoryProviderLifecycle extends MemoryManagerEmbeddingOps 
   protected indexIdentityDirty = false;
   private primaryRecoveryPromise: Promise<void> | null = null;
   private primaryRecoveryRetryAt = 0;
+  private localMemoryUnavailableLogged = false;
   protected abstract indexIdentityState: MemoryIndexIdentityState;
   protected abstract syncAdmitted(
     params?: MemorySyncParams,
@@ -178,7 +179,11 @@ export abstract class MemoryProviderLifecycle extends MemoryManagerEmbeddingOps 
     this.batch = this.resolveBatchConfig();
     this.vector.semanticAvailable = false;
     this.cacheProbeResult({ ok: false, error: reason });
-    if (provider === "local" || reason === LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE) {
+    if (
+      !this.localMemoryUnavailableLogged &&
+      (provider === "local" || reason === LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE)
+    ) {
+      this.localMemoryUnavailableLogged = true;
       log.warn(LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE);
     }
     return debug;
@@ -194,6 +199,7 @@ export abstract class MemoryProviderLifecycle extends MemoryManagerEmbeddingOps 
     if (failure) {
       const cached = this.getCachedEmbeddingAvailability();
       if (cached?.ok === false) {
+        this.vector.semanticAvailable = false;
         onDebug?.({ backend: "builtin", embeddingBootstrap: failure });
         return true;
       }
@@ -255,6 +261,7 @@ export abstract class MemoryProviderLifecycle extends MemoryManagerEmbeddingOps 
   protected clearEmbeddingBootstrapFailureAfterRecovery(): void {
     this.embeddingBootstrapFailure = undefined;
     this.providerUnavailableReason = undefined;
+    this.localMemoryUnavailableLogged = false;
     if (this.provider) {
       this.providerLifecycle = this.fallbackFrom
         ? {
