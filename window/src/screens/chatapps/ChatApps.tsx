@@ -13,6 +13,7 @@ import { has } from "../../places/inbox/data";
 import { useLevel } from "../settings/SettingsFrame";
 import { CHAT_APPS, GROUPS, type ChatApp } from "./catalogue";
 import { LaterRows } from "../../glass/LaterRows";
+import { COMING_FROM } from "../settings/rows";
 import { More } from "./More";
 import { Pairing } from "./Pairing";
 import { connectedOf, Pill, toneOf, useCfg } from "./parts";
@@ -86,9 +87,13 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
     const items = apps.filter(a => a.group === group);
     return items.length ? <section className="r1-ca-group" key={group}><h3 className="g-label">{group} <span>{items.length}</span></h3><div className="r1-ca-grid">{items.map(renderCard)}</div></section> : null;
   });
-  // A search lists every match; otherwise the apps that work lead and the rest fold into one row.
-  const leading = q ? shown : shown.filter(working);
-  const later = q ? [] : shown.filter(app => !working(app));
+  // A search lists every match; otherwise the apps that work lead and the rest fold into one row. Apps Branch has no
+  // setup for yet (catalogue only) show only at Technical (settings rows.ts COMING_FROM, Private #1093 item 4): Regular
+  // and Advanced list the apps this window can set up, greyed with their reason when this engine can't.
+  const comingShown = level >= COMING_FROM;
+  const today = (app: ChatApp) => working(app) || Boolean(app.channel);
+  const leading = q ? shown.filter(app => comingShown || today(app)) : shown.filter(comingShown ? working : today);
+  const later = q || !comingShown ? [] : shown.filter(app => !working(app));
 
   return <section className="r1-chatapps g-clear" aria-label="Chat apps">
     {live.error && <p role="alert"><span className="g-label">{live.error}</span> <button type="button" onClick={() => void live.reload()} data-need="channels.status">Try again</button></p>}
@@ -102,7 +107,7 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
       <Pairing engine={engine} snapshot={live.pairing} reload={live.reload} apps={connected.map(c => ({ id: c.state.id, name: c.state.name }))} level={level} trunkFor={trunkFor} />
     </section>
     <section aria-labelledby="r1-ca-all"><h2 id="r1-ca-all" className="g-label">Every chat app</h2>
-      <label className="r1-ca-search g-frost"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search chat apps" placeholder="Search all 74 chat apps" value={query} onChange={e => setQuery(e.target.value)} data-local="search" /></label>
+      <label className="r1-ca-search g-frost"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search chat apps" placeholder={comingShown ? "Search all 74 chat apps" : "Search chat apps"} value={query} onChange={e => setQuery(e.target.value)} data-local="search" /></label>
       {groupsOf(leading)}
       {later.length ? <LaterRows count={later.length} label={`More chat apps (${later.length})`}>{groupsOf(later)}</LaterRows> : null}
       {!shown.length && <p className="g-label" data-lines>No chat app matches “{query}”. “A webhook of your own” connects anything else.</p>}

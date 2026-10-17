@@ -90,9 +90,16 @@ it("puts the preview's ••• menu on each Trunk, with Who it knows, and grey
   expect(request).toHaveBeenCalledWith("trunks.template.export", { agentId: "birch" });
 });
 
-it("draws Defaults for every Trunk and Trunks’ own databases at Advanced, and the folder defaults inside the Trunks card at Technical", async () => {
+it("draws Defaults for every Trunk and Trunks’ own databases (all Coming) and the folder defaults inside the Trunks card at Technical only", async () => {
+  // Both cards wait for a later update: Regular and Advanced show only what works today (Private #1093 item 4).
   await mount("advanced");
-  expect(cards()).toEqual(["", "Defaults for every Trunk", "Trunks’ own databases"]);
+  expect(cards()).toEqual([""]);
+  expect(host.textContent).not.toContain("comes in a later update");
+  expect(host.textContent).not.toContain("Groups and Grafted agents");
+  expect(host.textContent).not.toContain("Working folder");
+  await act(async () => root.unmount()); root = createRoot(host);
+  await mount("technical");
+  expect(cards()).toEqual(expect.arrayContaining(["", "Defaults for every Trunk", "Trunks’ own databases"]));
   const defaults = host.querySelector<HTMLElement>('.r1s-sec[aria-label="Defaults for every Trunk"]')!;
   expect([...defaults.querySelectorAll(".r1s-row > b")].map((b) => b.textContent)).toEqual(TRUNK_DEFAULTS.map((d) => d.label));
   expect(TRUNK_DEFAULTS.map((d) => d.label)).toEqual(["Projects pick up matching work", "Follow-up tasks", "Standing orders", "“From now on” for a specialist", "Share a Trunk", "Custom modes", "Agent marketplace", "Trunk packages"]);
@@ -103,8 +110,6 @@ it("draws Defaults for every Trunk and Trunks’ own databases at Advanced, and 
     expect(sw.getAttribute("aria-disabled")).toBe("true");
     expect(row.querySelector(".r1s-note")?.textContent).toBe(`${label} comes in a later update.`);
   }
-  expect(host.textContent).not.toContain("Groups and Grafted agents");
-  expect(host.textContent).not.toContain("Working folder");
   await act(async () => root.unmount()); root = createRoot(host);
   await mount("technical");
   const first = host.querySelector<HTMLElement>(".r1s-trunks")!;

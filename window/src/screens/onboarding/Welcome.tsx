@@ -5,7 +5,7 @@ import { Icon as ComposerIcon } from "../../composer/icons";
 import { Icon } from "../../shell/icons";
 import { WHERE, WHERE_LATER, whereWord, type Where } from "./model";
 
-export function Welcome({ where, onChangeWhere }: { where: Where; onChangeWhere: () => void }) {
+export function Welcome({ where, onChangeWhere, name, onName, nameError }: { where: Where; onChangeWhere: () => void; name: string; onName: (name: string) => void; nameError: string | null }) {
   return (
     <>
       <div className="r1-ob-hero">
@@ -16,6 +16,11 @@ export function Welcome({ where, onChangeWhere }: { where: Where; onChangeWhere:
       </div>
       <h1>Hi, I’m Branch.</h1>
       <p className="r1-ob-lede">Agents that work on your computer: Trunks that each take one job off your plate.</p>
+      <label className="r1-ob-name-label">
+        <span>What should Branch call you?</span>
+        <input className="r1-ob-name" data-local maxLength={256} autoComplete="name" aria-label="Your name" placeholder="Your name" value={name} onChange={(e) => onName(e.target.value)} />
+      </label>
+      {nameError ? <p className="r1-ob-error" role="alert">{nameError}</p> : null}
       <p className="r1-ob-promise"><ComposerIcon name="lock" size={15} /><span>It asks before it sends, deletes, spends or installs anything.</span></p>
       <p className="r1-ob-where">Runs on <b>{whereWord(where)}</b> · <button type="button" className="r1-ob-link" data-local onClick={onChangeWhere}>Change</button></p>
       {where !== "here" ? <p className="r1-ob-hint" role="status">{WHERE_LATER}</p> : null}
