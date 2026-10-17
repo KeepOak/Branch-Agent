@@ -17,12 +17,13 @@ import {
   signInOffers, signOut, signOutWhy, takeAddRequest, testAccount, type Account, type Provider,
 } from "../../../places/settings/set1/accounts";
 import { nextModeOf, nextSub, restingOf, setNextMode, setTrunkAccount, shortId, sourceLine, trunkChoices } from "../../../places/settings/set1/accounts-more";
-import { key, moveToTop, PAUSE_OFF, signOutAll } from "../../../places/settings/set1/accounts-select";
+import { key, moveToTop, PAUSE_OFF, RENAME_LATER, signOutAll } from "../../../places/settings/set1/accounts-select";
 import { AddAccountDialog, type AddStart } from "../../../places/settings/set1/add-account";
 import { APPS, appSub, foundState, PILL, type App } from "../../../places/settings/set1/coding-apps";
 import { PickOwn } from "../../../places/settings/set1/own-accounts";
 import { Logo, serviceName } from "../../../places/settings/set1/service";
 import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
+import { menuAtLevel } from "../../../shell/menu-level";
 import { Segmented, Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
 import { Failed, Needs, useFailure } from "./appearance-live";
@@ -137,6 +138,7 @@ const accountLine = (acc: Account): string => [accountSub(acc), acc.ordered && a
  *  Which Trunks use it, Sign out), as Classic's Order Branch uses them in. */
 export function AccountList({ engine }: SlotControlProps) {
   const { status, agent, all } = useAccounts(engine);
+  const [level] = useLevel(engine);
   const [failed, run] = useFailure();
   const [open, setMenu] = useState<{ at: MenuAnchor; key: string } | null>(null);
   // The menu's account, by key, from the list as it is now (a reload makes new account objects).
@@ -149,7 +151,7 @@ export function AccountList({ engine }: SlotControlProps) {
   const items = (acc: Account): MenuItem[] => [
     { label: "Test it", disabled: can("models.probe"), run: () => void run(() => testAccount(engine, acc, agent)) },
     { label: "Answer first", disabled: can("models.authOrderSet") ?? answerFirstWhy(acc), run: () => reorder(acc, firstOrder(acc, all)) },
-    { label: "Rename", disabled: "Branch can’t rename an account yet.", run: () => undefined },
+    { label: "Rename", disabled: RENAME_LATER, run: () => undefined },
     { label: "Which Trunks use it", disabled: "Every Trunk uses this account, in this order.", run: () => undefined },
     { kind: "sep" },
     { label: "Sign out", danger: true, disabled: can("models.authLogout") ?? signOutWhy(acc.a), run: () => void run(async () => { await signOut(engine, acc, agent); await status.reload(); }) },
@@ -181,7 +183,7 @@ export function AccountList({ engine }: SlotControlProps) {
     {all.some((x) => !x.first) ? <Line>When one account runs low, Branch moves to the next.</Line> : null}
     {admin && all.length ? <Line>{admin}</Line> : null}
     <Failed text={failed} />
-    {menu ? <div data-need={MENU_CALLS.join(" ")}><Menu at={menu.at} items={items(menu.acc)} onClose={() => setMenu(null)} label={accountName(menu.acc)} /></div> : null}
+    {menu ? <div data-need={MENU_CALLS.join(" ")}><Menu at={menu.at} items={menuAtLevel(items(menu.acc), level >= 2)} onClose={() => setMenu(null)} label={accountName(menu.acc)} /></div> : null}
   </>;
 }
 
@@ -266,6 +268,7 @@ export function AddAccount({ engine }: SlotControlProps) {
 /** Select accounts (Advanced): tick accounts, then move them to the top or sign out of them, as Classic's bulk bar. */
 export function SelectAccounts({ engine }: SlotControlProps) {
   const { status, agent, all } = useAccounts(engine);
+  const [level] = useLevel(engine);
   const [failed, run] = useFailure();
   const [picked, setPicked] = useState<string[] | null>(null);
   const chosen = all.filter((acc) => picked?.includes(key(acc)));
@@ -293,7 +296,7 @@ export function SelectAccounts({ engine }: SlotControlProps) {
         <Needs engine={engine} need={["models.authOrderSet"]} where="Move to the top">
           <button type="button" className="r1s-btn" disabled={Boolean(admin) || !chosen.length || locked} title={admin ?? (locked ? "The order is set in the settings file." : undefined)} onClick={() => act(() => moveToTop(engine, all, chosen, agent))}>Move to the top</button>
         </Needs>
-        <button type="button" className="r1s-btn" disabled title={PAUSE_OFF}>Pause</button>
+        {level >= 2 ? <button type="button" className="r1s-btn" disabled title={PAUSE_OFF}>Pause</button> : null}
         <Needs engine={engine} need={["models.authLogout"]} where="Sign out of the selected accounts">
           <button type="button" className="r1s-btn" disabled={Boolean(admin) || !leaving.length} title={admin ?? (chosen.length && !leaving.length ? "These sign-ins can’t be removed from here." : undefined)} onClick={() => act(() => signOutAll(engine, chosen, agent))}>Sign out</button>
         </Needs>

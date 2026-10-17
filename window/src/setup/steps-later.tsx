@@ -327,7 +327,7 @@ export function CheckBody({ checks, onFix }: { checks: Check[]; onFix: (step: nu
         </details>
       </div>
       <h3 className="checks-hPF18">Health check</h3>
-      {checks.some((c) => c.name === "The model" && c.state === "bad") ? <p role="status">Trunks can’t answer until a model is connected.</p> : null}
+      {checks.some((c) => c.name === "The model" && c.state === "bad") ? <p role="status">Connecting an account makes answers smarter and faster. A free local model is used until then.</p> : null}
       <ol className="tl ob-checks" data-testid="setup-checks">
         {checks.map((c) => (
           <li key={c.name} className={c.state === "ok" ? "ok" : c.state === "bad" ? "badF18" : ""}>

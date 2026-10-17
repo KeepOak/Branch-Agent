@@ -76,7 +76,8 @@ it("uses the preview's rows and words in Writing, The conversation, Summaries, H
   expect(labels("The conversation")).toEqual(["Vim keys in the message box", "Message times", "When you send while it works", "Send with", "Ask before deleting a conversation", "All conversations", "Open past sessions in"]);
   expect(labels("Summaries of older turns")).toEqual(["Summarise older turns by themselves", "Always keep the latest", "Model for summaries", "How it summarises",
     "Summary time limit", "Keep names and numbers exact", "Trim old tool results", "Trim after", "Summarise when the room left is under", "Room to plan for", "How to write the summary", "If a summary can’t be made", "Keep the originals of what it summarises", "A receipt for each thing left out"]);
-  expect(labels("History repair")).toEqual(["Check the history now", "Repair the history before each call"]);
+  // Both History repair rows wait for a later update (Check waits on an engine history check), in table order.
+  expect(labels("History repair")).toEqual(["Repair the history before each call", "Check the history now"]);
   expect(labels("Waiting line")).toEqual(["Wait before sending what’s in line", "Most messages in line", "When the line is full"]);
   expect(labels("Quick ask")).toEqual(["Quick ask shortcut", "Quick ask from anywhere"]);
   expect(labels("Cover the screen")).toEqual(["Cover now"]);

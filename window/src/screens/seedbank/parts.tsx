@@ -1,13 +1,15 @@
 // Seedbank's pieces (preview item 28: .mkRowP17, .mkCardP17, .mkAddP17, .mkSeedP17, and item 45 Adapters tiles).
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
 import { AppLogo } from "../../places/customize/app-logos";
 import { Glyph } from "../../places/customize/glyphs";
+import { useLevel } from "../../places-nav/level";
 import { Icon } from "../../shell/icons";
 import { kindOf, shortCount, type Entry } from "./catalog";
-import { seedText } from "./seed";
+import { ItemDetail } from "./ItemDetail";
+import { seedLink, seedText } from "./seed";
 import { addCall } from "./useSeedbank";
 
 /** A control Seedbank doesn't wire yet: drawn through <Coming unwired>, so it has the Coming look and reason, swallows
@@ -35,12 +37,18 @@ export function Counts({ entry }: { entry: Entry }) {
   return <span className="sb-counts"><span aria-label={entry.downloads + " downloads"}>⬇ {shortCount(entry.downloads)}</span></span>;
 }
 
-export function AddPill({ entry, engine, onAdd }: { entry: Entry; engine: WindowEngine; onAdd: (entry: Entry) => void }) {
+/** Coming controls and their later-update lines show only at Technical; Regular and Advanced leave them out (R1-10). */
+export function useTechnical(): boolean {
+  return useLevel() === "technical";
+}
+
+export function AddPill({ entry, engine, onAdd, text = "Add" }: { entry: Entry; engine: WindowEngine; onAdd: (entry: Entry) => void; text?: string }) {
+  const technical = useTechnical();
   if (entry.installed) return <span className="sb-added" aria-label={entry.name + (entry.inUse ? " is in use" : " is added")}>{entry.inUse ? "In use" : "Added ✓"}</span>;
   const call = addCall(entry);
   if (!call) return null;
-  if ("reason" in call) return <Soon className="sb-add" need={entry.source.type === "template" ? "trunks.template.create" : "plugins.install"} reason={call.reason} label={"Add " + entry.name}>Add</Soon>;
-  return <Coming engine={engine} need={call.method} reason={"Adding " + kindOf(entry.kind).one + "s comes in a later update."}><button type="button" className="sb-add" aria-label={"Add " + entry.name} onClick={() => onAdd(entry)}>Add</button></Coming>;
+  if ("reason" in call) return technical ? <Soon className="sb-add" need={entry.source.type === "template" ? "trunks.template.create" : "plugins.install"} reason={call.reason} label={"Add " + entry.name}>{text}</Soon> : null;
+  return <Coming engine={engine} need={call.method} hidden={!technical} reason={"Adding " + kindOf(entry.kind).one + "s comes in a later update."}><button type="button" className="sb-add" aria-label={"Add " + entry.name} onClick={() => onAdd(entry)}>{text}</button></Coming>;
 }
 
 function download(name: string, text: string) {
@@ -49,10 +57,17 @@ function download(name: string, text: string) {
   a.href = url; a.download = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".seed";
   a.click(); setTimeout(() => URL.revokeObjectURL(url), 0);
 }
+export const SEED_COMING = "Sharing this kind as a seed comes in a later update.";
+/** Copy seed (a short link) and Download (.seed) on every card (preview seedIcons). A kind with no seed yet shows both
+ *  as Coming at Technical, and none at Regular and Advanced. */
 export function SeedIcons({ entry, onNotice }: { entry: Entry; onNotice: (text: string) => void }) {
-  const text = seedText(entry);
-  if (!text) return null;
-  const copy = () => { void navigator.clipboard?.writeText(text).then(() => onNotice("Copied " + entry.name + "’s seed. Paste it anywhere in Branch."), () => onNotice("The seed couldn’t be copied.")); };
+  const technical = useTechnical();
+  const text = seedText(entry), link = seedLink(entry);
+  if (!text || !link) return !technical ? null : <span className="sb-seed">
+    <Soon className="sb-icon" need="seedbank.seed" reason={SEED_COMING} label={"Copy " + entry.name + "’s seed"}><Icon name="copy" size={13} /></Soon>
+    <Soon className="sb-icon" need="seedbank.seed" reason={SEED_COMING} label={"Download " + entry.name + "’s seed"}><Icon name="download" size={13} /></Soon>
+  </span>;
+  const copy = () => { void navigator.clipboard?.writeText(link).then(() => onNotice("Copied " + entry.name + "’s seed. Paste it anywhere in Branch."), () => onNotice("The seed couldn’t be copied.")); };
   return <span className="sb-seed" data-local="">
     <button type="button" className="sb-icon" aria-label={"Copy " + entry.name + "’s seed"} title="Copy seed" onClick={copy}><Icon name="copy" size={13} /></button>
     <button type="button" className="sb-icon" aria-label={"Download " + entry.name + "’s seed"} title="Download .seed" onClick={() => download(entry.name, text)}><Icon name="download" size={13} /></button>
@@ -60,26 +75,37 @@ export function SeedIcons({ entry, onNotice }: { entry: Entry; onNotice: (text: 
 }
 
 type RowProps = { entry: Entry; engine: WindowEngine; onOpen: (entry: Entry) => void; onAdd: (entry: Entry) => void; onNotice: (text: string) => void };
-export function Row({ entry, engine, onOpen, onAdd, onNotice }: RowProps) {
+/** The item dialog for a card or row whose name was clicked. */
+function useItemDialog(p: RowProps) {
+  const [open, setOpen] = useState(false);
+  return { show: () => setOpen(true), dialog: open ? <ItemDetail entry={p.entry} engine={p.engine} onClose={() => setOpen(false)} onAdd={p.onAdd} onNotice={p.onNotice} /> : null };
+}
+export function Row(props: RowProps) {
+  const { entry, engine, onAdd, onNotice } = props;
+  const item = useItemDialog(props);
   return <div className="sb-row" data-testid="sb-row" data-id={entry.id}>
     <ItemIcon entry={entry} size={36} />
     <span className="sb-rt g-frost">
-      <b><button type="button" className="sb-name" data-local="" onClick={() => onOpen(entry)}>{entry.name}</button> <small>by {entry.by}</small><Badges entry={entry} /></b>
+      <b><button type="button" className="sb-name" data-local="" onClick={item.show}>{entry.name}</button> <small>by {entry.by}</small><Badges entry={entry} /></b>
       {entry.desc && <span className="sb-desc" title={entry.desc}>{entry.desc}</span>}
       <Counts entry={entry} />
     </span>
     <SeedIcons entry={entry} onNotice={onNotice} />
     <AddPill entry={entry} engine={engine} onAdd={onAdd} />
+    {item.dialog}
   </div>;
 }
 
-export function Card({ entry, engine, onOpen, onAdd, onNotice }: RowProps) {
+export function Card(props: RowProps) {
+  const { entry, engine, onAdd, onNotice } = props;
+  const item = useItemDialog(props);
   return <div className="sb-card" data-testid="sb-card">
     <ItemIcon entry={entry} size={52} />
-    <b><button type="button" className="sb-name" data-local="" onClick={() => onOpen(entry)}>{entry.name}</button></b>
+    <b><button type="button" className="sb-name" data-local="" onClick={item.show}>{entry.name}</button></b>
     <small className="g-label">by {entry.by} · {kindOf(entry.kind).one}</small>
     {entry.downloads !== undefined && <span className="g-label"><Counts entry={entry} /></span>}
     <span className="sb-card-acts"><SeedIcons entry={entry} onNotice={onNotice} /><AddPill entry={entry} engine={engine} onAdd={onAdd} /></span>
+    {item.dialog}
   </div>;
 }
 
