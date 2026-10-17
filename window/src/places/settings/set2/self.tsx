@@ -6,6 +6,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import { shownWhy } from "../../../shell/shown-why";
+import { plainError } from "../../../shell/plain-error";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Num, Page, Pick, Sec, Seg, Status, Switch, Val, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
@@ -155,7 +156,8 @@ export function CheckDialog({ engine, onClose }: Pick<SettingsPageProps, "engine
   const channels = Object.entries(rec(h.channels)).map(([id, v]) => [str(rec(h.channelLabels)[id]) || id, rec(v)] as const);
   const embed = rec(rec(memory.data).embedding);
   const engineResult = health.loading ? "Checking Branch…" : health.error ? "Branch couldn’t be checked. Close this window and try again." : h.ok === true ? "Branch is responding." : h.ok === false ? "Branch needs attention." : "Branch did not report a result.";
-  const memoryResult = memory.loading ? "Checking memory search…" : memory.error ? "Memory search couldn’t be checked." : embed.checked === false ? "Memory search was not checked." : embed.ok === true ? "Memory search is working." : embed.ok === false ? "Memory search needs attention." : "Memory search did not report a result.";
+  const embedError = str(embed.error);
+  const memoryResult = memory.loading ? "Checking memory search…" : memory.error ? "Memory search couldn’t be checked." : embed.checked === false ? "Memory search was not checked." : embed.ok === true ? "Memory search is working." : embed.ok === false ? (embedError ? plainError(embedError) : "Memory search needs attention.") : "Memory search did not report a result.";
   return (
     <Dialog title="Check Branch" wide onClose={onClose}>
       <p className="hint">Checks Branch and memory search without changing your settings or sending messages to your accounts.</p>

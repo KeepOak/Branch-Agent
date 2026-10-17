@@ -204,6 +204,13 @@ describe("Settings › Advanced", () => {
     expect(row("Other engine events").textContent).toContain("boot");
   });
 
+  it("defaults meaning search to on this computer", async () => {
+    const { engine } = engineWith(CONFIG);
+    await show(engine);
+    expect((row("Meaning search uses").querySelector("select") as HTMLSelectElement).value).toBe("local");
+    expect(row("Meaning search uses").textContent).toContain("On this computer");
+  });
+
   it("meaning search Test probes the embeddings", async () => {
     const { engine, request } = engineWith({ ...CONFIG, "doctor.memory.status": (p: Record<string, unknown>) => (p.probe ? { provider: "openai", embedding: { ok: true, checked: true } } : { provider: "openai", embedding: { ok: false, checked: false } }) });
     await show(engine);

@@ -47,6 +47,10 @@ it("shows failed checks in plain language without leaking terminal instructions"
   expect(dialog.textContent).toContain("Memory search couldn’t be checked.");
   expect(document.body.textContent).not.toContain("branch doctor");
 });
+it("shows a plain memory search error when no local embedding model is available", async () => {
+  await show("regular", { ok: true }, { embedding: { ok: false, checked: true, error: "Memory search is off: no local embedding model is available" } });
+  expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Memory search is off: no local embedding model is available");
+});
 it("does not claim skipped memory checks worked", async () => {
   await show("regular", { ok: true }, { embedding: { ok: true, checked: false } });
   expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Memory search was not checked.");

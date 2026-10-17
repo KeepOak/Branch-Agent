@@ -263,7 +263,7 @@ describe("doctor invalid config process exit", () => {
       expect(repairedConfig.agents?.entries?.jup).not.toHaveProperty("memorySearch");
       expect(repairedConfig.agents?.entries?.jup?.memory?.search).toEqual({
         enabled: false,
-        provider: "openai",
+        provider: "local",
         sources: ["memory", "sessions"],
         extraPaths: [knowledgePath],
         experimental: { sessionMemory: false },

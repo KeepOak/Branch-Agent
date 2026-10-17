@@ -219,6 +219,11 @@ describe("Library › Memory", () => {
     expect(dialog.textContent).not.toMatch(/Rings/);
     expect(button("Write past nights")).toBeUndefined();
   });
+  it("shows a plain memory search error at Regular when no local embedding model is available", async () => {
+    const { engine } = engineOf(base((m) => m === "doctor.memory.status" ? { embedding: { ok: false, checked: true, error: "Memory search is off: no local embedding model is available" } } : undefined));
+    await mount(engine, "regular");
+    expect(host.textContent).toContain("Memory search is off: no local embedding model is available");
+  });
   it("shows the overnight cleanup row with the Seasons link before it has run", async () => {
     const open = vi.fn();
     const { engine } = engineOf(base((m) => m === "doctor.memory.status" ? { embedding: { ok: false, checked: false } } : undefined));

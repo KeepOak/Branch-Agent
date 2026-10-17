@@ -58,7 +58,7 @@ const resolveManifestOwnerBasePolicyBlock = vi.hoisted(() =>
 const getMissingLocalMemoryEmbeddingProviderMessage = vi.hoisted(() =>
   vi.fn(
     () =>
-      "Unknown memory embedding provider: local.\n" +
+      "Memory search is off: no local embedding model is available\n" +
       "Local GGUF embeddings are provided by the official llama.cpp provider plugin.\n" +
       "Install it with: branch plugins install @branch/llama-cpp-provider\n" +
       "Then restart Branch Agent and retry: branch memory status --deep",
@@ -395,7 +395,7 @@ describe("noteMemorySearchHealth", () => {
 
     expect(note).toHaveBeenCalledTimes(1);
     expectFirstNoteContains(
-      "Unknown memory embedding provider: local",
+      "Memory search is off: no local embedding model is available",
       "branch plugins install @branch/llama-cpp-provider",
       "branch memory status --deep",
     );

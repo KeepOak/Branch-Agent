@@ -284,14 +284,14 @@ describe("Doctor legacy config composition", () => {
             const saved = JSON.parse(await fs.readFile(configPath, "utf8"));
             expect(saved.memory.search).toEqual({
               enabled: false,
-              provider: "openai",
+              provider: "local",
               query: { maxResults: 9 },
               remote: { apiKey: canonicalApiKey ?? apiKey },
             });
             expect(saved.agents.defaults).not.toHaveProperty("memorySearch");
             expect(saved.agents.entries.ops.memory.search).toEqual({
               enabled: false,
-              provider: "openai",
+              provider: "local",
               query: { maxResults: 5 },
             });
             expect(saved.agents.entries.ops).not.toHaveProperty("memorySearch");

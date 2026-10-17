@@ -215,7 +215,7 @@ export const MODEL_FIELD_HELP: Record<string, string> = {
   "memory.search.experimental.sessionMemory":
     "Indexes session transcripts into memory search. Keep this advanced override when root and per-agent recall inheritance differ.",
   "memory.search.provider":
-    'Selects the embedding backend used to build/query memory vectors. Defaults to "openai"; set "openai-compatible", "gemini", "voyage", "mistral", "bedrock", "deepinfra", "github-copilot", "lmstudio", "ollama", or "local" when you want a different backend.',
+    'Selects the embedding backend used to build/query memory vectors. Defaults to "local" (on-device llama.cpp, no API key). Paid remotes such as "openai" are used only when you set them explicitly — a ChatGPT or OAuth login is not enough. Other backends: "openai-compatible", "gemini", "voyage", "mistral", "bedrock", "deepinfra", "github-copilot", "lmstudio", or "ollama".',
   "memory.search.model":
     "Embedding model override used by the selected memory provider when a non-default model is required. Set this only when you need explicit recall quality/cost tuning beyond provider defaults.",
   "memory.search.inputType":
@@ -239,7 +239,7 @@ export const MODEL_FIELD_HELP: Record<string, string> = {
   "memory.search.store.vector.enabled":
     "Controls the sqlite-vec semantic index. Keep this advanced override when root and per-agent vector policies differ.",
   "memory.search.fallback":
-    'Backup provider used when primary embeddings fail: "openai", "gemini", "voyage", "mistral", "bedrock", "lmstudio", "ollama", "local", or "none". Set a real fallback for production reliability; use "none" only if you prefer explicit failures.',
+    'Backup provider used when primary embeddings fail: "openai", "gemini", "voyage", "mistral", "bedrock", "lmstudio", "ollama", "local", or "none". Defaults to "none". Paid remotes are never chosen automatically, including from a ChatGPT or OAuth login; set one here only if you want that backup.',
   "memory.search.store.vector.extensionPath":
     "Overrides the auto-discovered sqlite-vec extension library path (`.dylib`, `.so`, or `.dll`). Use this when your runtime cannot find sqlite-vec automatically or you pin a known-good build.",
   "memory.search.query.maxResults":

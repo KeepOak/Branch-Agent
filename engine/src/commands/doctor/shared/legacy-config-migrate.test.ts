@@ -1768,7 +1768,7 @@ describe("legacy memory search config migrate", () => {
     expect(res.config).not.toHaveProperty("memorySearch");
     expect(res.config?.memory?.search).toEqual({
       enabled: true,
-      provider: "openai",
+      provider: "local",
       model: "text-embedding-3-small",
       query: { maxResults: 9 },
       store: { fts: { tokenizer: "trigram" }, vector: { enabled: false } },
@@ -1809,9 +1809,9 @@ describe("legacy memory search config migrate", () => {
       expect.arrayContaining(["agents.defaults.memorySearch", "agents", "agents.list"]),
     );
     const res = migrateLegacyConfigForTest(raw);
-    expect(res.config?.memory?.search).toEqual({ provider: "openai", query: { maxResults: 5 } });
+    expect(res.config?.memory?.search).toEqual({ provider: "local", query: { maxResults: 5 } });
     expect(res.config?.agents?.entries?.local?.memory?.search).toEqual({
-      provider: "openai",
+      provider: "local",
       store: { vector: { enabled: true } },
     });
     expect(res.config?.agents?.entries?.custom?.memory?.search).toEqual({

@@ -100,14 +100,17 @@ reply.
 | Key        | Type      | Default          | Description                                                                                                                                                                                                                                                                                 |
 | ---------- | --------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `enabled`  | `boolean` | `true`           | Enable or disable memory search                                                                                                                                                                                                                                                             |
-| `provider` | `string`  | `"openai"`       | Embedding adapter ID such as `bedrock`, `deepinfra`, `gemini`, `github-copilot`, `local`, `mistral`, `ollama`, `openai`, `openai-compatible`, or `voyage`; may also be a configured `models.providers.<id>` whose `api` points at a memory embedding adapter or OpenAI-compatible model API |
+| `provider` | `string`  | `"local"`        | Embedding adapter ID such as `local`, `openai`, `bedrock`, `deepinfra`, `gemini`, `github-copilot`, `mistral`, `ollama`, `openai-compatible`, or `voyage`; may also be a configured `models.providers.<id>` whose `api` points at a memory embedding adapter or OpenAI-compatible model API |
 | `model`    | `string`  | provider default | Embedding model name                                                                                                                                                                                                                                                                        |
 | `fallback` | `string`  | `"none"`         | Fallback adapter ID when the primary fails                                                                                                                                                                                                                                                  |
 
-When `provider` is not set, Branch Agent uses OpenAI embeddings. Set `provider`
-explicitly to use Bedrock, DeepInfra, Gemini, GitHub Copilot, Mistral, Ollama,
-Voyage, a local GGUF model, or an OpenAI-compatible `/v1/embeddings` endpoint.
-Legacy configs that still say `provider: "auto"` resolve to `openai`.
+When `provider` is not set, Branch Agent uses on-device local embeddings (managed
+llama.cpp, no API key). A ChatGPT or OAuth login is not used for memory
+embeddings. Set `provider` explicitly to use OpenAI, Bedrock, DeepInfra, Gemini,
+GitHub Copilot, Mistral, Ollama, Voyage, or an OpenAI-compatible `/v1/embeddings`
+endpoint. Legacy configs that still say `provider: "auto"` resolve to `local`.
+If no local embedding model is available, meaning search stays off and the app
+says `Memory search is off: no local embedding model is available`.
 
 <Warning>
 Changing the embedding provider, model, provider settings, sources, scope,

@@ -26,6 +26,7 @@ import {
   type EmbeddingProvider,
   type EmbeddingProviderResult,
 } from "./embeddings.js";
+import { LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE } from "./local-embedding-provider.js";
 import { MemoryManagerReloadError } from "./lifecycle.js";
 import { runMemoryIndexState } from "./manager-cpu-worker-runtime.js";
 import { MemoryManagerEmbeddingOps } from "./manager-embedding-ops.js";
@@ -177,6 +178,9 @@ export abstract class MemoryProviderLifecycle extends MemoryManagerEmbeddingOps 
     this.batch = this.resolveBatchConfig();
     this.vector.semanticAvailable = false;
     this.cacheProbeResult({ ok: false, error: reason });
+    if (provider === "local" || reason === LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE) {
+      log.warn(LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE);
+    }
     return debug;
   }
 

@@ -105,7 +105,7 @@ function MeaningSearch({ c }: { c: Ctx }) {
   const test = useCall();
   const [probe, setProbe] = useState<RecordValue | null>(null);
   const emb = rec((probe ?? rec(st.data)).embedding);
-  const provider = str(rec(probe ?? st.data).provider) || str(c.config.get("memory.search.provider")) || "openai";
+  const provider = str(rec(probe ?? st.data).provider) || str(c.config.get("memory.search.provider")) || "local";
   const name = PROVIDERS.find((p) => p.id === provider)?.label ?? provider;
   const checked = emb.checked !== false && (emb.ok === true || Boolean(emb.error));
   const word = !checked ? "Not checked yet" : emb.ok === true ? "Working" : "Not working";
@@ -156,7 +156,7 @@ const MEMORY: SecSpec = { title: "Memory", lv: 1, rows: [
   { t: "All start files together", s: "All the files a Trunk reads first load up to this much together.", k: "agents.defaults.bootstrapTotalMaxChars", kind: "num", unit: "characters", def: 60000, min: 1 },
   sw("Match by meaning", "Finds “invoice” when the fact says “bill”.", "memory.search.store.vector.enabled", true),
   { t: "Meaning search", draw: (c) => <MeaningSearch c={c} /> },
-  { t: "Meaning search uses", s: "The service that turns facts into something searchable by meaning. Changing it rebuilds the index.", k: "memory.search.provider", kind: "pick", def: "openai", opts: PROVIDERS },
+  { t: "Meaning search uses", s: "The service that turns facts into something searchable by meaning. Changing it rebuilds the index.", k: "memory.search.provider", kind: "pick", def: "local", opts: PROVIDERS },
   no("Share memory between Trunks", "Off: each Trunk keeps its own. Off until you choose: it changes where your data goes."),
   no("Ask before remembering", "Off: a Trunk writes what is worth keeping as it works, and the conversation shows “Remembered”. On: it asks “Remember this?” first."),
   { t: "Memory engine", lv: 2, draw: (c) => <MemoryEngine c={c} /> },

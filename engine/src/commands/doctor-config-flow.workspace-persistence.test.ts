@@ -221,7 +221,7 @@ describe("Doctor workspace persistence", () => {
             });
             expect(saved.gateway).toEqual({ mode: "local" });
             expect(saved.agents.entries.research).toEqual({
-              memory: { search: { provider: "openai" } },
+              memory: { search: { provider: "local" } },
             });
             expect((await readConfigFileSnapshot()).valid).toBe(true);
             expect((await prepareDoctorContext(configPath)).configResult.shouldWriteConfig).toBe(

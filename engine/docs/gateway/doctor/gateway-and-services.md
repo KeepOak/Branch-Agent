@@ -206,7 +206,7 @@ restoration failure; slow startup does not undo a completed repair.
 
     - **Explicit local provider**: checks for a local model file or a recognized remote/downloadable model URL. If missing, suggests switching to a remote provider.
     - **Explicit remote provider** (`openai`, `voyage`, etc.): verifies an API key is present in the environment or auth store. Prints actionable fix hints if missing.
-    - **Legacy auto provider**: treats `memorySearch.provider: "auto"` as OpenAI, checks OpenAI readiness, and `doctor --fix` rewrites it to `provider: "openai"`.
+    - **Legacy auto provider**: treats `memorySearch.provider: "auto"` as local embeddings, checks local readiness, and `doctor --fix` rewrites it to `provider: "local"`. A ChatGPT or OAuth login is not treated as an embeddings provider.
 
     When a cached gateway probe result is available (gateway was healthy at the time of the check), doctor cross-references its result with the CLI-visible config and notes any discrepancy. Doctor does not start a fresh embedding ping on the default path; use the deep memory status command when you want a live provider check.
 
