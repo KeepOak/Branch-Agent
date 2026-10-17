@@ -42,8 +42,14 @@ const CLOSE_BACKSTOP_MS = 1000;
 
 function resetAccepted(socket: Socket): void {
   socket.on("error", () => undefined);
-  // destroy() drops the socket so Server.close() can emit. resetAndDestroy() RSTs,
-  // and a client mid-write then throws uncaught setTypeOfService EINVAL on macOS.
+  // Windows will not rebind a port that still has a FIN from destroy(). Reset sends RST,
+  // which releases it. Elsewhere, that RST makes a readiness fetch throw uncaught
+  // setTypeOfService EINVAL (Node only treats the error as best-effort on Windows).
+  if (process.platform === "win32") {
+    try { socket.resetAndDestroy(); }
+    catch { socket.destroy(); }
+    return;
+  }
   socket.destroy();
 }
 

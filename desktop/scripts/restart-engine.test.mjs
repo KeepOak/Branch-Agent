@@ -51,8 +51,12 @@ async function eventually(predicate, timeout = EVENTUALLY_DEFAULT_MS) {
 }
 function resetAccepted(socket) {
   socket.on("error", () => {});
-  // destroy() lets close() finish. resetAndDestroy() RSTs, and a readiness fetch
-  // mid-write then throws uncaught setTypeOfService EINVAL on macOS.
+  // Windows keeps a FIN-closed port reserved. RST releases it. Elsewhere RST makes a
+  // readiness fetch throw uncaught setTypeOfService EINVAL.
+  if (process.platform === "win32") {
+    try { socket.resetAndDestroy(); } catch { socket.destroy(); }
+    return;
+  }
   socket.destroy();
 }
 // Server.close() never emits while an accepted socket is still open. A client that
