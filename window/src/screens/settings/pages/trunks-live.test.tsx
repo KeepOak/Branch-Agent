@@ -67,17 +67,24 @@ it("puts the preview's ••• menu on each Trunk, with Who it knows, and grey
   const { request } = await mount("regular");
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="More for Birch"]')!.click());
   const items = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')];
-  expect(items.map((b) => b.textContent)).toEqual(["Change picture…", "Pause", "Make default", "Share this Trunk…", "Who it knows", "Show it how, once", "Package…",
+  // An item greyed by a real condition says why under its label (Private #1093 item 7), so the label is the item's first line.
+  const label = (b: HTMLButtonElement) => (b.querySelector(".mi-text > span") ?? b.querySelector(":scope > span"))?.textContent;
+  expect(items.map(label)).toEqual(["Change picture…", "Pause", "Make default", "Share this Trunk…", "Who it knows", "Show it how, once", "Package…",
     "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…", "Remove Trunk…"]);
-  expect(items.filter((b) => b.disabled).map((b) => b.textContent)).toEqual(["Pause", "Show it how, once", "Package…", "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…"]);
+  expect(items.filter((b) => b.disabled).map(label)).toEqual(["Pause", "Show it how, once", "Package…", "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…"]);
+  // These are Coming: no visible "later update" line at Regular, only the tooltip they already had.
+  for (const b of items.filter((x) => x.disabled)) expect(b.getAttribute("aria-describedby"), label(b)).toBeNull();
+  expect(document.querySelector('[role="menu"]')?.textContent).not.toContain("later update");
   for (const why of Object.values(SETTINGS_MENU_COMING)) expect(why).toMatch(/ comes in a later update\.$/);
   expect(visibleDevNotes(document.body)).toEqual([]);
   // The default Trunk's Remove is greyed with the preview's own line.
   await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="More for Oak"]')!.click());
-  const remove = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')].find((b) => b.textContent === "Remove Trunk…")!;
+  const remove = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')].find((b) => label(b) === "Remove Trunk…")!;
   expect(remove.disabled).toBe(true);
   expect(remove.title).toBe("Oak is your default Trunk.");
+  expect(remove.textContent).toContain("Oak is your default Trunk.");
+  expect(document.getElementById(remove.getAttribute("aria-describedby") ?? "")?.textContent).toBe("Oak is your default Trunk.");
   expect(document.body.textContent).not.toMatch(/cannot be removed|at least one Trunk/);
   await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="More for Birch"]')!.click());

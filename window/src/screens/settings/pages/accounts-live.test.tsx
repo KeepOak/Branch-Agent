@@ -58,7 +58,8 @@ const pick = async (el: HTMLSelectElement, value: string) => {
   await settle();
 };
 const row = (id: string) => host.querySelector<HTMLElement>(`[data-row="${id}"]`);
-const button = (scope: ParentNode | null, text: string) => [...(scope ?? document).querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === text || b.getAttribute("aria-label") === text);
+// A greyed menu item says why under its label (Private #1093 item 7), so a menu item is found by its label line.
+const button = (scope: ParentNode | null, text: string) => [...(scope ?? document).querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === text || b.getAttribute("aria-label") === text || b.querySelector(".mi-text > span")?.textContent === text);
 const calls = (request: ReturnType<typeof engineOf>["request"], method: string) => request.mock.calls.filter(([m]) => m === method).map(([, p]) => p);
 
 async function mount(onPage = vi.fn(), env = engineOf()) {
