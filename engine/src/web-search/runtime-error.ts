@@ -1,4 +1,5 @@
 import { formatToolExecutionErrorMessage } from "../agents/tool-result-error.js";
+import { WEB_SEARCH_HELP_URL } from "../agents/tools/web-search-provider-common.js";
 import { diagnosticHttpStatusCode } from "../infra/diagnostic-error-metadata.js";
 import type { RunWebSearchResult } from "./runtime-types.js";
 
@@ -26,7 +27,7 @@ export class WebSearchProviderError extends Error {
       result: {
         error: "provider_error",
         message: `Search failed${status ? ` (HTTP ${status})` : ""}. ${hint}`,
-        docs: "https://docs.openclaw.ai/tools/web",
+        docs: WEB_SEARCH_HELP_URL,
       },
     };
   }

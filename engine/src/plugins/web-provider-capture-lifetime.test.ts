@@ -5,6 +5,7 @@ import { setImmediate as nextTurn } from "node:timers/promises";
 import { expectDefined } from "@branch/normalization-core";
 import { afterEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { WEB_SEARCH_HELP_URL } from "../agents/tools/web-search-provider-common.js";
 import { createWebSearchTool } from "../agents/tools/web-search.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { createDeferredCore } from "../shared/deferred.js";
@@ -150,7 +151,7 @@ module.exports = { id: "search-fixture", register(api) {
             provider: "fixture-search",
             error: "provider_error",
             message: expect.stringContaining("Search failed"),
-            docs: "https://docs.openclaw.ai/tools/web",
+            docs: new URL(WEB_SEARCH_HELP_URL).href,
           });
         } else {
           expect(outcome.value.details).toMatchObject({
