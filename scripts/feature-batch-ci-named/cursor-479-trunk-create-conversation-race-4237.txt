@@ -1,1 +1,2 @@
 engine:src/config/sessions/session-store-creation-witness.test.ts
+window:src/places/trunk/new-trunk-sheet.test.ts

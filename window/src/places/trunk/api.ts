@@ -3,7 +3,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../connect/engine";
 import { mayChanges, type May } from "./may";
-import { avatarFor, patchConfig, readConfig, readRoster, rec, str, type ConfigSnapshot, type Roster } from "./model";
+import { avatarFor, errorText, patchConfig, readConfig, readRoster, rec, str, type ConfigSnapshot, type Roster } from "./model";
 
 export type Draft = { name: string; theme: string; look: string; emoji: string; colour: string; shape: string; eyes: string; model: string; may: May };
 
@@ -54,6 +54,22 @@ export async function waitForTrunk(engine: WindowEngine, id: string, current: ()
     await new Promise<void>((resolve) => setTimeout(resolve, 250));
   }
   throw new Error(`The Trunk was created (${id}), but you left this screen before it was ready.`);
+}
+
+/** When agents.create refused because that Trunk already exists, its id; otherwise null. */
+export async function existingTrunkId(engine: WindowEngine, name: string, error: unknown): Promise<string | null> {
+  const message = errorText(error);
+  if (!/already exists/i.test(message)) return null;
+  const quoted = /agent "([^"]+)" already exists/i.exec(message)?.[1];
+  let agents: { id: string; name: string }[] = [];
+  try {
+    agents = readRoster(await engine.request("agents.list", {})).agents;
+  } catch {
+    // The quoted id from the engine is enough when the roster cannot be read.
+  }
+  const want = name.trim().toLowerCase();
+  const match = agents.find((agent) => agent.id === quoted || agent.id.toLowerCase() === want || agent.name.toLowerCase() === want);
+  return match?.id ?? quoted ?? null;
 }
 
 /** Returns the persisted receipt; onboarding retains this ID across its own retryable setup steps. */
