@@ -7,7 +7,7 @@ import { homedir, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopEnginePid, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
-import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
+import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, plainServiceReason, readEngineHealth, readServiceLogsSince, recordEngineMode, restartStoppedServiceEngine, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
 import { appHoldsSleepBlock, claimServiceKeepAwake, createRunKeepAwake, handOffKeepAwake, POWER_STATE_REFRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, writePowerState } from "./keep-awake";
 import { applyGuestWebPreferences, BRANCH_BROWSER_PARTITION, guestAttachDecision, guestPermissionDecision, guestUrlDecision, popupDecision, r1WebPreferences } from "./browser-guest-policy";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
@@ -307,6 +307,18 @@ linger: process.platform === "linux" && cfg.alwaysOn ? {
   set: async on => { await runEngineLinger(cfg, serviceEngineDir(), token, on ? "on" : "off"); },
 } : undefined,
 notes: () => childModeNotice ? { keepWorking: childModeSettingsLine(childModeNotice, fallbackDetached && controls.settings().keepWorking) } : {},
+// The same install / start / uninstall the launch and the tray already use. The window's mode control calls these.
+gateway: {
+  engine: () => serviceEngine ? "service" : "child",
+  guard: () => { if (updateLock.held) throw new Error("An update is finishing. Try again in a moment."); },
+  stopChild: () => stopOwnedGatewayChild(),
+  installService: () => installGatewayService(),
+  startService: () => startGatewayService(),
+  uninstallService: () => uninstallGatewayService(),
+  startChild: () => startGatewayChild(),
+  markService: () => markGatewayService(),
+  markChild: () => markGatewayChild(),
+},
 });
 /** True on battery power (false before the app is ready, or where Electron can't say). */
 function onBatteryPower(): boolean {
@@ -1374,7 +1386,10 @@ async function start(): Promise<void> {
   if (install && !TEST_COPY) void ensureWindowsLauncher(cfg, install, log).catch((error: unknown) => log(`windows launcher: ${String(error)}`));
   // A fallback the last session left running (Keep working on) is attached to. Every other recorded engine is retired.
   // Keep working off, and Always on off, retire them all, as before.
-  const survivor = fallbackEngineSurvivesQuit(cfg.alwaysOn === true, controls.settings().keepWorking)
+  const launchSettings = controls.settings();
+  // On keeps the per-user service. When needed and Off leave the gateway port to a child, or to one left running.
+  const wantService = cfg.alwaysOn === true && launchSettings.gatewayService;
+  const survivor = fallbackEngineSurvivesQuit(cfg.alwaysOn === true, launchSettings.keepWorking)
     ? await findSurvivingEngine(cfg.dataDir, cfg.gatewayPort) : undefined;
   // Set before the window loads, so a quit during startup leaves this engine and its record.
   if (survivor) {
@@ -1383,7 +1398,7 @@ async function start(): Promise<void> {
   }
   await retireRecordedEngines(cfg.dataDir, log, survivor?.pid);
   // Always on: an engine service already serving the gateway port is attached to, never replaced.
-  for (const port of cfg.alwaysOn ? [cfg.windowPort] : [cfg.gatewayPort, cfg.windowPort]) {
+  for (const port of wantService || survivor ? [cfg.windowPort] : [cfg.gatewayPort, cfg.windowPort]) {
     if (!(await portIsFree(port))) throw new Error(`port ${port} is already in use; is Branch Agent already running?`);
   }
   await refuseOrphanedEngine();
@@ -1399,7 +1414,7 @@ async function start(): Promise<void> {
   log(`window loaded after ${Date.now() - launchStarted} ms`);
   if (survivor) {
     log(`attached to the engine left running when Branch was closed (pid ${survivor.pid}, port ${survivor.port})`);
-  } else if (await (cfg.alwaysOn ? attachServiceEngine() : bootSelectedEngine())) {
+  } else if (await (wantService ? attachServiceEngine() : bootSelectedEngine())) {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");
   }
@@ -1492,6 +1507,96 @@ async function restartServiceEngine(): Promise<void> {
   } finally {
     await updateLock.release(lock);
   }
+}
+
+/** Stops the child this app owns, or a fallback it attached to, without the crash supervisor starting it again. */
+async function stopOwnedGatewayChild(): Promise<void> {
+  const child = gateway;
+  const resume = child ? gatewaySupervisor.expectExit(child) : undefined;
+  try {
+    if (child && child.exitCode === null && child.signalCode === null) await killGatewayAndWait(child);
+    else if (attachedFallbackPid) stopEnginePid(attachedFallbackPid);
+    gateway = undefined;
+    readyGateway = undefined;
+    fallbackDetached = false;
+    attachedFallbackPid = undefined;
+  } catch (error) {
+    resume?.();
+    throw error;
+  }
+}
+
+/** Installs the per-user service. A refusal is the plain Settings reason, and this session keeps the child. */
+async function installGatewayService(): Promise<void> {
+  try {
+    await runEngineServiceAction(cfg, resolveEngineDir(cfg), token, "install", log);
+  } catch (error) {
+    const reason = plainServiceReason(error instanceof Error ? error.message : String(error));
+    childModeNotice = reason;
+    recordEngineMode(cfg.dataDir, "child", reason);
+    throw new Error(reason);
+  }
+}
+
+/** Starts the service and waits until it answers, the same wait launch uses. */
+async function startGatewayService(): Promise<void> {
+  await runEngineServiceAction(cfg, resolveEngineDir(cfg), token, "start", log);
+  if (!await waitForEngineAnswer(() => engineAnswers(cfg.gatewayPort), READY_TIMEOUT_MS)) {
+    throw new Error("The engine service started but did not answer in time.");
+  }
+}
+
+/** Removes the service the app installed. An external supervisor's refusal stays a plain sentence. */
+async function uninstallGatewayService(): Promise<void> {
+  try {
+    await runEngineServiceAction(cfg, serviceEngineDir(), token, "uninstall", log);
+  } catch (error) {
+    throw new Error(plainServiceReason(error instanceof Error ? error.message : String(error)));
+  }
+}
+
+/** One child gateway on the app's port. Keep working on detaches it; Off leaves a child that quit stops. */
+async function startGatewayChild(): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  while (!(await portIsFree(cfg.gatewayPort))) {
+    if (Date.now() >= deadline) throw new Error("The gateway port is still in use.");
+    await pause(250);
+  }
+  fallbackDetached = fallbackEngineSurvivesQuit(cfg.alwaysOn === true, controls.settings().keepWorking);
+  attachedFallbackPid = undefined;
+  try {
+    // confirmUpdate false: choosing a mode must not confirm a component update.
+    await bootEngine(resolveEngineDir(cfg), false, undefined, cfg.gatewayPort);
+  } catch (error) {
+    fallbackDetached = false;
+    throw error;
+  }
+  handWindowToGateway(true);
+}
+
+/** The window is on the service: the watch may run again, and Settings drops the child-mode line. */
+function markGatewayService(): void {
+  serviceEngine = true;
+  childModeNotice = undefined;
+  recordEngineMode(cfg.dataDir, "service");
+  const engineDir = resolveEngineDir(cfg);
+  saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}\n`));
+  lastGoodEngineDir = engineDir;
+  adoptGatewayPort(cfg.gatewayPort);
+  keepAwake.update(false);
+  claimServiceKeepAwake(join(cfg.dataDir, "home", ".branch"));
+  // start() is a no-op while the timer is already running. stop() is permanent, so a pause is serviceEngine = false.
+  serviceWatch.start();
+  watchEngine();
+  handWindowToGateway(true);
+}
+
+/** The app owns the child. The service watch pauses while serviceEngine is false, and stays able to start again. */
+function markGatewayChild(): void {
+  serviceEngine = false;
+  childModeNotice = undefined;
+  // Chosen on purpose, so the next launch does not say the background service could not be installed.
+  recordEngineMode(cfg.dataDir, "child", undefined, { noticeShown: true });
 }
 
 /**

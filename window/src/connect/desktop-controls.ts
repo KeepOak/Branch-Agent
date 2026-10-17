@@ -13,12 +13,18 @@ export type DesktopControlsState = {
   keepWorkingSignedOut?: boolean;
   /** One-time lines the app has for a control, such as why the engine runs inside the app on this computer. */
   notes?: Partial<Record<string, string>>;
+  /** Off, When needed, or On. Older desktop apps leave it out. */
+  gatewayMode?: GatewayRunMode;
 };
+/** How the gateway runs. Same three choices as the desktop app's setGatewayMode. */
+export type GatewayRunMode = "off" | "when-needed" | "on";
 /** The switches: every key whose value is on or off. */
 export type DesktopControlName = { [K in keyof DesktopControlsState]-?: DesktopControlsState[K] extends boolean | undefined ? K : never }[keyof DesktopControlsState];
 export type DesktopControlsBridge = {
   get(): Promise<DesktopControlsState>;
   set(name: DesktopControlName, on: boolean): Promise<DesktopControlsState>;
+  /** Older desktop apps leave it out; the mode control then says so in plain words. */
+  setGatewayMode?(mode: GatewayRunMode): Promise<DesktopControlsState>;
   openDownload(id: string): Promise<void>;
   setTrayUsage(left: number | null): void;
   onOpenUsage(listener: () => void): () => void;
@@ -49,6 +55,7 @@ export function useDesktopControls() {
   const bridge = "bridge" in found ? found.bridge : undefined;
   const [state, setState] = useState<DesktopControlsState | null>(null);
   const [busy, setBusy] = useState<DesktopControlName | null>(null);
+  const [modeBusy, setModeBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (!bridge) return;
@@ -76,5 +83,27 @@ export function useDesktopControls() {
       setBusy(null);
     }
   }, [bridge]);
-  return { state, set, busy, error, off: "off" in found ? found.off : state ? undefined : error ?? undefined, bridge };
+  /** Resolves true when the app saved the gateway mode. A failure keeps the previous mode and says why. */
+  const setGatewayMode = useCallback(async (mode: GatewayRunMode): Promise<boolean> => {
+    if (!bridge?.setGatewayMode) return false;
+    setModeBusy(true);
+    setError(null);
+    try {
+      const next = await bridge.setGatewayMode(mode);
+      setState(next);
+      window.dispatchEvent(new CustomEvent(CHANGED, { detail: next }));
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      try {
+        const fresh = await bridge.get();
+        setState(fresh);
+        window.dispatchEvent(new CustomEvent(CHANGED, { detail: fresh }));
+      } catch { /* the error already says why the change failed */ }
+      return false;
+    } finally {
+      setModeBusy(false);
+    }
+  }, [bridge]);
+  return { state, set, busy, modeBusy, error, setGatewayMode, off: "off" in found ? found.off : state ? undefined : error ?? undefined, bridge };
 }

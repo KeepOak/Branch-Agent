@@ -11,6 +11,7 @@ import { ChoiceCards } from "./steps-early";
 import { ToolLogo, type ToolMark } from "./tool-logos";
 import { JOBS, type Check, type Look } from "./setup-model";
 import { useDesktopControls } from "../connect/desktop-controls";
+import { GatewayModeButtons, useGatewayRunControl } from "../shell/gateway-mode";
 
 export function platformName(): string {
   const platform = typeof navigator === "undefined" ? "" : navigator.platform.toLowerCase();
@@ -246,14 +247,14 @@ export function ToolsBody() {
   );
 }
 
-// TODO(desktop-lane): gateway mode needs the desktop app to run the engine's background service (branch gateway install);
-const DESKTOP = "The desktop app owns this; the window can’t change it yet.";
-
 export function KeepBody({ autoUpdate, onAutoUpdate, boot = null, onBoot }: {
   autoUpdate: boolean; onAutoUpdate: (v: boolean) => void; boot?: boolean | null; onBoot?: (v: boolean) => void;
 }) {
   const desk = useDesktopControls();
+  const gate = useGatewayRunControl();
   const why = desk.off;
+  const gatewayLine = "Keeps Telegram, your phone and automations working when the window is closed, and starts Branch again if it ever stops.";
+  const gatewayWhy = shownWhy(gate.unavailable ?? gate.note);
   const sw = (title: string, sub: string, name: "startWithWindows" | "branchOnPath") => (
     <Ctl title={title} sub={sub}>
       <button type="button" role="switch" aria-checked={desk.state?.[name] ?? false} aria-label={title} className="switch" disabled={why !== undefined || desk.busy !== null} title={shownWhy(why)} onClick={() => void desk.set(name, !(desk.state?.[name] ?? false))} />
@@ -261,8 +262,10 @@ export function KeepBody({ autoUpdate, onAutoUpdate, boot = null, onBoot }: {
   );
   return (
     <>
-      <Ctl title="The gateway" sub="Keeps Telegram, your phone and automations working when the window is closed, and starts Branch again if it ever stops.">
-        <SegOf label="The gateway" options={["Off", "When needed", "On"]} value="On" off={DESKTOP} />
+      <Ctl title="The gateway" sub={gatewayWhy ? `${gatewayLine} ${gatewayWhy}` : gatewayLine}>
+        <span className="right">
+          <GatewayModeButtons look="setup" control={gate} label="The gateway" />
+        </span>
       </Ctl>
       {onBoot ? (
         <Ctl title={`Start with ${platformName()}`} sub="Quietly, in the tray.">

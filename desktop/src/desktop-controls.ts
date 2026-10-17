@@ -1,6 +1,6 @@
 // The window's desktop controls: Start with Windows, keep working when the window closes, keep this computer awake
 // while Trunks work (Private #454 D: the blocker itself is keep-awake.ts, held only while a run is active), keep working
-// when nobody is signed in (Linux linger),
+// when nobody is signed in (Linux linger), how the gateway runs (off, when needed, or the per-user service),
 // the branch command on PATH, the tray's usage ring and the "Get it" download pages. Every OS call is injected, so the
 // tests use fakes and never change this computer's startup, power or PATH settings.
 import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
@@ -9,9 +9,21 @@ import { dirname, join } from "node:path";
 import { RELEASE_REPOSITORY } from "./component-update-manifest";
 import { isOwnedComponentWindow } from "./component-update-ipc";
 
+/** Off stops Trunks when Branch closes. When needed keeps a child gateway while the window is hidden. On is the per-user service. */
+export type GatewayRunMode = "off" | "when-needed" | "on";
+
+/** An older app, or this window with no service control. A plain sentence, so the control is not a silent grey. */
+export const GATEWAY_APP_CANT = "This Branch app can't change the background service.";
+
 export interface DesktopSettings {
   /** Closing the window hides it in the tray and the engine keeps working (on by default, as before). */
   keepWorking: boolean;
+  /**
+   * On asks for the per-user engine service (launchd, systemd --user, or the Windows logon task).
+   * Off and When needed leave the app a child gateway. Default true, so an existing install stays On.
+   * Not a window switch of its own: the window sees gatewayMode, and only setGatewayMode writes this.
+   */
+  gatewayService: boolean;
   /** Keeps this computer awake while a Trunk works, and only then (keep-awake.ts). On by default, when plugged in. */
   keepAwake: boolean;
   /** Keep awake while a Trunk works on battery too. Off by default: on battery the computer may sleep. */
@@ -24,17 +36,82 @@ export interface DesktopSettings {
    *  debugging. Off until the owner chooses; read once at launch, so it takes effect on the next start. */
   agentControl: boolean;
 }
-export interface ControlsState extends DesktopSettings {
+export interface ControlsState extends Omit<DesktopSettings, "gatewayService"> {
   startWithWindows: boolean;
   branchOnPath: boolean;
   /** Linux only: the engine service keeps running when nobody is signed in (systemd linger). Off by default. */
   keepWorkingSignedOut?: boolean;
   /** One-time lines for Settings under a control, such as why the engine runs inside the app on this computer. */
   notes?: Partial<Record<string, string>>;
+  /** Present when this app can change how the gateway runs. Omitted otherwise, so older readers stay as they were. */
+  gatewayMode?: GatewayRunMode;
 }
 export type ControlName = { [K in keyof ControlsState]-?: ControlsState[K] extends boolean | undefined ? K : never }[keyof ControlsState];
 
-export const DEFAULT_SETTINGS: DesktopSettings = { keepWorking: true, keepAwake: true, keepAwakeOnBattery: false, trayUsage: false, autoApplyUpdates: true, agentControl: false };
+export const DEFAULT_SETTINGS: DesktopSettings = { keepWorking: true, gatewayService: true, keepAwake: true, keepAwakeOnBattery: false, trayUsage: false, autoApplyUpdates: true, agentControl: false };
+
+/** What the window shows. Off wins; On is only the service actually running; anything else kept alive is When needed. */
+export function gatewayRunMode(settings: Pick<DesktopSettings, "keepWorking" | "gatewayService">, engine: "service" | "child"): GatewayRunMode {
+  if (!settings.keepWorking) return "off";
+  if (settings.gatewayService && engine === "service") return "on";
+  return "when-needed";
+}
+
+/** The service steps the desktop app already has (install, start, uninstall, and the one child gateway). */
+export interface GatewayRunSteps {
+  engine(): "service" | "child";
+  /** Throws when a change must wait, such as an update that is still finishing. */
+  guard?(): void;
+  stopChild(): Promise<void>;
+  installService(): Promise<void>;
+  startService(): Promise<void>;
+  uninstallService(): Promise<void>;
+  startChild(): Promise<void>;
+  markService(): Promise<void> | void;
+  markChild(): Promise<void> | void;
+}
+
+/**
+ * Moves between Off, When needed and On using the steps above. On installs and starts the service.
+ * When needed and Off remove it and start the child the app already owns. A failed install puts that child back.
+ */
+export async function applyGatewayRunMode(mode: GatewayRunMode, steps: GatewayRunSteps): Promise<void> {
+  if (mode !== "off" && mode !== "when-needed" && mode !== "on") throw new Error("The gateway mode is off, when needed or on");
+  steps.guard?.();
+  const engine = steps.engine();
+  if (mode === "on") {
+    if (engine === "service") return;
+    await steps.stopChild();
+    try {
+      await steps.installService();
+      await steps.startService();
+      await steps.markService();
+    } catch (error) {
+      try { await steps.uninstallService(); } catch { /* the install may not have landed */ }
+      try { await steps.startChild(); } catch { /* the original failure is the one to show */ }
+      throw error;
+    }
+    return;
+  }
+  if (engine !== "service") return;
+  await steps.markChild();
+  try {
+    await steps.uninstallService();
+  } catch (error) {
+    try { await steps.markService(); } catch { /* the uninstall failure is the one to show */ }
+    throw error;
+  }
+  try {
+    await steps.startChild();
+  } catch (error) {
+    try {
+      await steps.installService();
+      await steps.startService();
+      await steps.markService();
+    } catch { /* the child start is what the window should hear */ }
+    throw error;
+  }
+}
 
 /** The engine's own app links (engine/ui/src/pages/apps/view.ts); desktops come from Branch's releases. */
 const DESKTOP_RELEASES = `https://github.com/${RELEASE_REPOSITORY}/releases/latest`;
@@ -123,6 +200,8 @@ export interface ControlDeps {
   linger?: { get(): Promise<boolean>; set(on: boolean): Promise<void> };
   /** One-time lines for Settings (the engine running inside the app, from engine-service takeChildModeNotice). */
   notes?: () => Partial<Record<string, string>>;
+  /** How the gateway runs. Absent in tests that only read the saved switches, so get() stays the same for them. */
+  gateway?: GatewayRunSteps;
   cli: {
     installed(): Promise<boolean>; install(): Promise<void>; uninstall(): Promise<void>;
     /** Rewrites shims that exist with this launch's node and engine paths (never creates one, never touches PATH). */
@@ -139,6 +218,8 @@ export interface DesktopControls {
   settings(): DesktopSettings;
   get(): Promise<ControlsState>;
   set(name: ControlName, on: boolean): Promise<ControlsState>;
+  /** Saves Off, When needed or On, then installs, starts or removes the engine service. */
+  setGatewayMode(mode: GatewayRunMode): Promise<ControlsState>;
   openDownload(id: string): Promise<void>;
   trayUsage(left: number | null): void;
   removalPlan(): Promise<AppRemovalPlan>;
@@ -153,7 +234,7 @@ export function readSettings(file: string): DesktopSettings {
   try {
     const saved = JSON.parse(readFileSync(file, "utf8")) as Partial<DesktopSettings>;
     const pick = (key: keyof DesktopSettings) => typeof saved[key] === "boolean" ? saved[key] : DEFAULT_SETTINGS[key];
-    return { keepWorking: pick("keepWorking"), keepAwake: pick("keepAwake"), keepAwakeOnBattery: pick("keepAwakeOnBattery"), trayUsage: pick("trayUsage"), autoApplyUpdates: pick("autoApplyUpdates"), agentControl: pick("agentControl") };
+    return { keepWorking: pick("keepWorking"), gatewayService: pick("gatewayService"), keepAwake: pick("keepAwake"), keepAwakeOnBattery: pick("keepAwakeOnBattery"), trayUsage: pick("trayUsage"), autoApplyUpdates: pick("autoApplyUpdates"), agentControl: pick("agentControl") };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -175,8 +256,29 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
     linger ??= deps.linger?.get().catch(() => undefined);
     const signedOut = await linger;
     const notes = deps.notes?.() ?? {};
-    return { ...saved, startWithWindows: deps.login.get(), branchOnPath: await deps.cli.installed(),
-      ...(deps.linger ? { keepWorkingSignedOut: signedOut ?? false } : {}), ...(Object.keys(notes).length ? { notes } : {}) };
+    // gatewayService stays in the settings file. The window sees gatewayMode, and only when this app can change it.
+    const { gatewayService, ...publicSettings } = saved;
+    const gatewayMode = deps.gateway ? gatewayRunMode({ keepWorking: saved.keepWorking, gatewayService }, deps.gateway.engine()) : undefined;
+    return { ...publicSettings, startWithWindows: deps.login.get(), branchOnPath: await deps.cli.installed(),
+      ...(deps.linger ? { keepWorkingSignedOut: signedOut ?? false } : {}), ...(Object.keys(notes).length ? { notes } : {}),
+      ...(gatewayMode ? { gatewayMode } : {}) };
+  };
+  const setGatewayMode = async (mode: GatewayRunMode): Promise<ControlsState> => {
+    if (mode !== "off" && mode !== "when-needed" && mode !== "on") throw new Error("The gateway mode is off, when needed or on");
+    if (!deps.gateway) throw new Error(GATEWAY_APP_CANT);
+    const previous = { ...saved };
+    // Saved first so a child started below sees the Keep working choice (detached only while that stays on).
+    saved = { ...saved, keepWorking: mode !== "off", gatewayService: mode === "on" };
+    save();
+    try {
+      await applyGatewayRunMode(mode, deps.gateway);
+    } catch (error) {
+      saved = previous;
+      save();
+      throw error;
+    }
+    deps.onChange?.({ ...saved });
+    return get();
   };
   const set = async (name: ControlName, on: boolean): Promise<ControlsState> => {
     if (typeof on !== "boolean") throw new Error("A desktop control takes on or off");
@@ -195,7 +297,7 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
     return get();
   };
   return {
-    settings: () => ({ ...saved }), get, set,
+    settings: () => ({ ...saved }), get, set, setGatewayMode,
     openDownload: async (id) => {
       const url = Object.hasOwn(DOWNLOAD_PAGES, id) ? DOWNLOAD_PAGES[id] : undefined;
       if (!url) throw new Error(`No download page for ${id}`);
@@ -246,6 +348,11 @@ export function registerDesktopControlsIpc(ipc: Ipc, owner: (event: InvokeEvent)
     owned(event);
     if (typeof name !== "string" || typeof on !== "boolean") throw new Error("A desktop control takes a name and on or off");
     return controls.set(name as ControlName, on);
+  });
+  ipc.handle("branch-desktop:controls:gateway-mode", async (event, mode) => {
+    owned(event);
+    if (mode !== "off" && mode !== "when-needed" && mode !== "on") throw new Error("The gateway mode is off, when needed or on");
+    return controls.setGatewayMode(mode);
   });
   ipc.handle("branch-desktop:controls:open-download", async (event, id) => {
     owned(event);

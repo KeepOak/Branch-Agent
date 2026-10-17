@@ -9,6 +9,7 @@ import { accountEmails, ageWords, comingUp, readLimits, readRoom, readRounds, si
 import type { GatewayFacts } from "./use-status";
 import "./status.css";
 import { shownWhy } from "./shown-why";
+import { GatewayModeButtons, useGatewayRunControl } from "./gateway-mode";
 import { branchVersionDetail, branchVersionLabel, isNewerBranchVersion } from "../connect/branch-version";
 import { installOnComputer } from "../connect/desktop-component-updates";
 import { CheckedAt, useCheckedAt } from "../places/settings/checked-at";
@@ -50,15 +51,10 @@ function Item({ icon, label, hint, onClick, off, testid }: { icon: IconName; lab
   );
 }
 
-/** A control the engine can't back yet: greyed, with its reason under it (§5.1 "Disabled, with the reason"). */
-function OffLine({ reason }: { reason: string }) {
-  return shownWhy(reason) ? <p className="sp-off">{shownWhy(reason)}</p> : null;
-}
-
-const MODES = ["Off", "When needed", "On"] as const;
-
 /** §4.9.3 Gateway: state line, Keep Branch running, What it has been doing, Restart the engine, Gateway settings…. */
 export function GatewayPopover({ facts, level, onRestart, onSettings, ...base }: Base & { facts: GatewayFacts; level: Level; onRestart: () => void; onSettings: () => void }) {
+  const gate = useGatewayRunControl();
+  const why = shownWhy(gate.unavailable ?? gate.note);
   const up = facts.uptimeMs === null ? null : uptimeWords(facts.uptimeMs + (Date.now() - facts.connectedAt));
   const line = facts.health?.ok ? `On${up ? ` · up ${up}` : ""}` : facts.error ? `Offline · ${facts.error}` : "Checking…";
   return (
@@ -67,15 +63,9 @@ export function GatewayPopover({ facts, level, onRestart, onSettings, ...base }:
       <p className="pp">Keeps chat apps, your phone and automations working.</p>
       <div className="sp-mode">
         <span>Keep Branch running</span>
-        <span className="seg sp-seg" role="radiogroup" aria-label="Keep Branch running" aria-disabled="true" style={{ gridTemplateColumns: "repeat(3, 1fr)", ["--i" as string]: facts.health?.ok ? 2 : 0, ["--n" as string]: 3 }}>
-          {MODES.map((m) => (
-            <button key={m} type="button" role="radio" aria-checked={m === "On" && Boolean(facts.health?.ok)} disabled>
-              {m}
-            </button>
-          ))}
-        </span>
+        <GatewayModeButtons look="status" control={gate} label="Keep Branch running" />
       </div>
-      <OffLine reason="The desktop app starts and stops the gateway; this window can't change it yet." />
+      {why ? <p className="sp-off">{why}</p> : null}
       <p className="sp-health">{facts.health?.ok ? `Healthy · ${facts.health.durationMs != null ? `answered in ${facts.health.durationMs} ms` : "answered"}` : "Gateway has not answered yet"}</p>
       {level === "technical" && facts.health ? <p className="sp-note">Checked {ageWords(facts.health.checkedAt, Date.now())}</p> : null}
       <hr className="msep" />

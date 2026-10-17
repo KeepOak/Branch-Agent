@@ -166,10 +166,11 @@ function writeEngineMode(dataDir: string, record: EngineModeRecord): void {
 }
 
 /** How the engine runs on this computer, for Settings. */
-export function recordEngineMode(dataDir: string, mode: EngineMode, reason?: string): void {
+export function recordEngineMode(dataDir: string, mode: EngineMode, reason?: string, options?: { noticeShown?: boolean }): void {
   const previous = readEngineMode(dataDir);
   // The child-mode notice is said once: a later launch that falls back again keeps it said.
-  const noticeShown = mode === "child" && previous?.mode === "child" ? previous.noticeShown : undefined;
+  // A chosen child (When needed or Off) passes noticeShown so the next launch does not say the service failed.
+  const noticeShown = options?.noticeShown ?? (mode === "child" && previous?.mode === "child" ? previous.noticeShown : undefined);
   writeEngineMode(dataDir, { mode, ...(reason ? { reason } : {}), at: new Date().toISOString(), ...(noticeShown ? { noticeShown } : {}) });
 }
 
