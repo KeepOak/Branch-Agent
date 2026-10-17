@@ -158,15 +158,16 @@ function NavList({ engine, level, narrow, shownPage, onOpen }: { engine: WindowE
   );
 }
 
-/** The other settings pages that belong to the open Regular page, under Advanced on that page. */
+/** The other settings pages that belong to the open Regular page, under "Also in <page>" on that page. Not "Advanced":
+ *  at Regular that word names a level the person hasn't chosen, so it read as a stray heading (#1093 item 6). */
 function HubAdvanced({ shownPage, onOpen }: { shownPage: PageId; onOpen: (id: PageId) => void }) {
   const hub = regularHub(shownPage);
   if (!hub) return null;
   const rest = hub.pages.slice(1);
   if (!rest.length) return null;
   return (
-    <nav className="r1s-advanced" aria-label="Advanced">
-      <h2 className="g-label">Advanced</h2>
+    <nav className="r1s-advanced" aria-label={`Also in ${hub.title}`}>
+      <h2 className="g-label">Also in {hub.title}</h2>
       <div className="r1s-jumps">
         {rest.map((p) => (
           <button key={p.id} type="button" className="r1s-jump" data-page={p.id} aria-current={shownPage === p.id ? "true" : undefined} onClick={() => onOpen(p.id)}>
