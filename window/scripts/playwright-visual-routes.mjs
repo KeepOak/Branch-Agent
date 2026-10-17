@@ -68,6 +68,17 @@ const steps = {
     await page.getByRole("region", { name: "Ledger app preview" }).waitFor();
     return page.getByRole("complementary", { name: "Side panel" });
   },
+  "steps-overflow": async (page) => {
+    await page.goto(`${base}/scripts/visual-harness.html?overflow=steps`);
+    return page.getByTestId("overflow-panel");
+  },
+  "pair-overflow": async (page) => {
+    await page.setViewportSize({ width: 420, height: 900 });
+    await page.goto(`${base}/scripts/visual-harness.html?overflow=pair`);
+    await page.getByRole("button", { name: "Make the code" }).click();
+    await page.getByText("Check that both screens show").waitFor();
+    return page.getByRole("dialog", { name: "Pair a phone" });
+  },
   "side-panel-tabs": async (page) => {
     await openGroup(page);
     await page.getByTestId("conversation-menu-button").click();
@@ -77,8 +88,30 @@ const steps = {
   },
 };
 
+// Every element inside the box (the panel or the dialog) stays inside it, and the box and its scrolling body never
+// scroll sideways. A long code or path that ran past the edge fails here.
+const staysInside = (page, selector) => page.evaluate((selector) => {
+  const box = document.querySelector(selector);
+  if (!box) return [`${selector} isn't on the page`];
+  const edge = box.getBoundingClientRect();
+  const problems = [];
+  for (const el of [box, ...box.querySelectorAll(".dlg-b, .r1c-steps-list, .r1c-step-detail")]) {
+    if (el.scrollWidth > el.clientWidth + 1) problems.push(`${el.className || el.tagName} scrolls sideways: ${el.scrollWidth}px in ${el.clientWidth}px`);
+  }
+  for (const el of box.querySelectorAll("*")) {
+    const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) continue;
+    if (r.right > edge.right + 1 || r.left < edge.left - 1) {
+      problems.push(`<${el.tagName.toLowerCase()} class="${el.className}"> runs past the edge: ${Math.round(r.left)}..${Math.round(r.right)} in ${Math.round(edge.left)}..${Math.round(edge.right)}`);
+    }
+  }
+  return problems;
+}, selector);
+
 // Checks run after the screenshot, so a failing capture still leaves its picture. Each returns a list of problems.
 const checks = {
+  "steps-overflow": (page) => staysInside(page, '[data-testid="overflow-panel"]'),
+  "pair-overflow": (page) => staysInside(page, '[role=dialog][aria-label="Pair a phone"]'),
   "side-panel-tabs": (page) => page.evaluate(() => {
     const row = document.querySelector('[role=tablist][aria-label="Side panel views"]');
     const rowBox = row.getBoundingClientRect();

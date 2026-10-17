@@ -22,7 +22,7 @@ function useRead(engine: WindowEngine, method: string, params: unknown, on: bool
     let active = true;
     engine.request<unknown>(method, JSON.parse(key)).then(
       (value) => { if (active) setRead({ data: rec(value), error: null }); },
-      (error: unknown) => { if (active) setRead({ data: null, error: message(error) }); },
+      (error: unknown) => { if (active) { console.warn(`${method} failed:`, message(error)); setRead({ data: null, error: message(error) }); } },
     );
     return () => { active = false; };
   }, [engine, method, key, on]);
@@ -32,7 +32,8 @@ function useRead(engine: WindowEngine, method: string, params: unknown, on: bool
 
 /** What computer.status says about Trunks using this computer's screen, keyboard and mouse. */
 export function computerLine(data: Rec | null, error: string | null): string {
-  if (error) return `Couldn’t check computer control: ${error}`;
+  // The engine's own words stay out of the line (Private #1089); useRead logs them for diagnostics.
+  if (error) return "Couldn’t check computer control. Try again in a moment.";
   if (!data) return "Checking computer control…";
   if (data.available === true) return "Trunks can use this screen";
   if (data.configured === true) return "Computer control is set up but can’t reach this screen";
@@ -41,7 +42,7 @@ export function computerLine(data: Rec | null, error: string | null): string {
 
 /** What browser.request GET / says about Branch's own browser. */
 export function browserLine(data: Rec | null, error: string | null): string {
-  if (error) return `Couldn’t check the browser: ${error}`;
+  if (error) return "Couldn’t check the browser. Try again in a moment.";
   if (!data) return "Checking the browser…";
   const name = typeof data.detectedBrowser === "string" && data.detectedBrowser ? data.detectedBrowser : null;
   if (data.running === true) return name ? `Branch’s browser is open (${name})` : "Branch’s browser is open";
@@ -58,7 +59,7 @@ export function ThisComputer({ engine, offline, onOpen }: { engine: WindowEngine
     setBusy(true); setFailed(null);
     engine.request("browser.request", { method: "POST", path: "/start" }).then(
       () => { setBusy(false); browser.reload(); },
-      (error: unknown) => { setBusy(false); setFailed(`Couldn’t start the browser: ${message(error)}`); },
+      (error: unknown) => { setBusy(false); console.warn("browser start failed:", message(error)); setFailed("Couldn’t start the browser. Try again."); },
     );
   };
   const ok = (data: Rec | null, key: "available" | "running") => (data?.[key] === true ? "on" : "off");

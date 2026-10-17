@@ -4,6 +4,7 @@ import {createRoot} from 'react-dom/client';
 import {WindowShell} from '../src/shell/WindowShell';
 import {TeamApprovalCard} from '../src/places/trunk/TeamApprovalCard';
 import {ComputerStage} from '../src/stage/ComputerStage';
+import {OverflowPreview} from './overflow-fixture';
 import '../src/theme/tokens.css';
 import '../src/theme/base.css';
 import '../src/shell/shell.css';
@@ -69,4 +70,5 @@ function computerEngine(state:string){
 function ComputerPreview({state}:{state:string}){const [engine]=React.useState(()=>computerEngine(state));return <div data-testid="computer-preview" style={{position:'fixed',inset:0,display:'flex',background:'var(--bg,#f6f6f4)'}}><ComputerStage engine={engine} gatewayUrl="ws://gateway.invalid" name="Scout" mode="Computer" onMode={()=>{}} onClose={()=>{}} onChooseComputer={()=>{}}/></div>;}
 const computerState=new URLSearchParams(window.location.search).get('computer');
 const teamState=new URLSearchParams(window.location.search).get('team');
-createRoot(document.getElementById('root')!).render(computerState!==null ? <ComputerPreview state={computerState}/> : teamState!==null ? <TeamPreview state={teamState}/> : <WindowShell session={fixture as any} url="ws://isolated-fixture"/>);
+const overflow=new URLSearchParams(window.location.search).get('overflow');
+createRoot(document.getElementById('root')!).render(overflow!==null ? <OverflowPreview kind={overflow}/> : computerState!==null ? <ComputerPreview state={computerState}/> : teamState!==null ? <TeamPreview state={teamState}/> : <WindowShell session={fixture as any} url="ws://isolated-fixture"/>);

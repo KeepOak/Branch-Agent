@@ -25,6 +25,8 @@ type Ctx = {
   newTrunk: () => void;
   toggleLockdown?: () => void;
   lockdownOn?: boolean;
+  /** Onboarding's Try it with examples: list the engine's example Trunks. */
+  tryExamples?: () => void;
 };
 
 /** Opens a Trunk's editor or profile the way the conversation ⋯ menu does (branch:open-trunk). */
@@ -91,6 +93,7 @@ export function paletteRows(c: Ctx): PaletteRow[] {
     { id: "a:ask", group: "Actions", label: "Quick ask", hint: "Ctrl Shift Space", run: c.quickAsk },
     { id: "a:replay", group: "Actions", label: "Set up Branch", hint: "", run: c.setup },
     { id: "a:help", group: "Actions", label: "Get help setting up", hint: "", run: c.setup },
+    ...(c.tryExamples ? [{ id: "a:examples", group: "Actions", label: "Try it with examples", hint: "", keywords: "practice sample no model no account", run: c.tryExamples }] : []),
     { id: "a:tour", group: "Actions", label: "Take the walkthrough", hint: "2 min", run: c.tour },
     { id: "a:skins", group: "Actions", label: "Browse themes", hint: "", run: () => c.openSettings("appearance") },
     { id: "a:account", group: "Actions", label: "Add an account", hint: "Settings", run: () => c.openSettings("accounts") },

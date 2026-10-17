@@ -11,7 +11,7 @@ import { requestCustomize } from "../../places/customize/r1-request";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 window.matchMedia ??= ((query: string) => ({ matches: false, media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
+afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
 
 type Handler = (method: string, params: unknown) => unknown;
 function engineOf(methods: string[], handler: Handler = () => ({})) {
@@ -64,6 +64,7 @@ async function pasteTo(text: string) {
 
 describe("Seedbank", () => {
   it("renders with an empty engine: the eight templates, every unwired control Coming, nothing undeclared", async () => {
+    localStorage.setItem("branch.level", "technical");   // the Add pills' Coming reasons show only at Technical
     const { engine, request } = engineOf([]);
     const host = await render(engine);
     expect(request).not.toHaveBeenCalled();
