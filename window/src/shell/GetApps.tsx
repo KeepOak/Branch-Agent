@@ -4,7 +4,6 @@ import { shownWhy } from "./shown-why";
 import { useState } from "react";
 import { Icon, type IconName } from "./icons";
 import { desktopControls, IN_BROWSER } from "../connect/desktop-controls";
-import { plainError } from "./plain-error";
 
 /** In a plain browser there is no Branch app to open the page from. */
 export const GET_IT_OFF = "Opens the download page in your browser from the Branch app on your computer.";
@@ -25,7 +24,7 @@ export function GetAppsDialog({ onClose, onPair }: { onClose: () => void; onPair
   const open = (id: string) => {
     if (!("bridge" in found)) return;
     setError(null);
-    found.bridge.openDownload(id).catch((e: unknown) => setError(plainError(e)));
+    found.bridge.openDownload(id).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   };
   return (
     <Dialog title="Get the apps" wide onClose={onClose} testid="get-apps"
@@ -39,7 +38,7 @@ export function GetAppsDialog({ onClose, onPair }: { onClose: () => void; onPair
           </div>
         ))}
       </div>
-      {error ? <p className="hint" role="alert">{plainError(error)}</p> : null}
+      {error ? <p className="hint" role="alert">{error}</p> : null}
     </Dialog>
   );
 }

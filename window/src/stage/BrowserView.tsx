@@ -5,7 +5,6 @@ import type { Block } from "../thread/model";
 import type { Level } from "../places-nav/settings-nav";
 import type { BrowserPresentation } from "../thread/browser-presentation";
 import { Menu, type MenuAnchor, type MenuItem } from "../shell/Menu";
-import { plainError } from "../shell/plain-error";
 import { BrowserScreencastClient, type BrowserScreencastFrame } from "./browser-screencast-client";
 import { browserCall, readTabs, recordedBrowserTabs, routeKey, routeOf, scopedBrowserRequest, type BrowserRoute, type LiveTab } from "./browser-route";
 import { BrowserTools } from "./BrowserTools";
@@ -73,7 +72,7 @@ function useBrowser(engine: WindowEngine, route: BrowserRoute | null, tick: numb
       return { key, phase: "ready" as const, tabs: readTabs(await browserCall(engine, route, "GET", "/tabs")) };
     })().then(
       (next) => live && setState(next),
-      (e: unknown) => live && setState({ key, phase: "error", tabs: [], error: plainError(e) }),
+      (e: unknown) => live && setState({ key, phase: "error", tabs: [], error: e instanceof Error ? e.message : String(e) }),
     );
     return () => {
       live = false;
@@ -371,7 +370,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     if (browser.phase === "none" || browser.phase === "stopped" || (browser.phase === "ready" && !browser.tabs.length)) onState("empty");
     if (browser.phase === "error") onState("error");
   }, [browser.phase, browser.tabs.length, onState]);
-  const fail = (e: unknown) => setNote(plainError(e));
+  const fail = (e: unknown) => setNote(e instanceof Error ? e.message : String(e));
   const call = (method: "GET" | "POST" | "DELETE", path: string, options: Parameters<typeof browserCall>[4] = {}) => {
     if (!route) return Promise.resolve(null);
     setNote("");
@@ -468,7 +467,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   if (opening) page = <Blank title="Opening your page…" text="Starting the browser and connecting this conversation's tab." />;
   else if (!engine.sessionKey) page = <Blank title="Choose a conversation first" text="Open a conversation to browse pages with its Trunk." />;
   else if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
-  else if (browser.phase === "error") page = <Blank title="Couldn't connect to the browser" text={plainError(browser.error ?? "")}><button type="button" className="btn sm" onClick={refresh}>Try again</button></Blank>;
+  else if (browser.phase === "error") page = <Blank title="Couldn't connect to the browser" text={browser.error ?? ""}><button type="button" className="btn sm" onClick={refresh}>Try again</button></Blank>;
   else if (!tab || tab.url === "about:blank") page = <Blank title={`${name}’s browser`} text="See the pages your Trunk opens, or open a page yourself in this conversation.">
     <small>Type a website or a search above and press Enter. Then ask {name} to read, compare or work on the page, or click and type yourself.</small>
     <small>Branch's browser is separate from your personal browser.</small>
@@ -497,7 +496,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
           </button>
         </form>
       ) : null}
-      {note ? <p className="stage-error-st note-br" role="status">{plainError(note)}</p> : null}
+      {note ? <p className="stage-error-st note-br" role="status">{note}</p> : null}
       <div className="st7-body">
         <div className="br-left-st">
           <div className="st7-wrap">

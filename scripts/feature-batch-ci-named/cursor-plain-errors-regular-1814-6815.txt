@@ -1,9 +1,4 @@
 window:src/connect/friendly-error.status.test.ts
 window:src/places/settings/set1/add-account.plain-error.test.tsx
-window:src/shell/GetApps.plain-error.test.tsx
-window:src/shell/plain-error.paths.test.ts
-window:src/stage/BrowserView.plain-error.test.tsx
-window:src/stage/ComputerStage.plain-error.test.tsx
 window:src/stage/pane/TimelineTab.plain-error.test.tsx
 window:src/thread/QuestionCard.plain-error.test.tsx
-window:src/thread/Thread.plain-error.test.tsx
