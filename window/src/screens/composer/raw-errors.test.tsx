@@ -35,17 +35,15 @@ it("This computer says it couldn't check, in plain words, when the engine fails"
 
 it("the @ drawer says People didn't load without the engine's words", async () => {
   const engine = failing("unknown method: users.mentionable");
-  let shown = "";
   function Probe() {
     const drawer = useDrawer(engine, [], [], {});
     const { loadPeople } = drawer;
     useEffect(() => { loadPeople(); }, [loadPeople]);
-    shown = drawer.peopleError ?? "";
-    return <p>{drawer.peopleError}</p>;
+    return <p data-testid="people-error">{drawer.peopleError}</p>;
   }
   root = createRoot(document.body.appendChild(document.createElement("div")));
   await act(async () => root?.render(<Probe />));
   await flush();
-  expect(shown).toBe("Couldn't load People. Try again.");
+  expect(document.querySelector('[data-testid="people-error"]')?.textContent).toBe("Couldn't load People. Try again.");
   expect(document.body.textContent).not.toMatch(RAW);
 });
