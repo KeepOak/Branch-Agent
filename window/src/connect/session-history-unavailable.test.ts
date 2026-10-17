@@ -1,9 +1,8 @@
 // A chat.history UNAVAILABLE for the conversation just left must not become the next Trunk's banner, and the
-// same refusal on the open conversation is retried until it works, in plain words (issue #591).
+// same refusal on the open conversation is retried until it works, in plain words, then stopped after a minute (issue #591).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GatewayStatus } from "./gateway";
-
-const HISTORY_STARTING_LABEL = "Still starting up…";
+import { HISTORY_RETRY_TIMEOUT_MS, HISTORY_STARTING_LABEL, HISTORY_UNAVAILABLE_LABEL } from "./preparation-status";
 
 type Options = { onStatus: (status: GatewayStatus) => void };
 
@@ -147,5 +146,43 @@ describe("chat.history UNAVAILABLE", () => {
     await vi.advanceTimersByTimeAsync(1_000);
     expect(session.getSnapshot().error).toBeNull();
     expect(session.getSnapshot().historyReady).toBe(true);
+  });
+
+  it("clears the banner when an UNAVAILABLE read succeeds inside the one-minute window", async () => {
+    vi.useFakeTimers();
+    expect(HISTORY_RETRY_TIMEOUT_MS).toBe(60_000);
+    fake.failsLeft = 1_000_000;
+    session = start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(session.getSnapshot().error).toBe(HISTORY_STARTING_LABEL);
+    await vi.advanceTimersByTimeAsync(HISTORY_RETRY_TIMEOUT_MS - 15_000);
+    expect(session.getSnapshot().error).toBe(HISTORY_STARTING_LABEL);
+    expect(String(session.getSnapshot().error ?? "")).not.toContain("Session access facts");
+    expect(session.getSnapshot().error).not.toBe(HISTORY_UNAVAILABLE_LABEL);
+    fake.failsLeft = 0;
+    const before = fake.historyCalls.filter((key) => key === MAIN).length;
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(fake.historyCalls.filter((key) => key === MAIN).length).toBeGreaterThan(before);
+    expect(session.getSnapshot().error).toBeNull();
+    expect(session.getSnapshot().historyReady).toBe(true);
+  });
+
+  it("after about a minute of UNAVAILABLE reads, shows a plain next step and stops retrying", async () => {
+    vi.useFakeTimers();
+    fake.failsLeft = 1_000_000;
+    session = start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(session.getSnapshot().error).toBe(HISTORY_STARTING_LABEL);
+    await vi.advanceTimersByTimeAsync(HISTORY_RETRY_TIMEOUT_MS + 1);
+    expect(session.getSnapshot().error).toBe(HISTORY_UNAVAILABLE_LABEL);
+    expect(session.getSnapshot().error).not.toBe(HISTORY_STARTING_LABEL);
+    expect(String(session.getSnapshot().error ?? "")).not.toContain("Session access facts");
+    expect(String(session.getSnapshot().error ?? "")).not.toContain("session storage");
+    expect(String(session.getSnapshot().error ?? "")).not.toMatch(/UNAVAILABLE|chat\.history|gatewayCode/i);
+    const stopped = fake.historyCalls.filter((key) => key === MAIN).length;
+    expect(stopped).toBeGreaterThan(1);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(fake.historyCalls.filter((key) => key === MAIN).length).toBe(stopped);
+    expect(session.getSnapshot().error).toBe(HISTORY_UNAVAILABLE_LABEL);
   });
 });

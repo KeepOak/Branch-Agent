@@ -10,6 +10,13 @@ export type StartupWait = { detail: string; stalled: boolean };
 /** Shown while `chat.history` is refused with UNAVAILABLE and the window is asking again. */
 export const HISTORY_STARTING_LABEL = "Still starting up…";
 
+/** How long one `chat.history` UNAVAILABLE episode is retried before the window stops and says what to do. */
+export const HISTORY_RETRY_TIMEOUT_MS = 60_000;
+
+/** After HISTORY_RETRY_TIMEOUT_MS: what went wrong and what to do, never the engine's words. */
+export const HISTORY_UNAVAILABLE_LABEL =
+  "Branch couldn’t load this chat’s history. Restart Branch, or check that the engine is running.";
+
 /**
  * The engine's structured "not ready yet" refusal (ErrorCodes.UNAVAILABLE), read from its code and details rather
  * than its words: an agent database still in startup inspection and preparation (details.code, see the engine's
@@ -75,14 +82,22 @@ export function preparationNeedsAttentionLabel(name: string): string {
   return `${name || "This Trunk"} needs attention: getting it ready kept failing.`;
 }
 
-/** A single startup episode gets at most two minutes of increasingly spaced retries. */
+/**
+ * A single startup episode gets at most two minutes of increasingly spaced retries.
+ * `chat.history` UNAVAILABLE uses a one-minute episode (`HISTORY_RETRY_TIMEOUT_MS`).
+ */
 export class PreparationRetry {
   private startedAt: number | null = null;
   private attempts = 0;
+  private readonly timeoutMs: number;
+
+  constructor(timeoutMs: number = PREPARATION_TIMEOUT_MS) {
+    this.timeoutMs = timeoutMs;
+  }
 
   nextDelay(now = Date.now()): number | null {
     if (this.startedAt === null) this.startedAt = now;
-    const remaining = PREPARATION_TIMEOUT_MS - (now - this.startedAt);
+    const remaining = this.timeoutMs - (now - this.startedAt);
     if (remaining <= 0) return null;
     const delay = Math.min(500 * 2 ** this.attempts, 5_000, remaining);
     this.attempts += 1;

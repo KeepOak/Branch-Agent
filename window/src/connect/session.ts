@@ -11,7 +11,8 @@ import { withSafeVisibility } from "./safe-visibility";
 import { projectRun, settleRunBlocks, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/history";
 import { sanitizeBlocks } from "../thread/tool-output-display";
-import { HISTORY_STARTING_LABEL, isHistoryTemporarilyUnavailable, isPreparationPending, isPreparationStalled, isStartupUnavailable, PreparationRetry, preparationTimeoutLabel, type StartupWait } from "./preparation-status";
+import { friendlyError } from "./friendly-error";
+import { HISTORY_STARTING_LABEL, HISTORY_UNAVAILABLE_LABEL, HISTORY_RETRY_TIMEOUT_MS, isHistoryTemporarilyUnavailable, isPreparationPending, isPreparationStalled, isStartupUnavailable, PreparationRetry, preparationTimeoutLabel, type StartupWait } from "./preparation-status";
 import { readStartupPreparation } from "./startup-preparation";
 import { addNotSent, healNotSent } from "../composer/queue";
 import { droppedFiles, engineKeyOf, FirstSendEcho, heldRuns, UnconfirmedSends } from "./unconfirmed";
@@ -102,7 +103,7 @@ const STARTUP_POLL_MS = 3_000;
  *  given up after this long and read again, so a hung request cannot leave the window connecting. */
 const BOOTSTRAP_REQUEST: GatewayProtocolRequestOptions = { timeoutMs: 15_000 };
 const BOOTSTRAP_RETRY_MAX_MS = 10_000;
-/** A failed read as the snapshot keeps it: a startup wait by code, a retrying history UNAVAILABLE in plain words, else the engine's words. */
+/** A failed read as the snapshot keeps it: a startup wait by code, a retrying history UNAVAILABLE in plain words, else the engine's words. The one-minute history cap is applied in `set()`. */
 const failure = (error: unknown): Pick<SessionSnapshot, "error" | "startup"> => {
   const message = error instanceof Error ? error.message : String(error);
   if (isStartupUnavailable(error)) return { error: message, startup: { detail: message, stalled: false } };
@@ -187,6 +188,8 @@ export class SaplingSession {
   /** Bumped each time a connection finishes reading its conversation, so the open pages re-read from the new engine. */
   private connectionEpoch = 0;
   private readonly preparationBackoff = new PreparationRetry();
+  /** Separate from Trunk startup: `chat.history` UNAVAILABLE is retried for about a minute, then stopped. */
+  private readonly historyBackoff = new PreparationRetry(HISTORY_RETRY_TIMEOUT_MS);
   /** The agents.list result of this connection: a conversation's own Trunk is named from it. */
   private agentList: unknown = null;
   private stopped = false;
@@ -251,6 +254,7 @@ export class SaplingSession {
     if (this.preparationRetry) clearTimeout(this.preparationRetry);
     this.preparationRetry = null;
     this.preparationBackoff.reset();
+    this.historyBackoff.reset();
     this.stopStartupWatch();
     this.cancelBootstrapRetry();
     this.gateway.stop();
@@ -317,6 +321,7 @@ export class SaplingSession {
     const { status, sessionKey } = this.snapshot;
     if (this.stopped || status.phase !== "connected" || !sessionKey) return;
     this.preparationBackoff.reset();
+    this.historyBackoff.reset();
     void this.bootstrap(status, sessionKey);
   }
 
@@ -454,10 +459,18 @@ export class SaplingSession {
   private set(patch: Partial<SessionSnapshot>): void {
     // Any other error words replace the startup wait.
     if (patch.error !== undefined && patch.startup === undefined) patch = { ...patch, startup: null };
-    const pending = Boolean(patch.error) && (Boolean(patch.startup) || isPreparationPending(patch.error));
-    const preparationDelay = pending ? this.preparationBackoff.nextDelay() : null;
-    if (pending && preparationDelay === null) {
-      patch = { ...patch, error: preparationTimeoutLabel(trunkNameForKey(this.agentList, patch.sessionKey ?? this.snapshot.sessionKey, this.snapshot.name)), startup: patch.startup ? { ...patch.startup, stalled: true } : null };
+    const historyPending = Boolean(patch.error) && isHistoryTemporarilyUnavailable(patch.error);
+    const startupPending = Boolean(patch.error) && !historyPending && (Boolean(patch.startup) || isPreparationPending(patch.error));
+    const pending = historyPending || startupPending;
+    const retryDelay = historyPending ? this.historyBackoff.nextDelay() : startupPending ? this.preparationBackoff.nextDelay() : null;
+    if (pending && retryDelay === null) {
+      if (historyPending) {
+        const error = friendlyError(HISTORY_UNAVAILABLE_LABEL);
+        this.readError = error;
+        patch = { ...patch, error, startup: null };
+      } else {
+        patch = { ...patch, error: preparationTimeoutLabel(trunkNameForKey(this.agentList, patch.sessionKey ?? this.snapshot.sessionKey, this.snapshot.name)), startup: patch.startup ? { ...patch.startup, stalled: true } : null };
+      }
     }
     this.snapshot = { ...this.snapshot, ...patch };
     this.syncStartupWatch(patch);
@@ -465,12 +478,13 @@ export class SaplingSession {
       if (this.preparationRetry) clearTimeout(this.preparationRetry);
       this.preparationRetry = null;
       this.preparationBackoff.reset();
-    } else if (!this.stopped && pending && preparationDelay !== null && !this.preparationRetry) {
+      this.historyBackoff.reset();
+    } else if (!this.stopped && pending && retryDelay !== null && !this.preparationRetry) {
       this.preparationRetry = setTimeout(() => {
         this.preparationRetry = null;
         const { status, sessionKey } = this.snapshot;
         if (status.phase === "connected" && sessionKey) void this.bootstrap(status, sessionKey);
-      }, preparationDelay ?? 500);
+      }, retryDelay ?? 500);
     }
     for (const listener of this.listeners) {
       listener();
@@ -574,7 +588,7 @@ export class SaplingSession {
   /** While the open Trunk is getting ready, watch it from here so recovery never depends on the page showing. */
   private syncStartupWatch(patch: Partial<SessionSnapshot>): void {
     const error = patch.error === undefined ? this.snapshot.error : patch.error;
-    const waiting = Boolean(error) && (isPreparationPending(error) || isPreparationStalled(error));
+    const waiting = Boolean(error) && !isHistoryTemporarilyUnavailable(error) && error !== HISTORY_UNAVAILABLE_LABEL && (isPreparationPending(error) || isPreparationStalled(error));
     if (patch.status && patch.status.phase !== "connected") this.stopStartupWatch();
     else if (waiting) this.armStartupWatch();
     else if (patch.error === null) this.stopStartupWatch();
@@ -597,7 +611,7 @@ export class SaplingSession {
     this.startupWatch = null;
     const { status, sessionKey, error } = this.snapshot;
     const agentId = /^agent:([^:]+):/.exec(sessionKey ?? "")?.[1];
-    if (this.stopped || status.phase !== "connected" || !agentId || !(isPreparationPending(error) || isPreparationStalled(error))) return;
+    if (this.stopped || status.phase !== "connected" || !agentId || isHistoryTemporarilyUnavailable(error) || error === HISTORY_UNAVAILABLE_LABEL || !(isPreparationPending(error) || isPreparationStalled(error))) return;
     try {
       const preparing = readStartupPreparation(await this.gateway.request("agents.list", {}, BOOTSTRAP_REQUEST), agentId) !== null;
       if (preparing) this.startupHeld = true;
