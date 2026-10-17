@@ -21,6 +21,7 @@ import { keepWindowResident, showTrayStatus } from "./resident-window";
 import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
 import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
+import { prunePreviousEngineAfterHealth, recordHealthyEngineLaunch } from "./engine-retention";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
@@ -217,6 +218,11 @@ function runConfirmedReleasePrune(): void {
   const prune = pendingReleasePrune;
   pendingReleasePrune = undefined;
   if (prune) void prune().catch(error => log(`Confirmed update cleanup: ${String(error)}`));
+}
+function rememberHealthyEngine(engineDir: string): void {
+  // Record only: prune runs at startup so ready/crash-recovery is not sharing data-dir I/O.
+  // A long-running app still drops the predecessor via pruneEndedProbation after the 3-day Undo window.
+  void recordHealthyEngineLaunch(cfg, engineDir).catch(error => log(`Update cleanup: ${String(error)}`));
 }
 /** The window build the static server serves: the staged one only once its engine runs. */
 let servedWindowDir = cfg.windowDir;
@@ -551,7 +557,10 @@ async function swapServiceEngineInPlace(label: string, explicit: boolean, held?:
     });
     engineUpdateReady = false;
     servedWindowDir = cfg.windowDir;
-    if (result === "updated") lastGoodEngineDir = selected;
+    if (result === "updated") {
+      lastGoodEngineDir = selected;
+      rememberHealthyEngine(selected);
+    }
     if (result === "kept" || result === "rolled-back") {
       if (explicit) sendToBranchWindows("branch-desktop:engine-update", "kept");
       if (result === "rolled-back") handWindowToGateway(true);
@@ -1412,6 +1421,7 @@ async function start(): Promise<void> {
   componentsReady = true;
   if (pendingReleasePrune) runConfirmedReleasePrune();
   else void pruneStartupUpdates(cfg, log);
+  void prunePreviousEngineAfterHealth(cfg, log);
   autoApply.start();
   stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, underSwapGuard, log,
     onWithdrawal: version => {
@@ -1546,6 +1556,7 @@ async function attachServiceEngine(): Promise<boolean> {
   const running = result.via === "attached" ? serviceEngineDir() : engineDir;
   saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${running}\n`));
   lastGoodEngineDir = running;
+  rememberHealthyEngine(running);
   adoptGatewayPort(cfg.gatewayPort);
   // Engine updates restart the service (Private #454 E): watch for a newer engine as the child path does, and offer
   // the one published while the app was closed.
@@ -1612,6 +1623,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   }
   adoptGatewayPort(port);
   lastGoodEngineDir = engineDir;
+  rememberHealthyEngine(engineDir);
   readyGateway = child;
   observed.ready();
   gatewayRecoveryError = undefined;
