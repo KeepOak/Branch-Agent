@@ -1,3 +1,4 @@
+import * as Crypto from 'expo-crypto';
 import { loadDeviceIdentity, DEVICE_IDENTITY_KEY } from '../connect/deviceIdentity';
 import { bytesToBase64Url, utf8ToBytes } from '../connect/base64url';
 import { createFakeEngine } from '../connect/fakeEngine';
@@ -5,7 +6,7 @@ import { PHONE_SCOPES, PhoneGateway } from '../connect/phoneGateway';
 import { memoryStore } from '../storage/keyValueStore';
 import { CODE_GONE_MESSAGE, DENIED_MESSAGE, failureMessage, NEUTRAL_FAILURE_MESSAGE, PAIRING_RECORD_KEY, PairingSession, type PairingState } from './pairingSession';
 import { coerceRelayBytes, decryptPairingFrame, encryptPairingFrame, utf8FromRelayBytes } from './relayFrames';
-import { decodeSetupCode, gatewayHost, isGatewayUrl, SetupCodeError } from './setupCode';
+import { decodeSetupCode, gatewayHost, isGatewayUrl, isRelayPairingUrl, SetupCodeError } from './setupCode';
 
 const encode = (value: unknown) => bytesToBase64Url(utf8ToBytes(JSON.stringify(value)));
 const randomBytes = (length: number) => crypto.getRandomValues(new Uint8Array(length));
@@ -20,10 +21,44 @@ function sessionWith(engine = createFakeEngine(), store = memoryStore()) {
     createRequestId: randomUUID,
     createSocket: engine.createSocket,
     pairingRetryMs: 20,
+    randomBytes,
   });
   const states: PairingState[] = [];
   session.subscribe((state) => states.push(state));
   return { session, engine, store, states };
+}
+
+const RELAY_PEER_URL = 'wss://relay.example/v1/pair/abc?role=peer&token=peer-token';
+
+async function watchRelayConnect(opts: { relayKey?: string } = {}) {
+  const raw: unknown[] = [];
+  const statuses: Array<{ phase: string; message?: string }> = [];
+  const store = memoryStore();
+  const gateway = new PhoneGateway({
+    url: RELAY_PEER_URL,
+    platform: 'ios',
+    appVersion: '0.1.0',
+    bootstrapToken: 'phone-bootstrap-token',
+    ...(opts.relayKey ? { relayKey: opts.relayKey } : {}),
+    randomBytes,
+    loadIdentity: () => loadDeviceIdentity(store, randomBytes),
+    tokenStore: { load: () => null, store: () => undefined, clear: () => undefined },
+    createRequestId: () => 'req-1',
+    createSocket: (_url, handlers) => {
+      setTimeout(() => handlers.open(), 0);
+      return {
+        isOpen: () => true,
+        send: (data) => {
+          raw.push(data);
+        },
+        close: () => undefined,
+      };
+    },
+    onStatus: (status) => statuses.push(status),
+  });
+  gateway.start();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  return { raw, statuses, gateway };
 }
 
 function until(session: PairingSession, test: (state: PairingState) => boolean): Promise<PairingState> {
@@ -131,18 +166,22 @@ describe('pairing code', () => {
     };
     expect(decodeSetupCode(encode(setup))).toEqual(setup);
     expect(new URL(decodeSetupCode(encode(setup)).url).searchParams.get('role')).toBe('peer');
+    expect(isRelayPairingUrl(setup.url)).toBe(true);
+    expect(isRelayPairingUrl('ws://192.168.1.20:19031')).toBe(false);
   });
 
   it('encrypts the phone connect so the bootstrap token is not readable on the relay', async () => {
     const key = new Uint8Array(32).fill(7);
     const raw: unknown[] = [];
     const store = memoryStore();
+    const nonceSpy = jest.spyOn(Crypto, 'getRandomBytes');
     const gateway = new PhoneGateway({
       url: 'wss://relay.example/v1/pair/abc?role=peer&token=peer-token',
       platform: 'ios',
       appVersion: '0.1.0',
       bootstrapToken: 'phone-bootstrap-token',
       relayKey: bytesToBase64Url(key),
+      randomBytes: (count) => Crypto.getRandomBytes(count),
       loadIdentity: () => loadDeviceIdentity(store, randomBytes),
       tokenStore: { load: () => null, store: () => undefined, clear: () => undefined },
       createRequestId: () => 'req-1',
@@ -185,7 +224,52 @@ describe('pairing code', () => {
     for (const byte of rawBytes) rawText += String.fromCharCode(byte);
     expect(rawText).not.toContain('phone-bootstrap-token');
     expect(utf8FromRelayBytes(decryptPairingFrame(key, rawBytes))).toContain('phone-bootstrap-token');
+    expect(nonceSpy).toHaveBeenCalled();
+    nonceSpy.mockRestore();
     gateway.stop();
+  });
+
+  it('refuses a relay URL with no relay key and never sends the bootstrap token', async () => {
+    const { raw, statuses, gateway } = await watchRelayConnect();
+    expect(raw).toEqual([]);
+    expect(JSON.stringify(raw)).not.toContain('phone-bootstrap-token');
+    expect(statuses).toEqual([{ phase: 'failed', message: 'Pairing relay key is invalid.' }]);
+    gateway.stop();
+
+    const session = sessionWith();
+    session.session.begin({
+      url: 'wss://relay.example/v1/pair/abc?role=peer&token=peer-token',
+      bootstrapToken: 'phone-bootstrap-token',
+    });
+    expect(session.session.getState()).toEqual({
+      step: 'failed',
+      url: 'wss://relay.example/v1/pair/abc?role=peer&token=peer-token',
+      message: NEUTRAL_FAILURE_MESSAGE,
+    });
+    expect(session.engine.connects).toEqual([]);
+    session.session.dispose();
+  });
+
+  it('refuses a relay URL whose relay key is not 32 bytes and never sends the bootstrap token', async () => {
+    const { raw, statuses, gateway } = await watchRelayConnect({ relayKey: 'dGVzdC1rZXk' });
+    expect(raw).toEqual([]);
+    expect(JSON.stringify(raw)).not.toContain('phone-bootstrap-token');
+    expect(statuses).toEqual([{ phase: 'failed', message: 'Pairing relay key is invalid.' }]);
+    gateway.stop();
+
+    const session = sessionWith();
+    session.session.begin({
+      url: 'wss://relay.example/v1/pair/abc?role=peer&token=peer-token',
+      bootstrapToken: 'phone-bootstrap-token',
+      relayKey: 'dGVzdC1rZXk',
+    });
+    expect(session.session.getState()).toEqual({
+      step: 'failed',
+      url: 'wss://relay.example/v1/pair/abc?role=peer&token=peer-token',
+      message: NEUTRAL_FAILURE_MESSAGE,
+    });
+    expect(session.engine.connects).toEqual([]);
+    session.session.dispose();
   });
 });
 

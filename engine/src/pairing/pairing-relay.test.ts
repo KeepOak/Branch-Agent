@@ -1,7 +1,8 @@
+import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createPairingRelaySession,
   decryptPairingFrame,
@@ -10,6 +11,52 @@ import {
   pairingRelayJoinUrl,
   startPairingRelayHost,
 } from "./pairing-relay.js";
+
+vi.mock("@branch/gateway-client/browser", async () => import("@branch/gateway-client/browser"));
+
+type PhoneGatewayCtor = new (opts: {
+  url: string;
+  platform: "ios";
+  appVersion: string;
+  bootstrapToken?: string;
+  relayKey?: string;
+  randomBytes?: (count: number) => Uint8Array;
+  loadIdentity: () => Promise<{
+    deviceId: string;
+    publicKey: string;
+    sign: (payload: string) => Promise<string>;
+  }>;
+  tokenStore: { load: () => null; store: () => undefined; clear: () => undefined };
+  createRequestId: () => string;
+  createSocket: (
+    url: string,
+    handlers: {
+      open: () => void;
+      message: (data: unknown) => void;
+      close: (code: number, reason: string) => void;
+      error: (error: Error) => void;
+    },
+  ) => {
+    isOpen: () => boolean;
+    send: (data: string | Uint8Array) => void;
+    close: (code?: number, reason?: string) => void;
+  };
+  onStatus: (status: unknown) => void;
+}) => { start: () => void; stop: () => void };
+
+async function loadPhoneGateway(): Promise<PhoneGatewayCtor> {
+  const loaded = (await import(new URL("../../../mobile/src/connect/phoneGateway.ts", import.meta.url).href)) as {
+    PhoneGateway: PhoneGatewayCtor;
+  };
+  return loaded.PhoneGateway;
+}
+
+function waitClosed(socket: WebSocket): Promise<void> {
+  if (socket.readyState === WebSocket.CLOSED) {
+    return Promise.resolve();
+  }
+  return once(socket, "close").then(() => undefined);
+}
 
 const opened: Array<{ close: () => Promise<void> }> = [];
 
@@ -82,8 +129,7 @@ describe("pairing relay", () => {
     const session = await createPairingRelaySession({ relayUrl: relay.baseUrl });
     const bare = new WebSocket(session.wsUrl);
     const roleOnly = new WebSocket(`${session.wsUrl}?role=peer`);
-    await once(bare, "close");
-    await once(roleOnly, "close");
+    await Promise.all([waitClosed(bare), waitClosed(roleOnly)]);
     expect(bare.readyState).toBe(WebSocket.CLOSED);
     expect(roleOnly.readyState).toBe(WebSocket.CLOSED);
   });
@@ -128,6 +174,7 @@ describe("pairing relay", () => {
   });
 
   it("does not put a phone bootstrap token on the relay hop", async () => {
+    const PhoneGateway = await loadPhoneGateway();
     const relay = await listenPairingRelay();
     opened.push(relay);
 
@@ -135,6 +182,13 @@ describe("pairing relay", () => {
     const gatewayWss = new WebSocketServer({ server: gatewayHttp });
     const fromPhone = new Promise<string>((resolve) => {
       gatewayWss.on("connection", (socket) => {
+        socket.send(
+          JSON.stringify({
+            type: "event",
+            event: "connect.challenge",
+            payload: { nonce: "nonce-1", ts: 1_800_000_000_001 },
+          }),
+        );
         socket.on("message", (data) => resolve(String(data)));
       });
     });
@@ -160,37 +214,79 @@ describe("pairing relay", () => {
         local.close();
       },
     });
-    await Promise.all([once(host, "open"), once(local, "open")]);
-    const rawFromPhone: string[] = [];
+    const sendWhenOpen = (socket: WebSocket, payload: Buffer) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(payload);
+        return;
+      }
+      socket.once("open", () => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(payload);
+        }
+      });
+    };
+    const rawFromPhone: Buffer[] = [];
+    local.on("message", (data) => {
+      const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+      sendWhenOpen(host, encryptPairingFrame(session.key, buf));
+    });
     host.on("message", (data) => {
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
-      rawFromPhone.push(buf.toString("utf8"));
-      if (local.readyState === WebSocket.OPEN) {
-        local.send(decryptPairingFrame(session.key, buf));
-      }
+      rawFromPhone.push(buf);
+      sendWhenOpen(local, decryptPairingFrame(session.key, buf));
     });
+    await Promise.all([once(host, "open"), once(local, "open")]);
 
-    const phone = new WebSocket(session.peerUrl);
-    await once(phone, "open");
     const token = "phone-bootstrap-token";
-    phone.send(
-      encryptPairingFrame(
-        session.key,
-        Buffer.from(JSON.stringify({ type: "req", method: "connect", params: { auth: { bootstrapToken: token } } })),
-      ),
-    );
-    await expect(fromPhone).resolves.toContain(token);
-    expect(rawFromPhone.join("")).not.toContain(token);
+    const phone = new PhoneGateway({
+      url: session.peerUrl,
+      platform: "ios",
+      appVersion: "0.1.0",
+      bootstrapToken: token,
+      relayKey: session.key.toString("base64url"),
+      randomBytes: (count) => new Uint8Array(randomBytes(count)),
+      loadIdentity: async () => ({
+        deviceId: "ab".repeat(32),
+        publicKey: "dGVzdC1wdWJrZXk",
+        sign: async () => "dGVzdC1zaWc",
+      }),
+      tokenStore: { load: () => null, store: () => undefined, clear: () => undefined },
+      createRequestId: () => "req-1",
+      createSocket: (url, handlers) => {
+        const socket = new WebSocket(url);
+        socket.on("open", () => handlers.open());
+        socket.on("message", (data) => handlers.message(data));
+        socket.on("close", (code, reason) => handlers.close(code, String(reason)));
+        socket.on("error", (error) => handlers.error(error instanceof Error ? error : new Error("websocket error")));
+        return {
+          isOpen: () => socket.readyState === WebSocket.OPEN,
+          send: (data) => socket.send(data),
+          close: (code, reason) => socket.close(code, reason),
+        };
+      },
+      onStatus: (status) => {
+        if (status && typeof status === "object" && "phase" in status && status.phase === "failed") {
+          throw new Error(`phone gateway failed: ${JSON.stringify(status)}`);
+        }
+      },
+    });
+    opened.push({ close: async () => phone.stop() });
+    phone.start();
+    const plaintext = await fromPhone;
+    expect(plaintext).toContain(token);
+    expect(rawFromPhone.length).toBeGreaterThan(0);
+    const hop = rawFromPhone.map((buf) => buf.toString("utf8")).join("");
+    expect(hop).not.toContain(token);
     expect(
       rawFromPhone.some((raw) => {
         try {
-          JSON.parse(raw);
+          JSON.parse(raw.toString("utf8"));
           return true;
         } catch {
           return false;
         }
       }),
     ).toBe(false);
-    phone.close();
+    expect(decryptPairingFrame(session.key, rawFromPhone[0]!).toString("utf8")).toContain(token);
   });
 });

@@ -1,6 +1,8 @@
 // AES-256-GCM envelopes the phone and desktop share on a pairing relay hop.
 // Same layout as engine/src/pairing/pairing-relay.ts: nonce || tag || ciphertext.
 // Hermes has no WebCrypto, so this uses @noble/ciphers the way Reef does.
+// Hermes also has no crypto.getRandomValues; the nonce bytes come from expo-crypto
+// (same source as the device key), installed by createDeviceSession / Jest setup.
 import { gcm } from '@noble/ciphers/aes.js';
 import { base64UrlToBytes, utf8ToBytes } from '../connect/base64url';
 
@@ -8,9 +10,19 @@ const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
 const KEY_BYTES = 32;
 
+export type PairingRandomBytes = (count: number) => Uint8Array;
+
+let pairingRandomBytes: PairingRandomBytes | undefined;
+
+/** Install the platform RNG. The app passes expo-crypto `getRandomBytes`. */
+export function setPairingRandomBytes(randomBytes: PairingRandomBytes): void {
+  pairingRandomBytes = randomBytes;
+}
+
 function randomNonce(): Uint8Array {
-  const nonce = new Uint8Array(NONCE_BYTES);
-  crypto.getRandomValues(nonce);
+  if (!pairingRandomBytes) throw new Error('Pairing relay key is invalid.');
+  const nonce = pairingRandomBytes(NONCE_BYTES);
+  if (nonce.length !== NONCE_BYTES) throw new Error('Pairing relay frame is too short.');
   return nonce;
 }
 

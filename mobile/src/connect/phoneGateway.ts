@@ -29,8 +29,11 @@ import {
   decryptPairingFrame,
   encryptPairingFrame,
   pairingRelayKey,
+  setPairingRandomBytes,
   utf8FromRelayBytes,
+  type PairingRandomBytes,
 } from '../pairing/relayFrames';
+import { isRelayPairingUrl } from '../pairing/setupCode';
 
 export const OPERATOR_ROLE = 'operator';
 /**
@@ -69,6 +72,8 @@ export type PhoneGatewayOptions = {
   bootstrapToken?: string;
   /** Setup-code session key; when present, every gateway frame is AES-256-GCM on the relay hop. */
   relayKey?: string;
+  /** Platform RNG for relay nonces. The app passes expo-crypto `getRandomBytes`. */
+  randomBytes?: PairingRandomBytes;
   loadIdentity: () => Promise<GatewayBrowserDeviceIdentity>;
   tokenStore: GatewayBrowserDeviceTokenStore;
   createRequestId: () => string;
@@ -159,6 +164,7 @@ export class PhoneGateway {
   constructor(private readonly opts: PhoneGatewayOptions) {
     this.client = phoneClient(opts.platform, opts.appVersion);
     this.bootstrapToken = opts.bootstrapToken;
+    if (opts.randomBytes) setPairingRandomBytes(opts.randomBytes);
     this.auth = new GatewayBrowserDeviceAuthLifecycle({ loadIdentity: opts.loadIdentity, tokenStore: opts.tokenStore });
     const pairingRetryMs = opts.pairingRetryMs ?? PAIRING_RETRY_MS;
     const createSocket = opts.createSocket ?? webSocketFor;
@@ -167,6 +173,9 @@ export class PhoneGateway {
       createSocket: (handlers) => {
         // The texts belong to the connection that carried them.
         this.chatStream.clear();
+        if (isRelayPairingUrl(opts.url) && !relayKey) {
+          throw new Error('Pairing relay key is invalid.');
+        }
         if (!relayKey) {
           return createSocket(opts.url, {
             ...handlers,
@@ -227,6 +236,10 @@ export class PhoneGateway {
   }
 
   start(): void {
+    if (isRelayPairingUrl(this.opts.url) && !pairingRelayKey(this.opts.relayKey)) {
+      this.opts.onStatus({ phase: 'failed', message: 'Pairing relay key is invalid.' });
+      return;
+    }
     this.opts.onStatus({ phase: 'connecting' });
     this.protocol.start();
   }

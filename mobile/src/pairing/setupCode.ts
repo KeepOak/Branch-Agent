@@ -66,6 +66,20 @@ export function isGatewayUrl(candidate: unknown): candidate is string {
   return typeof candidate === 'string' && canonicalGatewayUrl(candidate) === candidate;
 }
 
+/**
+ * A pairing-relay join URL (`role=peer` or `role=host`). Those hops must carry a 32-byte
+ * `relayKey`; the phone refuses to connect without one so the bootstrap token is never sent
+ * in the clear.
+ */
+export function isRelayPairingUrl(url: string): boolean {
+  try {
+    const role = new URL(url).searchParams.get('role');
+    return role === 'peer' || role === 'host';
+  } catch {
+    return false;
+  }
+}
+
 function nonEmpty(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
