@@ -45,12 +45,12 @@ async function eventually(predicate, timeout = EVENTUALLY_DEFAULT_MS) {
   const end = Date.now() + fixtureDeadline(timeout);
   while (!await predicate()) { if (Date.now() > end) throw Error("Fixture deadline"); await pause(20); }
 }
-async function releaseServer(server) {
-  try { server.closeAllConnections?.(); } catch { /* none */ }
-  await new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } });
+function closeServer(server) {
+  return new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } });
 }
-// bind(0) can return a port Windows will not take on an explicit listen. Skip those.
-// A failed explicit bind is never returned. This is not a retry of one port.
+// bind(0) can return a port Windows will not take on an explicit listen, or whose
+// close keeps it reserved. Skip those. Two explicit binds must succeed, so the
+// close between them released the port. This is not a retry of one port.
 async function freePort() {
   for (let attempt = 0; attempt < 32; attempt++) {
     const server = createServer();
@@ -62,14 +62,17 @@ async function freePort() {
       });
     });
     if (picked === undefined) continue;
-    await releaseServer(server);
-    const check = createServer();
-    const rebound = await new Promise(resolve => {
-      check.once("error", () => resolve(false));
-      check.listen(picked, "127.0.0.1", () => resolve(true));
-    });
-    if (!rebound) continue;
-    await releaseServer(check);
+    await closeServer(server);
+    const once = async () => {
+      const check = createServer();
+      const ok = await new Promise(resolve => {
+        check.once("error", () => resolve(false));
+        check.listen(picked, "127.0.0.1", () => resolve(true));
+      });
+      if (ok) await closeServer(check);
+      return ok;
+    };
+    if (!await once() || !await once()) continue;
     return picked;
   }
   throw new Error("No loopback port could be bound again after it was closed");
@@ -217,7 +220,7 @@ if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
 // while retrying. A connection to a just-closed socket can accept once and send
 // nothing, and that connection keeps the port reserved for the whole retry. Give up
 // after 60s on Windows and 5s elsewhere, then close the listener and exit.
-const listen=()=>{const port=Number(process.argv.at(-1));const started=Date.now();const limit=process.platform==="win32"?60000:5000;const bind=()=>listener.listen({port,host:"127.0.0.1",exclusive:false});let waiting=false;const retry=()=>{if(waiting)return;waiting=true;if(Date.now()-started>limit)shutdown(1);else setTimeout(()=>{waiting=false;bind();},50);};listener.on("error",error=>{if(!error||error.code!=="EADDRINUSE"){shutdown(1);return;}retry();});bind();};
+const listen=()=>{const port=Number(process.argv.at(-1));const started=Date.now();const limit=process.platform==="win32"?60000:5000;const bind=()=>listener.listen({port,host:"127.0.0.1",exclusive:false});let waiting=false;const retry=()=>{if(waiting)return;waiting=true;if(Date.now()-started>limit)shutdown(1);else setTimeout(()=>{waiting=false;bind();},50);};listener.on("error",error=>{const code=error&&error.code;if(code!=="EADDRINUSE"&&code!=="EACCES"){shutdown(1);return;}retry();});bind();};
 // As the real engine: a standby binds only after the old engine released state (stepped down, or drained).
 const released=()=>fs.existsSync(root+"/released-"+starts[0])||fs.existsSync(root+"/drained-"+starts[0]);
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-exits-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);shutdown(1);}},10);}

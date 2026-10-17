@@ -27,42 +27,38 @@ export function readToken(cfg: DesktopConfig): string {
 
 const REBINDABLE_PORT_ATTEMPTS = 32;
 
-type LoopbackProbe = ReturnType<typeof createServer> & { closeAllConnections?: () => void };
-
-function armProbe(probe: LoopbackProbe): void {
-  probe.on("connection", (socket) => {
-    socket.on("error", () => undefined);
-    socket.destroy();
-  });
-}
-
-function releaseProbe(probe: LoopbackProbe): Promise<void> {
-  return new Promise((resolve) => {
-    try { probe.closeAllConnections?.(); } catch { /* net.Server has no such method */ }
-    probe.close(() => resolve());
-  });
+function closeServer(probe: ReturnType<typeof createServer>): Promise<void> {
+  return new Promise((resolve) => { probe.close(() => resolve()); });
 }
 
 /** Resolves true when nothing listens on 127.0.0.1:port. */
 export function portIsFree(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const probe = createServer();
-    armProbe(probe);
     probe.once("error", () => resolve(false));
-    probe.listen(port, "127.0.0.1", () => { void releaseProbe(probe).then(() => resolve(true)); });
+    probe.listen(port, "127.0.0.1", () => { void closeServer(probe).then(() => resolve(true)); });
+  });
+}
+
+/** True when this process can listen on 127.0.0.1:port and then release it. */
+function explicitBind(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probe = createServer();
+    probe.once("error", () => resolve(false));
+    probe.listen(port, "127.0.0.1", () => { void closeServer(probe).then(() => resolve(true)); });
   });
 }
 
 /**
  * A loopback port that can be bound again after this probe closes.
  * bind(0) can hand back a port Windows will not take on an explicit listen
- * (an excluded ephemeral range). Those ports are skipped. A port that failed
- * the explicit bind is never returned.
+ * (an excluded ephemeral range, or a close that keeps the port reserved).
+ * Those ports are skipped. A port is returned only after two explicit binds
+ * each succeeded, so the close between them released it.
  */
 export async function freeLoopbackPort(): Promise<number> {
   for (let attempt = 0; attempt < REBINDABLE_PORT_ATTEMPTS; attempt++) {
     const probe = createServer();
-    armProbe(probe);
     const picked = await new Promise<number | undefined>((resolve) => {
       probe.once("error", () => resolve(undefined));
       probe.listen(0, "127.0.0.1", () => {
@@ -71,15 +67,9 @@ export async function freeLoopbackPort(): Promise<number> {
       });
     });
     if (picked === undefined) continue;
-    await releaseProbe(probe);
-    const check = createServer();
-    armProbe(check);
-    const rebound = await new Promise<boolean>((resolve) => {
-      check.once("error", () => resolve(false));
-      check.listen(picked, "127.0.0.1", () => resolve(true));
-    });
-    if (!rebound) continue;
-    await releaseProbe(check);
+    await closeServer(probe);
+    if (!await explicitBind(picked)) continue;
+    if (!await explicitBind(picked)) continue;
     return picked;
   }
   throw new Error("No loopback port could be bound again after it was closed");
