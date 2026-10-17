@@ -939,11 +939,11 @@ describe("node host invoke", () => {
   });
 
   it.each(["system.run", "agent.cli.claude.run.v1"])(
-    "executes %s with omitted exec config and full/off host approvals",
+    "executes %s with Full access config and full/off host approvals",
     async (command) => {
       const state = await createBranchTestState({ label: "node-default-policy" });
       try {
-        await state.writeConfig({});
+        await state.writeConfig({ tools: { exec: { mode: "full" } } });
         saveExecApprovals({ version: 1, defaults: { security: "full", ask: "off" } });
         const executable = path.join(fs.realpathSync(state.root), "native-agent.cjs");
         fs.writeFileSync(executable, `#!${process.execPath}\nprocess.stdout.write('ok');\n`, {
@@ -1016,7 +1016,7 @@ describe("node host invoke", () => {
       execPolicy?: { security?: string; ask?: string };
       plan?: { policySnapshot?: unknown };
     };
-    expect(payload.execPolicy).toEqual({ security: "full", ask: "off" });
+    expect(payload.execPolicy).toEqual({ security: "allowlist", ask: "on-miss" });
     // The plan snapshot binds persisted approval state. Effective config-layer
     // policy is returned separately above and re-evaluated at execution.
     expect(payload.plan?.policySnapshot).toEqual({

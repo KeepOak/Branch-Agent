@@ -310,7 +310,7 @@ describe("Claude CLI node command", () => {
   });
 
   it.each([
-    { name: "unconfigured", config: {}, security: "full", ask: "off" },
+    { name: "unconfigured", config: {}, security: "allowlist", ask: "on-miss" },
     {
       name: "explicit ask",
       config: { tools: { exec: { mode: "ask" } } },

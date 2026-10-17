@@ -1,0 +1,6 @@
+engine:src/agents/exec-defaults.test.ts
+engine:src/gateway/session-utils.test.ts
+engine:src/infra/exec-approvals-policy.test.ts
+engine:src/node-host/invoke-agent-cli-claude.test.ts
+engine:src/node-host/invoke.test.ts
+window:src/screens/onboarding/access.test.tsx

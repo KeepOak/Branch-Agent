@@ -764,6 +764,50 @@ describe("exec approvals policy helpers", () => {
     });
   });
 
+  it("reports Ask first from the Branch Agent default when nothing is saved", () => {
+    const summary = summarizeExecPolicyScopeSnapshot({
+      approvals: {
+        version: 1,
+        agents: {},
+      },
+      configPath: "tools.exec",
+      scopeLabel: "tools.exec",
+    });
+
+    expectFields(summary.mode, {
+      requested: "ask",
+      requestedSource:
+        "derived from Branch Agent default (allowlist) and Branch Agent default (on-miss)",
+      effective: "ask",
+      note: "requested mode applies",
+    });
+    expectFields(summary.security, {
+      requested: "allowlist",
+      requestedSource: "Branch Agent default (allowlist)",
+      effective: "allowlist",
+    });
+    expectFields(summary.ask, {
+      requested: "on-miss",
+      requestedSource: "Branch Agent default (on-miss)",
+      effective: "on-miss",
+    });
+  });
+
+  it("collects Ask first for a command-line setup that saved only wizard consent", () => {
+    const snapshots = collectExecPolicyScopeSnapshots({
+      cfg: {
+        wizard: { accessMode: "full", securityAcknowledgedAt: "2026-10-01T00:00:00.000Z" },
+      } satisfies BranchConfig,
+      approvals: { version: 1 },
+    });
+
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]?.mode.requested).toBe("ask");
+    expect(snapshots[0]?.mode.effective).toBe("ask");
+    expect(snapshots[0]?.security.requested).toBe("allowlist");
+    expect(snapshots[0]?.ask.requested).toBe("on-miss");
+  });
+
   it("uses host-reported defaults instead of requested policy fallbacks", () => {
     const summary = summarizeExecPolicyScopeSnapshot({
       approvals: { version: 1, agents: {} },
