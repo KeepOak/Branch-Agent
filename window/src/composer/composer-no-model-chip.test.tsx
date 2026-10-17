@@ -22,6 +22,7 @@ async function mount(models: unknown[] = []) {
     if (method === "models.list") return { models };
     if (method === "models.authStatus") return { providers: [] };
     if (method === "sessions.usage") return { totals: {} };
+    if (method === "branch.setup.activate") return new Promise(() => {});
     return {};
   });
   const engine: WindowEngine = {

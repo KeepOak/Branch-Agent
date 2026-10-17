@@ -25,7 +25,7 @@ const LIMITS: Limits = { updatedAt: 0, refreshing: false, rows: [
   { id: "a", name: "ChatGPT · Account 2", provider: "openai-codex", email: "work@example.com", account: "", pill: "Measured", line: "", windows: [{ name: "5-hour", left: 61, reset: "", low: false }, { name: "Week", left: 30, reset: "", low: false }] },
 ] };
 
-async function mount(opts: { methods?: string[]; models?: boolean; working?: boolean; offline?: boolean; dictation?: boolean; replyTo?: { entryId: string; name: string; text: string }; onClearReply?: () => void; placeholder?: string } = {}) {
+async function mount(opts: { methods?: string[]; models?: boolean; activate?: "hang" | "fail" | "ok"; working?: boolean; offline?: boolean; dictation?: boolean; replyTo?: { entryId: string; name: string; text: string }; onClearReply?: () => void; placeholder?: string } = {}) {
   let row: Record<string, unknown> = { model: "openai/test", permissionMode: "guarded", thinkingLevel: "medium" };
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
     if (method === "agents.list") return { defaultId: "scout", agents: [{ id: "scout", name: "Scout" }] };
@@ -35,6 +35,11 @@ async function mount(opts: { methods?: string[]; models?: boolean; working?: boo
     if (method === "models.authStatus") return { providers: [] };
     if (method === "talk.catalog") return { transcription: { ready: Boolean(opts.dictation) }, realtime: { ready: false } };
     if (method === "sessions.patch") { row = { ...row, ...params }; return {}; }
+    if (method === "branch.setup.activate") {
+      if (opts.activate === "fail") return { ok: false, error: "A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster." };
+      if (opts.activate === "ok") return { ok: true, modelRef: "llama-cpp/gemma" };
+      return new Promise(() => {});
+    }
     return {};
   });
   const engine: WindowEngine = { sessionKey: "agent:scout:main", agentId: "scout", request: request as unknown as WindowEngine["request"], onEvent: () => () => {}, scopes: ["operator.admin"], ...(opts.methods ? { features: { methods: opts.methods, events: [] } } : {}) } as WindowEngine;
@@ -161,10 +166,24 @@ describe("R1-04 composer", () => {
   });
 
   it("with no model connected keeps chat open and suggests an account", async () => {
-    const { host, opened } = await mount({ models: false });
+    const { host, opened } = await mount({ models: false, activate: "hang" });
     expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Getting a free model ready…");
     await act(async () => button("Smarter with an account")!.click());
     expect(opened).toHaveBeenCalledWith("settings/accounts/add");
+  });
+
+  it("shows the failure and Try again when a free model is not ready", async () => {
+    const { host, request } = await mount({ models: false, activate: "fail" });
+    await vi.waitFor(() => expect(host.querySelector('[data-testid="no-key-failed"]')).not.toBeNull());
+    const failed = host.querySelector('[data-testid="no-key-failed"]')!;
+    expect(failed.textContent).toContain("A free local model isn’t ready");
+    expect(failed.querySelector("button")?.textContent).toBe("Try again");
+    expect(host.querySelector("textarea")?.getAttribute("placeholder")).not.toBe("Getting a free model ready…");
+    await type(host, "Hello");
+    expect(button("Send")?.disabled).toBe(true);
+    expect(button("Send")?.title).toContain("A free local model isn’t ready");
+    await act(async () => failed.querySelector("button")!.click());
+    expect(request.mock.calls.filter((c) => c[0] === "branch.setup.activate").length).toBe(2);
   });
 
   it("says the room's words in a group chat, and the Trunk's name everywhere else", async () => {
@@ -178,7 +197,7 @@ describe("R1-04 composer", () => {
     await act(async () => root?.unmount());
     root = undefined;
     document.body.innerHTML = "";
-    const noModel = await mount({ models: false, placeholder: "Message the group · @ to call a Trunk" });
+    const noModel = await mount({ models: false, activate: "hang", placeholder: "Message the group · @ to call a Trunk" });
     expect(noModel.host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Getting a free model ready…");
   });
 

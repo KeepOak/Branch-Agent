@@ -5,7 +5,7 @@ import { agentOf, errorText, list, rec, str, type Rec, type WindowEngine } from 
 import { readModels, type ModelChoice } from "./model";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { trunkDisplayName } from "../connect/trunk-name";
-import { ensureNoKeyDefault } from "./no-key-default";
+import { ensureNoKeyDefault, retryNoKeyDefault } from "./no-key-default";
 
 export type Trunk = { id: string; name: string; defaultMode: string; theme: string; model: string };
 
@@ -21,6 +21,8 @@ export type Conversation = {
   modelsLoading: boolean;
   modelsError: string | null;
   error: string | null;
+  /** Plain words when a free local model could not be set up. Null while it is still being tried. */
+  noKeyError: string | null;
 };
 
 const EMPTY: Conversation = {
@@ -34,6 +36,7 @@ const EMPTY: Conversation = {
   modelsLoading: false,
   modelsError: null,
   error: null,
+  noKeyError: null,
 };
 
 /** No model set up: the engine names no default model, or none it names is connected (models.list has none usable). */
@@ -130,13 +133,37 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
   }, [load, state.error, state.modelsError, retryGeneration, draftAgentId, engine?.agentId]);
 
   const hasAvailableModel = state.models.some((m) => m.available);
+  const noKeyTried = useRef(false);
+  useEffect(() => {
+    noKeyTried.current = false;
+  }, [engine, key]);
   useEffect(() => {
     if (!engine || !key || !state.loaded || !state.modelsLoaded || state.modelsError || state.error) return;
-    if (hasAvailableModel) return;
-    void ensureNoKeyDefault(engine).then((ok) => {
-      if (ok && live.current === key) void readModelList();
+    if (hasAvailableModel || noKeyTried.current) return;
+    noKeyTried.current = true;
+    void ensureNoKeyDefault(engine).then((result) => {
+      if (live.current !== key) return;
+      if (result.ok) {
+        setState((s) => ({ ...s, noKeyError: null }));
+        void readModelList();
+      } else {
+        setState((s) => ({ ...s, noKeyError: result.error }));
+      }
     });
   }, [engine, key, state.loaded, state.modelsLoaded, state.modelsError, state.error, hasAvailableModel, readModelList]);
+
+  const retryNoKey = useCallback(async () => {
+    if (!engine || !key) return;
+    setState((s) => ({ ...s, noKeyError: null }));
+    const result = await retryNoKeyDefault(engine);
+    if (live.current !== key) return;
+    if (result.ok) {
+      setState((s) => ({ ...s, noKeyError: null }));
+      await readModelList();
+    } else {
+      setState((s) => ({ ...s, noKeyError: result.error }));
+    }
+  }, [engine, key, readModelList]);
 
   useEffect(() => {
     if (!engine || !key) return;
@@ -176,5 +203,5 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
 
   const trunkId = draftAgentId ?? engine?.agentId ?? agentOf(key) ?? state.defaultTrunkId;
   const trunk = state.trunks.find((t) => t.id === trunkId);
-  return { ...state, key, trunk, trunkId, patch, reload: load, readModelList };
+  return { ...state, key, trunk, trunkId, patch, reload: load, readModelList, retryNoKey };
 }
