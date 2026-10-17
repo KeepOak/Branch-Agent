@@ -106,6 +106,21 @@ it("puts a run error in a thin notice with its details, never in the reply's pro
   expect(host.querySelector('[data-role="assistant"]')).toBeNull();
 });
 
+it("shows the Codex download as a plain line instead of Working, and Try again starts it again", async () => {
+  const request = vi.fn(async () => ({}));
+  const engine = { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", scopes: ["operator.admin"], features: { methods: ["codex.runtime.download"], events: [] } } as WindowEngine;
+  const progress: Block = { kind: "notice", key: "r2:codex_download", text: "Getting Codex ready (134 MB)… 29%", codex: { state: "downloading", runId: "r2", percent: 29 } };
+  const view = (live: Block[]) => <ChatView name="Scout" history={history.slice(0, 1)} live={live} pendingUser={null} running onAnswer={() => undefined} engine={engine} sessionKey={engine.sessionKey} />;
+  await act(async () => root.render(<CapabilityProvider engine={engine}>{view([progress])}</CapabilityProvider>));
+  expect(host.querySelector('[data-testid="codex-download"]')!.textContent).toContain("Getting Codex ready (134 MB)… 29%");
+  expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
+  const failed: Block = { kind: "notice", key: "r2:codex_download", text: "Codex isn’t downloaded yet and this computer looks offline. Try again.", codex: { state: "failed", runId: "r2", reason: "offline" } };
+  await act(async () => root.render(<CapabilityProvider engine={engine}>{view([failed])}</CapabilityProvider>));
+  const again = [...host.querySelectorAll<HTMLButtonElement>('[data-testid="codex-failed"] button')].find((b) => b.textContent === "Try again");
+  await act(async () => again!.click());
+  expect(request).toHaveBeenCalledWith("codex.runtime.download", {});
+});
+
 it("says when the conversation couldn't load and reads it again on Try again", async () => {
   const onReload = vi.fn();
   await show({ loadError: "chat.history failed", onReload }, ["chat.history"]);
