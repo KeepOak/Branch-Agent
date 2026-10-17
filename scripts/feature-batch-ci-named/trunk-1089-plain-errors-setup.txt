@@ -1,1 +1,4 @@
+window:src/places/customize/raw-errors-1089.test.tsx
 window:src/places/trunk/raw-errors-1089.test.ts
+window:src/screens/seedbank/raw-errors-1089.test.tsx
+window:src/setup/raw-errors-1089.test.tsx

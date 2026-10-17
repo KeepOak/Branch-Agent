@@ -149,7 +149,7 @@ export function Agents({ ctx }: { ctx: ToolsCtx }) {
     {agent ? <div className="t9-detail" data-testid="agent-detail">
       <div className="t9-dh"><span className="cz-tile big"><Glyph name="terminal" /></span><span className="grow"><b>{agent.name}</b><small>ACP · {agent.runtimeId}{agent.installation === "missing" ? " · not installed on this computer" : ""}</small></span>
         <Switch label={`${agent.name} on or off`} on={agent.enabled} onChange={on => { void ctx.config.patch({ plugins: { entries: { acpx: { config: { nativeAgents: { [agent.id]: on } } } } } }).then(ok => ok && ctx.agents.reload()); }} /></div>
-      {ctx.config.writeError && <p role="alert" className="cz-error">{ctx.config.writeError}</p>}
+      {ctx.config.writeError && <p role="alert" className="cz-error">{plainError(ctx.config.writeError)}</p>}
       <TechnicalOnly><Sec title="Who may use it"><div className="cz-line"><span>Which Trunks may use it</span><Grey reason="Choosing which Trunks may talk to an agent comes in a later update.">Choose</Grey></div></Sec>
       <Sec title="What it may do"><div className="cz-line"><span>What it may be asked</span><Grey reason="Choosing what an agent may be asked comes in a later update.">Choose</Grey></div></Sec></TechnicalOnly>
       <Sec title="Set it up"><h3 className="cz-h3">Rules</h3><dl className="cz-kv cz-box"><dt>Runs as</dt><dd><code>{agent.runtimeId}</code></dd></dl>
@@ -268,7 +268,7 @@ export function Toolsets({ ctx }: { ctx: ToolsCtx }) {
         <small>Set by: {profile.by} · {on} of {total} tools on</small>
         <span className="cz-acts"><button type="button" className="btn ghost sm" disabled={ctx.config.busy} onClick={() => setAll(true)}>Turn all on</button><button type="button" className="btn ghost sm" disabled={ctx.config.busy} onClick={() => setAll(false)}>Turn all off</button></span>
       </div>
-      {ctx.config.writeError && <p role="alert" className="cz-error">{ctx.config.writeError}</p>}
+      {ctx.config.writeError && <p role="alert" className="cz-error">{plainError(ctx.config.writeError)}</p>}
       <Status {...ctx.catalog} />
       {ctx.catalog.data != null && !groups.length && <EmptyLine icon={<Glyph name="grid" size={22} />}>No toolsets yet.</EmptyLine>}
       {madeByTrunks.length > 0 && <h3 className="cz-h3">Made by Trunks</h3>}
@@ -296,7 +296,7 @@ function ToolsetDetail({ ctx, group, need }: { ctx: ToolsCtx; group: Group; need
     <div className="t9-dh"><span className="cz-tile big"><Glyph name="grid" /></span><span className="grow"><b>{group.label}</b><small>Comes with Branch · {group.tools.length} {group.tools.length === 1 ? "tool" : "tools"}</small></span>
       <Switch label={`${group.label} on or off`} on={groupOn(ctx, group, ctx.whose)} onChange={on => setGroup(ctx.whose, on)} /></div>
     {need && <div className="cz-line" data-testid="toolset-setup"><span><NeedsSetup setup={need} /> {need.why}</span><SetUp ctx={ctx} setup={need} label={group.label} /></div>}
-    {ctx.config.writeError && <p role="alert" className="cz-error">{ctx.config.writeError}</p>}
+    {ctx.config.writeError && <p role="alert" className="cz-error">{plainError(ctx.config.writeError)}</p>}
     {!ctx.whose && <Sec title="Which Trunks may use it"><WhoChips trunks={ctx.trunks} may={id => groupOn(ctx, group, id)} toggle={ctx.config.busy ? undefined : (id, on) => setGroup(id, on)} reason="Saving…" /></Sec>}
     <Sec title="In this toolset">{group.tools.map(t => <PermRow key={t.id} name={shows(ctx.level, "technical") ? t.id : t.label} value={deny.includes(t.id) ? "never" : "allowed"} disabled={ctx.config.busy} change={v => setTool(t.id, v === "never")} />)}</Sec>
   </div>;
