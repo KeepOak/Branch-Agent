@@ -1,8 +1,11 @@
 // The macOS CUA daemon must be spawned by Electron, the process that owns TCC grants.
 // Loading the pinned SDK from the selected engine also keeps app and engine updates in sync.
-import { existsSync, readFileSync } from "node:fs";
+// Release builds no longer bundle the driver (#983): the engine downloads it the first time computer use is on,
+// into <state dir>/tools/computer-use/<version>-darwin-<arch>/. The app checks that copy against the engine's own
+// pins (its cua-computer package.json) before it loads the SDK or runs the driver, and refuses anything else.
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createConnection, createServer, type Server } from "node:net";
 import { dirname, join } from "node:path";
 
@@ -60,6 +63,44 @@ function loadSdk(engineDir: string): MacSdk {
   return { ...permissions, ...native, ...embedded };
 }
 
+type Pins = { version: string; driver: string; native: Record<string, string> };
+
+/** The engine's computer-use pins: the cua-computer package.json it ships (built or source layout). */
+export function readEnginePins(engineDir: string, arch: string = process.arch): Pins | undefined {
+  for (const manifest of [join(engineDir, "dist", "extensions", "cua-computer", "package.json"), join(engineDir, "extensions", "cua-computer", "package.json")]) {
+    try {
+      const value = JSON.parse(readFileSync(manifest, "utf8")) as {
+        dependencies?: Record<string, string>;
+        cuaDriverArtifacts?: Record<string, { files?: Record<string, string> }>;
+      };
+      const version = value.dependencies?.["@trycua/cua-driver"];
+      const driver = value.cuaDriverArtifacts?.["darwin-universal-binary"]?.files?.["cua-driver"];
+      const native = value.cuaDriverArtifacts?.[`darwin-${arch}`]?.files;
+      const sha = (digest: unknown) => typeof digest === "string" && /^[a-f0-9]{64}$/u.test(digest);
+      if (typeof version === "string" && sha(driver) && native && Object.keys(native).length && Object.values(native).every(sha)) {
+        return { version, driver: driver!, native };
+      }
+    } catch { /* the next layout */ }
+  }
+  return undefined;
+}
+
+/** Where the driver comes from: the engine (older and source builds) or the verified per-user download. */
+export type MacDriverLocation =
+  | { state: "bundled" | "downloaded"; binary: string; sdkRoot: string }
+  | { state: "not-downloaded" | "refused"; reason: string };
+
+/** The per-user download folder for these pins. */
+export function macDriverStore(stateDir: string, version: string, arch: string = process.arch): string {
+  return join(stateDir, "tools", "computer-use", `${version}-darwin-${arch}`);
+}
+
+async function sha256File(file: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(file)) hash.update(chunk as Buffer);
+  return hash.digest("hex");
+}
+
 function hostBundleId(): string {
   if (process.platform !== "darwin") return "ai.branch.mac";
   const plist = join(dirname(dirname(process.execPath)), "Info.plist");
@@ -79,6 +120,8 @@ export const DRIVER_START_FAILED = "";
 export class MacComputerDriver {
   /** Why the last start gave no endpoint; cleared once the driver is ready. */
   reason?: string;
+  /** A verified download, keyed by the files' size and change time so a changed file is checked again. */
+  private verified?: { key: string; location: MacDriverLocation };
   private host?: EmbeddedHost;
   private endpoint?: string;
   private selectedEngine?: string;
@@ -86,19 +129,82 @@ export class MacComputerDriver {
   private proxy?: Server;
   private exitWatch?: ReturnType<typeof setInterval>;
 
+  /** Only a location already checked (bundled, or verified this run): never loads unchecked native code. */
   permissionsGranted(engineDir: string): boolean {
+    const location = this.knownLocation(engineDir);
+    if (!location || "reason" in location) return false;
     try {
-      const sdk = this.sdk(engineDir);
+      const sdk = this.sdk(location.sdkRoot);
       return sdk.hasRequiredMacOSPermissions(sdk.currentMacOsPermissionStatus());
     } catch { return false; }
   }
 
   constructor(
     private readonly log: (line: string) => void,
-    private readonly sdk: (engineDir: string) => MacSdk = loadSdk,
+    private readonly sdk: (root: string) => MacSdk = loadSdk,
     private readonly bundleId: () => string = hostBundleId,
+    /** The Branch Agent state dir, where the engine keeps the downloaded driver. */
+    private readonly stateDir: () => string | undefined = () => undefined,
+    private readonly arch: string = process.arch,
     private readonly exitPollMs = 2_000,
   ) {}
+
+  /** Cheap: whether a driver is there to start (bundled, or a finished download), without checking digests. */
+  installed(engineDir: string): boolean {
+    if (existsSync(join(engineDir, "cua-driver"))) return true;
+    const pins = readEnginePins(engineDir, this.arch);
+    const stateDir = this.stateDir();
+    return Boolean(pins && stateDir && existsSync(join(macDriverStore(stateDir, pins.version, this.arch), "computer-use-install.json")));
+  }
+
+  private storeKey(root: string, files: string[]): string {
+    return [root, ...files.map(file => { try { const s = statSync(file); return `${s.size}:${s.mtimeMs}:${s.ino}`; } catch { return "missing"; } })].join("|");
+  }
+
+  private storeFiles(root: string, pins: Pins): Array<[string, string]> {
+    const nativeDir = join(root, "node_modules", "@trycua", `cua-driver-darwin-${this.arch}`);
+    return [[join(root, "cua-driver"), pins.driver], ...Object.entries(pins.native).map(([name, digest]): [string, string] => [join(nativeDir, name), digest])];
+  }
+
+  private knownLocation(engineDir: string): MacDriverLocation | undefined {
+    const binary = join(engineDir, "cua-driver");
+    if (existsSync(binary)) return { state: "bundled", binary, sdkRoot: engineDir };
+    const pins = readEnginePins(engineDir, this.arch);
+    const stateDir = this.stateDir();
+    if (!pins || !stateDir) return undefined;
+    const root = macDriverStore(stateDir, pins.version, this.arch);
+    const key = this.storeKey(root, this.storeFiles(root, pins).map(([file]) => file));
+    return this.verified?.key === key ? this.verified.location : undefined;
+  }
+
+  /**
+   * The driver to start. A download is hashed against the engine's pins first; a mismatch is refused before the
+   * SDK's native library is loaded or the driver runs.
+   */
+  async locate(engineDir: string): Promise<MacDriverLocation> {
+    const binary = join(engineDir, "cua-driver");
+    if (existsSync(binary)) return { state: "bundled", binary, sdkRoot: engineDir };
+    const pins = readEnginePins(engineDir, this.arch);
+    const stateDir = this.stateDir();
+    if (!pins || !stateDir) return { state: "not-downloaded", reason: `Mac computer driver is not packaged in ${engineDir}` };
+    const root = macDriverStore(stateDir, pins.version, this.arch);
+    if (!existsSync(join(root, "computer-use-install.json"))) {
+      return { state: "not-downloaded", reason: `Mac computer driver ${pins.version} is not downloaded yet; the engine downloads it the first time computer use is on` };
+    }
+    const files = this.storeFiles(root, pins);
+    const key = this.storeKey(root, files.map(([file]) => file));
+    if (this.verified?.key === key) return this.verified.location;
+    let location: MacDriverLocation = { state: "downloaded", binary: join(root, "cua-driver"), sdkRoot: root };
+    for (const [file, digest] of files) {
+      const actual = await sha256File(file).catch(() => "missing");
+      if (actual !== digest) {
+        location = { state: "refused", reason: `Mac computer driver refused: ${file} does not match the SHA-256 this engine pins (${actual === "missing" ? "missing" : actual}); it was not loaded or run` };
+        break;
+      }
+    }
+    this.verified = { key, location };
+    return location;
+  }
 
   async start(engineDir: string): Promise<string | undefined> {
     if (this.selectedEngine === engineDir && this.endpoint) return this.endpoint;
@@ -115,13 +221,15 @@ export class MacComputerDriver {
 
   private async startSelected(engineDir: string): Promise<string | undefined> {
     await this.stop();
-    const binary = join(engineDir, "cua-driver");
-    if (!existsSync(binary)) {
-      this.log(`Mac computer driver is not packaged in ${engineDir}`);
+    const location = await this.locate(engineDir);
+    if ("reason" in location) {
+      this.log(location.reason);
+      // Not downloaded yet, or refused: the pane shows the preview's bare "Coming"; the why stays in desktop.log.
       this.reason = DRIVER_NOT_PACKAGED;
       return undefined;
     }
-    const sdk = this.sdk(engineDir);
+    const binary = location.binary;
+    const sdk = this.sdk(location.sdkRoot);
     const current = sdk.currentMacOsPermissionStatus();
     const permissions = sdk.hasRequiredMacOSPermissions(current) ? current : sdk.requestMacOSPermissions();
     if (!sdk.hasRequiredMacOSPermissions(permissions)) {

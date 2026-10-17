@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { createConnection, createServer } from "node:net";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import * as driverModule from "../dist/mac-computer-driver.js";
-const { MacComputerDriver, describeDriverError, macScreenControlEnabled } = driverModule;
+const { MacComputerDriver, describeDriverError, macDriverStore, macScreenControlEnabled, readEnginePins } = driverModule;
 
 test("Mac screen control remains off until explicitly enabled", async () => {
   const dir = await mkdtemp(join(tmpdir(), "branch-mac-screen-setting-"));
@@ -148,6 +149,68 @@ test("a rejected embedded configuration surfaces the SDK's reason, not just its 
   } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
 });
 
+// Release builds fetch the driver on first use (#983): the engine keeps it in <state dir>/tools/computer-use/.
+const sha256 = text => createHash("sha256").update(text).digest("hex");
+const NATIVE = { "libcua_driver_sdk.dylib": "native library", "cua_driver_node_runtime.node": "node runtime" };
+
+/** A release engine (no bundled driver, only the plugin's pins) and a per-user download of that driver. */
+async function downloadedDriver(t, { driverText = "verified driver" } = {}) {
+  const dir = await mkdtemp(join(tmpdir(), "branch-mac-driver-download-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const engineDir = join(dir, "engine");
+  const stateDir = join(dir, "state");
+  const pluginDir = join(engineDir, "dist", "extensions", "cua-computer");
+  await mkdir(pluginDir, { recursive: true });
+  const nativePins = Object.fromEntries(Object.entries(NATIVE).map(([name, text]) => [name, sha256(text)]));
+  await writeFile(join(pluginDir, "package.json"), JSON.stringify({
+    dependencies: { "@trycua/cua-driver": "0.28.2" },
+    cuaDriverArtifacts: { "darwin-universal-binary": { files: { "cua-driver": sha256("verified driver") } }, "darwin-arm64": { files: nativePins } },
+  }));
+  const root = macDriverStore(stateDir, "0.28.2", "arm64");
+  const nativeDir = join(root, "node_modules", "@trycua", "cua-driver-darwin-arm64");
+  await mkdir(nativeDir, { recursive: true });
+  for (const [name, text] of Object.entries(NATIVE)) await writeFile(join(nativeDir, name), text);
+  await writeFile(join(root, "cua-driver"), driverText);
+  return { engineDir, stateDir, root, receipt: () => writeFile(join(root, "computer-use-install.json"), "{}") };
+}
+
+test("a release engine starts the per-user download only after it matches the engine's pins", async t => {
+  const { engineDir, stateDir, root, receipt } = await downloadedDriver(t);
+  const loaded = [];
+  const events = [];
+  const lines = [];
+  const driver = new MacComputerDriver(line => lines.push(line), sdkRoot => { loaded.push(sdkRoot); return allowlistedSdk(events); },
+    () => "ai.branch.mac", () => stateDir, "arm64");
+  t.after(() => driver.stop());
+  assert.deepEqual(readEnginePins(engineDir, "arm64")?.version, "0.28.2");
+  // Not downloaded yet: nothing loads, and the log says why.
+  assert.equal(driver.installed(engineDir), false);
+  assert.equal(await driver.start(engineDir), undefined);
+  assert.match(lines.join("\n"), /not downloaded yet/);
+  assert.deepEqual(loaded, []);
+  await receipt();
+  assert.equal(driver.installed(engineDir), true);
+  assert.equal(JSON.parse(await driver.start(engineDir)).v, 2);
+  assert.deepEqual(loaded, [root]);
+  assert.deepEqual(events, ["start"]);
+  assert.equal(driver.permissionsGranted(engineDir), true);
+});
+
+test("a downloaded driver that differs from its pin is refused before the SDK loads or the driver runs", async t => {
+  const { engineDir, stateDir, receipt } = await downloadedDriver(t, { driverText: "tampered driver" });
+  await receipt();
+  const loaded = [];
+  const lines = [];
+  const driver = new MacComputerDriver(line => lines.push(line), sdkRoot => { loaded.push(sdkRoot); throw new Error("must not load"); },
+    () => "ai.branch.mac", () => stateDir, "arm64");
+  t.after(() => driver.stop());
+  assert.equal(await driver.start(engineDir), undefined);
+  assert.deepEqual(loaded, []);
+  assert.match(lines.join("\n"), /refused: .*cua-driver does not match the SHA-256 this engine pins .*not loaded or run/);
+  assert.equal(driver.permissionsGranted(engineDir), false);
+  assert.deepEqual((await driver.locate(engineDir)).state, "refused");
+});
+
 test("the Coming reasons are the preview's copy: none for a missing driver, its permission line for permissions", () => {
   assert.equal(driverModule.DRIVER_NOT_PACKAGED, "");
   assert.equal(driverModule.DRIVER_START_FAILED, "");
@@ -199,7 +262,7 @@ test("the driver notices an exit by checking its state, never by a pending waitF
   const Host = base.EmbeddedCuaDriverHost;
   const sdk = { ...base, EmbeddedCuaDriverHost: class extends Host { state() { checks += 1; return state; } } };
   const tick = () => new Promise(resolve => setTimeout(resolve, 30));
-  const driver = new MacComputerDriver(line => lines.push(line), () => sdk, () => "ai.branch.mac", 5);
+  const driver = new MacComputerDriver(line => lines.push(line), () => sdk, () => "ai.branch.mac", undefined, undefined, 5);
   try {
     const endpoint = await driver.start(dir);
     assert.equal(JSON.parse(endpoint).v, 2);
