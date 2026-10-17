@@ -2,17 +2,19 @@
 // (skills.gardener.status), Suggested and Drafts (skills.proposals.*), the detail with skills.update and
 // skills.install, kept versions (skills.library.*), and "Add a skill" (skills.search / skills.install).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useState, type ReactNode } from "react";
-import { displayName, invocationName } from "../../display-names";
+import { useRef, useState, type ReactNode } from "react";
+import { displayName } from "../../display-names";
 import { shownWhy } from "../../shell/shown-why";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
+import { KindHead, TechnicalOnly } from "./kind-chrome";
+import { TechRows } from "./tech-rows";
 import { shows } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
 import { Switch } from "../../shell/Popover";
 import { useOperation, useResource } from "../library/data";
 import { Status } from "../library/ui";
-import { ago, Dot, Grey, list, Pill, rec, Sec, Seg, str, type Rec } from "./common";
+import { ago, Grey, list, Pill, rec, Sec, Seg, str, type Rec } from "./common";
 import { Glyph } from "./glyphs";
 import type { ToolsCtx } from "./tools";
 
@@ -23,7 +25,7 @@ export function readSkillRows(result: unknown): Skill[] {
     const m = rec(s.missing);
     return {
       key: str(s.skillKey) || str(s.name), name: displayName(str(s.name)), rawName: str(s.name), description: str(s.description),
-      source: s.bundled === true ? "Built in" : str(s.source) === "workspace" ? "In this Trunk’s folder" : "Installed",
+      source: s.bundled === true ? "Built in" : str(s.source) === "workspace" ? "This project" : "Installed",
       disabled: s.disabled === true, eligible: s.eligible !== false,
       missing: [...strings(m.bins).map(b => `the ${b} program`), ...strings(m.anyBins).map(b => `the ${b} program`), ...strings(m.env).map(e => `the ${e} key`), ...strings(m.config).map(c => `the ${c} setting`), ...strings(m.os).map(o => `${o}`)],
       installs: list(s.install).map(i => ({ id: str(i.id), label: str(i.label) || str(i.id) })).filter(i => i.id),
@@ -46,38 +48,81 @@ export function skillInstallParams(scope: Rec, skill: Skill, installId: string):
   return { ...scope, name: skill.rawName, installId };
 }
 
+type SkillTab = "library" | "drafts" | "suggested";
+const SCOPES: { id: Scope; name: string }[] = [{ id: "mine", name: "Mine" }, { id: "team", name: "The team’s" }, { id: "all", name: "All" }, { id: "folder", name: "A Trunk’s folder" }];
+type Scope = "mine" | "team" | "all" | "folder";
+/** Bundles the preview lists above the skills (preview 38526). Their names are typed with / in a conversation. */
+const BUNDLES: [string, string, string][] = [["/month-end", "Ledger’s month-end, in one go", "expense-report, file-receipts, finance:reconcile"], ["/research", "A brief with quotes lined up", "brief, compare-quotes"]];
+
 export function Skills({ ctx }: { ctx: ToolsCtx }) {
-  const [view, setView] = useState<"skills" | "drafts">("skills");
+  const [tab, setTab] = useState<SkillTab>("library");
   const proposals = useResource<unknown>(ctx.engine, "skills.proposals.list", scopeOf(ctx));
   const all = readProposals(proposals.data);
   const waiting = all.filter(p => p.status === "pending");
   const rows = readSkillRows(ctx.skills.data);
-  const head = <Seg label="Skills or drafts" value={view} change={setView} options={[{ id: "skills", name: `Skills (${rows.length})` }, { id: "drafts", name: `Drafts (${waiting.length} waiting)` }]} />;
-  return view === "skills" ? <SkillList ctx={ctx} head={head} rows={rows} suggestion={waiting[0]} reloadProposals={proposals.reload} /> : <Drafts ctx={ctx} head={head} proposals={proposals} all={all} />;
+  const tabs = <div className="cz-tabs" role="tablist" aria-label="Skills">{([["library", "Library"], ["drafts", waiting.length ? `Drafts ${waiting.length}` : "Drafts"], ["suggested", waiting.length ? "Suggested 1" : "Suggested"]] as [SkillTab, string][]).map(([id, name]) =>
+    <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{name}</button>)}</div>;
+  const count = `${rows.filter(r => stOf(r) === "ready").length} of ${rows.length} on`;
+  const body = tab === "drafts" ? <Drafts ctx={ctx} tabs={tabs} count={count} proposals={proposals} all={all} />
+    : tab === "suggested" ? <SuggestedTab ctx={ctx} tabs={tabs} count={count} suggestion={waiting[0]} reloadProposals={proposals.reload} />
+    : <SkillList ctx={ctx} tabs={tabs} count={count} rows={rows} />;
+  return body;
 }
 
-function SkillList({ ctx, head, rows, suggestion, reloadProposals }: { ctx: ToolsCtx; head: ReactNode; rows: Skill[]; suggestion?: Proposal; reloadProposals: () => void }) {
-  const [st, setSt] = useState<St>("all");
-  const [query, setQuery] = useState("");
+function SuggestedTab({ ctx, tabs, count, suggestion, reloadProposals }: { ctx: ToolsCtx; tabs: ReactNode; count: string; suggestion?: Proposal; reloadProposals: () => void }) {
+  return <KindHead ctx={ctx} kind="Skills" count={count}>
+    {tabs}
+    {suggestion ? <Suggested ctx={ctx} p={suggestion} reload={() => { reloadProposals(); ctx.skills.reload(); }} />
+      : <p className="cz-none">Nothing suggested right now. The Gardener suggests better versions after a task goes well.</p>}
+  </KindHead>;
+}
+
+function SkillList({ ctx, tabs, count, rows }: { ctx: ToolsCtx; tabs: ReactNode; count: string; rows: Skill[] }) {
   const [chosen, setChosen] = useState<string | null>(null);
-  const count = (s: St) => (s === "all" ? rows.length : rows.filter(r => stOf(r) === s).length);
-  const q = query.trim().toLowerCase();
-  const shown = rows.filter(r => (st === "all" || stOf(r) === st) && (!q || (r.name + " " + r.description).toLowerCase().includes(q)));
+  const [scope, setScope] = useState<Scope>("all");
+  const [st, setSt] = useState<St>("all");
+  const countOf = (s: St) => (s === "all" ? rows.length : rows.filter(r => stOf(r) === s).length);
+  const op = useOperation(ctx.engine);
+  const q = ctx.query.trim().toLowerCase();
+  // The engine has no team source yet, so "The team’s" shows nothing rather than a guess.
+  const inScope = (r: Skill) => (scope === "all" ? true : scope === "mine" ? r.source !== "Built in" : scope === "folder" ? r.source === "This project" : false);
+  const shown = rows.filter(r => inScope(r) && (st === "all" || stOf(r) === st) && (!q || (r.name + " " + r.description).toLowerCase().includes(q)));
   const skill = shown.find(r => r.key === chosen) ?? shown[0];
+  const scopeName = SCOPES.find(x => x.id === scope)?.name ?? "All";
+  const advanced = shows(ctx.level, "advanced");
+  const shownLine = useRef<HTMLParagraphElement>(null);
   return <>
-    <div className="t9-list">{head}
-    <div className="cz-chips" role="group" aria-label="Show">{([["all", "All"], ["ready", "Ready"], ["setup", "Needs setup"], ["off", "Off"]] as [St, string][]).map(([id, name]) =>
-      <button key={id} type="button" className="cz-chip" aria-pressed={st === id} onClick={() => setSt(id)}>{name} <em>{count(id)}</em></button>)}</div>
-    <div className="cz-filter"><label className="cz-search"><Icon name="search" small /><input type="search" aria-label="Filter skills" placeholder="Filter skills" value={query} onChange={e => setQuery(e.target.value)} /></label><small aria-live="polite">{shown.length} shown</small></div>
-    <Gardener ctx={ctx} />
-    {suggestion && <Suggested ctx={ctx} p={suggestion} reload={() => { reloadProposals(); ctx.skills.reload(); }} />}
-    <Status {...ctx.skills} />
-    {ctx.skills.data != null && !shown.length && <EmptyLine icon={<Glyph name="bolt" size={22} />}>No skills match.</EmptyLine>}
-    {shown.map(r => <button key={r.key} type="button" className="t9-item" aria-current={r.key === skill?.key} onClick={() => setChosen(r.key)}>
-      <span className="cz-tile"><Glyph name="bolt" size={16} /></span><span className="grow"><b>{r.name}</b><small>{r.source}{r.description ? " · " + r.description : ""}</small></span>
-      {stOf(r) === "setup" ? <Pill tone="warn" title={r.missing.length ? "Needs " + r.missing.join(", ") : undefined}>Needs setup</Pill> : <Dot on={stOf(r) === "ready"} />}
-    </button>)}
-    </div>
+    <KindHead ctx={ctx} kind="Skills" count={count}>
+      {tabs}
+      <Gardener ctx={ctx} />
+      {advanced && <div className="cz-scope"><Seg label="Scope" value={scope} options={SCOPES} change={setScope} />
+        <div className="cz-acts"><Grey className="btn sm" reason="Writing a skill with Branch comes in a later update.">Write a skill</Grey>
+          <button type="button" className="btn sm" onClick={() => (ctx.toCommunity ? ctx.toCommunity("skills") : ctx.openAdd("Skills"))}>Bring one in</button>
+          <button type="button" className="btn sm" onClick={() => { ctx.skills.reload(); shownLine.current?.focus(); }}>Refresh</button></div>
+        <small>New conversations pick up to 150 skills by default.</small></div>}
+      {/* Refresh re-reads the skills and moves focus here, so the refreshed count is read out. */}
+      <p className="cz-shown" ref={shownLine} tabIndex={-1} role="status">{shown.length} of {rows.length} shown · {advanced ? scopeName : "All"}</p>
+      <Status {...ctx.skills} />
+      <div className="cz-chips" role="group" aria-label="Show">{([["all", "All"], ["ready", "Ready"], ["setup", "Needs setup"], ["off", "Off"]] as [St, string][]).map(([id, name]) =>
+        <button key={id} type="button" className="cz-chip" aria-pressed={st === id} onClick={() => setSt(id)}>{name} <em>{countOf(id)}</em></button>)}</div>
+      <div className="cz-bundles"><p className="cz-grp">Skill bundles</p>
+        {BUNDLES.map(([name, line, skills]) => <div key={name} className="cz-bundle"><span className="grow"><b>{name}</b><small>{line}</small><small>{skills}</small></span></div>)}
+        <p className="cz-hint">Type the bundle’s name with / to load its skills together.</p></div>
+      {ctx.skills.data != null && !shown.length && <EmptyLine icon={<Glyph name="bolt" size={22} />}>No skills match.</EmptyLine>}
+      {shown.map(r => <div key={r.key} className="cz-rowline" role="listitem">
+        <button type="button" className="t9-item" aria-current={r.key === skill?.key} onClick={() => setChosen(r.key)}>
+          <span className="cz-tile"><Glyph name="bolt" size={16} /></span><span className="grow"><b>{r.name}</b><small>{r.source}{r.description ? " · " + r.description : ""}</small></span>
+          {stOf(r) === "setup" && <Pill tone="warn" title={r.missing.length ? "Needs " + r.missing.join(", ") : undefined}>Needs setup</Pill>}
+          {r.source === "This project" && <span className="cz-tag">This project</span>}
+        </button>
+        <Switch label={`${r.name} on or off`} on={!r.disabled} onChange={on => void op.run("skills.update", { skillKey: r.key, enabled: on }, ctx.skills.reload)} />
+      </div>)}
+      <TechnicalOnly><div className="cz-bottom">
+        <div className="cz-line"><span>Let Trunks find and add their own</span><Grey className="switch" reason="Letting Trunks add skills on their own comes in a later update."><span /></Grey></div>
+        <div className="cz-line"><span>Keep skills in step across computers</span><Grey className="switch" reason="Keeping skills in step across computers comes in a later update."><span /></Grey></div>
+      </div></TechnicalOnly>
+      <TechRows ctx={ctx} kind="Skills" />
+    </KindHead>
     {skill ? <SkillDetail key={skill.key} ctx={ctx} skill={skill} /> : <div className="t9-detail cz-empty-detail" />}
   </>;
 }
@@ -115,11 +160,24 @@ function SkillDetail({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
     {stOf(skill) === "setup" && <div className="cz-card warn"><b>Needs setting up</b><small>It needs {skill.missing.join(", ") || "something this computer lacks"}.</small>
       {skill.installs.length > 0 && <div className="cz-acts">{skill.installs.map(i => <button key={i.id} type="button" className="btn sm" disabled={op.busy} onClick={() => void op.run("skills.install", skillInstallParams(scopeOf(ctx), skill, i.id), ctx.skills.reload)}>{i.label}</button>)}</div>}</div>}
     {skill.raw.blockedByAgentFilter === true && <p className="cz-hint">This Trunk’s skill list leaves it out.</p>}
-    <Sec title="How it’s used"><dl className="cz-kv"><dt>Where it came from</dt><dd>{skill.source}</dd><dt>Use</dt><dd>{skill.userInvocable ? `/${invocationName(skill.rawName)} in a conversation, or when a Trunk needs it` : "When a Trunk needs it"}</dd><dt>Always load it</dt><dd>{skill.always ? "Yes" : "No"}</dd>
+        <Sec title="Set it up"><dl className="cz-kv"><dt>Where it came from</dt><dd>{skill.source}</dd><dt>Always load it</dt><dd>{skill.always ? "Yes" : "No"}</dd>
       {shows(ctx.level, "technical") && skill.filePath && <><dt>File</dt><dd><code>{skill.filePath}</code></dd></>}</dl></Sec>
-    {shows(ctx.level, "advanced") && <KeptVersions ctx={ctx} skill={skill} />}
-    <div className="cz-acts">{skill.registry ? <button type="button" className="btn sm" disabled={op.busy} onClick={() => void op.run("skills.update", { ...scopeOf(ctx), source: "clawhub", slug: skill.key }, ctx.skills.reload)}>Check for updates</button> : <Grey reason="Only skills from the skill library can be checked for updates.">Check for updates</Grey>}
-      <span className="cz-grow" /><Grey className="btn ghost sm" reason="Removing a skill from here comes in a later update.">Remove</Grey></div>
+    <Sec title="Safety check"><dl className="cz-kv">
+      <dt>Preflight</dt><dd>Not checked yet</dd>
+      <dt>Malware scan</dt><dd>Not checked yet</dd>
+      <dt>Fingerprint</dt><dd>Not checked yet</dd>
+      <dt>Hidden instructions</dt><dd>Not checked yet</dd>
+    </dl></Sec>
+    <Sec title="Version & updates">
+      <dl className="cz-kv"><dt>Came from</dt><dd>{skill.source}</dd></dl>
+      {shows(ctx.level, "advanced") && <KeptVersions ctx={ctx} skill={skill} />}
+      <div className="cz-acts">{skill.registry ? <button type="button" className="btn sm" disabled={op.busy} onClick={() => void op.run("skills.update", { ...scopeOf(ctx), source: "clawhub", slug: skill.key }, ctx.skills.reload)}>Check for updates</button> : <Grey reason="Checking a skill for updates comes in a later update.">Check for updates</Grey>}
+        <Grey reason="Putting an older version back comes in a later update.">Put an older version back</Grey></div>
+    </Sec>
+    <TechnicalOnly><div className="cz-acts cz-actions">
+      <Grey reason="Copying a skill’s seed comes in a later update.">Copy seed</Grey><Grey reason="Downloading a skill comes in a later update.">Download</Grey>
+      <Grey reason="Copying a skill to another Trunk comes in a later update.">Copy to another Trunk</Grey><Grey reason="Testing a skill comes in a later update.">Test it</Grey>
+      <span className="cz-grow" /><Grey className="btn ghost sm" reason="Removing a skill from here comes in a later update.">Remove</Grey></div></TechnicalOnly>
   </div>;
 }
 
@@ -129,13 +187,13 @@ function KeptVersions({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
   const entry = list(rec(library.data).entries).find(e => str(e.slug) === skill.key || str(e.name) === skill.rawName);
   const read = useResource<unknown>(ctx.engine, entry ? "skills.library.read" : null, { skillId: str(entry?.skillId) });
   const revisions = list(rec(read.data).revisions);
-  return <Sec title="Kept versions"><Status {...library} />
+  return <><Status {...library} />
     {library.data != null && !entry && <p className="cz-hint">Only skills in your library keep versions.</p>}
     {revisions.map((r, i) => <div key={str(r.revision)} className="cz-line"><span>{i === 0 ? "In use" : "Earlier"} · saved {str(r.createdAt) ? new Date(str(r.createdAt)).toLocaleDateString() : ""}</span><code>{str(r.revision).slice(0, 8)}</code></div>)}
-  </Sec>;
+  </>;
 }
 
-function Drafts({ ctx, head, proposals, all }: { ctx: ToolsCtx; head: ReactNode; proposals: { data: unknown; loading: boolean; error: string | null; reload: () => void }; all: Proposal[] }) {
+function Drafts({ ctx, tabs, count, proposals, all }: { ctx: ToolsCtx; tabs: ReactNode; count: string; proposals: { data: unknown; loading: boolean; error: string | null; reload: () => void }; all: Proposal[] }) {
   const [st, setSt] = useState("pending");
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState<string | null>(null);
@@ -144,7 +202,8 @@ function Drafts({ ctx, head, proposals, all }: { ctx: ToolsCtx; head: ReactNode;
   const draft = shown.find(p => p.id === chosen) ?? shown[0];
   const words: Record<string, string> = { pending: "Waiting", applied: "Added", rejected: "Turned down", all: "All" };
   return <>
-    <div className="t9-list">{head}
+    <KindHead ctx={ctx} kind="Skills" count={count}>
+      {tabs}
     <div className="cz-chips" role="group" aria-label="Drafts">{Object.entries(words).map(([id, name]) => <button key={id} type="button" className="cz-chip" aria-pressed={st === id} onClick={() => setSt(id)}>{name} <em>{id === "all" ? all.length : all.filter(p => p.status === id).length}</em></button>)}</div>
     <label className="cz-search"><Icon name="search" small /><input type="search" aria-label="Search drafts" placeholder="Search drafts" value={query} onChange={e => setQuery(e.target.value)} /></label>
     <Status {...proposals} />
@@ -152,7 +211,7 @@ function Drafts({ ctx, head, proposals, all }: { ctx: ToolsCtx; head: ReactNode;
     {shown.map(p => <button key={p.id} type="button" className="t9-item" aria-current={p.id === draft?.id} onClick={() => setChosen(p.id)}>
       <span className="cz-tile"><Glyph name="bolt" size={16} /></span><span className="grow"><b>{p.skillName || p.title}</b><small>{p.description}{p.createdAt ? " · " + ago(Date.parse(p.createdAt)) : ""}</small></span><Pill tone={p.status === "pending" ? "work" : "idle"}>{words[p.status] ?? p.status}</Pill>
     </button>)}
-    </div>
+    </KindHead>
     {draft ? <DraftDetail key={draft.id} ctx={ctx} p={draft} reload={() => { proposals.reload(); ctx.skills.reload(); }} /> : <div className="t9-detail cz-empty-detail" />}
   </>;
 }
@@ -179,9 +238,9 @@ export function AddSkill({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
   return <Dialog wide title="Add a skill" onClose={close} footer={<button type="button" className="btn ghost" onClick={close}>Cancel</button>}>
     <div className="cz-provs">
       <button type="button" className="cz-prov" onClick={() => setLibrary(true)}><b>From the skill library</b><small>Search skills others have shared and install one.</small></button>
-      <div className="cz-prov"><b>From a file</b><small>A SKILL.md or a folder.</small><Grey reason="Adding a skill from a file comes in a later update.">Choose a file</Grey></div>
+      <TechnicalOnly><div className="cz-prov"><b>From a file</b><small>A SKILL.md or a folder.</small><Grey reason="Adding a skill from a file comes in a later update.">Choose a file</Grey></div>
       <div className="cz-prov"><b>From GitHub</b><small>A repository with a SKILL.md.</small><Grey reason="Adding a skill from GitHub comes in a later update.">Add from GitHub</Grey></div>
-      <div className="cz-prov"><b>Write one with Branch</b><small>Say what it should know how to do.</small><Grey reason="Writing a skill with Branch comes in a later update.">Draft it</Grey></div>
+      <div className="cz-prov"><b>Write one with Branch</b><small>Say what it should know how to do.</small><Grey reason="Writing a skill with Branch comes in a later update.">Draft it</Grey></div></TechnicalOnly>
     </div>
   </Dialog>;
 }
