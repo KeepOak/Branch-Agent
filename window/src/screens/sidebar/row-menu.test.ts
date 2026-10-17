@@ -13,8 +13,8 @@ const contact = (over: Partial<Contact>): Contact => ({
 const rowOf = (over: Partial<Contact>): SideRow => contactRows([contact(over)], new Map(), () => [])[0];
 const ctx = (over: Partial<RowMenuContext> = {}): RowMenuContext => ({
   now: new Date(2026, 9, 12, 12).getTime(), projects: [], ownWindowOff: null,
-  actions: { snooze: vi.fn(), setUnread: vi.fn(), archive: vi.fn(), restore: vi.fn(), copyConversation: vi.fn() } as unknown as Actions,
-  open: vi.fn(), pin: vi.fn(), markRead: vi.fn(), archiveRoom: vi.fn(), unarchiveRoom: vi.fn(), rename: vi.fn(), moveToProject: vi.fn(), moveToGroup: vi.fn(), newConversation: vi.fn(),
+  actions: { snooze: vi.fn(), setUnread: vi.fn(), setDone: vi.fn(), archive: vi.fn(), restore: vi.fn(), copyConversation: vi.fn() } as unknown as Actions,
+  open: vi.fn(), pin: vi.fn(), markRead: vi.fn(), archiveRoom: vi.fn(), unarchiveRoom: vi.fn(), rename: vi.fn(), renameTrunk: vi.fn(), moveToProject: vi.fn(), moveToGroup: vi.fn(), newConversation: vi.fn(),
   copyLink: vi.fn(), copyMarkdown: vi.fn(), copyText: vi.fn(), ownWindow: vi.fn(), ask: vi.fn(), editTrunk: vi.fn(), tidy: vi.fn(),
   removeTrunk: vi.fn(), confirmDelete: vi.fn(), replacePin: vi.fn(), ...over,
 });
@@ -31,7 +31,8 @@ describe("row ••• menu", () => {
     expect(rows.find(row => row.label === "Delete…")).toMatchObject({ danger: true, gap: true });
     expect(rows.find(row => row.label === "Remove…")).toMatchObject({ danger: true });
     expect(rows.find(row => row.label === "Copy")?.submenu?.map(entry => entry.label)).toEqual(["Link to this conversation", "Link with a preview card", "Conversation as Markdown", "Conversation ID"]);
-    expect(rows.find(row => row.label === "Mark done")?.off).toBe("Mark done comes in a later update.");
+    expect(rows.find(row => row.label === "Mark done")).toMatchObject({ need: "sessions.patch" });
+    expect(rows.find(row => row.label === "Mark done")?.off).toBeUndefined();
     expect(rows.find(row => row.label === "Archive")?.off).toBe("Archive comes in a later update.");
     expect(rows.find(row => row.label === "Pause")?.off).toBe("Pause comes in a later update.");
     expect(rows.find(row => row.label === "Copy")?.submenu?.find(entry => entry.label === "Link with a preview card")?.off).toBe("Link with a preview card comes in a later update.");
@@ -50,6 +51,16 @@ describe("row ••• menu", () => {
     expect(c.open).toHaveBeenCalledWith("agent:ledger:main");
     rows.find(row => row.label === "Delete…")?.onSelect?.();
     expect(c.confirmDelete).toHaveBeenCalledWith(thread);
+    rows.find(row => row.label === "Mark done")?.onSelect?.();
+    expect(c.actions.setDone).toHaveBeenCalledWith(thread, true);
+  });
+  it("renames a Trunk row in place through agents.update, never through Edit Trunk (walkthrough B-093, B-094)", () => {
+    const c = ctx(), row = rowOf({});
+    const rename = rowMenu(row, c).rows.find(entry => entry.label === "Rename")!;
+    expect(rename).toMatchObject({ letter: "r", need: "agents.update" });
+    rename.onSelect?.();
+    expect(c.renameTrunk).toHaveBeenCalledWith("ledger", row);
+    expect(c.editTrunk).not.toHaveBeenCalled();
   });
   it("keeps the main conversation first, and omits Snooze, Archive, Delete and Remove", () => {
     const { rows } = rowMenu(rowOf({ isDefault: true }), ctx());

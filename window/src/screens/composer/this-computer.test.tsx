@@ -76,5 +76,5 @@ it("words each engine answer plainly", () => {
   expect(computerLine({ configured: true, available: false }, null)).toBe("Computer control is set up but can’t reach this screen");
   expect(computerLine({}, null)).toBe("Computer control is off");
   expect(browserLine({ running: true, detectedBrowser: "chrome" }, null)).toBe("Branch’s browser is open (chrome)");
-  expect(browserLine(null, "boom")).toBe("Couldn’t check the browser: boom");
+  expect(browserLine(null, "boom")).toBe("Couldn’t check the browser. Try again in a moment.");
 });

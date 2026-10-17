@@ -10,6 +10,8 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { CUSTOMIZE_PAGE } from "./customize-live";
+import { AUTOS_PAGE } from "./autos-live";
+import { CARD_PAGE } from "./card-live";
 import { permissionsSlot } from "./permissions-approvals";
 import { privacySlot } from "./privacy-town";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
@@ -57,6 +59,9 @@ export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> =
 };
 
 export const R1_PAGES: PageSlots = {
+  // Your card is one card the page draws itself (card-live.tsx), on Classic People's own card logic. It stays the
+  // first page, where it was when Classic People drew it.
+  card: CARD_PAGE,
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   permissions: permissionsSlot,
   privacy: privacySlot,
@@ -66,6 +71,8 @@ export const R1_PAGES: PageSlots = {
   who: { rows: WHO_ROWS, controls: { "who.people.everyone": Everyone, "who.people.open": PeopleButtons, "who.records.signed": SignedRecords } },
   // Customize is a row page: the kinds hub, Saved prompts and Connected agents are its own cards (customize-live.tsx).
   customize: CUSTOMIZE_PAGE,
+  // Automations is a row page; where alerts go and the Edit windows are its own (autos-live.tsx).
+  autos: AUTOS_PAGE,
   // Instructions & personality: the preview's seven cards; Classic's file list and Just about you inside them.
   instructions: { rows: INSTRUCTIONS_ROWS, controls: { "instructions.you.file": AboutYou, "instructions.project.files": Files } },
   // Voice & calls: native R1 cards in the preview's order; Classic Voice draws behind its rows (voice-controls.tsx).

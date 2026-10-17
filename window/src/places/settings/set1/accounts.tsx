@@ -6,6 +6,7 @@ import type { SettingsPageProps } from "../index";
 import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
+import { menuAtLevel } from "../../../shell/menu-level";
 import { Icon } from "../../../shell/icons";
 import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Status, Switch, useConfig, useLevel, useSaveRunner, useScope } from "../kit";
 import { Logo, serviceName } from "./service";
@@ -14,7 +15,7 @@ import { CodingApps } from "./coding-apps";
 import { OwnAccounts } from "./own-accounts";
 import { GitHubSettings } from "../GitHubSettings";
 import { AccountsMore } from "./accounts-more";
-import { BulkBar, SelectBox, SelectLink } from "./accounts-select";
+import { BulkBar, RENAME_LATER, SelectBox, SelectLink } from "./accounts-select";
 import "./set1.css";
 
 export type Profile = { profileId: string; type: string; status: string; displayName?: string; email?: string; lastUsedAt?: number; logoutSupported?: boolean; source?: string; reasonCode?: string; externallyManaged?: boolean; expiry?: { label?: string }; limitedUntil?: number };
@@ -216,15 +217,16 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
 type MenuProps = { engine: SettingsPageProps["engine"]; acc: Account; all: Account[]; at: MenuAnchor; agent: { agentId?: string }; reload: () => Promise<unknown>; setOrder: (a: Account, ids: string[]) => Promise<boolean>; onClose: () => void };
 function AccountMenu({ engine, acc, all, at, agent, reload, setOrder, onClose }: MenuProps) {
   const save = useSaveRunner();
+  const lv = useLevel();
   const items: MenuItem[] = [
     { label: "Test it", run: () => void save(() => testAccount(engine, acc, agent)) },
     { label: "Answer first", disabled: answerFirstWhy(acc), run: () => void setOrder(acc, firstOrder(acc, all)) },
-    { label: "Rename", disabled: "Branch can’t rename an account yet.", run: () => undefined },
+    { label: "Rename", disabled: RENAME_LATER, run: () => undefined },
     { label: "Which Trunks use it", disabled: "Every Trunk uses this account, in this order.", run: () => undefined },
     { kind: "sep" },
     { label: "Sign out", danger: true, disabled: signOutWhy(acc.a), run: () => void save(async () => { await signOut(engine, acc, agent); await reload(); }) },
   ];
-  return <Menu at={at} items={items} onClose={onClose} label={accountName(acc)} />;
+  return <Menu at={at} items={menuAtLevel(items, lv >= 2)} onClose={onClose} label={accountName(acc)} />;
 }
 
 /** When one runs out: the engine always moves to the next account; "Fall back to this computer" adds a local model to the fallbacks. */

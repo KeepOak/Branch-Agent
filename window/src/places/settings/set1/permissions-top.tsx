@@ -124,7 +124,7 @@ function defaultMode(agents: RecordValue | undefined): EngineMode | null {
 }
 
 /** The exec mode in force: the configured tools.exec.mode, or what the engine resolves without one. */
-function execMode(cfg: Cfg, agents: RecordValue | undefined): string {
+export function execMode(cfg: Cfg, agents: RecordValue | undefined): string {
   const set = cfg.get("tools.exec.mode");
   if (typeof set === "string") return set;
   const m = defaultMode(agents);
@@ -137,6 +137,8 @@ async function saveMode(cfg: Cfg, mode: string, after: () => Promise<unknown>) {
 }
 
 const MODE_OPTS = MODE_ROWS.filter((r) => !r.gap).map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
+/** The Access choice's name for an exec mode ("ask" is Ask first), or "" for a mode Access doesn't offer. */
+export const accessName = (mode: string): string => MODE_OPTS.find((o) => o.id === mode)?.label ?? "";
 export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<unknown> }) {
   const selected = execMode(cfg, agents);
   const lockdown = cfg.get("security.lockdown") === true;

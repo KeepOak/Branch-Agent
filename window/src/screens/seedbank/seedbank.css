@@ -133,3 +133,8 @@ div.sb-may { padding: 0; }
 .sb-error { margin: 0; font-size: var(--fs-13); font-weight: 600; }
 @keyframes sb-fade { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .sb-sheet, .sb-scrim { animation: none; } }
+
+/* The item dialog (preview .mkItemP17): the icon beside the summary and By line, then the seed icons and the facts. */
+.sb-item { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; }
+.sb-item > div { display: grid; gap: 6px; justify-items: start; }
+.sb-item-seed { margin: 10px 0; }

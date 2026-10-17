@@ -41,6 +41,8 @@ export type ToolsCtx = {
   toCommunity?: (kind?: CommunityKind) => void;
   /** Opens a kind's own "Add" dialog (Classic, and the Agents kind). */
   openAdd: (kind: Kind) => void;
+  /** Opens a Settings page by id (a toolset's "Set up"); absent where the place cannot reach Settings. */
+  openSettings?: (page: string) => void;
 };
 
 export type Res<T> = { data: T | null; loading: boolean; error: string | null; reload: () => void };
@@ -62,15 +64,15 @@ function HubSummary({ kind, whose, trunks, everyLabel, names }: { kind: Kind; wh
   );
 }
 
-export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGetting, openConversation, variant = "classic", usePrompt, query = "", toCommunity, kinds, names, whoseLabel = "Whose tools", everyLabel = "Every Trunk", summary = false }: {
+export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGetting, openConversation, openSettings, variant = "classic", usePrompt, query = "", toCommunity, kinds, names, whoseLabel = "Whose tools", everyLabel = "Every Trunk", summary = false }: {
   engine: WindowEngine; level: Level; trunks: Trunk[]; kind: Kind; setKind: (k: Kind) => void; getting: boolean; setGetting: (getting: boolean) => void;
-  openConversation: (key: string) => void; variant?: ToolsVariant; usePrompt?: PromptHandoff; query?: string; toCommunity?: (kind?: CommunityKind) => void;
+  openConversation: (key: string) => void; openSettings?: (page: string) => void; variant?: ToolsVariant; usePrompt?: PromptHandoff; query?: string; toCommunity?: (kind?: CommunityKind) => void;
 } & HubWords) {
   const [whose, setWhose] = useState<string | null>(null);
   const [adding, setAdding] = useState<Kind | null>(null);
   const scope = whose ? { agentId: whose } : {};
   const ctx: ToolsCtx = {
-    engine, level, trunks, whose, query, openConversation, usePrompt, toCommunity, openAdd: setAdding,
+    engine, level, trunks, whose, query, openConversation, openSettings, usePrompt, toCommunity, openAdd: setAdding,
     config: useConfig(engine),
     skills: useResource<unknown>(engine, "skills.status", scope),
     plugins: useResource<unknown>(engine, "plugins.list"),

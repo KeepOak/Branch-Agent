@@ -13,6 +13,7 @@ import { hitsOf } from "./memory";
 import { EmptyIcon, Grey, IcoTile, LibIcon, mapLimited, Row, Section, TypeBadge, when, type LibIconName } from "./parts";
 import { FileDialog } from "./reader";
 import { useCreateDocument } from "./create-document";
+import { DocumentEditor, documentTitle, editableDocument } from "./document-editor";
 
 const DOC_REASONS = {
   sheet: "Needs the engine’s spreadsheet question method.",
@@ -75,11 +76,14 @@ function useDocuments(engine: WindowEngine, trunks: Trunk[], folder: Folder | nu
 export function DocumentsTab({ engine, level, trunks, defaultId, mainKey }: { engine: WindowEngine; level: Level; trunks: Trunk[]; defaultId?: string; mainKey?: string }) {
   const [folder, setFolder] = useState<Folder | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
+  const [editing, setEditing] = useState<{ agentId: string; path: string } | null>(null);
   const [revision, setRevision] = useState(0);
   const docs = useDocuments(engine, trunks, folder, revision);
   const creation = useCreateDocument({ engine, trunks, defaultId, mainKey, location: `${folder?.agentId ?? ""}|${folder?.path ?? ""}`, onCreated: (document, trunk) => {
     setFolder({ agentId: document.agentId, trunk, path: document.file.path.slice(0, document.file.path.lastIndexOf("/")) });
     setRevision(value => value + 1);
+    // The new blank document opens where you can type in it (walkthrough B-073).
+    setEditing({ agentId: document.agentId, path: document.file.path });
   } });
   const files = docs.list?.docs.filter(d => d.kind !== "directory") ?? [];
   return <div className="lib-docs">
@@ -93,9 +97,9 @@ export function DocumentsTab({ engine, level, trunks, defaultId, mainKey }: { en
     {!docs.list && !docs.error && <p className="lib-hint" role="status">Loading…</p>}
     {docs.list && !docs.list.docs.length && !docs.list.errors.length && <EmptyLine icon={<EmptyIcon name="file" />}>{folder ? "No documents." : "No documents yet. Trunks add what they read here; you can write one too."}</EmptyLine>}
     <div className="lib-plain" data-testid="document-list">
-      {docs.list?.docs.map(d => <Row key={d.agentId + ":" + d.path} badge={d.kind === "directory" ? <IcoTile icon="folder" /> : <TypeBadge name={d.name} />} title={d.name}
+      {docs.list?.docs.map(d => <Row key={d.agentId + ":" + d.path} badge={d.kind === "directory" ? <IcoTile icon="folder" /> : <TypeBadge name={d.name} />} title={d.kind === "directory" ? d.name : documentTitle(d.name, level, files.filter(f => f.agentId === d.agentId).map(f => f.name))}
         line={[d.trunk, d.kind === "directory" ? "folder" : when(d.updatedAtMs)].filter(Boolean).join(" · ")}>
-        <button type="button" className="btn sm" onClick={() => (d.kind === "directory" ? setFolder({ agentId: d.agentId, trunk: d.trunk, path: d.path }) : setOpen(d))}>Open</button>
+        <button type="button" className="btn sm" onClick={() => (d.kind === "directory" ? setFolder({ agentId: d.agentId, trunk: d.trunk, path: d.path }) : editableDocument(d.path) ? setEditing({ agentId: d.agentId, path: d.path }) : setOpen(d))}>Open</button>
       </Row>)}
     </div>
     {!!docs.list?.more.length && <button type="button" className="btn ghost sm" onClick={docs.loadMore}>Load more</button>}
@@ -104,6 +108,7 @@ export function DocumentsTab({ engine, level, trunks, defaultId, mainKey }: { en
     {shows(level, "advanced") && <PlacesItReads />}
     <Section title="Recently deleted" testid="recently-deleted">{shownWhy(DOC_REASONS.trash) && <p className="lib-hint">{shownWhy(DOC_REASONS.trash)}</p>}<div className="lib-acts"><Grey label="Restore" reason={DOC_REASONS.trash} /><Grey ghost label="Delete for good" reason={DOC_REASONS.trash} /></div></Section>
     {open && <FileDialog engine={engine} agentId={open.agentId} path={open.path} onClose={() => setOpen(null)} />}
+    {editing && <DocumentEditor engine={engine} agentId={editing.agentId} path={editing.path} level={level} onClose={() => setEditing(null)} onSaved={() => setRevision(value => value + 1)} />}
   </div>;
 }
 

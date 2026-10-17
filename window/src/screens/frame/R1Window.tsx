@@ -46,6 +46,7 @@ import { displayTrunkTitle } from "../../connect/trunk-name";
 import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
 import { helloOk } from "../onboarding/model";
+import { EXAMPLES_READY_EVENT } from "../onboarding/try-examples";
 import { DEFAULT_TRUNK_WHY, TEMPLATE_TRUNK_WHY } from "../chat/examples-greeting";
 import { ThreadExtras } from "./ThreadExtras";
 import { WhatsNewHost } from "../updates/WhatsNewHost";
@@ -93,18 +94,16 @@ const KEEP_CLASSIC: ReadonlySet<string> = new Set<string>();
  * Classic page whose sections it has, so it never falls back to Classic General. A row goes when its R1 page lands.
  */
 export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
-  card: "people", // Your card: the person's own card on Classic People
   trunks: "advanced", // Trunks, Trunks' model and Trunks and other agents
   browser: "computer", // Computer & browser: the screen and the browser
   coding: "computer", // Computer & browser: code and commits, repositories
 };
 
 /**
- * Settings pages that are a place: Automations and Memory & documents open the place that has their controls
- * (Memory & documents opens Library on its Memory tab). Customize is an R1 Settings page of its own.
+ * Settings pages that are a place: Memory & documents opens Library on its Memory tab, which has its controls.
+ * Customize and Automations are R1 Settings pages of their own.
  */
 export const SETTINGS_PLACE: Readonly<Record<string, { place: PlaceId; tab?: string }>> = {
-  autos: { place: "automations" },
   memory: { place: "library", tab: "memory" },
 };
 
@@ -139,7 +138,8 @@ function openPlaceTab(route: Route): void {
  */
 export function r1SettingsPage(page: string, pages: PageSlots = R1_PAGES, rows: readonly Row[] = mergeRows(ROWS, pages)): boolean {
   if (KEEP_CLASSIC.has(page)) return false;
-  return Boolean((pages as Record<string, { component?: unknown } | undefined>)[page]?.component) || rows.some(row => row.page === page);
+  const slot = (pages as Record<string, { component?: unknown; cards?: Record<string, unknown> } | undefined>)[page];
+  return Boolean(slot?.component) || Object.keys(slot?.cards ?? {}).length > 0 || rows.some(row => row.page === page);
 }
 
 /**
@@ -322,6 +322,17 @@ export function R1Window({ session }: { session: SaplingSession }) {
     const openTour = () => setTour("full");
     window.addEventListener("branch:welcome-tour", openTour);
     return () => window.removeEventListener("branch:welcome-tour", openTour);
+  }, []);
+  // The Trunks page's "Open the conversation" (the same examples greeting onboarding leaves behind).
+  useEffect(() => {
+    const openExamples = (event: Event) => {
+      const sessionKey = (event as CustomEvent<{ sessionKey?: unknown }>).detail?.sessionKey;
+      if (typeof sessionKey !== "string" || !sessionKey) return;
+      setExamples({ key: sessionKey, why: DEFAULT_TRUNK_WHY });
+      navigateTo.current({ kind: "chat", key: sessionKey });
+    };
+    window.addEventListener(EXAMPLES_READY_EVENT, openExamples);
+    return () => window.removeEventListener(EXAMPLES_READY_EVENT, openExamples);
   }, []);
   // Escape closes the stage unless a menu, dialog, picker or popover is open: those take Escape first.
   const stageShown = Boolean(stage) && route.kind === "chat";
