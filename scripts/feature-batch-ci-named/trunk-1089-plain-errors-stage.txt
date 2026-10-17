@@ -1,1 +1,2 @@
+window:src/stage/pane/MemoryTerminal.test.tsx
 window:src/stage/raw-errors-1089.test.tsx
