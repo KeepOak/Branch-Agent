@@ -1,16 +1,15 @@
 // When the gateway service is missing or exited immediately (exit 126/127),
-// start and supervise the gateway as this app's child. Start and restart never
-// install the service. A slow-starting service is left alone. The user's
-// installed service is never disabled.
+// start and supervise the gateway as a child of a long-lived parent. Start and
+// restart never install the service. A slow-starting service is left alone.
+// The user's installed service is never disabled.
 import { assertGatewayServiceFallbackAllowed } from "../../daemon/service-update-authority.js";
 import type { GatewayService } from "../../daemon/service.js";
 import type { GatewayServiceRuntime } from "../../daemon/service-runtime.js";
 import { resolveGatewayServiceMutationError } from "../../infra/gateway-supervision.js";
 import { createNullWriter } from "../../shared/null-writer.js";
 import {
-  AppChildGatewaySupervisor,
   inspectExistingGateway,
-  rememberAppChildSupervisor,
+  spawnAppChildSupervisorProcess,
   stopAppChildGateway,
 } from "./app-child-supervisor.js";
 import { appendGatewayLifecycleAudit } from "./lifecycle-audit.js";
@@ -21,10 +20,13 @@ import {
 } from "./restart-health.js";
 
 export const GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE =
-  "Branch is running its engine inside the app for now. It keeps working while Branch is open. To keep it running when Branch is closed, choose Install background service.";
+  "Branch is running the gateway itself because the background service isn't available. To install the background service, choose Install background service.";
 
 export const GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE =
   "Branch couldn't start its engine. Restart Branch; if it keeps happening, run `branch doctor`.";
+
+export const GATEWAY_PORT_IN_USE_MESSAGE =
+  "Another program is using the gateway port. Close that program or pick a different port, then try again.";
 
 export type GatewayChildFallbackKind = "missing" | "blocked-exit";
 
@@ -77,6 +79,76 @@ export function failAfterGatewayChildFallback(
   fail(fallbackAttempted ? GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE : reason, hints, code);
 }
 
+export async function applyGatewayChildFallbackOnce(params: {
+  recoverOnce: ReturnType<typeof createGatewayChildFallbackOnce>;
+  recover: () => ReturnType<typeof recoverGatewayAsAppChild>;
+  failed: string;
+  fail: (message: string, hints?: string[], code?: "still-starting" | "restart-health-failed") => void;
+  hints?: string[];
+  code?: "still-starting" | "restart-health-failed";
+  warnings: string[];
+}): Promise<boolean> {
+  const already = params.recoverOnce.peek();
+  if (already?.ready) {
+    params.warnings.push(already.message);
+    return true;
+  }
+  try {
+    const recovered = await params.recover();
+    if (recovered?.ready) {
+      params.warnings.push(recovered.message);
+      return true;
+    }
+  } catch {
+    failAfterGatewayChildFallback(params.failed, params.fail, params.hints, params.code, true);
+    return false;
+  }
+  failAfterGatewayChildFallback(
+    params.failed,
+    params.fail,
+    params.hints,
+    params.code,
+    params.recoverOnce.attempted(),
+  );
+  return false;
+}
+
+export function noteReadyChildFallback(
+  recoverOnce: ReturnType<typeof createGatewayChildFallbackOnce>,
+  warnings: string[],
+): boolean {
+  const ready = recoverOnce.peek();
+  if (!ready?.ready) {
+    return false;
+  }
+  warnings.push(ready.message);
+  return true;
+}
+
+export function createGatewayChildFallbackOnce() {
+  let attempted = false;
+  let result: AppChildGatewayResult<"started"> | AppChildGatewayResult<"restarted"> | null = null;
+  return {
+    attempted: () => attempted,
+    peek: () => result,
+    run: async <TResult extends "started" | "restarted">(
+      params: Parameters<typeof recoverGatewayAsAppChild<TResult>>[0],
+    ): Promise<AppChildGatewayResult<TResult> | null> => {
+      if (attempted) {
+        return result as AppChildGatewayResult<TResult> | null;
+      }
+      attempted = true;
+      try {
+        result = await recoverGatewayAsAppChild(params);
+        return result;
+      } catch (error) {
+        result = null;
+        throw error;
+      }
+    },
+  };
+}
+
 async function readFallbackState(
   service: Pick<GatewayService, "readRuntime" | "isLoaded">,
   knownLoadState?: { status?: string },
@@ -95,6 +167,22 @@ async function readFallbackState(
     loadState: loadStatus ? { status: loadStatus } : undefined,
     updateInProgress: isGatewayUpdateInProgress(),
   };
+}
+
+async function proveExistingGatewayHealthy(params: {
+  port: number;
+  waitUntilReady?: () => Promise<boolean>;
+}): Promise<boolean> {
+  if (params.waitUntilReady) {
+    return await params.waitUntilReady();
+  }
+  return (
+    await waitForGatewayHealthyListener({
+      port: params.port,
+      attempts: 1,
+      delayMs: 0,
+    })
+  ).healthy;
 }
 
 export async function recoverGatewayAsAppChild<TResult extends "started" | "restarted">(params: {
@@ -124,15 +212,18 @@ export async function recoverGatewayAsAppChild<TResult extends "started" | "rest
 
   const existing = await inspectExistingGateway({ port: params.port });
   if (existing.running) {
-    return {
-      result: params.result,
-      loaded: false,
-      message: GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE,
-      ready: true,
-    };
+    if (await proveExistingGatewayHealthy({ port: params.port, waitUntilReady: params.waitUntilReady })) {
+      return {
+        result: params.result,
+        loaded: false,
+        message: GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE,
+        ready: true,
+      };
+    }
+    return null;
   }
   if (existing.portHeld) {
-    return null;
+    throw new Error(GATEWAY_PORT_IN_USE_MESSAGE);
   }
 
   const mutationError = resolveGatewayServiceMutationError("touch the gateway service");
@@ -151,8 +242,24 @@ export async function recoverGatewayAsAppChild<TResult extends "started" | "rest
       // The job may already be gone; still start the child if the port is free.
     }
     const afterStop = await inspectExistingGateway({ port: params.port });
-    if (afterStop.running || afterStop.portHeld) {
+    if (afterStop.running) {
+      if (
+        await proveExistingGatewayHealthy({
+          port: params.port,
+          waitUntilReady: params.waitUntilReady,
+        })
+      ) {
+        return {
+          result: params.result,
+          loaded: false,
+          message: GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE,
+          ready: true,
+        };
+      }
       return null;
+    }
+    if (afterStop.portHeld) {
+      throw new Error(GATEWAY_PORT_IN_USE_MESSAGE);
     }
     const afterState = await readFallbackState(params.service, params.knownLoadState);
     if (afterState.runtime?.status === "running") {
@@ -162,54 +269,25 @@ export async function recoverGatewayAsAppChild<TResult extends "started" | "rest
 
   if (params.spawnChild) {
     await params.spawnChild();
-    const ready = params.waitUntilReady
-      ? await params.waitUntilReady()
-      : (
-          await waitForGatewayHealthyListener({
-            port: params.port,
-            attempts: DEFAULT_RESTART_HEALTH_ATTEMPTS,
-            delayMs: DEFAULT_RESTART_HEALTH_DELAY_MS,
-          })
-        ).healthy;
-    if (!ready) {
-      throw new Error(GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE);
-    }
-    appendGatewayLifecycleAudit({
-      action: params.result === "started" ? "start" : "restart",
-      source: "cli",
-      mode: "bootstrap",
+  } else {
+    spawnAppChildSupervisorProcess({
+      port: params.port,
+      spawnImpl: params.spawnImpl,
     });
-    return {
-      result: params.result,
-      loaded: false,
-      message: GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE,
-      ready: true,
-    };
   }
-
-  const supervisor = new AppChildGatewaySupervisor({
-    port: params.port,
-    spawnImpl: params.spawnImpl,
-  });
-  await supervisor.start();
-  rememberAppChildSupervisor(params.port, supervisor);
-  const exitWait = supervisor.waitForExitOrError();
-  const readyWait = params.waitUntilReady
-    ? params.waitUntilReady()
-    : waitForGatewayHealthyListener({
-        port: params.port,
-        attempts: DEFAULT_RESTART_HEALTH_ATTEMPTS,
-        delayMs: DEFAULT_RESTART_HEALTH_DELAY_MS,
-      }).then((health) => health.healthy);
-  const outcome = await Promise.race([
-    readyWait.then((ready) => ({ kind: "ready" as const, ready })),
-    exitWait.then((error) => ({ kind: "exit" as const, error })),
-  ]);
-  if (outcome.kind === "exit" || (outcome.kind === "ready" && !outcome.ready)) {
+  const ready = params.waitUntilReady
+    ? await params.waitUntilReady()
+    : (
+        await waitForGatewayHealthyListener({
+          port: params.port,
+          attempts: DEFAULT_RESTART_HEALTH_ATTEMPTS,
+          delayMs: DEFAULT_RESTART_HEALTH_DELAY_MS,
+        })
+      ).healthy;
+  if (!ready) {
     await stopAppChildGateway({ port: params.port });
     throw new Error(GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE);
   }
-  supervisor.markReady();
   appendGatewayLifecycleAudit({
     action: params.result === "started" ? "start" : "restart",
     source: "cli",

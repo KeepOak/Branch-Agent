@@ -186,6 +186,15 @@ export function addGatewayServiceCommands(parent: Command, opts?: { statusDescri
       await runInstallBackgroundService({ json: resolveJsonOption(cmdOpts, command) });
     });
 
+  parent
+    .command("supervise-app-child", { hidden: true })
+    .description("Watch a gateway child started when the background service is missing")
+    .requiredOption("--port <port>", "Gateway port")
+    .action(async (cmdOpts) => {
+      const { runAppChildSupervisor } = await import("./app-child-supervisor.js");
+      await runAppChildSupervisor({ port: Number(cmdOpts.port) });
+    });
+
   for (const [name, description, action] of [
     ["uninstall", "Uninstall", "runDaemonUninstall"],
     ["start", "Start", "runDaemonStart"],

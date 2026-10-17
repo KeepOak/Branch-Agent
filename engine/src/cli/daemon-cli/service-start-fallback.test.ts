@@ -7,6 +7,7 @@ const appendGatewayLifecycleAudit = vi.hoisted(() => vi.fn());
 const waitForGatewayHealthyListener = vi.hoisted(() => vi.fn());
 const runDaemonInstall = vi.hoisted(() => vi.fn());
 const inspectExistingGateway = vi.hoisted(() => vi.fn());
+const spawnAppChildSupervisorProcess = vi.hoisted(() => vi.fn(() => ({ pid: 9001 })));
 const resolveGatewayServiceMutationError = vi.hoisted(() => vi.fn());
 const assertGatewayServiceFallbackAllowed = vi.hoisted(() => vi.fn());
 
@@ -28,6 +29,7 @@ vi.mock("./app-child-supervisor.js", () => ({
   inspectExistingGateway: (params: unknown) => inspectExistingGateway(params),
   rememberAppChildSupervisor: vi.fn(),
   stopAppChildGateway: vi.fn(),
+  spawnAppChildSupervisorProcess: (params: unknown) => spawnAppChildSupervisorProcess(params),
   AppChildGatewaySupervisor: class {
     constructor(private readonly params: { spawnImpl?: (cmd: string, args: string[], opts: object) => unknown }) {}
     async start() {
@@ -52,7 +54,9 @@ vi.mock("../../daemon/service-update-authority.js", () => ({
 }));
 
 const {
+  createGatewayChildFallbackOnce,
   failAfterGatewayChildFallback,
+  GATEWAY_PORT_IN_USE_MESSAGE,
   GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE,
   GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE,
   recoverGatewayAsAppChild,
@@ -90,6 +94,7 @@ describe("recoverGatewayAsAppChild", () => {
     waitForGatewayHealthyListener.mockReset().mockResolvedValue({ healthy: true });
     runDaemonInstall.mockReset();
     inspectExistingGateway.mockReset().mockResolvedValue({ running: false, portHeld: false });
+    spawnAppChildSupervisorProcess.mockReset().mockReturnValue({ pid: 9001 });
     resolveGatewayServiceMutationError.mockReset().mockReturnValue(null);
     assertGatewayServiceFallbackAllowed.mockReset();
   });
@@ -201,7 +206,7 @@ describe("recoverGatewayAsAppChild", () => {
     expect(recovered?.ready).toBe(true);
   });
 
-  it("does not spawn when the port or lock is already held", async () => {
+  it("says plainly when another program is using the gateway port", async () => {
     inspectExistingGateway.mockResolvedValue({ running: false, portHeld: true });
     await expect(
       recoverGatewayAsAppChild({
@@ -213,8 +218,54 @@ describe("recoverGatewayAsAppChild", () => {
         spawnChild,
         waitUntilReady,
       }),
+    ).rejects.toThrow(GATEWAY_PORT_IN_USE_MESSAGE);
+    expect(spawnChild).not.toHaveBeenCalled();
+  });
+
+  it("does not report a hung gateway as restarted", async () => {
+    inspectExistingGateway.mockResolvedValue({ running: true, pid: 42, portHeld: true });
+    waitUntilReady.mockResolvedValue(false);
+    await expect(
+      recoverGatewayAsAppChild({
+        result: "restarted",
+        service,
+        port: 18_789,
+        knownLoadState: { status: "not-loaded" },
+        stopLoopingService,
+        spawnChild,
+        waitUntilReady,
+      }),
     ).resolves.toBeNull();
     expect(spawnChild).not.toHaveBeenCalled();
+  });
+
+  it("runs a failed fallback only once", async () => {
+    waitUntilReady.mockResolvedValue(false);
+    const once = createGatewayChildFallbackOnce();
+    await expect(
+      once.run({
+        result: "started",
+        service,
+        port: 18_789,
+        knownLoadState: { status: "not-loaded" },
+        stopLoopingService,
+        spawnChild,
+        waitUntilReady,
+      }),
+    ).rejects.toThrow(GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE);
+    await expect(
+      once.run({
+        result: "started",
+        service,
+        port: 18_789,
+        knownLoadState: { status: "not-loaded" },
+        stopLoopingService,
+        spawnChild,
+        waitUntilReady,
+      }),
+    ).resolves.toBeNull();
+    expect(once.attempted()).toBe(true);
+    expect(spawnChild).toHaveBeenCalledOnce();
   });
 
   it("does not spawn after stop if the service process is still there", async () => {
@@ -231,7 +282,7 @@ describe("recoverGatewayAsAppChild", () => {
         spawnChild,
         waitUntilReady,
       }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ ready: true });
     expect(stopLoopingService).toHaveBeenCalledOnce();
     expect(spawnChild).not.toHaveBeenCalled();
   });
@@ -294,8 +345,7 @@ describe("recoverGatewayAsAppChild", () => {
     ).toBeNull();
   });
 
-  it("spawns a supervised child when no spawn hook is supplied", async () => {
-    const child = fakeChild(8080);
+  it("spawns the long-lived parent when no spawn hook is supplied", async () => {
     const recovered = await recoverGatewayAsAppChild({
       result: "started",
       service,
@@ -303,9 +353,13 @@ describe("recoverGatewayAsAppChild", () => {
       knownLoadState: { status: "not-loaded" },
       stopLoopingService,
       waitUntilReady,
-      spawnImpl: vi.fn(() => child) as never,
+      spawnImpl: vi.fn(() => fakeChild(8080)) as never,
     });
     expect(recovered?.ready).toBe(true);
+    expect(spawnAppChildSupervisorProcess).toHaveBeenCalledWith({
+      port: 18_789,
+      spawnImpl: expect.any(Function),
+    });
     expect(service.install).not.toHaveBeenCalled();
   });
 });

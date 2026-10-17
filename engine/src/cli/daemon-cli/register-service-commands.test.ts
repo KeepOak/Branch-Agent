@@ -16,6 +16,7 @@ const runDaemonStart = vi.fn(async (_opts: unknown) => {});
 const runDaemonStatus = vi.fn(async (_opts: unknown) => {});
 const runDaemonStop = vi.fn(async (_opts: unknown) => {});
 const runDaemonUninstall = vi.fn(async (_opts: unknown) => {});
+const runAppChildSupervisor = vi.fn(async (_opts: unknown) => {});
 
 vi.mock("../program/config-guard.js", () => ({ ensureConfigReady: vi.fn(async () => {}) }));
 
@@ -46,6 +47,12 @@ vi.mock("./lifecycle.runtime.js", () => ({
   runDaemonStart: (opts: unknown) => runDaemonStart(opts),
   runDaemonStop: (opts: unknown) => runDaemonStop(opts),
   runDaemonUninstall: (opts: unknown) => runDaemonUninstall(opts),
+}));
+vi.mock("./app-child-supervisor.js", () => ({
+  runAppChildSupervisor: (opts: unknown) => runAppChildSupervisor(opts),
+}));
+vi.mock("../../infra/runtime-process-entrypoints.js", () => ({
+  runtimeProcessEntrypoints: [],
 }));
 
 function createGatewayParentLikeCommand(program?: Command) {
@@ -83,6 +90,15 @@ function setRestartRouteEnv(env: Record<string, string | undefined>) {
 describe("addGatewayServiceCommands", () => {
   let restartRouteEnvSnapshot: ReturnType<typeof captureEnv>;
 
+  it("registers a hidden supervise-app-child command", async () => {
+    const gateway = createGatewayParentLikeCommand().enablePositionalOptions().exitOverride();
+    const command = gateway.commands.find((entry) => entry.name() === "supervise-app-child");
+    expect(command).toBeDefined();
+    expect(gateway.helpInformation()).not.toContain("supervise-app-child");
+    await gateway.parseAsync(["supervise-app-child", "--port", "18789"], { from: "user" });
+    expect(runAppChildSupervisor).toHaveBeenCalledWith({ port: 18789 });
+  });
+
   beforeEach(() => {
     restartRouteEnvSnapshot = captureEnv(RESTART_ROUTE_ENV_KEYS);
     setRestartRouteEnv({});
@@ -92,6 +108,7 @@ describe("addGatewayServiceCommands", () => {
     runDaemonStatus.mockClear();
     runDaemonStop.mockClear();
     runDaemonUninstall.mockClear();
+    runAppChildSupervisor.mockClear();
     vi.mocked(ensureConfigReady).mockClear();
   });
 

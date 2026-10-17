@@ -41,13 +41,27 @@ vi.mock("./lifecycle-core.js", () => ({
   runServiceUninstall: vi.fn(),
 }));
 vi.mock("./start-repair.js", () => ({ repairLoadedGatewayServiceForStart: vi.fn() }));
-vi.mock("./service-start-fallback.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./service-start-fallback.js")>();
-  return {
-    ...actual,
-    recoverGatewayAsAppChild: vi.fn(async () => null),
-  };
-});
+vi.mock("../../infra/runtime-process-entrypoints.js", () => ({ runtimeProcessEntrypoints: [] }));
+vi.mock("./service-start-fallback.js", () => ({
+  GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE: "both-failed",
+  failAfterGatewayChildFallback: (reason: string, fail: (message: string) => void) => fail(reason),
+  createGatewayChildFallbackOnce: () => ({
+    attempted: () => false,
+    peek: () => null,
+    run: async () => null,
+  }),
+  applyGatewayChildFallbackOnce: async (params: {
+    failed: string;
+    fail: (message: string, hints?: string[], code?: string) => void;
+    hints?: string[];
+    code?: string;
+  }) => {
+    params.fail(params.failed, params.hints, params.code);
+    return false;
+  },
+  noteReadyChildFallback: () => false,
+  recoverGatewayAsAppChild: async () => null,
+}));
 vi.mock("./restart-health.js", () => ({
   DEFAULT_RESTART_HEALTH_ATTEMPTS: 120,
   DEFAULT_RESTART_HEALTH_DELAY_MS: 500,
