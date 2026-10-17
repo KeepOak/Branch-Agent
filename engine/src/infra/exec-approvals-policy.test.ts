@@ -1,4 +1,5 @@
 // Tests execution approval policy matching and persistence.
+import os from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import "../test-utils/prepare-compiled-subprocesses.js";
@@ -31,6 +32,7 @@ let resolveExecModeFromPolicy: typeof import("./exec-approvals.js").resolveExecM
 let resolveExactExecModeFromPolicy: typeof import("./exec-approvals.js").resolveExactExecModeFromPolicy;
 let resolveExecModePolicy: typeof import("./exec-approvals.js").resolveExecModePolicy;
 let resolveExecPolicyForMode: typeof import("./exec-approvals.js").resolveExecPolicyForMode;
+let resolveExecApprovalsDisplayPath: typeof import("./exec-approvals.js").resolveExecApprovalsDisplayPath;
 
 async function loadActualExecApprovalModules(): Promise<void> {
   vi.resetModules();
@@ -58,6 +60,11 @@ async function loadActualExecApprovalModules(): Promise<void> {
   resolveExactExecModeFromPolicy = execApprovals.resolveExactExecModeFromPolicy;
   resolveExecModePolicy = execApprovals.resolveExecModePolicy;
   resolveExecPolicyForMode = execApprovals.resolveExecPolicyForMode;
+  resolveExecApprovalsDisplayPath = execApprovals.resolveExecApprovalsDisplayPath;
+}
+
+function approvalsHostSource(suffix: string): string {
+  return `${resolveExecApprovalsDisplayPath()} ${suffix}`;
 }
 
 function summarizeExecPolicyScopeSnapshot(
@@ -97,7 +104,7 @@ function expectMalformedAgentAskUsesDefaults(agentAsk: unknown): void {
   expectFields(summary.ask, {
     requested: "off",
     host: "always",
-    hostSource: "~/.branch/state/branch.sqlite#exec_approvals_config defaults.ask",
+    hostSource: approvalsHostSource("defaults.ask"),
     effective: "always",
     note: "more aggressive ask wins",
   });
@@ -421,19 +428,19 @@ describe("exec approvals policy helpers", () => {
       requested: "full",
       host: "allowlist",
       effective: "allowlist",
-      hostSource: "~/.branch/state/branch.sqlite#exec_approvals_config defaults.security",
+      hostSource: approvalsHostSource("defaults.security"),
       note: "stricter host security wins",
     });
     expectFields(summary.ask, {
       requested: "off",
       host: "always",
       effective: "always",
-      hostSource: "~/.branch/state/branch.sqlite#exec_approvals_config defaults.ask",
+      hostSource: approvalsHostSource("defaults.ask"),
       note: "more aggressive ask wins",
     });
     expect(summary.askFallback).toEqual({
       effective: "deny",
-      source: "~/.branch/state/branch.sqlite#exec_approvals_config defaults.askFallback",
+      source: approvalsHostSource("defaults.askFallback"),
     });
   });
 
@@ -558,6 +565,7 @@ describe("exec approvals policy helpers", () => {
   });
 
   it("uses the actual approvals path when reporting host sources", () => {
+    const hostPath = path.join(os.tmpdir(), "node-exec-approvals.json");
     const summary = summarizeExecPolicyScopeSnapshot({
       approvals: {
         version: 1,
@@ -573,14 +581,14 @@ describe("exec approvals policy helpers", () => {
       },
       configPath: "tools.exec",
       scopeLabel: "tools.exec",
-      hostPath: "/tmp/node-exec-approvals.json",
+      hostPath,
     });
 
-    expect(summary.security.hostSource).toBe("/tmp/node-exec-approvals.json defaults.security");
-    expect(summary.ask.hostSource).toBe("/tmp/node-exec-approvals.json defaults.ask");
+    expect(summary.security.hostSource).toBe(`${hostPath} defaults.security`);
+    expect(summary.ask.hostSource).toBe(`${hostPath} defaults.ask`);
     expect(summary.askFallback).toEqual({
       effective: "deny",
-      source: "/tmp/node-exec-approvals.json defaults.askFallback",
+      source: `${hostPath} defaults.askFallback`,
     });
   });
 
@@ -603,9 +611,7 @@ describe("exec approvals policy helpers", () => {
         scopeLabel: "tools.exec",
       });
 
-      expect(summary.security.hostSource).toBe(
-        `${path.join(stateDir, "state", "branch.sqlite#exec_approvals_config")} defaults.security`,
-      );
+      expect(summary.security.hostSource).toBe(approvalsHostSource("defaults.security"));
     } finally {
       if (originalBranchStateDir === undefined) {
         delete process.env.BRANCH_STATE_DIR;
@@ -658,7 +664,7 @@ describe("exec approvals policy helpers", () => {
 
     expect(summary.askFallback).toEqual({
       effective: "allowlist",
-      source: "~/.branch/state/branch.sqlite#exec_approvals_config defaults.askFallback",
+      source: approvalsHostSource("defaults.askFallback"),
     });
   });
 
@@ -702,15 +708,15 @@ describe("exec approvals policy helpers", () => {
 
     expectFields(summary.security, {
       host: "allowlist",
-      hostSource: "~/.branch/state/branch.sqlite#exec_approvals_config agents.*.security",
+      hostSource: approvalsHostSource("agents.*.security"),
     });
     expectFields(summary.ask, {
       host: "always",
-      hostSource: "~/.branch/state/branch.sqlite#exec_approvals_config agents.*.ask",
+      hostSource: approvalsHostSource("agents.*.ask"),
     });
     expect(summary.askFallback).toEqual({
       effective: "deny",
-      source: "~/.branch/state/branch.sqlite#exec_approvals_config agents.*.askFallback",
+      source: approvalsHostSource("agents.*.askFallback"),
     });
   });
 
@@ -903,11 +909,11 @@ describe("exec approvals policy helpers", () => {
     expect(snapshots.map((snapshot) => snapshot.scopeLabel)).toEqual(["tools.exec"]);
     expectFields(snapshots[0]?.security, {
       host: "allowlist",
-      hostSource: "~/.branch/state/branch.sqlite#exec_approvals_config agents.main.security",
+      hostSource: approvalsHostSource("agents.main.security"),
     });
     expectFields(snapshots[0]?.ask, {
       host: "always",
-      hostSource: "~/.branch/state/branch.sqlite#exec_approvals_config agents.main.ask",
+      hostSource: approvalsHostSource("agents.main.ask"),
     });
   });
 

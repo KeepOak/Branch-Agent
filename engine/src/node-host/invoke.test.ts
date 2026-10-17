@@ -945,10 +945,19 @@ describe("node host invoke", () => {
       try {
         await state.writeConfig({ tools: { exec: { mode: "full" } } });
         saveExecApprovals({ version: 1, defaults: { security: "full", ask: "off" } });
-        const executable = path.join(fs.realpathSync(state.root), "native-agent.cjs");
-        fs.writeFileSync(executable, `#!${process.execPath}\nprocess.stdout.write('ok');\n`, {
-          mode: 0o700,
-        });
+        const root = fs.realpathSync(state.root);
+        const executable =
+          process.platform === "win32"
+            ? path.join(root, "native-agent.exe")
+            : path.join(root, "native-agent.cjs");
+        if (process.platform === "win32") {
+          // Windows will not run a shebang script as argv0; a copy of this Node can take --version.
+          fs.copyFileSync(process.execPath, executable);
+        } else {
+          fs.writeFileSync(executable, `#!${process.execPath}\nprocess.stdout.write('ok');\n`, {
+            mode: 0o700,
+          });
+        }
         const request = vi.fn<GatewayClient["request"]>().mockResolvedValue(null);
         await handleInvoke(
           {
@@ -958,7 +967,11 @@ describe("node host invoke", () => {
             paramsJSON: JSON.stringify(
               command === "system.run"
                 ? { command: [process.execPath, "--version"] }
-                : { argv: ["-p"], timeoutMs: 5000, idleTimeoutMs: 1000 },
+                : {
+                    argv: process.platform === "win32" ? ["--version"] : ["-p"],
+                    timeoutMs: 5000,
+                    idleTimeoutMs: 1000,
+                  },
             ),
           },
           {
