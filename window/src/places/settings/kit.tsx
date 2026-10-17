@@ -194,11 +194,6 @@ function PinBtn({ title }: { title: string }) {
 
 /** One settings row: title, sub-line and the control on the right. `off` greys the control and says why on its own line.
  *  Every row with a plain title has a pin, except General's Pinned list itself (noPin). */
-/** The repo's plain reason for a greyed control whose own reason is a developer note: "<label> comes in a later update." */
-export function laterWhy(label: string | undefined): string {
-  return `${(label ?? "This").trim().replace(/[….]+$/, "")} comes in a later update.`;
-}
-
 export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, after, noPin }: {
   title: ReactNode; sub?: ReactNode; help?: string; children?: ReactNode; off?: string; keep?: Keep; icon?: ReactNode; stack?: boolean; id?: string; after?: ReactNode; noPin?: boolean;
 }) {
@@ -207,9 +202,9 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   const locked = useContext(LockContext);
   const why = off ?? (locked ? NOSETUP : undefined);
   const name = typeof title === "string" ? title : id;
-  // A greyed row always says why in one visible line (Private #1093 item 7): its own plain reason, or, when that reason
-  // is a developer note shownWhy keeps out of sight, the repo's "<label> comes in a later update."
-  const shown = why ? shownWhy(why) ?? laterWhy(name) : undefined;
+  // A row greyed by a real condition ("Turn on … first", "needs a backup folder") says what to do in one visible line
+  // (Private #1093 item 7). A developer note stays out of sight: that row is Coming, and Coming shows only at Technical.
+  const shown = shownWhy(why);
   const whyId = useId();
   const right = useRef<HTMLSpanElement>(null);
   // The greyed controls inside name that line with aria-describedby, so a screen reader says why too.

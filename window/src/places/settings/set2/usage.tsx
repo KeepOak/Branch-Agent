@@ -2,7 +2,7 @@
 // sessions.usage.timeseries/logs), what each connection has left (usage.status), spend per Trunk, keeping
 // conversations (config `session.*`), backups (backup.status) and the rest, greyed with why where the engine has none.
 import { CheckedAt, useCheckedAt } from "../checked-at";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import type { WindowEngine } from "../../../connect/engine";
 import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Page, Pick, Pill, Plist, Prow, Sec, Seg, Switch, useConfig, useLevel, type RowEntry } from "../kit";
@@ -938,28 +938,21 @@ const EVAL_ROWS: [string, string, string][] = [
 ];
 const GRADERS = ["Exact: matches, coverage of key words, tone", "Judge model: faithful, relevant, no made-up facts, rubric, whole conversations", "Right tools in the right order", "Was it really done (from the steps and screenshots)", "Before-and-after screenshots described", "Coding sessions: outcome and effort"];
 
-/** The visible reason under the greyed Run buttons (B-043): NO_EVAL is a developer note, so it never shows. */
-export const RUN_LATER = "Running a test set comes in a later update.";
-
 function TestModel() {
-  const why = useId();
   return (
     <Sec title="Test the model you use" hint="Check your model against a ready-made test set." help="Run a ready-made set of tasks against the model you use now, see which it got right, what it cost, and whether anything that used to work has stopped.">
       <Ctl title="Test set" sub="Each task is checked the same way every time." off={NO_EVAL}>
         <Seg label="Test set" value="everyday" options={[{ id: "everyday", label: "Everyday" }, { id: "money", label: "Money" }, { id: "research", label: "Research" }]} onChange={() => undefined} />
       </Ctl>
-      <Acts><Btn disabled title={NO_EVAL} aria-describedby={why}>Run the test</Btn></Acts>
-      <p className="hint" id={why}>{RUN_LATER}</p>
+      <Acts><Btn disabled title={NO_EVAL}>Run the test</Btn></Acts>
     </Sec>
   );
 }
 
 function Evals({ lv }: { lv: number }) {
-  const why = useId();
-  const run = <Btn sm disabled title={NO_EVAL} aria-describedby={why}>Run</Btn>;
+  const run = <Btn sm disabled title={NO_EVAL}>Run</Btn>;
   return (
     <Sec title="Evals" hint="Test sets you can run against your own model. Nothing runs by itself.">
-      <p className="hint" id={why}>{RUN_LATER}</p>
       <Plist>{SUITES.map(([t, s]) => <Prow key={t} icon={<Tile><Ico name="check" s /></Tile>} title={t} sub={s}>{run}</Prow>)}</Plist>
       <Ctl title="Run each suite" sub="Repeated runs reveal cases that change." help="Several runs show which cases flip, and whether the Trunk or the judge is to blame." off={NO_EVAL}>
         <select className="inp" aria-label="Run each suite"><option>Once</option><option>3 times</option><option>5 times</option></select>

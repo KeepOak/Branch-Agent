@@ -2,5 +2,9 @@ window:src/places/canopy/canopy.test.tsx
 window:src/places/settings/desktop-ctl.test.tsx
 window:src/places/settings/disabled-reasons.test.tsx
 window:src/places/settings/set2/developer.test.tsx
+window:src/places/settings/set2/usage.test.tsx
 window:src/screens/settings/pages/accounts-live.test.tsx
+window:src/screens/settings/pages/general-live.test.tsx
 window:src/screens/settings/pages/trunks-live.test.tsx
+window:src/shell/menu-rerender.test.tsx
+window:src/shell/row-menu.test.tsx

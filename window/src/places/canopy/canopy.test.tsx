@@ -217,18 +217,13 @@ describe("Canopy › Cards", () => {
     await click(button("Create"));
     expect(calls).toContainEqual(["canopy.cards.create", { title: "Write the notes", notes: "", status: "todo", priority: "normal", labels: [] }]);
   });
-  it("greys Open with Claude and Open with OpenAI in a card's menu, with a plain reason instead of a developer note", async () => {
+  it("greys Open with Claude and Open with OpenAI in a card's menu, without a developer note", async () => {
     await mount();
     await click(button("Cards"));
     await click(document.querySelector<HTMLElement>("[aria-label='More for “Ready card”']")!);
     const items = [...document.querySelectorAll<HTMLButtonElement>("[role=menuitem]")].filter(b => b.textContent?.startsWith("Open with"));
-    const label = (b: HTMLButtonElement) => b.querySelector(".mi-text > span")?.textContent;
-    expect(items.map(label)).toEqual(["Open with Claude", "Open with OpenAI"]);
-    // Private #1093 item 7: the greyed item says why, visibly and by aria-describedby.
-    for (const b of items) {
-      expect(b.disabled).toBe(true);
-      expect(document.getElementById(b.getAttribute("aria-describedby") ?? "")?.textContent).toBe(`${label(b)} comes in a later update.`);
-    }
+    expect(items.map(b => b.textContent)).toEqual(["Open with Claude", "Open with OpenAI"]);
+    for (const b of items) { expect(b.disabled).toBe(true); expect(b.title).toBe(""); }
     expect(visibleDevNotes(document.body)).toEqual([]);
   });
   it("gates View and Details by level", async () => {

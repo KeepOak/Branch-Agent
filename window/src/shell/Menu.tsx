@@ -122,11 +122,14 @@ function SubMenu({ parent, at, onClose, onDone }: { parent: MenuItem; at: MenuAn
   return <Menu at={at} items={wrap} onClose={onClose} label={parent.label} />;
 }
 
-/** Why a greyed row is greyed, in one visible line (Private #1093 item 7): its own plain reason, or, when that reason is a
- *  developer note shownWhy keeps out of sight, the repo's "<label> comes in a later update." */
-export function menuWhy(label: string, disabled: string | undefined): string | undefined {
-  if (!disabled) return undefined;
-  return shownWhy(disabled) ?? `${label.replace(/[….]+$/, "")} comes in a later update.`;
+const LATER = /\bin a later update\b/i;
+
+/** The visible line under a greyed item (Private #1093 item 7): only a real condition, said as what to do ("Oak is your
+ *  default Trunk."). A developer note or a "comes in a later update" stub marks a Coming item, which gets no line: Coming
+ *  waits for Technical. */
+export function menuWhy(disabled: string | undefined): string | undefined {
+  const why = shownWhy(disabled);
+  return why && !LATER.test(why) ? why : undefined;
 }
 
 function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: number, el: HTMLElement) => void, subOpen: boolean, idBase = "mi"): ReactNode {
@@ -166,10 +169,10 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
       </button>
     );
   }
-  const why = menuWhy(it.label, it.disabled);
+  const why = menuWhy(it.disabled);
   const whyId = why ? `${idBase}-why-${i}` : undefined;
   return (
-    <button key={i} type="button" role={it.checked !== undefined ? it.radio ? "menuitemradio" : "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={why} aria-describedby={whyId}
+    <button key={i} type="button" role={it.checked !== undefined ? it.radio ? "menuitemradio" : "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={shownWhy(it.disabled)} aria-describedby={whyId}
       onClick={() => {
         onClose();
         it.run();

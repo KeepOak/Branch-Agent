@@ -7,7 +7,6 @@ import { cloneElement, useEffect, useId, type KeyboardEvent, type SyntheticEvent
 import { availability, useCapabilityEngine, useCapabilityVersion } from "../connect/capabilities";
 import type { WindowEngine } from "../connect/engine";
 import { COMING_REASON, registerComing, type ComingEntry } from "./coming-registry";
-import "./coming.css";
 
 export type ComingProps = {
   /** The gateway method (or methods) the control calls. */
@@ -20,9 +19,6 @@ export type ComingProps = {
   hidden?: boolean;
   /** This window doesn't make the call yet, even when the engine offers it: always Coming, still naming the method. */
   unwired?: boolean;
-  /** Also says the reason in one visible line after the control, which names it with aria-describedby (Private #1093
-   *  item 7: a disabled control says why, not only in a tooltip). */
-  show?: boolean;
   /** Checks against this engine instead of the CapabilityProvider's. */
   engine?: Pick<WindowEngine, "features"> | null;
   /** One element that forwards DOM props, including aria-disabled, readOnly and event guards.
@@ -49,7 +45,7 @@ function labelOf(child: ReactElement): string {
   return typeof child.type === "string" ? child.type : "control";
 }
 
-export function Coming({ need, reason, where, hidden = false, unwired = false, show = false, engine, children }: ComingProps): ReactElement | null {
+export function Coming({ need, reason, where, hidden = false, unwired = false, engine, children }: ComingProps): ReactElement | null {
   const fromContext = useCapabilityEngine();
   useCapabilityVersion();
   const id = useId();
@@ -64,9 +60,7 @@ export function Coming({ need, reason, where, hidden = false, unwired = false, s
   if (!entry) return cloneElement(children, { "data-need": needs.join(" ") } as Record<string, unknown>);
   if (hidden) return null;
   const props = children.props as ChildProps;
-  const whyId = show ? `${id}-why` : undefined;
-  const control = cloneElement(children, {
-    ...(whyId ? { "aria-describedby": whyId } : {}),
+  return cloneElement(children, {
     "aria-disabled": "true",
     "data-coming": why,
     title: why,
@@ -94,5 +88,4 @@ export function Coming({ need, reason, where, hidden = false, unwired = false, s
     ...((children.type === "input" || children.type === "textarea" || typeof children.type !== "string") ? { readOnly: true } : {}),
     style: { ...props.style, opacity: 0.55, cursor: "not-allowed" },
   } as Record<string, unknown>);
-  return whyId ? <>{control}<small id={whyId} className="coming-why" data-why="">{why}</small></> : control;
 }
