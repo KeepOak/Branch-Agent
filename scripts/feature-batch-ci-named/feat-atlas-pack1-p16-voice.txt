@@ -1,0 +1,4 @@
+window:src/composer/voice-spoken-ending.behaviour.test.ts
+window:src/composer/voice-wording.behaviour.test.tsx
+window:src/places/settings/set1/voice-defaults.behaviour.test.tsx
+window:src/thread/audio-badge.behaviour.test.tsx

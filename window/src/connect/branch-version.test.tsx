@@ -40,7 +40,7 @@ it("Updates page uses the Branch desktop component version", async () => {
   // The build hash is how Branch works inside: Regular and Advanced name the version, Technical adds the build.
   expect(host.textContent).toContain("Branch 0.4.4 on this computer");
   expect(host.textContent).not.toContain("a300a48d");
-  expect(host.textContent).toContain("Updates apply in place.");
+  expect(host.textContent).toContain("You’re on the latest version, checked");
   expect(host.textContent).not.toContain("You have Branch");
   expect(host.textContent).not.toContain("2026.9.8");
   await act(async () => root.render(<UpdatesPage page="updates" title="Updates" level="technical" engine={engine} />));

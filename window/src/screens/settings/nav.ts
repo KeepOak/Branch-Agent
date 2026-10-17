@@ -83,7 +83,8 @@ export const NAV: NavGroup[] = [
     { id: "history", title: "History & backups", icon: "retry" },
     { id: "learning", title: "Learning & self-updates", icon: "leaf" },
     { id: "updates", title: "Updates & about", icon: "up" },
-    { id: "features", title: "All features", icon: "star" },
+    // The atlas is mostly what Branch plans: it shows with everything else that is Coming, at Technical (rows.ts COMING_FROM).
+    { id: "features", title: "All features", icon: "star", minLevel: 2 },
     { id: "developer", title: "Developer", icon: "term", minLevel: 2 },
   ] },
 ];
@@ -147,17 +148,17 @@ function pagesOf(...ids: PageId[]): NavPage[] {
   return ids.map((id) => BY_ID.get(id)!);
 }
 
-/** Regular's four pages. Every page except Developer lives in one of them.
- *  Developer stays on Technical, inside NAV's Branch group. The first page in a group is what that
+/** Regular's four pages. Every page except Developer and All features lives in one of them.
+ *  Developer and All features stay on Technical, inside NAV's Branch group. The first page in a group is what that
  *  Regular page shows. The others stay reachable under an Advanced section on that page. */
 export const REGULAR_GROUPS: NavGroup[] = [
   { title: "General", pages: pagesOf("general", "card", "goto", "appearance", "notifications", "who", "trunks", "instructions", "customize", "seedbank", "memory", "autos", "voice", "chatapps") },
   { title: "Computer", pages: pagesOf("devices", "browser", "coding", "remote", "permissions") },
   { title: "Usage", pages: pagesOf("accounts", "models", "privacy", "signins") },
-  { title: "Updates", pages: pagesOf("updates", "history", "learning", "features") },
+  { title: "Updates", pages: pagesOf("updates", "history", "learning") },
 ];
 
-/** The Regular page a settings page belongs to, or none (Developer). */
+/** The Regular page a settings page belongs to, or none (Developer, All features). */
 export function regularHub(id: PageId): NavGroup | undefined {
   return REGULAR_GROUPS.find((g) => g.pages.some((p) => p.id === id));
 }
@@ -172,7 +173,7 @@ export function navAt(level: Level): { top: NavPage[]; groups: NavGroup[] } {
 
 /** A page's nav entry. */
 export const navPage = (id: PageId): NavPage | undefined => ALL_PAGES.find((p) => p.id === id);
-/** Whether a page is in the nav at this level (Developer needs Technical). */
+/** Whether a page is in the nav at this level (Developer and All features need Technical). */
 export const pageShown = (id: PageId, level: Level): boolean => (navPage(id)?.minLevel ?? 0) <= level;
 
 /** The "How much to show" choices and the line under the control for each. */

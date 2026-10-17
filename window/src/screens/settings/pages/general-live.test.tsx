@@ -46,7 +46,8 @@ it("draws the preview's General cards at each level, and Pinned only once a row 
   expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "Cover the screen"]);
   await remount();
   await mount(engine, "advanced");
-  expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"]);
+  // Clipboard history and Controllers wait for a later update: they show with every Coming row, at Technical (Private #1093 item 4).
+  expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "Quick ask", "Cover the screen"]);
   await remount();
   await mount(engine, "technical");
   expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "History repair", "Waiting line", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"]);
@@ -58,10 +59,13 @@ it("draws the preview's General cards at each level, and Pinned only once a row 
 
 it("uses the preview's rows and words in Writing, The conversation, Summaries, History repair and Waiting line", async () => {
   await mount(engineOf().engine, "regular");
-  // Regular shows only what works today; Writing's other Regular rows wait for a later update and show from Advanced.
+  // Regular and Advanced show only what works today; Writing's other rows wait for a later update and show at Technical.
   expect(labels("Writing")).toEqual(["Show “Finish setting up”"]);
   await remount();
   await mount(engineOf().engine, "advanced");
+  expect(labels("Writing")).toEqual(["Show “Finish setting up”"]);
+  await remount();
+  await mount(engineOf().engine, "technical");
   // The live row comes first; the later-update rows fold under their own line after it, in the table order.
   expect(labels("Writing").slice(0, 8)).toEqual(["Show “Finish setting up”", "Message box grows with the text", "Check spelling in the message box", "Suggest the rest as I type", "Replies in", "After a plan", "Open Branch on", "Write long messages in your own editor"]);
   await remount();
