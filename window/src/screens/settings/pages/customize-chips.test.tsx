@@ -61,7 +61,8 @@ it("each kind chip opens that kind's own list, with its head, count and ＋ Add,
     expect(list, `${label} opens its list`).not.toBeNull();
     expect(list!.querySelector(".cz-kindhead h2")?.textContent).toBe(label);
     expect(list!.querySelector(".cz-kindhead p")?.textContent).toBe(line);
-    expect(list!.querySelector(".cz-kindhead .cz-count")?.textContent).toMatch(/\d+ of \d+ on/);
+    // Toolsets count whole toolsets ("10 on · 3 need setup", #1720); the other kinds count "N of M on".
+    expect(list!.querySelector(".cz-kindhead .cz-count")?.textContent).toMatch(kind === "Toolsets" ? /^\d+ on\b/ : /\d+ of \d+ on/);
     if (add) expect(list!.querySelector(".cz-kindhead .cz-add")?.textContent).toBe("＋ Add");
     expect(hub().querySelectorAll("[data-kind-list]")).toHaveLength(1);
   }
