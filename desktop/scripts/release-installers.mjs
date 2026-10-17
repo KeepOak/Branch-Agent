@@ -4,11 +4,11 @@
 // (desktop/INSTALLERS.md, "Left for the owner"); until then the installers are built unsigned and the log says so.
 //   node desktop/scripts/release-installers.mjs --assets <release-assets> --version <version> --target <target> --out <dir>
 // win32-x64: a per-user Inno Setup installer (no admin prompt; each update lands in a version folder under that root).
-// darwin-arm64: a .dmg holding the already-signed Branch.app and an Applications link (drag-to-Applications).
+// darwin-arm64: a .dmg holding the already-signed Branch Agent.app and an Applications link.
 // linux-x64: a per-user AppImage (install.sh puts it at ~/.local/bin/branch-agent), built with a pinned appimagetool.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -177,28 +177,8 @@ export function innoSetupScript({ version, source, out }) {
   ].join("\r\n");
 }
 
-/** Finder window positions (electron-builder dmg.contents). The image itself is Branch.app plus an Applications link. */
-export const DARWIN_DMG_CONTENTS = Object.freeze([
-  Object.freeze({ name: "Branch.app", x: 130, y: 220 }),
-  Object.freeze({ name: "Applications", x: 410, y: 220, type: "link", path: "/Applications" }),
-]);
-
 export function dmgArgs({ stage, out }) {
-  return ["create", "-volname", "Branch", "-srcfolder", stage, "-fs", "HFS+", "-format", "UDZO", "-ov", out];
-}
-
-/**
- * Publishes the signed archive bundle as Branch.app next to an /Applications symlink so a first-time Mac user
- * can drag it into Applications without the terminal.
- */
-export function stageDarwinDmgPayload(payload) {
-  const archive = join(payload, "Branch Agent.app");
-  const published = join(payload, "Branch.app");
-  if (existsSync(archive) && archive !== published) renameSync(archive, published);
-  if (!existsSync(published)) throw new Error("The macOS package has no Branch Agent.app at its root");
-  const applicationsLink = join(payload, "Applications");
-  try { lstatSync(applicationsLink); } catch { symlinkSync("/Applications", applicationsLink); }
-  return { app: published, applicationsLink, contents: DARWIN_DMG_CONTENTS };
+  return ["create", "-volname", "Branch Agent", "-srcfolder", stage, "-fs", "HFS+", "-format", "UDZO", "-ov", out];
 }
 
 export function parseArgs(argv) {
@@ -253,7 +233,7 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
     } else {
       if (!existsSync(join(payload, "Branch Agent.app"))) throw new Error("The macOS package has no Branch Agent.app at its root");
       signer.signApp(join(payload, "Branch Agent.app"));
-      stageDarwinDmgPayload(payload);
+      symlinkSync("/Applications", join(payload, "Applications"));
       run("hdiutil", dmgArgs({ stage: payload, out: file }));
     }
     if (!existsSync(file)) throw new Error(`The installer was not written: ${file}`);

@@ -72,7 +72,7 @@ jobs:
       - name: Check the installer builder and its signing hooks
         run: node --test scripts/release-installers.test.mjs scripts/windows-launcher-icon.test.mjs scripts/release-signing.test.mjs
       - name: Check the one-line install scripts against a fixture release
-        run: node --test scripts/install-scripts.test.mjs
+        run: node --test scripts/install-scripts.test.mjs scripts/install-mac-destination.test.mjs
       - name: Check desktop auto-update end to end on each platform's path
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist

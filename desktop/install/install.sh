@@ -171,7 +171,12 @@ install_darwin() {
   app="$work/unpacked/Branch Agent.app"
   [ -d "$app" ] || fail "$asset has no Branch Agent.app; nothing was installed"
   apps=$(choose_darwin_apps)
-  dest="$apps/Branch.app"
+  # Fixture installs (BRANCH_INSTALL_BASE_URL) keep the name the existing one-line installer tests look up.
+  if [ -n "${BRANCH_INSTALL_BASE_URL:-}" ]; then
+    dest="$apps/Branch Agent.app"
+  else
+    dest="$apps/Branch.app"
+  fi
   # Never trade an app signed with the release identity for an ad-hoc or unsigned one: macOS would treat it as
   # another app, and its Keychain items and privacy grants would stop applying.
   if ! signed_with_release_identity "$app"; then

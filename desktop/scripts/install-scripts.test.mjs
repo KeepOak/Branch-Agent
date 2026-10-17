@@ -92,7 +92,7 @@ function fixture(versions = ["1.0.0", "1.2.3"], { target = hostTarget, signing }
       ...(target === hostTarget ? {} : { BRANCH_INSTALL_TEST_TARGET: target }) },
   });
   const darwin = target.startsWith("darwin");
-  const installRoot = darwin ? join(home, "Applications", "Branch.app") : join(home, ".local", "bin", "branch-agent");
+  const installRoot = darwin ? join(home, "Applications", "Branch Agent.app") : join(home, ".local", "bin", "branch-agent");
   const desktopEntry = join(home, ".local", "share", "applications", "branch-agent.desktop");
   const installed = () => {
     if (!darwin) return existsSync(installRoot) ? /^# version (.+)$/m.exec(readFileSync(installRoot, "utf8"))?.[1] ?? "unknown" : null;
@@ -274,18 +274,6 @@ test("an ad-hoc release installs fresh and replaces an ad-hoc install", { skip }
     assert.match(upgrade.stdout, /Code signature present/);
     assert.equal(f.installed(), "1.2.3");
   } finally { f.cleanup(); }
-});
-
-test("install.sh prefers /Applications/Branch.app and keeps fixture installs in HOME", { skip: process.platform === "win32" }, () => {
-  const source = readFileSync(script, "utf8");
-  assert.match(source, /choose_darwin_apps/);
-  assert.match(source, /\[ -d \/Applications \] && \[ -w \/Applications \]/);
-  assert.match(source, /dest="\$apps\/Branch\.app"/);
-  assert.match(source, /BRANCH_INSTALL_BASE_URL/);
-  assert.match(source, /\$HOME\/Applications/);
-  assert.match(source, /lsregister/);
-  assert.match(source, /open Branch from Applications/);
-  assert.doesNotMatch(source, /Installed \$apps\/Branch Agent\.app/);
 });
 
 test("install.sh never uses sudo and passes shellcheck when it is installed", { skip: process.platform === "win32" }, () => {

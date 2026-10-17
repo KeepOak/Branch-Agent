@@ -394,9 +394,7 @@ test("packaging, updates, and CI keep the Applications install and the pinned si
   assert.match(launcher, /offerMacApplicationsMove/);
   assert.match(launcher, /MAC_MOVE_MESSAGE/);
   assert.match(launcher, /app\.relaunch\(\{ execPath: move\.relaunch \}\)/);
-  const installers = await text("scripts/release-installers.mjs");
-  assert.match(installers, /stageDarwinDmgPayload/);
-  assert.match(installers, /DARWIN_DMG_CONTENTS/);
+  assert.match(checks, /scripts\/install-mac-destination\.test\.mjs/);
   assert.match(helper, /lsregister/);
   assert.match(helper, /windowsHide: true/);
   assert.match(maker, /Branch Agent\.app\/Contents\/Resources\/app\.asar/);

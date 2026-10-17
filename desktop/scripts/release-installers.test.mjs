@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, readdirSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { APPIMAGE_DESKTOP_ENTRY, APPIMAGE_TOOLS, appImageToolArgs, appImageToolEnv, assembleAppDir, DARWIN_DMG_CONTENTS, dmgArgs, fetchPinned, innoCompiler, innoSetupScript,
-  installerName, layoutWindowsInstallRoot, main, numericVersion, parseArgs, stageDarwinDmgPayload, WINDOWS_APP_ID, windowsInstallerFolderName, windowsLauncherScript } from "./release-installers.mjs";
+import { APPIMAGE_DESKTOP_ENTRY, APPIMAGE_TOOLS, appImageToolArgs, appImageToolEnv, assembleAppDir, dmgArgs, fetchPinned, innoCompiler, innoSetupScript,
+  installerName, layoutWindowsInstallRoot, main, numericVersion, parseArgs, WINDOWS_APP_ID, windowsInstallerFolderName, windowsLauncherScript } from "./release-installers.mjs";
 import * as launcher from "./windows-launcher.mjs";
 
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -46,31 +46,7 @@ test("the Windows installer is per-user and leaves nothing the desktop updater s
 });
 
 test("the macOS image wraps the signed app with an Applications link", () => {
-  assert.deepEqual(dmgArgs({ stage: "/tmp/p", out: "/tmp/o.dmg" }), ["create", "-volname", "Branch", "-srcfolder", "/tmp/p", "-fs", "HFS+", "-format", "UDZO", "-ov", "/tmp/o.dmg"]);
-});
-
-test("the macOS image stages Branch.app next to an Applications link at the drag-to-Applications positions", () => {
-  const root = mkdtempSync(join(tmpdir(), "branch-dmg-layout-"));
-  try {
-    const payload = join(root, "payload");
-    mkdirSync(join(payload, "Branch Agent.app", "Contents"), { recursive: true });
-    writeFileSync(join(payload, "Branch Agent.app", "Contents", "Info.plist"), "plist");
-    const staged = stageDarwinDmgPayload(payload);
-    assert.equal(staged.app, join(payload, "Branch.app"));
-    assert.equal(existsSync(join(payload, "Branch Agent.app")), false);
-    assert.equal(readFileSync(join(payload, "Branch.app", "Contents", "Info.plist"), "utf8"), "plist");
-    assert.equal(lstatSync(staged.applicationsLink).isSymbolicLink(), true);
-    assert.equal(readlinkSync(staged.applicationsLink), "/Applications");
-    assert.deepEqual(staged.contents, DARWIN_DMG_CONTENTS);
-    assert.deepEqual(DARWIN_DMG_CONTENTS, [
-      { name: "Branch.app", x: 130, y: 220 },
-      { name: "Applications", x: 410, y: 220, type: "link", path: "/Applications" },
-    ]);
-    const again = stageDarwinDmgPayload(payload);
-    assert.equal(again.app, staged.app);
-    assert.equal(readlinkSync(again.applicationsLink), "/Applications");
-    assert.throws(() => stageDarwinDmgPayload(join(root, "empty")), /no Branch Agent\.app/);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  assert.deepEqual(dmgArgs({ stage: "/tmp/p", out: "/tmp/o.dmg" }), ["create", "-volname", "Branch Agent", "-srcfolder", "/tmp/p", "-fs", "HFS+", "-format", "UDZO", "-ov", "/tmp/o.dmg"]);
 });
 
 test("arguments are checked before anything is extracted", async () => {
