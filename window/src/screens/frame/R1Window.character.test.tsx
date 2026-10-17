@@ -10,7 +10,7 @@ vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
 vi.mock("../../shell/use-status", () => ({ useLimits: () => null }));
 vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
-vi.mock("../../places-nav/SettingsFrame", () => ({ SettingsFrame: ({ page }: { page: string }) => <div data-testid="classic-settings" data-page={page} /> }));
+vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular", SettingsFrame: ({ page }: { page: string }) => <div data-testid="classic-settings" data-page={page} /> }));
 vi.mock("../settings/pages/plugged", () => ({ R1_PAGES: {} }));
 vi.mock("../settings", () => ({ SettingsFrame: ({ page }: { page?: string }) => <div data-testid="r1-settings" data-page={page} /> }));
 vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: ({ place }: { place: string }) => <p data-testid="place" data-place={place}>Place content</p> }));
@@ -23,7 +23,7 @@ const ROWS = [
   { key: "agent:scout:main", agentId: "scout", title: "Scout", isMain: true },
   { key: "agent:scout:topic", agentId: "scout", title: "September report", isMain: false },
 ];
-vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: ROWS }], usePendingApprovals: () => pending.map, useMachine: () => null, useTrunks: () => ({ list: [], defaultId: null }), useListPeople: () => ({ selfId: null, names: new Map() }) }));
+vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: ROWS }], usePendingApprovals: () => pending.map, useMachine: () => null, useContacts: () => [[], () => undefined, false], useTrunks: () => ({ list: [], defaultId: null }), useListPeople: () => ({ selfId: null, names: new Map() }) }));
 vi.mock("../../shell/group-drop", async (real) => ({ ...(await real<object>()), useGroupRooms: () => ({ rooms: [], peerOnline: new Map(), reload: async () => undefined }) }));
 vi.mock("../approvals/ProblemBanners", () => ({ useProblemBannerRows: () => undefined }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

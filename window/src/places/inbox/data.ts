@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { agents, sessions, type Agent, type Session } from "../overview/engine";
+import { isEngineJob } from "../../connect/engine-jobs";
 
 export type Row = Record<string, unknown>;
 export const rec = (v: unknown): Row => v && typeof v === "object" && !Array.isArray(v) ? v as Row : {};
@@ -98,7 +99,7 @@ export async function loadNeeds(engine: WindowEngine): Promise<Needs> {
     pairs ? settle("Computers", errors, () => engine.request("node.pair.list", {}), {}) : {},
     asks ? settle("Questions", errors, () => engine.request("question.list", {}), {}) : {},
     settle("Mentions", errors, () => engine.request("mentions.list", {}), {}),
-    settle("Automations", errors, () => paged(engine, "cron.list", "jobs", { lastRunStatus: "error", enabled: "enabled" }), [] as Row[]),
+    settle("Automations", errors, async () => (await paged(engine, "cron.list", "jobs", { lastRunStatus: "error", enabled: "enabled" })).filter(j => !isEngineJob(j)), [] as Row[]),
     settle("Sign-ins", errors, () => engine.request("models.authStatus", {}), {}),
     settle("Chat apps", errors, () => engine.request("channels.status", { probe: false }), {}),
     settle("Conversations", errors, () => paged(engine, "sessions.list", "sessions", { includeGlobal: true, includeUnknown: true, includeLastMessage: true, includeDerivedTitles: true, archived: "all" }), [] as Row[]),
@@ -140,6 +141,33 @@ export async function loadNeedsCount(engine: WindowEngine): Promise<number> {
 /** Gateway events that refresh the Inbox. */
 export const refreshesInbox = (event: string): boolean => /^(sessions\.|chat$|cron$|.*approval\.|mentions\.changed$|question\.|device\.pair\.|node\.pair\.|plugin\.canopy\.)/.test(event);
 
+/** Share an active read; events during it need only one fresh read after it settles. */
+export function coalesceInboxReads(read: () => Promise<void>): () => Promise<void> {
+  let active = false;
+  let pending: { promise: Promise<void>; resolve: () => void; reject: (error: unknown) => void } | undefined;
+  return () => {
+    if (!pending) {
+      let resolve!: () => void, reject!: (error: unknown) => void;
+      const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+      pending = { promise, resolve, reject };
+    }
+    const completion = pending.promise;
+    if (!active) {
+      active = true;
+      void (async () => {
+        while (pending) {
+          const current = pending;
+          pending = undefined;
+          try { await read(); current.resolve(); }
+          catch (e) { current.reject(e); }
+        }
+        active = false;
+      })();
+    }
+    return completion;
+  };
+}
+
 export class ActionGate {
   private busy = false;
   async run<T>(action: () => Promise<T>): Promise<{ accepted: false } | { accepted: true; value: T }> {
@@ -155,22 +183,25 @@ export function usePlaceData<T>(engine: WindowEngine, load: ((engine: WindowEngi
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  const generation = useRef(0), mounted = useRef(false), gate = useRef(new ActionGate()), currentEngine = useRef(engine);
+  const mounted = useRef(false), gate = useRef(new ActionGate()), currentEngine = useRef(engine);
+  const read = useRef<(() => Promise<void>) | null>(null);
   currentEngine.current = engine;
-  const refresh = useCallback(async () => {
-    if (!load) return;
-    const id = ++generation.current;
-    setLoading(true);
-    try { const value = await load(engine); if (mounted.current && id === generation.current) { setData(value); setError(""); } }
-    catch (e) { if (mounted.current && id === generation.current) setError(errorText(e)); }
-    finally { if (mounted.current && id === generation.current) setLoading(false); }
-  }, [engine, load]);
+  const refresh = useCallback(async () => { await read.current?.(); }, []);
   useEffect(() => {
-    mounted.current = true; gate.current = new ActionGate(); setBusy(false); setNotice(""); void refresh();
+    let live = true;
+    const refreshData = coalesceInboxReads(async () => {
+      if (!live || !load) return;
+      setLoading(true);
+      try { const value = await load(engine); if (live) { setData(value); setError(""); } }
+      catch (e) { if (live) setError(errorText(e)); }
+      finally { if (live) setLoading(false); }
+    });
+    read.current = refreshData;
+    mounted.current = true; gate.current = new ActionGate(); setBusy(false); setNotice(""); void refreshData();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const dispose = engine.onEvent(({ event }) => { if (refreshesInbox(event)) { clearTimeout(timer); timer = setTimeout(() => { void refresh(); }, 150); } });
-    return () => { mounted.current = false; ++generation.current; clearTimeout(timer); dispose(); };
-  }, [engine, refresh]);
+    const dispose = engine.onEvent(({ event }) => { if (refreshesInbox(event)) { clearTimeout(timer); timer = setTimeout(() => { void refreshData(); }, 150); } });
+    return () => { live = false; mounted.current = false; read.current = null; clearTimeout(timer); dispose(); };
+  }, [engine, load]);
   const act = async (operation: () => Promise<unknown>, message: string) => {
     const sourceEngine = engine;
     const current = () => mounted.current && sourceEngine === currentEngine.current;

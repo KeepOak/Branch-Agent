@@ -4,7 +4,6 @@
 // Classic Advanced and Connected agents pages (places/settings/set2/advanced*.tsx, agents.tsx), whose rows are wired and
 // tested. A row the engine has no key for is Coming, naming what it waits for. Rows whose control does more than one key
 // are drawn by the page (customize-live.tsx), named here as "slot" rows.
-import { COMING_REASON } from "../../../glass/coming-registry";
 import type { Row, RowOption } from "../rows";
 
 const HUB = "";
@@ -17,8 +16,8 @@ const ALLOW = "Allow";
 const CONNECT = "Connect an agent";
 const ANOTHER = "Another Branch";
 
-/** Said on a row the engine has no setting for yet: the Coming contract's own line (HANDOFF R1-10). */
-export const NO_KEY = COMING_REASON;
+/** Said on a row the engine has no setting for yet. */
+export const NO_KEY = "Branch has no setting for this yet.";
 const no = (what: string, reason = NO_KEY) => ({ kind: "coming" as const, need: `config: ${what}`, reason });
 const opts = (...labels: string[]): RowOption[] => labels.map((l) => ({ v: l, label: l }));
 const slot = (calls: string[], reason: string) => ({ kind: "slot" as const, calls, reason });
@@ -35,8 +34,8 @@ export const CUSTOMIZE_ROWS: Row[] = [
   row({ id: "customize.tools.own-files", card: TOOLS, label: "Your own tools from files", help: "Loads tool files from the tools folder. Each one is checked before it’s offered.", level: 2, control: "toggle", source: no("a tools folder switch") }),
   row({ id: "customize.tools.find-command", card: TOOLS, label: "Find tools with a command", help: "A command that prints more tools for this project.", level: 2, control: "text", source: no("a tool discovery command") }),
   row({ id: "customize.tools.node", card: TOOLS, label: "Run connector programs on Branch’s own Node.js", help: "Off: the Node.js installed on this computer.", level: 2, control: "toggle", source: no("a bundled Node.js switch") }),
-  row({ id: "customize.tools.python", card: TOOLS, label: "Python service", help: "Comes with Branch. Runs Python for tools that need it.", level: 2, control: "custom", source: { kind: "coming", need: "engine: a Python service status", reason: "The Python service’s state comes in a later update." } }),
-  row({ id: "customize.tools.skill-ready", card: TOOLS, label: "Check a skill is ready first", help: "Programs, keys and systems it needs.", level: 1, control: "toggle", fallback: true, source: no("a skill readiness switch") }),
+  row({ id: "customize.tools.python", card: TOOLS, label: "Python service", help: "Comes with Branch. Runs Python for tools that need it.", level: 2, control: "custom", source: { kind: "coming", need: "engine: a Python service status", reason: "The engine doesn’t report a Python service." } }),
+  row({ id: "customize.tools.skill-ready", card: TOOLS, label: "Check a skill is ready first", help: "Programs, keys and systems it needs.", level: 1, control: "toggle", fallback: true, source: no("a skill readiness switch", "The engine always checks; there is no switch for it.") }),
   row({ id: "customize.tools.signed", card: TOOLS, label: "Only signed skill packages", help: "Off until you choose: it would block most community skills; the malware check stays on.", level: 1, control: "toggle", source: no("a signed skill packages switch") }),
   row({ id: "customize.tools.malware", card: TOOLS, label: "Check install requests for malware", help: "Against the OSV database, before you approve.", level: 1, control: "toggle", source: no("a malware check switch") }),
   row({ id: "customize.tools.web", card: TOOLS, label: "Search the web", help: "Trunks can look up current information. Each person’s “Look things up” (Settings › People) still applies.", level: 1, control: "toggle", fallback: true, source: { kind: "config", path: "tools.web.search.enabled" } }),
@@ -54,7 +53,7 @@ export const CUSTOMIZE_ROWS: Row[] = [
   row({ id: "customize.skills.commands", card: SKILLS, label: "Run !`command` lines in skills", help: "A skill may fill itself in with a command’s output when it loads. Code blocks never run.", level: 2, control: "toggle", source: no("a skill command lines switch") }),
   row({ id: "customize.skills.save-to", card: SKILLS, label: "Where new skills are saved", help: "Skills Trunks write go here. A synced folder works.", level: 2, control: "text", source: no("a folder for new skills") }),
   row({ id: "customize.skills.pinned", card: SKILLS, label: "Always read in full", help: "A pinned skill’s whole instructions go with every message, not only when it seems to fit.", level: 1, control: "select", options: opts("None"), fallback: "None",
-    source: no("pinned skills", "Pinning a skill comes in a later update.") }),
+    source: no("pinned skills", "The engine can’t pin a skill.") }),
   row({ id: "customize.skills.extra-dirs", card: SKILLS, label: "Extra skill folders", help: "Searched last, after Branch’s own and the project’s.", level: 2, control: "custom", source: slot(["config.patch"], "Extra skill folders come in a later update.") }),
   row({ id: "customize.skills.bundled", card: SKILLS, label: "Built-in skills to offer", help: "All: every built-in skill is offered until you pick some.", level: 2, control: "custom", source: slot(["config.patch"], "Choosing built-in skills comes in a later update.") }),
   row({ id: "customize.skills.watch", card: SKILLS, label: "Pick up skill changes by themselves", level: 2, control: "toggle", fallback: true, source: { kind: "config", path: "skills.load.watch" } }),
@@ -71,15 +70,15 @@ export const CUSTOMIZE_ROWS: Row[] = [
   row({ id: "customize.helpers.model", card: HELPERS, label: "Helpers’ model", help: "A Trunk’s helpers can use a cheaper or stronger model, and their own account.", level: 1, control: "custom", source: slot(["models.list", "config.patch"], "Choosing the helpers’ model comes in a later update.") }),
   row({ id: "customize.helpers.connectors", card: HELPERS, label: "Helpers get the connectors", help: "Off: helpers get the Trunk’s tools minus connectors. They never get more than the Trunk.", level: 1, control: "toggle", source: no("a helpers' connectors switch") }),
   row({ id: "customize.helpers.start", card: HELPERS, label: "New helpers start with", help: "A copy of the conversation gives a helper everything said so far.", level: 1, control: "segmented", options: opts("The task only", "A copy of the conversation"), fallback: "The task only",
-    source: no("what new helpers start with") }),
+    source: no("what new helpers start with", "Only helpers tied to a chat thread have this choice in this engine.") }),
   row({ id: "customize.helpers.use", card: HELPERS, label: "Helpers use", help: "Their own: the model set in each specialist.", level: 1, control: "segmented", options: opts("The Trunk’s model", "Their own"), fallback: "The Trunk’s model",
-    source: no("which model helpers use") }),
+    source: no("which model helpers use", "Set with Helpers’ model above.") }),
   row({ id: "customize.helpers.stronger", card: HELPERS, label: "Ask a stronger model on hard calls", help: "Off until you choose: it spends a call on a bigger model.", level: 1, control: "toggle", source: no("a stronger-model switch") }),
   row({ id: "customize.helpers.plan", card: HELPERS, label: "Plan first on long tasks", help: "Off until you choose: an extra planning call on long tasks.", level: 1, control: "toggle", source: no("a plan-first switch") }),
   row({ id: "customize.helpers.plan-yes", card: HELPERS, label: "Wait for my yes on the plan", help: "Off until you choose: it adds a wait for your go-ahead.", level: 1, control: "toggle", source: no("a plan approval switch") }),
   row({ id: "customize.helpers.check", card: HELPERS, label: "Check the answer before saying done", help: "A second look compares the answer with what was asked. Off until you choose: a reviewer call on every answer.", level: 1, control: "toggle", source: no("a reviewer switch") }),
   row({ id: "customize.helpers.a2a", card: HELPERS, label: "Trunks message each other", help: "A Trunk can ask another and wait for the answer. A chain stops after three hops.", level: 1, control: "toggle", fallback: true, source: { kind: "config", path: "tools.agentToAgent.enabled" } }),
-  row({ id: "customize.helpers.protocol", card: HELPERS, label: "Take work over the agent protocol", help: "Other agents can send Branch tasks. Off until you choose: an outside program hands Branch work.", level: 1, control: "custom", source: slot(["plugins.list", "config.patch"], "Taking work over the agent protocol comes in a later update.") }),
+  row({ id: "customize.helpers.protocol", card: HELPERS, label: "Take work over the agent protocol", help: "Other agents can send Branch tasks. Off until you choose: an outside program hands Branch work.", level: 1, control: "custom", source: slot(["plugins.list", "config.patch"], "Its plugin isn’t installed in this engine.") }),
   row({ id: "customize.helpers.outside", card: HELPERS, label: "Who may call your Trunks from outside", help: "Careful and Strict ask you about strangers; Open answers anyone who signs their request.", level: 1, control: "segmented", options: opts("Nobody", "Strict", "Careful", "Open"), fallback: "Nobody", source: no("who may call Trunks from outside") }),
   row({ id: "customize.helpers.lent-tools", card: HELPERS, label: "Tools lent by a connected program", help: "Off until you choose: an outside program lends tools.", level: 1, control: "toggle", source: no("a lent tools switch") }),
   row({ id: "customize.helpers.carry", card: HELPERS, label: "Carry a conversation on somewhere else", help: "Hands a conversation, with its history, to another assistant. Off until you choose: it sends to others.", level: 1, control: "toggle", source: no("a hand-over switch") }),
@@ -100,10 +99,10 @@ export const CUSTOMIZE_ROWS: Row[] = [
   row({ id: "customize.what.gitlab", card: WHAT, label: "GitLab", help: "Issues and merge requests, like the GitHub connection. Turns on when a GitLab account is connected.", level: 1, control: "toggle", source: no("a GitLab switch") }),
   row({ id: "customize.what.home", card: WHAT, label: "Smart home", help: "Lights, heating and sensors through Home Assistant. Turns on when Home Assistant is connected.", level: 1, control: "toggle", source: no("a smart home switch") }),
   row({ id: "customize.what.sources", card: WHAT, label: "Numbered sources you can check", help: "Each claim in a brief has a number that opens the passage it came from.", level: 1, control: "button", button: "See an example",
-    source: { kind: "coming", need: "engine: research briefs", reason: "Numbered sources come in a later update." } }),
+    source: { kind: "coming", need: "engine: research briefs", reason: "Needs the engine’s research briefs." } }),
 
   row({ id: "customize.allow.connect", card: ALLOW, label: "Let agents connect", help: "Off disconnects every agent right away.", level: 0, control: "toggle", source: slot(["contacts.outside.list", "contacts.outside.set"], "Letting agents connect comes in a later update.") }),
-  row({ id: "customize.allow.window", card: ALLOW, label: "Let agents use this window", help: "An agent with permission can click and read Branch’s own screens, for testing. Each agent still needs its own switch below.",
+  row({ id: "customize.allow.window", card: ALLOW, label: "Let agents use this window", help: "An agent with permission can click and read Branch’s own screens, for testing. Each agent still needs its own switch below. Takes effect the next time Branch starts.",
     level: 0, control: "toggle", fallback: false, source: { kind: "desktop", name: "agentControl" } }),
 
   row({ id: "customize.connect.branch-command", card: CONNECT, label: "Type branch in any terminal", help: "Needed for these lines: adds the branch command.", level: 0, control: "toggle", fallback: false, source: { kind: "desktop", name: "branchOnPath" } }),

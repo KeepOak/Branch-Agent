@@ -9,6 +9,7 @@ import { Btn, Ctl, Field, Hint, Pick, Sec, Switch, useSaveRunner, type Opt } fro
 import { CATEGORY_KEYS, agentIdsOf, detailOf, normalizeQuiet, type CategoryKey, type Detail, type Quiet } from "./notifications-prefs";
 import { shownWhy } from "../../../shell/shown-why";
 import { noticesHereOn, setNoticesHere } from "../../../shell/notify";
+import { stalledRead } from "../stall";
 
 export type DevicePrefs = { enabled: boolean; label: string; categories?: Partial<Record<CategoryKey, boolean>>; detailLevel?: Detail; quietHours?: Quiet; agentIds?: string[] };
 type Perm = NotificationPermission | "unsupported";
@@ -75,7 +76,7 @@ export function useWebPush(engine: WindowEngine) {
     const base = facts();
     try {
       const { reg, sub } = await current();
-      const device = sub ? normalizeDevice(record(await engine.request("push.web.preferences.get", { endpoint: sub.endpoint })).device) : null;
+      const device = sub ? normalizeDevice(record(await stalledRead(engine.request("push.web.preferences.get", { endpoint: sub.endpoint }))).device) : null;
       latest.current = device;
       setState({ ...base, reg, sub, device, loading: false });
     } catch (error) {
@@ -132,6 +133,34 @@ function systemSettings(): string {
   return /Windows/.test(userAgent) ? "Windows Settings" : /Macintosh|Mac OS X/.test(userAgent) ? "System Settings" : "your system settings";
 }
 
+/** How long a test notice gets to say it showed before Branch says it can't tell (B-058). */
+export const TEST_WAIT_MS = 4000;
+export const TEST_SENDING = "Sending a test notification…";
+export type TestResult = "shown" | "error" | "silent";
+
+/** Shows the test notice and waits for this computer to say it showed it, refused it, or nothing. */
+export function showTestNotice(make: (title: string, opts: NotificationOptions) => Notification = (title, opts) => new Notification(title, opts)): Promise<TestResult> {
+  return new Promise((resolve) => {
+    let notice: Notification;
+    try {
+      notice = make("Branch", { body: "Notifications are working on this computer.", tag: "branch-test" });
+    } catch {
+      resolve("error");
+      return;
+    }
+    const timer = setTimeout(() => resolve("silent"), TEST_WAIT_MS);
+    notice.onshow = () => { clearTimeout(timer); resolve("shown"); };
+    notice.onerror = () => { clearTimeout(timer); resolve("error"); };
+  });
+}
+
+/** What the row says after a test: what happened, in plain words, and what to do when nothing showed. */
+export function testLine(result: TestResult, settings: string): string {
+  if (result === "shown") return "Sent. It shows in the corner of your screen, or in your notification list.";
+  if (result === "error") return `This computer didn’t show it. Open ${settings} and allow notifications for Branch.`;
+  return `Sent, but this computer didn’t say it showed it. If you didn’t see it, open ${settings} and allow notifications for Branch, and check Do Not Disturb is off.`;
+}
+
 /** Desktop app: this computer's own notices, through the window's Notification API (no service worker needed). */
 export function DesktopNotices() {
   const [perm, setPerm] = useState<Perm>(() => facts().permission);
@@ -148,12 +177,8 @@ export function DesktopNotices() {
     setOn(next);
   };
   const test = () => {
-    try {
-      new Notification("Branch", { body: "Notifications are working on this computer." });
-      setLine("Sent.");
-    } catch {
-      setLine("Branch couldn’t show a notification here.");
-    }
+    setLine(TEST_SENDING);
+    void showTestNotice().then((result) => setLine(testLine(result, systemSettings())));
   };
   const live = on && perm === "granted";
   return (

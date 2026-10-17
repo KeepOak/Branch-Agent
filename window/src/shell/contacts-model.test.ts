@@ -18,6 +18,9 @@ describe("Gateway contact projection", () => {
     expect(contactRowsFor([], true, [trunk], [], "agent:main:main", true)).toEqual([]);
     expect(contactRowsFor([], false, [trunk], [], "agent:main:main", false)).toEqual([]);
     expect(contactRowsFor([], false, [trunk], [], "agent:main:main", true).map((c) => c.id)).toEqual(["trunk:main"]);
+    // The engine names the default Trunk "main" when it has no name of its own: the rail row reads Sapling.
+    const gateway = [{ id: "trunk:main", kind: "trunk", name: "main", threadKey: "agent:main:main", lastActivityAt: 0 }] as unknown as Parameters<typeof contactRowsFor>[0];
+    expect(contactRowsFor(gateway, true, [], [], "agent:main:main", false).map((c) => c.name)).toEqual(["Sapling"]);
     expect(contactRowsFor([], true, [], [], "agent:main:main", true, trunk).map((c) => c.id)).toEqual(["trunk:main"]);
   });
   it("shows each Trunk as a contact before its first conversation or contacts projection", () => {

@@ -1,4 +1,5 @@
 // People place: reads of the engine's people, presence and conversations, kept as plain projections.
+import { trunkDisplayName } from "../../connect/trunk-name";
 // Shapes follow engine/packages/gateway-protocol/src/schema/{users,snapshot,sessions-row,devices}.ts.
 export type Rec = Record<string, unknown>;
 export const rec = (v: unknown): Rec => v !== null && typeof v === "object" && !Array.isArray(v) ? v as Rec : {};
@@ -98,7 +99,7 @@ export function ownerCounts(value: unknown): OwnerCount[] {
 
 /** Agent names from agents.list, so a run card can name its Trunk. */
 export function trunkNames(value: unknown): Map<string, string> {
-  return new Map(recs(rec(value).agents).map(a => [str(a.id), str(rec(a.identity).name) || str(a.name) || str(a.id)]));
+  return new Map(recs(rec(value).agents).map(a => [str(a.id), trunkDisplayName(a)]));
 }
 
 /** Role names the engine accepts for users.setRole: the keys of gateway.roles.definitions (config.get). */

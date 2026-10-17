@@ -8,7 +8,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { forgetLookStore } from "../../../places/settings/set1/appearance-store";
 import { CLASSIC_PAGE, r1SettingsPage } from "../../frame/R1Window";
-import { PAGES } from "../nav";
+import { PAGES, regularHub } from "../nav";
 import { SettingsFrame } from "../SettingsFrame";
 import { R1_PAGES } from "./plugged";
 
@@ -22,9 +22,12 @@ const AGENTS = { enabled: true, agents: [
   { id: "claude-code-a1b2c3", name: "Claude Code", where: "This computer", online: true, lastSeenAt: 1, revoked: false, mayDriveWindow: true },
   { id: "codex-d4e5f6", name: "Codex", online: false, lastSeenAt: 1, revoked: false, mayDriveWindow: false },
 ] };
-function engineOf(extra: Record<string, unknown> = {}) {
-  const request = vi.fn(async (method: string) => {
-    if (method in extra) return extra[method];
+function engineOf(extra: Record<string, unknown> = {}, features?: { methods: string[] }) {
+  const request = vi.fn(async (method: string, params?: unknown) => {
+    if (method in extra) {
+      const value = extra[method];
+      return typeof value === "function" ? (value as (params?: unknown) => unknown)(params) : value;
+    }
     if (method === "config.get") return { hash: "h1", valid: true, config: {} };
     if (method === "config.patch") return { ok: true };
     if (method === "config.schema") return { schema: {}, uiHints: {} };
@@ -35,7 +38,7 @@ function engineOf(extra: Record<string, unknown> = {}) {
     if (method === "skills.library.list") return { entries: [{ skillId: "s1", slug: "brief", description: "Write a one-page brief on {{topic}} with numbered sources." }] };
     return {};
   });
-  return { engine: { request, onEvent: () => () => undefined, sessionKey: "s", scopes: ["operator.admin"] } as unknown as WindowEngine, request };
+  return { engine: { request, onEvent: () => () => undefined, sessionKey: "s", scopes: ["operator.admin"], ...(features ? { features } : {}) } as unknown as WindowEngine, request };
 }
 async function mount(engine: WindowEngine, level: "regular" | "advanced" | "technical", onAsk?: (text: string) => void) {
   localStorage.setItem("branch.level", level);
@@ -58,7 +61,8 @@ it("draws the preview's Customize cards in order at each level", async () => {
   expect(host.querySelector("[data-testid=customize-hub]")).not.toBeNull();
   await act(async () => root.unmount()); root = createRoot(host); forgetLookStore();
   await mount(engine, "advanced");
-  expect(cards()).toEqual(["", "Saved prompts", "Tools and skills", "Skills", "Helpers and other agents", "What it can do", "Allow", "Connected agents", "Connect an agent", "Another Branch"]);
+  // Skills is all later-update rows: it shows with every Coming row, at Technical (Private #1093 item 4).
+  expect(cards()).toEqual(["", "Saved prompts", "Tools and skills", "Helpers and other agents", "What it can do", "Allow", "Connected agents", "Connect an agent", "Another Branch"]);
   await act(async () => root.unmount()); root = createRoot(host); forgetLookStore();
   await mount(engine, "technical");
   expect(cards()).toEqual(["", "Saved prompts", "Tools and skills", "Skills", "Plugins", "Helpers and other agents", "What it can do", "Allow", "Connected agents", "Connect an agent", "Another Branch"]);
@@ -76,14 +80,17 @@ it("draws the kinds hub in the preview's order and words, with For:", async () =
 it("uses the preview's row words in each card", async () => {
   await mount(engineOf().engine, "technical");
   expect(labels("Customize")).toEqual(["Pinned skills", "Signed packages only", "Search back end"]);
-  expect(labels("Tools and skills")).toEqual(["Your own tools from files", "Find tools with a command", "Run connector programs on Branch’s own Node.js", "Python service", "Check a skill is ready first",
-    "Only signed skill packages", "Check install requests for malware", "Search the web", "Web search", "Web search details", "Search X", "Video tools", "Let plugins add their own views", "Connector app views"]);
-  expect(labels("Skills")).toEqual(["Start a skill by itself when it clearly fits", "Run !`command` lines in skills", "Where new skills are saved", "Always read in full", "Extra skill folders", "Built-in skills to offer",
-    "Pick up skill changes by themselves", "Install skills with", "Every skill setting"]);
+  // Working rows stay in preview order. Later-update rows fold after them (LaterRows), still in their own order.
+  expect(labels("Tools and skills")).toEqual(["Search the web", "Web search", "Web search details", "Search X", "Let plugins add their own views", "Connector app views",
+    "Your own tools from files", "Find tools with a command", "Run connector programs on Branch’s own Node.js", "Python service", "Check a skill is ready first",
+    "Only signed skill packages", "Check install requests for malware", "Video tools"]);
+  expect(labels("Skills")).toEqual(["Extra skill folders", "Built-in skills to offer", "Pick up skill changes by themselves", "Install skills with", "Every skill setting",
+    "Start a skill by itself when it clearly fits", "Run !`command` lines in skills", "Where new skills are saved", "Always read in full"]);
   expect(labels("Plugins")).toEqual(["Load plugins", "Only these plugins", "Never these plugins", "Extra plugin folders", "Memory engine", "Context engine"]);
-  expect(labels("Helpers and other agents")).toEqual(["Helpers’ model", "Helpers get the connectors", "New helpers start with", "Helpers use", "Ask a stronger model on hard calls", "Plan first on long tasks",
-    "Wait for my yes on the plan", "Check the answer before saying done", "Trunks message each other", "Take work over the agent protocol", "Who may call your Trunks from outside", "Tools lent by a connected program",
-    "Carry a conversation on somewhere else", "Look after several assistants at once", "Other computers running Branch, side by side", "Trunks on other computers", "Helpers at once", "When every helper slot is busy", "Waiting line", "Wait at most"]);
+  expect(labels("Helpers and other agents")).toEqual(["Helpers’ model", "Trunks message each other", "Take work over the agent protocol", "Look after several assistants at once", "Helpers at once",
+    "Helpers get the connectors", "New helpers start with", "Helpers use", "Ask a stronger model on hard calls", "Plan first on long tasks",
+    "Wait for my yes on the plan", "Check the answer before saying done", "Who may call your Trunks from outside", "Tools lent by a connected program",
+    "Carry a conversation on somewhere else", "Other computers running Branch, side by side", "Trunks on other computers", "When every helper slot is busy", "Waiting line", "Wait at most"]);
   expect(labels("What it can do")).toEqual(["Read links you paste", "Deep research reports", "Edit documents exactly", "Tables and charts from spreadsheets", "GitLab", "Smart home", "Numbered sources you can check"]);
   expect(labels("Allow")).toEqual(["Let agents connect", "Let agents use this window"]);
   expect(labels("Connect an agent")[0]).toBe("Type branch in any terminal");
@@ -97,10 +104,7 @@ it("keeps every working Classic Connected agents control: the switch, each agent
   expect(agents.map((a) => a.dataset.agent)).toEqual(["claude-code-a1b2c3", "codex-d4e5f6"]);
   expect(agents[0].textContent).toContain("May talk to Sapling · may use this window");
   await act(async () => { [...agents[0].querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Permissions")!.click(); });
-  expect(agents[0].textContent).toContain("Trunks it may talk to");
-  expect(agents[0].querySelector('[data-row="customize.agents.claude-code-a1b2c3.main"] b')?.textContent).toBe("Sapling");
-  expect(agents[0].textContent).toContain("Online · This computer");
-  expect(agents[0].textContent).not.toMatch(/Online now|Not seen yet|May message/);
+  expect(agents[0].textContent).toContain("May message Sapling");
   const off = host.querySelector<HTMLButtonElement>('[data-row="customize.allow.connect"] [role=switch]')!;
   expect(off.getAttribute("aria-checked")).toBe("true");
   await act(async () => { off.click(); await new Promise((r) => setTimeout(r, 0)); });
@@ -117,4 +121,88 @@ it("lists saved prompts with Try it, sent to the default Trunk", async () => {
   expect(card.textContent).toContain("/brief");
   await act(async () => { [...card.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Try it")!.click(); });
   expect(onAsk).toHaveBeenCalledWith("/brief");
+});
+
+const typeInto = async (input: HTMLInputElement, value: string) => {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+};
+
+it("keeps All chosen in the For group and shows the open kind in the summary", async () => {
+  await mount(engineOf().engine, "regular");
+  const hub = host.querySelector<HTMLElement>("[data-testid=customize-hub]")!;
+  const group = hub.querySelector<HTMLElement>('[role="group"][aria-label="For:"]')!;
+  const chip = (name: string) => [...group.querySelectorAll("button")].find((b) => b.textContent === name)!;
+  expect(chip("All").getAttribute("aria-pressed")).toBe("true");
+  const summary = () => hub.querySelector("[data-testid=hub-summary]")!.textContent ?? "";
+  expect(summary()).toContain("Skills");
+  expect(summary()).toContain("All");
+  expect(hub.querySelector(".t9-addbtn")).toBeNull();
+  await act(async () => { chip("Sapling").click(); });
+  expect(chip("Sapling").getAttribute("aria-pressed")).toBe("true");
+  expect(chip("All").getAttribute("aria-pressed")).toBe("false");
+  expect(summary()).toContain("Sapling");
+  const connectors = hub.querySelector<HTMLButtonElement>('[data-kind="Connectors"]')!;
+  expect(connectors.getAttribute("aria-pressed")).toBe("false");
+  await act(async () => { connectors.click(); });
+  expect(connectors.getAttribute("aria-pressed")).toBe("true");
+  expect(summary()).toContain("Connectors");
+  expect(summary()).toContain("Sapling");
+});
+
+it("adds a folder once a name is typed, and leaves an empty Add off", async () => {
+  let config: Record<string, unknown> = {};
+  const { engine, request } = engineOf({
+    "config.get": () => ({ hash: "h1", valid: true, config }),
+    "config.patch": (params: unknown) => {
+      config = JSON.parse((params as { raw: string }).raw) as Record<string, unknown>;
+      return { ok: true, hash: "h2", config };
+    },
+  });
+  await mount(engine, "technical");
+  const rowOf = (id: string) => host.querySelector<HTMLElement>(`[data-row="${id}"]`)!;
+  const addIn = (id: string) => [...rowOf(id).querySelectorAll("button")].find((b) => b.textContent === "Add")!;
+  for (const id of ["customize.skills.bundled", "customize.plugins.allow", "customize.plugins.deny", "customize.plugins.paths"]) {
+    expect(addIn(id).disabled).toBe(true);
+    expect(addIn(id).title).toBe("Type a name, then add it.");
+  }
+  const row = rowOf("customize.skills.extra-dirs");
+  const input = row.querySelector("input")!;
+  const addFolder = [...row.querySelectorAll("button")].find((b) => b.textContent === "Add a folder")!;
+  expect(addFolder.disabled).toBe(true);
+  expect(addFolder.title).toBe("Type a name, then add it.");
+  await typeInto(input, "notes");
+  expect(addFolder.disabled).toBe(false);
+  expect(addFolder.title).toBe("");
+  await act(async () => { addFolder.click(); for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0)); });
+  const raw = request.mock.calls.filter(([method]) => method === "config.patch").map(([, params]) => JSON.parse((params as { raw: string }).raw));
+  expect(raw).toContainEqual({ skills: { load: { extraDirs: ["notes"] } } });
+  expect(row.textContent).toContain("notes");
+  expect(addFolder.disabled).toBe(true);
+});
+
+it("greys Let agents connect when this engine does not offer the call", async () => {
+  const { engine, request } = engineOf({}, { methods: ["config.get", "agents.list"] });
+  await mount(engine, "regular");
+  const off = host.querySelector<HTMLButtonElement>('[data-row="customize.allow.connect"] [role=switch]')!;
+  expect(off.getAttribute("aria-disabled")).toBe("true");
+  expect(off.title).toBe("Let agents connect comes in a later update.");
+  await act(async () => { off.click(); await new Promise((r) => setTimeout(r, 0)); });
+  expect(request.mock.calls.some(([method]) => method === "contacts.outside.set")).toBe(false);
+});
+
+it("sits on Regular's General page with the other Trunk pages, reached under Advanced there", async () => {
+  // preview.html puts graftsT5 and czP17 (both Customize) in Your Trunks, beside Trunks, Instructions, Voice and Chat apps.
+  const hub = regularHub("customize");
+  expect(hub?.title).toBe("General");
+  for (const id of ["trunks", "instructions", "voice", "chatapps"] as const) expect(regularHub(id)?.title).toBe("General");
+  const { engine } = engineOf();
+  await mount(engine, "regular");
+  expect(host.querySelector(".r1s-nav[aria-current=page]")?.getAttribute("data-hub")).toBe("General");
+  expect(host.querySelector(".r1s-head h1")?.textContent).toBe(PAGES.customize.title);
+  const jump = host.querySelector<HTMLElement>('.r1s-advanced [data-page="customize"]');
+  expect(jump?.getAttribute("aria-current")).toBe("true");
+  expect(jump?.textContent).toBe("Customize");
 });

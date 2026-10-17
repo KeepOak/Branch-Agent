@@ -2,10 +2,12 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
+import { trunkDisplayName } from "../../connect/trunk-name";
+import { STALL_TEXT, stallAfter } from "../settings/stall";
 export type Trunk = { id: string; name?: string; identity?: { name?: string; emoji?: string; theme?: string; avatar?: string; avatarUrl?: string }; createdVia?: string; workspace?: string; model?: { primary?: string } };
 export type Trunks = { agents: Trunk[]; defaultId: string; mainKey: string };
 export type FileEntry = { name: string; path: string; kind?: "file" | "directory"; size?: number; missing?: boolean; hash?: string; content?: string; encoding?: string; mimeType?: string };
-export function trunkName(t: Trunk) { return t.identity?.name || t.name || t.id; }
+export function trunkName(t: Trunk) { return trunkDisplayName(t); }
 export function errorText(error: unknown) { return error instanceof Error ? error.message : String(error); }
 /** A generation belongs to one screen/selection. Late results never replace a new selection. */
 export class RequestGeneration {
@@ -20,11 +22,17 @@ export function useResource<T>(engine: WindowEngine, method: string | null, para
   const reload = useCallback(() => setRevision(n => n + 1), []);
   useEffect(() => {
     let current = true;
+    let stop: () => void = () => undefined;
     setState({ data: null, loading: !!method, error: null });
-    if (method) void engine.request<T>(method, JSON.parse(key)).then(data => {
-      if (current) setState({ data, loading: false, error: null });
-    }, error => { if (current) setState({ data: null, loading: false, error: errorText(error) }); });
-    return () => { current = false; };
+    if (method) {
+      // No answer by the stall deadline says so; a late answer still replaces that line.
+      stop = stallAfter(() => { if (current) setState(s => (s.data === null ? { data: null, loading: false, error: STALL_TEXT } : s)); });
+      void engine.request<T>(method, JSON.parse(key)).then(data => {
+        stop();
+        if (current) setState({ data, loading: false, error: null });
+      }, error => { stop(); if (current) setState({ data: null, loading: false, error: errorText(error) }); });
+    }
+    return () => { current = false; stop(); };
   }, [engine, method, key, revision]);
   return { ...state, reload };
 }

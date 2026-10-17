@@ -5,6 +5,8 @@ import { ConversationList, type ConversationsSnapshot } from "../connect/convers
 import type { SaplingSession } from "../connect/session";
 import type { Contact } from "@branch/gateway-protocol";
 import { NO_PEOPLE, type ListPeople } from "./list-model";
+import { trunkDisplayName } from "../connect/trunk-name";
+import { rememberHostnames } from "./plain-address";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -47,7 +49,7 @@ export function useContacts(session: SaplingSession, ready: boolean): [Contact[]
     const load = () => {
       const current = ++generation;
       void session.request<{ contacts: Contact[] }>("contacts.list", { includeArchived: true }).then(
-        (result) => { if (current === generation) { setContacts(result.contacts); setLoaded(true); } },
+        (result) => { if (current === generation) { setContacts(Array.isArray(result?.contacts) ? result.contacts : []); setLoaded(true); } },
         (error: unknown) => console.warn("contacts.list failed", error),
       );
     };
@@ -88,10 +90,10 @@ export function readTrunks(result: unknown): Trunks {
     : undefined;
   return {
     defaultId,
-    ...(bootstrap ? { bootstrapDefault: { id: str(bootstrap.id), name: str(rec(bootstrap.identity).name) || str(bootstrap.name) || str(bootstrap.id), isDefault: true } } : {}),
+    ...(bootstrap ? { bootstrapDefault: { id: str(bootstrap.id), name: trunkDisplayName(bootstrap), isDefault: true } } : {}),
     list: agents.map((a) => ({
       id: str(a.id),
-      name: str(rec(a.identity).name) || str(a.name) || str(a.id),
+      name: trunkDisplayName(a),
       isDefault: str(a.id) === defaultId || a.default === true,
       avatar: str(rec(a.identity).avatar) || str(a.avatar) || undefined,
       emoji: str(rec(a.identity).emoji) || undefined,
@@ -173,7 +175,13 @@ export function useMachine(session: SaplingSession, ready: boolean): MachineInfo
       return;
     }
     session.request("system.info", {}).then(
-      (r) => setInfo({ name: str(rec(r).machineName) || str(rec(r).hostname) }),
+      (r) => {
+        // The hostname never shows in a toast or banner at Regular (on Linux machineName is the hostname too); a name the
+        // person gave the computer, like a Mac's computer name, still does.
+        const hostname = str(rec(r).hostname);
+        rememberHostnames(hostname, hostname.split(".")[0]);
+        setInfo({ name: str(rec(r).machineName) || str(rec(r).hostname) });
+      },
       (error: unknown) => console.warn("system.info failed", error),
     );
   }, [session, ready]);

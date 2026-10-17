@@ -9,13 +9,14 @@ import { comingControls } from "../../../glass/coming-registry";
 import { SettingsPage, SETTINGS_ROWS } from "../../../places/settings";
 import { KitProvider } from "../../../places/settings/kit";
 import { ROWS as COMPUTER_ROWS, partRows } from "../../../places/settings/set2/computer-more";
-import { PAGES, pageFor, sectionNeed } from "../nav";
+import { PAGES, sectionNeed } from "../nav";
 import { ROWS } from "../rows";
 import { searchSettings } from "../search";
 import { mergeRows } from "../slots";
 import { SECTION_COMING, SettingsFrame } from "../SettingsFrame";
-import { ADMIN_ONLY, classicList } from "./classic-host";
+import { classicList } from "./classic-host";
 import { COMING, R1_PAGES, REHOSTED } from "./plugged";
+import { TOWN_ROWS } from "./privacy-town";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root, host: HTMLDivElement;
@@ -38,7 +39,7 @@ const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50
 
 it("re-hosts exactly these Classic pages", () => {
   expect(REHOSTED).toEqual({
-    who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
+    notifications: "notifications",
     browser: "computer-browser",
     coding: "computer-coding",
     models: "models",
@@ -61,22 +62,6 @@ for (const [page, classic] of Object.entries(REHOSTED)) {
     expect(drawn(hosted!)).toEqual(before);
   });
 }
-
-it("keeps Sign-ins & keys empty without operator.admin, as Classic hides it, and says why", async () => {
-  await act(async () => root.render(<SettingsFrame engine={engine(["operator.read"])} page="signins" pages={R1_PAGES} />));
-  await settle();
-  const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="signins"] .r1s-classic[data-classic="secrets"]')!;
-  expect(hosted.textContent).toContain(ADMIN_ONLY);
-  expect(drawn(hosted)).toEqual({ sections: [], rows: [] });
-});
-
-it("keeps Classic Achievements on Updates & about, the R1 page an achievements link opens", async () => {
-  expect(pageFor("achievements")).toBe("updates");
-  await act(async () => root.render(<SettingsFrame engine={engine()} page="updates" pages={R1_PAGES} />));
-  await settle();
-  const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="updates"] .r1s-classic[data-classic="updates achievements"]')!;
-  expect(hosted.textContent).toContain("Keep achievements quiet");
-});
 
 it("splits Classic Computer & browser between Browser & screen, Coding and Devices, each of its sections on exactly one", () => {
   const key = (r: { title: string; sec?: string }) => `${r.sec} › ${r.title}`;
@@ -122,13 +107,24 @@ it("draws each Browser & screen and Coding card no Classic control has yet as Co
   }
 });
 
+it("leaves out the Browser & screen and Coding cards that are all Coming at Regular, and keeps every working Classic section", async () => {
+  localStorage.setItem("branch.level", "regular");
+  for (const page of ["browser", "coding"] as const) {
+    await act(async () => root.render(<SettingsFrame key={page} engine={engine()} page={page} pages={R1_PAGES} />));
+    await settle();
+    expect(host.querySelector(`.r1s-custom[data-slot="${page}"] .r1s-classic`), page).not.toBeNull();
+    expect(host.querySelectorAll(".r1s-classic-coming").length, page).toBe(0);
+    expect(host.textContent, page).not.toContain("comes to this page in a later update");
+  }
+});
+
 it("keeps Models' Local tab on the R1 Models page and sends its Accounts tab to the R1 Accounts page", async () => {
   const onPage = vi.fn();
   await act(async () => root.render(<SettingsFrame engine={engine()} page="models" pages={R1_PAGES} onPage={onPage} />));
   await settle();
   const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="models"] .r1s-classic[data-classic="models"]')!;
   const tab = (name: string) => [...hosted.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) => b.textContent === name)!;
-  expect([...hosted.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(["Accounts", "Default", "Local", "Second opinion (a second model checks answers)", "Media"]);
+  expect([...hosted.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(["Accounts", "Default", "Local", "Double-check", "Media"]);
   await act(async () => tab("Local").click());
   await settle();
   expect(onPage).not.toHaveBeenCalled();
@@ -152,7 +148,8 @@ it("adds each re-hosted page's Classic rows to the R1 table, so R1 search finds 
   for (const [page, classic] of Object.entries(REHOSTED)) {
     const titles = new Set(SETTINGS_ROWS.filter((r) => classicList(classic).includes(r.page)).map((r) => r.title));
     expect(titles.size, classicList(classic).join(" ")).toBeGreaterThan(0);
-    expect(new Set(merged.filter((r) => r.page === page).map((r) => r.label))).toEqual(titles);
+    const extra = page === "privacy" ? TOWN_ROWS.map((row) => row.label) : [];
+    expect(new Set(merged.filter((r) => r.page === page).map((r) => r.label))).toEqual(new Set([...titles, ...extra]));
     const first = [...titles][0]!;
     const hits = searchSettings(first, { level: 2, hints: {}, rows: merged }).settings;
     expect(hits.some((hit) => hit.kind === "row" && hit.page === page), `${page}: ${first}`).toBe(true);

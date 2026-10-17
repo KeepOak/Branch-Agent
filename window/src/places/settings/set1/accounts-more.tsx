@@ -9,7 +9,7 @@ import { Btn, Ctl, Empty, Pick, Pill, Sec, Seg, Switch, Val, useLevel, useSaveRu
 import { accountName, providersOf, type Account, type Provider } from "./accounts";
 import { Logo, serviceName } from "./service";
 
-type Props = { engine: WindowEngine; providers: Provider[]; all: Account[]; reload: () => Promise<void>; agent: { agentId?: string }; openSettings?: (page: string) => void };
+type Props = { engine: WindowEngine; providers: Provider[]; all: Account[]; reload: () => Promise<unknown>; agent: { agentId?: string }; openSettings?: (page: string) => void };
 const NO_KEY = "Branch has no setting for this yet.";
 
 export function AccountsMore(props: Props) {

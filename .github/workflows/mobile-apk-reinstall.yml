@@ -1,0 +1,121 @@
+name: Mobile APK reinstall
+
+# Real `adb install -r` on an Android emulator: build vN, write pairing/chat/settings,
+# build vN+1 with the same throwaway CI test key, reinstall, and assert the state survived.
+# Path-filtered so desktop and window PRs do not start it.
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-apk-reinstall.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-apk-reinstall.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-apk-reinstall-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  reinstall:
+    name: Android APK reinstall
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          gradle-version: '8.11.1'
+          cache-read-only: false
+          add-job-summary: never
+
+      - name: Check the reinstall contract
+        run: node --test mobile/scripts/apk-reinstall-survives.test.mjs
+
+      - name: Set up the Android SDK
+        run: |
+          set -euo pipefail
+          ANDROID_SDK_ROOT="$HOME/.android-sdk"
+          CMDLINE_TOOLS_VERSION="15859902"
+          CMDLINE_TOOLS_SHA256="4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583"
+          ARCHIVE="commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip"
+          URL="https://dl.google.com/android/repository/${ARCHIVE}"
+          if [[ ! -x "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" ]]; then
+            mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"
+            curl -fsSL --connect-timeout 10 --max-time 300 "${URL}" -o "${RUNNER_TEMP}/${ARCHIVE}"
+            printf '%s  %s\n' "${CMDLINE_TOOLS_SHA256}" "${RUNNER_TEMP}/${ARCHIVE}" | sha256sum --check -
+            rm -rf "${ANDROID_SDK_ROOT}/cmdline-tools/latest"
+            unzip -q "${RUNNER_TEMP}/${ARCHIVE}" -d "${ANDROID_SDK_ROOT}/cmdline-tools"
+            mv "${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools" "${ANDROID_SDK_ROOT}/cmdline-tools/latest"
+          fi
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> "${GITHUB_ENV}"
+          echo "ANDROID_HOME=${ANDROID_SDK_ROOT}" >> "${GITHUB_ENV}"
+          echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> "${GITHUB_PATH}"
+          echo "${ANDROID_SDK_ROOT}/platform-tools" >> "${GITHUB_PATH}"
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --licenses >/dev/null || [[ "${PIPESTATUS[1]}" -eq 0 ]]
+          sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --install \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
+
+      - name: Build vN and vN+1 with the same throwaway CI test key
+        id: apk
+        run: node mobile/scripts/apk-reinstall-survives.mjs --build
+
+      - name: Enable KVM
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install vN, write state, install vN+1 with adb install -r
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          V1_APK: ${{ steps.apk.outputs.v1_apk }}
+          V2_APK: ${{ steps.apk.outputs.v2_apk }}
+        with:
+          api-level: 29
+          arch: x86_64
+          target: default
+          force-avd-creation: false
+          disable-animations: true
+          disable-linux-hw-accel: false
+          emulator-boot-timeout: 120
+          ram-size: 2048
+          cores: 2
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: node mobile/scripts/apk-reinstall-survives.mjs --adb-reinstall

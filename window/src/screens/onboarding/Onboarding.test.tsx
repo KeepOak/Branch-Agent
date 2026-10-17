@@ -7,7 +7,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { readDetected } from "../../setup/setup-model";
 import { readFileSync } from "node:fs";
-import { answeredBy, canSayHello, freshState, MODES, picked, primary, STEPS, suggest, togglePick } from "./model";
+import { answeredBy, canSayHello, freshState, greeting, MODES, picked, PLAN_FIRST_REASON, primary, STEPS, suggest, togglePick } from "./model";
 import { Onboarding } from "./Onboarding";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -28,6 +28,19 @@ function fakeEngine(answers: Answers, methods = ALL) {
 const calls = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter(([m]) => m === method).map(([, p]) => p);
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 const button = (host: HTMLElement, text: string) => [...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === text) as HTMLButtonElement;
+/** Onboarding from the start through a hello that worked, to the last step (Your first Trunk). */
+async function toLastStepWithHello(engine: WindowEngine) {
+  const shown = await show(engine);
+  await act(async () => button(shown.host, "Get started").click());
+  await flush();
+  await act(async () => button(shown.host, "Continue").click());
+  await act(async () => button(shown.host, "Say hello").click());
+  await flush();
+  await act(async () => button(shown.host, "Continue").click());
+  await act(async () => button(shown.host, "Continue").click());
+  await flush();
+  return shown;
+}
 async function show(engine: WindowEngine, props: Partial<Parameters<typeof Onboarding>[0]> = {}) {
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
@@ -52,6 +65,12 @@ describe("onboarding model", () => {
     expect(primary({ ...freshState(1), hello: { ok: true, seconds: "1.4", modelRef: "m" } }).ok).toBe(true);
     expect(primary(freshState(0)).label).toBe("Get started");
   });
+  it("uses the saved name in the first greeting, and still asks what to call you when there is none", () => {
+    expect(greeting("")).toContain("ask what to call me");
+    expect(greeting("  ")).toContain("ask what to call me");
+    expect(greeting("Ada")).toBe("Hi Ada! I just set you up. Say hello in a sentence, then ask what you’re working on right now.");
+    expect(greeting("Ada")).not.toContain("what to call");
+  });
   it("names the model that answered from the detected rows", () => {
     const d = readDetected(DETECT);
     expect(answeredBy(d, "anthropic/claude-opus")).toBe("Claude");
@@ -67,6 +86,7 @@ describe("Onboarding", () => {
     const { engine } = fakeEngine({});
     const { host, onLater } = await show(engine);
     expect(host.querySelector("h1")?.textContent).toBe("Hi, I’m Branch.");
+    expect(host.querySelector('input[aria-label="Your name"]')).not.toBeNull();
     expect(host.textContent).toContain("It asks before it sends, deletes, spends or installs anything.");
     expect(host.querySelector("input[type=checkbox]")).toBeNull();
     expect(host.querySelector("[role=progressbar]")?.getAttribute("aria-valuenow")).toBe("1");
@@ -138,7 +158,9 @@ describe("Onboarding", () => {
     const { engine, request } = fakeEngine({ "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true } });
     const { host, onAnswered } = await show(engine, { startAt: 2 });
     const radios = [...host.querySelectorAll("[role=radio]")] as HTMLButtonElement[];
-    expect(radios.map((r) => r.textContent)).toEqual(["Ask firstRecommended" + MODES[0].line, "Auto" + MODES[1].line, "Plan first" + MODES[2].line, "Read only" + MODES[3].line]);
+    expect(radios.map((r) => r.textContent)).toEqual(["Ask firstRecommended" + MODES[0].line, "Auto" + MODES[1].line, "Plan first" + MODES[2].line + PLAN_FIRST_REASON, "Read only" + MODES[3].line]);
+    expect(radios[2].getAttribute("title")).toBe(PLAN_FIRST_REASON);
+    expect(radios[2].querySelector(".r1-ob-why")?.textContent).toBe(PLAN_FIRST_REASON);
     expect(radios[0].getAttribute("aria-checked")).toBe("true");
     expect(host.querySelector(".r1-ob-hint")?.textContent).toBe("Change it any time in Settings › Permissions. Full access lives there too, one click away.");
     expect(radios.some((r) => r.textContent?.startsWith("Full access"))).toBe(false);
@@ -177,6 +199,27 @@ describe("Onboarding", () => {
 
 const LISTED = { templates: [{ id: "trunk-doctor", name: "Trunk Doctor", description: "" }, { id: "mention-monitor", name: "Mentions Watch", description: "" }, { id: "spend-saver", name: "Spend Saver", description: "" }, { id: "home-desk", name: "Home Desk", description: "" }] };
 const AGENTS = { defaultId: "sapling", mainKey: "main", agents: [{ id: "sapling", identity: { name: "Sapling" } }] };
+/** Answers for a hello that works: detection and a model call that answers. */
+const HELLO = { "branch.setup.detect": DETECT, "branch.setup.activate": { ok: true, modelRef: "anthropic/claude-opus", latencyMs: 1400 } };
+async function typeName(host: HTMLElement, value: string) {
+  const box = host.querySelector('input[aria-label="Your name"]') as HTMLInputElement;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  await act(async () => { setter.call(box, value); box.dispatchEvent(new Event("input", { bubbles: true })); });
+}
+/** Onboarding from Welcome, with a name when one is given, through a hello that worked. */
+async function toLastStepNamed(engine: WindowEngine, name: string) {
+  const shown = await show(engine);
+  await typeName(shown.host, name);
+  await act(async () => button(shown.host, "Get started").click());
+  await flush();
+  await act(async () => button(shown.host, "Continue").click());
+  await act(async () => button(shown.host, "Say hello").click());
+  await flush();
+  await act(async () => button(shown.host, "Continue").click());
+  await act(async () => button(shown.host, "Continue").click());
+  await flush();
+  return shown;
+}
 const textarea = (host: HTMLElement) => host.querySelector("textarea.r1-ob-text") as HTMLTextAreaElement;
 async function type(host: HTMLElement, value: string) {
   const box = textarea(host);
@@ -215,12 +258,36 @@ describe("Your first Trunk (step 4)", () => {
     expect(host.querySelector(".r1-ob-sug")?.textContent).toBe("Type a sentence and Branch suggests 1–3 Trunks.");
   });
 
+  it("saves the name on the profile and uses it in the first greeting", async () => {
+    const { engine, request } = fakeEngine({
+      ...HELLO, "users.self": { profile: { id: "owner-1" } }, "users.setDisplayName": { profile: { id: "owner-1", displayName: "Ada" } },
+      "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { runId: "r1" },
+    });
+    const { host } = await toLastStepNamed(engine, "Ada");
+    expect(calls(request, "users.setDisplayName")).toEqual([{ profileId: "owner-1", displayName: "Ada" }]);
+    await act(async () => button(host, "Start with Sapling").click());
+    await flush();
+    expect(calls(request, "chat.send")).toEqual([expect.objectContaining({ sessionKey: "agent:sapling:main", message: greeting("Ada") })]);
+  });
+
+  it("stays on Welcome when the profile refuses the name", async () => {
+    const { engine } = fakeEngine({ "users.self": { profile: { id: "owner-1" } }, "users.setDisplayName": new Error("name rejected") });
+    const { host, onLater } = await show(engine);
+    await typeName(host, "Ada");
+    await act(async () => button(host, "Get started").click());
+    await flush();
+    expect(host.querySelector("h1")?.textContent).toBe("Hi, I’m Branch.");
+    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t save your name. Try again in a moment.");
+    expect(host.textContent).not.toContain("name rejected");
+    expect(onLater).not.toHaveBeenCalled();
+  });
+
   it("Meet them creates the picked Trunks with the first-run contract, records setup and greets in the first one", async () => {
     const { engine, request } = fakeEngine({
-      "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { runId: "r1" },
+      ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { runId: "r1" },
       "trunks.template.create": (params: unknown) => ({ agentId: (params as { templateId: string }).templateId + "-1", name: "Made" }),
     });
-    const { host, onDone } = await show(engine, { startAt: 3 });
+    const { host, onDone } = await toLastStepWithHello(engine);
     await type(host, "I chase receipts and invoices");
     expect([...host.querySelectorAll(".r1-ob-pick b")].map((b) => b.textContent)).toEqual(["Spend Saver"]);
     await act(async () => (host.querySelector(".r1-ob-pick") as HTMLButtonElement).click());
@@ -230,7 +297,7 @@ describe("Your first Trunk (step 4)", () => {
     await flush();
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     expect(calls(request, "trunks.template.create")).toEqual([{ templateId: "spend-saver", timezone: zone }, { templateId: "home-desk", timezone: zone }]);
-    const patch = JSON.parse((calls(request, "config.patch")[0] as { raw: string }).raw);
+    const patch = JSON.parse((calls(request, "config.patch").at(-1) as { raw: string }).raw);
     expect(patch.wizard.lastRunAt).toEqual(expect.any(String));
     expect(calls(request, "chat.send")).toEqual([expect.objectContaining({ sessionKey: "agent:spend-saver-1:main", message: expect.stringContaining("ask what to call me") })]);
     expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ sessionKey: "agent:spend-saver-1:main", made: [expect.objectContaining({ agentId: "spend-saver-1" }), expect.objectContaining({ agentId: "home-desk-1" })] }));
@@ -239,10 +306,10 @@ describe("Your first Trunk (step 4)", () => {
   it("stays on step 4 with the engine's words when a Trunk can't be made, and never makes one twice", async () => {
     let fail = true;
     const { engine, request } = fakeEngine({
-      "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": {},
+      ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": {},
       "trunks.template.create": (params: unknown) => { const id = (params as { templateId: string }).templateId; if (id === "home-desk" && fail) throw new Error("disk full"); return { agentId: id + "-1" }; },
     });
-    const { host, onDone } = await show(engine, { startAt: 3 });
+    const { host, onDone } = await toLastStepWithHello(engine);
     await act(async () => button(host, "Spend Saver").click());
     await act(async () => button(host, "Home Desk").click());
     await act(async () => button(host, "Meet them").click());
@@ -259,8 +326,8 @@ describe("Your first Trunk (step 4)", () => {
   });
 
   it("stays on step 4 with the engine's words when the first message is refused, and doesn't land in an empty conversation", async () => {
-    const { engine } = fakeEngine({ "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { status: "error", error: "session is archived" } });
-    const { host, onDone } = await show(engine, { startAt: 3 });
+    const { engine } = fakeEngine({ ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { status: "error", error: "session is archived" } });
+    const { host, onDone } = await toLastStepWithHello(engine);
     await act(async () => button(host, "Start with Sapling").click());
     await flush();
     expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t start your first conversation. session is archived");
@@ -268,9 +335,29 @@ describe("Your first Trunk (step 4)", () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
+  it("with examples and no hello, Meet them sends no greeting and hands the examples state to the first conversation", async () => {
+    const { engine, request } = fakeEngine({
+      "branch.setup.detect": { candidates: [] }, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { status: "error", error: "Couldn't sign in to the AI service." },
+      "trunks.template.create": (params: unknown) => ({ agentId: (params as { templateId: string }).templateId + "-1", name: "Made" }),
+    }, [...ALL, "trunks.template.starters"]);
+    const { host, onDone } = await show(engine, { startAt: 1 });
+    await act(async () => button(host, "Try it with examples").click());
+    await flush();
+    await act(async () => button(host, "Continue").click());
+    await flush();
+    await act(async () => button(host, "Continue").click());
+    await flush();
+    await act(async () => button(host, "Spend Saver").click());
+    await act(async () => button(host, "Meet them").click());
+    await flush();
+    expect(calls(request, "chat.send")).toEqual([]);
+    expect(host.querySelector("[role=alert]")).toBeNull();
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ sessionKey: "agent:spend-saver-1:main", state: expect.objectContaining({ examples: true }) }));
+  });
+
   it("Start with the default Trunk makes nothing and greets in its main conversation", async () => {
-    const { engine, request } = fakeEngine({ "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": {} });
-    const { host, onDone } = await show(engine, { startAt: 3 });
+    const { engine, request } = fakeEngine({ ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": {} });
+    const { host, onDone } = await toLastStepWithHello(engine);
     await act(async () => button(host, "Start with Sapling").click());
     await flush();
     expect(calls(request, "trunks.template.create")).toEqual([]);
@@ -279,16 +366,28 @@ describe("Your first Trunk (step 4)", () => {
   });
 });
 
-describe("onboarding glass model (README item 48)", () => {
+describe("onboarding window (preview v17, tinted liquid glass)", () => {
   const css = readFileSync("src/screens/onboarding/onboarding.css", "utf8");
   const rule = (sel: string) => css.slice(css.indexOf(sel), css.indexOf("}", css.indexOf(sel)));
-  it("keeps the layer and the card clear, puts text and controls on 1px-outlined frosted pills, and hides the card under a sheet", () => {
-    expect(rule(".r1-ob {")).toContain("background: transparent");
-    expect(rule(".r1-ob {")).not.toContain("backdrop-filter");
-    expect(rule("  background: transparent; box-shadow: none;")).not.toContain("backdrop-filter");
-    expect(css).toContain("background: var(--gp-fill); -webkit-backdrop-filter: var(--gp-blur); backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge)");
-    for (const piece of [".r1-ob-body h1", ".r1-ob-lede", ".r1-ob-hint", ".r1-ob-pick", ".r1-ob-chip", ".r1-ob-text", ".r1-ob-row", ".r1-ob-mode"]) expect(css.slice(0, css.indexOf("background: var(--gp-fill)"))).toContain(piece);
+  it("is its own tinted window: a tinted layer, a tinted card on --bg, and no pill on the text", () => {
+    expect(rule(".r1-ob {")).toContain("background: color-mix(in srgb, var(--bg) 58%, transparent)");
+    expect(rule(".r1-ob {")).toContain("backdrop-filter: blur(26px) saturate(170%)");
+    expect(rule(".r1-ob-card {")).toContain("background: color-mix(in srgb, var(--bg) 74%, transparent)");
+    expect(rule(".r1-ob-card {")).toContain("backdrop-filter: blur(30px) saturate(180%)");
+    expect(rule(".r1-ob-card {")).toContain("inset 0 1px 0 var(--gw-hi)");
+    expect(rule(".r1-ob-card {")).toContain("var(--gw-dlg-sh)");
+    for (const text of [".r1-ob-body h1 {", ".r1-ob-lede {", ".r1-ob-where {", ".r1-ob-hint {", ".r1-ob-none {", ".r1-ob-error {", ".r1-ob-later {", ".r1-ob-sheet h2 {", ".r1-ob-dots {"]) {
+      expect(rule(text), text).not.toMatch(/background|box-shadow|padding: [1-9]|border-radius/);
+    }
+    const chips = css.slice(css.indexOf(":is(.r1-ob-row"), css.indexOf("}", css.indexOf(":is(.r1-ob-row")));
+    expect(chips).toContain("background: var(--gw-chip)");
+    for (const text of [".r1-ob-lede", ".r1-ob-body h1", ".r1-ob-where", ".r1-ob-hint", ".r1-ob-none", ".r1-ob-sug > small", ".r1-ob-tpls > small", ".r1-ob-later", ".r1-ob-sheet h2", ".r1-ob-hello", ".r1-ob-sap"]) expect(chips, text).not.toContain(text);
+  });
+  it("keeps the reduce-transparency rule (layer, card and sheet turn solid --bg) and hides the card under a sheet", () => {
+    expect(css).toContain(':root[data-transparency="reduce"] :is(.r1-ob, .r1-ob-card, .r1-ob-sheet) { background: var(--bg);');
     expect(css).toContain(".r1-ob[data-sheet] > .r1-ob-card { visibility: hidden; }");
+    expect(css).toContain("body:has(> .r1-ob-dlg) .r1-ob > .r1-ob-card { visibility: hidden; }");
     expect(css).not.toMatch(/border-(top|bottom):\s*1px/);
+    expect(css).not.toMatch(/var\(--g[cfk]-|var\(--gp-fill\)/);
   });
 });

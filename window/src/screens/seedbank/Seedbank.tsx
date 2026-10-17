@@ -6,11 +6,12 @@ import type { WindowEngine } from "../../connect/engine";
 import { Icon } from "../../shell/icons";
 import { featured, KINDS, kindOf, matches, SORTS, sortEntries, type Entry, type KindId, type Sort } from "./catalog";
 import { InstallSheet, PasteSheet } from "./InstallSheet";
-import { Adapters, Card, Row, Soon, UpcomingFeatures } from "./parts";
+import { Adapters, Card, Row, Soon } from "./parts";
 import { parseSeed, type Seed } from "./seed";
 import { looksLikeTeam, parseTeamMarkdown, type TeamFile } from "./team-markdown";
 import { TeamReview } from "./TeamReview";
 import { useSeedbank } from "./useSeedbank";
+import { CUSTOMIZE_REQUEST_EVENT, takeCustomizeRequest, type CustomizeMode, type CustomizeRequest } from "../../places/customize/r1-request";
 import "../../glass/glass.css";
 import "./seedbank.css";
 
@@ -29,10 +30,10 @@ export function entryForSeed(seed: Seed, entries: readonly Entry[]): Entry | nul
   return null;
 }
 
-type Props = { engine: WindowEngine; variant?: "place" | "settings" };
+type Props = { engine: WindowEngine; variant?: "place" | "settings"; /** The kind chip Seedbank opens on (Customize asks for one kind). */ initialKind?: KindId | "all" };
 
-export function Seedbank({ engine, variant = "place" }: Props) {
-  const [kind, setKind] = useState<KindId | "all">("all");
+export function Seedbank({ engine, variant = "place", initialKind = "all" }: Props) {
+  const [kind, setKind] = useState<KindId | "all">(initialKind);
   const [query, setQuery] = useState(""), [sort, setSort] = useState<Sort>("popular"), [cat, setCat] = useState("All");
   const [open, setOpen] = useState<Entry | null>(null), [paste, setPaste] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamFile | null>(null);
@@ -90,8 +91,8 @@ export function Seedbank({ engine, variant = "place" }: Props) {
   const comingSection = (id: KindId, brief: boolean) => {
     const k = kindOf(id);
     return <div className="sb-sec-list" key={id} data-coming-kind={id}>
-      <div className="sb-sec-h"><b className="g-label">{k.label}</b><small className="g-label">Coming</small>{brief && (id === "adapters" || id === "upcoming") && <button type="button" className="sb-all" data-local="" onClick={() => setKind(id)}>View all</button>}</div>
-      {id === "adapters" ? <Adapters brief={brief} /> : id === "upcoming" ? <UpcomingFeatures brief={brief} /> : <p className="sb-hint g-label" data-lines>{k.coming}</p>}
+      <div className="sb-sec-h"><b className="g-label">{k.label}</b><small className="g-label">Coming</small>{brief && id === "adapters" && <button type="button" className="sb-all" data-local="" onClick={() => setKind(id)}>View all</button>}</div>
+      {id === "adapters" ? <Adapters brief={brief} /> : <p className="sb-hint g-label" data-lines>{k.coming}</p>}
     </div>;
   };
 
@@ -153,26 +154,29 @@ export function Seedbank({ engine, variant = "place" }: Props) {
   </div>;
 }
 
-/** Customize with its Personal | Community switch. "branch:place-tab" ({place: "customize", tab: "Community"}) opens Community. */
-export function CustomizeWithCommunity({ engine, personal }: { engine: WindowEngine; personal: ReactNode }) {
-  const [mode, setMode] = useState<"personal" | "community">("personal");
+/** Customize with its Personal | Community switch. `initial` is the mode the mount was asked for; later requests (requestCustomize) switch it. */
+export function CustomizeWithCommunity({ engine, personal, initial = "personal", initialKind }: { engine: WindowEngine; personal: ReactNode; initial?: CustomizeMode; initialKind?: string }) {
+  const [mode, setMode] = useState<CustomizeMode>(initial);
+  const [community, setCommunity] = useState<{ kind: string; n: number } | undefined>(initialKind ? { kind: initialKind, n: 0 } : undefined);
   useEffect(() => {
-    const onTab = (event: Event) => {
-      const detail = (event as CustomEvent<{ place?: unknown; tab?: unknown }>).detail;
-      if (detail?.place === "customize" && typeof detail.tab === "string") setMode(detail.tab === "Community" ? "community" : "personal");
+    const onRequest = (event: Event) => {
+      takeCustomizeRequest();
+      const request = (event as CustomEvent<CustomizeRequest>).detail;
+      if (request?.mode) setMode(request.mode);
+      if (request?.community) setCommunity({ kind: request.community, n: Date.now() });
     };
-    addEventListener("branch:place-tab", onTab);
-    return () => removeEventListener("branch:place-tab", onTab);
+    addEventListener(CUSTOMIZE_REQUEST_EVENT, onRequest);
+    return () => removeEventListener(CUSTOMIZE_REQUEST_EVENT, onRequest);
   }, []);
-  return <CustomizeModes engine={engine} mode={mode} onMode={setMode} personal={personal} />;
+  return <CustomizeModes engine={engine} mode={mode} onMode={setMode} personal={personal} community={community} />;
 }
 
 /** Customize's switch (item 28): Personal is today's Customize, Community is Seedbank. */
-export function CustomizeModes({ engine, mode, onMode, personal }: { engine: WindowEngine; mode: "personal" | "community"; onMode: (mode: "personal" | "community") => void; personal: ReactNode }) {
+export function CustomizeModes({ engine, mode, onMode, personal, community }: { engine: WindowEngine; mode: CustomizeMode; onMode: (mode: CustomizeMode) => void; personal: ReactNode; community?: { kind: string; n: number } }) {
   return <div className="sb-place">
     <div className="sb-modes"><span className="g-frost sb-modes-seg" role="tablist" aria-label="Customize" data-local="">
       {(["personal", "community"] as const).map(m => <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => onMode(m)}>{m === "personal" ? "Personal" : "Community"}</button>)}
     </span></div>
-    {mode === "community" ? <><h1 className="sb-sr">Customize · Community</h1><Seedbank engine={engine} /></> : personal}
+    {mode === "community" ? <><h1 className="sb-sr">Customize · Community</h1><Seedbank key={community?.n ?? 0} engine={engine} initialKind={(community?.kind ?? "all") as KindId | "all"} /></> : personal}
   </div>;
 }

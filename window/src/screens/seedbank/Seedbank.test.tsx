@@ -6,6 +6,7 @@ import { CapabilityProvider } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { CustomizeWithCommunity, Seedbank } from "./index";
+import { requestCustomize } from "../../places/customize/r1-request";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 window.matchMedia ??= ((query: string) => ({ matches: false, media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
@@ -161,15 +162,15 @@ describe("Seedbank", () => {
     expect(host.textContent).toContain("Nothing matches. Try another word.");
   });
 
-  it("opens Community from Customize's switch and from a place-tab event", async () => {
+  it("opens Community from Customize's switch and from a requestCustomize call", async () => {
     const { engine } = engineOf([]);
     const host = await render(engine, <CustomizeWithCommunity engine={engine} personal={<p>Personal page</p>} />);
     expect(host.textContent).toContain("Personal page");
     await click(buttons(host, "Community")[0]);
     expect(host.querySelector(".sb")).not.toBeNull();
-    await act(async () => void dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Tools" } })));
+    await click(buttons(host, "Personal")[0]);
     expect(host.textContent).toContain("Personal page");
-    await act(async () => void dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Community" } })));
+    await act(async () => requestCustomize({ mode: "community" }));
     expect(host.querySelector(".sb")).not.toBeNull();
   });
 
@@ -222,31 +223,19 @@ describe("Seedbank", () => {
     expect(names).toEqual(["Scout", "Editor", "Editor"]);
     expect(host.textContent).toContain("Added Sales desk: 2 Trunks.");
   });
-  it("lists the features moved out of the main window as Coming to Branch tiles, each named by the call it waits for (R1-15)", async () => {
-    const { engine, request } = engineOf([]);
+  it("draws exactly the preview's kind chips and sections, with no Coming to Branch kind (#1049)", async () => {
+    const { engine } = engineOf([]);
     const host = await render(engine);
-    const section = host.querySelector("[data-coming-kind=upcoming]")!;
-    expect(section.querySelector(".sb-sec-h b")?.textContent).toBe("Coming to Branch");
-    expect(section.querySelectorAll(".sb-upcoming [role=group]").length).toBe(3);
-    await click(buttons(section, "View all")[0]);
-    const tiles = [...host.querySelectorAll(".sb-upcoming [role=group]")];
-    expect(tiles.map(t => t.getAttribute("aria-label"))).toEqual([
-      "Your own folders, coming", "Make default from search, coming", "More General settings, coming", "Run Branch on another computer, coming",
-      "A KeepOak computer, coming", "Screenshot, coming", "Teach a task, coming", "Write a doc, sheet or slides, coming", "Branch from here, coming",
-      "Temporary chat, coming", "Check with me, coming", "Phone call, coming", "Join a meeting, coming",
+    // preview.html Seedbank KINDS: All · Agents · Grove layouts · Graft setups · Skills · Connectors · Plugins ·
+    // Command-line tools · Toolsets · Themes & looks · Adapters.
+    expect([...host.querySelectorAll(".sb-chips [role=tab]")].map(t => t.textContent)).toEqual([
+      "All", "Agents", "Grove layouts", "Graft setups", "Skills", "Connectors", "Plugins", "Command-line tools", "Toolsets", "Themes & looks", "Adapters",
     ]);
-    expect(tiles.every(t => t.textContent?.includes("Coming"))).toBe(true);
-    expect(tiles[3].textContent).toContain("Another computer you own or a home server, paired with a setup code.");
-    expect(host.textContent).not.toMatch(/Mac mini|\bNAS\b/);
-    expect(host.querySelector("[role=tab][aria-selected=true]")?.textContent).toBe("Coming to Branch");
-    const listed = comingControls().filter(c => c.where.startsWith("Seedbank › Coming to Branch › "));
-    expect(listed.map(c => c.need[0]).sort()).toEqual([
-      "agents.documents.create", "config.patch", "config.patch", "desktop.observe", "desktop.observe", "device.pair.setupCode", "environments.create",
-      "sessions.folders.put", "sessions.fork", "sessions.patch", "sessions.patch",
-      "voicecall.initiate", "voicecall.start",
-    ]);
-    expect(listed.every(c => c.hidden)).toBe(true);
+    expect(host.querySelector("[data-coming-kind=upcoming]")).toBeNull();
+    expect(host.querySelector(".sb-upcoming")).toBeNull();
+    expect(host.textContent).not.toContain("Coming to Branch");
+    expect(comingControls().filter(c => c.where.startsWith("Seedbank › Coming to Branch"))).toEqual([]);
     expect(undeclaredControls(host.querySelector(".sb-results")!)).toEqual([]);
-    expect(request.mock.calls.map(([m]) => m)).not.toContain("sessions.messages.link");
   });
+
 });
