@@ -27,6 +27,7 @@ import { createDesktopControls, readSettings, registerDesktopControlsIpc } from 
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
 import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
+import { firstWindowLabel, firstWindowUrl, type FirstWindowPhase } from "./first-window";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, ensureWindowsLauncher, handOffDesktopUpdate, pruneWindowsInstall, runsFromAppImage, windowsRelaunchDetails, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
@@ -1001,9 +1002,19 @@ async function hotSwapWindow(): Promise<void> {
   log("window updated in place");
 }
 
-const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(
-  "<!doctype html><title>Branch Agent</title><body style=\"-webkit-app-region:drag;font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f8;color:#333\">Starting Branch…</body>",
-)}`;
+/** Shows the first usable window, then updates its status while install and engine startup continue. */
+async function showStartup(phase: FirstWindowPhase): Promise<void> {
+  if (!win || win.isDestroyed()) return;
+  const current = win.webContents.getURL() || "";
+  if (current.startsWith(windowUrl())) return;
+  await win.loadURL(firstWindowUrl(phase));
+  const elapsed = Date.now() - launchStarted;
+  if (phase === "opening") {
+    log(`usable window after ${elapsed} ms`);
+    log(`starting page shown after ${elapsed} ms`);
+  } else log(`startup ${phase} at ${elapsed} ms`);
+  if (!win.isDestroyed()) win.webContents.send("branch-desktop:startup-progress", firstWindowLabel(phase));
+}
 
 // The R1 browser guest. Only R1 windows may host the webview tag. A guest may attach only on the Branch partition,
 // with no preload, no Node and the sandbox on. Guests get no permissions and no downloads, and popups become tabs.
@@ -1365,8 +1376,9 @@ async function start(): Promise<void> {
   registerClipboardIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), clipboard);
   controls.apply();
   win = createWindow();
-  await win.loadURL(STARTING);
-  log(`starting page shown after ${Date.now() - launchStarted} ms`);
+  // Private #1094: the usable window is up before first-launch install and engine startup. Those keep running,
+  // and the window's status line names the step still in progress.
+  await showStartup("opening");
   const desktopVersion = await confirmDesktopUpdate(cfg);
   if (desktopVersion) log(`desktop update ${desktopVersion} started; confirmed`);
   if (install) await pruneWindowsInstall(install, log).catch((error: unknown) => log(`desktop version prune: ${String(error)}`));
@@ -1390,6 +1402,7 @@ async function start(): Promise<void> {
   adoptGatewayPort(cfg.gatewayPort);
   await recoverComponentUpdate(cfg);
   if (!existsSync(join(cfg.windowDir, "index.html")) || !existsSync(join(cfg.dataDir, "engine-current.txt")) && !existsSync(join(cfg.engineDir, "branch.mjs"))) {
+    await showStartup("installing");
     log("Installing verified GitHub components for first launch");
     await refreshComponentUpdate(cfg, fetch, { desktop: install, underSwapGuard, log });
   }
@@ -1397,6 +1410,7 @@ async function start(): Promise<void> {
   server = await serveWindow(() => servedWindowDir, cfg.windowPort);
   await win.loadURL(windowUrl());
   log(`window loaded after ${Date.now() - launchStarted} ms`);
+  log(`startup engine at ${Date.now() - launchStarted} ms`);
   if (survivor) {
     log(`attached to the engine left running when Branch was closed (pid ${survivor.pid}, port ${survivor.port})`);
   } else if (await (cfg.alwaysOn ? attachServiceEngine() : bootSelectedEngine())) {

@@ -51,8 +51,18 @@ function subscribeUndone(listener: UpdateUndoneListener): () => void {
   return () => { if (undoneListener === listener) undoneListener = undefined; };
 }
 
-// Null on any page other than the served window (for example the "Starting" page).
+// Null on any page other than the served window (for example the first-launch window).
 const info = ipcRenderer.sendSync("branch-desktop:info") as DesktopInfo | null;
+// The first window is a data page, so it has no gateway info. Its status line still follows startup.
+ipcRenderer.on("branch-desktop:startup-progress", (_event, label: unknown) => {
+  if (typeof label !== "string") return;
+  const apply = () => {
+    const node = document.querySelector("[data-usable-window] [role=status]");
+    if (node) node.textContent = label;
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", apply, { once: true });
+  else apply();
+});
 if (info) {
   let gatewayUrl = info.gatewayUrl;
   contextBridge.exposeInMainWorld("branchDesktop", {
