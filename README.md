@@ -25,3 +25,15 @@ After this PR:
 | 720 | 720 px | 464 px | 200 / 174 px |
 
 No control is cut off at any width, before or after; nothing is removed. Below 900 px the toolbar takes a second row (tabs, New tab, Page and Tools), and the list comes back with the list button.
+
+## FIX: Ctrl B and the resize handle with the list folded to the rail (PR Closer verdict on 73fba4da65)
+
+`rail-handle-<width>-<scheme>.png`: before (73fba4da65) on the left, after (609f8f0d0f) on the right, at 960 and 840 x 900, light and dark. Each shot has three rows: the browser open with the list folded to the rail, then Ctrl B, then Ctrl B again. The pointer rests at 290 px, the full list's edge, so a resize handle there shows its hover line.
+
+| State (960 and 840 px) | Before | After |
+|---|---|---|
+| Browser open, list folded to the rail | Handle at 293 px, over the page | No handle |
+| Ctrl B | Full list, handle at 293 px | Full list, handle at 293 px |
+| Ctrl B again | Rail, saved as `rail: true`, handle at 69 px | Rail, not saved (`rail: false`), no handle |
+
+A Trunk with topics (topics in the column fold the list on their own above 760 px) is covered by `window/src/stage/browser-half-screen.test.tsx` at 960 px: Ctrl B and Show the full list bring the full list back, and Ctrl B folds it again. The stand-in engine for these shots has no topics.
