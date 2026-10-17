@@ -20,6 +20,7 @@ import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, showTrayStatus } from "./resident-window";
 import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
+import { plainDialogText, STOP_FAILED_PLAIN, UPDATE_FAILED_PLAIN } from "./plain-dialog";
 import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
@@ -1782,7 +1783,7 @@ async function restartEngine(): Promise<void> {
   catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`update failed: ${msg}`);
-    if (!quitting && (serviceEngine || !engineRunning()) && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", "Branch keeps the version it has. Try the update again later; the details are in its log.");
+    if (!quitting && (serviceEngine || !engineRunning()) && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", plainDialogText(msg, UPDATE_FAILED_PLAIN));
   }
 }
 
@@ -1911,7 +1912,7 @@ async function stopCompletely(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log(`stop completely failed: ${message}`);
-    if (!HIDDEN) dialog.showErrorBox("Branch couldn't stop its engine", "Try again in a moment, or restart this computer. The details are in Branch's log.");
+    if (!HIDDEN) dialog.showErrorBox("Branch couldn't stop its engine", plainDialogText(message, STOP_FAILED_PLAIN));
   }
 }
 
