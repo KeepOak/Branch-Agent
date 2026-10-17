@@ -119,7 +119,7 @@ function resolveLookupHome(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): s
   return undefined;
 }
 
-function expandLookupDir(dir: string, home: string | undefined, pathApi: path.PlatformPath): string {
+function expandLookupDir(dir: string, home: string | undefined, pathApi: typeof path.posix): string {
   const trimmed = dir.trim().replace(/^"(.*)"$/u, "$1");
   if (!home) {
     return trimmed;
@@ -136,7 +136,7 @@ function expandLookupDir(dir: string, home: string | undefined, pathApi: path.Pl
 function wellKnownInstallDirs(
   env: NodeJS.ProcessEnv,
   home: string | undefined,
-  pathApi: path.PlatformPath,
+  pathApi: typeof path.posix,
 ): string[] {
   const dirs: string[] = [];
   const add = (dir: string | undefined) => {
