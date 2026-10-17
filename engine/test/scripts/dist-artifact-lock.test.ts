@@ -626,36 +626,54 @@ it("a Mac with 16 GB or less needs a quarter of RAM, at most 4 GB and at least 2
   ).toBe(100 * 1024 ** 2);
 });
 
-it("macOS available memory counts free, speculative, inactive and compressor-reclaimable pages", () => {
+it("macOS available memory counts free, speculative, inactive and purgeable pages, never active", () => {
   const PAGE = 16384;
-  // A 16 GB Mac showing 31% free: free + inactive + purgeable alone is about 2.4 GB.
-  const vmStat = [
-    `Mach Virtual Memory Statistics: (page size of ${PAGE} bytes)`,
-    "Pages free:                               9000.",
-    "Pages active:                           170000.",
-    "Pages inactive:                         140000.",
-    "Pages speculative:                        6000.",
-    "Pages throttled:                             0.",
-    "Pages wired down:                       420000.",
-    "Pages purgeable:                          3000.",
-    "File-backed pages:                       90000.",
-    "Anonymous pages:                        226000.",
-    "Pages stored in compressor:             900000.",
-    "Pages occupied by compressor:           290000.",
-  ].join("\n");
+  const GIB = 1024 ** 3;
+  // A 16 GB Mac with memory_pressure at 32% free.
+  const sample = (active: string) =>
+    [
+      `Mach Virtual Memory Statistics: (page size of ${PAGE} bytes)`,
+      "Pages free:                                     7255.",
+      ...(active ? [active] : []),
+      "Pages inactive:                               160504.",
+      "Pages speculative:                              1377.",
+      "Pages throttled:                                   0.",
+      "Pages wired down:                             201412.",
+      "Pages purgeable:                                   2.",
+      "File-backed pages:                             89084.",
+      "Anonymous pages:                              235051.",
+      "Pages stored in compressor:                  2202878.",
+      "Pages occupied by compressor:                 480943.",
+    ].join("\n");
+  const vmStat = sample("Pages active:                                 162254.");
+  const mac = (totalmem: number) => ({ platform: "darwin" as const, totalmem });
   const memory = availableMemory.availableMemory({
     platform: "darwin",
     vmStat,
-    freemem: 9000 * PAGE,
+    freemem: 7255 * PAGE,
   });
-  expect(memory).toEqual({ bytes: (9000 + 6000 + 140000 + 170000) * PAGE, measure: "vm_stat" });
-  const need = resolveHeavyStepMemoryNeed(
-    "test",
-    {},
-    { platform: "darwin", totalmem: 16 * 1024 ** 3 },
+  expect(memory).toEqual({ bytes: (7255 + 1377 + 160504 + 2) * PAGE, measure: "vm_stat" });
+  // Active pages never count, whatever their number.
+  for (const active of ["", "Pages active:                                 900000."]) {
+    expect(availableMemory.availableMemory({ platform: "darwin", vmStat: sample(active) })).toEqual(
+      memory,
+    );
+  }
+  // The 2 GB floor admits a Mac whose free + speculative + inactive + purgeable is at least 2 GB.
+  const floorNeed = resolveHeavyStepMemoryNeed("test", {}, mac(8 * GIB));
+  expect(floorNeed).toBe(2 * GIB);
+  expect(memory.bytes).toBeGreaterThanOrEqual(floorNeed);
+  const twoGib = [
+    `Mach Virtual Memory Statistics: (page size of ${PAGE} bytes)`,
+    `Pages free:                                    ${(2 * GIB) / PAGE - 3}.`,
+    "Pages active:                                 500000.",
+    "Pages inactive:                                    1.",
+    "Pages speculative:                                 1.",
+    "Pages purgeable:                                   1.",
+  ].join("\n");
+  expect(availableMemory.availableMemory({ platform: "darwin", vmStat: twoGib }).bytes).toBe(
+    floorNeed,
   );
-  expect((9000 + 140000 + 3000) * PAGE).toBeLessThan(need);
-  expect(memory.bytes).toBeGreaterThanOrEqual(need);
   // Linux keeps MemAvailable.
   expect(
     availableMemory.availableMemory({

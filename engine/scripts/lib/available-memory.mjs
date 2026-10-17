@@ -108,25 +108,20 @@ export function availableMemory(probe = {}) {
           timeout: 3_000,
           stdio: ["ignore", "pipe", "ignore"],
         });
-      // macOS counts memory the way XNU's memorystatus does on a Mac with the compressor:
-      // free + speculative + inactive + active pages (kern.memorystatus_level, the figure
-      // memory_pressure prints as "System-wide memory free percentage"). vm_stat fields used:
-      // "Pages free" (already excludes speculative), "Pages speculative", "Pages inactive",
-      // "Pages active" (compressor-reclaimable: the compressor or file cache can take them
-      // back) and "Pages purgeable". Purgeable pages sit on the active and inactive queues,
-      // so they are added only when vm_stat has no "Pages active" line. Wired pages and
-      // pages already held by the compressor are never available.
+      // macOS available memory is the pages the system can hand out without compressing
+      // or swapping: vm_stat "Pages free" (already excludes speculative), "Pages
+      // speculative", "Pages inactive" and "Pages purgeable". Active pages are in use and
+      // never count, nor do wired pages or pages held by the compressor.
       const count = (field) =>
         pages(new RegExp(String.raw`^Pages ${field}:\s+(\d+)\.`, "mu").exec(text)?.[1]);
       const pageSize = pages(/page size of (\d+) bytes/u.exec(text)?.[1]);
       const free = count("free");
       const inactive = count("inactive");
       const speculative = count("speculative") ?? 0;
-      const active = count("active");
-      const reclaimable = active ?? count("purgeable") ?? 0;
+      const purgeable = count("purgeable") ?? 0;
       if (pageSize !== undefined && free !== undefined && inactive !== undefined) {
         return {
-          bytes: (free + speculative + inactive + reclaimable) * pageSize,
+          bytes: (free + speculative + inactive + purgeable) * pageSize,
           measure: "vm_stat",
         };
       }
