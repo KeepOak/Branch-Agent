@@ -1,4 +1,4 @@
+window:scripts/visual-routes.test.mjs
 window:src/screens/settings/four-pages.test.tsx
 window:src/screens/settings/one-frame-layout.test.tsx
 window:src/screens/settings/regular-groups.test.tsx
-window:scripts/visual-routes.test.mjs
