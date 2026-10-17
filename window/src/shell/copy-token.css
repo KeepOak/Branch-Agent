@@ -1,0 +1,6 @@
+/* CopyToken (Private #1103 item 2): one line that ends in an ellipsis inside any box, with its Copy button kept whole. */
+.copy-token { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.copy-token-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/1.5 var(--mono); color: var(--ink-2); }
+.copy-token.strong .copy-token-text { font-weight: 600; color: var(--ink); }
+.copy-token-btn { flex: none; padding: 2px 9px; border: 0; border-radius: 7px; background: var(--fill); color: var(--ink-2); font: inherit; font-size: var(--fs-12, 12px); cursor: pointer; }
+.copy-token-btn:hover { color: var(--ink); }

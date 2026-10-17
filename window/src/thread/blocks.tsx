@@ -28,6 +28,8 @@ import { computerStepDetail, isComputerToolName, isScreenToolName } from "./comp
 import { fullOutput, type Attachment, type Block, type FileChange } from "./model";
 import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
 import { withMentions } from "../rooms/RoomMessage";
+import { ConnectModelNotice } from "../composer/ConnectModelNotice";
+import { isNoUsableModelError } from "../composer/connect-model";
 
 type Of<K extends Block["kind"]> = Extract<Block, { kind: K }>;
 
@@ -377,15 +379,8 @@ export function isScreenControlSetupError(message: string): boolean {
   return message.includes(SCREEN_CONTROL_SWITCH);
 }
 
-/** A run that had no usable model account: the engine's missing-auth errors and a provider's 401 for a request sent without one. */
-const NO_MODEL_ACCOUNT = /No API key (?:found|resolved) for provider|Missing bearer or basic authentication|no usable model account/i;
-
 export function isModelAccountMissingError(message: string): boolean {
-  return NO_MODEL_ACCOUNT.test(message);
-}
-
-function openAccounts(): void {
-  window.dispatchEvent(new CustomEvent("branch:navigate-settings", { detail: { page: "accounts" } }));
+  return isNoUsableModelError(message);
 }
 
 function openScreenControlSwitch(): void {
@@ -398,12 +393,13 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
   const screenSwitch = isScreenControlSetupError(block.message);
   const noAccount = isModelAccountMissingError(block.message);
   const level = useLevel();
+  if (noAccount) return <ConnectModelNotice />;
   return (
     <div className="strip indent" data-testid="run-error" role="alert">
       <div className="strip-line">
         <Icon d={ICONS.warn} />
         <span>
-          {name} couldn’t finish: {noAccount ? "no model account is signed in for this Trunk." : shortReason(block.message)}
+          {name} couldn’t finish: {shortReason(block.message)}
         </span>
         <button type="button" className="icon-sm" aria-label="Dismiss" title="Dismiss" onClick={onDismiss}>
           <Icon d={ICONS.x} />
@@ -425,11 +421,6 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
         {screenSwitch ? (
           <button type="button" className="btn sm" data-testid="open-screen-control" onClick={openScreenControlSwitch}>
             Open that switch
-          </button>
-        ) : null}
-        {noAccount ? (
-          <button type="button" className="btn sm" data-testid="open-accounts" onClick={openAccounts}>
-            Sign in an account
           </button>
         ) : null}
         <button type="button" className="btn sm ghost" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); window.dispatchEvent(new CustomEvent(CHECK_STATUS_EVENT, { detail: { left: r.left, right: r.right, top: r.top } })); }}>

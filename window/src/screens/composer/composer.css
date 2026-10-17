@@ -47,6 +47,8 @@
 @container (max-width: 760px) { .r1c { margin-bottom: -4px; } }
 .r1c-note { width: fit-content; margin: 0 auto 6px; padding: 3px 12px; border-radius: 999px; max-width: min(100%, 680px); color: var(--ink-3); font-size: var(--fs-12-5); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .r1c-note.bad { color: var(--bad); }
+.r1c .r1c-connect { display: grid; justify-items: center; gap: 8px; margin: 0 auto 8px; }
+.r1c .r1c-connect p { margin: 0; font-size: var(--fs-13); color: var(--ink-2); }
 /* Improve my draft's Undo, inside its note (#977). */
 .r1c-undo { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
 
