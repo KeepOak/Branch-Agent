@@ -59,7 +59,7 @@ async function render(methods = ALL) {
   await act(async () => root.render(<CapabilityProvider engine={engine}><Sidebar {...props} /></CapabilityProvider>));
   await act(async () => undefined);
   await act(async () => undefined);
-  return { request, onPlace: props.onPlace };
+  return { request, onPlace: props.onPlace, onOpen: props.onOpen };
 }
 const click = async (node: Element | null) => act(async () => { (node as HTMLElement).click(); });
 const key = async (node: Element | null, init: KeyboardEventInit) => act(async () => { (node as HTMLElement).dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init })); });
@@ -101,13 +101,29 @@ describe("R1 sidebar right-click menus", () => {
     await click(entry("Conversation ID"));
     expect(writeText).toHaveBeenCalledWith("agent:scout:main");
     await click(host.querySelector('[aria-label="More for Scout"]'));
-    // A Trunk's Rename is its Edit Trunk page (the name lives on the Trunk, not the conversation).
+    // A Trunk's Rename is a name box over the list (the name lives on the Trunk): never a trip to People (walkthrough B-093, B-094).
     const opened = vi.fn();
     window.addEventListener("branch:open-trunk", opened);
     await click(entry("Rename"));
     window.removeEventListener("branch:open-trunk", opened);
-    expect(onPlace).toHaveBeenCalledWith("people");
-    expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({ agentId: "scout", view: "edit" });
+    expect(onPlace).not.toHaveBeenCalled();
+    expect(opened).not.toHaveBeenCalled();
+    const name = document.querySelector<HTMLInputElement>('[data-testid="rename"] input')!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    await act(async () => { setValue.call(name, "Scouty"); name.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click([...document.querySelectorAll<HTMLButtonElement>('[data-testid="rename"] button')].find(button => button.textContent === "Rename")!);
+    expect(calls(request, "agents.update")).toEqual([{ agentId: "scout", name: "Scouty" }]);
+    expect(document.querySelector('[data-testid="rename"]')).toBeNull();
+  });
+
+  it("New conversation with a Trunk makes a new, empty thread under it and opens it (walkthrough B-091)", async () => {
+    const { request, onOpen } = await render();
+    request.mockImplementation(async (method: string) => method === "sessions.create" ? { key: "agent:scout:dashboard:4f1c" } : DATA[method] ?? {});
+    await click(host.querySelector('[aria-label="More for Scout"]'));
+    await click(entry("New conversation with Scout"));
+    await act(async () => undefined);
+    expect(calls(request, "sessions.create")).toEqual([{ agentId: "scout", parentSessionKey: "agent:scout:main" }]);
+    expect(onOpen).toHaveBeenCalledWith("agent:scout:dashboard:4f1c");
   });
 
   it("asks before Delete conversation… deletes, and deletes only on yes", async () => {
