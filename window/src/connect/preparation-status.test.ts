@@ -47,7 +47,7 @@ describe("history UNAVAILABLE retry cap", () => {
     expect(HISTORY_RETRY_TIMEOUT_MS).toBe(60_000);
     expect(HISTORY_UNAVAILABLE_LABEL).toBe(friendlyError(HISTORY_UNAVAILABLE_LABEL));
     expect(HISTORY_UNAVAILABLE_LABEL).toMatch(/history/i);
-    expect(HISTORY_UNAVAILABLE_LABEL).toMatch(/Restart Branch|engine is running/);
+    expect(HISTORY_UNAVAILABLE_LABEL).toBe("Branch couldn't load this chat's history. Restart Branch. If this keeps happening, reinstall it.");
     const retry = new PreparationRetry(HISTORY_RETRY_TIMEOUT_MS);
     const start = 1_000_000;
     expect(retry.nextDelay(start)).toBe(500);

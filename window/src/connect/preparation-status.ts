@@ -15,7 +15,7 @@ export const HISTORY_RETRY_TIMEOUT_MS = 60_000;
 
 /** After HISTORY_RETRY_TIMEOUT_MS: what went wrong and what to do, never the engine's words. */
 export const HISTORY_UNAVAILABLE_LABEL =
-  "Branch couldn’t load this chat’s history. Restart Branch, or check that the engine is running.";
+  "Branch couldn't load this chat's history. Restart Branch. If this keeps happening, reinstall it.";
 
 /**
  * The engine's structured "not ready yet" refusal (ErrorCodes.UNAVAILABLE), read from its code and details rather
