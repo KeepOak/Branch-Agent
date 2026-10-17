@@ -133,6 +133,19 @@ test("a first launch from Downloads or a disk image offers to move Branch.app in
   }
 });
 
+test("install.sh prefers /Applications/Branch.app and keeps fixture installs in HOME", { skip: process.platform === "win32" }, async () => {
+  const source = await text("install/install.sh");
+  assert.match(source, /choose_darwin_apps/);
+  assert.match(source, /\[ -d \/Applications \] && \[ -w \/Applications \]/);
+  assert.match(source, /dest="\$apps\/Branch\.app"/);
+  assert.match(source, /BRANCH_INSTALL_BASE_URL/);
+  assert.match(source, /\$HOME\/Applications/);
+  assert.match(source, /lsregister/);
+  assert.match(source, /open Branch from Applications/);
+  assert.match(source, /BRANCH_INSTALL_BASE_URL[\s\S]*Branch Agent\.app/);
+  assert.doesNotMatch(source.replace(/BRANCH_INSTALL_BASE_URL[\s\S]*?dest="\$apps\/Branch Agent\.app"/, ""), /Installed \$apps\/Branch Agent\.app/);
+});
+
 test("Applications directory prefers a writable system folder, then the home folder", async () => {
   const home = await mkdtemp(join(tmpdir(), "mac-applications-home-"));
   try {
@@ -394,7 +407,6 @@ test("packaging, updates, and CI keep the Applications install and the pinned si
   assert.match(launcher, /offerMacApplicationsMove/);
   assert.match(launcher, /MAC_MOVE_MESSAGE/);
   assert.match(launcher, /app\.relaunch\(\{ execPath: move\.relaunch \}\)/);
-  assert.match(checks, /scripts\/install-mac-destination\.test\.mjs/);
   assert.match(helper, /lsregister/);
   assert.match(helper, /windowsHide: true/);
   assert.match(maker, /Branch Agent\.app\/Contents\/Resources\/app\.asar/);
