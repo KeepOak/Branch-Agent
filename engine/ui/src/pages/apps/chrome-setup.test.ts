@@ -8,7 +8,6 @@ import { i18n } from "../../i18n/index.ts";
 import { createApplicationContextProvider } from "../../test-helpers/application-context.ts";
 import { createChromeExtensionSetupResult } from "../../test-helpers/chrome-extension-setup.ts";
 import { createNativeDeviceSettingsSnapshot } from "../../test-helpers/native-device-settings.ts";
-import { useReleaseListingsForTests } from "./release-downloads.ts";
 import { renderApps } from "./view.ts";
 
 type SetupElement = HTMLElement & { updateComplete: Promise<boolean> };
@@ -52,11 +51,9 @@ function click(setup: HTMLElement, label: string) {
   button!.click();
 }
 beforeEach(async () => {
-  useReleaseListingsForTests([]);
   await i18n.setLocale("en");
 });
 afterEach(() => {
-  useReleaseListingsForTests(undefined);
   document.body.replaceChildren();
   for (const capability of capabilities) {
     capability.dispose();
@@ -106,10 +103,10 @@ describe("Apps local Chrome setup", () => {
     expect(setup.textContent).toContain("does not mean eligible tabs");
     expect(post.mock.calls).toEqual(["inspect", "install", "verify"].map((action) => [{ action }]));
   });
-  it("shows Coming soon and no store link in an ordinary browser", async () => {
+  it("says the extension is not out yet, with no store link, in an ordinary browser", async () => {
     const { card, setup } = await mount();
     expect(setup.querySelector("button")).toBeNull();
-    expect(card.textContent).toContain("Coming soon");
+    expect(card.textContent).toContain("Not out yet. Use the Android, Mac, Windows or Linux app for now.");
     expect([...card.querySelectorAll("a")]).toEqual([]);
     expect(card.querySelector("button")).toBeNull();
   });

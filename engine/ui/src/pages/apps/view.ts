@@ -10,8 +10,7 @@ import "../../styles/apps.css";
 import "../../components/native-chrome-setup.ts";
 import { COMMUNITY_DISCORD_URL } from "../../lib/product-links.ts";
 import { appsBrandIcons } from "./brand-icons.ts";
-import type { ReleaseDownloadId } from "./release-downloads.ts";
-import "./release-downloads.ts";
+import { BRANCH_DOWNLOAD_PAGES, type ReleaseDownloadId } from "./release-downloads.ts";
 
 registerAppsEnglish();
 
@@ -20,14 +19,13 @@ type AppsProps = {
   macGatewayLaunchUrl?: string | null;
   /** Opens the device-pairing dialog; absent when the operator cannot pair. */
   onPairDevice?: () => void;
-  /** Coming-soon cards (iPhone, browser extension) show only at Technical. */
+  /** Cards with no Branch release yet (iPhone, browser extension) show only at Technical. */
   technical?: boolean;
 };
 
 type AppCardCta =
   | { kind: "external"; href: string; labelKey: string }
   | { kind: "internal"; routeId: RouteId; labelKey: string }
-  | { kind: "release"; id: ReleaseDownloadId; labelKey: string }
   | { kind: "soon" };
 
 type AppCard = {
@@ -51,12 +49,9 @@ const externalCta = (href: string, labelKey: string): AppCardCta => ({
   href,
   labelKey,
 });
-const releaseCta = (id: ReleaseDownloadId): AppCardCta => ({
-  kind: "release",
-  id,
-  labelKey: "appsPage.ctaDownload",
-});
-const comingSoon: AppCardCta = { kind: "soon" };
+const releaseCta = (id: ReleaseDownloadId): AppCardCta =>
+  externalCta(BRANCH_DOWNLOAD_PAGES[id], "appsPage.ctaDownload");
+const notOutYet: AppCardCta = { kind: "soon" };
 const docsCta = (path: string) =>
   externalCta(`https://docs.openclaw.ai${path}`, "appsPage.ctaDocs");
 
@@ -70,7 +65,7 @@ const APP_SECTIONS: readonly AppSection[] = [
         gradient: ["#38bdf8", "#1d4ed8"],
         icon: appsBrandIcons.apple,
         copyKey: "appsPage.cards.ios",
-        ctas: [comingSoon],
+        ctas: [notOutYet],
       },
       {
         id: "android",
@@ -139,7 +134,7 @@ const APP_SECTIONS: readonly AppSection[] = [
         gradient: ["#f59e0b", "#ea580c"],
         icon: appsBrandIcons.chrome,
         copyKey: "appsPage.cards.chrome",
-        ctas: [comingSoon],
+        ctas: [notOutYet],
       },
       {
         id: "plugins",
@@ -167,14 +162,7 @@ const COMMUNITY_LINKS: ReadonlyArray<{ href: string; icon: TemplateResult; label
 function renderCta(cta: AppCardCta, index: number, props: AppsProps) {
   const className = index === 0 ? "apps-card__cta apps-card__cta--primary" : "apps-card__cta";
   if (cta.kind === "soon") {
-    return html`<span class="apps-card__soon">${t("appsPage.comingSoon")}</span>`;
-  }
-  if (cta.kind === "release") {
-    return html`<branch-release-download
-      download-id=${cta.id}
-      label-key=${cta.labelKey}
-      ?primary=${index === 0}
-    ></branch-release-download>`;
+    return html`<span class="apps-card__soon">${t("appsPage.notOutYet")}</span>`;
   }
   if (cta.kind === "internal") {
     return html`

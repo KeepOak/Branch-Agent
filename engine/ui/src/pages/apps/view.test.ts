@@ -1,69 +1,36 @@
 /* @vitest-environment jsdom */
 
 import { render } from "lit";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "../../i18n/index.ts";
 import { buildMacGatewayLaunchUrl } from "./gateway-launch.ts";
-import { useReleaseListingsForTests, type ReleaseListing } from "./release-downloads.ts";
+import { BRANCH_DOWNLOAD_PAGES } from "./release-downloads.ts";
 import { renderApps } from "./view.ts";
 
-const version = "0.4.4-build-2d76db0056f8";
-const download = (name: string) =>
-  `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${name}`;
-const asset = (name: string) => ({ name, browser_download_url: download(name) });
-const RELEASES: ReleaseListing[] = [
-  {
-    assets: [
-      asset(`Branch-Agent-${version}-darwin-arm64.dmg`),
-      asset(`Branch-Agent-Setup-${version}-win32-x64.exe`),
-      asset(`Branch-Agent-${version}-linux-x64.AppImage`),
-      { name: "Branch-macOS.dmg", browser_download_url: download("Branch-macOS.dmg") },
-      { name: "Branch-Setup-Windows.exe", browser_download_url: download("Branch-Setup-Windows.exe") },
-      { name: "Branch-Linux.deb", browser_download_url: download("Branch-Linux.deb") },
-    ],
-  },
-  {
-    assets: [
-      asset(`branch-android-${version}-unsigned.apk`),
-      asset(`branch-android-${version}.apk`),
-    ],
-  },
-];
-const MAC_DMG = download(`Branch-Agent-${version}-darwin-arm64.dmg`);
+const LATEST = "https://github.com/KeepOak/Branch-Agent/releases/latest";
+const RELEASES = "https://github.com/KeepOak/Branch-Agent/releases";
 const EXPECTED_EXTERNAL_HREFS = [
-  download(`branch-android-${version}.apk`),
+  RELEASES,
   "https://docs.openclaw.ai/platforms/android",
   "https://docs.openclaw.ai/platforms/ios",
   "https://docs.openclaw.ai/platforms/android",
-  MAC_DMG,
+  LATEST,
   "https://docs.openclaw.ai/platforms/macos",
-  download(`Branch-Agent-Setup-${version}-win32-x64.exe`),
+  LATEST,
   "https://docs.openclaw.ai/platforms/windows",
-  download(`Branch-Agent-${version}-linux-x64.AppImage`),
+  LATEST,
   "https://docs.openclaw.ai/platforms/linux",
   "https://clawhub.ai",
   "https://discord.gg/clawd",
   "https://docs.openclaw.ai",
 ];
+const NOT_OUT_YET = "Not out yet. Use the Android, Mac, Windows or Linux app for now.";
 
 describe("renderApps", () => {
   beforeEach(async () => {
     document.body.innerHTML = "";
-    useReleaseListingsForTests(RELEASES);
     await i18n.setLocale("en");
   });
-  afterEach(() => {
-    useReleaseListingsForTests(undefined);
-  });
-
-  async function settleDownloads(container: ParentNode) {
-    const downloads = [
-      ...container.querySelectorAll<HTMLElement & { updateComplete: Promise<boolean> }>(
-        "branch-release-download",
-      ),
-    ];
-    await Promise.all(downloads.map((el) => el.updateComplete));
-  }
 
   async function renderIntoContainer(
     onNavigate = vi.fn(),
@@ -72,9 +39,16 @@ describe("renderApps", () => {
   ) {
     const container = document.body.appendChild(document.createElement("div"));
     render(renderApps({ onNavigate, onPairDevice, technical }), container);
-    await settleDownloads(container);
     return container;
   }
+
+  it("sends every Download to Branch's own release pages, never a store listing", () => {
+    expect(BRANCH_DOWNLOAD_PAGES).toEqual({ mac: LATEST, windows: LATEST, linux: LATEST, android: RELEASES });
+    for (const url of Object.values(BRANCH_DOWNLOAD_PAGES)) {
+      expect(new URL(url).hostname).toBe("github.com");
+      expect(new URL(url).pathname).toMatch(/^\/KeepOak\/Branch-Agent\/releases(\/latest)?$/);
+    }
+  });
 
   it("renders every external link in order with safe target and rel", async () => {
     const container = await renderIntoContainer();
@@ -108,7 +82,6 @@ describe("renderApps", () => {
       }),
       container,
     );
-    await settleDownloads(container);
     const launch = container.querySelector<HTMLAnchorElement>("a[href^='branch:']");
     expect(launch?.textContent?.trim()).toBe("Open in Mac app");
     const url = new URL(launch!.href);
@@ -118,7 +91,7 @@ describe("renderApps", () => {
     expect(launch?.getAttribute("target")).toBeNull();
     const card = launch?.closest(".apps-card");
     expect(card?.querySelector("h3")?.textContent).toBe("macOS");
-    expect(card?.querySelector(`a[href='${MAC_DMG}']`)?.textContent?.trim()).toBe("Download");
+    expect(card?.querySelector(`a[href='${LATEST}']`)?.textContent?.trim()).toBe("Download");
   });
 
   it("hides iPhone and the browser extension below Technical", async () => {
@@ -126,16 +99,16 @@ describe("renderApps", () => {
     const titles = [...container.querySelectorAll(".apps-card h3")].map((el) => el.textContent);
     expect(titles).not.toContain("iPhone");
     expect(titles).not.toContain("Chrome extension");
-    expect(container.textContent).not.toContain("Coming soon");
+    expect(container.textContent).not.toContain(NOT_OUT_YET);
   });
 
-  it("shows Coming soon for iPhone and the browser extension only at Technical, with no link and no button", async () => {
+  it("says plainly that iPhone and the browser extension are not out yet, only at Technical, with no link and no button", async () => {
     const container = await renderIntoContainer(vi.fn(), undefined, true);
     for (const title of ["iPhone", "Chrome extension"]) {
       const card = [...container.querySelectorAll(".apps-card")].find(
         (el) => el.querySelector("h3")?.textContent === title,
       );
-      expect(card?.textContent).toContain("Coming soon");
+      expect(card?.textContent).toContain(NOT_OUT_YET);
       expect(card?.querySelector("a, button")).toBeNull();
     }
   });

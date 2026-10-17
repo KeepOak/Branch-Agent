@@ -45,9 +45,18 @@ export const RELEASE_DOWNLOADS = {
 } as const;
 export type ReleaseDownloadId = keyof typeof RELEASE_DOWNLOADS;
 export interface ReleaseAsset { name?: string; browser_download_url?: string }
-export interface ReleaseListing { assets?: readonly ReleaseAsset[] }
+export interface ReleaseListing { assets?: readonly ReleaseAsset[]; published_at?: string; draft?: boolean; prerelease?: boolean }
 
 const RELEASES_API = `https://api.github.com/repos/${RELEASE_REPOSITORY}/releases?per_page=100`;
+const RELEASES_PAGE = `https://github.com/${RELEASE_REPOSITORY}/releases`;
+/** Where Get it lands when the newest asset cannot be read: Branch's own release pages, never a store (Private #1103). */
+export const RELEASE_PAGES: Readonly<Record<ReleaseDownloadId, string>> = {
+  mac: `${RELEASES_PAGE}/latest`,
+  windows: `${RELEASES_PAGE}/latest`,
+  linux: `${RELEASES_PAGE}/latest`,
+  // Android builds ship in their own releases, so the latest one may have no APK.
+  android: RELEASES_PAGE,
+};
 
 /** A GitHub release asset URL for this repository, or nothing when the URL is not one. */
 export function trustedReleaseAsset(value: string): string | undefined {
@@ -59,10 +68,13 @@ export function trustedReleaseAsset(value: string): string | undefined {
   return url.toString();
 }
 
-/** The newest signed asset whose name is one Branch already publishes. Listings are newest first. */
+const publishedAt = (release: ReleaseListing): number => Date.parse(release.published_at ?? "") || 0;
+
+/** The newest signed asset whose name is one Branch already publishes. Drafts and prereleases are skipped. */
 export function releaseDownloadUrl(id: ReleaseDownloadId, releases: readonly ReleaseListing[]): string | undefined {
   const pattern = RELEASE_DOWNLOADS[id];
-  for (const release of releases) {
+  const newestFirst = releases.filter((release) => !release.draft && !release.prerelease).sort((a, b) => publishedAt(b) - publishedAt(a));
+  for (const release of newestFirst) {
     for (const asset of release.assets ?? []) {
       if (typeof asset.name !== "string" || typeof asset.browser_download_url !== "string") continue;
       if (!pattern.test(asset.name) || asset.name.toLowerCase().includes("unsigned")) continue;
@@ -234,9 +246,10 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
     settings: () => ({ ...saved }), get, set,
     openDownload: async (id) => {
       if (!Object.hasOwn(RELEASE_DOWNLOADS, id)) throw new Error(`No download page for ${id}`);
-      const url = releaseDownloadUrl(id as ReleaseDownloadId, await (deps.releases ?? publishedReleases)());
-      if (!url) throw new Error(`No Branch release download for ${id}`);
-      await deps.openExternal(url);
+      const which = id as ReleaseDownloadId;
+      // An unreadable listing (offline, rate limited) still opens Branch's own release page.
+      const listings = await (deps.releases ?? publishedReleases)().catch((): readonly ReleaseListing[] => []);
+      await deps.openExternal(releaseDownloadUrl(which, listings) ?? RELEASE_PAGES[which]);
     },
     trayUsage: (left) => {
       lastLeft = typeof left === "number" && Number.isFinite(left) ? Math.max(0, Math.min(100, left)) : null;

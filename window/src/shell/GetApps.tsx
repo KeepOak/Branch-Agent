@@ -8,9 +8,10 @@ import { shows, useLevel } from "../places-nav/level";
 
 /** In a plain browser there is no Branch app to open the page from. */
 export const GET_IT_OFF = "Opens the download page in your browser from the Branch app on your computer.";
-/** iPhone and the browser extension have no download yet: this line, and no button. */
-const NOT_OUT_YET = ["Coming", "soon"].join(" ");
-// [icon, name, where, download id. No id means no button and no link. Coming rows are Technical only.]
+/** iPhone and the browser extension have no Branch release yet: this one line, and no button. */
+export const NOT_OUT_YET = "Not out yet. Use the Android, Mac, Windows or Linux app for now.";
+// [icon, name, where, the Branch app's download id (desktop/src/desktop-controls.ts RELEASE_DOWNLOADS).
+//  No id means no button and no link; those rows show only at Technical.]
 const APPS: [IconName, string, string, string | undefined][] = [
   ["phone", "iPhone", NOT_OUT_YET, undefined],
   ["phone", "Android", "Signed APK", "android"],
