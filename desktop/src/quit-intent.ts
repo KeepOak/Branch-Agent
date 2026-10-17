@@ -14,7 +14,7 @@ export function fullStopRequested(): boolean { return fullStop; }
 /** A new app session (the resident window is set up again) starts with no Quit chosen. */
 export function resetQuitIntent(): void { fullStop = false; }
 
-interface SignalSource { once(signal: NodeJS.Signals, listener: () => void): unknown }
+export interface SignalSource { once(signal: NodeJS.Signals, listener: () => void): unknown }
 
 /**
  * A terminal's Ctrl C, a closed terminal and `kill` quit the same way as Quit, so the engine and its workers are not

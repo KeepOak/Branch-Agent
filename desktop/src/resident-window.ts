@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { Menu, Notification, Tray, dialog, nativeImage, type App, type BrowserWindow, type NativeImage } from "electron";
 import { appMenuTemplate, isQuitKey } from "./app-menu";
 import { CLOSE_NOTICE_TITLE, closeNoticeBody, createCloseNotice } from "./close-notice";
-import { quitOnSignals, requestFullStop, resetQuitIntent } from "./quit-intent";
+import { quitOnSignals, requestFullStop, resetQuitIntent, type SignalSource } from "./quit-intent";
 import { quitBranch, trayLabel, trayMenu, type EngineLiveState, type QuitQuestion } from "./tray-status";
 
 /** macOS tints a template image for light and dark menu bars. Other platforms keep the given file. */
@@ -41,7 +41,7 @@ export function keepWindowResident(
   window: BrowserWindow,
   icon: string,
   options: { hidden?: boolean; platform?: NodeJS.Platform; keepRunning?: () => boolean; onTrayClick?: () => void;
-    pauseAll?: () => void; stopCompletely?: () => void } = {},
+    pauseAll?: () => void; stopCompletely?: () => void; signals?: SignalSource } = {},
 ): Tray | undefined {
   const platform = options.platform ?? process.platform;
   if (platform !== "win32" && platform !== "darwin" && platform !== "linux") return;
@@ -105,8 +105,9 @@ export function keepWindowResident(
     event.preventDefault();
     quit();
   });
-  // A signal (Ctrl C in a terminal, kill) stops the engine and its workers too; it never asks.
-  if (process.versions.electron) quitOnSignals(process, () => { if (!quitting) { requestFullStop(); app.quit(); } });
+  // A signal (Ctrl C in a terminal, kill) stops the same way as Quit, engine service included; it never asks.
+  const signals = options.signals ?? (process.versions.electron ? process : undefined);
+  if (signals) quitOnSignals(signals, () => { if (!quitting) stop(); });
   const tray = new Tray(menuBarIcon(icon, platform));
   const actions = { open: reveal, pauseAll: options.pauseAll, quit };
   let shown: string | undefined;

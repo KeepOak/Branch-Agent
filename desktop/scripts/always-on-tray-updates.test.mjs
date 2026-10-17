@@ -129,13 +129,13 @@ async function serviceApp(t, work, run, env = {}, setup = () => undefined) {
   const vars = { BRANCH_DESKTOP_DATA: root, BRANCH_DESKTOP_HIDDEN: '0', BRANCH_DESKTOP_ENGINE_PROFILE: profile, ...env };
   const saved = Object.fromEntries(Object.keys(vars).map(key => [key, process.env[key]]));
   Object.assign(process.env, vars);
-  const runtime = electronFixture(work);
+  const runtime = electronFixture(work), signals = new EventEmitter();
   Module._load = function(name, ...args) {
     if (name === 'electron') return runtime.electron;
     const loaded = originalLoad.call(this, name, ...args);
     if (name !== './resident-window') return loaded;
     return { ...loaded, keepWindowResident(app, window, icon, options) {
-      return loaded.keepWindowResident(app, window, icon, { ...options, platform: 'win32' });
+      return loaded.keepWindowResident(app, window, icon, { ...options, platform: 'win32', signals });
     } };
   };
   globalThis.fetch = (url, options) => String(url).startsWith('https://') ? Promise.resolve(new Response('', { status: 404 })) : originalFetch(url, options);
@@ -147,7 +147,7 @@ async function serviceApp(t, work, run, env = {}, setup = () => undefined) {
     await eventually(() => desktopLog().includes('engine: attached to the running service engine'));
     const wc = runtime.window.webContents;
     const clickUpdate = () => runtime.electron.ipcMain.emit('branch-desktop:restart-engine', { sender: wc, senderFrame: wc.mainFrame });
-    await run({ ...runtime, window: runtime.window, tray: runtime.tray, root, gatewayPort, desktopLog, clickUpdate,
+    await run({ ...runtime, window: runtime.window, tray: runtime.tray, root, gatewayPort, desktopLog, clickUpdate, signals,
       cliCalls: () => lines('cli-calls.txt'), standbys: () => lines('standbys.txt').map(Number), serviceRuns: runs,
       runningRecord: () => readFileSync(join(root, 'engine-running.txt'), 'utf8').trim(),
       publish: (name, build) => { const dir = fakeEngine(root, name, build); writeFileSync(join(root, 'engine-current.txt'), `${dir}\n`); return dir; } });
@@ -179,6 +179,20 @@ test('close hides the window and the service engine keeps running; Quit asks fir
     // The first close's one-time notice (this stand-in has no system notifications), then Quit's one question.
     assert.deepEqual(dialogs.filter(d => d[0] === 'warn').map(d => d[1]), ['Branch closes to the tray.', 'Quit while 2 Trunks are working?']);
     assert.deepEqual(cliCalls(), ['gateway stop --force --json @engine'], 'Quit stops the engine service through the engine CLI');
+  });
+});
+
+test('a signal (Ctrl C in a terminal, kill) stops the engine service too, as tray Quit does, and never asks', async t => {
+  await serviceApp(t, () => ({ pendingApprovals: 0, streaming: false, unsavedDraftFiles: false, workingTrunks: 2 }), async ({ app, window, tray, gatewayPort, cliCalls, dialogs, signals }) => {
+    assert.equal(window.close().prevented, true, 'the close button only hides the window');
+    assert.equal(await serving(gatewayPort), true, 'the engine service keeps answering after the close');
+    await eventually(() => tray.tooltip === 'Branch Agent · 2 Trunks working');
+    assert.deepEqual(cliCalls(), []);
+    signals.emit('SIGTERM');
+    await eventually(() => (app.quitCalls ?? 0) === 1);
+    assert.equal(window.destroyed, true);
+    assert.deepEqual(dialogs.filter(d => d[0] === 'warn').map(d => d[1]), ['Branch closes to the tray.'], 'a signal asks nothing, even while Trunks work');
+    assert.deepEqual(cliCalls(), ['gateway stop --force --json @engine'], 'a signal stops the engine service through the engine CLI, as Quit does');
   });
 });
 
