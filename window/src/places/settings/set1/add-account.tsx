@@ -9,13 +9,15 @@ import { useResource } from "../hooks";
 import { Footer, WizardBody } from "../AccountLogin";
 import { useWizard, type WizardStart, type WizardStep } from "../use-wizard";
 import { Empty, useSaveRunner } from "../kit";
-import { Logo, serviceName } from "./service";
-import { providersOf, tokenLabel, type Provider } from "./accounts";
+import { brandOf, Logo, serviceName } from "./service";
+import { providersOf, tokenLabel, type Profile, type Provider } from "./accounts";
 
 export type AddStart = { provider?: string };
 type Kind = "plan" | "key" | "local" | "custom";
 /** One service tile: a provider with plan sign-ins or a key, or an engine setup option (local or your own). */
-export type Service = { id: string; brand: string; name: string; kind: Kind; signedIn: number; logins: RecordValue[]; choice?: string };
+export type Service = { id: string; brand: string; name: string; kind: Kind; signedIn: number; logins: RecordValue[]; choice?: string; keySupported?: boolean; providers?: string[] };
+const FEATURED = ["openai", "openrouter", "xai", "google", "anthropic"];
+const KIND_RANK: Record<Kind, number> = { local: 0, custom: 1, plan: 2, key: 3 };
 type Step = { n: 1 } | { n: 2; svc: Service } | { n: 2; run: WizardStart; svc: Service } | { n: 3; svc: Service; before: string[] };
 
 const FRESH_WORD: Record<string, string> = { ok: "Connected", static: "Connected", expiring: "Signing in again soon", expired: "Signed out", missing: "Sign-in missing" };
@@ -27,7 +29,7 @@ const KIND_SUB: Record<Kind, string> = { plan: "your plan", key: "a key", local:
  *  engine/ui/src/pages/model-providers/login-providers.ts ("setup-secret" choices). */
 function addSecretLogins(out: Service[], manual: RecordValue[], count: (id: string, key: boolean) => number): void {
   for (const o of manual.filter((x) => !/api-?key/i.test(text(x.id)))) {
-    const brand = text(o.brandId ?? o.id);
+    const brand = brandOf(text(o.brandId ?? o.id));
     const login: RecordValue = { ...o, kind: "setup-secret", featured: false };
     const plan = out.find((s) => s.kind === "plan" && s.brand === brand);
     if (plan) {
@@ -38,21 +40,89 @@ function addSecretLogins(out: Service[], manual: RecordValue[], count: (id: stri
   }
 }
 
-/** Every service, from the engine's provider capabilities and its setup options. */
-export function servicesOf(caps: RecordValue[], providers: Provider[], detect: RecordValue | undefined): Service[] {
-  const count = (id: string, key: boolean) => providers.filter((p) => p.provider === id).flatMap((p) => p.profiles).filter((a) => (a.type === "api_key") === key).length;
-  const out: Service[] = [];
-  for (const c of caps) {
-    const id = text(c.provider);
-    const logins = list(c.loginOptions).filter((o) => o.kind === "oauth" || o.kind === "device-code");
-    const name = providers.find((p) => p.provider === id)?.displayName ?? text(logins[0]?.groupLabel ?? id);
-    if (logins.length) out.push({ id: `plan:${id}`, brand: id, name: serviceName(id, name), kind: "plan", signedIn: count(id, false), logins });
-    if (c.apiKeySupported === true) out.push({ id: `key:${id}`, brand: id, name: serviceName(id, name, true), kind: "key", signedIn: count(id, true), logins: [] });
+function mergeKey(s: Service): string {
+  return s.kind === "local" || s.kind === "custom" ? `${s.kind}:${s.choice ?? s.brand}` : `cloud:${s.brand}`;
+}
+
+function putService(out: Map<string, Service>, next: Service): void {
+  const key = mergeKey(next);
+  const prev = out.get(key);
+  if (!prev) {
+    out.set(key, next);
+    return;
   }
-  addSecretLogins(out, list(detect?.manualProviders), count);
-  for (const o of list(detect?.prepareOptions)) out.push({ id: `local:${text(o.id)}`, brand: text(o.brandId ?? o.id), name: visible(o.label), kind: "local", signedIn: 0, logins: [], choice: text(o.id) });
-  for (const o of list(detect?.authOptions).filter((x) => x.kind === "custom")) out.push({ id: `custom:${text(o.id)}`, brand: text(o.brandId ?? o.id), name: visible(o.label), kind: "custom", signedIn: 0, logins: [], choice: text(o.id) });
-  return out;
+  const logins = [...prev.logins];
+  for (const login of next.logins) {
+    if (!logins.some((row) => row.id === login.id && row.kind === login.kind)) logins.push(login);
+  }
+  const kind: Kind = prev.kind === "plan" || next.kind === "plan" ? "plan" : prev.kind;
+  out.set(key, {
+    ...prev,
+    id: kind === "plan" ? `plan:${prev.brand}` : prev.id,
+    kind,
+    name: kind === "plan" && next.kind === "plan" ? next.name : prev.kind === "plan" ? prev.name : next.name,
+    logins,
+    signedIn: Math.max(prev.signedIn, next.signedIn),
+    keySupported: Boolean(prev.keySupported || next.keySupported || prev.kind === "key" || next.kind === "key"),
+    choice: prev.choice ?? next.choice,
+    providers: [...new Set([...(prev.providers ?? [prev.brand]), ...(next.providers ?? [next.brand])])],
+  });
+}
+
+function rankServices(a: Service, b: Service): number {
+  const kind = KIND_RANK[a.kind] - KIND_RANK[b.kind];
+  if (kind) return kind;
+  const fa = FEATURED.indexOf(a.brand);
+  const fb = FEATURED.indexOf(b.brand);
+  return (fa < 0 ? 99 : fa) - (fb < 0 ? 99 : fb) || a.name.localeCompare(b.name) || a.brand.localeCompare(b.brand);
+}
+
+/** Every service, from the engine's provider capabilities and its setup options. One tile per brand; local first. */
+export function servicesOf(caps: RecordValue[], providers: Provider[], detect: RecordValue | undefined): Service[] {
+  const count = (id: string, key: boolean) => providers.filter((p) => brandOf(p.provider) === brandOf(id)).flatMap((p) => p.profiles).filter((a) => (a.type === "api_key") === key).length;
+  const out = new Map<string, Service>();
+  for (const c of caps) {
+    const raw = text(c.provider);
+    const brand = brandOf(raw);
+    const logins = list(c.loginOptions).filter((o) => o.kind === "oauth" || o.kind === "device-code");
+    const name = providers.find((p) => brandOf(p.provider) === brand)?.displayName ?? text(logins[0]?.groupLabel ?? raw);
+    if (logins.length) putService(out, { id: `plan:${brand}`, brand, name: serviceName(brand, name), kind: "plan", signedIn: count(raw, false), logins, providers: [raw] });
+    if (c.apiKeySupported === true) putService(out, { id: `key:${brand}`, brand, name: serviceName(brand, name, true), kind: "key", signedIn: count(raw, true), logins: [], keySupported: true, providers: [raw] });
+  }
+  const listed = [...out.values()];
+  addSecretLogins(listed, list(detect?.manualProviders), count);
+  const merged = new Map<string, Service>();
+  for (const row of listed) putService(merged, row);
+  for (const o of list(detect?.prepareOptions)) {
+    putService(merged, { id: `local:${text(o.id)}`, brand: brandOf(text(o.brandId ?? o.id)), name: visible(o.label), kind: "local", signedIn: 0, logins: [], choice: text(o.id) });
+  }
+  for (const o of list(detect?.authOptions).filter((x) => x.kind === "custom")) {
+    putService(merged, { id: `custom:${text(o.id)}`, brand: brandOf(text(o.brandId ?? o.id)), name: visible(o.label), kind: "custom", signedIn: 0, logins: [], choice: text(o.id) });
+  }
+  return [...merged.values()].sort(rankServices);
+}
+
+/** The newly signed-in profile, even when it was saved under an aliased provider id (minimax-portal → minimax). */
+export function freshAccount(providers: Provider[], brand: string, before: readonly string[]): { provider: Provider; profile: Profile } | undefined {
+  const wanted = brandOf(brand);
+  for (const p of providers) {
+    if (brandOf(p.provider) !== wanted) continue;
+    const profile = p.profiles.find((a) => !before.includes(a.profileId));
+    if (profile) return { provider: p, profile };
+  }
+}
+
+export function serviceMatchesProvider(svc: Service, provider: string): boolean {
+  return svc.brand === provider || brandOf(svc.brand) === brandOf(provider) || Boolean(svc.providers?.some((id) => id === provider || brandOf(id) === brandOf(provider)));
+}
+
+/** What local Set it up will do, including sizes, before the wizard starts. */
+export function localSetupCopy(svc: Service): string {
+  const brand = brandOf(svc.brand);
+  if (brand === "ollama") return "Ollama runs models on this computer, free and private. Install Ollama if it isn’t already. Branch can then pull a tools-capable model of about 9.6 GB. Nothing downloads until you agree.";
+  if (brand === "llama-cpp") return "Branch installs a local model on this computer. It tells you the download size (often a few GB) and asks before it starts.";
+  if (brand === "lmstudio") return "LM Studio runs models on this computer. Install LM Studio and load a model there first. Branch then connects to it. Nothing is downloaded until you choose a model in LM Studio.";
+  return `Branch sets up ${svc.name} on this computer. It says what it will install, and how big it is, before it does anything.`;
 }
 
 /** clear: the R1 window's item 48 glass (README 48). The dialog is clear; its words sit on frosted pills (.g-label for a run of
@@ -72,12 +142,12 @@ function Card({ children }: { children: ReactNode }) {
 export function AddAccountDialog({ engine, start, caps, providers, agent, onClose, clear }: Props) {
   const detect = useResource<RecordValue>(engine, "branch.setup.detect", agent);
   const services = useMemo(() => servicesOf(caps, providers, detect.data), [caps, providers, detect.data]);
-  const first = start.provider && !detect.loading ? services.find((s) => s.brand === start.provider && s.kind === "plan") ?? services.find((s) => s.brand === start.provider) : undefined;
+  const first = start.provider && !detect.loading ? services.find((s) => serviceMatchesProvider(s, start.provider!) && s.kind === "plan") ?? services.find((s) => serviceMatchesProvider(s, start.provider!)) : undefined;
   const [step, setStep] = useState<Step>(first ? { n: 2, svc: first } : { n: 1 });
   useEffect(() => {
     if (!start.provider || detect.loading) return;
-    const preferred = services.find((service) => service.brand === start.provider && service.kind === "plan") ?? services.find((service) => service.brand === start.provider);
-    if (preferred) setStep((current) => current.n === 1 || (current.n === 2 && !("run" in current) && current.svc.brand === start.provider && current.svc.kind === "key" && preferred.kind === "plan") ? { n: 2, svc: preferred } : current);
+    const preferred = services.find((service) => serviceMatchesProvider(service, start.provider!) && service.kind === "plan") ?? services.find((service) => serviceMatchesProvider(service, start.provider!));
+    if (preferred) setStep((current) => current.n === 1 || (current.n === 2 && !("run" in current) && serviceMatchesProvider(current.svc, start.provider!) && current.svc.kind === "key" && preferred.kind === "plan") ? { n: 2, svc: preferred } : current);
   }, [detect.loading, services, start.provider]);
   const [added, setAdded] = useState(false);
   const ids = providers.flatMap((p) => p.profiles.map((a) => a.profileId));
@@ -107,19 +177,30 @@ function PickService({ services, detect, engine, agent, onPick, onUsed }: PickPr
   const [using, setUsing] = useState<RecordValue | null>(null);
   const g = usePill();
   if (using) return <RunWizard engine={engine} run={{ method: "branch.setup.activate.start", params: { kind: using.kind, modelRef: using.modelRef, ...agent } }} onDone={onUsed} onBack={() => setUsing(null)} />;
-  const kinds = (["plan", "key", "local", "custom"] as Kind[]).filter((k) => services.some((s) => s.kind === k));
+  if (detect.loading && detect.data === undefined && !detect.error) {
+    return (
+      <>
+        <p className={g.label("aa-lede")} data-lines={g.clear ? "" : undefined}>Which service is the new account with?</p>
+        <label className="aa-search"><input className="inp" type="search" placeholder="Search services" aria-label="Search services" disabled /></label>
+        <div className="aa-skel" data-testid="add-account-loading" aria-busy="true">
+          <div className="aa-grp"><h3 className={g.label()}>On this computer</h3><div className="provs">{[0, 1, 2, 3].map((i) => <div key={i} className="prov skel" />)}</div></div>
+          <div className="aa-grp"><h3 className={g.label()}>Your plan</h3><div className="provs">{[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <div key={i} className="prov skel" />)}</div></div>
+        </div>
+      </>
+    );
+  }
+  const kinds = (["local", "custom", "plan", "key"] as Kind[]).filter((k) => services.some((s) => s.kind === k));
   const shown = services.filter((s) => (tab === "all" || s.kind === tab) && (!q.trim() || s.name.toLowerCase().includes(q.trim().toLowerCase())));
   return (
     <>
       <p className={g.label("aa-lede")} data-lines={g.clear ? "" : undefined}>Which service is the new account with? {services.length} {services.length === 1 ? "service" : "services"}, and you can have several accounts with each.</p>
-      <Found detect={detect} onUse={setUsing} />
+      <Found detect={detect} services={services} onUse={setUsing} />
       <label className="aa-search"><input className="inp" type="search" placeholder="Search services" aria-label="Search services" value={q} onChange={(e) => setQ(e.target.value)} /></label>
       <div className="tabs" role="tablist" aria-label="Kinds of service">
         {(["all", ...kinds] as const).map((k) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{k === "all" ? "All" : KIND_LABEL[k]}</button>)}
       </div>
-      {detect.loading && !services.length ? <p className={g.label("hint")}>Looking for services…</p> : null}
       {kinds.map((k) => <Group key={k} kind={k} services={shown.filter((s) => s.kind === k)} onPick={onPick} />)}
-      {!shown.length && !detect.loading ? <Card><Empty>No service matches.</Empty></Card> : null}
+      {!shown.length ? <Card><Empty>No service matches.</Empty></Card> : null}
     </>
   );
 }
@@ -144,8 +225,9 @@ function Group({ kind, services, onPick }: { kind: Kind; services: Service[]; on
 }
 
 /** Found on this computer: the engine's detected candidates; "Test and use" runs its live test and sets it up. */
-function Found({ detect, onUse }: { detect: ReturnType<typeof useResource<RecordValue>>; onUse: (c: RecordValue) => void }) {
-  const found = list(detect.data?.candidates);
+function Found({ detect, services, onUse }: { detect: ReturnType<typeof useResource<RecordValue>>; services: Service[]; onUse: (c: RecordValue) => void }) {
+  const localBrands = new Set(services.filter((s) => s.kind === "local").map((s) => s.brand));
+  const found = list(detect.data?.candidates).filter((c) => !localBrands.has(brandOf(text(c.brandId ?? c.kind))));
   const g = usePill();
   if (!found.length) return null;
   const pill = (c: RecordValue): [string, string] => c.credentials === false ? ["warn", "Sign-in needed"] : c.recommended === true ? ["ok", "Recommended"] : c.credentials === true ? ["ok", "Ready to use"] : ["idle", "Found"];
@@ -172,7 +254,7 @@ type SignInProps = { engine: WindowEngine; svc: Service; agent: { agentId?: stri
 function SignIn({ engine, svc, agent, onRun, onKey }: SignInProps) {
   const g = usePill();
   if (svc.kind === "key") return <KeyEntry engine={engine} svc={svc} agent={agent} onSaved={onKey} />;
-  if (svc.kind === "local") return <Lead text={`Branch sets up ${svc.name} on this computer. It says what it will install before it does anything.`} action="Set it up" onGo={() => onRun({ method: "branch.setup.prepare.start", params: { authChoice: svc.choice, ...agent } })} />;
+  if (svc.kind === "local") return <Lead text={localSetupCopy(svc)} action="Set it up" onGo={() => onRun({ method: "branch.setup.prepare.start", params: { authChoice: svc.choice, ...agent } })} />;
   if (svc.kind === "custom") return <Lead text={`Branch asks for the address and sign-in of ${svc.name}.`} action="Start" onGo={() => onRun({ method: "branch.setup.auth.start", params: { authChoice: svc.choice, ...agent } })} />;
   const [main, ...rest] = [...svc.logins].sort((a, b) => Number(b.kind === "oauth") - Number(a.kind === "oauth") || Number(b.featured === true) - Number(a.featured === true));
   const go = (o: RecordValue) => onRun({ method: "models.authLogin", params: { authChoice: text(o.id), ...agent } });
@@ -185,6 +267,7 @@ function SignIn({ engine, svc, agent, onRun, onKey }: SignInProps) {
         {rest.filter((o) => o.kind !== "setup-secret").length ? <div className="acts">{rest.filter((o) => o.kind !== "setup-secret").map((o) => <button key={text(o.id)} type="button" className="btn sm" title={o.hint ? visible(o.hint) : undefined} onClick={() => go(o)}>{o.kind === "device-code" ? "Sign in with a code instead" : visible(o.label)}</button>)}</div> : null}
       </div>
       {rest.filter((o) => o.kind === "setup-secret").map((o) => <details key={text(o.id)}><summary className={g.label()}>Paste a token instead</summary><SecretSignIn engine={engine} svc={svc} login={o} agent={agent} onRun={onRun} /></details>)}
+      {svc.keySupported ? <details><summary className={g.label()}>Paste a key instead</summary><KeyEntry engine={engine} svc={svc} agent={agent} onSaved={onKey} /></details> : null}
       <p className={g.label("hint")}>Branch never sees or stores your password.</p>
     </>
   );
@@ -259,7 +342,7 @@ function KeyEntry({ engine, svc, agent, onSaved }: { engine: WindowEngine; svc: 
   const save = async () => {
     setBusy(true); setError("");
     try {
-      await engine.request("models.authSetApiKey", { provider: svc.brand, apiKey: key.trim(), ...agent });
+      await engine.request("models.authSetApiKey", { provider: svc.providers?.[0] ?? svc.brand, apiKey: key.trim(), ...agent });
       setKey(""); onSaved();
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
@@ -292,8 +375,9 @@ function Placed({ engine, svc, before, agent, onDone }: { engine: WindowEngine; 
   const save = useSaveRunner();
   const g = usePill();
   const providers = providersOf(status.data?.providers);
-  const p = providers.find((x) => x.provider === svc.brand);
-  const fresh = p?.profiles.find((a) => !before.includes(a.profileId));
+  const found = freshAccount(providers, svc.brand, before);
+  const p = found?.provider;
+  const fresh = found?.profile;
   const freshName = fresh ? fresh.displayName ?? fresh.email ?? tokenLabel(fresh) : undefined;
   const order = (where: "first" | "last") => {
     if (!p || !fresh) return null;
