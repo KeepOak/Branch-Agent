@@ -804,7 +804,7 @@ describe("session list resolver cache", () => {
         expect(result.sessions).toHaveLength(scenario.rows);
         expect(titleSpy).not.toHaveBeenCalled();
         expect(result.sessions.filter((row) => row.derivedTitle !== undefined)).toHaveLength(
-          scenario.enriched,
+          scenario.rows,
         );
         expect(result.sessions.filter((row) => row.lastMessagePreview !== undefined)).toHaveLength(
           scenario.enriched,
@@ -818,6 +818,10 @@ describe("session list resolver cache", () => {
           derivedTitle: `Title ${scenario.sharedTail}`,
           lastMessagePreview: `last ${scenario.sharedTail}`,
         });
+        expect(sessionsByKey.get("agent:main:title-batch-239")).toMatchObject({
+          derivedTitle: "Title 239",
+        });
+        expect(sessionsByKey.get("agent:main:title-batch-239")?.lastMessagePreview).toBeUndefined();
 
         const withoutTranscriptFields = await listProjectedSessions({
           projection,

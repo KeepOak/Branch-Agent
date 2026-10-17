@@ -599,7 +599,7 @@ export async function listProjectedSessions(params: {
             const includeTranscriptFields =
               index < SESSIONS_LIST_TRANSCRIPT_LIMIT + selection.ownerCount;
             const sharedRow = presentation.present(record, {
-              includeDerivedTitles: opts.includeDerivedTitles && includeTranscriptFields,
+              includeDerivedTitles: opts.includeDerivedTitles,
               includeLastMessage: opts.includeLastMessage && includeTranscriptFields,
               includeActivitySummary: opts.includeActivitySummary === true,
               rowMode: opts.rowMode,
