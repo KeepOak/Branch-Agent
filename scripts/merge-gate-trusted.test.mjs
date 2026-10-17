@@ -2839,11 +2839,13 @@ test('a clean merge still carries when the process has no git identity', () => {
   try {
     const output = execFileSync(process.execPath, [
       '--test',
+      '--test-reporter=tap',
+      '--test-reporter-destination=stdout',
       '--test-name-pattern',
       '^a gate-change-reviewed marker carries across one merge of main$',
       file,
     ], { env, encoding: 'utf8', stdio: 'pipe', windowsHide: true });
-    assert.match(output, /^ok \d+ - a gate-change-reviewed marker carries across one merge of main$/m);
+    assertChildTapPassedOne(output, 'a gate-change-reviewed marker carries across one merge of main');
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -2851,6 +2853,15 @@ test('a clean merge still carries when the process has no git identity', () => {
 
 function mergeGateHomes(dir) {
   return readdirSync(dir).filter((name) => name.startsWith('merge-gate-home-'));
+}
+
+// Child `node --test` must use the TAP reporter. Node 24's default reporter prints
+// a check mark, and a run that matches nothing can still exit 0.
+function assertChildTapPassedOne(output, name) {
+  assert.match(output, new RegExp(`^ok \\d+ - ${name}$`, 'm'));
+  assert.match(output, /^# tests 1$/m);
+  assert.match(output, /^# pass 1$/m);
+  assert.match(output, /^# fail 0$/m);
 }
 
 function envWithoutGitIdentity(scratch) {
@@ -2989,6 +3000,8 @@ test('git children leave no merge-gate home after success or failure', () => {
   try {
     const output = execFileSync(process.execPath, [
       '--test',
+      '--test-reporter=tap',
+      '--test-reporter-destination=stdout',
       '--test-name-pattern',
       '^git children leave no merge-gate home after success or failure$',
       file,
@@ -2998,7 +3011,7 @@ test('git children leave no merge-gate home after success or failure', () => {
       stdio: 'pipe',
       windowsHide: true,
     });
-    assert.match(output, /^ok \d+ - git children leave no merge-gate home after success or failure$/m);
+    assertChildTapPassedOne(output, 'git children leave no merge-gate home after success or failure');
     assert.deepEqual(mergeGateHomes(scratch), []);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
