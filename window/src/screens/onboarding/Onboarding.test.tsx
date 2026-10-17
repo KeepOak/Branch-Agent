@@ -210,7 +210,6 @@ async function toLastStepNamed(engine: WindowEngine, name: string) {
   await typeName(shown.host, name);
   await act(async () => button(shown.host, "Get started").click());
   await flush();
-  await act(async () => button(shown.host, "Continue").click());
   await act(async () => button(shown.host, "Say hello").click());
   await flush();
   await act(async () => button(shown.host, "Continue").click());
