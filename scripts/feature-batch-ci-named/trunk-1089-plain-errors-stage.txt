@@ -1,0 +1,1 @@
+window:src/stage/raw-errors-1089.test.tsx

@@ -12,10 +12,12 @@ import { SIcon } from "../stage-icons";
 import { activityRecordedAt, activityState, money } from "./pane-model";
 import { shortReason, stepLabel } from "../../thread/format";
 import { isInternalStep } from "../../thread/internal-steps";
+import { plainError } from "../../shell/plain-error";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown) => (typeof v === "string" ? v : "");
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const errorText = (e: unknown): string => plainError(e);
 
 const PROVIDER: Record<string, string> = { anthropic: "your Claude account", "openai-codex": "your ChatGPT account", openai: "your OpenAI account", google: "your Google account", ollama: "on this computer", lmstudio: "on this computer", local: "on this computer" };
 const CARD_STATE: Record<string, string> = { triage: "New", backlog: "Later", todo: "To do", ready: "Ready", running: "Doing", doing: "Doing", review: "To check", blocked: "Stuck", done: "Done" };

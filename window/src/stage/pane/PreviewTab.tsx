@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { COMPOSE_EVENT } from "../../composer/Composer";
 import { SIcon } from "../stage-icons";
+import { plainError } from "../../shell/plain-error";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown) => (typeof v === "string" ? v : "");
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const errorText = (e: unknown): string => plainError(e);
 
 export type Portal = { id: string; title: string; port: number; url: string; createdAtMs: number };
 const ASKS = ["Show me in a preview.", "Start the app in a preview.", "Make the server available in a preview."];
