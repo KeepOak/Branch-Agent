@@ -1,28 +1,57 @@
 # Branch Agent
 
-Branch Agent is a desktop AI assistant from [KeepOak](https://keepoak.com). This repository contains the engine, React window, Electron desktop launcher, and product artwork.
+A desktop AI assistant that runs on your computer and stops at anything you said needs you.
 
-This is a source snapshot under active development. A feature being present in source does not establish that every workflow is complete or released.
+<p align="center">
+  <img src="assets/social-preview.png" alt="Branch in the black-and-white R1 window" width="800">
+</p>
 
-## Install
+<p align="center">
+  <a href="https://github.com/KeepOak/Branch-Agent/releases/latest"><img src="assets/download-mac.png" alt="Download for Mac" height="40"></a>
+  &nbsp;
+  <a href="https://github.com/KeepOak/Branch-Agent/releases/latest"><img src="assets/download-windows.png" alt="Download for Windows" height="40"></a>
+  &nbsp;
+  <a href="https://github.com/KeepOak/Branch-Agent/releases/latest"><img src="assets/download-linux.png" alt="Download for Linux" height="40"></a>
+</p>
 
-macOS (Apple silicon) and Linux (x64):
+Each button opens Branch's own [latest GitHub Release](https://github.com/KeepOak/Branch-Agent/releases/latest). Pick the asset for your system: `Branch-Agent-*-darwin-arm64.dmg` (Mac), `Branch-Agent-Setup-*-win32-x64.exe` (Windows), or `Branch-Agent-*-linux-x64.AppImage` (Linux). Installers are not signed yet, so macOS needs right-click → Open on first launch and Windows SmartScreen needs More info → Run anyway. Details are in [desktop/INSTALLERS.md](desktop/INSTALLERS.md).
 
-```sh
-curl -fsSL https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.sh | sh
-```
+Branch Agent is a desktop AI assistant from [KeepOak](https://keepoak.com). It plans a job, runs it on your computer, and stops at anything you said needs you. Talk with it in the desktop window, or from Discord, Slack, Signal, Telegram, WhatsApp and other apps you already use. Coding agents can join through Graft (`branch graft`). The engine is derived from upstream OpenClaw (MIT); see [NOTICE](NOTICE).
 
-Windows (x64), in PowerShell:
+More at [keepoak.com](https://keepoak.com).
 
-```powershell
-irm https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.ps1 | iex
-```
+## Roadmap
 
-The scripts install for the current user with no sudo or admin prompt. They check the download's SHA-256 against the release's `SHA256SUMS` before installing and stop on a mismatch. For a specific release, run `... | sh -s -- --version v1.2.3`, or on Windows set `$env:BRANCH_INSTALL_VERSION = 'v1.2.3'` first. Re-running upgrades in place. On Linux the script installs the release's AppImage as `~/.local/bin/branch-agent` with an app-menu entry. Details are in [desktop/INSTALLERS.md](desktop/INSTALLERS.md).
+From this repository's own docs, with no dates attached. Work follows this order ([AGENTS.md](AGENTS.md)):
 
-Alternatively, download the installer from the [latest release](https://github.com/KeepOak/Branch-Agent/releases/latest). It isn't signed yet, so macOS needs right-click → Open on first launch and Windows SmartScreen needs More info → Run anyway.
+1. Fix what is broken.
+2. Seamless updates that keep a conversation going across an engine swap.
+3. Proactive agents (heartbeats and follow-ups).
+4. Every screen and control from the preview, present and working.
+5. Logic testing of the app.
+6. New features after that.
 
-## Requirements
+The preview (`design/spec-v23/index.html`) is the map of screens and controls to aim for. Installers ship unsigned until signing is configured ([desktop/INSTALLERS.md](desktop/INSTALLERS.md)). Updates publish from `main` in 30-minute batches ([CONTRIBUTING.md](CONTRIBUTING.md#releases-and-component-updates)).
+
+## Docs
+
+- [Installers](desktop/INSTALLERS.md) — Mac, Windows and Linux packages, checksums and updates.
+- [Desktop launcher](desktop/README.md) — Electron app, packaging and component updates.
+- [Engine docs](engine/docs/) — gateway, CLI, channels, providers and tools.
+- [Graft](engine/docs/cli/mcp/serve.md) — connect Claude Code, Codex, Gemini CLI or any MCP client (`branch graft`).
+- [keepoak.com](https://keepoak.com)
+
+## Contributing
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) is the contributor workflow: repository layout, setting up a worktree with `node scripts/install-worktree.mjs`, the local strict type checks, running tests by name, the merge gate and the 15-minute CI cap, component releases and updates, and working with AI agents through Graft. [`AGENTS.md`](AGENTS.md) is the short rule list for coding agents.
+
+Graft (`branch graft`) lets Claude Code, Codex, Gemini CLI or any MCP client work with your Trunks, group chats and the Branch window. Turn on "Type branch in any terminal" in the desktop app, then add it once, for example `claude mcp add --scope user branch -- branch graft`. Grafted agents appear in Settings › Grafts. Details: [`engine/docs/cli/mcp/serve.md`](engine/docs/cli/mcp/serve.md).
+
+## Build from source
+
+This checkout is a source snapshot under active development. A feature being present in source does not establish that every workflow is complete or released.
+
+### Requirements
 
 - Node.js matching the engine requirement: `>=24.16.0 <25 || >=26.1.0`.
 - pnpm `12.5.1` (the engine pins its exact package-manager integrity).
@@ -31,7 +60,7 @@ Alternatively, download the installer from the [latest release](https://github.c
 
 Package versions on `main`: engine `2026.9.8` (synced from upstream OpenClaw), window `0.0.0`, desktop `0.4.4` with Electron `44.5.1`.
 
-## Build
+### Build
 
 ```bash
 npm install -g pnpm@12.5.1
@@ -50,7 +79,23 @@ npm run build
 
 Build the engine before the window: `@branch/gateway-client` and `@branch/gateway-protocol` are local engine packages. Installations and builds may download packages and native runtimes. Product artwork stays at root `assets/`; its manifests use paths relative to the repository root.
 
-## Run the web window
+### One-line install (advanced)
+
+macOS (Apple silicon) and Linux (x64):
+
+```sh
+curl -fsSL https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.sh | sh
+```
+
+Windows (x64), in PowerShell:
+
+```powershell
+irm https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.ps1 | iex
+```
+
+The scripts install for the current user with no sudo or admin prompt. They check the download's SHA-256 against the release's `SHA256SUMS` before installing and stop on a mismatch. For a specific release, run `... | sh -s -- --version v1.2.3`, or on Windows set `$env:BRANCH_INSTALL_VERSION = 'v1.2.3'` first. Re-running upgrades in place. On Linux the script installs the release's AppImage as `~/.local/bin/branch-agent` with an app-menu entry. Details are in [desktop/INSTALLERS.md](desktop/INSTALLERS.md).
+
+### Run the web window
 
 In one terminal:
 
@@ -69,7 +114,7 @@ VITE_GATEWAY_URL=ws://127.0.0.1:19011 pnpm dev
 
 Open `http://127.0.0.1:5174` and connect using the gateway's configured authentication.
 
-## Run the desktop launcher
+### Run the desktop launcher
 
 The desktop launcher expects a built engine, built window, application data directory, and gateway-token file. Set `BRANCH_DESKTOP_DATA` to your application directory and create `desktop.json` there:
 
@@ -93,14 +138,6 @@ The `Source builds` workflow runs only when a maintainer dispatches it on `main`
 
 Saved `dist/` outputs are source build artifacts. `Source builds` does not create installers or publish releases; its artifact retention is three days. Releases come from the `GitHub component release` workflow on a 30-minute schedule at :07 and :37, or from a push to main when the latest release is more than 25 minutes old, when main has moved since the last release and no check on main's head has failed; see [Releases and component updates](CONTRIBUTING.md#releases-and-component-updates).
 
-## Working on Branch
-
-[`CONTRIBUTING.md`](CONTRIBUTING.md) is the contributor workflow: repository layout, setting up a worktree with `node scripts/install-worktree.mjs`, the local strict type checks, running tests by name, the merge gate and the 15-minute CI cap, component releases and updates, and working with AI agents through Graft (`branch graft`). [`AGENTS.md`](AGENTS.md) is the short rule list for coding agents.
-
-## Working with AI agents
-
-Graft (`branch graft`) lets Claude Code, Codex, Gemini CLI, Hermes or any MCP client work with your Trunks, group chats and the Branch window. Turn on "Type branch in any terminal" in the desktop app, then add it once, for example `claude mcp add --scope user branch -- branch graft`. Grafted agents appear in Settings › Grafts. Details: [`engine/docs/cli/mcp/serve.md`](engine/docs/cli/mcp/serve.md).
-
 ## Source layout
 
 - `engine/`: assistant runtime, providers, tools, gateway, CLI, and runtime documentation.
@@ -109,4 +146,6 @@ Graft (`branch graft`) lets Claude Code, Codex, Gemini CLI, Hermes or any MCP cl
 - `scripts/`: worktree install, strict type checks, CI runners and named-test lists, and the upstream rename script.
 - `assets/`: artwork and manifests shipped with the product.
 
-Build instructions, requirements, decision records and design specifications are kept outside this repository.
+## License
+
+Branch Agent is MIT ([LICENSE](LICENSE)). The engine is derived from upstream OpenClaw, used under the MIT License ([engine/LICENSE](engine/LICENSE)). Attribution and third-party notices are in [NOTICE](NOTICE).
