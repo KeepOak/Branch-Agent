@@ -333,8 +333,8 @@ export function shortReason(message: string): string {
     .trim();
   const first = /^(.+?[.!?])(\s|$)/.exec(plain)?.[1] ?? plain;
   const short = first.length > 160 ? `${first.slice(0, 157)}…` : first;
-  // No error class, code, HTTP status, id, stack or engine method name at Regular (Private #1089): the scrubbed first
-  // sentence is checked as #1700's friendlyError() checks it, and a raw one reads as a plain sentence instead.
+  // No error class, code, HTTP status, id, stack or engine method name at Regular (Private issue 1089): the scrubbed first
+  // sentence is checked as issue 1700's friendlyError() checks it, and a raw one reads as a plain sentence instead.
   return looksRawError(first) ? plainError(short) : short;
 }
 
