@@ -2,22 +2,55 @@
 // and Sends to; Advanced adds name, note, how it runs, Every…, model, time zone, limits and switches; Technical
 // adds routing, the spread and an editable cron line. Every field maps to a cron.add / cron.update field.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import type { WindowEngine } from "../../connect/engine";
 import { shownWhy } from "../../shell/shown-why";
 import { Segmented, Switch } from "../../shell/Popover";
 import { shows, type Level } from "../../places-nav/level";
+import { connectedApps, type ChannelsStatus } from "../settings/set1/chatapps-data";
 import { Glyph } from "./glyphs";
 import { cronLine, customWords, DAYS, firstRun, formWords, REPEAT_NAMES, when, type Repeat, type ScheduleForm } from "./model";
 import type { Draft, SendsTo } from "./draft";
+import { rec } from "./runtime";
 
 export type Trunk = { id: string; name: string };
 type Props = {
   draft: Draft; change: (patch: Partial<Draft>) => void; level: Level; trunks: Trunk[]; models: string[];
   busy: boolean; canWrite: boolean; error: string; onCancel: () => void; onConfirm: (runNow: boolean) => void; inSheet?: boolean;
+  /** Live chat apps (channels.status). Sheet and Scheduled pass the engine; tests may pass the snapshot. */
+  engine?: WindowEngine; channelsStatus?: ChannelsStatus;
 };
 
 const ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "Europe/London", "Europe/Lisbon", "Europe/Berlin", "Asia/Tokyo", "Australia/Sydney", "UTC"];
-export const CHATS_REASON = "Needs the engine's list of chats and groups to send to.";
+export const CHATS_REASON = "Connect a chat app in Settings › Chat apps first.";
+
+type ChatChoice = { id: string; accountId: string; label: string };
+
+/** Connected chat-app accounts for the Sends to picker (channels.status, same read as Settings › Chat apps). */
+export function chatAppChoices(status: ChannelsStatus | undefined, technical: boolean): ChatChoice[] {
+  return connectedApps(status).flatMap(app => {
+    const accounts = app.accounts.length ? app.accounts : [{ accountId: "default" as const }];
+    return accounts.map(a => {
+      const named = (a.name ?? "").trim();
+      const label = technical ? `${app.name} · ${a.accountId}` : named && named !== app.name ? `${app.name} · ${named}` : app.name;
+      return { id: `${app.id}:${a.accountId}`, accountId: a.accountId, label };
+    });
+  });
+}
+
+function useChannelsStatus(engine?: WindowEngine, passed?: ChannelsStatus): ChannelsStatus | undefined {
+  const [loaded, setLoaded] = useState<ChannelsStatus | undefined>(undefined);
+  useEffect(() => {
+    if (passed || !engine) return;
+    let live = true;
+    engine.request("channels.status", { probe: false }).then(
+      value => { if (live) setLoaded(rec(value) as ChannelsStatus); },
+      () => { if (live) setLoaded({}); },
+    );
+    return () => { live = false; };
+  }, [engine, passed]);
+  return passed ?? loaded;
+}
 
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: ReactNode }) {
   return <label className="au-field"><span className="au-flabel">{label}</span>{children}{hint ? <small className="au-hint">{hint}</small> : null}</label>;
@@ -55,19 +88,29 @@ function WhoField({ draft, change, trunks }: { draft: Draft; change: Props["chan
   return <Field label="Who does it"><select className="inp" aria-label="Who does it" value={draft.agentId} onChange={e => change({ agentId: e.target.value })}>{trunks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>;
 }
 
-function SendsToField({ draft, change, level, trunk }: { draft: Draft; change: Props["change"]; level: Level; trunk: string }) {
+export function SendsToFields({ draft, change, level, trunk, engine, channelsStatus }: { draft: Draft; change: Props["change"]; level: Level; trunk: string; engine?: WindowEngine; channelsStatus?: ChannelsStatus }) {
+  const status = useChannelsStatus(engine, channelsStatus);
   if (draft.how === "note") return null;
   const adv = shows(level, "advanced"), tech = shows(level, "technical");
+  const choices = chatAppChoices(status, tech);
+  const chatsOn = choices.length > 0;
+  const picked = choices.find(c => c.id === draft.account || c.accountId === draft.account)?.id ?? "";
+  const pickChats = (sendsTo: SendsTo) => {
+    if (sendsTo !== "chats") return change({ sendsTo });
+    change({ sendsTo, ...(draft.account.trim() ? {} : { account: choices[0]?.accountId ?? "" }) });
+  };
   return <>
-    <Field label="Sends to"><select className="inp" aria-label="Sends to" value={draft.sendsTo} onChange={e => change({ sendsTo: e.target.value as SendsTo })}>
+    <Field label="Sends to"><select className="inp" aria-label="Sends to" value={draft.sendsTo} onChange={e => pickChats(e.target.value as SendsTo)}>
       {draft.mode === "edit" && <option value="keep">Where it sends now</option>}
       <option value="conversation">{trunk}’s conversation</option>
-      <option value="" disabled title={shownWhy(CHATS_REASON)}>Chats in your chat apps</option>
+      {chatsOn ? <option value="chats">Chats in your chat apps</option> : <option value="chats" disabled title={shownWhy(CHATS_REASON)}>Chats in your chat apps</option>}
       {adv && <option value="nowhere">Nowhere: keep it in History</option>}
       {adv && <option value="webhook">Another app (web address)</option>}
     </select></Field>
+    {draft.sendsTo === "chats" && chatsOn && <Field label="Chat app"><select className="inp" aria-label="Chat app" value={picked} onChange={e => change({ account: choices.find(c => c.id === e.target.value)?.accountId ?? e.target.value })}>{choices.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></Field>}
     {draft.sendsTo === "webhook" && <Field label="Web address" hint="Each result is posted to this address."><input className="inp" aria-label="Web address" placeholder="https://example.com/hook" value={draft.webhook} onChange={e => change({ webhook: e.target.value })} /></Field>}
-    {tech && draft.sendsTo === "conversation" && <Field label="Recipient" hint="A phone number or chat ID, to send somewhere other than the chat above."><input className="inp au-mono" aria-label="Recipient" value={draft.recipient} onChange={e => change({ recipient: e.target.value })} /></Field>}
+    {draft.sendsTo === "chats" && !tech && <Field label="Recipient" hint="Who should get each result."><input className="inp" aria-label="Recipient" value={draft.recipient} onChange={e => change({ recipient: e.target.value })} /></Field>}
+    {tech && (draft.sendsTo === "conversation" || draft.sendsTo === "chats") && <Field label="Recipient" hint="A phone number or chat ID, to send somewhere other than the chat above."><input className="inp au-mono" aria-label="Recipient" value={draft.recipient} onChange={e => change({ recipient: e.target.value })} /></Field>}
     {tech && draft.sendsTo !== "nowhere" && draft.sendsTo !== "keep" && <Field label="Chat-app account" hint="For an app with several accounts."><input className="inp" aria-label="Chat-app account" value={draft.account} onChange={e => change({ account: e.target.value })} /></Field>}
     {adv && draft.sendsTo !== "nowhere" && draft.sendsTo !== "keep" && <SwitchRow title="Count it as done even if sending fails" sub="The task still counts as done when its result couldn’t be sent. Failure alerts for it stay quiet unless it has its own (When it fails…)." on={draft.bestEffort} change={bestEffort => change({ bestEffort })} />}
   </>;
@@ -126,7 +169,7 @@ export function Proposal(props: Props) {
     <RepeatsField form={draft.form} set={set} level={level} />
     <div className="au-grid"><WhenFields form={draft.form} set={set} /><WhoField draft={draft} change={change} trunks={trunks} /></div>
     <AdvancedRun draft={draft} change={change} level={level} models={models} trunk={trunk} />
-    <SendsToField draft={draft} change={change} level={level} trunk={trunk} />
+    <SendsToFields draft={draft} change={change} level={level} trunk={trunk} engine={props.engine} channelsStatus={props.channelsStatus} />
     <ZoneField form={draft.form} set={set} level={level} />
     {tech && <Spread form={draft.form} set={set} />}
     {adv && draft.mode !== "edit" && <SwitchRow title="Start it switched on" on={draft.enabled} change={enabled => change({ enabled })} />}
