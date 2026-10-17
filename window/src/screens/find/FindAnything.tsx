@@ -21,7 +21,6 @@ import "./find.css";
 /** Commands with no R1 home yet: the row stays listed, says Coming, and runs nothing but its reason. */
 export const FIND_COMING: Readonly<Record<string, string>> = {
   "a:focus": "Focus mode comes in a later update.",
-  "a:tour": "The walkthrough returns with the new setup.",
   "a:ask": "Quick ask comes in a later update.",
 };
 
@@ -75,7 +74,7 @@ export function FindAnything(p: FindAnythingProps) {
     focusMode: () => undefined,
     shortcuts: p.onShortcuts,
     setup: p.onSetup,
-    tour: () => undefined,
+    tour: () => window.dispatchEvent(new CustomEvent("branch:welcome-tour")),
     quickAsk: () => undefined,
     openConversation: p.onOpenConversation,
     openPlace: p.onPlace,

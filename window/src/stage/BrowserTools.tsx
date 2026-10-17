@@ -4,6 +4,7 @@ import type { WindowEngine } from "../connect/engine";
 import type { Level } from "../places-nav/settings-nav";
 import { browserCall, type BrowserRoute, type LiveTab } from "./browser-route";
 import { SIcon } from "./stage-icons";
+import { plainError } from "../shell/plain-error";
 
 type DrawerTab = "sees" | "console" | "network" | "storage" | "downloads" | "tabs";
 const TABS: [DrawerTab, string, number][] = [
@@ -33,7 +34,7 @@ function useRead(load: () => Promise<unknown>, deps: unknown[]): { data: unknown
     let live = true;
     load().then(
       (data) => live && setState({ key, data, error: "" }),
-      (e: unknown) => live && setState({ key, data: null, error: e instanceof Error ? e.message : String(e) }),
+      (e: unknown) => live && setState({ key, data: null, error: plainError(e) }),
     );
     return () => {
       live = false;
@@ -163,7 +164,7 @@ function Storage({ engine, route, targetId, again, host }: Props & { again: numb
       browserCall(engine, route, "POST", "/cookies/clear", { targetId }),
       browserCall(engine, route, "POST", "/storage/local/clear", { targetId }),
       browserCall(engine, route, "POST", "/storage/session/clear", { targetId }),
-    ]).then(() => setTick((t) => t + 1), (e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    ]).then(() => setTick((t) => t + 1), (e: unknown) => setError(plainError(e)));
   };
   return (
     <Wait read={read}>
