@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildWindowsCmdExeCommandLine } from "../process/windows-command.js";
+import { resolveExitWatchShell } from "./cron-exit-watch-shell.js";
 import { buildSupervisedExitWatcherCommand } from "./server-reload-handlers.process.test-support.js";
 
 describe("supervised cron exit watcher command", () => {
@@ -10,18 +11,29 @@ describe("supervised cron exit watcher command", () => {
     "C:\\Temp\\branch-cron-exit-reload-x\\release-watcher",
   ];
 
-  it("does not add a cmd.exe /s outer quote layer on Windows", () => {
+  it("passes one unquoted /c argument for a non-verbatim cmd.exe spawn", () => {
     const command = buildSupervisedExitWatcherCommand(execPath, childArgs, "win32");
-    expect(command).toBe(
-      `"${execPath}" "${childArgs[0]}" "${childArgs[1]}" "${childArgs[2]}"`,
-    );
+    const shell = resolveExitWatchShell("win32");
+    expect(command).toBe([execPath, ...childArgs].join(" "));
+    expect(command).not.toContain('"');
     expect(command).not.toBe(buildWindowsCmdExeCommandLine(execPath, childArgs));
-    expect(command.startsWith('""')).toBe(false);
+    expect(shell.argsFor(command)).toEqual(["/d", "/s", "/c", command]);
+    expect(shell.argsFor(command)).toHaveLength(4);
+  });
+
+  it("rejects spaces and quotes that cannot survive non-verbatim cmd.exe", () => {
+    expect(() =>
+      buildSupervisedExitWatcherCommand("C:\\Program Files\\node.exe", childArgs, "win32"),
+    ).toThrow(/Unsafe Windows cmd.exe argument/);
+    expect(() =>
+      buildSupervisedExitWatcherCommand(execPath, ['C:\\Temp\\"quoted"\\watcher.cjs'], "win32"),
+    ).toThrow(/Unsafe Windows cmd.exe argument/);
   });
 
   it("JSON-quotes argv for bash -lc on POSIX", () => {
     expect(buildSupervisedExitWatcherCommand("/usr/bin/node", ["/tmp/watcher.cjs"], "linux")).toBe(
       `${JSON.stringify("/usr/bin/node")} ${JSON.stringify("/tmp/watcher.cjs")}`,
     );
+    expect(resolveExitWatchShell("linux").argsFor("echo hi")).toEqual(["-lc", "echo hi"]);
   });
 });

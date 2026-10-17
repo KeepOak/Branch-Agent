@@ -9,26 +9,27 @@ import type { ManagedRun } from "../process/supervisor/types.js";
 
 export const fixtureLifetime = createFixtureLifetime();
 
-const WINDOWS_UNSAFE_CMD_CHARS_RE = /[&|<>%\r\n]/;
+const WINDOWS_UNSAFE_CMD_CHARS_RE = /[\s"&|<>%\r\n]/;
 
-/** Cron wraps this string in `bash -lc` or `cmd.exe /d /s /c`. Do not pre-wrap
- * with `buildWindowsCmdExeCommandLine` — `/s` would strip the wrong quotes. */
+/** Cron wraps this string in `bash -lc` or `cmd.exe /d /s /c` as one argv and
+ * does not set `windowsVerbatimArguments`. Join Windows paths unquoted; quotes
+ * become `\"` under libuv and `cmd /s` never starts the watcher. */
 export function buildSupervisedExitWatcherCommand(
   execPath: string,
   childArgs: readonly string[],
   platform: NodeJS.Platform = process.platform,
 ): string {
   if (platform === "win32") {
-    const quote = (argument: string) => {
+    const argv = [execPath, ...childArgs];
+    for (const argument of argv) {
       if (WINDOWS_UNSAFE_CMD_CHARS_RE.test(argument)) {
         throw new Error(
           `Unsafe Windows cmd.exe argument detected: ${JSON.stringify(argument)}. ` +
             "Pass an explicit shell-wrapper argv at the call site instead.",
         );
       }
-      return `"${argument.replace(/"/g, '""')}"`;
-    };
-    return [execPath, ...childArgs].map(quote).join(" ");
+    }
+    return argv.join(" ");
   }
   return [execPath, ...childArgs].map((argument) => JSON.stringify(argument)).join(" ");
 }
