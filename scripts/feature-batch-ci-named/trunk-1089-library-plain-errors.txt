@@ -1,1 +1,3 @@
+window:src/places/customize/get-capabilities.test.tsx
+window:src/places/customize/tools.test.tsx
 window:src/places/library/raw-errors.test.tsx

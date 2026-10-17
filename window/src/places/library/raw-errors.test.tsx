@@ -7,6 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { LogbookTab } from "./logbook";
+import { STALL_TEXT } from "../settings/stall";
 import { FileEditor, Status } from "./ui";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -89,9 +90,19 @@ describe("Library raw errors (Private #1089)", () => {
 
   it("a failed Library read shows one plain sentence and Try again, with no Details", async () => {
     const reload = vi.fn();
-    await mount(<Status loading={false} error="workspace directory not found" reload={reload} />);
-    expect(rendered()).toContain("This didn’t load. Try again.");
+    await mount(<Status loading={false} error={"Error: ENOENT: no such file or directory, open 'C:\\Users\\someone\\SOUL.md' at agents.files.get (C:\\x.ts:1:2)"} reload={reload} />);
+    expect(host.querySelector("[role=alert] p")?.textContent).toBe("That file or folder isn’t there. Check that it still exists, then try again.");
+    expect(host.querySelector("[role=alert] button")?.textContent).toBe("Try again");
     expectPlain();
+  });
+
+  it("a Library read's words that are already plain show as they are, the stall line too", async () => {
+    // Customize imports Status, so its plain alerts must reach a person unchanged.
+    for (const words of ["The plugin catalogue is offline right now.", STALL_TEXT]) {
+      await mount(<Status loading={false} error={words} reload={vi.fn()} />);
+      expect(host.querySelector("[role=alert] p")?.textContent).toBe(words);
+      await act(async () => root!.unmount()); root = null; document.body.innerHTML = "";
+    }
   });
 
   it("a failed save says so in plain words and keeps the draft", async () => {

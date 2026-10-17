@@ -3,7 +3,6 @@ import { useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { plainFailure, useOperation, useResource, type FileEntry } from "./data";
-import { STALL_TEXT } from "../settings/stall";
 import "./places.css";
 export function Tabs({ values, value, onChange, label }: { values: string[]; value: string; onChange: (s: string) => void; label: string }) {
   const move = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -15,9 +14,10 @@ export function Tabs({ values, value, onChange, label }: { values: string[]; val
   };
   return <div className="kp-tabs" role="tablist" aria-label={label}>{values.map((v, index) => <button key={v} type="button" role="tab" aria-selected={v === value} tabIndex={v === value ? 0 : -1} onKeyDown={event => move(event, index)} onClick={() => onChange(v)}>{v}</button>)}</div>;
 }
-/** A failed read in plain words with one next step. The engine's own text never shows here (Private #1089). */
+/** A failed read with Try again. Its words read through plainError() (plainFailure): raw engine text becomes one plain
+ *  sentence with a next step at Regular, and words that are already plain, such as STALL_TEXT, show as they are (Private #1089). */
 export function Status({ loading, error, reload }: { loading: boolean; error: string | null; reload: () => void }) {
-  return loading ? <p role="status" className="kp-hint">Loading…</p> : error ? <div role="alert" className="kp-error"><p>{error === STALL_TEXT ? error : "This didn’t load. Try again."}</p><button onClick={reload}>Try again</button></div> : null;
+  return loading ? <p role="status" className="kp-hint">Loading…</p> : error ? <div role="alert" className="kp-error"><p>{plainFailure(error)}</p><button onClick={reload}>Try again</button></div> : null;
 }
 /** Hash-checked edits follow the upstream file editor, retaining the draft on conflict. */
 export function FileEditor({ engine, agentId, name, label = name }: { engine: WindowEngine; agentId: string; name: string; label?: string }) {
