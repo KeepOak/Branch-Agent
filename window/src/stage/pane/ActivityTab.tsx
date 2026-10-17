@@ -101,7 +101,7 @@ function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: App
       </div>
       {h.task || facts?.job ? <p className="hp-job-pn">Job: {h.task || facts?.job}</p> : null}
       {facts?.thinking ? <details className="hp-think-pn"><summary>What it's thinking</summary><p>{facts.thinking}</p></details> : null}
-      {h.error ? <p className="err-st">{shortReason(h.error)}</p> : null}
+      {h.error ? <p className="err-st">{errorText(h.error)}</p> : null}
       {asks.map((a) => (
         <div key={a.id} className="hp-ask-pn">
           <span className="grow">

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { FilesTab } from "./pane/FilesTab";
 import { DashboardTab } from "./pane/DashboardTab";
+import { ActivityTab } from "./pane/ActivityTab";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const RAW = /unknown method|ECONNREFUSED|127\.0\.0\.1|ENOENT|EACCES|\/home\/|\/opt\/|TypeError|:\d+:\d+/;
@@ -22,6 +23,18 @@ const failing = (message: string) => ({ sessionKey: "agent:scout:main", agentId:
 let root: Root; let host: HTMLDivElement;
 beforeEach(() => { localStorage.clear(); vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} }); host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); localStorage.clear(); vi.unstubAllGlobals(); });
+// A helper whose last run failed: the engine's words arrive as the sessions.list row's lastRunError.
+const helperFailed = (lastRunError: string) => ({
+  sessionKey: "agent:scout:main", scopes: [], onEvent: () => () => {},
+  request: vi.fn(async (method: string, params: Record<string, unknown> = {}) => {
+    if (method === "sessions.list") return { sessions: params.spawnedBy === "agent:scout:main" ? [{ key: "agent:scout:subagent:reader", spawnedBy: "agent:scout:main", status: "failed", label: "Reader", lastRunError }] : [] };
+    if (method === "exec.approval.list" || method === "plugin.approval.list") return { items: [] };
+    if (method === "canopy.cards.list") return { cards: [] };
+    if (method === "chat.history") return { messages: [] };
+    return {};
+  }),
+}) as unknown as WindowEngine;
+const helperLine = () => host.querySelector(".err-st")?.textContent ?? "";
 const settle = async () => { for (let i = 0; i < 5; i += 1) await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
 
 describe("the side panes never show a raw engine error at Regular (Private #1089)", () => {
@@ -35,6 +48,20 @@ describe("the side panes never show a raw engine error at Regular (Private #1089
     await act(async () => root.render(<DashboardTab engine={failing(raw)} name="Scout" level="regular" />));
     await settle();
     expect(host.textContent).not.toMatch(RAW);
+  });
+
+  it.each([...FAILURES, "TypeError: Cannot read properties of undefined (reading 'path')\n    at runTool (/app/engine/dist/tools/run.js:41:12)"])("Activity, a helper's failed run: %j", async (raw) => {
+    await act(async () => root.render(<ActivityTab engine={helperFailed(raw)} name="Scout" blocks={[]} running={false} level="regular" onError={() => {}} />));
+    await settle();
+    expect(helperLine()).not.toBe("");
+    expect(helperLine()).not.toMatch(RAW);
+  });
+
+  it("Activity keeps a helper's exact words at Advanced", async () => {
+    localStorage.setItem("branch.level", "advanced");
+    await act(async () => root.render(<ActivityTab engine={helperFailed(FAILURES[1])} name="Scout" blocks={[]} running={false} level="advanced" onError={() => {}} />));
+    await settle();
+    expect(helperLine()).toContain("ECONNREFUSED");
   });
 
   it("Advanced keeps the exact words", async () => {
