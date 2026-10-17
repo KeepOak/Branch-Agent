@@ -89,6 +89,19 @@ async function concurrentFirstOpen(
   };
 }
 
+it("prepares sessions.create when this call is the first opener of the new Trunk store", async () => {
+  const options = absentTrunk("aspen");
+  const started = performance.now();
+  await using preparation = prepareSessionEntryMutationDatabases(
+    [{ scope: options.scope, assertCurrent: () => {} }],
+    Promise.resolve(),
+  );
+  await expect(preparation.preparations[0]).resolves.toEqual(
+    expect.objectContaining({ execution: expect.anything() }),
+  );
+  expect(performance.now() - started).toBeLessThan(LEASE_CONTENTION_RETRY_TIMEOUT_MS);
+});
+
 it("prepares sessions.create after a concurrent first-open reserves the new Trunk store", async () => {
   const options = absentTrunk();
   const started = performance.now();

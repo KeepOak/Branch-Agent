@@ -63,7 +63,8 @@ function reservedByConcurrentFirstOpen(options: BranchAgentDatabaseOptions): boo
   return agentDatabaseExecutionOwner(options)?.kind === "file";
 }
 
-function agentDatabaseExecutionCreationIsPending(options: BranchAgentDatabaseOptions): boolean {
+/** True only before this call captures: the pending owner is then a sibling, not us. */
+function siblingFirstOpenIsPending(options: BranchAgentDatabaseOptions): boolean {
   const existing = agentDatabaseExecutionOwner(options);
   return existing?.kind === "file" && existing.creationIsPending?.() === true;
 }
@@ -75,7 +76,10 @@ function throwIfFirstOpenTimedOut(signal: AbortSignal | undefined, deadline: num
   }
 }
 
-async function waitForFirstOpen(signal: AbortSignal | undefined, deadline: number): Promise<void> {
+async function waitForSiblingFirstOpen(
+  signal: AbortSignal | undefined,
+  deadline: number,
+): Promise<void> {
   throwIfFirstOpenTimedOut(signal, deadline);
   await sleepWithAbort(LEASE_CONTENTION_RETRY_MS, signal);
 }
@@ -89,7 +93,7 @@ function isSameTargetFirstOpenRace(
     isAgentCreationWitnessRace(error) &&
     (identity.key.startsWith("path:") ||
       reservedByConcurrentFirstOpen(options) ||
-      agentDatabaseExecutionCreationIsPending(options))
+      siblingFirstOpenIsPending(options))
   );
 }
 
@@ -97,7 +101,8 @@ function isSameTargetFirstOpenRace(
  * Capture the session-store actor for a just-created Trunk.
  * A concurrent first-open (config reload, admission warm-up, or first-run greeting)
  * may reserve the still-absent database. That reservation is the same target:
- * wait until that owner finishes native birth, then recapture from a fresh file identity.
+ * wait until that sibling finishes native birth, then recapture from a fresh file identity.
+ * If this call is the first opener, keep the missing-file actor and let prepare birth it.
  */
 export async function captureSessionStoreAgentDatabaseExecution(
   options: BranchAgentDatabaseOptions,
@@ -114,15 +119,15 @@ export async function captureSessionStoreAgentDatabaseExecution(
   }
   for (;;) {
     params.signal?.throwIfAborted();
-    if (agentDatabaseExecutionCreationIsPending(options)) {
-      await waitForFirstOpen(params.signal, deadline);
+    if (siblingFirstOpenIsPending(options)) {
+      await waitForSiblingFirstOpen(params.signal, deadline);
       observed = undefined;
       continue;
     }
     const identity = observed ?? readDatabasePathIdentitySync(pathname);
     observed = undefined;
     if (identity.key.startsWith("path:") && reservedByConcurrentFirstOpen(options)) {
-      await waitForFirstOpen(params.signal, deadline);
+      await waitForSiblingFirstOpen(params.signal, deadline);
       continue;
     }
     let execution: BranchAgentDatabaseExecution | undefined;
@@ -132,13 +137,18 @@ export async function captureSessionStoreAgentDatabaseExecution(
       if (!isSameTargetFirstOpenRace(error, identity, options)) {
         throw error;
       }
-      await waitForFirstOpen(params.signal, deadline);
+      await waitForSiblingFirstOpen(params.signal, deadline);
       continue;
     }
-    if (execution.fileIdentity || !agentDatabaseExecutionCreationIsPending(options)) {
+    // A path: capture owns native birth. Returning it lets prepare create the file.
+    // Waiting on that same creationIsPending() is this call, not a sibling.
+    if (identity.key.startsWith("path:") || execution.fileIdentity) {
+      return execution;
+    }
+    if (!siblingFirstOpenIsPending(options)) {
       return execution;
     }
     await execution.release();
-    await waitForFirstOpen(params.signal, deadline);
+    await waitForSiblingFirstOpen(params.signal, deadline);
   }
 }
