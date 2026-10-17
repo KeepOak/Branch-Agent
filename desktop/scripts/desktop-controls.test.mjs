@@ -203,9 +203,9 @@ test("ring bitmap draws the share left as an arc over a faint track", () => {
 
 test("branch shim reads the published engine and token at run time", () => {
   const shim = branchShim({ dataDir: "C:\\Data", engineDir: "C:\\App\\engine", nodePath: "C:\\App\\node.exe", gatewayPort: 19031 });
-  assert.ok(shim.includes('set /p ENGINE=<"%BRANCH_DATA%\\engine-current.txt"'));
+  assert.ok(shim.includes('call :read_engine "%BRANCH_DATA%\\engine-current.txt"'));
   // The engine that runs, not a staged one still waiting to be applied.
-  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('set /p ENGINE=<"%BRANCH_DATA%\\engine-running.txt"'));
+  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('call :read_engine "%BRANCH_DATA%\\engine-running.txt"'));
   assert.ok(shim.includes('set /p BRANCH_GATEWAY_TOKEN=<"%BRANCH_DATA%\\gateway-token"'));
   // The configured port is the default; the live port an update moved the engine to wins.
   assert.ok(shim.indexOf('set "BRANCH_GATEWAY_PORT=19031"') < shim.indexOf('set /p BRANCH_GATEWAY_PORT=<"%BRANCH_DATA%\\gateway-port"'));
@@ -218,7 +218,7 @@ test("Git Bash shim reads the same files, drops CR and passes arguments through"
   assert.ok(shim.startsWith("#!/bin/sh\n"));
   assert.ok(shim.includes("data='C:/Data'\\''s'"));
   assert.ok(shim.includes("tr -d '\\r'"));
-  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('if [ -f "$data/engine-running.txt" ]'));
+  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('read_engine "$data/engine-running.txt"'));
   // An empty read (never expected: the desktop renames the file into place) keeps the configured port.
   assert.ok(shim.includes(`if [ -f "$data/gateway-port" ]; then live=$(head -n 1 "$data/gateway-port" | tr -d '\\r'); if [ -n "$live" ]; then BRANCH_GATEWAY_PORT=$live; fi; fi`));
   assert.ok(shim.indexOf("BRANCH_GATEWAY_PORT=19031") < shim.indexOf("$data/gateway-port"));
@@ -228,6 +228,77 @@ test("Git Bash shim reads the same files, drops CR and passes arguments through"
   assert.ok(shim.includes(`exec 'C:/App/node.exe' "$engine/branch.mjs" "$@"`));
   assert.doesNotMatch(shim, /\r/);
 });
+
+async function cliFixture(run) {
+  const parent = join(tmpdir(), "Codex-session-files");
+  await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(join(parent, "branch-cli-"));
+  const dataDir = join(root, "data"), engineDir = join(root, "bundled engine");
+  await mkdir(dataDir); await mkdir(engineDir);
+  const engine = async name => {
+    const dir = join(root, name); await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "branch.mjs"), `console.log(JSON.stringify({engine:${JSON.stringify(name)},args:process.argv.slice(2)}));`);
+    return dir;
+  };
+  await engine("bundled engine");
+  const options = { dataDir, engineDir, nodePath: process.execPath, gatewayPort: 19045 };
+  const execute = async kind => {
+    const cmd = kind === "cmd", file = join(root, cmd ? "branch.cmd" : "branch");
+    await writeFile(file, cmd ? branchShim(options) : branchShShim(options));
+    const shell = cmd ? process.env.ComSpec : process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
+    return spawnSync(shell, cmd ? ["/d", "/c", file, "status", "quoted arg"] : [file, "status", "quoted arg"],
+      { windowsHide: true, encoding: "utf8" });
+  };
+  try { await run({ dataDir, engineDir, engine, execute }); } finally { await rm(root, { recursive: true, force: true }); }
+}
+
+for (const kind of process.platform === "win32" ? ["cmd", "sh"] : ["sh"]) {
+  test(`${kind} branch command ignores stale running engine and uses valid published engine`, async () => cliFixture(async f => {
+    const current = await f.engine("published engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), current + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), join(f.dataDir, "missing") + "\r\n");
+    const result = await f.execute(kind);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), { engine: "published engine", args: ["status", "quoted arg"] });
+  }));
+
+  test(`${kind} branch command ignores stale and empty pointers and uses bundled engine`, async () => cliFixture(async f => {
+    for (const current of ["", join(f.dataDir, "missing")]) {
+      for (const running of ["", join(f.dataDir, "missing")]) {
+        await writeFile(join(f.dataDir, "engine-current.txt"), current + "\r\n");
+        await writeFile(join(f.dataDir, "engine-running.txt"), running + "\r\n");
+        const result = await f.execute(kind);
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(JSON.parse(result.stdout).engine, "bundled engine");
+      }
+    }
+  }));
+
+  test(`${kind} branch command prefers valid running engine`, async () => cliFixture(async f => {
+    await writeFile(join(f.dataDir, "engine-current.txt"), await f.engine("published engine"));
+    await writeFile(join(f.dataDir, "engine-running.txt"), await f.engine("running engine"));
+    const result = await f.execute(kind);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).engine, "running engine");
+  }));
+
+  test(`${kind} branch command reports missing engines before launching node`, async () => cliFixture(async f => {
+    await rm(join(f.engineDir, "branch.mjs"));
+    const result = await f.execute(kind);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Branch Agent engine is unavailable.*Open Branch Agent/);
+    assert.doesNotMatch(result.stderr, /MODULE_NOT_FOUND/);
+  }));
+
+  test(`${kind} branch command reports unreadable pointer without falling back`, async () => cliFixture(async f => {
+    await mkdir(join(f.dataDir, "engine-running.txt"));
+    const result = await f.execute(kind);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Cannot read Branch Agent engine pointer.*check.*permissions/i);
+    assert.equal(result.stdout, "");
+  }));
+}
+
 /** A packaged install as it ships now: the app code is sealed in app.asar (no Resources/app/dist/cli.js), node sits
  *  beside it, and the engine the app runs is the unpacked copy named in the data folder's engine-*.txt files. */
 async function packagedLayout(root) {
