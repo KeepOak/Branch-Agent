@@ -80,6 +80,7 @@ describe("no raw error at Regular (Private #1089)", () => {
   });
 
   it("leaves plain words alone", () => {
+    expect(plainError(" keeps running.", true)).toBe(" keeps running.");
     for (const words of ["Saved plan.md", "Stopped Builder. Researcher carries on without it.", "Done at 12:30.", "Version 2.4.1 is ready.", "Couldn't save the Pinned order."]) {
       expect(plainError(words, true)).toBe(words);
     }

@@ -71,7 +71,8 @@ export function errorWords(error: unknown): string {
 
 function plainWords(text: string): string {
   const trimmed = text.trim();
-  if (!looksRaw(trimmed)) return plainAddresses(trimmed, true);
+  // Plain words keep their spacing: a status line can be built from parts ("Branch ", version, " keeps running.").
+  if (!looksRaw(trimmed)) return plainAddresses(text, true);
   // A plain sentence that ends with the raw words in brackets keeps the sentence: "… full. (QuotaExceededError: …)".
   const bracket = /^(.*?[.!?])\s*\(([^]*)\)\.?$/.exec(trimmed);
   if (bracket && !looksRaw(bracket[1])) return plainAddresses(bracket[1], true);
