@@ -1,3 +1,5 @@
 window:src/screens/frame/R1Window.test.tsx
 window:src/screens/settings/SettingsFrame.test.tsx
 window:src/screens/settings/pages/card-live.test.tsx
+window:src/screens/settings/pages/classic-host.test.tsx
+window:src/screens/settings/pages/your-card-in-frame.test.tsx

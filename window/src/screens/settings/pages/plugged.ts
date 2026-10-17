@@ -43,7 +43,6 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
-  card: "people", // Your card: the person's own card on Classic People, inside the one R1 Settings frame (#1093 item 6)
   notifications: "notifications",
   models: "models",
   permissions: "permissions",
@@ -60,6 +59,9 @@ export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> =
 };
 
 export const R1_PAGES: PageSlots = {
+  // Your card is one card the page draws itself (card-live.tsx), on Classic People's own card logic. It stays the
+  // first page, where it was when Classic People drew it.
+  card: CARD_PAGE,
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   permissions: permissionsSlot,
   privacy: privacySlot,
@@ -71,8 +73,6 @@ export const R1_PAGES: PageSlots = {
   customize: CUSTOMIZE_PAGE,
   // Automations is a row page; where alerts go and the Edit windows are its own (autos-live.tsx).
   autos: AUTOS_PAGE,
-  // Your card is one card the page draws itself (card-live.tsx), on Classic People's own card logic.
-  card: CARD_PAGE,
   // Instructions & personality: the preview's seven cards; Classic's file list and Just about you inside them.
   instructions: { rows: INSTRUCTIONS_ROWS, controls: { "instructions.you.file": AboutYou, "instructions.project.files": Files } },
   // Voice & calls: native R1 cards in the preview's order; Classic Voice draws behind its rows (voice-controls.tsx).

@@ -18,7 +18,7 @@ vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as
 // page's own rows, Chat apps, and Your card (a page that draws only its own card).
 vi.mock("../settings/pages/plugged", async () => {
   const { REHOSTED, R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
-  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, who: R1_PAGES.who, instructions: R1_PAGES.instructions, learning: R1_PAGES.learning, remote: R1_PAGES.remote, signins: R1_PAGES.signins, updates: R1_PAGES.updates, voice: R1_PAGES.voice, developer: R1_PAGES.developer, chatapps: { component: () => null }, card: { cards: { "Your card": { component: () => null } } } } };
+  return { R1_PAGES: { card: { cards: { "Your card": { component: () => null } } }, ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, who: R1_PAGES.who, instructions: R1_PAGES.instructions, learning: R1_PAGES.learning, remote: R1_PAGES.remote, signins: R1_PAGES.signins, updates: R1_PAGES.updates, voice: R1_PAGES.voice, developer: R1_PAGES.developer, chatapps: { component: () => null } } };
 });
 vi.mock("../settings", () => ({
   SettingsFrame: ({ engine, page, pages, onPage }: { engine: { id?: string }; page?: string; pages?: Record<string, unknown>; onPage?: (page: string) => void }) => (
