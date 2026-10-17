@@ -11,6 +11,7 @@ import {
 import { classicSlot } from "./classic-host";
 import { CUSTOMIZE_PAGE } from "./customize-live";
 import { AUTOS_PAGE } from "./autos-live";
+import { CARD_PAGE } from "./card-live";
 import { permissionsSlot } from "./permissions-approvals";
 import { privacySlot } from "./privacy-town";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
@@ -58,6 +59,9 @@ export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> =
 };
 
 export const R1_PAGES: PageSlots = {
+  // Your card is one card the page draws itself (card-live.tsx), on Classic People's own card logic. It stays the
+  // first page, where it was when Classic People drew it.
+  card: CARD_PAGE,
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   permissions: permissionsSlot,
   privacy: privacySlot,
