@@ -3,6 +3,7 @@
 // Elsewhere: update.status, update.run, refreshed on the engine's "update" event.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
+import { friendlyError } from "../../connect/friendly-error";
 import { componentDesktop, ENGINE_UPDATE_EVENT, useDesktopComponentStatus, type EngineUpdateEvent } from "../../connect/desktop-component-updates";
 import { desktopUpdateView, engineUpdateView, type UpdateView } from "./model";
 
@@ -10,7 +11,7 @@ import { desktopUpdateView, engineUpdateView, type UpdateView } from "./model";
 export const DONE_MS = 4000;
 /** While an engine-side run is active the status is re-read this often; idle, the engine's "update" event drives it. */
 const RUN_POLL_MS = 5000;
-const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const message = (error: unknown) => friendlyError(error);
 
 /** `need` is the engine call `act` makes (R1-10): update.run when the engine updates itself, null when the desktop app's
  *  own updater does it (a local call). `engine` is what the button checks `need` against. */
@@ -48,7 +49,7 @@ export function useUpdateFlow(engine: Pick<WindowEngine, "request" | "onEvent" |
     return engine.onEvent(({ event }) => { if (event === "update") void reload(); });
   }, [desktop, ready, engine, reload]);
   const view: UpdateView = desktop
-    ? desktopUpdateView({ status: native.status, current: native.status?.currentVersion ?? current, bar, staging, restartRequested, canRestart: Boolean(bridge?.install), error: error ?? (native.status?.phase === "error" ? native.error : null) })
+    ? desktopUpdateView({ status: native.status, current: native.status?.currentVersion ?? current, bar, staging, restartRequested, canRestart: Boolean(bridge?.install), error: error ?? (native.status?.phase === "error" && native.error ? friendlyError(native.error) : null) })
     : ready ? engineUpdateView({ status: gateway, current, started, error, doneVersion }) : { kind: "none" };
   const running = !desktop && view.kind === "installing";
   useEffect(() => {
@@ -79,7 +80,7 @@ export function useUpdateFlow(engine: Pick<WindowEngine, "request" | "onEvent" |
         setBar(null); setRestartRequested(true); bridge.install(); return;
       }
       setStaging(true);
-      void bridge.stage().then(next => { native.setStatus(next); if (next.error) setError(next.error); }, (e: unknown) => setError(message(e))).finally(() => setStaging(false));
+      void bridge.stage().then(next => { native.setStatus(next); if (next.error) setError(friendlyError(next.error)); }, (e: unknown) => setError(message(e))).finally(() => setStaging(false));
       return;
     }
     setStarted(true);
