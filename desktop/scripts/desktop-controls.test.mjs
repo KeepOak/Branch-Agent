@@ -9,7 +9,7 @@ import test from "node:test";
 
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 if (!dist) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to current strict-compiled source");
-const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, releaseDownloadUrl,
+const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, releaseDownloadUrl, RELEASE_DOWNLOADS,
   branchPosixShim, branchCommandOwner, posixBranchCommand, BRANCH_COMMAND_MARKER, LEGACY_BRANCH_COMMAND_MARKER, appRemoval, appRemovalPlan, APP_REMOVAL_KEEPS } =
   await import(pathToFileURL(join(dist, "desktop-controls.js")));
 
@@ -90,7 +90,7 @@ test("tray ring follows the usage only while the setting is on", async () => fix
   assert.deepEqual(calls, [["tray", 42, false], ["tray", 42, true], ["tray", 100, true]]);
 }));
 
-test("Get it opens Branch release assets, and iPhone and the extension are coming soon", async () => fixture(async ({ deps, calls }) => {
+test("Get it opens the four Branch release assets; iPhone and the extension are not listed", async () => fixture(async ({ deps, calls }) => {
   const version = "0.4.4-build-2d76db0056f8";
   const file = (name) => ({ name, browser_download_url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${name}` });
   const releases = async () => [
@@ -114,8 +114,9 @@ test("Get it opens Branch release assets, and iPhone and the extension are comin
   await controls.openDownload("mac");
   await controls.openDownload("linux");
   await controls.openDownload("android");
-  await assert.rejects(controls.openDownload("iphone"), /Coming soon/);
-  await assert.rejects(controls.openDownload("extension"), /Coming soon/);
+  assert.deepEqual(Object.keys(RELEASE_DOWNLOADS), ["mac", "windows", "linux", "android"]);
+  await assert.rejects(controls.openDownload("iphone"), /No download page/);
+  await assert.rejects(controls.openDownload("extension"), /No download page/);
   await assert.rejects(controls.openDownload("https://example.com"), /No download page/);
   await assert.rejects(controls.openDownload("__proto__"), /No download page/);
   const download = (name) => `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${name}`;

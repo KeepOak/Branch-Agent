@@ -65,9 +65,13 @@ describe("renderApps", () => {
     await Promise.all(downloads.map((el) => el.updateComplete));
   }
 
-  async function renderIntoContainer(onNavigate = vi.fn(), onPairDevice?: () => void) {
+  async function renderIntoContainer(
+    onNavigate = vi.fn(),
+    onPairDevice?: () => void,
+    technical = false,
+  ) {
     const container = document.body.appendChild(document.createElement("div"));
-    render(renderApps({ onNavigate, onPairDevice }), container);
+    render(renderApps({ onNavigate, onPairDevice, technical }), container);
     await settleDownloads(container);
     return container;
   }
@@ -117,8 +121,16 @@ describe("renderApps", () => {
     expect(card?.querySelector(`a[href='${MAC_DMG}']`)?.textContent?.trim()).toBe("Download");
   });
 
-  it("shows Coming soon for iPhone and the browser extension, with no link and no button", async () => {
+  it("hides iPhone and the browser extension below Technical", async () => {
     const container = await renderIntoContainer();
+    const titles = [...container.querySelectorAll(".apps-card h3")].map((el) => el.textContent);
+    expect(titles).not.toContain("iPhone");
+    expect(titles).not.toContain("Chrome extension");
+    expect(container.textContent).not.toContain("Coming soon");
+  });
+
+  it("shows Coming soon for iPhone and the browser extension only at Technical, with no link and no button", async () => {
+    const container = await renderIntoContainer(vi.fn(), undefined, true);
     for (const title of ["iPhone", "Chrome extension"]) {
       const card = [...container.querySelectorAll(".apps-card")].find(
         (el) => el.querySelector("h3")?.textContent === title,
@@ -143,7 +155,7 @@ describe("renderApps", () => {
   it("renders decorative lazy card art with a per-theme variant for every card", async () => {
     const container = await renderIntoContainer();
     const images = Array.from(container.querySelectorAll<HTMLImageElement>(".apps-card__art img"));
-    expect(images).toHaveLength(18);
+    expect(images).toHaveLength(14);
     for (const image of images) {
       expect(image.getAttribute("alt")).toBe("");
       expect(image.getAttribute("loading")).toBe("lazy");
@@ -154,7 +166,7 @@ describe("renderApps", () => {
     const darkSrcs = images
       .filter((image) => image.classList.contains("apps-card__art-img--dark"))
       .map((image) => image.getAttribute("src"));
-    expect(lightSrcs).toHaveLength(9);
+    expect(lightSrcs).toHaveLength(7);
     for (const src of lightSrcs) {
       expect(src).toMatch(/^\/app-art\/[a-z-]+\.webp$/);
     }

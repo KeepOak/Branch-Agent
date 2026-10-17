@@ -233,7 +233,6 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
   return {
     settings: () => ({ ...saved }), get, set,
     openDownload: async (id) => {
-      if (id === "iphone" || id === "extension") throw new Error("Coming soon");
       if (!Object.hasOwn(RELEASE_DOWNLOADS, id)) throw new Error(`No download page for ${id}`);
       const url = releaseDownloadUrl(id as ReleaseDownloadId, await (deps.releases ?? publishedReleases)());
       if (!url) throw new Error(`No Branch release download for ${id}`);

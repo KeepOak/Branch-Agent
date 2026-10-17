@@ -20,6 +20,8 @@ type AppsProps = {
   macGatewayLaunchUrl?: string | null;
   /** Opens the device-pairing dialog; absent when the operator cannot pair. */
   onPairDevice?: () => void;
+  /** Coming-soon cards (iPhone, browser extension) show only at Technical. */
+  technical?: boolean;
 };
 
 type AppCardCta =
@@ -232,6 +234,17 @@ function renderAppCard(card: AppCard, props: AppsProps) {
   `;
 }
 
+function comingCard(card: AppCard): boolean {
+  return card.ctas.length > 0 && card.ctas.every((cta) => cta.kind === "soon");
+}
+
+function sectionsFor(technical: boolean): readonly AppSection[] {
+  return APP_SECTIONS.flatMap((section) => {
+    const cards = section.cards.filter((card) => technical || !comingCard(card));
+    return cards.length ? [{ ...section, cards }] : [];
+  });
+}
+
 function renderSection(section: AppSection, props: AppsProps) {
   const pairHint =
     section.id === "mobile" && props.onPairDevice
@@ -281,7 +294,7 @@ export function renderApps(props: AppsProps) {
         <h1 class="apps-hero__title">${t("appsPage.heroTitle")}</h1>
         <p class="apps-hero__tagline">${t("appsPage.heroTagline")}</p>
       </section>
-      ${APP_SECTIONS.map((section) => renderSection(section, props))} ${renderCommunity()}
+      ${sectionsFor(props.technical === true).map((section) => renderSection(section, props))} ${renderCommunity()}
     </div>
   `;
 }

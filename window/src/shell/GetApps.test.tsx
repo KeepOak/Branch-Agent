@@ -8,21 +8,43 @@ import { GET_IT_OFF, GetAppsDialog } from "./GetApps";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
 let host: HTMLDivElement;
-beforeEach(() => { host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
+beforeEach(() => {
+  localStorage.removeItem("branch.level");
+  host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+});
 afterEach(async () => {
   await act(async () => root.unmount());
   document.body.innerHTML = "";
+  localStorage.removeItem("branch.level");
   delete (window as { branchDesktop?: unknown }).branchDesktop;
 });
 const render = () => act(async () => root.render(<GetAppsDialog onClose={() => undefined} onPair={() => undefined} />));
 const getIt = () => [...document.querySelectorAll<HTMLButtonElement>(".appsPA18 .tile button")];
+const names = () => [...document.querySelectorAll(".appsPA18 .tile b")].map((el) => el.textContent);
+const soonTiles = () => [...document.querySelectorAll(".appsPA18 .tile")].filter((tile) => tile.textContent?.includes("Coming soon"));
 
 describe("Get the apps", () => {
-  it("greys Get it in a plain browser, and Coming soon has no button", async () => {
+  it.each(["regular", "advanced"] as const)("shows only the four working downloads at %s", async (level) => {
+    localStorage.setItem("branch.level", level);
+    await render();
+    expect(names()).toEqual(["Android", "Mac", "Windows", "Linux"]);
+    expect(getIt()).toHaveLength(4);
+    expect(soonTiles()).toEqual([]);
+    expect(document.body.textContent).not.toMatch(/Coming soon/);
+  });
+
+  it("greys Get it in a plain browser", async () => {
     await render();
     expect(getIt()).toHaveLength(4);
     for (const b of getIt()) { expect(b.disabled).toBe(true); expect(b.title).toBe(GET_IT_OFF); }
-    const soon = [...document.querySelectorAll(".appsPA18 .tile")].filter((tile) => tile.textContent?.includes("Coming soon"));
+  });
+
+  it("shows iPhone and the browser extension only at Technical, with Coming soon and no button", async () => {
+    localStorage.setItem("branch.level", "technical");
+    await render();
+    expect(names()).toEqual(["iPhone", "Android", "Mac", "Windows", "Linux", "Browser extension"]);
+    const soon = soonTiles();
     expect(soon.map((tile) => tile.querySelector("b")?.textContent)).toEqual(["iPhone", "Browser extension"]);
     for (const tile of soon) {
       expect(tile.querySelector("button, a")).toBeNull();

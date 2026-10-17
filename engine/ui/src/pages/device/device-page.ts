@@ -219,7 +219,6 @@ class DevicePage extends BranchLightDomElement {
             <div class="device-extension-setup">
               <branch-native-chrome-setup auto-inspect></branch-native-chrome-setup>
               <div class="device-extension-setup__actions">
-                <span>${t("appsPage.comingSoon")}</span>
                 ${renderLearnMoreLink("https://docs.openclaw.ai/tools/chrome-extension")}
               </div>
             </div>

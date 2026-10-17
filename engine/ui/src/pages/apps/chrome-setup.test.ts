@@ -38,7 +38,7 @@ async function mount(
   nativeDeviceSettings: ApplicationContext["nativeDeviceSettings"] = defaultCapability,
 ) {
   const host = createApplicationContextProvider({ nativeDeviceSettings } as ApplicationContext);
-  render(renderApps({ onNavigate: vi.fn() }), host);
+  render(renderApps({ onNavigate: vi.fn(), technical: true }), host);
   document.body.append(host);
   const setup = host.querySelector<SetupElement>("branch-native-chrome-setup")!;
   await setup.updateComplete;
