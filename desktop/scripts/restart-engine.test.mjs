@@ -209,7 +209,7 @@ async function createFixtureFiles(root) {
   const engine = join(root, "engine"), windowDir = join(root, "window");
   await mkdir(join(engine, "dist"), { recursive: true }); await mkdir(windowDir);
   await writeFile(join(engine, "dist/build-info.json"), '{"version":"fixture"}');
-  const script = `import fs from "node:fs";import http from "node:http";
+  const script = `import fs from "node:fs";import http from "node:http";import net from "node:net";
 const root=${JSON.stringify(root)}, file=root+"/starts.json";
 const starts=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[];
 starts.push(process.pid);const tmp=file+"."+process.pid+".tmp";fs.writeFileSync(tmp,JSON.stringify(starts));fs.renameSync(tmp,file);
@@ -245,9 +245,11 @@ if(m.type==="branch-desktop:stop-if-idle"&&!fs.existsSync(root+"/busy"))setTimeo
 // refuse-agents: the staged engine listens and answers /readyz, but its agents stay refused (database inspection pending).
 const refusing=()=>fs.existsSync(root+"/refuse-agents")&&process.cwd().endsWith("staged-engine");
 listener=http.createServer((q,r)=>{if(exiting){drop(q.socket);return;}if(refusing()&&q.url==="/startupz"){r.writeHead(503,{"content-type":"application/json"}).end(JSON.stringify({ok:false,status:"starting",pendingReason:"agent-database-inspection"}));return;}const agents=refusing()?JSON.stringify({ready:true,failing:[],agentDatabases:[{agentId:"coordinator",code:"agent-database-inspection-pending"}]}):undefined;r.writeHead(globalThis.rollbackReadyAt&&Date.now()<globalThis.rollbackReadyAt?503:globalThis.fenced&&fs.existsSync(root+"/fence-readyz")?503:starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end(agents);});listener.keepAliveTimeout=0;listener.headersTimeout=0;listener.requestTimeout=0;listener.httpAllowHalfOpen=true;listener.on("connection",socket=>{if(exiting){drop(socket);return;}sockets.add(socket);socket.on("close",()=>sockets.delete(socket));socket.on("error",()=>{});});
-// Tell the launcher to drop the port it is holding. Repeat until listen succeeds: the first message can
-// arrive before the launcher is waiting, and a parallel bind(0) takes a closed port during process start.
-const ping=()=>{try{process.send?.({type:"branch-desktop:binding"});}catch{}};ping();binding=setInterval(ping,15);listener.on("listening",()=>clearInterval(binding));
+// A standby that listens only after the old engine releases must leave the port free so a squatter can bind it.
+// Every other engine asks for the listening socket the launcher already holds, so nothing can bind it in between.
+const delayed=process.env.BRANCH_GATEWAY_STANDBY==="1"&&(fs.existsSync(root+"/standby-exits-after-release")||fs.existsSync(root+"/standby-binds-after-release")||fs.existsSync(root+"/standby-needs-take-over"));
+process.on("message",(msg,handle)=>{if(msg?.type!=="branch-desktop:listen-handle"||!handle)return;clearInterval(binding);const fail=()=>shutdown(1);listener.once("error",fail);listener.once("listening",()=>listener.off("error",fail));try{listener.listen(handle);}catch{shutdown(1);}});
+const ping=()=>{try{process.send?.({type:"branch-desktop:binding",defer:delayed||undefined});}catch{}};ping();binding=setInterval(ping,15);listener.on("listening",()=>clearInterval(binding));
 // As a standby since #411: it takes the state over only on its launcher's take-over message, then says so.
 if(process.env.BRANCH_GATEWAY_STANDBY==="1")process.on("message",m=>{if(m?.type!=="branch-desktop:take-over"||globalThis.tookOver)return;globalThis.tookOver=true;if(fs.existsSync(root+"/released-"+starts[0]))fs.writeFileSync(root+"/took-over-after-step-down-"+process.pid,"1");fs.writeFileSync(root+"/took-over-"+process.pid,JSON.stringify({oldEngineAlive:(()=>{try{process.kill(starts[0],0);return true;}catch{return false;}})()}));process.send?.({type:"branch-desktop:taking-over",pid:process.pid,port:Number(process.argv.at(-1))});});
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
@@ -255,16 +257,16 @@ if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
   if(fs.existsSync(root+"/hold-standby")){const timer=setInterval(()=>{if(!fs.existsSync(root+"/hold-standby")){clearInterval(timer);announce();}},10);}else announce();
 }
 // A live holder still refuses the bind. Retry without calling close() on a server that
-// never listened: that second close keeps the reservation on Windows. Do not connect
-// while retrying. A connection to a just-closed socket can accept once and send
-// nothing, and that connection keeps the port reserved for the whole retry. Give up
-// after 60s on Windows and 5s elsewhere, then close the listener and exit.
-const listen=()=>{const port=Number(process.argv.at(-1));const started=Date.now();const limit=process.platform==="win32"?60000:5000;const bind=()=>listener.listen({port,host:"127.0.0.1",exclusive:false});let waiting=false;const retry=()=>{if(waiting)return;waiting=true;if(Date.now()-started>limit)shutdown(1);else setTimeout(()=>{waiting=false;bind();},50);};listener.on("error",error=>{const code=error&&error.code;if(code!=="EADDRINUSE"&&code!=="EACCES"){shutdown(1);return;}retry();});bind();};
+// never listened: that second close keeps the reservation on Windows. On Windows, one
+// connect tells a live squatter (it writes a byte) from a reservation that accepts and
+// says nothing. The probe resets, so the connect does not leave a FIN. Give up after
+// 60s on Windows and 5s elsewhere, then close the listener and exit.
+const listen=()=>{const port=Number(process.argv.at(-1));const started=Date.now();const limit=process.platform==="win32"?60000:5000;const bind=()=>listener.listen({port,host:"127.0.0.1",exclusive:false});let waiting=false;let probed=false;const retry=()=>{if(waiting)return;waiting=true;if(Date.now()-started>limit)shutdown(1);else setTimeout(()=>{waiting=false;bind();},50);};const liveHolder=()=>new Promise(resolve=>{const socket=net.connect({host:"127.0.0.1",port});let done=false;const finish=live=>{if(done)return;done=true;clearTimeout(timer);socket.on("error",()=>{});try{socket.resetAndDestroy();}catch{try{socket.destroy();}catch{}}resolve(live);};const timer=setTimeout(()=>finish(false),300);socket.on("data",()=>finish(true));socket.on("error",()=>finish(false));});listener.on("error",error=>{const code=error&&error.code;if(code!=="EADDRINUSE"&&code!=="EACCES"){shutdown(1);return;}if(process.platform==="win32"&&code==="EADDRINUSE"&&!probed){probed=true;liveHolder().then(live=>{if(live)shutdown(1);else retry();});return;}retry();});bind();};
 // As the real engine: a standby binds only after the old engine released state (stepped down, or drained).
 const released=()=>fs.existsSync(root+"/released-"+starts[0])||fs.existsSync(root+"/drained-"+starts[0]);
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-exits-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);shutdown(1);}},10);}
 else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-binds-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);listen();}},10);}
-else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-needs-take-over")){const timer=setInterval(()=>{if(globalThis.tookOver){clearInterval(timer);listen();}},10);}else listen();`;
+else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-needs-take-over")){const timer=setInterval(()=>{if(globalThis.tookOver){clearInterval(timer);listen();}},10);}else if(!delayed)setTimeout(()=>{if(!listener.listening)listen();},1500);else listen();`;
   await writeFile(join(engine, "branch.mjs"), script); await writeFile(join(windowDir, "index.html"), "<html>fixture</html>");
   await writeFile(join(root, "gateway-token"), "isolated-fixture-token");
   // Preserve drain-first coverage explicitly; handoff tests override or remove this opt-out.

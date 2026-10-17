@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createServer } from "node:http";
 import { connect as connectNet, createServer as createNetServer } from "node:net";
@@ -53,6 +54,44 @@ test("a held loopback port stays taken until it is released for the engine", asy
   } finally {
     try { server.closeAllConnections?.(); } catch { /* none */ }
     await new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } });
+  }
+});
+
+test("a held loopback port is handed to the engine before anyone else can bind it", async () => {
+  const previous = process.env.BRANCH_DESKTOP_HOLD_LOOPBACK;
+  process.env.BRANCH_DESKTOP_HOLD_LOOPBACK = "1";
+  const { reserveLoopbackPort, releaseHeldPortWhenBinding, releaseHeldLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  let child;
+  let port;
+  const thief = createNetServer();
+  try {
+    port = await reserveLoopbackPort();
+    child = spawn(process.execPath, ["--input-type=module", "-e", [
+      'import http from "node:http";',
+      'const listener = http.createServer((q, r) => r.writeHead(200).end("ok"));',
+      'process.on("message", (msg, handle) => {',
+      '  if (msg?.type !== "branch-desktop:listen-handle" || !handle) return;',
+      '  listener.listen(handle, () => process.send({ listening: true }));',
+      '});',
+      'process.send({ type: "branch-desktop:binding" });',
+    ].join("\n")], { stdio: ["ignore", "ignore", "pipe", "ipc"], windowsHide: true });
+    releaseHeldPortWhenBinding(child, port);
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("the engine did not adopt the listening socket")), 3000);
+      child.on("message", (msg) => { if (msg?.listening) { clearTimeout(timer); resolve(); } });
+      child.once("exit", (code) => { clearTimeout(timer); reject(new Error(`engine exited ${code} before it listened`)); });
+    });
+    await assert.rejects(new Promise((resolve, reject) => {
+      thief.once("error", reject);
+      thief.listen(port, "127.0.0.1", resolve);
+    }), { code: "EADDRINUSE" });
+    assert.equal(await (await fetch(`http://127.0.0.1:${port}`)).text(), "ok");
+  } finally {
+    try { thief.close(); } catch { /* not listening */ }
+    if (port !== undefined) releaseHeldLoopbackPort(port);
+    if (child?.pid) { try { child.kill(); } catch { /* already gone */ } }
+    if (previous === undefined) delete process.env.BRANCH_DESKTOP_HOLD_LOOPBACK;
+    else process.env.BRANCH_DESKTOP_HOLD_LOOPBACK = previous;
   }
 });
 

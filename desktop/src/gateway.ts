@@ -125,23 +125,39 @@ export function releaseHeldLoopbackPort(port: number): void {
 }
 
 /**
- * The engine sends `branch-desktop:binding` once it is up and about to listen.
- * Until then the port stays held, so a parallel bind(0) cannot take it during process start.
+ * The fixture sends `branch-desktop:binding` when it is ready to listen.
+ * The listening socket is handed to that child, so nothing can bind the port in the gap.
+ * `defer: true` means the child will listen later (a squatter test): the hold is closed so that bind can happen.
  * A child that never sends the message (a real engine, or one that exits first) just leaves the listener in place until exit.
  */
 export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): void {
   if (!heldLoopback().has(port)) return;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const release = () => {
+  const stop = () => {
     if (timer) clearTimeout(timer);
     timer = undefined;
     child.off("message", onMessage);
     child.off("exit", onExit);
+  };
+  const release = () => {
+    stop();
     releaseHeldLoopbackPort(port);
   };
+  // Closing here would free the port before the child listens. Pass the open socket instead.
+  const handOff = () => {
+    const holder = heldLoopback().get(port);
+    if (!holder) return;
+    stop();
+    heldLoopback().delete(port);
+    try { child.send({ type: "branch-desktop:listen-handle" }, holder); }
+    catch { void closeServer(holder); return; }
+    try { holder.close(); } catch { /* the child owns the listening socket */ }
+  };
   const onMessage = (value: unknown) => {
-    const message = value as { type?: unknown };
-    if (message?.type === "branch-desktop:binding") release();
+    const message = value as { type?: unknown; defer?: unknown };
+    if (message?.type !== "branch-desktop:binding") return;
+    if (message.defer === true) release();
+    else handOff();
   };
   const onExit = () => release();
   child.on("message", onMessage);
@@ -185,8 +201,8 @@ export async function freeLoopbackPort(): Promise<number> {
 
 /**
  * A free loopback port this process keeps listening on when BRANCH_DESKTOP_HOLD_LOOPBACK=1.
- * The restart fixture sends branch-desktop:binding just before it listens, and the hold is released then,
- * so another test's bind(0) cannot take the port while that process is starting.
+ * The restart fixture sends branch-desktop:binding when it is ready to listen, and this process
+ * hands it the open socket. A fixture that must leave the port free for a squatter sets defer.
  * A real engine binds the port itself and does not send that message, so the hold stays off and this is freeLoopbackPort.
  */
 export async function reserveLoopbackPort(): Promise<number> {
