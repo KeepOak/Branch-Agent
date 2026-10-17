@@ -1,8 +1,8 @@
 // Starts the Branch engine gateway as a child process (as the early copy's start.sh does) and stops it by PID.
-import { spawn, execFileSync, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync, openSync, closeSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { createServer } from "node:net";
+import { createServer, type Server, type Socket } from "node:net";
 import { constants as osConstants, setPriority } from "node:os";
 import { join } from "node:path";
 import type { DesktopConfig } from "./config";
@@ -25,25 +25,197 @@ export function readToken(cfg: DesktopConfig): string {
   }
 }
 
-/** Resolves true when nothing listens on 127.0.0.1:port. */
-export function portIsFree(port: number): Promise<boolean> {
+const REBINDABLE_PORT_ATTEMPTS = 32;
+const heldLoopbackKey = Symbol.for("branch.desktop.heldLoopback");
+/**
+ * Ports this process is still listening on so another bind(0) cannot take them before the engine does.
+ * The map lives on globalThis: each restart test drops the desktop module cache, and a map inside the module
+ * would be dropped with it while the listening socket stayed open.
+ */
+function heldLoopback(): Map<number, ReturnType<typeof createServer>> {
+  const scope = globalThis as typeof globalThis & { [heldLoopbackKey]?: Map<number, ReturnType<typeof createServer>> };
+  return scope[heldLoopbackKey] ??= new Map();
+}
+
+/** Server.close() never emits while an accepted socket is still open. A client that does not finish would pin the caller. */
+const CLOSE_BACKSTOP_MS = 1000;
+
+function resetAccepted(socket: Socket): void {
+  socket.on("error", () => undefined);
+  // Windows will not rebind a port that still has a FIN from destroy(). Reset sends RST,
+  // which releases it. Elsewhere, that RST makes a readiness fetch throw uncaught
+  // setTypeOfService EINVAL (Node only treats the error as best-effort on Windows).
+  if (process.platform === "win32") {
+    try { socket.resetAndDestroy(); }
+    catch { socket.destroy(); }
+    return;
+  }
+  socket.destroy();
+}
+
+/** Resets any accepted connection so close() is not pinned, and swallows the bind error the caller handles. */
+function loopbackProbe(): Server {
+  const probe = createServer();
+  probe.on("error", () => undefined);
+  probe.on("connection", resetAccepted);
+  return probe;
+}
+
+function closeServer(probe: Server): Promise<boolean> {
   return new Promise((resolve) => {
-    const probe = createServer();
-    probe.once("error", () => resolve(false));
-    probe.listen(port, "127.0.0.1", () => probe.close(() => resolve(true)));
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (closed: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(closed);
+    };
+    // The callback is next tick when nothing is connected. If it still does not run,
+    // skip this port instead of waiting out the fixture deadline.
+    timer = setTimeout(() => {
+      try { probe.unref(); } catch { /* already closed */ }
+      finish(false);
+    }, CLOSE_BACKSTOP_MS);
+    try { probe.close(() => finish(true)); }
+    catch { finish(false); }
   });
 }
 
-/** A loopback port nothing listens on right now: the OS picks it for a throwaway listener. */
-export function freeLoopbackPort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const port = (probe.address() as { port: number }).port;
-      probe.close(() => resolve(port));
+/** Binds `port` (0 picks one). Undefined when the bind fails or does not settle. */
+function bindProbe(probe: Server, port: number): Promise<number | undefined> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: number | undefined) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      finish(undefined);
+      void closeServer(probe);
+    }, CLOSE_BACKSTOP_MS);
+    probe.once("error", () => finish(undefined));
+    probe.listen(port, "127.0.0.1", () => {
+      try {
+        const address = probe.address();
+        finish(address && typeof address === "object" ? address.port : undefined);
+      } catch { finish(undefined); }
     });
   });
+}
+
+/** Keeps `server` listening on `port` until `releaseHeldLoopbackPort`. */
+export function holdLoopbackServer(port: number, server: Server): void {
+  releaseHeldLoopbackPort(port);
+  // An accepted client that never finishes pins Server.close() (`_connections` stays set).
+  // Drop it so releasing the hold does not leave the port reserved.
+  server.on("connection", resetAccepted);
+  server.unref();
+  heldLoopback().set(port, server);
+}
+
+/** Closes the listening socket this process was holding for `port`, if any. */
+export function releaseHeldLoopbackPort(port: number): void {
+  const holder = heldLoopback().get(port);
+  if (!holder) return;
+  heldLoopback().delete(port);
+  void closeServer(holder);
+}
+
+/**
+ * The fixture sends `branch-desktop:binding` when it is ready to listen.
+ * The listening socket is handed to that child, so nothing can bind the port in the gap.
+ * `defer: true` means the child will listen later (a squatter test): the hold is closed so that bind can happen.
+ * A child that never sends the message (a real engine, or one that exits first) just leaves the listener in place until exit.
+ */
+export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): void {
+  if (!heldLoopback().has(port)) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stop = () => {
+    if (timer) clearTimeout(timer);
+    timer = undefined;
+    child.off("message", onMessage);
+    child.off("exit", onExit);
+  };
+  const release = () => {
+    stop();
+    releaseHeldLoopbackPort(port);
+  };
+  // Closing here would free the port before the child listens. Pass the open socket instead.
+  const handOff = () => {
+    const holder = heldLoopback().get(port);
+    if (!holder) return;
+    stop();
+    heldLoopback().delete(port);
+    try { child.send({ type: "branch-desktop:listen-handle" }, holder); }
+    catch { void closeServer(holder); return; }
+    try { holder.close(); } catch { /* the child owns the listening socket */ }
+  };
+  const onMessage = (value: unknown) => {
+    const message = value as { type?: unknown; defer?: unknown };
+    if (message?.type !== "branch-desktop:binding") return;
+    if (message.defer === true) release();
+    else handOff();
+  };
+  const onExit = () => release();
+  child.on("message", onMessage);
+  child.once("exit", onExit);
+  // The child repeats branch-desktop:binding until it is listening. One send can still
+  // arrive before this listener exists; release once it has had time to send again,
+  // so a missed message cannot hold the port until the child gives up on the bind.
+  timer = setTimeout(release, 1000);
+}
+
+/** Resolves true when nothing listens on 127.0.0.1:port. */
+export function portIsFree(port: number): Promise<boolean> {
+  const probe = loopbackProbe();
+  return bindProbe(probe, port).then(async (bound) => bound !== undefined && await closeServer(probe));
+}
+
+/** True when this process can listen on 127.0.0.1:port and then release it. */
+function explicitBind(port: number): Promise<boolean> {
+  return portIsFree(port);
+}
+
+/**
+ * A loopback port that can be bound again after this probe closes.
+ * bind(0) can hand back a port Windows will not take on an explicit listen
+ * (an excluded ephemeral range, or a close that keeps the port reserved).
+ * Those ports are skipped. A port is returned only after two explicit binds
+ * each succeeded, so the close between them released it.
+ */
+export async function freeLoopbackPort(): Promise<number> {
+  for (let attempt = 0; attempt < REBINDABLE_PORT_ATTEMPTS; attempt++) {
+    const probe = loopbackProbe();
+    const picked = await bindProbe(probe, 0);
+    if (picked === undefined) continue;
+    if (!await closeServer(probe)) continue;
+    if (!await explicitBind(picked)) continue;
+    if (!await explicitBind(picked)) continue;
+    return picked;
+  }
+  throw new Error("No loopback port could be bound again after it was closed");
+}
+
+/**
+ * A free loopback port this process keeps listening on when BRANCH_DESKTOP_HOLD_LOOPBACK=1.
+ * The restart fixture sends branch-desktop:binding when it is ready to listen, and this process
+ * hands it the open socket. A fixture that must leave the port free for a squatter sets defer.
+ * A real engine binds the port itself and does not send that message, so the hold stays off and this is freeLoopbackPort.
+ */
+export async function reserveLoopbackPort(): Promise<number> {
+  if (process.env.BRANCH_DESKTOP_HOLD_LOOPBACK !== "1") return freeLoopbackPort();
+  for (let attempt = 0; attempt < REBINDABLE_PORT_ATTEMPTS; attempt++) {
+    const port = await freeLoopbackPort();
+    const holder = loopbackProbe();
+    const held = await bindProbe(holder, port);
+    if (held === undefined) continue;
+    holdLoopbackServer(port, holder);
+    return port;
+  }
+  throw new Error("No loopback port could be held until the engine binds it");
 }
 
 /**
@@ -156,6 +328,7 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   if (!standby && child.pid !== undefined) {
     saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "gateway.pid"), String(child.pid)));
   }
+  releaseHeldPortWhenBinding(child, port);
   return child;
 }
 
@@ -215,10 +388,16 @@ export function stopWarmingStandby(): void {
  * so nothing is left behind and the live engine keeps serving.
  */
 export async function prepareStandbyGateway(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number, surviveQuit = false): Promise<PreparedGateway> {
-  const port = await freeLoopbackPort();
+  const port = await reserveLoopbackPort();
   // The successor has to outlive the engine it replaces. When that engine is the detached
   // fallback, the standby is detached too, or Windows' job ends it when the old engine stops.
-  const child = startGateway(cfg, engineDir, token, true, port, undefined, undefined, surviveQuit);
+  let child: ChildProcess;
+  try {
+    child = startGateway(cfg, engineDir, token, true, port, undefined, undefined, surviveQuit);
+  } catch (error) {
+    releaseHeldLoopbackPort(port);
+    throw error;
+  }
   // POSIX cannot raise a lowered process back without privileges, and a promoted standby must run at full speed.
   if (process.platform === "win32") setEnginePriority(child, true);
   warmingStandby = child;
@@ -458,11 +637,19 @@ export async function waitForReady(cfg: DesktopConfig, child: ChildProcess, ms: 
   throw new GatewayReadinessTimeoutError();
 }
 
-/** Stops one engine process group by pid. Windows taskkill is immediate; other platforms signal the group. */
+/** Stops one engine process group by pid. Windows ends the process, then its tree; other platforms signal the group. */
 export function stopEnginePid(pid: number, signal: "SIGTERM" | "SIGKILL" = "SIGTERM"): void {
   try {
-    if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10_000 });
-    else process.kill(-pid, signal);
+    if (process.platform === "win32") {
+      // TerminateProcess returns immediately, but the engine directory stays locked until the
+      // tree is gone. Wait for taskkill, capped so a stuck killer cannot stall this thread for 10s.
+      try { process.kill(pid, signal); } catch { /* already gone */ }
+      try {
+        execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 2_000 });
+      } catch { /* already gone, or the cap elapsed */ }
+      return;
+    }
+    process.kill(-pid, signal);
   } catch {
     // already gone
   }

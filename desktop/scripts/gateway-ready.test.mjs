@@ -1,12 +1,139 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createServer } from "node:http";
+import { connect as connectNet, createServer as createNetServer } from "node:net";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
 const { GatewayReadinessTimeoutError, killGatewayAndWait, waitForReady } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+
+test("a handed-out loopback port can be bound again on that exact port", async () => {
+  const { freeLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const port = await freeLoopbackPort();
+  const server = createNetServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, "127.0.0.1", resolve);
+    });
+    assert.equal(server.address().port, port);
+  } finally {
+    try { server.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } });
+  }
+});
+
+test("a held loopback port stays taken until it is released for the engine", async () => {
+  const { freeLoopbackPort, holdLoopbackServer, releaseHeldLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const port = await freeLoopbackPort();
+  const holder = createNetServer();
+  await new Promise((resolve, reject) => {
+    holder.once("error", reject);
+    holder.listen(port, "127.0.0.1", resolve);
+  });
+  holdLoopbackServer(port, holder);
+  const blocked = createNetServer();
+  try {
+    await assert.rejects(new Promise((resolve, reject) => {
+      blocked.once("error", reject);
+      blocked.listen(port, "127.0.0.1", resolve);
+    }), { code: "EADDRINUSE" });
+  } finally {
+    releaseHeldLoopbackPort(port);
+  }
+  const server = createNetServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, "127.0.0.1", resolve);
+    });
+    assert.equal(server.address().port, port);
+  } finally {
+    try { server.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } });
+  }
+});
+
+test("a held loopback port is handed to the engine before anyone else can bind it", async () => {
+  const previous = process.env.BRANCH_DESKTOP_HOLD_LOOPBACK;
+  process.env.BRANCH_DESKTOP_HOLD_LOOPBACK = "1";
+  const { reserveLoopbackPort, releaseHeldPortWhenBinding, releaseHeldLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  let child;
+  let port;
+  const thief = createNetServer();
+  try {
+    port = await reserveLoopbackPort();
+    child = spawn(process.execPath, ["--input-type=module", "-e", [
+      'import http from "node:http";',
+      'const listener = http.createServer((q, r) => r.writeHead(200).end("ok"));',
+      'process.on("message", (msg, handle) => {',
+      '  if (msg?.type !== "branch-desktop:listen-handle" || !handle) return;',
+      '  listener.listen(handle, () => process.send({ listening: true }));',
+      '});',
+      'process.send({ type: "branch-desktop:binding" });',
+    ].join("\n")], { stdio: ["ignore", "ignore", "pipe", "ipc"], windowsHide: true });
+    releaseHeldPortWhenBinding(child, port);
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("the engine did not adopt the listening socket")), 3000);
+      child.on("message", (msg) => { if (msg?.listening) { clearTimeout(timer); resolve(); } });
+      child.once("exit", (code) => { clearTimeout(timer); reject(new Error(`engine exited ${code} before it listened`)); });
+    });
+    await assert.rejects(new Promise((resolve, reject) => {
+      thief.once("error", reject);
+      thief.listen(port, "127.0.0.1", resolve);
+    }), { code: "EADDRINUSE" });
+    assert.equal(await (await fetch(`http://127.0.0.1:${port}`)).text(), "ok");
+  } finally {
+    try { thief.close(); } catch { /* not listening */ }
+    if (port !== undefined) releaseHeldLoopbackPort(port);
+    if (child?.pid) { try { child.kill(); } catch { /* already gone */ } }
+    if (previous === undefined) delete process.env.BRANCH_DESKTOP_HOLD_LOOPBACK;
+    else process.env.BRANCH_DESKTOP_HOLD_LOOPBACK = previous;
+  }
+});
+
+test("a client connected to a held loopback port does not keep it after release", async () => {
+  const { freeLoopbackPort, holdLoopbackServer, releaseHeldLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const port = await freeLoopbackPort();
+  const holder = createNetServer();
+  const rebound = createNetServer();
+  let client;
+  try {
+    await new Promise((resolve, reject) => {
+      holder.once("error", reject);
+      holder.listen(port, "127.0.0.1", resolve);
+    });
+    holdLoopbackServer(port, holder);
+    client = connectNet({ host: "127.0.0.1", port });
+    client.on("error", () => {});
+    const outcome = await new Promise((resolve) => {
+      client.once("connect", () => resolve("connect"));
+      client.once("error", (error) => resolve(error.code ?? "error"));
+    });
+    assert.notEqual(outcome, "ECONNREFUSED");
+    releaseHeldLoopbackPort(port);
+    const end = Date.now() + 2000;
+    let bound = false;
+    while (Date.now() < end && !bound) {
+      bound = await new Promise((resolve) => {
+        rebound.once("error", () => resolve(false));
+        rebound.listen(port, "127.0.0.1", () => resolve(true));
+      });
+      if (!bound) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(bound, true);
+  } finally {
+    client?.destroy();
+    releaseHeldLoopbackPort(port);
+    try { rebound.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise((resolve) => { try { rebound.close(() => resolve()); } catch { resolve(); } });
+    try { holder.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise((resolve) => { try { holder.close(() => resolve()); } catch { resolve(); } });
+  }
+});
 
 test("a child that never emits exit cannot hold the update lock indefinitely", async () => {
   const child = Object.assign(new EventEmitter(), { pid: undefined, exitCode: null, signalCode: null });
