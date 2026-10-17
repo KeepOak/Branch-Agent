@@ -32,3 +32,8 @@ export interface AvailableMemory {
 export function availableMemory(probe?: MemoryProbe): AvailableMemory;
 export function availableMemoryBytes(probe?: MemoryProbe): number;
 export function defaultMemoryNeedBytes(defaultBytes: number, totalBytes?: number): number;
+export function defaultHeavyStepMemoryNeedBytes(
+  defaultBytes: number,
+  totalBytes?: number,
+  platform?: NodeJS.Platform,
+): number;

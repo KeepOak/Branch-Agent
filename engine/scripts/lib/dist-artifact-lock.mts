@@ -215,9 +215,13 @@ export async function acquireDistArtifactOwnership(
           timeoutMs: wait ? (signal ? LOCK_POLL_MS : Number.POSITIVE_INFINITY) : 0,
           retry: { minTimeout: LOCK_POLL_MS, maxTimeout: LOCK_POLL_MS, factor: 1 },
           staleRecovery: "remove-if-unchanged",
-          // Preserve legacy fail-closed recovery; only a proven recycled PID is new.
+          // Checkouts keep legacy fail-closed recovery; only a proven recycled PID is new.
+          // The host heavy-step slot (checkout false) holds no artifacts, so a dead owner
+          // without retained child work is reclaimed like a recycled one.
           shouldRemoveStaleLock: ({ payload }) =>
-            isRecord(payload) && hasRecycledIdentity(payload) && !hasRetainedChildWork(directory),
+            isRecord(payload) &&
+            (checkout ? hasRecycledIdentity(payload) : canReclaimDistArtifactOwner(payload)) &&
+            !hasRetainedChildWork(directory),
           shouldReclaim: ({ payload }) => {
             owner = payload;
             if (canReclaimDistArtifactOwner(payload, directory)) {
