@@ -2,7 +2,7 @@
 import type { Block } from "./model";
 import { displayModelName } from "../composer/model-display";
 import { computerStepWords, isComputerToolName, isScreenToolName, screenStepWords } from "./computer-action-label";
-import { looksRaw, plainError } from "../shell/plain-error";
+import { looksRawError, plainError } from "../shell/plain-error";
 
 export function formatDuration(ms?: number): string {
   if (!ms || ms < 0) {
@@ -317,7 +317,6 @@ export function dayStamp(ms: number, now = Date.now()): string {
 /** Local file paths (macOS, Linux, Windows, ~/) that a plain sentence must not show; the raw text stays at Technical.
  *  A space continues the path only when the next word holds another slash ("/Volumes/512GB SSD/data"). */
 const LOCAL_PATH = /(?:[A-Za-z]:\\[^\s"'`,;()<>]+|~\/[^\s"'`,;()<>]*|\/(?:Users|Volumes|private|tmp|var|home|opt|etc|Library|Applications|usr|root|srv|mnt)(?:\/[^\s"'`,;()<>]*)?)(?: [^\s\/"'`,;()<>]+\/[^\s"'`,;()<>]*)*/g;
-const HTTP_STATUS = /\b(?:HTTP|status(?: code)?)\s*[:=]?\s*[1-5]\d{2}\b/gi;
 export function scrubLocalPaths(text: string): string {
   return text.replace(LOCAL_PATH, "a local file");
 }
@@ -334,9 +333,9 @@ export function shortReason(message: string): string {
     .trim();
   const first = /^(.+?[.!?])(\s|$)/.exec(plain)?.[1] ?? plain;
   const short = first.length > 160 ? `${first.slice(0, 157)}…` : first;
-  // No error class, errno or gateway code, stack or engine method name at Regular (Private #1089). Paths are already
-  // scrubbed above, and a provider's HTTP status inside a sentence stays as the engine put it.
-  return looksRaw(first.replace(HTTP_STATUS, "")) ? plainError(short) : short;
+  // No error class, code, HTTP status, id, stack or engine method name at Regular (Private #1089): the scrubbed first
+  // sentence is checked as #1700's friendlyError() checks it, and a raw one reads as a plain sentence instead.
+  return looksRawError(first) ? plainError(short) : short;
 }
 
 /** A model id as the hover bar shows it: the part after the provider. */

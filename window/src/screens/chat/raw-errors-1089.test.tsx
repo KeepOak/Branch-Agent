@@ -37,6 +37,18 @@ describe("a failed run never shows the engine's raw words at Regular (Private #1
     expect(line).toBe(`Researcher couldn’t finish: ${plain}`);
   });
 
+  it("offers the engine's words (Details, Copy error) only at Technical", async () => {
+    await runError("connect ECONNREFUSED 127.0.0.1:18789");
+    const buttons = () => [...host.querySelectorAll('[data-testid="run-error"] button')].map((b) => b.textContent);
+    expect(buttons()).not.toContain("Details");
+    expect(buttons()).not.toContain("Copy error");
+    localStorage.setItem("branch.level", "technical");
+    await act(async () => root.unmount()); root = createRoot(host);
+    await runError("connect ECONNREFUSED 127.0.0.1:18789");
+    expect(buttons()).toContain("Details");
+    expect(buttons()).toContain("Copy error");
+  });
+
   it("keeps a plain engine sentence as it was", () => {
     expect(shortReason("Model quota exceeded. Retry after 2 minutes. stack: x")).toBe("Model quota exceeded.");
   });

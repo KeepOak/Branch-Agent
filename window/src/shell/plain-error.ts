@@ -1,9 +1,15 @@
-// No raw engine error at Regular (Private #1089). A failure's words reach a person through plainError(): at Regular a
-// stack, an error class or code (CodexNotInstalledError, ECONNREFUSED, INVALID_REQUEST), an engine method name, a
-// file path or an engine sentence such as `unknown method: logbook.status` reads as one plain sentence with one next
-// step, and any web or computer address reads as plainAddresses() (#1706) says. Words that are already plain pass
-// through unchanged, with the lead a screen put before the raw part (`Couldn't change Lockdown: …`). Advanced and
-// Technical keep the exact words.
+// No raw engine error at Regular (Private #1089). A failure's words reach a person through plainError(): at Regular,
+// words that #1700's friendlyError() would replace (a dump, JSON, an HTTP status, an id, a code, a method name), or that
+// carry a stack, an error class or errno code (CodexNotInstalledError, ECONNREFUSED), a file path or an engine sentence
+// such as `unknown method: logbook.status`, read as one plain sentence with one next step chosen from the map below,
+// and any web or computer address reads as plainAddresses() (#1706) says. Words that are already plain pass through
+// unchanged, with the lead a screen put before the raw part (`Couldn't change Lockdown: …`). Advanced and Technical keep
+// the exact words.
+//
+// plainText() is for words that are not always a failure (a toast like "Copied.", a banner title, the line above the
+// page). friendlyError() reads a one-word or numbered line as raw, so those use the strong markers only, which include
+// #1700's id shapes (a UUID, a long hex id, a named id, a session key with or without `agent:`).
+import { FRIENDLY_ERROR, friendlyError } from "../connect/friendly-error";
 import { plainAddresses } from "./plain-address";
 
 /** The "How much to show" level's saved choice (places-nav/SettingsFrame readLevel), read as plainAddresses() reads it. */
@@ -49,11 +55,22 @@ const RAW: RegExp[] = [
   /\bgateway (?:closed|not connected)\b/i, // a socket close
   /\bCannot read propert|\bis not a function\b|\bis not defined\b|\bUnexpected token\b|\bnpm ERR!|\bfetch failed\b|\bFailed to fetch\b|\bsocket hang up\b|\bNo API key found\b/i,
   /\bagent:[\w-]+:[\w:.-]+/, // a session key
+  // #1700's id shapes (connect/friendly-error.ts), so words that skip friendlyError() still never show an id.
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i, // a UUID
+  /\b[0-9a-f]{16,}\b/i, // a long hex id
+  /\b(?:request[\s_-]*id|runId|sessionKey|agentId|gatewayCode)\b/i, // a named id
+  /\b[a-z][a-z0-9_-]{1,20}:[a-z0-9_-]+:[a-z0-9_-]+/i, // a session key without agent:
 ];
 
-/** True when the words still carry an engine's or the system's raw failure. */
+/** True when any words (a failure or not) still carry a strong raw marker: a stack, a class or code, a path, an id. */
 export function looksRaw(text: string): boolean {
   return RAW.some((re) => re.test(text));
+}
+
+/** True when a failure's words are raw: #1700's friendlyError() would replace them, or they carry a strong marker. */
+export function looksRawError(text: string): boolean {
+  const trimmed = text.trim();
+  return Boolean(trimmed) && (looksRaw(trimmed) || friendlyError(trimmed) === FRIENDLY_ERROR);
 }
 
 function sentenceFor(raw: string): string {
@@ -69,13 +86,13 @@ export function errorWords(error: unknown): string {
   return String(error ?? "");
 }
 
-function plainWords(text: string): string {
+function plainWords(text: string, raw: (words: string) => boolean): string {
   const trimmed = text.trim();
   // Plain words keep their spacing: a status line can be built from parts ("Branch ", version, " keeps running.").
-  if (!looksRaw(trimmed)) return plainAddresses(text, true);
+  if (!raw(trimmed)) return plainAddresses(text, true);
   // A plain sentence that ends with the raw words in brackets keeps the sentence: "… full. (QuotaExceededError: …)".
   const bracket = /^(.*?[.!?])\s*\(([^]*)\)\.?$/.exec(trimmed);
-  if (bracket && !looksRaw(bracket[1])) return plainAddresses(bracket[1], true);
+  if (bracket && !raw(bracket[1])) return plainAddresses(bracket[1], true);
   // A screen's own lead before the raw part keeps its words: "Couldn't change Lockdown: <raw>".
   const colon = trimmed.indexOf(": ");
   if (colon > 0) {
@@ -93,5 +110,12 @@ function plainWords(text: string): string {
 export function plainError(error: unknown, always = false): string {
   const words = errorWords(error);
   if (!words || (!always && !atRegular())) return words;
-  return plainWords(words);
+  return plainWords(words, looksRawError);
+}
+
+/** Words that may or may not be a failure (a toast, a banner, the line above the page): at Regular only words with a
+ *  strong raw marker are replaced, so "Copied." or "Restarting…" stay as they are. */
+export function plainText(text: string, always = false): string {
+  if (!text || (!always && !atRegular())) return text;
+  return plainWords(text, looksRaw);
 }

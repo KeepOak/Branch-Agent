@@ -321,6 +321,13 @@ export function ChatView(props: ChatViewProps) {
   </ThreadContext.Provider></CapabilityProvider>;
 }
 
+/** "Couldn't finish": the plain reason at every level; the engine's own words (Details, Copy error) only at Technical
+ *  (Private #1089). */
+function RunError({ name, message, toast }: { name: string; message: string; toast: View["toast"] }) {
+  const technical = shows(useLevel(), "technical");
+  return <NoticeLine tone="bad" text={name + " couldn’t finish: " + shortReason(message)} details={technical ? message : undefined} links={technical ? [{ label: "Copy error", onClick: () => void copyText(message, toast) }] : []} testid="run-error" />;
+}
+
 type View = {
   all: Block[]; live: Block[]; name: string; running: boolean; lastUser: number; mode: WorkMode;
   actionsFor: ReturnType<typeof useMessageActions>["actionsFor"];
@@ -428,7 +435,7 @@ function EntryView({ entry, view, live, working }: { entry: Entry; view: View; l
       return <NoticeLine text="Response stopped" testid="run-stopped"
         links={block.key === view.continueKey && view.onContinue ? [{ label: "Continue", onClick: view.onContinue, ...CONTINUE }] : []} />;
     case "error":
-      return <NoticeLine tone="bad" text={view.name + " couldn’t finish: " + shortReason(block.message)} details={block.message} links={[{ label: "Copy error", onClick: () => void copyText(block.message, view.toast) }]} testid="run-error" />;
+      return <RunError name={view.name} message={block.message} toast={view.toast} />;
     case "notice":
       return <NoticeLine text={block.text} links={block.topicKey && view.onOpenSession ? [{ label: "Open", onClick: () => view.onOpenSession?.(block.topicKey!) }] : []} />;
     case "steer":
