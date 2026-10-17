@@ -15,6 +15,7 @@ import { compileGlobPatterns, matchesAnyGlobPattern } from "../glob-pattern.js";
 import type { AgentMessage } from "../runtime/index.js";
 import type { SessionManager } from "../sessions/index.js";
 import { formatFullOutputFooter } from "../sessions/tools/tool-contracts.js";
+import { compressToolOutput } from "../tool-output-compression/index.js";
 import {
   calculateMaxToolResultCharsWithCap,
   resolveAutoLiveToolResultMaxChars,
@@ -307,6 +308,42 @@ type ToolResultTruncationOptions = {
   minimumRawWeight?: number;
 };
 
+/** Points compressed text at the stored original when the compressor dropped the footer. */
+function withFullOutputFooter(text: string, path: string): string {
+  return text.includes(path) ? text : `${text}\n\n${formatFullOutputFooter(path)}`;
+}
+
+/**
+ * Content-aware compression (atlas AGENT-LOOP-0349) runs in front of head/tail
+ * truncation only when the tool already saved the complete original, so every
+ * elided line stays retrievable from the existing saved-output file.
+ */
+function compressRecoverableToolResult(msg: AgentMessage): AgentMessage {
+  const spill = getToolResultSpillDetails(msg);
+  const content = (msg as { content?: unknown }).content;
+  if (!spill || spill.truncated || !Array.isArray(content) || !existsSync(spill.path)) {
+    return msg;
+  }
+  let changed = false;
+  const nextContent = content.map((block: unknown) => {
+    if (!isToolResultTextBlock(block)) {
+      return block;
+    }
+    const compressed = compressToolOutput(block.text);
+    const text = compressed ? withFullOutputFooter(compressed.text, spill.path) : block.text;
+    if (text.length >= block.text.length) {
+      return block;
+    }
+    changed = true;
+    const nextBlock = Object.assign({}, block, { text });
+    if (typeof block.content === "string") {
+      nextBlock.content = text;
+    }
+    return nextBlock;
+  });
+  return changed ? ({ ...msg, content: nextContent } as AgentMessage) : msg;
+}
+
 const DEFAULT_SUFFIX = formatContextLimitTruncationNotice;
 const COMPACT_RECOVERY_SUFFIX = (truncatedChars: number) =>
   `[... ${Math.max(1, Math.floor(truncatedChars))} chars truncated; narrow args]`;
@@ -546,6 +583,10 @@ export function truncateToolResultMessage(
   const totalTextChars = blockTextChars.reduce((sum, chars) => sum + chars, 0);
   if (totalTextChars <= maxChars) {
     return msg;
+  }
+  const compressedMsg = compressRecoverableToolResult(msg);
+  if (compressedMsg !== msg) {
+    return truncateToolResultMessage(compressedMsg, maxChars, options);
   }
 
   // A caller's raw-text safety floor changes cost, not which semantic blocks
