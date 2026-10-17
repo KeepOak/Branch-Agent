@@ -1,7 +1,7 @@
 // Trunk editor › What it may do (preview 30-trunks mayHTMLC18, 31-trunksp mayMorePC18 at Advanced).
 // Each row writes the Trunk's own config entry; rows the engine has no setting for are drawn greyed with the reason.
 // The greyed reasons in this file say what is still missing, shown in plain words under each row.
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useResource } from "../settings/hooks";
 import { usableModelName, type ModelChoice } from "../../composer/model";
 import type { WindowEngine } from "../../connect/engine";
@@ -24,6 +24,10 @@ function ModelPick({ draft, models, setModel, openSettings }: { draft: Draft; mo
   if (!models.length) return <Row title="Which model" hint="No model is set up yet."><button type="button" className="btn sm" onClick={() => openSettings?.("models")} disabled={!openSettings}>Set up a model</button></Row>;
   const options = models;
   const value = models.some((m) => m.ref === draft.model) ? draft.model : options[0].ref;
+  // The control can only show a usable option. Write that into the draft so Save persists Gemma, not the leftover astra ref.
+  useEffect(() => {
+    if (value !== draft.model) setModel(value);
+  }, [value, draft.model, setModel]);
   return (
     <Row title="Which model" hint="Where this Trunk thinks.">
       {options.length <= 3 && <span className="tk-wide"><Segmented label="Which model" value={value} options={options.map((m) => ({ id: m.ref, name: m.name }))} onChange={setModel} /></span>}
@@ -53,13 +57,16 @@ function Fallbacks({ draft, models, setMay }: { draft: Draft; models: ModelChoic
 }
 
 function Advanced({ engine, agentId, name, draft, models, setMay }: { engine: WindowEngine; agentId: string; name: string; draft: Draft; models: ModelChoice[]; setMay: (m: Partial<May>) => void }) {
+  const decide = ["same", "none"].includes(draft.may.decide) || models.some((m) => m.ref === draft.may.decide) ? draft.may.decide : "same";
+  useEffect(() => {
+    if (decide !== draft.may.decide) setMay({ decide });
+  }, [decide, draft.may.decide, setMay]);
   return (
     <>
       <Row title="Model for decisions" hint={`Small yes-or-no, pick-one and score calls inside ${name}’s work. None means it makes no such calls; its main model is never used for them.`}>
-        <select className="inp" aria-label="Model for decisions" value={draft.may.decide} onChange={(e) => setMay({ decide: e.target.value })}>
+        <select className="inp" aria-label="Model for decisions" value={decide} onChange={(e) => setMay({ decide: e.target.value })}>
           <option value="same">Same as everywhere</option>
           {models.map((m) => <option key={m.ref} value={m.ref}>{m.name}</option>)}
-          {!["same", "none"].includes(draft.may.decide) && !models.some((m) => m.ref === draft.may.decide) && <option value={draft.may.decide}>No model is set up</option>}
           <option value="none">None for {name}</option>
         </select>
       </Row>

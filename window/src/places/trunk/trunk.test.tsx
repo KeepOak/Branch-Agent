@@ -412,6 +412,27 @@ describe("Trunk profile and studio", () => {
 });
 
 describe("Trunk tools rows", () => {
+  it("saves the shown model when the saved one is not in the usable list", async () => {
+    const request = fake({
+      "agents.list": {
+        defaultId: "oak",
+        mainKey: "main",
+        agents: [{ id: "oak", identity: { name: "Oak", theme: "Helps" }, model: { primary: "openai/gpt-6-astra" } }],
+      },
+      "models.list": { models: [{ id: "gemma", provider: "ollama", name: "Gemma", available: true }] },
+    });
+    await mount(<TrunkEditor engine={engine(request)} agentId="oak" level="regular" onClose={() => {}} />);
+    await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[0], "Juniper");
+    await click(byText("What it may do"));
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    const pick = document.querySelector<HTMLSelectElement>('select[aria-label="Which model"]')!;
+    expect(pick.value).toBe("ollama/gemma");
+    expect(pick.selectedOptions[0]?.textContent).toBe("Gemma");
+    expect(document.body.textContent).not.toMatch(/gpt-6-astra/i);
+    await click(byText("Save"));
+    expect(request).toHaveBeenCalledWith("agents.update", { agentId: "oak", name: "Juniper", model: "ollama/gemma" });
+  });
+
   it("shows the browser off when a legacy deny lists it, even with the browser switch on", async () => {
     const config = { hash: "h1", valid: true, config: { agents: { entries: { birch: { toolsets: { browser: true }, tools: { deny: ["browser"] } } } } } };
     const catalog = {
