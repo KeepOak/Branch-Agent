@@ -185,9 +185,17 @@ export function actionsJobIdFromCheckRun(checkRun) {
   return fromUrl ? Number(fromUrl[1]) : null;
 }
 
-export function getJobLog(repo, jobId, { gh = defaultGh } = {}) {
+export function getJobLog(repo, jobId, { command = "gh", argsPrefix = [], gh } = {}) {
   // gh 2.102.0 exits 1 with an empty body when an Actions log has ANSI escapes.
-  return String(gh(["api", "--allow-escape-sequences", `repos/${repo}/actions/jobs/${jobId}/logs`]) ?? "");
+  const built = ["api", "--allow-escape-sequences", `repos/${repo}/actions/jobs/${jobId}/logs`];
+  if (typeof gh === "function") {
+    return String(gh(built) ?? "");
+  }
+  return String(execFileSync(command, [...argsPrefix, ...built], {
+    encoding: "utf8",
+    windowsHide: true,
+    env: process.env,
+  }) ?? "");
 }
 
 export function catchUpLatchRunsPath(repo, sha) {

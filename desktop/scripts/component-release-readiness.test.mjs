@@ -577,38 +577,33 @@ test("a GitHub rate-limit failure in check output does not block", () => {
 
 test("getJobLog reads a rate-limit Actions log that contains escape sequences", () => {
   const dir = mkdtempSync(join(tmpdir(), "release-job-log-"));
-  const fakeGh = join(dir, process.platform === "win32" ? "gh.cmd" : "gh");
+  const fakeGh = join(dir, "fake-gh.mjs");
   const log = "\u001b[31m##[error]HTTP 403: API rate limit exceeded for installation ID 1\u001b[0m\n";
   writeFileSync(fakeGh, [
-    "#!/usr/bin/env node",
     "const args = process.argv.slice(2);",
     "const logs = args.some((arg) => /\\/actions\\/jobs\\/\\d+\\/logs$/.test(arg));",
     "if (!logs) process.exit(2);",
     "if (!args.includes('--allow-escape-sequences')) process.exit(1);",
     `process.stdout.write(${JSON.stringify(log)});`,
     "",
-  ].join("\n"), { mode: 0o755 });
-  const gh = args => execFileSync(fakeGh, args, { encoding: "utf8", windowsHide: true });
+  ].join("\n"));
+  const invoke = { command: process.execPath, argsPrefix: [fakeGh] };
+  const missingFlag = {
+    gh: args => execFileSync(process.execPath, [fakeGh, ...args.filter(arg => arg !== "--allow-escape-sequences")], {
+      encoding: "utf8",
+      windowsHide: true,
+    }),
+  };
   try {
-    const text = getJobLog("KeepOak/Branch-Agent", 117528834505, { gh });
+    const text = getJobLog("KeepOak/Branch-Agent", 117528834505, invoke);
     assert.match(text, /API rate limit exceeded/);
     const checks = [trackNonMergeCheck({ output: { title: "", summary: "" } })];
     assert.equal(blockingCheckRuns(checks, {
-      readJobLog: jobId => getJobLog("KeepOak/Branch-Agent", jobId, { gh }),
+      readJobLog: jobId => getJobLog("KeepOak/Branch-Agent", jobId, invoke),
     }).length, 0);
-    assert.throws(() => getJobLog("KeepOak/Branch-Agent", 117528834505, {
-      gh: args => execFileSync(fakeGh, args.filter(arg => arg !== "--allow-escape-sequences"), {
-        encoding: "utf8",
-        windowsHide: true,
-      }),
-    }));
+    assert.throws(() => getJobLog("KeepOak/Branch-Agent", 117528834505, missingFlag));
     const blocked = blockingCheckRuns(checks, {
-      readJobLog: jobId => getJobLog("KeepOak/Branch-Agent", jobId, {
-        gh: args => execFileSync(fakeGh, args.filter(arg => arg !== "--allow-escape-sequences"), {
-          encoding: "utf8",
-          windowsHide: true,
-        }),
-      }),
+      readJobLog: jobId => getJobLog("KeepOak/Branch-Agent", jobId, missingFlag),
     });
     assert.equal(blocked.length, 1);
   } finally {
