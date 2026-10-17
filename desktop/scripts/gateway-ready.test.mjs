@@ -71,7 +71,7 @@ test("a held loopback port is handed to the engine before anyone else can bind i
       'const listener = http.createServer((q, r) => r.writeHead(200).end("ok"));',
       'process.on("message", (msg, handle) => {',
       '  if (msg?.type !== "branch-desktop:listen-handle" || !handle) return;',
-      '  listener.listen(handle, () => process.send({ listening: true }));',
+      '  listener.listen(handle, () => { process.send({ type: "branch-desktop:bound" }); process.send({ listening: true }); });',
       '});',
       'process.send({ type: "branch-desktop:binding" });',
     ].join("\n")], { stdio: ["ignore", "ignore", "pipe", "ipc"], windowsHide: true });

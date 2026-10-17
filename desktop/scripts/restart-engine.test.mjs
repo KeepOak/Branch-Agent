@@ -248,8 +248,8 @@ listener=http.createServer((q,r)=>{if(exiting){drop(q.socket);return;}if(refusin
 // A standby that listens only after the old engine releases must leave the port free so a squatter can bind it.
 // Every other engine asks for the listening socket the launcher already holds, so nothing can bind it in between.
 const delayed=process.env.BRANCH_GATEWAY_STANDBY==="1"&&(fs.existsSync(root+"/standby-exits-after-release")||fs.existsSync(root+"/standby-binds-after-release")||fs.existsSync(root+"/standby-needs-take-over"));
-process.on("message",(msg,handle)=>{if(msg?.type!=="branch-desktop:listen-handle"||!handle)return;clearInterval(binding);const fail=()=>shutdown(1);listener.once("error",fail);listener.once("listening",()=>listener.off("error",fail));try{listener.listen(handle);}catch{shutdown(1);}});
-const ping=()=>{try{process.send?.({type:"branch-desktop:binding",defer:delayed||undefined});}catch{}};ping();binding=setInterval(ping,15);listener.on("listening",()=>clearInterval(binding));
+let adopted=false;process.on("message",(msg,handle)=>{if(msg?.type!=="branch-desktop:listen-handle"||!handle)return;adopted=true;clearInterval(binding);const fail=()=>shutdown(1);listener.once("error",fail);listener.once("listening",()=>listener.off("error",fail));try{listener.listen(handle);}catch{shutdown(1);}});
+const ping=()=>{try{process.send?.({type:"branch-desktop:binding",defer:delayed||undefined});}catch{}};ping();binding=setInterval(ping,15);listener.on("listening",()=>{clearInterval(binding);try{process.send?.({type:"branch-desktop:bound"});}catch{}});
 // As a standby since #411: it takes the state over only on its launcher's take-over message, then says so.
 if(process.env.BRANCH_GATEWAY_STANDBY==="1")process.on("message",m=>{if(m?.type!=="branch-desktop:take-over"||globalThis.tookOver)return;globalThis.tookOver=true;if(fs.existsSync(root+"/released-"+starts[0]))fs.writeFileSync(root+"/took-over-after-step-down-"+process.pid,"1");fs.writeFileSync(root+"/took-over-"+process.pid,JSON.stringify({oldEngineAlive:(()=>{try{process.kill(starts[0],0);return true;}catch{return false;}})()}));process.send?.({type:"branch-desktop:taking-over",pid:process.pid,port:Number(process.argv.at(-1))});});
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
@@ -266,7 +266,7 @@ const listen=()=>{const port=Number(process.argv.at(-1));const started=Date.now(
 const released=()=>fs.existsSync(root+"/released-"+starts[0])||fs.existsSync(root+"/drained-"+starts[0]);
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-exits-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);shutdown(1);}},10);}
 else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-binds-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);listen();}},10);}
-else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-needs-take-over")){const timer=setInterval(()=>{if(globalThis.tookOver){clearInterval(timer);listen();}},10);}else if(!delayed)setTimeout(()=>{if(!listener.listening)listen();},1500);else listen();`;
+else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-needs-take-over")){const timer=setInterval(()=>{if(globalThis.tookOver){clearInterval(timer);listen();}},10);}else if(!delayed)setTimeout(()=>{if(!adopted&&!listener.listening)listen();},1500);else listen();`;
   await writeFile(join(engine, "branch.mjs"), script); await writeFile(join(windowDir, "index.html"), "<html>fixture</html>");
   await writeFile(join(root, "gateway-token"), "isolated-fixture-token");
   // Preserve drain-first coverage explicitly; handoff tests override or remove this opt-out.

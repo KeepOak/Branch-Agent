@@ -143,15 +143,38 @@ export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): v
     stop();
     releaseHeldLoopbackPort(port);
   };
-  // Closing here would free the port before the child listens. Pass the open socket instead.
+  // Closing here would free the port before the child listens. Pass the open socket, and close this
+  // copy only once the child is listening: an earlier close drops the socket on Windows before the
+  // duplicate exists, and the child then retries until the fixture deadline.
+  let pendingClose: Server | undefined;
+  let onBound: ((value: unknown) => void) | undefined;
   const handOff = () => {
     const holder = heldLoopback().get(port);
     if (!holder) return;
-    stop();
+    if (timer) clearTimeout(timer);
+    timer = undefined;
+    child.off("message", onMessage);
     heldLoopback().delete(port);
+    pendingClose = holder;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      pendingClose = undefined;
+      if (onBound) child.off("message", onBound);
+      child.off("exit", onExit);
+      try { holder.close(); } catch { /* the child owns the listening socket */ }
+    };
+    onBound = (value: unknown) => {
+      const message = value as { type?: unknown };
+      if (message?.type === "branch-desktop:bound") finish();
+    };
+    child.on("message", onBound);
+    timer = setTimeout(finish, 1000);
     try { child.send({ type: "branch-desktop:listen-handle" }, holder); }
-    catch { void closeServer(holder); return; }
-    try { holder.close(); } catch { /* the child owns the listening socket */ }
+    catch { finish(); }
   };
   const onMessage = (value: unknown) => {
     const message = value as { type?: unknown; defer?: unknown };
@@ -159,7 +182,13 @@ export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): v
     if (message.defer === true) release();
     else handOff();
   };
-  const onExit = () => release();
+  const onExit = () => {
+    if (onBound) child.off("message", onBound);
+    const holder = pendingClose;
+    pendingClose = undefined;
+    release();
+    if (holder) { try { holder.close(); } catch { /* already closed */ } }
+  };
   child.on("message", onMessage);
   child.once("exit", onExit);
   // The child repeats branch-desktop:binding until it is listening. One send can still
