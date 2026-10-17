@@ -652,7 +652,239 @@ export function gateChangeMarkerMatches(body, headSha) {
   return typeof headSha === 'string' && gateChangeReviewedShas(body).includes(headSha);
 }
 
-export function formatGateChangeReviewFailure(protectedFiles, headSha, body) {
+const FULL_SHA = /^[0-9a-f]{40}$/i;
+const PR_COMMITS_CAP = 250;
+
+function isGateFullSha(value) {
+  return typeof value === 'string' && FULL_SHA.test(value);
+}
+
+function commitShaOf(commit) {
+  const sha = commit?.sha;
+  return isGateFullSha(sha) ? sha.toLowerCase() : '';
+}
+
+function commitParentShas(commit) {
+  if (!Array.isArray(commit?.parents)) return null;
+  const shas = [];
+  for (const parent of commit.parents) {
+    const sha = typeof parent === 'string' ? parent : parent?.sha;
+    if (!isGateFullSha(sha)) return null;
+    shas.push(sha.toLowerCase());
+  }
+  return shas;
+}
+
+function indexPrCommits(commits) {
+  if (!Array.isArray(commits) || commits.length >= PR_COMMITS_CAP) return null;
+  const bySha = new Map();
+  for (const commit of commits) {
+    const sha = commitShaOf(commit);
+    if (!sha) return null;
+    bySha.set(sha, commit);
+  }
+  return bySha;
+}
+
+function fetchPrCommitsForMarker(request, prNumber) {
+  if (typeof request !== 'function' || prNumber == null || prNumber === '') return null;
+  try {
+    const payload = request(`pulls/${prNumber}/commits?per_page=100`, { paginate: true });
+    if (Array.isArray(payload) && payload.every((item) => item && typeof item.sha === 'string')) {
+      return payload;
+    }
+    if (!Array.isArray(payload)) return null;
+    const flat = payload.flatMap((page) => (Array.isArray(page) ? page : []));
+    return flat.length ? flat : null;
+  } catch {
+    return null;
+  }
+}
+
+function parentOnBaseBranch(parentSha, baseRef, request) {
+  if (typeof request !== 'function' || !baseRef) return null;
+  try {
+    const payload = request(`compare/${parentSha}...${baseRef}`);
+    if (!payload || typeof payload.behind_by !== 'number' || typeof payload.status !== 'string') {
+      return null;
+    }
+    if (payload.status === 'identical' || payload.status === 'ahead') return payload.behind_by === 0;
+    return false;
+  } catch {
+    return null;
+  }
+}
+
+export function isProtectedDiffFile(file, protectedPaths) {
+  const names = [file?.filename, file?.previous_filename].filter(Boolean);
+  return names.some((name) => (
+    isProtectedWorkflowPath(name) || isCodeownersPath(name) || protectedPaths.has(name)
+  ));
+}
+
+export function protectedFileDiffTuples(files, protectedPaths) {
+  const tuples = [];
+  for (const file of files ?? []) {
+    if (!isProtectedDiffFile(file, protectedPaths)) continue;
+    if (file.truncated === true || typeof file.patch !== 'string') return { ok: false };
+    tuples.push({
+      filename: file.filename ?? '',
+      previous_filename: file.previous_filename ?? '',
+      status: file.status ?? '',
+      patch: file.patch,
+    });
+  }
+  tuples.sort((a, b) => {
+    const left = `${a.filename}\0${a.previous_filename}\0${a.status}`;
+    const right = `${b.filename}\0${b.previous_filename}\0${b.status}`;
+    return left < right ? -1 : left > right ? 1 : 0;
+  });
+  return { ok: true, tuples };
+}
+
+function fetchMarkerProtectedDiff(request, baseRef, markerSha, protectedPaths) {
+  if (typeof request !== 'function' || !baseRef || !isGateFullSha(markerSha)) return null;
+  try {
+    const payload = request(`compare/${baseRef}...${markerSha}`);
+    if (!payload || !Array.isArray(payload.files)) return null;
+    if (payload.truncated === true) return { ok: false };
+    return protectedFileDiffTuples(payload.files, protectedPaths);
+  } catch {
+    return null;
+  }
+}
+
+function carryFailure(message, brokenAt = null) {
+  return {
+    ok: false, known: true, message, brokenAt, carriedFrom: null,
+  };
+}
+
+// API form of scripts/final-head-history.mjs explainFinalHeadDrift (rule 2):
+// every first-parent commit after the marker must be a merge of the base branch.
+// The trusted job checks out main at depth 1, so this uses pulls/N/commits and compare.
+export function gateChangeMarkerCarriesForward({
+  markerSha,
+  headSha,
+  baseRef,
+  commits,
+  files,
+  protectedPaths,
+  request,
+  prNumber,
+} = {}) {
+  if (!isGateFullSha(markerSha) || !isGateFullSha(headSha)) return { ok: false, known: false };
+  const marker = markerSha.toLowerCase();
+  const head = headSha.toLowerCase();
+  if (marker === head) {
+    return {
+      ok: true, known: true, carriedFrom: markerSha, brokenAt: null, message: '',
+    };
+  }
+  if (!baseRef || typeof request !== 'function' || !protectedPaths) return { ok: false, known: false };
+
+  const prCommits = Array.isArray(commits) ? commits : fetchPrCommitsForMarker(request, prNumber);
+  const bySha = indexPrCommits(prCommits);
+  if (!bySha) return { ok: false, known: false };
+  if (!bySha.has(marker)) {
+    return carryFailure(
+      `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${markerSha} is not a commit on this pull request.`,
+      markerSha,
+    );
+  }
+
+  const after = [];
+  let current = head;
+  const seen = new Set();
+  while (current !== marker) {
+    if (seen.has(current)) {
+      return carryFailure(
+        `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${current} is not an ancestor of ${headSha}.`,
+        current,
+      );
+    }
+    seen.add(current);
+    const commit = bySha.get(current);
+    if (!commit) {
+      return carryFailure(
+        `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${markerSha} is not an ancestor of ${headSha}.`,
+        current,
+      );
+    }
+    const parents = commitParentShas(commit);
+    if (!parents) return { ok: false, known: false };
+    after.push({ sha: current, parents });
+    if (parents.length === 0) {
+      return carryFailure(
+        `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${current} is not a merge commit.`,
+        current,
+      );
+    }
+    current = parents[0];
+  }
+
+  for (const step of after) {
+    if (step.parents.length < 2) {
+      return carryFailure(
+        `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${step.sha} is not a merge commit.`,
+        step.sha,
+      );
+    }
+    for (const parent of step.parents.slice(1)) {
+      const onBase = parentOnBaseBranch(parent, baseRef, request);
+      if (onBase == null) return { ok: false, known: false };
+      if (!onBase) {
+        return carryFailure(
+          `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${step.sha} merges something other than the base branch.`,
+          step.sha,
+        );
+      }
+    }
+  }
+
+  if (!Array.isArray(files)) return { ok: false, known: false };
+  const headDiff = protectedFileDiffTuples(files, protectedPaths);
+  if (!headDiff.ok) {
+    return carryFailure(
+      `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because the protected-file diff is missing or truncated.`,
+      headSha,
+    );
+  }
+  const markerDiff = fetchMarkerProtectedDiff(request, baseRef, marker, protectedPaths);
+  if (!markerDiff) return { ok: false, known: false };
+  if (!markerDiff.ok) {
+    return carryFailure(
+      `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because the protected-file diff is missing or truncated.`,
+      markerSha,
+    );
+  }
+  if (JSON.stringify(markerDiff.tuples) !== JSON.stringify(headDiff.tuples)) {
+    return carryFailure(
+      `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${headSha} changes the protected-file diff.`,
+      headSha,
+    );
+  }
+  return {
+    ok: true, known: true, carriedFrom: markerSha, brokenAt: null, message: '',
+  };
+}
+
+function firstCarriedMarker({
+  body, headSha, baselineGrew, commits, files, baseRef, request, prNumber, protectedPaths,
+}) {
+  if (baselineGrew) return { ok: false, known: false };
+  let last = { ok: false, known: false };
+  for (const markerSha of gateChangeReviewedShas(body)) {
+    const result = gateChangeMarkerCarriesForward({
+      markerSha, headSha, baseRef, commits, files, protectedPaths, request, prNumber,
+    });
+    if (result.ok) return result;
+    if (result.known) last = result;
+  }
+  return last;
+}
+
+export function formatGateChangeReviewFailure(protectedFiles, headSha, body, carry = null) {
   const found = gateChangeReviewedShas(body);
   const lines = [
     'This pull request changes protected gate files:',
@@ -664,28 +896,39 @@ export function formatGateChangeReviewFailure(protectedFiles, headSha, body) {
   } else {
     lines.push(`The gate-change-reviewed marker does not match the current head ${headSha}.`);
   }
+  if (carry?.message) lines.push(carry.message);
   if (protectedFiles.includes(BUTTON_CRAWL_BASELINE)) {
     lines.push('The button-crawl baseline has an entry that main does not. A shrink or a reorder does not need this review.');
   }
   return lines.join('\n');
 }
 
-export function evaluateGateChangeReview({ changedFiles, body, headSha, protectedPaths, baselineGrew = false }) {
+export function evaluateGateChangeReview({
+  changedFiles, body, headSha, protectedPaths, baselineGrew = false,
+  commits, files, baseRef, request, prNumber,
+} = {}) {
   const paths = protectedPaths ?? loadProtectedGatePaths();
   const protectedFiles = touchedProtectedFiles(changedFiles, paths);
   if (baselineGrew && !protectedFiles.includes(BUTTON_CRAWL_BASELINE)) {
     protectedFiles.push(BUTTON_CRAWL_BASELINE);
     protectedFiles.sort();
   }
-  const markerMatched = gateChangeMarkerMatches(body, headSha);
+  const exact = gateChangeMarkerMatches(body, headSha);
+  const carried = exact
+    ? { ok: false, known: false }
+    : firstCarriedMarker({
+      body, headSha, baselineGrew, commits, files, baseRef, request, prNumber, protectedPaths: paths,
+    });
+  const markerMatched = exact || carried.ok;
   const touched = protectedFiles.length > 0;
   return {
     ok: !touched || markerMatched,
     touched,
     protectedFiles,
     markerMatched,
+    carriedFrom: carried.ok ? carried.carriedFrom : null,
     message: touched && !markerMatched
-      ? formatGateChangeReviewFailure(protectedFiles, headSha, body)
+      ? formatGateChangeReviewFailure(protectedFiles, headSha, body, carried.known ? carried : null)
       : '',
   };
 }
@@ -702,6 +945,7 @@ export function formatGateChangeReviewSummary(result) {
   }
   lines.push('');
   lines.push(`Marker matched: ${result.markerMatched ? 'yes' : 'no'}`);
+  if (result.carriedFrom) lines.push(`Marker carried from: ${result.carriedFrom}`);
   return lines.join('\n');
 }
 
@@ -1377,7 +1621,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       ? fetchFileText(repo, sha, token, BUTTON_CRAWL_BASELINE)
       : null,
   });
-  const review = evaluateGateChangeReview({ changedFiles, body, headSha: sha, baselineGrew });
+  const request = (requestPath, options) => ghApiWithRetry(repo, token, requestPath, options);
+  const review = evaluateGateChangeReview({
+    changedFiles, body, headSha: sha, baselineGrew, files, baseRef, prNumber, request,
+  });
   writeSummary(formatGateChangeSummary(changedFiles));
   writeSummary(formatGateChangeReviewSummary(review));
   if (!review.ok) {

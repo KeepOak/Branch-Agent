@@ -32,6 +32,7 @@ import {
   formatGateChangeReviewSummary,
   changedFilesFromPrFiles,
   evaluateGateChangeReview,
+  gateChangeMarkerCarriesForward,
   BUTTON_CRAWL_BASELINE,
   buttonCrawlBaselineGrew,
   buttonCrawlBaselineGrowth,
@@ -2631,6 +2632,234 @@ test('reordering the button-crawl baseline is not growth', () => {
   assert.equal(buttonCrawlBaselineGrew(flippedBase, flipped), false);
 });
 
+const MARKER_M = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const MERGE_ONE = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+const MERGE_TWO = 'cccccccccccccccccccccccccccccccccccccccc';
+const MAIN_P1 = '1111111111111111111111111111111111111111';
+const MAIN_P2 = '2222222222222222222222222222222222222222';
+const AUTHOR_SHA = 'dddddddddddddddddddddddddddddddddddddddd';
+const FOREIGN_SHA = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+const CARRY_FILE = '.github/workflows/desktop-checks.yml';
+const CARRY_PATCH = '@@ -1,2 +1,3 @@\n on: [push]\n+  pull_request:\n jobs: {}\n';
+
+function apiCommit(sha, parents) {
+  return { sha, parents: parents.map((parent) => ({ sha: parent })) };
+}
+
+function carryFile(overrides = {}) {
+  return {
+    filename: CARRY_FILE,
+    status: 'modified',
+    patch: CARRY_PATCH,
+    ...overrides,
+  };
+}
+
+function compareRequest({
+  baseRef = 'main',
+  markerSha = MARKER_M,
+  markerFiles = [carryFile()],
+  onBase = new Set([MAIN_P1, MAIN_P2]),
+  truncated = false,
+} = {}) {
+  return (requestPath) => {
+    const compare = /^compare\/([^/?]+)\.\.\.([^/?]+)/.exec(requestPath);
+    if (!compare) throw new Error(`unexpected ${requestPath}`);
+    const left = compare[1];
+    const right = compare[2];
+    if (right === baseRef) {
+      return onBase.has(left.toLowerCase())
+        ? { status: 'ahead', behind_by: 0, ahead_by: 4 }
+        : { status: 'diverged', behind_by: 2, ahead_by: 1 };
+    }
+    if (left === baseRef && right.toLowerCase() === markerSha.toLowerCase()) {
+      return { truncated, files: markerFiles };
+    }
+    throw new Error(`unexpected compare ${requestPath}`);
+  };
+}
+
+function carryReview(overrides = {}) {
+  const markerSha = overrides.markerSha ?? MARKER_M;
+  const headSha = overrides.headSha ?? MERGE_ONE;
+  const files = overrides.files ?? [carryFile()];
+  return evaluateGateChangeReview({
+    changedFiles: overrides.changedFiles ?? [CARRY_FILE],
+    body: overrides.body ?? `gate-change-reviewed: ${markerSha}\n`,
+    headSha,
+    commits: overrides.commits,
+    files,
+    baseRef: overrides.baseRef ?? 'main',
+    request: overrides.request ?? compareRequest({
+      markerSha,
+      markerFiles: overrides.markerFiles ?? files,
+      onBase: overrides.onBase,
+      truncated: overrides.truncated,
+    }),
+    protectedPaths: overrides.protectedPaths,
+    baselineGrew: overrides.baselineGrew,
+    prNumber: overrides.prNumber,
+  });
+}
+
+test('a gate-change-reviewed marker carries across one merge of main', () => {
+  const result = carryReview({
+    commits: [
+      apiCommit(MARKER_M, [REVIEW_HEAD]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.markerMatched, true);
+  assert.equal(result.carriedFrom, MARKER_M);
+  assert.match(formatGateChangeReviewSummary(result), new RegExp(`Marker carried from: ${MARKER_M}`));
+  const direct = gateChangeMarkerCarriesForward({
+    markerSha: MARKER_M,
+    headSha: MERGE_ONE,
+    baseRef: 'main',
+    commits: [apiCommit(MARKER_M, [REVIEW_HEAD]), apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1])],
+    files: [carryFile()],
+    protectedPaths: new Set(),
+    request: compareRequest(),
+  });
+  assert.equal(direct.ok, true);
+  assert.equal(direct.carriedFrom, MARKER_M);
+});
+
+test('a gate-change-reviewed marker carries across two merges of main', () => {
+  const result = carryReview({
+    headSha: MERGE_TWO,
+    commits: [
+      apiCommit(MARKER_M, [REVIEW_HEAD]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+      apiCommit(MERGE_TWO, [MERGE_ONE, MAIN_P2]),
+    ],
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.markerMatched, true);
+  assert.equal(result.carriedFrom, MARKER_M);
+  assert.match(formatGateChangeReviewSummary(result), new RegExp(`Marker carried from: ${MARKER_M}`));
+});
+
+test('an author commit after the marker that touches a gate file does not carry', () => {
+  const result = carryReview({
+    headSha: AUTHOR_SHA,
+    commits: [
+      apiCommit(MARKER_M, [REVIEW_HEAD]),
+      apiCommit(AUTHOR_SHA, [MARKER_M]),
+    ],
+    files: [carryFile({ patch: `${CARRY_PATCH}+author\n` })],
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.markerMatched, false);
+  assert.match(result.message, new RegExp(AUTHOR_SHA));
+  assert.match(result.message, /is not a merge commit/);
+});
+
+test('an author commit after the marker that touches no gate file does not carry', () => {
+  const result = carryReview({
+    headSha: AUTHOR_SHA,
+    commits: [
+      apiCommit(MARKER_M, [REVIEW_HEAD]),
+      apiCommit(AUTHOR_SHA, [MARKER_M]),
+    ],
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.markerMatched, false);
+  assert.match(result.message, new RegExp(AUTHOR_SHA));
+  assert.match(result.message, /is not a merge commit/);
+});
+
+test('a merge whose conflict resolution changes the gate patch does not carry', () => {
+  const result = carryReview({
+    commits: [
+      apiCommit(MARKER_M, [REVIEW_HEAD]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+    files: [carryFile({ patch: `${CARRY_PATCH}+resolved\n` })],
+    markerFiles: [carryFile()],
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.markerMatched, false);
+  assert.match(result.message, new RegExp(MERGE_ONE));
+  assert.match(result.message, /changes the protected-file diff/);
+});
+
+test('a merge whose second parent is not on the base branch does not carry', () => {
+  const result = carryReview({
+    commits: [
+      apiCommit(MARKER_M, [REVIEW_HEAD]),
+      apiCommit(MERGE_ONE, [MARKER_M, FOREIGN_SHA]),
+    ],
+    onBase: new Set([MAIN_P1]),
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.markerMatched, false);
+  assert.match(result.message, new RegExp(MERGE_ONE));
+  assert.match(result.message, /merges something other than the base branch/);
+});
+
+test('a marker SHA that is not a commit on the pull request does not carry', () => {
+  const result = carryReview({
+    commits: [apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1])],
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.markerMatched, false);
+  assert.match(result.message, new RegExp(MARKER_M));
+  assert.match(result.message, /is not a commit on this pull request/);
+});
+
+test('a missing or truncated protected-file patch does not carry', () => {
+  const missing = carryReview({
+    commits: [
+      apiCommit(MARKER_M, [REVIEW_HEAD]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+    markerFiles: [{ filename: CARRY_FILE, status: 'modified' }],
+  });
+  assert.equal(missing.ok, false);
+  assert.equal(missing.markerMatched, false);
+  assert.match(missing.message, /missing or truncated/);
+  const truncated = carryReview({
+    commits: [
+      apiCommit(MARKER_M, [REVIEW_HEAD]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+    truncated: true,
+  });
+  assert.equal(truncated.ok, false);
+  assert.equal(truncated.markerMatched, false);
+  assert.match(truncated.message, /missing or truncated/);
+});
+
+test('button-crawl baseline growth still requires the exact head marker', () => {
+  const result = evaluateGateChangeReview({
+    changedFiles: [BUTTON_CRAWL_BASELINE],
+    body: `gate-change-reviewed: ${MARKER_M}\n`,
+    headSha: MERGE_ONE,
+    baselineGrew: true,
+    commits: [
+      apiCommit(MARKER_M, [REVIEW_HEAD]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+    files: [carryFile()],
+    baseRef: 'main',
+    request: compareRequest(),
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.markerMatched, false);
+  assert.equal(result.carriedFrom, null);
+  assert.match(result.message, /entry that main does not/);
+  const exact = evaluateGateChangeReview({
+    changedFiles: [BUTTON_CRAWL_BASELINE],
+    body: `gate-change-reviewed: ${MERGE_ONE}\n`,
+    headSha: MERGE_ONE,
+    baselineGrew: true,
+  });
+  assert.equal(exact.ok, true);
+  assert.equal(exact.markerMatched, true);
+});
+
 test('button-crawl baseline growth tests run in the changed-test-coverage job', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /^\s+run:\s*node --test scripts\/merge-gate-trusted\.test\.mjs\s*$/m);
@@ -2649,7 +2878,7 @@ test('merge-gate-trusted still reruns when the pull request body is edited', () 
   assert.match(source, /buttonCrawlBaselineGrowth\(\{/);
   assert.match(source, /fetchFileText\(repo, baseRef, token, BUTTON_CRAWL_BASELINE\)/);
   assert.match(source, /fetchFileText\(repo, sha, token, BUTTON_CRAWL_BASELINE\)/);
-  assert.match(source, /evaluateGateChangeReview\(\{ changedFiles, body, headSha: sha, baselineGrew \}\)/);
+  assert.match(source, /evaluateGateChangeReview\(\{\s*changedFiles, body, headSha: sha, baselineGrew, files, baseRef, prNumber, request,/);
   assert.match(source, /writeSummary\(formatGateChangeReviewSummary\(review\)\)/);
   assert.match(source, /if \(!review\.ok\)/);
 });

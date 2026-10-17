@@ -129,8 +129,14 @@ export function shardProblems(shardResult) {
 }
 
 // The gate's own review: protected files (its workflows, CODEOWNERS, invoked scripts) need the reviewer marker for this head.
-export function gateFileProblems({ changedFiles, body, headSha, protectedPaths }) {
-  const review = evaluateGateChangeReview({ changedFiles, body: body ?? '', headSha, protectedPaths });
+export function gateFileProblems({
+  changedFiles, body, headSha, protectedPaths,
+  commits, files, baseRef, request, prNumber, baselineGrew,
+}) {
+  const review = evaluateGateChangeReview({
+    changedFiles, body: body ?? '', headSha, protectedPaths,
+    commits, files, baseRef, request, prNumber, baselineGrew,
+  });
   if (review.ok) return [];
   return [problem(
     'gate-files',
@@ -271,7 +277,11 @@ export function runPreflight(input) {
     ...uiProofProblems({ changedFiles, body }),
     ...windowCleanProblems(input.windowResult),
     ...shardProblems(input.shardResult),
-    ...gateFileProblems({ changedFiles, body, headSha: input.headSha, protectedPaths }),
+    ...gateFileProblems({
+      changedFiles, body, headSha: input.headSha, protectedPaths,
+      commits: input.prCommits, files: input.files, baseRef: input.baseRef,
+      request: input.request, prNumber: input.prNumber, baselineGrew: input.baselineGrew,
+    }),
     ...desktopCoverageProblems({ files: input.files ?? [], desktopWorkflow: input.desktopWorkflow ?? null }),
     ...personalInfoProblems(input.addedLines ?? []),
     ...bodyEmailProblems(body),
@@ -411,7 +421,10 @@ export function unverifiedFileNames(files) {
     .map((f) => f.filename);
 }
 
-export function inputFromApi({ headBranch, headSha, files, commits, listText, desktopWorkflow = null, title = '' }) {
+export function inputFromApi({
+  headBranch, headSha, files, commits, listText, desktopWorkflow = null, title = '',
+  baseRef = null, request, prNumber,
+} = {}) {
   return {
     branch: headBranch,
     headSha,
@@ -420,6 +433,7 @@ export function inputFromApi({ headBranch, headSha, files, commits, listText, de
     desktopWorkflow,
     dirtyCount: 0,
     commits: commits.map(commitFromApi),
+    prCommits: commits,
     changedFiles: changedFilesFromPrFiles(files),
     addedLines: files.flatMap((f) => addedLinesFromPatch(f.filename, f.patch)),
     unverifiedFiles: unverifiedFileNames(files),
@@ -427,6 +441,9 @@ export function inputFromApi({ headBranch, headSha, files, commits, listText, de
     listText: listText ?? null,
     windowResult: null,
     shardResult: null,
+    baseRef,
+    request,
+    prNumber,
   };
 }
 
@@ -450,12 +467,20 @@ function apiInputFromEnv(env) {
   const pr = ghApi(repo, token, `pulls/${prNumber}`);
   const body = typeof pr?.body === 'string' ? pr.body : '';
   const title = typeof pr?.title === 'string' ? pr.title : '';
+  const baseRef = typeof pr?.base?.ref === 'string' && pr.base.ref ? pr.base.ref : null;
+  const request = (requestPath, options) => ghApi(repo, token, requestPath, options);
   const files = fetchPrFiles(repo, prNumber, token);
   const commits = fetchPrCommitsWithApi({ repo, prNumber, token });
   const namedList = namedListPathFor(headBranch);
   const desktop = '.github/workflows/desktop-checks.yml';
   const heads = fetchFileTextsBatch(repo, headSha, token, [namedList, desktop]);
-  return { ...inputFromApi({ headBranch, headSha, files, commits, listText: heads[namedList], desktopWorkflow: heads[desktop], title }), body };
+  return {
+    ...inputFromApi({
+      headBranch, headSha, files, commits, listText: heads[namedList],
+      desktopWorkflow: heads[desktop], title, baseRef, request, prNumber,
+    }),
+    body,
+  };
 }
 
 // Exported so tests can drive the real CLI wiring against a temporary repository.

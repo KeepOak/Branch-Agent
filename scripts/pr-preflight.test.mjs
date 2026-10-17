@@ -9,6 +9,7 @@ import {
   cloudAgentTrailer,
   ciSkippedLines,
   formatProblems,
+  gateFileProblems,
   inputFromApi,
   unverifiedFileNames,
   namedListPathFor,
@@ -170,6 +171,201 @@ test('the gate marker for this exact head satisfies the gate-file rule; a marker
 gate-change-reviewed: ${SHA}` }))), []);
   assert.deepEqual(checksOf(runPreflight(withInput({ ...gated, body: `${BODY}
 gate-change-reviewed: ${'b'.repeat(40)}` }))), ['gate-files']);
+});
+
+const MARKER_M = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const MERGE_ONE = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+const MERGE_TWO = 'cccccccccccccccccccccccccccccccccccccccc';
+const MAIN_P1 = '1111111111111111111111111111111111111111';
+const MAIN_P2 = '2222222222222222222222222222222222222222';
+const AUTHOR_SHA = 'dddddddddddddddddddddddddddddddddddddddd';
+const FOREIGN_SHA = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+const CARRY_FILE = '.github/workflows/desktop-checks.yml';
+const CARRY_PATCH = '@@ -1,2 +1,3 @@\n on: [push]\n+  pull_request:\n jobs: {}\n';
+const CARRY_PATHS = new Set([CARRY_FILE]);
+
+function apiCommit(sha, parents) {
+  return { sha, parents: parents.map((parent) => ({ sha: parent })) };
+}
+
+function carryFile(overrides = {}) {
+  return {
+    filename: CARRY_FILE,
+    status: 'modified',
+    patch: CARRY_PATCH,
+    ...overrides,
+  };
+}
+
+function compareRequest({
+  baseRef = 'main',
+  markerSha = MARKER_M,
+  markerFiles = [carryFile()],
+  onBase = new Set([MAIN_P1, MAIN_P2]),
+  truncated = false,
+} = {}) {
+  return (requestPath) => {
+    const compare = /^compare\/([^/?]+)\.\.\.([^/?]+)/.exec(requestPath);
+    if (!compare) throw new Error(`unexpected ${requestPath}`);
+    const left = compare[1];
+    const right = compare[2];
+    if (right === baseRef) {
+      return onBase.has(left.toLowerCase())
+        ? { status: 'ahead', behind_by: 0, ahead_by: 4 }
+        : { status: 'diverged', behind_by: 2, ahead_by: 1 };
+    }
+    if (left === baseRef && right.toLowerCase() === markerSha.toLowerCase()) {
+      return { truncated, files: markerFiles };
+    }
+    throw new Error(`unexpected compare ${requestPath}`);
+  };
+}
+
+function carryGate(overrides = {}) {
+  const markerSha = overrides.markerSha ?? MARKER_M;
+  const files = overrides.files ?? [carryFile()];
+  return gateFileProblems({
+    changedFiles: overrides.changedFiles ?? [CARRY_FILE],
+    body: overrides.body ?? `gate-change-reviewed: ${markerSha}`,
+    headSha: overrides.headSha ?? MERGE_ONE,
+    protectedPaths: overrides.protectedPaths ?? CARRY_PATHS,
+    commits: overrides.commits,
+    files,
+    baseRef: overrides.baseRef ?? 'main',
+    request: overrides.request ?? compareRequest({
+      markerSha,
+      markerFiles: overrides.markerFiles ?? files,
+      onBase: overrides.onBase,
+      truncated: overrides.truncated,
+    }),
+    baselineGrew: overrides.baselineGrew,
+  });
+}
+
+test('a gate marker carries across one merge of main', () => {
+  assert.deepEqual(carryGate({
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+  }), []);
+  const body = BODY.replaceAll(SHA, MERGE_ONE);
+  assert.deepEqual(checksOf(runPreflight(withInput({
+    body: `${body}\ngate-change-reviewed: ${MARKER_M}`,
+    headSha: MERGE_ONE,
+    changedFiles: [CARRY_FILE],
+    protectedPaths: CARRY_PATHS,
+    prCommits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+    files: [carryFile()],
+    baseRef: 'main',
+    request: compareRequest(),
+  }))), []);
+});
+
+test('a gate marker carries across two merges of main', () => {
+  assert.deepEqual(carryGate({
+    headSha: MERGE_TWO,
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+      apiCommit(MERGE_TWO, [MERGE_ONE, MAIN_P2]),
+    ],
+  }), []);
+});
+
+test('an author commit after the marker that touches a gate file does not carry', () => {
+  const problems = carryGate({
+    headSha: AUTHOR_SHA,
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(AUTHOR_SHA, [MARKER_M]),
+    ],
+    files: [carryFile({ patch: `${CARRY_PATCH}+author\n` })],
+  });
+  assert.deepEqual(checksOf(problems), ['gate-files']);
+});
+
+test('an author commit after the marker that touches no gate file does not carry', () => {
+  const problems = carryGate({
+    headSha: AUTHOR_SHA,
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(AUTHOR_SHA, [MARKER_M]),
+    ],
+  });
+  assert.deepEqual(checksOf(problems), ['gate-files']);
+});
+
+test('a merge whose conflict resolution changes the gate patch does not carry', () => {
+  const problems = carryGate({
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+    files: [carryFile({ patch: `${CARRY_PATCH}+resolved\n` })],
+    markerFiles: [carryFile()],
+  });
+  assert.deepEqual(checksOf(problems), ['gate-files']);
+});
+
+test('a merge whose second parent is not on the base branch does not carry', () => {
+  const problems = carryGate({
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, FOREIGN_SHA]),
+    ],
+    onBase: new Set([MAIN_P1]),
+  });
+  assert.deepEqual(checksOf(problems), ['gate-files']);
+});
+
+test('a marker SHA that is not a commit on the pull request does not carry', () => {
+  const problems = carryGate({
+    commits: [apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1])],
+  });
+  assert.deepEqual(checksOf(problems), ['gate-files']);
+});
+
+test('a missing or truncated protected-file patch does not carry', () => {
+  assert.deepEqual(checksOf(carryGate({
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+    markerFiles: [{ filename: CARRY_FILE, status: 'modified' }],
+  })), ['gate-files']);
+  assert.deepEqual(checksOf(carryGate({
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+    truncated: true,
+  })), ['gate-files']);
+});
+
+test('button-crawl baseline growth still requires the exact head marker', () => {
+  assert.deepEqual(checksOf(carryGate({
+    changedFiles: ['scripts/button-crawl/baseline.json'],
+    protectedPaths: new Set(),
+    baselineGrew: true,
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+  })), ['gate-files']);
+  assert.deepEqual(carryGate({
+    changedFiles: ['scripts/button-crawl/baseline.json'],
+    protectedPaths: new Set(),
+    baselineGrew: true,
+    body: `gate-change-reviewed: ${MERGE_ONE}`,
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+  }), []);
 });
 
 test('a desktop test that desktop-checks.yml does not run fails, and one it runs passes (the gate rule, not a copy)', () => {
