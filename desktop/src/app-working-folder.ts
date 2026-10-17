@@ -35,6 +35,21 @@ export function cwdHoldsAppFolder(cwd: string, appDir: string, win32 = process.p
   return heldAppFolders(appDir, win32).some((root) => pathIsInside(root, cwd, win32));
 }
 
+/**
+ * Electron's user home. Desktop tests stub `app` without `getPath`; loading main.ts must not throw.
+ */
+export function userHome(appLike: { getPath?: (name: "home") => string }, fallback: () => string): string {
+  try {
+    if (typeof appLike.getPath === "function") {
+      const home = String(appLike.getPath("home") ?? "").trim();
+      if (home) return home;
+    }
+  } catch {
+    // fixture or a too-early Electron call
+  }
+  return fallback();
+}
+
 export interface LeaveAppWorkingFolder {
   cwd: string;
   appDir: string;

@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { leaveAppWorkingFolder } from "./app-working-folder";
+import { leaveAppWorkingFolder, userHome } from "./app-working-folder";
 import { nodeOutsideSwappedFolder } from "./install-folder-holders";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopEnginePid, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
@@ -120,7 +120,7 @@ const install: DesktopInstall | undefined = app.isPackaged ? {
 leaveAppWorkingFolder({
   cwd: process.cwd(),
   appDir: install?.appDir ?? dirname(process.execPath),
-  home: app.getPath("home"),
+  home: userHome(app, homedir),
   chdir: (dir) => { process.chdir(dir); },
 });
 

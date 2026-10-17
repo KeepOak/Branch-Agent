@@ -17,7 +17,7 @@ const updater = await import(pathToFileURL(join(dist, "component-update.js")));
 const desktopUpdate = await import(pathToFileURL(join(dist, "desktop-update.js")));
 const { runHelper } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
 const { parseComponentRelease } = await import(pathToFileURL(join(dist, "component-update-manifest.js")));
-const { cwdHoldsAppFolder, leaveAppWorkingFolder } = await import(pathToFileURL(join(dist, "app-working-folder.js")));
+const { cwdHoldsAppFolder, leaveAppWorkingFolder, userHome } = await import(pathToFileURL(join(dist, "app-working-folder.js")));
 const holders = await import(pathToFileURL(join(dist, "install-folder-holders.js")));
 const ELECTRON = "44.5.1";
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -99,6 +99,14 @@ test("startup changes the working folder when it starts inside the app folder", 
     cwd: join(portable, "resources"), appDir: portable, home: portable, chdir: (dir) => seen.push(dir), win32: true,
   }), false, "never chdir into the app folder");
   assert.deepEqual(seen, []);
+});
+
+test("startup home falls back when Electron has no getPath", () => {
+  const home = "C:\\Users\\person";
+  assert.equal(userHome({ getPath: (name) => { assert.equal(name, "home"); return home; } }, () => "fallback"), home);
+  assert.equal(userHome({}, () => home), home, "desktop tests stub app without getPath");
+  assert.equal(userHome({ getPath: () => { throw new Error("no getPath"); } }, () => home), home);
+  assert.equal(userHome({ getPath: () => "  " }, () => home), home);
 });
 
 test("an AppImage install never stages a swap of its read-only mount", () => {
@@ -764,6 +772,20 @@ test("a process whose working directory is the shell folder is a holder and one 
     { ProcessId: 32, ExecutablePath: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe", CurrentDirectory: "C:\\Users\\Example\\Desktop" },
     { ProcessId: 33, ExecutablePath: CODEX, CommandLine: "codex.exe", CurrentDirectory: `${HOME}\\AppData\\Local\\BranchAgent\\updates\\release-engine` },
   ]);
+  assert.deepEqual(holders.holdersInInstall(SHELL, listed, new Set()).map(item => item.pid), [31]);
+});
+
+test("a Windows PEB working directory with an NT prefix is still a holder", () => {
+  assert.equal(holders.pathInsideInstall(SHELL, SHELL), true);
+  assert.equal(holders.pathInsideInstall(SHELL, `\\??\\${SHELL}`), true, "PEB DosPath");
+  assert.equal(holders.pathInsideInstall(SHELL, `\\\\?\\${SHELL}`), true, "Win32 long path");
+  assert.equal(holders.pathInsideInstall(SHELL, `\\??\\${SHELL}\\resources`), true);
+  assert.equal(holders.pathInsideInstall(SHELL, "\\??\\C:\\Other\\Branch Agent"), false);
+  const listed = listedWindows([
+    { ProcessId: 31, ExecutablePath: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe", CurrentDirectory: `\\??\\${SHELL}` },
+    { ProcessId: 32, ExecutablePath: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe", CurrentDirectory: "\\??\\C:\\Users\\Example\\Desktop" },
+  ]);
+  assert.equal(listed.find(item => item.pid === 31).cwd, `\\??\\${SHELL}`);
   assert.deepEqual(holders.holdersInInstall(SHELL, listed, new Set()).map(item => item.pid), [31]);
 });
 

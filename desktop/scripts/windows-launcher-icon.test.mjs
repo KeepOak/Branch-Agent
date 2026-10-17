@@ -57,15 +57,16 @@ test("no shortcut writer Starts in the app folder or the exe folder", () => {
 test("startup leaves the app folder before it spawns anything", () => {
   const main = source("src/main.ts");
   const folder = source("src/app-working-folder.ts");
-  assert.match(main, /import \{ leaveAppWorkingFolder \} from "\.\/app-working-folder"/);
+  assert.match(main, /import \{ leaveAppWorkingFolder, userHome \} from "\.\/app-working-folder"/);
   const call = main.indexOf("leaveAppWorkingFolder({");
   const spawnGateway = main.indexOf("startGateway(");
   const handOff = main.indexOf("async function start()");
   assert.ok(call !== -1 && handOff !== -1 && spawnGateway !== -1);
   assert.ok(call < handOff, "the working folder changes at module load, before start()");
   assert.ok(call < spawnGateway, "before the gateway is spawned");
-  assert.match(main, /home:\s*app\.getPath\("home"\)/);
+  assert.match(main, /home:\s*userHome\(app, homedir\)/);
   assert.match(folder, /export function leaveAppWorkingFolder/);
+  assert.match(folder, /export function userHome/);
   const nodeCopy = main.indexOf("cfg.nodePath = nodeOutsideSwappedFolder(cfg.nodePath, cfg.dataDir)");
   const install = main.indexOf("const install: DesktopInstall");
   assert.ok(nodeCopy !== -1 && install !== -1 && nodeCopy < install);

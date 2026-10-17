@@ -40,9 +40,24 @@ function pathStyle(installDir: string): "win32" | "posix" {
   return /^[A-Za-z]:[\\/]/.test(installDir) || installDir.includes("\\") ? "win32" : "posix";
 }
 
+/**
+ * PEB CurrentDirectory.DosPath is `\??\C:\...`. Win32 long paths are `\\?\C:\...` or `\\?\UNC\server\share`.
+ * Strip those prefixes so a working directory can be compared with the install folder.
+ */
+export function stripWindowsPathPrefix(input: string): string {
+  const slash = input.replaceAll("/", "\\");
+  if (/^\\\?\?\\/i.test(slash) || /^\\\\\?\\/i.test(slash)) {
+    const rest = slash.slice(4);
+    if (/^unc\\/i.test(rest)) return `\\\\${rest.slice(4)}`;
+    return rest;
+  }
+  return input;
+}
+
 /** Compare install-relative paths without asking the host to reinterpret another OS's separators. */
 export function normalizeInstallPath(input: string, platform: "win32" | "posix"): string {
-  const slash = input.replaceAll("\\", "/");
+  const prepared = platform === "win32" ? stripWindowsPathPrefix(input) : input;
+  const slash = prepared.replaceAll("\\", "/");
   const absolute = slash.startsWith("/");
   const parts: string[] = [];
   for (const part of slash.split("/")) {
