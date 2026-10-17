@@ -129,9 +129,11 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
     }
   };
   const leave = async () => {
-    if (!(await keepName())) return;
-    // Fresh profile: accept recommended Ask first (or the pick already made) so the composer never starts on Full
-    // access. An access already in the profile stays put. A failed write must not block leaving.
+    // A refused name stays on this computer (saveDisplayName writes it before the profile call) and must not
+    // trap the person on Welcome. Fresh profile: accept recommended Ask first (or the pick already made) so the
+    // composer never starts on Full access. An access already in the profile stays put. A failed write must not
+    // block leaving.
+    await keepName();
     await saveOnboardingAccess(engine, s.mode, { onlyIfUnset: !pickedMode }).catch(() => undefined);
     onLater(s);
   };
