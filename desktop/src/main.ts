@@ -288,7 +288,15 @@ let childModeNotice: string | undefined;
 let fallbackDetached = false;
 /** Pid of a fallback this launch attached to and does not own as a child. Quit kills it when Keep working is off. */
 let attachedFallbackPid: number | undefined;
-const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, TRAY_ICON), onChange: settings => {
+/** "Remove the app, keep my data" (Private #1102): this quit leaves nothing running, not even a kept fallback engine. */
+let removingApp = false;
+const removeAppSteps = {
+  // The always-on service runs the engine with the app's own node, so it goes before the app (`branch gateway uninstall`).
+  ...(cfg.alwaysOn && (process.env.BRANCH_SUPERVISOR_MODE ?? "").trim().toLowerCase() !== "external"
+    ? { service: () => runEngineServiceAction(cfg, serviceEngineDir(), token, "uninstall", log) } : {}),
+  quit: () => { removingApp = true; app.quit(); },
+};
+const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, TRAY_ICON, removeAppSteps), onChange: settings => {
   if (engineUpdateReady) sendToBranchWindows("branch-desktop:engine-update", settings.autoApplyUpdates ? "auto-wait" : "ready");
   keepAwake.refresh();
   void autoApply.tick();
@@ -1900,6 +1908,7 @@ async function stopCompletely(): Promise<void> {
 let quitAfterCleanStop = false;
 /** The detached fallback stays up. Keep working off, Always on off, and a handoff in flight still stop it. */
 function fallbackKept(): boolean {
+  if (removingApp) return false;
   return quitLeavesFallbackEngine(fallbackDetached, controls.settings().keepWorking, retiring.size > 0);
 }
 function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {

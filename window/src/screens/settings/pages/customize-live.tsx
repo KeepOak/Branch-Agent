@@ -23,6 +23,7 @@ import { Toggle } from "../RowView";
 import { useLevel } from "../SettingsFrame";
 import type { PageSlot, SlotControlProps, SlotPageProps } from "../slots";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { copyAndSay } from "../../../shell/clipboard";
 import "../../../places/library/places.css";
 import "../../../places/customize/customize.css";
 
@@ -31,7 +32,7 @@ const LEVEL_WORD = ["regular", "advanced", "technical"] as const;
 const QUIET = { saving: () => undefined, saved: () => undefined, failed: () => undefined };
 
 /** The window's config (config.get), saved with config.patch, shared with every Settings row. */
-function useConfigSnap(engine: WindowEngine) {
+export function useConfigSnap(engine: WindowEngine) {
   const store = configStore(engine);
   const subscribe = useCallback((fn: () => void) => store.subscribe(fn), [store]);
   const snap = useSyncExternalStore(subscribe, () => store.snap, () => store.snap);
@@ -232,7 +233,7 @@ export const CONNECT_ROWS: Row[] = CONNECT_LINES.map(([title], i) => ({
 function ConnectLine({ row }: SlotControlProps) {
   const line = CONNECT_LINES.find(([title]) => title === row.label)?.[1] ?? "";
   const [copied, setCopied] = useState(false);
-  const copy = () => void navigator.clipboard?.writeText(line).then(() => setCopied(true), () => setCopied(false));
+  const copy = () => void copyAndSay(line).then(setCopied);
   return (
     <span className="r1s-own-ctl r1s-codeline" data-local="">
       <code className="r1s-code">{line}</code>

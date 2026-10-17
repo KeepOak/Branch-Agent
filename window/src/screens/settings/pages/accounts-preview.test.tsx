@@ -53,7 +53,8 @@ it("draws the preview's cards at each level, Usage by account and Linked account
   expect(cards()).toEqual(["Usage by account", "Linked accounts", "Order Branch uses them in", "When one runs out", "Your own accounts", "Coding apps on this computer"]);
   await remount();
   await mount(engine, "advanced");
-  expect(cards()).toEqual(["Usage by account", "Linked accounts", "Order Branch uses them in", "When one runs out", "Your own accounts", "Coding apps on this computer", "Terms"]);
+  // Terms waits for a later update: it shows with every Coming row, at Technical (Private #1093 item 4).
+  expect(cards()).toEqual(["Usage by account", "Linked accounts", "Order Branch uses them in", "When one runs out", "Your own accounts", "Coding apps on this computer"]);
   await remount();
   await mount(engine, "technical");
   expect(cards()).toEqual(CARDS);
