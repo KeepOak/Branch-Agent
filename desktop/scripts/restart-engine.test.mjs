@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import nodeTest from "node:test";
@@ -149,13 +149,10 @@ function killTree(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return;
   try {
     if (process.platform === "win32") {
-      // End the process immediately. A synchronous taskkill timeout stalls every other test on this thread.
+      // End the process, then wait until its tree releases the directory. The cap stops a stuck taskkill
+      // from stalling every other test on this thread.
       try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
-      const killer = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
-      killer.unref();
-      const timer = setTimeout(() => { try { killer.kill(); } catch { /* already gone */ } }, 2_000);
-      timer.unref();
-      killer.once("close", () => clearTimeout(timer));
+      execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 2_000 });
       return;
     }
     try { process.kill(-pid, "SIGKILL"); } catch { /* not a group leader, or already gone */ }

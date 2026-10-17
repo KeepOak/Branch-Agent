@@ -16,7 +16,7 @@ test("desktop child-process launches are hidden", () => {
   assert.match(updateHelper, /This relaunches the Branch GUI[^\n]*ShowWindow/);
   assert.match(updateHelper, /const requested = existsSync\(plan\.relaunch\.command\) \? plan\.relaunch\.command/);
   assert.match(updateHelper, /spawn\(command[^\n]*windowsHide: false/);
-  assert.match(readFileSync(join(root, "gateway.ts"), "utf8"), /spawn\("taskkill"[^\n]*windowsHide: true/);
+  assert.match(readFileSync(join(root, "gateway.ts"), "utf8"), /execFileSync\("taskkill"[^\n]*windowsHide: true/);
   assert.match(updateHelper, /execFileSync\("taskkill"[^\n]*windowsHide: true/);
   const records = readFileSync(join(root, "engine-records.ts"), "utf8");
   assert.match(records, /const run =[^\n]*execFileSync\([^\n]*windowsHide: true/);
