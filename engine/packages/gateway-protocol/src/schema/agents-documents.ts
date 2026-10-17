@@ -25,7 +25,15 @@ export const AgentsDocumentsSetParamsSchema = closedObject({
   content: Type.String(),
   expectedHash: Sha256String,
 });
-export const AgentsDocumentsSetResultSchema = AgentsDocumentsCreateResultSchema;
+export const AgentsDocumentsSetResultSchema = closedObject({
+  agentId: NonEmptyString,
+  file: closedObject({
+    name: NonEmptyString,
+    path: NonEmptyString,
+    size: Type.Integer({ minimum: 0 }),
+    hash: Sha256String,
+  }),
+});
 export type AgentsDocumentsCreateParams = Static<typeof AgentsDocumentsCreateParamsSchema>;
 export type AgentsDocumentsSetParams = Static<typeof AgentsDocumentsSetParamsSchema>;
 export type AgentsDocumentsSetResult = Static<typeof AgentsDocumentsSetResultSchema>;
