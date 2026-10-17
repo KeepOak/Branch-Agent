@@ -14,6 +14,10 @@ export function installProbes() {
       qa.shifts.length = 0;
       qa.jumps.length = 0;
       qa.mutations.length = 0;
+      // The crawl scrolls its target into view just before reset. Take every scroll position again now, so that
+      // programmatic scroll isn't sampled on the next animation frame and reported as a jump the click caused.
+      rescan();
+      for (const el of scrollers.keys()) scrollers.set(el, el.scrollTop);
     },
   };
   window.__qa = qa;

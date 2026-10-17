@@ -8,6 +8,7 @@ import { auditContrast, contrastRatio, parseColor, requiredRatio } from './contr
 import { auditLines, lineFor, uniqueFindings } from './audit-lines.mjs';
 import { VisitedGraph, controlId, orderControls, traverse } from './traverse.mjs';
 import { TRACE_OPTIONS, VIDEO_SIZE, contextOptions, openRootContext } from './browser-options.mjs';
+import { installProbes } from './probes.mjs';
 
 const frames = (pairs) => pairs.map(([t, hash, bytes = 40000]) => ({ t, hash, bytes }));
 
@@ -249,4 +250,39 @@ test('video is capped at 960x600 for every root context', () => {
   const options = contextOptions({ out: '/tmp/out', safe: 'place-overview' });
   assert.deepEqual(options.recordVideo.size, VIDEO_SIZE);
   assert.match(options.recordVideo.dir, /videos[\\/]place-overview$/);
+});
+
+test('a scroll the crawl makes before reset is not reported as a jump the click caused', () => {
+  const scroller = { tagName: 'DIV', className: 'set-scroll', isConnected: true, scrollTop: 577, scrollHeight: 2000, clientHeight: 500, getAttribute: () => null };
+  const names = ['window', 'document', 'getComputedStyle', 'requestAnimationFrame', 'setInterval', 'MutationObserver'];
+  const saved = names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]);
+  let frame = () => {};
+  let scan = () => {};
+  Object.assign(globalThis, {
+    window: { addEventListener() {} },
+    document: { querySelectorAll: () => [scroller], documentElement: {}, addEventListener() {} },
+    getComputedStyle: () => ({ overflowY: 'auto' }),
+    requestAnimationFrame: (fn) => { frame = fn; },
+    setInterval: (fn) => { scan = fn; return 0; },
+    MutationObserver: class { observe() {} },
+  });
+  try {
+    installProbes();
+    const qa = globalThis.window.__qa;
+    scan();
+    frame();
+    scroller.scrollTop = 0; // mark() scrolls the target into view, then the crawl calls reset() in the same frame
+    qa.reset();
+    frame();
+    assert.deepEqual(qa.jumps, [], 'the programmatic scroll before reset is the new starting point');
+    scroller.scrollTop = 400; // a jump after the click, with no input, is still reported
+    frame();
+    assert.equal(qa.jumps.length, 1);
+    assert.deepEqual([qa.jumps[0].from, qa.jumps[0].to], [0, 400]);
+  } finally {
+    for (const [name, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete globalThis[name];
+    }
+  }
 });
