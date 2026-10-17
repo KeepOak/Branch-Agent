@@ -5,6 +5,7 @@
  */
 import type { ManagedRunStdin } from "../process/supervisor/types.js";
 import type { ProcessSession } from "./bash-process-registry.js";
+import type { ProcessInputGate } from "./bash-tools.process-floor.js";
 import { deriveSessionName } from "./bash-tools.shared.js";
 import { encodeKeySequence, hasCursorModeSensitiveKeys } from "./pty-keys.js";
 import type { AgentToolResult } from "./runtime/index.js";
@@ -34,6 +35,8 @@ export async function handleProcessSendKeys(params: {
   keys?: string[];
   hex?: string[];
   literal?: string;
+  /** Checks the encoded bytes (the always-ask floor) before they are written. */
+  beforeWrite?: (data: Buffer) => Promise<ProcessInputGate>;
 }): Promise<AgentToolResult<unknown>> {
   const request = {
     keys: params.keys,
@@ -52,6 +55,13 @@ export async function handleProcessSendKeys(params: {
   const { data, warnings } = encodeKeySequence(request, cursorKeyMode);
   if (data.length === 0) {
     return failText("No key data provided.");
+  }
+  if (params.beforeWrite) {
+    const gate = await params.beforeWrite(data);
+    if (!gate.allowed) {
+      return failText(gate.message);
+    }
+    gate.commit();
   }
   await writeProcessStdin(params.stdin, data);
   const text =
