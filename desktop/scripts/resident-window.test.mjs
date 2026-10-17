@@ -130,7 +130,7 @@ test('usage-off setTrayUsage restores the darwin template and never branch-48.pn
   const desktop = join(process.env.BRANCH_DESKTOP_TEST_DIST, '..');
   const main = await readFile(join(desktop, 'src/main.ts'), 'utf8');
   const osSource = await readFile(join(desktop, 'src/desktop-os.ts'), 'utf8');
-  assert.match(main, /desktopOs\(app, cfg, \(\) => tray, TRAY_ICON\)/);
+  assert.match(main, /desktopOs\(app, cfg, \(\) => tray, TRAY_ICON, removeAppSteps\)/);
   assert.match(osSource, /t\.setImage\(menuBarIcon\(icon, process\.platform\)\)/);
   const template = join(desktop, 'assets', 'brand', 'linux', 'branchTemplate.png');
   Module._load = function (name, ...args) {

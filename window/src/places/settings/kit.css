@@ -123,3 +123,5 @@
 .set-col .tab { flex: none; height: 32px; padding: 0 14px; border: 1px solid transparent; border-radius: 999px; background: transparent; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
 .set-col .tab:hover { background: var(--wash17); color: var(--ink); }
 .set-col .tab[aria-selected="true"] { background: var(--fill-2); color: var(--ink); font-weight: 600; }
+/* Show where (B-047): the section a jump lands on is marked for a moment. */
+[data-flash] { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 14px; }
