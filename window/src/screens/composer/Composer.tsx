@@ -11,6 +11,8 @@ import { safeStorage, saveDraft } from "../../composer/drafts";
 import { DockRow, type Goal } from "../../composer/DockRow";
 import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "../../composer/engine";
 import { Icon, StopMark } from "../../composer/icons";
+import { ConnectModelNotice } from "../../composer/ConnectModelNotice";
+import { friendlyModelError, isNoUsableModelError } from "../../composer/connect-model";
 import { HistorySearch } from "../../composer/HistorySearch";
 import { replaceToken } from "../../composer/mention";
 import { isEngineMode, modeName, nextMode, type EngineMode } from "../../composer/mode";
@@ -213,7 +215,7 @@ export function Composer(props: Props) {
       draft.clear();
       toast(`Sent to ${title}.`);
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : String(error));
+      setProblem(friendlyModelError(error instanceof Error ? error.message : String(error)));
     }
   };
 
@@ -375,7 +377,9 @@ export function Composer(props: Props) {
 
   return <div ref={dock} className="r1c" data-tight={tight || undefined} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }} onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)} onDrop={onDrop}>
     {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
-    {notes.map((n, i) => <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"}>{isPreparationPending(n) ? preparationLabel(trunkName) : shortReason(n)}</p>)}
+    {notes.map((n, i) => isNoUsableModelError(n)
+      ? <ConnectModelNotice key={i} onOpen={onOpen} className="r1c-connect" />
+      : <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"}>{isPreparationPending(n) ? preparationLabel(trunkName) : shortReason(n)}</p>)}
     {draft.note ? <p className="r1c-note">{draft.note}</p> : null}
     {improved && draft.text === improved.after ? <p className="r1c-note" role="status">Improved your draft · <button type="button" className="r1c-undo" data-local="" onClick={() => { draft.setText(improved.before); setImproved(null); box.current?.focus(); }}>Undo</button></p> : null}
     {drawer.peopleError && view?.kind === "mention" ? <p className="r1c-note bad">{drawer.peopleError}</p> : null}

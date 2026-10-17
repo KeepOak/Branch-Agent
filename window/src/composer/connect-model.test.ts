@@ -9,6 +9,9 @@ describe("no usable model copy", () => {
     expect(isNoUsableModelError("Branch Agent could not verify a usable inference route. Check model setup and try again.")).toBe(true);
     expect(isNoUsableModelError("Branch Agent requires working inference: no route")).toBe(true);
     expect(isNoUsableModelError("socket hang up")).toBe(false);
+    expect(isNoUsableModelError(CONNECT_MODEL_ANSWERS)).toBe(true);
+    expect(isNoUsableModelError(`${CONNECT_MODEL_ANSWERS} (2 files weren't sent)`)).toBe(true);
+    expect(friendlyModelError(CONNECT_MODEL_ANSWERS)).toBe(CONNECT_MODEL_ANSWERS);
     expect(friendlyModelError("CodexNotInstalledError: Install and sign in to Codex on this computer, then check again.")).toBe(CONNECT_MODEL_ANSWERS);
     expect(inferenceProblem(new Error("could not verify a usable inference route"))).toBe(CONNECT_MODEL_ANSWERS);
     expect(inferenceProblem(new Error("timed out"))).toBeNull();

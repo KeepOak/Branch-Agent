@@ -10,12 +10,12 @@ import { Footer, WizardBody } from "../AccountLogin";
 import { useWizard, type WizardStart, type WizardStep } from "../use-wizard";
 import { Empty, useSaveRunner } from "../kit";
 import { brandOf, Logo, serviceName } from "./service";
-import { providersOf, tokenLabel, type Provider } from "./accounts";
+import { providersOf, tokenLabel, type Profile, type Provider } from "./accounts";
 
 export type AddStart = { provider?: string };
 type Kind = "plan" | "key" | "local" | "custom";
 /** One service tile: a provider with plan sign-ins or a key, or an engine setup option (local or your own). */
-export type Service = { id: string; brand: string; name: string; kind: Kind; signedIn: number; logins: RecordValue[]; choice?: string; keySupported?: boolean };
+export type Service = { id: string; brand: string; name: string; kind: Kind; signedIn: number; logins: RecordValue[]; choice?: string; keySupported?: boolean; providers?: string[] };
 const FEATURED = ["openai", "openrouter", "xai", "google", "anthropic"];
 const KIND_RANK: Record<Kind, number> = { local: 0, custom: 1, plan: 2, key: 3 };
 type Step = { n: 1 } | { n: 2; svc: Service } | { n: 2; run: WizardStart; svc: Service } | { n: 3; svc: Service; before: string[] };
@@ -65,6 +65,7 @@ function putService(out: Map<string, Service>, next: Service): void {
     signedIn: Math.max(prev.signedIn, next.signedIn),
     keySupported: Boolean(prev.keySupported || next.keySupported || prev.kind === "key" || next.kind === "key"),
     choice: prev.choice ?? next.choice,
+    providers: [...new Set([...(prev.providers ?? [prev.brand]), ...(next.providers ?? [next.brand])])],
   });
 }
 
@@ -85,8 +86,8 @@ export function servicesOf(caps: RecordValue[], providers: Provider[], detect: R
     const brand = brandOf(raw);
     const logins = list(c.loginOptions).filter((o) => o.kind === "oauth" || o.kind === "device-code");
     const name = providers.find((p) => brandOf(p.provider) === brand)?.displayName ?? text(logins[0]?.groupLabel ?? raw);
-    if (logins.length) putService(out, { id: `plan:${brand}`, brand, name: serviceName(brand, name), kind: "plan", signedIn: count(raw, false), logins });
-    if (c.apiKeySupported === true) putService(out, { id: `key:${brand}`, brand, name: serviceName(brand, name, true), kind: "key", signedIn: count(raw, true), logins: [], keySupported: true });
+    if (logins.length) putService(out, { id: `plan:${brand}`, brand, name: serviceName(brand, name), kind: "plan", signedIn: count(raw, false), logins, providers: [raw] });
+    if (c.apiKeySupported === true) putService(out, { id: `key:${brand}`, brand, name: serviceName(brand, name, true), kind: "key", signedIn: count(raw, true), logins: [], keySupported: true, providers: [raw] });
   }
   const listed = [...out.values()];
   addSecretLogins(listed, list(detect?.manualProviders), count);
@@ -99,6 +100,20 @@ export function servicesOf(caps: RecordValue[], providers: Provider[], detect: R
     putService(merged, { id: `custom:${text(o.id)}`, brand: brandOf(text(o.brandId ?? o.id)), name: visible(o.label), kind: "custom", signedIn: 0, logins: [], choice: text(o.id) });
   }
   return [...merged.values()].sort(rankServices);
+}
+
+/** The newly signed-in profile, even when it was saved under an aliased provider id (minimax-portal → minimax). */
+export function freshAccount(providers: Provider[], brand: string, before: readonly string[]): { provider: Provider; profile: Profile } | undefined {
+  const wanted = brandOf(brand);
+  for (const p of providers) {
+    if (brandOf(p.provider) !== wanted) continue;
+    const profile = p.profiles.find((a) => !before.includes(a.profileId));
+    if (profile) return { provider: p, profile };
+  }
+}
+
+export function serviceMatchesProvider(svc: Service, provider: string): boolean {
+  return svc.brand === provider || brandOf(svc.brand) === brandOf(provider) || Boolean(svc.providers?.some((id) => id === provider || brandOf(id) === brandOf(provider)));
 }
 
 /** What local Set it up will do, including sizes, before the wizard starts. */
@@ -127,12 +142,12 @@ function Card({ children }: { children: ReactNode }) {
 export function AddAccountDialog({ engine, start, caps, providers, agent, onClose, clear }: Props) {
   const detect = useResource<RecordValue>(engine, "branch.setup.detect", agent);
   const services = useMemo(() => servicesOf(caps, providers, detect.data), [caps, providers, detect.data]);
-  const first = start.provider && !detect.loading ? services.find((s) => s.brand === start.provider && s.kind === "plan") ?? services.find((s) => s.brand === start.provider) : undefined;
+  const first = start.provider && !detect.loading ? services.find((s) => serviceMatchesProvider(s, start.provider!) && s.kind === "plan") ?? services.find((s) => serviceMatchesProvider(s, start.provider!)) : undefined;
   const [step, setStep] = useState<Step>(first ? { n: 2, svc: first } : { n: 1 });
   useEffect(() => {
     if (!start.provider || detect.loading) return;
-    const preferred = services.find((service) => service.brand === start.provider && service.kind === "plan") ?? services.find((service) => service.brand === start.provider);
-    if (preferred) setStep((current) => current.n === 1 || (current.n === 2 && !("run" in current) && current.svc.brand === start.provider && current.svc.kind === "key" && preferred.kind === "plan") ? { n: 2, svc: preferred } : current);
+    const preferred = services.find((service) => serviceMatchesProvider(service, start.provider!) && service.kind === "plan") ?? services.find((service) => serviceMatchesProvider(service, start.provider!));
+    if (preferred) setStep((current) => current.n === 1 || (current.n === 2 && !("run" in current) && serviceMatchesProvider(current.svc, start.provider!) && current.svc.kind === "key" && preferred.kind === "plan") ? { n: 2, svc: preferred } : current);
   }, [detect.loading, services, start.provider]);
   const [added, setAdded] = useState(false);
   const ids = providers.flatMap((p) => p.profiles.map((a) => a.profileId));
@@ -327,7 +342,7 @@ function KeyEntry({ engine, svc, agent, onSaved }: { engine: WindowEngine; svc: 
   const save = async () => {
     setBusy(true); setError("");
     try {
-      await engine.request("models.authSetApiKey", { provider: svc.brand, apiKey: key.trim(), ...agent });
+      await engine.request("models.authSetApiKey", { provider: svc.providers?.[0] ?? svc.brand, apiKey: key.trim(), ...agent });
       setKey(""); onSaved();
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
@@ -360,8 +375,9 @@ function Placed({ engine, svc, before, agent, onDone }: { engine: WindowEngine; 
   const save = useSaveRunner();
   const g = usePill();
   const providers = providersOf(status.data?.providers);
-  const p = providers.find((x) => x.provider === svc.brand);
-  const fresh = p?.profiles.find((a) => !before.includes(a.profileId));
+  const found = freshAccount(providers, svc.brand, before);
+  const p = found?.provider;
+  const fresh = found?.profile;
   const freshName = fresh ? fresh.displayName ?? fresh.email ?? tokenLabel(fresh) : undefined;
   const order = (where: "first" | "last") => {
     if (!p || !fresh) return null;

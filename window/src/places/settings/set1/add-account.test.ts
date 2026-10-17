@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { freshTokenLabel, localSetupCopy, loginChoiceRef, servicesOf, tokenProfileName } from "./add-account";
+import { freshAccount, freshTokenLabel, localSetupCopy, loginChoiceRef, serviceMatchesProvider, servicesOf, tokenProfileName } from "./add-account";
 import { tokenLabel } from "./accounts";
 
 describe("servicesOf", () => {
@@ -48,6 +48,14 @@ describe("servicesOf", () => {
     expect(localSetupCopy({ id: "local:ollama", brand: "ollama", name: "Ollama", kind: "local", signedIn: 0, logins: [] })).toMatch(/9\.6 GB/);
     expect(localSetupCopy({ id: "local:llama-cpp", brand: "llama-cpp", name: "llama.cpp", kind: "local", signedIn: 0, logins: [] })).toMatch(/few GB/);
     expect(localSetupCopy({ id: "local:lmstudio", brand: "lmstudio", name: "LM Studio", kind: "local", signedIn: 0, logins: [] })).toMatch(/several GB|LM Studio/i);
+    const minimax = out.find((s) => s.name === "MiniMax");
+    expect(minimax?.providers).toEqual(expect.arrayContaining(["minimax", "minimax-portal"]));
+    expect(serviceMatchesProvider(minimax!, "minimax-portal")).toBe(true);
+    expect(freshAccount(
+      [{ provider: "minimax-portal", displayName: "MiniMax", status: "ok", profiles: [{ profileId: "minimax-portal:work", type: "oauth", status: "ok", displayName: "Work" }] }],
+      "minimax",
+      [],
+    )?.profile.profileId).toBe("minimax-portal:work");
   });
 });
 

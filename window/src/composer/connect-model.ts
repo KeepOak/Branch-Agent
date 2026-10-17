@@ -8,7 +8,7 @@ const NO_USABLE_MODEL =
   /No API key (?:found|resolved) for provider|Missing bearer or basic authentication|no usable model account|CodexNotInstalled|Install and sign in to Codex|could not verify a usable inference route|requires working inference|No model is set up/i;
 
 export function isNoUsableModelError(message: string): boolean {
-  return NO_USABLE_MODEL.test(message);
+  return message.includes(CONNECT_MODEL_ANSWERS) || NO_USABLE_MODEL.test(message);
 }
 
 /** Map a send or Make-a-Trunk failure to the same words, or leave other errors alone. */

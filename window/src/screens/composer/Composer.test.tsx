@@ -25,7 +25,7 @@ const LIMITS: Limits = { updatedAt: 0, refreshing: false, rows: [
   { id: "a", name: "ChatGPT · Account 2", provider: "openai-codex", email: "work@example.com", account: "", pill: "Measured", line: "", windows: [{ name: "5-hour", left: 61, reset: "", low: false }, { name: "Week", left: 30, reset: "", low: false }] },
 ] };
 
-async function mount(opts: { methods?: string[]; models?: boolean; working?: boolean; offline?: boolean; dictation?: boolean; replyTo?: { entryId: string; name: string; text: string }; onClearReply?: () => void; placeholder?: string } = {}) {
+async function mount(opts: { methods?: string[]; models?: boolean; working?: boolean; offline?: boolean; dictation?: boolean; replyTo?: { entryId: string; name: string; text: string }; onClearReply?: () => void; placeholder?: string; chatSend?: () => Promise<unknown> } = {}) {
   let row: Record<string, unknown> = { model: "openai/test", permissionMode: "guarded", thinkingLevel: "medium" };
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
     if (method === "agents.list") return { defaultId: "scout", agents: [{ id: "scout", name: "Scout" }] };
@@ -35,6 +35,7 @@ async function mount(opts: { methods?: string[]; models?: boolean; working?: boo
     if (method === "models.authStatus") return { providers: [] };
     if (method === "talk.catalog") return { transcription: { ready: Boolean(opts.dictation) }, realtime: { ready: false } };
     if (method === "sessions.patch") { row = { ...row, ...params }; return {}; }
+    if (method === "chat.send") return opts.chatSend ? opts.chatSend() : {};
     return {};
   });
   const engine: WindowEngine = { sessionKey: "agent:scout:main", agentId: "scout", request: request as unknown as WindowEngine["request"], onEvent: () => () => {}, scopes: ["operator.admin"], ...(opts.methods ? { features: { methods: opts.methods, events: [] } } : {}) } as WindowEngine;
@@ -121,6 +122,20 @@ describe("R1-04 composer", () => {
     await act(async () => button("Send")!.click());
     expect(send).not.toHaveBeenCalled();
     expect(request).toHaveBeenCalledWith("chat.send", expect.objectContaining({ sessionKey: "agent:scout:t1", message: "Hello topic" }));
+  });
+
+  it("maps a topic send with no usable model to Connect a model", async () => {
+    const { host, send } = await mount({
+      chatSend: async () => { throw new Error("could not verify a usable inference route"); },
+    });
+    await act(async () => button("to Main chat")!.click());
+    await act(async () => button("Invoices")!.click());
+    await type(host, "Hello topic");
+    await act(async () => button("Send")!.click());
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(send).not.toHaveBeenCalled();
+    expect(host.querySelector('[data-testid="connect-model"]')?.textContent).toContain("Connect a model to get answers");
+    expect(host.querySelector(".r1c-note.bad")?.textContent ?? "").not.toMatch(/usable inference route/);
   });
 
   it("opens the + menu in the preview's order, with its unwired items registered as hidden Coming items in place (#1049)", async () => {
