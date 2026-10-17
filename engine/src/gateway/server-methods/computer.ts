@@ -9,6 +9,24 @@ import { respondUnavailableOnThrow } from "./response.js";
 import type { GatewayRequestHandlerOptions, GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
+const LOGGABLE_COMPUTER_ACTION = /^[a-z][a-z_.]{0,47}$/;
+
+/** One log line per dispatched action: the standing grant authorized it, not a per-action prompt. */
+function describeStandingGrantInvoke(
+  params: { command: string; params?: unknown },
+  caller: "agent-run" | "operator",
+): string {
+  const raw =
+    params.command === "computer.act" &&
+    params.params &&
+    typeof params.params === "object" &&
+    "action" in params.params
+      ? (params.params as { action?: unknown }).action
+      : params.command;
+  const action = typeof raw === "string" && LOGGABLE_COMPUTER_ACTION.test(raw) ? raw : "other";
+  return `computer.invoke allowed by standing grant, no per-action prompt: action=${action} caller=${caller}`;
+}
+
 function resolveComputerCaller(
   options: GatewayRequestHandlerOptions,
   purpose: "status" | "invoke" | "close",
@@ -104,6 +122,14 @@ export const computerHandlers: GatewayRequestHandlers = {
       caller.assertCurrent();
       // The service composes this guard into its final dispatch after preparing the desktop.
       const payload = await service.invoke({ ...params, ...caller });
+      if (purpose === "invoke") {
+        context.logGateway?.info?.(
+          describeStandingGrantInvoke(
+            params,
+            options.client?.internal?.agentRuntimeIdentity ? "agent-run" : "operator",
+          ),
+        );
+      }
       respond(true, { payload });
     });
   },
