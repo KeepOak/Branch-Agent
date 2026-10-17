@@ -99,7 +99,7 @@ describe("FreeModelSetup", () => {
 
   it("shows the failure and Try again without a raw sign-in line", async () => {
     await mount({ next: [{ done: true, status: "error", error: FREE_MODEL_FAILED }] });
-    expect(document.querySelector('[data-testid="no-key-failed"]')?.textContent).toContain("A free local model isn’t ready");
+    expect(document.querySelector('[data-testid="no-key-failed"]')?.textContent).toContain(FREE_MODEL_FAILED);
     expect(document.body.textContent).not.toContain("Sign-in was cancelled.");
     expect(button("Try again")).toBeTruthy();
     expect(button("Cancel")).toBeTruthy();

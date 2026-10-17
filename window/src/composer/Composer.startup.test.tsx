@@ -56,6 +56,7 @@ describe("Composer startup preparation", () => {
       await act(async () => root.render(<Composer name="Oak" working={false} disabled={false} onSend={vi.fn()} onStop={vi.fn()} engine={engine} onOpen={onOpen} />));
       await vi.waitFor(() => expect(host.querySelector('[data-testid="no-key-failed"]')).not.toBeNull());
       expect(host.querySelector('[data-testid="no-key-failed"]')?.textContent).toContain("A free local model isn’t ready");
+      expect(host.querySelector('[data-testid="no-model"]')?.textContent).toContain("Connect a model to get answers");
       expect(host.querySelector("textarea")?.getAttribute("placeholder")).not.toBe("Getting a free model ready…");
       expect([...host.querySelectorAll("button")].map((b) => b.textContent).filter((t) => t === "Try again" || t === "Add an account")).toEqual(["Try again", "Add an account"]);
       await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Try again")!.click());

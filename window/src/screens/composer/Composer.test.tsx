@@ -227,6 +227,7 @@ describe("R1-04 composer", () => {
     expect(failed.textContent).toContain("A free local model isn’t ready");
     expect(button("Try again")?.textContent).toBe("Try again");
     expect(host.querySelector("textarea")?.getAttribute("placeholder")).not.toBe("Getting a free model ready…");
+    expect(button("Connect a model to get answers")).toBeTruthy();
     await type(host, "Hello");
     expect(button("Send")?.disabled).toBe(false);
     await act(async () => button("Try again")!.click());

@@ -84,7 +84,10 @@
 }
 .c-wrap .send.ready { background: var(--accent); color: #fff; box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--accent) 60%, transparent); }
 .c-wrap .send.stop { background: var(--btn); color: var(--on-btn); }
-.c-wrap .send:disabled { cursor: not-allowed; }
+.c-wrap .send:disabled { cursor: not-allowed; opacity: 0.45; }
+.c-nomodel { display: grid; justify-items: center; gap: 8px; text-align: center; }
+.c-nomodel p { margin: 0; }
+.c-nomodel .connect-model-acts { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; }
 
 .c-flags { display: flex; gap: 6px; align-items: center; align-self: center; }
 .c-flag { font: 500 11px var(--mono); color: var(--ink-3); background: var(--wash17); border-radius: 999px; padding: 4px 7px; }
