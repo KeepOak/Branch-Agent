@@ -316,6 +316,15 @@ function useEngineReads(session: SaplingSession) {
   };
 }
 
+/** The skip link moves keyboard focus into the main area. A bare "#main" jump leaves focus on the page in Chromium and
+ *  Electron, so nothing visible happens; focusing the (tabIndex -1) main element does what the link says. */
+function skipToMain(e: MouseEvent<HTMLAnchorElement>) {
+  const main = document.getElementById("main");
+  if (!main) return;
+  e.preventDefault();
+  main.focus();
+}
+
 /** The whole window once connected (DESIGN-SPEC §3): top bar, sidebar, main, status bar, menus and toasts. */
 export function WindowShell({ session, url }: { session: SaplingSession; url: string }) {
   const dedicated = new URLSearchParams(location.search).has("conversation");
@@ -1587,7 +1596,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     <TrunkPebbleLooks.Provider value={pebbleLooks}>
     <TrunkEmojiFaces.Provider value={Object.fromEntries(trunks.list.map((t) => [t.name, t.emoji ?? ""]))}>
     <div className={frameClass} data-connection={ready ? "ready" : s.status.phase} data-route={route.kind} style={{ ["--side-w" as string]: `${dedicated ? 0 : sideWidth}px`, ...(stagePlace?.mode === "beside" ? { ["--stage-w" as string]: `${stagePlace.width}px` } : {}) }}>
-      <a className="skip" href="#main">
+      <a className="skip" href="#main" onClick={skipToMain}>
         {route.kind === "chat" ? "Skip to the conversation" : "Skip to the page"}
       </a>
       <TopBar
@@ -1730,7 +1739,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       ) : null}
       {layout.focus || layout.hidden || settingsAutoRail || browserAutoRail ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
       {slideOpen ? <div className="slide-scrim" onClick={() => setSlideOpen(false)} /> : null}
-      <main className={mainClass} id="main">
+      <main className={mainClass} id="main" tabIndex={-1}>
         {lockdown.on ? <LockdownBanner onTurnOff={toggleLockdown} /> : null}
         {layout.focus ? (
           <button type="button" className="btn sm focus-exit" onClick={() => setLayout({ focus: false })}>

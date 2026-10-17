@@ -247,3 +247,16 @@ describe("Settings sidebar rail", () => {
     expect(host.querySelector<HTMLElement>(".frame")!.style.getPropertyValue("--side-w")).toBe("0px");
   });
 });
+
+describe("Skip to the conversation", () => {
+  it("moves keyboard focus into the main area (C6-092)", async () => {
+    const host = await show("agent:oak:main", [], [], false);
+    const skip = host.querySelector<HTMLAnchorElement>("a.skip")!;
+    const main = host.querySelector<HTMLElement>("main#main")!;
+    expect(skip.textContent).toBe("Skip to the conversation");
+    expect(main.tabIndex).toBe(-1);
+    skip.focus();
+    await act(async () => skip.click());
+    expect(document.activeElement).toBe(main);
+  });
+});
