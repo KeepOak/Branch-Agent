@@ -7,6 +7,9 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Keyboa
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { configStore } from "../../places/settings/config-store";
+import { record, type RecordValue } from "../../places/settings/adapter";
+import { useResource } from "../../places/settings/hooks";
+import { profileOf } from "../../places/settings/set1/people-data";
 import { TrunkHost } from "../../places-nav/TrunkHost";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { pinsOf } from "../../places/settings/pins";
@@ -106,8 +109,24 @@ function NavButton({ page, current, onOpen, sub, hub }: { page: NavPage; current
   );
 }
 
-/** Regular: the four pages. Advanced and Technical: the full nav, every group open. */
-function NavList({ level, narrow, shownPage, onOpen }: { level: Level; narrow: boolean; shownPage: PageId; onOpen: (id: PageId) => void }) {
+/** Your card's nav row, as the preview's s36Me: your initial, your name over "Your card", and a chevron. Without a
+ *  signed-in person (users.self) it is the plain "Your card" row. */
+function MeButton({ engine, page, current, onOpen }: { engine: WindowEngine; page: NavPage; current: boolean; onOpen: () => void }) {
+  const self = useResource<RecordValue>(engine, "users.self", {});
+  const profile = record(self.data).profile;
+  const name = profile ? profileOf(record(profile)).name.trim() : "";
+  if (!name) return <NavButton page={page} current={current} onOpen={onOpen} />;
+  return (
+    <button type="button" className="r1s-nav r1s-me" data-local="" aria-current={current ? "page" : undefined} data-page={page.id} onClick={onOpen}>
+      <i className="r1s-me-av" aria-hidden="true">{name[0]?.toUpperCase()}</i>
+      <span><b>{name}</b><small>{page.title}</small></span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+    </button>
+  );
+}
+
+/** Regular: the four pages. Advanced and Technical: the full nav, every group open; Your card is its own row (MeButton). */
+function NavList({ engine, level, narrow, shownPage, onOpen }: { engine: WindowEngine; level: Level; narrow: boolean; shownPage: PageId; onOpen: (id: PageId) => void }) {
   const sub = (id: PageId) => id === "goto" ? GOTO_SUB : undefined;
   if (level === 0) {
     return (
@@ -123,7 +142,7 @@ function NavList({ level, narrow, shownPage, onOpen }: { level: Level; narrow: b
   const shown = navAt(level);
   return (
     <>
-      {shown.top.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={sub(p.id)} onOpen={() => onOpen(p.id)} />)}
+      {shown.top.map((p) => p.id === "card" ? <MeButton key={p.id} engine={engine} page={p} current={shownPage === p.id} onOpen={() => onOpen(p.id)} /> : <NavButton key={p.id} page={p} current={shownPage === p.id} sub={sub(p.id)} onOpen={() => onOpen(p.id)} />)}
       {shown.groups.map((g) => {
         const pages = g.pages.filter((p) => pageShown(p.id, level));
         if (!pages.length) return null;
@@ -326,7 +345,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </div>
         <nav className="r1s-list" aria-label="Settings pages">
           {q.trim() ? <Results engine={engine} hits={hits} onOpen={open} onMakeDefault={props.onTrunk ? (id) => { setQ(""); props.onTrunk?.(id, "makeDefault"); } : undefined} /> : (
-            <NavList level={level} narrow={narrow} shownPage={shownPage} onOpen={go} />
+            <NavList engine={engine} level={level} narrow={narrow} shownPage={shownPage} onOpen={go} />
           )}
         </nav>
       </aside>

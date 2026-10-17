@@ -38,8 +38,8 @@ const drawn = (el: ParentNode) => ({
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
 it("re-hosts exactly these Classic pages", () => {
+  // Your card is a native R1 page (card-live.tsx), not a re-hosted Classic People.
   expect(REHOSTED).toEqual({
-    card: "people",
     notifications: "notifications",
     browser: "computer-browser",
     coding: "computer-coding",

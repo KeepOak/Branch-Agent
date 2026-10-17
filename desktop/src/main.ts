@@ -20,11 +20,13 @@ import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, showTrayStatus } from "./resident-window";
 import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
+import { plainDialogText, STOP_FAILED_PLAIN, UPDATE_FAILED_PLAIN } from "./plain-dialog";
 import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
+import { createShellRelaunch } from "./shell-relaunch";
 import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
@@ -127,7 +129,8 @@ log(`launch v${app.getVersion()} pid ${process.pid}`);
 installDiskFullGuard(process, error => {
   const detail = error.stack ?? String(error);
   log(`uncaught main-process error: ${detail}`);
-  if (!HIDDEN) dialog.showErrorBox("A JavaScript error occurred in the main process", `Uncaught Exception:\n${detail}`);
+  // One plain sentence and a next step; the stack stays in the log line above (Private #1089).
+  if (!HIDDEN) dialog.showErrorBox("Branch hit a problem", "Branch hit a problem it couldn’t recover from. Quit Branch and open it again; the details are in its log.");
 });
 
 // Own profile and lock, apart from the old installed Branch Agent app.
@@ -894,6 +897,8 @@ const autoApply = createAutoApplyUpdate({
     const engine = await gatewayActivity(gateway);
     return Math.max(engine.activeRuns, engine.totalActive);
   },
+  // Only a staged desktop app left: it applies by a quit and relaunch, so it waits for no run in flight (Private #1054).
+  relaunchesApp: async version => (await readComponentUpdateStatus(cfg)).componentsPendingVersion !== version,
   // A release published as a security fix skips the Trunk-work batching.
   securityFix: async version => {
     const status = await readComponentUpdateStatus(cfg);
@@ -939,15 +944,22 @@ const autoApply = createAutoApplyUpdate({
 });
 
 /**
- * A staged desktop app applies at an idle gap (the auto-apply check already saw no Trunk working): the helper swaps it
- * in once this app has exited and relaunches it. The normal quit runs, so the engine stops as on any quit.
+ * A staged desktop app applies at an idle gap (the auto-apply check already saw no run in flight): the helper swaps it
+ * in once this app has exited and relaunches it, with the window open or in the tray as it was. The normal quit runs,
+ * so the engine is kept or stops cleanly as on any quit.
  */
+const shellRelaunch = createShellRelaunch({
+  handOff: async args => {
+    if (!install) throw new Error("this copy of Branch Agent cannot update itself");
+    return handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), args, false);
+  },
+  quit: () => app.quit(),
+  argv: process.argv.slice(1),
+  windowShown: () => Boolean(win && !win.isDestroyed() && win.isVisible()),
+  log,
+});
 async function relaunchForDesktopUpdate(): Promise<void> {
-  if (!install) throw new Error("this copy of Branch Agent cannot update itself");
-  const handed = await handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), process.argv.slice(1), false);
-  if (!handed) throw new Error("the staged desktop update could not be handed to the update helper");
-  log("desktop update staged; handing off to the update helper at an idle gap and quitting");
-  app.quit();
+  await shellRelaunch();
 }
 
 /**
@@ -1771,7 +1783,7 @@ async function restartEngine(): Promise<void> {
   catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`update failed: ${msg}`);
-    if (!quitting && (serviceEngine || !engineRunning()) && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", msg);
+    if (!quitting && (serviceEngine || !engineRunning()) && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", plainDialogText(msg, UPDATE_FAILED_PLAIN));
   }
 }
 
@@ -1900,7 +1912,7 @@ async function stopCompletely(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log(`stop completely failed: ${message}`);
-    if (!HIDDEN) dialog.showErrorBox("Branch couldn't stop its engine", message);
+    if (!HIDDEN) dialog.showErrorBox("Branch couldn't stop its engine", plainDialogText(message, STOP_FAILED_PLAIN));
   }
 }
 

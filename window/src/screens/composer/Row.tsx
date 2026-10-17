@@ -82,7 +82,9 @@ export function Row(p: Props) {
     {p.topics.length ? <button ref={to} type="button" className="r1c-quiet r1c-to" data-local="" aria-haspopup="menu" aria-expanded={p.menu === "target"} title="Which topic gets this message" onClick={() => toggle("target")}>to {p.target?.title ?? "Main chat"}<Chevron /></button> : null}
     <span className="r1c-grow" />
     {p.noModel
-      ? <button type="button" className="r1c-quiet" data-local="" title={ACCOUNT_FASTER} onClick={() => p.onOpen("settings/accounts/add")}>Smarter with an account</button>
+      ? (p.conv.noKeySettled && !p.conv.noKeyError
+        ? <button type="button" className="r1c-quiet" data-local="" onClick={() => p.onOpen("settings/accounts/add")}>Connect a model</button>
+        : <button type="button" className="r1c-quiet" data-local="" title={ACCOUNT_FASTER} onClick={() => p.onOpen("settings/accounts/add")}>Smarter with an account</button>)
       : <button ref={model} type="button" className="r1c-quiet" data-local="" aria-haspopup="menu" aria-expanded={p.menu === "model"} title="Which model answers" onClick={() => toggle("model")}>{p.current?.name ?? (p.conv.modelsLoaded ? "No model" : "Model")}</button>}
     {!p.noModel && levels.length ? <button ref={think} type="button" className="r1c-quiet" data-local="" aria-haspopup="menu" aria-expanded={p.menu === "think"} title="How hard it thinks" onClick={() => toggle("think")}>{capitalize(level?.label ?? p.thinking) || "Thinking"}</button> : null}
 

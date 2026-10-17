@@ -253,3 +253,100 @@ test("a pending update that keeps being replaced by newer releases still lands o
   assert.ok(f.restarts.length >= 1, "the capped update drained at a gap");
   assert.match(f.restarts[0], /^0\.4\.4-build-\d+$/);
 });
+
+// Private #1054 M5: a staged desktop shell applies by itself at the next gap with no run in flight, by one quit and
+// relaunch through the update helper, with the window or tray kept as it was.
+const { createShellRelaunch, relaunchArgs } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "shell-relaunch.js")));
+const { START_IN_TRAY } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "desktop-os.js")));
+
+function shellFixture({ staged = "0.4.6", trunkWork = false, windowShown = false, handed = true } = {}) {
+  let now = 0;
+  let version = staged;
+  let activity = { activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false };
+  const restarts = []; const handOffs = []; const logs = []; let quits = 0; let tick;
+  const relaunch = createShellRelaunch({
+    handOff: async args => { handOffs.push(args); return handed; },
+    quit: () => { quits++; },
+    argv: ["--flag"], windowShown: () => windowShown, platform: "win32", log: line => logs.push(line),
+  });
+  const controller = createAutoApplyUpdate({
+    pendingVersion: async () => version, enabled: () => true,
+    // A standby exists for engine updates; a desktop shell must never be offered to it.
+    seamlessHandoff: () => true, relaunchesApp: () => true, trunkWork: () => trunkWork,
+    activity: async () => activity,
+    restart: async (value, handoffOnly, drain) => { restarts.push([value, handoffOnly, drain ?? false]); if (handoffOnly) throw new Error("no standby for a shell"); await relaunch(); },
+    log: line => logs.push(line), now: () => now,
+    interval: fn => { tick = fn; return 1; }, clear: () => {},
+  });
+  const run = async (ticks, stepMs = AUTO_APPLY_POLL_MS) => { for (let i = 0; i < ticks; i++) { now += stepMs; await controller.tick(); } };
+  return { controller, restarts, handOffs, logs, run, quits: () => quits, relaunch, startTick: () => tick,
+    setVersion: value => { version = value; }, setActivity: value => { activity = { ...activity, ...value }; } };
+}
+
+test("M5 (a): a staged desktop shell never relaunches while a run is active, even past the pending cap", async () => {
+  const f = shellFixture();
+  // A helper run with nothing streaming still counts (Private #1454): the relaunch would stop it.
+  f.setActivity({ activeRuns: 1 });
+  await f.controller.tick();
+  await f.run(10);
+  await f.run(1, AUTO_APPLY_PENDING_CAP_MS);
+  await f.run(10);
+  assert.deepEqual(f.restarts, [], "no quit and relaunch while a run is in flight");
+  assert.deepEqual(f.handOffs, []);
+  assert.equal(f.quits(), 0);
+  assert.ok(f.logs.some(line => line.includes("waiting for 1 active runs")));
+  // The run ends: the gap starts only now, and the relaunch waits the full gap.
+  f.setActivity({ activeRuns: 0 });
+  await f.controller.tick();
+  assert.equal(f.quits(), 0, "a run that just ended starts the gap; it does not relaunch at once");
+});
+
+test("M5 (a): on a Trunk machine a staged shell keeps the hourly batch (Private #1428)", async () => {
+  const g = shellFixture({ trunkWork: true });
+  await g.controller.tick(); await g.run(4);
+  assert.equal(g.quits(), 1, "the first staged shell applies at a gap");
+  // A newer shell staged minutes later waits for the hour, then for a gap.
+  g.setVersion("0.4.7");
+  await g.run(10);
+  assert.equal(g.restarts.length, 1, "no second relaunch inside the hour");
+  assert.ok(g.logs.some(line => line.includes("batching 0.4.7 with Trunk work")));
+});
+
+test("M5 (b): going idle schedules exactly one quit and relaunch through the update helper, keeping the tray", async () => {
+  const f = shellFixture({ windowShown: false });
+  f.controller.start();
+  const tick = f.startTick();
+  assert.equal(typeof tick, "function", "auto-apply polls on its own interval");
+  await f.run(20);
+  assert.deepEqual(f.restarts, [["0.4.6", false, false]], "one relaunch, never a standby handoff and never a drain");
+  assert.equal(f.handOffs.length, 1, "the update helper is handed the swap once");
+  assert.deepEqual(f.handOffs[0], ["--flag", START_IN_TRAY], "a tray-only app relaunches quietly in the tray");
+  assert.equal(f.quits(), 1);
+  await f.relaunch();
+  assert.equal(f.handOffs.length, 1, "a second request while quitting does nothing");
+  f.controller.stop();
+
+  const open = shellFixture({ windowShown: true });
+  await open.controller.tick(); await open.run(4);
+  assert.deepEqual(open.handOffs, [["--flag"]], "a window the owner had open opens again");
+});
+
+test("M5 (c): nothing relaunches without a staged desktop shell", async () => {
+  const f = shellFixture({ staged: null });
+  await f.controller.tick();
+  await f.run(20);
+  assert.deepEqual(f.restarts, []);
+  assert.deepEqual(f.handOffs, []);
+  assert.equal(f.quits(), 0);
+  // The helper finds nothing staged: the app keeps running instead of quitting.
+  let quits = 0;
+  const relaunch = createShellRelaunch({ handOff: async () => false, quit: () => { quits++; }, argv: [], windowShown: () => false, log: () => {} });
+  await assert.rejects(relaunch(), /could not be handed/);
+  assert.equal(quits, 0);
+});
+
+test("M5: relaunch arguments keep the window or tray state on Windows only", () => {
+  assert.deepEqual(relaunchArgs([START_IN_TRAY, "--x"], true, "win32"), ["--x"]);
+  assert.deepEqual(relaunchArgs([START_IN_TRAY, "--x"], false, "win32"), ["--x", START_IN_TRAY]);
+  assert.deepEqual(relaunchArgs(["--x"], false, "darwin"), ["--x"]);
+});

@@ -223,3 +223,10 @@
 /* A page section with nothing to show yet: one quiet line, no empty card or heading. */
 .r1s-quiet { margin: 6px 0; font-size: 12.5px; color: var(--ink-3); }
 .r1s-quiet > b { font-weight: 600; color: var(--ink-2); }
+/* Your card's nav row (preview s36Me): initial, name over "Your card", chevron. Your card page: picture and file button. */
+.r1s-me { min-height: 44px; border-radius: 16px; }
+.r1s-me > span { display: grid; gap: 0; }
+.r1s-me > span > b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.r1s-me > span > small { font-size: 12px; color: var(--ink-3); }
+.r1s-me-av { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--ink); color: var(--bg); font: 600 12px var(--sans); font-style: normal; }
+@media (max-width: 760px) { .r1s-me { min-height: 34px; } .r1s-me > span > small, .r1s-me > svg { display: none; } .r1s-me-av { width: 22px; height: 22px; font-size: 11px; } }

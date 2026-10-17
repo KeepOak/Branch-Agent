@@ -5,6 +5,7 @@ import {WindowShell} from '../src/shell/WindowShell';
 import {TeamApprovalCard} from '../src/places/trunk/TeamApprovalCard';
 import {SettingsFrame} from '../src/screens/settings/SettingsFrame';
 import {R1_PAGES} from '../src/screens/settings/pages/plugged';
+import {OverflowPreview} from './overflow-fixture';
 import '../src/theme/tokens.css';
 import '../src/theme/base.css';
 import '../src/shell/shell.css';
@@ -52,4 +53,5 @@ function SettingsInFrame({level}:{level:string}){localStorage.setItem('branch.le
 const query=new URLSearchParams(window.location.search);
 const teamState=query.get('team');
 const settingsLevel=query.get('settings');
-createRoot(document.getElementById('root')!).render(teamState!==null ? <TeamPreview state={teamState}/> : settingsLevel!==null ? <SettingsInFrame level={settingsLevel}/> : <WindowShell session={fixture as any} url="ws://isolated-fixture"/>);
+const overflow=query.get('overflow');
+createRoot(document.getElementById('root')!).render(overflow!==null ? <OverflowPreview kind={overflow}/> : teamState!==null ? <TeamPreview state={teamState}/> : settingsLevel!==null ? <SettingsInFrame level={settingsLevel}/> : <WindowShell session={fixture as any} url="ws://isolated-fixture"/>);
