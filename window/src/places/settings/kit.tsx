@@ -11,7 +11,7 @@ import { PIN_MAX, type Pins } from "./pins";
 import { isDevNote, shownWhy } from "../../shell/shown-why";
 import { plainCopy } from "./internals";
 import "./kit.css";
-import { plainError } from "../../shell/plain-error";
+import { plainError, plainText } from "../../shell/plain-error";
 
 /** 0 = Regular, 1 = Advanced, 2 = Technical. */
 export type Lv = 0 | 1 | 2;
@@ -312,10 +312,11 @@ export function Tabs({ tabs, value, onChange, label }: { tabs: Opt[]; value: str
 }
 
 export type Tone = "ok" | "warn" | "bad" | "idle";
-/** A bad status's words through plainError(): each string part, so a plain sentence beside it stays as it is. */
+/** A bad status's words: a whole string through plainError(); a line built from parts ("Branch ", a version, " keeps
+ *  running.") part by part through plainText(), so a plain part like a version number stays as it is. */
 function plainNode(node: ReactNode): ReactNode {
   if (typeof node === "string") return plainError(node);
-  return Array.isArray(node) ? node.map((part) => (typeof part === "string" ? plainError(part) : part)) : node;
+  return Array.isArray(node) ? node.map((part) => (typeof part === "string" ? plainText(part) : part)) : node;
 }
 /** The status box at the top of a page: a dot, a bold line and what it means. */
 export function Status({ tone = "ok", title: rawTitle, help, children: rawChildren, action }: { tone?: Tone; title: ReactNode; help?: string; children?: ReactNode; action?: ReactNode }) {
