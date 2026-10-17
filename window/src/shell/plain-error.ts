@@ -1,14 +1,14 @@
 // No raw engine error at Regular (Private #1089). A failure's words reach a person through plainError(): at Regular,
-// words that #1700's friendlyError() would replace (a dump, JSON, an HTTP status, an id, a code, a method name), or that
+// words that PR 1700's friendlyError() would replace (a dump, JSON, an HTTP status, an id, a code, a method name), or that
 // carry a stack, an error class or errno code (CodexNotInstalledError, ECONNREFUSED), a file path or an engine sentence
 // such as `unknown method: logbook.status`, read as one plain sentence with one next step chosen from the map below,
-// and any web or computer address reads as plainAddresses() (#1706) says. Words that are already plain pass through
+// and any web or computer address reads as plainAddresses() (PR 1706) says. Words that are already plain pass through
 // unchanged, with the lead a screen put before the raw part (`Couldn't change Lockdown: …`). Advanced and Technical keep
 // the exact words.
 //
 // plainText() is for words that are not always a failure (a toast like "Copied.", a banner title, the line above the
 // page). friendlyError() reads a one-word or numbered line as raw, so those use the strong markers only, which include
-// #1700's id shapes (a UUID, a long hex id, a named id, a session key with or without `agent:`).
+// PR 1700's id shapes (a UUID, a long hex id, a named id, a session key with or without `agent:`).
 import { FRIENDLY_ERROR, friendlyError } from "../connect/friendly-error";
 import { plainAddresses } from "./plain-address";
 
@@ -55,7 +55,7 @@ const RAW: RegExp[] = [
   /\bgateway (?:closed|not connected)\b/i, // a socket close
   /\bCannot read propert|\bis not a function\b|\bis not defined\b|\bUnexpected token\b|\bnpm ERR!|\bfetch failed\b|\bFailed to fetch\b|\bsocket hang up\b|\bNo API key found\b/i,
   /\bagent:[\w-]+:[\w:.-]+/, // a session key
-  // #1700's id shapes (connect/friendly-error.ts), so words that skip friendlyError() still never show an id.
+  // PR 1700's id shapes (connect/friendly-error.ts), so words that skip friendlyError() still never show an id.
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i, // a UUID
   /\b[0-9a-f]{16,}\b/i, // a long hex id
   /\b(?:request[\s_-]*id|runId|sessionKey|agentId|gatewayCode)\b/i, // a named id
@@ -67,7 +67,7 @@ export function looksRaw(text: string): boolean {
   return RAW.some((re) => re.test(text));
 }
 
-/** True when a failure's words are raw: #1700's friendlyError() would replace them, or they carry a strong marker. */
+/** True when a failure's words are raw: PR 1700's friendlyError() would replace them, or they carry a strong marker. */
 export function looksRawError(text: string): boolean {
   const trimmed = text.trim();
   return Boolean(trimmed) && (looksRaw(trimmed) || friendlyError(trimmed) === FRIENDLY_ERROR);
@@ -86,10 +86,22 @@ export function errorWords(error: unknown): string {
   return String(error ?? "");
 }
 
+/** The bare label a runtime puts before a message ("Error: ", "Uncaught Error: "): not a screen's own lead. A named class
+ *  (TypeError, CodexNotInstalledError) is already raw, so it never reads as a lead and its name still picks the sentence. */
+const ERROR_LABEL = /^(?:Uncaught\s+)?Error\s*:\s*/;
+
 function plainWords(text: string, raw: (words: string) => boolean): string {
   const trimmed = text.trim();
   // Plain words keep their spacing: a status line can be built from parts ("Branch ", version, " keeps running.").
   if (!raw(trimmed)) return plainAddresses(text, true);
+  // "Error: <words>" never shows its label: plain words after it stay, raw ones read as the sentence for them below.
+  const label = ERROR_LABEL.exec(trimmed);
+  const rest = label ? trimmed.slice(label[0].length).trim() : "";
+  if (label && rest) {
+    if (!raw(rest)) return plainAddresses(rest, true);
+    const inner = plainWords(rest, raw);
+    return inner === PLAIN_FAILURE ? sentenceFor(trimmed) : inner;
+  }
   // A plain sentence that ends with the raw words in brackets keeps the sentence: "… full. (QuotaExceededError: …)".
   const bracket = /^(.*?[.!?])\s*\(([^]*)\)\.?$/.exec(trimmed);
   if (bracket && !raw(bracket[1])) return plainAddresses(bracket[1], true);

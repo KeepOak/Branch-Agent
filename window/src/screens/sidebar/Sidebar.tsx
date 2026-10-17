@@ -50,6 +50,7 @@ import { FIRST_MESSAGE, NEED, rowMenu } from "./row-menu";
 import { Face } from "../../face/Face";
 import { QUICK_ASK_EVENT, QUICK_ASK_NEED } from "../quickask/QuickAskHost";
 import "./sidebar.css";
+import { plainError } from "../../shell/plain-error";
 
 export type SidebarProps = {
   /** + › New Trunk: the sheet for a name and a face, then the chat questions (R1Window). */
@@ -304,7 +305,7 @@ export function Sidebar(p: SidebarProps) {
       {query ? null : <R1FilterSort prefs={prefs} facts={filterFacts(rows, trunks.list, listPeople, readLevel(), prefs, now)} onChange={changePrefs} onSettings={p.onSettings} />}
     </div>
     <nav className="r1sb-list" aria-label="Conversations">
-      {p.error ? <p className="r1sb-error" role="alert">{p.error}</p> : null}
+      {p.error ? <p className="r1sb-error" role="alert">{plainError(p.error)}</p> : null}
       {results}
       {searching ? null : <>
       {sections.pinned.length ? <section className="r1sb-sec" data-section="pinned"><SectionHead label="Pinned" /><PinnedGrid rows={orderPins(sections.pinned, pinOrder.order)} currentKey={p.currentKey} handlers={handlers}
