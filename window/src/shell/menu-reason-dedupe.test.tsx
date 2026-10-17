@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// Private #1093 item 7a follow-up (#1708): a greyed menu item that already passes its reason as `sub` keeps that
-// one line. Menu must not draw the same words again as mi-why. aria-describedby names the line that is actually drawn.
+// A greyed menu item that already passes its reason as `sub` keeps that one line. Menu must not draw the same words
+// again as mi-why. aria-describedby names the line that is actually drawn.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
