@@ -6,7 +6,7 @@
 // computer-code.tsx.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { CheckedAt, useCheckedAt } from "../checked-at";
-import { Fragment, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Pick, Pill, Sec, Seg, Switch, Tabs, useConfig, type RowEntry } from "../kit";
 import type { WindowEngine } from "../../../connect/engine";
@@ -19,8 +19,8 @@ import { Menu, type MenuItem } from "../../../shell/Menu";
 import { Icon } from "../../../shell/icons";
 import { Ico } from "./icons";
 import "./computer-more.css";
-import { shownWhy } from "../../../shell/shown-why";
 import { connectedNow } from "../../presence";
+import { STALL_TEXT } from "../stall";
 
 type Lv = 0 | 1 | 2;
 export type Ctx = { engine: WindowEngine; lv: Lv; props: SettingsPageProps };
@@ -406,26 +406,45 @@ function CheckWorks({ c }: { c: Ctx }) {
   return (
     <Ctl title="Check what works" sub="Checks screen, mouse, keyboard, apps and the stop key." help="Screen pictures, the mouse and keyboard, reading apps, each screen, and the stop key on this computer.">
       <Btn sm onClick={() => setOpen(true)}>Check</Btn>
-      {open ? <CheckDialog engine={c.engine} onClose={() => setOpen(false)} /> : null}
+      {open ? <CheckDialog engine={c.engine} lv={c.lv} onClose={() => setOpen(false)} /> : null}
     </Ctl>
   );
 }
 
-function CheckDialog({ engine, onClose }: { engine: WindowEngine; onClose: () => void }) {
+export const CHECK_NOT_SET_UP = "Using the screen, mouse and keyboard isn’t set up on this computer yet.";
+export const CHECK_CANT_USE = "Using the screen is set up but can’t be used right now.";
+export const CHECK_FAILED = "Branch couldn’t check this computer. Try again in a moment.";
+
+/** What the check says, always one plain line (B-029: a blank dialog says nothing). */
+export function checkLine(data: RecordValue | undefined): string {
+  const d = rec(data);
+  const use = rec(d.computerUse);
+  if (d.available === true) return `Computer control works through ${str(rec(use.provider).label) || "this computer’s screen driver"}.`;
+  if (d.configured === true) return CHECK_CANT_USE;
+  return CHECK_NOT_SET_UP;
+}
+
+function CheckDialog({ engine, lv, onClose }: { engine: WindowEngine; lv: Lv; onClose: () => void }) {
   const st = useLive<RecordValue>(engine, "computer.status", {}, []);
+  const [checked, stamp] = useCheckedAt();
+  // Every finished check (the first one and each Check again) ends with its time, so a repeat is never silent.
+  const done = !st.loading;
+  useEffect(() => { if (done) stamp(); }, [done]); // eslint-disable-line react-hooks/exhaustive-deps
+  const again = () => void st.reload();
   const d = rec(st.data);
   const use = rec(d.computerUse);
   const caps = Object.entries(use).filter(([k, v]) => k !== "provider" && typeof v !== "object").map(([k, v]): [string, ReactNode] => [k, String(v)]);
+  // The engine's own words for why it can't be used, for Technical only.
+  if (lv >= 2 && d.configured === true && d.available !== true && str(d.error)) caps.push(["Why", str(d.error)]);
   return (
-    <Dialog title="Check what works" onClose={onClose} footer={<><Btn ghost onClick={() => void st.reload()}>Check again</Btn></>}>
-      {st.error ? <p className="hint s2-err" role="alert">{st.error}{st.data ? null : <> <Btn sm onClick={() => void st.reload()}>Try again</Btn></>}</p> : null}
-      {st.loading && !st.data ? <p>Checking…</p> : null}
-      {st.data ? (
-        <>
-          <p>{d.available === true ? `Computer control works through ${str(rec(use.provider).label) || "this computer’s screen driver"}.` : d.configured === true ? str(d.error) || "Computer control is set up but can’t be used right now." : shownWhy("Computer control isn’t set up in this engine.")}</p>
-          <Kv rows={caps} />
-        </>
-      ) : null}
+    <Dialog title="Check what works" onClose={onClose} footer={<><Btn ghost disabled={st.loading} onClick={again}>{st.loading ? "Checking…" : "Check again"}</Btn></>}>
+      <div role="status" aria-live="polite">
+        {st.loading ? <p>Checking this computer…</p>
+          : st.error ? <p className="hint s2-err">{st.error === STALL_TEXT ? STALL_TEXT : CHECK_FAILED} <Btn sm onClick={again}>Try again</Btn></p>
+          : <p>{checkLine(st.data)}</p>}
+        {!st.loading && !st.error ? <Kv rows={caps} /> : null}
+        {!st.loading ? <CheckedAt at={checked} /> : null}
+      </div>
     </Dialog>
   );
 }

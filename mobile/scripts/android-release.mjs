@@ -68,10 +68,14 @@ export function normalizeCertSha256(value) {
 // Desktop publishes vX.Y.Z-build-<first 12 hex of the commit>, e.g. v0.4.4-build-9a15209115dc.
 export const BUILD_RELEASE_TAG_RE = /^v\d+\.\d+\.\d+-build-[a-f0-9]{12}$/i;
 export const ANDROID_RELEASE_CONCURRENCY_GROUP = 'mobile-android-release';
+// Retry listing releases on API errors. Do not wait minutes for a desktop tag:
+// mobile-only commits never get one, and a long poll skipped the APK build.
 export const PUSH_RELEASE_WAIT = {
-  intervalMs: 20_000,
-  maxAttempts: 24,
+  intervalMs: 10_000,
+  maxAttempts: 3,
 };
+// workflow_dispatch run 38919220548 shipped versionCode 5. Later builds must be newer.
+export const LAST_SHIPPED_VERSION_CODE = 5;
 
 export function commitBuildId(sha) {
   return String(sha ?? '').trim().toLowerCase().slice(0, 12);
@@ -96,6 +100,48 @@ export function pickReleaseTagForCommit(releases, sha) {
   return '';
 }
 
+export function releaseTagFromItem(item) {
+  return typeof item === 'string' ? item : item?.tag_name;
+}
+
+// GitHub returns newest first. Same source as a workflow_dispatch that attaches
+// to the current desktop tag (run 38919220548 used v0.4.4-build-9a15209115dc).
+export function pickLatestBuildReleaseTag(releases) {
+  for (const item of releases ?? []) {
+    const tag = releaseTagFromItem(item);
+    if (isBuildReleaseTag(tag)) return tag;
+  }
+  return '';
+}
+
+export function sourceReleaseVersion(pkg) {
+  return String(pkg?.version ?? '').trim();
+}
+
+export function buildReleaseTag(version, sha) {
+  const v = sourceReleaseVersion({ version }).replace(/^v/i, '');
+  const id = commitBuildId(sha);
+  if (!/^\d+\.\d+\.\d+$/.test(v) || !/^[a-f0-9]{12}$/.test(id)) return '';
+  return `v${v}-build-${id}`;
+}
+
+export function desktopSourceVersionFromRepo(
+  pkgPath = path.join(root, '../desktop/package.json'),
+  read = (file) => readFileSync(file, 'utf8'),
+) {
+  return sourceReleaseVersion(JSON.parse(read(pkgPath)));
+}
+
+export function staleVersionCodeAssetNames(assetNames, apkName, keepName) {
+  const prefix = `${String(apkName ?? '')}.versioncode.`;
+  const keep = String(keepName ?? '');
+  if (!prefix.startsWith('branch-android-') || prefix === '.versioncode.') return [];
+  return (assetNames ?? []).filter((name) => {
+    const n = String(name ?? '');
+    return n.startsWith(prefix) && n !== keep;
+  });
+}
+
 // Same group for push, release, and workflow_dispatch. Tag and event are ignored
 // on purpose so two triggers that attach the same assets share one lock.
 export function releaseConcurrencyGroup(_context = {}) {
@@ -110,6 +156,11 @@ export function missingPushReleaseError(sha, wait = PUSH_RELEASE_WAIT) {
   const id = commitBuildId(sha);
   const seconds = Math.round(pushReleaseWaitMs(wait) / 1000);
   return `No GitHub release with tag vX.Y.Z-build-${id} for commit ${String(sha ?? '').trim()} after ${seconds}s`;
+}
+
+export function missingPushReleaseVersionError(sha) {
+  const id = commitBuildId(sha);
+  return `Cannot construct vX.Y.Z-build-${id} without a dotted source version`;
 }
 
 export function listGithubReleases({
@@ -127,11 +178,54 @@ export function listGithubReleases({
   return releases;
 }
 
+export function releaseAlreadyExists(error) {
+  const text = [
+    error?.stderr,
+    error?.message,
+    error?.stdout,
+    error,
+  ].map((part) => String(part ?? '')).join('\n');
+  return /already exists/i.test(text) || /HTTP 422/.test(text);
+}
+
+export function createGithubRelease({
+  tag,
+  commitSha,
+  repository = process.env.GITHUB_REPOSITORY,
+  title,
+  notes = 'Signed Android APK.',
+  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+} = {}) {
+  const repo = String(repository ?? '').trim();
+  const t = String(tag ?? '').trim();
+  const sha = String(commitSha ?? '').trim();
+  if (!repo) throw new Error('GITHUB_REPOSITORY is required to create a release');
+  if (!isBuildReleaseTag(t)) throw new Error(`Refusing to create a non-build release tag: ${t}`);
+  if (!/^[a-f0-9]{7,40}$/i.test(sha)) throw new Error('createGithubRelease needs the source commit');
+  const version = t.replace(/^v/i, '');
+  try {
+    run('gh', [
+      'release', 'create', t,
+      '--repo', repo,
+      '--target', sha,
+      '--latest=false',
+      '--title', title || `Branch Agent ${version}`,
+      '--notes', notes,
+    ]);
+  } catch (error) {
+    if (releaseAlreadyExists(error)) return t;
+    throw error;
+  }
+  return t;
+}
+
 export async function resolveReleaseTag({
   eventName,
   releaseTag = '',
   commitSha = '',
+  sourceVersion = '',
   listReleases,
+  createRelease,
   sleep,
   wait = PUSH_RELEASE_WAIT,
 } = {}) {
@@ -146,16 +240,36 @@ export async function resolveReleaseTag({
     throw new Error('listReleases is required to resolve a push-path release tag');
   }
   const nap = typeof sleep === 'function' ? sleep : (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  let releases = [];
+  let listed = false;
   for (let attempt = 1; attempt <= wait.maxAttempts; attempt += 1) {
     try {
-      const tag = pickReleaseTagForCommit(await listReleases(), commitSha);
+      releases = await listReleases();
+      listed = true;
+      const tag = pickReleaseTagForCommit(releases, commitSha);
       if (tag) return { tag, shouldAttach: true };
+      break;
     } catch {
-      // Keep polling: a just-published desktop release can trail the mobile push.
+      // Retry listing: a flaky or rate-limited GitHub API should not skip the APK.
     }
     if (attempt < wait.maxAttempts) await nap(wait.intervalMs);
   }
-  throw new Error(missingPushReleaseError(commitSha, wait));
+  if (listed) {
+    const latest = pickLatestBuildReleaseTag(releases);
+    if (latest) return { tag: latest, shouldAttach: true };
+  }
+  const constructed = buildReleaseTag(sourceVersion, commitSha);
+  if (!constructed) {
+    throw new Error(listed ? missingPushReleaseVersionError(commitSha) : missingPushReleaseError(commitSha, wait));
+  }
+  if (typeof createRelease === 'function') {
+    try {
+      await createRelease({ tag: constructed, commitSha });
+    } catch (error) {
+      if (!releaseAlreadyExists(error)) throw error;
+    }
+  }
+  return { tag: constructed, shouldAttach: true };
 }
 
 async function resolveTagMain() {
@@ -163,7 +277,9 @@ async function resolveTagMain() {
     eventName: process.env.EVENT_NAME,
     releaseTag: process.env.RELEASE_TAG_INPUT,
     commitSha: process.env.COMMIT_SHA,
+    sourceVersion: desktopSourceVersionFromRepo(),
     listReleases: () => listGithubReleases(),
+    createRelease: (args) => createGithubRelease(args),
   });
   process.stdout.write(`tag=${result.tag}\nshould_attach=${result.shouldAttach ? 'true' : 'false'}\n`);
 }
@@ -176,12 +292,13 @@ export function releaseVersion({ tag, runNumber, fallbackVersion } = {}) {
 }
 
 // Same workflow, so github.run_number is strictly increasing across releases.
+// A lower number than the last shipped APK would not replace it on a device.
 export function versionCode({ runNumber } = {}) {
   const n = Number(runNumber);
   if (!Number.isInteger(n) || n <= 0) {
     throw new Error('versionCode needs a positive workflow run number');
   }
-  return n;
+  return Math.max(n, LAST_SHIPPED_VERSION_CODE + 1);
 }
 
 export function apkFileName(version, { signed } = { signed: true }) {
@@ -377,6 +494,17 @@ function printSha256Output(sidecar) {
 function main() {
   if (process.argv.includes('--resolve-tag')) {
     return resolveTagMain();
+  }
+
+  const staleIndex = process.argv.indexOf('--stale-versioncode-assets');
+  if (staleIndex !== -1) {
+    const apkName = process.argv[staleIndex + 1] ?? '';
+    const keepName = process.argv[staleIndex + 2] ?? '';
+    const names = readFileSync(0, 'utf8').split(/\r?\n/).filter(Boolean);
+    for (const name of staleVersionCodeAssetNames(names, apkName, keepName)) {
+      process.stdout.write(`${name}\n`);
+    }
+    return;
   }
 
   const normalizeIndex = process.argv.indexOf('--normalize-cert-sha256');

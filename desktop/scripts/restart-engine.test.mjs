@@ -15,21 +15,63 @@ const require = createRequire(import.meta.url), Module = require("node:module");
 const originalLoad = Module._load, originalFetch = globalThis.fetch;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+// Windows TerminateProcess throws ESRCH when the pid has already exited. The exit already happened.
+function signalExit(pid) {
+  try { process.kill(pid, "SIGTERM"); }
+  catch (error) { if (error?.code !== "ESRCH") throw error; }
+}
 const servingOn = async (port) => (await originalFetch(`http://127.0.0.1:${port}/readyz`).then(response => response.status, () => 0)) === 200;
 const EVENTUALLY_DEFAULT_MS = 8000;
+// windows-latest keeps a killed engine's exclusive loopback socket. A connection to that
+// socket can accept once and send nothing, and the connection keeps the port reserved, so
+// the engine never binds and the fixture waits out this deadline for a process that will
+// never be ready. On Windows the engine binds with exclusive:false (a reserved port, not a
+// listener) and retries that bind without connecting. One later probe: bytes mean a live
+// holder (the test squatter, or an engine that still serves) and the process exits. No
+// bytes means keep binding. Linux and macOS free the socket at once. This deadline stays
+// past a slow Windows bind plus waitForGatewayPort (40 × 250ms).
+const WINDOWS_FIXTURE_DEADLINE_MS = 75_000 + 10_000 + 5_000;
+function fixtureDeadline(timeout = EVENTUALLY_DEFAULT_MS) {
+  return process.platform === "win32" ? Math.max(timeout, WINDOWS_FIXTURE_DEADLINE_MS) : timeout;
+}
 async function eventually(predicate, timeout = EVENTUALLY_DEFAULT_MS) {
-  const end = Date.now() + timeout;
+  const end = Date.now() + fixtureDeadline(timeout);
   while (!await predicate()) { if (Date.now() > end) throw Error("Fixture deadline"); await pause(20); }
 }
 async function freePort() {
   const server = createServer(); await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port;
 }
+// The desktop's free-port probe has closed, and Windows can still report that port in use. The squatter
+// closes and binds again on the error event until it is the listener, or the fixture deadline passes.
+function listenLoopback(server, port) {
+  const end = Date.now() + fixtureDeadline();
+  return new Promise((resolve, reject) => {
+    let waiting = false;
+    const bind = () => server.listen(port, "127.0.0.1");
+    const onError = (error) => {
+      if (error?.code === "EADDRINUSE" && Date.now() <= end) {
+        if (waiting) return;
+        waiting = true;
+        const retry = () => { waiting = false; setTimeout(bind, 50); };
+        try { server.close(() => retry()); } catch { retry(); }
+        return;
+      }
+      server.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => { server.off("error", onError); resolve(); };
+    server.on("error", onError);
+    server.once("listening", onListening);
+    bind();
+  });
+}
 
 // A failed test used to leave engines, IPC, poll timers or the window server open.
 // node --test then never exited (PR #637: 8.5 minutes of silence until the 15-minute job cap).
 // Per-test budget is above the longest in-file wait (30s ready + 70s drain/swap) on slow runners.
-const TEST_TIMEOUT_MS = 120_000;
+// Windows floors each fixture deadline at WINDOWS_FIXTURE_DEADLINE_MS, so that chain is 90s + 70s.
+const TEST_TIMEOUT_MS = process.platform === "win32" ? 200_000 : 120_000;
 let failedTests = 0;
 function test(name, options, fn) {
   if (typeof options === "function") {
@@ -102,7 +144,7 @@ async function createFixtureFiles(root) {
   const engine = join(root, "engine"), windowDir = join(root, "window");
   await mkdir(join(engine, "dist"), { recursive: true }); await mkdir(windowDir);
   await writeFile(join(engine, "dist/build-info.json"), '{"version":"fixture"}');
-  const script = `import fs from "node:fs";import http from "node:http";
+  const script = `import fs from "node:fs";import http from "node:http";import net from "node:net";
 const root=${JSON.stringify(root)}, file=root+"/starts.json";
 const starts=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[];
 starts.push(process.pid);const tmp=file+"."+process.pid+".tmp";fs.writeFileSync(tmp,JSON.stringify(starts));fs.renameSync(tmp,file);
@@ -119,7 +161,7 @@ if(starts.length===1&&fs.existsSync(root+"/slow-drain-reply")){if(m.type==="bran
 // late-drain-ack: a saturated first engine answers nothing, yet the drain request lands and it exits 12 s later.
 if(starts.length===1&&fs.existsSync(root+"/late-drain-ack")){if(m.type==="branch-desktop:drain-stop"&&!globalThis.draining){globalThis.draining=true;setTimeout(()=>{fs.writeFileSync(root+"/drained-"+process.pid,"1");process.exit(0);},12000);}return;}// A current engine steps down for its standby: it releases the state and keeps its run in flight (busy-run).
 // fenced: a stepped-down engine admits nothing new (fence-readyz: its /readyz says so). slow-deactivate: it answers late.
-if(m.type==="branch-desktop:deactivate"){if(fs.existsSync(root+"/older-engine")||fs.existsSync(root+"/no-handoff"))return;if(starts.length===1&&fs.existsSync(root+"/refuse-deactivate-exit")){process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:false},()=>process.exit(1));return;}if(fs.existsSync(root+"/deactivate-overrun-exit")){globalThis.fenced=true;setTimeout(()=>process.exit(1),100);return;}globalThis.fenced=true;fs.writeFileSync(root+"/released-"+process.pid,"1");if(fs.existsSync(root+"/busy-run")&&!globalThis.run){globalThis.run=new Promise(r=>setTimeout(()=>{fs.appendFileSync(root+"/transcript.txt","old run final\\n");r();},2000));}setTimeout(()=>process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:!fs.existsSync(root+"/refuse-deactivate")}),fs.existsSync(root+"/slow-deactivate")?3000:0);return;}
+if(m.type==="branch-desktop:deactivate"){if(fs.existsSync(root+"/older-engine")||fs.existsSync(root+"/no-handoff"))return;if(starts.length===1&&fs.existsSync(root+"/refuse-deactivate-exit")){process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:false},()=>process.exit(1));return;}if(fs.existsSync(root+"/deactivate-overrun-exit")){globalThis.fenced=true;setTimeout(()=>{try{listener.close()}catch{}process.exit(1)},100);return;}globalThis.fenced=true;fs.writeFileSync(root+"/released-"+process.pid,"1");if(fs.existsSync(root+"/busy-run")&&!globalThis.run){globalThis.run=new Promise(r=>setTimeout(()=>{fs.appendFileSync(root+"/transcript.txt","old run final\\n");r();},2000));}setTimeout(()=>process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:!fs.existsSync(root+"/refuse-deactivate")}),fs.existsSync(root+"/slow-deactivate")?3000:0);return;}
 // rollback records which other engines were still alive when it ran: the failed standby must already be gone.
 if(m.type==="branch-desktop:rollback"){if(fs.existsSync(root+"/older-engine")||fs.existsSync(root+"/no-handoff"))return;const ok=!fs.existsSync(root+"/refuse-rollback");if(ok){globalThis.fenced=false;if(fs.existsSync(root+"/rollback-ready-delay"))globalThis.rollbackReadyAt=Date.now()+11000;try{fs.unlinkSync(root+"/released-"+process.pid);}catch{}}fs.writeFileSync(root+"/rolled-back-"+process.pid,JSON.stringify(starts.filter(p=>p!==process.pid&&(()=>{try{process.kill(p,0);return true;}catch{return false;}})())));process.send({type:"branch-desktop:rollback-result",id:m.id,ok});return;}
 if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
@@ -135,8 +177,12 @@ if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
   const announce=()=>process.send?.({type:"branch-desktop:standby-ready",pid:process.pid});
   if(fs.existsSync(root+"/hold-standby")){const timer=setInterval(()=>{if(!fs.existsSync(root+"/hold-standby")){clearInterval(timer);announce();}},10);}else announce();
 }
-// No EADDRINUSE retry: an engine listens once on the port the desktop gave it, so a standby on the live port fails.
-const listen=()=>listener.listen(Number(process.argv.at(-1)),"127.0.0.1");
+// Windows: exclusive:false rebinds a port that is reserved but not listening. A live holder
+// still refuses the bind. Retry the bind without connecting; a connection to a closing
+// socket keeps that reservation. One probe after the first misses: bytes mean a live holder
+// and the process exits. Silence means keep binding, up to 60s on Windows and 5s elsewhere
+// (a squatter must still fail inside the non-Windows "kept" wait).
+const listen=()=>{const port=Number(process.argv.at(-1));const started=Date.now();const limit=process.platform==="win32"?60000:5000;const bind=()=>{if(process.platform==="win32")listener.listen({port,host:"127.0.0.1",exclusive:false});else listener.listen(port,"127.0.0.1");};let probing=false;let probed=false;const retry=()=>{if(Date.now()-started>limit)process.exit(1);else setTimeout(bind,50);};listener.on("error",error=>{if(!error||error.code!=="EADDRINUSE"){process.exit(1);return;}if(probing)return;if(!probed&&Date.now()-started>=500){probed=true;probing=true;const probe=new net.Socket();let settled=false;let timer;const finish=taken=>{if(settled)return;settled=true;clearTimeout(timer);probe.destroy();probing=false;if(taken)process.exit(1);else retry();};probe.once("error",()=>finish(false));probe.once("data",()=>finish(true));timer=setTimeout(()=>finish(false),300);probe.connect(port,"127.0.0.1",()=>{try{probe.write("GET / HTTP/1.0"+String.fromCharCode(13,10,13,10));}catch{finish(false);}});return;}retry();});bind();};
 // As the real engine: a standby binds only after the old engine released state (stepped down, or drained).
 const released=()=>fs.existsSync(root+"/released-"+starts[0])||fs.existsSync(root+"/drained-"+starts[0]);
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-exits-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);process.exit(1);}},10);}
@@ -714,7 +760,7 @@ test("a handoff whose standby port was taken gives control back without rejectin
   };
   await eventually(async () => Boolean(await standbyLaunch()), 30_000);
   const { port } = await standbyLaunch();
-  const squatter = createServer(socket => socket.destroy()); await new Promise(resolve => squatter.listen(port, "127.0.0.1", resolve));
+  const squatter = createServer(socket => { socket.write("1"); setTimeout(() => socket.destroy(), 1000); }); await listenLoopback(squatter, port);
   try {
     await unlink(join(root, "hold-standby"));
     await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 40_000);
@@ -987,8 +1033,9 @@ test("a standby port taken before the engine binds it falls back to the live por
   const standby = (await starts())[1];
   await eventually(() => existsSync(join(root, `launch-${standby}.json`)));
   const { port } = JSON.parse(await readFile(join(root, `launch-${standby}.json`), "utf8"));
-  // Readiness probes connect to the squatter too: drop them at once, so closing it never waits on a lingering socket.
-  const squatter = createServer(socket => socket.destroy()); await new Promise(resolve => squatter.listen(port, "127.0.0.1", resolve));
+  // The bind probe treats bytes on the connection as a live holder. Answer, then drop the socket
+  // so closing the squatter never waits on a readiness probe.
+  const squatter = createServer(socket => { socket.write("1"); setTimeout(() => socket.destroy(), 1000); }); await listenLoopback(squatter, port);
   try {
     await unlink(join(root, "hold-standby"));
     await eventually(() => swapped(root), 70_000);
@@ -1042,7 +1089,7 @@ test("an engine that exits while an update warms its standby is recovered before
   await eventually(async () => (await starts()).length === 2);
   const warming = (await starts())[1];
   await writeFile(join(root, "release-ready"), "ready");
-  process.kill(old, "SIGTERM");
+  signalExit(old);
   await eventually(() => !alive(old));
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update failed"), 30_000);
   await eventually(async () => { const latest = (await starts()).at(-1); return ![old, warming].includes(latest) && alive(latest) && await servingOn(gatewayPort); }, 30_000);
