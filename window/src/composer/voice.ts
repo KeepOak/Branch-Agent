@@ -82,11 +82,20 @@ async function openMic(rate: number, onFrame: (samples: Float32Array) => void, c
   };
 }
 
+/** Why the microphone said no (Private #1095, B-097): Settings › Permissions is the page that can allow it. */
+export const MIC_DENIED = "Branch can’t use the microphone. Allow it in Settings › Permissions, then try again.";
+export const MIC_MISSING = "No microphone found.";
+
 /** Why the microphone or the engine said no, in the window's words. */
 export function voiceError(e: unknown): string {
-  if (e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "SecurityError")) return "Branch can’t use the microphone. Allow it for this window, then try again.";
-  if (e instanceof DOMException && e.name === "NotFoundError") return "No microphone found.";
+  if (e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "SecurityError")) return MIC_DENIED;
+  if (e instanceof DOMException && e.name === "NotFoundError") return MIC_MISSING;
   return e instanceof Error ? e.message : String(e);
+}
+
+/** The Settings page that can fix this microphone refusal, or null when Settings can’t. */
+export function micSettingsPage(message: string): "settings/permissions" | null {
+  return message.includes("Settings › Permissions") ? "settings/permissions" : null;
 }
 
 export type DictationEvents = { onText: (text: string) => void; onLevel: (level: number) => void; onError: (message: string) => void };

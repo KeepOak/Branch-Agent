@@ -9,10 +9,11 @@ import { readDetected } from "../../setup/setup-model";
 import { readFileSync } from "node:fs";
 import { answeredBy, canSayHello, freshState, greeting, MODES, picked, PLAN_FIRST_REASON, primary, STEPS, suggest, togglePick } from "./model";
 import { Onboarding } from "./Onboarding";
+import { recalledSessionName, rememberSessionName } from "./session-name";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
+afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; rememberSessionName(""); });
 
 const ALL = ["branch.setup.detect", "branch.setup.verify", "branch.setup.activate", "models.authStatus", "config.get", "config.patch", "trunks.template.list", "trunks.template.create", "agents.list", "chat.send"];
 type Answers = Record<string, unknown | ((params: unknown) => unknown)>;
@@ -270,6 +271,17 @@ describe("Your first Trunk (step 4)", () => {
     await act(async () => button(host, "Start with Sapling").click());
     await flush();
     expect(calls(request, "chat.send")).toEqual([expect.objectContaining({ sessionKey: "agent:sapling:main", message: greeting("Ada") })]);
+  });
+
+  it("remembers the name for later greetings when this connection has no profile", async () => {
+    const { engine, request } = fakeEngine({ "users.self": {} });
+    const { host } = await show(engine);
+    await typeName(host, "Ada");
+    await act(async () => button(host, "Get started").click());
+    await flush();
+    expect(recalledSessionName()).toBe("Ada");
+    expect(calls(request, "users.setDisplayName")).toEqual([]);
+    expect(host.querySelector("h1")?.textContent).toBe("Your models");
   });
 
   it("stays on Welcome when the profile refuses the name", async () => {
