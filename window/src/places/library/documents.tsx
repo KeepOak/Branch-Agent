@@ -97,7 +97,7 @@ export function DocumentsTab({ engine, level, trunks, defaultId, mainKey }: { en
     {!docs.list && !docs.error && <p className="lib-hint" role="status">Loading…</p>}
     {docs.list && !docs.list.docs.length && !docs.list.errors.length && <EmptyLine icon={<EmptyIcon name="file" />}>{folder ? "No documents." : "No documents yet. Trunks add what they read here; you can write one too."}</EmptyLine>}
     <div className="lib-plain" data-testid="document-list">
-      {docs.list?.docs.map(d => <Row key={d.agentId + ":" + d.path} badge={d.kind === "directory" ? <IcoTile icon="folder" /> : <TypeBadge name={d.name} />} title={d.kind === "directory" ? d.name : documentTitle(d.name, level)}
+      {docs.list?.docs.map(d => <Row key={d.agentId + ":" + d.path} badge={d.kind === "directory" ? <IcoTile icon="folder" /> : <TypeBadge name={d.name} />} title={d.kind === "directory" ? d.name : documentTitle(d.name, level, files.filter(f => f.agentId === d.agentId).map(f => f.name))}
         line={[d.trunk, d.kind === "directory" ? "folder" : when(d.updatedAtMs)].filter(Boolean).join(" · ")}>
         <button type="button" className="btn sm" onClick={() => (d.kind === "directory" ? setFolder({ agentId: d.agentId, trunk: d.trunk, path: d.path }) : editableDocument(d.path) ? setEditing({ agentId: d.agentId, path: d.path }) : setOpen(d))}>Open</button>
       </Row>)}

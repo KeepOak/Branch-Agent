@@ -8,11 +8,13 @@ import { shows, type Level } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
 import { fileOf, rec, useResource } from "./data";
 
-/** A document's name as people read it: "Untitled document", not "Untitled document.md". */
-export function documentTitle(name: string, level: Level): string {
+/** A document's name as people read it: "Untitled document", not "Untitled document.md". When another file beside it
+ * would read the same ("plan.md" and "plan.txt"), both keep their extension; Advanced always shows it. */
+export function documentTitle(name: string, level: Level, siblings: readonly string[] = []): string {
   if (shows(level, "advanced")) return name;
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(0, dot) : name;
+  const stem = (file: string) => { const dot = file.lastIndexOf("."); return dot > 0 ? file.slice(0, dot) : file; };
+  const plain = stem(name);
+  return siblings.some(other => other !== name && stem(other) === plain) ? name : plain;
 }
 
 /** Text documents the Library edits: the ones in a Trunk's Documents folder that "Write a new document" makes. */

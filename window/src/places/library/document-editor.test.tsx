@@ -5,6 +5,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
+import { documentTitle } from "./document-editor";
 import { DocumentsTab } from "./documents";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -79,6 +80,13 @@ describe("Write a new document", () => {
     await save();
     expect(editor()!.textContent).toContain("Something changed since you looked. Look again.");
     expect(editor()!.textContent).not.toContain("since it was opened");
+  });
+
+  it("keeps the extension only where two files would read the same, and always at Advanced", () => {
+    expect(documentTitle("plan.md", "regular", ["plan.md", "notes.txt"])).toBe("plan");
+    expect(documentTitle("plan.md", "regular", ["plan.md", "plan.txt"])).toBe("plan.md");
+    expect(documentTitle("plan.txt", "regular", ["plan.md", "plan.txt"])).toBe("plan.txt");
+    expect(documentTitle("plan.md", "advanced")).toBe("plan.md");
   });
 
   it("asks before closing over unsaved text, and keeps it on Keep editing", async () => {
