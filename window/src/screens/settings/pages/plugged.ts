@@ -10,7 +10,6 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { CUSTOMIZE_PAGE } from "./customize-live";
-import { MEMORY_PAGE } from "./memory-live";
 import { AUTOS_PAGE } from "./autos-live";
 import { permissionsSlot } from "./permissions-approvals";
 import { privacySlot } from "./privacy-town";
@@ -68,8 +67,6 @@ export const R1_PAGES: PageSlots = {
   who: { rows: WHO_ROWS, controls: { "who.people.everyone": Everyone, "who.people.open": PeopleButtons, "who.records.signed": SignedRecords } },
   // Customize is a row page: the kinds hub, Saved prompts and Connected agents are its own cards (customize-live.tsx).
   customize: CUSTOMIZE_PAGE,
-  // Memory & documents is a row page; meaning search, the migration window and a few switches are its own (memory-live.tsx).
-  memory: MEMORY_PAGE,
   // Automations is a row page; where alerts go and the Edit windows are its own (autos-live.tsx).
   autos: AUTOS_PAGE,
   // Instructions & personality: the preview's seven cards; Classic's file list and Just about you inside them.

@@ -1,4 +1,0 @@
-window:src/screens/settings/pages/memory-live.test.tsx
-window:src/screens/settings/pages/customize-live.test.tsx
-window:src/screens/settings/rows.test.ts
-window:src/screens/frame/R1Window.test.tsx
