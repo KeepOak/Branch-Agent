@@ -1,6 +1,6 @@
 // Starts the Branch engine gateway as a child process (as the early copy's start.sh does) and stops it by PID.
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync, openSync, closeSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { constants as osConstants, setPriority } from "node:os";
@@ -9,6 +9,7 @@ import type { DesktopConfig } from "./config";
 import { appendCappedLog, BRANCH_LOG_LIMITS, cappedLogStream } from "./log-rotation";
 import { prepareNormalProfile, readPreparedNormalProfile } from "./profile-migration";
 import { recordEngine } from "./engine-records";
+import { fallbackEngineSpawnOptions } from "./fallback-engine";
 import { saveUnlessDiskFull } from "./disk-full";
 import { engineLingerArgs, engineServiceArgs, parseLingerAnswer, runEngineCli, type EngineServiceAction } from "./engine-service";
 import { HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
@@ -110,8 +111,12 @@ export async function runEngineLinger(cfg: DesktopConfig, engineDir: string, tok
   return parseLingerAnswer(await runEngineCli({ file: cfg.nodePath, args: engineLingerArgs(want), cwd: engineDir, env, timeoutMs: 60_000 }));
 }
 
-/** `port` defaults to the configured one; an update's standby passes its own spare port without changing the config. */
-export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false, port = cfg.gatewayPort, macComputerEndpoint?: string, macComputerReason?: string): ChildProcess {
+/**
+ * `port` defaults to the configured one; an update's standby passes its own spare port without changing the config.
+ * `surviveQuit`: the service fallback with Keep working on. Detached on every OS, output in gateway.log, hidden on Windows.
+ * Off (the default) is today's child, including Always on off and Keep working off.
+ */
+export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false, port = cfg.gatewayPort, macComputerEndpoint?: string, macComputerReason?: string, surviveQuit = false): ChildProcess {
   // The profile check can refuse a standby; it runs before the log is opened so a refusal leaks nothing.
   const prepared = standby ? readPreparedNormalProfile(join(cfg.dataDir, "home")) : undefined;
   const logPath = join(cfg.dataDir, "gateway.log");
@@ -134,15 +139,17 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   // The Mac driver secret must not leak to any child of the gateway.
   delete env.BRANCH_CUA_DRIVER_ENDPOINT;
   const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(port)];
-  const child = spawn(cfg.nodePath, args, {
-    cwd: engineDir,
-    env,
-    windowsHide: true,
-    detached: process.platform !== "win32",
-    stdio: ["ignore", "pipe", "pipe", "ipc"],
-  });
+  // A fallback that outlives quit writes the log itself. A pipe would break when the app that owns it has exited.
+  const logFd = surviveQuit ? openSync(logPath, "a") : undefined;
+  let child: ChildProcess;
+  try {
+    child = spawn(cfg.nodePath, args, fallbackEngineSpawnOptions({ platform: process.platform, surviveQuit, env, cwd: engineDir, logFd }));
+  } finally {
+    if (logFd !== undefined) closeSync(logFd);
+  }
   // Record the spawn before querying its start time, so a crash cannot lose the engine.
   recordEngine(cfg.dataDir, child, port, standby ? "standby" : "engine", cfg.nodePath);
+  if (surviveQuit) child.unref();
   if (endpointFile) child.once("close", () => { try { unlinkSync(endpointFile); } catch { /* already removed */ } });
   child.stdout?.pipe(log);
   child.stderr?.pipe(log);
@@ -207,9 +214,11 @@ export function stopWarmingStandby(): void {
  * new address. Resolves once the standby has warmed; a standby that exits, cannot report or times out is stopped,
  * so nothing is left behind and the live engine keeps serving.
  */
-export async function prepareStandbyGateway(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number): Promise<PreparedGateway> {
+export async function prepareStandbyGateway(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number, surviveQuit = false): Promise<PreparedGateway> {
   const port = await freeLoopbackPort();
-  const child = startGateway(cfg, engineDir, token, true, port);
+  // The successor has to outlive the engine it replaces. When that engine is the detached
+  // fallback, the standby is detached too, or Windows' job ends it when the old engine stops.
+  const child = startGateway(cfg, engineDir, token, true, port, undefined, undefined, surviveQuit);
   // POSIX cannot raise a lowered process back without privileges, and a promoted standby must run at full speed.
   if (process.platform === "win32") setEnginePriority(child, true);
   warmingStandby = child;
@@ -449,15 +458,20 @@ export async function waitForReady(cfg: DesktopConfig, child: ChildProcess, ms: 
   throw new GatewayReadinessTimeoutError();
 }
 
-/** Stops the gateway and its own child processes by its PID only. */
-export function stopGateway(child: ChildProcess, signal: "SIGTERM" | "SIGKILL" = "SIGTERM"): void {
-  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+/** Stops one engine process group by pid. Windows taskkill is immediate; other platforms signal the group. */
+export function stopEnginePid(pid: number, signal: "SIGTERM" | "SIGKILL" = "SIGTERM"): void {
   try {
-    if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10_000 });
-    else process.kill(-child.pid, signal);
+    if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10_000 });
+    else process.kill(-pid, signal);
   } catch {
     // already gone
   }
+}
+
+/** Stops the gateway and its own child processes by its PID only. */
+export function stopGateway(child: ChildProcess, signal: "SIGTERM" | "SIGKILL" = "SIGTERM"): void {
+  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+  stopEnginePid(child.pid, signal);
 }
 
 /** How long a failed engine's own shutdown (SIGTERM) may take before its process group is killed. */

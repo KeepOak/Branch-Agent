@@ -4,7 +4,7 @@
 // the step that owns it; Meet them creates the picked Trunks and lands in the first conversation (finish.ts).
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { readListedTemplates, type ListedTemplate } from "../seedbank/templates";
-import { createPicked, greet, readDefaultTrunk, recordOnboarding, startSetupTalk, type DefaultTrunk, type Made } from "./finish";
+import { createPicked, greet, readDefaultTrunk, recordOnboarding, saveDisplayName, startSetupTalk, type DefaultTrunk, type Made } from "./finish";
 import { FirstTrunk } from "./FirstTrunk";
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
@@ -51,6 +51,21 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
   const [trunkError, setTrunkError] = useState<string | null>(null);
   const [made, setMade] = useState<Made[]>([]);
   const [talking, setTalking] = useState(false), [talkError, setTalkError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  /** Writes the welcome name onto the profile. An empty name, or a connection with no profile, saves nothing. */
+  const keepName = async () => {
+    if (s.step !== 0 || !s.name.trim()) return true;
+    setSaving(true); setNameError(null);
+    try {
+      await saveDisplayName(engine, s.name);
+      return true;
+    } catch {
+      setNameError("Couldn’t save your name. Try again in a moment.");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
   const talk = async () => {
     if (!onTalk || talking) return;
     setTalking(true); setTalkError(null);
@@ -82,7 +97,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
       await recordOnboarding(engine, s);
       // The greeting is a real model reply, so it waits for a hello that worked. With examples or no model the
       // conversation opens empty: no chat.send that would fail with "Couldn't sign in" (ONBOARDING-PROPOSAL ⑤).
-      const sessionKey = helloOk(s.hello) ? await greet(engine, target.agentId, target.mainKey) : mainSessionOf(target.agentId, target.mainKey);
+      const sessionKey = helloOk(s.hello) ? await greet(engine, target.agentId, target.mainKey, s.name) : mainSessionOf(target.agentId, target.mainKey);
       onDone?.({ sessionKey, made: created.made, state: s });
     } catch (e) {
       setTrunkError(`Couldn’t start your first conversation. ${errorText(e)}`);
@@ -92,7 +107,11 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
   };
   const next = async () => {
     if (!p.ok || saving) return;
-    if (s.step < 2) { set({ step: clampStep(s.step + 1) }); return; }
+    if (s.step < 2) {
+      if (!(await keepName())) return;
+      set({ step: clampStep(s.step + 1) });
+      return;
+    }
     if (s.step === LAST_STEP) { await meet(); return; }
     const exec = MODES.find((m) => m.id === s.mode)?.exec;
     if (!exec) return;
@@ -108,13 +127,14 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
       setSaving(false);
     }
   };
+  const leave = async () => { if (await keepName()) onLater(s); };
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape" || where) return;
     e.preventDefault();
-    onLater(s);
+    void leave();
   };
   const body = s.step === 0
-    ? <Welcome where={s.where} onChangeWhere={() => setWhere(true)} />
+    ? <Welcome where={s.where} onChangeWhere={() => setWhere(true)} name={s.name} onName={(name) => { set({ name }); setNameError(null); }} nameError={nameError} />
     : s.step === 1
       ? <Models engine={engine} off={s.off} onOff={(off) => set({ off })} hello={s.hello} onHello={(hello) => set({ hello })} onExamples={(examples) => set({ examples })} />
       : s.step === 2
@@ -141,7 +161,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
         {talkError ? <p className="r1-ob-error" role="alert">{talkError}</p> : null}
         <div className="r1-ob-later">
           {s.step === 0 ? <><Coming need={WAITS_FOR.talk} unwired={!onTalk} reason={onTalk ? "This engine can’t start a conversation." : "Setting up by talking comes in a later update."} where="Set up by talking"><button type="button" className="r1-ob-link" disabled={talking} onClick={() => void talk()}>{talking ? "Starting…" : "Set up by talking"}</button></Coming><span aria-hidden="true">·</span></> : null}
-          <button type="button" className="r1-ob-link" data-local onClick={() => onLater(s)}>Set up later</button>
+          <button type="button" className="r1-ob-link" data-local onClick={() => void leave()}>Set up later</button>
         </div>
       </div>
       {where ? <WhereSheet where={s.where} onPick={(w) => { set({ where: w }); setWhere(false); }} onClose={() => setWhere(false)} /> : null}

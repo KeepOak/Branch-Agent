@@ -10,9 +10,24 @@ const plugins = app.expo.plugins as Plugin[];
 const pluginOptions = (name: string) => plugins.find((p): p is [string, Record<string, unknown>] => Array.isArray(p) && p[0] === name)?.[1];
 const assetExists = (file: unknown) => typeof file === 'string' && existsSync(path.join(__dirname, '../..', file));
 
+function pngSize(file: unknown) {
+  if (typeof file !== 'string') return { width: 0, height: 0 };
+  const buf = readFileSync(path.join(__dirname, '../..', file));
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
 describe('the installable Android build', () => {
   it('has its own Android package, so prebuild doesn’t fall back to com.anonymous', () => {
     expect(app.expo.android.package).toBe('com.keepoak.branch');
+  });
+
+  it('shows Branch Agent on the launcher and keeps the slug and package id', () => {
+    expect(app.expo.name).toBe('Branch Agent');
+    expect(app.expo.android.label).toBe('Branch Agent');
+    expect(app.expo.ios.infoPlist.CFBundleDisplayName).toBe('Branch Agent');
+    expect(app.expo.slug).toBe('branch');
+    expect(app.expo.android.package).toBe('com.keepoak.branch');
+    expect(app.expo.ios.bundleIdentifier).toBe('com.keepoak.branch');
   });
 
   it('has a splash logo, because prebuild links a splashscreen_logo drawable and fails without one', () => {
@@ -23,6 +38,15 @@ describe('the installable Android build', () => {
   it('has an app icon and an Android adaptive icon that exist on disk', () => {
     expect(assetExists(app.expo.icon)).toBe(true);
     expect(assetExists(app.expo.android.adaptiveIcon.foregroundImage)).toBe(true);
+  });
+
+  it('uses the KeepOak oak-leaf logo at 1024px, not the purple Y placeholder', () => {
+    expect(existsSync(path.join(__dirname, '../../assets/branch-mark.svg'))).toBe(false);
+    expect(app.expo.android.adaptiveIcon.backgroundColor).toBe('#153a28');
+    expect(app.expo.android.adaptiveIcon.backgroundColor.toLowerCase()).not.toBe('#4f46e5');
+    expect(pngSize(app.expo.icon)).toEqual({ width: 1024, height: 1024 });
+    expect(pngSize(app.expo.android.adaptiveIcon.foregroundImage)).toEqual({ width: 1024, height: 1024 });
+    expect(pngSize(pluginOptions('expo-splash-screen')?.image)).toEqual({ width: 1024, height: 1024 });
   });
 
   it('can still reach the computer over plain ws:// on the home network, as Expo Go can', () => {
@@ -40,7 +64,7 @@ describe('the installable Android build', () => {
   });
 
   it('declares a versionCode and REQUEST_INSTALL_PACKAGES for sideloaded APK updates', () => {
-    expect(app.expo.android.versionCode).toBe(1);
+    expect(app.expo.android.versionCode).toBe(4);
     expect(app.expo.android.permissions).toContain('android.permission.REQUEST_INSTALL_PACKAGES');
     expect(plugins).toContain('./plugins/withApkInstaller.js');
     expect(plugins).toContain('./plugins/withReleaseSigning.js');

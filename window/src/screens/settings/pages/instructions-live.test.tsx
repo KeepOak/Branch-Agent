@@ -72,9 +72,14 @@ describe("R1 Settings › Instructions & personality is a native R1 page with th
     expect(request.mock.calls.filter(([m]) => m === "agents.files.list").map(([, p]) => p)).toContainEqual({ agentId: "scout" });
   });
 
-  it("draws all seven cards at Advanced, and says why each Coming row waits in plain words", async () => {
+  it("draws the working cards at Advanced and all seven at Technical, and says why each Coming row waits in plain words", async () => {
     await mount();
     await setLevel("Advanced");
+    // Kits, How replies are written, Prompts, What goes with every message and Rules all wait for a later update: they
+    // show with every Coming row, at Technical (Private #1093 item 4).
+    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(["Just about you", "Project instructions"]);
+    expect(host.querySelector("[data-later-rows]")).toBeNull();
+    await setLevel("Technical");
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
     expect(undeclaredControls(host.querySelector(".r1s-col")!).filter((e) => !e.closest("[data-classic-block]"))).toEqual([]);
     const reasons = [...host.querySelectorAll<HTMLElement>("[data-coming]")].map((r) => (r.querySelector(".r1s-note")?.textContent ?? "").replace(r.querySelector(":scope > b")?.textContent ?? "\u0000", ""));
