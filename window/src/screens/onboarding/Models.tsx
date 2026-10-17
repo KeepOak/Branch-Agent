@@ -2,7 +2,7 @@
 // Say hello is a real model call (setup's testModel: branch.setup.verify, or branch.setup.activate for a new pick),
 // never the preview's timed fetch. Continue is always allowed: a free local model is set up without an account.
 // Try it with examples lists the example Trunks the engine carries (trunks.template.starters).
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "../../composer/icons";
 import { Coming } from "../../glass/coming";
@@ -10,7 +10,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { Logo } from "../../places/settings/set1/service";
 import { SetupAddAccountDialog } from "../../setup/SetupFlow";
 import { logoId } from "../../setup/steps-early";
-import { ensureNoKeyDefault } from "../../composer/no-key-default";
+import { FreeModelSetup } from "../../composer/FreeModelSetup";
 import { testModel, useDetected } from "../../setup/use-setup-engine";
 import { answeredBy, canSayHello, EXAMPLES_REASON, toggle, WAITS_FOR, type Example, type Hello } from "./model";
 import { examplesErrorText, examplesHint, loadExampleTrunks } from "./try-examples";
@@ -31,10 +31,6 @@ export function Models({ engine, off, onOff, hello, onHello, onExamples }: Props
   };
   const rows = detected?.candidates ?? [];
   const none = Boolean(detected) && !rows.length && !detected?.configuredModel;
-  useEffect(() => {
-    if (!none) return;
-    void ensureNoKeyDefault(engine);
-  }, [engine, none]);
   const sayHello = () => {
     if (!detected || hello === "busy") return;
     onHello("busy");
@@ -52,6 +48,7 @@ export function Models({ engine, off, onOff, hello, onHello, onExamples }: Props
       <h1>Your models</h1>
       <p className="r1-ob-lede">{none ? "No models on this computer yet. A free local model will be set up so you can chat without an account." : "We found these on this computer. Untick any you don’t want Branch to use."}</p>
       {error ? <p className="r1-ob-error" role="alert">{error} <button type="button" className="r1-ob-link" data-local onClick={reload}>Try again</button></p> : null}
+      {none ? <FreeModelSetup engine={engine} onReady={reload} variant="onboarding" /> : null}
       {!detected && !error ? <p className="r1-ob-hint" aria-live="polite">Looking on this computer…</p> : null}
       {rows.length ? (
         <div className="r1-ob-list">

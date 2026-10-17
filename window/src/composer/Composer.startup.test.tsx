@@ -16,6 +16,11 @@ describe("Composer startup preparation", () => {
   it("offers one account action when no model is connected", async () => {
     const request = vi.fn(async (method: string) => {
       if (method === "agents.list") return { agents: [{ id: "main", name: "Oak" }], defaultId: "main" };
+      if (method === "branch.setup.activate.start") return {};
+      if (method === "wizard.next") {
+        return { done: false, step: { id: "download", type: "confirm", message: "Download Qwen (5.7 GB)?", initialValue: false } };
+      }
+      if (method === "wizard.cancel") return {};
       if (method === "branch.setup.activate") return new Promise(() => {});
       return {};
     });
@@ -37,6 +42,9 @@ describe("Composer startup preparation", () => {
     const request = vi.fn(async (method: string) => {
       if (method === "agents.list") return { agents: [{ id: "main", name: "Oak" }], defaultId: "main" };
       if (method === "models.list") return { models: [] };
+      if (method === "branch.setup.activate.start") return {};
+      if (method === "wizard.next") return { done: true, status: "error", error: "A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster." };
+      if (method === "wizard.cancel") return {};
       if (method === "branch.setup.activate") return { ok: false, error: "A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster." };
       return {};
     });
@@ -46,14 +54,12 @@ describe("Composer startup preparation", () => {
     const root = createRoot(host);
     try {
       await act(async () => root.render(<Composer name="Oak" working={false} disabled={false} onSend={vi.fn()} onStop={vi.fn()} engine={engine} onOpen={onOpen} />));
-      await vi.waitFor(() => expect(host.querySelector('[data-testid="no-model"]')?.getAttribute("role")).toBe("alert"));
-      const line = host.querySelector('[data-testid="no-model"]')!;
-      expect(line.textContent).toContain("A free local model isn’t ready");
+      await vi.waitFor(() => expect(host.querySelector('[data-testid="no-key-failed"]')).not.toBeNull());
+      expect(host.querySelector('[data-testid="no-key-failed"]')?.textContent).toContain("A free local model isn’t ready");
       expect(host.querySelector("textarea")?.getAttribute("placeholder")).not.toBe("Getting a free model ready…");
-      const buttons = [...line.querySelectorAll<HTMLButtonElement>("button")].map((b) => b.textContent);
-      expect(buttons).toEqual(["Try again", "Add an account"]);
-      await act(async () => line.querySelector<HTMLButtonElement>("button")!.click());
-      expect(request.mock.calls.filter((c) => c[0] === "branch.setup.activate").length).toBe(2);
+      expect([...host.querySelectorAll("button")].map((b) => b.textContent).filter((t) => t === "Try again" || t === "Add an account")).toEqual(["Try again", "Add an account"]);
+      await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Try again")!.click());
+      expect(request.mock.calls.filter((c) => c[0] === "branch.setup.activate.start").length).toBeGreaterThanOrEqual(2);
     } finally { await act(async () => root.unmount()); }
   });
   it("keeps the draft and sends nothing when Enter is pressed during preparation", async () => {
