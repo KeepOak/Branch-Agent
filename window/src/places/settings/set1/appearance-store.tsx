@@ -67,7 +67,7 @@ const FONTS: Record<string, string> = {
   "atkinson-hyperlegible": "Atkinson Hyperlegible", fraunces: "Fraunces", lora: "Lora", "jetbrains-mono": "JetBrains Mono",
   opendyslexic: "OpenDyslexic", lexend: "Lexend",
 };
-/** Reading fonts that ship with the window (public/fonts/reading, SIL OFL 1.1, notices in the OFL-*.txt files there): they work
+/** Reading fonts that ship with the window (public/fonts/reading, SIL OFL 1.1, each notice and licence in the font file's own metadata): they work
  *  offline and never ask a font server. Private #1100. */
 export const BUNDLED_FONTS: Record<string, string> = { opendyslexic: "OpenDyslexic", "atkinson-hyperlegible": "AtkinsonHyperlegible", lexend: "Lexend" };
 /** The @font-face rules for a bundled reading font (regular and bold), or "" for any other font. */

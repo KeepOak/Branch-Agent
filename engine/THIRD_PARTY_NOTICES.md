@@ -70,18 +70,20 @@ SOFTWARE.
 
 Three fonts ship with the Branch window in `window/public/fonts/reading/` for
 Settings > Appearance > Reading. Each is used unchanged under the SIL Open Font
-License, Version 1.1. The original copyright notices and the full licence text
-ship beside the fonts, verbatim, as each upstream ships them: `OFL-OpenDyslexic.txt`,
-`OFL-AtkinsonHyperlegible.txt` and `OFL-Lexend.txt` in the same folder, and
-each font file also carries its notice and licence in its own metadata.
+License, Version 1.1. Each font file carries its original copyright notice and
+the full licence text, verbatim, in its own metadata (the License field of the
+font's name table), which OFL 1.1 condition 2 allows. Atkinson Hyperlegible and
+Lexend also ship their upstream licence files beside the fonts, unchanged:
+`OFL-AtkinsonHyperlegible.txt` and `OFL-Lexend.txt` in the same folder.
 
 ### OpenDyslexic
 
 - Files: `OpenDyslexic-Regular.woff2`, `OpenDyslexic-Bold.woff2`
 - Upstream: https://github.com/antijingoist/opendyslexic (`compiled/`, unmodified)
 - License: SIL Open Font License 1.1
-- Copyright: Copyright (c) 2019-07-29, Abbie Gonzalez (https://abbiecod.es),
-  with Reserved Font Name OpenDyslexic. Copyright (c) 12/2012 - 2019
+- Copyright: Abbie Gonzalez, 2012 to 2019, with Reserved Font Name
+  OpenDyslexic. The full notice and licence, byte for byte as upstream's
+  `OFL.txt`, are in the License field of both font files.
 
 ### Atkinson Hyperlegible
 

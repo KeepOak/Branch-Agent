@@ -3,6 +3,7 @@
 // window (SIL OFL 1.1), work offline, and the conversation font can be picked at Regular.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { brotliDecompressSync } from "node:zlib";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,6 +47,38 @@ async function render(engine: WindowEngine) {
   await act(async () => { await Promise.resolve(); });
 }
 const lookCss = () => document.getElementById("branch-look")?.textContent ?? "";
+// WOFF2 known-table tags, in the order of the spec's flag index.
+const WOFF2_TAGS = "cmap head hhea hmtx maxp name OS/2 post cvt_ fpgm glyf loca prep CFF_ VORG EBDT EBLC gasp hdmx kern LTSH PCLT VDMX vhea vmtx BASE GDEF GPOS GSUB EBSC JSTF MATH CBDT CBLC COLR CPAL SVG_ sbix acnt avar bdat bloc bsln cvar fdsc feat fmtx fvar gvar hsty just lcar mort morx opbd prop trak Zapf Silf Glat Gloc Feat Sill".split(" ").map((t) => t.replace("_", " "));
+/** The licence text a WOFF2 font carries in its name table (name ID 13, Windows platform). */
+function embeddedLicence(bytes: Buffer): string {
+  let off = 48;
+  const base128 = () => { let v = 0; for (let i = 0; i < 5; i += 1) { const c = bytes[off++]; v = v * 128 + (c & 127); if (c < 128) return v; } throw new Error("bad UIntBase128"); };
+  const tables: { tag: string; len: number }[] = [];
+  for (let i = 0; i < bytes.readUInt16BE(12); i += 1) {
+    const flags = bytes[off++];
+    let tag = WOFF2_TAGS[flags & 63];
+    if ((flags & 63) === 63) { tag = bytes.toString("latin1", off, off + 4); off += 4; }
+    const length = base128();
+    const transformed = tag === "glyf" || tag === "loca" ? flags >> 6 === 0 : flags >> 6 !== 0;
+    tables.push({ tag, len: transformed ? base128() : length });
+  }
+  const data = brotliDecompressSync(bytes.subarray(off, off + bytes.readUInt32BE(20)));
+  let at = 0;
+  for (const t of tables) {
+    if (t.tag === "name") {
+      const name = data.subarray(at, at + t.len);
+      const strings = name.readUInt16BE(4);
+      for (let i = 0; i < name.readUInt16BE(2); i += 1) {
+        const r = 6 + i * 12;
+        if (name.readUInt16BE(r) !== 3 || name.readUInt16BE(r + 6) !== 13) continue;
+        const start = strings + name.readUInt16BE(r + 10);
+        return Buffer.from(name.subarray(start, start + name.readUInt16BE(r + 8))).swap16().toString("utf16le");
+      }
+    }
+    at += t.len;
+  }
+  return "";
+}
 const FILES = ["OpenDyslexic-Regular", "OpenDyslexic-Bold", "AtkinsonHyperlegible-Regular", "AtkinsonHyperlegible-Bold", "Lexend-Regular", "Lexend-Bold"];
 
 describe("Settings › Appearance › Reading fonts", () => {
@@ -73,9 +106,16 @@ describe("Settings › Appearance › Reading fonts", () => {
 
   it("ships each font file with its licence", () => {
     for (const f of FILES) expect(readFileSync(`public/fonts/reading/${f}.woff2`).subarray(0, 4).toString("latin1"), f).toBe("wOF2");
-    // Each licence file is the upstream file byte for byte (OFL 1.1 requires the notice and licence unchanged).
+    // OpenDyslexic carries its notice and licence in each font file's metadata, byte for byte as upstream's OFL.txt
+    // (OFL 1.1 condition 2 allows metadata). No separate licence file ships for it.
+    for (const f of ["OpenDyslexic-Regular", "OpenDyslexic-Bold"]) {
+      const licence = embeddedLicence(readFileSync(`public/fonts/reading/${f}.woff2`));
+      expect(licence, f).toContain("SIL Open Font License, Version 1.1");
+      expect(licence, f).toContain("with Reserved Font Name OpenDyslexic.");
+      expect(createHash("sha256").update(licence, "utf8").digest("hex"), f).toBe("caafcccfb70fc72458fcbda812ec8f0a06cb300cbabb87eabbb30b946124394b");
+    }
+    // Each other licence file is the upstream file byte for byte (OFL 1.1 requires the notice and licence unchanged).
     const UPSTREAM_SHA256 = {
-      "OFL-OpenDyslexic.txt": "caafcccfb70fc72458fcbda812ec8f0a06cb300cbabb87eabbb30b946124394b",
       "OFL-AtkinsonHyperlegible.txt": "e137caeef2ff7c04fbf87078ad09cf3dcba8a3a58a4aa4e2f399d42c50bc4b18",
       "OFL-Lexend.txt": "cdfed8f91b0660b004befb744757918b7c7d40dc2201b6c6d0a86b2fab9408f8",
     };
