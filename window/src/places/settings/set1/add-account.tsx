@@ -1,7 +1,7 @@
 // Add an account (DESIGN-SPEC §4.8.4): 1 which service (found on this computer, then every service the engine can
 // sign in to, by kind), 2 sign in (the service's own page through the engine's wizard, or a key), 3 where it goes in
 // the order. Every service and found item comes from the engine (models.authStatus capabilities, branch.setup.detect).
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
 import { list, text, visible, type RecordValue } from "../adapter";
@@ -9,6 +9,7 @@ import { useResource } from "../hooks";
 import { Footer, WizardBody } from "../AccountLogin";
 import { useWizard, type WizardStart, type WizardStep } from "../use-wizard";
 import { Empty, useSaveRunner } from "../kit";
+import { STALL_TEXT } from "../stall";
 import { brandOf, Logo, serviceName } from "./service";
 import { providersOf, tokenLabel, type Profile, type Provider } from "./accounts";
 
@@ -18,6 +19,11 @@ type Kind = "plan" | "key" | "local" | "custom";
 export type Service = { id: string; brand: string; name: string; kind: Kind; signedIn: number; logins: RecordValue[]; choice?: string; keySupported?: boolean; providers?: string[] };
 const FEATURED = ["openai", "openrouter", "xai", "google", "anthropic"];
 const KIND_RANK: Record<Kind, number> = { local: 0, custom: 1, plan: 2, key: 3 };
+/** Local runtimes the engine may also advertise as login options. They belong on this computer, never under Your plan. */
+const LOCAL_RUNTIME = new Set(["ollama", "lmstudio", "opencode", "llama-cpp", "vllm", "localai", "jan"]);
+function isLocalRuntime(id: string): boolean {
+  return LOCAL_RUNTIME.has(brandOf(id));
+}
 type Step = { n: 1 } | { n: 2; svc: Service } | { n: 2; run: WizardStart; svc: Service } | { n: 3; svc: Service; before: string[] };
 
 const FRESH_WORD: Record<string, string> = { ok: "Connected", static: "Connected", expiring: "Signing in again soon", expired: "Signed out", missing: "Sign-in missing" };
@@ -30,18 +36,19 @@ const KIND_SUB: Record<Kind, string> = { plan: "your plan", key: "a key", local:
 function addSecretLogins(out: Service[], manual: RecordValue[], count: (id: string, key: boolean) => number): void {
   for (const o of manual.filter((x) => !/api-?key/i.test(text(x.id)))) {
     const brand = brandOf(text(o.brandId ?? o.id));
+    if (isLocalRuntime(brand)) continue;
     const login: RecordValue = { ...o, kind: "setup-secret", featured: false };
     const plan = out.find((s) => s.kind === "plan" && s.brand === brand);
     if (plan) {
       if (!plan.logins.some((l) => l.kind === "setup-secret" && l.id === login.id)) plan.logins.push(login);
       continue;
     }
-    out.push({ id: `plan:${brand}`, brand, name: serviceName(brand, o.groupLabel ?? o.label), kind: "plan", signedIn: count(brand, false), logins: [login] });
+    out.push({ id: `plan:${brand}`, brand, name: serviceName(brand, o.groupLabel ?? o.label), kind: "plan", signedIn: count(brand, false), logins: [login], keySupported: out.some((s) => s.kind === "key" && s.brand === brand) });
   }
 }
 
 function mergeKey(s: Service): string {
-  return s.kind === "local" || s.kind === "custom" ? `${s.kind}:${s.choice ?? s.brand}` : `cloud:${s.brand}`;
+  return s.kind === "local" || s.kind === "custom" ? `${s.kind}:${s.choice ?? s.brand}` : `${s.kind}:${s.brand}`;
 }
 
 function putService(out: Map<string, Service>, next: Service): void {
@@ -55,18 +62,31 @@ function putService(out: Map<string, Service>, next: Service): void {
   for (const login of next.logins) {
     if (!logins.some((row) => row.id === login.id && row.kind === login.kind)) logins.push(login);
   }
-  const kind: Kind = prev.kind === "plan" || next.kind === "plan" ? "plan" : prev.kind;
   out.set(key, {
     ...prev,
-    id: kind === "plan" ? `plan:${prev.brand}` : prev.id,
-    kind,
-    name: kind === "plan" && next.kind === "plan" ? next.name : prev.kind === "plan" ? prev.name : next.name,
+    name: prev.name || next.name,
     logins,
     signedIn: Math.max(prev.signedIn, next.signedIn),
     keySupported: Boolean(prev.keySupported || next.keySupported || prev.kind === "key" || next.kind === "key"),
     choice: prev.choice ?? next.choice,
     providers: [...new Set([...(prev.providers ?? [prev.brand]), ...(next.providers ?? [next.brand])])],
   });
+}
+
+function dedupeByName(services: Service[]): Service[] {
+  const out = new Map<string, Service>();
+  for (const row of services) {
+    const key = `${row.kind}:${row.name.trim().toLowerCase()}`;
+    const prev = out.get(key);
+    if (!prev) {
+      out.set(key, row);
+      continue;
+    }
+    const merged = new Map<string, Service>([[mergeKey(prev), prev]]);
+    putService(merged, row);
+    out.set(key, [...merged.values()][0] ?? row);
+  }
+  return [...out.values()];
 }
 
 function rankServices(a: Service, b: Service): number {
@@ -86,7 +106,11 @@ export function servicesOf(caps: RecordValue[], providers: Provider[], detect: R
     const brand = brandOf(raw);
     const logins = list(c.loginOptions).filter((o) => o.kind === "oauth" || o.kind === "device-code");
     const name = providers.find((p) => brandOf(p.provider) === brand)?.displayName ?? text(logins[0]?.groupLabel ?? raw);
-    if (logins.length) putService(out, { id: `plan:${brand}`, brand, name: serviceName(brand, name), kind: "plan", signedIn: count(raw, false), logins, providers: [raw] });
+    if (isLocalRuntime(brand)) {
+      putService(out, { id: `local:${brand}`, brand, name: serviceName(brand, name), kind: "local", signedIn: 0, logins: [], choice: raw, providers: [raw] });
+      continue;
+    }
+    if (logins.length) putService(out, { id: `plan:${brand}`, brand, name: serviceName(brand, name), kind: "plan", signedIn: count(raw, false), logins, keySupported: c.apiKeySupported === true, providers: [raw] });
     if (c.apiKeySupported === true) putService(out, { id: `key:${brand}`, brand, name: serviceName(brand, name, true), kind: "key", signedIn: count(raw, true), logins: [], keySupported: true, providers: [raw] });
   }
   const listed = [...out.values()];
@@ -94,12 +118,14 @@ export function servicesOf(caps: RecordValue[], providers: Provider[], detect: R
   const merged = new Map<string, Service>();
   for (const row of listed) putService(merged, row);
   for (const o of list(detect?.prepareOptions)) {
-    putService(merged, { id: `local:${text(o.id)}`, brand: brandOf(text(o.brandId ?? o.id)), name: visible(o.label), kind: "local", signedIn: 0, logins: [], choice: text(o.id) });
+    const brand = brandOf(text(o.brandId ?? o.id));
+    putService(merged, { id: `local:${text(o.id)}`, brand, name: serviceName(brand, o.label), kind: "local", signedIn: 0, logins: [], choice: text(o.id) });
   }
   for (const o of list(detect?.authOptions).filter((x) => x.kind === "custom")) {
-    putService(merged, { id: `custom:${text(o.id)}`, brand: brandOf(text(o.brandId ?? o.id)), name: visible(o.label), kind: "custom", signedIn: 0, logins: [], choice: text(o.id) });
+    const brand = brandOf(text(o.brandId ?? o.id));
+    putService(merged, { id: `custom:${text(o.id)}`, brand, name: serviceName(brand, o.label), kind: "custom", signedIn: 0, logins: [], choice: text(o.id) });
   }
-  return [...merged.values()].sort(rankServices);
+  return dedupeByName([...merged.values()]).sort(rankServices);
 }
 
 /** The newly signed-in profile, even when it was saved under an aliased provider id (minimax-portal → minimax). */
@@ -139,16 +165,26 @@ function Card({ children }: { children: ReactNode }) {
   return useContext(Clear) ? <div className="g-frost">{children}</div> : <>{children}</>;
 }
 
+/** Detect is ready to pin: it answered, or it failed for a reason other than the stall timer (a late answer may still follow a stall). */
+export function detectCatalogueReady(detect: { data?: unknown; loading: boolean; error?: string }): boolean {
+  return detect.data !== undefined || Boolean(detect.error && detect.error !== STALL_TEXT && !detect.loading);
+}
+
 export function AddAccountDialog({ engine, start, caps, providers, agent, onClose, clear }: Props) {
   const detect = useResource<RecordValue>(engine, "branch.setup.detect", agent);
-  const services = useMemo(() => servicesOf(caps, providers, detect.data), [caps, providers, detect.data]);
-  const first = start.provider && !detect.loading ? services.find((s) => serviceMatchesProvider(s, start.provider!) && s.kind === "plan") ?? services.find((s) => serviceMatchesProvider(s, start.provider!)) : undefined;
+  const live = useMemo(() => servicesOf(caps, providers, detect.data), [caps, providers, detect.data]);
+  const detectReady = detectCatalogueReady(detect);
+  const pinned = useRef<{ services: Service[]; detect?: RecordValue } | null>(null);
+  if (detectReady && !pinned.current) pinned.current = { services: live, detect: detect.data };
+  const services = pinned.current?.services ?? (detectReady ? live : []);
+  const detectView = pinned.current ? { ...detect, data: pinned.current.detect } : detect;
+  const first = start.provider && detectReady ? services.find((s) => serviceMatchesProvider(s, start.provider!) && s.kind === "plan") ?? services.find((s) => serviceMatchesProvider(s, start.provider!)) : undefined;
   const [step, setStep] = useState<Step>(first ? { n: 2, svc: first } : { n: 1 });
   useEffect(() => {
-    if (!start.provider || detect.loading) return;
+    if (!start.provider || !detectReady) return;
     const preferred = services.find((service) => serviceMatchesProvider(service, start.provider!) && service.kind === "plan") ?? services.find((service) => serviceMatchesProvider(service, start.provider!));
     if (preferred) setStep((current) => current.n === 1 || (current.n === 2 && !("run" in current) && serviceMatchesProvider(current.svc, start.provider!) && current.svc.kind === "key" && preferred.kind === "plan") ? { n: 2, svc: preferred } : current);
-  }, [detect.loading, services, start.provider]);
+  }, [detectReady, services, start.provider]);
   const [added, setAdded] = useState(false);
   const ids = providers.flatMap((p) => p.profiles.map((a) => a.profileId));
   const signedIn = () => { setAdded(true); if (step.n === 2) setStep({ n: 3, svc: step.svc, before: ids }); };
@@ -156,7 +192,7 @@ export function AddAccountDialog({ engine, start, caps, providers, agent, onClos
   return (
     <Clear.Provider value={Boolean(clear)}><Dialog title={title} wide={step.n === 1} clear={clear} onClose={() => onClose(added)} testid="add-account" footer={<StepFoot step={step} onBack={() => setStep({ n: 1 })} onClose={() => onClose(added)} />}>
       <div className="wiz-dots" aria-hidden="true">{[1, 2, 3].map((i) => <i key={i} className={i <= step.n ? "wz" : ""} />)}</div>
-      {step.n === 1 ? <PickService services={services} detect={detect} engine={engine} agent={agent} onPick={(svc) => setStep({ n: 2, svc })} onUsed={() => { setAdded(true); onClose(true); }} /> : null}
+      {step.n === 1 ? <PickService services={services} detect={detectView} waiting={!detectReady && !pinned.current} engine={engine} agent={agent} onPick={(svc) => setStep({ n: 2, svc })} onUsed={() => { setAdded(true); onClose(true); }} /> : null}
       {step.n === 2 && !("run" in step) ? <SignIn engine={engine} svc={step.svc} agent={agent} onRun={(run) => setStep({ n: 2, svc: step.svc, run })} onKey={signedIn} /> : null}
       {step.n === 2 && "run" in step ? <RunWizard engine={engine} run={step.run} onDone={signedIn} onBack={() => setStep({ n: 1 })} /> : null}
       {step.n === 3 ? <Placed engine={engine} svc={step.svc} before={step.before} agent={agent} onDone={() => onClose(true)} /> : null}
@@ -170,14 +206,14 @@ function StepFoot({ step, onBack, onClose }: { step: Step; onBack: () => void; o
   return <button type="button" className="btn ghost" onClick={onBack}>Back</button>;
 }
 
-type PickProps = { services: Service[]; detect: ReturnType<typeof useResource<RecordValue>>; engine: WindowEngine; agent: { agentId?: string }; onPick: (s: Service) => void; onUsed: () => void };
-function PickService({ services, detect, engine, agent, onPick, onUsed }: PickProps) {
+type PickProps = { services: Service[]; detect: ReturnType<typeof useResource<RecordValue>>; waiting?: boolean; engine: WindowEngine; agent: { agentId?: string }; onPick: (s: Service) => void; onUsed: () => void };
+function PickService({ services, detect, waiting, engine, agent, onPick, onUsed }: PickProps) {
   const [q, setQ] = useState("");
   const [tab, setTab] = useState<Kind | "all">("all");
   const [using, setUsing] = useState<RecordValue | null>(null);
   const g = usePill();
   if (using) return <RunWizard engine={engine} run={{ method: "branch.setup.activate.start", params: { kind: using.kind, modelRef: using.modelRef, ...agent } }} onDone={onUsed} onBack={() => setUsing(null)} />;
-  if (detect.loading && detect.data === undefined && !detect.error) {
+  if (waiting || (detect.loading && detect.data === undefined && !detect.error)) {
     return (
       <>
         <p className={g.label("aa-lede")} data-lines={g.clear ? "" : undefined}>Which service is the new account with?</p>

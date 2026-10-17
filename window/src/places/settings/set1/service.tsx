@@ -12,7 +12,7 @@ const MARKS: Record<string, [string, string]> = {
   local: ["transparent", '<rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'],
   keepoak: ["#1B1A18", '<path d="M12 3v2" stroke="#fff" stroke-width="1.8"/><path d="M4 10.5C4 7 7.6 5 12 5s8 2 8 5.5z" fill="#fff"/><path d="M5.7 11.5h12.6c0 5-2.7 9.5-6.3 9.5s-6.3-4.5-6.3-9.5z" fill="#E7753F"/>'],
 };
-const ALIAS: Record<string, string> = { "openai-codex": "openai", codex: "openai", "codex-cli": "openai", "claude-cli": "anthropic", "google-gemini-cli": "google", "gemini-cli": "google", gemini: "google", "google-vertex": "google", copilot: "github-copilot", "minimax-portal": "minimax", hf: "huggingface", "hugging-face": "huggingface" };
+const ALIAS: Record<string, string> = { "openai-codex": "openai", codex: "openai", "codex-cli": "openai", "claude-cli": "anthropic", "google-gemini-cli": "google", "google-gemini": "google", "gemini-cli": "google", gemini: "google", "google-vertex": "google", copilot: "github-copilot", "minimax-portal": "minimax", hf: "huggingface", "hugging-face": "huggingface" };
 const TILES = ["#56616B", "#2F6F4E", "#6B4FA0", "#9A5B2E", "#2E6C8E", "#8E3B5C", "#4E6B2F", "#5B5F97"];
 
 export function brandOf(id: string): string {
@@ -55,16 +55,25 @@ const NAMES: Record<string, string> = {
   lmstudio: "LM Studio",
   ollama: "Ollama",
   "ollama-cloud": "Ollama Cloud",
+  opencode: "OpenCode",
+  "opencode-go": "OpenCode Go",
+  "microsoft-foundry": "Microsoft Foundry",
   mistral: "Mistral",
   deepseek: "DeepSeek",
 };
+const ACRONYM = new Set(["llm", "ai", "id", "api"]);
+/** A capitalised or kebab provider id, never a real product label. */
+function looksLikeProviderId(value: string): boolean {
+  return /^[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*$/.test(value.trim());
+}
+function titleBrand(brand: string): string {
+  return brand.split(/[-_]/).filter(Boolean).map((part) => (ACRONYM.has(part) ? part.toUpperCase() : `${part.charAt(0).toUpperCase()}${part.slice(1)}`)).join(" ");
+}
 /** The name people know a service by. One brand, one name — never Litellm or Huggingface. */
 export function serviceName(provider: string, engineName?: unknown, _key?: boolean): string {
   const brand = brandOf(provider);
   if (NAMES[brand]) return NAMES[brand];
   const fallback = visible(engineName ?? provider);
-  if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(fallback)) {
-    return fallback.split("-").map((part) => (part === "llm" ? "LLM" : `${part.charAt(0).toUpperCase()}${part.slice(1)}`)).join(" ");
-  }
-  return fallback.charAt(0).toUpperCase() + fallback.slice(1);
+  if (!fallback || looksLikeProviderId(fallback)) return titleBrand(brand);
+  return fallback;
 }
