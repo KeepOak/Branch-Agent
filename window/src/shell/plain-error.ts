@@ -32,6 +32,7 @@ const SAYS: [RegExp, string][] = [
   [/\bNo API key found\b|\bno (?:model|provider) (?:is )?(?:connected|configured|set)\b|\bmodel_not_found\b|\bno auth profile\b|\bMissing(?:ApiKey|Credentials)\b/i, "No model is connected. Connect one in Settings, Models, then try again."],
   [/\bE(?:CONNREFUSED|CONNRESET|CONNABORTED|HOSTUNREACH|NETUNREACH|NOTFOUND|AI_AGAIN|PIPE)\b|\bgateway (?:closed|not connected)\b|\bsocket hang up\b|\bfetch failed\b|\bFailed to fetch\b|\bNetworkError\b/i, "Branch can’t reach its engine right now. It keeps trying, so try again in a moment."],
   [/\bENOSPC\b|\bno space left\b|\bQuotaExceededError\b/i, "This computer is out of space. Free some space, then try again."],
+  [/\binsufficient[_\s-]?quota\b|\bquota(?:\s+has been)?[_\s-]?exceeded\b|\bexceeded (?:your |the )?(?:current )?quota\b/i, "That plan or usage limit is used up. Check the plan, then try again."],
   [/\bENOENT\b|\bno such file or directory\b|\bENOTDIR\b/i, "That file or folder isn’t there. Check that it still exists, then try again."],
   [/\bE(?:ACCES|PERM|ROFS)\b|\bpermission denied\b|\boperation not permitted\b/i, "Branch isn’t allowed to do that here. Check the folder’s permissions, then try again."],
   [/NotInstalled|\bnot installed\b|\bcommand not found\b|\bnpm ERR!|\bE404\b/i, "That isn’t installed on this computer. Install it, then try again."],
@@ -48,8 +49,11 @@ const RAW: RegExp[] = [
   /\b(?:INVALID_REQUEST|UNAVAILABLE|NOT_FOUND|NOT_PAIRED|FORBIDDEN|UNAUTHORIZED|INTERNAL(?:_ERROR)?|ERR_[A-Z0-9_]+|[A-Z]{2,}_[A-Z0-9_]{2,})\b/, // a gateway or library code
   /\bunknown (?:method|agent id)\b|\bmethod not found\b/i, // an engine refusal in its own words
   /\b(?:sessions|chat|agents|config|models|plugins|skills|cron|memory|logbook|doctor|exec|node|tts|rooms|contacts|users|usage|backup|browser|computer|system|update|gateway|channels|canopy|projects|themes|wizard|portal|branch)\.[a-z][A-Za-z]*(?:\.[a-z][A-Za-z]*)*\b/, // an engine method name
-  /(?:^|[\s'"(=:])(?:~|\/(?:home|Users|root|opt|var|tmp|usr|etc|private|mnt|workspace|app|srv|snap|run|Library|Applications|Volumes))\/\S*/, // a file path
+  /(?:^|[\s'"(=:])(?:~\/|\/)[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]*)+/, // an absolute or home path, any root
+  /(?:^|[\s'"(=:])(?:\.\.?\/)\S+/, // a relative path that starts with ./ or ../
+  /(?:^|[\s'"(=:])(?:[A-Za-z0-9._-]+\/)+[A-Za-z0-9._-]+\.[A-Za-z][A-Za-z0-9]{1,8}\b/, // a relative file path (notes/plan.md)
   /\b[A-Za-z]:\\[^\s]*/, // a Windows path
+  /\binsufficient[_\s-]?quota\b|\bquota(?:\s+has been)?[_\s-]?exceeded\b|\bexceeded (?:your |the )?(?:current )?quota\b/i, // a plan or usage quota without 429
   /^\s*[{[]|\{\s*"\w+"\s*:/, // JSON
   /\b(?:HTTP|status(?: code)?)\s*[:=]?\s*[1-5]\d{2}\b/i, // an HTTP status
   /\bgateway (?:closed|not connected)\b/i, // a socket close
@@ -97,7 +101,8 @@ function plainWords(text: string, raw: (words: string) => boolean): string {
   const colon = trimmed.indexOf(": ");
   if (colon > 0) {
     const lead = trimmed.slice(0, colon).trim();
-    if (lead && !looksRaw(lead) && /^[\p{Lu}\p{N}]/u.test(lead)) {
+    // A lead that still names a path must not stay; Regular never shows a path, even as the screen's own words.
+    if (lead && !looksRaw(lead) && !/[\\/]/.test(lead) && /^[\p{Lu}\p{N}]/u.test(lead)) {
       const say = sentenceFor(trimmed.slice(colon + 2));
       return /\s/.test(lead) ? `${plainAddresses(lead, true).replace(/[.!?]*$/, ".")} ${say}` : `${lead}: ${say}`;
     }

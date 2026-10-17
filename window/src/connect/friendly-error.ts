@@ -10,7 +10,7 @@ const ERROR_PREFIX_RE =
   /^(?:(?:[a-z][\w-]*\s+)?(?:api\s*)?error|[A-Z][A-Za-z]*Error)(?:\s*\(\d{3}\)|\s+\d{3})?\s*[:\-]\s*/i;
 const STACK_RE = /\n\s*at\s+\S|:\d+:\d+\b/;
 const JSON_RE = /^\s*[{[]|[{[][^\n]*"(?:error|type|message|code)"\s*:/;
-const STATUS_RE = /\b(?:HTTP\s*)?[1-5]\d{2}\b|\bstatus(?:\s+code)?\s*[:=]?\s*[1-5]\d{2}\b/i;
+const STATUS_RE = /\bHTTP\s*[1-5]\d{2}\b|\bstatus(?:\s+code)?\s*[:=]?\s*[1-5]\d{2}\b|\b[1-5]\d{2}\s+(?:Internal|Bad|Unauthorized|Forbidden|Not\s+Found|OK|Error|Gateway|Service|Moved|Found|Unavailable)\b/i;
 const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
 const HEX_ID_RE = /\b[0-9a-f]{16,}\b/i;
 const NAMED_ID_RE = /\b(?:request[\s_-]*id|runId|sessionKey|agentId|gatewayCode)\b/i;
@@ -72,6 +72,11 @@ export function friendlyError(value: unknown): string {
   const raw = extractRaw(value);
   if (!raw) return FRIENDLY_ERROR;
   const stripped = stripErrorPrefixes(raw);
-  if (!stripped || looksRaw(stripped) || !/\s/.test(stripped)) return FRIENDLY_ERROR;
+  if (!stripped || looksRaw(stripped)) return FRIENDLY_ERROR;
+  // One-word states such as "Disconnected" stay as they are. A one-word dump (a code, a number, "error") does not.
+  if (!/\s/.test(stripped)) {
+    if (/^[A-Z][a-z]+(?:[A-Z][a-z]+)*$/.test(stripped)) return stripped;
+    return FRIENDLY_ERROR;
+  }
   return stripped;
 }

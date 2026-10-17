@@ -16,6 +16,7 @@ import { ComputerPicker } from "./ComputerPicker";
 import { AddComputer } from "./AddComputer";
 import { shows, useLevel } from "../places-nav/level";
 import { configStore } from "../places/settings/config-store";
+import { plainError } from "../shell/plain-error";
 import { NativeScreen } from "./NativeScreen";
 import { useTrunkHold } from "./trunk-hold";
 import { setTouchMode, useTouchMode } from "./touch-mode";
@@ -279,7 +280,7 @@ export function ComputerStage({
   };
   const stop = () => {
     setStopError("");
-    engine.request("sessions.abort", { key: engine.sessionKey }).catch((e: unknown) => setStopError(e instanceof Error ? e.message : String(e)));
+    engine.request("sessions.abort", { key: engine.sessionKey }).catch((e: unknown) => setStopError(plainError(e)));
   };
   const watchMenu = (at: MenuAnchor) =>
     setMenu({
@@ -380,8 +381,8 @@ export function ComputerStage({
           <SIcon name="more" />
         </button>
       </div>
-      {stopError ? <p className="stage-error-st" role="alert">{stopError}</p> : null}
-      {hold.error ? <p className="stage-error-st" role="alert">{hold.error}</p> : null}
+      {stopError ? <p className="stage-error-st" role="alert">{plainError(stopError)}</p> : null}
+      {hold.error ? <p className="stage-error-st" role="alert">{plainError(hold.error)}</p> : null}
       {!browser && where.error && viewing ? <p className="stage-error-st" role="alert">{COMPUTER_UNAVAILABLE} <button type="button" className="btn sm" onClick={() => setTick((value) => value + 1)}>Try again</button>{shows(level, "technical") ? <small className="stage-detail"> {where.error}</small> : null}</p> : null}
       {!browser && screens.length > 1 ? (
         <div className="st7-tabs" role="tablist" aria-label="Its computers">

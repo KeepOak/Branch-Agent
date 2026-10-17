@@ -46,6 +46,7 @@ import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./Topic
 import { suggestionsFor } from "./suggestions";
 import type { EarlierPage } from "../shell/useContactSegments";
 import { useScrollMemory } from "../places-nav/scroll-memory";
+import { plainError } from "../shell/plain-error";
 
 type Props = {
   lockdown?: boolean;
@@ -74,7 +75,7 @@ type Props = {
   sessionKey?: string | null;
   /** Reads the conversation's history again (after a rewind or a resend). */
   onReload?: () => void;
-  onToast?: (text: string) => void;
+  onToast?: (text: string, options?: { tone?: "bad" }) => void;
   onOpenSession?: (key: string) => void;
   onReply?: (target: ReplyTarget) => void;
   onStartTopic?: (afterMessageId: string) => void;
@@ -205,7 +206,8 @@ export function Thread(props: Props) {
   const lineTexts = useRef(new Set<string>());
   for (const item of ownLine) lineTexts.current.add(item.text);
   const pendingDelivered = pendingUser !== null && lineTexts.current.has(pendingUser);
-  const toast = useCallback((text: string) => onToast?.(text), [onToast]);
+  const toast = useCallback((text: string, options?: { tone?: "bad" }) => onToast?.(text, options), [onToast]);
+  const failToast = useCallback((e: unknown) => toast(plainError(e), { tone: "bad" }), [toast]);
   const prefs = useConversationPrefs(engine);
   const prefKey = JSON.stringify(prefs);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -222,10 +224,10 @@ export function Thread(props: Props) {
     (id: string, decision: ApprovalDecision) => {
       if (!lockdownAllowsAnswer(props.lockdown, decision)) return;
       const plugin = details.get(id)?.plugin ?? false;
-      if (engine && (decision === "allow-always" || plugin)) resolveApproval(engine, id, decision, plugin).catch((e: unknown) => toast(e instanceof Error ? e.message : String(e)));
+      if (engine && (decision === "allow-always" || plugin)) resolveApproval(engine, id, decision, plugin).catch((e: unknown) => failToast(e));
       else if (decision !== "allow-always") props.onAnswer(id, decision);
     },
-    [details, engine, props, toast],
+    [details, engine, failToast, props, toast],
   );
   const allApprovals = [...all.filter((b) => b.kind === "approval").map((b) => (b as Extract<Block, { kind: "approval" }>).approval), ...extras];
   const firstPending = allApprovals.find((a) => a.state === "pending") ?? null;
@@ -278,7 +280,7 @@ export function Thread(props: Props) {
   const helperChip = (helpers.length || native.length) && engine?.sessionKey ? (
     <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenActivity}
       native={native}
-      onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
+      onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => failToast(e))} />
   ) : null;
   const topicEvents = new Map<number, { at: number; node: ReactNode }[]>();
   for (const update of props.topicUpdates ?? []) {
@@ -316,7 +318,7 @@ export function Thread(props: Props) {
       });
       props.onOpenSession?.(result.sessionKey);
     } catch (error) {
-      toast(error instanceof Error ? error.message : String(error));
+      failToast(error);
     }
   };
   return (
@@ -330,15 +332,15 @@ export function Thread(props: Props) {
             {startup.state !== "needs-attention" ? <span className="preparation-spinner" aria-hidden="true" /> : null}
             {startup.state === "needs-attention" ? preparationNeedsAttentionLabel(name) : startup.state === "retrying" ? preparationRetryingLabel(name) : isPreparationStalled(preparationError) ? preparationError : preparationLabel(name)}
             {startup.state !== "preparing" ? <button type="button" className="btn sm" disabled={startup.busy} onClick={startup.retry}>{startup.busy ? "Retrying…" : startup.state === "needs-attention" ? "Retry" : "Retry now"}</button> : null}
-            {startup.error ? <span role="alert">Couldn't retry: {startup.error}</span> : null}
+            {startup.error ? <span role="alert">{plainError(`Couldn't retry: ${startup.error}`)}</span> : null}
             {props.advancedDiagnostics ? <details><summary>Diagnostics</summary><code>{preparationError}</code></details> : null}
           </div> : null}
-          {props.earlierError && !isPreparationPending(props.earlierError) ? <div className="stamp" role="status">Couldn't load earlier pages: {props.earlierError}</div> : null}
+          {props.earlierError && !isPreparationPending(props.earlierError) ? <div className="stamp" role="status">{plainError(`Couldn't load earlier pages: ${props.earlierError}`)}</div> : null}
           {[...(props.earlierPages ?? [])].reverse().map((page) => <div key={page.sessionId} className="segment-page" aria-label="Earlier conversation segment">
             <div className="stamp">New start · {page.startedAt ? new Date(page.startedAt).toLocaleDateString() : "Earlier"}</div>
             {page.blocks.filter((block) => ["user", "text", "thinking", "step", "notice", "error"].includes(block.kind)).map((block) => <div key={block.key} className="segment-line">
               <strong>{block.kind === "user" ? "You" : block.kind === "text" ? name : block.kind === "step" ? stepLabel(block) : "Activity"}</strong>
-              <span>{block.kind === "user" || block.kind === "text" || block.kind === "thinking" || block.kind === "notice" ? block.text : block.kind === "step" ? [block.title, block.detail].filter(Boolean).join(" · ") : block.kind === "error" ? isPreparationPending(block.message) ? "Branch retried a startup delay." : shortReason(block.message) : block.kind === "status" ? block.phase : block.kind === "approval" ? block.approval.command : ""}</span>
+              <span>{block.kind === "user" || block.kind === "text" || block.kind === "thinking" || block.kind === "notice" ? block.text : block.kind === "step" ? [block.title, block.detail ? plainError(block.detail) : ""].filter(Boolean).join(" · ") : block.kind === "error" ? isPreparationPending(block.message) ? "Branch retried a startup delay." : shortReason(block.message) : block.kind === "status" ? block.phase : block.kind === "approval" ? block.approval.command : ""}</span>
             </div>)}
           </div>)}
           {(props.earlierPages?.length || props.hasEarlierPages) ? <div className="stamp">New start · {props.currentStartedAt ? new Date(props.currentStartedAt).toLocaleDateString() : "Current"}</div> : null}

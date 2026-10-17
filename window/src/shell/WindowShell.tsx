@@ -1325,7 +1325,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     engine: session.engine,
     sessionKey: s.sessionKey,
     onReload: () => void session.reload(),
-    onToast: (text: string) => notify(text),
+    onToast: (text: string, options?: { tone?: "bad" }) => notify(text, options),
     onOpenSession: openConversation,
     onReply: (target: { entryId: string; name: string; text: string }) => setReplyTo(target),
   };

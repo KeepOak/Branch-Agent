@@ -35,6 +35,7 @@ import { suggestionsFor } from "../../thread/suggestions";
 import { useApprovalDetails, useHelpers, useReactions } from "../../thread/useEngineData";
 import { useMessageActions, type MessageChanges, type ReplyTarget } from "../../thread/useMessageActions";
 import { Icon } from "../../shell/icons";
+import { plainError } from "../../shell/plain-error";
 import { shows, useLevel } from "../../places-nav/level";
 import { answerBelowWorkingLine, blockTime, dividerPositions, entriesOf, useWorkMode, type Entry, type WorkMode } from "./chat-logic";
 import { HoverBar } from "./HoverBar";
@@ -70,7 +71,7 @@ export type ChatViewProps = {
   onAnswer: (id: string, decision: "allow-once" | "deny") => void;
   onReload?: () => void;
   onOpenSession?: (key: string) => void;
-  onToast?: (text: string) => void;
+  onToast?: (text: string, options?: { tone?: "bad" }) => void;
   /** Opens the re-hosted Classic helpers view (parity row 3); without it the chip keeps its own popover. */
   onOpenHelpers?: () => void;
   /** Sends a starter or a suggested reply the way the composer sends (chat.send). */
@@ -205,7 +206,8 @@ export function ChatView(props: ChatViewProps) {
   const { name, live, pendingUser, running, engine, onToast } = props;
   // In an examples conversation the empty history shows the Trunk's introduction instead (examples-greeting.ts).
   const history = useExamplesHistory({ history: props.history, live, why: props.examplesWhy, historyReady: props.historyReady !== false, name, engine });
-  const toast = useCallback((text: string) => onToast?.(text), [onToast]);
+  const toast = useCallback((text: string, options?: { tone?: "bad" }) => onToast?.(text, options), [onToast]);
+  const failToast = useCallback((e: unknown) => toast(plainError(e), { tone: "bad" }), [toast]);
   const prefs = useConversationPrefs(engine);
   const work = useWorkMode(engine, props.sessionKey);
   const prefKey = JSON.stringify(prefs);
@@ -222,9 +224,9 @@ export function ChatView(props: ChatViewProps) {
   const askCards = useMemo(() => new Map(asks.map((s) => [s.ask.id, s] as const)), [asks]);
   const answer = useCallback((id: string, decision: ApprovalDecision) => {
     const plugin = details.get(id)?.plugin ?? false;
-    if (engine && (decision === "allow-always" || plugin)) resolveApproval(engine, id, decision, plugin).catch((e: unknown) => toast(e instanceof Error ? e.message : String(e)));
+    if (engine && (decision === "allow-always" || plugin)) resolveApproval(engine, id, decision, plugin).catch((e: unknown) => failToast(e));
     else if (decision !== "allow-always") props.onAnswer(id, decision);
-  }, [details, engine, props, toast]);
+  }, [details, engine, failToast, props, toast]);
   // What waits in this conversation: two or more approvals group into one card at the foot (preview ask2); the rest get
   // their own card at the foot too, unless their approval block already draws it.
   const here = asks.filter((s) => s.status !== "settled" && Boolean(props.sessionKey) && s.ask.sessionKey === props.sessionKey);
@@ -277,7 +279,7 @@ export function ChatView(props: ChatViewProps) {
   // Continue stands in for the "Carry on" chip there, so the stopped turn offers one way to resume, not two.
   const suggestions = props.onStart && !waitingHere && suggestionKey !== usedSuggestion && !offerContinue ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
   const helperChip = helpers.length && engine?.sessionKey ? <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenHelpers}
-    onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast("Stopped " + h.name + ". " + name + " carries on without it."), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} /> : null;
+    onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast("Stopped " + h.name + ". " + name + " carries on without it."), (e: unknown) => failToast(e))} /> : null;
 
   const view: View = { all, name, running, live, actionsFor, changes, reactions, apply, asks: askCards, grouped, answerAsk, lockdown: Boolean(props.lockdown), times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast, room: props.room, continueKey, onContinue };
   const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status"), history.length)) : [];
