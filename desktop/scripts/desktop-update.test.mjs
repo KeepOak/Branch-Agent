@@ -776,16 +776,18 @@ test("a process whose working directory is the shell folder is a holder and one 
 });
 
 test("a Windows PEB working directory with an NT prefix is still a holder", () => {
+  const pebCwd = `\\??\\C:\\Users\\Example\\AppData\\Local\\Programs\\Branch Agent\\app-0.4.4-aaaaaa`;
+  assert.equal(pebCwd, `\\??\\${SHELL}`);
   assert.equal(holders.pathInsideInstall(SHELL, SHELL), true);
-  assert.equal(holders.pathInsideInstall(SHELL, `\\??\\${SHELL}`), true, "PEB DosPath");
+  assert.equal(holders.pathInsideInstall(SHELL, pebCwd), true, "PEB DosPath");
   assert.equal(holders.pathInsideInstall(SHELL, `\\\\?\\${SHELL}`), true, "Win32 long path");
   assert.equal(holders.pathInsideInstall(SHELL, `\\??\\${SHELL}\\resources`), true);
   assert.equal(holders.pathInsideInstall(SHELL, "\\??\\C:\\Other\\Branch Agent"), false);
   const listed = listedWindows([
-    { ProcessId: 31, ExecutablePath: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe", CurrentDirectory: `\\??\\${SHELL}` },
+    { ProcessId: 31, ExecutablePath: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe", CurrentDirectory: pebCwd },
     { ProcessId: 32, ExecutablePath: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe", CurrentDirectory: "\\??\\C:\\Users\\Example\\Desktop" },
   ]);
-  assert.equal(listed.find(item => item.pid === 31).cwd, `\\??\\${SHELL}`);
+  assert.equal(listed.find(item => item.pid === 31).cwd, pebCwd);
   assert.deepEqual(holders.holdersInInstall(SHELL, listed, new Set()).map(item => item.pid), [31]);
 });
 

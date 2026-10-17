@@ -116,13 +116,6 @@ const install: DesktopInstall | undefined = app.isPackaged ? {
   electronVersion: process.versions.electron, nodePath: cfg.nodePath,
   ...(runsFromAppImage() ? { appImage: process.env.APPIMAGE } : {}),
 } : undefined;
-// Before spawning the gateway or the update helper: an old shortcut's Start in folder holds the app on Windows (#1777).
-leaveAppWorkingFolder({
-  cwd: process.cwd(),
-  appDir: install?.appDir ?? dirname(process.execPath),
-  home: userHome(app, homedir),
-  chdir: (dir) => { process.chdir(dir); },
-});
 
 /** Appends one line to the app's own data directory log. */
 function log(line: string): void {
@@ -1226,6 +1219,13 @@ async function handOffDesktop(): Promise<boolean> {
 }
 
 async function start(): Promise<void> {
+  // After app.whenReady, before the helper or gateway: an old shortcut's Start in folder holds the app on Windows (#1777).
+  leaveAppWorkingFolder({
+    cwd: process.cwd(),
+    appDir: install?.appDir ?? dirname(process.execPath),
+    home: userHome(app, homedir),
+    chdir: (dir) => { process.chdir(dir); },
+  });
   // A desktop update staged during the last run applies before anything starts.
   if (await handOffDesktop()) { app.exit(0); return; }
   token = readToken(cfg);

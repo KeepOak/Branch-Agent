@@ -36,7 +36,7 @@ export function cwdHoldsAppFolder(cwd: string, appDir: string, win32 = process.p
 }
 
 /**
- * Electron's user home. Desktop tests stub `app` without `getPath`; loading main.ts must not throw.
+ * Electron's user home. Call only after `app.whenReady`. Desktop tests stub `app` without `getPath`.
  */
 export function userHome(appLike: { getPath?: (name: "home") => string }, fallback: () => string): string {
   try {
