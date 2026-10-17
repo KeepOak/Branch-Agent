@@ -1,5 +1,6 @@
-// When an installed gateway service exits immediately (macOS EPERM / timeout),
-// stop it from retry-looping and start the gateway as this app's unmanaged child.
+// When the gateway service is missing or cannot stay running (macOS EPERM /
+// timeout / exit 126), stop any looping unit and start the gateway as this
+// app's unmanaged child. Start and restart never install the service.
 import { spawn } from "node:child_process";
 import { rewritePnpmVersionedBranchEntryPath } from "../../infra/branch-root.js";
 import { SUPERVISOR_HINT_ENV_VARS } from "../../infra/supervisor-markers.js";
@@ -15,11 +16,17 @@ import type { GatewayService } from "../../daemon/service.js";
 export const GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE =
   "Gateway service could not stay running; started the gateway as this app's child instead.";
 
+export const GATEWAY_SERVICE_MISSING_CHILD_FALLBACK_MESSAGE =
+  "Gateway service is not installed; started the gateway as this app's child instead.";
+
 export const GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE =
   "Gateway could not start through the service or as this app's child.";
 
+export const MISSING_GATEWAY_SERVICE_REASON = "Service unit not found.";
+
 const SERVICE_START_FAILURE =
   /Operation not permitted|EPERM|Permission denied|timed out|failed to start|exit 126|exit 127/i;
+const SERVICE_MISSING = /not loaded|not-loaded|missing-install|missing unit|unit not found/i;
 
 export type AppChildGatewayResult<TResult extends "started" | "restarted"> = {
   result: TResult;
@@ -29,6 +36,21 @@ export type AppChildGatewayResult<TResult extends "started" | "restarted"> = {
 
 export function isGatewayServiceStartFailure(detail: string): boolean {
   return SERVICE_START_FAILURE.test(detail);
+}
+
+export function isGatewayServiceMissing(detail: string): boolean {
+  return SERVICE_MISSING.test(detail);
+}
+
+export function shouldRecoverGatewayAsAppChild(detail: string): boolean {
+  return isGatewayServiceStartFailure(detail) || isGatewayServiceMissing(detail);
+}
+
+export function resolveGatewayChildFallbackMessage(reason: string): string {
+  if (isGatewayServiceMissing(reason) && !isGatewayServiceStartFailure(reason)) {
+    return GATEWAY_SERVICE_MISSING_CHILD_FALLBACK_MESSAGE;
+  }
+  return GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE;
 }
 
 /** Drop launchd/systemd/task hints so the child restarts itself after a config change. */
@@ -73,7 +95,7 @@ export async function recoverGatewayAsAppChild<TResult extends "started" | "rest
   spawnChild?: () => Promise<void> | void;
   waitUntilReady?: () => Promise<boolean>;
 }): Promise<AppChildGatewayResult<TResult> | null> {
-  if (!isGatewayServiceStartFailure(params.reason)) {
+  if (!shouldRecoverGatewayAsAppChild(params.reason)) {
     return null;
   }
   const stop =
@@ -114,6 +136,6 @@ export async function recoverGatewayAsAppChild<TResult extends "started" | "rest
   return {
     result: params.result,
     loaded: false,
-    message: GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE,
+    message: resolveGatewayChildFallbackMessage(params.reason),
   };
 }

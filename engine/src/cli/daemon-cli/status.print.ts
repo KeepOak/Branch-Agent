@@ -35,6 +35,10 @@ import { shortenHomePath } from "../../utils.js";
 import { formatCliCommand } from "../command-format.js";
 import { quoteCliArg } from "../quote-cli-arg.js";
 import {
+  attachInstallBackgroundServiceAction,
+  resolveInstallBackgroundServiceAction,
+} from "./install-background-service.js";
+import {
   createCliStatusTextStyles,
   formatRuntimeStatus,
   projectDaemonServiceForJson,
@@ -74,11 +78,15 @@ function formatProbeEventLoop(
 
 export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean; deep?: boolean }) {
   if (opts.json) {
-    defaultRuntime.writeJson({
-      ...status,
-      extraServices: status.extraServices.map(({ sourcePath: _sourcePath, ...service }) => service),
-      service: projectDaemonServiceForJson(status.service, { includeDefinitionPaths: false }),
-    });
+    defaultRuntime.writeJson(
+      attachInstallBackgroundServiceAction({
+        ...status,
+        extraServices: status.extraServices.map(
+          ({ sourcePath: _sourcePath, ...service }) => service,
+        ),
+        service: projectDaemonServiceForJson(status.service, { includeDefinitionPaths: false }),
+      }),
+    );
     return;
   }
 
@@ -409,7 +417,11 @@ export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean; d
   if (service.runtime?.missingUnit) {
     if (serviceTargetsProbe) {
       printError("Service unit not found.");
-      const recovery = installBlock ?? `Run: ${installCommand}`;
+      const action = resolveInstallBackgroundServiceAction();
+      if (!installBlock && action) {
+        printError(action.label);
+      }
+      const recovery = installBlock ?? `Run: ${action?.command ?? installCommand}`;
       printError(recovery);
     } else {
       defaultRuntime.log(

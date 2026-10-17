@@ -45,9 +45,9 @@ import {
   appendGatewayLifecycleAudit,
   createGatewayLifecycleMutationAudit,
 } from "./lifecycle-audit.js";
-import { installMissingGatewayService } from "./missing-service-install.js";
 import {
   GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE,
+  MISSING_GATEWAY_SERVICE_REASON,
   recoverGatewayAsAppChild,
 } from "./service-start-fallback.js";
 import { resolveGatewayConfigPorts, resolveGatewayLifecycleContext } from "./lifecycle-context.js";
@@ -299,7 +299,12 @@ export async function runDaemonStart(opts: DaemonLifecycleOptions = {}) {
           return recovered;
         }
       }
-      return await installMissingGatewayService({ result: "started", opts });
+      return await recoverFromFailedService({
+        result: "started",
+        reason: MISSING_GATEWAY_SERVICE_REASON,
+        service,
+        port: expectedPort ?? (await resolveGatewayConfigPorts()).fallback,
+      });
     },
     repairLoadedService: async ({ json, stdout, warn, state, issues }) =>
       await repairLoadedGatewayServiceForStart({
@@ -553,7 +558,12 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
       if (mutationError) {
         throw mutationError;
       }
-      return await installMissingGatewayService({ result: "restarted", opts });
+      return await recoverFromFailedService({
+        result: "restarted",
+        reason: MISSING_GATEWAY_SERVICE_REASON,
+        service,
+        port: unmanagedPort,
+      });
     },
     postRestartCheck: async ({
       warnings,
@@ -564,7 +574,7 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
       preserveDefinition: preserved,
     }) => {
       let failed: string | undefined;
-      const fail = (message: string) => {
+      const fail = (message: string, _hints?: string[], _code?: string) => {
         failed = message;
         throw new Error(message);
       };
