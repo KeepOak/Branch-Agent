@@ -9,7 +9,7 @@ import { errorText } from "../../places/settings/adapter";
 import { freshChoices } from "../../setup/setup-model";
 import { recordSetup } from "../../setup/use-setup-engine";
 import { DAY_ONE_TEMPLATES, type ListedTemplate } from "../seedbank/templates";
-import { carried, GREETING, mainSessionOf, ownerTimeZone, type OnboardingState } from "./model";
+import { carried, greeting, mainSessionOf, ownerTimeZone, type OnboardingState } from "./model";
 import { trunkDisplayName } from "../../connect/trunk-name";
 
 export type Made = { templateId: string; agentId: string; name: string };
@@ -66,10 +66,25 @@ export async function startSetupTalk(engine: WindowEngine): Promise<string> {
   return r.key;
 }
 
+/** The signed-in profile id from users.self, or "" when this connection has no profile. */
+export function profileIdOf(value: unknown): string {
+  const profile = value && typeof value === "object" ? (value as { profile?: { id?: unknown } }).profile : undefined;
+  return typeof profile?.id === "string" ? profile.id : "";
+}
+
+/** Saves the name where Settings › People keeps it (users.setDisplayName). No profile means nothing to write. */
+export async function saveDisplayName(engine: WindowEngine, name: string): Promise<void> {
+  const displayName = name.trim();
+  if (!displayName) return;
+  const profileId = profileIdOf(await engine.request("users.self", {}));
+  if (!profileId) return;
+  await engine.request("users.setDisplayName", { profileId, displayName });
+}
+
 /** Sends the first message into the Trunk's main conversation and returns that conversation's key. */
-export async function greet(engine: WindowEngine, agentId: string, mainKey: string): Promise<string> {
+export async function greet(engine: WindowEngine, agentId: string, mainKey: string, name = ""): Promise<string> {
   const sessionKey = mainSessionOf(agentId, mainKey);
-  const result = await engine.request("chat.send", { sessionKey, message: GREETING, idempotencyKey: crypto.randomUUID() });
+  const result = await engine.request("chat.send", { sessionKey, message: greeting(name), idempotencyKey: crypto.randomUUID() });
   // chat.send can refuse without throwing ({status: "error", error}), as RunCard reads it; that is a failure too.
   const r = result && typeof result === "object" ? (result as Record<string, unknown>) : {};
   if (r.status === "error") throw new Error(typeof r.error === "string" && r.error ? r.error : "The first message was rejected.");
