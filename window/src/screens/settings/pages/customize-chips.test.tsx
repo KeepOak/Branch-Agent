@@ -26,7 +26,7 @@ function engineOf() {
     if (method === "agents.list") return { agents: [{ id: "main", identity: { name: "Sapling" } }], defaultId: "main", mainKey: "agent:main:main" };
     if (method === "contacts.outside.list") return { enabled: true, agents: [] };
     if (method === "skills.status") return { skills: [{ name: "brief", description: "Write a brief.", eligible: true, source: "workspace" }] };
-    if (method === "plugins.list") return { plugins: [{ id: "voice", name: "Voice", enabled: true }] };
+    if (method === "plugins.list") return { plugins: [{ id: "voice", name: "Voice", enabled: true, installed: true }] };
     return {};
   });
   return { engine: { request, onEvent: () => () => undefined, sessionKey: "s", scopes: ["operator.admin"] } as unknown as WindowEngine, request };
@@ -40,19 +40,20 @@ async function mount(engine: WindowEngine) {
 const hub = () => host.querySelector<HTMLElement>("[data-testid=customize-hub]")!;
 const chip = (label: string) => [...hub().querySelectorAll<HTMLButtonElement>(".t9-nav .t9-kind")].find((b) => b.textContent?.startsWith(label))!;
 
-/** The preview's six kinds in Settings, each with the head the preview draws for it (KINDS in czP17). */
-const KINDS: [chip: string, kind: string, line: string][] = [
-  ["Toolsets", "Toolsets", "Groups of tools a Trunk gets together."],
-  ["Connectors", "Connectors", "Apps and data a Trunk can reach."],
-  ["Skills", "Skills", "Step-by-step know-how a Trunk can follow."],
-  ["Plugins", "Plugins", "Packs of skills, servers and tools."],
-  ["Command-line tools", "Command-line tools", "Programs on this computer it may run."],
-  ["Agents & specialists", "Agents", "Other assistants, helpers a Trunk calls in, and how they work together."],
+/** The preview's six kinds in Settings, each with the head the preview draws for it (KINDS in czP17). Making a toolset
+ *  here is still a later update, so its "＋ Add" is Coming and shows at Technical only. */
+const KINDS: [chip: string, kind: string, line: string, add: boolean][] = [
+  ["Toolsets", "Toolsets", "Groups of tools a Trunk gets together.", false],
+  ["Connectors", "Connectors", "Apps and data a Trunk can reach.", true],
+  ["Skills", "Skills", "Step-by-step know-how a Trunk can follow.", true],
+  ["Plugins", "Plugins", "Packs of skills, servers and tools.", true],
+  ["Command-line tools", "Command-line tools", "Programs on this computer it may run.", true],
+  ["Agents & specialists", "Agents", "Other assistants, helpers a Trunk calls in, and how they work together.", true],
 ];
 
 it("each kind chip opens that kind's own list, with its head, count and ＋ Add, as the preview's czKindP17 does", async () => {
   await mount(engineOf().engine);
-  for (const [label, kind, line] of KINDS) {
+  for (const [label, kind, line, add] of KINDS) {
     await act(async () => chip(label).click());
     await settle();
     expect(chip(label).getAttribute("aria-current")).toBe("true");
@@ -61,7 +62,7 @@ it("each kind chip opens that kind's own list, with its head, count and ＋ Add,
     expect(list!.querySelector(".cz-kindhead h2")?.textContent).toBe(label);
     expect(list!.querySelector(".cz-kindhead p")?.textContent).toBe(line);
     expect(list!.querySelector(".cz-kindhead .cz-count")?.textContent).toMatch(/\d+ of \d+ on/);
-    expect(list!.querySelector(".cz-kindhead")?.textContent).toContain("＋ Add");
+    if (add) expect(list!.querySelector(".cz-kindhead .cz-add")?.textContent).toBe("＋ Add");
     expect(hub().querySelectorAll("[data-kind-list]")).toHaveLength(1);
   }
 });
