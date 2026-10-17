@@ -23,7 +23,9 @@ jobs:
       contents: read
       pull-requests: read
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 70 minutes so an installation rate-limit reset (at most one hour, plus a small buffer)
+    # can finish inside this job. The wait budget in live-pull-request.mjs stays under this.
+    timeout-minutes: 70
     steps:
       - name: Check out the PR merge commit and its base
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
