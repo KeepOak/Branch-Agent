@@ -51,7 +51,9 @@ async function eventually(predicate, timeout = EVENTUALLY_DEFAULT_MS) {
 }
 function resetAccepted(socket) {
   socket.on("error", () => {});
-  try { socket.resetAndDestroy(); } catch { socket.destroy(); }
+  // destroy() lets close() finish. resetAndDestroy() RSTs, and a readiness fetch
+  // mid-write then throws uncaught setTypeOfService EINVAL on macOS.
+  socket.destroy();
 }
 // Server.close() never emits while an accepted socket is still open. A client that
 // landed on the probe (a readiness fetch, another test) would pin freePort until the

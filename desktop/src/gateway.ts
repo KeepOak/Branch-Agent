@@ -42,8 +42,9 @@ const CLOSE_BACKSTOP_MS = 1000;
 
 function resetAccepted(socket: Socket): void {
   socket.on("error", () => undefined);
-  try { socket.resetAndDestroy(); }
-  catch { socket.destroy(); }
+  // destroy() drops the socket so Server.close() can emit. resetAndDestroy() RSTs,
+  // and a client mid-write then throws uncaught setTypeOfService EINVAL on macOS.
+  socket.destroy();
 }
 
 /** Resets any accepted connection so close() is not pinned, and swallows the bind error the caller handles. */
@@ -103,7 +104,7 @@ function bindProbe(probe: Server, port: number): Promise<number | undefined> {
 export function holdLoopbackServer(port: number, server: Server): void {
   releaseHeldLoopbackPort(port);
   // An accepted client that never finishes pins Server.close() (`_connections` stays set).
-  // Reset it so releasing the hold does not leave the port reserved.
+  // Drop it so releasing the hold does not leave the port reserved.
   server.on("connection", resetAccepted);
   server.unref();
   heldLoopback().set(port, server);
