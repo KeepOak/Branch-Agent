@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { loadPhoneGateway } from "./load-phone-gateway.js";
 import {
   createPairingRelaySession,
   decryptPairingFrame,
@@ -11,45 +12,6 @@ import {
   pairingRelayJoinUrl,
   startPairingRelayHost,
 } from "./pairing-relay.js";
-
-vi.mock("@branch/gateway-client/browser", async () => import("@branch/gateway-client/browser"));
-
-type PhoneGatewayCtor = new (opts: {
-  url: string;
-  platform: "ios";
-  appVersion: string;
-  bootstrapToken?: string;
-  relayKey?: string;
-  randomBytes?: (count: number) => Uint8Array;
-  loadIdentity: () => Promise<{
-    deviceId: string;
-    publicKey: string;
-    sign: (payload: string) => Promise<string>;
-  }>;
-  tokenStore: { load: () => null; store: () => undefined; clear: () => undefined };
-  createRequestId: () => string;
-  createSocket: (
-    url: string,
-    handlers: {
-      open: () => void;
-      message: (data: unknown) => void;
-      close: (code: number, reason: string) => void;
-      error: (error: Error) => void;
-    },
-  ) => {
-    isOpen: () => boolean;
-    send: (data: string | Uint8Array) => void;
-    close: (code?: number, reason?: string) => void;
-  };
-  onStatus: (status: unknown) => void;
-}) => { start: () => void; stop: () => void };
-
-async function loadPhoneGateway(): Promise<PhoneGatewayCtor> {
-  const loaded = (await import(new URL("../../../mobile/src/connect/phoneGateway.ts", import.meta.url).href)) as {
-    PhoneGateway: PhoneGatewayCtor;
-  };
-  return loaded.PhoneGateway;
-}
 
 function waitClosed(socket: WebSocket): Promise<void> {
   if (socket.readyState === WebSocket.CLOSED) {
