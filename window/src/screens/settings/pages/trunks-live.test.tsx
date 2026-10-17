@@ -63,14 +63,12 @@ it("draws the preview's Trunks card: rows with Edit and •••, A new Trunk, 
   expect(onPage).toHaveBeenCalledWith("seedbank");
 });
 
-it("puts the preview's ••• menu on each Trunk, with Who it knows, and greys what nothing stands behind yet", async () => {
+it("puts the preview's ••• menu on each Trunk, with Who it knows, and only what works today below Technical", async () => {
   const { request } = await mount("regular");
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="More for Birch"]')!.click());
   const items = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')];
-  expect(items.map((b) => b.textContent)).toEqual(["Change picture…", "Pause", "Make default", "Share this Trunk…", "Who it knows", "Show it how, once", "Package…",
-    "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…", "Remove Trunk…"]);
-  expect(items.filter((b) => b.disabled).map((b) => b.textContent)).toEqual(["Pause", "Show it how, once", "Package…", "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…"]);
-  for (const why of Object.values(SETTINGS_MENU_COMING)) expect(why).toMatch(/ comes in a later update\.$/);
+  expect(items.map((b) => b.textContent)).toEqual(["Change picture…", "Make default", "Share this Trunk…", "Who it knows", "Remove Trunk…"]);
+  expect(items.filter((b) => b.disabled).map((b) => b.textContent)).toEqual([]);
   expect(visibleDevNotes(document.body)).toEqual([]);
   // The default Trunk's Remove is greyed with the preview's own line.
   await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
@@ -84,6 +82,21 @@ it("puts the preview's ••• menu on each Trunk, with Who it knows, and grey
   await act(async () => button("Share this Trunk…").click());
   await settle();
   expect(request).toHaveBeenCalledWith("trunks.template.export", { agentId: "birch" });
+});
+
+it("shows the ••• menu's Coming items (Pause, Package…, Copy seed and the rest), greyed, at Technical only (Private #1093)", async () => {
+  const COMING = ["Pause", "Show it how, once", "Package…", "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…"];
+  for (const why of Object.values(SETTINGS_MENU_COMING)) expect(why).toMatch(/ comes in a later update\.$/);
+  const menuItems = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')];
+  await mount("advanced");
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="More for Birch"]')!.click());
+  expect(menuItems().map((b) => b.textContent).filter((t) => COMING.includes(t ?? ""))).toEqual([]);
+  await act(async () => root.unmount()); root = createRoot(host);
+  await mount("technical");
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="More for Birch"]')!.click());
+  expect(menuItems().map((b) => b.textContent)).toEqual(["Change picture…", "Pause", "Make default", "Share this Trunk…", "Who it knows", "Show it how, once", "Package…",
+    "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…", "Remove Trunk…"]);
+  expect(menuItems().filter((b) => b.disabled).map((b) => b.textContent)).toEqual(COMING);
 });
 
 it("draws Defaults for every Trunk and Trunks’ own databases (all Coming) and the folder defaults inside the Trunks card at Technical only", async () => {

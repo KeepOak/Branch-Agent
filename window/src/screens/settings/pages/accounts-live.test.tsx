@@ -112,6 +112,26 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     expect(calls(request, "models.authLogout")).toContainEqual({ provider: "openai", profileIds: ["openai:home"], agentId: "main" });
   });
 
+  it("the ⋯ menu's Rename and Select accounts' Pause wait for Technical (Private #1093)", async () => {
+    await mount();
+    const level = (name: string) => click([...host.querySelectorAll(".r1s-level button")].find((b) => b.textContent === name));
+    const more = () => row("accounts.order.list")!.querySelector<HTMLButtonElement>("button[aria-label^='More for']");
+    const menuItems = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')].map((b) => b.textContent);
+    const sel = () => row("accounts.order.select")!;
+    await level("Advanced");
+    await click(more());
+    expect(menuItems()).toEqual(["Test it", "Answer first", "Which Trunks use it", "Sign out"]);
+    await click(more());
+    expect(menuItems()).toEqual([]);
+    await click(button(sel(), "Select accounts"));
+    expect(button(sel(), "Pause")).toBeUndefined();
+    await level("Technical");
+    await click(more());
+    expect(menuItems()).toEqual(["Test it", "Answer first", "Rename", "Which Trunks use it", "Sign out"]);
+    expect(button(document.querySelector('[role="menu"]'), "Rename")?.disabled).toBe(true);
+    expect(button(sel(), "Pause")?.disabled).toBe(true);
+  });
+
   it("Test it, Answer first and Sign out also have their own rows", async () => {
     const { request } = await mount();
     await pick(row("accounts.order.test")!.querySelector("select")!, "openai/openai:home");

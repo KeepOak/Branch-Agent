@@ -1,0 +1,8 @@
+window:src/places/settings/kit.coming.test.tsx
+window:src/places/settings/set2/usage.test.tsx
+window:src/places/trunk/TrunkProfile.cando.test.tsx
+window:src/screens/settings/pages/accounts-live.test.tsx
+window:src/screens/settings/pages/accounts-preview.test.tsx
+window:src/screens/settings/pages/general-live.test.tsx
+window:src/screens/settings/pages/trunks-live.test.tsx
+window:src/shell/menu-level.test.ts

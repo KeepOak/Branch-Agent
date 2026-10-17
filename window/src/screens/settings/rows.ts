@@ -98,10 +98,14 @@ export function rowLevel(row: Row, hints: UiHints): Level {
  *  (Private #1093 item 4); Technical shows everything, Coming included. */
 export const COMING_FROM: Level = 2;
 
-/** A row that waits for a later update: Coming by its source, or (when the page's controls are given) a slot row its
- *  page has no control for, which RowView draws as Coming. */
+/** A slot row whose every call is one the engine doesn't have yet ("engine: …"): its control is a Coming button. */
+const waitsOnEngine = (calls: string[]): boolean => calls.length > 0 && calls.every((call) => call.startsWith("engine: "));
+
+/** A row that waits for a later update: Coming by its source, a slot row that waits on calls the engine doesn't have
+ *  yet, or (when the page's controls are given) a slot row its page has no control for, which RowView draws as Coming. */
 export function comingRow(row: Row, controls?: Readonly<Record<string, unknown>>): boolean {
-  return row.source.kind === "coming" || (controls !== undefined && row.source.kind === "slot" && !controls[row.id]);
+  if (row.source.kind === "coming") return true;
+  return row.source.kind === "slot" && (waitsOnEngine(row.source.calls) || (controls !== undefined && !controls[row.id]));
 }
 
 /** The level a row first shows at: its own, and at least Technical while it is Coming (Regular and Advanced hide Coming rows). Its
