@@ -65,13 +65,24 @@ function writeLocal(s: Saved) {
 const FONTS: Record<string, string> = {
   geist: "Geist", "instrument-sans": "Instrument Sans", "dm-sans": "DM Sans", "ibm-plex-sans": "IBM Plex Sans", "space-grotesk": "Space Grotesk",
   "atkinson-hyperlegible": "Atkinson Hyperlegible", fraunces: "Fraunces", lora: "Lora", "jetbrains-mono": "JetBrains Mono",
+  opendyslexic: "OpenDyslexic", lexend: "Lexend",
 };
+/** Reading fonts that ship with the window (public/fonts/reading, SIL OFL 1.1, each notice and licence in the font file's own metadata): they work
+ *  offline and never ask a font server. Private #1100. */
+export const BUNDLED_FONTS: Record<string, string> = { opendyslexic: "OpenDyslexic", "atkinson-hyperlegible": "AtkinsonHyperlegible", lexend: "Lexend" };
+/** The @font-face rules for a bundled reading font (regular and bold), or "" for any other font. */
+export function bundledFace(id: string | undefined): string {
+  const file = id ? BUNDLED_FONTS[id] : undefined;
+  if (!file) return "";
+  const face = (weight: number, cut: string) => `@font-face{font-family:"${FONTS[id!]}";font-style:normal;font-weight:${weight};font-display:swap;src:url("/fonts/reading/${file}-${cut}.woff2") format("woff2")}`;
+  return face(400, "Regular") + face(700, "Bold");
+}
 function fontStack(id: string | undefined): string | null {
   if (!id) return null;
   if (id === "system") return 'system-ui, -apple-system, "Segoe UI", sans-serif';
   const name = FONTS[id];
   if (!name) return null;
-  if (name !== "Geist" && !document.querySelector(`link[data-font="${id}"]`)) {
+  if (name !== "Geist" && !BUNDLED_FONTS[id] && !document.querySelector(`link[data-font="${id}"]`)) {
     const link = Object.assign(document.createElement("link"), { rel: "stylesheet", href: `https://fonts.googleapis.com/css2?family=${name.replace(/ /g, "+")}:wght@400;500;600&display=swap` });
     link.dataset.font = id;
     document.head.appendChild(link);
@@ -85,6 +96,8 @@ const DARK_SELS = ['@media (prefers-color-scheme: dark){:root:root:not([data-the
 /** The window's <style> for a look: the theme in both modes, the accent, fonts, text sizes and stillness. */
 function lookCss(s: Saved): string {
   const out: string[] = [];
+  const faces = [...new Set([s.prefs.fontUi, s.prefs.fontChat, s.palette?.font].map((f) => bundledFace(typeof f === "string" ? f : undefined)))].filter(Boolean);
+  out.push(...faces);
   const scene = sceneFile(s.look);
   if (scene) {
     const scrim = Math.max(0, Math.min(90, Number(s.look.scrim ?? 35) || 0));

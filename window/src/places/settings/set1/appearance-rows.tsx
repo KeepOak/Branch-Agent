@@ -53,7 +53,7 @@ export const rowOf = (key: string): RowSpec => ROWS.find((r) => r.key === key) a
 const OTHER: [string, string, Lv][] = [
   ["Light or dark", "Match this computer", 0], ["Theme", "Theme", 0], ["Theme", "Accent colour", 0], ["Agents", "Show the agent beside the conversation", 0],
   ["Background", "Painted scenes", 0], ["Background", "How much the theme covers it", 0], ["Background", "See-through panels", 0], ["Background", "Preview", 0],
-  ["Reading", "Interface font", 1], ["Reading", "Conversation font", 1], ["The pet", "Pet", 0], ["The pet", "Name", 0], ["The pet", "Pets you’ve had", 0],
+  ["Reading", "Interface font", 1], ["Reading", "Conversation font", 0], ["The pet", "Pet", 0], ["The pet", "Name", 0], ["The pet", "Pets you’ve had", 0],
   ["Language", "Language", 0], ["Tray", "Tray menu", 0], ["Window", "Customize layout", 0],
   ["Pictures around Branch", "Pictures around Branch", 1],
   ["Window, technical", "Window frame", 2], ["The list", "Ask before deleting a conversation", 1],

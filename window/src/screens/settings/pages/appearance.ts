@@ -74,7 +74,7 @@ export const APPEARANCE_ROWS: Row[] = [
   coming("appearance.reading.editor-theme", "Reading", rowOf("edTheme").title, "editor: the VS Code and JetBrains panels passing their theme to the window", rowOf("edTheme").off ?? "", { help: rowOf("edTheme").sub, control: "toggle" }),
   { id: "appearance.reading.font-ui", page: "appearance", card: "Reading", label: "Interface font", level: 1, control: "select", options: FONTS.map((f) => ({ v: f.id, label: f.label })),
     source: { kind: "look", key: "fontUi" }, codec: themeOwn("theme") },
-  { id: "appearance.reading.font-chat", page: "appearance", card: "Reading", label: "Conversation font", help: "The theme’s own is what the theme was drawn with.", level: 1, control: "select",
+  { id: "appearance.reading.font-chat", page: "appearance", card: "Reading", label: "Conversation font", help: "The first three are made for easier reading.", level: 0, control: "select",
     options: FONTS.map((f) => ({ v: f.id, label: f.label })), source: { kind: "look", key: "fontChat" }, codec: themeOwn("theme") },
 
   // The pet

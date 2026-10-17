@@ -1,0 +1,3 @@
+window:src/places/settings/set1/appearance-fonts.test.tsx
+window:src/places/settings/set1/appearance.test.tsx
+window:src/screens/settings/rows.test.ts

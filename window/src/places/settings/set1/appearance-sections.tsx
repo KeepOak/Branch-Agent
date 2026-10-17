@@ -129,8 +129,11 @@ function RangeRow({ look, k, def, max, title, label, sub, off }: { look: Look; k
   );
 }
 
-export const FONTS: Opt[] = [["theme", "The theme’s own"], ["geist", "Geist"], ["instrument-sans", "Instrument Sans"], ["dm-sans", "DM Sans"], ["ibm-plex-sans", "IBM Plex Sans"], ["space-grotesk", "Space Grotesk"],
-  ["atkinson-hyperlegible", "Atkinson Hyperlegible · Distinct shapes for easy reading"], ["fraunces", "Fraunces"], ["lora", "Lora"], ["jetbrains-mono", "JetBrains Mono"], ["system", "System · No web font"]].map(([id, label]) => ({ id, label }));
+export const FONTS: Opt[] = [["theme", "The theme’s own"],
+  // Easier to read (Private #1100): these three ship with Branch, so they work offline.
+  ["opendyslexic", "OpenDyslexic · Weighted letters, for dyslexia"], ["atkinson-hyperlegible", "Atkinson Hyperlegible · Distinct shapes for easy reading"], ["lexend", "Lexend · Wide, even spacing"],
+  ["geist", "Geist"], ["instrument-sans", "Instrument Sans"], ["dm-sans", "DM Sans"], ["ibm-plex-sans", "IBM Plex Sans"], ["space-grotesk", "Space Grotesk"],
+  ["fraunces", "Fraunces"], ["lora", "Lora"], ["jetbrains-mono", "JetBrains Mono"], ["system", "System · No web font"]].map(([id, label]) => ({ id, label }));
 
 export function ReadingSec({ look }: { look: Look }) {
   const level = useLevel();
@@ -141,13 +144,10 @@ export function ReadingSec({ look }: { look: Look }) {
     <Sec title="Reading">
       <SpecRow r={rowOf("size")} look={look} />
       <ReadingMoreRows look={look} />
-      {level >= 1 ? (
-        <>
-          <Ctl title="Interface font" keep="everywhere"><Pick value={font("fontUi")} options={FONTS} label="Interface font" onChange={set("fontUi")} /></Ctl>
-          <Ctl title="Conversation font" sub="The theme’s own is what the theme was drawn with." keep="everywhere"><Pick value={font("fontChat")} options={FONTS} label="Conversation font" onChange={set("fontChat")} /></Ctl>
-          <div className="fontprev-pe18" aria-label="Fonts in use"><span style={{ fontFamily: "var(--sans)" }}>The interface reads like this.</span><span style={{ fontFamily: "var(--chat-font, var(--sans))" }}>A conversation reads like this.</span></div>
-        </>
-      ) : null}
+      {level >= 1 ? <Ctl title="Interface font" keep="everywhere"><Pick value={font("fontUi")} options={FONTS} label="Interface font" onChange={set("fontUi")} /></Ctl> : null}
+      {/* Regular too (Private #1100): the easier-reading fonts are an accessibility choice, not a technical one. */}
+      <Ctl title="Conversation font" sub="The first three are made for easier reading." keep="everywhere"><Pick value={font("fontChat")} options={FONTS} label="Conversation font" onChange={set("fontChat")} /></Ctl>
+      <div className="fontprev-pe18" aria-label="Fonts in use">{level >= 1 ? <span style={{ fontFamily: "var(--sans)" }}>The interface reads like this.</span> : null}<span style={{ fontFamily: "var(--chat-font, var(--sans))" }}>A conversation reads like this.</span></div>
     </Sec>
   );
 }
