@@ -6,4 +6,5 @@ export const ROUTES = {
   "side-panel-tabs": "The side panel's tab row at its 352 px default width. The capture fails if a tab label is clipped or the row overflows.",
   "team-approval-before": "The group room as it is on main, with no team proposal card (fixture: Design group).",
   "team-approval": "The team proposal card in its asking state, with Approve team and Not now (fixture: Ship the Q3 newsletter).",
+  "settings-nav-end": "R1 Settings (Technical) at 1200x800 under a 48 px bar, the nav scrolled to its end. The capture fails if the last nav row ends past the frame.",
 };

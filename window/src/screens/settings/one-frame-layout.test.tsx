@@ -41,8 +41,20 @@ it("the nav stays in view when a long page scrolls the frame", () => {
   const side = rule(".r1s-side");
   expect(side).toMatch(/position:\s*sticky/);
   expect(side).toMatch(/top:\s*0/);
-  expect(side).toMatch(/max-height:\s*100vh/);
   expect(side).toMatch(/overflow-y:\s*auto/);
+});
+
+it("the nav is capped at the Settings frame, not the viewport, so its last rows stay reachable", () => {
+  // The frame sits under the window chrome and clips what runs past it (frame/frame.css), so a viewport cap (100vh)
+  // makes the nav taller than its pane. The cap is the frame's own height: 100% of the nav's grid row.
+  const side = rule(".r1s-side");
+  const caps = [...side.matchAll(/max-height:\s*([^;]+)/g)].map(([, v]) => v.trim());
+  expect(caps.length).toBeGreaterThan(0);
+  for (const cap of caps) {
+    expect(cap).toBe("100%");
+    expect(cap).not.toMatch(/v(h|min|max)|dvh|svh|lvh/);
+  }
+  expect(rule(".r1set")).toMatch(/height:\s*100%/);
 });
 
 it("Town lookup and Approvals keep the page's column", async () => {

@@ -14,10 +14,11 @@
 
 /* the nav column: clear, like the page beside it */
 .r1s-side { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; padding: 14px 12px 24px; }
-/* The nav never scrolls away with a long page (#1093 item 6): when the frame is taller than the window and the window
-   scrolls it, the nav stays at the top and scrolls on its own. */
+/* The nav never scrolls away with a long page (#1093 item 6): it stays at the top and scrolls on its own. Its cap is the
+   Settings frame's own height (100% of its grid row), not the viewport: the frame sits under the window chrome and clips
+   what runs past it, so a 100vh cap would push the last nav rows out of reach. */
 @media (min-width: 761px) {
-  .r1s-side { position: sticky; top: 0; align-self: start; max-height: 100vh; box-sizing: border-box; }
+  .r1s-side { position: sticky; top: 0; align-self: start; max-height: 100%; box-sizing: border-box; }
 }
 .r1s-search { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; margin: 0 0 8px; border-radius: 999px; flex: none; color: var(--ink-3); }
 .r1s-search:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
