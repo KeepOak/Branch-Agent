@@ -2,6 +2,7 @@
 // step list, the four modes and the rules the card follows; the engine calls live in the step components.
 import { MODE_ROWS } from "../../composer/mode";
 import type { Detected, TestResult } from "../../setup/setup-model";
+import { errorWords, plainError, PLAIN_FAILURE } from "../../shell/plain-error";
 import { DAY_ONE_TEMPLATES, listedTemplate, type DayOneTemplate, type ListedTemplate } from "../seedbank/templates";
 
 export const STEPS = [
@@ -11,6 +12,15 @@ export const STEPS = [
   { id: "trunk", name: "Your first Trunk" },
 ] as const;
 export const LAST_STEP = STEPS.length - 1;
+
+/** A failed step as a person reads it (Private #1089): the step's own lead, then what plainError() makes of the engine's
+ *  words. At Regular that is one plain sentence with a next step, never the raw text; Advanced and Technical keep the exact
+ *  words. A leading "Error:" goes first, so plainError() never keeps it as a lead of its own, and when nothing more specific
+ *  fits, the line is the lead and Try again. */
+export function failedStep(lead: string, error: unknown): string {
+  const said = plainError(`${lead}: ${errorWords(error).replace(/^\s*(?:Uncaught\s+)?Error:\s*/, "")}`);
+  return said === `${lead}. ${PLAIN_FAILURE}` ? `${lead}. Try again.` : said;
+}
 
 /** The four choices of step 3, in the preview's order. Full access is never offered here (owner decision 1). */
 export type ModeId = "ask" | "auto" | "plan" | "read";
