@@ -80,3 +80,33 @@ describe("the composer mic with voice off", () => {
     expect(mic()?.closest("[data-coming]") ?? mic()?.getAttribute("data-coming")).toBeTruthy();
   });
 });
+
+describe("the composer mic when this window cannot use it", () => {
+  it("says why in plain words and opens Settings › Permissions", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockRejectedValue(new DOMException("Permission denied", "NotAllowedError")) },
+    });
+    const { opened, request } = await mount({ dictation: true });
+    request.mockImplementation(async (method: string) => {
+      if (method === "talk.session.create") return { sessionId: "s1", audio: { inputEncoding: "g711_ulaw", inputSampleRateHz: 8000 } };
+      if (method === "talk.catalog") return { transcription: { ready: true }, realtime: { ready: false } };
+      if (method === "agents.list") return { defaultId: "scout", agents: [{ id: "scout", name: "Scout" }] };
+      if (method === "sessions.describe") return { session: { model: "openai/test", permissionMode: "guarded", thinkingLevel: "medium" } };
+      if (method === "sessions.list") return { defaults: { model: "openai/test" }, sessions: [] };
+      if (method === "models.list") return { models: [{ id: "test", provider: "openai", name: "Test Model", available: true }] };
+      if (method === "models.authStatus") return { providers: [] };
+      return {};
+    });
+    await act(async () => mic()!.click());
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    const note = document.querySelector('[data-testid="mic-denied"]');
+    expect(note?.textContent).toContain("Branch can’t use the microphone");
+    expect(note?.textContent).toContain("Settings › Permissions");
+    expect(note?.textContent).not.toMatch(/NotAllowedError|getUserMedia|DOMException|\.tsx?\b/);
+    const open = [...(note?.querySelectorAll("button") ?? [])].find((b) => b.textContent === "Open Settings");
+    expect(open).toBeDefined();
+    await act(async () => open!.click());
+    expect(opened).toHaveBeenCalledWith("settings/permissions");
+  });
+});
