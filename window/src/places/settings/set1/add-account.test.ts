@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { freshTokenLabel, loginChoiceRef, servicesOf, tokenProfileName } from "./add-account";
+import { freshAccount, freshTokenLabel, localSetupCopy, loginChoiceRef, serviceMatchesProvider, servicesOf, tokenProfileName } from "./add-account";
 import { tokenLabel } from "./accounts";
 
 describe("servicesOf", () => {
@@ -17,8 +17,45 @@ describe("servicesOf", () => {
     const out = servicesOf(caps, [], detect);
     const claude = out.find((s) => s.id === "plan:anthropic");
     expect(claude?.logins.map((l) => [l.id, l.kind])).toEqual([["setup-token", "setup-secret"]]);
-    expect(out.some((s) => s.id === "key:anthropic")).toBe(true);
+    expect(out.find((s) => s.brand === "anthropic")?.keySupported).toBe(true);
     expect(out.find((s) => s.id === "plan:openai")?.logins.map((l) => l.id)).toEqual(["openai/openai-device-code"]);
+  });
+
+  it("dedupes brands, uses plain names, and ranks local first", () => {
+    const out = servicesOf(
+      [
+        { provider: "google", apiKeySupported: true, loginOptions: [{ id: "google-oauth", kind: "oauth" }] },
+        { provider: "openrouter", apiKeySupported: true, loginOptions: [{ id: "openrouter-oauth", kind: "oauth" }] },
+        { provider: "xai", apiKeySupported: true, loginOptions: [{ id: "xai-oauth", kind: "oauth" }] },
+        { provider: "minimax", apiKeySupported: true },
+        { provider: "minimax-portal", loginOptions: [{ id: "minimax-oauth", kind: "oauth" }] },
+        { provider: "litellm", apiKeySupported: true },
+        { provider: "huggingface", apiKeySupported: true },
+      ],
+      [],
+      { prepareOptions: [{ id: "ollama", brandId: "ollama", label: "Ollama" }] },
+    );
+    const names = out.map((s) => s.name);
+    expect(names.filter((n) => n === "Google Gemini")).toHaveLength(1);
+    expect(names.filter((n) => n === "OpenRouter")).toHaveLength(1);
+    expect(names.filter((n) => n === "xAI")).toHaveLength(1);
+    expect(names.filter((n) => n === "MiniMax")).toHaveLength(1);
+    expect(names).toContain("LiteLLM");
+    expect(names).toContain("Hugging Face");
+    expect(names[0]).toBe("Ollama");
+    expect(names).not.toContain("Litellm");
+    expect(names).not.toContain("Huggingface");
+    expect(localSetupCopy({ id: "local:ollama", brand: "ollama", name: "Ollama", kind: "local", signedIn: 0, logins: [] })).toMatch(/9\.6 GB/);
+    expect(localSetupCopy({ id: "local:llama-cpp", brand: "llama-cpp", name: "llama.cpp", kind: "local", signedIn: 0, logins: [] })).toMatch(/few GB/);
+    expect(localSetupCopy({ id: "local:lmstudio", brand: "lmstudio", name: "LM Studio", kind: "local", signedIn: 0, logins: [] })).toMatch(/several GB|LM Studio/i);
+    const minimax = out.find((s) => s.name === "MiniMax");
+    expect(minimax?.providers).toEqual(expect.arrayContaining(["minimax", "minimax-portal"]));
+    expect(serviceMatchesProvider(minimax!, "minimax-portal")).toBe(true);
+    expect(freshAccount(
+      [{ provider: "minimax-portal", displayName: "MiniMax", status: "ok", profiles: [{ profileId: "minimax-portal:work", type: "oauth", status: "ok", displayName: "Work" }] }],
+      "minimax",
+      [],
+    )?.profile.profileId).toBe("minimax-portal:work");
   });
 });
 

@@ -8,6 +8,8 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { CapabilityProvider, useCan, useCapabilityEngine } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
 import type { QueuedMessage, RunEnd, SteeredNote } from "../../connect/session";
+import { ConnectModelNotice } from "../../composer/ConnectModelNotice";
+import { isNoUsableModelError } from "../../composer/connect-model";
 import { currentModelRef } from "../../composer/model";
 import { hasNoModel, useConversation } from "../../composer/useConversation";
 import { Face } from "../../face/Face";
@@ -180,10 +182,12 @@ function earliestStepAt(blocks: readonly Block[]): number | undefined {
 }
 
 function EmptyChat({ name, engine, onStart }: { name: string; engine?: WindowEngine; onStart?: (text: string) => void }) {
+  const conv = useConversation(engine);
+  const noModel = conv.loaded && hasNoModel(conv, currentModelRef(conv.row, conv.defaults));
   return <div className="r1c-empty" data-testid="empty-chat">
     <Face size={72} label={name} state="idle" reactive />
     <h1 className="r1c-empty-title">What should {name || "it"} do?</h1>
-    {onStart ? <Starters engine={engine} onStart={onStart} /> : null}
+    {noModel ? <ConnectModelNotice className="r1c-connect" /> : onStart ? <Starters engine={engine} onStart={onStart} /> : null}
   </div>;
 }
 
@@ -428,7 +432,9 @@ function EntryView({ entry, view, live, working }: { entry: Entry; view: View; l
       return <NoticeLine text="Response stopped" testid="run-stopped"
         links={block.key === view.continueKey && view.onContinue ? [{ label: "Continue", onClick: view.onContinue, ...CONTINUE }] : []} />;
     case "error":
-      return <NoticeLine tone="bad" text={view.name + " couldn’t finish: " + shortReason(block.message)} details={block.message} links={[{ label: "Copy error", onClick: () => void copyText(block.message, view.toast) }]} testid="run-error" />;
+      return isNoUsableModelError(block.message)
+        ? wrap(<ConnectModelNotice />)
+        : <NoticeLine tone="bad" text={view.name + " couldn’t finish: " + shortReason(block.message)} details={block.message} links={[{ label: "Copy error", onClick: () => void copyText(block.message, view.toast) }]} testid="run-error" />;
     case "notice":
       return <NoticeLine text={block.text} links={block.topicKey && view.onOpenSession ? [{ label: "Open", onClick: () => view.onOpenSession?.(block.topicKey!) }] : []} />;
     case "steer":

@@ -190,7 +190,8 @@ describe("Settings › Accounts", () => {
 
   it("the wizard lists every service the engine can sign in to, by kind", () => {
     const services = servicesOf(CAPS, PROVIDERS, { prepareOptions: [{ id: "ollama", label: "Ollama" }] });
-    expect(services.map((s) => [s.kind, s.name, s.signedIn])).toEqual([["plan", "ChatGPT", 2], ["key", "OpenAI", 0], ["key", "Mistral", 0], ["local", "Ollama", 0]]);
+    expect(services.map((s) => [s.kind, s.name, s.signedIn])).toEqual([["local", "Ollama", 0], ["plan", "ChatGPT", 2], ["key", "Mistral", 0]]);
+    expect(services.find((s) => s.name === "ChatGPT")?.keySupported).toBe(true);
   });
 
   it("a key goes to models.authSetApiKey", async () => {

@@ -12,7 +12,8 @@ import { SetupAddAccountDialog } from "../../setup/SetupFlow";
 import { logoId } from "../../setup/steps-early";
 import { ensureNoKeyDefault } from "../../composer/no-key-default";
 import { testModel, useDetected } from "../../setup/use-setup-engine";
-import { answeredBy, canSayHello, EXAMPLES_REASON, readExamples, toggle, WAITS_FOR, type Example, type Hello } from "./model";
+import { answeredBy, canSayHello, EXAMPLES_REASON, toggle, WAITS_FOR, type Example, type Hello } from "./model";
+import { examplesErrorText, examplesHint, loadExampleTrunks } from "./try-examples";
 
 type Props = { engine: WindowEngine; off: string[]; onOff: (off: string[]) => void; hello: Hello; onHello: (h: Hello) => void; onExamples?: (on: boolean) => void };
 
@@ -23,9 +24,9 @@ export function Models({ engine, off, onOff, hello, onHello, onExamples }: Props
   const tryExamples = () => {
     if (examples === "busy") return;
     setExamples("busy"); setExamplesError(null);
-    engine.request(WAITS_FOR.examples, {}).then(
-      (value) => { setExamples(readExamples(value)); onExamples?.(true); },
-      (e: unknown) => { setExamples(null); setExamplesError(`Couldn’t load the examples. ${e instanceof Error ? e.message : String(e)}`); },
+    loadExampleTrunks((method, params) => engine.request(method, params)).then(
+      (list) => { setExamples(list); onExamples?.(true); },
+      (e: unknown) => { setExamples(null); setExamplesError(examplesErrorText(e)); },
     );
   };
   const rows = detected?.candidates ?? [];
@@ -81,7 +82,7 @@ export function Models({ engine, off, onOff, hello, onHello, onExamples }: Props
       {examplesError ? <p className="r1-ob-error" role="alert">{examplesError}</p> : null}
       {Array.isArray(examples) ? (
         <div className="r1-ob-examples" aria-label="Example Trunks">
-          <p className="r1-ob-hint">{examples.length ? "Example Trunks Branch can make for you. Add a model any time in Settings › Accounts & usage." : "This engine has no example Trunks yet. You can still look around, and add a model any time in Settings › Accounts & usage."}</p>
+          <p className="r1-ob-hint">{examplesHint(examples.length)}</p>
           {examples.length ? <div className="r1-ob-list">{examples.map((x) => <div className="r1-ob-row" key={x.id}><Icon name="spark" size={15} /><span className="r1-ob-grow"><b>{x.name}</b>{x.pitch ? <small>{x.pitch}</small> : null}</span></div>)}</div> : null}
         </div>
       ) : null}

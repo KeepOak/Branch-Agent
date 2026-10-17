@@ -17,6 +17,7 @@ import { addNotSent, healNotSent } from "../composer/queue";
 import { droppedFiles, engineKeyOf, FirstSendEcho, heldRuns, UnconfirmedSends } from "./unconfirmed";
 import { failedAck, isRetryable, refusedOrUnsent, requestWithRetry } from "./send-errors";
 import { firstSendEcho, shouldKeepFirstSendEcho } from "../composer/sending";
+import { friendlyModelError } from "../composer/connect-model";
 import { safeStorage } from "../composer/drafts";
 import { trunkDisplayName, trunkNameForKey } from "./trunk-name";
 
@@ -1105,7 +1106,7 @@ export class SaplingSession {
     if (!sessionKey) return;
     try {
       // Attachments aren't kept with it (the line holds words); the reason says so, so Try again isn't silently less.
-      addNotSent(safeStorage(), sessionKey, { id: runId, text, error: `${error}${droppedFiles(attachments)}` });
+      addNotSent(safeStorage(), sessionKey, { id: runId, text, error: `${friendlyModelError(error)}${droppedFiles(attachments)}` });
     } catch (stored) {
       this.set({ error: `${text.slice(0, 40)}… wasn't sent (${error}), and this computer couldn't keep it: ${stored instanceof Error ? stored.message : String(stored)}` });
     }

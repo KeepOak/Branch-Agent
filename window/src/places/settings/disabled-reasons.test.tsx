@@ -51,15 +51,15 @@ describe("a settings row greyed by a real condition says what to do, visibly", (
   });
 
   for (const level of LEVELS) {
-    it(`Privacy & data at ${level}: condition reasons stay, and no Run button says 'comes in a later update' (B-043, B-044)`, async () => {
+    it(`Privacy & data at ${level}: condition reasons stay, and the Coming Run buttons are hidden (B-043, B-044)`, async () => {
       await act(async () => root.render(<SettingsPage page="usage" title="Privacy & data" level={level} engine={engineWith({ "config.get": { hash: "h", valid: true, config: {} } })} />));
       await flush();
       expect(describedBy(rowControl("Show other assistants’ conversations"))).toBe("No other assistants were found on this computer.");
       if (level === "advanced") expect(describedBy(rowControl("Run now"))).toBe("Turn on “Compress older transcripts” first.");
+      // Test the model and Evals are Technical-only cards, so their Coming Run buttons don't show here at all.
       const runs = [...host.querySelectorAll<HTMLButtonElement>("button")].filter((b) => b.textContent === "Run" || b.textContent === "Run the test");
-      expect(runs.length).toBeGreaterThan(0);
-      for (const b of runs) { expect(b.disabled).toBe(true); expect(b.getAttribute("aria-describedby")).toBeNull(); }
-      expect(host.textContent).not.toContain("Running a test set comes in a later update.");
+      expect(runs).toEqual([]);
+      expect(host.textContent).not.toContain("later update");
     });
   }
 });

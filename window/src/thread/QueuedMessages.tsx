@@ -7,6 +7,8 @@ import { loadLine, mark, onLineChange, remove, saveLine, type QueueItem } from "
 import { safeStorage } from "../composer/drafts";
 import { RoomMessage } from "../rooms/RoomMessage";
 import { otherSender, type ThreadRoom } from "../rooms/thread-room";
+import { ConnectModelNotice } from "../composer/ConnectModelNotice";
+import { isNoUsableModelError } from "../composer/connect-model";
 import { NotSent, UserMessage } from "./blocks";
 
 const MARK: Record<QueuedMessage["state"], string> = { queued: "Queued", delivered: "Delivered" };
@@ -62,7 +64,12 @@ export function QueuedMessages({ queued, own, room, part, sessionKey }: { queued
       {(part === "delivered" ? [] : own)
         .filter((item) => item.state !== "sending")
         .map((item) =>
-          item.state === "failed" ? (
+          item.state === "failed" && isNoUsableModelError(item.error ?? "") ? (
+            <div key={`own:${item.id}`} className="queued-msg">
+              <UserMessage block={{ kind: "user", key: `own:${item.id}`, text: item.text }} />
+              <ConnectModelNotice />
+            </div>
+          ) : item.state === "failed" ? (
             <NotSent key={`own:${item.id}`} text={item.text} reason={item.error ?? ""}
               onRetry={() => changeLine(sessionKey, (line) => mark(line, item.id, "waiting"))}
               onDiscard={() => changeLine(sessionKey, (line) => remove(line, item.id))} />
