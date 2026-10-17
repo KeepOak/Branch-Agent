@@ -4,6 +4,7 @@ import {
   readWorkspaceSkillFile,
   readWorkspaceSupportFile,
 } from "../lifecycle/workspace-skill-write.js";
+import { assertWorkshopCapability } from "./capability-policy.js";
 import { resolveSkillWorkshopConfig } from "./config.js";
 import { resolveDraftedSkillDescription, stripProposalFrontmatterForSkill } from "./frontmatter.js";
 import { createSkillProposalEvent, dispatchSkillProposalChanged } from "./plugin-hooks.js";
@@ -268,6 +269,7 @@ async function createPendingSkillProposal(
     evidence: input.evidence,
   });
   const { content, draftHash, evidence, goal, scan, supportFiles } = prepared;
+  assertWorkshopCapability(input.config, supportFiles);
   const id = createSkillProposalId(kind === "create" ? target.skillName : target.skillKey);
   const origin = normalizeProposalOrigin({
     ...input.origin,

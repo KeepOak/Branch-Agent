@@ -12,7 +12,6 @@ import { resolveSessionBoundaryPromptCacheKey } from "../../agents/embedded-agen
 import type { EmbeddedAgentRunResult } from "../../agents/embedded-agent-runner/types.js";
 import { resolveAgentRunSessionTarget } from "../../agents/run-session-target.js";
 import { SessionManager } from "../../agents/sessions/index.js";
-import { createWriteTool } from "../../agents/sessions/tools/write.js";
 import { createSkillWorkshopTool } from "../../agents/tools/skill-workshop-tool.js";
 import {
   createSessionEntryWithTranscript,
@@ -153,7 +152,7 @@ afterEach(async () => {
 // win32 skipped until #1075: this file never ran there before. Its session-drain cleanup stalls
 // in the top-level afterEach after tests that mutate transcripts (hook timeout at 180 s).
 describe.skipIf(process.platform === "win32")("experience review maintenance", () => {
-  it("keeps completed maintenance edits when the Gateway resets", async () => {
+  it("keeps drafts pending and leaves live skills unchanged when the Gateway resets", async () => {
     const workspaceDir = await tempDirs.make("branch-experience-reset-");
     const written = createDeferred();
     const release = createDeferred();
@@ -161,9 +160,18 @@ describe.skipIf(process.platform === "win32")("experience review maintenance", (
     const skillFile = path.join(resolveWorkshopSkillsDir(config, "main"), "procedure", "SKILL.md");
     const content = "# Procedure\n\nVerify the public generation.\n";
     runEmbeddedAgent.mockImplementation(async (params: RunEmbeddedAgentParams) => {
-      await createWriteTool(params.workspaceDir).execute("review-write", {
-        path: "procedure/SKILL.md",
-        content,
+      await createSkillWorkshopTool({
+        workspaceDir: params.workspaceDir,
+        config: params.config,
+        agentId: params.agentId,
+        proposalOnly: params.skillWorkshopProposalOnly,
+        autonomousCapture: params.skillWorkshopAutonomousCapture,
+        proposalMutationBudget: params.skillWorkshopProposalMutationBudget,
+      }).execute("review-draft", {
+        action: "create",
+        name: "procedure",
+        description: "Verify the public generation.",
+        proposal_content: content,
       });
       written.resolve();
       await release.promise;
@@ -181,7 +189,7 @@ describe.skipIf(process.platform === "win32")("experience review maintenance", (
       resetGatewayWorkAdmission();
       release.resolve();
       expect(await settled).toMatchObject({ message: "gateway runtime reset" });
-      await expect(fs.readFile(skillFile, "utf8")).resolves.toBe(content);
+      await expect(fs.access(skillFile)).rejects.toThrow();
       expect(Object.values(readSkillGardenerReviewStatus().experienceReviews)[0]).toMatchObject({
         outcome: "failed",
         error: expect.stringContaining("gateway runtime reset"),
@@ -647,13 +655,13 @@ describe.skipIf(process.platform === "win32")("experience review maintenance", (
       );
 
       expect(Object.values(readSkillGardenerReviewStatus().experienceReviews)[0]).toMatchObject({
-        outcome: mode === "auto" ? "completed" : "nothing",
+        outcome: "nothing",
         usage: { inputTokens: 12_243, cachedInputTokens: 12_000, outputTokens: 91 },
       });
     },
   );
 
-  it("edits the agent Workshop directory from a session worktree", async () => {
+  it("publishes the checked skill to the agent Workshop directory from a session worktree", async () => {
     const canonicalWorkspaceDir = await tempDirs.make("branch-experience-canonical-");
     const worktreeWorkspaceDir = await tempDirs.make("branch-experience-worktree-");
     const config = {
@@ -662,9 +670,18 @@ describe.skipIf(process.platform === "win32")("experience review maintenance", (
     };
     const content = "# Deployment preflight\n\nRead the manifest before deploying.\n";
     runEmbeddedAgent.mockImplementation(async (params: RunEmbeddedAgentParams) => {
-      await createWriteTool(params.workspaceDir).execute("review-write", {
-        path: "deployment-preflight/SKILL.md",
-        content,
+      await createSkillWorkshopTool({
+        workspaceDir: params.workspaceDir,
+        config: params.config,
+        agentId: params.agentId,
+        proposalOnly: params.skillWorkshopProposalOnly,
+        autonomousCapture: params.skillWorkshopAutonomousCapture,
+        proposalMutationBudget: params.skillWorkshopProposalMutationBudget,
+      }).execute("review-draft", {
+        action: "create",
+        name: "deployment-preflight",
+        description: "Read the manifest before deploying.",
+        proposal_content: content,
       });
       return { meta: { durationMs: 1 } };
     });
@@ -679,7 +696,7 @@ describe.skipIf(process.platform === "win32")("experience review maintenance", (
         path.join(resolveWorkshopSkillsDir(config, "main"), "deployment-preflight", "SKILL.md"),
         "utf8",
       ),
-    ).resolves.toBe(content);
+    ).resolves.toContain(content.trim());
     await expect(
       fs.access(path.join(worktreeWorkspaceDir, "deployment-preflight")),
     ).rejects.toThrow();
@@ -688,12 +705,9 @@ describe.skipIf(process.platform === "win32")("experience review maintenance", (
     ).rejects.toThrow();
     expect(runEmbeddedAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        bootstrapWorkspaceDir: canonicalWorkspaceDir,
-        cwd: resolveWorkshopSkillsDir(config, "main"),
-        sessionRoot: resolveWorkshopSkillsDir(config, "main"),
-        requireWorkspaceOnly: true,
-        requireWritableSandbox: true,
-        skillsSnapshot: { prompt: "", skills: [] },
+        workspaceDir: canonicalWorkspaceDir,
+        toolExecutionAllow: ["skill_workshop"],
+        skillWorkshopProposalOnly: true,
       }),
     );
   });
