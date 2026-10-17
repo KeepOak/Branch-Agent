@@ -124,11 +124,14 @@ function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: App
 }
 
 /** A step's sub-line: the reason when it failed or was refused, and a finished step's raw output only at Technical, so file
- *  contents, tool replies and ids ("Sent visible reply … via internal-ui", "no_change") stay out of normal views. */
+ *  contents, tool replies and ids ("Sent visible reply … via internal-ui", "no_change") stay out of normal views. At Regular
+ *  a failed or refused step's reason reads as plainError() says (no ENOENT, error class or engine sentence); Advanced and
+ *  Technical keep its exact words. */
 export function stepDetail(step: Extract<Block, { kind: "step" }>, level: Level): string | null {
   const detail = step.detail?.trim();
   if (!detail || /^[[{]/.test(detail)) return null;
-  if (step.status === "failed" || step.status === "denied" || level === "technical") return shortReason(detail);
+  if (step.status === "failed" || step.status === "denied") return level === "regular" ? plainError(detail, true) : detail;
+  if (level === "technical") return shortReason(detail);
   return null;
 }
 

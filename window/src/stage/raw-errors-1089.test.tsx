@@ -6,6 +6,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
+import type { Block } from "../thread/model";
 import { FilesTab } from "./pane/FilesTab";
 import { DashboardTab } from "./pane/DashboardTab";
 import { ActivityTab } from "./pane/ActivityTab";
@@ -62,6 +63,28 @@ describe("the side panes never show a raw engine error at Regular (Private #1089
     await act(async () => root.render(<ActivityTab engine={helperFailed(FAILURES[1])} name="Scout" blocks={[]} running={false} level="advanced" onError={() => {}} />));
     await settle();
     expect(helperLine()).toContain("ECONNREFUSED");
+  });
+
+  // A failed or refused step in the Activity timeline: its reason is the engine's words.
+  const failedStep = (key: string, detail: string, status: "failed" | "denied" = "failed"): Block => ({ kind: "step", key, tool: "read", title: "Read a file", detail, status });
+  const timeline = () => host.querySelector(".tl-pn")?.textContent ?? "";
+
+  it.each([...FAILURES, "TypeError: Cannot read properties of undefined (reading 'path')"])("Activity, a failed step: %j", async (raw) => {
+    await act(async () => root.render(<ActivityTab engine={helperFailed("")} name="Scout" blocks={[failedStep("a", raw), failedStep("b", raw, "denied")]} running={false} level="regular" onError={() => {}} />));
+    await settle();
+    expect(timeline()).toContain("Read a file");
+    expect(timeline()).not.toMatch(RAW);
+  });
+
+  it("Activity keeps a failed step's plain reason at Regular and its exact words at Advanced", async () => {
+    await act(async () => root.render(<ActivityTab engine={helperFailed("")} name="Scout" blocks={[failedStep("a", "The file was not found."), failedStep("b", "You said no.", "denied")]} running={false} level="regular" onError={() => {}} />));
+    await settle();
+    expect(timeline()).toContain("The file was not found.");
+    expect(timeline()).toContain("You said no.");
+    localStorage.setItem("branch.level", "advanced");
+    await act(async () => root.render(<ActivityTab engine={helperFailed("")} name="Scout" blocks={[failedStep("a", FAILURES[2])]} running={false} level="advanced" onError={() => {}} />));
+    await settle();
+    expect(timeline()).toContain("ENOENT");
   });
 
   it("Advanced keeps the exact words", async () => {
