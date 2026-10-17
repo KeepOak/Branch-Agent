@@ -4,11 +4,12 @@ export type Box = { top: number; left: number; width: number; height: number };
 const GAP = 12;
 const EDGE = 12;
 
-function hits(card: Box, zone: Box): boolean {
-  return card.left < zone.left + zone.width - 0.5
-    && card.left + card.width > zone.left + 0.5
-    && card.top < zone.top + zone.height - 0.5
-    && card.top + card.height > zone.top + 0.5;
+/** True when two boxes overlap. Used so a spotlight in the sidebar is skipped. */
+export function overlaps(a: Box, b: Box): boolean {
+  return a.left < b.left + b.width - 0.5
+    && a.left + a.width > b.left + 0.5
+    && a.top < b.top + b.height - 0.5
+    && a.top + a.height > b.top + 0.5;
 }
 
 /** Where the coach card sits: off the sidebar, and off the control it points at. */
@@ -28,8 +29,8 @@ export function coachCardPlace(
   const clear = (top: number, left: number) => {
     if (left < minLeft - 0.5 || top < EDGE - 0.5 || left + cardWidth > width - EDGE + 0.5 || top + cardHeight > height - EDGE + 0.5) return false;
     const card = { top, left, width: cardWidth, height: cardHeight };
-    if (side && hits(card, side)) return false;
-    if (target && hits(card, target)) return false;
+    if (side && overlaps(card, side)) return false;
+    if (target && overlaps(card, target)) return false;
     return true;
   };
   const spots: { top: number; left: number }[] = [];
