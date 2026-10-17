@@ -50,12 +50,6 @@ theme	window/src/places/customize/common.tsx	["#3b6e8f", "#5b6b2f", "#8a4b2a", "
 theme	window/src/places/customize/common.tsx	const TINTS = ["#3b6e8f", "#5b6b2f", "#8a4b2a", "#6d4c8f",
 theme	window/src/places/customize/common.tsx	const TINTS = ["#3b6e8f", "#5b6b2f", "#8a4b2a", "#6d4c8f", "#2f6f5b",
 theme	window/src/places/customize/common.tsx	nst TINTS = ["#3b6e8f", "#5b6b2f", "#8a4b2a", "#6d4c8f", "#2f6f5b", "#8f3b4b",
-theme	window/src/places/customize/connectors.tsx	0 .2.1.5.6.4A8 8 0 0 0 12 4z" fill="#fff"/>'],
-theme	window/src/places/customize/connectors.tsx	4.8H6l-3-4.8z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin
-theme	window/src/places/customize/connectors.tsx	[/^(google-?)?drive|^gdrive/i, "#1FA463", '<path d="M9 4.5h6l6 10.2-3 4.8H6
-theme	window/src/places/customize/connectors.tsx	[/^brave/i, "#FB542B", "B"],
-theme	window/src/places/customize/connectors.tsx	[/^github/i, "#181717", '<path d="M12 4a8 8 0 0 0-2.5 15.
-theme	window/src/places/customize/connectors.tsx	[/^outlook/i, "#0F6CBD", "O"],
 theme	window/src/places/customize/customize.css	-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
 theme	window/src/places/customize/customize.css	4%; border-radius: 50%; background: rgba(0,0,0,.72); }
 theme	window/src/places/customize/customize.css	idth: 15%; height: 24%; background: #fff; border-radius: 50%; transform: rot

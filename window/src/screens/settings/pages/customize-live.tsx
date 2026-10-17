@@ -32,7 +32,7 @@ const LEVEL_WORD = ["regular", "advanced", "technical"] as const;
 const QUIET = { saving: () => undefined, saved: () => undefined, failed: () => undefined };
 
 /** The window's config (config.get), saved with config.patch, shared with every Settings row. */
-function useConfigSnap(engine: WindowEngine) {
+export function useConfigSnap(engine: WindowEngine) {
   const store = configStore(engine);
   const subscribe = useCallback((fn: () => void) => store.subscribe(fn), [store]);
   const snap = useSyncExternalStore(subscribe, () => store.snap, () => store.snap);
