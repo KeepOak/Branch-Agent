@@ -13,6 +13,16 @@ export type PersonLine = Person & { shared?: boolean };
 const COUNT_TIP = "Conversations they can open, and how many are working now. Helpers, automations and Branch’s own conversations are not counted.";
 const SHARED_TIP = "Connected with the Gateway’s key, not a personal sign-in.";
 
+/** The Gateway's own owner profile (engine state/user-profiles-owner-migration.ts). */
+const OWNER_PROFILE_ID = "gateway-owner";
+/** A person's name as a person reads it. A profile with no display name arrives named by its id, and an id is never
+ *  shown (Private #1089): the Gateway's owner reads as Shared owner, anyone else as Someone. */
+export function shownName(person: Pick<Person, "id" | "name">): string {
+  const name = person.name.trim();
+  if (name && name !== person.id) return name;
+  return person.id === OWNER_PROFILE_ID ? "Shared owner" : "Someone";
+}
+
 function theirs(person: PersonLine, rows: Session[]): Session[] {
   return rows.filter(row => countable(row) && (person.shared ? !row.human : row.ownerId === person.id));
 }
@@ -45,7 +55,8 @@ function Card({ person, rows, agents, at, open, openPlace, keep, leave }: { pers
   );
 }
 
-export function PersonRow({ person, rows, agents, open, openPlace }: { person: PersonLine; rows: Session[]; agents: Agent[]; open: (key: string) => void; openPlace: (place: PlaceId) => void }) {
+export function PersonRow({ person: raw, rows, agents, open, openPlace }: { person: PersonLine; rows: Session[]; agents: Agent[]; open: (key: string) => void; openPlace: (place: PlaceId) => void }) {
+  const person = raw.shared ? raw : { ...raw, name: shownName(raw) };
   const line = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
