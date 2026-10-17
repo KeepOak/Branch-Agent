@@ -172,7 +172,8 @@ export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): v
       if (message?.type === "branch-desktop:bound") finish();
     };
     child.on("message", onBound);
-    timer = setTimeout(finish, 1000);
+    // No timer. A stalled event loop can make a timeout run before the queued bound message,
+    // and closing then drops the socket the child just started using.
     try { child.send({ type: "branch-desktop:listen-handle" }, holder); }
     catch { finish(); }
   };
