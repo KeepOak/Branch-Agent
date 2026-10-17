@@ -141,6 +141,9 @@ if (info) {
       set: (name: string, on: boolean) => ipcRenderer.invoke("branch-desktop:controls:set", name, on),
       openDownload: (id: string) => ipcRenderer.invoke("branch-desktop:controls:open-download", id),
       setTrayUsage: (left: number | null) => ipcRenderer.send("branch-desktop:controls:tray-usage", left),
+      // Settings › Remove Branch: what removing the app takes and keeps, then removing it (the app quits).
+      removalPlan: () => ipcRenderer.invoke("branch-desktop:controls:removal-plan"),
+      removeApp: () => ipcRenderer.invoke("branch-desktop:controls:remove-app"),
       onOpenUsage: (listener: () => void) => {
         const handler = (): void => listener();
         ipcRenderer.on("branch-desktop:open-usage", handler);
