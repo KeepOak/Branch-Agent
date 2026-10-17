@@ -23,6 +23,7 @@ import {
 import type { BranchConfig } from "../config/types.branch.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { waitForGatewayActiveWork } from "../infra/gateway-active-work.js";
+import { readMessage } from "../mcp/trunk-tools.js";
 import { captureEnv } from "../test-utils/env.js";
 import { acquireTestPortBlock } from "../test-utils/port-claims.js";
 import { runDirectSessionReplyScenario } from "./server.sessions-send.direct-reply.test-support.js";
@@ -55,7 +56,7 @@ const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
 );
 
 const SESSION_SEND_E2E_TIMEOUT_MS = 10_000;
-const SESSION_SEND_DM_ROUTING_E2E_TIMEOUT_MS = 30_000;
+const SESSION_SEND_ROUTING_E2E_TIMEOUT_MS = 30_000;
 
 function getSessionsSendTool(options?: Parameters<typeof createBranchTools>[0]) {
   const tool = createBranchTools(options).find((candidate) => candidate.name === "sessions_send");
@@ -308,7 +309,7 @@ describe("sessions_send gateway loopback", () => {
 
   it(
     "delivers a same-session reply to an account-scoped DM without stored delivery context",
-    { timeout: SESSION_SEND_DM_ROUTING_E2E_TIMEOUT_MS },
+    { timeout: SESSION_SEND_ROUTING_E2E_TIMEOUT_MS },
     async () => {
       await runDirectSessionReplyScenario({
         dir: tempDirs.make("branch-direct-reply-"),
@@ -360,6 +361,22 @@ describe("sessions_send label lookup", () => {
 });
 
 describe("sessions_send agent targeting", () => {
+  const agents: BranchConfig["agents"] = {
+    ownership: "explicit",
+    defaults: {
+      systemAgent: { agentId: "main" },
+      sessionStore: { agentId: "main" },
+    },
+    entries: { main: {}, orion: {} },
+  };
+
+  beforeEach(async () => {
+    testState.agentsConfig = agents;
+    await writeConfig({ agents });
+    // Prepare both local agents before the delivery deadline starts.
+    await prepareGatewayReplyRuntimeForTest({ force: true });
+  });
+
   it.each([
     { name: "default cross-agent access", tools: undefined },
     {
@@ -378,14 +395,7 @@ describe("sessions_send agent targeting", () => {
       const dir = tempDirs.make("branch-sessions-send-agent-");
       const config: BranchConfig = {
         ...(tools ? { tools } : {}),
-        agents: {
-          ownership: "explicit",
-          defaults: {
-            systemAgent: { agentId: "main" },
-            sessionStore: { agentId: "main" },
-          },
-          entries: { main: {}, orion: {} },
-        },
+        agents,
       };
 
       testState.sessionStorePath = path.join(dir, "sessions.json");
@@ -400,16 +410,19 @@ describe("sessions_send agent targeting", () => {
             },
           },
         });
-        await prepareGatewayReplyRuntimeForTest({ force: true });
-
+        const targetDelivery = Promise.withResolvers<void>();
         const spy = agentCommandMock as unknown as Mock<(opts: unknown) => Promise<void>>;
-        spy.mockImplementation(async (opts: unknown) =>
-          emitLifecycleAssistantReply({
+        spy.mockImplementation(async (opts: unknown) => {
+          await (opts as AgentCommandGatewayIngressOpts).userTurnTranscriptRecorder?.persistApproved();
+          await emitLifecycleAssistantReply({
             opts,
             defaultSessionId: "orion-created",
             resolveText: () => "orion response",
-          }),
-        );
+          });
+          if ((opts as AgentCommandGatewayIngressOpts).sessionKey === "agent:orion:main") {
+            targetDelivery.resolve();
+          }
+        });
         spy.mockClear();
 
         const tool = getSessionsSendTool({
@@ -420,7 +433,7 @@ describe("sessions_send agent targeting", () => {
         const result = await tool.execute("call-agent-id", {
           agentId: "orion",
           message: "hello orion",
-          timeoutSeconds: 5,
+          timeoutSeconds: 0,
         });
         if (error) {
           expect(spy.mock.calls.map(([opts]) => opts)).not.toContainEqual(
@@ -438,10 +451,11 @@ describe("sessions_send agent targeting", () => {
           });
           return;
         }
-        expectSessionsSendDetails(result, {
-          reply: "orion response",
+        expect(result.details, JSON.stringify(result.details)).toMatchObject({
+          status: "accepted",
           sessionKey: "agent:orion:main",
         });
+        await targetDelivery.promise;
 
         const orionCall = spy.mock.calls
           .map(([opts]) => opts as { sessionId?: string; sessionKey?: string })
@@ -454,10 +468,31 @@ describe("sessions_send agent targeting", () => {
           storePath: testState.sessionStorePath,
         });
         expect(stored?.sessionId).toBe(orionCall?.sessionId);
+
+        // C05: observe the delivered input through the same projection Graft's
+        // thread_history uses, not just the tool's admission receipt.
+        const { callGateway } = await import("./call.js");
+        const history = await callGateway<{ messages: unknown[] }>({
+          method: "chat.history",
+          params: { sessionKey: "agent:orion:main", limit: 20 },
+          timeoutMs: 5_000,
+        });
+        const messages = history.messages.map(readMessage);
+        expect(messages).toContainEqual(
+          expect.objectContaining({ role: "assistant", text: "orion response" }),
+        );
+        const forwarded = messages.filter(
+          (message) => message.from === "main" && String(message.text).includes("hello orion"),
+        );
+        expect(forwarded).toHaveLength(1);
+        expect(forwarded[0]?.text).toMatch(/^\[Inter-session message\] sourceSession=agent:main:main /);
+        expect(forwarded[0]?.text).toContain("sourceTool=sessions_send");
+        expect(forwarded[0]?.text).toContain("isUser=false");
+        expect(forwarded[0]?.text).toMatch(/\nhello orion$/);
       } finally {
         testState.agentsConfig = undefined;
       }
     },
-    SESSION_SEND_E2E_TIMEOUT_MS,
+    SESSION_SEND_ROUTING_E2E_TIMEOUT_MS,
   );
 });
