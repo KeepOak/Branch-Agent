@@ -3,6 +3,52 @@
    data-theme="dark" forces dark. Every other area uses these names. */
 
 :root {
+  /* App logo tiles in the connector grid: each app's own brand colour, the same in light and dark (app-logos.tsx). */
+  --app-github: #181717;
+  --app-gmail: #EA4335;
+  --app-googledrive: #1FA463;
+  --app-outlook: #0F6CBD;
+  --app-slack: #4A154B;
+  --app-discord: #5865F2;
+  --app-telegram: #2AABEE;
+  --app-whatsapp: #25D366;
+  --app-airtable: #18BFFF;
+  --app-asana: #F06A6A;
+  --app-box: #0061D5;
+  --app-brave: #FB542B;
+  --app-clickup: #7B68EE;
+  --app-cloudflare: #F38020;
+  --app-confluence: #172B4D;
+  --app-docker: #2496ED;
+  --app-dropbox: #0061FF;
+  --app-figma: #F24E1E;
+  --app-gitlab: #FC6D26;
+  --app-googlecalendar: #4285F4;
+  --app-homeassistant: #18BCF2;
+  --app-hubspot: #FF7A59;
+  --app-huggingface: #FFD21E;
+  --app-jira: #0052CC;
+  --app-kubernetes: #326CE5;
+  --app-linear: #5E6AD2;
+  --app-notion: #000000;
+  --app-obsidian: #7C3AED;
+  --app-postgresql: #4169E1;
+  --app-protonmail: #6D4AFF;
+  --app-quickbooks: #2CA01C;
+  --app-sentry: #362D59;
+  --app-shopify: #7AB55C;
+  --app-spotify: #1ED760;
+  --app-sqlite: #003B57;
+  --app-stripe: #635BFF;
+  --app-supabase: #3FCF8E;
+  --app-todoist: #E44332;
+  --app-trello: #0052CC;
+  --app-vercel: #000000;
+  --app-youtube: #FF0000;
+  --app-zapier: #FF4F00;
+  --app-zendesk: #03363D;
+  --app-mark: #fff;
+  --app-mark-dark: #1B1A18;
   /* §2.1 colour, Daylight */
   --bg: #f6f8f9;
   --side: #edf1f3;
