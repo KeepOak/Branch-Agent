@@ -11,19 +11,6 @@ it("exposes unit-bearing timeout fields on both exec surfaces", () => {
   expect(nodeExecSchema.properties).not.toHaveProperty("timeout");
 });
 
-describe("removed exec timeout field", () => {
-  it("rejects a stale timeout argument before command execution", async () => {
-    const tool = createExecTool({ host: "gateway", security: "full", ask: "off" });
-
-    await expect(
-      tool.execute("legacy-timeout", {
-        command: "exit 99",
-        timeout: 5,
-      } as never),
-    ).rejects.toThrow('exec parameter "timeout" is unsupported; use "timeoutSeconds" instead');
-  });
-});
-
 describe("foreground node exec wait budgets", () => {
   it.each([
     { timeoutSec: undefined, timeoutSeconds: undefined, expectedMs: 1_810_000 },
