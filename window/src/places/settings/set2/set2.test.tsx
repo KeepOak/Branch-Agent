@@ -37,13 +37,16 @@ const READY = { sentinel: null, updateAvailable: { currentVersion: "1.0.0", late
 const RUNNING = { sessions: [{ key: "agent:main:a", agentId: "main", hasActiveRun: true, activeRunIds: ["r1"] }, { key: "agent:main:b", agentId: "main", hasActiveRun: false }] };
 
 describe("Settings › Updates & about", () => {
-  it("shows the browser search address, with its host and port, only at Technical", async () => {
+  it("shows the editors card (all add-ons that wait for a later update) and the browser search address only at Technical", async () => {
     const { engine } = engineWith({ "update.status": READY });
     const withAddress = { ...engine, gatewayUrl: "ws://127.0.0.1:19031" } as WindowEngine;
     await show("updates", withAddress, "advanced");
-    expect(document.body.textContent).toContain("Search with Branch from your browser");
+    // Regular and Advanced show only what works today (Private #1093 item 4).
+    expect(document.body.textContent).not.toContain("Search with Branch from your browser");
+    expect(document.body.textContent).not.toMatch(/\d+ more comes? in a later update/);
     expect(document.body.textContent).not.toContain("127.0.0.1:19031/?q=%s");
     await show("updates", withAddress, "technical");
+    expect(document.body.textContent).toContain("Search with Branch from your browser");
     expect(document.body.textContent).toContain("http://127.0.0.1:19031/?q=%s");
   });
 

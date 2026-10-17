@@ -99,7 +99,11 @@ describe("scoped browser viewing", () => {
     expect(container.textContent).toContain("Type a website or a search above and press Enter");
     expect(container.textContent).toContain("ask Scout to read, compare or work on the page");
     expect(container.querySelector('[aria-label="New tab"]')).not.toBeNull();
-    for (const label of ["Back", "Forward", "Reload", "Page", "Tools", "Reads", "Numbers", "Comment", "Record"]) {
+    // Back, forward and reload keep their place in the toolbar, as Chrome's do, and stay off until a page is open (#1103).
+    for (const label of ["Back", "Forward", "Reload"]) {
+      expect(container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)?.disabled).toBe(true);
+    }
+    for (const label of ["Page", "Tools", "Reads", "Numbers", "Comment", "Record"]) {
       expect(container.querySelector(`[aria-label="${label}"]`)).toBeNull();
     }
   });
