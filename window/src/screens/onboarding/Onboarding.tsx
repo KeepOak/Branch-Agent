@@ -8,7 +8,7 @@ import { createPicked, greet, readDefaultTrunk, recordOnboarding, saveDisplayNam
 import { FirstTrunk } from "./FirstTrunk";
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
-import { configStore } from "../../places/settings/config-store";
+import { saveOnboardingAccess } from "./access";
 import { Models } from "./Models";
 import { ModeStep } from "./ModeStep";
 import { clampStep, failedStep, freshState, helloOk, LAST_STEP, MODES, mainSessionOf, picked, primary, STEPS, togglePick, WAITS_FOR, type OnboardingState } from "./model";
@@ -71,7 +71,9 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
     try {
       const key = await startSetupTalk(engine);
       // As Set up later does, so the card doesn't open again; the conversation asks the rest. A failed save only means
-      // the card comes back at the next launch.
+      // the card comes back at the next launch. Keep the recommended (or picked) access so the composer never starts on
+      // Full access just because setup was deferred.
+      await saveOnboardingAccess(engine, s.mode).catch(() => undefined);
       await recordOnboarding(engine, s).catch(() => undefined);
       onTalk(key);
     }
@@ -93,6 +95,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
       const first = created.made[0];
       const target = first ? { agentId: first.agentId, mainKey: four.def?.mainKey ?? "main" } : four.def ? { agentId: four.def.id, mainKey: four.def.mainKey } : null;
       if (!target) { setTrunkError("Couldn’t find your default Trunk. Try again in a moment."); return; }
+      await saveOnboardingAccess(engine, s.mode);
       await recordOnboarding(engine, s);
       // The greeting is a real model reply, so it waits for a hello that worked. With examples or no model the
       // conversation opens empty: no chat.send that would fail with "Couldn't sign in" (ONBOARDING-PROPOSAL ⑤).
@@ -112,12 +115,10 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
       return;
     }
     if (s.step === LAST_STEP) { await meet(); return; }
-    const exec = MODES.find((m) => m.id === s.mode)?.exec;
-    if (!exec) return;
+    if (!MODES.find((m) => m.id === s.mode)?.exec) return;
     setSaving(true); setModeError(null);
     try {
-      // The engine refuses mode beside the older security/ask keys, so those go (as Settings › Permissions saves it).
-      await configStore(engine).set("tools.exec", { mode: exec, security: null, ask: null });
+      await saveOnboardingAccess(engine, s.mode);
       onAnswered?.(s);
       set({ step: LAST_STEP });
     } catch (e) {
@@ -126,7 +127,13 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
       setSaving(false);
     }
   };
-  const leave = async () => { if (await keepName()) onLater(s); };
+  const leave = async () => {
+    if (!(await keepName())) return;
+    // Set up later still accepts the recommended Ask first (or the pick already made) so the composer never starts on
+    // Full access. A failed write must not block leaving: the card's job is to get out of the way.
+    await saveOnboardingAccess(engine, s.mode).catch(() => undefined);
+    onLater(s);
+  };
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape" || where) return;
     e.preventDefault();
