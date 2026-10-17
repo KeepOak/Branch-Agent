@@ -192,19 +192,19 @@ describe("Running and version", () => {
     const resetAt = NOW + 25 * 3_600_000;
     const limits = readLimits({ updatedAt: NOW, providers: [
       { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:one", signInNeeded: true, error: "HTTP 403: login rejected" },
-      { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:two", rateLimitedUntil: resetAt, error: "HTTP 429: Rate limited. Please try again later." },
-      { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:three", ready: true, windows: [{ label: "5h", usedPercent: 20 }] },
-      { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:four", ready: true, error: "HTTP 429: Rate limited. Please try again later." },
+      { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:two", signInNeeded: true, error: "HTTP 401: unauthorized" },
+      { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:three", rateLimitedUntil: resetAt, error: "HTTP 429: Rate limited. Please try again later." },
+      { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:four", ready: true, windows: [{ label: "5h", usedPercent: 20 }] },
     ] }, NOW);
     expect(limits.rows.map((row) => row.line)).toEqual([
       SIGN_IN_AGAIN_WORDS,
+      SIGN_IN_AGAIN_WORDS,
       "Rate limited until 1 PM Sat",
       "as of just now",
-      "Ready",
     ]);
-    expect(limits.rows.map((row) => row.signInNeeded)).toEqual([true, undefined, undefined, undefined]);
-    expect(limits.rows.map((row) => row.ready)).toEqual([undefined, undefined, true, true]);
-    expect(limits.rows[1]?.rateLimitedUntil).toBe(resetAt);
+    expect(limits.rows.map((row) => row.signInNeeded)).toEqual([true, true, undefined, undefined]);
+    expect(limits.rows.map((row) => row.ready)).toEqual([undefined, undefined, undefined, true]);
+    expect(limits.rows[2]?.rateLimitedUntil).toBe(resetAt);
     expect(limits.rows.every((row) => /HTTP 429/.test(row.line) === false)).toBe(true);
   });
   it("a token without the usage scope asks for a sign-in in plain words, never the raw HTTP error", () => {

@@ -154,19 +154,22 @@ describe("usage popover: each account's real state", () => {
     const resetAt = new Date(2026, 9, 3, 13, 0).getTime();
     const usage = { updatedAt: Date.now(), providers: [
       { provider: "anthropic", displayName: "Claude", accountEmail: "one@example.test", authProfileId: "anthropic:one", signInNeeded: true, error: "HTTP 403: login rejected" },
-      { provider: "anthropic", displayName: "Claude", accountEmail: "two@example.test", authProfileId: "anthropic:two", rateLimitedUntil: resetAt, error: "HTTP 429: Rate limited. Please try again later." },
-      { provider: "anthropic", displayName: "Claude", accountEmail: "three@example.test", authProfileId: "anthropic:three", ready: true, windows: [{ label: "5h", usedPercent: 20, resetAt: resetAt }] },
+      { provider: "anthropic", displayName: "Claude", accountEmail: "two@example.test", authProfileId: "anthropic:two", signInNeeded: true, error: "HTTP 401: unauthorized" },
+      { provider: "anthropic", displayName: "Claude", accountEmail: "three@example.test", authProfileId: "anthropic:three", rateLimitedUntil: resetAt, error: "HTTP 429: Rate limited. Please try again later." },
+      { provider: "anthropic", displayName: "Claude", accountEmail: "four@example.test", authProfileId: "anthropic:four", ready: true, windows: [{ label: "5h", usedPercent: 20, resetAt: resetAt }] },
     ] };
     const host = await show(<UsagePopover above={above} onClose={() => {}} limits={readLimits(usage, new Date(2026, 9, 2, 12, 0).getTime())} request={vi.fn(async () => usage) as never} onOpenUsage={() => {}} />);
     const rows = [...host.querySelectorAll(".acctT5")];
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
     expect(rows[0]?.textContent).toContain("Sign in again to show usage.");
+    expect(rows[1]?.textContent).toContain("Sign in again to show usage.");
     expect(rows[0]?.querySelector("[data-testid=usage-signin]")).toBeTruthy();
-    expect(rows[1]?.textContent).toContain("Rate limited until 1 PM Sat");
-    expect(rows[2]?.textContent).toMatch(/80% left/);
+    expect(rows[1]?.querySelector("[data-testid=usage-signin]")).toBeTruthy();
+    expect(rows[2]?.textContent).toContain("Rate limited until 1 PM Sat");
+    expect(rows[3]?.textContent).toMatch(/80% left/);
     expect(host.textContent).not.toMatch(/HTTP 429/);
     expect(host.textContent.split("Rate limited until").length - 1).toBe(1);
-    expect(host.textContent.split("Sign in again to show usage.").length - 1).toBe(1);
+    expect(host.textContent.split("Sign in again to show usage.").length - 1).toBe(2);
   });
 });
 

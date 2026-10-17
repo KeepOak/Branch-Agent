@@ -335,7 +335,7 @@ describe("provider-usage.load", () => {
     const summary = await loadProviderUsageSummary({
       now,
       providers: ["anthropic"],
-      auth: ["rejected", "limited", "ready"].map((id) => ({
+      auth: ["rejected-a", "rejected-b", "limited", "ready"].map((id) => ({
         provider: "anthropic" as const,
         token: `token-${id}`,
         authProfileId: `anthropic:${id}`,
@@ -344,9 +344,13 @@ describe("provider-usage.load", () => {
         version: 1,
         profiles: {},
         usageStats: {
-          "anthropic:rejected": {
+          "anthropic:rejected-a": {
             disabledUntil: now + 60_000,
             disabledReason: "auth_permanent",
+          },
+          "anthropic:rejected-b": {
+            disabledUntil: now + 60_000,
+            disabledReason: "auth",
           },
           "anthropic:limited": {
             blockedUntil: resetAt,
@@ -358,24 +362,30 @@ describe("provider-usage.load", () => {
       config: {},
       env: {},
     });
-    expect(summary.providers).toHaveLength(3);
+    expect(summary.providers).toHaveLength(4);
     expect(summary.providers[0]).toMatchObject({
-      authProfileId: "anthropic:rejected",
+      authProfileId: "anthropic:rejected-a",
+      signInNeeded: true,
+    });
+    expect(summary.providers[1]).toMatchObject({
+      authProfileId: "anthropic:rejected-b",
       signInNeeded: true,
     });
     expect(summary.providers[0]?.rateLimitedUntil).toBeUndefined();
     expect(summary.providers[0]?.ready).toBeUndefined();
-    expect(summary.providers[1]).toMatchObject({
+    expect(summary.providers[1]?.rateLimitedUntil).toBeUndefined();
+    expect(summary.providers[2]).toMatchObject({
       authProfileId: "anthropic:limited",
       rateLimitedUntil: resetAt,
     });
-    expect(summary.providers[1]?.signInNeeded).toBeUndefined();
-    expect(summary.providers[2]).toMatchObject({
+    expect(summary.providers[2]?.signInNeeded).toBeUndefined();
+    expect(summary.providers[3]).toMatchObject({
       authProfileId: "anthropic:ready",
       ready: true,
       windows: [{ label: "5h", usedPercent: 20 }],
     });
-    expect(summary.providers[2]?.rateLimitedUntil).toBeUndefined();
+    expect(summary.providers[3]?.rateLimitedUntil).toBeUndefined();
+    expect(summary.providers.filter((row) => row.signInNeeded === true)).toHaveLength(2);
     expect(summary.providers.every((row) => row.error === "HTTP 429: Rate limited. Please try again later.")).toBe(
       true,
     );
@@ -421,7 +431,8 @@ describe("overlayAccountLiveState", () => {
     const summary: UsageSummary = {
       updatedAt: usageNow,
       providers: [
-        claudeAccount("rejected"),
+        claudeAccount("rejected-a"),
+        claudeAccount("rejected-b"),
         claudeAccount("limited"),
         claudeAccount("ready", { windows: [{ label: "5h", usedPercent: 20 }] }),
       ],
@@ -429,9 +440,13 @@ describe("overlayAccountLiveState", () => {
     const overlaid = overlayAccountLiveState(
       summary,
       {
-        "anthropic:rejected": {
+        "anthropic:rejected-a": {
           disabledUntil: usageNow + 60_000,
           disabledReason: "auth_permanent",
+        },
+        "anthropic:rejected-b": {
+          disabledUntil: usageNow + 60_000,
+          disabledReason: "auth",
         },
         "anthropic:limited": {
           blockedUntil: RESET_AT,
@@ -447,7 +462,8 @@ describe("overlayAccountLiveState", () => {
       rateLimitedUntil: row.rateLimitedUntil,
       ready: row.ready,
     }))).toEqual([
-      { id: "anthropic:rejected", signInNeeded: true, rateLimitedUntil: undefined, ready: undefined },
+      { id: "anthropic:rejected-a", signInNeeded: true, rateLimitedUntil: undefined, ready: undefined },
+      { id: "anthropic:rejected-b", signInNeeded: true, rateLimitedUntil: undefined, ready: undefined },
       { id: "anthropic:limited", signInNeeded: undefined, rateLimitedUntil: RESET_AT, ready: undefined },
       { id: "anthropic:ready", signInNeeded: undefined, rateLimitedUntil: undefined, ready: true },
     ]);
