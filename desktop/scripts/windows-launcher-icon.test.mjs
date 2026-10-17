@@ -66,4 +66,20 @@ test("startup leaves the app folder before it spawns anything", () => {
   assert.ok(call < spawnGateway, "before the gateway is spawned");
   assert.match(main, /home:\s*app\.getPath\("home"\)/);
   assert.match(folder, /export function leaveAppWorkingFolder/);
+  const nodeCopy = main.indexOf("cfg.nodePath = nodeOutsideSwappedFolder(cfg.nodePath, cfg.dataDir)");
+  const install = main.indexOf("const install: DesktopInstall");
+  assert.ok(nodeCopy !== -1 && install !== -1 && nodeCopy < install);
+});
+
+test("shortcut writers also cover Startup, and never Start in the data folder", () => {
+  const shortcuts = source("scripts/shortcuts.ps1");
+  const update = source("src/desktop-update.ts");
+  const helper = source("src/desktop-update-helper.ts");
+  assert.match(shortcuts, /GetFolderPath\('Startup'\)/);
+  assert.match(update, /GetFolderPath\('Startup'\)/);
+  assert.match(helper, /GetFolderPath\('Startup'\)/);
+  assert.match(update, /working-dir=userprofile/);
+  assert.match(update, /repairWorkingDirectory/);
+  assert.doesNotMatch(shortcuts, /WorkingDirectory = \$dataDirectory/);
+  assert.doesNotMatch(update + helper, /WorkingDirectory=\$dataDirectory/);
 });

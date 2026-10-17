@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Exe,
     [switch]$DryRun,
     [string]$ConfigModule,
-    [string[]]$ShortcutDirectories = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))
+    [string[]]$ShortcutDirectories = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Startup'))
 )
 $ErrorActionPreference = 'Stop'
 $executable = [IO.Path]::GetFullPath($Exe)

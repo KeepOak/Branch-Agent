@@ -448,6 +448,10 @@ async function handOffJournal(cfg: DesktopConfig, install: DesktopInstall, helpe
   const helper = join(work, "desktop-update-helper.js");
   // Read, not copied: the source sits inside app.asar, which only Electron's own fs can read.
   await writeFile(helper, await readFile(helperSource));
+  // The helper asks leftover processes in the install folder to leave before an in-place rename.
+  await readFile(join(dirname(helperSource), "install-folder-holders.js")).then(bytes => writeFile(join(work, "install-folder-holders.js"), bytes)).catch((error: unknown) => {
+    try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} desktop update ${journal.version}: install-folder holders not copied (${String(error)})\n`, BRANCH_LOG_LIMITS); } catch { /* ignore */ }
+  });
   // The Windows layout's helper writes the cmd stub and points shortcuts at the launcher from the one shared module.
   // Without it the helper still swaps, so a failed copy only logs.
   if (journal.installRoot) {
@@ -522,10 +526,14 @@ export interface WindowsShortcut { path: string; target: string }
 export interface WindowsShortcuts {
   list(): Promise<WindowsShortcut[]>;
   retarget(paths: string[], launcher: string): Promise<void>;
+  /** Points Start in at the user folder without changing the target. */
+  repairWorkingDirectory?(paths: string[]): Promise<void>;
 }
-/** The Start menu, the desktop and the taskbar pins: where a Branch Agent.lnk can live. */
-const SHORTCUT_FOLDERS = "@([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'),"
+/** The Start menu, the desktop, Startup and the taskbar pins: where a Branch Agent.lnk can live. */
+const SHORTCUT_FOLDERS = "@([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'),[Environment]::GetFolderPath('Startup'),"
   + "(Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'Microsoft\\Internet Explorer\\Quick Launch\\User Pinned\\TaskBar'))";
+const SHORTCUT_WORKING_DIR_MARK = "working-dir=userprofile";
+const shortcutMarkerValue = (launcher: string): string => `${launcher}\n${SHORTCUT_WORKING_DIR_MARK}`;
 const psQuote = (value: string): string => `'${value.replaceAll("'", "''")}'`;
 function powershell(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -547,6 +555,10 @@ export const powershellShortcuts: WindowsShortcuts = {
     await powershell(`$shell=New-Object -ComObject WScript.Shell; $exe=${psQuote(launcher)}; foreach($path in @(${paths.map(psQuote).join(",")})) { `
       + "$link=$shell.CreateShortcut($path); $link.TargetPath=$exe; $link.WorkingDirectory=$env:USERPROFILE; "
       + "$link.IconLocation=\"$exe,0\"; $link.Save() }");
+  },
+  repairWorkingDirectory: async (paths) => {
+    await powershell(`$shell=New-Object -ComObject WScript.Shell; foreach($path in @(${paths.map(psQuote).join(",")})) { `
+      + "$link=$shell.CreateShortcut($path); $link.WorkingDirectory=$env:USERPROFILE; $link.Save() }");
   },
 };
 const shortcutMarker = (cfg: DesktopConfig): string => join(cfg.dataDir, "desktop-shortcut-launcher.txt");
@@ -592,10 +604,15 @@ export async function ensureWindowsLauncher(cfg: DesktopConfig, install: Desktop
   // A package without the launcher (a development build) leaves the shortcuts as they are.
   if (!rawFs.existsSync(launcher)) return [];
   if (!rawFs.existsSync(join(root, WINDOWS_LAUNCHER))) await writeFile(join(root, WINDOWS_LAUNCHER), windowsLauncherScript()).catch(() => undefined);
-  if (await readOrEmpty(shortcutMarker(cfg)) === launcher) return [];
-  const stale = (await shortcuts.list()).filter(link => windowsShortcutNeedsLauncher(link.target, root)).map(link => link.path);
+  if (await readOrEmpty(shortcutMarker(cfg)) === shortcutMarkerValue(launcher)) return [];
+  const listed = await shortcuts.list();
+  const stale = listed.filter(link => windowsShortcutNeedsLauncher(link.target, root)).map(link => link.path);
   if (stale.length) await shortcuts.retarget(stale, launcher);
-  await replaceFile(shortcutMarker(cfg), `${launcher}\n`);
+  if (shortcuts.repairWorkingDirectory) {
+    const repair = listed.filter(link => stale.includes(link.path) || link.target === launcher).map(link => link.path);
+    if (repair.length) await shortcuts.repairWorkingDirectory(repair);
+  }
+  await replaceFile(shortcutMarker(cfg), `${shortcutMarkerValue(launcher)}\n`);
   if (stale.length) log(`windows launcher: pointed ${stale.length} shortcut(s) at ${WINDOWS_LAUNCHER_EXE}`);
   return stale;
 }

@@ -18,6 +18,7 @@ const desktopUpdate = await import(pathToFileURL(join(dist, "desktop-update.js")
 const { runHelper } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
 const { parseComponentRelease } = await import(pathToFileURL(join(dist, "component-update-manifest.js")));
 const { cwdHoldsAppFolder, leaveAppWorkingFolder } = await import(pathToFileURL(join(dist, "app-working-folder.js")));
+const holders = await import(pathToFileURL(join(dist, "install-folder-holders.js")));
 const ELECTRON = "44.5.1";
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function eventually(predicate, ms = 20_000) {
@@ -647,12 +648,14 @@ async function upgradedRoot(run) {
       ["Programs/Branch Agent.lnk", join(root, "app-0.4.4-aaaaaa", "Branch Agent.exe")],
       ["Desktop/Branch Agent.lnk", join(root, "app-0.4.4-aaaaaa", "Branch Agent.exe")],
       ["TaskBar/Branch Agent.lnk", join(root, "app-0.4.4-aaaaaa", "Branch Agent.exe")],
+      ["Startup/Branch Agent.lnk", join(root, "app-0.4.4-aaaaaa", "Branch Agent.exe")],
       ["Desktop/Other.lnk", join(base, "Other", "Other.exe")],
     ]);
-    const calls = { list: 0, retarget: [] };
+    const calls = { list: 0, retarget: [], repair: [] };
     const shortcuts = {
       list: async () => { calls.list++; return [...links].map(([path, target]) => ({ path, target })); },
       retarget: async (paths, to) => { calls.retarget.push([...paths]); for (const path of paths) links.set(path, to); },
+      repairWorkingDirectory: async (paths) => { calls.repair.push([...paths]); },
     };
     await run({ root, cfg: { dataDir }, install, links, calls, shortcuts });
   } finally { await rm(base, { recursive: true, force: true }); }
@@ -661,21 +664,26 @@ async function upgradedRoot(run) {
 test("Windows: an upgrade from shortcuts into a version folder retargets them to the stable launcher exactly once", () => upgradedRoot(async ({ root, cfg, install, links, calls, shortcuts }) => {
   const stable = join(root, launcher.WINDOWS_LAUNCHER_EXE);
   const changed = await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts);
-  assert.deepEqual(changed.sort(), ["Desktop/Branch Agent.lnk", "Programs/Branch Agent.lnk", "TaskBar/Branch Agent.lnk"]);
+  assert.deepEqual(changed.sort(), ["Desktop/Branch Agent.lnk", "Programs/Branch Agent.lnk", "Startup/Branch Agent.lnk", "TaskBar/Branch Agent.lnk"]);
   assert.equal(calls.retarget.length, 1, "one rewrite for all of them");
+  assert.deepEqual(calls.repair[0].sort(), changed.sort(), "Start in is repaired to the user folder on the same pass");
   assert.equal(await readFile(stable, "utf8"), "launcher from app-0.4.5-bbbbbb", "placed from the running package");
   assert.equal(links.get("Programs/Branch Agent.lnk"), stable);
+  assert.equal(links.get("Startup/Branch Agent.lnk"), stable);
   assert.equal(links.get("Desktop/Other.lnk"), join(root, "..", "Other", "Other.exe"), "another app's shortcut is left alone");
   assert.equal(await readFile(join(root, launcher.WINDOWS_LAUNCHER), "utf8"), launcher.windowsLauncherScript());
+  assert.match(await readFile(join(cfg.dataDir, "desktop-shortcut-launcher.txt"), "utf8"), /working-dir=userprofile/);
   // Second launch: nothing to do, not even a look at the shortcuts.
   assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts), []);
   assert.equal(calls.list, 1);
   assert.equal(calls.retarget.length, 1);
-  // Even with the record gone, links that already open the launcher are not rewritten.
+  assert.equal(calls.repair.length, 1);
+  // Even with the record gone, links that already open the launcher are not retargeted; Start in is repaired once more.
   await rm(join(cfg.dataDir, "desktop-shortcut-launcher.txt"));
   assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts), []);
   assert.equal(calls.list, 2);
   assert.equal(calls.retarget.length, 1);
+  assert.equal(calls.repair.length, 2);
   // A launcher already at this revision (the installer's signed copy) is never replaced by the package's.
   await writeFile(stable, "signed by the installer");
   await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts);
@@ -694,8 +702,24 @@ test("Windows: shortcut targets survive a prune of old version folders, and the 
 test("Windows: a failed shortcut rewrite is tried again at the next launch", () => upgradedRoot(async ({ cfg, install, calls, shortcuts }) => {
   const failing = { ...shortcuts, retarget: async () => { throw new Error("powershell timed out"); } };
   await assert.rejects(desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, failing), /timed out/);
-  assert.equal((await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts)).length, 3);
+  assert.equal((await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts)).length, 4);
   assert.equal(calls.retarget.length, 1);
+}));
+
+test("Windows: an old launcher-only shortcut record still repairs Start in to the user folder", () => upgradedRoot(async ({ root, cfg, install, links, calls, shortcuts }) => {
+  const stable = join(root, launcher.WINDOWS_LAUNCHER_EXE);
+  for (const path of ["Programs/Branch Agent.lnk", "Desktop/Branch Agent.lnk", "TaskBar/Branch Agent.lnk", "Startup/Branch Agent.lnk"]) {
+    links.set(path, stable);
+  }
+  await writeFile(stable, "already placed");
+  await writeFile(join(root, launcher.WINDOWS_LAUNCHER_REVISION_FILE), `${launcher.WINDOWS_LAUNCHER_REVISION}\n`);
+  await writeFile(join(cfg.dataDir, "desktop-shortcut-launcher.txt"), `${stable}\n`);
+  assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts), []);
+  assert.equal(calls.retarget.length, 0, "already-launcher links are not retargeted");
+  assert.equal(calls.repair.length, 1);
+  assert.deepEqual(calls.repair[0].sort(), ["Desktop/Branch Agent.lnk", "Programs/Branch Agent.lnk", "Startup/Branch Agent.lnk", "TaskBar/Branch Agent.lnk"]);
+  assert.match(await readFile(join(cfg.dataDir, "desktop-shortcut-launcher.txt"), "utf8"), /working-dir=userprofile/);
+  assert.equal(await readFile(stable, "utf8"), "already placed");
 }));
 
 test("off Windows there is no launcher to place and no shortcut is read", () => upgradedRoot(async ({ cfg, install }) => {
@@ -703,4 +727,131 @@ test("off Windows there is no launcher to place and no shortcut is read", () => 
   assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, { ...install, platform: "linux" }, () => undefined, never), []);
   assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, { ...install, platform: "win32", appImage: "/x" }, () => undefined, never), []);
 }));
+
+const INSTALL = "C:\\Program Files\\Branch Agent";
+const NODE_INSIDE = `${INSTALL}\\resources\\node\\node.exe`;
+const SHELL_INSIDE = `${INSTALL}\\Branch Agent.exe`;
+const ROOT = "C:\\Users\\Example\\AppData\\Local\\Programs\\Branch Agent";
+const SHELL = `${ROOT}\\app-0.4.4-aaaaaa`;
+const SHELL_EXE = `${SHELL}\\Branch Agent.exe`;
+const ENGINE_NODE = `${SHELL}\\resources\\node\\node.exe`;
+const HOME = "C:\\Users\\Example";
+const CODEX = `${HOME}\\AppData\\Local\\BranchAgent\\updates\\release-engine\\codex.exe`;
+
+function listedWindows(rows) {
+  return holders.parseWindowsProcessList(JSON.stringify(rows));
+}
+
+test("a leftover process in the install folder is a holder and a process outside it is not", () => {
+  const listed = listedWindows([
+    { ProcessId: 4242, ExecutablePath: NODE_INSIDE, CommandLine: `"${NODE_INSIDE}" gateway` },
+    { ProcessId: 4243, ExecutablePath: SHELL_INSIDE, CommandLine: `"${SHELL_INSIDE}"` },
+    { ProcessId: 7, ExecutablePath: "C:\\Other\\Branch Agent\\Branch Agent.exe", CommandLine: "Branch Agent.exe" },
+    { ProcessId: 8, ExecutablePath: "C:\\Program Files\\nodejs\\node.exe", CommandLine: `node.exe "${INSTALL}\\resources\\engine\\branch.mjs"` },
+    { ProcessId: 9, ExecutablePath: "C:\\Program Files\\Branch Agent Extra\\Branch Agent.exe", CommandLine: "Branch Agent.exe" },
+  ]);
+  assert.deepEqual(holders.holdersInInstall(INSTALL, listed, new Set()).map(item => item.executable), [NODE_INSIDE, SHELL_INSIDE]);
+  assert.equal(holders.pathInsideInstall(INSTALL, NODE_INSIDE), true);
+  assert.equal(holders.pathInsideInstall(INSTALL, SHELL_INSIDE), true);
+  assert.equal(holders.pathInsideInstall(INSTALL, "C:\\Other\\Branch Agent\\Branch Agent.exe"), false);
+  assert.equal(holders.pathInsideInstall(INSTALL, "C:\\Program Files\\nodejs\\node.exe"), false);
+  assert.equal(holders.pathInsideInstall(INSTALL, "C:\\Program Files\\Branch Agent Extra\\Branch Agent.exe"), false);
+});
+
+test("a process whose working directory is the shell folder is a holder and one outside is not", () => {
+  const listed = listedWindows([
+    { ProcessId: 31, ExecutablePath: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe", CurrentDirectory: SHELL },
+    { ProcessId: 32, ExecutablePath: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe", CurrentDirectory: "C:\\Users\\Example\\Desktop" },
+    { ProcessId: 33, ExecutablePath: CODEX, CommandLine: "codex.exe", CurrentDirectory: `${HOME}\\AppData\\Local\\BranchAgent\\updates\\release-engine` },
+  ]);
+  assert.deepEqual(holders.holdersInInstall(SHELL, listed, new Set()).map(item => item.pid), [31]);
+});
+
+test("releaseInstallFolderHolders asks then force-stops only processes inside the install", async () => {
+  const listed = [
+    { pid: 41, executable: ENGINE_NODE, command: `"${ENGINE_NODE}" branch.mjs gateway`, cwd: `${HOME}\\AppData\\Local\\BranchAgent\\updates\\release-engine`, files: [] },
+    { pid: 42, executable: SHELL_EXE, command: `"${SHELL_EXE}"`, cwd: SHELL, files: [] },
+    { pid: 43, executable: CODEX, command: "codex.exe", cwd: `${HOME}\\AppData\\Local\\BranchAgent\\updates\\release-engine`, files: [] },
+    { pid: 44, executable: "C:\\Program Files\\nodejs\\node.exe", command: "node.exe branch.mjs", cwd: "C:\\Program Files\\nodejs", files: [] },
+  ];
+  const asked = [];
+  const forced = [];
+  const logs = [];
+  const alive = new Set(listed.map(item => item.pid));
+  const leftover = await holders.releaseInstallFolderHolders(SHELL, [99], {
+    list: async () => listed,
+    askExit: async pid => { asked.push(pid); },
+    forceStop: async pid => { forced.push(pid); alive.delete(pid); },
+    alive: pid => alive.has(pid),
+    wait: async () => {},
+    log: line => logs.push(line),
+  }, 2);
+  assert.deepEqual(asked, [41, 42]);
+  assert.deepEqual(forced, [41, 42]);
+  assert.deepEqual(leftover, []);
+  for (const outsider of [43, 44]) {
+    assert.equal(asked.includes(outsider), false);
+    assert.equal(forced.includes(outsider), false);
+  }
+  assert.match(logs.join("\n"), new RegExp(ENGINE_NODE.replaceAll("\\", "\\\\")));
+  assert.equal(logs.join("\n").includes(CODEX), false);
+});
+
+test("shortcut working directories inside the shell or install root are repaired to the user folder", () => {
+  const link = { path: "C:\\Users\\Example\\Desktop\\Branch Agent.lnk", target: SHELL_EXE, workingDirectory: SHELL };
+  assert.equal(holders.repairedWorkingDirectory(link, SHELL, HOME), HOME);
+  assert.equal(holders.repairedWorkingDirectory({ ...link, workingDirectory: ROOT }, SHELL, HOME), HOME, "Setup Start in was the install root");
+  assert.equal(holders.repairedWorkingDirectory({ ...link, workingDirectory: HOME }, SHELL, HOME), undefined);
+  assert.equal(holders.repairedWorkingDirectory({ ...link, target: "C:\\Other\\Branch Agent\\Branch Agent.exe", workingDirectory: "C:\\Other\\Branch Agent" }, SHELL, HOME), undefined);
+  assert.equal(holders.repairedWorkingDirectory({ ...link, target: CODEX, workingDirectory: SHELL }, SHELL, HOME), undefined);
+  const launcherLink = {
+    path: "C:\\Users\\Example\\Desktop\\Branch Agent.lnk",
+    target: `${ROOT}\\Branch Agent Launcher.exe`,
+    workingDirectory: ROOT,
+  };
+  assert.equal(holders.repairedWorkingDirectory(launcherLink, SHELL, HOME), HOME);
+  const script = holders.shortcutRepairScript(SHELL_EXE, HOME);
+  assert.match(script, /WorkingDirectory=\$work/);
+  assert.match(script, /GetFolderPath\('Startup'\)/);
+  assert.match(script, /TargetPath -ieq \$exe/);
+  assert.equal(script.includes("Split-Path -Parent"), false);
+  assert.equal(script.includes(HOME), true);
+  assert.doesNotMatch(script, /BranchAgent/);
+});
+
+test("the engine node is copied outside the shell folder and other node binaries stay put", async () => {
+  const root = await mkdtemp(join(tmpdir(), "branch-node-home-"));
+  try {
+    const shell = join(root, "Branch Agent-win32-x64");
+    const bundled = join(shell, "resources", "node", "node");
+    await mkdir(join(shell, "resources", "node"), { recursive: true });
+    await writeFile(bundled, "bundled-node");
+    const data = join(root, "BranchAgent");
+    await mkdir(data);
+    const outside = holders.nodeOutsideSwappedFolder(bundled, data);
+    assert.equal(holders.pathInsideInstall(shell, outside), false);
+    assert.equal(await readFile(outside, "utf8"), "bundled-node");
+    assert.equal(holders.nodeOutsideSwappedFolder(process.execPath, data), process.execPath);
+    assert.equal(holders.shellOfBundledNode(ENGINE_NODE), SHELL);
+    assert.equal(holders.shellOfBundledNode("C:\\Program Files\\nodejs\\node.exe"), undefined);
+    assert.equal(holders.pathInsideInstall(SHELL, CODEX), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the helper copies holders beside itself and releases them before an in-place rename", () => {
+  const update = readFileSync(join(import.meta.dirname, "../src/desktop-update.ts"), "utf8");
+  const helper = readFileSync(join(import.meta.dirname, "../src/desktop-update-helper.ts"), "utf8");
+  const main = readFileSync(join(import.meta.dirname, "../src/main.ts"), "utf8");
+  assert.match(update, /install-folder-holders\.js/);
+  assert.match(helper, /releaseInstallFolderHolders/);
+  assert.match(helper, /GetFolderPath\('Startup'\)/);
+  const release = helper.indexOf("releaseInstallFolderHolders");
+  const move = helper.indexOf("await move(journal.target, previous");
+  assert.ok(release !== -1 && move !== -1 && release < move, "holders leave before the live folder is renamed");
+  const nodeCopy = main.indexOf("cfg.nodePath = nodeOutsideSwappedFolder(cfg.nodePath, cfg.dataDir)");
+  const install = main.indexOf("const install: DesktopInstall");
+  assert.ok(nodeCopy !== -1 && install !== -1 && nodeCopy < install, "bundled node is copied before the install object uses it");
+});
 

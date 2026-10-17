@@ -1,5 +1,6 @@
-// Runs by itself under plain Node (copied out of app.asar): only Node built-ins, no other desktop modules. The one
-// exception is windows-launcher.mjs, which the app copies beside it and which only the Windows layout loads.
+// Runs by itself under plain Node (copied out of app.asar): only Node built-ins, no other desktop modules. The
+// exceptions are windows-launcher.mjs (Windows layout) and install-folder-holders.js (in-place swap), which the
+// app copies beside it.
 // Waits for the desktop app to exit, swaps the staged copy in (or, on Windows, lands it in a fresh version folder
 // and switches current.txt), relaunches it and waits for the new app to confirm its start (it removes the journal).
 // No confirmation in time: stop the new app by its PID, put the previous copy back, remember the release as rejected
@@ -66,6 +67,7 @@ export function usesWindowsVersionedLayout(platform: NodeJS.Platform | undefined
 }
 
 type WindowsLauncher = typeof import("./windows-launcher.mjs");
+type InstallHolders = typeof import("./install-folder-holders");
 /**
  * The shared launcher module, copied beside this helper by the app (dist/ beside it in tests). Loaded only for the
  * Windows layout, and never required: without it the swap still lands and the shortcuts keep their old target.
@@ -73,6 +75,16 @@ type WindowsLauncher = typeof import("./windows-launcher.mjs");
 async function loadWindowsLauncher(log: (line: string) => void): Promise<WindowsLauncher | undefined> {
   try { return await import("./windows-launcher.mjs"); } catch (error) {
     log(`windows launcher module unavailable (${String(error)}); the cmd stub and shortcuts are left as they are`);
+    return undefined;
+  }
+}
+/**
+ * Copied beside this helper. Without it the in-place swap still tries; leftover processes in the folder may
+ * keep the rename from landing until the next start.
+ */
+async function loadHolders(log: (line: string) => void): Promise<InstallHolders | undefined> {
+  try { return await import("./install-folder-holders.js"); } catch (error) {
+    log(`install-folder holders unavailable (${String(error)}); the swap still tries`);
     return undefined;
   }
 }
@@ -153,7 +165,7 @@ function refreshWindowsIcon(plan: HelperPlan, log: (line: string) => void, journ
   const exe = (stable && existsSync(stable) ? stable : undefined) || (journal && pointedWindowsExe(journal)) || plan.relaunch.command;
   const quoted = exe.replaceAll("'", "''");
   const root = (journal?.installRoot ?? "").replaceAll("'", "''");
-  const script = `$exe='${quoted}'; $root='${root}'; $shell=New-Object -ComObject WScript.Shell; foreach($dir in @([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'),(Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'Microsoft\\Internet Explorer\\Quick Launch\\User Pinned\\TaskBar'))) { if(!$dir) { continue }; $path=Join-Path $dir 'Branch Agent.lnk'; if(!(Test-Path -LiteralPath $path)) { continue }; $link=$shell.CreateShortcut($path); $target=$link.TargetPath; $ours=$target -ieq $exe; if($root -and $target) { try { $ours=$ours -or ([IO.Path]::GetFullPath($target).StartsWith([IO.Path]::GetFullPath($root).TrimEnd('\\')+'\\',[StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($target) -ieq 'Branch Agent.exe') } catch {} }; if($ours) { $link.TargetPath=$exe; $link.WorkingDirectory=$env:USERPROFILE; $link.IconLocation="$exe,0"; $link.Save() } }`;
+  const script = `$exe='${quoted}'; $root='${root}'; $shell=New-Object -ComObject WScript.Shell; foreach($dir in @([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'),[Environment]::GetFolderPath('Startup'),(Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'Microsoft\\Internet Explorer\\Quick Launch\\User Pinned\\TaskBar'))) { if(!$dir) { continue }; $path=Join-Path $dir 'Branch Agent.lnk'; if(!(Test-Path -LiteralPath $path)) { continue }; $link=$shell.CreateShortcut($path); $target=$link.TargetPath; $ours=$target -ieq $exe; if($root -and $target) { try { $ours=$ours -or ([IO.Path]::GetFullPath($target).StartsWith([IO.Path]::GetFullPath($root).TrimEnd('\\')+'\\',[StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($target) -ieq 'Branch Agent.exe') } catch {} }; if($ours) { $link.TargetPath=$exe; $link.WorkingDirectory=$env:USERPROFILE; $link.IconLocation="$exe,0"; $link.Save() } }`;
   const errors: string[] = [];
   try { execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { windowsHide: true, stdio: "ignore", timeout: 15_000 }); }
   catch (error) { errors.push(`shortcuts: ${String(error)}`); }
@@ -237,6 +249,16 @@ async function swap(plan: HelperPlan, journal: Journal, previous: string, log: (
     if (incoming.copied) await fs.remove(incoming.path).catch(() => undefined);
     else await fs.rename(incoming.path, journal.staged).catch(() => undefined);
   };
+  if (journal.kind === "asar" || journal.kind === "runtime") {
+    const holders = await loadHolders(log);
+    if (holders) {
+      await holders.releaseInstallFolderHolders(
+        holders.installDirFor(journal.kind, journal.target),
+        [process.pid, plan.waitPid],
+        holders.createHolderDeps(log),
+      );
+    }
+  }
   try { await move(journal.target, previous, 120, fs); } catch (error) {
     await undoIncoming();
     return keep(`the app is still in use (${String(error)}); kept staged for the next start`);
