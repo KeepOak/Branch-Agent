@@ -1,0 +1,4 @@
+window:scripts/visual-routes.test.mjs
+window:src/places/customize/customize.test.tsx
+window:src/screens/chat/Steps.test.tsx
+window:src/shell/CopyToken.test.tsx
