@@ -299,9 +299,11 @@ export function prepareSessionEntryMutationDatabases(
             }
           };
           assertCurrent();
+          // prepareSqliteScope can finish while a cold first-open still has no file.
+          // A missing-file snapshot is not a lost target; recapture from a fresh identity.
           const identity = readDatabasePathIdentitySync(target.options.path);
           const execution = await captureSessionStoreAgentDatabaseExecution(target.options, {
-            observed: identity,
+            observed: identity.key.startsWith("file:") ? identity : undefined,
           });
           // The physical cohort keeps one native lease; each caller retains its original alias.
           for (const member of members) {
