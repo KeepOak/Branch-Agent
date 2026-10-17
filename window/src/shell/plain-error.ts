@@ -1,5 +1,5 @@
 // No raw engine error at Regular (Private #1089). A failure's words reach a person through plainError(): at Regular,
-// words that #1700's friendlyError() would replace (a dump, JSON, an HTTP status, an id, a code, a method name), or that
+// words that issue 1700's friendlyError() would replace (a dump, JSON, an HTTP status, an id, a code, a method name), or that
 // carry a stack, an error class or errno code (CodexNotInstalledError, ECONNREFUSED), a file path or an engine sentence
 // such as `unknown method: logbook.status`, read as one plain sentence with one next step chosen from the map below,
 // and any web or computer address reads as plainAddresses() (#1706) says. Words that are already plain pass through
@@ -8,7 +8,7 @@
 //
 // plainText() is for words that are not always a failure (a toast like "Copied.", a banner title, the line above the
 // page). friendlyError() reads a one-word or numbered line as raw, so those use the strong markers only, which include
-// #1700's id shapes (a UUID, a long hex id, a named id, a session key with or without `agent:`).
+// issue 1700's id shapes (a UUID, a long hex id, a named id, a session key with or without `agent:`).
 import { FRIENDLY_ERROR, friendlyError } from "../connect/friendly-error";
 import { plainAddresses } from "./plain-address";
 
@@ -67,7 +67,7 @@ export function looksRaw(text: string): boolean {
   return RAW.some((re) => re.test(text));
 }
 
-/** True when a failure's words are raw: #1700's friendlyError() would replace them, or they carry a strong marker. */
+/** True when a failure's words are raw: issue 1700's friendlyError() would replace them, or they carry a strong marker. */
 export function looksRawError(text: string): boolean {
   const trimmed = text.trim();
   return Boolean(trimmed) && (looksRaw(trimmed) || friendlyError(trimmed) === FRIENDLY_ERROR);
@@ -105,10 +105,14 @@ function plainWords(text: string, raw: (words: string) => boolean): string {
   return sentenceFor(trimmed);
 }
 
+/** A leading `Error:` (any case, with the spaces after it) is how a thrown message prints, not the failure's words. */
+const ERROR_LEAD = /^\s*error:\s*/i;
+
 /** A failure as a person reads it: at Regular one plain sentence and a next step, at Advanced and Technical the exact
  *  words. `always` skips the level check (tests, and callers that know). */
 export function plainError(error: unknown, always = false): string {
-  const words = errorWords(error);
+  const exact = errorWords(error);
+  const words = exact.replace(ERROR_LEAD, "") || exact;
   if (!words || (!always && !atRegular())) return words;
   return plainWords(words, looksRawError);
 }
