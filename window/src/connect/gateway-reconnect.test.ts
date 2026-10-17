@@ -1,6 +1,7 @@
 // The desktop app swaps the engine underneath an open window and then says so (`branch:engine-ready`);
 // the window must reconnect at once instead of waiting out the reconnect backoff (up to 15 s).
 import { describe, expect, it, vi } from "vitest";
+import type { GatewayStatus } from "./gateway";
 
 type ClientOptions = { onHello: (hello: unknown) => void; onClose: (context: unknown, decision: { retry: boolean }) => void };
 
@@ -28,6 +29,15 @@ vi.mock("./device-identity", () => ({ loadBrowserDeviceIdentity: vi.fn() }));
 vi.mock("./device-token-store", () => ({ createDeviceTokenStore: vi.fn() }));
 
 describe("reconnect after an in-place engine update", () => {
+  it("keeps the raw retryable failure in startup status for the details fold", async () => {
+    const { BranchGateway } = await import("./gateway");
+    const statuses: GatewayStatus[] = [];
+    const gateway = new BranchGateway({ url: "ws://127.0.0.1:1", onStatus: s => statuses.push(s), onEvent: () => {} });
+    gateway.start();
+    fake.client!.options.onClose({ code: 4008, reason: "connect failed", connectFailure: { error: new Error("token mismatch") } }, { retry: true });
+    expect(statuses.at(-1)).toEqual({ phase: "connecting", message: "token mismatch" });
+    gateway.stop();
+  });
   it("restarts the connection at once while disconnected and leaves a live connection alone", async () => {
     const { BranchGateway } = await import("./gateway");
     const statuses: string[] = [];
