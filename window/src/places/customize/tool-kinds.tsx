@@ -17,6 +17,7 @@ import { KindHead, TechnicalOnly } from "./kind-chrome";
 import { AgentsTeamwork } from "./agent-teamwork";
 import { useToolSetup, type Setup } from "./tool-setup";
 import type { ToolsCtx } from "./tools";
+import { plainError } from "../../shell/plain-error";
 
 // ---- Command-line tools ----
 type Bin = { name: string; present: boolean; skills: string[] };
@@ -58,7 +59,7 @@ export function Clis({ ctx }: { ctx: ToolsCtx }) {
       <TechnicalOnly><div className="cz-found"><b>Found on this computer</b><Grey reason="Finding programs on this computer comes in a later update.">Allow</Grey></div></TechnicalOnly>
       <div className="cz-path"><input id="cz-clis-path" className="inp" value={path} onChange={e => setPath(e.target.value)} placeholder="Or add one by its path, like /usr/local/bin/rg" aria-label="Add a command-line tool by its path" />
         <button type="button" className="btn sm" disabled={busy || !path.trim()} onClick={() => void add()}>Add</button></div>
-      {error && <p role="alert" className="cz-error">{error}</p>}
+      {error && <p role="alert" className="cz-error">{plainError(error)}</p>}
       <Status {...ctx.skills} />
       {ctx.skills.data != null && !shown.length && <EmptyLine icon={<Glyph name="terminal" size={22} />}>Nothing here for this Trunk.</EmptyLine>}
       {shown.map(b => <button key={b.name} type="button" className="t9-item" aria-current={b.name === bin?.name} onClick={() => setChosen(b.name)}>
@@ -114,7 +115,7 @@ export function AddTool({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
     <p className="cz-hint" title="The engine lists this computer's programs only to its own computers.">Finding programs needs the engine’s program list for this window.</p>
     <label className="cz-field"><span>Or add one by its path</span><span className="cz-row"><input className="inp" value={path} onChange={e => setPath(e.target.value)} placeholder="/usr/local/bin/gh" /><button type="button" className="btn sm" disabled={busy || !path.trim()} onClick={() => void allow()}>Allow</button></span></label>
     {added.map(a => <p key={a} role="status" className="cz-hint">{a} is allowed.</p>)}
-    {error && <p role="alert" className="cz-error">{error}</p>}
+    {error && <p role="alert" className="cz-error">{plainError(error)}</p>}
   </Dialog>;
 }
 
@@ -190,7 +191,7 @@ export function AddAgent({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
         <label>Name<input aria-label="Agent name" value={name} onChange={event => setName(event.target.value)} /></label>
         <label>Address<input aria-label="Agent address" type="url" value={url} onChange={event => setUrl(event.target.value)} /></label>
         <label>Outbound token<input aria-label="Outbound token" type="password" value={outboundToken} onChange={event => setOutboundToken(event.target.value)} /></label>
-        {(error || ctx.config.writeError) && <p role="alert" className="cz-error">{error || ctx.config.writeError}</p>}</div>
+        {(error || ctx.config.writeError) && <p role="alert" className="cz-error">{plainError(error || ctx.config.writeError)}</p>}</div>
       <div className="cz-prov"><b>Branch on another computer</b><small>Pair → Let it in → Name it → What it may do, with a check code.</small><button type="button" className="btn sm" onClick={() => setLinkBranch(true)}>Connect</button></div>
       <TechnicalOnly><div className="cz-prov"><b>An agent on your KeepOak computer</b><small>Hermes Agent or another Branch.</small><Grey reason="Connecting to keepoak.com from here comes in a later update.">Connect</Grey></div></TechnicalOnly>
     </div>
