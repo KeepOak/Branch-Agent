@@ -114,8 +114,8 @@
 /* the chosen one in a group, and a hovered control: a light lift over the same frost, outline kept */
 :is(.g-frost, .g-clear :is(button, a[href])):is([aria-current="true"], [aria-current="step"], [aria-current="page"], [aria-selected="true"], [aria-pressed="true"], :hover:not(:disabled, [aria-disabled="true"])):not([role="switch"], [data-solid], #g48#g48) {
   box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
-/* a switch that is off sits on the same frost; one that is on keeps its accent fill */
-.g-clear [role="switch"]:not([aria-checked="true"]):not(#g48) { background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); }
+/* a switch that is off sits on the same frost; one that is on keeps its accent fill (a native checkbox switch says it with :checked) */
+.g-clear [role="switch"]:not([aria-checked="true"], :checked):not(#g48) { background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); }
 /* a clear dialog's title hugs its words; the close button stays at the end */
 .dlg.g-clear .dlg-h > h2 { flex: 0 1 auto; margin-right: auto; }
 :root[data-transparency="reduce"] .g-clear:not(#g48#g48) { background: var(--bg); }
@@ -131,6 +131,13 @@
   box-shadow: inset 0 0 0 .5px var(--gw-edge), inset 0 1px 0 var(--gw-hi), var(--gw-dlg-sh); }
 .scrim > .dlg.g-clear :is(.g-label, .g-label[data-lines]):not(#g48) { width: auto; max-width: none; padding: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 :root[data-transparency="reduce"] .scrim > .dlg.g-clear:not(#g48#g48) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+/* Seedbank's Add and item sheets (preview: openDlg, .scrim > .dlg) sit on the same window glass, so nothing from the page shows
+   through their words (#1095). Their text keeps its outlined pills (item 48). */
+.sb-sheet-wrap > .sb-sheet.g-clear:not(#g48) { background: color-mix(in srgb, var(--bg) 74%, transparent); background-image: none; border-color: transparent;
+  -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+  box-shadow: inset 0 0 0 .5px var(--gw-edge), inset 0 1px 0 var(--gw-hi), var(--gw-dlg-sh); }
+:root[data-transparency="reduce"] .sb-sheet-wrap > .sb-sheet.g-clear:not(#g48#g48) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .sb-sheet-wrap > .sb-sheet.g-clear:not(#g48#g48) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 @media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .scrim > .dlg.g-clear:not(#g48#g48) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 
 /* ===== Smart glass layer (see the header above). Generated selectors are scoped under :root:not(#sg#sg#sg#sg) so they win over

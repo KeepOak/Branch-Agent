@@ -21,13 +21,13 @@ function Row({ title, hint, children, off }: { title: string; hint: string; chil
 const modelName = (models: ModelChoice[], ref: string) => usableModelName(ref, models);
 
 function ModelPick({ draft, models, setModel, openSettings }: { draft: Draft; models: ModelChoice[]; setModel: (ref: string) => void; openSettings?: (page: string) => void }) {
-  if (!models.length) return <Row title="Which model" hint="No model is set up yet."><button type="button" className="btn sm" onClick={() => openSettings?.("models")} disabled={!openSettings}>Set up a model</button></Row>;
   const options = models;
-  const value = models.some((m) => m.ref === draft.model) ? draft.model : options[0].ref;
+  const value = models.find((m) => m.ref === draft.model)?.ref ?? models[0]?.ref;
   // The control can only show a usable option. Write that into the draft so Save persists Gemma, not the leftover astra ref.
   useEffect(() => {
-    if (value !== draft.model) setModel(value);
+    if (value && value !== draft.model) setModel(value);
   }, [value, draft.model, setModel]);
+  if (!models.length || !value) return <Row title="Which model" hint="No model is set up yet."><button type="button" className="btn sm" onClick={() => openSettings?.("models")} disabled={!openSettings}>Set up a model</button></Row>;
   return (
     <Row title="Which model" hint="Where this Trunk thinks.">
       {options.length <= 3 && <span className="tk-wide"><Segmented label="Which model" value={value} options={options.map((m) => ({ id: m.ref, name: m.name }))} onChange={setModel} /></span>}

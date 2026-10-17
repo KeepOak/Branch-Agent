@@ -24,6 +24,7 @@ import { PlusMenu } from "./PlusMenu";
 import { buildExtras, planSend, sendTooltip, type Reply } from "./sending";
 import { Drawer } from "./SlashDrawer";
 import { useBackground } from "./useBackground";
+import { ACCOUNT_FASTER, FREE_MODEL_READY } from "./no-key-default";
 import { hasNoModel, useConversation } from "./useConversation";
 import { safeStorage, saveDraft } from "./drafts";
 import { useConversationPrefs } from "../thread/prefs";
@@ -150,6 +151,8 @@ export function Composer(props: Props) {
   const chipName = composerChipLabel(current, "", conv.modelsLoaded);
   // No model set up: the engine names a default model but none is connected (models.list has none usable), or none at all.
   const noModel = hasNoModel(conv, currentRef);
+  const waitingForFreeModel = noModel && !conv.noKeySettled && !conv.noKeyError;
+  const freeModelBlocked = waitingForFreeModel || Boolean(conv.noKeyError);
   const admin = isAdmin(engine?.scopes ?? []);
   const mode: EngineMode | null = isEngineMode(row.permissionMode) ? row.permissionMode : null;
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;
@@ -228,6 +231,7 @@ export function Composer(props: Props) {
       draft.clear();
       return;
     }
+    if (freeModelBlocked && plan.kind !== "command") return;
     if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") {
       void runBackground(plan.text);
@@ -413,7 +417,7 @@ export function Composer(props: Props) {
   const hasDraft = draft.text.trim().length > 0 || draft.files.length > 0;
   const stopMode = working && !hasDraft;
   // Sessions and history arrive before the engine finishes starting; sending waits for this Trunk.
-  const ready = hasDraft && !disabled && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem);
+  const ready = hasDraft && !disabled && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && !freeModelBlocked;
   // The session row's estimatedCostUsd is the latest run, not the conversation total.
   const [usageCost, setUsageCost] = useState<{ key: string; value: number } | null>(null);
   useEffect(() => {
@@ -444,7 +448,7 @@ export function Composer(props: Props) {
       onDrop={onDrop}
     >
       {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
-      {noModel ? <NoModelLine onOpen={onOpen} /> : null}
+      {noModel ? <NoModelLine onOpen={onOpen} error={conv.noKeyError} onRetry={() => void conv.retryNoKey()} /> : null}
       {conversationProblem ? <p className={isPreparationPending(conversationProblem) ? "c-note" : "c-note bad"} role={isPreparationPending(conversationProblem) ? "status" : "alert"}>{isPreparationPending(conversationProblem) ? preparationLabel(trunkName) : shortReason(conversationProblem)}</p> : null}
       {problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : shortReason(problem)}</p> : null}
       {line.error ? <p className="c-note bad" role="alert">{isPreparationPending(line.error) ? preparationLabel(trunkName) : shortReason(line.error)}</p> : null}
@@ -539,7 +543,7 @@ export function Composer(props: Props) {
           data-has-draft={draft.text.trim() || draft.files.length ? "" : undefined}
           rows={1}
           value={draft.text}
-          placeholder={props.placeholder ?? `Message ${name}`}
+          placeholder={waitingForFreeModel ? FREE_MODEL_READY : noModel ? "Connect a model to start" : props.placeholder ?? `Message ${name}`}
           aria-label={`Message ${name}`}
           onChange={(e) => {
             draft.setText(e.target.value);
@@ -554,10 +558,13 @@ export function Composer(props: Props) {
           onFocus={() => setDismissed(null)}
         />
         )}
-        <span className="c-flags">
-          {temporary ? <span className="c-flag">Temporary</span> : null}
-          {vimOn ? <span className="c-flag" data-testid="vim-normal">Normal</span> : null}
-        </span>
+        {/* VOICE-0127: nothing empty beside the microphone; the flags box draws only when it holds a flag. */}
+        {temporary || vimOn ? (
+          <span className="c-flags" data-testid="composer-flags">
+            {temporary ? <span className="c-flag">Temporary</span> : null}
+            {vimOn ? <span className="c-flag" data-testid="vim-normal">Normal</span> : null}
+          </span>
+        ) : null}
         {engine ? (
           <button ref={anchors.tune} type="button" className={`c-btn c-tune-button${props.lockdown ? " lockdown" : (mode ?? asSet) === "full" ? " full" : ""}`} data-testid="tune-button" aria-haspopup="dialog" aria-expanded={menu === "tune"}
             aria-label={`Model, access and usage: ${chip} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${cost !== undefined ? ` · $${cost.toFixed(2)} so far` : ""}`}
@@ -722,11 +729,13 @@ function ToolButton({ refEl, icon, label, tip, open, onClick, disabled, testId }
   );
 }
 
-/** The no-model line (DESIGN-SPEC §4.2.9, §4.3.1 States; DECISIONS.md item 36), with its two links. */
-function NoModelLine({ onOpen }: { onOpen?: (target: OpenTarget) => void }) {
+/** Suggestion while a free local model is getting ready; after a failure, the reason plus Try again. */
+function NoModelLine({ onOpen, error, onRetry }: { onOpen?: (target: OpenTarget) => void; error?: string | null; onRetry?: () => void }) {
   return (
-    <p className="c-nomodel" data-testid="no-model">
-      Trunks can’t answer until a model is connected.{" "}
+    <p className="c-nomodel" data-testid="no-model" role={error ? "alert" : undefined}>
+      {error ?? ACCOUNT_FASTER}{" "}
+      {error ? <button type="button" className="c-link" onClick={onRetry}>Try again</button> : null}
+      {error ? " · " : null}
       <button type="button" className="c-link" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => onOpen?.("settings/accounts/add")}>Add an account</button>
     </p>
   );
