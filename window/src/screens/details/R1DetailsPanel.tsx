@@ -23,6 +23,7 @@ import { ComputerStage, type PipTarget, type StageMode } from "../../stage/Compu
 import { listComputers } from "../../stage/computers";
 import type { Block } from "../../thread/model";
 import "./r1-details.css";
+import { plainError } from "../../shell/plain-error";
 
 export type DetailsKind = "trunk" | "group" | "grafted";
 export type DetailsTab = "Details" | "Library" | "Computer" | "Members";
@@ -39,7 +40,8 @@ function saveDetailsTab(kind: DetailsKind, tab: DetailsTab) {
   try { localStorage.setItem(detailsTabKey(kind), tab); } catch { /* storage off: this opening only */ }
 }
 
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const errorText = (e: unknown): string => plainError(e);
 /** Coming reasons name the preview label: "<label> comes in a later update." */
 const ROUTINES_COMING = "Routines comes in a later update.";
 /** The Details tab's own line, under the routines list and on its own when there are none yet. */

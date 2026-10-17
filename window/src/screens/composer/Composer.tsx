@@ -31,6 +31,7 @@ import { useDrawer, type Pick } from "../../composer/useDrawer";
 import { useHistoryKeys } from "../../composer/useHistoryKeys";
 import { useWaitingLine } from "../../composer/useWaitingLine";
 import { vimKey, type VimMode } from "../../composer/vim";
+import { micSettingsPage } from "../../composer/voice";
 import { DictationStrip, TALK_EVENT, useDictation, useVoiceCatalog, useVoiceNote, VoiceNoteStrip, VoiceScreen } from "../../composer/VoiceParts";
 import { availability } from "../../connect/capabilities";
 import { Coming } from "../../glass/coming";
@@ -386,9 +387,14 @@ export function Composer(props: Props) {
 
   return <div ref={dock} className="r1c" data-tight={tight || undefined} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }} onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)} onDrop={onDrop}>
     {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
-    {notes.map((n, i) => isNoUsableModelError(n)
-      ? <ConnectModelNotice key={i} onOpen={onOpen} className="r1c-connect" />
-      : <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"}>{isPreparationPending(n) ? preparationLabel(trunkName) : shortReason(n)}</p>)}
+    {notes.map((n, i) => {
+      if (isNoUsableModelError(n)) return <ConnectModelNotice key={i} onOpen={onOpen} className="r1c-connect" />;
+      const settings = micSettingsPage(n);
+      return <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"} data-testid={settings ? "mic-denied" : undefined}>
+        {isPreparationPending(n) ? preparationLabel(trunkName) : settings ? n : shortReason(n)}
+        {settings ? <>{" "}<button type="button" className="r1c-undo" data-local="" onClick={() => onOpen(settings)}>Open Settings</button></> : null}
+      </p>;
+    })}
     {noModel ? <FreeModelSetup engine={engine} onReady={() => void conv.reload()} /> : null}
     {conv.noKeyError ? <p className="r1c-note bad" role="alert" data-testid="no-key-failed">{conv.noKeyError} <button type="button" className="r1c-undo" data-local="" onClick={() => void conv.retryNoKey()}>Try again</button></p> : null}
     {draft.note ? <p className="r1c-note">{draft.note}</p> : null}

@@ -2,6 +2,7 @@
 import type { Block } from "./model";
 import { displayModelName } from "../composer/model-display";
 import { computerStepWords, isComputerToolName, isScreenToolName, screenStepWords } from "./computer-action-label";
+import { looksRawError, plainError } from "../shell/plain-error";
 
 export function formatDuration(ms?: number): string {
   if (!ms || ms < 0) {
@@ -331,7 +332,10 @@ export function shortReason(message: string): string {
     .replace(/^[⚠️\s]+/u, "")
     .trim();
   const first = /^(.+?[.!?])(\s|$)/.exec(plain)?.[1] ?? plain;
-  return first.length > 160 ? `${first.slice(0, 157)}…` : first;
+  const short = first.length > 160 ? `${first.slice(0, 157)}…` : first;
+  // No error class, code, HTTP status, id, stack or engine method name at Regular (Private issue 1089): the scrubbed first
+  // sentence is checked as issue 1700's friendlyError() checks it, and a raw one reads as a plain sentence instead.
+  return looksRawError(first) ? plainError(short) : short;
 }
 
 /** A model id as the hover bar shows it: the part after the provider. */
