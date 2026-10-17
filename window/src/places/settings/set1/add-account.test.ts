@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { freshAccount, freshTokenLabel, localSetupCopy, loginChoiceRef, serviceMatchesProvider, servicesOf, tokenProfileName } from "./add-account";
+import { detectCatalogueReady, freshAccount, freshTokenLabel, localSetupCopy, loginChoiceRef, serviceMatchesProvider, servicesOf, tokenProfileName } from "./add-account";
 import { tokenLabel } from "./accounts";
+import { serviceName } from "./service";
 
 describe("servicesOf", () => {
   const caps = [
@@ -36,10 +37,12 @@ describe("servicesOf", () => {
       { prepareOptions: [{ id: "ollama", brandId: "ollama", label: "Ollama" }] },
     );
     const names = out.map((s) => s.name);
-    expect(names.filter((n) => n === "Google Gemini")).toHaveLength(1);
-    expect(names.filter((n) => n === "OpenRouter")).toHaveLength(1);
-    expect(names.filter((n) => n === "xAI")).toHaveLength(1);
-    expect(names.filter((n) => n === "MiniMax")).toHaveLength(1);
+    expect(out.filter((s) => s.name === "Google Gemini" && s.kind === "plan")).toHaveLength(1);
+    expect(out.filter((s) => s.name === "Google Gemini" && s.kind === "key")).toHaveLength(1);
+    expect(out.filter((s) => s.name === "OpenRouter" && s.kind === "plan")).toHaveLength(1);
+    expect(out.filter((s) => s.name === "xAI" && s.kind === "plan")).toHaveLength(1);
+    expect(out.filter((s) => s.name === "MiniMax" && s.kind === "plan")).toHaveLength(1);
+    expect(out.filter((s) => s.name === "MiniMax" && s.kind === "key")).toHaveLength(1);
     expect(names).toContain("LiteLLM");
     expect(names).toContain("Hugging Face");
     expect(names[0]).toBe("Ollama");
@@ -48,14 +51,83 @@ describe("servicesOf", () => {
     expect(localSetupCopy({ id: "local:ollama", brand: "ollama", name: "Ollama", kind: "local", signedIn: 0, logins: [] })).toMatch(/9\.6 GB/);
     expect(localSetupCopy({ id: "local:llama-cpp", brand: "llama-cpp", name: "llama.cpp", kind: "local", signedIn: 0, logins: [] })).toMatch(/few GB/);
     expect(localSetupCopy({ id: "local:lmstudio", brand: "lmstudio", name: "LM Studio", kind: "local", signedIn: 0, logins: [] })).toMatch(/several GB|LM Studio/i);
-    const minimax = out.find((s) => s.name === "MiniMax");
-    expect(minimax?.providers).toEqual(expect.arrayContaining(["minimax", "minimax-portal"]));
+    const minimax = out.find((s) => s.name === "MiniMax" && s.kind === "plan");
+    expect(minimax?.providers).toEqual(expect.arrayContaining(["minimax-portal"]));
     expect(serviceMatchesProvider(minimax!, "minimax-portal")).toBe(true);
     expect(freshAccount(
       [{ provider: "minimax-portal", displayName: "MiniMax", status: "ok", profiles: [{ profileId: "minimax-portal:work", type: "oauth", status: "ok", displayName: "Work" }] }],
       "minimax",
       [],
     )?.profile.profileId).toBe("minimax-portal:work");
+  });
+
+  it("lists each service once per section, keeps local runtimes off Your plan, and uses product names", () => {
+    const caps = [
+      { provider: "google", apiKeySupported: true, loginOptions: [{ id: "google-oauth", kind: "oauth" }] },
+      { provider: "google-gemini", apiKeySupported: true },
+      { provider: "minimax", apiKeySupported: true },
+      { provider: "minimax-portal", loginOptions: [{ id: "minimax-oauth", kind: "oauth" }] },
+      { provider: "ollama", loginOptions: [{ id: "ollama-login", kind: "oauth" }] },
+      { provider: "lmstudio", loginOptions: [{ id: "lmstudio-login", kind: "device-code" }] },
+      { provider: "opencode", loginOptions: [{ id: "opencode-login", kind: "oauth" }] },
+      { provider: "microsoft-foundry", apiKeySupported: true },
+      { provider: "huggingface", apiKeySupported: true },
+      { provider: "litellm", apiKeySupported: true },
+      { provider: "ollama-cloud", apiKeySupported: true },
+      { provider: "opencode-go", apiKeySupported: true },
+    ];
+    const providers = [
+      { provider: "microsoft-foundry", displayName: "Microsoft-foundry", status: "ok" as const, profiles: [] },
+      { provider: "huggingface", displayName: "Huggingface", status: "ok" as const, profiles: [] },
+      { provider: "litellm", displayName: "Litellm", status: "ok" as const, profiles: [] },
+      { provider: "ollama-cloud", displayName: "Ollama-cloud", status: "ok" as const, profiles: [] },
+      { provider: "opencode-go", displayName: "Opencode-go", status: "ok" as const, profiles: [] },
+    ];
+    const detect = {
+      manualProviders: [
+        { id: "minimax-token", brandId: "minimax", label: "MiniMax token" },
+        { id: "ollama", brandId: "ollama", label: "Ollama" },
+        { id: "lmstudio", brandId: "lmstudio", label: "LM Studio" },
+        { id: "opencode", brandId: "opencode", label: "OpenCode" },
+      ],
+      prepareOptions: [
+        { id: "ollama", brandId: "ollama", label: "Ollama" },
+        { id: "lmstudio", brandId: "lmstudio", label: "LM Studio" },
+        { id: "opencode", brandId: "opencode", label: "OpenCode" },
+      ],
+    };
+    const early = servicesOf(caps, providers, undefined);
+    const late = servicesOf(caps, providers, detect);
+    for (const list of [early, late]) {
+      expect(list.filter((s) => s.kind === "plan").map((s) => s.name)).not.toEqual(expect.arrayContaining(["Ollama", "LM Studio", "OpenCode"]));
+      expect(list.filter((s) => s.kind === "local").map((s) => s.name).sort()).toEqual(["LM Studio", "Ollama", "OpenCode"]);
+      expect(list.filter((s) => s.name === "MiniMax" && s.kind === "plan")).toHaveLength(1);
+      expect(list.filter((s) => s.name === "Google Gemini" && s.kind === "key")).toHaveLength(1);
+      expect(list.filter((s) => s.name === "Google Gemini" && s.kind === "plan")).toHaveLength(1);
+      expect(list.map((s) => s.name)).toEqual(expect.arrayContaining(["Microsoft Foundry", "OpenCode Go", "Ollama Cloud", "Hugging Face", "LiteLLM"]));
+      expect(list.map((s) => s.name).join("\n")).not.toMatch(/Microsoft-foundry|Opencode-go|Ollama-cloud|Huggingface|Litellm/);
+      for (const kind of ["plan", "key", "local", "custom"] as const) {
+        const names = list.filter((s) => s.kind === kind).map((s) => s.name);
+        expect(names).toEqual([...new Set(names)]);
+      }
+    }
+  });
+
+  it("does not treat a stall as a finished catalogue", () => {
+    expect(detectCatalogueReady({ loading: true })).toBe(false);
+    expect(detectCatalogueReady({ loading: false, error: "Branch didn’t answer in time." })).toBe(false);
+    expect(detectCatalogueReady({ loading: false, data: { prepareOptions: [] } })).toBe(true);
+    expect(detectCatalogueReady({ loading: false, error: "The engine is offline." })).toBe(true);
+  });
+});
+
+describe("serviceName", () => {
+  it("never shows a capitalised provider id", () => {
+    expect(serviceName("microsoft-foundry", "Microsoft-foundry")).toBe("Microsoft Foundry");
+    expect(serviceName("opencode-go", "Opencode-go")).toBe("OpenCode Go");
+    expect(serviceName("ollama-cloud", "Ollama-cloud")).toBe("Ollama Cloud");
+    expect(serviceName("huggingface", "Huggingface")).toBe("Hugging Face");
+    expect(serviceName("litellm", "Litellm")).toBe("LiteLLM");
   });
 });
 
