@@ -61,6 +61,25 @@ describe("pairing setup code", () => {
     expect(decodePairingSetupCode(encodePairingSetupCode(payload))).toEqual(payload);
   });
 
+  it("round-trips a confirm code and relay key", () => {
+    const payload = {
+      url: "wss://gateway.example",
+      bootstrapToken: "bootstrap-123",
+      confirmCode: "F2S4KP",
+      relayKey: "dGVzdC1rZXk",
+    };
+    expect(decodePairingSetupCode(encodePairingSetupCode(payload))).toEqual(payload);
+  });
+
+  it("rejects a confirm code that uses I, L, O or U", () => {
+    const setupCode = encodePairingSetupCode({
+      url: "wss://gateway.example",
+      bootstrapToken: "bootstrap-123",
+      confirmCode: "ILOU12",
+    });
+    expect(() => decodePairingSetupCode(setupCode)).toThrow("Invalid pairing setup payload");
+  });
+
   type ResolvedSetup = Awaited<ReturnType<typeof resolvePairingSetupFromConfig>>;
   type ResolveSetupConfig = Parameters<typeof resolvePairingSetupFromConfig>[0];
   type ResolveSetupOptions = Parameters<typeof resolvePairingSetupFromConfig>[1];
@@ -197,6 +216,8 @@ describe("pairing setup code", () => {
     }
     expect(resolved.access).toBe(params.access ?? "full");
     expect(resolved.accessDowngraded).toBe(params.accessDowngraded ?? false);
+    expect(resolved.confirmCode).toBe("F2S4KP");
+    expect(resolved.payload.confirmCode).toBe("F2S4KP");
   }
 
   function expectResolvedSetupError(resolved: ResolvedSetup, snippet: string) {
@@ -403,6 +424,48 @@ describe("pairing setup code", () => {
     },
   ])("rejects $name before issuing a setup token", async ({ config, options, expectedError }) => {
     expectResolvedSetupError(await resolvePairingSetupFromConfig(config, options), expectedError);
+    expect(issueDevicePairSetupBootstrapTokenMock).not.toHaveBeenCalled();
+  });
+
+  it("issues a relay setup code on loopback instead of the loopback error", async () => {
+    const close = vi.fn(async () => undefined);
+    const resolved = await resolvePairingSetupFromConfig(
+      gatewayConfig({ bind: "loopback", auth: { mode: "token", token: "tok" } }),
+      {
+        openReachability: async () => ({
+          url: "wss://relay.example/v1/pair/abc",
+          source: "pairing.relay",
+          relayKey: "dGVzdC1rZXk",
+          close,
+        }),
+      },
+    );
+    expectResolvedSetupOk(resolved, {
+      authLabel: "token",
+      url: "wss://relay.example/v1/pair/abc",
+      urlSource: "pairing.relay",
+    });
+    if (!resolved.ok) {
+      throw new Error("expected setup resolution to succeed");
+    }
+    expect(resolved.payload.relayKey).toBe("dGVzdC1rZXk");
+    expect(resolved.reachability?.source).toBe("pairing.relay");
+  });
+
+  it("does not mention loopback or restart when the relay cannot open", async () => {
+    const resolved = await resolvePairingSetupFromConfig(
+      gatewayConfig({ bind: "loopback", auth: { mode: "token", token: "tok" } }),
+      {
+        openReachability: async () => ({
+          error: "This computer has no network the phone can reach yet. Connect it to Wi-Fi, or set a pairing relay.",
+        }),
+      },
+    );
+    expectResolvedSetupError(resolved, "no network the phone can reach");
+    if (resolved.ok) {
+      throw new Error("expected setup resolution to fail");
+    }
+    expect(resolved.error).not.toMatch(/loopback|restart/i);
     expect(issueDevicePairSetupBootstrapTokenMock).not.toHaveBeenCalled();
   });
 

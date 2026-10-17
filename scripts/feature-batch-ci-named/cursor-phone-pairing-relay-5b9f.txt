@@ -1,0 +1,7 @@
+engine:src/gateway/server-methods/device-pair-setup.test.ts
+engine:src/pairing/confirm-code.test.ts
+engine:src/pairing/pairing-reachability.test.ts
+engine:src/pairing/pairing-relay.test.ts
+engine:src/pairing/setup-code.test.ts
+window:src/places/customize/pairing.test.tsx
+window:src/shared/pairing-confirm-code.test.ts

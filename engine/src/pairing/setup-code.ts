@@ -39,6 +39,12 @@ import {
   resolveTailnetHostWithRunner,
   resolveTailscalePublishedHost,
 } from "../shared/tailscale-status.js";
+import { pairingConfirmCode } from "./confirm-code.js";
+import {
+  PAIRING_UNREACHABLE_ERROR,
+  resolveConfiguredPairingRelayUrl,
+  type PairingReachability,
+} from "./pairing-reachability.js";
 
 type PairingSetupPayload = {
   url: string;
@@ -46,6 +52,8 @@ type PairingSetupPayload = {
   bootstrapToken: string;
   expiresAtMs?: number;
   tlsFingerprint?: string;
+  confirmCode?: string;
+  relayKey?: string;
 };
 
 const PAIRING_SETUP_MAX_URLS = 8;
@@ -81,6 +89,10 @@ type ResolvePairingSetupOptions = {
   networkInterfaces?: () => ReturnType<typeof os.networkInterfaces>;
   localTlsFingerprint?: string;
   loadLocalTlsFingerprint?: () => Promise<string | undefined>;
+  openReachability?: (plan: {
+    localGatewayUrl: string;
+    relayUrl?: string;
+  }) => Promise<PairingReachability | { error: string }>;
 };
 
 export function resolveConfiguredPairingPublicUrl(config: BranchConfig): string | undefined {
@@ -98,6 +110,8 @@ type PairingSetupResolution =
       accessDowngraded: boolean;
       setupId: string;
       expiresAtMs: number;
+      confirmCode: string;
+      reachability?: PairingReachability;
     }
   | {
       ok: false;
@@ -469,12 +483,30 @@ export function decodePairingSetupCode(
     throw new Error("Invalid pairing setup payload.");
   }
 
+  const confirmCode =
+    typeof decoded.confirmCode === "string" && /^[0-9A-HJKMNP-TV-Z]{6}$/u.test(decoded.confirmCode)
+      ? decoded.confirmCode
+      : undefined;
+  if (decoded.confirmCode !== undefined && !confirmCode) {
+    throw new Error("Invalid pairing setup payload.");
+  }
+
+  const relayKey =
+    typeof decoded.relayKey === "string" && /^[A-Za-z0-9_-]+$/u.test(decoded.relayKey)
+      ? decoded.relayKey
+      : undefined;
+  if (decoded.relayKey !== undefined && !relayKey) {
+    throw new Error("Invalid pairing setup payload.");
+  }
+
   return {
     url,
     ...(urls ? { urls } : {}),
     bootstrapToken,
     ...(expiresAtMs !== undefined ? { expiresAtMs } : {}),
     ...(tlsFingerprint ? { tlsFingerprint } : {}),
+    ...(confirmCode ? { confirmCode } : {}),
+    ...(relayKey ? { relayKey } : {}),
   };
 }
 
@@ -510,6 +542,25 @@ export async function resolvePairingSetupFromConfig(
     runCommandWithTimeout: options.runCommandWithTimeout,
     networkInterfaces: options.networkInterfaces ?? os.networkInterfaces,
   });
+
+  let reachability: PairingReachability | undefined;
+  if (!urlResult.url && urlResult.error === PAIRING_GATEWAY_LOOPBACK_ERROR && options.openReachability) {
+    const port = resolveGatewayPort(cfgForAuth, env);
+    const localGatewayUrl = `ws://127.0.0.1:${port}`;
+    const reached = await options.openReachability({
+      localGatewayUrl,
+      relayUrl: resolveConfiguredPairingRelayUrl({
+        configRelayUrl: cfgForAuth.plugins?.entries?.["device-pair"]?.config?.["relayUrl"],
+        env,
+      }),
+    });
+    if ("error" in reached) {
+      return { ok: false, error: reached.error || PAIRING_UNREACHABLE_ERROR };
+    }
+    urlResult.url = reached.url;
+    urlResult.source = reached.source;
+    reachability = reached;
+  }
 
   if (!urlResult.url) {
     return { ok: false, error: urlResult.error ?? "Gateway URL unavailable." };
@@ -566,6 +617,8 @@ export async function resolvePairingSetupFromConfig(
       url: urlResult.url,
       bootstrapToken: issued.token,
       expiresAtMs: issued.expiresAtMs,
+      confirmCode: pairingConfirmCode(issued.setupId),
+      ...(reachability?.relayKey ? { relayKey: reachability.relayKey } : {}),
       ...(directGatewayTlsFingerprint ? { tlsFingerprint: directGatewayTlsFingerprint } : {}),
     },
     authLabel: authLabel.label,
@@ -574,5 +627,7 @@ export async function resolvePairingSetupFromConfig(
     accessDowngraded,
     setupId: issued.setupId,
     expiresAtMs: issued.expiresAtMs,
+    confirmCode: pairingConfirmCode(issued.setupId),
+    ...(reachability ? { reachability } : {}),
   };
 }
