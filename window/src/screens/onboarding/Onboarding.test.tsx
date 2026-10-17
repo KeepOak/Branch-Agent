@@ -174,7 +174,8 @@ describe("Onboarding", () => {
     const { host, onAnswered } = await show(engine, { startAt: 2 });
     await act(async () => button(host, "Continue").click());
     await flush();
-    expect(host.querySelector("[role=alert]")?.textContent).toContain("config locked");
+    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t save that. Try again.");
+    expect(host.querySelector(".r1-ob-raw code")?.textContent).toBe("config locked");
     expect(onAnswered).not.toHaveBeenCalled();
   });
 
@@ -311,7 +312,8 @@ describe("Your first Trunk (step 4)", () => {
     await act(async () => button(host, "Home Desk").click());
     await act(async () => button(host, "Meet them").click());
     await flush();
-    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t make Home Desk. disk full");
+    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t make Home Desk. Try again.");
+    expect(host.querySelector(".r1-ob-raw code")?.textContent).toBe("disk full");
     expect(host.querySelector("h1")?.textContent).toBe("Your first Trunk");
     expect(onDone).not.toHaveBeenCalled();
     expect(calls(request, "chat.send")).toEqual([]);
@@ -322,12 +324,29 @@ describe("Your first Trunk (step 4)", () => {
     expect(onDone).toHaveBeenCalledOnce();
   });
 
+  it("never shows the engine's raw words outside Details (Private #1089)", async () => {
+    const { engine } = fakeEngine({
+      ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": {},
+      "trunks.template.create": new Error('unknown agent id "main"'),
+    });
+    const { host } = await toLastStepWithHello(engine);
+    await act(async () => button(host, "Home Desk").click());
+    await act(async () => button(host, "Meet them").click());
+    await flush();
+    const seen = host.cloneNode(true) as HTMLElement;
+    for (const d of seen.querySelectorAll("details:not([open])")) for (const c of [...d.children]) if (c.tagName !== "SUMMARY") c.remove();
+    expect(seen.textContent).toContain("Couldn’t make Home Desk. Try again.");
+    expect(seen.textContent).not.toMatch(/unknown agent id|"main"|Error:/);
+    expect(host.querySelector(".r1-ob-raw code")?.textContent).toBe('unknown agent id "main"');
+  });
+
   it("stays on step 4 with the engine's words when the first message is refused, and doesn't land in an empty conversation", async () => {
     const { engine } = fakeEngine({ ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { status: "error", error: "session is archived" } });
     const { host, onDone } = await toLastStepWithHello(engine);
     await act(async () => button(host, "Start with Sapling").click());
     await flush();
-    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t start your first conversation. session is archived");
+    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t start your first conversation. Try again.");
+    expect(host.querySelector(".r1-ob-raw code")?.textContent).toBe("session is archived");
     expect(host.querySelector("h1")?.textContent).toBe("Your first Trunk");
     expect(onDone).not.toHaveBeenCalled();
   });

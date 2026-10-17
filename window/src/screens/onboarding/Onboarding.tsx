@@ -52,6 +52,8 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
   const [made, setMade] = useState<Made[]>([]);
   const [talking, setTalking] = useState(false), [talkError, setTalkError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
+  // The engine's own words for the last failure: only under Details, never in the sentence (Private #1089).
+  const [raw, setRaw] = useState<string | null>(null);
   /** Writes the welcome name onto the profile. An empty name, or a connection with no profile, saves nothing. */
   const keepName = async () => {
     if (s.step !== 0 || !s.name.trim()) return true;
@@ -68,7 +70,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
   };
   const talk = async () => {
     if (!onTalk || talking) return;
-    setTalking(true); setTalkError(null);
+    setTalking(true); setTalkError(null); setRaw(null);
     try {
       const key = await startSetupTalk(engine);
       // As Set up later does, so the card doesn't open again; the conversation asks the rest. A failed save only means
@@ -76,7 +78,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
       await recordOnboarding(engine, s).catch(() => undefined);
       onTalk(key);
     }
-    catch (e) { setTalkError(`Couldn’t start that conversation. ${errorText(e)}`); }
+    catch (e) { setTalkError("Couldn’t start that conversation. Try again."); setRaw(errorText(e)); }
     finally { setTalking(false); }
   };
   const go = useRef<HTMLButtonElement>(null);
@@ -86,11 +88,11 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
   useEffect(() => { if (s.step !== LAST_STEP) go.current?.focus({ preventScroll: true }); }, [s.step]);
   const p = primary(s, four.def?.name);
   const meet = async () => {
-    setSaving(true); setTrunkError(null);
+    setSaving(true); setTrunkError(null); setRaw(null);
     try {
       const created = await createPicked(engine, picked(s), four.listed, made);
       setMade(created.made);
-      if (created.error) { setTrunkError(created.error); return; }
+      if (created.error) { setTrunkError(created.error); setRaw(created.raw ?? null); return; }
       const first = created.made[0];
       const target = first ? { agentId: first.agentId, mainKey: four.def?.mainKey ?? "main" } : four.def ? { agentId: four.def.id, mainKey: four.def.mainKey } : null;
       if (!target) { setTrunkError("Couldn’t find your default Trunk. Try again in a moment."); return; }
@@ -100,7 +102,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
       const sessionKey = helloOk(s.hello) ? await greet(engine, target.agentId, target.mainKey, s.name) : mainSessionOf(target.agentId, target.mainKey);
       onDone?.({ sessionKey, made: created.made, state: s });
     } catch (e) {
-      setTrunkError(`Couldn’t start your first conversation. ${errorText(e)}`);
+      setTrunkError("Couldn’t start your first conversation. Try again."); setRaw(errorText(e));
     } finally {
       setSaving(false);
     }
@@ -115,14 +117,14 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
     if (s.step === LAST_STEP) { await meet(); return; }
     const exec = MODES.find((m) => m.id === s.mode)?.exec;
     if (!exec) return;
-    setSaving(true); setModeError(null);
+    setSaving(true); setModeError(null); setRaw(null);
     try {
       // The engine refuses mode beside the older security/ask keys, so those go (as Settings › Permissions saves it).
       await configStore(engine).set("tools.exec", { mode: exec, security: null, ask: null });
       onAnswered?.(s);
       set({ step: LAST_STEP });
     } catch (e) {
-      setModeError(`Couldn’t save that. ${errorText(e)}`);
+      setModeError("Couldn’t save that. Try again."); setRaw(errorText(e));
     } finally {
       setSaving(false);
     }
@@ -159,6 +161,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
           {s.step >= 2 ? <Coming need={need} where={p.label}>{primaryButton}</Coming> : primaryButton}
         </div>
         {talkError ? <p className="r1-ob-error" role="alert">{talkError}</p> : null}
+        {raw && (talkError || (s.step === 2 && modeError) || (s.step === LAST_STEP && trunkError)) ? <details className="r1-ob-raw"><summary>Details</summary><code>{raw}</code></details> : null}
         <div className="r1-ob-later">
           {s.step === 0 ? <><Coming need={WAITS_FOR.talk} unwired={!onTalk} reason={onTalk ? "This engine can’t start a conversation." : "Setting up by talking comes in a later update."} where="Set up by talking"><button type="button" className="r1-ob-link" disabled={talking} onClick={() => void talk()}>{talking ? "Starting…" : "Set up by talking"}</button></Coming><span aria-hidden="true">·</span></> : null}
           <button type="button" className="r1-ob-link" data-local onClick={() => void leave()}>Set up later</button>

@@ -26,8 +26,9 @@ export function readDefaultTrunk(value: unknown): DefaultTrunk | null {
   return { id, name: trunkDisplayName({ ...row, id }), mainKey: str(v.mainKey) || "main" };
 }
 
-/** Creates each picked template that isn't made yet, in order. Stops at the first failure with the engine's words. */
-export async function createPicked(engine: WindowEngine, ids: readonly string[], listed: readonly ListedTemplate[] | null, made: readonly Made[]): Promise<{ made: Made[]; error: string | null }> {
+/** Creates each picked template that isn't made yet, in order. Stops at the first failure: a plain sentence, with the
+ *  engine's own words apart in `raw` for Details (Private #1089). */
+export async function createPicked(engine: WindowEngine, ids: readonly string[], listed: readonly ListedTemplate[] | null, made: readonly Made[]): Promise<{ made: Made[]; error: string | null; raw?: string }> {
   const out = [...made];
   const timezone = ownerTimeZone();
   for (const id of ids) {
@@ -42,7 +43,7 @@ export async function createPicked(engine: WindowEngine, ids: readonly string[],
       if (!outcome.agentId) return { made: out, error: `Couldn’t make ${template.name}. The engine didn’t say which Trunk it made.` };
       out.push({ templateId: id, agentId: outcome.agentId, name: outcome.name });
     } catch (e) {
-      return { made: out, error: `Couldn’t make ${template.name}. ${errorText(e)}` };
+      return { made: out, error: `Couldn’t make ${template.name}. Try again.`, raw: errorText(e) };
     }
   }
   return { made: out, error: null };

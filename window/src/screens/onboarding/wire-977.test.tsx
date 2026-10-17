@@ -76,7 +76,8 @@ it("says so and stays on the card when the conversation can't start", async () =
   const host = await show(engine, { onTalk });
   await act(async () => button(host, "Set up by talking").click()); await flush();
   expect(onTalk).not.toHaveBeenCalled();
-  expect(host.querySelector("[role=alert]")?.textContent).toContain("no default Trunk");
+  expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t start that conversation. Try again.");
+  expect(host.querySelector(".r1-ob-raw code")?.textContent).toBe("no default Trunk");
 });
 
 it("keeps both Coming, naming their calls, on an engine with no methods", async () => {
