@@ -1,11 +1,13 @@
 // Customize (R1): Personal, what your Trunks can do, and Community, the Seedbank store, behind one switch (preview 44539).
-// Trunks and Chat apps are not tabs here: they live in Settings (nav.ts "trunks" and "chatapps"). Classic keeps its own
-// CustomizePlace in places/customize/index.tsx, so this file is the only place R1 mounts Customize.
+// The Personal view is the preview's frame: a title with the search box, the "For:" faces row, then the kind nav and the
+// kind's list and detail (ToolsTab). Trunks and Chat apps are not tabs here: they live in Settings (nav.ts "trunks" and
+// "chatapps"). Classic keeps its own CustomizePlace in places/customize/index.tsx.
 import { useEffect, useState } from "react";
-import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
+import { PlaceScroll, type PlaceProps } from "../../places-nav/PlaceFrame";
 import { CustomizeWithCommunity } from "../../screens/seedbank/Seedbank";
 import { useResource, type Trunks } from "../library/data";
 import { CustomizeLevelContext } from "./common";
+import type { CommunityKind } from "./kind-chrome";
 import { CUSTOMIZE_REQUEST_EVENT, peekCustomizeRequest, requestCustomize, takeCustomizeRequest, type CustomizeRequest, type PromptHandoff } from "./r1-request";
 import { KIND_LIST, ToolsTab, type Kind } from "./tools";
 import "../library/places.css";
@@ -21,6 +23,7 @@ export type CustomizeR1Props = PlaceProps & { usePrompt?: PromptHandoff };
 export function CustomizeR1Place({ engine, openConversation, openSettings, level, usePrompt }: CustomizeR1Props) {
   const [asked] = useState<CustomizeRequest>(peekCustomizeRequest);
   const [kind, setKind] = useState<Kind>(() => asKind(asked.kind) ?? "Skills");
+  const [query, setQuery] = useState("");
   const trunks = useResource<Trunks>(engine, "agents.list");
   useEffect(() => { takeCustomizeRequest(); }, []);
   useEffect(() => {
@@ -39,15 +42,24 @@ export function CustomizeR1Place({ engine, openConversation, openSettings, level
     addEventListener("branch:place-tab", onTab);
     return () => { removeEventListener(CUSTOMIZE_REQUEST_EVENT, onRequest); removeEventListener("branch:place-tab", onTab); };
   }, [openSettings]);
-  const personal = <div className="cz">
-    <ToolsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} getting={false} setGetting={() => undefined}
-      openConversation={openConversation} variant="r1" usePrompt={usePrompt} />
-  </div>;
-  return <PlaceFrame title="Customize" lede="" wide="tools">
-    <CustomizeLevelContext.Provider value={level}>
-      <div className="cz-r1 kp kp-customize" data-level={level}>
-        <CustomizeWithCommunity engine={engine} personal={personal} initial={asked.mode ?? "personal"} />
-      </div>
-    </CustomizeLevelContext.Provider>
-  </PlaceFrame>;
+  /** "Get more … in Community" and "＋ Add" open Community on that kind (Prompts and the rest open its first page). */
+  const toCommunity = (community?: CommunityKind) => requestCustomize({ mode: "community", community: community ?? "all" });
+  const personal = <>
+    <div className="cz-titlerow"><h1>Customize</h1>
+      <label className="cz-search-title"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.3-4.3" /></svg>
+        <input type="search" placeholder="Search tools, skills, agents…" aria-label="Search tools, skills and agents" value={query} onChange={e => setQuery(e.target.value)} /></label></div>
+    <div className="cz">
+      <ToolsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} getting={false} setGetting={() => undefined}
+        openConversation={openConversation} variant="r1" usePrompt={usePrompt} query={query} toCommunity={toCommunity} />
+    </div>
+  </>;
+  return <PlaceScroll>
+    <div className="place wide-tools">
+      <CustomizeLevelContext.Provider value={level}>
+        <div className="cz-r1 kp kp-customize" data-level={level}>
+          <CustomizeWithCommunity engine={engine} personal={personal} initial={asked.mode ?? "personal"} initialKind={asked.community} />
+        </div>
+      </CustomizeLevelContext.Provider>
+    </div>
+  </PlaceScroll>;
 }
