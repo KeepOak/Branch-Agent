@@ -1,6 +1,7 @@
 import { useState, type MouseEvent } from "react";
 import { Face } from "../face/Face";
 import type { TopicListItem } from "./contact-topics";
+import { Menu, type MenuAnchor } from "./Menu";
 import "./v23-layout.css";
 
 type Props = {
@@ -29,16 +30,16 @@ export function shouldShowThreadColumn(p: {
 export function ThreadColumn({ name, generalKey, openKey, items, onOpen, onMenu }: Props) {
   const [expanded, setExpanded] = useState(true);
   const [visible, setVisible] = useState(true);
-  const [menu, setMenu] = useState(false);
+  const [menu, setMenu] = useState<MenuAnchor | null>(null);
   const threads = [...items].sort((a, b) => b.updatedAt - a.updatedAt);
   return <nav className={visible ? "v23-threads" : "v23-threads v23-threads-hidden"} aria-label={`Threads with ${name}`}>
     <div className="v23-threads-head">
-      <button type="button" className="v23-layout-button" aria-label={`How threads show: ${visible ? "Column" : "Hidden"}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>◫</button>
+      <button type="button" className="v23-layout-button" aria-label={`How threads show: ${visible ? "Column" : "Hidden"}`} aria-haspopup="menu" aria-expanded={Boolean(menu)} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setMenu(menu ? null : { x: rect.left, y: rect.bottom + 4 }); }}>◫</button>
       <strong>{name}</strong><small>{threads.length + 1} {threads.length ? "conversations" : "conversation"}</small>
-      {menu ? <div className="v23-threads-menu" role="menu" aria-label="Threads show as">
-        <button type="button" role="menuitemradio" aria-checked={visible} onClick={() => { setVisible(true); setMenu(false); }}>Column</button>
-        <button type="button" role="menuitemradio" aria-checked={!visible} onClick={() => { setVisible(false); setMenu(false); }}>Hidden</button>
-      </div> : null}
+      {menu ? <Menu at={menu} label="Threads show as" onClose={() => setMenu(null)} items={[
+        { label: "Column", radio: true, checked: visible, run: () => setVisible(true) },
+        { label: "Hidden", radio: true, checked: !visible, run: () => setVisible(false) },
+      ]} /> : null}
     </div>
     {visible ? <>
       <button type="button" className={`v23-thread-row${openKey === generalKey ? " current" : ""}`} aria-current={openKey === generalKey} onClick={() => onOpen(generalKey)}>

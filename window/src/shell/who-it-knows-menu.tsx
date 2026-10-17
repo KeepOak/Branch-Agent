@@ -46,7 +46,11 @@ export async function whoItKnowsItems(request: Request, self: Trunk, trunks: rea
           if (!canEnable(freshEntries, freshPolicy)) throw new Error("Another agent-to-agent rule blocks this Trunk.");
           const turningOff = mayTalk(freshPolicy, freshEntries, from.id, to.id);
           const deny = turningOff ? [...existing, to.id] : existing.filter((id) => id !== to.id);
-          const result = rec(await request("config.patch", { baseHash: fresh.hash, raw: JSON.stringify({ agents: { entries: { [from.id]: { agentToAgent: { deny } } } } }) }));
+          const result = rec(await request("config.patch", {
+            baseHash: fresh.hash,
+            raw: JSON.stringify({ agents: { entries: { [from.id]: { agentToAgent: { deny } } } } }),
+            ...(!turningOff ? { replacePaths: [`agents.entries.${from.id}.agentToAgent.deny`] } : {}),
+          }));
           if (result.ok === false) throw new Error(str(rec(result.error).message) || "The engine did not save the change.");
           notify(turningOff ? "It won't message them." : "It can reach them now.");
         } catch (e) { notify(e instanceof Error ? e.message : String(e), { tone: "bad" }); }
