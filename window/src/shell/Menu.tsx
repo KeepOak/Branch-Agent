@@ -132,6 +132,13 @@ export function menuWhy(disabled: string | undefined): string | undefined {
   return why && !LATER.test(why) ? why : undefined;
 }
 
+/** True when two visible lines are the same words, ignoring case and extra spaces. */
+function sameLine(a: string | undefined, b: string | undefined): boolean {
+  const left = a?.replace(/\s+/g, " ").trim().toLowerCase() ?? "";
+  const right = b?.replace(/\s+/g, " ").trim().toLowerCase() ?? "";
+  return Boolean(left) && left === right;
+}
+
 function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: number, el: HTMLElement) => void, subOpen: boolean, idBase = "mi"): ReactNode {
   if (it.kind === "sep") {
     return <hr key={i} className="msep" />;
@@ -170,6 +177,8 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
     );
   }
   const why = menuWhy(it.disabled);
+  const duplicate = sameLine(why, it.sub);
+  const showWhy = Boolean(why) && !duplicate;
   const whyId = why ? `${idBase}-why-${i}` : undefined;
   return (
     <button key={i} type="button" role={it.checked !== undefined ? it.radio ? "menuitemradio" : "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={shownWhy(it.disabled)} aria-describedby={whyId}
@@ -182,8 +191,8 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
       {it.sub || why ? (
         <span className="mi-text">
           <span>{it.label}</span>
-          {it.sub ? <small className="mi-s">{it.sub}</small> : null}
-          {why ? <small className="mi-s mi-why" id={whyId}>{why}</small> : null}
+          {it.sub ? <small className="mi-s" id={duplicate ? whyId : undefined}>{it.sub}</small> : null}
+          {showWhy ? <small className="mi-s mi-why" id={whyId}>{why}</small> : null}
         </span>
       ) : (
         <span>{it.label}</span>
