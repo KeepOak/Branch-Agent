@@ -15,13 +15,22 @@ const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 const str = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
 
-/** This conversation's placement from sessions.describe; undefined when the engine reported none. */
-export async function describePlacement(engine: WindowEngine): Promise<Placement | undefined> {
+/** Where this conversation works, from sessions.describe: its placement, and the paired computer that runs its commands (execNode). */
+export async function describeWhere(engine: WindowEngine): Promise<{ placement?: Placement; execNode?: string }> {
   const described = rec(await engine.request("sessions.describe", { key: engine.sessionKey }));
   const session = rec(described.session);
-  if (session.key !== engine.sessionKey || !session.placement) return undefined;
-  const p = rec(session.placement);
-  return { state: str(p.state), environmentId: str(p.environmentId), generation: num(p.generation), ownerEpoch: num(p.ownerEpoch) };
+  if (session.key !== engine.sessionKey) return {};
+  const execNode = str(session.execNode);
+  const p = session.placement ? rec(session.placement) : undefined;
+  return {
+    ...(p ? { placement: { state: str(p.state), environmentId: str(p.environmentId), generation: num(p.generation), ownerEpoch: num(p.ownerEpoch) } } : {}),
+    ...(execNode ? { execNode } : {}),
+  };
+}
+
+/** This conversation's placement from sessions.describe; undefined when the engine reported none. */
+export async function describePlacement(engine: WindowEngine): Promise<Placement | undefined> {
+  return (await describeWhere(engine)).placement;
 }
 
 /** The computer a placement runs on: an active worker's id, or the host ("gateway") for an explicitly local one. */
@@ -29,6 +38,19 @@ export function placementComputer(p: Placement | undefined): string | null {
   if (p?.state === "active" && p.environmentId) return p.environmentId;
   if (p?.state === "local") return "gateway";
   return null;
+}
+
+/** Runs this conversation's commands on a paired computer that can't host a whole conversation (sessions.patch execNode); null brings them back here. */
+export async function runCommandsOn(engine: WindowEngine, deviceId: string | null): Promise<void> {
+  await engine.request("sessions.patch", deviceId ? { key: engine.sessionKey, execHost: "node", execNode: deviceId } : { key: engine.sessionKey, execHost: null, execNode: null });
+}
+
+/** The computer the Move picker ticks: the active worker, else the paired computer running its commands, else this one. */
+export function currentComputer(placement: Placement | undefined, execNode: string | undefined, computers: { id: string; name: string; deviceId?: string }[]): string {
+  const placed = placementComputer(placement);
+  if (placed) return placed;
+  if (!execNode) return "gateway";
+  return computers.find((c) => c.deviceId === execNode || c.name === execNode)?.id ?? `node:${execNode}`;
 }
 
 export type Computer = {

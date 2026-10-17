@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Popover } from "../shell/Popover";
 import type { MenuAnchor } from "../shell/Menu";
-import type { Computer, Placement } from "./computers";
+import { runCommandsOn, type Computer, type Placement } from "./computers";
 import { SIcon } from "./stage-icons";
 
 /** Where a picked row sends the conversation: the host, a paired device, a cloud profile or any free device. */
@@ -40,13 +40,17 @@ function Busy({ busy }: { busy: NonNullable<Computer["busy"]> }) {
   );
 }
 
-function Row({ c, checked, onPick }: { c: Computer; checked: boolean; onPick?: () => void }) {
+/** Under a computer that only runs commands: the chat itself stays on this computer. */
+const COMMANDS_ONLY = "Runs its commands; the chat stays here";
+
+function Row({ c, checked, onPick, commandsOnly }: { c: Computer; checked: boolean; onPick?: () => void; commandsOnly?: boolean }) {
+  const sub = [c.sub, commandsOnly ? COMMANDS_ONLY : ""].filter(Boolean).join(" · ");
   return (
     <button type="button" className="mi pick-st" role="menuitemradio" aria-checked={checked} disabled={!onPick} onClick={onPick}>
       <span className="mi-tick">{checked ? <SIcon name="check" small /> : null}</span>
       <span className="mi-text">
         <span>{c.name}</span>
-        {c.sub ? <span className="mi-s">{c.sub}</span> : null}
+        {sub ? <span className="mi-s">{sub}</span> : null}
         {c.busy ? <Busy busy={c.busy} /> : null}
       </span>
     </button>
@@ -60,6 +64,8 @@ type Props = {
   computers: Computer[];
   profiles: { id: string; name: string }[];
   placement: Placement | undefined;
+  /** The paired computer running this conversation's commands, when one is set. */
+  execNode?: string;
   current: string | null;
   onClose: () => void;
   onAdd: () => void;
@@ -68,13 +74,17 @@ type Props = {
 };
 
 /** The computer chip's popover: where this conversation runs, add and manage. */
-export function ComputerPicker({ at, engine, name, computers, profiles, placement, current, onClose, onAdd, onManage, onMoved }: Props) {
+export function ComputerPicker({ at, engine, name, computers, profiles, placement, execNode, current, onClose, onAdd, onManage, onMoved }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const move = (target: MoveTarget) => {
+  const local = placement?.state !== "active";
+  const move = (target: MoveTarget | { kind: "commands"; deviceId: string | null }) => {
     setBusy(true);
     setError("");
-    moveConversation(engine, placement, target).then(
+    const run = target.kind === "commands" ? runCommandsOn(engine, target.deviceId)
+      : target.kind === "gateway" && local && execNode ? runCommandsOn(engine, null)
+      : moveConversation(engine, placement, target);
+    run.then(
       () => {
         setBusy(false);
         onMoved();
@@ -86,20 +96,24 @@ export function ComputerPicker({ at, engine, name, computers, profiles, placemen
       },
     );
   };
-  const pickFor = (c: Computer): (() => void) | undefined =>
-    busy ? undefined : c.id === current ? onClose : c.id === "gateway" ? () => move({ kind: "gateway" }) : c.deviceId ? () => move({ kind: "device", deviceId: c.deviceId! }) : undefined;
-  const local = placement?.state !== "active";
   const usable = (c: Computer) => c.available && (c.id === "gateway" || (c.deviceId && c.sessionHost === true && (!c.busy || c.busy.used < c.busy.total)));
+  // A ready paired computer without session hosting (a linux-host, say) can still run this conversation's commands.
+  const commandsOnly = (c: Computer) => local && c.available && Boolean(c.deviceId) && c.sessionHost !== true;
+  const pickFor = (c: Computer): (() => void) | undefined =>
+    busy ? undefined : c.id === current ? onClose : c.id === "gateway" ? () => move({ kind: "gateway" })
+      : commandsOnly(c) ? () => move({ kind: "commands", deviceId: c.deviceId! })
+      : c.deviceId ? () => move({ kind: "device", deviceId: c.deviceId! }) : undefined;
   const otherFree = computers.some((c) => c.id !== current && c.deviceId && usable(c));
   return (
     <Popover at={at} onClose={onClose} label={`${name}'s computers`} testid="computer-picker" width={330}>
       <div className="ph">This conversation uses</div>
-      {computers.filter((c) => c.id === current || usable(c)).map((c) => (
+      {computers.filter((c) => c.id === current || usable(c) || commandsOnly(c)).map((c) => (
         <Row
           key={c.id}
           c={c}
           checked={c.id === current}
           onPick={pickFor(c)}
+          commandsOnly={commandsOnly(c)}
         />
       ))}
       {profiles.map((p) => (
