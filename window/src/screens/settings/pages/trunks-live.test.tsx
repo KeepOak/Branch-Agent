@@ -3,6 +3,7 @@
 // "Start from a template" row instead of the job tiles, each row with only Edit and •••, the preview's ••• menu with Who
 // it knows in it, and at Advanced the "Defaults for every Trunk" and "Trunks’ own databases" cards; no "Groups and Grafted
 // agents" card.
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -142,4 +143,9 @@ it("Try it with examples lists the engine's example Trunks at Regular and opens 
   await act(async () => button("Open the conversation").click());
   window.removeEventListener(EXAMPLES_READY_EVENT, hear);
   expect(keys).toEqual(["agent:oak:main"]);
+});
+
+it("keeps Open the conversation at its own width under the example Trunks instead of stretching across the card", () => {
+  const css = readFileSync("src/places/trunk/trunk.css", "utf8");
+  expect(css).toMatch(/\.tk-examples > \.btn \{[^}]*justify-self: start;/);
 });
