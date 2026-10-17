@@ -11,7 +11,7 @@ import { withSafeVisibility } from "./safe-visibility";
 import { projectRun, settleRunBlocks, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/history";
 import { sanitizeBlocks } from "../thread/tool-output-display";
-import { isPreparationPending, isPreparationStalled, isStartupUnavailable, PreparationRetry, preparationTimeoutLabel, type StartupWait } from "./preparation-status";
+import { HISTORY_STARTING_LABEL, isHistoryTemporarilyUnavailable, isPreparationPending, isPreparationStalled, isStartupUnavailable, PreparationRetry, preparationTimeoutLabel, type StartupWait } from "./preparation-status";
 import { readStartupPreparation } from "./startup-preparation";
 import { addNotSent, healNotSent } from "../composer/queue";
 import { droppedFiles, engineKeyOf, FirstSendEcho, heldRuns, UnconfirmedSends } from "./unconfirmed";
@@ -102,10 +102,12 @@ const STARTUP_POLL_MS = 3_000;
  *  given up after this long and read again, so a hung request cannot leave the window connecting. */
 const BOOTSTRAP_REQUEST: GatewayProtocolRequestOptions = { timeoutMs: 15_000 };
 const BOOTSTRAP_RETRY_MAX_MS = 10_000;
-/** A failed read as the snapshot keeps it: the engine's words, and whether they are its startup refusal (by code). */
+/** A failed read as the snapshot keeps it: a startup wait by code, a retrying history UNAVAILABLE in plain words, else the engine's words. */
 const failure = (error: unknown): Pick<SessionSnapshot, "error" | "startup"> => {
   const message = error instanceof Error ? error.message : String(error);
-  return { error: message, startup: isStartupUnavailable(error) ? { detail: message, stalled: false } : null };
+  if (isStartupUnavailable(error)) return { error: message, startup: { detail: message, stalled: false } };
+  if (isHistoryTemporarilyUnavailable(error)) return { error: HISTORY_STARTING_LABEL, startup: null };
+  return { error: message, startup: null };
 };
 /** The code the gateway client gives a request it gave up on (GatewayProtocolRequestTimeoutError). */
 const isRequestTimeout = (error: unknown): boolean => (error as { code?: unknown } | null)?.code === "CLIENT_TIMEOUT";
@@ -366,6 +368,7 @@ export class SaplingSession {
     this.liveRefreshTimer = null;
     this.approvals.clear();
     this.ownSends.clear();
+    this.readError = null;
     const echo = this.firstEcho.peek(key);
     if (echo) this.ownSends.set(echo.runId, { text: echo.text, shown: true, attachments: 0 });
     const cached = this.cachedTranscript(key);
@@ -498,16 +501,22 @@ export class SaplingSession {
       const echo = sessionKey ? this.firstEcho.peek(sessionKey) : null;
       if (echo) this.ownSends.set(echo.runId, { text: echo.text, shown: true, attachments: 0 });
       const switching = sessionKey !== this.snapshot.sessionKey;
+      const defaultChanged = mainKey !== this.snapshot.mainKey;
       const cached = switching && sessionKey ? this.cachedTranscript(sessionKey) : null;
+      if (switching || defaultChanged) this.readError = null;
       this.set({
         sessionKey, mainKey, live: [], steered: [],
+        ...(switching || defaultChanged ? { error: null } : {}),
         ...(cached ? cached : {}),
         liveRunId: echo?.runId ?? null,
         liveStartedAt: echo ? Date.now() : null,
         pendingUser: echo?.text ?? null,
       });
     } else {
-      this.set({ sessionKey, mainKey });
+      const switching = sessionKey !== this.snapshot.sessionKey;
+      const defaultChanged = mainKey !== this.snapshot.mainKey;
+      if (switching || defaultChanged) this.readError = null;
+      this.set({ sessionKey, mainKey, ...(switching || defaultChanged ? { error: null } : {}) });
     }
     this.cancelBootstrapRetry();
     void this.bootstrap(status, sessionKey);
@@ -529,7 +538,7 @@ export class SaplingSession {
       this.agentList = agents;
       this.set({ name: readAgentName(agents) });
       await Promise.all([this.backfillApprovals(BOOTSTRAP_REQUEST).catch(() => undefined), this.loadHistory(BOOTSTRAP_REQUEST)]);
-      if (!current()) return;
+      if (!current() || this.snapshot.sessionKey !== sessionKey) return;
       this.connectionEpoch += 1;
       this.bootstrapAttempts = 0;
       this.set({ status, error: null });
@@ -537,10 +546,10 @@ export class SaplingSession {
     } catch (error) {
       if (isRequestTimeout(error)) {
         // The engine has not answered yet: the window stays connecting and reads again, instead of showing an error.
-        if (connection === this.connectionId) this.retryBootstrap(status, sessionKey);
+        if (connection === this.connectionId && this.snapshot.sessionKey === sessionKey) this.retryBootstrap(status, sessionKey);
         return;
       }
-      if (!current()) return;
+      if (!current() || this.snapshot.sessionKey !== sessionKey) return;
       this.set({ status, ...failure(error) });
     }
   }
@@ -617,7 +626,7 @@ export class SaplingSession {
   private loadHistory(options?: GatewayProtocolRequestOptions): Promise<void> {
     const read = this.readHistory(options).catch((error: unknown) => {
       // Remembered so the next read that works can take back exactly this notice, and nothing else.
-      this.readError = error instanceof Error ? error.message : String(error);
+      this.readError = failure(error).error;
       throw error;
     });
     this.currentRead = read;
@@ -637,10 +646,20 @@ export class SaplingSession {
     const revisionAtRead = this.runRevision;
     // The approval ledger only dresses the steps; when it fails (right after a rewind it answered "approval not
     // found") the history still shows, without a raw notice that never clears.
-    const [history, ledger] = await Promise.all([
-      this.chatHistory(sessionKey, options),
-      this.gateway.request("approval.history", { limit: 100, kind: "exec" }, options).catch(() => null),
-    ]);
+    let history: unknown;
+    let ledger: unknown;
+    try {
+      [history, ledger] = await Promise.all([
+        this.chatHistory(sessionKey, options),
+        this.gateway.request("approval.history", { limit: 100, kind: "exec" }, options).catch(() => null),
+      ]);
+    } catch (error) {
+      // A late refusal for the conversation just left must not become this conversation's banner.
+      if (sessionKey !== this.snapshot.sessionKey || read !== this.historyReads || epoch !== this.historyEpoch || this.historyReadGen.get(sessionKey) !== gen) {
+        return;
+      }
+      throw error;
+    }
     if (epoch !== this.historyEpoch || this.historyReadGen.get(sessionKey) !== gen) {
       return; // a newer read of this conversation, or a different engine, replaced this one
     }

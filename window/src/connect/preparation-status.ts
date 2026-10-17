@@ -7,6 +7,9 @@ export const PREPARATION_TIMEOUT_MS = 120_000;
 /** The open Trunk is refusing because it is still getting ready: what the engine said, and whether the window stopped waiting. */
 export type StartupWait = { detail: string; stalled: boolean };
 
+/** Shown while `chat.history` is refused with UNAVAILABLE and the window is asking again. */
+export const HISTORY_STARTING_LABEL = "Still starting up…";
+
 /**
  * The engine's structured "not ready yet" refusal (ErrorCodes.UNAVAILABLE), read from its code and details rather
  * than its words: an agent database still in startup inspection and preparation (details.code, see the engine's
@@ -21,8 +24,25 @@ export function isStartupUnavailable(error: unknown): boolean {
   return details.code === "agent-database-inspection-pending" || details.reason === "startup-sidecars";
 }
 
+/**
+ * `chat.history` is not ready yet: the engine's retryable UNAVAILABLE for that method (details.method, as
+ * respondChatHistoryUnavailable sends it), or session storage facts that have not settled. The structured
+ * agent-database startup refusal stays `isStartupUnavailable`.
+ */
+export function isHistoryTemporarilyUnavailable(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (message === HISTORY_STARTING_LABEL) return true;
+  if (/session access facts are unavailable|retry after session storage is ready/i.test(message)) return true;
+  if (!error || typeof error !== "object" || isStartupUnavailable(error)) return false;
+  const shaped = error as { gatewayCode?: unknown; code?: unknown; retryable?: unknown; details?: unknown };
+  if ((shaped.gatewayCode ?? shaped.code) !== "UNAVAILABLE") return false;
+  const details = shaped.details && typeof shaped.details === "object" ? shaped.details as { method?: unknown } : {};
+  return shaped.retryable === true || details.method === "chat.history" || details.method === "chat.startup";
+}
+
 /** Startup admission is temporary; keep engine/doctor wording out of the conversation. */
 export function isPreparationPending(error: unknown): boolean {
+  if (isHistoryTemporarilyUnavailable(error)) return true;
   const message = error instanceof Error ? error.message : String(error ?? "");
   return /has not completed startup inspection and preparation|agent database startup preparation|prepared model runtime publication was superseded|prepared reply dispatch runtime owner was not published|unavailable during gateway startup|Model catalog is not ready/i.test(message);
 }
