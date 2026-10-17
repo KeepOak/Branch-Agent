@@ -8,12 +8,14 @@
     "icon": "./assets/icon.png",
     "ios": {
       "buildNumber": "1",
+      "bundleIdentifier": "com.keepoak.branch",
       "supportsTablet": false,
       "infoPlist": {
         "CFBundleDisplayName": "Branch Agent",
         "NSLocalNetworkUsageDescription": "Branch connects to the Branch app on your computer over your home network.",
         "NSPhotoLibraryUsageDescription": "Branch uses your photos so you can send a picture in a chat.",
         "NSCameraUsageDescription": "Branch uses the camera to read the pairing code on your computer and to take a picture to send in a chat.",
+        "NSUserNotificationsUsageDescription": "Branch sends notifications when something on your computer needs your approval.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
@@ -25,7 +27,8 @@
       "label": "Branch Agent",
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.REQUEST_INSTALL_PACKAGES"
+        "android.permission.REQUEST_INSTALL_PACKAGES",
+        "android.permission.POST_NOTIFICATIONS"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",

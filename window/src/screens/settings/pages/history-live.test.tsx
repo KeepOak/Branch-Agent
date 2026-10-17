@@ -120,11 +120,13 @@ describe("R1 Settings › History & backups is a native R1 page with the preview
     await mount();
     await setLevel("Advanced");
     const copy = sections().find((s) => s.getAttribute("aria-label") === "A copy of your setup")!;
-    expect(labels(copy)).toEqual(["Export", "Import", "Where your data lives", "Export a copy without secrets", "From a preset address", "Where conversations are stored", "Where files are kept", "Put Branch on a USB stick"]);
+    // The rows that wait for a later update show only at Technical (Private #1093 item 4).
+    expect(labels(copy)).toEqual(["Export", "Import", "Where your data lives"]);
     const snaps = sections().find((s) => s.getAttribute("aria-label") === "Snapshots")!;
-    expect(labels(snaps)).toEqual(["Tidy memory overnight", "Night window", "Rings diary", "Fill in from past conversations", "Keep notes for good now", "Try a night without keeping anything"]);
+    expect(labels(snaps)).toEqual(["Tidy memory overnight", "Night window", "Rings diary", "Fill in from past conversations"]);
     await setLevel("Technical");
-    expect(labels(sections().find((s) => s.getAttribute("aria-label") === "Snapshots")!)).toContain("Repair Rings’ files");
+    expect(labels(sections().find((s) => s.getAttribute("aria-label") === "A copy of your setup")!)).toEqual(expect.arrayContaining(["Export", "Import", "Where your data lives", "Export a copy without secrets", "From a preset address", "Where conversations are stored", "Where files are kept", "Put Branch on a USB stick"]));
+    expect(labels(sections().find((s) => s.getAttribute("aria-label") === "Snapshots")!)).toEqual(expect.arrayContaining(["Keep notes for good now", "Try a night without keeping anything", "Repair Rings’ files"]));
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
   });
 

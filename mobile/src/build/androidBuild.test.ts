@@ -27,7 +27,7 @@ describe('the installable Android build', () => {
     expect(app.expo.ios.infoPlist.CFBundleDisplayName).toBe('Branch Agent');
     expect(app.expo.slug).toBe('branch');
     expect(app.expo.android.package).toBe('com.keepoak.branch');
-    expect(app.expo.ios).not.toHaveProperty('bundleIdentifier');
+    expect(app.expo.ios.bundleIdentifier).toBe('com.keepoak.branch');
   });
 
   it('has a splash logo, because prebuild links a splashscreen_logo drawable and fails without one', () => {

@@ -556,10 +556,13 @@ export function Composer(props: Props) {
           onFocus={() => setDismissed(null)}
         />
         )}
-        <span className="c-flags">
-          {temporary ? <span className="c-flag">Temporary</span> : null}
-          {vimOn ? <span className="c-flag" data-testid="vim-normal">Normal</span> : null}
-        </span>
+        {/* VOICE-0127: nothing empty beside the microphone; the flags box draws only when it holds a flag. */}
+        {temporary || vimOn ? (
+          <span className="c-flags" data-testid="composer-flags">
+            {temporary ? <span className="c-flag">Temporary</span> : null}
+            {vimOn ? <span className="c-flag" data-testid="vim-normal">Normal</span> : null}
+          </span>
+        ) : null}
         {engine ? (
           <button ref={anchors.tune} type="button" className={`c-btn c-tune-button${props.lockdown ? " lockdown" : (mode ?? asSet) === "full" ? " full" : ""}`} data-testid="tune-button" aria-haspopup="dialog" aria-expanded={menu === "tune"}
             aria-label={`Model, access and usage: ${chip} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${cost !== undefined ? ` · $${cost.toFixed(2)} so far` : ""}`}

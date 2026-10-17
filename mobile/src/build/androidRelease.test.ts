@@ -40,6 +40,12 @@ function callResult(name: string, ...args: unknown[]) {
   return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', source], { encoding: 'utf8' }));
 }
 
+function callModule(source: string) {
+  return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', source], {
+    encoding: 'utf8',
+  }));
+}
+
 function planCliResult(env: NodeJS.Dict<string>) {
   try {
     const stdout = execFileSync(process.execPath, [helper, '--json'], {
@@ -57,9 +63,12 @@ function planCliResult(env: NodeJS.Dict<string>) {
 
 describe('Android release version and signing plan', () => {
   it('uses the workflow run number as versionCode so each release is newer than the last', () => {
-    expect(call('versionCode', { tag: 'v12', runNumber: 3 })).toBe(3);
+    expect(call('LAST_SHIPPED_VERSION_CODE')).toBe(5);
+    expect(call('versionCode', { tag: 'v12', runNumber: 3 })).toBe(6);
+    expect(call('versionCode', { tag: 'v0.4.4', runNumber: 5 })).toBe(6);
     expect(call('versionCode', { tag: 'v0.4.4', runNumber: 99 })).toBe(99);
     expect(call('versionCode', { tag: 'v0.4.4-build-d0c144af53a8', runNumber: 77 })).toBe(77);
+    expect(call('versionCode', { runNumber: 6 })).toBeGreaterThan(5);
     expect(call('versionCode', { runNumber: 10 })).toBeGreaterThan(call('versionCode', { runNumber: 9 }));
     expect(call('releaseVersion', { tag: 'v0.4.4-build-d0c144af53a8', runNumber: 77 })).toBe('0.4.4-build-d0c144af53a8');
     expect(call('releaseVersion', { runNumber: 8, fallbackVersion: '0.1.0' })).toBe('0.1.0');
@@ -87,8 +96,9 @@ describe('Android release version and signing plan', () => {
     expect(signed.attachRelease).toBe(true);
     expect(signed.apkName).toBe('branch-android-0.4.4-build-abc.apk');
     expect(signed.sha256Name).toBe('branch-android-0.4.4-build-abc.apk.sha256');
-    expect(signed.versioncodeName).toBe('branch-android-0.4.4-build-abc.apk.versioncode.4');
-    expect(signed.versionCode).toBe(4);
+    expect(signed.versioncodeName).toBe('branch-android-0.4.4-build-abc.apk.versioncode.6');
+    expect(signed.versionCode).toBe(6);
+    expect(signed.versionCode).toBeGreaterThan(call('LAST_SHIPPED_VERSION_CODE'));
     expect(unsigned.sha256Name).toBe('');
     expect(unsigned.versioncodeName).toBe('');
   });
@@ -234,12 +244,15 @@ describe('Android release version and signing plan', () => {
 });
 
 describe('the mobile Android release workflow', () => {
-  it('builds on a published release or a manual run, and never touches the merge gate', () => {
+  it('builds on a published release, a manual run, or a main push, and never touches the merge gate', () => {
     expect(workflow).toMatch(/release:\s*\n\s*types:\s*\[[^\]]*published/);
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toMatch(/workflow_dispatch:[\s\S]*?inputs:[\s\S]*?\btag:/);
+    expect(workflow).toMatch(/push:\s*\n\s*branches:\s*\[main\]/);
     expect(workflow).toContain('npm run build:android');
     expect(workflow).not.toMatch(/merge-gate/);
+    expect(workflow).not.toMatch(/^\s+pull_request:/m);
+    expect(workflow).not.toMatch(/pull_request_target/);
   });
 
   it('decodes the PKCS12 keystore and fails when the secret is missing or empty', () => {
@@ -272,6 +285,7 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('apk_name');
     expect(workflow).toMatch(/if: steps\.plan\.outputs\.attach_release == 'true'/);
     expect(workflow).toMatch(/attach_release == 'true'[\s\S]*gh release upload/);
+    expect(workflow).toMatch(/gh release upload[\s\S]*--clobber/);
     expect(workflow).not.toMatch(/gh release upload[\s\S]*attach_release == 'false'/);
     expect(workflow).toContain('timeout-minutes:');
     expect(workflow).toContain('persist-credentials: false');
@@ -340,6 +354,167 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toMatch(/if \[\[ -z "\$\{EXPECTED_CERT_SHA256\}" \]\]; then/);
     expect(workflow).toMatch(/if \[\[ -z "\$\{actual_sha256\}" \]\]; then/);
     expect(workflow).toMatch(/if \[\[ "\$\{actual_normalized\}" != "\$\{expected_normalized\}" \]\]; then/);
+  });
+
+  it('uses one shared concurrency key for push, release, and workflow_dispatch', () => {
+    const keys = callModule(`import { releaseConcurrencyGroup } from ${JSON.stringify(helper)};
+      console.log(JSON.stringify({
+        push: releaseConcurrencyGroup({ eventName: 'push', tag: '' }),
+        release: releaseConcurrencyGroup({ eventName: 'release', tag: 'v0.4.4-build-9a15209115dc' }),
+        dispatch: releaseConcurrencyGroup({ eventName: 'workflow_dispatch', tag: 'v0.4.4-build-9a15209115dc' }),
+      }));`);
+    expect(keys.push).toBe(keys.release);
+    expect(keys.dispatch).toBe(keys.release);
+    expect(keys.push).toBe('mobile-android-release');
+    expect(workflow).toMatch(/concurrency:\s*\n(?:\s*#[^\n]*\n)*\s*group: mobile-android-release\s*\n\s*cancel-in-progress: false/);
+    expect(workflow).not.toMatch(/group: mobile-android-release-\$/);
+    expect(workflow).not.toMatch(/concurrency:[\s\S]*?group:[^\n]*(github\.sha|github\.run_id|inputs\.tag|tag_name)/);
+  });
+
+  it('matches the desktop vX.Y.Z-build-<12-hex sha> tag for the pushed commit', () => {
+    const sha = '9a15209115dcf73df922980ae50f762c4fa8d986';
+    const tag = 'v0.4.4-build-9a15209115dc';
+    expect(call('commitBuildId', sha)).toBe('9a15209115dc');
+    expect(call('isBuildReleaseTag', tag)).toBe(true);
+    expect(call('isBuildReleaseTagForCommit', tag, sha)).toBe(true);
+    expect(call('isBuildReleaseTagForCommit', 'v0.4.4', sha)).toBe(false);
+    expect(call('isBuildReleaseTagForCommit', 'v0.4.4-build-9a15209115', sha)).toBe(false);
+    expect(call('isBuildReleaseTagForCommit', tag, 'aaaaaaaaaaaa0000000000000000000000000000')).toBe(false);
+    expect(call('pickReleaseTagForCommit', [
+      { tag_name: 'v0.4.3-build-aaaaaaaaaaaa' },
+      { tag_name: 'v0.4.4' },
+      { tag_name: tag },
+    ], sha)).toBe(tag);
+    const preferred = callModule(`import { resolveReleaseTag } from ${JSON.stringify(helper)};
+      const found = await resolveReleaseTag({
+        eventName: 'push',
+        commitSha: ${JSON.stringify(sha)},
+        sourceVersion: '0.4.4',
+        listReleases: async () => [
+          { tag_name: 'v0.4.4-build-991a4851ae42' },
+          { tag_name: ${JSON.stringify(tag)} },
+        ],
+        createRelease: async () => { throw new Error('must not create when the commit tag exists'); },
+      });
+      console.log(JSON.stringify(found));`);
+    expect(preferred).toEqual({ tag, shouldAttach: true });
+    expect(workflow).toContain('--resolve-tag');
+    expect(workflow).toContain('needs.resolve-tag.outputs.should_attach');
+  });
+
+  it('on push attaches to the latest build tag when this commit has none, and creates one if none exist', () => {
+    const sha = '14e1361bed24b65ac135e87de8edd99f1cb840d4';
+    const latest = 'v0.4.4-build-991a4851ae42';
+    const created = 'v0.4.4-build-14e1361bed24';
+    const dispatchTag = 'v0.4.4-build-9a15209115dc';
+    const result = callModule(`import {
+      resolveReleaseTag, buildReleaseTag, pickLatestBuildReleaseTag, desktopSourceVersionFromRepo,
+      createGithubRelease, releaseAlreadyExists, staleVersionCodeAssetNames, versionCodeFileName,
+      LAST_SHIPPED_VERSION_CODE, missingPushReleaseVersionError,
+    } from ${JSON.stringify(helper)};
+      const createdCalls = [];
+      const latestPath = await resolveReleaseTag({
+        eventName: 'push',
+        commitSha: ${JSON.stringify(sha)},
+        sourceVersion: '0.4.4',
+        listReleases: async () => [
+          { tag_name: 'v0.4.4' },
+          { tag_name: ${JSON.stringify(latest)} },
+          { tag_name: 'v0.4.3-build-aaaaaaaaaaaa' },
+        ],
+        createRelease: async (args) => { createdCalls.push(args); },
+      });
+      const createdPath = await resolveReleaseTag({
+        eventName: 'push',
+        commitSha: ${JSON.stringify(sha)},
+        sourceVersion: '0.4.4',
+        listReleases: async () => [],
+        createRelease: async (args) => { createdCalls.push(args); },
+      });
+      const retried = [];
+      const waits = [];
+      const afterRetry = await resolveReleaseTag({
+        eventName: 'push',
+        commitSha: ${JSON.stringify(sha)},
+        sourceVersion: '0.4.4',
+        wait: { intervalMs: 15, maxAttempts: 3 },
+        listReleases: async () => {
+          retried.push(retried.length + 1);
+          if (retried.length < 2) throw new Error('rate limited');
+          return [{ tag_name: ${JSON.stringify(latest)} }];
+        },
+        sleep: async (ms) => { waits.push(ms); },
+        createRelease: async (args) => { createdCalls.push(args); },
+      });
+      let missingVersion = null;
+      try {
+        await resolveReleaseTag({
+          eventName: 'push',
+          commitSha: ${JSON.stringify(sha)},
+          sourceVersion: '',
+          listReleases: async () => [],
+          sleep: async () => {},
+        });
+      } catch (error) {
+        missingVersion = String(error.message);
+      }
+      const ghCalls = [];
+      createGithubRelease({
+        tag: ${JSON.stringify(created)},
+        commitSha: ${JSON.stringify(sha)},
+        repository: 'KeepOak/Branch-Agent',
+        run: (file, args) => { ghCalls.push([file, args]); return ''; },
+      });
+      createGithubRelease({
+        tag: ${JSON.stringify(created)},
+        commitSha: ${JSON.stringify(sha)},
+        repository: 'KeepOak/Branch-Agent',
+        run: () => { const err = new Error('HTTP 422: already exists'); err.stderr = 'already exists'; throw err; },
+      });
+      const apkName = 'branch-android-0.4.4-build-991a4851ae42.apk';
+      const keep = versionCodeFileName(apkName, 8);
+      const release = await resolveReleaseTag({ eventName: 'release', releaseTag: ${JSON.stringify(dispatchTag)} });
+      const dispatch = await resolveReleaseTag({ eventName: 'workflow_dispatch', releaseTag: ${JSON.stringify(dispatchTag)} });
+      const artifactOnly = await resolveReleaseTag({ eventName: 'workflow_dispatch', releaseTag: '' });
+      console.log(JSON.stringify({
+        latestPath, createdPath, afterRetry, createdCalls, retried, waits, missingVersion,
+        expectedMissing: missingPushReleaseVersionError(${JSON.stringify(sha)}),
+        constructed: buildReleaseTag('0.4.4', ${JSON.stringify(sha)}),
+        latestPick: pickLatestBuildReleaseTag([{ tag_name: ${JSON.stringify(latest)} }]),
+        desktopVersion: desktopSourceVersionFromRepo(),
+        ghCalls, already: releaseAlreadyExists({ stderr: 'already exists' }),
+        stale: staleVersionCodeAssetNames([
+          apkName, keep, versionCodeFileName(apkName, 5), 'SHA256SUMS',
+        ], apkName, keep),
+        release, dispatch, artifactOnly,
+        lastShipped: LAST_SHIPPED_VERSION_CODE,
+      }));`);
+    expect(result.latestPath).toEqual({ tag: latest, shouldAttach: true });
+    expect(result.createdPath).toEqual({ tag: created, shouldAttach: true });
+    expect(result.afterRetry).toEqual({ tag: latest, shouldAttach: true });
+    expect(result.createdCalls).toEqual([{ tag: created, commitSha: sha }]);
+    expect(result.retried).toEqual([1, 2]);
+    expect(result.waits).toEqual([15]);
+    expect(result.constructed).toBe(created);
+    expect(result.latestPick).toBe(latest);
+    expect(result.desktopVersion).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(result.missingVersion).toBe(result.expectedMissing);
+    expect(result.ghCalls[0][0]).toBe('gh');
+    expect(result.ghCalls[0][1]).toEqual(expect.arrayContaining([
+      'release', 'create', created, '--latest=false', '--target', sha,
+    ]));
+    expect(result.already).toBe(true);
+    expect(result.stale).toEqual(['branch-android-0.4.4-build-991a4851ae42.apk.versioncode.5']);
+    expect(result.release).toEqual({ tag: dispatchTag, shouldAttach: true });
+    expect(result.dispatch).toEqual({ tag: dispatchTag, shouldAttach: true });
+    expect(result.artifactOnly).toEqual({ tag: '', shouldAttach: false });
+    expect(result.lastShipped).toBe(5);
+    expect(workflow).toMatch(/resolve-tag:[\s\S]*timeout-minutes: 12/);
+    expect(workflow).toMatch(/resolve-tag:\n(?:.*\n)*?\s+permissions:\n\s+contents: write/);
+    expect(workflow).toContain('--stale-versioncode-assets');
+    expect(workflow).toContain('gh release delete-asset');
+    expect(workflow).toContain('--clobber');
+    expect(workflow).not.toMatch(/resolve-tag:[\s\S]*?contents: read/);
   });
 });
 
