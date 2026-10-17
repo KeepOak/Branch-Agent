@@ -14,7 +14,7 @@ function execRecordOf(config: unknown): ExecRecord | undefined {
 }
 
 /** Exact tools.exec.mode for an older security/ask pair (engine resolveExactExecModeFromPolicy). */
-function modeFromLegacy(security: unknown, ask: unknown): string | undefined {
+function exactModeFromPolicy(security: unknown, ask: unknown): string | undefined {
   if (security !== "deny" && security !== "allowlist" && security !== "full") return undefined;
   if (ask !== "off" && ask !== "on-miss" && ask !== "always") return undefined;
   if (ask === "always" || (security === "full" && ask === "on-miss")) return undefined;
@@ -47,7 +47,7 @@ export function execOf(mode: ModeId): string | null {
 export function execModeOf(config: unknown): string | undefined {
   const exec = execRecordOf(config);
   if (!exec) return undefined;
-  return savedExecMode(exec) ?? modeFromLegacy(exec.security, exec.ask);
+  return savedExecMode(exec) ?? exactModeFromPolicy(exec.security, exec.ask);
 }
 
 /** The recommended first-run access when the person has not picked another. */
