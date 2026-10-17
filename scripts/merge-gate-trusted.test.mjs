@@ -2859,6 +2859,7 @@ function mergeGateHomes(dir) {
 // a check mark, and a run that matches nothing can still exit 0.
 function assertChildTapPassedOne(output, name) {
   assert.match(output, new RegExp(`^ok \\d+ - ${name}$`, 'm'));
+  // Counts assume Node 22+/24 TAP output. Node 20 counts filtered-out tests and will fail; CI is pinned to 24.
   assert.match(output, /^# tests 1$/m);
   assert.match(output, /^# pass 1$/m);
   assert.match(output, /^# fail 0$/m);
