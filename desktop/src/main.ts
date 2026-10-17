@@ -48,6 +48,7 @@ import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
 import { MacComputerDriver, describeDriverError, macScreenControlEnabled } from "./mac-computer-driver";
+import { MAC_MOVE_BUTTON, MAC_MOVE_MESSAGE, MAC_NOT_NOW_BUTTON, offerMacApplicationsMove } from "./mac-applications";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 /** Scratch test copies: never grouped with, or mistaken for, the owner's app (they also start hidden). */
@@ -1217,6 +1218,36 @@ async function handOffDesktop(): Promise<boolean> {
 async function start(): Promise<void> {
   // A desktop update staged during the last run applies before anything starts.
   if (await handOffDesktop()) { app.exit(0); return; }
+  // A first launch from Downloads or a disk image offers to put Branch.app in Applications, then relaunches there
+  // so Spotlight, Launchpad and the updater all follow the live copy. Hidden and test copies never prompt.
+  if (install && !HIDDEN && !TEST_COPY) {
+    const move = await offerMacApplicationsMove({
+      appDir: install.appDir,
+      dataDir: cfg.dataDir,
+      ask: async () => {
+        const { response } = await dialog.showMessageBox({
+          type: "question",
+          buttons: [MAC_MOVE_BUTTON, MAC_NOT_NOW_BUTTON],
+          defaultId: 0,
+          cancelId: 1,
+          message: MAC_MOVE_MESSAGE,
+        });
+        return response === 0 ? "move" : "not-now";
+      },
+    });
+    if (move.moved && move.relaunch) {
+      try {
+        const login = { path: process.execPath };
+        if (app.getLoginItemSettings(login).openAtLogin) {
+          app.setLoginItemSettings({ openAtLogin: false, path: process.execPath });
+          app.setLoginItemSettings({ openAtLogin: true, path: move.relaunch });
+        }
+      } catch { /* the Applications copy is registered; login item is best effort */ }
+      app.relaunch({ execPath: move.relaunch });
+      app.exit(0);
+      return;
+    }
+  }
   token = readToken(cfg);
   // Registered before any page loads: the preload asks for it synchronously.
   ipcMain.on("branch-desktop:info", (e) => {

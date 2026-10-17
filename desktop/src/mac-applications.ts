@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 import type * as NodeFs from "node:fs";
 import { access, constants, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
 
 export const MAC_APP_NAME = "Branch";
@@ -76,6 +76,102 @@ export async function chooseApplicationsDirectory(options: ApplicationsDirectory
   const userApplications = join(options.homeDirectory ?? homedir(), "Applications");
   await mkdir(userApplications, { recursive: true });
   return userApplications;
+}
+
+/** `/Applications` and the per-user Applications folder. Launchpad and Spotlight index both. */
+export function applicationsFolderRoots(options: ApplicationsDirectoryOptions = {}): string[] {
+  return [options.systemApplications ?? "/Applications", join(options.homeDirectory ?? homedir(), "Applications")];
+}
+
+/** True when this bundle is already the published app in /Applications or ~/Applications. */
+export function macAppIsInApplicationsFolder(appPath: string, options: ApplicationsDirectoryOptions = {}): boolean {
+  if (!appPath.endsWith(".app")) return false;
+  const real = resolve(appPath);
+  const name = basename(real);
+  if (name !== MAC_BUNDLE_FOLDER && name !== MAC_LEGACY_BUNDLE_FOLDER) return false;
+  const parent = dirname(real);
+  return applicationsFolderRoots(options).some(root => resolve(root) === parent);
+}
+
+/**
+ * First-launch prompt when the person opened Branch from Downloads, a disk image, or another folder that is not
+ * Applications. Electron's `app.moveToApplicationsFolder` and LetsMove ask the same question.
+ */
+export const MAC_MOVE_MESSAGE = "Move Branch to Applications so it is easy to find?";
+export const MAC_MOVE_BUTTON = "Move";
+export const MAC_NOT_NOW_BUTTON = "Not now";
+export const MAC_MOVE_DECLINED_FILE = "mac-applications-move.json";
+
+export function shouldOfferMacApplicationsMove(
+  appPath: string,
+  options: ApplicationsDirectoryOptions & { declined?: boolean } = {},
+): boolean {
+  if (options.declined) return false;
+  if (!appPath.endsWith(".app")) return false;
+  return !macAppIsInApplicationsFolder(appPath, options);
+}
+
+export function macApplicationsExecutable(appDir: string): string {
+  return join(appDir, "Contents", "MacOS", MAC_EXECUTABLE_NAME);
+}
+
+/** Downloads, Desktop, or an App Translocation copy: safe to remove after Applications has the live app. */
+export function macLaunchLocationIsTransient(appPath: string): boolean {
+  const real = resolve(appPath).replaceAll("\\", "/");
+  return real.includes("/Downloads/") || real.includes("/Desktop/") || real.includes("AppTranslocation");
+}
+
+export async function readMacMoveDeclined(dataDir: string): Promise<boolean> {
+  try {
+    const raw = await readFile(join(dataDir, MAC_MOVE_DECLINED_FILE), "utf8");
+    return (JSON.parse(raw) as { declined?: unknown }).declined === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function writeMacMoveDeclined(dataDir: string): Promise<void> {
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(join(dataDir, MAC_MOVE_DECLINED_FILE), `${JSON.stringify({ declined: true })}\n`);
+}
+
+export interface OfferMacApplicationsMoveInput {
+  appDir: string;
+  dataDir: string;
+  skip?: boolean;
+  declined?: boolean;
+  ask?: () => Promise<"move" | "not-now">;
+  install?: (source: string, options: InstallMacAppOptions) => Promise<string>;
+  removeTransient?: (appDir: string) => Promise<void>;
+}
+
+export interface OfferMacApplicationsMoveResult {
+  moved: boolean;
+  relaunch?: string;
+}
+
+/**
+ * Asks once, then publishes Branch.app into Applications and returns the executable the launcher should relaunch.
+ * "Not now" is remembered. Tests and hidden copies pass `skip`.
+ */
+export async function offerMacApplicationsMove(input: OfferMacApplicationsMoveInput): Promise<OfferMacApplicationsMoveResult> {
+  if (input.skip || !input.appDir.endsWith(".app")) return { moved: false };
+  const declined = input.declined ?? await readMacMoveDeclined(input.dataDir);
+  if (!shouldOfferMacApplicationsMove(input.appDir, { declined })) return { moved: false };
+  const answer = input.ask ? await input.ask() : "not-now";
+  if (answer !== "move") {
+    await writeMacMoveDeclined(input.dataDir);
+    return { moved: false };
+  }
+  const install = input.install ?? installMacApp;
+  const destination = await install(input.appDir, { runningAppDir: input.appDir });
+  if (macLaunchLocationIsTransient(input.appDir) && resolve(input.appDir) !== resolve(destination)) {
+    try {
+      if (input.removeTransient) await input.removeTransient(input.appDir);
+      else await rawFs.promises.rm(input.appDir, { recursive: true, force: true });
+    } catch { /* Applications has the live app; a leftover Downloads copy is harmless */ }
+  }
+  return { moved: true, relaunch: macApplicationsExecutable(destination) };
 }
 
 async function defaultCanWrite(directory: string): Promise<boolean> {

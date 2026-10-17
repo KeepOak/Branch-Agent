@@ -1,0 +1,2 @@
+# Desktop tests run from desktop-checks.yml:
+# desktop/scripts/mac-applications.test.mjs
