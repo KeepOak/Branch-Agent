@@ -115,7 +115,7 @@ describe("servicesOf", () => {
 
   it("does not treat a stall as a finished catalogue", () => {
     expect(detectCatalogueReady({ loading: true })).toBe(false);
-    expect(detectCatalogueReady({ loading: false, error: "Branch didn’t answer in time." })).toBe(false);
+    expect(detectCatalogueReady({ loading: false, error: "Branch didn’t answer in time." })).toBe(true);
     expect(detectCatalogueReady({ loading: false, data: { prepareOptions: [] } })).toBe(true);
     expect(detectCatalogueReady({ loading: false, error: "The engine is offline." })).toBe(true);
   });

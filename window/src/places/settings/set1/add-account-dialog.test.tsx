@@ -75,36 +75,75 @@ function catalogue() {
   };
 }
 
+function engineOf(request: (method: string) => Promise<unknown>) {
+  return { request, onEvent: () => () => undefined, sessionKey: "s", agentId: "main", scopes: [] } as unknown as WindowEngine;
+}
+
+function namesIn(shown: ReturnType<typeof catalogue>, section: string) {
+  return shown.tiles.filter((tile) => tile.section === section).map((tile) => tile.name);
+}
+
 describe("Add an account catalogue", () => {
   it("stays the same after backing out of a sign-in when detect arrives late", async () => {
     let resolveDetect!: (value: unknown) => void;
     const detected = new Promise<unknown>((resolve) => { resolveDetect = resolve; });
     const request = vi.fn(async (method: string) => (method === "branch.setup.detect" ? detected : {}));
-    const engine = { request, onEvent: () => () => undefined, sessionKey: "s", agentId: "main", scopes: [] } as unknown as WindowEngine;
     await act(async () => root.render(
-      <AddAccountDialog engine={engine} start={{}} caps={CAPS} providers={[]} agent={{ agentId: "main" }} onClose={() => undefined} />,
+      <AddAccountDialog engine={engineOf(request)} start={{}} caps={CAPS} providers={[]} agent={{ agentId: "main" }} onClose={() => undefined} />,
     ));
     await act(async () => { await Promise.resolve(); });
-    expect(document.querySelector('[data-testid="add-account-loading"]')).not.toBeNull();
-    expect(dialog()?.textContent).not.toMatch(/\d+ services/);
-
-    await act(async () => resolveDetect(DETECT));
     expect(document.querySelector('[data-testid="add-account-loading"]')).toBeNull();
+    expect(dialog()?.textContent).toContain("Branch didn’t answer in time.");
     const before = catalogue();
     expect(before.lede).toMatch(/\d+ services/);
     expect(before.tabs).toEqual(expect.arrayContaining(["All", "Your plan", "A key", "On this computer"]));
-    const namesIn = (section: string) => before.tiles.filter((tile) => tile.section === section).map((tile) => tile.name);
-    expect(namesIn("Your plan")).not.toEqual(expect.arrayContaining(["Ollama", "LM Studio", "OpenCode"]));
-    expect(namesIn("On this computer")).toEqual(expect.arrayContaining(["Ollama", "LM Studio", "OpenCode"]));
-    expect(namesIn("Your plan").filter((name) => name === "MiniMax")).toHaveLength(1);
-    expect(namesIn("A key").filter((name) => name === "Google Gemini")).toHaveLength(1);
+    expect(namesIn(before, "Your plan")).not.toEqual(expect.arrayContaining(["Ollama", "LM Studio", "OpenCode"]));
+    expect(namesIn(before, "On this computer")).toEqual(expect.arrayContaining(["Ollama", "LM Studio", "OpenCode"]));
+    expect(namesIn(before, "Your plan").filter((name) => name === "MiniMax")).toHaveLength(1);
+    expect(namesIn(before, "A key").filter((name) => name === "Google Gemini")).toHaveLength(1);
     expect(before.tiles.map((tile) => tile.name)).toEqual(expect.arrayContaining(["Microsoft Foundry", "OpenCode Go", "Ollama Cloud", "Hugging Face", "LiteLLM"]));
     expect(before.tiles.some((tile) => tile.section === "A key" && tile.sub.includes("a key"))).toBe(true);
     expect(before.tiles.some((tile) => tile.section === "Your plan" && tile.sub.includes("your plan"))).toBe(true);
 
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].find((button) => button.textContent?.includes("Claude"))!.click());
     expect(dialog()?.querySelector("h2")?.textContent).toMatch(/Claude/);
+    await act(async () => resolveDetect(DETECT));
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg-f button")].find((button) => button.textContent === "Back")!.click());
     expect(catalogue()).toEqual(before);
+  });
+
+  it("shows the service list after detect stalls without resolving", async () => {
+    const request = vi.fn(async (method: string) => (method === "branch.setup.detect" ? new Promise(() => undefined) : {}));
+    await act(async () => root.render(
+      <AddAccountDialog engine={engineOf(request)} start={{}} caps={CAPS} providers={[]} agent={{ agentId: "main" }} onClose={() => undefined} />,
+    ));
+    await act(async () => { await Promise.resolve(); });
+    expect(document.querySelector('[data-testid="add-account-loading"]')).toBeNull();
+    expect(dialog()?.textContent).toContain("Branch didn’t answer in time.");
+    const shown = catalogue();
+    expect(shown.lede).toMatch(/\d+ services/);
+    expect(shown.tiles.map((tile) => tile.name)).toEqual(expect.arrayContaining(["Claude", "Google Gemini", "Ollama"]));
+    expect(namesIn(shown, "Your own")).toHaveLength(0);
+  });
+
+  it("rebuilds the catalogue when capabilities arrive after an empty first render", async () => {
+    const request = vi.fn(async (method: string) => (method === "branch.setup.detect" ? DETECT : {}));
+    const engine = engineOf(request);
+    const close = () => undefined;
+    await act(async () => root.render(
+      <AddAccountDialog engine={engine} start={{}} caps={[]} providers={[]} agent={{ agentId: "main" }} onClose={close} />,
+    ));
+    await act(async () => { await Promise.resolve(); });
+    const empty = catalogue();
+    expect(document.querySelector('[data-testid="add-account-loading"]')).toBeNull();
+    expect(empty.tiles.map((tile) => tile.name)).not.toEqual(expect.arrayContaining(["Claude", "Google Gemini"]));
+    await act(async () => root.render(
+      <AddAccountDialog engine={engine} start={{}} caps={CAPS} providers={[]} agent={{ agentId: "main" }} onClose={close} />,
+    ));
+    await act(async () => { await Promise.resolve(); });
+    const filled = catalogue();
+    expect(filled.lede).toMatch(/\d+ services/);
+    expect(filled.tiles.map((tile) => tile.name)).toEqual(expect.arrayContaining(["Claude", "Google Gemini", "Ollama"]));
+    expect(filled.tiles.length).toBeGreaterThan(empty.tiles.length);
   });
 });

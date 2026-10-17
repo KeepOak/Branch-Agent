@@ -9,7 +9,6 @@ import { useResource } from "../hooks";
 import { Footer, WizardBody } from "../AccountLogin";
 import { useWizard, type WizardStart, type WizardStep } from "../use-wizard";
 import { Empty, useSaveRunner } from "../kit";
-import { STALL_TEXT } from "../stall";
 import { brandOf, Logo, serviceName } from "./service";
 import { providersOf, tokenLabel, type Profile, type Provider } from "./accounts";
 
@@ -153,7 +152,7 @@ export function localSetupCopy(svc: Service): string {
 
 /** clear: the R1 window's item 48 glass (README 48). The dialog is clear; its words sit on frosted pills (.g-label for a run of
  *  text, .g-frost for a card), its controls take the pill inside .g-clear, and a primary action stays solid (data-solid). */
-type Props = { engine: WindowEngine; start: AddStart; caps: RecordValue[]; providers: Provider[]; agent: { agentId?: string }; onClose: (added: boolean) => void; clear?: boolean };
+type Props = { engine: WindowEngine; start: AddStart; caps: RecordValue[]; providers: Provider[]; agent: { agentId?: string }; onClose: (added: boolean) => void; clear?: boolean; /** False while models.authStatus has not finished, so an empty first caps list is not treated as the catalogue. */ capsReady?: boolean };
 const Clear = createContext(false);
 /** The class list with the item 48 pill added when the dialog is clear. */
 function usePill() {
@@ -165,21 +164,22 @@ function Card({ children }: { children: ReactNode }) {
   return useContext(Clear) ? <div className="g-frost">{children}</div> : <>{children}</>;
 }
 
-/** Detect is ready to pin: it answered, or it failed for a reason other than the stall timer (a late answer may still follow a stall). */
+/** Detect is ready to show: it answered, stalled, or failed. A stall is not a finished pin — a late answer may still replace the catalogue once while the picker is on screen. */
 export function detectCatalogueReady(detect: { data?: unknown; loading: boolean; error?: string }): boolean {
-  return detect.data !== undefined || Boolean(detect.error && detect.error !== STALL_TEXT && !detect.loading);
+  return detect.data !== undefined || Boolean(detect.error && !detect.loading);
 }
 
-export function AddAccountDialog({ engine, start, caps, providers, agent, onClose, clear }: Props) {
+export function AddAccountDialog({ engine, start, caps, providers, agent, onClose, clear, capsReady = true }: Props) {
   const detect = useResource<RecordValue>(engine, "branch.setup.detect", agent);
-  const live = useMemo(() => servicesOf(caps, providers, detect.data), [caps, providers, detect.data]);
   const detectReady = detectCatalogueReady(detect);
-  const pinned = useRef<{ services: Service[]; detect?: RecordValue } | null>(null);
-  if (detectReady && !pinned.current) pinned.current = { services: live, detect: detect.data };
-  const services = pinned.current?.services ?? (detectReady ? live : []);
-  const detectView = pinned.current ? { ...detect, data: pinned.current.detect } : detect;
-  const first = start.provider && detectReady ? services.find((s) => serviceMatchesProvider(s, start.provider!) && s.kind === "plan") ?? services.find((s) => serviceMatchesProvider(s, start.provider!)) : undefined;
-  const [step, setStep] = useState<Step>(first ? { n: 2, svc: first } : { n: 1 });
+  const pin = useRef<{ data?: RecordValue; canReplace: boolean } | null>(null);
+  const [step, setStep] = useState<Step>({ n: 1 });
+  if (detectReady && !pin.current) pin.current = { data: detect.data, canReplace: detect.data === undefined && step.n === 1 };
+  else if (pin.current?.canReplace && step.n !== 1) pin.current = { ...pin.current, canReplace: false };
+  else if (pin.current?.canReplace && detect.data !== undefined && step.n === 1) pin.current = { data: detect.data, canReplace: false };
+  const detectData = pin.current?.data;
+  const services = useMemo(() => servicesOf(caps, providers, detectData), [caps, providers, detectData]);
+  const detectView = pin.current ? { ...detect, data: pin.current.data } : detect;
   useEffect(() => {
     if (!start.provider || !detectReady) return;
     const preferred = services.find((service) => serviceMatchesProvider(service, start.provider!) && service.kind === "plan") ?? services.find((service) => serviceMatchesProvider(service, start.provider!));
@@ -189,10 +189,11 @@ export function AddAccountDialog({ engine, start, caps, providers, agent, onClos
   const ids = providers.flatMap((p) => p.profiles.map((a) => a.profileId));
   const signedIn = () => { setAdded(true); if (step.n === 2) setStep({ n: 3, svc: step.svc, before: ids }); };
   const title = step.n === 1 ? "Add an account" : step.n === 2 && step.svc.brand === "anthropic" && step.svc.kind === "plan" ? "Sign in with Claude" : `Add a ${step.svc.name} account`;
+  const waiting = !capsReady || (!detectReady && !pin.current);
   return (
     <Clear.Provider value={Boolean(clear)}><Dialog title={title} wide={step.n === 1} clear={clear} onClose={() => onClose(added)} testid="add-account" footer={<StepFoot step={step} onBack={() => setStep({ n: 1 })} onClose={() => onClose(added)} />}>
       <div className="wiz-dots" aria-hidden="true">{[1, 2, 3].map((i) => <i key={i} className={i <= step.n ? "wz" : ""} />)}</div>
-      {step.n === 1 ? <PickService services={services} detect={detectView} waiting={!detectReady && !pinned.current} engine={engine} agent={agent} onPick={(svc) => setStep({ n: 2, svc })} onUsed={() => { setAdded(true); onClose(true); }} /> : null}
+      {step.n === 1 ? <PickService services={services} detect={detectView} waiting={waiting} engine={engine} agent={agent} onPick={(svc) => setStep({ n: 2, svc })} onUsed={() => { setAdded(true); onClose(true); }} /> : null}
       {step.n === 2 && !("run" in step) ? <SignIn engine={engine} svc={step.svc} agent={agent} onRun={(run) => setStep({ n: 2, svc: step.svc, run })} onKey={signedIn} /> : null}
       {step.n === 2 && "run" in step ? <RunWizard engine={engine} run={step.run} onDone={signedIn} onBack={() => setStep({ n: 1 })} /> : null}
       {step.n === 3 ? <Placed engine={engine} svc={step.svc} before={step.before} agent={agent} onDone={() => onClose(true)} /> : null}
@@ -230,6 +231,7 @@ function PickService({ services, detect, waiting, engine, agent, onPick, onUsed 
   return (
     <>
       <p className={g.label("aa-lede")} data-lines={g.clear ? "" : undefined}>Which service is the new account with? {services.length} {services.length === 1 ? "service" : "services"}, and you can have several accounts with each.</p>
+      {detect.error ? <p className={g.label("hint")} role="status">{detect.error}</p> : null}
       <Found detect={detect} services={services} onUse={setUsing} />
       <label className="aa-search"><input className="inp" type="search" placeholder="Search services" aria-label="Search services" value={q} onChange={(e) => setQ(e.target.value)} /></label>
       <div className="tabs" role="tablist" aria-label="Kinds of service">
