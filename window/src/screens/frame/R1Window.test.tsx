@@ -98,7 +98,7 @@ it("mounts R1 Settings with the live engine and its slots, and opens Chat apps i
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
   expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
-  expect(settings.dataset.pages).toBe("notifications,models,permissions,privacy,browser,coding,history,devices,who,instructions,learning,remote,signins,updates,voice,developer,chatapps,card,goto,seedbank,features");
+  expect(settings.dataset.pages).toBe("card,notifications,models,permissions,privacy,browser,coding,history,devices,who,instructions,learning,remote,signins,updates,voice,developer,chatapps,goto,seedbank,features");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });

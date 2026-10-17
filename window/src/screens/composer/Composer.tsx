@@ -21,6 +21,7 @@ import { buildExtras, planSend, sendTooltip, type Reply } from "../../composer/s
 import { newPick, pickText, reconcilePicks, resolveSend, trimMessage, type Message, type SkillPick } from "../../composer/skill-picks";
 import { Drawer } from "../../composer/SlashDrawer";
 import { useBackground } from "../../composer/useBackground";
+import { FREE_MODEL_READY } from "../../composer/no-key-default";
 import { hasNoModel, useConversation } from "../../composer/useConversation";
 import { useDraft } from "../../composer/useDraft";
 import { useDrawer, type Pick } from "../../composer/useDrawer";
@@ -374,13 +375,14 @@ export function Composer(props: Props) {
   const context = contextUse(props.row?.totalTokens, props.row?.contextTokens);
   const runningCount = props.running.length;
   const summary = ringSummary(usage, runningCount, context);
-  const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : noModel ? "Connect a model to start." : working && hasDraft ? sendTooltip(queueMode) : undefined;
-  const placeholder = noModel ? "Connect a model to start" : props.placeholder ?? `Message ${name}`;
+  const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : noModel ? (conv.noKeyError ?? FREE_MODEL_READY) : working && hasDraft ? sendTooltip(queueMode) : undefined;
+  const placeholder = noModel && !conv.noKeyError ? FREE_MODEL_READY : props.placeholder ?? `Message ${name}`;
   const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n) && !(props.startupShown && (isPreparationPending(n) || isPreparationStalled(n))));
 
   return <div ref={dock} className="r1c" data-tight={tight || undefined} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }} onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)} onDrop={onDrop}>
     {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
     {notes.map((n, i) => <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"}>{isPreparationPending(n) ? preparationLabel(trunkName) : shortReason(n)}</p>)}
+    {conv.noKeyError ? <p className="r1c-note bad" role="alert" data-testid="no-key-failed">{conv.noKeyError} <button type="button" className="r1c-undo" data-local="" onClick={() => void conv.retryNoKey()}>Try again</button></p> : null}
     {draft.note ? <p className="r1c-note">{draft.note}</p> : null}
     {improved && draft.text === improved.after ? <p className="r1c-note" role="status">Improved your draft · <button type="button" className="r1c-undo" data-local="" onClick={() => { draft.setText(improved.before); setImproved(null); box.current?.focus(); }}>Undo</button></p> : null}
     {drawer.peopleError && view?.kind === "mention" ? <p className="r1c-note bad">{drawer.peopleError}</p> : null}

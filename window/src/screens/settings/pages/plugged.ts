@@ -43,6 +43,7 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
+  card: "people", // Your card: the person's own card on Classic People, inside the one R1 Settings frame (#1093 item 6)
   notifications: "notifications",
   models: "models",
   permissions: "permissions",
