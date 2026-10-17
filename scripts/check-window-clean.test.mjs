@@ -118,6 +118,33 @@ test('style objects use the same color and font rules', () => {
   assert.ok(theme.some((key) => key.includes('#fff')));
 });
 
+test('PR and issue numbers are not hex colours; real CSS hex still is', () => {
+  const refs = keys('window/src/Note.tsx', `
+    const RAW = [
+      /(?:^|[\\s'"(=:])(?:~|\\/home)/,
+      /\\bagent:[\\w-]+:[\\w:.-]+/, // a session key
+      // #1700's id shapes (connect/friendly-error.ts)
+      // See #1771 and #1096
+    ];
+    const note = "Fixes #1771";
+    const also = "Closes #1096";
+    const pr = "PR #123";
+    const issue = "issue #1096";
+    const url = "https://github.com/KeepOak/Branch-Agent/issues/1771#1096";
+  `);
+  assert.deepEqual(refs.filter((key) => key.startsWith('theme')), []);
+
+  const css = keys('window/src/panel.css', '#root { color: #333; }');
+  assert.ok(css.some((key) => key.startsWith('theme') && key.includes('#333')));
+
+  const style = keys('window/src/Chip.tsx', 'const bad = { color: "#333" }; const raw = "#1a2b3c"; const named = "#ABCDEF"; const palette = ["#000000"];');
+  const theme = style.filter((key) => key.startsWith('theme'));
+  assert.ok(theme.some((key) => key.includes('#333')));
+  assert.ok(theme.some((key) => key.includes('#1a2b3c')));
+  assert.ok(theme.some((key) => key.includes('#ABCDEF')));
+  assert.ok(theme.some((key) => key.includes('#000000')));
+});
+
 test('font shorthand keeps a token and flags a raw family', () => {
   assert.equal(fontShorthandFamily('14px/1.5 var(--sans)'), 'var(--sans)');
   assert.equal(isHardcodedFontFamily('var(--sans)'), false);
