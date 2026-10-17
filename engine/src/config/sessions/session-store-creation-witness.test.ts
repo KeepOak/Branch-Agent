@@ -89,18 +89,23 @@ async function concurrentFirstOpen(
   };
 }
 
-it("prepares sessions.create when this call is the first opener of the new Trunk store", async () => {
-  const options = absentTrunk("aspen");
-  const started = performance.now();
-  await using preparation = prepareSessionEntryMutationDatabases(
-    [{ scope: options.scope, assertCurrent: () => {} }],
-    Promise.resolve(),
-  );
-  await expect(preparation.preparations[0]).resolves.toEqual(
-    expect.objectContaining({ execution: expect.anything() }),
-  );
-  expect(performance.now() - started).toBeLessThan(LEASE_CONTENTION_RETRY_TIMEOUT_MS);
-});
+it(
+  "prepares sessions.create when this call is the first opener of the new Trunk store",
+  // Cold Windows native open already exceeds the 2s lease budget; keep this above the 15s helper bound.
+  { timeout: SESSION_STORE_FIRST_OPEN_TIMEOUT_MS + LEASE_CONTENTION_RETRY_TIMEOUT_MS },
+  async () => {
+    const options = absentTrunk("aspen");
+    const started = performance.now();
+    await using preparation = prepareSessionEntryMutationDatabases(
+      [{ scope: options.scope, assertCurrent: () => {} }],
+      Promise.resolve(),
+    );
+    await expect(preparation.preparations[0]).resolves.toEqual(
+      expect.objectContaining({ execution: expect.anything() }),
+    );
+    expect(performance.now() - started).toBeLessThan(SESSION_STORE_FIRST_OPEN_TIMEOUT_MS);
+  },
+);
 
 it("prepares sessions.create after a concurrent first-open reserves the new Trunk store", async () => {
   const options = absentTrunk();
