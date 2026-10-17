@@ -106,7 +106,7 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
 
 ## Releases and component updates
 
-`.github/workflows/component-release.yml` publishes a GitHub release on a 30-minute schedule at :07 and :37 past each hour, from a push to main when the latest release is more than 25 minutes old, for a source-version tag, or from a manual run, not on each merge. Scheduled, manual, and push-backup runs skip when main has not moved since the last release, when checks cannot be listed, when a commit has more than 300 check runs, or when a check on main's head failed. A first failure requests one rerun and this release waits for the next schedule. A published release has four components:
+`.github/workflows/component-release.yml` publishes a GitHub release on a 30-minute schedule at :07 and :37 past each hour, from a push to main when the latest release is more than 25 minutes old, for a source-version tag, or from a manual run, not on each merge. Scheduled, manual, and push-backup runs skip when main has not moved since the last release, when checks cannot be listed, when a commit has more than 300 check runs, or when a push-validation check on main's head failed. Recheck jobs from merge-gate-recheck.yml, other `workflow_run` checks that attach to main for other pull-request heads, and a failure whose check output is only GitHub's `API rate limit exceeded` text do not count. A first failure requests one rerun; a skip for failed checks or an unavailable listing schedules the existing catch-up retry. `workflow_dispatch` with `force=true` bypasses the failed-checks and cooldown gates only; identity, window, native, and publish still have to pass. A published release has four components:
 
 | Component | Asset |
 |---|---|

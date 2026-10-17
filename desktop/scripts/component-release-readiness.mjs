@@ -2,7 +2,10 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mergeCheckRunPages, PASS_CONCLUSIONS } from "../../scripts/merge-gate-rate-limit.mjs";
-import { actionsRunIdFromCheckRun } from "../../scripts/merge-gate-trusted.mjs";
+import { actionsRunIdFromCheckRun, RECHECK_CHECK } from "../../scripts/merge-gate-trusted.mjs";
+
+export const WORKFLOW_RUN_EVENT = "workflow_run";
+export const GITHUB_RATE_LIMIT_FAILURE = /API rate limit exceeded/i;
 
 export const PUSH_BACKUP_MIN_AGE_MS = 25 * 60 * 1000;
 export const CATCH_UP_MAX_WAIT_MS = 26 * 60 * 1000;
@@ -118,8 +121,32 @@ export function latestChecksByName(checkRuns) {
   return [...latest.values()];
 }
 
+export function checkRunDiagnosticText(run) {
+  const output = run?.output ?? {};
+  const annotations = Array.isArray(output.annotations)
+    ? output.annotations.map((item) => [item?.title, item?.message].filter(Boolean).join("\n")).join("\n")
+    : "";
+  return [output.title, output.summary, output.text, annotations].filter(Boolean).join("\n");
+}
+
+export function isGithubRateLimitFailure(run) {
+  return GITHUB_RATE_LIMIT_FAILURE.test(checkRunDiagnosticText(run));
+}
+
+// Recheck and other workflow_run jobs attach to main for other pull-request heads.
+// A 403 whose check output is only GitHub's rate-limit text is not a product failure.
+export function isIgnoredReleaseCheckRun(run, workflow) {
+  if (!run) return false;
+  if (run.name === RECHECK_CHECK) return true;
+  const event = run.event ?? workflow?.event;
+  if (event === WORKFLOW_RUN_EVENT) return true;
+  return isGithubRateLimitFailure(run);
+}
+
 export function failedCheckRuns(checkRuns) {
-  return latestChecksByName(checkRuns).filter((run) => run.conclusion === "failure");
+  return latestChecksByName(checkRuns).filter((run) => (
+    run.conclusion === "failure" && !isIgnoredReleaseCheckRun(run)
+  ));
 }
 
 export function checksGroupedByName(checkRuns) {
@@ -148,8 +175,9 @@ function workflowAttemptBlocks(run) {
 }
 
 export function blockingCheckRuns(checkRuns, { readWorkflowRun } = {}) {
+  const considered = (checkRuns ?? []).filter((run) => !isIgnoredReleaseCheckRun(run));
   const blocking = [];
-  for (const group of checksGroupedByName(checkRuns).values()) {
+  for (const group of checksGroupedByName(considered).values()) {
     const newest = newestCheckInGroup(group);
     if (!newest || PASS_CONCLUSIONS.has(newest.conclusion)) continue;
     if (newest.conclusion === "failure") {
@@ -164,7 +192,9 @@ export function blockingCheckRuns(checkRuns, { readWorkflowRun } = {}) {
     const runId = workflowRunIdFromCheck(newest);
     if (runId == null || !readWorkflowRun) continue;
     try {
-      if (workflowAttemptBlocks(readWorkflowRun(runId))) blocking.push(newest);
+      const workflow = readWorkflowRun(runId);
+      if (isIgnoredReleaseCheckRun(newest, workflow)) continue;
+      if (workflowAttemptBlocks(workflow)) blocking.push(newest);
     } catch {
       // Same as a missing run: a first-attempt pending check stays non-blocking.
     }

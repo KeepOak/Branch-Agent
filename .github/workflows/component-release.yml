@@ -28,6 +28,11 @@ on:
         required: false
         default: false
         type: boolean
+      force:
+        description: 'Release the current origin/main commit even if failed checks would skip. Dispatch only; ignored on push and schedule. Identity, window, native, and publish still have to pass.'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -62,6 +67,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           MERGE_GATE_WAIT_SECONDS: '240'
+          FORCE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.force || false }}
         run: &component-release-readiness-check |
           set -euo pipefail
           note() {
@@ -72,7 +78,11 @@ jobs:
           }
           decide_scheduled() {
             git fetch origin main
-            local main_commit latest_release latest_commit failed_checks latest_meta published_at
+            local main_commit latest_release latest_commit failed_checks latest_meta published_at force_release
+            force_release=false
+            if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "${FORCE_RELEASE:-}" == "true" ]]; then
+              force_release=true
+            fi
             main_commit="$(git rev-parse origin/main)"
             latest_release=""
             published_at=""
@@ -102,8 +112,13 @@ jobs:
               fi
             fi
             # Missing or pending checks do not block. A listing that fails, or more than
-            # 300 check runs, skips this release. One rerun of failed jobs, then this
-            # release waits for the next schedule.
+            # 300 check runs, skips this release. One rerun of failed jobs, then catch-up
+            # retries a failed-checks or checks-unavailable skip. Force is dispatch-only.
+            if [[ "$force_release" == "true" ]]; then
+              note "Forced workflow_dispatch release of $main_commit; skipping the failed-checks gate"
+              printf '%s %s %s\n' true "$main_commit" ok
+              return
+            fi
             failed_decision="$(node desktop/scripts/component-release-readiness.mjs resolve-failed-checks --sha "$main_commit")"
             read -r failed_checks decision_skip decision_reason < <(node -e 'const d = JSON.parse(process.argv[1]); process.stdout.write(d.failedCount + " " + d.skip + " " + d.reason + "\n")' "$failed_decision")
             if [[ "$decision_skip" == "true" && "$failed_checks" == "0" ]]; then
@@ -138,9 +153,10 @@ jobs:
             read -r should_release commit skip_reason < <(decide_scheduled)
           fi
 
-          if [[ "$skip_reason" != "cooldown" ]]; then
-            skip_reason=""
-          fi
+          case "$skip_reason" in
+            cooldown|failed-checks|checks-unavailable) ;;
+            *) skip_reason="" ;;
+          esac
           printf 'should_release=%s\ncommit=%s\nskip_reason=%s\n' "$should_release" "$commit" "$skip_reason" >> "$GITHUB_OUTPUT"
 
   # jobs.<id>.permissions only accepts read/write/none, not expressions, so PR
@@ -166,6 +182,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           MERGE_GATE_WAIT_SECONDS: '240'
+          FORCE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.force || false }}
         run: *component-release-readiness-check
 
   identity:
@@ -527,7 +544,7 @@ jobs:
   # still Latest; a rolled-back release exits here without dispatching.
   catch-up:
     needs: [readiness, identity, publish]
-    if: always() && !cancelled() && github.event_name != 'pull_request' && github.repository == 'KeepOak/Branch-Agent' && (needs.publish.result == 'success' || needs.publish.result == 'failure' || needs.readiness.outputs.skip_reason == 'cooldown')
+    if: always() && !cancelled() && github.event_name != 'pull_request' && github.repository == 'KeepOak/Branch-Agent' && (needs.publish.result == 'success' || needs.publish.result == 'failure' || needs.readiness.outputs.skip_reason == 'cooldown' || needs.readiness.outputs.skip_reason == 'failed-checks' || needs.readiness.outputs.skip_reason == 'checks-unavailable')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:

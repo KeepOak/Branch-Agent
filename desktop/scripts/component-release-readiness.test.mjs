@@ -11,6 +11,7 @@ import {
   CHECK_RUN_PAGE_SIZE,
   CHECK_RUN_TOTAL_CAP,
   PUSH_BACKUP_MIN_AGE_MS,
+  blockingCheckRuns,
   catchUpAfterFailedPublish,
   decideCatchUp,
   failedCheckRuns,
@@ -74,6 +75,7 @@ test("component-release workflow keeps the schedule and uses push as a 25-minute
   assert.match(readiness, /resolve-failed-checks --sha/);
   assert.match(readiness, /\$decision_skip" == "true" && "\$failed_checks" == "0"/);
   assert.match(readiness, /Could not confirm checks at \$main_commit/);
+  assert.match(readiness, /cooldown\|failed-checks\|checks-unavailable/);
 });
 
 test("failed publish catches up only while that commit is still Latest", () => {
@@ -185,6 +187,8 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
   assert.match(catchUp, /always\(\) && !cancelled\(\)/);
   assert.match(catchUp, /needs\.publish\.result == 'success' \|\| needs\.publish\.result == 'failure'/);
   assert.match(catchUp, /needs\.readiness\.outputs\.skip_reason == 'cooldown'/);
+  assert.match(catchUp, /needs\.readiness\.outputs\.skip_reason == 'failed-checks'/);
+  assert.match(catchUp, /needs\.readiness\.outputs\.skip_reason == 'checks-unavailable'/);
   assert.match(catchUp, /catch-up-after-failed-publish/);
   assert.match(catchUp, /github\.event_name != 'pull_request'/);
   assert.match(catchUp, /group: github-component-release-catch-up\n\s+cancel-in-progress: true/);
@@ -214,6 +218,29 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
   assert.match(identityJob, /needs\.readiness-rehearsal\.outputs\.should_release == 'true'/);
 });
 
+test("workflow_dispatch force is ignored on any other event and does not skip downstream jobs", () => {
+  const dispatch = workflow.slice(workflow.indexOf("workflow_dispatch:"), workflow.indexOf("\npermissions:"));
+  assert.match(dispatch, /dry_run:/);
+  assert.match(dispatch, /force:/);
+  assert.match(dispatch, /default: false\n        type: boolean/);
+  const readinessJob = workflow.slice(workflow.indexOf("\n  readiness:"), workflow.indexOf("\n  readiness-rehearsal:"));
+  const rehearsalJob = workflow.slice(workflow.indexOf("\n  readiness-rehearsal:"), workflow.indexOf("\n  identity:"));
+  assert.match(readinessJob, /FORCE_RELEASE: \$\{.*github\.event_name == 'workflow_dispatch' && inputs\.force/);
+  assert.match(rehearsalJob, /FORCE_RELEASE: \$\{.*github\.event_name == 'workflow_dispatch' && inputs\.force/);
+  const readiness = workflow.slice(workflow.indexOf("decide_scheduled()"), workflow.indexOf("\n  identity:"));
+  assert.match(readiness, /GITHUB_EVENT_NAME" == "workflow_dispatch" && "\$\{FORCE_RELEASE:-\}" == "true"/);
+  assert.match(readiness, /Forced workflow_dispatch release of \$main_commit; skipping the failed-checks gate/);
+  const windowJob = workflow.slice(workflow.indexOf("\n  window:"), workflow.indexOf("\n  native:"));
+  const nativeJob = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
+  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  dispatch-android-apk:"));
+  assert.doesNotMatch(windowJob, /inputs\.force/);
+  assert.doesNotMatch(nativeJob, /inputs\.force/);
+  assert.doesNotMatch(publishJob, /inputs\.force/);
+  assert.match(windowJob, /inputs\.dry_run/);
+  assert.match(nativeJob, /inputs\.dry_run/);
+  assert.match(publishJob, /inputs\.dry_run/);
+});
+
 test("downstream release jobs require their build dependencies after always()", () => {
   const windowJob = workflow.slice(workflow.indexOf("\n  window:"), workflow.indexOf("\n  native:"));
   const nativeJob = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
@@ -224,7 +251,7 @@ test("downstream release jobs require their build dependencies after always()", 
   assert.match(windowJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
   assert.match(nativeJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && needs\.window\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
   assert.match(publishJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && needs\.native\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
-  assert.match(catchUp, /needs\.publish\.result == 'success' \|\| needs\.publish\.result == 'failure' \|\| needs\.readiness\.outputs\.skip_reason == 'cooldown'/);
+  assert.match(catchUp, /needs\.publish\.result == 'success' \|\| needs\.publish\.result == 'failure' \|\| needs\.readiness\.outputs\.skip_reason == 'cooldown' \|\| needs\.readiness\.outputs\.skip_reason == 'failed-checks' \|\| needs\.readiness\.outputs\.skip_reason == 'checks-unavailable'/);
   assert.match(catchUp, /catch-up-after-failed-publish --latest "\$latest_commit"/);
   assert.match(readinessJob, /actions: write/);
   assert.match(readinessJob, /github\.event_name != 'pull_request'/);
@@ -399,6 +426,133 @@ test("pending Analyze with no failure does not block", () => {
   assert.equal(decision.reason, "no-failed-checks");
   assert.deepEqual(reran, []);
   assert.deepEqual(reads, []);
+});
+
+test("recheck failures do not block a release", () => {
+  const reran = [];
+  const checks = [
+    { id: 201, name: "recheck", conclusion: "failure", status: "completed", started_at: "2026-10-17T19:00:00Z" },
+    { id: 202, name: "recheck", conclusion: "failure", status: "completed", started_at: "2026-10-17T19:01:00Z" },
+  ];
+  const { decision } = resolveFailedChecks({
+    listCheckRuns: () => checks,
+    readWorkflowRun: () => {
+      throw new Error("recheck should not load a workflow run");
+    },
+    rerunFailedJobs: id => reran.push(id),
+  });
+  assert.equal(blockingCheckRuns(checks).length, 0);
+  assert.equal(failedCheckRuns(checks).length, 0);
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+  assert.equal(decision.reason, "no-failed-checks");
+  assert.deepEqual(reran, []);
+});
+
+test("a workflow_run check for another pull-request head does not block", () => {
+  const checks = [{
+    id: 203,
+    name: "Merge gate",
+    conclusion: "failure",
+    status: "completed",
+    started_at: "2026-10-17T19:00:00Z",
+    event: "workflow_run",
+  }];
+  assert.equal(blockingCheckRuns(checks).length, 0);
+  const { decision } = resolveFailedChecks({
+    listCheckRuns: () => checks,
+    readWorkflowRun: () => ({ id: 88, event: "workflow_run", run_attempt: 1, status: "completed", conclusion: "failure" }),
+    rerunFailedJobs: () => {
+      throw new Error("workflow_run checks should not be rerun");
+    },
+  });
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+});
+
+test("a newer successful run of the same check supersedes an older failure", () => {
+  const checks = [
+    failedCapabilityCheck({ id: 11, startedAt: "2026-10-08T09:00:00Z" }),
+    failedCapabilityCheck({ id: 12, startedAt: "2026-10-08T09:01:00Z", conclusion: "success" }),
+  ];
+  assert.equal(blockingCheckRuns(checks).length, 0);
+  const { decision } = resolveFailedChecks({
+    listCheckRuns: () => checks,
+    readWorkflowRun: () => {
+      throw new Error("a passing newest run should not load a workflow run");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a passing newest run should not rerun");
+    },
+  });
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+  assert.equal(decision.reason, "no-failed-checks");
+});
+
+test("a genuine newest-run failure of a push check still blocks", () => {
+  const checks = [failedCapabilityCheck()];
+  assert.equal(blockingCheckRuns(checks).length, 1);
+  const { decision } = resolveFailedChecks({
+    allowRerun: false,
+    listCheckRuns: () => checks,
+    readWorkflowRun: () => {
+      throw new Error("rehearsal should not load workflow runs");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a counted failure should not rerun in rehearsal");
+    },
+  });
+  assert.equal(decision.skip, true);
+  assert.equal(decision.failedCount, 1);
+  assert.equal(decision.reason, "failed-checks");
+});
+
+test("a GitHub rate-limit failure in check output does not block", () => {
+  const checks = [{
+    id: 20,
+    name: "Track non-merge-commit landing",
+    conclusion: "failure",
+    status: "completed",
+    started_at: "2026-10-17T19:57:00Z",
+    output: {
+      title: "API rate limit exceeded",
+      summary: "API rate limit exceeded for installation",
+    },
+  }];
+  assert.equal(blockingCheckRuns(checks).length, 0);
+  const { decision } = resolveFailedChecks({
+    listCheckRuns: () => checks,
+    readWorkflowRun: () => {
+      throw new Error("a rate-limit-only failure should not load a workflow run");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a rate-limit-only failure should not rerun");
+    },
+  });
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+});
+
+test("a genuine failure without rate-limit output still blocks", () => {
+  const checks = [{
+    ...failedCapabilityCheck(),
+    output: { title: "AssertionError", summary: "expected 1 to equal 2" },
+  }];
+  assert.equal(blockingCheckRuns(checks).length, 1);
+  const { decision } = resolveFailedChecks({
+    allowRerun: false,
+    listCheckRuns: () => checks,
+    readWorkflowRun: () => {
+      throw new Error("rehearsal should not load workflow runs");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a genuine failure should not rerun in rehearsal");
+    },
+  });
+  assert.equal(decision.skip, true);
+  assert.equal(decision.failedCount, 1);
+  assert.equal(decision.reason, "failed-checks");
 });
 
 test("readiness proceeds without rerunning when there are no failed checks", () => {
