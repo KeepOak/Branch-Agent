@@ -61,7 +61,8 @@ it("draws the preview's Customize cards in order at each level", async () => {
   expect(host.querySelector("[data-testid=customize-hub]")).not.toBeNull();
   await act(async () => root.unmount()); root = createRoot(host); forgetLookStore();
   await mount(engine, "advanced");
-  expect(cards()).toEqual(["", "Saved prompts", "Tools and skills", "Skills", "Helpers and other agents", "What it can do", "Allow", "Connected agents", "Connect an agent", "Another Branch"]);
+  // Skills is all later-update rows: it shows with every Coming row, at Technical (Private #1093 item 4).
+  expect(cards()).toEqual(["", "Saved prompts", "Tools and skills", "Helpers and other agents", "What it can do", "Allow", "Connected agents", "Connect an agent", "Another Branch"]);
   await act(async () => root.unmount()); root = createRoot(host); forgetLookStore();
   await mount(engine, "technical");
   expect(cards()).toEqual(["", "Saved prompts", "Tools and skills", "Skills", "Plugins", "Helpers and other agents", "What it can do", "Allow", "Connected agents", "Connect an agent", "Another Branch"]);

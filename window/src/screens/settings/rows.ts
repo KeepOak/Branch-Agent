@@ -94,8 +94,9 @@ export function rowLevel(row: Row, hints: UiHints): Level {
   return !row.ownerLevel && hintOf(row, hints)?.advanced && row.level < 1 ? 1 : row.level;
 }
 
-/** "How much to show" that first shows what waits for a later update: Regular shows only what works today. */
-export const COMING_FROM: Level = 1;
+/** "How much to show" that first shows what waits for a later update: Regular and Advanced show only what works today
+ *  (Private #1093 item 4); Technical shows everything, Coming included. */
+export const COMING_FROM: Level = 2;
 
 /** A row that waits for a later update: Coming by its source, or (when the page's controls are given) a slot row its
  *  page has no control for, which RowView draws as Coming. */
@@ -103,7 +104,7 @@ export function comingRow(row: Row, controls?: Readonly<Record<string, unknown>>
   return row.source.kind === "coming" || (controls !== undefined && row.source.kind === "slot" && !controls[row.id]);
 }
 
-/** The level a row first shows at: its own, and at least Advanced while it is Coming (Regular hides Coming rows). Its
+/** The level a row first shows at: its own, and at least Technical while it is Coming (Regular and Advanced hide Coming rows). Its
  *  Advanced or Technical tag still comes from rowLevel. */
 export function shownLevel(row: Row, hints: UiHints, controls?: Readonly<Record<string, unknown>>): Level {
   const level = rowLevel(row, hints);

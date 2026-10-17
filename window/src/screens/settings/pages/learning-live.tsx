@@ -16,6 +16,7 @@ import { Dialog } from "../../../shell/Dialog";
 import type { SlotControlProps } from "../slots";
 import { useRead } from "./accounts-live";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { copyAndSay } from "../../../shell/clipboard";
 import { CODE, FACTS } from "./learning";
 
 const RINGS = "plugins.entries.memory-core.config.rings";
@@ -37,7 +38,7 @@ export function Command({ row }: SlotControlProps) {
   const [copied, setCopied] = useState(false);
   return <span className="r1s-own-ctl" data-local="">
     <code className="r1s-val">{code}</code>
-    <Btn onClick={() => void navigator.clipboard?.writeText(code).then(() => setCopied(true), () => undefined)}>{copied ? "Copied" : "Copy"}</Btn>
+    <Btn onClick={() => void copyAndSay(code).then(setCopied)}>{copied ? "Copied" : "Copy"}</Btn>
   </span>;
 }
 
