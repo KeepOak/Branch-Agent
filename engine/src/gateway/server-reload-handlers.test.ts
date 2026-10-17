@@ -1720,6 +1720,7 @@ describe("gateway hot reload model state", () => {
       const fixtureDir = autoCleanupTempDirs.make("branch-cron-exit-reload-");
       const { markerPath, releasePath, command, childStarted, spawning, spawn } =
         await createSupervisedExitWatcherFixture(fixtureDir);
+      let watchedRun: Awaited<typeof spawning> | undefined;
       const config = {
         // This fixture runs cron without a heartbeat wake handler.
         agents: { defaults: { heartbeat: { every: "0m" } } },
@@ -1766,11 +1767,12 @@ describe("gateway hot reload model state", () => {
         });
         await initialCronState.reconcileExitWatchers();
         expect(spawn).toHaveBeenCalledOnce();
-        const watchedRun = await withinTest(spawning, signal);
+        const run = await withinTest(spawning, signal);
+        watchedRun = run;
         await withinTest(
           awaitGateBeforeSettlement(
             childStarted,
-            watchedRun.wait(),
+            run.wait(),
             "expected the supervised cron exit watcher to start",
           ),
           signal,
@@ -1799,7 +1801,7 @@ describe("gateway hot reload model state", () => {
         expect(hoisted.buildGatewayCronService).toHaveBeenCalledWith(
           expect.objectContaining({ resolveGatewayContext }),
         );
-        expect(watchedRun.activity.resultSettled).toBe(false);
+        expect(run.activity.resultSettled).toBe(false);
         expect(await readFile(markerPath, "utf8")).toBe("run\n");
         expect(spawn).toHaveBeenCalledOnce();
 
@@ -1813,6 +1815,9 @@ describe("gateway hot reload model state", () => {
         await fixtureLifetime.verifyCleanup(async () => {
           hoisted.buildGatewayCronService.mockImplementation(previousCronFactory);
           await writeFile(releasePath, "release").catch(() => {});
+          watchedRun?.cancel("manual-cancel");
+          await watchedRun?.wait().catch(() => {});
+          await watchedRun?.waitForExtinction?.().catch(() => {});
           await state?.cronState.cron.stopAndDrain?.();
           await scheduler.stop();
           spawn.mockRestore();
