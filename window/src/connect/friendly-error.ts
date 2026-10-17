@@ -1,7 +1,7 @@
 // One place that turns an engine or unknown failure into copy a stranger can read.
 // The user-facing wrapper in the engine's embedded-agent-helpers/error-text.ts keeps classified
 // sentences and replaces a raw passthrough (the dump unchanged, JSON, HTTP, an Error: prefix).
-// This helper does the same for any value: keep a short plain sentence, else a generic next step.
+// Already-plain copy is returned unchanged. Only a raw or technical dump becomes the generic next step.
 
 /** One sentence and a next step. Used when the value is empty or still looks like a dump. */
 export const FRIENDLY_ERROR = "Something went wrong. Retry.";
@@ -20,7 +20,6 @@ const ERRNO_RE = /\bE[A-Z]{3,}\b/;
 const CLASS_ERROR_RE = /\b[A-Z][A-Za-z]+Error\b/;
 const CODE_RE = /\b[A-Z][A-Z0-9_]{5,}\b/;
 const QUOTED_STATUS_RE = /the engine answered\s+"/i;
-const NEXT_STEP_RE = /\b(?:retry|try again|try once more|start a new|sign in|open diagnostics|choose another)\b/i;
 
 function extractRaw(value: unknown): string {
   if (typeof value === "string") return value.trim();
@@ -58,16 +57,6 @@ function looksRaw(text: string): boolean {
   );
 }
 
-function ensureSentence(text: string): string {
-  const compact = text.trim().replace(/\s+/g, " ");
-  return /[.!?]$/.test(compact) ? compact : `${compact}.`;
-}
-
-function ensureNextStep(text: string): string {
-  const sentence = ensureSentence(text);
-  return NEXT_STEP_RE.test(sentence) ? sentence : `${sentence} Retry.`;
-}
-
 function stripErrorPrefixes(text: string): string {
   let current = text;
   for (let i = 0; i < 4; i += 1) {
@@ -78,11 +67,11 @@ function stripErrorPrefixes(text: string): string {
   return current;
 }
 
-/** A short plain sentence with a next step. Never a stack, Error: prefix, JSON, status, id, or method name. */
+/** Already-plain copy, unchanged. A raw dump becomes one sentence with a next step. */
 export function friendlyError(value: unknown): string {
   const raw = extractRaw(value);
   if (!raw) return FRIENDLY_ERROR;
   const stripped = stripErrorPrefixes(raw);
   if (!stripped || looksRaw(stripped) || !/\s/.test(stripped)) return FRIENDLY_ERROR;
-  return ensureNextStep(stripped);
+  return stripped;
 }

@@ -51,18 +51,21 @@ describe("friendlyError", () => {
     }
   });
 
-  it("keeps a short plain sentence and adds Retry when it has no next step", () => {
-    expect(friendlyError("Couldn't send this message.")).toBe("Couldn't send this message. Retry.");
+  it("keeps already-plain copy unchanged", () => {
+    expect(friendlyError("Couldn't send this message.")).toBe("Couldn't send this message.");
     expect(friendlyError("Couldn't send this message. Retry.")).toBe("Couldn't send this message. Retry.");
     expect(friendlyError("This conversation is full. Start a new one.")).toBe("This conversation is full. Start a new one.");
-    expect(friendlyError(new Error("Couldn't reach the engine"))).toBe("Couldn't reach the engine. Retry.");
+    expect(friendlyError(new Error("Couldn't reach the engine"))).toBe("Couldn't reach the engine");
     expect(friendlyError({ message: "The model is busy. Try again." })).toBe("The model is busy. Try again.");
-    assertSafe(friendlyError("Couldn't send this message."));
+  });
+
+  it('returns "No model is set up." unchanged', () => {
+    expect(friendlyError("No model is set up.")).toBe("No model is set up.");
   });
 
   it("strips an Error: prefix from an otherwise plain sentence", () => {
-    expect(friendlyError("Error: Couldn't send this message.")).toBe("Couldn't send this message. Retry.");
-    expect(friendlyError(new Error("Error: Couldn't send this message."))).toBe("Couldn't send this message. Retry.");
+    expect(friendlyError("Error: Couldn't send this message.")).toBe("Couldn't send this message.");
+    expect(friendlyError(new Error("Error: Couldn't send this message."))).toBe("Couldn't send this message.");
   });
 });
 
@@ -84,6 +87,7 @@ describe("failedAck", () => {
   it("rewrites a raw summary or error through the helper", () => {
     expect(failedAck({ status: "error", error: '{"type":"error"}' })).toBe(FRIENDLY_ERROR);
     expect(failedAck({ status: "error", summary: "HTTP 503" })).toBe(FRIENDLY_ERROR);
-    expect(failedAck({ status: "error", summary: "Couldn't send this message." })).toBe("Couldn't send this message. Retry.");
+    expect(failedAck({ status: "error", summary: "Couldn't send this message." })).toBe("Couldn't send this message.");
+    expect(failedAck({ status: "error", summary: "No model is set up." })).toBe("No model is set up.");
   });
 });
