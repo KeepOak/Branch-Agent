@@ -138,7 +138,8 @@ function openPlaceTab(route: Route): void {
  */
 export function r1SettingsPage(page: string, pages: PageSlots = R1_PAGES, rows: readonly Row[] = mergeRows(ROWS, pages)): boolean {
   if (KEEP_CLASSIC.has(page)) return false;
-  return Boolean((pages as Record<string, { component?: unknown } | undefined>)[page]?.component) || rows.some(row => row.page === page);
+  const slot = (pages as Record<string, { component?: unknown; cards?: Record<string, unknown> } | undefined>)[page];
+  return Boolean(slot?.component) || Object.keys(slot?.cards ?? {}).length > 0 || rows.some(row => row.page === page);
 }
 
 /**
