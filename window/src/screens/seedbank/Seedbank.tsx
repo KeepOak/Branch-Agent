@@ -30,10 +30,10 @@ export function entryForSeed(seed: Seed, entries: readonly Entry[]): Entry | nul
   return null;
 }
 
-type Props = { engine: WindowEngine; variant?: "place" | "settings" };
+type Props = { engine: WindowEngine; variant?: "place" | "settings"; /** The kind chip Seedbank opens on (Customize asks for one kind). */ initialKind?: KindId | "all" };
 
-export function Seedbank({ engine, variant = "place" }: Props) {
-  const [kind, setKind] = useState<KindId | "all">("all");
+export function Seedbank({ engine, variant = "place", initialKind = "all" }: Props) {
+  const [kind, setKind] = useState<KindId | "all">(initialKind);
   const [query, setQuery] = useState(""), [sort, setSort] = useState<Sort>("popular"), [cat, setCat] = useState("All");
   const [open, setOpen] = useState<Entry | null>(null), [paste, setPaste] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamFile | null>(null);
@@ -155,26 +155,28 @@ export function Seedbank({ engine, variant = "place" }: Props) {
 }
 
 /** Customize with its Personal | Community switch. `initial` is the mode the mount was asked for; later requests (requestCustomize) switch it. */
-export function CustomizeWithCommunity({ engine, personal, initial = "personal" }: { engine: WindowEngine; personal: ReactNode; initial?: CustomizeMode }) {
+export function CustomizeWithCommunity({ engine, personal, initial = "personal", initialKind }: { engine: WindowEngine; personal: ReactNode; initial?: CustomizeMode; initialKind?: string }) {
   const [mode, setMode] = useState<CustomizeMode>(initial);
+  const [community, setCommunity] = useState<{ kind: string; n: number } | undefined>(initialKind ? { kind: initialKind, n: 0 } : undefined);
   useEffect(() => {
     const onRequest = (event: Event) => {
       takeCustomizeRequest();
-      const next = (event as CustomEvent<CustomizeRequest>).detail?.mode;
-      if (next) setMode(next);
+      const request = (event as CustomEvent<CustomizeRequest>).detail;
+      if (request?.mode) setMode(request.mode);
+      if (request?.community) setCommunity({ kind: request.community, n: Date.now() });
     };
     addEventListener(CUSTOMIZE_REQUEST_EVENT, onRequest);
     return () => removeEventListener(CUSTOMIZE_REQUEST_EVENT, onRequest);
   }, []);
-  return <CustomizeModes engine={engine} mode={mode} onMode={setMode} personal={personal} />;
+  return <CustomizeModes engine={engine} mode={mode} onMode={setMode} personal={personal} community={community} />;
 }
 
 /** Customize's switch (item 28): Personal is today's Customize, Community is Seedbank. */
-export function CustomizeModes({ engine, mode, onMode, personal }: { engine: WindowEngine; mode: CustomizeMode; onMode: (mode: CustomizeMode) => void; personal: ReactNode }) {
+export function CustomizeModes({ engine, mode, onMode, personal, community }: { engine: WindowEngine; mode: CustomizeMode; onMode: (mode: CustomizeMode) => void; personal: ReactNode; community?: { kind: string; n: number } }) {
   return <div className="sb-place">
     <div className="sb-modes"><span className="g-frost sb-modes-seg" role="tablist" aria-label="Customize" data-local="">
       {(["personal", "community"] as const).map(m => <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => onMode(m)}>{m === "personal" ? "Personal" : "Community"}</button>)}
     </span></div>
-    {mode === "community" ? <><h1 className="sb-sr">Customize · Community</h1><Seedbank engine={engine} /></> : personal}
+    {mode === "community" ? <><h1 className="sb-sr">Customize · Community</h1><Seedbank key={community?.n ?? 0} engine={engine} initialKind={(community?.kind ?? "all") as KindId | "all"} /></> : personal}
   </div>;
 }
