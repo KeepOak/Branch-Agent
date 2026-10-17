@@ -11,6 +11,8 @@ import { tmpdir } from "node:os";
 import nodeTest from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error("Compile the exact desktop source before testing");
+// The fixture sends branch-desktop:binding before it listens. Hold the port until then.
+process.env.BRANCH_DESKTOP_HOLD_LOOPBACK = "1";
 const require = createRequire(import.meta.url), Module = require("node:module");
 const originalLoad = Module._load, originalFetch = globalThis.fetch;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -190,7 +192,8 @@ function drop(socket){if(!socket)return;socket.on("error",()=>{});try{socket.res
 // Exit only after the reset sockets are gone and the listen handle has closed. A timer
 // that exits first lets Windows finish those sockets with a FIN, and the port stays
 // unbindable longer than the next engine is willing to wait.
-function shutdown(code){if(exiting)return;exiting=true;clearInterval(closeWatch);if(!listener){process.exit(code);return;}let left=false;let again;const done=()=>{if(left)return;left=true;clearInterval(again);process.exit(code);};for(const socket of sockets)drop(socket);try{listener.close(()=>done());}catch{done();return;}again=setInterval(()=>{if(left)return;for(const socket of sockets)drop(socket);},20);}
+let binding;
+function shutdown(code){if(exiting)return;exiting=true;clearInterval(closeWatch);clearInterval(binding);if(!listener){process.exit(code);return;}let left=false;let again;const done=()=>{if(left)return;left=true;clearInterval(again);process.exit(code);};for(const socket of sockets)drop(socket);try{listener.close(()=>done());}catch{done();return;}again=setInterval(()=>{if(left)return;for(const socket of sockets)drop(socket);},20);}
 try{fs.unlinkSync(root+"/close-"+process.pid);}catch{}
 const closeWatch=setInterval(()=>{const mark=root+"/close-"+process.pid;if(!fs.existsSync(mark))return;try{fs.unlinkSync(mark);}catch{}shutdown(0);},15);
 if(starts.length===2&&fs.existsSync(root+"/fail-next"))shutdown(1);
@@ -214,6 +217,9 @@ if(m.type==="branch-desktop:stop-if-idle"&&!fs.existsSync(root+"/busy"))setTimeo
 // refuse-agents: the staged engine listens and answers /readyz, but its agents stay refused (database inspection pending).
 const refusing=()=>fs.existsSync(root+"/refuse-agents")&&process.cwd().endsWith("staged-engine");
 listener=http.createServer((q,r)=>{if(exiting){drop(q.socket);return;}if(refusing()&&q.url==="/startupz"){r.writeHead(503,{"content-type":"application/json"}).end(JSON.stringify({ok:false,status:"starting",pendingReason:"agent-database-inspection"}));return;}const agents=refusing()?JSON.stringify({ready:true,failing:[],agentDatabases:[{agentId:"coordinator",code:"agent-database-inspection-pending"}]}):undefined;r.writeHead(globalThis.rollbackReadyAt&&Date.now()<globalThis.rollbackReadyAt?503:globalThis.fenced&&fs.existsSync(root+"/fence-readyz")?503:starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end(agents);});listener.keepAliveTimeout=0;listener.headersTimeout=0;listener.requestTimeout=0;listener.httpAllowHalfOpen=true;listener.on("connection",socket=>{if(exiting){drop(socket);return;}sockets.add(socket);socket.on("close",()=>sockets.delete(socket));socket.on("error",()=>{});});
+// Tell the launcher to drop the port it is holding. Repeat until listen succeeds: the first message can
+// arrive before the launcher is waiting, and a parallel bind(0) takes a closed port during process start.
+const ping=()=>{try{process.send?.({type:"branch-desktop:binding"});}catch{}};ping();binding=setInterval(ping,15);listener.on("listening",()=>clearInterval(binding));
 // As a standby since #411: it takes the state over only on its launcher's take-over message, then says so.
 if(process.env.BRANCH_GATEWAY_STANDBY==="1")process.on("message",m=>{if(m?.type!=="branch-desktop:take-over"||globalThis.tookOver)return;globalThis.tookOver=true;if(fs.existsSync(root+"/released-"+starts[0]))fs.writeFileSync(root+"/took-over-after-step-down-"+process.pid,"1");fs.writeFileSync(root+"/took-over-"+process.pid,JSON.stringify({oldEngineAlive:(()=>{try{process.kill(starts[0],0);return true;}catch{return false;}})()}));process.send?.({type:"branch-desktop:taking-over",pid:process.pid,port:Number(process.argv.at(-1))});});
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"){

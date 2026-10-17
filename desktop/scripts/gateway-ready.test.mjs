@@ -25,6 +25,37 @@ test("a handed-out loopback port can be bound again on that exact port", async (
   }
 });
 
+test("a held loopback port stays taken until it is released for the engine", async () => {
+  const { freeLoopbackPort, holdLoopbackServer, releaseHeldLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const port = await freeLoopbackPort();
+  const holder = createNetServer();
+  await new Promise((resolve, reject) => {
+    holder.once("error", reject);
+    holder.listen(port, "127.0.0.1", resolve);
+  });
+  holdLoopbackServer(port, holder);
+  const blocked = createNetServer();
+  try {
+    await assert.rejects(new Promise((resolve, reject) => {
+      blocked.once("error", reject);
+      blocked.listen(port, "127.0.0.1", resolve);
+    }), { code: "EADDRINUSE" });
+  } finally {
+    releaseHeldLoopbackPort(port);
+  }
+  const server = createNetServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, "127.0.0.1", resolve);
+    });
+    assert.equal(server.address().port, port);
+  } finally {
+    try { server.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } });
+  }
+});
+
 test("a child that never emits exit cannot hold the update lock indefinitely", async () => {
   const child = Object.assign(new EventEmitter(), { pid: undefined, exitCode: null, signalCode: null });
   await assert.rejects(killGatewayAndWait(child, 30), /did not exit after SIGKILL/);
