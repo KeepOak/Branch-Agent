@@ -45,9 +45,9 @@ import {
   appendGatewayLifecycleAudit,
   createGatewayLifecycleMutationAudit,
 } from "./lifecycle-audit.js";
+import { stopAppChildGateway } from "./app-child-supervisor.js";
 import {
   failAfterGatewayChildFallback,
-  MISSING_GATEWAY_SERVICE_REASON,
   recoverGatewayAsAppChild,
 } from "./service-start-fallback.js";
 import { resolveGatewayConfigPorts, resolveGatewayLifecycleContext } from "./lifecycle-context.js";
@@ -88,9 +88,9 @@ function postRestartHealthAttempts(): number {
 
 async function recoverFromFailedService<TResult extends "started" | "restarted">(params: {
   result: TResult;
-  reason: string;
   service: ReturnType<typeof resolveGatewayService>;
   port: number;
+  knownLoadState?: { status?: string };
 }) {
   return await recoverGatewayAsAppChild(params);
 }
@@ -143,7 +143,14 @@ async function stopGatewayWithoutServiceManager(
   // lock already names the verified owner of this port, so signal it instead of
   // reporting the gateway as not running while it keeps serving.
   const pids = listenerPids.length > 0 ? listenerPids : lockOwnerPid ? [lockOwnerPid] : [];
+  const stoppedAppChild = await stopAppChildGateway({ port });
   if (pids.length === 0) {
+    if (stoppedAppChild) {
+      return {
+        result: "stopped" as const,
+        message: `Gateway stop signal sent to the app-supervised process on port ${port}.`,
+      };
+    }
     const probeHosts = await resolveGatewayServiceProbeHosts(serviceContext ?? {});
     const portUsage = await probePortUsage(port, probeHosts);
     if (portUsage !== "free") {
@@ -296,9 +303,9 @@ export async function runDaemonStart(opts: DaemonLifecycleOptions = {}) {
       }
       return await recoverFromFailedService({
         result: "started",
-        reason: MISSING_GATEWAY_SERVICE_REASON,
         service,
         port: expectedPort ?? (await resolveGatewayConfigPorts()).fallback,
+        knownLoadState: { status: "not-loaded" },
       });
     },
     repairLoadedService: async ({ json, stdout, warn, state, issues }) =>
@@ -330,20 +337,18 @@ export async function runDaemonStart(opts: DaemonLifecycleOptions = {}) {
       }
       const recovered = await recoverFromFailedService({
         result: "started",
-        reason: failed,
         service,
         port: expectedPort ?? (await resolveGatewayConfigPorts()).fallback,
       });
-      if (recovered) {
+      if (recovered?.ready) {
         warnings.push(recovered.message);
         return;
       }
       failAfterGatewayChildFallback(failed, fail, failedHints, failedResult);
     },
-    onStartFailed: async ({ error }) =>
+    onStartFailed: async () =>
       await recoverFromFailedService({
         result: "started",
-        reason: String(error),
         service,
         port: expectedPort ?? (await resolveGatewayConfigPorts()).fallback,
       }),
@@ -559,9 +564,9 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
       }
       return await recoverFromFailedService({
         result: "restarted",
-        reason: MISSING_GATEWAY_SERVICE_REASON,
         service,
         port: unmanagedPort,
+        knownLoadState: { status: "not-loaded" },
       });
     },
     postRestartCheck: async ({
@@ -721,11 +726,10 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
         }
         const recovered = await recoverFromFailedService({
           result: "restarted",
-          reason: failed,
           service,
           port: managedRestartPort,
         });
-        if (recovered) {
+        if (recovered?.ready) {
           warnings.push(recovered.message);
           return;
         }
@@ -733,10 +737,9 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
         throw new Error("unreachable after gateway restart failure", { cause: err });
       }
     },
-    onRestartFailed: async ({ error }) =>
+    onRestartFailed: async () =>
       await recoverFromFailedService({
         result: "restarted",
-        reason: String(error),
         service,
         port: managedRestartPort,
       }),

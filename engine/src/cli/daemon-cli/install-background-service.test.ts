@@ -37,7 +37,7 @@ describe("Install background service action", () => {
       command: INSTALL_BACKGROUND_SERVICE_COMMAND,
     });
     expect(action?.label).toBe("Install background service");
-    expect(action?.command).toBe("branch gateway install");
+    expect(action?.command).toBe("branch gateway install-background-service");
 
     const attached = attachInstallBackgroundServiceAction({
       service: { runtime: { missingUnit: true } },
@@ -50,7 +50,7 @@ describe("Install background service action", () => {
       service: { loadState: { status: "not-loaded" } },
     });
     expect(attached.actions?.[0]?.label).toBe("Install background service");
-    expect(attached.actions?.[0]?.command).toBe("branch gateway install");
+    expect(attached.actions?.[0]?.command).toBe("branch gateway install-background-service");
   });
 
   it("does not attach the action when the service is already loaded", () => {
@@ -76,6 +76,15 @@ describe("Install background service action", () => {
     await runInstallBackgroundService({ json: true });
 
     expect(resolveGatewayServiceMutationError).toHaveBeenCalledWith("install the gateway service");
+    expect(runDaemonInstall).toHaveBeenCalledWith({ json: true });
+  });
+
+  it("wires the click-only CLI command to the install action", async () => {
+    const { Command } = await import("commander");
+    const { addGatewayServiceCommands } = await import("./register-service-commands.js");
+    const program = new Command().exitOverride();
+    addGatewayServiceCommands(program);
+    await program.parseAsync(["install-background-service", "--json"], { from: "user" });
     expect(runDaemonInstall).toHaveBeenCalledWith({ json: true });
   });
 

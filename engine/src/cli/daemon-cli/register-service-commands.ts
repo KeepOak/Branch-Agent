@@ -177,6 +177,15 @@ export function addGatewayServiceCommands(parent: Command, opts?: { statusDescri
       });
     });
 
+  parent
+    .command("install-background-service")
+    .description("Install the background gateway service after an explicit user click")
+    .option("--json", "Output JSON", false)
+    .action(async (cmdOpts, command) => {
+      const { runInstallBackgroundService } = await import("./install-background-service.js");
+      await runInstallBackgroundService({ json: resolveJsonOption(cmdOpts, command) });
+    });
+
   for (const [name, description, action] of [
     ["uninstall", "Uninstall", "runDaemonUninstall"],
     ["start", "Start", "runDaemonStart"],

@@ -1,89 +1,70 @@
-// When the gateway service is missing or cannot stay running (macOS EPERM /
-// timeout / exit 126), stop any looping unit and start the gateway as this
-// app's unmanaged child. Start and restart never install the service.
-import { spawn } from "node:child_process";
-import { rewritePnpmVersionedBranchEntryPath } from "../../infra/branch-root.js";
-import { SUPERVISOR_HINT_ENV_VARS } from "../../infra/supervisor-markers.js";
+// When the gateway service is missing or exited immediately (exit 126/127),
+// start and supervise the gateway as this app's child. Start and restart never
+// install the service. A slow-starting service is left alone. The user's
+// installed service is never disabled.
+import { assertGatewayServiceFallbackAllowed } from "../../daemon/service-update-authority.js";
+import type { GatewayService } from "../../daemon/service.js";
+import type { GatewayServiceRuntime } from "../../daemon/service-runtime.js";
+import { resolveGatewayServiceMutationError } from "../../infra/gateway-supervision.js";
 import { createNullWriter } from "../../shared/null-writer.js";
+import {
+  AppChildGatewaySupervisor,
+  inspectExistingGateway,
+  rememberAppChildSupervisor,
+  stopAppChildGateway,
+} from "./app-child-supervisor.js";
 import { appendGatewayLifecycleAudit } from "./lifecycle-audit.js";
 import {
   DEFAULT_RESTART_HEALTH_ATTEMPTS,
   DEFAULT_RESTART_HEALTH_DELAY_MS,
   waitForGatewayHealthyListener,
 } from "./restart-health.js";
-import type { GatewayService } from "../../daemon/service.js";
 
 export const GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE =
-  "Gateway service could not stay running; started the gateway as this app's child instead.";
-
-export const GATEWAY_SERVICE_MISSING_CHILD_FALLBACK_MESSAGE =
-  "Gateway service is not installed; started the gateway as this app's child instead.";
+  "Branch is running its engine inside the app for now. It keeps working while Branch is open. To keep it running when Branch is closed, choose Install background service.";
 
 export const GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE =
-  "Gateway could not start through the service or as this app's child.";
+  "Branch couldn't start its engine. Restart Branch; if it keeps happening, run `branch doctor`.";
 
-export const MISSING_GATEWAY_SERVICE_REASON = "Service unit not found.";
+export type GatewayChildFallbackKind = "missing" | "blocked-exit";
 
-const SERVICE_START_FAILURE =
-  /Operation not permitted|EPERM|Permission denied|timed out|failed to start|exit 126|exit 127/i;
-const SERVICE_MISSING = /not loaded|not-loaded|missing-install|missing unit|unit not found/i;
+export type GatewayChildFallbackState = {
+  loadState?: { status?: string };
+  runtime?: Pick<
+    GatewayServiceRuntime,
+    "status" | "missingUnit" | "lastExitStatus" | "pid"
+  >;
+  updateInProgress?: boolean;
+};
 
 export type AppChildGatewayResult<TResult extends "started" | "restarted"> = {
   result: TResult;
   loaded: false;
   message: string;
+  ready: true;
 };
 
-export function isGatewayServiceStartFailure(detail: string): boolean {
-  return SERVICE_START_FAILURE.test(detail);
+export function isGatewayUpdateInProgress(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.BRANCH_UPDATE_IN_PROGRESS === "1";
 }
 
-export function isGatewayServiceMissing(detail: string): boolean {
-  return SERVICE_MISSING.test(detail);
-}
-
-export function shouldRecoverGatewayAsAppChild(detail: string): boolean {
-  return isGatewayServiceStartFailure(detail) || isGatewayServiceMissing(detail);
-}
-
-export function resolveGatewayChildFallbackMessage(reason: string): string {
-  if (isGatewayServiceMissing(reason) && !isGatewayServiceStartFailure(reason)) {
-    return GATEWAY_SERVICE_MISSING_CHILD_FALLBACK_MESSAGE;
+export function resolveGatewayChildFallbackKind(
+  state: GatewayChildFallbackState,
+): GatewayChildFallbackKind | null {
+  if (state.updateInProgress || isGatewayUpdateInProgress()) {
+    return null;
   }
-  return GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE;
-}
-
-/** Drop launchd/systemd/task hints so the child restarts itself after a config change. */
-export function buildUnmanagedGatewaySpawnEnv(
-  env: NodeJS.ProcessEnv = process.env,
-): NodeJS.ProcessEnv {
-  const next = { ...env };
-  for (const key of SUPERVISOR_HINT_ENV_VARS) {
-    delete next[key];
+  if (state.runtime?.status === "running") {
+    return null;
   }
-  return next;
-}
-
-export function spawnUnmanagedGatewayChild(params?: {
-  env?: NodeJS.ProcessEnv;
-  spawnImpl?: typeof spawn;
-}): { pid?: number } {
-  const [entryArg] = process.argv.slice(1);
-  const args = [
-    ...process.execArgv,
-    ...(entryArg ? [rewritePnpmVersionedBranchEntryPath(entryArg)] : []),
-    "gateway",
-    "run",
-  ];
-  const child = (params?.spawnImpl ?? spawn)(process.execPath, args, {
-    env: buildUnmanagedGatewaySpawnEnv(params?.env ?? process.env),
-    stdio: "ignore",
-    windowsHide: true,
-    ...(process.platform === "win32" ? {} : { detached: true }),
-  });
-  child.on("error", () => {});
-  child.unref?.();
-  return { pid: child.pid ?? undefined };
+  if (state.runtime?.missingUnit === true || state.loadState?.status === "not-loaded") {
+    return "missing";
+  }
+  const exitStatus = state.runtime?.lastExitStatus;
+  if (exitStatus === 126 || exitStatus === 127) {
+    return "blocked-exit";
+  }
+  return null;
 }
 
 export function failAfterGatewayChildFallback(
@@ -91,56 +72,144 @@ export function failAfterGatewayChildFallback(
   fail: (message: string, hints?: string[], code?: "still-starting" | "restart-health-failed") => void,
   hints?: string[],
   code?: "still-starting" | "restart-health-failed",
+  fallbackAttempted = false,
 ): void {
-  fail(
-    shouldRecoverGatewayAsAppChild(reason) ? GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE : reason,
-    hints,
-    code,
-  );
+  fail(fallbackAttempted ? GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE : reason, hints, code);
+}
+
+async function readFallbackState(
+  service: Pick<GatewayService, "readRuntime" | "isLoaded">,
+  knownLoadState?: { status?: string },
+): Promise<GatewayChildFallbackState> {
+  const runtime = await service.readRuntime(process.env).catch(() => undefined);
+  let loadStatus = knownLoadState?.status;
+  if (loadStatus === undefined) {
+    try {
+      loadStatus = (await service.isLoaded({ env: process.env })) ? "loaded" : "not-loaded";
+    } catch {
+      loadStatus = undefined;
+    }
+  }
+  return {
+    runtime,
+    loadState: loadStatus ? { status: loadStatus } : undefined,
+    updateInProgress: isGatewayUpdateInProgress(),
+  };
 }
 
 export async function recoverGatewayAsAppChild<TResult extends "started" | "restarted">(params: {
   result: TResult;
-  reason: string;
-  service: Pick<GatewayService, "stop">;
+  service: Pick<GatewayService, "stop" | "readRuntime" | "isLoaded" | "install">;
   port: number;
+  knownLoadState?: { status?: string };
+  state?: GatewayChildFallbackState;
   stopLoopingService?: () => Promise<void>;
-  spawnChild?: () => Promise<void> | void;
+  spawnChild?: () => Promise<{ pid?: number } | void> | { pid?: number } | void;
   waitUntilReady?: () => Promise<boolean>;
+  spawnImpl?: typeof import("node:child_process").spawn;
 }): Promise<AppChildGatewayResult<TResult> | null> {
-  if (!shouldRecoverGatewayAsAppChild(params.reason)) {
+  if (isGatewayUpdateInProgress()) {
     return null;
   }
-  const stop =
-    params.stopLoopingService ??
-    (async () => {
-      await params.service.stop({
-        env: process.env,
-        stdout: createNullWriter(),
-        disable: true,
-      });
-    });
   try {
-    await stop();
+    assertGatewayServiceFallbackAllowed("app-child fallback");
   } catch {
-    // The job may already be gone; still start the child so the gateway can come back.
-  }
-  await params.spawnChild?.();
-  if (!params.spawnChild) {
-    spawnUnmanagedGatewayChild();
-  }
-  const ready = params.waitUntilReady
-    ? await params.waitUntilReady()
-    : (
-        await waitForGatewayHealthyListener({
-          port: params.port,
-          attempts: DEFAULT_RESTART_HEALTH_ATTEMPTS,
-          delayMs: DEFAULT_RESTART_HEALTH_DELAY_MS,
-        })
-      ).healthy;
-  if (!ready) {
     return null;
   }
+  const state = params.state ?? (await readFallbackState(params.service, params.knownLoadState));
+  const kind = resolveGatewayChildFallbackKind(state);
+  if (!kind) {
+    return null;
+  }
+
+  const existing = await inspectExistingGateway({ port: params.port });
+  if (existing.running) {
+    return {
+      result: params.result,
+      loaded: false,
+      message: GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE,
+      ready: true,
+    };
+  }
+  if (existing.portHeld) {
+    return null;
+  }
+
+  const mutationError = resolveGatewayServiceMutationError("touch the gateway service");
+  if (!mutationError) {
+    const stop =
+      params.stopLoopingService ??
+      (async () => {
+        await params.service.stop({
+          env: process.env,
+          stdout: createNullWriter(),
+        });
+      });
+    try {
+      await stop();
+    } catch {
+      // The job may already be gone; still start the child if the port is free.
+    }
+    const afterStop = await inspectExistingGateway({ port: params.port });
+    if (afterStop.running || afterStop.portHeld) {
+      return null;
+    }
+    const afterState = await readFallbackState(params.service, params.knownLoadState);
+    if (afterState.runtime?.status === "running") {
+      return null;
+    }
+  }
+
+  if (params.spawnChild) {
+    await params.spawnChild();
+    const ready = params.waitUntilReady
+      ? await params.waitUntilReady()
+      : (
+          await waitForGatewayHealthyListener({
+            port: params.port,
+            attempts: DEFAULT_RESTART_HEALTH_ATTEMPTS,
+            delayMs: DEFAULT_RESTART_HEALTH_DELAY_MS,
+          })
+        ).healthy;
+    if (!ready) {
+      throw new Error(GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE);
+    }
+    appendGatewayLifecycleAudit({
+      action: params.result === "started" ? "start" : "restart",
+      source: "cli",
+      mode: "bootstrap",
+    });
+    return {
+      result: params.result,
+      loaded: false,
+      message: GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE,
+      ready: true,
+    };
+  }
+
+  const supervisor = new AppChildGatewaySupervisor({
+    port: params.port,
+    spawnImpl: params.spawnImpl,
+  });
+  await supervisor.start();
+  rememberAppChildSupervisor(params.port, supervisor);
+  const exitWait = supervisor.waitForExitOrError();
+  const readyWait = params.waitUntilReady
+    ? params.waitUntilReady()
+    : waitForGatewayHealthyListener({
+        port: params.port,
+        attempts: DEFAULT_RESTART_HEALTH_ATTEMPTS,
+        delayMs: DEFAULT_RESTART_HEALTH_DELAY_MS,
+      }).then((health) => health.healthy);
+  const outcome = await Promise.race([
+    readyWait.then((ready) => ({ kind: "ready" as const, ready })),
+    exitWait.then((error) => ({ kind: "exit" as const, error })),
+  ]);
+  if (outcome.kind === "exit" || (outcome.kind === "ready" && !outcome.ready)) {
+    await stopAppChildGateway({ port: params.port });
+    throw new Error(GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE);
+  }
+  supervisor.markReady();
   appendGatewayLifecycleAudit({
     action: params.result === "started" ? "start" : "restart",
     source: "cli",
@@ -149,6 +218,7 @@ export async function recoverGatewayAsAppChild<TResult extends "started" | "rest
   return {
     result: params.result,
     loaded: false,
-    message: resolveGatewayChildFallbackMessage(params.reason),
+    message: GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE,
+    ready: true,
   };
 }

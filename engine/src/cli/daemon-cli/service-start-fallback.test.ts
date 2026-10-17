@@ -1,10 +1,14 @@
-// Covers missing or blocked service fallback: stop any looping unit, supervise a
-// child, and never install unless the user asked.
+// Covers missing or blocked service fallback: never install, never disable, never
+// replace a slow or updating service, and never start a second gateway.
+import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const appendGatewayLifecycleAudit = vi.hoisted(() => vi.fn());
 const waitForGatewayHealthyListener = vi.hoisted(() => vi.fn());
 const runDaemonInstall = vi.hoisted(() => vi.fn());
+const inspectExistingGateway = vi.hoisted(() => vi.fn());
+const resolveGatewayServiceMutationError = vi.hoisted(() => vi.fn());
+const assertGatewayServiceFallbackAllowed = vi.hoisted(() => vi.fn());
 
 vi.mock("./lifecycle-audit.js", () => ({
   appendGatewayLifecycleAudit: (params: unknown) => appendGatewayLifecycleAudit(params),
@@ -20,41 +24,82 @@ vi.mock("./install.runtime.js", () => ({
   runDaemonInstall: (opts: unknown) => runDaemonInstall(opts),
 }));
 
+vi.mock("./app-child-supervisor.js", () => ({
+  inspectExistingGateway: (params: unknown) => inspectExistingGateway(params),
+  rememberAppChildSupervisor: vi.fn(),
+  stopAppChildGateway: vi.fn(),
+  AppChildGatewaySupervisor: class {
+    constructor(private readonly params: { spawnImpl?: (cmd: string, args: string[], opts: object) => unknown }) {}
+    async start() {
+      this.params.spawnImpl?.(process.execPath, ["gateway", "run"], { stdio: "ignore", windowsHide: true });
+      return { pid: 8080 };
+    }
+    waitForExitOrError() {
+      return new Promise(() => {});
+    }
+    markReady() {}
+  },
+}));
+
+vi.mock("../../infra/gateway-supervision.js", () => ({
+  resolveGatewayServiceMutationError: (action: string) =>
+    resolveGatewayServiceMutationError(action),
+}));
+
+vi.mock("../../daemon/service-update-authority.js", () => ({
+  assertGatewayServiceFallbackAllowed: (action: string) =>
+    assertGatewayServiceFallbackAllowed(action),
+}));
+
 const {
-  buildUnmanagedGatewaySpawnEnv,
   failAfterGatewayChildFallback,
   GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE,
   GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE,
-  GATEWAY_SERVICE_MISSING_CHILD_FALLBACK_MESSAGE,
-  isGatewayServiceMissing,
-  isGatewayServiceStartFailure,
-  MISSING_GATEWAY_SERVICE_REASON,
   recoverGatewayAsAppChild,
-  spawnUnmanagedGatewayChild,
+  resolveGatewayChildFallbackKind,
 } = await import("./service-start-fallback.js");
 
+function fakeChild(pid: number) {
+  const child = new EventEmitter() as EventEmitter & { pid: number; kill: ReturnType<typeof vi.fn> };
+  child.pid = pid;
+  child.kill = vi.fn(() => true);
+  return child;
+}
+
 describe("recoverGatewayAsAppChild", () => {
-  const service = { stop: vi.fn() };
+  const service = {
+    stop: vi.fn(),
+    install: vi.fn(),
+    readRuntime: vi.fn(),
+    isLoaded: vi.fn(),
+  };
   const stopLoopingService = vi.fn();
   const spawnChild = vi.fn();
   const waitUntilReady = vi.fn();
 
   beforeEach(() => {
+    delete process.env.BRANCH_UPDATE_IN_PROGRESS;
     service.stop.mockReset().mockResolvedValue(undefined);
+    service.install.mockReset().mockResolvedValue(undefined);
+    service.readRuntime.mockReset().mockResolvedValue({ missingUnit: true, status: "stopped" });
+    service.isLoaded.mockReset().mockResolvedValue(false);
     stopLoopingService.mockReset().mockResolvedValue(undefined);
-    spawnChild.mockReset().mockResolvedValue(undefined);
+    spawnChild.mockReset().mockResolvedValue({ pid: 4242 });
     waitUntilReady.mockReset().mockResolvedValue(true);
     appendGatewayLifecycleAudit.mockReset();
     waitForGatewayHealthyListener.mockReset().mockResolvedValue({ healthy: true });
     runDaemonInstall.mockReset();
+    inspectExistingGateway.mockReset().mockResolvedValue({ running: false, portHeld: false });
+    resolveGatewayServiceMutationError.mockReset().mockReturnValue(null);
+    assertGatewayServiceFallbackAllowed.mockReset();
   });
 
-  it("starts a missing service as a child and does not install", async () => {
+  it("starts a missing service as a child and does not install or disable", async () => {
     const recovered = await recoverGatewayAsAppChild({
       result: "started",
-      reason: MISSING_GATEWAY_SERVICE_REASON,
       service,
       port: 18_789,
+      knownLoadState: { status: "not-loaded" },
       stopLoopingService,
       spawnChild,
       waitUntilReady,
@@ -62,50 +107,30 @@ describe("recoverGatewayAsAppChild", () => {
 
     expect(stopLoopingService).toHaveBeenCalledOnce();
     expect(spawnChild).toHaveBeenCalledOnce();
-    expect(waitUntilReady).toHaveBeenCalledOnce();
+    expect(service.install).not.toHaveBeenCalled();
     expect(runDaemonInstall).not.toHaveBeenCalled();
-    expect(recovered).toEqual({
-      result: "started",
-      loaded: false,
-      message: GATEWAY_SERVICE_MISSING_CHILD_FALLBACK_MESSAGE,
-    });
-  });
-
-  it("stops a looping service after EPERM and starts a ready child", async () => {
-    const recovered = await recoverGatewayAsAppChild({
-      result: "started",
-      reason: "/bin/sh: wrapper: Operation not permitted",
-      service,
-      port: 18_789,
-      stopLoopingService,
-      spawnChild,
-      waitUntilReady,
-    });
-
-    expect(stopLoopingService).toHaveBeenCalledOnce();
-    expect(spawnChild).toHaveBeenCalledOnce();
-    expect(waitUntilReady).toHaveBeenCalledOnce();
-    expect(runDaemonInstall).not.toHaveBeenCalled();
+    expect(service.stop).not.toHaveBeenCalledWith(expect.objectContaining({ disable: true }));
     expect(recovered).toEqual({
       result: "started",
       loaded: false,
       message: GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE,
+      ready: true,
     });
   });
 
-  it("falls back after a service start timeout and comes back after restart", async () => {
+  it("falls back after an immediate exit 126 and comes back after restart without a second child", async () => {
+    service.readRuntime.mockResolvedValue({ status: "exited", lastExitStatus: 126 });
     const first = await recoverGatewayAsAppChild({
       result: "started",
-      reason: "Gateway start timed out after 45s waiting for /healthz and /readyz.",
       service,
       port: 18_789,
       stopLoopingService,
       spawnChild,
       waitUntilReady,
     });
+    inspectExistingGateway.mockResolvedValue({ running: true, pid: 4242, portHeld: true });
     const afterRestart = await recoverGatewayAsAppChild({
       result: "restarted",
-      reason: "Gateway start timed out after 45s waiting for /healthz and /readyz.",
       service,
       port: 18_789,
       stopLoopingService,
@@ -113,91 +138,121 @@ describe("recoverGatewayAsAppChild", () => {
       waitUntilReady,
     });
 
-    expect(first?.loaded).toBe(false);
+    expect(first?.ready).toBe(true);
     expect(afterRestart).toEqual({
       result: "restarted",
       loaded: false,
       message: GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE,
+      ready: true,
     });
-    expect(spawnChild).toHaveBeenCalledTimes(2);
-    expect(runDaemonInstall).not.toHaveBeenCalled();
+    expect(spawnChild).toHaveBeenCalledTimes(1);
+    expect(service.install).not.toHaveBeenCalled();
   });
 
-  it("does not invent a child when the service error is unrelated", async () => {
+  it("does not replace a slow-starting service", async () => {
     await expect(
       recoverGatewayAsAppChild({
         result: "started",
-        reason: "Gateway token drifted; refuse start.",
         service,
         port: 18_789,
+        state: { runtime: { status: "running" } },
         stopLoopingService,
         spawnChild,
         waitUntilReady,
       }),
     ).resolves.toBeNull();
-
     expect(stopLoopingService).not.toHaveBeenCalled();
     expect(spawnChild).not.toHaveBeenCalled();
-    expect(runDaemonInstall).not.toHaveBeenCalled();
   });
 
-  it("surfaces a failed child start without inventing a recovery", async () => {
-    waitUntilReady.mockResolvedValue(false);
-
+  it("does not fall back during an update", async () => {
+    process.env.BRANCH_UPDATE_IN_PROGRESS = "1";
     await expect(
       recoverGatewayAsAppChild({
         result: "restarted",
-        reason: "Service failed to start (exit 126).",
         service,
         port: 18_789,
+        knownLoadState: { status: "not-loaded" },
         stopLoopingService,
         spawnChild,
         waitUntilReady,
       }),
     ).resolves.toBeNull();
-
-    expect(stopLoopingService).toHaveBeenCalledOnce();
-    expect(spawnChild).toHaveBeenCalledOnce();
-    expect(appendGatewayLifecycleAudit).not.toHaveBeenCalled();
-    expect(runDaemonInstall).not.toHaveBeenCalled();
+    expect(spawnChild).not.toHaveBeenCalled();
+    expect(assertGatewayServiceFallbackAllowed).not.toHaveBeenCalled();
   });
 
-  it("still starts the child when disable-stop fails", async () => {
-    stopLoopingService.mockRejectedValue(new Error("launchctl bootout failed"));
-
+  it("skips stop when the profile guard blocks service mutation", async () => {
+    resolveGatewayServiceMutationError.mockReturnValue(
+      new Error("service management skipped: non-default state dir or config path"),
+    );
     const recovered = await recoverGatewayAsAppChild({
       result: "started",
-      reason: "Operation not permitted",
       service,
       port: 18_789,
+      knownLoadState: { status: "not-loaded" },
       stopLoopingService,
       spawnChild,
       waitUntilReady,
     });
-
+    expect(stopLoopingService).not.toHaveBeenCalled();
+    expect(service.stop).not.toHaveBeenCalled();
     expect(spawnChild).toHaveBeenCalledOnce();
-    expect(recovered?.loaded).toBe(false);
-    expect(runDaemonInstall).not.toHaveBeenCalled();
+    expect(recovered?.ready).toBe(true);
+  });
+
+  it("does not spawn when the port or lock is already held", async () => {
+    inspectExistingGateway.mockResolvedValue({ running: false, portHeld: true });
+    await expect(
+      recoverGatewayAsAppChild({
+        result: "started",
+        service,
+        port: 18_789,
+        knownLoadState: { status: "not-loaded" },
+        stopLoopingService,
+        spawnChild,
+        waitUntilReady,
+      }),
+    ).resolves.toBeNull();
+    expect(spawnChild).not.toHaveBeenCalled();
+  });
+
+  it("does not spawn after stop if the service process is still there", async () => {
+    inspectExistingGateway
+      .mockResolvedValueOnce({ running: false, portHeld: false })
+      .mockResolvedValueOnce({ running: true, pid: 88, portHeld: true });
+    await expect(
+      recoverGatewayAsAppChild({
+        result: "started",
+        service,
+        port: 18_789,
+        knownLoadState: { status: "not-loaded" },
+        stopLoopingService,
+        spawnChild,
+        waitUntilReady,
+      }),
+    ).resolves.toBeNull();
+    expect(stopLoopingService).toHaveBeenCalledOnce();
+    expect(spawnChild).not.toHaveBeenCalled();
   });
 
   it("never installs during missing or blocked recovery without the user action", async () => {
-    for (const reason of [
-      MISSING_GATEWAY_SERVICE_REASON,
-      "Operation not permitted",
-      "Service failed to start (exit 126).",
-      "Gateway start timed out after 45s",
+    for (const state of [
+      { loadState: { status: "not-loaded" as const } },
+      { runtime: { lastExitStatus: 126, status: "exited" as const } },
+      { runtime: { missingUnit: true, status: "stopped" as const } },
     ]) {
       await recoverGatewayAsAppChild({
         result: "started",
-        reason,
         service,
         port: 18_789,
+        state,
         stopLoopingService,
         spawnChild,
         waitUntilReady,
       });
     }
-
+    expect(service.install).not.toHaveBeenCalled();
     expect(runDaemonInstall).not.toHaveBeenCalled();
   });
 
@@ -209,59 +264,48 @@ describe("recoverGatewayAsAppChild", () => {
 
   it("uses a plain error when fallback applied and the child also failed", () => {
     const fail = vi.fn();
-    failAfterGatewayChildFallback("Operation not permitted", fail);
+    failAfterGatewayChildFallback("ignored", fail, undefined, undefined, true);
     expect(fail).toHaveBeenCalledWith(
       GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE,
       undefined,
       undefined,
     );
   });
-});
 
-describe("unmanaged child spawn", () => {
-  it("recognizes missing units, launchd EPERM, exit 126, and timeout as fallbacks", () => {
-    expect(isGatewayServiceMissing("Service unit not found.")).toBe(true);
-    expect(isGatewayServiceMissing("Gateway service not loaded")).toBe(true);
-    expect(isGatewayServiceStartFailure("Operation not permitted")).toBe(true);
-    expect(isGatewayServiceStartFailure("Service failed to start (exit 126).")).toBe(true);
-    expect(isGatewayServiceStartFailure("Gateway start timed out after 45s")).toBe(true);
-    expect(isGatewayServiceStartFailure("token drifted")).toBe(false);
-    expect(isGatewayServiceMissing("token drifted")).toBe(false);
-  });
-
-  it("strips supervisor hints so the child can restart itself", () => {
-    const env = buildUnmanagedGatewaySpawnEnv({
-      PATH: "/bin",
-      BRANCH_LAUNCHD_LABEL: "ai.branch.gateway",
-      XPC_SERVICE_NAME: "ai.branch.gateway",
-      BRANCH_SYSTEMD_UNIT: "branch-gateway.service",
-    });
-    expect(env.PATH).toBe("/bin");
-    expect(env.BRANCH_LAUNCHD_LABEL).toBeUndefined();
-    expect(env.XPC_SERVICE_NAME).toBeUndefined();
-    expect(env.BRANCH_SYSTEMD_UNIT).toBeUndefined();
-  });
-
-  it("spawns a hidden detached gateway run child", () => {
-    const spawnImpl = vi.fn(() => {
-      const child = {
-        pid: 4242,
-        on: vi.fn(),
-        unref: vi.fn(),
-      };
-      return child;
-    });
-
-    const spawned = spawnUnmanagedGatewayChild({ spawnImpl: spawnImpl as never });
-
-    expect(spawned.pid).toBe(4242);
-    expect(spawnImpl).toHaveBeenCalledWith(
-      process.execPath,
-      expect.arrayContaining(["gateway", "run"]),
-      expect.objectContaining({
-        stdio: "ignore",
-        windowsHide: true,
-      }),
+  it("decides fallback from service state, not error text", () => {
+    expect(resolveGatewayChildFallbackKind({ loadState: { status: "not-loaded" } })).toBe(
+      "missing",
     );
+    expect(resolveGatewayChildFallbackKind({ runtime: { missingUnit: true } })).toBe("missing");
+    expect(resolveGatewayChildFallbackKind({ runtime: { lastExitStatus: 126 } })).toBe(
+      "blocked-exit",
+    );
+    expect(resolveGatewayChildFallbackKind({ runtime: { status: "running" } })).toBeNull();
+    expect(
+      resolveGatewayChildFallbackKind({
+        runtime: { lastExitStatus: 126 },
+        updateInProgress: true,
+      }),
+    ).toBeNull();
+    expect(
+      resolveGatewayChildFallbackKind({
+        runtime: { status: "stopped" },
+      }),
+    ).toBeNull();
+  });
+
+  it("spawns a supervised child when no spawn hook is supplied", async () => {
+    const child = fakeChild(8080);
+    const recovered = await recoverGatewayAsAppChild({
+      result: "started",
+      service,
+      port: 18_789,
+      knownLoadState: { status: "not-loaded" },
+      stopLoopingService,
+      waitUntilReady,
+      spawnImpl: vi.fn(() => child) as never,
+    });
+    expect(recovered?.ready).toBe(true);
+    expect(service.install).not.toHaveBeenCalled();
   });
 });

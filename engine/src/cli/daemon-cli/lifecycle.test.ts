@@ -505,7 +505,7 @@ describe("runDaemonRestart health checks", () => {
       outcome: "timeout",
       elapsedMs: 360_000,
       runtime: "running",
-      message: "Gateway could not start through the service or as this app's child.",
+      message: "Gateway restart timed out after 360s waiting for health checks.",
     },
     {
       outcome: "stopped-free",

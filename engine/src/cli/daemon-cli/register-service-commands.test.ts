@@ -33,6 +33,9 @@ const gatewayServiceEnv = {
 vi.mock("./install.runtime.js", () => ({
   runDaemonInstall: (opts: unknown) => runDaemonInstall(opts),
 }));
+vi.mock("./install-background-service.js", () => ({
+  runInstallBackgroundService: (opts: unknown) => runDaemonInstall(opts),
+}));
 
 vi.mock("./status.runtime.js", () => ({
   runDaemonStatus: (opts: unknown) => runDaemonStatus(opts),
@@ -415,6 +418,7 @@ describe("addGatewayServiceCommands", () => {
     ...[
       { leaf: "status", runner: runDaemonStatus },
       { leaf: "install", runner: runDaemonInstall },
+      { leaf: "install-background-service", runner: runDaemonInstall },
       { leaf: "uninstall", runner: runDaemonUninstall },
       { leaf: "start", runner: runDaemonStart },
       { leaf: "stop", runner: runDaemonStop },

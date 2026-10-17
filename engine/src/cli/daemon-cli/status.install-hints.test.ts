@@ -22,8 +22,8 @@ const surfaces = [
   {
     kind: "missing-unit",
     name: "missing service unit",
-    fact: "Service unit not found",
-    command: "branch --profile work gateway install",
+    fact: "The background service is not installed",
+    command: "branch --profile work gateway install-background-service",
   },
   {
     kind: "config-mismatch",
@@ -320,7 +320,7 @@ describe("eligible status recovery", () => {
             "Native service is not installed; diagnostic only, not the probe target.",
           ),
         );
-        expect(output).not.toContain("Service unit not found");
+        expect(output).not.toContain("The background service is not installed");
         expect(output).not.toContain("Gateway install blocked:");
         expect(output).not.toMatch(/\bgateway\s+install\b/);
         expect(defaultRuntime.error).toHaveBeenCalledWith(

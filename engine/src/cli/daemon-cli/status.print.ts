@@ -416,12 +416,11 @@ export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean; d
   const disabledTask = process.platform === "win32" && service.runtime?.state === "Disabled";
   if (service.runtime?.missingUnit) {
     if (serviceTargetsProbe) {
-      printError("Service unit not found.");
+      printError(
+        "The background service is not installed. Choose Install background service to keep the engine running when Branch is closed.",
+      );
       const action = resolveInstallBackgroundServiceAction();
-      if (!installBlock && action) {
-        printError(action.label);
-      }
-      const recovery = installBlock ?? `Run: ${action?.command ?? installCommand}`;
+      const recovery = installBlock ?? `Next: ${action?.command ?? installCommand}`;
       printError(recovery);
     } else {
       defaultRuntime.log(

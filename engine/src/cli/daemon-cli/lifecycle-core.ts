@@ -35,6 +35,7 @@ import {
 } from "./lifecycle-audit.js";
 import { createServiceRestartIntent } from "./lifecycle-restart-intent.js";
 import { buildDaemonServiceSnapshot, createDaemonActionContext } from "./response.js";
+import { GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE } from "./service-start-fallback.js";
 import { filterContainerGenericHints, resolveDaemonInstallBlockMessage } from "./shared.js";
 import type { DaemonLifecycleOptions } from "./types.js";
 
@@ -290,7 +291,13 @@ export async function runServiceStart(params: {
         return;
       }
     } catch (err) {
-      fail(`${params.serviceNoun} start failed: ${String(err)}`, params.renderStartHints());
+      const message = err instanceof Error ? err.message : String(err);
+      fail(
+        message === GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE
+          ? message
+          : `${params.serviceNoun} start failed: ${message}`,
+        params.renderStartHints(),
+      );
       return;
     }
   }
@@ -384,8 +391,8 @@ export async function runServiceStart(params: {
         });
         return;
       }
-    } catch (fallbackErr) {
-      fail(`${params.serviceNoun} start failed: ${String(fallbackErr)}`, params.renderStartHints());
+    } catch {
+      fail(GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE, params.renderStartHints());
       return;
     }
     fail(`${params.serviceNoun} start failed: ${String(err)}`, params.renderStartHints());
@@ -563,7 +570,12 @@ export async function runServiceRestart(params: {
     try {
       handledRecovery = (await params.onNotLoaded?.({ json, stdout, warn, fail })) ?? null;
     } catch (err) {
-      fail(`${params.serviceNoun} restart failed: ${String(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      fail(
+        message === GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE
+          ? message
+          : `${params.serviceNoun} restart failed: ${message}`,
+      );
       return false;
     }
     if (!handledRecovery) {
@@ -725,8 +737,8 @@ export async function runServiceRestart(params: {
         });
         return true;
       }
-    } catch (fallbackErr) {
-      fail(`${params.serviceNoun} restart failed: ${String(fallbackErr)}`, params.renderStartHints());
+    } catch {
+      fail(GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE, params.renderStartHints());
       return false;
     }
     const hints = params.renderStartHints();

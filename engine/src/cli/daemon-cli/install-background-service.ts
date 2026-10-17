@@ -2,11 +2,11 @@
 // only the user-facing action runs the existing `branch gateway install` path.
 import { resolveGatewayServiceMutationError } from "../../infra/gateway-supervision.js";
 import { formatCliCommand } from "../command-format.js";
-import type { DaemonLifecycleOptions } from "./types.js";
+import type { DaemonInstallOptions } from "./types.js";
 
 export const INSTALL_BACKGROUND_SERVICE_ID = "install-background-service";
 export const INSTALL_BACKGROUND_SERVICE_LABEL = "Install background service";
-export const INSTALL_BACKGROUND_SERVICE_COMMAND = "branch gateway install";
+export const INSTALL_BACKGROUND_SERVICE_COMMAND = "branch gateway install-background-service";
 
 export type InstallBackgroundServiceAction = {
   id: typeof INSTALL_BACKGROUND_SERVICE_ID;
@@ -61,11 +61,11 @@ export function attachInstallBackgroundServiceAction<
 }
 
 /** User-clicked action: the same path as `branch gateway install`. */
-export async function runInstallBackgroundService(opts?: DaemonLifecycleOptions): Promise<void> {
+export async function runInstallBackgroundService(opts?: DaemonInstallOptions): Promise<void> {
   const mutationError = resolveGatewayServiceMutationError("install the gateway service");
   if (mutationError) {
     throw mutationError;
   }
   const { runDaemonInstall } = await import("./install.runtime.js");
-  await runDaemonInstall({ json: Boolean(opts?.json) });
+  await runDaemonInstall(opts ?? {});
 }

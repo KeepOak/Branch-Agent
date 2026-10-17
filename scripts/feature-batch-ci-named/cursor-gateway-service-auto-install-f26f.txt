@@ -1,7 +1,10 @@
+engine:src/cli/daemon-cli/app-child-supervisor.test.ts
 engine:src/cli/daemon-cli/install-background-service.test.ts
 engine:src/cli/daemon-cli/lifecycle-fallback.test.ts
 engine:src/cli/daemon-cli/lifecycle-readiness.test.ts
 engine:src/cli/daemon-cli/lifecycle.gateway-owner.test.ts
 engine:src/cli/daemon-cli/lifecycle.missing-service.test.ts
 engine:src/cli/daemon-cli/lifecycle.test.ts
+engine:src/cli/daemon-cli/register-service-commands.test.ts
 engine:src/cli/daemon-cli/service-start-fallback.test.ts
+engine:src/cli/daemon-cli/status.install-hints.test.ts
