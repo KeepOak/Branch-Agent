@@ -7,6 +7,7 @@ import {
   decryptPairingFrame,
   encryptPairingFrame,
   listenPairingRelay,
+  pairingRelayJoinUrl,
   startPairingRelayHost,
 } from "./pairing-relay.js";
 
@@ -123,6 +124,73 @@ describe("pairing relay", () => {
     const raw = Buffer.isBuffer(data) ? data.toString("utf8") : String(data);
     expect(raw).not.toContain("bootstrap-secret-token");
     expect(() => JSON.parse(raw)).toThrow();
+    phone.close();
+  });
+
+  it("does not put a phone bootstrap token on the relay hop", async () => {
+    const relay = await listenPairingRelay();
+    opened.push(relay);
+
+    const gatewayHttp = createServer();
+    const gatewayWss = new WebSocketServer({ server: gatewayHttp });
+    const fromPhone = new Promise<string>((resolve) => {
+      gatewayWss.on("connection", (socket) => {
+        socket.on("message", (data) => resolve(String(data)));
+      });
+    });
+    gatewayHttp.listen(0, "127.0.0.1");
+    await once(gatewayHttp, "listening");
+    const gatewayPort = (gatewayHttp.address() as { port: number }).port;
+    opened.push({
+      close: async () => {
+        gatewayWss.close();
+        gatewayHttp.close();
+        await once(gatewayHttp, "close").catch(() => undefined);
+      },
+    });
+
+    const session = await createPairingRelaySession({ relayUrl: relay.baseUrl });
+    const host = new WebSocket(pairingRelayJoinUrl(session.wsUrl, "host", session.hostToken));
+    const local = new WebSocket(`ws://127.0.0.1:${gatewayPort}`, {
+      headers: { "x-branch-pairing-remote": "0.0.0.0" },
+    });
+    opened.push({
+      close: async () => {
+        host.close();
+        local.close();
+      },
+    });
+    await Promise.all([once(host, "open"), once(local, "open")]);
+    const rawFromPhone: string[] = [];
+    host.on("message", (data) => {
+      const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+      rawFromPhone.push(buf.toString("utf8"));
+      if (local.readyState === WebSocket.OPEN) {
+        local.send(decryptPairingFrame(session.key, buf));
+      }
+    });
+
+    const phone = new WebSocket(session.peerUrl);
+    await once(phone, "open");
+    const token = "phone-bootstrap-token";
+    phone.send(
+      encryptPairingFrame(
+        session.key,
+        Buffer.from(JSON.stringify({ type: "req", method: "connect", params: { auth: { bootstrapToken: token } } })),
+      ),
+    );
+    await expect(fromPhone).resolves.toContain(token);
+    expect(rawFromPhone.join("")).not.toContain(token);
+    expect(
+      rawFromPhone.some((raw) => {
+        try {
+          JSON.parse(raw);
+          return true;
+        } catch {
+          return false;
+        }
+      }),
+    ).toBe(false);
     phone.close();
   });
 });
