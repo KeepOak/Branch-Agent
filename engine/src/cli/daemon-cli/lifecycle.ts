@@ -46,10 +46,9 @@ import {
   createGatewayLifecycleMutationAudit,
 } from "./lifecycle-audit.js";
 import {
-  GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE,
+  failAfterGatewayChildFallback,
   MISSING_GATEWAY_SERVICE_REASON,
   recoverGatewayAsAppChild,
-  shouldRecoverGatewayAsAppChild,
 } from "./service-start-fallback.js";
 import { resolveGatewayConfigPorts, resolveGatewayLifecycleContext } from "./lifecycle-context.js";
 import {
@@ -313,12 +312,16 @@ export async function runDaemonStart(opts: DaemonLifecycleOptions = {}) {
       }),
     postStartCheck: async ({ fail, warnings }) => {
       let failed: string | undefined;
+      let failedHints: string[] | undefined;
+      let failedResult: "still-starting" | undefined;
       await verifyGatewayStartReadiness({
         service,
         expectedPort,
         resolveContext: () => resolveGatewayLifecycleContext(service),
-        fail: (message) => {
+        fail: (message, hints, result) => {
           failed = message;
+          failedHints = hints;
+          failedResult = result;
         },
         warnings,
       });
@@ -335,7 +338,7 @@ export async function runDaemonStart(opts: DaemonLifecycleOptions = {}) {
         warnings.push(recovered.message);
         return;
       }
-      fail(shouldRecoverGatewayAsAppChild(failed) ? GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE : failed);
+      failAfterGatewayChildFallback(failed, fail, failedHints, failedResult);
     },
     onStartFailed: async ({ error }) =>
       await recoverFromFailedService({
@@ -726,13 +729,7 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
           warnings.push(recovered.message);
           return;
         }
-        reportFail(
-          shouldRecoverGatewayAsAppChild(failed)
-            ? GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE
-            : failed,
-          failedHints,
-          failedCode,
-        );
+        failAfterGatewayChildFallback(failed, reportFail, failedHints, failedCode);
         throw new Error("unreachable after gateway restart failure", { cause: err });
       }
     },

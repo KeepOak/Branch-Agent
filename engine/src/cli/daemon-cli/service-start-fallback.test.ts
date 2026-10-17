@@ -22,6 +22,8 @@ vi.mock("./install.runtime.js", () => ({
 
 const {
   buildUnmanagedGatewaySpawnEnv,
+  failAfterGatewayChildFallback,
+  GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE,
   GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE,
   GATEWAY_SERVICE_MISSING_CHILD_FALLBACK_MESSAGE,
   isGatewayServiceMissing,
@@ -197,6 +199,22 @@ describe("recoverGatewayAsAppChild", () => {
     }
 
     expect(runDaemonInstall).not.toHaveBeenCalled();
+  });
+
+  it("keeps the original error when fallback does not apply", () => {
+    const fail = vi.fn();
+    failAfterGatewayChildFallback("token drifted", fail, ["hint"], "still-starting");
+    expect(fail).toHaveBeenCalledWith("token drifted", ["hint"], "still-starting");
+  });
+
+  it("uses a plain error when fallback applied and the child also failed", () => {
+    const fail = vi.fn();
+    failAfterGatewayChildFallback("Operation not permitted", fail);
+    expect(fail).toHaveBeenCalledWith(
+      GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE,
+      undefined,
+      undefined,
+    );
   });
 });
 

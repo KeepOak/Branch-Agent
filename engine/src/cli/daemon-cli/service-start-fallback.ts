@@ -86,6 +86,19 @@ export function spawnUnmanagedGatewayChild(params?: {
   return { pid: child.pid ?? undefined };
 }
 
+export function failAfterGatewayChildFallback(
+  reason: string,
+  fail: (message: string, hints?: string[], code?: "still-starting" | "restart-health-failed") => void,
+  hints?: string[],
+  code?: "still-starting" | "restart-health-failed",
+): void {
+  fail(
+    shouldRecoverGatewayAsAppChild(reason) ? GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE : reason,
+    hints,
+    code,
+  );
+}
+
 export async function recoverGatewayAsAppChild<TResult extends "started" | "restarted">(params: {
   result: TResult;
   reason: string;
