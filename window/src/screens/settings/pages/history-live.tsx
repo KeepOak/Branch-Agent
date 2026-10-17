@@ -18,6 +18,7 @@ import { useLevel } from "../SettingsFrame";
 import type { SlotControlProps } from "../slots";
 import { useRead } from "./accounts-live";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { copyAndSay } from "../../../shell/clipboard";
 import { CLEANUP_CODE, NEVER_DIES } from "./history";
 
 const Line = ({ children, bad }: { children: ReactNode; bad?: boolean }) => <small className={"r1s-msg g-label" + (bad ? " r1s-bad" : "")} role={bad ? "status" : undefined} data-lines>{children}</small>;
@@ -189,7 +190,7 @@ export function CleanupCode({ row }: SlotControlProps) {
   const [copied, setCopied] = useState(false);
   return <span className="r1s-own-ctl" data-local="">
     <code className="r1s-val">{code}</code>
-    <Btn onClick={() => void navigator.clipboard?.writeText(code).then(() => setCopied(true), () => undefined)}>{copied ? "Copied" : "Copy"}</Btn>
+    <Btn onClick={() => void copyAndSay(code).then(setCopied)}>{copied ? "Copied" : "Copy"}</Btn>
   </span>;
 }
 

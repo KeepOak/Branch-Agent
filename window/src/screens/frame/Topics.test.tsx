@@ -89,7 +89,7 @@ it("renames a thread from its tab's right-click menu through sessions.patch, in 
   await flush();
   const tab = above().querySelector<HTMLButtonElement>('[aria-label="Card charges"]')!;
   await act(async () => tab.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })));
-  const rename = [...above().querySelectorAll<HTMLButtonElement>(".pop button")].find((b) => b.textContent?.startsWith("Rename"))!;
+  const rename = [...document.querySelectorAll<HTMLButtonElement>(".pop button")].find((b) => b.textContent?.startsWith("Rename"))!;
   await act(async () => rename.click());
   const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-label="Rename thread"]')!;
   expect(dialog.classList).toContain("g-clear");
@@ -106,7 +106,7 @@ it("changes a thread's icon from its tab's menu and keeps the choice", async () 
   await flush();
   const tab = above().querySelector<HTMLButtonElement>('[aria-label="Card charges"]')!;
   await act(async () => tab.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })));
-  const change = [...above().querySelectorAll<HTMLButtonElement>(".pop button")].find((b) => b.textContent?.startsWith("Change icon"))!;
+  const change = [...document.querySelectorAll<HTMLButtonElement>(".pop button")].find((b) => b.textContent?.startsWith("Change icon"))!;
   await act(async () => change.click());
   const option = document.querySelector<HTMLButtonElement>('.emoGridT5 [role="option"]')!;
   const chosen = option.textContent!;

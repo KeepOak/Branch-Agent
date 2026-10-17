@@ -93,18 +93,16 @@ const KEEP_CLASSIC: ReadonlySet<string> = new Set<string>();
  * Classic page whose sections it has, so it never falls back to Classic General. A row goes when its R1 page lands.
  */
 export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
-  card: "people", // Your card: the person's own card on Classic People
   trunks: "advanced", // Trunks, Trunks' model and Trunks and other agents
   browser: "computer", // Computer & browser: the screen and the browser
   coding: "computer", // Computer & browser: code and commits, repositories
 };
 
 /**
- * Settings pages that are a place: Automations and Memory & documents open the place that has their controls
- * (Memory & documents opens Library on its Memory tab). Customize is an R1 Settings page of its own.
+ * Settings pages that are a place: Memory & documents opens Library on its Memory tab, which has its controls.
+ * Customize and Automations are R1 Settings pages of their own.
  */
 export const SETTINGS_PLACE: Readonly<Record<string, { place: PlaceId; tab?: string }>> = {
-  autos: { place: "automations" },
   memory: { place: "library", tab: "memory" },
 };
 

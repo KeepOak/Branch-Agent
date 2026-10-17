@@ -202,7 +202,16 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   const locked = useContext(LockContext);
   const why = off ?? (locked ? NOSETUP : undefined);
   const name = typeof title === "string" ? title : id;
+  // A row greyed by a real condition ("Turn on … first", "needs a backup folder") says what to do in one visible line
+  // (Private #1093 item 7). A developer note stays out of sight: that row is Coming, and Coming shows only at Technical.
   const shown = shownWhy(why);
+  const whyId = useId();
+  const right = useRef<HTMLSpanElement>(null);
+  // The greyed controls inside name that line with aria-describedby, so a screen reader says why too.
+  useEffect(() => {
+    const controls = right.current ? [...right.current.querySelectorAll<HTMLElement>("button, input, select, textarea, [role=switch]")] : [];
+    for (const el of controls) { if (shown) el.setAttribute("aria-describedby", whyId); else if (el.getAttribute("aria-describedby") === whyId) el.removeAttribute("aria-describedby"); }
+  });
   const raw = sub ?? shown;
   const line = typeof raw === "string" ? plainCopy(raw, level) : raw;
   useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", help ? plainCopy(help, level) : help);
@@ -210,9 +219,9 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   return (
     <div className={`ctl${why ? " off-k" : ""}${stack ? " stack-k" : ""}`} data-row={name} aria-disabled={why ? true : undefined}>
       <b>{icon}{title}{typeof title === "string" && !noPin ? <PinBtn title={title} /> : null}</b>
-      {children ? <span className="right" inert={why ? true : undefined}>{children}</span> : null}
-      {line || kept ? <small>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
-      {shown && sub ? <small className="why-k">{shown}</small> : null}
+      {children ? <span className="right" ref={right} inert={why ? true : undefined}>{children}</span> : null}
+      {line || kept ? <small id={shown && !sub ? whyId : undefined}>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
+      {shown && sub ? <small className="why-k" id={whyId}>{shown}</small> : null}
       {after}
     </div>
   );
