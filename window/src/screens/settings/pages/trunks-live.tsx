@@ -9,7 +9,7 @@ import { Coming } from "../../../glass/coming";
 import { TrunksTab } from "../../../places/customize/trunks";
 import { useResource, type Trunks } from "../../../places/library/data";
 import { pageFor } from "../nav";
-import type { Row } from "../rows";
+import { COMING_FROM, type Row } from "../rows";
 import { Toggle } from "../RowView";
 import { SECTION_COMING, useLevel } from "../SettingsFrame";
 import type { SlotPageProps } from "../slots";
@@ -65,7 +65,8 @@ export function TrunksPage({ engine, onPage }: SlotPageProps) {
             settings={{ openTemplates: () => onPage?.("seedbank") }} />
         </div>
       </section>
-      {level >= 1 ? <>
+      {/* Both cards wait for a later update: like every Coming row, Technical only (rows.ts COMING_FROM). */}
+      {level >= COMING_FROM ? <>
         <section className="r1s-sec g-clear" aria-label={DEFAULTS}>
           <h2 className="g-label">{DEFAULTS}</h2>
           {TRUNK_DEFAULTS.map((item) => <DefaultRow key={item.id} engine={engine} item={item} />)}

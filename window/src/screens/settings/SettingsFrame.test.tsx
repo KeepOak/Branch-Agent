@@ -97,10 +97,15 @@ describe("SettingsFrame", () => {
     expect(fine.getAttribute("aria-label")).toBe("Fine-tune each part");
     expect(fine.querySelector("h3")?.textContent).toBe("Fine-tune each part");
     expect(fine.querySelector("[data-row='general.work.thinking']")).not.toBeNull();
-    // A later-update row folds under its own line after the live rows, so it is found in the card, not in the Fine group.
-    expect(work.querySelector("[data-row='general.work.chat-steps-shown']")?.getAttribute("data-coming")).toBeTruthy();
+    // A later-update row shows only at Technical (Private #1093 item 4)...
+    expect(work.querySelector("[data-row='general.work.chat-steps-shown']")).toBeNull();
     expect(fine.querySelector("[data-row='general.work.mode']")).toBeNull();
     expect(work.querySelector(":scope > [data-row='general.work.mode']")).not.toBeNull();
+    // ...where it folds under its own line after the live rows, so it is found in the card, not in the Fine group.
+    await click(level("Technical"));
+    const tech = $$(".r1s-sec").find((s) => s.querySelector("h2")?.textContent === "Show agents’ work")!;
+    expect(tech.querySelector("[data-row='general.work.chat-steps-shown']")?.getAttribute("data-coming")).toBeTruthy();
+    expect(tech.querySelector(".r1s-fine [data-row='general.work.chat-steps-shown']")).toBeNull();
   });
 
   it("makes a Trunk the default from search with its own button, and shows it as Coming without a handler (#1049)", async () => {
@@ -305,12 +310,18 @@ describe("SettingsFrame header on slot pages (#1049)", () => {
     }
   });
 
-  it("offers Trunks with Make default and New Trunk, and features, when the host passes them", async () => {
+  it("offers Trunks with Make default and New Trunk, and features at Technical, when the host passes them", async () => {
     const onTrunk = vi.fn(), onOpenFeature = vi.fn();
     await act(async () => root.render(<SettingsFrame engine={engineOf().engine} trunks={[{ id: "t1", name: "Newt" }]} features={[{ id: "F-1", name: "New tab page", description: "Coming" }]} onTrunk={onTrunk} onOpenFeature={onOpenFeature} />));
     const input = host.querySelector<HTMLInputElement>(".r1s-search input")!;
-    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "New"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    const search = (q: string) => act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, q); input.dispatchEvent(new Event("input", { bubbles: true })); });
     const group = (name: string) => host.querySelector(`[role=group][aria-label="${name}"]`);
+    // The feature atlas is mostly what Branch plans: Regular search doesn't list it (Private #1093 item 4).
+    await search("New");
+    expect(group("Features")).toBeNull();
+    await search("");
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".r1s-level button")].find((b) => b.textContent === "Technical")!.click());
+    await search("New");
     expect([...group("Trunks")!.querySelectorAll(".r1s-res b")].map((b) => b.textContent)).toEqual(["Newt", "New Trunk"]);
     expect(group("Trunks")!.querySelector(".r1s-mkdef")?.textContent).toBe("Make default");
     expect(group("Features")!.textContent).toContain("New tab page");

@@ -16,6 +16,7 @@ import { Segmented, Toggle } from "../RowView";
 import { useLevel } from "../SettingsFrame";
 import type { SlotControl, SlotControlProps } from "../slots";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { copyAndSay } from "../../../shell/clipboard";
 
 /** A card of a page and the Classic sections it holds, in order. */
 export type CardPlan = [card: string, secs: SecSpec[]][];
@@ -147,7 +148,7 @@ function TextField({ label, value, placeholder, unit, number, onCommit }: { labe
 
 function CodeCopy({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
-  return <><code className="r1s-val">{code}</code><button type="button" className="r1s-btn" data-local="" onClick={() => void navigator.clipboard?.writeText(code).then(() => setCopied(true), () => undefined)}>{copied ? "Copied" : "Copy"}</button></>;
+  return <><code className="r1s-val">{code}</code><button type="button" className="r1s-btn" data-local="" onClick={() => void copyAndSay(code).then(setCopied)}>{copied ? "Copied" : "Copy"}</button></>;
 }
 
 /** Words kept in a list (networks, commands): each with Remove, and Add. */
