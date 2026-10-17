@@ -5,6 +5,7 @@ import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
 import { AppLogo } from "../../places/customize/app-logos";
 import { Glyph } from "../../places/customize/glyphs";
+import { useLevel } from "../../places-nav/level";
 import { Icon } from "../../shell/icons";
 import { kindOf, shortCount, type Entry } from "./catalog";
 import { ItemDetail } from "./ItemDetail";
@@ -36,12 +37,18 @@ export function Counts({ entry }: { entry: Entry }) {
   return <span className="sb-counts"><span aria-label={entry.downloads + " downloads"}>⬇ {shortCount(entry.downloads)}</span></span>;
 }
 
+/** Coming controls and their later-update lines show only at Technical; Regular and Advanced leave them out (R1-10). */
+export function useTechnical(): boolean {
+  return useLevel() === "technical";
+}
+
 export function AddPill({ entry, engine, onAdd, text = "Add" }: { entry: Entry; engine: WindowEngine; onAdd: (entry: Entry) => void; text?: string }) {
+  const technical = useTechnical();
   if (entry.installed) return <span className="sb-added" aria-label={entry.name + (entry.inUse ? " is in use" : " is added")}>{entry.inUse ? "In use" : "Added ✓"}</span>;
   const call = addCall(entry);
   if (!call) return null;
-  if ("reason" in call) return <Soon className="sb-add" need={entry.source.type === "template" ? "trunks.template.create" : "plugins.install"} reason={call.reason} label={"Add " + entry.name}>{text}</Soon>;
-  return <Coming engine={engine} need={call.method} reason={"Adding " + kindOf(entry.kind).one + "s comes in a later update."}><button type="button" className="sb-add" aria-label={"Add " + entry.name} onClick={() => onAdd(entry)}>{text}</button></Coming>;
+  if ("reason" in call) return technical ? <Soon className="sb-add" need={entry.source.type === "template" ? "trunks.template.create" : "plugins.install"} reason={call.reason} label={"Add " + entry.name}>{text}</Soon> : null;
+  return <Coming engine={engine} need={call.method} hidden={!technical} reason={"Adding " + kindOf(entry.kind).one + "s comes in a later update."}><button type="button" className="sb-add" aria-label={"Add " + entry.name} onClick={() => onAdd(entry)}>{text}</button></Coming>;
 }
 
 function download(name: string, text: string) {
@@ -51,10 +58,12 @@ function download(name: string, text: string) {
   a.click(); setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 export const SEED_COMING = "Sharing this kind as a seed comes in a later update.";
-/** Copy seed (a short link) and Download (.seed) on every card (preview seedIcons). A kind with no seed yet shows both as Coming. */
+/** Copy seed (a short link) and Download (.seed) on every card (preview seedIcons). A kind with no seed yet shows both
+ *  as Coming at Technical, and none at Regular and Advanced. */
 export function SeedIcons({ entry, onNotice }: { entry: Entry; onNotice: (text: string) => void }) {
+  const technical = useTechnical();
   const text = seedText(entry), link = seedLink(entry);
-  if (!text || !link) return <span className="sb-seed">
+  if (!text || !link) return !technical ? null : <span className="sb-seed">
     <Soon className="sb-icon" need="seedbank.seed" reason={SEED_COMING} label={"Copy " + entry.name + "’s seed"}><Icon name="copy" size={13} /></Soon>
     <Soon className="sb-icon" need="seedbank.seed" reason={SEED_COMING} label={"Download " + entry.name + "’s seed"}><Icon name="download" size={13} /></Soon>
   </span>;

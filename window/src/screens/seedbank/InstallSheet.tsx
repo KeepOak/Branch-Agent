@@ -8,7 +8,7 @@ import { Coming } from "../../glass/coming";
 import { useLayer } from "../../glass/Popover";
 import { Face } from "../../face/Face";
 import { kindOf, type Entry, type Rec } from "./catalog";
-import { ItemIcon, Soon } from "./parts";
+import { ItemIcon, Soon, useTechnical } from "./parts";
 import { fingerprint, hasHiddenInstructions, hasSecrets } from "./seed";
 import { addCall, detailCall, type Trunk } from "./useSeedbank";
 
@@ -42,8 +42,13 @@ export type Detail = { text: string; summary: string; tools: string[]; safety: S
 /** Version, What changed and Works on, from skills.detail or plugins.catalog.get, when they are there. */
 export function readFacts(raw: unknown): Pick<Detail, "version" | "changed" | "os"> {
   const d = rec(raw), latest = rec(d.latestVersion), skill = rec(d.skill);
-  const version = str(d.version) || str(latest.version) || str(skill.version) || (typeof d.latestVersion === "string" ? d.latestVersion : "");
-  const changed = str(d.changelog) || str(latest.changelog) || str(skill.changelog);
+  // plugins.catalog.get answers { plugin, detail }: the release it picked, else the newest listed version.
+  const plugin = rec(d.plugin), more = rec(d.detail), release = rec(more.selectedRelease);
+  const versions = Array.isArray(more.versions) ? more.versions.map(rec) : [];
+  const pick = str(release.version) || str(plugin.latestVersion);
+  const listed = versions.find(v => pick && str(v.version) === pick) ?? versions[0] ?? {};
+  const version = str(d.version) || str(latest.version) || str(skill.version) || (typeof d.latestVersion === "string" ? d.latestVersion : "") || pick || str(listed.version);
+  const changed = str(d.changelog) || str(latest.changelog) || str(skill.changelog) || str(listed.changelog).trim();
   const raw2 = d.platforms ?? d.os ?? skill.platforms;
   const os = Array.isArray(raw2) ? raw2.filter((p): p is string => typeof p === "string").join(", ") : str(raw2);
   return { ...(version ? { version } : {}), ...(changed ? { changed } : {}), ...(os ? { os } : {}) };
@@ -98,6 +103,7 @@ type Props = { entry: Entry; engine: WindowEngine; trunks: Trunk[]; onClose: () 
 
 export function InstallSheet({ entry, engine, trunks, onClose, onDone }: Props) {
   const detail = useDetail(engine, entry);
+  const technical = useTechnical();
   const [who, setWho] = useState<Set<string>>(() => new Set(trunks.map(t => t.id)));
   useEffect(() => { setWho(new Set(trunks.map(t => t.id))); }, [trunks]);
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
@@ -169,8 +175,10 @@ export function InstallSheet({ entry, engine, trunks, onClose, onDone }: Props) 
     </section>
     {s.type === "skill" && trunks.length > 0 && <section className="sb-sec"><h3 className="g-label">Who gets it</h3><div className="sb-who" data-local="">{trunks.map(t => <button key={t.id} type="button" className="sb-who-face" aria-pressed={who.has(t.id)} onClick={() => setWho(prev => { const next = new Set(prev); if (next.has(t.id)) next.delete(t.id); else next.add(t.id); return next; })}><Face size={26} label={t.name} /><span>{t.name}</span></button>)}</div></section>}
     {/* Connectors and plugins: the same faces (preview: Who gets it for every kind but Trunk and looks), Coming until the
-        engine can add one for some Trunks only; today it goes to every Trunk (#1049). */}
-    {s.type === "plugin" && trunks.length > 0 && <section className="sb-sec"><h3 className="g-label">Who gets it</h3>
+        engine can add one for some Trunks only; today it goes to every Trunk (#1049). The Coming faces and their reason show
+        only at Technical; Regular and Advanced read "Every Trunk.", which is what the engine does. */}
+    {s.type === "plugin" && trunks.length > 0 && !technical && <section className="sb-sec"><h3 className="g-label">Who gets it</h3><p className="sb-hint g-label" data-lines>Every Trunk.</p></section>}
+    {s.type === "plugin" && trunks.length > 0 && technical && <section className="sb-sec"><h3 className="g-label">Who gets it</h3>
       <Coming need="plugins.install.agents" unwired reason={WHO_COMING} where={entry.name + " › Who gets it"}>
         <div className="sb-who">{trunks.map(t => <button key={t.id} type="button" className="sb-who-face" aria-pressed="true"><Face size={32} label={t.name} /><span>{t.name}</span></button>)}</div>
       </Coming>
