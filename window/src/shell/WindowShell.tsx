@@ -109,7 +109,7 @@ import { SidePane, type PaneTab } from "../stage/SidePane";
 import { shouldShowThreadColumn, ThreadColumn } from "./ThreadColumn";
 import { ControlTower } from "./ControlTower";
 import { StagePip } from "../stage/StagePip";
-import { stageFit, useWindowWidth } from "../stage/stage-fit";
+import { browserFit, stageFit, useWindowWidth } from "../stage/stage-fit";
 import { AddComputer } from "../stage/AddComputer";
 import { computersChanged } from "../stage/computers";
 import { TrunkAppearances, TrunkPebbleLooks, TrunkEmojiFaces, rosterPebbleLooks, themeColour, trunkAppearance, type Appearance } from "../face/appearance";
@@ -501,7 +501,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [settingsListExpanded, setSettingsListExpanded] = useState(false);
   useEffect(() => { if (route.kind !== "settings") setSettingsListExpanded(false); }, [route.kind]);
   const settingsAutoRail = route.kind === "settings" && !isNarrow && !settingsListExpanded;
-  const rail = layout.rail || ((topicAutoRail || settingsAutoRail) && !layout.hidden);
+  // An open Trunk's browser in a half-screen window shows the list as the face rail, so its page keeps a readable
+  // width (#1103); Ctrl B or Show the full list brings the list back until the browser closes. Never saved.
+  const [browserFullList, setBrowserFullList] = useState(false);
+  useEffect(() => { if (stage !== "Browser") setBrowserFullList(false); }, [stage]);
+  const browserAutoRail = stage === "Browser" && route.kind === "chat" && !dedicated && !isNarrow && !layout.hidden && !layout.rail && !browserFullList && browserFit(windowWidth, layout.sideW).rail;
+  const rail = layout.rail || ((topicAutoRail || settingsAutoRail || browserAutoRail) && !layout.hidden);
   useEffect(() => {
     setAllTopics((value) => value && (!topicContact || value.contactId !== topicContact.id || openKey !== topicContact.threadKey) ? null : value);
   }, [openKey, topicContact?.id]);
@@ -1042,6 +1047,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     if (narrow()) { setSlideOpen((o) => !o); return; }
     if (settingsAutoRail) { setSettingsListExpanded(true); if (layout.hidden || layout.rail) setLayout({ hidden: false, rail: false }); return; }
     if (route.kind === "settings" && !layout.hidden && !layout.rail) { setSettingsListExpanded(!settingsListExpanded); return; }
+    if (browserAutoRail) { setBrowserFullList(true); return; }
     if (topicAutoRail && !layout.rail) { setFullListFor(topicContact?.id ?? null); return; }
     setLayout(toggleListLayout(layout));
   };
@@ -1309,7 +1315,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   };
   const sideWidth = layout.hidden && !isNarrow ? 0 : liveW ?? (rail ? 68 : layout.sideW);
   // An open stage sits beside the conversation only when both keep a usable width; otherwise it covers the thread (DA-72).
-  const stagePlace = stage && route.kind === "chat" ? stageFit(windowWidth, dedicated ? 0 : sideWidth) : null;
+  const stagePlace = stage && route.kind === "chat" ? (stage === "Browser" ? browserFit(windowWidth, dedicated ? 0 : sideWidth, isNarrow).fit : stageFit(windowWidth, dedicated ? 0 : sideWidth)) : null;
   const frameClass = ["frame", stagePlace ? `stage-${stagePlace.mode}` : "", dedicated ? "dedicated" : "", rail ? "rail" : "", layout.hidden && !isNarrow ? "list-hidden" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
   const summary = filterSummary(prefs, trunkName, personName);
   const dark = theme === "system" ? systemDark : effectiveDark(theme);
@@ -1661,7 +1667,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         }}
         onNew={(e) => showMenu(e, "new", [
           ...newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }),
-          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { if (settingsAutoRail) setSettingsListExpanded(true); if (topicAutoRail && !layout.rail) setFullListFor(topicContact?.id ?? null); else setLayout({ rail: false }); } }] : []),
+          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { if (browserAutoRail) { setBrowserFullList(true); return; } if (settingsAutoRail) setSettingsListExpanded(true); if (topicAutoRail && !layout.rail) setFullListFor(topicContact?.id ?? null); else setLayout({ rail: false }); } }] : []),
         ], "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
