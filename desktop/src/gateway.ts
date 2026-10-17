@@ -59,7 +59,10 @@ export function releaseHeldLoopbackPort(port: number): void {
  */
 export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): void {
   if (!heldLoopback().has(port)) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const release = () => {
+    if (timer) clearTimeout(timer);
+    timer = undefined;
     child.off("message", onMessage);
     child.off("exit", onExit);
     releaseHeldLoopbackPort(port);
@@ -71,6 +74,9 @@ export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): v
   const onExit = () => release();
   child.on("message", onMessage);
   child.once("exit", onExit);
+  // The child can send branch-desktop:binding before this listener exists. Release once it has
+  // had time to reach its listen retry, so a missed message cannot hold the port until it gives up.
+  timer = setTimeout(release, 1000);
 }
 
 function closeServer(probe: ReturnType<typeof createServer>): Promise<void> {

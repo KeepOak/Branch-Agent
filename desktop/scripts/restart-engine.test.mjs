@@ -16,7 +16,8 @@ process.env.BRANCH_DESKTOP_HOLD_LOOPBACK = "1";
 const require = createRequire(import.meta.url), Module = require("node:module");
 const originalLoad = Module._load, originalFetch = globalThis.fetch;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+// EPERM means the process exists and this caller cannot signal it. Only ESRCH is "already exited".
+const alive = pid => { try { process.kill(pid, 0); return true; } catch (error) { return error?.code !== "ESRCH"; } };
 // Windows TerminateProcess throws ESRCH when the pid has already exited. The exit already happened.
 function signalExit(pid) {
   try { process.kill(pid, "SIGTERM"); }
@@ -193,7 +194,7 @@ function drop(socket){if(!socket)return;socket.on("error",()=>{});try{socket.res
 // that exits first lets Windows finish those sockets with a FIN, and the port stays
 // unbindable longer than the next engine is willing to wait.
 let binding;
-function shutdown(code){if(exiting)return;exiting=true;clearInterval(closeWatch);clearInterval(binding);if(!listener){process.exit(code);return;}let left=false;let again;const done=()=>{if(left)return;left=true;clearInterval(again);process.exit(code);};for(const socket of sockets)drop(socket);try{listener.close(()=>done());}catch{done();return;}again=setInterval(()=>{if(left)return;for(const socket of sockets)drop(socket);},20);}
+function shutdown(code){if(exiting)return;exiting=true;clearInterval(closeWatch);clearInterval(binding);if(!listener){process.exit(code);return;}let left=false;let again;const done=()=>{if(left)return;left=true;clearInterval(again);process.exit(code);};for(const socket of sockets)drop(socket);try{listener.close(()=>done());}catch{done();return;}again=setInterval(()=>{if(left)return;for(const socket of sockets)drop(socket);if(sockets.size===0)done();},50);}
 try{fs.unlinkSync(root+"/close-"+process.pid);}catch{}
 const closeWatch=setInterval(()=>{const mark=root+"/close-"+process.pid;if(!fs.existsSync(mark))return;try{fs.unlinkSync(mark);}catch{}shutdown(0);},15);
 if(starts.length===2&&fs.existsSync(root+"/fail-next"))shutdown(1);
