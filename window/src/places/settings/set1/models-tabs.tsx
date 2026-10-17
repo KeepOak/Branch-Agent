@@ -7,6 +7,8 @@ const NEED_MODEL = "Connect a model first.";
 const SECOND_OFF = "A second model isn’t ready to turn on yet.";
 const VIDEO_OFF = "Short videos aren’t ready to turn on yet.";
 const MEDIA_TOOLS_OFF = "Checking those programs isn’t ready yet.";
+/** Coming stub when Double-check is mounted without models data (#1708). Hidden at Regular/Advanced. */
+const NONE = "Branch has no setting for this yet.";
 
 function usableName(m: ModelsCtx, ref: string): string {
   return m.models.find((model) => model.ref === ref && model.available)?.name ?? "";
@@ -16,8 +18,8 @@ function hasUsable(m: ModelsCtx): boolean {
   return m.models.some((model) => model.available);
 }
 
-export function SecondTab({ m }: { m: ModelsCtx }) {
-  const off = hasUsable(m) ? SECOND_OFF : NEED_MODEL;
+export function SecondTab({ m }: { m?: ModelsCtx } = {}) {
+  const off = !m ? NONE : hasUsable(m) ? SECOND_OFF : NEED_MODEL;
   return (
     <Sec title="">
       <Ctl title="Ask a second model on hard questions" sub="Shows both answers side by side when they disagree." help="Shows both answers side by side when they disagree. Off until you choose: it doubles the cost." off={off}><Switch checked={false} label="Ask a second model on hard questions" onChange={() => undefined} /></Ctl>
