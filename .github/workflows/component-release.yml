@@ -605,7 +605,7 @@ jobs:
           dispatch_release() {
             if [[ "$SKIP_REASON" == "failed-checks" || "$SKIP_REASON" == "checks-unavailable" ]]; then
               local runs_json latch latch_dispatch
-              runs_json=$(node scripts/merge-gate-rate-limit.mjs gh -- api "repos/KeepOak/Branch-Agent/actions/workflows/component-release.yml/runs?head_sha=${main_commit}&per_page=20")
+              runs_json=$(node scripts/merge-gate-rate-limit.mjs gh -- api "repos/KeepOak/Branch-Agent/actions/workflows/component-release.yml/runs?head_sha=${main_commit}&event=workflow_dispatch&per_page=20")
               latch="$(node desktop/scripts/component-release-readiness.mjs decide-skip-catch-up --main "$main_commit" --reason "$SKIP_REASON" --runs "$runs_json")"
               latch_dispatch="$(node -p 'JSON.parse(process.argv[1]).dispatch ? "true" : "false"' "$latch")"
               note "$(node -p 'JSON.parse(process.argv[1]).reason' "$latch")"

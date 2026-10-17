@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  CATCH_UP_LATCH_PAGE_SIZE,
   CATCH_UP_MAX_WAIT_MS,
   CATCH_UP_RUN_NAME,
   CATCH_UP_WINDOW_BUFFER_MS,
@@ -15,10 +17,13 @@ import {
   PUSH_BACKUP_MIN_AGE_MS,
   blockingCheckRuns,
   catchUpAfterFailedPublish,
+  catchUpLatchRunsPath,
   decideCatchUp,
   decideSkipReasonCatchUp,
   failedCheckRuns,
+  getJobLog,
   getWorkflowRun,
+  listCatchUpLatchRuns,
   listCommitCheckRuns,
   pushBackupShouldRelease,
   rerunFailedWorkflowJobs,
@@ -202,6 +207,7 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
   assert.match(catchUp, /decide-catch-up/);
   assert.match(catchUp, /gh workflow run component-release\.yml --ref main -f catch_up=true/);
   assert.match(catchUp, /decide-skip-catch-up/);
+  assert.match(catchUp, /head_sha=\$\{main_commit\}&event=workflow_dispatch&per_page=20/);
   assert.doesNotMatch(catchUp, /skip_reason == 'checks-over-cap'/);
   assert.match(catchUp, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
   assert.doesNotMatch(catchUp, /check-runs/);
@@ -569,6 +575,47 @@ test("a GitHub rate-limit failure in check output does not block", () => {
   assert.equal(decision.failedCount, 0);
 });
 
+test("getJobLog reads a rate-limit Actions log that contains escape sequences", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-job-log-"));
+  const fakeGh = join(dir, process.platform === "win32" ? "gh.cmd" : "gh");
+  const log = "\u001b[31m##[error]HTTP 403: API rate limit exceeded for installation ID 1\u001b[0m\n";
+  writeFileSync(fakeGh, [
+    "#!/usr/bin/env node",
+    "const args = process.argv.slice(2);",
+    "const logs = args.some((arg) => /\\/actions\\/jobs\\/\\d+\\/logs$/.test(arg));",
+    "if (!logs) process.exit(2);",
+    "if (!args.includes('--allow-escape-sequences')) process.exit(1);",
+    `process.stdout.write(${JSON.stringify(log)});`,
+    "",
+  ].join("\n"), { mode: 0o755 });
+  const gh = args => execFileSync(fakeGh, args, { encoding: "utf8", windowsHide: true });
+  try {
+    const text = getJobLog("KeepOak/Branch-Agent", 117528834505, { gh });
+    assert.match(text, /API rate limit exceeded/);
+    const checks = [trackNonMergeCheck({ output: { title: "", summary: "" } })];
+    assert.equal(blockingCheckRuns(checks, {
+      readJobLog: jobId => getJobLog("KeepOak/Branch-Agent", jobId, { gh }),
+    }).length, 0);
+    assert.throws(() => getJobLog("KeepOak/Branch-Agent", 117528834505, {
+      gh: args => execFileSync(fakeGh, args.filter(arg => arg !== "--allow-escape-sequences"), {
+        encoding: "utf8",
+        windowsHide: true,
+      }),
+    }));
+    const blocked = blockingCheckRuns(checks, {
+      readJobLog: jobId => getJobLog("KeepOak/Branch-Agent", jobId, {
+        gh: args => execFileSync(fakeGh, args.filter(arg => arg !== "--allow-escape-sequences"), {
+          encoding: "utf8",
+          windowsHide: true,
+        }),
+      }),
+    });
+    assert.equal(blocked.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("an Actions job with empty check output and a rate-limit log does not block", () => {
   const fetched = [];
   const checks = [trackNonMergeCheck({ output: { title: "", summary: "" } })];
@@ -906,6 +953,62 @@ test("catch-up after failed-checks dispatches once per main head SHA", () => {
     "--runs", JSON.stringify({ workflow_runs: [] }),
   ]);
   assert.equal(cliOverCap.dispatch, false);
+});
+
+test("catch-up latch still finds the dispatch when more than 20 newer push runs share the SHA", () => {
+  const sha = "94ba4df41aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const marked = {
+    id: 1,
+    head_sha: sha,
+    event: "workflow_dispatch",
+    display_title: CATCH_UP_RUN_NAME,
+    name: CATCH_UP_RUN_NAME,
+  };
+  const pushRuns = Array.from({ length: CATCH_UP_LATCH_PAGE_SIZE + 1 }, (_, index) => ({
+    id: 100 + index,
+    head_sha: sha,
+    event: "push",
+    display_title: "GitHub component release",
+    name: "GitHub component release",
+  }));
+  const allRuns = [...pushRuns, marked];
+  const calls = [];
+  const gh = args => {
+    calls.push(args);
+    assert.equal(args[0], "api");
+    const request = String(args[1] ?? "");
+    const query = new URLSearchParams(request.slice(request.indexOf("?") + 1));
+    const event = query.get("event");
+    const head = query.get("head_sha");
+    const pageSize = Number(query.get("per_page") ?? CATCH_UP_LATCH_PAGE_SIZE);
+    const matched = allRuns.filter(run => (
+      (head == null || run.head_sha === head) && (event == null || run.event === event)
+    ));
+    return JSON.stringify({
+      total_count: matched.length,
+      workflow_runs: matched.slice(0, pageSize),
+    });
+  };
+  assert.equal(CATCH_UP_LATCH_PAGE_SIZE, 20);
+  assert.match(catchUpLatchRunsPath("KeepOak/Branch-Agent", sha), /head_sha=/);
+  assert.match(catchUpLatchRunsPath("KeepOak/Branch-Agent", sha), /event=workflow_dispatch/);
+  assert.match(workflow, /head_sha=\$\{main_commit\}&event=workflow_dispatch&per_page=20/);
+  const listed = listCatchUpLatchRuns("KeepOak/Branch-Agent", sha, { gh });
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].display_title, CATCH_UP_RUN_NAME);
+  assert.equal(decideSkipReasonCatchUp({
+    skipReason: "failed-checks",
+    mainCommit: sha,
+    workflowRuns: listed,
+  }).dispatch, false);
+  const unfiltered = allRuns.slice(0, CATCH_UP_LATCH_PAGE_SIZE);
+  assert.equal(unfiltered.some(run => run.display_title === CATCH_UP_RUN_NAME), false);
+  assert.equal(decideSkipReasonCatchUp({
+    skipReason: "failed-checks",
+    mainCommit: sha,
+    workflowRuns: unfiltered,
+  }).dispatch, true);
+  assert.equal(calls.length, 1);
 });
 
 test("a failed check listing skips the release and is not retried", () => {

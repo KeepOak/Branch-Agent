@@ -9,6 +9,7 @@ export const GITHUB_RATE_LIMIT_FAILURE = /API rate limit exceeded/i;
 export const JOB_LOG_FETCH_CAP = 10;
 export const CATCH_UP_RUN_NAME = "component-release-catch-up";
 export const CATCH_UP_LATCH_REASONS = new Set(["failed-checks", "checks-unavailable"]);
+export const CATCH_UP_LATCH_PAGE_SIZE = 20;
 
 export const PUSH_BACKUP_MIN_AGE_MS = 25 * 60 * 1000;
 export const CATCH_UP_MAX_WAIT_MS = 26 * 60 * 1000;
@@ -185,7 +186,16 @@ export function actionsJobIdFromCheckRun(checkRun) {
 }
 
 export function getJobLog(repo, jobId, { gh = defaultGh } = {}) {
-  return String(gh(["api", `repos/${repo}/actions/jobs/${jobId}/logs`]) ?? "");
+  // gh 2.102.0 exits 1 with an empty body when an Actions log has ANSI escapes.
+  return String(gh(["api", "--allow-escape-sequences", `repos/${repo}/actions/jobs/${jobId}/logs`]) ?? "");
+}
+
+export function catchUpLatchRunsPath(repo, sha) {
+  return `repos/${repo}/actions/workflows/component-release.yml/runs?head_sha=${sha}&event=workflow_dispatch&per_page=${CATCH_UP_LATCH_PAGE_SIZE}`;
+}
+
+export function listCatchUpLatchRuns(repo, sha, { gh = defaultGh } = {}) {
+  return parseJson(gh(["api", catchUpLatchRunsPath(repo, sha)]), {}).workflow_runs ?? [];
 }
 
 // Fetch logs only for failed Actions jobs that are not already ignored. Cap the
