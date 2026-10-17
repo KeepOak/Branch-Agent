@@ -545,7 +545,7 @@ export const powershellShortcuts: WindowsShortcuts = {
   },
   retarget: async (paths, launcher) => {
     await powershell(`$shell=New-Object -ComObject WScript.Shell; $exe=${psQuote(launcher)}; foreach($path in @(${paths.map(psQuote).join(",")})) { `
-      + "$link=$shell.CreateShortcut($path); $link.TargetPath=$exe; $link.WorkingDirectory=[IO.Path]::GetDirectoryName($exe); "
+      + "$link=$shell.CreateShortcut($path); $link.TargetPath=$exe; $link.WorkingDirectory=$env:USERPROFILE; "
       + "$link.IconLocation=\"$exe,0\"; $link.Save() }");
   },
 };

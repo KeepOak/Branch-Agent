@@ -28,3 +28,42 @@ test("only the release build loads the icon stamp, and only lazily", () => {
     assert.doesNotMatch(readFileSync(join(import.meta.dirname, file), "utf8"), /^import .*(resedit|windows-launcher-icon)/m, file);
   }
 });
+
+const desktopRoot = join(import.meta.dirname, "..");
+const source = (file) => readFileSync(join(desktopRoot, file), "utf8");
+
+test("no shortcut writer Starts in the app folder or the exe folder", () => {
+  const writers = {
+    "scripts/release-installers.mjs": source("scripts/release-installers.mjs"),
+    "scripts/shortcuts.ps1": source("scripts/shortcuts.ps1"),
+    "src/desktop-update.ts": source("src/desktop-update.ts"),
+    "src/desktop-update-helper.ts": source("src/desktop-update-helper.ts"),
+    "scripts/windows-launcher.mjs": source("scripts/windows-launcher.mjs"),
+  };
+  const together = Object.values(writers).join("\n");
+  assert.doesNotMatch(together, /WorkingDir:\s*"\{app\}"/);
+  assert.doesNotMatch(together, /WorkingDirectory\s*=\s*Split-Path\s+-Parent\s+\$executable/);
+  assert.doesNotMatch(together, /WorkingDirectory\s*=\s*\[IO\.Path\]::GetDirectoryName\(\$exe\)/);
+  assert.doesNotMatch(together, /WorkingDirectory\s*=\s*Path\.GetDirectoryName\(exe\)/);
+  assert.doesNotMatch(writers["scripts/windows-launcher.mjs"], /cwd:\s*dirname\(exe\)/);
+  assert.match(writers["scripts/release-installers.mjs"], /WorkingDir:\s*"\{%USERPROFILE\}"/);
+  assert.match(writers["scripts/shortcuts.ps1"], /WorkingDirectory\s*=\s*\$env:USERPROFILE/);
+  assert.match(writers["src/desktop-update.ts"], /WorkingDirectory=\$env:USERPROFILE/);
+  assert.match(writers["src/desktop-update-helper.ts"], /WorkingDirectory=\$env:USERPROFILE/);
+  assert.match(writers["scripts/windows-launcher.mjs"], /GetEnvironmentVariable\("USERPROFILE"\)/);
+  assert.match(writers["scripts/windows-launcher.mjs"], /cwd:\s*windowsUserWorkingDirectory\(env\)/);
+});
+
+test("startup leaves the app folder before it spawns anything", () => {
+  const main = source("src/main.ts");
+  const folder = source("src/app-working-folder.ts");
+  assert.match(main, /import \{ leaveAppWorkingFolder \} from "\.\/app-working-folder"/);
+  const call = main.indexOf("leaveAppWorkingFolder({");
+  const spawnGateway = main.indexOf("startGateway(");
+  const handOff = main.indexOf("async function start()");
+  assert.ok(call !== -1 && handOff !== -1 && spawnGateway !== -1);
+  assert.ok(call < handOff, "the working folder changes at module load, before start()");
+  assert.ok(call < spawnGateway, "before the gateway is spawned");
+  assert.match(main, /home:\s*app\.getPath\("home"\)/);
+  assert.match(folder, /export function leaveAppWorkingFolder/);
+});

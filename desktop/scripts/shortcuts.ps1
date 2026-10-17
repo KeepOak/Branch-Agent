@@ -52,7 +52,8 @@ foreach ($directory in $directories) {
     }
     $link = $shell.CreateShortcut($path)
     $link.TargetPath = $executable
-    $link.WorkingDirectory = Split-Path -Parent $executable
+    # Start in the user folder, not the package folder an update later renames (#1777).
+    $link.WorkingDirectory = $env:USERPROFILE
     $link.IconLocation = "$executable,0"
     $link.Description = 'Branch Agent'
     $link.Save()

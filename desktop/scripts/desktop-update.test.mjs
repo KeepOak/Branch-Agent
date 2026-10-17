@@ -17,6 +17,7 @@ const updater = await import(pathToFileURL(join(dist, "component-update.js")));
 const desktopUpdate = await import(pathToFileURL(join(dist, "desktop-update.js")));
 const { runHelper } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
 const { parseComponentRelease } = await import(pathToFileURL(join(dist, "component-update-manifest.js")));
+const { cwdHoldsAppFolder, leaveAppWorkingFolder } = await import(pathToFileURL(join(dist, "app-working-folder.js")));
 const ELECTRON = "44.5.1";
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function eventually(predicate, ms = 20_000) {
@@ -67,6 +68,37 @@ async function fixture(run, { runtime = false, iconRuntime = false, macBundle = 
   try { await run({ root, cfg, release, request, install }); }
   finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
 }
+
+test("startup changes the working folder when it starts inside the app folder", () => {
+  const appDir = "C:\\Users\\person\\AppData\\Local\\Programs\\Branch Agent\\app-0.4.5-abcdef";
+  const installRoot = "C:\\Users\\person\\AppData\\Local\\Programs\\Branch Agent";
+  const home = "C:\\Users\\person";
+  const portable = "C:\\Users\\person\\BranchApp\\dist\\v0.4.5\\Branch Agent-win32-x64";
+  assert.equal(cwdHoldsAppFolder(appDir, appDir, true), true);
+  assert.equal(cwdHoldsAppFolder(join(appDir, "resources"), appDir, true), true);
+  assert.equal(cwdHoldsAppFolder(installRoot, appDir, true), true, "Setup Start in was the install root");
+  assert.equal(cwdHoldsAppFolder(portable, portable, true), true);
+  assert.equal(cwdHoldsAppFolder(home, appDir, true), false);
+  const seen = [];
+  assert.equal(leaveAppWorkingFolder({ cwd: appDir, appDir, home, chdir: (dir) => seen.push(dir), win32: true }), true);
+  assert.deepEqual(seen, [home]);
+  seen.length = 0;
+  assert.equal(leaveAppWorkingFolder({ cwd: installRoot, appDir, home, chdir: (dir) => seen.push(dir), win32: true }), true);
+  assert.deepEqual(seen, [home]);
+  seen.length = 0;
+  assert.equal(leaveAppWorkingFolder({ cwd: home, appDir, home, chdir: (dir) => seen.push(dir), win32: true }), false);
+  assert.deepEqual(seen, []);
+  seen.length = 0;
+  assert.equal(leaveAppWorkingFolder({
+    cwd: portable, appDir: portable, home, chdir: (dir) => seen.push(dir), win32: true,
+  }), true);
+  assert.deepEqual(seen, [home]);
+  seen.length = 0;
+  assert.equal(leaveAppWorkingFolder({
+    cwd: join(portable, "resources"), appDir: portable, home: portable, chdir: (dir) => seen.push(dir), win32: true,
+  }), false, "never chdir into the app folder");
+  assert.deepEqual(seen, []);
+});
 
 test("an AppImage install never stages a swap of its read-only mount", () => {
   assert.equal(desktopUpdate.runsFromAppImage("linux", { APPIMAGE: "/home/person/.local/bin/branch-agent" }), true);

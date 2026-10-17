@@ -5,6 +5,7 @@ import type { Server } from "node:http";
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { leaveAppWorkingFolder } from "./app-working-folder";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopEnginePid, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
 import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
@@ -112,6 +113,13 @@ const install: DesktopInstall | undefined = app.isPackaged ? {
   electronVersion: process.versions.electron, nodePath: cfg.nodePath,
   ...(runsFromAppImage() ? { appImage: process.env.APPIMAGE } : {}),
 } : undefined;
+// Before spawning the gateway or the update helper: an old shortcut's Start in folder holds the app on Windows (#1777).
+leaveAppWorkingFolder({
+  cwd: process.cwd(),
+  appDir: install?.appDir ?? dirname(process.execPath),
+  home: app.getPath("home"),
+  chdir: (dir) => { process.chdir(dir); },
+});
 
 /** Appends one line to the app's own data directory log. */
 function log(line: string): void {
