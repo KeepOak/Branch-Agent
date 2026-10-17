@@ -29,9 +29,16 @@ const REBINDABLE_PORT_ATTEMPTS = 32;
 
 type LoopbackProbe = ReturnType<typeof createServer> & { closeAllConnections?: () => void };
 
+function armProbe(probe: LoopbackProbe): void {
+  probe.on("connection", (socket) => {
+    socket.on("error", () => undefined);
+    socket.destroy();
+  });
+}
+
 function releaseProbe(probe: LoopbackProbe): Promise<void> {
   return new Promise((resolve) => {
-    try { probe.closeAllConnections?.(); } catch { /* no connections */ }
+    try { probe.closeAllConnections?.(); } catch { /* net.Server has no such method */ }
     probe.close(() => resolve());
   });
 }
@@ -40,6 +47,7 @@ function releaseProbe(probe: LoopbackProbe): Promise<void> {
 export function portIsFree(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const probe = createServer();
+    armProbe(probe);
     probe.once("error", () => resolve(false));
     probe.listen(port, "127.0.0.1", () => { void releaseProbe(probe).then(() => resolve(true)); });
   });
@@ -54,6 +62,7 @@ export function portIsFree(port: number): Promise<boolean> {
 export async function freeLoopbackPort(): Promise<number> {
   for (let attempt = 0; attempt < REBINDABLE_PORT_ATTEMPTS; attempt++) {
     const probe = createServer();
+    armProbe(probe);
     const picked = await new Promise<number | undefined>((resolve) => {
       probe.once("error", () => resolve(undefined));
       probe.listen(0, "127.0.0.1", () => {
@@ -64,6 +73,7 @@ export async function freeLoopbackPort(): Promise<number> {
     if (picked === undefined) continue;
     await releaseProbe(probe);
     const check = createServer();
+    armProbe(check);
     const rebound = await new Promise<boolean>((resolve) => {
       check.once("error", () => resolve(false));
       check.listen(picked, "127.0.0.1", () => resolve(true));

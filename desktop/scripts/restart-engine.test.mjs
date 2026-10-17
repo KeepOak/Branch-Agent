@@ -33,10 +33,10 @@ const EVENTUALLY_DEFAULT_MS = 8000;
 // Windows keeps a closed listening socket reserved. A connection to that socket can accept
 // once and send nothing, and that connection keeps the reservation, so the next engine
 // never binds. The fixture engine resets its sockets and closes its listener before it
-// exits, and a test stops an engine by asking for that close. bind(0) can also return a
-// port an explicit listen will never take; only a port that bound again is handed out.
-// Linux and macOS free the socket at once. This deadline stays past a slow Windows bind
-// plus waitForGatewayPort (40 × 250ms).
+// exits, retries a refused bind without connecting, and a test stops an engine by asking
+// for that close. bind(0) can also return a port an explicit listen will never take; only
+// a port that bound again is handed out. Linux and macOS free the socket at once. This
+// deadline stays past a slow Windows bind plus waitForGatewayPort (40 × 250ms).
 const WINDOWS_FIXTURE_DEADLINE_MS = 75_000 + 10_000 + 5_000;
 function fixtureDeadline(timeout = EVENTUALLY_DEFAULT_MS) {
   return process.platform === "win32" ? Math.max(timeout, WINDOWS_FIXTURE_DEADLINE_MS) : timeout;
@@ -175,7 +175,7 @@ async function createFixtureFiles(root) {
   const engine = join(root, "engine"), windowDir = join(root, "window");
   await mkdir(join(engine, "dist"), { recursive: true }); await mkdir(windowDir);
   await writeFile(join(engine, "dist/build-info.json"), '{"version":"fixture"}');
-  const script = `import fs from "node:fs";import http from "node:http";import net from "node:net";
+  const script = `import fs from "node:fs";import http from "node:http";
 const root=${JSON.stringify(root)}, file=root+"/starts.json";
 const starts=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[];
 starts.push(process.pid);const tmp=file+"."+process.pid+".tmp";fs.writeFileSync(tmp,JSON.stringify(starts));fs.renameSync(tmp,file);
@@ -213,11 +213,11 @@ if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
   if(fs.existsSync(root+"/hold-standby")){const timer=setInterval(()=>{if(!fs.existsSync(root+"/hold-standby")){clearInterval(timer);announce();}},10);}else announce();
 }
 // A live holder still refuses the bind. Retry without calling close() on a server that
-// never listened: that second close keeps the reservation on Windows. One probe after
-// the first misses, and only once. Bytes mean a live holder and the process resets its
-// sockets and exits. Silence means keep binding, up to 60s on Windows and 5s elsewhere.
-// The probe resets its own socket so the check does not leave the port in TIME_WAIT.
-const listen=()=>{const port=Number(process.argv.at(-1));const started=Date.now();const limit=process.platform==="win32"?60000:5000;const bind=()=>listener.listen({port,host:"127.0.0.1",exclusive:false});let probing=false;let probed=false;let waiting=false;const retry=()=>{if(waiting)return;waiting=true;if(Date.now()-started>limit)shutdown(1);else setTimeout(()=>{waiting=false;bind();},50);};listener.on("error",error=>{if(!error||error.code!=="EADDRINUSE"){shutdown(1);return;}if(probing||waiting)return;if(!probed&&Date.now()-started>=500){probed=true;probing=true;const probe=net.connect({port,host:"127.0.0.1"});let settled=false;let timer;const finish=taken=>{if(settled)return;settled=true;clearTimeout(timer);try{probe.resetAndDestroy();}catch{probe.destroy();}probing=false;if(taken)shutdown(1);else retry();};probe.once("error",()=>finish(false));probe.once("data",()=>finish(true));timer=setTimeout(()=>finish(false),300);probe.once("connect",()=>{try{probe.write("GET / HTTP/1.0"+String.fromCharCode(13,10,13,10));}catch{finish(false);}});return;}retry();});bind();};
+// never listened: that second close keeps the reservation on Windows. Do not connect
+// while retrying. A connection to a just-closed socket can accept once and send
+// nothing, and that connection keeps the port reserved for the whole retry. Give up
+// after 60s on Windows and 5s elsewhere, then close the listener and exit.
+const listen=()=>{const port=Number(process.argv.at(-1));const started=Date.now();const limit=process.platform==="win32"?60000:5000;const bind=()=>listener.listen({port,host:"127.0.0.1",exclusive:false});let waiting=false;const retry=()=>{if(waiting)return;waiting=true;if(Date.now()-started>limit)shutdown(1);else setTimeout(()=>{waiting=false;bind();},50);};listener.on("error",error=>{if(!error||error.code!=="EADDRINUSE"){shutdown(1);return;}retry();});bind();};
 // As the real engine: a standby binds only after the old engine released state (stepped down, or drained).
 const released=()=>fs.existsSync(root+"/released-"+starts[0])||fs.existsSync(root+"/drained-"+starts[0]);
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-exits-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);shutdown(1);}},10);}
