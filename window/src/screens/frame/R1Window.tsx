@@ -100,11 +100,10 @@ export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
 };
 
 /**
- * Settings pages that are a place: Automations and Memory & documents open the place that has their controls
- * (Memory & documents opens Library on its Memory tab). Customize is an R1 Settings page of its own.
+ * Settings pages that are a place: Memory & documents opens Library on its Memory tab, which has its controls.
+ * Customize and Automations are R1 Settings pages of their own.
  */
 export const SETTINGS_PLACE: Readonly<Record<string, { place: PlaceId; tab?: string }>> = {
-  autos: { place: "automations" },
   memory: { place: "library", tab: "memory" },
 };
 

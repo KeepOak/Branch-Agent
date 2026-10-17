@@ -54,7 +54,7 @@ export function CustomizePlace({ engine, openConversation, openPlace, openSettin
       {tab === "Trunks" && <TrunksTab engine={engine} level={level} trunks={trunks} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={startConversation} />}</div>
     {tab !== "Trunks" && <div className="cz">
       {tab === "Chat apps" ? <ChannelsTab engine={engine} openSettings={openSettings} />
-      : <ToolsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} getting={getting} setGetting={setGetting} openConversation={openConversation} />}
+      : <ToolsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} getting={getting} setGetting={setGetting} openConversation={openConversation} openSettings={openSettings} />}
     </div>}
   </PlaceFrame>;
 }
