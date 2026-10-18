@@ -1,5 +1,6 @@
 window:src/glass/smart-glass.test.ts
 window:src/screens/chat/raw-errors-1089.test.tsx
+window:src/screens/g48-ids.test.ts
 window:src/screens/sidebar/Sidebar.test.tsx
 window:src/screens/sidebar/menu-surface.test.ts
 window:src/shell/plain-error.test.tsx
