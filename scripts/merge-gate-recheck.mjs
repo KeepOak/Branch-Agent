@@ -4,6 +4,7 @@
 // so the last event to land always decides. A gate attempt that was itself a rerun is never rerun again.
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { withRateLimitRetry } from './merge-gate-rate-limit.mjs';
 
 export const GATE_NAMES = ['Merge gate', 'Merge gate trusted'];
 const ORDINARY_GATE = 'Merge gate';
@@ -11,6 +12,37 @@ const TRUSTED_GATE = 'Merge gate trusted';
 // The recheck workflow's own runs are not content: an in-progress recheck must never hold a gate back.
 export const RECHECK_NAME = 'Merge gate recheck';
 const PASS = new Set(['success', 'skipped', 'neutral']);
+// Shared by every gh call in this process. Fits inside the 15-minute job after the 30s settle.
+export const RECHECK_RATE_LIMIT_BUDGET_SECONDS = 600;
+
+const jobBudget = { startedAt: null };
+
+function sleepSeconds(seconds) {
+  execFileSync('sleep', [String(seconds)], { windowsHide: true });
+}
+
+// Rate limits (403/429) wait and retry. Other errors fail immediately, same as before.
+export function runGh(args, env = process.env, {
+  exec = execFileSync,
+  sleep = sleepSeconds,
+  now = Date.now,
+  budget = jobBudget,
+  budgetSeconds = Number(env.MERGE_GATE_API_WAIT_SECONDS) || RECHECK_RATE_LIMIT_BUDGET_SECONDS,
+  log,
+} = {}) {
+  budget.startedAt ??= now();
+  return withRateLimitRetry(() => exec('gh', args, {
+    encoding: 'utf8',
+    windowsHide: true,
+    env,
+  }), {
+    sleep,
+    now,
+    startedAt: budget.startedAt,
+    budgetSeconds,
+    log,
+  });
+}
 
 // runs: every run on the head, as { id, workflowName, status, conclusion, createdAt }.
 export function summarizeRuns(runs) {
@@ -74,8 +106,8 @@ export function triggerSkipReason(trigger) {
 }
 
 function listRuns(repo, sha) {
-  const out = execFileSync('gh', ['run', 'list', '-R', repo, '--commit', sha, '--limit', '200',
-    '--json', 'databaseId,workflowName,status,conclusion,createdAt'], { encoding: 'utf8', env: process.env });
+  const out = runGh(['run', 'list', '-R', repo, '--commit', sha, '--limit', '200',
+    '--json', 'databaseId,workflowName,status,conclusion,createdAt'], process.env, { log: console.log });
   return JSON.parse(out || '[]').map((run) => ({
     id: run.databaseId, workflowName: run.workflowName, status: run.status, conclusion: run.conclusion, createdAt: run.createdAt,
   }));
@@ -106,7 +138,7 @@ export function runRecheck({
 }
 
 function rerunGate(repo, id) {
-  execFileSync('gh', ['run', 'rerun', String(id), '-R', repo], { stdio: 'inherit', env: process.env });
+  runGh(['run', 'rerun', String(id), '-R', repo], process.env, { log: console.log });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
