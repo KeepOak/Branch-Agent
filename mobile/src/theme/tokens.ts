@@ -161,6 +161,31 @@ export function glassOf(raise: string): string {
   return `rgba(${r}, ${g}, ${b}, 0.9)`;
 }
 
+function srgbChannel(value: number): number {
+  const c = value / 255;
+  return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+function srgbFromLinear(y: number): number {
+  const c = y <= 0.0031308 ? 12.92 * y : 1.055 * y ** (1 / 2.4) - 0.055;
+  return Math.round(Math.min(1, Math.max(0, c)) * 255);
+}
+
+/** Map a #rrggbb colour to equal-channel grey at the same WCAG luminance. Already-grey values stay. */
+export function toGrayscale(value: string): string {
+  const hex = /^#([0-9a-f]{6})$/i.exec(value.trim());
+  if (!hex) return value;
+  const n = hex[1];
+  const r = Number.parseInt(n.slice(0, 2), 16);
+  const g = Number.parseInt(n.slice(2, 4), 16);
+  const b = Number.parseInt(n.slice(4, 6), 16);
+  if (r === g && g === b) return `#${n.toLowerCase()}`;
+  const y = 0.2126 * srgbChannel(r) + 0.7152 * srgbChannel(g) + 0.0722 * srgbChannel(b);
+  const v = srgbFromLinear(y);
+  const h = v.toString(16).padStart(2, '0');
+  return `#${h}${h}${h}`;
+}
+
 export function themeFor(scheme: ColorScheme, overlay?: Partial<Palette>): Theme {
   const color = overlay ? { ...palettes[scheme], ...overlay, glass: overlay.glass ?? glassOf(overlay.raise ?? palettes[scheme].raise) } : palettes[scheme];
   return { scheme, color, type, space, layout, radius, motion };

@@ -1,6 +1,6 @@
 // Copied from the desktop theme catalogue (window appearance-look / appearance-legacy,
 // engine BUILTIN_THEMES). Grove is shown as Branch Slate, the window's own tokens.
-import type { ColorScheme, Palette } from './tokens';
+import { palettes, toGrayscale, type ColorScheme, type Palette } from './tokens';
 
 export const DEFAULT_THEME_ID = 'grove';
 
@@ -77,7 +77,35 @@ export function isDesktopThemeId(id: string): boolean {
   return DESKTOP_THEMES.some((theme) => theme.id === id);
 }
 
+function tokenSlice(scheme: ColorScheme): Slice {
+  const color = palettes[scheme];
+  return {
+    bg: color.bg,
+    grouped: color.grouped,
+    raise: color.raise,
+    ink: color.ink,
+    ink2: color.ink2,
+    ink3: color.ink3,
+    line: color.line,
+    fill: color.fill,
+    accent: color.accent,
+    accentInk: color.accentInk,
+    onAccent: color.onAccent,
+    ok: color.ok,
+    warn: color.warn,
+    bad: color.bad,
+  };
+}
+
+function graySlice(slice: Slice): Slice {
+  const out = { ...slice };
+  for (const key of Object.keys(out) as (keyof Slice)[]) out[key] = toGrayscale(slice[key]);
+  return out;
+}
+
 export function paletteSliceFor(id: string, scheme: ColorScheme): Slice {
-  const pal = PALETTES[isDesktopThemeId(id) ? id : DEFAULT_THEME_ID] ?? PALETTES[DEFAULT_THEME_ID];
-  return pal[scheme];
+  const key = isDesktopThemeId(id) ? id : DEFAULT_THEME_ID;
+  if (key === DEFAULT_THEME_ID) return tokenSlice(scheme);
+  const pal = PALETTES[key] ?? PALETTES[DEFAULT_THEME_ID];
+  return graySlice(pal[scheme]);
 }

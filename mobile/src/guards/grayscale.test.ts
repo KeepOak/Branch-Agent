@@ -1,4 +1,5 @@
-import { palettes } from '../theme/tokens';
+import { DESKTOP_THEMES, paletteSliceFor } from '../theme/desktopThemes';
+import { palettes, toGrayscale } from '../theme/tokens';
 import { colorLiterals, formatHits, isGrayscaleColor, readMobileFile, uiSourceFiles } from './sourceScan';
 
 const TOKEN_FILE = 'src/theme/tokens.ts';
@@ -37,5 +38,26 @@ describe('grayscale theme tokens', () => {
       }
     }
     expect(tokenHits).toEqual([]);
+  });
+
+  it('maps a hue to equal-channel grey and leaves greys alone', () => {
+    expect(toGrayscale('#484ce5')).toMatch(/^#[0-9a-f]{6}$/);
+    expect(isGrayscaleColor(toGrayscale('#484ce5'))).toBe(true);
+    expect(toGrayscale('#1c1c1c')).toBe('#1c1c1c');
+    expect(toGrayscale('rgba(19, 19, 19, 0.3)')).toBe('rgba(19, 19, 19, 0.3)');
+  });
+
+  it('keeps every desktop look grayscale at runtime, including the default token slice', () => {
+    const hits: string[] = [];
+    for (const theme of DESKTOP_THEMES) {
+      for (const scheme of ['light', 'dark'] as const) {
+        for (const [name, value] of Object.entries(paletteSliceFor(theme.id, scheme))) {
+          if (!isGrayscaleColor(value)) hits.push(`${theme.id} ${scheme}.${name}=${value}`);
+        }
+      }
+    }
+    expect(hits).toEqual([]);
+    expect(paletteSliceFor('grove', 'light').grouped).toBe(palettes.light.grouped);
+    expect(paletteSliceFor('grove', 'dark').ink).toBe(palettes.dark.ink);
   });
 });
