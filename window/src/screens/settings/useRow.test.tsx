@@ -69,10 +69,15 @@ describe("useRow on this device and the desktop app", () => {
   it("reads and changes a desktop app switch through the bridge, and follows a change made elsewhere", async () => {
     let state = controls();
     const set = vi.fn(async (name: keyof DesktopControlsState, on: boolean) => { state = { ...state, [name]: on }; return state; });
-    const bridge = { get: vi.fn(async () => state), set } as unknown as DesktopControlsBridge;
+    const get = vi.fn(async () => state);
+    const bridge = { get, set } as unknown as DesktopControlsBridge;
     (window as { branchDesktop?: unknown }).branchDesktop = { controls: bridge };
     const { engine } = engineOf();
     await mount(engine, startRow);
+    expect(view.state).toBe("loading");
+    expect(get).not.toHaveBeenCalled();
+    await act(async () => { await view.retry(); });
+    expect(get).toHaveBeenCalledTimes(1);
     expect(view).toMatchObject({ value: false, state: "ready" });
     await act(async () => { await view.set(true); });
     expect(set).toHaveBeenCalledWith("startWithWindows", true);

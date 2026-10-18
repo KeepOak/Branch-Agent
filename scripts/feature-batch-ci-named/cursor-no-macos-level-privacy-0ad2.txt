@@ -1,2 +1,4 @@
+window:src/places/settings/set2/remove-app.test.tsx
 window:src/screens/settings/always-on-rows.test.tsx
 window:src/screens/settings/level-switch-app-data.test.tsx
+window:src/screens/settings/useRow.test.tsx

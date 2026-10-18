@@ -8,7 +8,7 @@ import { configStore, pathKeys } from "../../places/settings/config-store";
 import { isDeviceKey, lookHolder, lookStore } from "../../places/settings/set1/appearance-store";
 import { has } from "../../places/inbox/data";
 import { DESKTOP_CONTROLS_CHANGED, NEEDS_NEWER_APP, desktopControls, type DesktopControlName, type DesktopControlsBridge, type DesktopControlsState } from "../../connect/desktop-controls";
-import { readOwnDesktopState, writeOwnDesktopState } from "./desktop-own-state";
+import { isDesktopStateReady, writeOwnDesktopState } from "./desktop-own-state";
 import type { Level } from "./nav";
 import { hintFor, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
 
@@ -141,10 +141,25 @@ class PrefStore extends Emitter {
 }
 
 type DesktopSnap = { state: DesktopControlsState | null; error?: string };
+/** Load the desktop snapshot when the person opens or uses a row, not when Starting up first mounts. */
+function watchRowUse(rowId: string, onUse: () => void): () => void {
+  const hit = (e: Event) => {
+    const target = e.target;
+    const row = document.getElementById(`row-${rowId}`);
+    if (target instanceof Node && row?.contains(target)) onUse();
+  };
+  document.addEventListener("focusin", hit);
+  document.addEventListener("pointerdown", hit);
+  return () => {
+    document.removeEventListener("focusin", hit);
+    document.removeEventListener("pointerdown", hit);
+  };
+}
 /** The desktop app's controls, read once per bridge and kept current when any row (or Classic's) changes one. */
 class DesktopStore extends Emitter {
   snap: DesktopSnap = { state: null };
   private started = false;
+  private loading: Promise<void> | null = null;
   private bridge: DesktopControlsBridge;
   constructor(bridge: DesktopControlsBridge) { super(); this.bridge = bridge; }
   start() {
@@ -152,20 +167,33 @@ class DesktopStore extends Emitter {
     this.started = true;
     window.addEventListener(DESKTOP_CONTROLS_CHANGED, (e) => {
       const state = (e as CustomEvent<DesktopControlsState>).detail;
+      if (!isDesktopStateReady(state)) return;
       writeOwnDesktopState(state);
       this.snap = { state };
       this.emit();
     });
-    // Do not call bridge.get(): on macOS that reads other apps' login items (Sequoia App Data).
-    // Use Branch's own last snapshot, or each row's fallback until the person changes a switch.
-    this.snap = { state: readOwnDesktopState() ?? ({} as DesktopControlsState) };
+    // Do not call bridge.get() on first mount: on macOS that reads other apps' login items (Sequoia App Data).
+    // Stay unknown until the person opens or uses a row. An empty {} is not ready.
+    this.snap = { state: null };
     this.emit();
   }
+  /** First focus, expand, toggle or Try again reads the real login-item state. */
+  ensureLoaded(): Promise<void> {
+    if (isDesktopStateReady(this.snap.state)) return Promise.resolve();
+    this.loading ??= this.load().finally(() => { this.loading = null; });
+    return this.loading;
+  }
   async load(): Promise<void> {
+    this.snap = { state: isDesktopStateReady(this.snap.state) ? this.snap.state : null };
+    this.emit();
     try {
       const state = await this.bridge.get();
-      writeOwnDesktopState(state);
-      this.snap = { state };
+      if (isDesktopStateReady(state)) {
+        writeOwnDesktopState(state);
+        this.snap = { state };
+      } else {
+        this.snap = { state: null };
+      }
     } catch (e) { this.snap = { state: null, error: errorText(e) }; } finally { this.emit(); }
   }
   private queue: Promise<unknown> = Promise.resolve();
@@ -173,13 +201,16 @@ class DesktopStore extends Emitter {
    *  in click order; a refused change puts the value back. */
   set(name: DesktopControlName, on: boolean): Promise<void> {
     const before = this.snap.state;
-    if (before) { this.snap = { state: { ...before, [name]: on } }; this.emit(); }
+    if (isDesktopStateReady(before)) { this.snap = { state: { ...before, [name]: on } }; this.emit(); }
     const run = this.queue.then(async () => {
       try {
         const next = await this.bridge.set(name, on);
         window.dispatchEvent(new CustomEvent(DESKTOP_CONTROLS_CHANGED, { detail: next }));
       } catch (e) {
-        if (this.snap.state && before) { this.snap = { state: { ...this.snap.state, [name]: before[name] } }; this.emit(); }
+        if (isDesktopStateReady(this.snap.state) && isDesktopStateReady(before)) {
+          this.snap = { state: { ...this.snap.state, [name]: before[name] } };
+          this.emit();
+        }
         throw e;
       }
     });
@@ -317,14 +348,17 @@ function sourceOf(engine: WindowEngine, row: Row): Source {
     return {
       subscribe: store.subscribe,
       snapshot: () => store.snap as unknown,
-      start: () => { store.start(); return () => undefined; },
+      start: () => {
+        store.start();
+        return watchRowUse(row.id, () => { void store.ensureLoaded(); });
+      },
       read: () => store.snap.state?.[src.name],
       // A one-time line the app has for this switch (the engine running inside the app) replaces its help.
       note: () => store.snap.state?.notes?.[src.name],
-      status: (): Status => (store.snap.state ? { state: "ready" } : store.snap.error ? { state: "error", reason: LOAD_FAILED } : { state: "loading" }),
+      status: (): Status => (isDesktopStateReady(store.snap.state) ? { state: "ready" } : store.snap.error ? { state: "error", reason: LOAD_FAILED } : { state: "loading" }),
       blocked: () => undefined,
-      save: (value: unknown) => store.set(src.name, value === true),
-      retry: async () => { await store.load(); return store.snap.state !== null; },
+      save: async (value: unknown) => { await store.ensureLoaded(); return store.set(src.name, value === true); },
+      retry: async () => { await store.load(); return isDesktopStateReady(store.snap.state); },
     };
   }
   return {
@@ -370,11 +404,13 @@ export function useRow(engine: WindowEngine, row: Row): RowView {
   }, [engine, path]);
 
   const stored = source.read();
-  const raw = stored !== undefined && stored !== null ? stored : (path ? schemaDefault(schema, path) : undefined) ?? row.fallback;
-  const value = row.codec ? row.codec.read(raw) : raw;
   const { codec } = row;
   const { save } = source;
   const base = source.status();
+  // While a desktop row is still unknown, do not use the row fallback (Start when I sign in defaults on).
+  const notLoaded = base.state === "loading" || (base.state === "error" && base.reason === LOAD_FAILED);
+  const raw = stored !== undefined && stored !== null ? stored : notLoaded ? undefined : (path ? schemaDefault(schema, path) : undefined) ?? row.fallback;
+  const value = row.codec ? row.codec.read(raw) : raw;
   const blocked = base.state === "ready" ? source.blocked() : undefined;
   const set = useCallback(async (next: unknown) => {
     // Never send a change the engine would refuse (a scope this connection lacks, an invalid settings file).

@@ -68,9 +68,11 @@ describe("the desktop switches behind them", () => {
     const rows = startingUpRows("Linux");
 
     await mount(at(rows, "general.start.keep-working")!);
-    expect(view).toMatchObject({ value: true, state: "ready" });
+    expect(view.state).toBe("loading");
+    expect(view.value).not.toBe(true);
     expect(get).not.toHaveBeenCalled();
     await act(async () => { await view.set(false); });
+    expect(get).toHaveBeenCalled();
     expect(set).toHaveBeenLastCalledWith("keepWorking", false);
     expect(view.help).toMatch(/^Branch runs inside the app on this computer/);
 
