@@ -1,6 +1,6 @@
 // Starts the Branch engine gateway as a child process (as the early copy's start.sh does) and stops it by PID.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync, openSync, closeSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync, openSync, closeSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer, type Server, type Socket } from "node:net";
 import { constants as osConstants, setPriority } from "node:os";
@@ -116,12 +116,42 @@ export function holdLoopbackServer(port: number, server: Server): void {
   heldLoopback().set(port, server);
 }
 
+/**
+ * Drops the listening socket now. `close()` waits for accepted clients, and on Windows that
+ * wait keeps the port reserved, so the next listen fails until the fixture deadline.
+ * The OS handle is closed here, not on the close callback.
+ */
+function abortLoopbackServer(server: Server): void {
+  const open = server as Server & { _handle?: { close?: () => void } | null };
+  const handle = open._handle;
+  try { server.close(); } catch { /* already closing */ }
+  try { handle?.close?.(); } catch { /* already closed */ }
+}
+
 /** Closes the listening socket this process was holding for `port`, if any. */
 export function releaseHeldLoopbackPort(port: number): void {
   const holder = heldLoopback().get(port);
   if (!holder) return;
   heldLoopback().delete(port);
-  void closeServer(holder);
+  abortLoopbackServer(holder);
+}
+
+/**
+ * The restart fixture's squatter standbys listen only after the old engine lets go.
+ * The port has to be free for that squatter. Holding it until the child says so loses
+ * the race: the squatter is already retrying a port this process still owns.
+ */
+function standbyLeavesPortFree(dataDir: string): boolean {
+  if (process.env.BRANCH_DESKTOP_HOLD_LOOPBACK !== "1") return false;
+  return ["standby-binds-after-release", "standby-exits-after-release", "standby-needs-take-over"]
+    .some((name) => existsSync(join(dataDir, name)));
+}
+
+/** A send after the child has gone emits EPIPE on a later turn. A callback keeps that off the test. */
+function sendToChild(child: ChildProcess, message: { type: string }): void {
+  if (!child.connected) return;
+  try { child.send(message, () => undefined); }
+  catch { /* no IPC, or already gone */ }
 }
 
 /**
@@ -133,7 +163,7 @@ export function releaseHeldLoopbackPort(port: number): void {
 export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): void {
   if (!heldLoopback().has(port)) {
     // The configured port is not held. The engine binds it itself.
-    try { child.send({ type: "branch-desktop:bind-yourself" }); } catch { /* no IPC, or already gone */ }
+    sendToChild(child, { type: "branch-desktop:bind-yourself" });
     return;
   }
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -185,7 +215,7 @@ export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): v
     child.on("message", onBound);
     // No timer. A stalled event loop can make a timeout run before the queued bound message,
     // and closing then drops the socket the child just started using.
-    try { child.send({ type: "branch-desktop:listen-handle" }, holder); }
+    try { child.send({ type: "branch-desktop:listen-handle" }, holder, (error) => { if (error) finish(); }); }
     catch { finish(); }
   };
   const onMessage = (value: unknown) => {
@@ -365,7 +395,12 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   if (!standby && child.pid !== undefined) {
     saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "gateway.pid"), String(child.pid)));
   }
-  releaseHeldPortWhenBinding(child, port);
+  // A squatter has to bind this standby's port before the engine does. Free it now.
+  // Waiting for the child's defer message leaves this process listening through the squatter's deadline.
+  if (standby && standbyLeavesPortFree(cfg.dataDir)) {
+    releaseHeldLoopbackPort(port);
+    sendToChild(child, { type: "branch-desktop:bind-yourself" });
+  } else releaseHeldPortWhenBinding(child, port);
   return child;
 }
 
