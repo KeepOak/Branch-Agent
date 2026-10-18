@@ -1,10 +1,10 @@
 // Settings › Trunks, as the approved preview draws it (preview.html PG trunksP17, item 36): one untitled card with A new
 // Trunk, New group chat, each Trunk's row (face and name open its profile; Edit; the ••• menu in the preview's words, with
 // Who it knows in it) and one "Start from a template" row that opens Seedbank; at Technical the defaults for every Trunk's
-// folders and sizes inside it. At Advanced the preview's "Defaults for every Trunk" and "Trunks’ own databases" cards
-// follow. Everything Customize › Trunks did works here (places/customize/trunks.tsx, its Settings variant); the rows and
+// folders and sizes inside it. At Technical the preview's "Defaults for every Trunk" and "Trunks’ own databases" cards
+// follow (both Coming). Everything Customize › Trunks did works here (places/customize/trunks.tsx, its Settings variant); the rows and
 // buttons the preview has with nothing behind them yet are Coming in their own words (R1-10).
-import type { ReactElement } from "react";
+import { useId, type ReactElement } from "react";
 import { Coming } from "../../../glass/coming";
 import { TrunksTab } from "../../../places/customize/trunks";
 import { useResource, type Trunks } from "../../../places/library/data";
@@ -36,8 +36,11 @@ export const TRUNK_DEFAULTS: { id: string; label: string; help?: string; button?
 /** Re-hosted Classic pages and Trunk profiles open a place this way; R1Window opens it (branch:navigate-place). */
 const openPlace = (place: string) => window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place } }));
 
+/** One row of that card. Every row is Coming, so the card shows only at Technical; there each greyed control, switch or
+ *  button ("See them", "Add one", "Export…", "Browse"), says why in one visible line it names with aria-describedby. */
 function DefaultRow({ engine, item }: { engine: SlotPageProps["engine"]; item: (typeof TRUNK_DEFAULTS)[number] }): ReactElement {
   const reason = `${item.label} comes in a later update.`;
+  const whyId = useId();
   return (
     <div className="r1s-row" data-row={`trunks.defaults.${item.id}`} data-lv="Advanced">
       <b className="g-label" data-lv="Advanced">{item.label}</b>
@@ -45,11 +48,11 @@ function DefaultRow({ engine, item }: { engine: SlotPageProps["engine"]; item: (
       <div className="r1s-ctl">
         <Coming engine={engine} need={item.need} unwired reason={reason} where={item.label}>
           {item.button
-            ? <button type="button" className="r1s-btn">{item.button}</button>
-            : <span className="r1s-own-ctl"><Toggle label={item.label} on={false} disabled aria-disabled="true" title={reason} onChange={() => undefined} /></span>}
+            ? <button type="button" className="r1s-btn" aria-describedby={whyId}>{item.button}</button>
+            : <span className="r1s-own-ctl"><Toggle label={item.label} on={false} disabled aria-disabled="true" title={reason} aria-describedby={whyId} onChange={() => undefined} /></span>}
         </Coming>
       </div>
-      {item.button ? null : <small className="r1s-note g-label" data-lines>{reason}</small>}
+      <small className="r1s-note g-label" id={whyId} data-lines>{reason}</small>
     </div>
   );
 }
@@ -92,6 +95,7 @@ const row = (id: string, card: string, label: string, level: 0 | 1 | 2): Row =>
 /** What the page draws, as rows of the R1 table, so the R1 search finds them and opens Settings › Trunks. */
 export const TRUNK_ROWS: Row[] = [
   row("list.new", "", "A new Trunk", 0),
+  row("list.examples", "", "Try it with examples", 0),
   row("list.group", "", "New group chat", 0),
   row("list.make-default", "", "Make default", 0),
   row("list.share", "", "Share this Trunk", 0),

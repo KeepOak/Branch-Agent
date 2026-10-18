@@ -3,12 +3,14 @@
 // Pause / Make default / Edit. It loads its own data, so any place (the thread header too) can open it by id.
 // "What it can do" (parity row 16, owner placement 2026-10-14) re-hosts the Classic list from shell/CanDo.tsx as a section.
 import { useState, type ReactNode } from "react";
+import { usableModelName } from "../../composer/model";
 import { safeStorage, saveDraft } from "../../composer/drafts";
 import { CAN_DO, type CanDoGo } from "../../shell/CanDo";
 import { PairDialog } from "../customize/pairing";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
+import { menuAtLevel } from "../../shell/menu-level";
 import { Icon } from "../../shell/icons";
 import { notify } from "../../shell/notify";
 import { Switch } from "../../shell/Popover";
@@ -88,14 +90,14 @@ export function Automations({ engine, data, reload }: { engine: WindowEngine; da
 function Rows({ row, data, level, edit, openPlace, showFiles }: { row: TrunkRow; data: ProfileData; level: Level; edit: (t: EditorTab) => void; openPlace?: (p: PlaceId) => void; showFiles: () => void }) {
   const may = readMay(data.snap, row.id);
   const where = may.startOn === "this" ? "This computer" : data.computers.find((c) => c.id === may.startOn)?.name || may.startOn;
-  const model = data.models.find((m) => m.ref === row.model)?.name || row.model.split("/").pop() || "Default model";
+  const model = usableModelName(row.model, data.models);
   const mayLine = [may.read ? "Reads your files" : "Only its own folder", may.browse ? "uses the browser" : "no browser"].join(" · ");
   return (
     <div className="tk-rows">
       <Row icon={<Icon name="monitor" small />} label="Its computer" value={where} onClick={() => edit("computers")} />
       <Row icon={<LineIcon name="spark" />} label="Model" value={model} onClick={() => edit("may")} />
       <Row icon={<LineIcon name="shield" />} label="May do" value={mayLine} onClick={() => edit("may")} />
-      <Row icon={<LineIcon name="plug" />} label="Its tools" value="Customize › Toolsets" onClick={openPlace && (() => { requestCustomize({ kind: "Toolsets" }); openPlace("customize"); })} />
+      <Row icon={<LineIcon name="plug" />} label="Its tools" value="" onClick={openPlace && (() => { requestCustomize({ kind: "Toolsets" }); openPlace("customize"); })} />
       <Row icon={<Icon name="book" small />} label="What it remembers" value={data.facts === null ? "Library › Memory" : data.facts === 1 ? "1 fact" : `${data.facts} facts`} onClick={openPlace && (() => openPlace("library"))} />
       {shows(level, "advanced") && <Row icon={<LineIcon name="spark" />} label="Skills it may use" value={skillsLine(data, row.id)} onClick={openPlace && (() => openPlace("customize"))} />}
       {shows(level, "technical") && <Row icon={<Icon name="folder" small />} label="Its folder" value={row.workspace || "Not reported"} mono onClick={showFiles} />}
@@ -181,7 +183,7 @@ function ProfileBody({ engine, level, onClose, openPlace, openSettings, openConv
         {data.notes.map((n) => <p key={n} className="tk-hint" role="status">{n}</p>)}
         {error && <p className="tk-error" role="alert">{error}</p>}
       </div>
-      {more && <Menu at={more} label={`More for ${row.name}`} testid="trunk-more" onClose={() => setMore(null)} items={moreItems} />}
+      {more && <Menu at={more} label={`More for ${row.name}`} testid="trunk-more" onClose={() => setMore(null)} items={menuAtLevel(moreItems, shows(level, "technical"))} />}
     </Dialog></Layer>
   );
 }

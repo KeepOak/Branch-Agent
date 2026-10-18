@@ -1,4 +1,5 @@
 // Register service command tests cover daemon service subcommand registration.
+import { Readable } from "node:stream";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isVerbose, setVerbose } from "../../globals.js";
@@ -16,6 +17,7 @@ const runDaemonStart = vi.fn(async (_opts: unknown) => {});
 const runDaemonStatus = vi.fn(async (_opts: unknown) => {});
 const runDaemonStop = vi.fn(async (_opts: unknown) => {});
 const runDaemonUninstall = vi.fn(async (_opts: unknown) => {});
+const runAppChildSupervisor = vi.fn(async (_opts: unknown) => {});
 
 vi.mock("../program/config-guard.js", () => ({ ensureConfigReady: vi.fn(async () => {}) }));
 
@@ -33,6 +35,9 @@ const gatewayServiceEnv = {
 vi.mock("./install.runtime.js", () => ({
   runDaemonInstall: (opts: unknown) => runDaemonInstall(opts),
 }));
+vi.mock("./install-background-service.js", () => ({
+  runInstallBackgroundService: (opts: unknown) => runDaemonInstall(opts),
+}));
 
 vi.mock("./status.runtime.js", () => ({
   runDaemonStatus: (opts: unknown) => runDaemonStatus(opts),
@@ -44,6 +49,25 @@ vi.mock("./lifecycle.runtime.js", () => ({
   runDaemonStop: (opts: unknown) => runDaemonStop(opts),
   runDaemonUninstall: (opts: unknown) => runDaemonUninstall(opts),
 }));
+vi.mock("./app-child-supervisor.js", () => ({
+  runAppChildSupervisor: (opts: unknown) => runAppChildSupervisor(opts),
+}));
+vi.mock("../../infra/runtime-process-entrypoints.js", () => {
+  const dummy = (name: string) => ({
+    currentModuleUrl: import.meta.url,
+    sourceWorkerName: name,
+    distWorkerPath: `${name}.js`,
+  });
+  return {
+    SQLITE_READONLY_CHILD_ARG: "--branch-sqlite-readonly-child",
+    runtimeProcessEntrypoints: new Proxy(
+      {},
+      {
+        get: (_target, prop) => dummy(String(prop)),
+      },
+    ),
+  };
+});
 
 function createGatewayParentLikeCommand(program?: Command) {
   const gateway = program ? program.command("gateway") : new Command().name("gateway");
@@ -77,8 +101,37 @@ function setRestartRouteEnv(env: Record<string, string | undefined>) {
   }
 }
 
+async function withEndedStdin<T>(run: () => Promise<T>): Promise<T> {
+  const previousStdin = Object.getOwnPropertyDescriptor(process, "stdin");
+  Object.defineProperty(process, "stdin", {
+    configurable: true,
+    value: Readable.from([]),
+  });
+  try {
+    return await run();
+  } finally {
+    if (previousStdin) {
+      Object.defineProperty(process, "stdin", previousStdin);
+    }
+  }
+}
+
 describe("addGatewayServiceCommands", () => {
   let restartRouteEnvSnapshot: ReturnType<typeof captureEnv>;
+
+  it("registers a hidden supervise-app-child command", async () => {
+    const gateway = createGatewayParentLikeCommand().enablePositionalOptions().exitOverride();
+    const command = gateway.commands.find((entry) => entry.name() === "supervise-app-child");
+    expect(command).toBeDefined();
+    expect(gateway.helpInformation()).not.toContain("supervise-app-child");
+    await gateway.parseAsync(["supervise-app-child", "--port", "18789"], { from: "user" });
+    expect(runAppChildSupervisor).toHaveBeenCalledWith({ port: 18789 });
+    await gateway.parseAsync(
+      ["supervise-app-child", "--port", "18789", "--owner-pid", "55"],
+      { from: "user" },
+    );
+    expect(runAppChildSupervisor).toHaveBeenCalledWith({ port: 18789, ownerPid: 55 });
+  });
 
   beforeEach(() => {
     restartRouteEnvSnapshot = captureEnv(RESTART_ROUTE_ENV_KEYS);
@@ -89,6 +142,7 @@ describe("addGatewayServiceCommands", () => {
     runDaemonStatus.mockClear();
     runDaemonStop.mockClear();
     runDaemonUninstall.mockClear();
+    runAppChildSupervisor.mockClear();
     vi.mocked(ensureConfigReady).mockClear();
   });
 
@@ -198,10 +252,12 @@ describe("addGatewayServiceCommands", () => {
       process.argv = ["node", "branch", parent, action, "--update-executor", "check"];
       const output = vi.spyOn(process.stdout, "write").mockReturnValue(true);
       try {
-        await withConsoleLogsRoutedToStderrForJson(
-          process.argv,
-          () => program.parseAsync(process.argv),
-          { restoreChanges: true },
+        await withEndedStdin(() =>
+          withConsoleLogsRoutedToStderrForJson(
+            process.argv,
+            () => program.parseAsync(process.argv),
+            { restoreChanges: true },
+          ),
         );
       } finally {
         process.argv = previousArgv;
@@ -415,6 +471,7 @@ describe("addGatewayServiceCommands", () => {
     ...[
       { leaf: "status", runner: runDaemonStatus },
       { leaf: "install", runner: runDaemonInstall },
+      { leaf: "install-background-service", runner: runDaemonInstall },
       { leaf: "uninstall", runner: runDaemonUninstall },
       { leaf: "start", runner: runDaemonStart },
       { leaf: "stop", runner: runDaemonStop },

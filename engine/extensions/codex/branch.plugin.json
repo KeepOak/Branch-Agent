@@ -46,6 +46,7 @@
   ],
   "name": "Codex",
   "description": "Codex app-server harness and native session catalog.",
+  "enabledByDefault": true,
   "cliCommands": [
     {
       "name": "codex",
@@ -76,7 +77,7 @@
     }
   },
   "activation": {
-    "onStartup": false,
+    "onStartup": true,
     "onAgentHarnesses": ["codex"],
     "onCommands": ["codex"],
     "onConfigPaths": [

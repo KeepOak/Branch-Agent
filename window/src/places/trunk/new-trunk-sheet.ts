@@ -1,6 +1,7 @@
 // The New Trunk sheet (preview editTrunk look controls, then newTrunkC18's chat questions).
 // Colour and shape are the preview's pebble sets. Create sends them with the name; the chat asks the rest.
 import type { WindowEngine } from "../../connect/engine";
+import { existingTrunkId } from "./api";
 import { COLOURS } from "./LookTab";
 
 /** Find anything and Settings search open the same sheet the + menu opens. */
@@ -53,20 +54,27 @@ function refused(result: unknown): void {
   }
 }
 
-/** agents.create with the pebble the sheet shows. Eyes stay Round; the editor still changes them. */
+/** agents.create with the pebble the sheet shows. Eyes stay Round; the editor still changes them.
+ *  Create again for a name that already exists returns that Trunk so the sheet can open it. */
 export async function createShapedTrunk(engine: WindowEngine, draft: NewTrunkDraft): Promise<string> {
   const name = draft.name.trim();
   if (!canCreateTrunk(name)) throw new Error("Give the Trunk a name.");
   if (!TRUNK_COLOURS.includes(draft.colour) || !TRUNK_SHAPES.includes(draft.shape)) throw new Error("Pick a colour and a shape.");
-  const result = await engine.request("agents.create", {
-    name,
-    avatar: "classic",
-    colour: draft.colour,
-    shape: draft.shape,
-    eyes: "Round",
-  });
-  refused(result);
-  const id = str(rec(result).agentId);
-  if (!id) throw new Error("The engine did not confirm that the Trunk was created.");
-  return id;
+  try {
+    const result = await engine.request("agents.create", {
+      name,
+      avatar: "classic",
+      colour: draft.colour,
+      shape: draft.shape,
+      eyes: "Round",
+    });
+    refused(result);
+    const id = str(rec(result).agentId);
+    if (!id) throw new Error("The engine did not confirm that the Trunk was created.");
+    return id;
+  } catch (error) {
+    const existing = await existingTrunkId(engine, name, error);
+    if (existing) return existing;
+    throw error;
+  }
 }

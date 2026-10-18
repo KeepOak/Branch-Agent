@@ -10,7 +10,7 @@ import { GENERAL_ROWS, GeneralPage } from "./general";
 import { GENERAL_PREFS } from "./general-conversation";
 import { ttlMinutes } from "./general-summaries";
 import { IN_BROWSER } from "../../../connect/desktop-controls";
-import { platformName } from "../../../setup/steps-later";
+import { KEEP_SIGNED_OUT, START_AT_SIGN_IN, START_NEEDS_UPDATE } from "./general-more";
 import { visibleDevNotes } from "../../../shell/shown-why.testing";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -196,7 +196,7 @@ describe("Settings › General", () => {
     const { engine } = engineOf();
     await render(engine, 1);
     // In a plain browser the Branch app's own rows are greyed and say where they are changed.
-    for (const t of [`Start with ${platformName()}`]) {
+    for (const t of [START_AT_SIGN_IN, KEEP_SIGNED_OUT]) {
       expect(row(t).getAttribute("aria-disabled")).toBe("true");
       expect(row(t).querySelector(".why-k")?.textContent).toBe(IN_BROWSER);
     }
@@ -204,7 +204,7 @@ describe("Settings › General", () => {
     expect(host.querySelector(".status")).toBeNull();
   });
 
-  it("Start with macOS says why it is greyed when the Branch app is too old to change it (DA-78)", async () => {
+  it("Start Branch when I sign in says why it is greyed when the Branch app is too old to change it (DA-78)", async () => {
     const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
     Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
     // An older Branch app hands the window its gateway but not the startup controls.
@@ -212,10 +212,10 @@ describe("Settings › General", () => {
     try {
       const { engine } = engineOf();
       await render(engine, 0);
-      const start = row("Start with macOS");
+      const start = row(START_AT_SIGN_IN);
       expect(start.getAttribute("aria-disabled")).toBe("true");
       expect(start.querySelector<HTMLInputElement>("input")!.checked).toBe(false);
-      expect(start.querySelector(".why-k")?.textContent).toBe("Update the Branch app on this computer to change this.");
+      expect(start.querySelector(".why-k")?.textContent).toBe(START_NEEDS_UPDATE);
       expect(start.textContent).toContain("Opens quietly in the tray.");
       expect(visibleDevNotes(host)).toEqual([]);
     } finally {
@@ -235,9 +235,9 @@ describe("Settings › General", () => {
       const { engine } = engineOf();
       await render(engine, 0);
       expect(row("Keep working when the window closes")).toBeNull();
-      const start = () => row("Start with Windows").querySelector<HTMLInputElement>("input")!;
+      const start = () => row(START_AT_SIGN_IN).querySelector<HTMLInputElement>("input")!;
       expect(start().checked).toBe(false);
-      expect(row("Start with Windows").getAttribute("aria-disabled")).toBeNull();
+      expect(row(START_AT_SIGN_IN).getAttribute("aria-disabled")).toBeNull();
       await act(async () => start().click());
       expect(set).toHaveBeenCalledWith("startWithWindows", true);
       expect(start().checked).toBe(true);
@@ -279,20 +279,17 @@ describe("Settings › General", () => {
     }
   });
 
-  it("Starting up uses the real platform name, like setup", async () => {
+  it("Starting up uses the same Start Branch when I sign in words on every computer", async () => {
     const { engine } = engineOf();
     const prev = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
-    const cases: [string, string, string][] = [
-      ["Win32", "Start with Windows", "Start with macOS"],
-      ["MacIntel", "Start with macOS", "Start with Windows"],
-      ["Linux x86_64", "Start with Linux", "Start with Windows"],
-    ];
     try {
-      for (const [platform, title, absent] of cases) {
+      for (const platform of ["Win32", "MacIntel", "Linux x86_64"]) {
         Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => platform });
         await render(engine, 0);
-        expect(row(title)).toBeTruthy();
-        expect(host.textContent).not.toContain(absent);
+        expect(row(START_AT_SIGN_IN)).toBeTruthy();
+        expect(host.textContent).not.toContain("Start with Windows");
+        expect(host.textContent).not.toContain("Start with macOS");
+        expect(host.textContent).not.toContain("Start with Linux");
       }
     } finally {
       if (prev) Object.defineProperty(Navigator.prototype, "platform", prev);

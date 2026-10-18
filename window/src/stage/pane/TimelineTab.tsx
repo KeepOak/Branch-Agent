@@ -5,6 +5,7 @@ import type { Level } from "../../places-nav/settings-nav";
 import type { PlanStep } from "../computers";
 import { SIcon, type StageIconName } from "../stage-icons";
 import { money, summaryLine, timelineItems, timelineSummary, type TimelineItem, type TimelineKind } from "./pane-model";
+import { plainError } from "../../shell/plain-error";
 
 const KIND_ICON: Record<TimelineKind, StageIconName> = { model: "spark", tool: "check", ok: "shield", help: "layers", you: "comment" };
 const KIND_WORD: Record<TimelineKind, string> = { model: "Model call", tool: "Tool", ok: "Your rules", help: "Helper", you: "You" };
@@ -134,7 +135,7 @@ export function TimelineTab({ name, title, blocks, running, level }: { name: str
 
 /** Plan: the progress card as a plain checklist, done steps struck through. */
 export function PlanTab({ steps, error }: { steps: PlanStep[]; error: string }) {
-  if (!steps.length) return <p className="pane-empty">{error || "No plan for this conversation."}</p>;
+  if (!steps.length) return <p className="pane-empty">{error ? plainError(error) : "No plan for this conversation."}</p>;
   return (
     <ul className="plan-pn">
       {steps.map((s, i) => (
@@ -182,7 +183,7 @@ export function BranchesTab({ engine, paths, onSwitched, onError }: { engine: Wi
           {p.active ? (
             <span className="pill idle">You're on this one</span>
           ) : (
-            <button type="button" className="btn ghost sm" onClick={() => engine.request("sessions.branches.switch", { sessionKey: engine.sessionKey, leafEntryId: p.leafEntryId }).then(onSwitched, (e: unknown) => onError(e instanceof Error ? e.message : String(e)))}>
+            <button type="button" className="btn ghost sm" onClick={() => engine.request("sessions.branches.switch", { sessionKey: engine.sessionKey, leafEntryId: p.leafEntryId }).then(onSwitched, (e: unknown) => onError(plainError(e)))}>
               Switch to it
             </button>
           )}

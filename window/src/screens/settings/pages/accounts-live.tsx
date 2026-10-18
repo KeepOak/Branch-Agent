@@ -4,7 +4,7 @@
 // GitHubSettings.tsx): the accounts in order with Move up and the ⋯ menu, Select accounts, Add an account, falling back
 // to this computer, which account goes next, where each sign-in comes from, your own accounts, coding apps, GitHub and
 // the rows that show what the engine reports. The rows of one list share one read, so a change in one row shows in all.
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { canAll } from "../../../connect/capabilities";
 import { configStore } from "../../../places/settings/config-store";
@@ -17,12 +17,14 @@ import {
   signInOffers, signOut, signOutWhy, takeAddRequest, testAccount, type Account, type Provider,
 } from "../../../places/settings/set1/accounts";
 import { nextModeOf, nextSub, restingOf, setNextMode, setTrunkAccount, shortId, sourceLine, trunkChoices } from "../../../places/settings/set1/accounts-more";
-import { key, moveToTop, PAUSE_OFF, signOutAll } from "../../../places/settings/set1/accounts-select";
+import { key, moveToTop, PAUSE_OFF, RENAME_LATER, signOutAll } from "../../../places/settings/set1/accounts-select";
 import { AddAccountDialog, type AddStart } from "../../../places/settings/set1/add-account";
 import { APPS, appSub, foundState, PILL, type App } from "../../../places/settings/set1/coding-apps";
+import { CODEX_DOWNLOAD_METHOD, codexDownloadOffered, useCodexDownload } from "../../../places/settings/set1/codex-get";
 import { PickOwn } from "../../../places/settings/set1/own-accounts";
 import { Logo, serviceName } from "../../../places/settings/set1/service";
 import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
+import { menuAtLevel } from "../../../shell/menu-level";
 import { Segmented, Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
 import { Failed, Needs, useFailure } from "./appearance-live";
@@ -32,6 +34,7 @@ import { lookStore, useLook } from "../../../places/settings/set1/appearance-sto
 import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
 import { pageFor } from "../nav";
 import { useLevel } from "../SettingsFrame";
+import { COMING_FROM } from "../rows";
 import { STALL_TEXT, stallAfter } from "../../../places/settings/stall";
 
 // One engine read shared by every row that shows it (the accounts list, Select accounts, Which goes next…): a change
@@ -137,6 +140,7 @@ const accountLine = (acc: Account): string => [accountSub(acc), acc.ordered && a
  *  Which Trunks use it, Sign out), as Classic's Order Branch uses them in. */
 export function AccountList({ engine }: SlotControlProps) {
   const { status, agent, all } = useAccounts(engine);
+  const [level] = useLevel(engine);
   const [failed, run] = useFailure();
   const [open, setMenu] = useState<{ at: MenuAnchor; key: string } | null>(null);
   // The menu's account, by key, from the list as it is now (a reload makes new account objects).
@@ -149,7 +153,7 @@ export function AccountList({ engine }: SlotControlProps) {
   const items = (acc: Account): MenuItem[] => [
     { label: "Test it", disabled: can("models.probe"), run: () => void run(() => testAccount(engine, acc, agent)) },
     { label: "Answer first", disabled: can("models.authOrderSet") ?? answerFirstWhy(acc), run: () => reorder(acc, firstOrder(acc, all)) },
-    { label: "Rename", disabled: "Branch can’t rename an account yet.", run: () => undefined },
+    { label: "Rename", disabled: RENAME_LATER, run: () => undefined },
     { label: "Which Trunks use it", disabled: "Every Trunk uses this account, in this order.", run: () => undefined },
     { kind: "sep" },
     { label: "Sign out", danger: true, disabled: can("models.authLogout") ?? signOutWhy(acc.a), run: () => void run(async () => { await signOut(engine, acc, agent); await status.reload(); }) },
@@ -181,7 +185,7 @@ export function AccountList({ engine }: SlotControlProps) {
     {all.some((x) => !x.first) ? <Line>When one account runs low, Branch moves to the next.</Line> : null}
     {admin && all.length ? <Line>{admin}</Line> : null}
     <Failed text={failed} />
-    {menu ? <div data-need={MENU_CALLS.join(" ")}><Menu at={menu.at} items={items(menu.acc)} onClose={() => setMenu(null)} label={accountName(menu.acc)} /></div> : null}
+    {menu ? <div data-need={MENU_CALLS.join(" ")}><Menu at={menu.at} items={menuAtLevel(items(menu.acc), level >= 2)} onClose={() => setMenu(null)} label={accountName(menu.acc)} /></div> : null}
   </>;
 }
 
@@ -266,6 +270,7 @@ export function AddAccount({ engine }: SlotControlProps) {
 /** Select accounts (Advanced): tick accounts, then move them to the top or sign out of them, as Classic's bulk bar. */
 export function SelectAccounts({ engine }: SlotControlProps) {
   const { status, agent, all } = useAccounts(engine);
+  const [level] = useLevel(engine);
   const [failed, run] = useFailure();
   const [picked, setPicked] = useState<string[] | null>(null);
   const chosen = all.filter((acc) => picked?.includes(key(acc)));
@@ -293,7 +298,7 @@ export function SelectAccounts({ engine }: SlotControlProps) {
         <Needs engine={engine} need={["models.authOrderSet"]} where="Move to the top">
           <button type="button" className="r1s-btn" disabled={Boolean(admin) || !chosen.length || locked} title={admin ?? (locked ? "The order is set in the settings file." : undefined)} onClick={() => act(() => moveToTop(engine, all, chosen, agent))}>Move to the top</button>
         </Needs>
-        <button type="button" className="r1s-btn" disabled title={PAUSE_OFF}>Pause</button>
+        {level >= 2 ? <button type="button" className="r1s-btn" disabled title={PAUSE_OFF}>Pause</button> : null}
         <Needs engine={engine} need={["models.authLogout"]} where="Sign out of the selected accounts">
           <button type="button" className="r1s-btn" disabled={Boolean(admin) || !leaving.length} title={admin ?? (chosen.length && !leaving.length ? "These sign-ins can’t be removed from here." : undefined)} onClick={() => act(() => signOutAll(engine, chosen, agent))}>Sign out</button>
         </Needs>
@@ -448,13 +453,19 @@ export function OwnAccountList({ engine }: SlotControlProps) {
 /** Add your own account: Classic's picker of the accounts this person can use first (users.selectModelAccount). */
 export function AddOwnAccount({ engine }: SlotControlProps) {
   const own = useRead(engine, "users.listModelAccounts");
+  const [level] = useLevel(engine);
   const [failed, , report] = useFailure();
   const [adding, setAdding] = useState(false);
+  const whyId = useId();
   const accounts = list(own.data?.accounts);
+  // A real condition says what to do in one visible line (Private #1093 item 7); an engine without the calls makes it
+  // Coming, which shows only at Technical.
+  const why = writeWhy(engine) ?? (!own.loading && !own.error && !accounts.length ? "Add an account above first." : undefined);
   return <Kit report={report}>
-    <Needs engine={engine} need={["users.listModelAccounts", "users.selectModelAccount"]} where="Add your own account">
-      <button type="button" className="r1s-btn" disabled={Boolean(writeWhy(engine)) || own.loading || Boolean(own.error) || !accounts.length} title={writeWhy(engine) ?? (!own.loading && !accounts.length ? "Add an account above first." : undefined)} onClick={() => setAdding(true)}>Add your own account</button>
+    <Needs engine={engine} need={["users.listModelAccounts", "users.selectModelAccount"]} where="Add your own account" hidden={level < COMING_FROM}>
+      <button type="button" className="r1s-btn" disabled={Boolean(why) || own.loading || Boolean(own.error)} title={why} aria-describedby={why ? whyId : undefined} onClick={() => setAdding(true)}>Add your own account</button>
     </Needs>
+    {why && canAll(engine, ["users.listModelAccounts", "users.selectModelAccount"]) ? <small id={whyId} className="r1s-note g-label" data-lines>{why}</small> : null}
     <Failed text={failed} />
     {adding ? <PickOwn engine={engine} accounts={accounts.filter((a) => a.selected !== true)} onClose={(picked) => { setAdding(false); if (picked) void own.reload(); }} /> : null}
   </Kit>;
@@ -469,10 +480,14 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
   const { store, snap, config } = useConfigSnap(engine);
   const [failed, run] = useFailure();
   const f = foundState(app, detect.data);
+  const offer = app.plugin === "codex" && !detect.loading && !detect.error && f.state !== "ready" && codexDownloadOffered(engine);
+  const codex = useCodexDownload(engine, offer);
+  const getting = offer ? codex.view : undefined;
+  const usable = f.state === "ready" || getting?.ready === true;
   const word = detect.error ? "Couldn’t check" : detect.loading ? "Looking…" : PILL[f.state][1];
   const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
   const pluginOn = app.plugin ? record(record(record(config.plugins).entries)[app.plugin]).enabled === true : f.state === "ready";
-  const sub = detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
+  const sub = codex.prompt ? codex.prompt : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
   return <>
     <div className="r1s-item">
       <Logo id={app.brand} size={22} />
@@ -481,9 +496,21 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
         <small>{detect.error ? visible(detect.error) : sub}</small>
         {detect.error ? <button type="button" className="r1s-btn" onClick={() => void detect.reload()}>Try again</button> : null}
       </span>
+      {codex.prompt ? (
+        <span data-testid="codex-download-prompt">
+          <Needs engine={engine} need={[CODEX_DOWNLOAD_METHOD]} where="Download Codex">
+            <button type="button" className="r1s-btn" disabled={Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void run(codex.accept)}>Yes</button>
+          </Needs>
+          <button type="button" className="r1s-btn" onClick={() => void run(codex.decline)}>Cancel</button>
+        </span>
+      ) : getting?.action ? (
+        <Needs engine={engine} need={[CODEX_DOWNLOAD_METHOD]} where={getting.action}>
+          <button type="button" className="r1s-btn" disabled={Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => codex.requestPrompt()}>{getting.action}</button>
+        </Needs>
+      ) : null}
       {app.plugin ? (
         <Needs engine={engine} need={["config.patch"]} where={"Use " + app.name}>
-          <span className="r1s-own-ctl" title={adminWhy(engine)}><Toggle label={"Use " + app.name} on={f.state === "ready" && pluginOn} disabled={Boolean(adminWhy(engine)) || !snap || f.state !== "ready"} onChange={(v) => void run(() => store.set("plugins.entries." + app.plugin + ".enabled", v))} /></span>
+          <span className="r1s-own-ctl" title={adminWhy(engine)}><Toggle label={"Use " + app.name} on={usable && pluginOn} disabled={Boolean(adminWhy(engine)) || !snap || !usable} onChange={(v) => void run(() => store.set("plugins.entries." + app.plugin + ".enabled", v))} /></span>
         </Needs>
       ) : (
         <span className="r1s-own-ctl" title={"Follows " + app.name + "’s own sign-in on this computer."}><Toggle label={"Use " + app.name} on={pluginOn} disabled onChange={() => undefined} /></span>

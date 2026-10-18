@@ -1,7 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import App from '../../App';
 import { createFakeSession } from '../testing/fakeSession';
-import { ThemeProvider } from '../theme/ThemeProvider';
+import { paletteSliceFor } from '../theme/desktopThemes';
+import { PairingTheme, ThemeProvider } from '../theme/ThemeProvider';
+import { pairingTheme, themeFor } from '../theme/tokens';
+import { CANT_REACH_BRANCH } from '../ui/plainError';
 import type { ApkOffer } from './githubRelease';
 import { SettingsUpdateCard, UpdateBanner } from './UpdateBanner';
 import type { UpdateFlowDeps } from './updateFlow';
@@ -73,11 +77,58 @@ describe('update banner and Settings', () => {
   });
 });
 
-describe('welcome stays itself when there is no Android update', () => {
+describe('pairing stays itself when there is no Android update', () => {
   it('does not show an Update banner on iOS tests of the real app', async () => {
     const { session } = createFakeSession();
     await render(<App scheme="light" session={session} />);
-    await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
     expect(screen.queryByTestId('update-banner')).toBeNull();
+  });
+});
+
+describe('update error card', () => {
+  it('never shows a raw exception, and paints the card black and white', async () => {
+    const raw = 'fetch failed: java.net.UnknownHostException: Unable to resolve host "api.github.com"';
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      await render(
+        <ThemeProvider scheme="light">
+          <UpdateBanner state={{ status: 'error', message: raw }} onUpdate={() => undefined} onAllowInstalls={() => undefined} />
+        </ThemeProvider>,
+      );
+      expect(screen.queryByText(/UnknownHostException/)).toBeNull();
+      expect(screen.queryByText(/java\.net/)).toBeNull();
+      expect(screen.queryByText(/fetch failed/i)).toBeNull();
+      expect(screen.getByText(CANT_REACH_BRANCH)).toBeOnTheScreen();
+      const style = StyleSheet.flatten(screen.getByTestId('update-banner').props.style);
+      const light = themeFor('light', paletteSliceFor('grove', 'light')).color;
+      expect(style.backgroundColor).toBe(light.fill);
+      expect(style.backgroundColor).not.toBe(light.badTint);
+      expect(style.borderColor).toBe(light.line);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('keeps the error card black and white under the pairing theme', async () => {
+    const raw = 'java.net.UnknownHostException: Unable to resolve host "api.github.com"';
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      await render(
+        <ThemeProvider scheme="dark">
+          <PairingTheme>
+            <UpdateBanner state={{ status: 'error', message: raw }} onUpdate={() => undefined} onAllowInstalls={() => undefined} />
+          </PairingTheme>
+        </ThemeProvider>,
+      );
+      expect(screen.queryByText(/UnknownHostException/)).toBeNull();
+      expect(screen.getByText(CANT_REACH_BRANCH)).toBeOnTheScreen();
+      const style = StyleSheet.flatten(screen.getByTestId('update-banner').props.style);
+      const dark = pairingTheme(themeFor('dark', paletteSliceFor('grove', 'dark'))).color;
+      expect(style.backgroundColor).toBe(dark.fill);
+      expect(style.backgroundColor).not.toBe(dark.badTint);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

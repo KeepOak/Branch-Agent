@@ -5,7 +5,7 @@ import type { SettingsPageProps } from "../index";
 import { list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Ctl, Page, Pick, Sec, Seg, Status, Switch, useLevel, type Opt, type RowEntry } from "../kit";
-import { DETAIL_OPTS, DesktopNotices, ThisBrowser, ThisDevice, isDesktopApp, useTestSend, useWebPush, deviceOff, type TellRow, type Trunk, type WebPush } from "./notifications-browser";
+import { DETAIL_OPTS, DesktopNotices, TestLine, ThisBrowser, ThisDevice, isDesktopApp, useTestSend, useWebPush, deviceOff, type TellRow, type Trunk, type WebPush } from "./notifications-browser";
 import { prefsOff, quietNow, useNotifyPrefs, type CategoryKey, type NotifyPrefs, type Quiet } from "./notifications-prefs";
 import "./notifications.css";
 
@@ -29,12 +29,12 @@ export function hourLabel(minute: number): string {
   const h = Math.floor(minute / 60), m = minute % 60, h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "AM" : "PM"}`;
 }
-const hourOpts = (current: number): Opt[] => {
+export const hourOpts = (current: number): Opt[] => {
   const opts = HOURS.map((h) => ({ id: String(toMinute(h)), label: h }));
   return opts.some((o) => o.id === String(current)) ? opts : [{ id: String(current), label: hourLabel(current) }, ...opts];
 };
 const ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "Europe/London", "Europe/Paris", "Europe/Berlin", "Africa/Lagos", "Asia/Kolkata", "Asia/Tokyo", "Australia/Sydney"];
-function zoneOpts(current: string): Opt[] {
+export function zoneOpts(current: string): Opt[] {
   let local = "UTC";
   try { local = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { local = "UTC"; }
   const ids = ["UTC", local, ...ZONES.filter((z) => z !== local), ...(current === "UTC" || current === local || ZONES.includes(current) ? [] : [current])];
@@ -90,7 +90,7 @@ function TellMe({ engine, prefs, push, trunks, desktop }: TellProps) {
       ))}
       {level >= 1 && !desktop ? <TellMore prefs={prefs} trunks={trunks} /> : null}
       {desktop ? null : (
-        <Ctl title="Send a test notification" sub={test.text ?? ""}>
+        <Ctl title="Send a test notification" sub={<TestLine text={test.text} />}>
           <Btn sm disabled={test.busy} onClick={() => void test.send()}>Send test</Btn>
         </Ctl>
       )}

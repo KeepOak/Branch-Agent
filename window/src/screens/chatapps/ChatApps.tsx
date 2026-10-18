@@ -87,11 +87,11 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
     const items = apps.filter(a => a.group === group);
     return items.length ? <section className="r1-ca-group" key={group}><h3 className="g-label">{group} <span>{items.length}</span></h3><div className="r1-ca-grid">{items.map(renderCard)}</div></section> : null;
   });
-  // A search lists every match; otherwise the apps that work lead and the rest fold into one row. Apps Branch has no
-  // setup for yet (catalogue only) show only at Technical (settings rows.ts COMING_FROM, Private #1093 item 4): Regular
-  // and Advanced list the apps this window can set up, greyed with their reason when this engine can't.
+  // A search lists every match; otherwise the apps that work lead and the rest fold into one row. A card that can't be set
+  // up here (catalogue only, or an engine without the setup calls) is Coming, and Coming shows only at Technical
+  // (settings rows.ts COMING_FROM, Private #1093 items 4 and 7): Regular and Advanced list the apps this window can set up.
   const comingShown = level >= COMING_FROM;
-  const today = (app: ChatApp) => working(app) || Boolean(app.channel);
+  const today = working;
   const leading = q ? shown.filter(app => comingShown || today(app)) : shown.filter(comingShown ? working : today);
   const later = q || !comingShown ? [] : shown.filter(app => !working(app));
 
@@ -106,20 +106,20 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
       ))}</div> : null}
       <Pairing engine={engine} snapshot={live.pairing} reload={live.reload} apps={connected.map(c => ({ id: c.state.id, name: c.state.name }))} level={level} trunkFor={trunkFor} />
     </section>
-    <section aria-labelledby="r1-ca-all"><h2 id="r1-ca-all" className="g-label">Every chat app</h2>
+    {comingShown || every.some(working) ? <section aria-labelledby="r1-ca-all"><h2 id="r1-ca-all" className="g-label">Every chat app</h2>
       <label className="r1-ca-search g-frost"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search chat apps" placeholder={comingShown ? "Search all 74 chat apps" : "Search chat apps"} value={query} onChange={e => setQuery(e.target.value)} data-local="search" /></label>
       {groupsOf(leading)}
       {later.length ? <LaterRows count={later.length} label={`More chat apps (${later.length})`}>{groupsOf(later)}</LaterRows> : null}
       {!shown.length && <p className="g-label" data-lines>No chat app matches “{query}”. “A webhook of your own” connects anything else.</p>}
-    </section>
+    </section> : null}
     {/* preview: the "Your phone" tile after the app groups; Pair a phone opens the pairing code (device.pair.setupCode). */}
-    <section className="r1-ca-phone" aria-label="Your phone">
+    {comingShown || canAll(engine, ["device.pair.setupCode"]) ? <section className="r1-ca-phone" aria-label="Your phone">
       <span className="r1-ca-app"><Icon name="phone" size={20} /><span className="g-label" data-lines><b>Your phone</b> <small>Answer approvals and talk to Trunks from the Branch app.</small></span>
-        <Coming engine={engine} need="device.pair.setupCode" reason="Pair a phone comes in a later update." where="Chat apps › Pair a phone">
+        <Coming engine={engine} need="device.pair.setupCode" reason="Pair a phone comes in a later update." where="Chat apps › Pair a phone" hidden={!comingShown}>
           <button type="button" onClick={() => setPairing(true)}>Pair a phone</button>
         </Coming></span>
       {pairing ? <PairDialog engine={engine} close={() => setPairing(false)} /> : null}
-    </section>
+    </section> : null}
     </div>{renderAccess && <section aria-label="Who answers and who may message"><h2 className="g-label">Who answers</h2>{connected.length ? connected.map(c => <div key={c.state.id}>{renderAccess(c.app)}</div>) : <p className="r1-ca-hint g-label" data-lines>{live.loading ? "Checking…" : "No chat app is connected yet."}</p>}</section>}
     {level >= 1 ? <More engine={engine} cfg={cfg} apps={connected.map(c => c.state)} all={engineApps} trunks={trunks} level={level} /> : null}
   </section>;
