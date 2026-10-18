@@ -461,6 +461,7 @@ export function ApprovalsScreen({
   focusId,
   test,
   now: fixedNow,
+  bottomExtra = 0,
   initialTab = 'needs',
 }: {
   snapshot: ApprovalsSnapshot;
@@ -479,6 +480,8 @@ export function ApprovalsScreen({
   /** The test approval tools, in builds that have them (testApproval.ts testApprovalsOn). */
   test?: { state: TestApprovalState; onSend: (delayMs: number) => void; onCancel: () => void };
   now?: number;
+  /** Extra padding above a floating Places bar. */
+  bottomExtra?: number;
   /** Starts on this tab (screenshots and tests). Taps still switch. */
   initialTab?: InboxTab;
 }) {
@@ -557,7 +560,7 @@ export function ApprovalsScreen({
         testID="inbox-scroll"
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl }}
+        contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl + bottomExtra }}
       >
         <Pressable
           testID="approvals-back"

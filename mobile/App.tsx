@@ -2,8 +2,8 @@ import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { AppState, BackHandler, Linking, Platform, View } from 'react-native';
-import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppState, BackHandler, Linking, Platform } from 'react-native';
+import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApprovalAlerts, type AppStateSource, type Notifier, type NotificationPermission } from './src/approvals/approvalAlerts';
 import { ApprovalInbox, trunkOf } from './src/approvals/approvals';
 import { headline } from './src/approvals/approvalWords';
@@ -41,7 +41,8 @@ import { parseShowLevel, readShowLevel, settingsLevelOf, showLevelOf, writeShowL
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
 import { PairingTheme, ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import type { ColorScheme } from './src/theme/tokens';
-import { PlacesBar, type Place } from './src/ui/PlacesBar';
+import { PhoneShell } from './src/ui/PhoneShell';
+import { placesBarHeight, type Place } from './src/ui/PlacesBar';
 import { applyQuietJsUpdate } from './src/updates/ota';
 import { SettingsUpdateCard, UpdateBanner } from './src/updates/UpdateBanner';
 import { useApkUpdate } from './src/updates/useApkUpdate';
@@ -233,6 +234,18 @@ function Shell({
     return () => sub.remove();
   }, [state.step, pairedRoute]);
 
+  const insets = useSafeAreaInsets();
+  const look = Platform.OS === 'ios' ? 'ios' : 'android';
+  const tabPad = placesBarHeight(look, insets.bottom);
+  // Android's Places bar is in-flow, so extra list padding would double it.
+  const extraPad = look === 'ios' ? tabPad : 0;
+  const goPlace = (place: Place) => {
+    if (place === 'home') setPairedRoute({ name: 'home' });
+    else if (place === 'chats') setPairedRoute(CHATS);
+    else if (place === 'inbox') setPairedRoute({ name: 'approvals' });
+    else setPairedRoute({ name: 'more' });
+  };
+
   const begin = (setup: SetupPayload) => session.begin(setup);
   const toPair = () => {
     session.cancel();
@@ -327,16 +340,45 @@ function Shell({
             backTo={pairedRoute.from === 'more' ? 'More' : 'Chats'}
           />
         );
+      } else if (pairedRoute.name === 'home') {
+        screen = (
+          <HomeScreen
+            chats={chatList}
+            approvals={approvals}
+            online={state.online}
+            accessLevel={showLevel}
+            look={look}
+            onNewChat={() => {
+              const shown = filterRows(chatList.rows, 'all', Date.now());
+              const main = shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
+              if (main) setPairedRoute({ name: 'chat', row: main });
+              else setPairedRoute(CHATS);
+            }}
+            onComputer={() => setPairedRoute({ name: 'computers' })}
+            onAnswer={(id, decision) => void inbox.answer(id, decision)}
+            onLookFirst={(_id, sessionKey) => {
+              const row = sessionKey ? chatList.rows.find((r) => r.key === sessionKey) : undefined;
+              if (row) setPairedRoute({ name: 'chat', row });
+              else setPairedRoute({ name: 'approvals', focus: _id });
+            }}
+            onPlace={goPlace}
+            onOpenChat={(row) => setPairedRoute({ name: 'chat', row })}
+            updateBanner={updateBanner}
+          />
+        );
       } else if (pairedRoute.name === 'more') {
         screen = (
-          <MoreScreen
-            level={showLevel}
-            trunkCount={agentList.rows.length}
-            workingCount={agentList.rows.filter((row) => row.status === 'running').length}
-            onSettings={() => setPairedRoute({ name: 'settings', from: 'more' })}
-            onTrunks={() => setPairedRoute({ name: 'agents', from: 'more' })}
-            onBack={() => setPairedRoute(CHATS)}
-          />
+          <PhoneShell current="more" inboxCount={approvals.pending.length} onPlace={goPlace} look={look}>
+            <MoreScreen
+              level={showLevel}
+              trunkCount={agentList.rows.length}
+              workingCount={agentList.rows.filter((row) => row.status === 'running').length}
+              onSettings={() => setPairedRoute({ name: 'settings', from: 'more' })}
+              onTrunks={() => setPairedRoute({ name: 'agents', from: 'more' })}
+              onBack={() => setPairedRoute(CHATS)}
+              bottomExtra={extraPad}
+            />
+          </PhoneShell>
         );
       } else if (pairedRoute.name === 'profile') {
         const row = agentList.rows.find((item) => item.id === pairedRoute.row.id) ?? pairedRoute.row;
@@ -355,19 +397,22 @@ function Shell({
         );
       } else if (pairedRoute.name === 'settings') {
         screen = (
-          <SettingsScreen
-            state={state}
-            permission={permission}
-            identity={identity}
-            onThisPhone={() => setPairedRoute({ name: 'computer', from: 'settings', settingsFrom: pairedRoute.from })}
-            onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
-            onTurnOnNotifications={turnOnNotifications}
-            onBack={() => setPairedRoute(pairedBack(pairedRoute))}
-            onLevel={(next: SettingsLevel) => onShowLevel(showLevelOf(next))}
-            updateCard={updateCard}
-            level={settingsLevelOf(showLevel)}
-            backTo={pairedRoute.from === 'more' ? 'More' : 'Chats'}
-          />
+          <PhoneShell current="more" inboxCount={approvals.pending.length} onPlace={goPlace} look={look}>
+            <SettingsScreen
+              state={state}
+              permission={permission}
+              identity={identity}
+              onThisPhone={() => setPairedRoute({ name: 'computer', from: 'settings', settingsFrom: pairedRoute.from })}
+              onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
+              onTurnOnNotifications={turnOnNotifications}
+              onBack={() => setPairedRoute(pairedBack(pairedRoute))}
+              onLevel={(next: SettingsLevel) => onShowLevel(showLevelOf(next))}
+              updateCard={updateCard}
+              level={settingsLevelOf(showLevel)}
+              backTo={pairedRoute.from === 'more' ? 'More' : 'Chats'}
+              bottomExtra={extraPad}
+            />
+          </PhoneShell>
         );
       } else if (pairedRoute.name === 'voice') {
         const row = chatList.rows.find((r) => r.key === pairedRoute.row.key) ?? pairedRoute.row;
@@ -397,57 +442,29 @@ function Shell({
             onTalk={() => setPairedRoute({ name: 'voice', row })}
           />
         );
-      } else if (pairedRoute.name === 'home') {
-        const goPlace = (place: Place) => {
-          if (place === 'home') return;
-          if (place === 'chats') setPairedRoute(CHATS);
-          else if (place === 'inbox') setPairedRoute({ name: 'approvals' });
-          else setPairedRoute({ name: 'more' });
-        };
-        screen = (
-          <HomeScreen
-            chats={chatList}
-            approvals={approvals}
-            online={state.online}
-            accessLevel={showLevel}
-            onNewChat={() => {
-              const shown = filterRows(chatList.rows, 'all', Date.now());
-              const main = shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
-              if (main) setPairedRoute({ name: 'chat', row: main });
-              else setPairedRoute(CHATS);
-            }}
-            onComputer={() => setPairedRoute({ name: 'computers' })}
-            onAnswer={(id, decision) => void inbox.answer(id, decision)}
-            onLookFirst={(_id, sessionKey) => {
-              const found = sessionKey ? chatList.rows.find((r) => r.key === sessionKey) : undefined;
-              if (found) setPairedRoute({ name: 'chat', row: found });
-              else setPairedRoute({ name: 'approvals', focus: _id });
-            }}
-            onPlace={goPlace}
-            onOpenChat={(next) => setPairedRoute({ name: 'chat', row: next })}
-            updateBanner={updateBanner}
-          />
-        );
       } else if (pairedRoute.name === 'approvals') {
         const chatFor = (key: string) => chatList.rows.find((r) => r.key === key);
         screen = (
-          <ApprovalsScreen
-            snapshot={approvals}
-            online={state.online}
-            permission={permission}
-            onTurnOnNotifications={turnOnNotifications}
-            onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
-            onAnswer={(id, decision) => void inbox.answer(id, decision)}
-            onRetry={() => void inbox.refresh()}
-            onBack={() => setPairedRoute(CHATS)}
-            canOpenChat={(key) => Boolean(chatFor(key))}
-            onOpenChat={(key) => {
-              const row = chatFor(key);
-              if (row) setPairedRoute({ name: 'chat', row });
-            }}
-            focusId={pairedRoute.focus}
-            test={testTools ? { state: testApproval.state, onSend: testApproval.send, onCancel: testApproval.cancel } : undefined}
-          />
+          <PhoneShell current="inbox" inboxCount={approvals.pending.length} onPlace={goPlace} look={look}>
+            <ApprovalsScreen
+              snapshot={approvals}
+              online={state.online}
+              permission={permission}
+              onTurnOnNotifications={turnOnNotifications}
+              onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
+              onAnswer={(id, decision) => void inbox.answer(id, decision)}
+              onRetry={() => void inbox.refresh()}
+              onBack={() => setPairedRoute(CHATS)}
+              canOpenChat={(key) => Boolean(chatFor(key))}
+              onOpenChat={(key) => {
+                const row = chatFor(key);
+                if (row) setPairedRoute({ name: 'chat', row });
+              }}
+              focusId={pairedRoute.focus}
+              test={testTools ? { state: testApproval.state, onSend: testApproval.send, onCancel: testApproval.cancel } : undefined}
+              bottomExtra={extraPad}
+            />
+          </PhoneShell>
         );
       } else {
         const first = approvals.pending[0];
@@ -459,7 +476,7 @@ function Shell({
           else setPairedRoute({ name: 'more' });
         };
         screen = (
-          <View style={{ flex: 1 }}>
+          <PhoneShell current="chats" inboxCount={approvals.pending.length} onPlace={goPlace} look={look}>
             <ChatsScreen
               list={chatList}
               online={state.online}
@@ -478,11 +495,11 @@ function Shell({
               needsYou={first ? { count: approvals.pending.length, line: `${trunkOf(first, approvals.trunks).name} · ${headline(first)}${more > 0 ? ` and ${more} more` : ''}` } : null}
               onNeedsYou={() => setPairedRoute({ name: 'approvals' })}
               updateBanner={updateBanner}
-              bottomExtra={64}
+              look={look}
               level={showLevel}
+              bottomExtra={extraPad}
             />
-            <PlacesBar current="chats" inboxCount={approvals.pending.length} onPlace={goPlace} />
-          </View>
+          </PhoneShell>
         );
       }
       break;

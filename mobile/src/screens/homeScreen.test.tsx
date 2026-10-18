@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import App from '../../App';
 import { readApproval, type ApprovalsSnapshot } from '../approvals/approvals';
 import { chatRows, readAgents, type ChatListSnapshot } from '../chats/chatList';
@@ -7,6 +8,7 @@ import { fixtureApprovals } from '../testing/approvalFixtures';
 import { FIXTURE_NOW, fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { createFakeSession } from '../testing/fakeSession';
 import { ThemeProvider } from '../theme/ThemeProvider';
+import { space, type } from '../theme/tokens';
 import { HomeScreen } from './HomeScreen';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 4000 });
@@ -34,7 +36,7 @@ async function renderHome(extra: Partial<Parameters<typeof HomeScreen>[0]> = {})
   };
   await render(
     <ThemeProvider scheme="light">
-      <HomeScreen chats={list} approvals={approvals} online now={FIXTURE_NOW} {...mocks} {...extra} />
+      <HomeScreen chats={list} approvals={approvals} online now={FIXTURE_NOW} look="ios" {...mocks} {...extra} />
     </ThemeProvider>,
   );
   return mocks;
@@ -78,6 +80,26 @@ describe('home screen', () => {
     expect(screen.getByTestId('place-home')).toHaveProp('accessibilityState', { selected: true });
   });
 
+  it('uses the iPhone large title and a reserved status band', async () => {
+    await renderHome();
+    const title = StyleSheet.flatten(screen.getByTestId('home-greeting').props.style);
+    expect(title.fontSize).toBe(type.largeTitle.fontSize);
+    expect(screen.getByTestId('phone-large-title')).toBeOnTheScreen();
+    expect(screen.getByTestId('phone-status-band')).toBeOnTheScreen();
+    expect(StyleSheet.flatten(screen.getByTestId('phone-status-band').props.style).height).toBeGreaterThanOrEqual(50);
+    const bar = StyleSheet.flatten(screen.getByTestId('places-bar').props.style);
+    expect(bar.position).toBe('absolute');
+    expect(bar.borderRadius).toBe(32);
+  });
+
+  it('does not pad the Home list for an in-flow Android Places bar', async () => {
+    await renderHome({ look: 'android' });
+    const bar = StyleSheet.flatten(screen.getByTestId('places-bar').props.style);
+    expect(bar.position).not.toBe('absolute');
+    const scroll = StyleSheet.flatten(screen.getByTestId('home-scroll').props.contentContainerStyle);
+    expect(scroll.paddingBottom).toBe(space.xl);
+  });
+
   it('says nothing needs you and nothing is running when the lists are empty', async () => {
     await renderHome({
       chats: { rows: [], loaded: true, error: null },
@@ -87,6 +109,30 @@ describe('home screen', () => {
     expect(screen.getByTestId('home-needs-empty')).toHaveTextContent('Nothing needs you.');
     expect(screen.getByTestId('home-working-empty')).toHaveTextContent('Nothing is running.');
     expect(screen.queryByTestId('home-finished')).toBeNull();
+  });
+
+  it('does not say nothing needs you while approvals are still loading', async () => {
+    await renderHome({
+      approvals: { pending: [], answered: [], trunks, loaded: false, error: null, sending: {}, failed: {} },
+    });
+    expect(screen.getByTestId('home-needs-loading')).toHaveTextContent('Checking with your computer…');
+    expect(screen.queryByTestId('home-needs-empty')).toBeNull();
+  });
+
+  it('does not say nothing needs you when the approvals list failed', async () => {
+    await renderHome({
+      approvals: {
+        pending: [],
+        answered: [],
+        trunks,
+        loaded: false,
+        error: 'Your computer is busy right now. Try again in a moment.',
+        sending: {},
+        failed: {},
+      },
+    });
+    expect(screen.getByTestId('home-needs-error')).toHaveTextContent('Your computer is busy right now. Try again in a moment.');
+    expect(screen.queryByTestId('home-needs-empty')).toBeNull();
   });
 
   it('shows the exact command, folder and warnings before Allow can run it', async () => {

@@ -184,7 +184,8 @@ describe('approvals in the app', () => {
     const { session, engine } = await pairedApp();
     expect(screen.getByTestId('needs-you-banner')).toHaveProp('accessibilityLabel', '2 approvals need your yes. Oak · Run a command and 1 more');
     await fireEvent.press(screen.getByTestId('needs-you-banner'));
-    expect(screen.getByText('Inbox')).toBeOnTheScreen();
+    // Places also labels its Inbox tab; the screen title lives on the approvals tree.
+    expect(within(screen.getByTestId('approvals-screen')).getByText('Inbox')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('allow-exec-1'));
     await eventually(() => expect(screen.queryByTestId('approval-exec-1')).toBeNull());
     expect(engine.requests).toContainEqual({ method: 'exec.approval.resolve', params: { id: 'exec-1', decision: 'allow-once' } });
