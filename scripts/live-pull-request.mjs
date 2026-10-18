@@ -5,6 +5,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  MAX_RATE_LIMIT_SLEEP_SECONDS,
+  RATE_LIMIT_WAKE_SPREAD_SECONDS,
   execGhApi,
   fetchGitHubRateLimit,
   ghApiArgs,
@@ -56,7 +58,8 @@ export function readLivePullRequest(ctx, {
   fetchRateLimit,
   budgetSeconds = COVERAGE_RATE_LIMIT_BUDGET_SECONDS,
   bufferSeconds = COVERAGE_RATE_LIMIT_BUFFER_SECONDS,
-  maxSleep = budgetSeconds,
+  maxSleep = MAX_RATE_LIMIT_SLEEP_SECONDS,
+  spreadSeconds = RATE_LIMIT_WAKE_SPREAD_SECONDS,
   random,
   log = console.log,
 } = {}) {
@@ -85,6 +88,7 @@ export function readLivePullRequest(ctx, {
       budgetSeconds,
       maxSleep,
       bufferSeconds,
+      spreadSeconds,
       retryTransient: false,
       random,
       log,

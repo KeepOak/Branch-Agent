@@ -106,6 +106,8 @@ export const FAKE_ENGINE_METHODS = [
   'talk.session.close',
   'tts.status',
   'tts.setPersona',
+  'users.self',
+  'users.setDisplayName',
 ] as const;
 
 /** 1×1 PNG; tests and screenshots use the snapshot payload's width and height as the picture size. */
@@ -126,6 +128,8 @@ export type FakeEngineOptions = {
   methods?: readonly string[];
   /** hello.policy.attachments; null leaves it off. */
   attachmentPolicy?: { maxBytes: number; maxImageBytes: number } | null;
+  /** users.self profile. A local owner connection with no name is "Owner". */
+  self?: { id?: string; displayName?: string | null; emails?: string[]; role?: string; hasAvatar?: boolean };
 };
 
 export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
@@ -134,6 +138,22 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   const deviceToken = options.deviceToken ?? 'device-token-1';
   const methods = options.methods ?? FAKE_ENGINE_METHODS;
   const attachmentPolicy = options.attachmentPolicy === undefined ? { maxBytes: 20 * 1024 * 1024, maxImageBytes: 6 * 1024 * 1024 } : options.attachmentPolicy;
+  let self = {
+    id: options.self?.id ?? 'gateway-owner',
+    displayName: options.self?.displayName === undefined ? 'Owner' : options.self.displayName,
+    emails: options.self?.emails ?? [],
+    role: options.self?.role,
+    hasAvatar: options.self?.hasAvatar === true,
+  };
+  const selfPayload = () => ({
+    profile: {
+      id: self.id,
+      displayName: self.displayName,
+      emails: self.emails,
+      hasAvatar: self.hasAvatar,
+      ...(self.role ? { role: self.role } : {}),
+    },
+  });
   let decision: 'pending' | 'approved' = 'pending';
   /** The pairing code's record was removed (Deny, run out, used): nothing brings it back. */
   let codeGone = false;
@@ -317,6 +337,16 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
         if (!found) return { ok: false, message: 'Invalid persona. Use a configured TTS persona id.' };
         persona = found.id;
         return { ok: true, payload: { persona: found.id } };
+      }
+      case 'users.self':
+        return { ok: true, payload: selfPayload() };
+      case 'users.setDisplayName': {
+        const p = (params ?? {}) as { profileId?: unknown; displayName?: unknown };
+        if (p.profileId !== self.id) return { ok: false, message: 'profile not found' };
+        const next = typeof p.displayName === 'string' ? p.displayName.trim() : '';
+        if (!next) return { ok: false, message: 'display name is required' };
+        self = { ...self, displayName: next.slice(0, 256) };
+        return { ok: true, payload: selfPayload() };
       }
       case 'exec.approval.resolve':
       case 'plugin.approval.resolve': {

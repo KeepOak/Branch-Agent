@@ -8,6 +8,12 @@ Settings files:
 - app-android-settings-{light,dark}.png and app-android-settings-advanced-{light,dark}.png
 - side-by-side-settings-{light,dark}.png and side-by-side-settings-advanced-light.png
 
+You (the person using the phone) files:
+- preview-people-you.png (desktop Settings › People, you selected)
+- preview-android-home-you.png and preview-android-more-you.png (Android Home initials and More)
+- app-android-you-{regular-light,advanced-light,regular-dark}.png and app-android-more-you-regular-light.png
+- side-by-side-you-{regular,advanced}-light.png, side-by-side-you-more-regular-light.png, side-by-side-home-you-regular-light.png
+
 App Voice: 393×852 Voice chrome with the real oak-leaf logo, Branch Agent name, and the Advanced Oak/Birch sheet.
 preview-android-voice.png and preview-android-voice-menu.png are the r50 Android Voice screen and its Advanced picker.
 app-android-voice-before.png and app-android-voice-before-menu.png are main: letter avatar and the later-update stub.

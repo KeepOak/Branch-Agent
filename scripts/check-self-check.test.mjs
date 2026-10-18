@@ -270,6 +270,7 @@ test('the live gh read waits on x-ratelimit-reset from gh api --include', () => 
     },
     now: () => now,
     fetchRateLimit: () => { throw new Error('headers are enough'); },
+    spreadSeconds: 0,
     log: () => {},
   });
   assert.equal(pr.body, 'from-api');
@@ -301,6 +302,7 @@ test('readLivePullRequest waits out a rate-limit 403 until reset plus a buffer, 
     },
     now: () => now,
     fetchRateLimit: () => ({ resources: { core: { remaining: 0, reset: start / 1000 + 90 } } }),
+    spreadSeconds: 0,
     log: () => {},
   });
   assert.deepEqual(pr, { body: 'live', headRef: 'trunk/live-body', headSha: HEAD });
@@ -325,6 +327,7 @@ test('readLivePullRequest waits out a secondary rate limit from gh api rate_limi
     },
     now: () => now,
     fetchRateLimit: () => ({ resources: { core: { remaining: 0, reset: start / 1000 + 25 } } }),
+    spreadSeconds: 0,
     log: () => {},
   });
   assert.equal(calls, 2);
@@ -352,6 +355,7 @@ test('readLivePullRequest waits exactly retry-after for a 429 without a reset bu
     },
     now: () => now,
     fetchRateLimit: () => null,
+    spreadSeconds: 0,
     log: () => {},
   });
   assert.equal(calls, 2);
@@ -432,6 +436,7 @@ test('a rate limit that outlasts the wait budget fails and is not reported as mi
     budgetSeconds: 100,
     bufferSeconds: COVERAGE_RATE_LIMIT_BUFFER_SECONDS,
     fetchRateLimit: () => ({ resources: { core: { remaining: 0, reset: start / 1000 + 10_000 } } }),
+    spreadSeconds: 0,
     log: () => {},
   }), (error) => {
     assert.match(error.message, /^checks-unavailable: GitHub API rate limit outlasted the 100s wait/);
@@ -439,8 +444,7 @@ test('a rate limit that outlasts the wait budget fails and is not reported as mi
     return true;
   });
   const waited = sleeps.reduce((sum, seconds) => sum + seconds, 0);
-  assert.ok(waited <= 100, `waited ${waited}s, over the 100s cap`);
-  assert.ok(waited >= 100 - COVERAGE_RATE_LIMIT_BUFFER_SECONDS);
+  assert.equal(waited, 0, 'a reset after the job budget fails closed immediately instead of waiting in lock-step');
 });
 
 test('the changed-test-coverage job timeout outlasts the rate-limit wait budget', () => {

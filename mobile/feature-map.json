@@ -111,6 +111,13 @@
       "file": "src/screens/ProfileScreen.tsx",
       "marker": "export function ProfileScreen",
       "route": "<ProfileScreen"
+    },
+    {
+      "id": "you",
+      "title": "You",
+      "file": "src/screens/YouScreen.tsx",
+      "marker": "export function YouScreen",
+      "route": "<YouScreen"
     }
   ],
   "features": [
@@ -163,6 +170,9 @@
     { "id": "hand-back", "title": "Hand back the computer", "file": "src/screens/TakeControlScreen.tsx", "marker": "testID=\"hand-back\"" },
     { "id": "more-screen", "title": "More", "file": "src/screens/MoreScreen.tsx", "marker": "testID=\"more-screen\"" },
     { "id": "profile-screen", "title": "Profile", "file": "src/screens/ProfileScreen.tsx", "marker": "testID=\"profile-screen\"" },
+    { "id": "you-screen", "title": "You", "file": "src/screens/YouScreen.tsx", "marker": "testID=\"you-screen\"" },
+    { "id": "more-you", "title": "You from More", "file": "src/screens/MoreScreen.tsx", "marker": "action: 'you'" },
+    { "id": "home-you", "title": "You from Home", "file": "src/screens/HomeScreen.tsx", "marker": "testID=\"home-you\"" },
     { "id": "settings-appearance", "title": "Appearance (system, light, dark)", "file": "src/screens/SettingsScreen.tsx", "marker": "testID=\"theme-picker\"" },
     { "id": "settings-this-branch", "title": "This Branch", "file": "src/screens/SettingsScreen.tsx", "marker": "testID=\"this-branch\"" },
     { "id": "settings-connections", "title": "Connections (chat apps, models, skills)", "file": "src/screens/SettingsScreen.tsx", "marker": "testID=\"connections-card\"" },

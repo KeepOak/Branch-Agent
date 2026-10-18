@@ -23,7 +23,8 @@ import { chatTime } from '../chats/chatTime';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
-import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
+import { FadeScrollView as ScrollView } from '../ui/ScrollFade';
+import { LIST_FADE } from '../ui/scrollEdges';
 import { OfflineBanner } from '../ui/OfflineBanner';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
@@ -560,7 +561,7 @@ export function ApprovalsScreen({
         testID="inbox-scroll"
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl + bottomExtra }}
+        contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl + bottomExtra + LIST_FADE }}
       >
         <Pressable
           testID="approvals-back"
