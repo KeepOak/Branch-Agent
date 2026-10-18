@@ -18,7 +18,7 @@ import { ComputerList, computerName, type ComputerRow } from './src/computers/co
 import { messageSearcher } from './src/chats/messageSearch';
 import { createDeviceSession } from './src/pairing/createDeviceSession';
 import type { PairingSession } from './src/pairing/pairingSession';
-import { gatewayHost, type SetupPayload } from './src/pairing/setupCode';
+import type { SetupPayload } from './src/pairing/setupCode';
 import { usePairingState } from './src/pairing/usePairingState';
 import { AgentsScreen } from './src/screens/AgentsScreen';
 import { ApprovalScreen } from './src/screens/ApprovalScreen';
@@ -480,12 +480,13 @@ function Shell({
           />
         );
       } else if (pairedRoute.name === 'you') {
+        const host = computerList.rows.find((item) => item.id === 'gateway');
         screen = (
           <YouScreen
             self={self}
             level={showLevel}
             scopes={session.hello?.auth.scopes ?? []}
-            computer={gatewayHost(state.url)}
+            computer={host ? computerName(host) : 'This computer'}
             computerStatus={state.online ? 'Connected to your computer' : 'Reconnecting to your computer…'}
             onComputer={() => setPairedRoute({ name: 'computers', from: 'you', youFrom: pairedRoute.from })}
             onBack={() => setPairedRoute(pairedBack(pairedRoute))}

@@ -99,6 +99,7 @@ describe('you in the app', () => {
     expect(screen.getByTestId('you-name')).toHaveTextContent('Owner');
     expect(screen.getByTestId('you-row-access')).toHaveTextContent(/You may send messages and make changes/);
     expect(screen.getByTestId('you-row-picture')).toHaveTextContent(/Your picture comes in a later update/);
+    expect(screen.getByTestId('you-row-computer')).toHaveTextContent(/This computer/);
     expect(screen.queryByTestId('you-row-instructions')).toBeNull();
 
     await fireEvent.press(screen.getByTestId('you-row-computer'));
