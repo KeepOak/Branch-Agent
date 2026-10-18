@@ -98,3 +98,31 @@ it("keeps Classic's working memory controls: Test, past conversations and Last n
   await act(async () => { [...host.querySelectorAll<HTMLButtonElement>('[data-row="memory.memory.tidy"] button')].find((b) => b.textContent === "Last night")!.click(); });
   expect(onPage).toHaveBeenCalledWith("history");
 });
+
+it("opens Bring their memory in… as the other-agents dialog", async () => {
+  const { engine } = engineOf();
+  await mount(engine, "advanced");
+  expect(host.querySelector('[role="dialog"]')).toBeNull();
+  const row = host.querySelector<HTMLElement>('[data-row="memory.recall.other-agents"]')!;
+  const toggle = row.querySelector<HTMLButtonElement>('[role=switch]')!;
+  expect(toggle.getAttribute("aria-disabled")).toBe("true");
+  expect(toggle.dataset.coming).toBeTruthy();
+  const bring = [...row.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Bring their memory in…")!;
+  expect(bring.disabled).toBe(false);
+  await act(async () => { bring.click(); await new Promise((r) => setTimeout(r, 0)); });
+  expect(host.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Other coding agents’ memory");
+});
+
+it("opens Library on its Memory tab from Try it", async () => {
+  const { engine } = engineOf();
+  await mount(engine, "advanced");
+  const places: unknown[] = [];
+  const onPlace = (e: Event) => places.push((e as CustomEvent).detail);
+  window.addEventListener("branch:navigate-place", onPlace);
+  try {
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>('[data-row="memory.library.rewrite"] button')].find((b) => b.textContent === "Try it")!.click(); });
+    expect(places).toEqual([{ place: "library", tab: "memory" }]);
+  } finally {
+    window.removeEventListener("branch:navigate-place", onPlace);
+  }
+});

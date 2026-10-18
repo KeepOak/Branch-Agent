@@ -75,7 +75,7 @@ export function OtherAgents({ engine, row }: SlotControlProps) {
   return <>
     <span className="r1s-own-ctl">
       <Coming engine={engine} need="config: reading other coding agents' history as you go" unwired reason="The engine copies their memory in once instead of reading it as you go." where={label}>
-        <span className="r1s-own-ctl"><Toggle label={label} on={false} onChange={() => undefined} /></span>
+        <Toggle label={label} on={false} onChange={() => undefined} />
       </Coming>
       <Needs engine={engine} need={["migrations.memory.plan", "migrations.memory.apply"]} where="Bring their memory in">
         <button type="button" className="r1s-btn" disabled={!agent} onClick={() => setOpen(true)}>Bring their memory in…</button>
@@ -85,9 +85,9 @@ export function OtherAgents({ engine, row }: SlotControlProps) {
   </>;
 }
 
-/** Rewrite short notes: Try it opens the Library, where notes are rewritten. */
+/** Rewrite short notes: Try it opens the Library on its Memory tab, where notes are rewritten. */
 export function RewriteNotes(_props: SlotControlProps) {
-  return <button type="button" className="r1s-btn" data-local="" onClick={() => openPlace("library")}>Try it</button>;
+  return <button type="button" className="r1s-btn" data-local="" onClick={() => openPlace("library", "memory")}>Try it</button>;
 }
 
 /** The Memory & documents page's own controls (plugged.ts). */
