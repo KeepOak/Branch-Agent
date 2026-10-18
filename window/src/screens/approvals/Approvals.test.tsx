@@ -30,7 +30,7 @@ async function render(engine: WindowEngine, node: React.ReactNode) {
   await settle();
   return host;
 }
-const button = (scope: ParentNode, text: string) => [...scope.querySelectorAll("button")].find((b) => b.textContent?.trim() === text)!;
+const button = (scope: ParentNode, text: string) => [...scope.querySelectorAll("button")].find((b) => b.textContent?.trim() === text || b.querySelector("b")?.textContent === text)!;
 const click = async (el: Element) => { await act(async () => (el as HTMLElement).click()); await settle(); };
 const EMAIL = { id: "p1", request: { title: "Send this email to Dana Okafor?", description: "To: Dana Okafor\nSubject: Thursday", agentId: "ledger", sessionKey: "agent:ledger:main", allowedDecisions: ["allow-once", "allow-always", "deny"] } };
 const ALL = ["exec.approval.list", "exec.approval.resolve", "plugin.approval.list", "plugin.approval.resolve", "question.list", "question.resolve", "agents.list", "config.get", "config.patch"];

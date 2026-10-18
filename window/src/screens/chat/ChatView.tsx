@@ -1,9 +1,9 @@
 // The R1 conversation (card #808, HANDOFF R1-03): history from chat.history and the live run from the engine's
 // agent/chat stream (connect/session.ts orders it with connect/stream-order.ts), drawn in the approved preview's look:
 // bubbles, the 3-button hover bar, calm steps, thin notices and time dividers. Every message action goes through
-// thread/useMessageActions (engine calls) or shows Coming. Classic pieces this card doesn't restyle (approval cards,
-// the plan card, helpers, the waiting line, find and the turn rail) are imported, not copied, so nothing that works
-// today is lost.
+// thread/useMessageActions (engine calls) or shows Coming. Classic pieces this card doesn't restyle (the plan card,
+// helpers, the waiting line, find and the turn rail) are imported, not copied, so nothing that works
+// today is lost. Approvals and questions use the R1 AskCard, not the Classic card.
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { CapabilityProvider, useCan, useCapabilityEngine } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
@@ -15,7 +15,7 @@ import { hasNoModel, useConversation } from "../../composer/useConversation";
 import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
 import { resolveApproval } from "../../thread/actions";
-import { AskCard, AskGroup, Decided, askOfApproval, settledOfApproval, useAskGroup, type AskState, type Reply } from "../approvals";
+import { AskCard, AskGroup, Decided, askIsHere, askOfApproval, settledOfApproval, useAskGroup, type AskState, type Reply } from "../approvals";
 import { EXAMPLES_GREETING_KEY, useExamplesHistory } from "./examples-greeting";
 import { ComputerActivityCard } from "../../thread/ComputerActivityCard";
 import { turnDoneLines } from "../../thread/computer-card";
@@ -227,14 +227,19 @@ export function ChatView(props: ChatViewProps) {
     else if (decision !== "allow-always") props.onAnswer(id, decision);
   }, [details, engine, props, toast]);
   // What waits in this conversation: two or more approvals group into one card at the foot (preview ask2); the rest get
-  // their own card at the foot too, unless their approval block already draws it.
-  const here = asks.filter((s) => s.status !== "settled" && Boolean(props.sessionKey) && s.ask.sessionKey === props.sessionKey);
+  // their own card at the foot too, unless their approval block already draws it. A question with no session of its own
+  // is answered here, not as a drop (Classic docks it on the open conversation).
+  const here = asks.filter((s) => s.status !== "settled" && askIsHere(s.ask, props.sessionKey));
   const members = useAskGroup(props.sessionKey ?? null, here);
   const grouped = new Set(members);
   const blockIds = new Set(all.flatMap((b) => (b.kind === "approval" ? [b.approval.id] : [])));
   const loose = here.filter((s) => !blockIds.has(s.ask.id) && !grouped.has(s.ask.id));
   const waitingHere = here.length > 0 || all.some((b) => b.kind === "approval" && b.approval.state === "pending");
-  const answerAsk = (id: string, reply: Reply) => props.onAsk?.(id, reply);
+  const answerAsk = (id: string, reply: Reply) => {
+    if (askCards.has(id)) { props.onAsk?.(id, reply); return; }
+    if (reply === "allow-once" || reply === "deny") props.onAnswer(id, reply);
+    else if (reply === "allow-always") answer(id, "allow-always");
+  };
   const { actionsFor, dialog, changes } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, applyReaction: apply, selfId: props.room ? props.room.selfId : null });
   const root = useRef<HTMLDivElement>(null);
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
@@ -383,14 +388,16 @@ function postedFace(block: Extract<Block, { kind: "text" }>, view: View): ReactN
   return <Face size={28} label={view.room.trunkName(sender.agentId)} priority={100} />;
 }
 
-/** An approval in the conversation: its R1 card while the engine has it (approvals/useAsks), else its decided line. */
+/** An approval in the conversation: its R1 card while it waits (from useAsks, or from this block until that list
+ *  arrives), else its decided line. Never the Classic ApprovalCard. */
 function ApprovalBlock({ block, view }: { block: Extract<Block, { kind: "approval" }>; view: View }) {
   const state = view.asks.get(block.approval.id);
   const ask = askOfApproval(block.approval);
   if (view.grouped.has(block.approval.id)) return null;
   let card: ReactNode = null;
   if (state) card = <AskCard state={state} name={view.name} onAnswer={view.answerAsk} lockdown={view.lockdown} scopes={view.engine?.scopes} />;
-  else if (ask && block.approval.state !== "pending") card = <Decided ask={ask} how={settledOfApproval(block.approval)} name={view.name} />;
+  else if (ask && block.approval.state === "pending") card = <AskCard state={{ ask, status: "waiting" }} name={view.name} onAnswer={view.answerAsk} lockdown={view.lockdown} scopes={view.engine?.scopes} />;
+  else if (ask) card = <Decided ask={ask} how={settledOfApproval(block.approval)} name={view.name} />;
   if (!card) return null;
   return <div className="r1c-row r1c-b" data-block-key={block.key}><div className="r1c-gut" /><div className="r1c-body">{card}</div></div>;
 }

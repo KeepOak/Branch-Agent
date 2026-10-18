@@ -11,7 +11,7 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const EVERY: ApprovalDecision[] = ["allow-once", "allow-always", "deny"];
 
 export type AskKind = "exec" | "plugin" | "question";
-export type AskOption = { label: string; value: string };
+export type AskOption = { label: string; value: string; description?: string };
 export type AskQuestion = { questionId: string; header: string; question: string; options: AskOption[]; multi: boolean; free: boolean; secret: boolean };
 /** The #728 safety layer's seam: exec.approval.resolve and plugin.approval.resolve take an optional reviewer. */
 export type AskReviewer = { channel: string; accountId: string; senderId: string };
@@ -79,7 +79,9 @@ function readQuestion(p: Record<string, unknown>): Ask | null {
   const id = str(p.id);
   if (!id || (p.status !== undefined && p.status !== "pending")) return null;
   const questions: AskQuestion[] = (Array.isArray(p.questions) ? p.questions : []).map(rec).filter((q) => str(q.questionId) && str(q.question)).map((q) => {
-    const options = (Array.isArray(q.options) ? q.options : []).map(rec).filter((o) => str(o.label)).map((o) => ({ label: str(o.label), value: str(o.value) || str(o.label) }));
+    const options = (Array.isArray(q.options) ? q.options : []).map(rec).filter((o) => str(o.label)).map((o) => ({
+      label: str(o.label), value: str(o.value) || str(o.label), ...(str(o.description) ? { description: str(o.description) } : {}),
+    }));
     return { questionId: str(q.questionId), header: str(q.header), question: str(q.question), options, multi: q.multiSelect === true, free: !options.length || q.isOther === true, secret: q.isSecret === true };
   });
   if (!questions.length) return null;
@@ -88,6 +90,13 @@ function readQuestion(p: Record<string, unknown>): Ask | null {
     ...where(str(p.sessionKey), str(p.agentId)),
     words: { yes: "Reply", no: "Skip", done: "Answered", refused: "Skipped" }, questions,
   };
+}
+
+/** True when this ask belongs in the open conversation: same session, or a question that named none. */
+export function askIsHere(ask: Pick<Ask, "kind" | "sessionKey">, sessionKey: string | null | undefined): boolean {
+  if (!sessionKey) return false;
+  if (ask.sessionKey === sessionKey) return true;
+  return ask.kind === "question" && !ask.sessionKey;
 }
 
 /** Reads one `*.requested` event payload or list item. */

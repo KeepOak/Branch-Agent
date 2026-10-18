@@ -2,8 +2,8 @@
 // question, its facts as key/value lines, then the answers the request allows: primary ink "Send it", "Always allow for
 // <Trunk>", "Don't send". Once answered it collapses to a small decided pill. A failed answer stays open with the error
 // under the buttons. Questions (question.*) get their options, a typed answer where the question takes one, and Skip.
-// R1-03's thread renders this through its renderApproval slot.
-import { Fragment, useState } from "react";
+// ChatView mounts this for every approval and question in the open R1 conversation.
+import { Fragment, useState, type KeyboardEvent } from "react";
 import { Coming } from "../../glass/coming";
 import { canDecideApprovals } from "../../thread/approval-trust";
 import { useNow } from "../../thread/approval-guard";
@@ -14,6 +14,7 @@ import "./approvals.css";
 
 export const LOCKDOWN_WHY = "Lockdown is on: nothing leaves this computer.";
 const RESOLVE_WHY = "Answering here comes in a later update. Answer in the conversation’s chat app or the terminal.";
+const OPTION_KEYS = "ABCDE";
 
 type CardProps = {
   state: AskState;
@@ -43,7 +44,7 @@ export function AskCard({ state, name, onAnswer, lockdown, scopes }: CardProps) 
   const decide = canDecideApprovals(undefined, scopes);
   const busy = state.status === "sending";
   return (
-    <div className="r1-ask g-clear" data-testid="r1-ask" data-state={state.status} data-kind={ask.kind} data-approval={ask.id}>
+    <div className="r1-ask g-clear" data-testid="r1-ask" data-state={state.status} data-kind={ask.kind} data-approval={ask.id} data-note={ask.kind === "question" ? "choice" : "ask"}>
       <div className="r1-ask-head">
         <span className="r1-ask-q">{ask.title}</span>
         <span className="r1-ask-pill" data-tone={ask.warning ? "warn" : "wait"}><i />{ask.warning ? "Warning" : decide ? "Waiting for you" : "Waiting"}</span>
@@ -77,7 +78,8 @@ function Answer({ ask, kind, off, why, onClick, children }: { ask: Ask; kind?: "
   );
 }
 
-/** A question's options (one tap answers a single-choice question), a typed answer where it takes one, Reply and Skip. */
+/** A question's options (one tap answers a single-choice question), a typed answer where it takes one, Reply and Skip.
+ *  Markup follows the preview's choiceCard: A–D keys, label, description, "Or type your own answer". */
 function QuestionForm({ ask, busy, onAnswer }: { ask: Ask; busy: boolean; onAnswer: (id: string, reply: Reply) => void }) {
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [typed, setTyped] = useState<Record<string, string>>({});
@@ -91,23 +93,35 @@ function QuestionForm({ ask, busy, onAnswer }: { ask: Ask; busy: boolean; onAnsw
       return { ...p, [q.questionId]: q.multi ? (now.includes(value) ? now.filter((v) => v !== value) : [...now, value]) : [value] };
     });
   };
+  const onKey = (e: KeyboardEvent<HTMLDivElement>, q: AskQuestion) => {
+    const i = OPTION_KEYS.indexOf(e.key.toUpperCase());
+    const opt = q.options[i];
+    if (e.ctrlKey || e.metaKey || e.altKey || !opt || e.target instanceof HTMLInputElement) return;
+    e.preventDefault();
+    pick(q, opt.value);
+  };
   return (
     <>
       {ask.questions.map((q, i) => (
-        <div className="r1-ask-question" key={q.questionId}>
+        <div className="r1-ask-question" key={q.questionId} onKeyDown={(e) => onKey(e, q)}>
+          {q.multi ? <span className="r1-ask-sub">Pick any that fit.</span> : null}
           {ask.questions.length > 1 || q.header ? <span className="r1-ask-qline">{q.header ? <span className="r1-ask-chip">{q.header}</span> : null}{i > 0 || ask.questions.length > 1 ? <span className="r1-ask-qtext">{q.question}</span> : null}</span> : null}
           {q.options.length ? (
             <div className="r1-ask-options" role={q.multi ? "group" : "radiogroup"} aria-label={q.question}>
-              {q.options.map((o) => (
+              {q.options.map((o, j) => (
                 <Coming key={o.value} need="question.resolve" reason={RESOLVE_WHY}>
-                  <button type="button" className="r1-ask-option" role={q.multi ? "checkbox" : "radio"} aria-checked={picked[q.questionId]?.includes(o.value) ?? false} disabled={busy} onClick={() => pick(q, o.value)}>{o.label}</button>
+                  <button type="button" className="r1-ask-option" role={q.multi ? "checkbox" : "radio"} aria-checked={picked[q.questionId]?.includes(o.value) ?? false} disabled={busy} onClick={() => pick(q, o.value)}>
+                    {q.multi ? <span className="r1-ask-box" aria-hidden="true">{picked[q.questionId]?.includes(o.value) ? "✓" : ""}</span> : <kbd aria-hidden="true">{OPTION_KEYS[j]}</kbd>}
+                    <b>{o.label}</b>
+                    {o.description ? <small>{o.description}</small> : null}
+                  </button>
                 </Coming>
               ))}
             </div>
           ) : null}
           {q.free ? (
             <Coming need="question.resolve" reason={RESOLVE_WHY}>
-              <input className="r1-ask-input" type={q.secret ? "password" : "text"} aria-label={q.question} placeholder={q.options.length ? "Or type your own answer" : "Your answer"} value={typed[q.questionId] ?? ""} disabled={busy} onChange={(e) => setTyped((t) => ({ ...t, [q.questionId]: e.target.value }))} />
+              <input className="r1-ask-input" type={q.secret ? "password" : "text"} aria-label={q.question} placeholder={q.secret ? "Paste the key or password…" : q.options.length ? "Or type your own answer" : "Your answer"} value={typed[q.questionId] ?? ""} disabled={busy} onChange={(e) => setTyped((t) => ({ ...t, [q.questionId]: e.target.value }))} />
             </Coming>
           ) : null}
         </div>
