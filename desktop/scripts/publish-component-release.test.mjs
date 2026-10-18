@@ -238,6 +238,21 @@ test("desktop checks run the publication order test by name", async () => {
   assert.match(source, /formatReleaseNotes\(\{ commit, version, names \}\)/);
 });
 
+test("a CI publish without latest.json fails before creating the release", () => fixture(async assets => {
+  const previous = process.env.BRANCH_REQUIRE_SIGNED_UPDATES;
+  process.env.BRANCH_REQUIRE_SIGNED_UPDATES = "1";
+  try {
+    const remote = githubMock(assets);
+    await assert.rejects(publishRelease(assets, commit, version, remote.request, remote.download, {
+      sleep: remote.sleep, now: remote.now,
+    }), /latest\.json is missing/);
+    assert.equal(remote.calls.some(args => args[1] === "create" || args[1] === "edit"), false);
+  } finally {
+    if (previous === undefined) delete process.env.BRANCH_REQUIRE_SIGNED_UPDATES;
+    else process.env.BRANCH_REQUIRE_SIGNED_UPDATES = previous;
+  }
+}));
+
 test("an existing release for this version skips with success and does not create assets", () => fixture(async assets => {
   const remote = githubMock(assets, { existing: { tag_name: tag, target_commitish: commit } });
   const result = await publishRelease(assets, commit, version, remote.request, remote.download, {

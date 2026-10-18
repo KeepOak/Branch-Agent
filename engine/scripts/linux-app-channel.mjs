@@ -188,6 +188,49 @@ function bundleNames(version) {
   };
 }
 
+const LINUX_PLATFORM = "linux-x86_64";
+const DESKTOP_PLATFORMS = ["darwin-aarch64", "windows-x86_64"];
+
+function assertUpdaterPlatforms(platforms, { desktop = false } = {}) {
+  const keys = Object.keys(platforms).toSorted();
+  assert(keys.includes(LINUX_PLATFORM), "Linux stable currently requires the admitted AMD64 platform");
+  const allowed = new Set([LINUX_PLATFORM, ...DESKTOP_PLATFORMS]);
+  assert(
+    keys.every((key) => allowed.has(key)),
+    "Unrecognized updater platforms",
+  );
+  if (desktop) {
+    assert.deepEqual(
+      keys,
+      [LINUX_PLATFORM, ...DESKTOP_PLATFORMS].toSorted(),
+      "Desktop publication requires linux, macOS and Windows signatures in latest.json",
+    );
+  }
+}
+
+function desktopPlatformEntries(directory, version, tag) {
+  const names = bundleNames(version);
+  const desktopPath = join(directory, "latest-desktop-test.json");
+  const candidate = JSON.parse(readFileSync(desktopPath, "utf8"));
+  assert.equal(candidate.version, version, "Desktop test manifest version mismatch");
+  assertUpdaterPlatforms(candidate.platforms, { desktop: true });
+  const entries = {};
+  for (const platform of DESKTOP_PLATFORMS) {
+    const item = candidate.platforms[platform];
+    assert(
+      typeof item?.signature === "string" &&
+        item.signature.length > 0 &&
+        item.signature.length <= 16_384,
+      `Missing desktop updater signature for ${platform}`,
+    );
+    const name =
+      platform === "darwin-aarch64" ? names.desktop[1] : names.desktop[2];
+    assert.equal(item.url, assetUrl(tag, name), `Desktop updater URL mismatch for ${platform}`);
+    entries[platform] = { signature: item.signature, url: item.url };
+  }
+  return entries;
+}
+
 function asset(release, name) {
   const matches = release.assets.filter((entry) => entry.name === name);
   assert(matches.length <= 1, `Duplicate asset ${name} on ${release.tag_name}`);
@@ -409,11 +452,7 @@ function parseManifest(bytes, publicKey) {
   const manifest = JSON.parse(bytes);
   const version = regularVersion(manifest.version);
   const names = bundleNames(version);
-  assert.deepEqual(
-    Object.keys(manifest.platforms),
-    ["linux-x86_64"],
-    "Linux stable currently requires exactly the admitted AMD64 platform",
-  );
+  assertUpdaterPlatforms(manifest.platforms);
   const platform = manifest.platforms["linux-x86_64"];
   assert.equal(
     platform.url,
@@ -1132,6 +1171,7 @@ function publish(github, options, publicKey) {
                 signature,
                 url: assetUrl(options.tag, names.appimage),
               },
+              ...(desktop ? desktopPlatformEntries(directory, version, options.tag) : {}),
             },
           }),
           linuxPublication: {
@@ -1177,11 +1217,7 @@ function publish(github, options, publicKey) {
     const desktopPath = join(directory, desktopName);
     const candidate = JSON.parse(readFileSync(desktopPath, "utf8"));
     assert.equal(candidate.version, version, "Desktop test manifest version mismatch");
-    assert.deepEqual(
-      Object.keys(candidate.platforms).toSorted(),
-      ["darwin-aarch64", "windows-x86_64"],
-      "Unexpected desktop test platforms",
-    );
+    assertUpdaterPlatforms(candidate.platforms, { desktop: true });
     const previous = github.metadata(github.unchanged(release, options["source-sha"]), desktopName);
     if (previous) {
       const retained = JSON.parse(previous);
@@ -1192,6 +1228,7 @@ function publish(github, options, publicKey) {
         "Desktop test platforms changed",
       );
       for (const [platform, name] of [
+        ["linux-x86_64", names.appimage],
         ["darwin-aarch64", names.desktop[1]],
         ["windows-x86_64", names.desktop[2]],
       ]) {

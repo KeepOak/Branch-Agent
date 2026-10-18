@@ -501,6 +501,10 @@ jobs:
             sha256sum --check -
           printf '%s  %s\n' "$MINISIGN_BINARY_SHA256" "${RUNNER_TEMP}/bin/minisign" |
             sha256sum --check -
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is missing. Free update signing needs this repository secret (a Tauri/minisign private key). Generate with: cargo tauri signer generate. Put the public key in apps/linux/src-tauri/tauri.conf.json plugins.updater.pubkey. Never commit the private key. A key rotation must change the committed pubkey with it."
+            exit 1
+          fi
           version="${RELEASE_TAG#v}"
           appimage="dist/signing-input/Branch-${version}-amd64.AppImage"
           mapfile -d '' inputs < <(find dist/signing-input -mindepth 1 -maxdepth 1 -print0)
@@ -582,7 +586,7 @@ jobs:
           set -euo pipefail
           version="${RELEASE_TAG#v}"
           pnpm dlx @tauri-apps/cli@2.11.4 build --bundles app,dmg \
-            --config "{\"version\":\"${version}\",\"bundle\":{\"createUpdaterArtifacts\":false}}"
+            --config "{\"version\":\"${version}\",\"bundle\":{\"createUpdaterArtifacts\":false,\"macOS\":{\"signingIdentity\":\"-\"}}}"
 
       - name: Verify and stage unsigned macOS bundles
         env:
@@ -769,6 +773,10 @@ jobs:
             sha256sum --check -
           printf '%s  %s\n' "$MINISIGN_BINARY_SHA256" "${RUNNER_TEMP}/bin/minisign" |
             sha256sum --check -
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is missing. Free update signing needs this repository secret (a Tauri/minisign private key). Generate with: cargo tauri signer generate. Put the public key in apps/linux/src-tauri/tauri.conf.json plugins.updater.pubkey. Never commit the private key. A key rotation must change the committed pubkey with it."
+            exit 1
+          fi
           version="${RELEASE_TAG#v}"
           macos="dist/signing-input/macos/Branch-${version}-darwin-aarch64.app.tar.gz"
           windows="dist/signing-input/windows/Branch-${version}-windows-x86_64.exe"
@@ -934,17 +942,20 @@ jobs:
             release_json=$(gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json body,publishedAt)
             pub_date=$(jq -er '.publishedAt' <<< "$release_json")
             notes=$(jq -r '.body // ""' <<< "$release_json")
+            linux_signature=$(cat "dist/input/linux/signatures/Branch-${version}-amd64.AppImage.sig")
             macos_signature=$(cat "dist/input/macos/signatures/Branch-${version}-darwin-aarch64.app.tar.gz.sig")
             windows_signature=$(cat "dist/input/windows/signatures/Branch-${version}-windows-x86_64.exe.sig")
             jq -n \
               --arg version "${version}" \
               --arg notes "${notes}" \
               --arg pub_date "${pub_date}" \
+              --arg linux_signature "${linux_signature}" \
+              --arg linux_url "${url_base}/Branch-${version}-amd64.AppImage" \
               --arg macos_signature "${macos_signature}" \
               --arg macos_url "${url_base}/Branch-${version}-darwin-aarch64.app.tar.gz" \
               --arg windows_signature "${windows_signature}" \
               --arg windows_url "${url_base}/Branch-${version}-windows-x86_64.exe" \
-              '{version: $version, notes: ($notes | .[0:2000]), pub_date: $pub_date, platforms: {"darwin-aarch64": {signature: $macos_signature, url: $macos_url}, "windows-x86_64": {signature: $windows_signature, url: $windows_url}}}' \
+              '{version: $version, notes: ($notes | .[0:2000]), pub_date: $pub_date, platforms: {"linux-x86_64": {signature: $linux_signature, url: $linux_url}, "darwin-aarch64": {signature: $macos_signature, url: $macos_url}, "windows-x86_64": {signature: $windows_signature, url: $windows_url}}}' \
               > dist/release/latest-desktop-test.json
             cat dist/release/latest-desktop-test.json
           fi

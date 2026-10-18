@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Wraps a target's verified desktop package (branch-desktop-<version>-<target>.tar.gz) in an installer a person can
-// double-click. Signing goes through release-signing.mjs and stays off until the owner adds its secrets
-// (desktop/INSTALLERS.md, "Left for the owner"); until then the installers are built unsigned and the log says so.
+// double-click. OS signing stays off (no paid certs). Updates use the free Tauri/minisign key
+// (desktop/INSTALLERS.md, "Signing"): installers stay unsigned; latest.json carries a .sig per platform.
 //   node desktop/scripts/release-installers.mjs --assets <release-assets> --version <version> --target <target> --out <dir>
 // win32-x64: a per-user Inno Setup installer (no admin prompt; each update lands in a version folder under that root).
 // darwin-arm64: a .dmg holding the already-signed Branch Agent.app and an Applications link.

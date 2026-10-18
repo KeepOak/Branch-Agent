@@ -6738,6 +6738,9 @@ it("isolates release credentials and verifies trusted AppImage and signing tools
     TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}",
     UPDATER_PUBLIC_KEY: "${{ needs.validate_release.outputs.updater_pubkey }}",
   });
+  expect(signAppImage.run).toContain('[[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]');
+  expect(signAppImage.run).toContain("Never commit the private key");
+  expect(signAppImage.run).toContain("A key rotation must change the committed pubkey");
   const signingToolsInstaller = expectDefined(
     signingSteps.find(({ name }) => name === "Install trusted signing tools"),
     "Linux signing tools installer",
@@ -6829,6 +6832,8 @@ it("isolates release credentials and verifies trusted AppImage and signing tools
     TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}",
     UPDATER_PUBLIC_KEY: "${{ needs.validate_release.outputs.updater_pubkey }}",
   });
+  expect(signDesktop.run).toContain('[[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]');
+  expect(signDesktop.run).toContain("Never commit the private key");
   expect(desktopSigningSteps.find(({ name }) => name === "Install trusted signing tools")).toEqual(
     signingToolsInstaller,
   );
@@ -6878,6 +6883,20 @@ it("isolates release credentials and verifies trusted AppImage and signing tools
     "artifact-ids": "${{ needs.sign_desktop.outputs.signed_desktop_artifact_id }}",
     path: "dist/input",
   });
+  const assembleManifest = expectDefined(
+    (linux.jobs.publish.steps as WorkflowStep[]).find(
+      ({ name }) => name === "Assemble release assets and updater manifest",
+    ),
+    "updater manifest assembly",
+  );
+  expect(assembleManifest.run).toContain('"linux-x86_64": {signature: $linux_signature, url: $linux_url}');
+  expect(assembleManifest.run).toContain('"darwin-aarch64": {signature: $macos_signature, url: $macos_url}');
+  expect(assembleManifest.run).toContain('"windows-x86_64": {signature: $windows_signature, url: $windows_url}');
+  const macosBuild = expectDefined(
+    (linux.jobs.build_macos.steps as WorkflowStep[]).find(({ name }) => name === "Build macOS test bundles"),
+    "macOS ad-hoc signing build",
+  );
+  expect(macosBuild.run).toContain('"macOS":{"signingIdentity":"-"}');
   const publishLinuxMetadata = expectDefined(
     (linux.jobs.publish.steps as WorkflowStep[]).find(
       ({ name }) =>
@@ -7469,6 +7488,24 @@ it("isolates release credentials and verifies trusted AppImage and signing tools
     mkdirSync(signingInput, { recursive: true });
     writeFileSync(finalizedArtifact, "trusted-finalized-bytes");
     const linuxSigningTools = writeSigningToolFixtures(signingRoot);
+    const missingKey = spawnSync("bash", ["-c", signAppImage.run ?? ""], {
+      cwd: signingRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: linuxSigningTools.path,
+        RELEASE_TAG: "v2026.8.2",
+        RUNNER_TEMP: signingRoot,
+        TAG_SHA: "a".repeat(40),
+        MINISIGN_BINARY_SHA256: linuxSigningTools.minisignBinarySha256,
+        TAURI_CLI_BINARY_SHA256: linuxSigningTools.tauriBinarySha256,
+        TAURI_SIGN_LOG: linuxSigningTools.tauriLog,
+        UPDATER_PUBLIC_KEY: Buffer.from("ephemeral-public-key").toString("base64"),
+        MINISIGN_LOG: linuxSigningTools.minisignLog,
+      },
+    });
+    expect(missingKey.status).not.toBe(0);
+    expect(`${missingKey.stdout}${missingKey.stderr}`).toContain("TAURI_SIGNING_PRIVATE_KEY is missing");
     const signed = runSigning(signingRoot, signAppImage, linuxSigningTools);
     expect(signed.status, `${signed.stdout}${signed.stderr}`).toBe(0);
     expect(readFileSync(finalizedArtifact, "utf8")).toBe("trusted-finalized-bytes");

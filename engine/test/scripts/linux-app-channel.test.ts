@@ -609,13 +609,17 @@ function fixture(workflowRef = toolingRef, desktop = false) {
           notes: "Fixture desktop test bundles",
           pub_date: "2026-09-03T12:00:00Z",
           platforms: {
+            "linux-x86_64": {
+              signature,
+              url: `https://github.com/openclaw/openclaw/releases/download/${releaseTag}/Branch-${version}-amd64.AppImage`,
+            },
             "darwin-aarch64": {
               signature,
-              url: `https://github.com/openclaw/openclaw/releases/download/${releaseTag}/OpenClaw-${version}-darwin-aarch64.app.tar.gz`,
+              url: `https://github.com/openclaw/openclaw/releases/download/${releaseTag}/Branch-${version}-darwin-aarch64.app.tar.gz`,
             },
             "windows-x86_64": {
               signature,
-              url: `https://github.com/openclaw/openclaw/releases/download/${releaseTag}/OpenClaw-${version}-windows-x86_64.exe`,
+              url: `https://github.com/openclaw/openclaw/releases/download/${releaseTag}/Branch-${version}-windows-x86_64.exe`,
             },
           },
         }),

@@ -14,6 +14,8 @@ export const AUTO_APPLY_GAP_MS = 30_000;
 export const AUTO_APPLY_RETRY_MS = 60_000;
 /** An update pending this long applies at the next gap, without waiting for the Trunk-work batch (Private #1047). */
 export const AUTO_APPLY_PENDING_CAP_MS = 6 * 60 * 60_000;
+/** After a failed standby handoff, drain even with active runs once this long has passed (#834). The gap still holds. */
+export const AUTO_APPLY_HANDOFF_FAIL_DRAIN_MS = 30 * 60 * 1000;
 
 /**
  * Private #951 cadence: on a machine running Trunk work, updates are batched. One applies at most this often, and only
@@ -105,6 +107,8 @@ export function createAutoApplyUpdate(options: {
   let lastSampleAt: number | undefined;
   /** When the held version was first seen pending; the cap counts from here. */
   let pendingSince: number | undefined;
+  /** When the current version's standby handoff last failed; the 30-minute drain counts from here (#834). */
+  let handoffFailedAt: number | undefined;
   /** The version whose pending-over-cap line is already in the log, so each tick does not repeat it. */
   let cappedNoted: string | undefined;
   const now = options.now ?? Date.now;
@@ -146,6 +150,7 @@ export function createAutoApplyUpdate(options: {
         // pending, so releases that keep coming every few hours cannot postpone the update forever.
         if (!version) pendingSince = undefined;
         else if (heldVersion === undefined) pendingSince = now();
+        handoffFailedAt = undefined;
         heldVersion = version ?? undefined;
       }
       if (!version || !options.enabled() || appliedVersion === version) {
@@ -194,6 +199,7 @@ export function createAutoApplyUpdate(options: {
           // No standby (typical on a low-memory Mac): drain after idle, without a toast or back-off.
           restarting = false;
           failedVersion = version;
+          handoffFailedAt ??= now();
           decision(`handoff unavailable; falling back to idle drain for ${version}`);
         }
       }
@@ -222,19 +228,21 @@ export function createAutoApplyUpdate(options: {
         restarting = true;
         decision(`idle; handing off to ${version}`);
         try { await options.restart(version, true); await applied(version); }
-        catch { failedVersion = version; decision(`handoff unavailable; falling back to idle drain for ${version}`); }
+        catch { failedVersion = version; handoffFailedAt ??= now(); decision(`handoff unavailable; falling back to idle drain for ${version}`); }
         finally { restarting = false; }
         return;
       }
-      // Without a handoff, a drain protects running work only on an idle engine, or once the update is over the cap:
-      // then it drains at this gap, and the engine finishes its runs before it stops.
-      if (final.activeRuns && !capped) {
+      // Without a handoff, a drain protects running work only on an idle engine, or once the update is over the cap
+      // or a failed standby has waited 30 minutes (#834): then it drains at this gap, and the engine finishes its runs.
+      const handoffDrainReady = failedVersion === version && handoffFailedAt !== undefined
+        && now() - handoffFailedAt >= AUTO_APPLY_HANDOFF_FAIL_DRAIN_MS;
+      if (final.activeRuns && !capped && !handoffDrainReady) {
         decision(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals; no standby to hand off to for ${version}`);
         return;
       }
       restarting = true;
       decision(final.activeRuns ? `draining at a gap for ${version}; ${final.activeRuns} runs finish first` : `restarting for ${version}`);
-      try { await options.restart(version, false, capped && final.activeRuns > 0); await applied(version); restarting = false; }
+      try { await options.restart(version, false, (capped || handoffDrainReady) && final.activeRuns > 0); await applied(version); restarting = false; }
       catch (error) {
         restarting = false;
         retryAfter = now() + AUTO_APPLY_RETRY_MS;

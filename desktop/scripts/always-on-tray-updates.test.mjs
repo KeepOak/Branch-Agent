@@ -58,6 +58,7 @@ function electronFixture(work) {
         reload() {}, send: (channel, ...args) => {
           this.sent.push(channel);
           if (channel !== 'branch-desktop:auto-apply:probe') return;
+          if (typeof work !== 'function') return;
           setImmediate(() => ipcMain.emit('branch-desktop:auto-apply:result', { sender: wc, senderFrame: wc.mainFrame }, args[0], work()));
         } });
     }
@@ -371,6 +372,17 @@ test('a busy engine refuses the service update before the standby and before any
   assert.deepEqual(state.calls, ['standby']);
   assert.deepEqual(state.restarts, []);
   assert.equal(state.serviceRuns, old);
+});
+
+test('Apply now in service mode treats a silent window as idle, not a timed-out failure', async t => {
+  await serviceApp(t, null, async ({ clickUpdate, publish, cliCalls, dialogs, desktopLog }) => {
+    publish('engine-v2', 'v2');
+    clickUpdate();
+    await eventually(() => /service update: the engine service runs the new engine|the engine build is unchanged/.test(desktopLog()), 45000);
+    assert.doesNotMatch(desktopLog(), /activity check timed out|activity check failed/);
+    assert.equal(dialogs.filter(d => d[0] === 'error').length, 0);
+    assert.ok(cliCalls().some(line => line.startsWith('gateway restart')) || desktopLog().includes('the engine build is unchanged'));
+  }, updateEnv);
 });
 
 test('a running Trunk run survives an Update click in service mode: refused, no gateway CLI call, the run still answers', async t => {

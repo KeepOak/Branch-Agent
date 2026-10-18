@@ -358,7 +358,10 @@ async function probeOneWindow(owner: Electron.WebContents): Promise<WindowState>
   });
 }
 async function probeWindowState(): Promise<WindowState> {
-  const states = await Promise.all(branchWindows().map(w => probeOneWindow(w.webContents)));
+  // Use every window that answered. A silent one must not fail the probe when another is ready (#1770).
+  const results = await Promise.allSettled(branchWindows().map(w => probeOneWindow(w.webContents)));
+  const states = results.filter((result): result is PromiseFulfilledResult<WindowState> => result.status === "fulfilled")
+    .map(result => result.value);
   if (!states.length) throw new Error("The window is not ready to report approvals and drafts");
   const counts = states.map(s => s.workingTrunks).filter((n): n is number => n !== undefined);
   return { pendingApprovals: Math.max(...states.map(s => s.pendingApprovals)), streaming: states.some(s => s.streaming),
@@ -378,6 +381,10 @@ function windowSilent(error: unknown): undefined {
     log(`auto-apply: no window answered the activity check (${error instanceof Error ? error.message : String(error)}); using the engine's own activity`);
   }
   return undefined;
+}
+/** Service-engine Apply now and auto-apply: a timed-out window is idle, not a failed update (#1770). */
+function probeWindowOrIdle(): Promise<WindowState | undefined> {
+  return probeWindowState().then(answered, windowSilent);
 }
 
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -782,9 +789,15 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   // Rollback has reclaimed the state. The old engine must keep its full readiness budget without the retire timer.
   if (back === "ok") stopRetiring(prior);
   if (back !== "ok" || !await priorServes(prior, rollbackReadyTimeoutMs())) {
+    const failure = `the update failed and the old engine could not take control back (${back}): ${message}`;
+    // A still-alive predecessor keeps serving. Fencing it starts a cold recovery that drops the live engine (#834).
+    if (prior.exitCode === null && prior.signalCode === null) {
+      resumeSupervision();
+      log(`update ${label}: ${failure}; the old engine is still running`);
+      throw new Error(failure);
+    }
     notServing(prior);
     resumeSupervision();
-    const failure = `the update failed and the old engine could not take control back (${back}): ${message}`;
     log(`update ${label}: ${failure}`);
     throw new Error(failure);
   }
@@ -915,9 +928,10 @@ const autoApply = createAutoApplyUpdate({
   activity: async () => {
     if (serviceEngine) {
       // The service engine has no app channel: the window's own engine calls say what runs (Private #454 E).
-      const window = await probeWindowState();
-      return { activeRuns: window.workingTrunks ?? (window.streaming ? 1 : 0), pendingApprovals: window.pendingApprovals,
-        streaming: window.streaming, unsavedDraftFiles: window.unsavedDraftFiles };
+      // A silent window is unknown, not busy: Apply now and auto-apply must not fail the 5s probe (#1770).
+      const window = await probeWindowOrIdle();
+      return { activeRuns: window?.workingTrunks ?? (window?.streaming ? 1 : 0), pendingApprovals: window?.pendingApprovals ?? 0,
+        streaming: Boolean(window?.streaming), unsavedDraftFiles: Boolean(window?.unsavedDraftFiles) };
     }
     if (!gateway) throw new Error("The gateway is not running");
     // The approval RPCs themselves count as gateway work; sample after they settle.
@@ -1778,7 +1792,7 @@ async function undoLastUpdate(automatic = false): Promise<void> {
   try {
     if (!serviceEngine && (!gateway || !engineServing())) throw new Error("The engine is not ready to switch");
     const active = automatic ? undefined : await engineActivity();
-    const window = automatic ? undefined : await probeWindowState();
+    const window = automatic ? undefined : await probeWindowOrIdle();
     if (active && window && (active.activeRuns || active.totalActive || active.pendingReplies || window.pendingApprovals ||
         window.streaming || window.unsavedDraftFiles)) throw new Error("The previous version cannot take over while work is running");
     // After the probation the previous engine is (or is about to be) pruned: Undo never runs past its deadline.
@@ -1839,17 +1853,17 @@ async function restartEngine(): Promise<void> {
 /** What the engine runs now: the owned child answers itself; the service engine's work comes from the window. */
 async function engineActivity(): Promise<{ activeRuns: number; totalActive: number; pendingReplies: number }> {
   if (!serviceEngine && gateway) return gatewayActivity(gateway);
-  const window = await probeWindowState();
-  const runs = window.workingTrunks ?? (window.streaming ? 1 : 0);
+  const window = await probeWindowOrIdle();
+  const runs = window?.workingTrunks ?? (window?.streaming ? 1 : 0);
   return { activeRuns: runs, totalActive: runs, pendingReplies: 0 };
 }
 
 /** The service engine's live work, read before any update restarts the service (Private #1038's idle rule). */
 async function serviceWork(): Promise<ServiceWork> {
-  const window = await probeWindowState();
-  const engine = await engineActivity();
-  return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window.pendingApprovals,
-    streaming: engine.pendingReplies > 0 || window.streaming };
+  const window = await probeWindowOrIdle();
+  const runs = window?.workingTrunks ?? (window?.streaming ? 1 : 0);
+  return { activeRuns: runs, pendingApprovals: window?.pendingApprovals ?? 0,
+    streaming: Boolean(window?.streaming) };
 }
 
 /** The engine's live state for the tray, from the engine calls the app already makes. */
