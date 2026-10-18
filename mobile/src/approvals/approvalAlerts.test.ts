@@ -4,6 +4,7 @@ import { createFakeSession } from '../testing/fakeSession';
 import { FIXTURE_NOW, fixtureAgents } from '../testing/chatFixtures';
 import { fixtureApprovals } from '../testing/approvalFixtures';
 import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier';
+import type { CyclePos } from '../settings/phonePrefs';
 import { ApprovalAlerts } from './approvalAlerts';
 import { ApprovalInbox } from './approvals';
 
@@ -12,7 +13,7 @@ const MINUTE = 60_000;
 const later = { id: 'exec-2', createdAtMs: FIXTURE_NOW, expiresAtMs: FIXTURE_NOW + 30 * MINUTE, request: { command: 'rm -rf build && pnpm build', agentId: 'oak', cwd: '/Users/sam/Code/branch' } };
 const email = { id: 'plugin:mail-2', createdAtMs: FIXTURE_NOW, expiresAtMs: FIXTURE_NOW + 5 * MINUTE, request: { title: 'Send a reply to Sam?', description: 'To: Sam\nThanks, see you Monday.', agentId: 'main' } };
 
-async function setup(appState = 'background') {
+async function setup(appState = 'background', tellMe: () => CyclePos = () => 'when-needed') {
   const engine = createFakeEngine({ agents: fixtureAgents, approvals: fixtureApprovals });
   const { session } = createFakeSession(engine);
   await session.restore();
@@ -25,7 +26,7 @@ async function setup(appState = 'background') {
   const fake = createFakeNotifier();
   const state = createFakeAppState(appState);
   const opened: string[] = [];
-  const alerts = new ApprovalAlerts(inbox, fake.notifier, state.source, (id) => opened.push(id));
+  const alerts = new ApprovalAlerts(inbox, fake.notifier, state.source, (id) => opened.push(id), tellMe);
   alerts.attach();
   const done = () => {
     alerts.dispose();
@@ -56,6 +57,21 @@ describe('approval notifications', () => {
     engine.requestApproval('exec', later);
     await eventually(() => expect(fake.badges.at(-1)).toBe(3));
     expect(fake.shown.size).toBe(0);
+    done();
+  });
+
+  it('Tell me Off never posts a notification, even in the background', async () => {
+    const { engine, fake, done } = await setup('background', () => 'off');
+    engine.requestApproval('exec', later);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(fake.shown.has('approval:exec-2')).toBe(false);
+    done();
+  });
+
+  it('Tell me On posts a notification even while Branch Agent is open', async () => {
+    const { engine, fake, done } = await setup('active', () => 'on');
+    engine.requestApproval('exec', later);
+    await eventually(() => expect(fake.shown.get('approval:exec-2')).toBeDefined());
     done();
   });
 

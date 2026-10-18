@@ -7,7 +7,11 @@ import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier'
 import { createFakeSession } from '../testing/fakeSession';
 import { memoryStore } from '../storage/keyValueStore';
 import { SHOW_LEVEL_KEY } from '../settings/showLevel';
-import { CYCLE_LABEL, PHONE_PREFS_DEFAULT } from '../settings/phonePrefs';
+import { DEVICE_IDENTITY_KEY } from '../connect/deviceIdentity';
+import { PAIRING_RECORD_KEY } from '../pairing/pairingSession';
+import { KEEP_AWAKE_TAG, resetKeepAwakeDriver, setKeepAwakeDriver } from '../settings/phoneEffects';
+import { OFFLINE_CHATS_KEY, SAVED_AGENTS_KEY, WAITING_MESSAGES_KEY } from '../settings/phoneLocal';
+import { CYCLE_LABEL, PHONE_PREFS_DEFAULT, PHONE_PREFS_KEY, resetLivePhonePrefs } from '../settings/phonePrefs';
 import { DESKTOP_THEMES } from '../theme/desktopThemes';
 import { THEME_LOOK_KEY, THEME_PREFERENCE_KEY } from '../theme/preference';
 import { ThemeProvider } from '../theme/ThemeProvider';
@@ -18,12 +22,20 @@ import {
   HELP_PAGES,
   KEEPOAK_SIGN_IN,
   KEEPOAK_SIGN_IN_REASON,
+  LOCK_REASON,
+  PUSH_REASON,
   RUN_ON_PHONE,
   RUN_ON_PHONE_REASON,
+  WAKE_REASON,
 } from './settingsExtras';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 4000 });
 jest.setTimeout(20_000);
+
+beforeEach(() => {
+  resetLivePhonePrefs();
+  resetKeepAwakeDriver();
+});
 
 const paired = {
   step: 'paired' as const,
@@ -39,6 +51,7 @@ async function renderSettings(extra: Partial<Parameters<typeof SettingsScreen>[0
     onTurnOnNotifications: jest.fn(),
     onConnectAnother: jest.fn(),
     onForget: jest.fn(),
+    onReset: jest.fn(),
     onSetupTalk: jest.fn(),
     onAskHelp: jest.fn(),
     onBack: jest.fn(),
@@ -258,6 +271,11 @@ describe('r50 settings parity', () => {
     expect(screen.getByText('Lend this phone to Branch Agent')).toBeOnTheScreen();
     expect(screen.getByText('Forget this Branch Agent')).toBeOnTheScreen();
     expect(screen.getByText('Lock with fingerprint')).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-lock-reason')).toHaveTextContent(LOCK_REASON);
+    expect(screen.getByTestId('settings-push-reason')).toHaveTextContent(PUSH_REASON);
+    expect(screen.getByTestId('settings-wake-reason')).toHaveTextContent(WAKE_REASON);
+    expect(screen.queryByText('Listening')).toBeNull();
+    expect(screen.queryByTestId('settings-lock-value')).toBeNull();
     expect(screen.getByText(RUN_ON_PHONE)).toBeOnTheScreen();
     expect(screen.getByTestId('settings-run-on-phone-reason')).toHaveTextContent(RUN_ON_PHONE_REASON);
     expect(screen.getByTestId('settings-chatapps')).toBeOnTheScreen();
@@ -295,14 +313,28 @@ describe('r50 settings parity', () => {
 
   it('cycles On / When needed / Off on Regular phone rows', async () => {
     await renderSettings();
-    expect(screen.getByTestId('settings-lock-value')).toHaveTextContent(CYCLE_LABEL[PHONE_PREFS_DEFAULT.lock]);
-    await fireEvent.press(screen.getByTestId('settings-lock'));
-    expect(screen.getByTestId('settings-lock-value')).toHaveTextContent('When needed');
-    await fireEvent.press(screen.getByTestId('settings-lock'));
-    expect(screen.getByTestId('settings-lock-value')).toHaveTextContent('On');
+    expect(screen.getByTestId('settings-tell-me-value')).toHaveTextContent(CYCLE_LABEL[PHONE_PREFS_DEFAULT.tellMe]);
+    await fireEvent.press(screen.getByTestId('settings-tell-me'));
+    expect(screen.getByTestId('settings-tell-me-value')).toHaveTextContent('Off');
+    await fireEvent.press(screen.getByTestId('settings-tell-me'));
+    expect(screen.getByTestId('settings-tell-me-value')).toHaveTextContent('When needed');
     expect(screen.getByTestId('settings-awake')).toHaveProp('accessibilityState', { checked: true });
     await fireEvent.press(screen.getByTestId('settings-awake'));
     expect(screen.getByTestId('settings-awake')).toHaveProp('accessibilityState', { checked: false });
+  });
+
+  it('shows fingerprint lock, closed-app alerts and the wake word disabled with a reason, never Listening', async () => {
+    await renderSettings();
+    expect(screen.getByTestId('settings-lock')).toHaveProp('accessibilityState', { disabled: true });
+    expect(screen.getByTestId('settings-push')).toHaveProp('accessibilityState', { disabled: true });
+    expect(screen.getByTestId('settings-wake')).toHaveProp('accessibilityState', { disabled: true });
+    expect(screen.getByTestId('settings-lock-reason')).toHaveTextContent(LOCK_REASON);
+    expect(screen.getByTestId('settings-push-reason')).toHaveTextContent(PUSH_REASON);
+    expect(screen.getByTestId('settings-wake-reason')).toHaveTextContent(WAKE_REASON);
+    expect(screen.getByTestId('later-keepoak-reason')).toHaveTextContent(KEEPOAK_SIGN_IN_REASON);
+    expect(screen.queryByText('Listening')).toBeNull();
+    await fireEvent.press(screen.getByTestId('settings-lock'));
+    expect(screen.queryByTestId('settings-lock-value')).toBeNull();
   });
 
   it('plays Test sound and opens Lend this phone', async () => {
@@ -327,6 +359,16 @@ describe('r50 settings parity', () => {
     expect(screen.getByTestId('forget-ask')).toHaveTextContent(/Forget this Branch Agent/);
     await fireEvent.press(screen.getByTestId('forget-ask-yes'));
     expect(mocks.onForget).toHaveBeenCalledTimes(1);
+    expect(mocks.onReset).not.toHaveBeenCalled();
+  });
+
+  it('asks Reset to wipe this phone, and Forget still only unpairs', async () => {
+    const { mocks } = await renderSettings({ level: 1 });
+    await fireEvent.press(screen.getByTestId('settings-reset'));
+    expect(screen.getByTestId('reset-ask')).toHaveTextContent(/saved Branch Agent, key, offline chat and waiting message/);
+    await fireEvent.press(screen.getByTestId('reset-ask-yes'));
+    expect(mocks.onReset).toHaveBeenCalledTimes(1);
+    expect(mocks.onForget).not.toHaveBeenCalled();
   });
 
   it('offers the same desktop themes, with Branch Slate selected', async () => {
@@ -396,5 +438,94 @@ describe('r50 settings parity', () => {
     const card = StyleSheet.flatten(screen.getByTestId('this-branch-surface').props.style);
     expect(card.backgroundColor).toBe(themeFor('light').color.glass);
     expect(card.borderRadius).toBe(themeFor('light').radius.md);
+  });
+});
+
+describe('phone setting effects in the app', () => {
+  it('keeps the screen awake while a Trunk is working, and lets the row turn that off', async () => {
+    const calls: string[] = [];
+    setKeepAwakeDriver({
+      activate: (tag) => {
+        calls.push(`on:${tag}`);
+      },
+      deactivate: (tag) => {
+        calls.push(`off:${tag}`);
+      },
+    });
+    const store = memoryStore();
+    const { session } = await pairedApp({ themeStore: store });
+    await eventually(() => expect(calls).toContain(`on:${KEEP_AWAKE_TAG}`));
+    await fireEvent.press(screen.getByTestId('settings-button'));
+    await fireEvent.press(screen.getByTestId('settings-awake'));
+    await eventually(() => expect(calls).toContain(`off:${KEEP_AWAKE_TAG}`));
+    session.dispose();
+  });
+
+  it('Reset removes saved agents, keys, offline chats and waiting messages, then unpairs', async () => {
+    const store = memoryStore();
+    const engine = createFakeEngine({ sessions: fixtureSessions, agents: fixtureAgents });
+    const { session } = createFakeSession(engine, store);
+    const fake = createFakeNotifier('granted');
+    await render(
+      <App
+        session={session}
+        notifier={fake.notifier}
+        appState={createFakeAppState('active').source}
+        identity={{ version: '0.1.0', build: '14' }}
+        themeStore={store}
+      />,
+    );
+    await act(() => session.begin({ url: 'ws://paired.example:18765', bootstrapToken: 'boot-1' }));
+    engine.approve();
+    await eventually(() => expect(screen.getByTestId('chats-screen')).toBeOnTheScreen());
+    await eventually(() => expect(store.dump()[DEVICE_IDENTITY_KEY]).toBeTruthy());
+    await eventually(() => expect(store.dump()[SAVED_AGENTS_KEY]).toBeTruthy());
+    await eventually(() => expect(store.dump()[OFFLINE_CHATS_KEY]).toBeTruthy());
+    await store.set(
+      WAITING_MESSAGES_KEY,
+      JSON.stringify([{ sessionKey: 'agent:main:main', id: 'w1', text: 'hold this', at: 1, state: 'failed' }]),
+    );
+    await store.set(PHONE_PREFS_KEY, JSON.stringify({ ...PHONE_PREFS_DEFAULT, awake: false, haptics: false }));
+    await fireEvent.press(screen.getByTestId('settings-button'));
+    await fireEvent.press(screen.getByTestId('settings-level-advanced'));
+    await eventually(() => expect(screen.getByTestId('settings-reset')).toBeOnTheScreen());
+    await fireEvent.press(screen.getByTestId('settings-reset'));
+    await fireEvent.press(screen.getByTestId('reset-ask-yes'));
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
+    const dump = store.dump();
+    expect(dump[DEVICE_IDENTITY_KEY]).toBeUndefined();
+    expect(dump[PAIRING_RECORD_KEY]).toBeUndefined();
+    expect(dump[SAVED_AGENTS_KEY]).toBeUndefined();
+    expect(dump[OFFLINE_CHATS_KEY]).toBeUndefined();
+    expect(dump[WAITING_MESSAGES_KEY]).toBeUndefined();
+    expect(dump[PHONE_PREFS_KEY]).toBeUndefined();
+    session.dispose();
+  });
+
+  it('Forget unpairs and leaves the device key', async () => {
+    const store = memoryStore();
+    const engine = createFakeEngine({ sessions: fixtureSessions, agents: fixtureAgents });
+    const { session } = createFakeSession(engine, store);
+    const fake = createFakeNotifier('granted');
+    await render(
+      <App
+        session={session}
+        notifier={fake.notifier}
+        appState={createFakeAppState('active').source}
+        identity={{ version: '0.1.0', build: '14' }}
+        themeStore={store}
+      />,
+    );
+    await act(() => session.begin({ url: 'ws://paired.example:18765', bootstrapToken: 'boot-1' }));
+    engine.approve();
+    await eventually(() => expect(screen.getByTestId('chats-screen')).toBeOnTheScreen());
+    await eventually(() => expect(store.dump()[DEVICE_IDENTITY_KEY]).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('settings-button'));
+    await fireEvent.press(screen.getByTestId('settings-forget'));
+    await fireEvent.press(screen.getByTestId('forget-ask-yes'));
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
+    expect(store.dump()[DEVICE_IDENTITY_KEY]).toBeTruthy();
+    expect(store.dump()[PAIRING_RECORD_KEY]).toBeUndefined();
+    session.dispose();
   });
 });

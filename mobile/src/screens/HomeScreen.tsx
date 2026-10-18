@@ -18,6 +18,7 @@ import {
   type AccessLevel,
   type LaterHomeAction,
 } from '../home/homeModel';
+import { tapHaptic } from '../settings/phoneEffects';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
@@ -256,9 +257,9 @@ export function HomeScreen({
                   ) : null}
                   <View style={{ flexDirection: 'row', flexWrap: 'nowrap', gap: space.sm, marginTop: space.sm }}>
                     {canAllowNeed(need) ? (
-                      <Chip title={need.yes} kind="ink" testID={`home-allow-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => onAnswer(need.id, 'allow-once')} />
+                      <Chip title={need.yes} kind="ink" testID={`home-allow-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => { tapHaptic(); onAnswer(need.id, 'allow-once'); }} />
                     ) : null}
-                    <Chip title={need.no} testID={`home-deny-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => onAnswer(need.id, 'deny')} />
+                    <Chip title={need.no} testID={`home-deny-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => { tapHaptic(); onAnswer(need.id, 'deny'); }} />
                     <Chip title="Look first" testID={`home-look-${need.id}`} onPress={() => onLookFirst(need.id, need.sessionKey)} />
                   </View>
                 </View>

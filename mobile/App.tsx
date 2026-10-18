@@ -37,6 +37,9 @@ import { ProfileScreen } from './src/screens/ProfileScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import type { SettingsLevel } from './src/screens/settingsExtras';
 import { VoiceScreen } from './src/screens/VoiceScreen';
+import { applyKeepAwake, parseShareUrl, shouldKeepScreenAwake } from './src/settings/phoneEffects';
+import { resetThisPhone, takeShareToBranchAgent, writeOfflineChats, writeSavedAgents, writeWaitingMessages } from './src/settings/phoneLocal';
+import { getLivePhonePrefs, readPhonePrefs, subscribeLivePhonePrefs } from './src/settings/phonePrefs';
 import { parseShowLevel, readShowLevel, settingsLevelOf, showLevelOf, writeShowLevel, type ShowLevel } from './src/settings/showLevel';
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
 import { PairingTheme, ThemeProvider, useTheme } from './src/theme/ThemeProvider';
@@ -111,6 +114,7 @@ function OpenChat({
   sending,
   failed,
   onAnswer,
+  store,
 }: {
   session: PairingSession;
   row: ChatRow;
@@ -123,12 +127,19 @@ function OpenChat({
   sending: Record<string, ApprovalDecision>;
   failed: Record<string, string>;
   onAnswer: (id: string, decision: ApprovalDecision) => void;
+  store?: KeyValueStore;
 }) {
   const [conversation] = useState(() => new Conversation(row.key, session, () => session.newId()));
   useEffect(() => {
     conversation.attach();
     return () => conversation.dispose();
   }, [conversation]);
+  useEffect(() => {
+    if (!store) return;
+    return conversation.subscribe(() => {
+      void writeWaitingMessages(store, row.key, conversation.getSnapshot().sends);
+    });
+  }, [conversation, store, row.key]);
   // Opening a chat reads it; the mark is cleared once, for the unread state it was opened with.
   const [opened] = useState(row);
   useEffect(() => {
@@ -178,6 +189,7 @@ function Shell({
   store,
   showLevel,
   onShowLevel,
+  onPhoneReset,
 }: {
   session: PairingSession;
   notifier: Notifier;
@@ -186,6 +198,7 @@ function Shell({
   store?: KeyValueStore;
   showLevel: ShowLevel;
   onShowLevel: (next: ShowLevel) => void;
+  onPhoneReset?: () => void;
 }) {
   const theme = useTheme();
   const state = usePairingState(session);
@@ -235,15 +248,65 @@ function Shell({
   const [inbox] = useState(() => new ApprovalInbox(session));
   const approvals = useSyncExternalStore(inbox.subscribe, inbox.getSnapshot);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
+  const [prefs, setPrefs] = useState(getLivePhonePrefs);
+  useEffect(() => subscribeLivePhonePrefs(() => setPrefs(getLivePhonePrefs())), []);
+  useEffect(() => {
+    if (!store) return;
+    let live = true;
+    void readPhonePrefs(store).then((saved) => {
+      if (live) setPrefs(saved);
+    });
+    return () => {
+      live = false;
+    };
+  }, [store]);
   useEffect(() => {
     inbox.attach();
-    const alerts = new ApprovalAlerts(inbox, notifier, appState, (focus) => setPairedRoute({ name: 'approvals', focus }));
+    const alerts = new ApprovalAlerts(inbox, notifier, appState, (focus) => setPairedRoute({ name: 'approvals', focus }), () => getLivePhonePrefs().tellMe);
     alerts.attach();
     return () => {
       alerts.dispose();
       inbox.dispose();
     };
   }, [inbox, notifier, appState]);
+  useEffect(() => {
+    if (!store) return;
+    return chats.subscribe(() => {
+      const snap = chats.getSnapshot();
+      if (snap.loaded) void writeOfflineChats(store, snap.rows);
+    });
+  }, [chats, store]);
+  useEffect(() => {
+    if (!store) return;
+    return agents.subscribe(() => {
+      const snap = agents.getSnapshot();
+      if (snap.loaded) void writeSavedAgents(store, snap.rows);
+    });
+  }, [agents, store]);
+  const working = chatList.rows.some((row) => row.working) || agentList.rows.some((row) => row.status === 'running');
+  useEffect(() => {
+    applyKeepAwake(shouldKeepScreenAwake(prefs.awake, working));
+    return () => applyKeepAwake(false);
+  }, [prefs.awake, working]);
+  useEffect(() => {
+    if (!store) return;
+    const handle = (url: string) => {
+      const share = parseShareUrl(url);
+      if (!share) return;
+      const sessionKey =
+        pairedRoute.name === 'chat'
+          ? pairedRoute.row.key
+          : chatForNew(chatList.rows)?.key ?? 'agent:main:main';
+      void takeShareToBranchAgent(share, {
+        store,
+        prefs: getLivePhonePrefs(),
+        need: { pendingCount: approvals.pending.length, chatOpen: pairedRoute.name === 'chat' },
+        sessionKey,
+      });
+    };
+    const sub = Linking.addEventListener('url', ({ url }) => handle(url));
+    return () => sub.remove();
+  }, [store, pairedRoute, chatList, approvals.pending.length]);
   useEffect(() => {
     if (state.step !== 'paired') return;
     let live = true;
@@ -477,6 +540,9 @@ function Shell({
               onTurnOnNotifications={turnOnNotifications}
               onConnectAnother={() => setPairedRoute(SCAN)}
               onForget={() => void session.unpair()}
+              onReset={() => {
+                void resetThisPhone(session, store).then(() => onPhoneReset?.());
+              }}
               onSetupTalk={() => {
                 const row = chatForTalk(chatList.rows);
                 if (row) setPairedRoute({ name: 'voice', row });
@@ -544,6 +610,7 @@ function Shell({
             sending={approvals.sending}
             failed={approvals.failed}
             onAnswer={(id, decision) => void inbox.answer(id, decision)}
+            store={store}
           />
         );
       } else if (pairedRoute.name === 'approvals') {
@@ -639,12 +706,13 @@ export default function App({
   themeStore?: KeyValueStore;
   showLevel?: ShowLevel;
 }) {
-  const [session] = useState(() => given ?? createDeviceSession());
+  // Keep one store for pairing, Settings and Reset so a render cannot mint a new device store.
+  const [store] = useState(() => themeStore ?? (given ? undefined : deviceStore()));
+  const [session] = useState(() => given ?? createDeviceSession(store ?? deviceStore()));
   const [notifier] = useState(() => givenNotifier ?? (Platform.OS === 'web' ? noNotifier : createExpoNotifier()));
   const [identity] = useState(() => givenIdentity ?? appIdentity());
-  // Keep one store for the life of this App so a render cannot mint a new device store and reload the saved level.
-  const [store] = useState(() => themeStore ?? (given ? undefined : deviceStore()));
   const [showLevel, setShowLevel] = useState<ShowLevel>(() => parseShowLevel(givenLevel));
+  const [themeEpoch, setThemeEpoch] = useState(0);
   useEffect(() => {
     if (givenLevel !== undefined) {
       setShowLevel(givenLevel);
@@ -673,7 +741,7 @@ export default function App({
   return (
     // Starting from the window's known insets draws the first frame at once instead of a blank one.
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      <ThemeProvider scheme={scheme} store={store}>
+      <ThemeProvider key={themeEpoch} scheme={scheme} store={store}>
         <Shell
           session={session}
           notifier={notifier}
@@ -682,6 +750,10 @@ export default function App({
           store={store}
           showLevel={showLevel}
           onShowLevel={onShowLevel}
+          onPhoneReset={() => {
+            setShowLevel('regular');
+            setThemeEpoch((n) => n + 1);
+          }}
         />
       </ThemeProvider>
     </SafeAreaProvider>

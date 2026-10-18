@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Approval, ApprovalDecision } from '../approvals/approvals';
 import { actionWords } from '../approvals/approvalWords';
 import type { ChatRow } from '../chats/chatList';
+import { tapHaptic } from '../settings/phoneEffects';
 import type { EngineLink } from '../pairing/pairingSession';
 import { useTheme } from '../theme/ThemeProvider';
 import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
@@ -333,7 +334,10 @@ export function VoiceScreen({
             testID="voice-ask"
             accessibilityRole="button"
             accessibilityLabel={`Say “${sayWord(ask)}” to answer ${row.title}`}
-            onPress={() => onAnswer(ask.id, 'allow-once')}
+            onPress={() => {
+              tapHaptic();
+              onAnswer(ask.id, 'allow-once');
+            }}
             style={({ pressed }) => ({
               marginTop: space.lg,
               paddingHorizontal: space.lg,

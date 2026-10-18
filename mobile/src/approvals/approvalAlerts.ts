@@ -3,6 +3,8 @@
 // Allow and Deny buttons ("Send it" and "Don’t send" for a request that sends). A button answers it on
 // the computer without opening the app; tapping the notification opens Needs you at that approval.
 // When the approval is answered anywhere, its notification goes away and the app badge counts down.
+import type { CyclePos } from '../settings/phonePrefs';
+import { shouldPostTaskAlert } from '../settings/phoneEffects';
 import { notificationText, actionWords } from './approvalWords';
 import { trunkOf, type ApprovalDecision, type ApprovalInbox, type Approval } from './approvals';
 
@@ -49,6 +51,7 @@ export class ApprovalAlerts {
     private readonly notifier: Notifier,
     private readonly appState: AppStateSource,
     private readonly onOpen: (approvalId: string) => void,
+    private readonly tellMe: () => CyclePos = () => 'when-needed',
   ) {}
 
   attach(): void {
@@ -83,7 +86,7 @@ export class ApprovalAlerts {
     for (const approval of pending) {
       if (this.shown.has(approval.id)) continue;
       this.shown.add(approval.id);
-      if (!away) continue;
+      if (!shouldPostTaskAlert(this.tellMe(), away)) continue;
       const { title, body } = notificationText(approval, trunkOf(approval, trunks).name);
       work.push(this.prepare().then(() => this.notifier.show({ key: alertKey(approval.id), title, body, category: categoryFor(approval), approvalId: approval.id })));
     }

@@ -16,6 +16,7 @@ import {
   shortFolder,
 } from '../approvals/approvalWords';
 import { TEST_APPROVAL_DELAY_MS, TEST_APPROVAL_PLUGIN } from '../approvals/testApproval';
+import { tapHaptic } from '../settings/phoneEffects';
 import type { TestApprovalState } from '../approvals/useTestApproval';
 import { LIST_FAILED_MESSAGE, RECONNECT_WAIT_MS, trunkOf, type Answered, type Approval, type ApprovalDecision, type ApprovalsSnapshot, type Trunk } from '../approvals/approvals';
 import { groupByTrunk, INBOX_TABS, type InboxTab } from '../approvals/inboxGroups';
@@ -191,17 +192,17 @@ function ApprovalCard({
           <ThemedText variant="subhead" tone="ink2">
             {alwaysAllowCover(trunk.name)}
           </ThemedText>
-          <Button title={`Always allow for ${trunk.name}`} kind="ink" busy={sending === 'allow-always'} disabled={busy} onPress={() => onAnswer(approval.id, 'allow-always')} testID={`always-${approval.id}`} />
+          <Button title={`Always allow for ${trunk.name}`} kind="ink" busy={sending === 'allow-always'} disabled={busy} onPress={() => { tapHaptic(); onAnswer(approval.id, 'allow-always'); }} testID={`always-${approval.id}`} />
           <Button title="Cancel" kind="inkSecondary" disabled={busy} onPress={() => setAskAlways(false)} />
         </View>
       ) : (
         <>
           <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md }}>
             <View style={{ flex: 1 }}>
-              <Button title={verbs.yes} kind="ink" busy={sending === 'allow-once'} disabled={busy} onPress={() => onAnswer(approval.id, 'allow-once')} testID={`allow-${approval.id}`} />
+              <Button title={verbs.yes} kind="ink" busy={sending === 'allow-once'} disabled={busy} onPress={() => { tapHaptic(); onAnswer(approval.id, 'allow-once'); }} testID={`allow-${approval.id}`} />
             </View>
             <View style={{ flex: 1 }}>
-              <Button title={verbs.no} kind="inkSecondary" busy={sending === 'deny'} disabled={busy} onPress={() => onAnswer(approval.id, 'deny')} testID={`deny-${approval.id}`} />
+              <Button title={verbs.no} kind="inkSecondary" busy={sending === 'deny'} disabled={busy} onPress={() => { tapHaptic(); onAnswer(approval.id, 'deny'); }} testID={`deny-${approval.id}`} />
             </View>
           </View>
           {always ? (
