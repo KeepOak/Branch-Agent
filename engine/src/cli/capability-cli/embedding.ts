@@ -32,7 +32,7 @@ async function runMemoryEmbeddingCreate(params: {
     agent: params.agent,
   });
   const requestedProvider =
-    normalizeOptionalString(params.provider) || modelRef?.provider || "auto";
+    normalizeOptionalString(params.provider) || modelRef?.provider || "local";
   const result = await createEmbeddingProvider({
     config: cfg,
     agentDir,

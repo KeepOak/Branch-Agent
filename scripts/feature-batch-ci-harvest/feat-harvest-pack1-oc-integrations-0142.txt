@@ -24,7 +24,6 @@ engine:extensions/typesafe/src/registration.test.ts
 engine:extensions/typesafe/src/registration.transport.test.ts
 engine:extensions/typesafe/src/schema.test.ts
 engine:extensions/typesafe/src/transport.test.ts
-engine:src/gateway/embeddings-http.test.ts
 engine:src/gateway/openresponses-http.server.file-only.test.ts
 engine:src/gateway/openresponses-http.test.ts
 engine:src/gateway/openresponses-session-store.test.ts

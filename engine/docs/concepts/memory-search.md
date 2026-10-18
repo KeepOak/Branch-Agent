@@ -13,14 +13,15 @@ searches them with embeddings, keywords, or both.
 
 ## Quick start
 
-Branch Agent uses OpenAI embeddings by default. To use another provider, set it
-explicitly:
+Branch Agent uses on-device local embeddings by default (managed llama.cpp, no
+API key). A ChatGPT or OAuth login is not used for memory embeddings unless you
+set a paid provider explicitly:
 
 ```json5
 {
   memory: {
     search: {
-      provider: "openai", // or "gemini", "voyage", "mistral", "bedrock", "local", "ollama", "lmstudio", "github-copilot", "openai-compatible"
+      provider: "local", // or "openai", "gemini", "voyage", "mistral", "bedrock", "ollama", "lmstudio", "github-copilot", "openai-compatible"
     },
   },
 }
@@ -30,16 +31,11 @@ explicitly:
 example `ollama-5080`), as long as that entry sets `api` to `"ollama"` or
 another provider id with a memory embedding adapter.
 
-For local embeddings with no API key, install and configure the official
-llama.cpp provider, then set `provider: "local"`:
-
-```bash
-branch plugins install @branch/llama-cpp-provider
-```
-
-Choose llama.cpp once in interactive setup. Branch Agent installs a verified
-`llama-server`, downloads the embedding GGUF, and writes its managed service
-configuration.
+The default `local` provider is served by the bundled llama.cpp plugin. Choose
+llama.cpp once in interactive setup so Branch Agent can install a verified
+`llama-server` and download the embedding GGUF (~0.3 GB). If no local embedding
+model is available, meaning search stays off and the app says so instead of
+calling a paid API.
 
 Some OpenAI-compatible embedding endpoints require asymmetric `input_type`
 labels, such as `"query"` for searches and `"document"`/`"passage"` for indexed
