@@ -131,7 +131,11 @@ export function releaseHeldLoopbackPort(port: number): void {
  * A child that never sends the message (a real engine, or one that exits first) just leaves the listener in place until exit.
  */
 export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): void {
-  if (!heldLoopback().has(port)) return;
+  if (!heldLoopback().has(port)) {
+    // The configured port is not held. The engine binds it itself.
+    try { child.send({ type: "branch-desktop:bind-yourself" }); } catch { /* no IPC, or already gone */ }
+    return;
+  }
   let timer: ReturnType<typeof setTimeout> | undefined;
   const stop = () => {
     if (timer) clearTimeout(timer);
@@ -192,10 +196,6 @@ export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): v
   };
   child.on("message", onMessage);
   child.once("exit", onExit);
-  // The child repeats branch-desktop:binding until it is listening. One send can still
-  // arrive before this listener exists; release once it has had time to send again,
-  // so a missed message cannot hold the port until the child gives up on the bind.
-  timer = setTimeout(release, 1000);
 }
 
 /** Resolves true when nothing listens on 127.0.0.1:port. */
