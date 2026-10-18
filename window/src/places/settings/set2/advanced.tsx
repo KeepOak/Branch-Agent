@@ -14,7 +14,14 @@ import {
   type Ctx, type SecSpec, type Spec,
 } from "./advanced-more";
 import { ConvDialog, EverythingElse, HealthDialog, HooksSec, LogsDialog, MigrateDialog, SectionDialog, WebSearchDialog } from "./advanced-tech";
+import { SetupDialog } from "../set1/local-setup";
 import "./advanced.css";
+
+const MEMORY_MODEL_LEDE = "This downloads the small meaning-search model (about 0.3 GB) onto this computer. Your chat model stays the same. Branch asks before it starts.";
+const MEMORY_MODEL_OPTION = { id: "llama-cpp-memory", label: "the meaning-search model" };
+const MEMORY_MODEL_DONE = "The meaning-search model is on this computer.";
+const MEMORY_MODEL_SKIPPED = "Nothing was downloaded. Branch still finds memories by matching words.";
+const MEMORY_MODEL_FAILED = "Couldn’t get the meaning-search model. Branch still finds memories by matching words.";
 
 const LEDE = "What’s running under the hood, for when something needs a look.";
 const { sw, no } = SPEC;
@@ -54,7 +61,7 @@ function LogFileRow({ c }: { c: Ctx }) {
     </Ctl>
   );
 }
-const LOGS: SecSpec = { title: "Logs", lv: 2, rows: [
+export const LOGS: SecSpec = { title: "Logs", lv: 2, rows: [
   { t: "This app’s own log", s: "How much the desktop app writes about itself.", kind: "pick", off: APP, def: "Info", opts: ["Trace", "Debug", "Info", "Notice", "Warning", "Error", "Critical"].map((x) => ({ id: x, label: x })) },
   { t: "Detailed diagnostics log", draw: () => <DiagLogRow /> },
   { t: "Gateway log", draw: (c) => <GatewayLogRow c={c} /> },
@@ -104,16 +111,33 @@ function MeaningSearch({ c }: { c: Ctx }) {
   const st = useLive<RecordValue>(c.engine, "doctor.memory.status", params, ["memory", "agents.changed", "config.changed"]);
   const test = useCall();
   const [probe, setProbe] = useState<RecordValue | null>(null);
+  const [setup, setSetup] = useState(0);
   const emb = rec((probe ?? rec(st.data)).embedding);
-  const provider = str(rec(probe ?? st.data).provider) || str(c.config.get("memory.search.provider")) || "openai";
+  const provider = str(rec(probe ?? st.data).provider) || str(c.config.get("memory.search.provider")) || "local";
   const name = PROVIDERS.find((p) => p.id === provider)?.label ?? provider;
   const checked = emb.checked !== false && (emb.ok === true || Boolean(emb.error));
   const word = !checked ? "Not checked yet" : emb.ok === true ? "Working" : "Not working";
   const line = !checked ? "Branch hasn’t checked meaning search yet." : emb.ok === true ? "Meaning search answered." : str(emb.error);
+  const needModel = provider === "local" && checked && emb.ok !== true;
+  const retest = () => void test.run(async () => {
+    const next = rec(await c.engine.request("doctor.memory.status", { ...params, probe: true }));
+    setProbe(next);
+    return next;
+  }, (next) => rec(next.embedding).ok === true ? "Meaning search is working." : (str(rec(next.embedding).error) || "Meaning search is not working yet."));
+  const getModel = () => setSetup((n) => n + 1);
+  const finishSetup = (outcome?: "installed" | "skipped" | "failed") => {
+    setSetup(0);
+    if (outcome !== "installed") return;
+    const saved = str(c.config.get("memory.search.provider"));
+    if (saved === "local") retest();
+    else void c.config.set("memory.search.provider", "local").then(() => retest(), () => retest());
+  };
   return (
-    <Ctl title="Meaning search" sub={`${st.error ?? line} ${name} · ${LOCAL.has(provider) ? "on this computer" : "in the cloud"}`} after={<CallLine call={test} />}>
+    <Ctl title="Meaning search" sub={`${st.error ?? line} ${name} · ${LOCAL.has(provider) ? "on this computer" : "in the cloud"}`} after={<>{needModel && !test.note && !test.error ? <p className="hint">About 0.3 GB. Branch asks before it downloads.</p> : null}<CallLine call={test} /></>}>
       <span className="s2advanced-v">{word}</span>
-      <Btn sm disabled={test.busy} onClick={() => void test.run(async () => setProbe(rec(await c.engine.request("doctor.memory.status", { ...params, probe: true }))))}>Test</Btn>
+      <Btn sm disabled={test.busy} onClick={() => retest()}>Test</Btn>
+      {needModel ? <Btn sm disabled={test.busy || setup > 0} onClick={getModel}>Get the model</Btn> : null}
+      {setup > 0 ? <SetupDialog key={setup} engine={c.engine} option={MEMORY_MODEL_OPTION} agent={c.agent ? { agentId: c.agent } : {}} lede={MEMORY_MODEL_LEDE} doneText={MEMORY_MODEL_DONE} skippedText={MEMORY_MODEL_SKIPPED} failedText={MEMORY_MODEL_FAILED} onRetry={() => setSetup((n) => n + 1)} onClose={finishSetup} /> : null}
     </Ctl>
   );
 }
@@ -122,6 +146,17 @@ function slotOpts(c: Ctx, kind: string, base: Opt[]): Opt[] {
   const found = c.plugins.filter((p) => Array.isArray(p.kind) && p.kind.map(String).includes(kind) && !base.some((b) => b.id === p.id));
   return [...base, ...found.map((p) => ({ id: str(p.id), label: str(p.name) || str(p.id) }))];
 }
+/** LanceDB memory applies only while that plugin is on. The rows stay visible either way. */
+function lanceNote(c: Ctx): string | undefined {
+  if (c.config.loading) return undefined;
+  const saved = c.config.get(["plugins", "entries", "memory-lancedb", "enabled"]);
+  const entry = c.plugins.find((p) => str(p.id) === "memory-lancedb");
+  const enabled = typeof saved === "boolean" ? saved : entry?.enabled === true;
+  return enabled ? undefined : "Turn on LanceDB memory for this to apply.";
+}
+const LANCE = "plugins.entries.memory-lancedb.config";
+const whole = (v: unknown) => Math.round(Number(v));
+
 function MemoryEngine({ c, same }: { c: Ctx; same?: boolean }) {
   const value = str(c.config.get("plugins.slots.memory")) || "memory-core";
   const sub = same ? "The same row as in Memory." : value === "none" ? "Memory is off. Trunks remember nothing new between conversations." : "One engine stores and searches memory. Choosing one turns the others off.";
@@ -145,7 +180,7 @@ const MEMORY: SecSpec = { title: "Memory", lv: 1, rows: [
   { t: "All start files together", s: "All the files a Trunk reads first load up to this much together.", k: "agents.defaults.bootstrapTotalMaxChars", kind: "num", unit: "characters", def: 60000, min: 1 },
   sw("Match by meaning", "Finds “invoice” when the fact says “bill”.", "memory.search.store.vector.enabled", true),
   { t: "Meaning search", draw: (c) => <MeaningSearch c={c} /> },
-  { t: "Meaning search uses", s: "The service that turns facts into something searchable by meaning. Changing it rebuilds the index.", k: "memory.search.provider", kind: "pick", def: "openai", opts: PROVIDERS },
+  { t: "Meaning search uses", s: "The service that turns facts into something searchable by meaning. Changing it rebuilds the index.", k: "memory.search.provider", kind: "pick", def: "local", opts: PROVIDERS },
   no("Share memory between Trunks", "Off: each Trunk keeps its own. Off until you choose: it changes where your data goes."),
   no("Ask before remembering", "Off: a Trunk writes what is worth keeping as it works, and the conversation shows “Remembered”. On: it asks “Remember this?” first."),
   { t: "Memory engine", lv: 2, draw: (c) => <MemoryEngine c={c} /> },
@@ -153,7 +188,17 @@ const MEMORY: SecSpec = { title: "Memory", lv: 1, rows: [
   no("Keep a history in Git", "Every change to memory as a commit, on this computer."),
   { t: "Recall before replying", s: "Searches memory more deeply when quick recall finds nothing strong.", help: "Before a reply about the past, a Trunk searches memory more deeply. Off until you choose: it can add a model call before a reply.", plug: "active-memory" },
   { t: "Memory wiki", s: "Keeps what Trunks know as linked Markdown pages.", help: "Each fact has its source. Off until you choose: it adds a second, page-shaped copy of what Trunks know.", plug: "memory-wiki" },
-], after: () => <p className="hint s2advanced-addons">Add-ons work beside the memory engine, so any mix can run. <LinkBtn onClick={() => openPlace("customize", "plugins")}>Open Plugins</LinkBtn></p> };
+  { t: "Meaning service for LanceDB", s: "The service that turns facts into something searchable by meaning. Changing it rebuilds the index.", k: `${LANCE}.embedding.provider`, kind: "text", ph: "openai", note: lanceNote },
+  { t: "Meaning model", s: "The model that turns text into something searchable. Changing it rebuilds the index.", k: `${LANCE}.embedding.model`, kind: "text", ph: "text-embedding-3-small", note: lanceNote },
+  { t: "Key for the meaning service", s: "Optional. Leave empty to use the account already connected.", k: `${LANCE}.embedding.apiKey`, kind: "text", secret: true, note: lanceNote },
+  { t: "Address of the meaning service", s: "Only when the service lives at its own address.", k: `${LANCE}.embedding.baseUrl`, kind: "text", mono: true, ph: "https://api.openai.com/v1", note: lanceNote },
+  { t: "How many numbers describe each memory", s: "Needed when Branch doesn’t already know this model. Changing it rebuilds the index.", k: `${LANCE}.embedding.dimensions`, kind: "num", min: 1, ph: "The model’s own", write: whole, note: lanceNote },
+  { t: "Save memories from the conversation", s: "Writes down what is worth keeping as you talk.", help: "Off until you choose: a Trunk saves what is worth keeping as the conversation goes.", k: `${LANCE}.autoCapture`, kind: "sw", def: false, note: lanceNote },
+  { t: "How long a saved memory may be", s: "A note longer than this is not stored.", k: `${LANCE}.captureMaxChars`, kind: "num", unit: "characters", def: 500, min: 100, max: 10_000, write: whole, note: lanceNote },
+  { t: "Phrases that mean remember this", s: "A message that contains one of these is considered worth keeping.", k: `${LANCE}.customTriggers`, kind: "list", ph: "a phrase, like remember this", itemMax: 100, maxItems: 50, note: lanceNote },
+  { t: "Recall memories before a reply", s: "Looks up memories that fit this message and includes them before the Trunk replies.", k: `${LANCE}.autoRecall`, kind: "sw", def: true, note: lanceNote },
+  { t: "How long a recalled memory may be", s: "Each memory brought back, and the search for it, stay within this many characters.", k: `${LANCE}.recallMaxChars`, kind: "num", unit: "characters", def: 1000, min: 100, max: 10_000, write: whole, note: lanceNote },
+], after: () => <p className="hint s2advanced-addons">Add-ons work beside the memory engine, so any mix can run. <LinkBtn onClick={() => openPlace("customize", "Plugins")}>Open Plugins</LinkBtn></p> };
 
 /* ---------- Automations ---------- */
 const FA = "cron.failureAlert";
@@ -256,7 +301,7 @@ const TOOLS_TECH: SecSpec = { title: "Tools, technical", group: "Tools", lv: 2, 
   no("Run connector programs on Branch’s own Node.js", "Off: the Node.js installed on this computer."),
   { t: "Python service", s: "Comes with Branch. Runs Python for tools that need it.", kind: "none", off: "The engine doesn’t report a Python service." },
 ] };
-const HOOKS: SecSpec = { title: "Hooks", lv: 2, rows: ["Before a tool runs", "After a tool runs", "When a conversation starts", "When you send a message", "When a Trunk stops", "Before tidying up", "When it needs you", "When a task finishes", "When a session ends", "When settings change", "When a file changes"].map((t) => ({ t })), whole: (c) => <HooksSec c={c} /> };
+export const HOOKS: SecSpec = { title: "Hooks", lv: 2, rows: ["Before a tool runs", "After a tool runs", "When a conversation starts", "When you send a message", "When a Trunk stops", "Before tidying up", "When it needs you", "When a task finishes", "When a session ends", "When settings change", "When a file changes"].map((t) => ({ t })), whole: (c) => <HooksSec c={c} /> };
 const AUTO_MORE: SecSpec = { title: "Automations, more", group: "Automations", lv: 1, rows: [no("Run on GitHub Actions while this computer is off", "Schedules and their skills run on free GitHub runners; results and memory come back as commits. Off until you choose: your skills run on GitHub’s computers.")] };
 const SHARING_MORE: SecSpec = { title: "Sharing, more", group: "Sharing", lv: 1, rows: [btnOff("Pages Trunks publish", "Pages and their comments.", "See them", "Needs the engine’s list of published pages.")] };
 const TRUNKS_MORE: SecSpec = { title: "Trunks, more", group: "Trunks", lv: 1, rows: [
@@ -272,11 +317,79 @@ const TRUNKS_MORE: SecSpec = { title: "Trunks, more", group: "Trunks", lv: 1, ro
 const LIBRARY_MORE: SecSpec = { title: "Library, more", group: "Library", lv: 1, rows: [
   no("Search documents by meaning", "Finds the lease clause about repairs when you ask “who fixes the boiler”."),
   no("A local index of mail, calendar and messages", "Built and kept on this computer, for faster answers."),
-  no("Keep versions of what Trunks make", "Every file in Made for you keeps its versions and a checksum."),
+  no("Keep versions of what Trunks make", "Every file in Library › Activity keeps its versions and a checksum."),
   { t: "Rewrite short notes", draw: () => <Ctl title="Rewrite short notes" sub="Clearer, shorter, fixed or more formal."><Btn sm onClick={() => openPlace("library")}>Try it</Btn></Ctl> },
 ] };
 const PINNED: SecSpec = { title: "Pinned skills", lv: 1, rows: [{ t: "Always read in full", s: "A pinned skill’s whole instructions go with every message, not only when it seems to fit.", kind: "seg", off: "The engine can’t pin a skill.", opts: [{ id: "none", label: "None" }] }] };
+
+// The bundled llm-task tool: one JSON model call, with its own model and limits. It ships off
+// (not enabled by default, and the tool is optional). Turning it on writes plugins.entries.llm-task.enabled
+// and adds the tool to tools.alsoAllow, or to tools.allow when that list is already in use — the engine
+// rejects both lists at once. Automations is work that runs on its own; this is a model tool, so it sits here.
+const TASK = "plugins.entries.llm-task";
+const TASK_TOOL = "llm-task";
+function nameList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+function structuredOn(c: Ctx): boolean {
+  if (c.config.get(`${TASK}.enabled`) !== true) return false;
+  const allow = nameList(c.config.get("tools.allow"));
+  if (allow.length > 0) return allow.includes(TASK_TOOL);
+  return nameList(c.config.get("tools.alsoAllow")).includes(TASK_TOOL);
+}
+function setToolList(c: Ctx, path: "tools.allow" | "tools.alsoAllow", on: boolean) {
+  const current = nameList(c.config.get(path));
+  const next = on ? (current.includes(TASK_TOOL) ? current : [...current, TASK_TOOL]) : current.filter((name) => name !== TASK_TOOL);
+  if (next.join("\0") !== current.join("\0")) void c.config.set(path, next.length ? next : null);
+}
+function setStructured(c: Ctx, on: boolean) {
+  if (c.config.get(`${TASK}.enabled`) !== on) void c.config.set(`${TASK}.enabled`, on);
+  const allow = nameList(c.config.get("tools.allow"));
+  if (allow.length > 0) { setToolList(c, "tools.allow", on); return; }
+  setToolList(c, "tools.alsoAllow", on);
+}
+function StructuredAnswers({ c }: { c: Ctx }) {
+  return (
+    <Ctl title="Structured answers" sub="Asks a model for one answer in a fixed shape (JSON), so a workflow can use the result. Off until you choose: it spends a model call outside the conversation.">
+      <Switch label="Structured answers" checked={structuredOn(c)} disabled={c.config.loading} onChange={(on) => setStructured(c, on)} />
+    </Ctl>
+  );
+}
+function taskModelValue(c: Ctx): string {
+  const provider = str(c.config.get(`${TASK}.config.defaultProvider`));
+  const model = str(c.config.get(`${TASK}.config.defaultModel`));
+  if (provider && model) return `${provider}/${model}`;
+  return model || provider;
+}
+function TaskModel({ c }: { c: Ctx }) {
+  const models = useLive<RecordValue>(c.engine, "models.list", {}, []);
+  const pick = (id: string) => {
+    if (!id) {
+      void c.config.set(`${TASK}.config.defaultProvider`, null);
+      void c.config.set(`${TASK}.config.defaultModel`, null);
+      return;
+    }
+    const slash = id.indexOf("/");
+    const provider = slash > 0 ? id.slice(0, slash) : "";
+    const model = slash > 0 ? id.slice(slash + 1) : id;
+    void c.config.set(`${TASK}.config.defaultProvider`, provider || null);
+    void c.config.set(`${TASK}.config.defaultModel`, model || null);
+    // A chosen model is sent as an override, which the engine refuses until this is on.
+    void c.config.set(`${TASK}.llm.allowModelOverride`, true);
+  };
+  return (
+    <Ctl title="Model for structured answers" sub="Empty uses the Trunk’s own model. Choosing one lets this tool use that model.">
+      <Pick label="Model for structured answers" value={taskModelValue(c)} disabled={c.config.loading} onChange={pick} options={[{ id: "", label: "The Trunk’s own model" }, ...modelOpts(models.data)]} />
+    </Ctl>
+  );
+}
+
 const WHAT: SecSpec = { title: "What it can do", lv: 1, hint: "Model tools. Each one is used only when a task needs it.", rows: [
+  { t: "Structured answers", draw: (c) => <StructuredAnswers c={c} /> },
+  { t: "Model for structured answers", draw: (c) => <TaskModel c={c} /> },
+  { t: "Longest structured answer", s: "How long the answer may be. Empty sets no limit here.", k: `${TASK}.config.maxTokens`, kind: "num", unit: "tokens", min: 1, ph: "No limit", write: whole },
+  { t: "Answer time limit", s: "How long to wait for the answer. Empty waits 30 seconds.", k: `${TASK}.config.timeoutMs`, kind: "num", unit: "milliseconds", def: 30000, min: 1, write: whole },
+  { t: "Models it may use", s: "Empty allows any model. A list limits every structured answer, including the Trunk’s own model.", k: `${TASK}.llm.allowedCompletionModels`, kind: "list", ph: "openai/gpt-5" },
   { t: "Read links you paste", s: "Opens the page and reads it, including PDFs and videos with captions.", k: "tools.links", w: "tools.links.enabled", kind: "sw", read: (v) => typeof v === "object" && v !== null && rec(v).enabled !== false },
   no("Deep research reports", "Many searches, then a brief with numbered sources."),
   no("Edit documents exactly", "Word, Excel and PowerPoint changes that leave everything else as it was."),
@@ -327,15 +440,15 @@ function UseProxy({ c }: { c: Ctx }) {
     </Ctl>
   );
 }
-const NETWORK: SecSpec = { title: "Network", lv: 2, rows: [
+export const NETWORK: SecSpec = { title: "Network", lv: 2, rows: [
   { t: "Proxy address", s: "Send Branch’s outside traffic through your company proxy. Only used once you add an address.", k: "proxy.proxyUrl", kind: "text", mono: true, ph: "http:// or https://, empty for none" },
   { t: "Use the proxy", draw: (c) => <UseProxy c={c} /> },
   { t: "Proxy certificate", s: "For a private certificate authority: the path of its .pem file.", k: "proxy.tls.caFile", kind: "text", ph: "C:\\certs\\company-ca.pem" },
   { t: "Traffic to this computer", k: "proxy.loopbackMode", kind: "seg", def: "gateway-only", opts: [{ id: "gateway-only", label: "Skip the proxy" }, { id: "proxy", label: "Through the proxy" }, { id: "block", label: "Block" }] },
   { t: "Check it", draw: () => <CodeRow title="Check it" code="branch proxy validate" /> },
 ] };
-const ELSE: SecSpec = { title: "Everything else", lv: 2, rows: ["Text to speech", "Attachments", "Messages", "Talk", "Web", "Media", "Find any setting"].map((t) => ({ t })), whole: (c) => <EverythingElse c={c} /> };
-const HEALTH: SecSpec = { title: "Health", lv: 2, rows: [
+export const ELSE: SecSpec = { title: "Everything else", lv: 2, rows: ["Text to speech", "Attachments", "Messages", "Talk", "Web", "Media", "Ctrl K to find anything"].map((t) => ({ t })), whole: (c) => <EverythingElse c={c} /> };
+export const HEALTH: SecSpec = { title: "Health", lv: 2, rows: [
   { t: "Health", draw: (c) => <DialogRow t="Health" s="Readouts only; nothing to set." btn="See readouts" open={(close) => <HealthDialog engine={c.engine} onClose={close} />} /> },
   btnOff("Errors that say how to fix them", "When a service refuses, the message says what to do, not only the code.", "Show one", "Built into the engine’s error messages; nothing to set."),
 ] };
@@ -411,6 +524,14 @@ const SECTIONS: SecSpec[] = [SEEING, LOGS, SETUP, COMMANDS, DOCKER_SEC, FILES, W
   TRUNKS_MORE, LIBRARY_MORE, PINNED, WHAT, TRY, CONVERSATIONS, MEMORY_MORE, MEMORY_TECH, SKILLS_TECH, PLUGINS_TECH, NETWORK, ELSE, HEALTH, RECALL, DOCS, HELPERS_AGENTS, AUTO_STEPS];
 
 export const ROWS: RowEntry[] = rowsOf("advanced", SECTIONS);
+
+/** What each Advanced section reads, for a page that draws one of them (R1 Developer). */
+export function useAdvCtx(props: SettingsPageProps): Ctx {
+  const config = useConfig(props.engine);
+  const agent = useScope() ?? props.engine.agentId ?? "";
+  const plugins = useLive<RecordValue>(props.engine, "plugins.list", {}, ["plugins"]);
+  return { ...props, config, lv: lvOf(props.level), agent, plugins: list(rec(plugins.data).plugins) };
+}
 
 export function AdvancedPage(props: SettingsPageProps) {
   const config = useConfig(props.engine);

@@ -42,8 +42,17 @@ it("asks the host's Trunk about the page when the engine offers chat.send", asyn
   expect(onAsk).toHaveBeenCalledWith("Help me with Settings › General.");
 });
 
-it("keeps Ask a Trunk Coming, naming chat.send, on an engine with no methods", async () => {
+it("does not draw a Coming Ask a Trunk below Technical", async () => {
+  await act(async () => root.render(<SettingsFrame engine={engineOf([])} onAsk={vi.fn()} />));
+  await settle();
+  await act(async () => host.querySelector<HTMLElement>("[data-page='general']")!.click()); await settle();
+  await act(async () => host.querySelector<HTMLElement>(".r1s-learn")!.click()); await settle();
+  expect([...host.querySelectorAll(".r1s-help button")].map((b) => b.textContent)).not.toContain("Ask a Trunk");
+});
+
+it("keeps Ask a Trunk Coming at Technical, naming chat.send, on an engine with no methods", async () => {
   const onAsk = vi.fn();
+  localStorage.setItem("branch.level", "technical");
   await act(async () => root.render(<SettingsFrame engine={engineOf([])} onAsk={onAsk} />));
   await settle();
   const ask = await openHelp();

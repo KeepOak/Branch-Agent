@@ -5,7 +5,7 @@
 // can't do it yet is a Coming row in the row's own words; a section that is a live list (computers, connections) is one
 // bare row whose control is Classic's list, drawn without Classic's heading (kit Headless).
 import { useEffect, useState, type ReactNode } from "react";
-import { KitProvider, Headless, useConfig } from "../../../places/settings/kit";
+import { KitProvider, Headless, SetupLock, useConfig } from "../../../places/settings/kit";
 import type { SettingsPageProps } from "../../../places/settings/index";
 import type { Ctx, SecSpec, Spec } from "../../../places/settings/set2/computer-more";
 import { Dialog } from "../../../shell/Dialog";
@@ -16,6 +16,7 @@ import { Segmented, Toggle } from "../RowView";
 import { useLevel } from "../SettingsFrame";
 import type { SlotControl, SlotControlProps } from "../slots";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { copyAndSay } from "../../../shell/clipboard";
 
 /** A card of a page and the Classic sections it holds, in order. */
 export type CardPlan = [card: string, secs: SecSpec[]][];
@@ -71,7 +72,10 @@ export function ClassicBlock({ engine, row, onPage, draw }: SlotControlProps & {
   const props: SettingsPageProps = { page: row.page, title: row.label ?? "", level: LEVEL_WORD[level], engine, openSettings: (id) => onPage?.(pageFor(id)) };
   // Classic's row kit styles its rows inside .set-col; here it is a plain block in the R1 card, with no padding of its own.
   return <div className="set-col" data-classic-block="" style={{ display: "block", maxWidth: "none", margin: 0, padding: 0, minWidth: 0 }}>
-    <KitProvider level={level} report={report} scope={null}><Headless>{draw({ engine, lv: level, props })}</Headless></KitProvider>
+    <KitProvider level={level} report={report} scope={null}>
+      {/* As in Classic: a connection that may not change how Branch is set up sees these rows greyed. */}
+      <SetupLock locked={engine.scopes.length > 0 && !engine.scopes.includes("operator.admin")}><Headless>{draw({ engine, lv: level, props })}</Headless></SetupLock>
+    </KitProvider>
     <Failed text={failed} />
   </div>;
 }
@@ -144,7 +148,7 @@ function TextField({ label, value, placeholder, unit, number, onCommit }: { labe
 
 function CodeCopy({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
-  return <><code className="r1s-val">{code}</code><button type="button" className="r1s-btn" data-local="" onClick={() => void navigator.clipboard?.writeText(code).then(() => setCopied(true), () => undefined)}>{copied ? "Copied" : "Copy"}</button></>;
+  return <><code className="r1s-val">{code}</code><button type="button" className="r1s-btn" data-local="" onClick={() => void copyAndSay(code).then(setCopied)}>{copied ? "Copied" : "Copy"}</button></>;
 }
 
 /** Words kept in a list (networks, commands): each with Remove, and Add. */

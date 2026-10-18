@@ -6,6 +6,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import { shownWhy } from "../../../shell/shown-why";
+import { plainError } from "../../../shell/plain-error";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Num, Page, Pick, Sec, Seg, Status, Switch, Val, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
@@ -118,7 +119,7 @@ function OffSwitches({ items }: { items: Off[] }) {
 }
 
 /** The running status and its actions. Reload is this window's own reload; nothing running stops. */
-function Running({ engine, lv }: Ctx) {
+function Running({ engine, lv, openSettings }: Ctx) {
   const version = useBranchVersion(engine.gatewayUrl);
   const health = useLive<RecordValue>(engine, "health", { probe: false }, ["health"]);
   const sys = rec(useLive<RecordValue>(engine, "system.info", {}, []).data);
@@ -142,27 +143,28 @@ function Running({ engine, lv }: Ctx) {
         <CodeRow title="Check without changing anything" code="branch doctor" />
         <CodeRow title="Check and repair" code="branch doctor --fix" />
       </Sec> : null}
-      {check ? <CheckDialog engine={engine} onClose={() => setCheck(false)} /> : null}
+      {check ? <CheckDialog engine={engine} openSettings={openSettings} onClose={() => setCheck(false)} /> : null}
     </>
   );
 }
 
 /** Read-only checks available from the window; terminal repairs belong in Advanced. */
-export function CheckDialog({ engine, onClose }: Pick<SettingsPageProps, "engine"> & { onClose: () => void }) {
+export function CheckDialog({ engine, openSettings, onClose }: Pick<SettingsPageProps, "engine" | "openSettings"> & { onClose: () => void }) {
   const health = useLive<RecordValue>(engine, "health", { probe: false }, []);
   const memory = useLive<RecordValue>(engine, "doctor.memory.status", {}, []);
   const h = rec(health.data);
   const channels = Object.entries(rec(h.channels)).map(([id, v]) => [str(rec(h.channelLabels)[id]) || id, rec(v)] as const);
   const embed = rec(rec(memory.data).embedding);
   const engineResult = health.loading ? "Checking Branch…" : health.error ? "Branch couldn’t be checked. Close this window and try again." : h.ok === true ? "Branch is responding." : h.ok === false ? "Branch needs attention." : "Branch did not report a result.";
-  const memoryResult = memory.loading ? "Checking memory search…" : memory.error ? "Memory search couldn’t be checked." : embed.checked === false ? "Memory search was not checked." : embed.ok === true ? "Memory search is working." : embed.ok === false ? "Memory search needs attention." : "Memory search did not report a result.";
+  const embedError = str(embed.error);
+  const memoryResult = memory.loading ? "Checking memory search…" : memory.error ? "Memory search couldn’t be checked." : embed.checked === false ? "Memory search was not checked." : embed.ok === true ? "Memory search is working." : embed.ok === false ? (embedError ? plainError(embedError) : "Memory search needs attention.") : "Memory search did not report a result.";
   return (
     <Dialog title="Check Branch" wide onClose={onClose}>
       <p className="hint">Checks Branch and memory search without changing your settings or sending messages to your accounts.</p>
       <ol className="s2-tl" aria-live="polite">
         <li className={health.error || h.ok === false ? "bad" : !health.loading && h.ok === true ? "ok" : ""}><span>Branch<small>{engineResult}</small></span></li>
         {channels.map(([name, c]) => <li key={name} className={c.lastError ? "bad" : c.connected === true ? "ok" : ""}><span>{name}<small>{c.lastError ? "Needs attention. Check this app in Chat apps." : c.connected === true ? "Connected" : c.configured === false ? "Not set up" : "Not connected"}</small></span></li>)}
-        <li className={memory.error || embed.ok === false && embed.checked !== false ? "bad" : !memory.loading && embed.ok === true && embed.checked !== false ? "ok" : ""}><span>Memory search<small>{memoryResult}</small></span></li>
+        <li className={memory.error || embed.ok === false && embed.checked !== false ? "bad" : !memory.loading && embed.ok === true && embed.checked !== false ? "ok" : ""}><span>Memory search<small>{memoryResult}</small>{openSettings && embed.ok === false && embed.checked !== false ? <>{" "}<button type="button" className="link" onClick={() => { onClose(); openSettings("advanced"); }}>Set it up</button></> : null}</span></li>
       </ol>
     </Dialog>
   );

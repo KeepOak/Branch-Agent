@@ -6,7 +6,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { forgetLookStore } from "../../places/settings/set1/appearance-store";
 import { PAGES } from "./nav";
 import type { Row } from "./rows";
-import { MAKE_DEFAULT_COMING, SECTION_COMING, SettingsFrame, type SettingsFrameProps } from "./SettingsFrame";
+import { MAKE_DEFAULT_COMING, SettingsFrame, type SettingsFrameProps } from "./SettingsFrame";
 import type { PageSlots } from "./slots";
 import { NOTHING_MATCHES } from "./search";
 import { INVALID_CONFIG, NEEDS_ADMIN } from "./useRow";
@@ -50,27 +50,28 @@ const type = async (text: string) => {
 const level = (name: string) => [...$$(".r1s-level button")].find((b) => b.textContent === name)!;
 
 describe("SettingsFrame", () => {
-  it("draws the nav groups in order with search and How much to show at the top", async () => {
+  it("draws the four Settings pages in order with search and How much to show at the top", async () => {
     await mount(engineOf().engine);
-    expect($$(".r1s-grp").map((g) => g.textContent)).toEqual(["You", "Your Trunks", "Talking", "Accounts & models", "Permissions & safety", "Computers", "Branch"]);
-    expect($<HTMLInputElement>(".r1s-search input").placeholder).toBe("Search settings, places, Trunks, features");
+    expect($$(".r1s-list .r1s-nav").map((g) => g.textContent)).toEqual(["General", "Computer", "Usage", "Updates"]);
+    expect($$(".r1s-grp[aria-expanded]")).toEqual([]);
+    expect($<HTMLInputElement>(".r1s-search input").placeholder).toBe("Search settings");
     expect($(".r1s-level small").textContent).toBe("The essentials, in plain words.");
     expect($(".r1s-nav[aria-current=page]").textContent).toBe("General");
     expect($("[data-page=developer]")).toBeNull();
   });
 
-  it("puts one glass card per section in the preview's order, with Coming for General's sections not wired yet (#1049)", async () => {
+  it("puts one glass card per section in the preview's order, at the preview's level, and Pinned only once a row is pinned (#1049)", async () => {
     await mount(engineOf().engine);
     const secs = $$(".r1s-sec");
     const titles = secs.map((s) => s.querySelector("h2")?.textContent ?? "");
-    // preview.html PG.general: the card list, in order. Waiting line has only Advanced/Technical rows, so Regular skips it.
+    // preview.html PG.general: the card list, in order; at Regular the preview draws these six (Pinned only with a pin).
     const PREVIEW_GENERAL = ["Pinned", "Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "History repair", "Waiting line", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"];
     expect(titles).toEqual(PREVIEW_GENERAL.filter((t) => titles.includes(t)));
-    expect(titles).toEqual(expect.arrayContaining(["Pinned", "Show agents’ work", "Keyboard", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"]));
+    expect(titles).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "Cover the screen"]);
     expect(titles).not.toContain("Waiting line");
+    expect(titles).not.toContain("Pinned");
     const keyboard = secs.find((s) => s.querySelector("h2")?.textContent === "Keyboard")!;
-    expect(keyboard.querySelector("[data-coming]")?.getAttribute("aria-disabled")).toBe("true");
-    expect(keyboard.textContent).toContain(SECTION_COMING("Keyboard"));
+    expect(keyboard.querySelector("[data-row='general.keyboard.shortcuts']")).not.toBeNull();
   });
 
   it("shows higher rows inside their own section with an inline tag, and saves the level", async () => {
@@ -96,9 +97,15 @@ describe("SettingsFrame", () => {
     expect(fine.getAttribute("aria-label")).toBe("Fine-tune each part");
     expect(fine.querySelector("h3")?.textContent).toBe("Fine-tune each part");
     expect(fine.querySelector("[data-row='general.work.thinking']")).not.toBeNull();
-    expect(fine.querySelector("[data-row='general.work.chat-steps-shown']")?.getAttribute("data-coming")).toBeTruthy();
+    // A later-update row shows only at Technical (Private #1093 item 4)...
+    expect(work.querySelector("[data-row='general.work.chat-steps-shown']")).toBeNull();
     expect(fine.querySelector("[data-row='general.work.mode']")).toBeNull();
     expect(work.querySelector(":scope > [data-row='general.work.mode']")).not.toBeNull();
+    // ...where it folds under its own line after the live rows, so it is found in the card, not in the Fine group.
+    await click(level("Technical"));
+    const tech = $$(".r1s-sec").find((s) => s.querySelector("h2")?.textContent === "Show agents’ work")!;
+    expect(tech.querySelector("[data-row='general.work.chat-steps-shown']")?.getAttribute("data-coming")).toBeTruthy();
+    expect(tech.querySelector(".r1s-fine [data-row='general.work.chat-steps-shown']")).toBeNull();
   });
 
   it("makes a Trunk the default from search with its own button, and shows it as Coming without a handler (#1049)", async () => {
@@ -227,7 +234,7 @@ describe("SettingsFrame", () => {
 });
 
 describe("SettingsFrame custom pages", () => {
-  const extra = (id: string, label: string, level: 0 | 1 | 2 = 0): Row => ({ id, page: "chatapps", card: "Commands", label, level, ownerLevel: true, control: "toggle", source: { kind: "coming", need: "x", reason: "x" } });
+  const extra = (id: string, label: string, level: 0 | 1 | 2 = 0): Row => ({ id, page: "chatapps", card: "Commands", label, level, ownerLevel: true, control: "toggle", source: { kind: "slot", calls: [], reason: "x" } }); // drawn by its page, as Chat apps rows are
   async function mountSlots(engine: WindowEngine, pages: PageSlots, extras: Partial<SettingsFrameProps> = {}) {
     await act(async () => root.render(<SettingsFrame engine={engine} pages={pages} {...extras} />));
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
@@ -240,7 +247,8 @@ describe("SettingsFrame custom pages", () => {
     await mountSlots(engine, { chatapps: { component: Page } }, { page: "chatapps" });
     expect($("[data-slot=chatapps] [data-testid=chat-slot]").textContent).toBe("same engine");
     expect(Page.mock.calls.every(([props]) => props.engine === engine)).toBe(true);
-    expect($(".r1s-nav[aria-current=page]").textContent).toBe("Chat apps");
+    expect($(".r1s-nav[aria-current=page]").textContent).toBe("General");
+    expect($(".r1s-advanced [data-page=chatapps]")?.getAttribute("aria-current")).toBe("true");
     expect($(".r1s-search input")).not.toBeNull();
     expect($$(".r1s-level button").map((b) => b.textContent)).toEqual(["Regular", "Advanced", "Technical"]);
     expect($$(".r1s-sec")).toHaveLength(0);
@@ -297,17 +305,24 @@ describe("SettingsFrame header on slot pages (#1049)", () => {
       const sheet = host.querySelector(".r1s-help")!;
       expect(sheet.getAttribute("aria-label")).toBe(`About ${PAGES[id].title}`);
       expect([...sheet.querySelectorAll("li button")].map((b) => b.textContent)).toEqual([...sections]);
-      expect([...sheet.querySelectorAll(".r1s-btn")].map((b) => b.textContent)).toContain("Ask a Trunk");
+      // With no host to ask, Ask a Trunk is Coming, and below Technical a Coming control is not drawn (Private #1093 item 7).
+      expect([...sheet.querySelectorAll(".r1s-btn")].map((b) => b.textContent)).not.toContain("Ask a Trunk");
       await act(async () => learn.click());
     }
   });
 
-  it("offers Trunks with Make default and New Trunk, and features, when the host passes them", async () => {
+  it("offers Trunks with Make default and New Trunk, and features at Technical, when the host passes them", async () => {
     const onTrunk = vi.fn(), onOpenFeature = vi.fn();
     await act(async () => root.render(<SettingsFrame engine={engineOf().engine} trunks={[{ id: "t1", name: "Newt" }]} features={[{ id: "F-1", name: "New tab page", description: "Coming" }]} onTrunk={onTrunk} onOpenFeature={onOpenFeature} />));
     const input = host.querySelector<HTMLInputElement>(".r1s-search input")!;
-    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "New"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    const search = (q: string) => act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, q); input.dispatchEvent(new Event("input", { bubbles: true })); });
     const group = (name: string) => host.querySelector(`[role=group][aria-label="${name}"]`);
+    // The feature atlas is mostly what Branch plans: Regular search doesn't list it (Private #1093 item 4).
+    await search("New");
+    expect(group("Features")).toBeNull();
+    await search("");
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".r1s-level button")].find((b) => b.textContent === "Technical")!.click());
+    await search("New");
     expect([...group("Trunks")!.querySelectorAll(".r1s-res b")].map((b) => b.textContent)).toEqual(["Newt", "New Trunk"]);
     expect(group("Trunks")!.querySelector(".r1s-mkdef")?.textContent).toBe("Make default");
     expect(group("Features")!.textContent).toContain("New tab page");

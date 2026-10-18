@@ -44,7 +44,7 @@ export function InstructionsPage(props: SettingsPageProps) {
   const ownerName = owner === defaultId ? "every Trunk" : trunks.find((t) => t.id === owner)?.name ?? owner;
   return (
     <Page title={props.title} lede="Plain files every Trunk reads before it works." help="Plain files every Trunk reads before it works. They work the same as in other agents, so a file written for one of them works here.">
-      {agents.error ? <Status tone="bad" title="Branch couldn’t read your Trunks">{visible(agents.error)}</Status> : null}
+      {agents.error ? <Status tone="bad" title={`Couldn’t read: ${visible(agents.error)}`} /> : null}
       {defaultId ? <Whose trunks={trunks} defaultId={defaultId} owner={owner} onPick={setPick} /> : null}
       {owner ? <OwnerFiles key={`files-${owner}`} engine={props.engine} agentId={owner} ownerName={ownerName} /> : null}
       <Hint>A file can’t widen what Branch may do; Permissions still decides.</Hint>
@@ -52,6 +52,35 @@ export function InstructionsPage(props: SettingsPageProps) {
       <InstructionsMore engine={props.engine} />
     </Page>
   );
+}
+
+/** Whose files and each file a Trunk reads, with the editor and the hint under them: the block the R1 page draws at the
+ *  top of Project instructions (screens/settings/pages/instructions.ts). */
+export function InstructionFiles(props: SettingsPageProps) {
+  const scope = useScope();
+  const agents = useResource<RecordValue>(props.engine, "agents.list", {});
+  const [pick, setPick] = useState<string | null>(scope);
+  useEffect(() => setPick(scope), [scope]);
+  const defaultId = agents.data?.defaultId ? text(agents.data.defaultId) : "";
+  const trunks: Trunk[] = list(agents.data?.agents).map((a) => ({ id: text(a.id), name: visible(record(a.identity).name ?? a.name ?? a.id) }));
+  const owner = pick ?? defaultId;
+  const ownerName = owner === defaultId ? "every Trunk" : trunks.find((t) => t.id === owner)?.name ?? owner;
+  return (
+    <>
+      {agents.error ? <Status tone="bad" title={`Couldn’t read: ${visible(agents.error)}`} /> : null}
+      {defaultId ? <Whose trunks={trunks} defaultId={defaultId} owner={owner} onPick={setPick} /> : null}
+      {owner ? <OwnerFiles key={`files-${owner}`} engine={props.engine} agentId={owner} ownerName={ownerName} /> : null}
+      <Hint>A file can’t widen what Branch may do; Permissions still decides.</Hint>
+    </>
+  );
+}
+
+/** Just about you for the default Trunk (or the Trunk chosen in Settings for). */
+export function AboutYouBlock(props: SettingsPageProps) {
+  const scope = useScope();
+  const agents = useResource<RecordValue>(props.engine, "agents.list", {});
+  const owner = scope ?? (agents.data?.defaultId ? text(agents.data.defaultId) : "");
+  return owner ? <JustAboutYou key={owner} engine={props.engine} agentId={owner} /> : null;
 }
 
 function Whose({ trunks, defaultId, owner, onPick }: { trunks: Trunk[]; defaultId: string; owner: string; onPick: (id: string) => void }) {

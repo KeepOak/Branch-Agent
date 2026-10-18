@@ -72,11 +72,14 @@ it("adds a divider after 15 quiet minutes and keeps thoughts inside the steps", 
   expect(steps && steps.type === "steps" ? steps.thoughts.map((t) => t.key) : []).toEqual(["th1"]);
 });
 
-it("shows the typing line until the reply streams in word by word", async () => {
+it("keeps one working line above the reply while it streams in word by word", async () => {
   await show({ history: history.slice(0, 1), running: true, live: [] });
-  expect(host.querySelector('[data-testid="typing"]')!.textContent).toContain("Scout is thinking");
+  expect(host.querySelector('[data-testid="working-line"]')!.textContent).toMatch(/^Working…/);
   await show({ history: history.slice(0, 1), running: true, live: [{ kind: "text", key: "r2:text:1", text: "Looking in Outlook now", streaming: true }] });
-  expect(host.querySelector('[data-testid="typing"]')).toBeNull();
+  const line = host.querySelector('[data-testid="working-line"]')!;
+  expect(line.textContent).toMatch(/^Working…/);
+  const reply = host.querySelector('[data-role="assistant"]')!;
+  expect(line.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   const words = [...host.querySelectorAll('[data-testid="streaming"] .r1c-tok')];
   expect(words.map((w) => w.textContent).join("")).toBe("Looking in Outlook now");
   const first = words[0];
@@ -101,6 +104,48 @@ it("puts a run error in a thin notice with its details, never in the reply's pro
   expect(notice.getAttribute("role")).toBe("alert");
   expect(notice.textContent).toContain("Scout couldn’t finish: Model quota exceeded.");
   expect(host.querySelector('[data-role="assistant"]')).toBeNull();
+});
+
+it("asks before a Codex download, and Cancel does not start it", async () => {
+  const request = vi.fn(async (_method: string, _params?: unknown) => ({}));
+  const engine = { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", scopes: ["operator.admin"], features: { methods: ["codex.runtime.download", "codex.runtime.cancel"], events: [] } } as WindowEngine;
+  const confirm: Block = { kind: "notice", key: "r2:codex_download", text: "Download Codex 0.160.0 (134 MB)?", codex: { state: "confirm", runId: "r2", ask: "Download Codex 0.160.0 (134 MB)?" } };
+  const progress: Block = { kind: "notice", key: "r2:codex_download", text: "Getting Codex ready (134 MB)… 29%", codex: { state: "downloading", runId: "r2", percent: 29 } };
+  const failed: Block = { kind: "notice", key: "r2:codex_download", text: "Codex isn’t downloaded yet and this computer looks offline. Try again.", codex: { state: "failed", runId: "r2", reason: "offline", ask: "Download Codex 0.160.0 (134 MB)?" } };
+  const view = (live: Block[]) => <ChatView name="Scout" history={history.slice(0, 1)} live={live} pendingUser={null} running onAnswer={() => undefined} engine={engine} sessionKey={engine.sessionKey} />;
+  const press = async (label: string, rootEl: ParentNode = host) => {
+    const found = [...rootEl.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === label);
+    await act(async () => { found!.click(); });
+  };
+  const downloads = () => request.mock.calls.filter(([method]) => method === "codex.runtime.download");
+  await act(async () => root.render(<CapabilityProvider engine={engine}>{view([confirm])}</CapabilityProvider>));
+  const prompt = () => host.querySelector('[data-testid="codex-download-prompt"]');
+  expect(prompt()!.textContent).toContain("Download Codex 0.160.0 (134 MB)?");
+  expect(prompt()!.textContent).not.toMatch(/isn['’]t needed/iu);
+  expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
+  expect(downloads()).toHaveLength(0);
+  await press("Cancel", prompt()!);
+  expect(downloads()).toHaveLength(0);
+  expect(request).toHaveBeenCalledWith("codex.runtime.cancel", {});
+  await act(async () => root.render(<CapabilityProvider engine={engine}>{view([confirm])}</CapabilityProvider>));
+  await press("Yes", prompt()!);
+  expect(downloads()).toEqual([["codex.runtime.download", { confirmed: true }]]);
+  await act(async () => root.render(<CapabilityProvider engine={engine}>{view([progress])}</CapabilityProvider>));
+  expect(host.querySelector('[data-testid="codex-download"]')!.textContent).toContain("Getting Codex ready (134 MB)… 29%");
+  expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
+  await act(async () => root.render(<CapabilityProvider engine={engine}>{view([failed])}</CapabilityProvider>));
+  await press("Try again");
+  expect(downloads()).toHaveLength(1);
+  expect(prompt()!.textContent).toContain("Download Codex 0.160.0 (134 MB)?");
+  expect(prompt()!.textContent).not.toMatch(/isn['’]t needed/iu);
+  await press("Cancel", prompt()!);
+  expect(downloads()).toHaveLength(1);
+  await press("Try again");
+  await press("Yes", prompt()!);
+  expect(downloads()).toEqual([
+    ["codex.runtime.download", { confirmed: true }],
+    ["codex.runtime.download", { confirmed: true }],
+  ]);
 });
 
 it("says when the conversation couldn't load and reads it again on Try again", async () => {
@@ -128,14 +173,14 @@ it("every control is wired to the engine or shows Coming, even with no methods a
   await act(async () => bars[bars.length - 1].querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const rows = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')];
   const row = (label: string) => rows.find((b) => b.textContent === label);
-  for (const label of ["Try again", "Read aloud", "Leave out of context"]) expect(coming(row(label)), label).toEqual(["true", true, false]);
+  for (const label of ["Reply", "Retry", "Read aloud", "Leave out of context"]) expect(coming(row(label)), label).toEqual(["true", true, false]);
   expect(rows.filter((b) => !b.dataset.coming).map((b) => b.textContent)).toEqual(["Copy›", "Look inside"]);
   expect(undeclared()).toEqual([]);
   // Your own message: Edit, Branch from here and Put back in context are Coming too.
   await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await act(async () => bars[0].querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const mine = [...document.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Message"] [role="menuitem"]')];
-  for (const label of ["Edit", "Branch from here", "Put back in context"]) expect(coming(mine.find((b) => b.textContent === label)), label).toEqual(["true", true, false]);
+  for (const label of ["Reply", "Edit", "Branch from here", "Put back in context"]) expect(coming(mine.find((b) => b.textContent === label)), label).toEqual(["true", true, false]);
   expect(undeclared()).toEqual([]);
 });
 
@@ -144,11 +189,48 @@ it("follows the item 48 glass model: clear conversation and menus, text and cont
   const tokens = readFileSync("src/theme/tokens.css", "utf8").replace(/\s+/g, " ");
   expect(tokens).toContain("--gp-fill: rgba(255,255,255,.76); --gp-edge: rgba(0,0,0,.11);");
   expect(tokens).toMatch(/:root\[data-transparency="reduce"\][^{]*\{ --gp-fill: var\(--raise\);[^}]*--gp-blur: none; \}/);
-  for (const piece of [".r1c-u", ".r1c-txt", ".r1c-notice", ".r1c-typing", ".r1c-steps > summary", ".r1c-chip", ".r1c-bar", ".r1c-mi", ".r1c-menu-meta"]) {
+  for (const piece of [".r1c-u", ".r1c-txt", ".r1c-notice", ".r1c-steps > summary", ".r1c-chip", ".r1c-bar", ".r1c-mi", ".r1c-menu-meta"]) {
     expect(css, piece).toMatch(new RegExp(":is\\([^)]*" + piece.replace(/[.>]/g, (c) => "\\" + c) + "[,)]"));
   }
   expect(css).toContain("background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge);");
   expect(css).toContain(".g-popover:has(> .r1c-menu, > .r1c-react) { background: transparent; backdrop-filter: none;");
+});
+
+it("Regular: a live run is one line, the steps disclosure, with the current step in plain words", async () => {
+  const live: Block[] = [{ kind: "step", key: "l1", outputKey: "r2:l1", tool: "mcp__plugin_github_github__list_pull_requests", title: "KeepOak/Branch-Agent", detail: "", status: "running", at: Date.now() - 12_000 }];
+  await show({ history: history.slice(0, 1), live, running: true }, ["chat.send"]);
+  expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
+  const disclosure = host.querySelector('[data-testid="steps"] .r1c-steps-text')!;
+  expect(disclosure.textContent).toMatch(/^Working… Using list pull requests · \d+s$/);
+  expect(disclosure.classList.contains("r1c-shimmer")).toBe(true);
+  expect(host.textContent).not.toContain("so far");
+  expect(host.textContent).not.toContain("mcp__");
+  expect(host.querySelectorAll('[data-testid="steps"]')).toHaveLength(1);
+  const fold = host.querySelector<HTMLDetailsElement>('[data-testid="steps"]')!;
+  expect(fold.open).toBe(false);
+  await act(async () => fold.querySelector("summary")!.click());
+  expect(host.querySelector(".r1c-step-sub")).toBeNull();
+  expect(host.querySelector(".r1c-step-title")!.textContent).toBe("Using list pull requests");
+  await show({ history }, ["chat.send"]);
+  expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
+  expect(host.querySelector('[data-testid="steps"] .r1c-steps-text')!.textContent).toBe("Worked for 48s · 2 steps");
+});
+
+it("Advanced and Technical: the live row keeps the step detail, and the working line sits in the message column", async () => {
+  localStorage.setItem("branch.level", "advanced");
+  const live: Block[] = [{ kind: "step", key: "l1", outputKey: "r2:l1", tool: "mcp__plugin_github_github__list_pull_requests", title: "KeepOak/Branch-Agent", detail: "", status: "running", at: t0 + 40_000 }];
+  await show({ history: history.slice(0, 1), live, running: true }, ["chat.send"]);
+  expect(host.querySelector('[data-testid="steps"] .r1c-steps-text')!.textContent).toBe("Working in GitHub · 1 step so far");
+  const line = host.querySelector('[data-testid="working-line"]')!;
+  expect(line.textContent).toBe("Working in GitHub");
+  expect(line.closest(".r1c-body")).not.toBeNull();
+  const fold = host.querySelector<HTMLDetailsElement>('[data-testid="steps"]')!;
+  if (!fold.open) await act(async () => fold.querySelector("summary")!.click());
+  expect(host.querySelector(".r1c-step-sub")!.textContent).toBe(" · KeepOak/Branch-Agent");
+  localStorage.setItem("branch.level", "technical");
+  await act(async () => { window.dispatchEvent(new StorageEvent("storage", { key: "branch.level" })); });
+  expect(host.querySelector(".r1c-step-sub")!.textContent).toBe(" · KeepOak/Branch-Agent");
+  localStorage.removeItem("branch.level");
 });
 
 it("opens find in this conversation with the words a search result asked for", async () => {
@@ -157,4 +239,57 @@ it("opens find in this conversation with the words a search result asked for", a
   await act(async () => { window.dispatchEvent(new CustomEvent(FIND_EVENT, { detail: { query: "Hartwell" } })); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
   expect(host.querySelector<HTMLInputElement>(".find-bar input")?.value).toBe("Hartwell");
+});
+
+it("offers Edit only on your own last message, Retry on a reply, and Show what it did only at Technical", async () => {
+  const methods = ["chat.send", "sessions.rewind", "session.reactions.set"];
+  const two: Block[] = [
+    { kind: "user", key: "u1", text: "First note.", meta: { entryId: "e1", timestamp: t0 } },
+    { kind: "text", key: "a1", text: "Noted.", streaming: false, meta: { entryId: "e2", timestamp: t0 + 1_000 } },
+    { kind: "user", key: "u2", text: "Second note.", meta: { entryId: "e3", timestamp: t0 + 2_000 } },
+  ];
+  await show({ history: two, onReply: () => undefined }, methods);
+  const open = async (n: number) => {
+    const bars = host.querySelectorAll('[data-testid="hover-bar"]');
+    await act(async () => bars[n].querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+    return [...document.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Message"] [role="menuitem"]')].map((b) => b.textContent);
+  };
+  expect(await open(0)).not.toContain("Edit");
+  expect(await open(0)).not.toContain("Retry");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  const reply = await open(1);
+  expect(reply).toContain("Retry");
+  expect(reply).not.toContain("Edit");
+  expect(reply).toContain("Look inside");
+  expect(reply).not.toContain("Show what it did");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(await open(2)).toContain("Edit");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+
+  const room = { isRoom: true, selfId: "me", trunkName: () => "Scout", whereRuns: () => null };
+  const shared: Block[] = [
+    { kind: "user", key: "u1", text: "Mine.", meta: { entryId: "e1", timestamp: t0 } },
+    { kind: "user", key: "u2", text: "Dana wrote this.", meta: { entryId: "e2", timestamp: t0 + 1_000, sender: { kind: "person", id: "dana", name: "Dana" } } },
+  ];
+  await show({ history: shared, room, onReply: () => undefined }, methods);
+  expect(await open(0)).toContain("Edit");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(await open(1)).not.toContain("Edit");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+
+  localStorage.setItem("branch.level", "technical");
+  await show({ history: two, onReply: () => undefined }, methods);
+  const technical = await open(1);
+  expect(technical).toContain("Show what it did");
+  expect(technical).not.toContain("Look inside");
+});
+
+it("leaves the Trunk-getting-ready line to the window: no Opening line and no start screen while it waits", async () => {
+  await show({ historyReady: false });
+  expect(host.querySelector('[data-testid="opening"]')).not.toBeNull();
+  await show({ historyReady: false, startupWaiting: true });
+  expect(host.querySelector('[data-testid="opening"]')).toBeNull();
+  expect(host.querySelector('[data-testid="empty-chat"]')).toBeNull();
+  await show({ historyReady: true, startupWaiting: true });
+  expect(host.querySelector('[data-testid="empty-chat"]')).toBeNull();
 });

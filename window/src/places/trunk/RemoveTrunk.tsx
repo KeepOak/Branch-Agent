@@ -4,9 +4,9 @@ import { useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { notify } from "../../shell/notify";
+import { plainError } from "../../shell/plain-error";
 import { removeTrunk } from "./api";
 import { canWrite, WRITE_WHY } from "./data";
-import { errorText } from "./model";
 import { Layer } from "./layer";
 import "./trunk.css";
 
@@ -28,7 +28,7 @@ export function RemoveTrunkDialog({ engine, agentId, name, onClose, onRemoved, c
       window.dispatchEvent(new CustomEvent(TRUNK_REMOVED_EVENT, { detail: { agentId } }));
       onRemoved?.(); onClose();
     }
-    catch (e) { setError(errorText(e)); }
+    catch (e) { setError(plainError(e)); }
     finally { setBusy(false); }
   };
   const footer = <>
@@ -37,8 +37,8 @@ export function RemoveTrunkDialog({ engine, agentId, name, onClose, onRemoved, c
   </>;
   return (
     <Layer><Dialog title={`Remove ${name}?`} onClose={onClose} footer={footer} testid="trunk-remove" clear={clear}>
-      <p className={clear ? "tk-hint tk-plain g-label" : "tk-hint tk-plain"} data-lines={clear ? "" : undefined}>{name} and its conversations will be removed. Its files move to the Trash on this computer, and its automations stop. Branch cannot undo this removal.</p>
-      {error && <p className={clear ? "tk-error g-label" : "tk-error"} data-lines={clear ? "" : undefined} role="alert">{error}</p>}
+      <p className={clear ? "tk-hint tk-plain g-label" : "tk-hint tk-plain"} data-lines={clear ? "" : undefined}>{name}’s conversations and files move to the Trash. Its automations stop, and Branch can’t bring {name} back.</p>
+      {error && <p className={clear ? "tk-error g-label" : "tk-error"} data-lines={clear ? "" : undefined} role="alert">{plainError(error)}</p>}
     </Dialog></Layer>
   );
 }

@@ -1,0 +1,1 @@
+window:src/screens/settings/pages/save-line-steady.test.tsx

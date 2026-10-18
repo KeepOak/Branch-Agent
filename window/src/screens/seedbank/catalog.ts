@@ -12,21 +12,28 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
 export type KindId = "agents" | "groves" | "graftsets" | "skills" | "mcp" | "plugins" | "clis" | "toolsets" | "looks" | "adapters";
-export type Kind = { id: KindId; label: string; one: string; coming?: string };
+/** `what` says in plain words what a kind's own Branch word means (seed, Grove, graft, adapter), for its chip and its section. */
+export type Kind = { id: KindId; label: string; one: string; coming?: string; what?: string };
+
+/** What a seed is, in plain words, beside ＋ Paste a seed (B-070: "seed" was never explained). */
+export const SEED_WHAT = "A seed is a short link or a .seed file that shares one thing from Seedbank.";
 
 /** The kind chips, exactly the preview's (preview.html mkKinds: All · Agents · … · Adapters). A kind with `coming` has no
  *  engine call yet. Features that are not Seedbank items are Coming rows in their own screens, never a kind here (#1049). */
 export const KINDS: readonly Kind[] = [
   { id: "agents", label: "Agents", one: "agent" },
-  { id: "groves", label: "Grove layouts", one: "Grove layout", coming: "Grove layouts arrive in Seedbank in a later update." },
-  { id: "graftsets", label: "Graft setups", one: "graft setup", coming: "Graft setups arrive in Seedbank in a later update." },
+  { id: "groves", label: "Grove layouts", one: "Grove layout", coming: "Grove layouts arrive in Seedbank in a later update.",
+    what: "A Grove layout is how your Grove office looks: rooms, desks, decor, pets placed and the scene. Never your agents or their chats." },
+  { id: "graftsets", label: "Graft setups", one: "graft setup", coming: "Graft setups arrive in Seedbank in a later update.",
+    what: "A graft setup is how an outside agent, such as Claude Code, connects to Branch: its connect line, with the token left out, and what it may reach." },
   { id: "skills", label: "Skills", one: "skill" },
   { id: "mcp", label: "Connectors", one: "connector" },
   { id: "plugins", label: "Plugins", one: "plugin" },
   { id: "clis", label: "Command-line tools", one: "command-line tool", coming: "Adding command-line tools from Seedbank comes in a later update." },
   { id: "toolsets", label: "Toolsets", one: "toolset", coming: "Toolsets arrive in Seedbank in a later update." },
   { id: "looks", label: "Themes & looks", one: "theme" },
-  { id: "adapters", label: "Adapters", one: "adapter", coming: "Adapters arrive after release." },
+  { id: "adapters", label: "Adapters", one: "adapter", coming: "Adapters arrive after release.",
+    what: "An adapter changes how one part of Branch behaves: swap how Telegram replies, or the whole window." },
 ];
 export const kindOf = (id: KindId): Kind => KINDS.find(kind => kind.id === id)!;
 
@@ -36,7 +43,7 @@ export const CONNECTOR_CATEGORIES: readonly string[] = ["web", "integrations", "
 export type Source =
   | { type: "template"; template: DayOneTemplate; templateId: string | null; permissions: string[] }
   | { type: "skill"; ref: string }
-  | { type: "plugin"; catalogId: string; pluginId: string; packageName: string; install: Rec | null; unavailable: boolean }
+  | { type: "plugin"; catalogId: string; pluginId: string; packageName: string; install: Rec | null; unavailable: boolean; /** On this computer (comes with Branch or installed). */ present?: boolean }
   | { type: "theme"; themeId: string };
 
 export type Entry = {
@@ -84,7 +91,7 @@ export function pluginEntries(browse: unknown): Entry[] {
     const kind: KindId = category && CONNECTOR_CATEGORIES.includes(category) ? "mcp" : "plugins";
     return [{ id: kind + ":" + id, kind, name: str(c.name) || id, by: str(c.author) || (official ? "Branch" : "someone"), desc: str(c.summary), badge: official ? "Official" as const : "Community" as const,
       checked: Boolean(str(c.verificationTier)) || official, installed: local.installed === true, downloads: num(c.downloads), featuredRank: c.featured === true ? num(c.featuredRank) ?? 0 : undefined, category,
-      source: { type: "plugin" as const, catalogId: id, pluginId: str(local.pluginId) || str(c.packageName) || id, packageName: str(c.packageName), install, unavailable: str(local.action) === "unavailable" } }];
+      source: { type: "plugin" as const, catalogId: id, pluginId: str(local.pluginId) || str(c.packageName) || id, packageName: str(c.packageName), install, unavailable: str(local.action) === "unavailable", present: local.present === true } }];
   });
 }
 

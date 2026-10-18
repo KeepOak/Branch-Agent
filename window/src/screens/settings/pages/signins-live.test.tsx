@@ -52,7 +52,9 @@ describe("R1 Settings › Sign-ins & keys is a native R1 page with the preview's
     await mount();
     expect(host.querySelector(".r1s-custom, .r1s-classic, [data-classic]")).toBeNull();
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Sign-ins & keys");
-    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(["Branch may fill", "Narrow keys"]);
+    // Both Regular cards wait for a later update, so Regular has nothing yet and offers Advanced, where they show.
+    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual([]);
+    expect(host.querySelector(".r1s-empty")?.textContent).toContain("These settings show at Advanced.");
   });
 
   it("draws all four cards at Technical, with the keys and the technical rows inside Keys Branch holds and no Classic heading", async () => {
@@ -75,5 +77,20 @@ describe("R1 Settings › Sign-ins & keys is a native R1 page with the preview's
     await setLevel("Technical");
     expect(sections()[2].textContent).toContain(ADMIN_ONLY);
     expect(request.mock.calls.some(([m]) => m === "secrets.store.list")).toBe(false);
+  });
+});
+
+// Sign-ins & keys: "Show where" scrolls to the Keys card. On R1 that card is the section with its own id (the Classic id
+// was not on the page), so the button had nothing to scroll to and read as dead.
+describe("Sign-ins & keys: Show where", () => {
+  afterEach(() => { delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView; });
+  it("scrolls to the Keys Branch holds card", async () => {
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function scrollIntoView(this: Element) { scrolled.push(this); };
+    await mount();
+    const show = [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === "Show where");
+    if (!show) throw new Error("no Show where control on the Sign-ins page");
+    await act(async () => { show.click(); });
+    expect(scrolled.map((el) => el.id)).toContain("sec-signins-Keys Branch holds");
   });
 });

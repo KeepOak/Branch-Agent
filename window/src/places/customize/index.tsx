@@ -58,7 +58,7 @@ export function CustomizePlace({ engine, openConversation, openPlace, openSettin
     <div className="kp kp-customize"><PlaceTabs value={tab} onChange={setTab} trunkCount={trunks.data?.agents.length} />
       {tab === "Trunks" && <TrunksTab engine={engine} level={level} trunks={trunks} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={startConversation} />}</div>
     {tab === "Tools" && <div className="cz">
-      <ToolsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} getting={getting} setGetting={setGetting} openConversation={openConversation} />
+      <ToolsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} getting={getting} setGetting={setGetting} openConversation={openConversation} openSettings={openSettings} />
     </div>}
   </PlaceFrame>;
 }

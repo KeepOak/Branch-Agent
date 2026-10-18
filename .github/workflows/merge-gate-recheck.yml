@@ -22,10 +22,11 @@ on:
       - Gate files fresh
       - GitHub component release
       - Harvest checks
-      - Local worker measurement
       - macOS checks for OS-specific changes
       - Merge gate
       - Merge gate trusted
+      - Mobile APK reinstall
+      - Mobile checks
       - Non-merge-commit landing
       - OpenClaw wording
       - Personal info PR scan
@@ -49,8 +50,14 @@ jobs:
       group: merge-gate-recheck-${{ github.event.workflow_run.head_sha }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # 15-minute cap (AGENTS.md rule 13). The 10-minute rate-limit wait and 30s settle share this job.
+    timeout-minutes: 15
     steps:
+      - name: Let a burst of completions settle
+        # First step on purpose: the concurrency group cancels the run still waiting here when a newer
+        # completion for this SHA arrives. Cancelled jobs then never checkout, never set up Node, and
+        # never list runs. A burst of N completions therefore spends those API calls once, not N times.
+        run: sleep 30
       - name: Check out the default branch only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -67,10 +74,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BUDGET_LABEL: merge-gate-recheck
         run: node scripts/github-api-budget.mjs before
-      - name: Let a burst of completions settle
-        # The concurrency group above cancels the run still waiting here when a newer completion for this SHA
-        # arrives. A burst of N completions therefore reaches the listing once, not N times.
-        run: sleep 30
       - name: Rerun each merge gate that ended unsuccessfully for this commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -80,6 +83,9 @@ jobs:
           TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           TRIGGER_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           TRIGGER_NAME: ${{ github.event.workflow_run.name }}
+          # Rate-limit waits for the listing and rerun (separate from the 30s settle). A 403/429 waits
+          # here, then fails closed when this budget runs out. Does not change the recheck plan.
+          MERGE_GATE_API_WAIT_SECONDS: '600'
         run: node scripts/merge-gate-recheck.mjs
       - name: Log the core API budget this job used
         if: always()

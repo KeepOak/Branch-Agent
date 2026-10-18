@@ -11,6 +11,7 @@ import "./status.css";
 import { shownWhy } from "./shown-why";
 import { branchVersionDetail, branchVersionLabel, isNewerBranchVersion } from "../connect/branch-version";
 import { installOnComputer } from "../connect/desktop-component-updates";
+import { CheckedAt, useCheckedAt } from "../places/settings/checked-at";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 type Base = { above: Above; onClose: () => void };
@@ -146,6 +147,7 @@ export function EveryAccount({ limits, request, onOpenUsage, onSignIn }: EveryAc
   const [checked, setChecked] = useState<Limits | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
+  const [checkedAt, stampChecked] = useCheckedAt();
   useEffect(() => setChecked(null), [limits]);
   const data = checked ?? limits;
   const rows = data?.rows ?? [];
@@ -157,6 +159,7 @@ export function EveryAccount({ limits, request, onOpenUsage, onSignIn }: EveryAc
       .then((auth) => request("usage.status", { refresh: true }).then((result) => ({ auth, result })))
       .then(({ auth, result }) => {
         setChecked(withAccountEmails(readLimits(result), accountEmails(auth)));
+        stampChecked();
         window.dispatchEvent(new Event("branch:usage-checked"));
       })
       .catch((error: unknown) => setCheckError(error instanceof Error ? error.message : String(error)))
@@ -171,9 +174,11 @@ export function EveryAccount({ limits, request, onOpenUsage, onSignIn }: EveryAc
             <div className="ph">{group.title}</div>
             {group.rows.map((row) => {
               const { fiveHour, used, left, label, detail } = accountRow(row);
-              // A provider with no reading says why once, on its first such account; the rest stay quiet.
-              const quiet = !fiveHour && !row.stale && !row.signInNeeded;
-              const note = row.stale || row.signInNeeded || (quiet && !noted);
+              // Each account with its own state (sign in, rate limit, ready without a bar) keeps its line.
+              // A provider with no reading and no live state says why once, on its first such account.
+              const live = Boolean(row.signInNeeded || row.rateLimitedUntil || (row.ready && !fiveHour));
+              const quiet = !fiveHour && !row.stale && !live;
+              const note = row.stale || live || (quiet && !noted);
               if (quiet) noted = true;
               return <div className={`acctT5${row.stale ? " staleT5" : ""}`} key={row.id} style={{ cursor: "default" }}>
                 <span className="aNameT5"><span className={`provT5 ${providerDot(row)}`} aria-hidden="true" /><span className="aLabelT5">{label}</span></span>
@@ -192,6 +197,7 @@ export function EveryAccount({ limits, request, onOpenUsage, onSignIn }: EveryAc
         {checkError ? <p className="sp-note">Couldn’t check accounts right now. Branch will try again.</p> : null}
         <hr />
         <Item icon="retry" label={checking ? "Checking…" : "Check every account now"} testid="usage-check" onClick={() => check()} off={checking ? "Checking accounts now." : undefined} />
+        <CheckedAt at={checkedAt} />
         <Item icon="gear" label="Accounts and usage…" testid="open-usage" onClick={onOpenUsage} />
       </div>
   );

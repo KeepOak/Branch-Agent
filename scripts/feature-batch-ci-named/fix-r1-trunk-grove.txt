@@ -1,0 +1,9 @@
+window:src/places/trunk/new-trunk-r1.test.ts
+window:src/places/trunk/trunk.test.tsx
+window:src/places/office/office-graft.test.tsx
+window:src/places/office/office-toolbar.test.tsx
+window:src/places/office/office-interactions.test.tsx
+window:src/shell/new-menu.test.ts
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/sidebar/Sidebar.test.tsx
+window:src/setup/setup.test.tsx

@@ -62,11 +62,22 @@ const patches = (request: ReturnType<typeof vi.fn>) => request.mock.calls.filter
 describe("Tools, three panes", () => {
   it("lists the kinds with counts and the Whose tools chips, Connectors first", async () => {
     await open("Connectors");
-    expect([...host.querySelectorAll("[data-kind]")].map(k => k.getAttribute("data-kind"))).toEqual(["Connectors", "Skills", "Plugins", "Command-line tools", "Agents", "Toolsets"]);
+    expect([...host.querySelectorAll("[data-kind]")].map(k => k.getAttribute("data-kind"))).toEqual(["Toolsets", "Connectors", "Skills", "Plugins", "Command-line tools", "Agents", "Prompts"]);
     expect(host.querySelector('[data-kind="Connectors"] em')?.textContent).toBe("2");
     expect(host.querySelector('[data-kind="Skills"] em')?.textContent).toBe("1");
     expect([...host.querySelectorAll(".cz-whose .cz-chip")].map(c => c.textContent)).toEqual(["Every Trunk", "Sapling", "Oak"]);
-    expect(button("Add a server")).toBeTruthy();
+    expect(button("＋ Add")).toBeTruthy();
+  });
+  it("groups the Whose tools chips as one choice: Every Trunk starts chosen and is picked again after another Trunk", async () => {
+    await open("Connectors");
+    const group = host.querySelector('[role="group"][aria-label="Whose tools"]')!;
+    expect(group).toBeTruthy();
+    const pressed = () => [...group.querySelectorAll("button")].filter(b => b.getAttribute("aria-pressed") === "true").map(b => b.textContent);
+    expect(pressed()).toEqual(["Every Trunk"]);
+    await click(button("Oak", group));
+    expect(pressed()).toEqual(["Oak"]);
+    await click(button("Every Trunk", group));
+    expect(pressed()).toEqual(["Every Trunk"]);
   });
   it("switches a connector off and limits which Trunks may use it, through config.patch", async () => {
     const request = await open("Connectors");
@@ -93,29 +104,28 @@ describe("Tools, three panes", () => {
     expect(host.textContent).toContain("Several calls at once");
     if (root) await act(async () => root!.unmount()); document.body.innerHTML = "";
     await open("Connectors", { "config.get": { hash: "h", sourceConfig: {}, runtimeConfig: {} } });
-    expect(host.textContent).toContain("No connectors yet.");
+    expect(host.textContent).toContain("Nothing here for this Trunk.");
   });
   it("says why Test it and Check for updates are greyed, with and without a server", async () => {
     await open("Connectors", { "config.get": { hash: "h", sourceConfig: {}, runtimeConfig: {} } });
     expect(button("Test it")!.disabled).toBe(true);
-    expect(button("Test it")!.title).toBe("Add a server first");
+    expect(button("Test it")!.title).toBe("Testing a connector comes in a later update.");
     expect(button("Check for updates")!.disabled).toBe(true);
-    expect(button("Check for updates")!.title).toBe("Add a server first");
-    expect(host.textContent).toContain("Add a server first");
+    expect(button("Check for updates")!.title).toBe("Testing a connector comes in a later update.");
+    expect(host.textContent).toContain("Testing a connector comes in a later update.");
     expect(visibleDevNotes(host)).toEqual([]);
     if (root) await act(async () => root!.unmount()); document.body.innerHTML = "";
     await open("Connectors");
     expect(button("Test it")!.disabled).toBe(true);
-    expect(button("Test it")!.title).toBe("This connector cannot be tested yet.");
+    expect(button("Test it")!.title).toBe("Testing a connector comes in a later update.");
     expect(button("Check for updates")!.disabled).toBe(true);
-    expect(button("Check for updates")!.title).toBe("This connector cannot be checked for updates yet.");
-    expect(host.textContent).toContain("This connector cannot be tested yet.");
-    expect(host.textContent).toContain("This connector cannot be checked for updates yet.");
+    expect(button("Check for updates")!.title).toBe("Checking a connector for updates comes in a later update.");
+    expect(host.querySelector('[data-coming="Testing a connector comes in a later update."]')).toBeTruthy();
     expect(visibleDevNotes(host.querySelector(".cz-acts")!)).toEqual([]);
   });
   it("installs from the connector catalogue with plugins.install", async () => {
     const request = await open("Connectors");
-    await click(button("Add a server"));
+    await click(button("＋ Add"));
     expect(request).toHaveBeenCalledWith("plugins.catalog.browse", { intent: "all", pageSize: 60 });
     await click(button("Install", host.querySelector('[data-testid="catalog"]')!));
     expect(request).toHaveBeenCalledWith("plugins.install", { source: "clawhub", packageName: "@linear/branch", enable: true });
@@ -131,8 +141,10 @@ describe("Tools › Skills", () => {
     expect(host.querySelectorAll(".t9-item")).toHaveLength(1);
     await click(host.querySelector('[aria-label="maps on or off"]'));
     expect(request).toHaveBeenCalledWith("skills.update", { skillKey: "maps", enabled: true });
+    await click(button("Suggested 1"));
     await click(button("Keep it"));
     expect(request).toHaveBeenCalledWith("skills.proposals.apply", { proposalId: "p1", expectedRevisionHash: "f".repeat(64) });
+    await click(button("Library"));
     expect(button("Look now")!.disabled).toBe(true);
   });
   it("installs what a skill needs and searches the skill library", async () => {
@@ -140,16 +152,16 @@ describe("Tools › Skills", () => {
     await click(button("Needs setup 1"));
     await click(button("Install ffmpeg"));
     expect(request).toHaveBeenCalledWith("skills.install", { name: "voice", installId: "brew" });
-    await click(button("Add a skill"));
+    await click(button("＋ Add"));
     const provs = [...document.querySelectorAll<HTMLElement>(".cz-provs .cz-prov")];
-    for (const label of ["Choose a file", "Add from GitHub", "Draft it"]) { expect(button(label)!.disabled).toBe(true); expect(button(label)!.title).toBe(""); }
+    for (const label of ["Choose a file", "Add from GitHub", "Draft it"]) { expect(button(label)!.disabled).toBe(true); expect(button(label)!.title).toMatch(/in a later update\.$/); }
     expect(provs.every(p => p.title === "")).toBe(true); expect(visibleDevNotes(document.body)).toEqual([]);
     await click(button("From the skill librarySearch skills others have shared and install one."));
     await click(button("Install"));
     expect(request).toHaveBeenCalledWith("skills.install", { source: "clawhub", slug: "@a/notes" });
   });
   it("shows the read error instead of an empty list", async () => {
-    await open("Skills", { "skills.status": new Error("Disconnected") });
+    await open("Skills", { "skills.status": new Error("Disconnected from the skill library.") });
     expect(host.textContent).toContain("Disconnected");
     expect(host.textContent).not.toContain("No skills match.");
   });
@@ -181,6 +193,6 @@ describe("Tools › Plugins, Agents, Toolsets, Command-line tools", () => {
     await open("Command-line tools");
     expect([...host.querySelectorAll(".t9-item b")].map(b => b.textContent)).toEqual(["curl", "ffmpeg"]);
     expect(host.textContent).toContain("Not found");
-    expect((host.querySelector('[aria-label="Ask before each command"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(host.querySelector('[data-coming="Asking before each command comes in a later update."]')).toBeTruthy();
   });
 });

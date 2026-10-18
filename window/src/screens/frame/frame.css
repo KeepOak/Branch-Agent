@@ -6,22 +6,46 @@
 .r1-side-top { height: 44px; flex: none; }
 .r1-side-top button, .r1-drawer-button { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border-radius: var(--r-pill); }
 .r1-topics { min-width: 0; overflow: auto; padding-top: var(--hdr); }
-.r1-conversation { container-type: inline-size; position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+/* --r1-chrome-h is the header chrome's height: the pill row, plus the thread row when the conversation shows one. The scroll edge,
+   the thread row's sticky offset and the column's top spacer all read it, so the chrome has one definition. */
+.r1-conversation { container-type: inline-size; position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; --r1-chrome-h: var(--hdr); }
+.r1-conversation:has(> .r1-scroll > .r1-content > .r1-topic-host) { --r1-chrome-h: calc(var(--hdr) + var(--r1-topic-row)); }
 .r1-header { position: absolute; inset: 0 0 auto; height: var(--hdr); pointer-events: none; z-index: 10; background: transparent; }
 .r1-header-left { position: absolute; left: 12px; top: 9px; display: flex; align-items: center; gap: 6px; }
 .r1-header-right { position: absolute; right: 8px; top: 8px; }
 .r1-header :is(button, .g-capsule) { pointer-events: auto; }
+/* One scroll edge for every column that scrolls under the floating header (conversation, places, Settings; audit F5). It is the
+   first child of .r1-scroll, so it paints above the transcript and the thread bar, and below the header's pills (which sit in the
+   header, above the scroll column). It is solid --bg through the chrome (the pill row, plus the thread row when shown) and fades
+   out over 28px below it. The anchor itself takes no layout space. At rest it is hidden (opacity 0): the column starts below the
+   chrome. It shows once the column has scrolled (useEdgeFade sets data-top). Beside a right-docked pane, .r1-scroll's own margin
+   keeps the band off the pane. */
+.r1-scroll-edge { position: sticky; top: 0; z-index: 35; height: 0; pointer-events: none; opacity: 0; transition: opacity var(--fade); }
+.r1-scroll-edge::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: calc(var(--r1-chrome-h) + 28px);
+  background: linear-gradient(to bottom, var(--bg) var(--r1-chrome-h), transparent); }
+.r1-conversation:has(> .r1-scroll[data-top]) .r1-scroll-edge { opacity: 1; }
+:root[data-transparency="reduce"] .r1-scroll-edge::before { background: var(--bg); }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .r1-scroll-edge::before { background: var(--bg); } }
+/* The conversation's thread row sticks right under the pill row, inside the band's solid part. Its natural place is the lower
+   part of the top spacer (pulled up by its own height), so it sits at the same place at rest as it always did. */
+:root:not(#sg#sg#sg#sg) .r1-content > .r1-topic-host { top: calc(var(--r1-chrome-h) - var(--r1-topic-row)); margin-top: calc(-1 * var(--r1-topic-row)); }
 /* README item 48: the header sits on the clear conversation, so its drawer button, history and tools capsules and the title pill
    are frosted pills (.g-frost); only the sidebar is frosted glass. */
 .r1-header .r1-history { height: 34px; gap: 0; }
 .r1-history button { height: 28px; width: 28px; font-size: 24px; line-height: 1; }
 .r1-pill-position { position: absolute; top: 8px; max-width: 440px; }
 .r1-drawer-button { display: none; border: 0; }
-.r1-scroll { flex: 1; min-height: 0; overflow: auto; padding-top: calc(var(--hdr) + 8px); scroll-padding-top: calc(var(--hdr) + 16px); }
+.r1-scroll { flex: 1; min-height: 0; overflow: auto; scroll-padding-top: calc(var(--r1-chrome-h) + 16px); }
+/* The column's top offset is a spacer inside .r1-content, not padding on .r1-scroll: a sticky element clamps to its containing block's content
+   box, so the scroll edge and the thread row need a containing block that starts at the scroll top. */
+.r1-top-space { flex: none; height: calc(var(--r1-chrome-h) + 8px); }
 .r1-content { min-height: 100%; }
 /* The notice line ("Reconnecting…", a part that didn't load): text on a frosted pill (.g-label, README item 48), centred. */
 .r1-notice { margin: 8px auto; max-width: min(100%, 680px); font-size: var(--fs-12-5); text-align: center; }
 .r1-notice button { background: transparent; border: 0; text-decoration: underline; }
+.r1-startup-raw { margin-top: 4px; }
+.r1-startup-raw summary { cursor: pointer; color: var(--ink-2); }
+.r1-startup-raw pre { margin: 6px 0 0; text-align: left; font: var(--fs-12)/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); }
 .r1-composer-slot { padding: 8px 16px 16px; }
 .r1-drawer-scrim { position: fixed; inset: 0; z-index: 29; border: 0; background: var(--scrim); }
 .r1-sidebar-list { flex: 1; overflow: auto; min-height: 0; mask-image: linear-gradient(var(--mask-opaque) calc(100% - 18px), transparent); }
@@ -113,7 +137,8 @@
 .r1-topic-fold > button { padding: 4px 12px; border: 0; border-radius: var(--r-pill); font: 500 var(--fs-13-5) var(--sans); }
 .r1-topic-fold .topicsT5:not(.lay-tabs), .r1-content > .r1-topic-host .topicsT5:not(.lay-tabs) { position: static; width: 100%; }
 .r1-topic-fold > .r1-topic-host { width: 100%; }
-.r1-topic-host .dlg.g-clear .fld > span { display: inline-block; width: fit-content; padding: 2px 9px; border-radius: var(--r-pill); background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); }
+/* A field label in a clear dialog is text on the tinted glass (preview v17): no pill. */
+.r1-topic-host .dlg.g-clear .fld > span { display: inline-block; width: fit-content; padding: 0; background: none; box-shadow: none; color: var(--ink); }
 
 /* A place fills the conversation column: its wrapper is a full-height column, so the Grove office (places/office) has the
    height its stage draws into. */
@@ -142,3 +167,9 @@
 .r1-frame[data-topic-tier="3"] .r1-topic-host .tpL2T5 > span { -webkit-line-clamp: 2; }
 .r1-frame[data-topic-tier="4"] .r1-topic-host .tpL2T5 > span { -webkit-line-clamp: 3; }
 
+
+/* A place (Grove, Overview, Canopy…) fills the column under the header (owner, 2026-10-15): .r1-content is a block, so a
+   place's flex: 1 had nothing to fill and Grove's map sat in a 360px strip with the rest of the window empty. */
+.r1-content:has(> .enter11) { display: flex; flex-direction: column; }
+.r1-content > .enter11 { min-height: 0; }
+.pixel-office-view > .pixel-office-stage { min-height: 0; height: auto; }

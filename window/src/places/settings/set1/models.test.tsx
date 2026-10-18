@@ -71,7 +71,7 @@ describe("Settings › Models", () => {
     const { engine, request } = engineOf({ agents: { defaults: { model: { primary: "openai/gpt-5.5" } } } });
     await render(engine);
     await click("Default");
-    await act(async () => [...host.querySelector('[aria-label="ChatGPT thinking"]')!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "High")!.click());
+    await act(async () => [...host.querySelector('[aria-label="ChatGPT thinking"]')!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Thorough")!.click());
     expect(patches(request)).toContainEqual({ agents: { defaults: { models: { "openai/gpt-5.5": { params: { thinking: "high" } } } } } });
   });
 
@@ -174,6 +174,21 @@ describe("Settings › Models", () => {
     expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
   });
 
+  it("gives Double-check and Media a plain reason, and never names an unusable model", async () => {
+    const request = vi.fn(async (method: string) => method === "config.get"
+      ? { hash: "h", valid: true, config: { agents: { defaults: { mediaModels: { image: "openai/gpt-6-astra" } } } } }
+      : method === "models.authStatus" ? { providers: [] } : { models: [] });
+    await render({ request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine);
+    await click("Double-check");
+    const second = host.querySelector('[data-row="Ask a second model on hard questions"]');
+    expect(second?.classList.contains("off-k")).toBe(true);
+    expect(second?.textContent).toContain("Connect a model first.");
+    await click("Media");
+    expect(host.querySelector('[data-row="Make pictures"]')?.textContent).toContain("Connect a model first.");
+    expect(host.querySelector('[data-row="Make short videos"]')?.textContent).toContain("Connect a model first.");
+    expect(host.textContent).not.toMatch(/gpt-6-astra/i);
+  });
+
   it("calls the unconfigured xAI service by its product name", async () => {
     const request = vi.fn(async (method: string) => method === "config.get" ? { hash: "h", valid: true, config: {} } : method === "models.authStatus" ? {
       providers: [], providerCapabilities: [{ provider: "xai", loginOptions: [{ featured: true }] }],
@@ -208,7 +223,7 @@ describe("DA-73 shared model setup", () => {
   it("search opens the matching model view without taking an account row to Default", async () => {
     const { engine } = engineOf();
     await act(async () => root.render(<KitProvider level={0} report={report} scope={null}><ModelsAccountsPage page="models" title="Models" level="regular" engine={engine} searchSection="Second opinion" /></KitProvider>));
-    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Second opinion");
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Double-check");
     expect(host.querySelector('[data-row="Ask a second model on hard questions"]')).not.toBeNull();
     await act(async () => root.render(<KitProvider level={0} report={report} scope={null}><ModelsAccountsPage page="accounts" title="Accounts" level="regular" engine={engine} searchSection="Order Branch uses them in" /></KitProvider>));
     expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("Accounts");

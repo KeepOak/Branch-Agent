@@ -1,6 +1,7 @@
 // The conversation ••• menu in the header (owner-approved 2026-10-12, CHANGELOG-PASS17 "conversation ••• menu rebuilt"):
 // Pin to top, Rename, Snooze ›, Archive, Send to the board, then Export › and View ›, then Start over… and Delete… in red.
 // Share… follows Send to the board and opens the Classic Share dialog (owner placement for parity row 13, 2026-10-14).
+// That dialog also starts session-share, so a paired computer can read the conversation (shell/paired-share.ts).
 // It re-hosts the Classic menu's actions (shell/conversation-menu.ts, shell/ConversationMenu.tsx) on R1's glass Menu: each
 // entry names the engine call it makes, so an engine without it shows Coming; entries that only open or move are local.
 // Rows the R1 window can't run yet (Split, Side panel, its computer and browser) say why instead of pretending.
@@ -61,6 +62,8 @@ export type ConversationMenuRun = {
 export type ConversationMenuContext = {
   /** The open conversation's list row; null before its first message. */
   row: Conversation | null;
+  /** The thread already has messages. Its row can still be missing while the list loads, so that reason says so. */
+  hasMessages: boolean;
   /** The default Trunk's own conversation: it stays awake and in the list. */
   isDefault: boolean;
   now: number;
@@ -88,13 +91,17 @@ export function roomRuleEntries(items: readonly MenuItem[]): MenuEntry[] {
   });
 }
 
+/** Why an entry is off when the open conversation has no list row: a thread with messages is still loading, an empty one needs a first message. */
+export const LOADING_CONVERSATION = "Still loading this conversation.";
+const rowOff = (c: ConversationMenuContext): string => (c.hasMessages ? LOADING_CONVERSATION : FIRST_MESSAGE);
+
 const icon = (name: Parameters<typeof menuIcon>[0]) => menuIcon(name);
 const present = (entries: (MenuEntry | null)[]): MenuEntry[] => entries.filter((entry): entry is MenuEntry => entry !== null);
 
 function snooze(c: ConversationMenuContext): MenuEntry {
   const row = c.row;
   if (c.isDefault) return { label: "Snooze", icon: icon("clock"), off: DEFAULT_AWAKE };
-  if (!row) return { label: "Snooze", icon: icon("clock"), off: FIRST_MESSAGE };
+  if (!row) return { label: "Snooze", icon: icon("clock"), off: rowOff(c) };
   if (row.snoozedUntil && row.snoozedUntil > c.now) {
     return { label: "Wake", icon: icon("clock"), need: CONVERSATION_NEED.patch, hint: wakeWords(row.snoozedUntil, c.now), onSelect: () => c.run.snooze(null) };
   }
@@ -107,7 +114,7 @@ function archive(c: ConversationMenuContext): MenuEntry {
   const row = c.row;
   const base = { label: row?.archived ? "Restore" : "Archive", icon: icon("box") };
   if (c.isDefault) return { ...base, off: DEFAULT_LISTED };
-  if (!row) return { ...base, off: FIRST_MESSAGE };
+  if (!row) return { ...base, off: rowOff(c) };
   if (row.isMain && !row.archived) return { ...base, off: TRUNK_LISTED };
   return { ...base, need: CONVERSATION_NEED.patch, onSelect: row.archived ? c.run.restore : c.run.archive };
 }
@@ -139,16 +146,16 @@ export function conversationMenu(c: ConversationMenuContext): MenuEntry[] {
   const row = c.row;
   const deleteRow: MenuEntry = c.isDefault ? { label: "Delete…", icon: icon("trash"), danger: true, off: DEFAULT_LISTED }
     : row ? { label: "Delete…", icon: icon("trash"), danger: true, need: CONVERSATION_NEED.delete, onSelect: c.run.remove }
-      : { label: "Delete…", icon: icon("trash"), danger: true, off: FIRST_MESSAGE };
+      : { label: "Delete…", icon: icon("trash"), danger: true, off: rowOff(c) };
   return present([
-    row ? { label: row.pinned ? "Unpin" : "Pin to top", icon: icon("pin"), need: CONVERSATION_NEED.patch, onSelect: c.run.pin } : { label: "Pin to top", icon: icon("pin"), off: FIRST_MESSAGE },
-    !row ? { label: "Rename", icon: icon("edit"), off: FIRST_MESSAGE }
+    row ? { label: row.pinned ? "Unpin" : "Pin to top", icon: icon("pin"), need: CONVERSATION_NEED.patch, onSelect: c.run.pin } : { label: "Pin to top", icon: icon("pin"), off: rowOff(c) },
+    !row ? { label: "Rename", icon: icon("edit"), off: rowOff(c) }
       : row.isMain ? { label: "Rename", icon: icon("edit"), hint: "in Edit Trunk", local: true, onSelect: c.run.editTrunk }
         : { label: "Rename", icon: icon("edit"), need: CONVERSATION_NEED.patch, onSelect: c.run.rename },
     snooze(c),
     archive(c),
     { label: "Send to the board", icon: icon("puzzle"), need: CONVERSATION_NEED.board, onSelect: c.run.toBoard },
-    row ? { label: "Share…", icon: icon("users"), need: CONVERSATION_NEED.share, onSelect: c.run.share } : { label: "Share…", icon: icon("users"), off: FIRST_MESSAGE },
+    row ? { label: "Share…", icon: icon("users"), need: CONVERSATION_NEED.share, onSelect: c.run.share } : { label: "Share…", icon: icon("users"), off: rowOff(c) },
     { label: "Export", icon: icon("doc"), gap: true, submenu: [
       { label: "Conversation file", icon: icon("doc"), need: CONVERSATION_NEED.history, onSelect: c.run.exportFile },
       { label: "Web page", icon: icon("doc"), need: CONVERSATION_NEED.history, onSelect: c.run.exportWebPage },

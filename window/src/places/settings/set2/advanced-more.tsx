@@ -19,9 +19,13 @@ export type Spec = {
   def?: unknown; opts?: Opt[]; unit?: string; ph?: string; min?: number; max?: number;
   /** Stored value → shown value, and back (MB ↔ bytes, inverted switches). */
   read?: (v: unknown) => unknown; write?: (v: unknown, saved: unknown) => unknown;
-  off?: string; btn?: string; add?: string; plug?: string; mono?: boolean;
+  off?: string; btn?: string; add?: string; plug?: string; mono?: boolean; secret?: boolean;
+  /** A list item may be at most this many characters, and the list at most this many items. */
+  itemMax?: number; maxItems?: number;
   /** Greys a wired row for a moment (e.g. a switch that needs another one on first). */
   hold?: (c: Ctx) => string | undefined;
+  /** Extra plain sentence on a live row (for example, a plugin that has to be on). */
+  note?: (c: Ctx) => string | undefined;
   /** A row drawn by its own component. */
   draw?: (c: Ctx) => ReactNode;
 };
@@ -50,7 +54,9 @@ function Row({ r, c }: { r: Spec; c: Ctx }) {
   if (r.off) return <Ctl title={r.t} sub={r.s} help={r.help} off={r.off}>{greyControl(r)}</Ctl>;
   if (r.plug) return <PlugRow r={r} c={c} />;
   const hold = r.hold?.(c);
-  return <Ctl title={r.t} sub={hold ?? r.s} help={r.help} after={r.kind === "list" ? <ListEditor r={r} c={c} /> : undefined}>{r.kind === "list" ? null : <Control r={r} c={c} disabled={Boolean(hold)} />}</Ctl>;
+  const extra = hold ? undefined : r.note?.(c);
+  const sub = hold ?? (extra && (typeof r.s === "string" || r.s == null) ? `${r.s ?? ""}${r.s ? " " : ""}${extra}` : r.s);
+  return <Ctl title={r.t} sub={sub} help={r.help} after={r.kind === "list" ? <ListEditor r={r} c={c} /> : undefined}>{r.kind === "list" ? null : <Control r={r} c={c} disabled={Boolean(hold)} />}</Ctl>;
 }
 
 /** The control a greyed row draws (inert), showing the engine's default where there is one. */
@@ -83,7 +89,7 @@ function Control({ r, c, disabled }: { r: Spec; c: Ctx; disabled: boolean }) {
     case "num": { const n = r.read ? r.read(r.k ? config.get(r.k) : undefined) : r.k ? config.get(r.k) : undefined; return <Num label={r.t} value={typeof n === "number" ? n : undefined} unit={r.unit} min={r.min} max={r.max} placeholder={r.ph ?? (typeof r.def === "number" ? r.def.toLocaleString("en-US") : undefined)} disabled={off} onCommit={save} />; }
     case "seg": return <Seg label={r.t} value={str(v)} options={r.opts ?? []} disabled={off} onChange={save} />;
     case "pick": return <Pick label={r.t} value={str(v)} options={r.opts ?? []} disabled={off} onChange={(x) => save(x === "" ? null : x)} />;
-    case "text": return <span className={`s2advanced-txt${r.mono ? " s2advanced-tmono" : ""}`}><Field label={r.t} value={str(v)} placeholder={r.ph} disabled={off} onCommit={(x) => save(x.trim() || null)} /></span>;
+    case "text": return <span className={`s2advanced-txt${r.mono ? " s2advanced-tmono" : ""}`}><Field label={r.t} value={str(v)} placeholder={r.ph} type={r.secret ? "password" : "text"} disabled={off} onCommit={(x) => save(x.trim() || null)} /></span>;
     default: return null;
   }
 }
@@ -95,14 +101,18 @@ function ListEditor({ r, c }: { r: Spec; c: Ctx }) {
   const items = saved.map((x) => (typeof x === "string" ? x : str(rec(x).path)));
   const [draft, setDraft] = useState("");
   const put = (next: unknown[]) => void c.config.set(r.k as ConfigPath, next.length ? next : null);
-  const add = () => { const v = draft.trim(); if (!v || items.includes(v)) return; put([...saved, v]); setDraft(""); };
+  const v = draft.trim();
+  const tooLong = r.itemMax !== undefined && v.length > r.itemMax;
+  const full = r.maxItems !== undefined && items.length >= r.maxItems;
+  const add = () => { if (!v || tooLong || full || items.includes(v)) return; put([...saved, v]); setDraft(""); };
   return (
     <div className="s2advanced-lst">
       {items.length ? items.map((x, i) => <span key={`${x}-${i}`} className="chip6">{x}<button type="button" className="s2-x" aria-label={`Remove ${x}`} onClick={() => put(saved.filter((_, j) => j !== i))}>×</button></span>) : <span className="hint">Nothing here yet.</span>}
       <span className="s2advanced-add">
         <input className="inp s2advanced-mono" aria-label={`${r.t}: new item`} placeholder={r.ph} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
-        <Btn sm disabled={c.config.loading} onClick={add}>{r.add ?? "Add"}</Btn>
+        <Btn sm disabled={c.config.loading || !v || tooLong || full} onClick={add}>{r.add ?? "Add"}</Btn>
       </span>
+      {tooLong ? <span className="hint">Keep each one to {r.itemMax} characters.</span> : null}
     </div>
   );
 }
@@ -154,8 +164,8 @@ export const LOG_ROWS = {
 export const COMMANDS: SecSpec = { title: "Commands", lv: 1, rows: [
   { t: "Where commands run", draw: (c) => <WhereRun c={c} /> },
   no("Shell", "Automatic: PowerShell on Windows, bash on Mac and Linux.", "pick", { opts: [{ id: "auto", label: "Automatic" }] }),
-  { t: "Longest a command may run", s: "Never longer than the sealed box waits before closing for being idle.", k: "tools.exec.timeoutSeconds", kind: "num", unit: "seconds", def: 1800, min: 1 },
-  { t: "Close an idle sealed box after", s: "It’s made again the next time it’s needed, and the Trunk is told.", k: "agents.defaults.sandbox.prune.idleHours", kind: "num", unit: "hours", def: 24, min: 0 },
+  { t: "Longest a command may run", s: "Never longer than the safe box waits before closing for being idle.", k: "tools.exec.timeoutSeconds", kind: "num", unit: "seconds", def: 1800, min: 1 },
+  { t: "Close an idle safe box after", s: "It’s made again the next time it’s needed, and the Trunk is told.", k: "agents.defaults.sandbox.prune.idleHours", kind: "num", unit: "hours", def: 24, min: 0 },
   no("Shorten long output: most characters", "The start and the end are kept; the rest is saved to a file the Trunk can read.", "num", { unit: "characters" }),
   no("Shorten long output: most lines", "", "num", { unit: "lines" }),
   no("Longest line", "", "num", { unit: "characters" }),
@@ -216,7 +226,7 @@ function WhereRun({ c }: { c: Ctx }) {
   const none = "Not in this engine.";
   const opts: Opt[] = [{ id: "local", label: "This computer" }, { id: "docker", label: "Docker" }, { id: "ssh", label: "SSH" }, { id: "singularity", label: "Singularity", off: none }, { id: "modal", label: "Modal", off: none }, { id: "daytona", label: "Daytona", off: none }];
   return (
-    <Ctl title="Where commands run" sub="Run commands here, over SSH, or in a sealed cloud box." help="This computer, or a separate place: a container, another computer over SSH, or a cloud sealed box.">
+    <Ctl title="Where commands run" sub="Run commands here, over SSH, or in a safe cloud box." help="This computer, or a separate place: a container, another computer over SSH, or a cloud safe box.">
       <Pick label="Where commands run" value={value} options={opts} disabled={c.config.loading} onChange={pick} />
     </Ctl>
   );

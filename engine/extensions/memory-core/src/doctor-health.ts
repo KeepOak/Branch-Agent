@@ -71,7 +71,7 @@ function resolveSelectedMemoryProvider(config: unknown, agentId: string): string
   }
   const configured = overrides?.provider ?? defaults?.provider;
   const provider = normalizeOptionalLowercaseString(configured);
-  return !provider || provider === "auto" ? "openai" : provider;
+  return !provider || provider === "auto" ? "local" : provider;
 }
 
 function createManagedLocalEmbeddingSetupCheck(

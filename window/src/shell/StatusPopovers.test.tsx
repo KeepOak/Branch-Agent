@@ -105,7 +105,7 @@ describe("status popovers", () => {
     expect(stale.classList.contains("staleT5")).toBe(true);
     expect(stale.querySelector(".aLeftT5")?.textContent).toMatch(/^80% left · resets /);
     expect(stale.querySelector(".meterT5 i")?.getAttribute("style")).toBe("width: 20%;");
-    expect(stale.querySelector(".aLineT5")?.textContent).toBe("Rate limited · last reading 12 min ago. Branch checks again in 5 min.");
+    expect(stale.querySelector(".aLineT5")?.textContent).toBe("Usage unavailable · last reading 12 min ago. Branch checks again in 5 min.");
     expect(fresh.classList.contains("staleT5")).toBe(false);
     expect(fresh.querySelector(".aLeftT5")?.textContent).toMatch(/^45% left · resets /);
     expect(fresh.querySelector(".aLineT5")).toBeNull();
@@ -149,6 +149,30 @@ describe("status popovers", () => {
   });
 });
 
+describe("usage popover: each account's real state", () => {
+  it("shows sign in again, rate limited until a time, and ready on the same list after a usage 429", async () => {
+    const resetAt = new Date(2026, 9, 3, 13, 0).getTime();
+    const usage = { updatedAt: Date.now(), providers: [
+      { provider: "anthropic", displayName: "Claude", accountEmail: "one@example.test", authProfileId: "anthropic:one", signInNeeded: true, error: "HTTP 403: login rejected" },
+      { provider: "anthropic", displayName: "Claude", accountEmail: "two@example.test", authProfileId: "anthropic:two", signInNeeded: true, error: "HTTP 401: unauthorized" },
+      { provider: "anthropic", displayName: "Claude", accountEmail: "three@example.test", authProfileId: "anthropic:three", rateLimitedUntil: resetAt, error: "HTTP 429: Rate limited. Please try again later." },
+      { provider: "anthropic", displayName: "Claude", accountEmail: "four@example.test", authProfileId: "anthropic:four", ready: true, windows: [{ label: "5h", usedPercent: 20, resetAt: resetAt }] },
+    ] };
+    const host = await show(<UsagePopover above={above} onClose={() => {}} limits={readLimits(usage, new Date(2026, 9, 2, 12, 0).getTime())} request={vi.fn(async () => usage) as never} onOpenUsage={() => {}} />);
+    const rows = [...host.querySelectorAll(".acctT5")];
+    expect(rows).toHaveLength(4);
+    expect(rows[0]?.textContent).toContain("Sign in again to show usage.");
+    expect(rows[1]?.textContent).toContain("Sign in again to show usage.");
+    expect(rows[0]?.querySelector("[data-testid=usage-signin]")).toBeTruthy();
+    expect(rows[1]?.querySelector("[data-testid=usage-signin]")).toBeTruthy();
+    expect(rows[2]?.textContent).toContain("Rate limited until 1 PM Sat");
+    expect(rows[3]?.textContent).toMatch(/80% left/);
+    expect(host.textContent).not.toMatch(/HTTP 429/);
+    expect(host.textContent.split("Rate limited until").length - 1).toBe(1);
+    expect(host.textContent.split("Sign in again to show usage.").length - 1).toBe(2);
+  });
+});
+
 describe("usage popover: sign in again", () => {
   it("a token without the usage scope shows Sign in again for that account, and never the raw error", async () => {
     const usage = { updatedAt: Date.now(), providers: [
@@ -167,3 +191,24 @@ describe("usage popover: sign in again", () => {
   });
 });
 
+
+// "Check every account now" stamps "Checked at" only when the check succeeds. A failed check shows its note and no time.
+describe("Usage popover: Check every account now stamps only on success", () => {
+  const claudeAccount = { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:one", plan: "Max (20x)", windows: [{ label: "5h", usedPercent: 20, resetsAt: Date.now() + 3_600_000 }] };
+  it("says when it last checked after a successful check", async () => {
+    const request = vi.fn(async () => ({ updatedAt: Date.now(), providers: [claudeAccount] }));
+    const host = await show(<UsagePopover above={above} onClose={() => {}} limits={readLimits({ updatedAt: Date.now(), providers: [claudeAccount] })} request={request as never} onOpenUsage={() => {}} />);
+    expect(host.textContent).not.toContain("Checked at");
+    await act(async () => button(host, "Check every account now").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(host.textContent).toContain("Checked at");
+  });
+  it("shows no time when the check fails", async () => {
+    const request = vi.fn(async () => { throw new Error("gateway unreachable"); });
+    const host = await show(<UsagePopover above={above} onClose={() => {}} limits={readLimits({ updatedAt: Date.now(), providers: [claudeAccount] })} request={request as never} onOpenUsage={() => {}} />);
+    await act(async () => button(host, "Check every account now").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(host.textContent).toContain("Couldn’t check accounts right now.");
+    expect(host.textContent).not.toContain("Checked at");
+  });
+});

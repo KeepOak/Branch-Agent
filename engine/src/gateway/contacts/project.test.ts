@@ -231,6 +231,46 @@ describe("contact projection", () => {
     expect(projected.topics.find((t) => t.key === "agent:scout:window:job")?.status).toBe("active");
   });
 
+  it("does not count leftover script-made sessions the window cannot open from the row", () => {
+    const leftover = row("agent:tk:script-test-1", {
+      lastReadAt: 50,
+      lastActivityAt: 150,
+      displayName: "script fixture",
+    });
+    const other = row("agent:tk:script-test-2", { lastReadAt: 50, lastActivityAt: 160 });
+    const windowTopic = row("agent:tk:window:lisbon", {
+      lastReadAt: 50,
+      lastActivityAt: 170,
+      label: "Lisbon",
+    });
+    const dashboard = row("agent:tk:dashboard:4f1c", {
+      parentSessionKey: "agent:tk:main",
+      lastReadAt: 50,
+      lastActivityAt: 180,
+      label: "Shopping",
+    });
+    const projected = projectContacts({
+      agents: [{ id: "tk", name: "TK" }],
+      defaultAgentId: "tk",
+      sessions: [
+        row("agent:tk:main", { lastReadAt: 200, lastActivityAt: 100 }),
+        leftover,
+        other,
+        windowTopic,
+        dashboard,
+      ],
+    });
+    expect(projected.contacts[0]).toMatchObject({
+      threadUnread: false,
+      unreadTopics: 2,
+      topicCount: 2,
+    });
+    expect(projected.topics.map((topic) => topic.key).toSorted()).toEqual([
+      "agent:tk:dashboard:4f1c",
+      "agent:tk:window:lisbon",
+    ]);
+  });
+
   it("does not mark a conversation unread when restart recovery only touched it", () => {
     const projected = projectContacts({
       agents: [{ id: "scout", name: "Scout" }],

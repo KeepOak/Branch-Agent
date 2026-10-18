@@ -38,17 +38,16 @@ const room = (isRoom: boolean): ThreadRoom => ({ isRoom, selfId: "p-me", ownAgen
 const history = historyToBlocks(messages, [], "agent:ledger:grp", null);
 const show = (r?: ThreadRoom) => act(async () => root.render(<ChatView name="Ledger" history={history} live={[]} pendingUser={null} running={false} engine={engine} sessionKey="agent:ledger:grp" onAnswer={() => undefined} room={r} />));
 
-it("draws the people, the outside agent and the talked-it-through fold of a room in the R1 conversation", async () => {
+it("draws the people, the outside agent and the Trunk-to-Trunk exchange line of a room in the R1 conversation", async () => {
   await show(room(true));
   const person = host.querySelector(".r1c-room [data-role='person']");
   expect(person?.textContent).toBe("DanaCan we close September today?");
   const agent = host.querySelector(".r1c-room [data-role='agent']");
   expect(agent?.querySelector(".rm-tag")?.textContent).toBe("A2A · agents.example.net");
-  const fold = host.querySelector(".r1c-talk [data-testid='talked-through'] details");
-  expect(fold?.hasAttribute("open")).toBe(false);
-  expect(fold?.querySelector("summary .rm-talk-n")?.textContent).toBe("2 messages with 2 agents");
-  expect(fold?.querySelector("summary .rm-talk-who")?.textContent).toBe("Scout and Ledger");
-  expect(fold?.querySelector(".rm-mention")?.textContent).toBe("@Ledger");
+  const line = host.querySelector("[data-testid='exchange-line']");
+  expect(line?.querySelector(".r1x-n")?.textContent).toBe("2 messages with");
+  expect(line?.querySelector(".r1x-names")?.textContent).toBe("Scout and Ledger");
+  expect(host.querySelector("[data-testid='talked-through']")).toBeNull();
   // The Trunk's report to you stays a reply with its name over it; the viewer's own message stays their bubble.
   expect([...host.querySelectorAll(".r1c-from")].map((n) => n.textContent)).toEqual(["Ledger"]);
   expect([...host.querySelectorAll("[data-role='user']")].map((n) => n.textContent)).toEqual(["Thanks, all."]);
@@ -57,7 +56,7 @@ it("draws the people, the outside agent and the talked-it-through fold of a room
 
 it("keeps the plain R1 conversation when no room is given", async () => {
   await show(undefined);
-  expect(host.querySelector("[data-testid='talked-through']")).toBeNull();
+  expect(host.querySelector("[data-testid='exchange-line']")).toBeNull();
   expect(host.querySelector(".r1c-room")).toBeNull();
   expect(host.querySelector(".r1c-from")).toBeNull();
   expect(host.querySelectorAll("[data-role='user']").length).toBe(3);

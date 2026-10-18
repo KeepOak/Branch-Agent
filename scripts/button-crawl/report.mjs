@@ -1,5 +1,6 @@
 // JSON and Markdown reports. Preview-map notes are included and are not gated.
 
+import { consoleEvidenceBody } from './console-evidence.mjs';
 import { GATED_PROBLEMS } from './observe.mjs';
 
 export function countProblems(found) {
@@ -45,6 +46,9 @@ export function markdownReport(report) {
     '',
     'Caps: ' + (report.caps ? `${report.caps.maxScreens} screens, ${report.caps.maxPerScreen} controls a screen, ${report.caps.maxClicks} clicks, overlay depth ${report.caps.maxDepth}.` : 'see the crawler.'),
     '',
+    `Not clicked (over the per-screen cap): ${(report.truncated || []).reduce((n, item) => n + item.notClicked.length, 0)} controls on ${(report.truncated || []).length} screens.`,
+    `Not opened (screen cap reached): ${(report.unvisitedScreens || []).length} screens.`,
+    '',
     '## Gated problems',
     '',
     countLines.length ? countLines.join('\n') : 'None.',
@@ -52,6 +56,10 @@ export function markdownReport(report) {
     '## Worst 20',
     '',
     worst.length ? worst.join('\n') : 'None.',
+    '',
+    '## Console errors',
+    '',
+    consoleEvidenceBody(report.consoleEvidence),
     '',
     '## Preview reference (does not fail the job)',
     '',

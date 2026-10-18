@@ -5,6 +5,7 @@ import type { Topic } from "@branch/gateway-protocol";
 import type { TopicUpdate } from "../thread/TopicCard";
 import type { SendExtras } from "../connect/engine";
 import { firstSendEcho } from "../composer/sending";
+import { availability } from "../connect/capabilities";
 import { roomIdOf, type SaplingSession } from "../connect/session";
 import { withOwner } from "../connect/agent-owner";
 import { isPreparationPending, isPreparationStalled, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
@@ -50,7 +51,7 @@ import { historyToBlocks } from "../thread/history";
 import { lastSpeakerWho, topicSpeakerKeys } from "./topic-who";
 import { topicLayoutFor, readTopicSettings, setContactTopicLayout, type TopicLayout } from "./topic-layout";
 import { patchTopicSession } from "./topic-session";
-import { loadAllTopicTranscripts } from "./topic-all";
+import { createSerialReloader, loadAllTopicTranscripts, type TopicTranscriptCache } from "./topic-all";
 import { useContactSegments } from "./useContactSegments";
 import { contactAlert, contactAlertTarget, noticesHereOn, notify, readMutedContacts, saveMutedContacts } from "./notify";
 import { headerFace, stopRoaming } from "./pet-roam";
@@ -71,6 +72,7 @@ import { PairDialog } from "../places/customize/pairing";
 import { guideMenuItems } from "./guide-menu";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
+import { startTryExamples } from "../screens/onboarding/try-examples";
 import { PersonMenu, usePersonName } from "./PersonMenu";
 import { SideResizer } from "./Resizer";
 import { rowMenuItems, threadMenuItems } from "./row-menu";
@@ -108,7 +110,7 @@ import { SidePane, type PaneTab } from "../stage/SidePane";
 import { shouldShowThreadColumn, ThreadColumn } from "./ThreadColumn";
 import { ControlTower } from "./ControlTower";
 import { StagePip } from "../stage/StagePip";
-import { stageFit, useWindowWidth } from "../stage/stage-fit";
+import { browserFit, stageFit, useWindowWidth } from "../stage/stage-fit";
 import { AddComputer } from "../stage/AddComputer";
 import { computersChanged } from "../stage/computers";
 import { TrunkAppearances, TrunkPebbleLooks, TrunkEmojiFaces, rosterPebbleLooks, themeColour, trunkAppearance, type Appearance } from "../face/appearance";
@@ -122,6 +124,7 @@ import { TALK_EVENT, useVoiceCatalog } from "../composer/VoiceParts";
 import { DockQuestion } from "../thread/QuestionCard";
 import { CHECK_STATUS_EVENT } from "../thread/blocks";
 import { WhereChips } from "../thread/WhereChips";
+import { FIND_ANYTHING_EVENT } from "../screens/find/find-event";
 import { FIND_EVENT } from "../thread/FindBar";
 import { useQuestions } from "../thread/questions";
 import { Walkthrough } from "./Walkthrough";
@@ -131,6 +134,7 @@ import { useFirstRun } from "../setup/use-first-run";
 import { useNeedsCount } from "../places/inbox";
 import { TrunkStudio } from "../places/trunk";
 import "./preview.css";
+import { coalesce } from "./coalesce";
 
 /** The clock for row times; it also ticks just after a "Done" so the header goes back to ready (§4.2.5). */
 function useNow(doneAt: number | null): number {
@@ -429,6 +433,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     window.addEventListener("branch:whats-new", openNews);
     return () => window.removeEventListener("branch:whats-new", openNews);
   }, []);
+  useEffect(() => {
+    const open = () => {
+      if (availability(session.engine, "sessions.search") === "no") return;
+      setOverlay((current) => (current?.kind === "palette" ? current : { kind: "palette" }));
+    };
+    window.addEventListener(FIND_ANYTHING_EVENT, open);
+    return () => window.removeEventListener(FIND_ANYTHING_EVENT, open);
+  }, [session.engine]);
   const [characterShown, setCharacterShown] = useCharacterShown();
   // The card and Appearance › Agents › "Show the agent beside the conversation" are one switch: keep both in step.
   const setCharacterVisible = (on: boolean) => { setCharacterShown(on); void lookStore(session.engine).set("agentShown", on).catch(() => undefined); };
@@ -490,7 +502,16 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [settingsListExpanded, setSettingsListExpanded] = useState(false);
   useEffect(() => { if (route.kind !== "settings") setSettingsListExpanded(false); }, [route.kind]);
   const settingsAutoRail = route.kind === "settings" && !isNarrow && !settingsListExpanded;
-  const rail = layout.rail || ((topicAutoRail || settingsAutoRail) && !layout.hidden);
+  // An open Trunk's browser in a half-screen window shows the list as the face rail, so its page keeps a readable
+  // width (#1103); Ctrl B or Show the full list brings the list back until the browser closes. Never saved.
+  // Ctrl B folds it again, also unsaved. When topics fold the list too, showing it in full asks topics to unfold as well,
+  // and folding it again hands that back, so a Trunk with topics doesn't keep the rail.
+  const [browserFullList, setBrowserFullList] = useState(false);
+  const browserOpenedTopicList = useRef(false);
+  useEffect(() => { if (stage !== "Browser") { setBrowserFullList(false); browserOpenedTopicList.current = false; } }, [stage]);
+  const browserCanFold = stage === "Browser" && route.kind === "chat" && !dedicated && !isNarrow && !layout.hidden && !layout.rail && browserFit(windowWidth, layout.sideW).rail;
+  const browserAutoRail = browserCanFold && !browserFullList;
+  const rail = layout.rail || ((topicAutoRail || settingsAutoRail || browserAutoRail) && !layout.hidden);
   useEffect(() => {
     setAllTopics((value) => value && (!topicContact || value.contactId !== topicContact.id || openKey !== topicContact.threadKey) ? null : value);
   }, [openKey, topicContact?.id]);
@@ -509,8 +530,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       } catch (error) { if (live) console.warn("contacts.topics failed", error); }
     };
     void load();
-    const off = session.onGatewayEvent((event) => { if (event === "contacts.changed") void load(); });
-    return () => { live = false; off(); };
+    const loadSoon = coalesce(() => void load(), 3_000);
+    const off = session.onGatewayEvent((event) => { if (event === "contacts.changed") loadSoon(); });
+    return () => { live = false; off(); loadSoon.cancel(); };
   }, [session, ready, topicContact?.id]);
   useEffect(() => {
     if (!ready || !topicContact || !activeTopics.length) { setTopicWho({}); return; }
@@ -915,21 +937,40 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   });
   const topicMainRow = topicContact ? lists.rows.find((row) => row.key === topicContact.threadKey) : null;
   const showingAll = Boolean(allTopics && topicContact && allTopics.contactId === topicContact.id && openKey === topicContact.threadKey);
+  const allTopicLoader = useRef<{ contactId: string; transcripts: TopicTranscriptCache; reloader: ReturnType<typeof createSerialReloader> } | null>(null);
+  const allTopicInput = useRef<Parameters<typeof loadAllTopicTranscripts> | null>(null);
+  const allTopicSignature = useRef("");
+  useEffect(() => {
+    if (!showingAll || !topicContact) return;
+    const main = { key: topicContact.threadKey, title: "General", updatedAt: topicMainRow?.updatedAt ?? topicContact.lastActivityAt, preview: topicMainRow?.preview ?? "" };
+    const topics = topicItems.map(({ topic, updatedAt, preview }) => ({ key: topic.key, title: topic.title, labelled: topic.labelled, updatedAt, preview }));
+    allTopicInput.current = [request, main, topics];
+    // The contact and row objects are rebuilt on every render, so reload only when what the load reads has changed;
+    // otherwise each finished load would re-render, re-run this effect and start the next one.
+    const signature = JSON.stringify([topicContact.id, main, topics]);
+    if (signature === allTopicSignature.current) return;
+    allTopicSignature.current = signature;
+    if (allTopicLoader.current?.contactId === topicContact.id) allTopicLoader.current.reloader.trigger();
+  }, [showingAll, topicContact, activeTopics, lists.rows, request, ready]);
   useEffect(() => {
     if (!showingAll || !topicContact) return;
     const contactId = topicContact.id;
-    const main = { key: topicContact.threadKey, title: "General", updatedAt: topicMainRow?.updatedAt ?? topicContact.lastActivityAt, preview: topicMainRow?.preview ?? "" };
-    const topics = topicItems.map(({ topic, updatedAt, preview }) => ({ key: topic.key, title: topic.title, labelled: topic.labelled, updatedAt, preview }));
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const reload = () => {
+    // One load at a time: live events that arrive during a load collapse into one follow-up load, and
+    // threads whose rows have not moved reuse their blocks from this view's cache.
+    const transcripts: TopicTranscriptCache = new Map();
+    const reloader = createSerialReloader(() => new Promise<void>((settled) => {
       let picks: Record<string, string> = {};
       try { picks = JSON.parse(localStorage.getItem("branch-topic-emoji-t5") || "{}"); } catch { /* A damaged local preference does not hide All. */ }
-      void loadAllTopicTranscripts(request, main, topics, picks).then(
-        (history) => { if (live) setAllTopics((value) => value?.contactId === contactId ? { contactId, history, loading: false, error: "" } : value); },
-        (error: unknown) => { if (live) setAllTopics((value) => value && value.contactId === contactId ? { ...value, loading: false, error: error instanceof Error ? error.message : String(error) } : value); },
+      const [read, main, topics] = allTopicInput.current!;
+      void loadAllTopicTranscripts(read, main, topics, picks, transcripts).then(
+        (history) => { if (live) setAllTopics((value) => value?.contactId === contactId ? { contactId, history, loading: false, error: "" } : value); settled(); },
+        (error: unknown) => { if (live) setAllTopics((value) => value && value.contactId === contactId ? { ...value, loading: false, error: error instanceof Error ? error.message : String(error) } : value); settled(); },
       );
-    };
+    }));
+    allTopicLoader.current = { contactId, transcripts, reloader };
+    const reload = () => reloader.trigger();
     reload();
     const off = session.onGatewayEvent((event) => {
       if (event !== "contacts.changed" && event !== "chat") return;
@@ -938,8 +979,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     });
     const storage = (event: StorageEvent) => { if (event.key === "branch-topic-emoji-t5") reload(); };
     window.addEventListener("storage", storage);
-    return () => { live = false; if (timer) clearTimeout(timer); off(); window.removeEventListener("storage", storage); };
-  }, [showingAll, topicContact?.id, session, activeTopics, lists.rows, ready]);
+    return () => { live = false; reloader.cancel(); allTopicLoader.current = null; allTopicSignature.current = ""; if (timer) clearTimeout(timer); off(); window.removeEventListener("storage", storage); };
+  }, [showingAll, topicContact?.id, session]);
   const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
   const sections = buildContactSections(contacts, prefs, now);
   // The main conversation is still navigable while contacts.list is loading (or unavailable).
@@ -1007,10 +1048,21 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   const narrow = () => isNarrow;
   const compact = isNarrow || layout.focus;
+  // The browser's fold (#1103): show the full list while the browser is open, unfolding topics' rail too, and fold it again.
+  const showBrowserFullList = () => {
+    setBrowserFullList(true);
+    if (topicAutoRail && !layout.rail) { browserOpenedTopicList.current = true; setFullListFor(topicContact?.id ?? null); }
+  };
+  const foldForBrowser = () => {
+    setBrowserFullList(false);
+    if (browserOpenedTopicList.current) { browserOpenedTopicList.current = false; setFullListFor(null); }
+  };
   const toggleList = () => {
     if (narrow()) { setSlideOpen((o) => !o); return; }
     if (settingsAutoRail) { setSettingsListExpanded(true); if (layout.hidden || layout.rail) setLayout({ hidden: false, rail: false }); return; }
     if (route.kind === "settings" && !layout.hidden && !layout.rail) { setSettingsListExpanded(!settingsListExpanded); return; }
+    if (browserAutoRail) { showBrowserFullList(); return; }
+    if (browserCanFold) { foldForBrowser(); return; }
     if (topicAutoRail && !layout.rail) { setFullListFor(topicContact?.id ?? null); return; }
     setLayout(toggleListLayout(layout));
   };
@@ -1092,6 +1144,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     savePrefs(p);
   };
   const focusSearch = () => {
+    if (browserAutoRail) setBrowserFullList(true);
     if (settingsAutoRail) setSettingsListExpanded(true);
     if (topicAutoRail) setFullListFor(topicContact?.id ?? null);
     if (rail || layout.hidden) {
@@ -1278,7 +1331,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   };
   const sideWidth = layout.hidden && !isNarrow ? 0 : liveW ?? (rail ? 68 : layout.sideW);
   // An open stage sits beside the conversation only when both keep a usable width; otherwise it covers the thread (DA-72).
-  const stagePlace = stage && route.kind === "chat" ? stageFit(windowWidth, dedicated ? 0 : sideWidth) : null;
+  const stagePlace = stage && route.kind === "chat" ? (stage === "Browser" ? browserFit(windowWidth, dedicated ? 0 : sideWidth, isNarrow).fit : stageFit(windowWidth, dedicated ? 0 : sideWidth)) : null;
   const frameClass = ["frame", stagePlace ? `stage-${stagePlace.mode}` : "", dedicated ? "dedicated" : "", rail ? "rail" : "", layout.hidden && !isNarrow ? "list-hidden" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
   const summary = filterSummary(prefs, trunkName, personName);
   const dark = theme === "system" ? systemDark : effectiveDark(theme);
@@ -1576,7 +1629,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           ) : null
         }
         emptyLine={emptyLineFor(prefs, shownCount) ?? (contactsLoaded && trunks.loaded && contactRows.length === 0 ? "No contacts yet. Use + to create one." : null)}
-        search={<SearchBox query={search.query} onQuery={search.setQuery} />}
+        search={<SearchBox query={search.query} onQuery={search.setQuery} engine={session.engine} />}
         searchResults={
           search.query.trim() ? (
             <SearchResultsView
@@ -1618,18 +1671,20 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             setGroupDrop({ kind, source: drop.source, target: drop.target, roomId: target?.roomId ?? source?.roomId, anchor });
           }
         }}
-        onRailSearch={focusSearch}
+        engine={session.engine}
+        onRailSearch={() => { if (availability(session.engine, "sessions.search") !== "no") setOverlay((current) => (current?.kind === "palette" ? current : { kind: "palette" })); }}
         onOpen={(key) => {
           selection.clear();
           setTopicReturnKey(null);
           const contact = contacts.find((candidate) => candidate.threadKey === key);
+          if (contact && contact.unreadTopics > 0) markReadContact(contact);
           setPhoneTopicListFor(innerWidth <= 640 && contact?.topicCount && topicLayout !== "tabs" && topicLayout !== "side" ? contact.id : null);
           setFocusTopic(contact?.preview.kind === "topic" ? { key: contact.preview.topicKey, nonce: Date.now() } : null);
           openConversation(key);
         }}
         onNew={(e) => showMenu(e, "new", [
           ...newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }),
-          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { if (settingsAutoRail) setSettingsListExpanded(true); if (topicAutoRail && !layout.rail) setFullListFor(topicContact?.id ?? null); else setLayout({ rail: false }); } }] : []),
+          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { if (browserAutoRail) { showBrowserFullList(); return; } if (settingsAutoRail) setSettingsListExpanded(true); if (topicAutoRail && !layout.rail) setFullListFor(topicContact?.id ?? null); else setLayout({ rail: false }); } }] : []),
         ], "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
@@ -1674,7 +1729,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           extras={rowExtras(rowCard.card.row)}
         />
       ) : null}
-      {layout.focus || layout.hidden || settingsAutoRail ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
+      {layout.focus || layout.hidden || settingsAutoRail || browserAutoRail ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
       {slideOpen ? <div className="slide-scrim" onClick={() => setSlideOpen(false)} /> : null}
       <main className={mainClass} id="main">
         {lockdown.on ? <LockdownBanner onTurnOff={toggleLockdown} /> : null}
@@ -1807,6 +1862,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             openSettings,
             toggleLockdown: lockdown.supported ? toggleLockdown : undefined,
             lockdownOn: lockdown.on,
+            tryExamples: () => {
+              startTryExamples(request);
+              openPlace("customize");
+              window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Trunks" } }));
+            },
           })}
         />
       ) : null}

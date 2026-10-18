@@ -161,9 +161,18 @@ describe("People › People", () => {
     expect(host.querySelector(".pp-id code")!.textContent).toBe("p-mira");
   });
 
-  it("offers Make a one-time code from the invite dialog and greys the other ways in", async () => {
+  it("opens the invite dialog on their own device below Technical: adding someone here waits on the engine (Coming)", async () => {
     const { engine } = fakeEngine(table());
     await mount(engine); await click("People2"); await click("Invite someone");
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(button("Add them")).toBeFalsy();
+    expect(dialog.textContent).not.toContain("On this computer");
+    expect(dialog.textContent).toContain("Make a one-time code");
+  });
+
+  it("offers Make a one-time code from the invite dialog and greys the other ways in", async () => {
+    const { engine } = fakeEngine(table());
+    await mount(engine, "technical"); await click("People2"); await click("Invite someone");
     expect(button("Add them")!.disabled).toBe(true); expect(button("Add them")!.title).toBe("");
     expect(document.querySelector<HTMLFieldSetElement>('[role="dialog"] fieldset')!.disabled).toBe(true);
     expect(visibleDevNotes(document.querySelector('[role="dialog"]')!)).toEqual([]);

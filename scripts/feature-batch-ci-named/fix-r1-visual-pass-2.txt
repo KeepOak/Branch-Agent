@@ -1,0 +1,2 @@
+window:src/screens/frame/visual-pass-2.test.ts
+window:src/screens/g48-ids.test.ts

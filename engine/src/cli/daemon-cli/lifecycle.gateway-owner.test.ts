@@ -53,6 +53,9 @@ const command = {
   environment: {},
 };
 
+vi.mock("../../infra/runtime-process-entrypoints.js", () => ({
+  runtimeProcessEntrypoints: [],
+}));
 vi.mock("../../runtime.js", () => ({ defaultRuntime: lifecycleTestRuntime }));
 vi.mock("../../daemon/service.js", async (original) => ({
   ...(await original<typeof import("../../daemon/service.js")>()),
@@ -97,6 +100,26 @@ vi.mock("./lifecycle-audit.js", () => ({
   createGatewayLifecycleMutationAudit: () => undefined,
   createServiceLifecycleMutationAudit: () => undefined,
   appendServiceLifecycleRepairAudit: vi.fn(),
+}));
+vi.mock("./service-start-fallback.js", () => ({
+  GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE: "both-failed",
+  failAfterGatewayChildFallback: (reason: string, fail: (message: string) => void) => fail(reason),
+  createGatewayChildFallbackOnce: () => ({
+    attempted: () => false,
+    peek: () => null,
+    run: async () => null,
+  }),
+  applyGatewayChildFallbackOnce: async (params: {
+    failed: string;
+    fail: (message: string, hints?: string[], code?: string) => void;
+    hints?: string[];
+    code?: string;
+  }) => {
+    params.fail(params.failed, params.hints, params.code);
+    return false;
+  },
+  noteReadyChildFallback: () => false,
+  recoverGatewayAsAppChild: async () => null,
 }));
 vi.mock("../../infra/restart-intent.js", async (original) => ({
   ...(await original<typeof import("../../infra/restart-intent.js")>()),

@@ -3,6 +3,7 @@
 // (skills.proposals.list, doctor.memory.status), the overnight cleanup's notes (doctor.memory.*), the diary's model
 // (models.list, config), who is connected (system-presence, users.list), Check Branch (health) and Restart the engine
 // (gateway.restart.request). The facts Classic states are drawn as values.
+import { RestartEngine } from "./remote-live";
 import { useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Coming } from "../../../glass/coming";
@@ -15,7 +16,10 @@ import { Dialog } from "../../../shell/Dialog";
 import type { SlotControlProps } from "../slots";
 import { useRead } from "./accounts-live";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { copyAndSay } from "../../../shell/clipboard";
 import { CODE, FACTS } from "./learning";
+import { useLevel } from "../SettingsFrame";
+import { COMING_FROM } from "../rows";
 
 const RINGS = "plugins.entries.memory-core.config.rings";
 const Line = ({ children, bad }: { children: ReactNode; bad?: boolean }) => <small className={"r1s-msg g-label" + (bad ? " r1s-bad" : "")} role={bad ? "status" : undefined} data-lines>{children}</small>;
@@ -36,7 +40,7 @@ export function Command({ row }: SlotControlProps) {
   const [copied, setCopied] = useState(false);
   return <span className="r1s-own-ctl" data-local="">
     <code className="r1s-val">{code}</code>
-    <Btn onClick={() => void navigator.clipboard?.writeText(code).then(() => setCopied(true), () => undefined)}>{copied ? "Copied" : "Copy"}</Btn>
+    <Btn onClick={() => void copyAndSay(code).then(setCopied)}>{copied ? "Copied" : "Copy"}</Btn>
   </span>;
 }
 
@@ -123,11 +127,12 @@ export function ProcessNames({ engine }: SlotControlProps) {
 /** Connected now: windows, terminals, phones and chat apps on this engine (system-presence), with See them. */
 export function ConnectedNow({ engine, row }: SlotControlProps) {
   const presence = useLive<unknown>(engine, "system-presence", {}, ["presence"]);
+  const [level] = useLevel(engine);
   const [open, setOpen] = useState(false);
   const clients = list(presence.data);
   const names = [...new Set(clients.map(clientName))];
   return <>
-    <Needs engine={engine} need={["system-presence"]} where={row.label ?? ""}><Btn disabled={!presence.data} onClick={() => setOpen(true)}>See them</Btn></Needs>
+    <Needs engine={engine} need={["system-presence"]} where={row.label ?? ""} hidden={level < COMING_FROM}><Btn disabled={!presence.data} onClick={() => setOpen(true)}>See them</Btn></Needs>
     {clients.length ? <Line>{`${clients.length} on one engine: ${names.join(", ")}.`}</Line> : null}
     {open ? (
       <Dialog title="Connected now" onClose={() => setOpen(false)}>
@@ -162,13 +167,5 @@ export function CheckBranch({ engine, row }: SlotControlProps) {
   </>;
 }
 
-/** Restart the engine (gateway.restart.request); the window reconnects by itself. */
-export function RestartEngine({ engine, row }: SlotControlProps) {
-  const [failed, run] = useFailure();
-  const [busy, setBusy] = useState(false);
-  const go = () => { setBusy(true); void run(() => engine.request("gateway.restart.request", { reason: "settings" })).finally(() => setBusy(false)); };
-  return <>
-    <Needs engine={engine} need={["gateway.restart.request"]} where={row.label ?? ""}><Btn disabled={busy} onClick={go}>Restart the engine</Btn></Needs>
-    <Failed text={failed} />
-  </>;
-}
+/** The restart control is one copy, shared with Remote access (remote-live.tsx). */
+export { RestartEngine };
