@@ -172,7 +172,21 @@ export function Sidebar(p: SidebarProps) {
   const anyWaiting = [...p.waiting.values()].some(count => count > 0);
   const binsOpen = archivedOpen || narrow || prefs.status === "archived";
 
-  const openRow = (row: SideRow) => { if (row.key) p.onOpen(row.key); else p.onSettings("people"); };
+  const openRow = (row: SideRow) => {
+    if (!row.key) {
+      p.onSettings("people");
+      return;
+    }
+    const contact = row.contact;
+    // Opening the row clears topics the person can read from it. Hand-marked unread on the
+    // main thread (unreadTopics === 0) stays for useMarkRead.
+    if (contact && contact.unreadTopics > 0) {
+      void markContactRead(contact, request).then(refreshContacts, (error: unknown) =>
+        notify(`Couldn't mark ${contact.name} read: ${reason(error)}.`, { tone: "bad" }),
+      );
+    }
+    p.onOpen(row.key);
+  };
   // Select several (Classic shell/sidebar-state.ts): Alt+Click picks a row, Shift+Click extends, a plain click or Escape
   // clears. The rows go in the order they show; the Trunks' own conversations can't be picked, as in Classic.
   const shownRows = [...sections.pinned, ...sections.trunks, ...sections.people, ...sections.groups, ...sections.grafted, ...(binsOpen ? sections.archived : [])];
