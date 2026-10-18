@@ -82,9 +82,9 @@ describe("Settings set2 never shows a raw engine error at Regular", () => {
       </KitProvider>,
     ));
     await settle();
-    const alerts = [...host.querySelectorAll("[role='alert']")].map((n) => n.textContent ?? "");
-    expect(alerts.join(" ")).toContain(REACH);
-    expect(host.textContent).not.toMatch(RAW);
+    const waiting = host.querySelector("#s2-waiting")?.textContent ?? "";
+    expect(waiting).toContain(REACH);
+    expect(waiting).not.toMatch(RAW);
   });
 
   it("keeps the exact words at Advanced", async () => {

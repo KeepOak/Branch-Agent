@@ -8,11 +8,12 @@ export function record(value: unknown): RecordValue { return value && typeof val
 export function list(value: unknown): RecordValue[] { return Array.isArray(value) ? value.map(record) : []; }
 export function at(value: unknown, path: string): unknown { return path.split(".").reduce<unknown>((v, key) => record(v)[key], value); }
 export function text(value: unknown): string { return value === undefined || value === null ? "Not set" : typeof value === "object" ? JSON.stringify(value) : String(value); }
-/** Exact engine words save-retry and conflict checks match on, so those paths still see the original sentence. */
-const RETRY_WORDS = /config changed since last load|changed since last load|changed since it was read|base hash/i;
+/** Exact engine words other settings code still matches or re-wraps: save-retry, Coming / unknown-method
+ *  checks, invalid-value reasons, and connect dumps that a lead sentence then runs through plainError. */
+const KEEP_WORDS = /config changed since last load|changed since last load|changed since it was read|base hash|unknown method|Expected boolean|UNAVAILABLE|E(?:CONNREFUSED|CONNRESET|CONNABORTED|HOSTUNREACH|NETUNREACH)|Failed to fetch|NetworkError|gateway (?:closed|not connected)|socket hang up/i;
 export function errorText(error: unknown): string {
   const words = error instanceof Error ? error.message : text(error);
-  return RETRY_WORDS.test(words) ? words : plainError(error);
+  return KEEP_WORDS.test(words) ? words : plainError(error);
 }
 
 export type ConfigSnapshot = { hash?: string; valid?: boolean; config?: RecordValue; issues?: unknown; writeError?: unknown };

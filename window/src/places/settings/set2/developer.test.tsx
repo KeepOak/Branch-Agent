@@ -21,7 +21,7 @@ function engineWith(answers: Answers) {
 }
 let host: HTMLDivElement; let root: Root;
 beforeEach(() => { (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true; host = document.createElement("div"); host.className = "set-col"; document.body.append(host); root = createRoot(host); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.restoreAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; localStorage.clear(); vi.restoreAllMocks(); });
 
 const flush = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
 async function show(engine: WindowEngine) {
@@ -113,6 +113,7 @@ describe("Settings › Developer", () => {
   });
 
   it("saves the settings file text with config.apply against its hash, and shows the engine's refusal", async () => {
+    localStorage.setItem("branch.level", "technical");
     const { engine, request } = engineWith({ ...CONFIG({ gateway: {} }), "config.apply": () => { throw new Error("invalid config: gateway.port: Expected number"); } });
     await show(engine);
     await click(buttons("Open the editor")[0]);
