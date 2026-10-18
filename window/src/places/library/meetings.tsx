@@ -6,10 +6,10 @@ import { useState, type FormEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
-import { num, optStr, rec, recs, str, strs, useOperation, useResource, trunkName, type Trunk } from "./data";
+import { num, optStr, plainFailure, rec, recs, str, strs, useOperation, useResource, trunkName, type Trunk } from "./data";
 import { EmptyIcon, LibIcon, plural, Row } from "./parts";
 
-export type Meeting = {
+type Meeting = {
   selector: string; title?: string; providerId: string; providerName?: string; source?: { accountId?: string };
   startedAt: string; active: boolean; utteranceCount: number; overview?: string; agentId: string | null; lastUtteranceAt: string | null;
 };
@@ -20,7 +20,7 @@ type Filters = { providerId: string; accountId: string; agentId: string; from: s
 const NO_FILTERS: Filters = { providerId: "", accountId: "", agentId: "", from: "", to: "" };
 
 /** A transcript summary row read defensively; rows without a selector are left out. */
-export function meetingOf(r: Record<string, unknown>): Meeting {
+function meetingOf(r: Record<string, unknown>): Meeting {
   return { selector: r.selector as string, title: optStr(r.title), providerId: str(r.providerId), providerName: optStr(r.providerName), source: { accountId: optStr(rec(r.source).accountId) },
     startedAt: str(r.startedAt), active: r.active === true, utteranceCount: num(r.utteranceCount) ?? 0, overview: optStr(r.overview), agentId: optStr(r.agentId) ?? null, lastUtteranceAt: optStr(r.lastUtteranceAt) ?? null };
 }
@@ -82,7 +82,7 @@ function MeetingList({ engine, level, trunks, openSettings, open }: Props & { op
       {shows(level, "advanced") && <MeetingFilters key={JSON.stringify(filters)} rows={rows} trunks={trunks} value={filters} apply={f => { setFilters(f); setCursors([]); }} clear={clear} />}
     </>}
     {list.loading && <p className="lib-hint" role="status">Loading…</p>}
-    {list.error && <p className="lib-bad" role="alert">{list.error}</p>}
+    {list.error && <p className="lib-bad" role="alert">{plainFailure(list.error)}</p>}
     {list.data && !rows.length && (narrowed || cursor) && <EmptyLine icon={<EmptyIcon name="search" />}>No meetings match your search.<br /><button type="button" className="btn sm" onClick={clear}>Clear filters</button></EmptyLine>}
     {!!live.length && <MeetingGroup title="In progress" rows={live} open={open} />}
     {days.map(d => <MeetingGroup key={d} title={d} rows={rows.filter(m => !m.active && dayLabel(m.startedAt) === d)} open={open} />)}
@@ -138,7 +138,7 @@ function Reader({ engine, level, trunks, selector, back }: Props & { selector: s
   return <div className="lib-reader" data-testid="meeting-reader">
     <button type="button" className="link" onClick={back}>‹ Meetings</button>
     {detail.loading && !m && <p className="lib-hint" role="status">Loading…</p>}
-    {detail.error && <p className="lib-bad" role="alert">{detail.error}</p>}
+    {detail.error && <p className="lib-bad" role="alert">{plainFailure(detail.error)}</p>}
     {m && <>
       <h2 className="lib-rtitle">{m.title || "Meeting"}</h2>
       <small className="lib-rsub">{time(m.startedAt)} · {lines(m.utteranceCount)}</small>
@@ -149,7 +149,7 @@ function Reader({ engine, level, trunks, selector, back }: Props & { selector: s
         <small>{m.active ? "Ready to listen: it’s set up to listen, which doesn’t prove sound is arriving." : "Not listening."}</small>
       </div></details>}
       <div className="lib-acts"><button type="button" className="btn sm" disabled={op.busy} onClick={() => save("markdown")}><LibIcon name="download" />Save as Markdown</button><button type="button" className="btn sm" disabled={op.busy} onClick={() => save("jsonl")}><LibIcon name="download" />Save as JSON Lines</button></div>
-      {op.error && <p className="lib-bad" role="alert">{op.error}</p>}
+      {op.error && <p className="lib-bad" role="alert">{plainFailure(op.error)}</p>}
       <div className="lib-seg lib-rtabs" role="tablist" aria-label="Meeting">{(["notes", "transcript"] as const).map(k => <button key={k} type="button" role="tab" aria-selected={tab === k} aria-checked={tab === k} onClick={() => setTab(k)}>{k === "notes" ? "Notes" : "Transcript"}</button>)}</div>
       <div role="tabpanel">{tab === "notes" ? <Notes m={m} summary={detail.data!.summary} /> : <Transcript m={m} lines={[...earlier, ...(detail.data!.utterances ?? [])]} more={detail.data!.nextCursor} loadMore={() => { setEarlier(e => [...e, ...(detail.data!.utterances ?? [])]); setCursor(detail.data!.nextCursor); }} />}</div>
     </>}

@@ -1,0 +1,3 @@
+engine:src/infra/provider-usage.load.test.ts
+window:src/shell/StatusPopovers.test.tsx
+window:src/shell/status-data.test.ts

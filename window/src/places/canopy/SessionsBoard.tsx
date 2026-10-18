@@ -3,6 +3,7 @@
 import { useEffect, useState, type DragEvent } from "react";
 import { Dialog } from "../../shell/Dialog";
 import { Segmented } from "../../shell/Popover";
+import { plainError } from "../../shell/plain-error";
 import { errorText, rec, rows, str, type Row } from "../automations/runtime";
 import { trunkName } from "./data";
 import { TINTS } from "./cards-model";
@@ -25,7 +26,7 @@ function useBoardRead(ctx: Ctx, boardId: string, mine: boolean) {
 export function SessionsBoard({ ctx, board }: { ctx: Ctx; board: Row }) {
   const [mine, setMine] = useState(false), [over, setOver] = useState(""), id = str(board.id);
   const { data, error } = useBoardRead(ctx, id, mine);
-  if (error) return <p className="cn-err" role="alert">{error}</p>;
+  if (error) return <p className="cn-err" role="alert">{plainError(error)}</p>;
   if (!data) return <p className="cn-hint" role="status">Reading the board…</p>;
   const spec = rec(rec(data.board).sessions), hours = Number(rec(spec.scope).maxAgeHours) || 72;
   const sorter = str(spec.agentSessionKey).split(":")[1] || ctx.d.defaultTrunk, cols = rows(data.columns), tiles = rows(data.sessions);
@@ -34,7 +35,7 @@ export function SessionsBoard({ ctx, board }: { ctx: Ctx; board: Row }) {
   return <>
     <div className="cn-cfilt"><Segmented label="Whose conversations" value={mine ? "me" : "all"} options={[{ id: "all", name: "Everyone" }, { id: "me", name: "Involving me" }]} onChange={v => setMine(v === "me")} />
       <small className="cn-hint">The last {hours} hours · sorted by {trunkName(ctx.d, sorter)}</small></div>
-    {str(data.warning) ? <p className="cn-hint">{str(data.warning)}</p> : null}
+    {str(data.warning) ? <p className="cn-hint">{plainError(str(data.warning))}</p> : null}
     <div className="cn-cboard" role="list" aria-label={str(board.name) || id} style={{ ["--n" as string]: cols.length }}>
       {cols.map(col => { const cs = tiles.filter(t => str(t.columnId) === str(col.id));
         return <section key={str(col.id)} className={over === str(col.id) ? "cn-ccol over" : "cn-ccol"} aria-label={str(col.label)}

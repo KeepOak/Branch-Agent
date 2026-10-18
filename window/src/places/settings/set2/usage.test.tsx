@@ -3,8 +3,9 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
-import { UsagePage, daysFrom, gbFrom, matches, parseQuery, resetWords, tidyNote } from "./usage";
+import { ROWS, UsagePage, daysFrom, gbFrom, matches, parseQuery, resetWords, tidyNote } from "./usage";
 import { SaveProgressOffer } from "../../../shell/SaveProgress";
+import { KitProvider } from "../kit";
 import type { Limits } from "../../../shell/status-data";
 
 type Answers = Record<string, unknown | ((params: Record<string, unknown>) => unknown)>;
@@ -24,7 +25,9 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); do
 
 const flush = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
 async function show(engine: WindowEngine, level: "regular" | "advanced" | "technical" = "regular") {
-  await act(async () => root.render(<UsagePage page="usage" title="Data & usage" level={level} engine={engine} />));
+  // As Settings draws it: the frame's kit carries the same level (a Coming row reads it there).
+  const lv = ({ regular: 0, advanced: 1, technical: 2 } as const)[level];
+  await act(async () => root.render(<KitProvider level={lv} report={{ saving: () => undefined, saved: () => undefined, failed: () => undefined }} scope={null}><UsagePage page="usage" title="Data & usage" level={level} engine={engine} /></KitProvider>));
   await flush();
 }
 function button(text: string, scope: ParentNode = document): HTMLButtonElement {
@@ -64,6 +67,31 @@ const BASE: Answers = { "sessions.usage": USAGE, "usage.status": STATUS, "agents
 const CFG = (config: Record<string, unknown> = {}): Answers => ({ "config.get": { hash: "h", valid: true, config }, "config.patch": { ok: true, hash: "h2", config } });
 
 describe("Settings › Data & usage", () => {
+  it("locates the usage ring in the bottom bar and explains the optional desktop tray", async () => {
+    await show(engineWith(BASE).engine);
+    const tray = row("Also show usage in the system tray");
+    expect(tray?.textContent).toContain("The usage ring is in the bottom bar. In the desktop app, you can also show it in the system tray.");
+    expect(tray?.getAttribute("aria-disabled")).toBe("true");
+    expect(host.textContent).not.toContain("by the clock");
+  });
+
+  it("keeps the optional system tray switch connected to the desktop setting", async () => {
+    let state = { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: true, startWithWindows: false, branchOnPath: false };
+    const set = vi.fn(async (_name: string, on: boolean) => (state = { ...state, trayUsage: on }));
+    Object.assign(window, { branchDesktop: { controls: { get: async () => state, set } } });
+    await show(engineWith(BASE).engine);
+    const toggle = row("Also show usage in the system tray")?.querySelector("input");
+    expect(toggle?.disabled).toBe(false);
+    await act(async () => toggle!.click());
+    await flush();
+    expect(set).toHaveBeenCalledWith("trayUsage", true);
+    expect(toggle?.checked).toBe(true);
+    await act(async () => toggle!.click());
+    await flush();
+    expect(set).toHaveBeenLastCalledWith("trayUsage", false);
+    expect(toggle?.checked).toBe(false);
+  });
+
   it("Show me previews the save-progress offer without a measured limit", async () => {
     const { engine } = engineWith(BASE);
     await act(async () => root.render(<><UsagePage page="usage" title="Data & usage" level="regular" engine={engine} /><SaveProgressOffer engine={engine} limits={null} on runningKeys={[]} /></>));
@@ -103,7 +131,8 @@ describe("Settings › Data & usage", () => {
     expect(claude.textContent).toContain("58% left · resets");
     expect(claude.textContent).toContain("as of 4 min ago, asked Claude");
     expect(document.querySelector('[data-provider="google"]')!.textContent).toContain("Not published");
-    expect(document.querySelector('[data-provider="zai"]')!.textContent).toContain("Token expired");
+    expect(document.querySelector('[data-provider="zai"]')!.textContent).toContain("Z.ai needs you to sign in again to check usage.");
+    expect(document.querySelector('[data-provider="zai"]')!.textContent).not.toContain("Token expired");
   });
   it("draws spend per Trunk from the same period as the spend picker", async () => {
     const { engine, request } = engineWith(BASE);
@@ -119,11 +148,38 @@ describe("Settings › Data & usage", () => {
   });
   it("greys what the engine can't do, with the reason", async () => {
     const { engine } = engineWith(BASE);
-    await show(engine, "advanced");
+    await show(engine, "technical");
     expect(row("Spend caps per service")?.getAttribute("aria-disabled")).toBe("true"); expect(row("Spend caps per service")?.textContent).not.toContain("Spend caps need the engine");
     expect(row("Keep conversations")?.getAttribute("aria-disabled")).toBeNull();
     expect(row("Reset Branch")?.textContent).not.toContain("no reset method");
     expect(button("Run the test").disabled).toBe(true);
+  });
+
+  // Private #1093 item 4: a Coming control (one that waits for a later update) shows only at Technical.
+  const COMING = ["Checkpoints", "Reset Branch", "Export everything", "Take everything with you", "Asking a service what is left", "Move to another computer", "Back up to GitHub", "Delete everything"];
+  const COMING_CARDS = ["Test the model you use", "Evals", "Flagged replies"];
+  it("shows Test the model, Evals, Checkpoints, Reset Branch, Export everything and the other Coming rows at Technical only", async () => {
+    for (const level of ["regular", "advanced"] as const) {
+      await show(engineWith(BASE).engine, level);
+      for (const title of COMING) expect(row(title), `${title} at ${level}`).toBeNull();
+      for (const card of COMING_CARDS) expect(document.querySelector(`[data-sec="${card}"]`), `${card} at ${level}`).toBeNull();
+      expect(document.body.textContent).not.toContain("Run the test");
+      expect(row("Keep conversations")).not.toBeNull();
+      expect(row("What’s kept on this computer")).not.toBeNull();
+      await act(async () => root.unmount()); root = createRoot(host);
+    }
+    await show(engineWith(BASE).engine, "technical");
+    for (const title of COMING) expect(row(title)?.getAttribute("aria-disabled"), title).toBe("true");
+    for (const card of COMING_CARDS) expect(document.querySelector(`[data-sec="${card}"]`), card).not.toBeNull();
+    await click("Open the report");
+    expect(document.querySelector<HTMLButtonElement>('.dlg button[title^="Splitting usage"]')?.disabled).toBe(true);
+  });
+  it("indexes the Coming rows and cards at Technical, so search finds them only there", () => {
+    const lv = (title: string) => ROWS.find((r) => r.title === title)?.lv;
+    for (const title of [...COMING, "Test set", "Right actions", "Run each suite", "Coverage report", "Let me send a flagged reply to the Branch team"]) expect(lv(title), title).toBe(2);
+    expect(lv("Keep conversations")).toBe(0);
+    expect(lv("What’s kept on this computer")).toBe(0);
+    expect(lv("Conversations")).toBe(1);
   });
 });
 
@@ -155,7 +211,9 @@ describe("the usage report", () => {
     const who = dlg.querySelector<HTMLSelectElement>('select[aria-label="Started by"]')!;
     await act(async () => { who.value = "k-owner"; who.dispatchEvent(new Event("change", { bubbles: true })); }); await flush();
     expect(last()).toMatchObject({ creatorKey: "k-owner" });
-    expect(dlg.querySelector<HTMLButtonElement>('button[title^="Splitting usage"]')?.disabled).toBe(true);
+    // Splitting by chat app, provider, model or tool is Coming: not drawn below Technical (Private #1093).
+    expect(dlg.querySelector('button[title^="Splitting usage"]')).toBeNull();
+    expect(dlg.querySelector('select[aria-label="Chat app"]')).toBeNull();
   });
   it("picks a day from the chart and asks for just that day", async () => {
     const { engine, request } = engineWith(BASE);
@@ -222,7 +280,9 @@ describe("keeping things", () => {
     await act(async () => { ttl.value = "24"; ttl.dispatchEvent(new Event("change", { bubbles: true })); }); await flush();
     expect(patched(request)).toContainEqual({ attachments: { ttlHours: 24 } });
     const idle = document.querySelector<HTMLInputElement>('input[aria-label="Archive conversations idle for"]')!;
-    expect(idle.placeholder).toBe("30");
+    expect(idle).toBeTruthy();
+    expect(idle.placeholder).toBe("");
+    expect(row("Archive conversations idle for")?.textContent).toContain("Unset keeps them forever.");
   });
   it("Tidy now runs sessions.cleanup and says what it did", async () => {
     const { engine, request } = engineWith({ ...BASE, ...CFG(), "sessions.cleanup": { allAgents: true, mode: "enforce", stores: [{ archived: 2, capArchived: 0, pruned: 1, capped: 0, modelRunPruned: 0 }] } });
@@ -262,6 +322,15 @@ describe("keeping things", () => {
     expect(patched(request)).toContainEqual({ plugins: { entries: { codex: { config: { sessionCatalog: { homes: ["D:/old", "D:/new"] } } } } } });
     await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Remove D:/old"]')!.click()); await flush();
     expect(patched(request)).toContainEqual({ plugins: { entries: { codex: { config: { sessionCatalog: { homes: [] } } } } } });
+  });
+  it("More Codex folders Add is disabled while the folder box is empty, and enabled once a folder is typed", async () => {
+    const { engine } = engineWith({ ...BASE, ...CFG({ plugins: { entries: { codex: { config: { sessionCatalog: { homes: [] } } } } } }) });
+    await show(engine, "technical");
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="More Codex folders: add"]')!;
+    const add = () => [...row("More Codex folders")!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add")!;
+    expect(add().disabled).toBe(true);
+    await act(async () => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!; set.call(input, "D:/new"); input.dispatchEvent(new Event("input", { bubbles: true })); }); await flush();
+    expect(add().disabled).toBe(false);
   });
   it("Technical: every session key saves at its real path, and bad JSON is refused", async () => {
     const { engine, request } = engineWith({ ...BASE, ...CFG() });

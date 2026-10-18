@@ -11,7 +11,7 @@ type EmptyAssistantTurnLike = {
 };
 
 // Upstream agent runtimes should normalize Anthropic zero-token empty `stop`
-// turns before Branch Agent sees them. Downstream: openclaw/openclaw#71880.
+// turns before Branch Agent sees them. Downstream:.
 function hasZeroTokenUsageSnapshot(usage: unknown): boolean {
   const fields = asOptionalObjectRecord(usage);
   if (!fields) {

@@ -9,6 +9,7 @@ import { Dialog } from "./Dialog";
 import { formatDuration, modelName } from "./format";
 import type { MessageMeta } from "./model";
 import { formatMoney } from "../format/money";
+import { plainError } from "../shell/plain-error";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -42,7 +43,32 @@ export function EditDialog({ text, onClose, onSend }: { text: string; onClose: (
         </div>
       </div>
       <p className="hint">“Undo that” puts everything back the way it was.</p>
-      {error ? <p className="field-error">{error}</p> : null}
+      {error ? <p className="field-error">{plainError(error)}</p> : null}
+    </Dialog>
+  );
+}
+
+/** Delete one message: it asks first, because the message leaves the conversation and the model's context. */
+export function DeleteDialog({ onClose, onDelete }: { onClose: () => void; onDelete: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const remove = () => {
+    setBusy(true);
+    onDelete().then(onClose, (e: unknown) => {
+      setBusy(false);
+      setError(e instanceof Error ? e.message : String(e));
+    });
+  };
+  const footer = (
+    <>
+      <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+      <button type="button" className="btn bad" data-action="confirm-delete" disabled={busy} onClick={remove}>Delete</button>
+    </>
+  );
+  return (
+    <Dialog title="Delete this message?" onClose={onClose} footer={footer} testid="delete-dialog">
+      <p className="hint">It leaves this conversation, and the agent stops reading it.</p>
+      {error ? <p className="field-error">{plainError(error)}</p> : null}
     </Dialog>
   );
 }
@@ -92,7 +118,7 @@ export function BranchDialog({ onClose, onBranch }: { onClose: () => void; onBra
           {models.map((m) => <option key={m} value={m}>{modelName(m)}</option>)}
         </select>
       </label>
-      {error ? <p className="field-error">{error}</p> : null}
+      {error ? <p className="field-error">{plainError(error)}</p> : null}
     </Dialog>
   );
 }
@@ -100,7 +126,7 @@ export function BranchDialog({ onClose, onBranch }: { onClose: () => void; onBra
 type Inspect = { meta?: MessageMeta; durationMs?: number; steps: number };
 
 /** "Look inside": what went into the Trunk's reply, all read from the engine. */
-export function LookInside({ inspect, onClose }: { inspect: Inspect; onClose: () => void }) {
+export function LookInside({ inspect, onClose, clear }: { inspect: Inspect; onClose: () => void; clear?: boolean }) {
   const { engine, name, toast } = useThread();
   const [context, setContext] = useState<number | null>(null);
   const [tools, setTools] = useState<string[] | null>(null);
@@ -125,11 +151,11 @@ export function LookInside({ inspect, onClose }: { inspect: Inspect; onClose: ()
   const record = JSON.stringify({ ...inspect, contextTokens: context, tools }, null, 2);
   const footer = <button type="button" className="btn" onClick={() => void copyText(record, toast)}>Copy the record</button>;
   return (
-    <Dialog title="Look inside" onClose={onClose} footer={footer} testid="look-inside">
-      <p className="lede">What went into {name}’s last reply.</p>
+    <Dialog title="Look inside" onClose={onClose} footer={footer} testid="look-inside" clear={clear}>
+      <p className={clear ? "lede g-label" : "lede"}>What went into {name}’s last reply.</p>
       <dl className="kv">
         {rows.filter(([, v]) => v).map(([k, v]) => (
-          <div key={k} className="kv-row"><dt>{k}</dt><dd>{v}</dd></div>
+          <div key={k} className={clear ? "kv-row g-frost" : "kv-row"}><dt>{k}</dt><dd>{v}</dd></div>
         ))}
       </dl>
     </Dialog>

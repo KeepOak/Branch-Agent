@@ -26,6 +26,8 @@
 .dlg .aa-grp h3 span { margin-left: 4px; opacity: 0.7; }
 .dlg .aa-grp .hint { margin: -2px 0 8px; }
 .dlg .provs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.dlg .aa-skel { min-height: 360px; }
+.dlg .prov.skel { min-height: 88px; pointer-events: none; background: var(--fill-2); border-color: transparent; }
 .dlg .prov { display: grid; justify-items: start; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--raise); text-align: left; color: var(--ink); }
 .dlg button.prov:hover { border-color: var(--ink-3); }
 .dlg .prov:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -35,6 +37,9 @@
 .dlg .logo { display: inline-grid; place-items: center; flex: none; overflow: hidden; border-radius: 28%; }
 .dlg .aa-card { display: grid; justify-items: start; gap: 10px; padding: 16px; border: 1px solid var(--hair17); border-radius: var(--r3-17); background: var(--raise); }
 .dlg .aa-card p { margin: 0; max-width: 56ch; font-size: 13.5px; color: var(--ink-2); }
+/* A clear (README item 48) Add an account dialog: its cards are clear too; their words and controls are the pills. */
+.dlg.g-clear :is(.aa-card, div.prov) { background: transparent; border-color: transparent; }
+.dlg.g-clear .aa-card p { color: var(--ink); }
 .dlg .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .dlg .fld { display: grid; gap: 6px; font-size: 13px; }
 .dlg .fld > span:first-child { font: 600 12px/1.3 var(--sans); color: var(--ink-3); }

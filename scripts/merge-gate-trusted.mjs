@@ -22,6 +22,7 @@ import {
 import { listedGateFiles } from './check-gate-files-fresh.mjs';
 import { checkUIProof } from './check-ui-proof.mjs';
 import { checkSelfCheck, formatSelfCheckSummary } from './check-self-check.mjs';
+import { commitTreeMatchesCleanMerge } from './final-head-history.mjs';
 import {
   DEFAULT_WAIT_BUDGET_SECONDS,
   GH_API_MAX_BUFFER,
@@ -29,6 +30,7 @@ import {
   fetchGitHubRateLimit,
   ghApiArgs,
   isRateLimitError as rateLimitIsRateLimitError,
+  isTransientGitHubError,
   pollIntervalSeconds,
   withRateLimitRetry,
 } from './merge-gate-rate-limit.mjs';
@@ -60,6 +62,7 @@ export const GATE_SCRIPTS = [
   'scripts/check-ui-proof.test.mjs',
   'scripts/check-self-check.mjs',
   'scripts/check-self-check.test.mjs',
+  'scripts/final-head-history.mjs',
   'scripts/feature-batch-ci-targets.mjs',
   'scripts/feature-batch-ci-matrix.mjs',
   'scripts/feature-batch-ci.mjs',
@@ -650,7 +653,474 @@ export function gateChangeMarkerMatches(body, headSha) {
   return typeof headSha === 'string' && gateChangeReviewedShas(body).includes(headSha);
 }
 
-export function formatGateChangeReviewFailure(protectedFiles, headSha, body) {
+const FULL_SHA = /^[0-9a-f]{40}$/i;
+const PR_COMMITS_CAP = 250;
+
+function isGateFullSha(value) {
+  return typeof value === 'string' && FULL_SHA.test(value);
+}
+
+function commitShaOf(commit) {
+  const sha = commit?.sha;
+  return isGateFullSha(sha) ? sha.toLowerCase() : '';
+}
+
+function commitParentShas(commit) {
+  if (!Array.isArray(commit?.parents)) return null;
+  const shas = [];
+  for (const parent of commit.parents) {
+    const sha = typeof parent === 'string' ? parent : parent?.sha;
+    if (!isGateFullSha(sha)) return null;
+    shas.push(sha.toLowerCase());
+  }
+  return shas;
+}
+
+function indexPrCommits(commits) {
+  if (!Array.isArray(commits) || commits.length >= PR_COMMITS_CAP) return null;
+  const bySha = new Map();
+  for (const commit of commits) {
+    const sha = commitShaOf(commit);
+    if (!sha) return null;
+    bySha.set(sha, commit);
+  }
+  return bySha;
+}
+
+function fetchPrCommitsForMarker(request, prNumber) {
+  if (typeof request !== 'function' || prNumber == null || prNumber === '') return null;
+  try {
+    const payload = request(`pulls/${prNumber}/commits?per_page=100`, { paginate: true });
+    if (Array.isArray(payload) && payload.every((item) => item && typeof item.sha === 'string')) {
+      return payload;
+    }
+    if (!Array.isArray(payload)) return null;
+    const flat = payload.flatMap((page) => (Array.isArray(page) ? page : []));
+    return flat.length ? flat : null;
+  } catch {
+    return null;
+  }
+}
+
+function parentOnBaseBranch(parentSha, baseRef, request) {
+  if (typeof request !== 'function' || !baseRef) return null;
+  try {
+    const payload = request(`compare/${parentSha}...${baseRef}`);
+    if (!payload || typeof payload.behind_by !== 'number' || typeof payload.status !== 'string') {
+      return null;
+    }
+    if (payload.status === 'identical' || payload.status === 'ahead') return payload.behind_by === 0;
+    return false;
+  } catch {
+    return null;
+  }
+}
+
+export function isProtectedDiffFile(file, protectedPaths) {
+  const names = [file?.filename, file?.previous_filename].filter(Boolean);
+  return names.some((name) => (
+    isProtectedWorkflowPath(name) || isCodeownersPath(name) || protectedPaths.has(name)
+  ));
+}
+
+export function protectedFileDiffTuples(files, protectedPaths) {
+  const tuples = [];
+  for (const file of files ?? []) {
+    if (!isProtectedDiffFile(file, protectedPaths)) continue;
+    if (file.truncated === true || typeof file.patch !== 'string') return { ok: false };
+    tuples.push({
+      filename: file.filename ?? '',
+      previous_filename: file.previous_filename ?? '',
+      status: file.status ?? '',
+      patch: file.patch,
+    });
+  }
+  tuples.sort((a, b) => {
+    const left = `${a.filename}\0${a.previous_filename}\0${a.status}`;
+    const right = `${b.filename}\0${b.previous_filename}\0${b.status}`;
+    return left < right ? -1 : left > right ? 1 : 0;
+  });
+  return { ok: true, tuples };
+}
+
+function fetchMarkerProtectedDiff(request, baseRef, markerSha, protectedPaths) {
+  if (typeof request !== 'function' || !baseRef || !isGateFullSha(markerSha)) return null;
+  try {
+    const payload = request(`compare/${baseRef}...${markerSha}`);
+    if (!payload || !Array.isArray(payload.files)) return null;
+    if (payload.truncated === true) return { ok: false };
+    return protectedFileDiffTuples(payload.files, protectedPaths);
+  } catch {
+    return null;
+  }
+}
+
+function carryFailure(message, brokenAt = null) {
+  return {
+    ok: false, known: true, message, brokenAt, carriedFrom: null,
+  };
+}
+
+const MERGE_BLOB_FETCHES = 40;
+
+// commit-tree exits when the runner has no user.email. This identity is not a person.
+// The empty HOME and XDG dir exist only while git runs, so a runner gitconfig or
+// attributes file cannot change the synthetic commits or the merge-tree result.
+const GATE_GIT_IDENTITY = {
+  GIT_AUTHOR_NAME: 'merge-gate',
+  GIT_AUTHOR_EMAIL: 'merge-gate@invalid',
+  GIT_COMMITTER_NAME: 'merge-gate',
+  GIT_COMMITTER_EMAIL: 'merge-gate@invalid',
+  GIT_CONFIG_NOSYSTEM: '1',
+  GIT_CONFIG_GLOBAL: '/dev/null',
+};
+
+function gateGitChild() {
+  const home = mkdtempSync(path.join(tmpdir(), 'merge-gate-home-'));
+  return {
+    home,
+    env: {
+      ...process.env,
+      ...GATE_GIT_IDENTITY,
+      HOME: home,
+      XDG_CONFIG_HOME: home,
+    },
+  };
+}
+
+function gitResult(repoDir, args, input) {
+  const binary = Buffer.isBuffer(input);
+  const child = gateGitChild();
+  try {
+    const stdout = execFileSync('git', ['-C', repoDir, '-c', 'commit.gpgsign=false', ...args], {
+      encoding: binary ? 'buffer' : 'utf8',
+      input,
+      env: child.env,
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    return { ok: true, status: 0, stdout: binary ? stdout.toString('utf8') : stdout, stderr: '' };
+  } catch (error) {
+    const stdout = Buffer.isBuffer(error?.stdout) ? error.stdout.toString('utf8') : String(error?.stdout ?? '');
+    const stderr = Buffer.isBuffer(error?.stderr) ? error.stderr.toString('utf8') : String(error?.stderr ?? '');
+    return {
+      ok: false,
+      status: typeof error?.status === 'number' ? error.status : 1,
+      stdout,
+      stderr,
+    };
+  } finally {
+    rmSync(child.home, { recursive: true, force: true });
+  }
+}
+
+function gitText(repoDir, args, input) {
+  const result = gitResult(repoDir, args, input);
+  return result.ok ? result.stdout.trim() : null;
+}
+
+function fetchCommitTreeSha(request, sha) {
+  try {
+    const payload = request(`git/commits/${sha}`);
+    const tree = payload?.tree?.sha ?? payload?.commit?.tree?.sha;
+    return isGateFullSha(tree) ? tree.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+function fetchMergeBaseTreeSha(request, left, right) {
+  try {
+    const payload = request(`compare/${left}...${right}`);
+    const tree = payload?.merge_base_commit?.commit?.tree?.sha
+      ?? payload?.merge_base_commit?.tree?.sha;
+    return isGateFullSha(tree) ? tree.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+// Flat entries GitHub returns for a recursive tree. A truncated or unreadable listing cannot
+// prove the tree, so the caller fails closed.
+function fetchFlatTree(request, treeSha) {
+  try {
+    const payload = request(`git/trees/${treeSha}?recursive=1`);
+    if (!payload || payload.truncated || !Array.isArray(payload.tree)) return null;
+    if (typeof payload.sha === 'string' && payload.sha.toLowerCase() !== treeSha) return null;
+    const entries = [];
+    for (const entry of payload.tree) {
+      // Recursive listings include the directory nodes. The file rows rebuild the same tree.
+      if (entry?.type === 'tree') continue;
+      if (!entry || typeof entry.path !== 'string' || entry.path.length === 0 || /[\n\t]/.test(entry.path)) return null;
+      const mode = String(entry.mode ?? '');
+      if (!/^[0-7]+$/.test(mode)) return null;
+      if (entry.type !== 'blob' && entry.type !== 'commit') return null;
+      if (!isGateFullSha(entry.sha)) return null;
+      entries.push({ mode, type: entry.type, sha: entry.sha.toLowerCase(), path: entry.path });
+    }
+    return entries;
+  } catch {
+    return null;
+  }
+}
+
+function writeTreeFromEntries(repoDir, entries) {
+  if (entries.length === 0) return '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+  const root = new Map();
+  for (const entry of entries) {
+    const parts = entry.path.split('/');
+    if (parts.some((part) => part.length === 0 || part === '.' || part === '..')) return null;
+    const name = parts.pop();
+    let dir = root;
+    for (const part of parts) {
+      const current = dir.get(part);
+      if (!current) {
+        const next = new Map();
+        dir.set(part, next);
+        dir = next;
+      } else if (current instanceof Map) {
+        dir = current;
+      } else {
+        return null;
+      }
+    }
+    if (dir.get(name) instanceof Map) return null;
+    dir.set(name, entry);
+  }
+  const emit = (dir) => {
+    const lines = [];
+    for (const [name, value] of dir) {
+      if (value instanceof Map) {
+        const sha = emit(value);
+        if (!sha) return null;
+        lines.push(`040000 tree ${sha}\t${name}`);
+      } else {
+        lines.push(`${value.mode} ${value.type} ${value.sha}\t${name}`);
+      }
+    }
+    return gitText(repoDir, ['mktree', '--missing'], `${lines.join('\n')}\n`);
+  };
+  const written = emit(root);
+  return written && isGateFullSha(written) ? written.toLowerCase() : null;
+}
+
+function writeBlob(repoDir, sha, request) {
+  let payload;
+  try {
+    payload = request(`git/blobs/${sha}`);
+  } catch {
+    return false;
+  }
+  if (!payload || payload.encoding !== 'base64' || typeof payload.content !== 'string') return false;
+  let bytes;
+  try {
+    bytes = Buffer.from(payload.content.replace(/\n/g, ''), 'base64');
+  } catch {
+    return false;
+  }
+  const result = gitResult(repoDir, ['hash-object', '-w', '--stdin'], bytes);
+  return result.ok && result.stdout.trim().toLowerCase() === sha;
+}
+
+// merge-tree needs blob bytes only for paths both parents changed. Fetch those, then stop.
+// A conflict (exit 1) still returns so the shared clean-merge check can reject it.
+function hydrateMergeBlobs(repoDir, left, right, request) {
+  const seen = new Set();
+  for (let attempt = 0; attempt < MERGE_BLOB_FETCHES; attempt += 1) {
+    const result = gitResult(repoDir, ['merge-tree', '--write-tree', left, right]);
+    const missing = [...result.stderr.matchAll(/blob object ([0-9a-f]{40})/gi)].map((match) => match[1].toLowerCase());
+    const fresh = missing.filter((blob) => !seen.has(blob));
+    if (fresh.length === 0) return result.ok || result.status === 1;
+    for (const blob of fresh) {
+      seen.add(blob);
+      if (!writeBlob(repoDir, blob, request)) return false;
+    }
+  }
+  return false;
+}
+
+// Rebuild the merge from API trees and ask commitTreeMatchesCleanMerge. null means unproven.
+function apiCommitMatchesCleanMerge(request, sha, parents) {
+  if (typeof request !== 'function' || parents.length !== 2) return null;
+  let repoDir;
+  try {
+    repoDir = mkdtempSync(path.join(tmpdir(), 'gate-merge-'));
+    if (gitText(repoDir, ['init', '-q']) === null) return null;
+    const baseTree = fetchMergeBaseTreeSha(request, parents[0], parents[1]);
+    const leftTree = fetchCommitTreeSha(request, parents[0]);
+    const rightTree = fetchCommitTreeSha(request, parents[1]);
+    const mergeTreeSha = fetchCommitTreeSha(request, sha);
+    if (!baseTree || !leftTree || !rightTree || !mergeTreeSha) return null;
+    for (const tree of new Set([baseTree, leftTree, rightTree, mergeTreeSha])) {
+      const entries = fetchFlatTree(request, tree);
+      if (!entries) return null;
+      if (writeTreeFromEntries(repoDir, entries) !== tree) return null;
+    }
+    const baseCommit = gitText(repoDir, ['commit-tree', baseTree, '-m', 'base']);
+    const left = baseCommit && gitText(repoDir, ['commit-tree', leftTree, '-p', baseCommit, '-m', 'left']);
+    const right = baseCommit && gitText(repoDir, ['commit-tree', rightTree, '-p', baseCommit, '-m', 'right']);
+    const merge = left && right && gitText(repoDir, ['commit-tree', mergeTreeSha, '-p', left, '-p', right, '-m', 'merge']);
+    if (!merge || !hydrateMergeBlobs(repoDir, left, right, request)) return null;
+    return commitTreeMatchesCleanMerge(repoDir, merge, [left, right]);
+  } catch {
+    return null;
+  } finally {
+    if (repoDir) rmSync(repoDir, { recursive: true, force: true });
+  }
+}
+
+// Local history wins when it can see the commit. Otherwise the API trees are checked
+// with the same helper. null fails closed: the marker does not carry.
+function mergeCommitIsClean(step, repoDir, request) {
+  if (repoDir) {
+    const local = commitTreeMatchesCleanMerge(repoDir, step.sha, step.parents);
+    if (local === true || local === false) return local;
+  }
+  return apiCommitMatchesCleanMerge(request, step.sha, step.parents);
+}
+
+// API form of scripts/final-head-history.mjs explainFinalHeadDrift (rule 2):
+// every first-parent commit after the marker must be a merge of the base branch,
+// and its tree must equal a clean merge of those parents. The trusted job checks
+// out main at depth 1, so a commit that is not in this checkout is rebuilt from
+// git/commits and git/trees and checked with commitTreeMatchesCleanMerge.
+export function gateChangeMarkerCarriesForward({
+  markerSha,
+  headSha,
+  baseRef,
+  commits,
+  files,
+  protectedPaths,
+  request,
+  prNumber,
+  repoDir,
+} = {}) {
+  if (!isGateFullSha(markerSha) || !isGateFullSha(headSha)) return { ok: false, known: false };
+  const marker = markerSha.toLowerCase();
+  const head = headSha.toLowerCase();
+  if (marker === head) {
+    return {
+      ok: true, known: true, carriedFrom: markerSha, brokenAt: null, message: '',
+    };
+  }
+  if (!baseRef || typeof request !== 'function' || !protectedPaths) return { ok: false, known: false };
+
+  const prCommits = Array.isArray(commits) ? commits : fetchPrCommitsForMarker(request, prNumber);
+  const bySha = indexPrCommits(prCommits);
+  if (!bySha) return { ok: false, known: false };
+  if (!bySha.has(marker)) {
+    return carryFailure(
+      `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${markerSha} is not a commit on this pull request.`,
+      markerSha,
+    );
+  }
+
+  const after = [];
+  let current = head;
+  const seen = new Set();
+  while (current !== marker) {
+    if (seen.has(current)) {
+      return carryFailure(
+        `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${current} is not an ancestor of ${headSha}.`,
+        current,
+      );
+    }
+    seen.add(current);
+    const commit = bySha.get(current);
+    if (!commit) {
+      return carryFailure(
+        `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${markerSha} is not an ancestor of ${headSha}.`,
+        current,
+      );
+    }
+    const parents = commitParentShas(commit);
+    if (!parents) return { ok: false, known: false };
+    after.push({ sha: current, parents });
+    if (parents.length === 0) {
+      return carryFailure(
+        `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${current} is not a merge commit.`,
+        current,
+      );
+    }
+    current = parents[0];
+  }
+
+  for (const step of after) {
+    if (step.parents.length < 2) {
+      return carryFailure(
+        `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${step.sha} is not a merge commit.`,
+        step.sha,
+      );
+    }
+    for (const parent of step.parents.slice(1)) {
+      const onBase = parentOnBaseBranch(parent, baseRef, request);
+      if (onBase == null) return { ok: false, known: false };
+      if (!onBase) {
+        return carryFailure(
+          `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${step.sha} merges something other than the base branch.`,
+          step.sha,
+        );
+      }
+    }
+    const clean = mergeCommitIsClean(step, repoDir, request);
+    if (clean === false) {
+      return carryFailure(
+        `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${step.sha} changes files beyond the merge of the base branch.`,
+        step.sha,
+      );
+    }
+    if (clean !== true) {
+      return carryFailure(
+        `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${step.sha} is not a proven clean merge of the base branch.`,
+        step.sha,
+      );
+    }
+  }
+
+  if (!Array.isArray(files)) return { ok: false, known: false };
+  const headDiff = protectedFileDiffTuples(files, protectedPaths);
+  if (!headDiff.ok) {
+    return carryFailure(
+      `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because the protected-file diff is missing or truncated.`,
+      headSha,
+    );
+  }
+  const markerDiff = fetchMarkerProtectedDiff(request, baseRef, marker, protectedPaths);
+  if (!markerDiff) return { ok: false, known: false };
+  if (!markerDiff.ok) {
+    return carryFailure(
+      `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because the protected-file diff is missing or truncated.`,
+      markerSha,
+    );
+  }
+  if (JSON.stringify(markerDiff.tuples) !== JSON.stringify(headDiff.tuples)) {
+    return carryFailure(
+      `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${headSha} changes the protected-file diff.`,
+      headSha,
+    );
+  }
+  return {
+    ok: true, known: true, carriedFrom: markerSha, brokenAt: null, message: '',
+  };
+}
+
+function firstCarriedMarker({
+  body, headSha, baselineGrew, commits, files, baseRef, request, prNumber, protectedPaths, repoDir,
+}) {
+  if (baselineGrew) return { ok: false, known: false };
+  let last = { ok: false, known: false };
+  for (const markerSha of gateChangeReviewedShas(body)) {
+    const result = gateChangeMarkerCarriesForward({
+      markerSha, headSha, baseRef, commits, files, protectedPaths, request, prNumber, repoDir,
+    });
+    if (result.ok) return result;
+    if (result.known) last = result;
+  }
+  return last;
+}
+
+export function formatGateChangeReviewFailure(protectedFiles, headSha, body, carry = null) {
   const found = gateChangeReviewedShas(body);
   const lines = [
     'This pull request changes protected gate files:',
@@ -662,28 +1132,39 @@ export function formatGateChangeReviewFailure(protectedFiles, headSha, body) {
   } else {
     lines.push(`The gate-change-reviewed marker does not match the current head ${headSha}.`);
   }
+  if (carry?.message) lines.push(carry.message);
   if (protectedFiles.includes(BUTTON_CRAWL_BASELINE)) {
     lines.push('The button-crawl baseline has an entry that main does not. A shrink or a reorder does not need this review.');
   }
   return lines.join('\n');
 }
 
-export function evaluateGateChangeReview({ changedFiles, body, headSha, protectedPaths, baselineGrew = false }) {
+export function evaluateGateChangeReview({
+  changedFiles, body, headSha, protectedPaths, baselineGrew = false,
+  commits, files, baseRef, request, prNumber, repoDir,
+} = {}) {
   const paths = protectedPaths ?? loadProtectedGatePaths();
   const protectedFiles = touchedProtectedFiles(changedFiles, paths);
   if (baselineGrew && !protectedFiles.includes(BUTTON_CRAWL_BASELINE)) {
     protectedFiles.push(BUTTON_CRAWL_BASELINE);
     protectedFiles.sort();
   }
-  const markerMatched = gateChangeMarkerMatches(body, headSha);
+  const exact = gateChangeMarkerMatches(body, headSha);
+  const carried = exact
+    ? { ok: false, known: false }
+    : firstCarriedMarker({
+      body, headSha, baselineGrew, commits, files, baseRef, request, prNumber, protectedPaths: paths, repoDir,
+    });
+  const markerMatched = exact || carried.ok;
   const touched = protectedFiles.length > 0;
   return {
     ok: !touched || markerMatched,
     touched,
     protectedFiles,
     markerMatched,
+    carriedFrom: carried.ok ? carried.carriedFrom : null,
     message: touched && !markerMatched
-      ? formatGateChangeReviewFailure(protectedFiles, headSha, body)
+      ? formatGateChangeReviewFailure(protectedFiles, headSha, body, carried.known ? carried : null)
       : '',
   };
 }
@@ -700,6 +1181,7 @@ export function formatGateChangeReviewSummary(result) {
   }
   lines.push('');
   lines.push(`Marker matched: ${result.markerMatched ? 'yes' : 'no'}`);
+  if (result.carriedFrom) lines.push(`Marker carried from: ${result.carriedFrom}`);
   return lines.join('\n');
 }
 
@@ -864,6 +1346,10 @@ export function formatTimeoutMessage(pending, { missingAnalyze = false, unregist
 // The job keeps its 35-minute limit: the poll budget below counts from job start, so this wait is not extra time.
 export const PR_FILES_WAIT_SECONDS = 600;
 
+// Rate-limit waits for every API call in the job. The poll below is one evaluation (MERGE_GATE_WAIT_SECONDS=0),
+// so without this budget the first rate limit failed the whole gate at once. Stays inside the 35-minute job.
+export const DEFAULT_API_WAIT_SECONDS = 600;
+
 export function fetchPrFiles(repo, prNumber, token, {
   request = (requestPath, options) => ghApiWithRetry(repo, token, requestPath, options),
   budgetSeconds = PR_FILES_WAIT_SECONDS,
@@ -1024,18 +1510,61 @@ function writeSummary(text) {
   console.log(text);
 }
 
-export function fetchNamedTestLists(repo, sha, token) {
+const DESKTOP_WORKFLOW_PATH = '.github/workflows/desktop-checks.yml';
+
+function graphqlRequest(token, query, variables) {
+  const args = ['api', 'graphql', '-H', 'Accept: application/vnd.github+json', '-f', `query=${query}`];
+  for (const [key, value] of Object.entries(variables)) args.push('-F', `${key}=${value}`);
+  return withRateLimitRetry(() => execGhApi(args, { token, includeHeaders: false }).json, {
+    sleep: sleepSeconds,
+    fetchRateLimit: () => fetchGitHubRateLimit(token),
+    startedAt: gateApiBudget.startedAt,
+    budgetSeconds: gateApiBudget.budgetSeconds ?? Number(process.env.MERGE_GATE_WAIT_SECONDS ?? DEFAULT_WAIT_BUDGET_SECONDS),
+  });
+}
+
+// Several files at one commit in one GraphQL request. Anything it cannot answer cleanly (an error, a binary or
+// truncated blob) is read again over REST, so the result is never a guess: a missing file is null, as before.
+export function fetchFileTextsBatch(repo, sha, token, paths, {
+  graphql = graphqlRequest,
+  fallback = (filePath) => fetchFileText(repo, sha, token, filePath),
+} = {}) {
+  const [owner, name] = repo.split('/');
+  const fields = paths.map((filePath, index) => (
+    `f${index}: object(expression: ${JSON.stringify(`${sha}:${filePath}`)}) { ... on Blob { text isBinary isTruncated } }`
+  ));
+  const query = `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${fields.join(' ')} } }`;
+  let repository = null;
+  try {
+    const payload = graphql(token, query, { owner, name });
+    repository = payload?.errors?.length ? null : (payload?.data?.repository ?? null);
+  } catch {
+    repository = null;
+  }
+  return Object.fromEntries(paths.map((filePath, index) => {
+    const node = repository?.[`f${index}`];
+    if (repository && node === null) return [filePath, null];
+    if (node && typeof node.text === 'string' && node.isBinary === false && node.isTruncated === false) {
+      return [filePath, node.text];
+    }
+    return [filePath, fallback(filePath)];
+  }));
+}
+
+export function fetchNamedTestLists(repo, sha, token, api = ghApi) {
   let entries;
   try {
-    entries = ghApi(repo, token, `contents/scripts/feature-batch-ci-named?ref=${sha}`);
-  } catch {
-    return [];
+    entries = api(repo, token, `contents/scripts/feature-batch-ci-named?ref=${sha}`);
+  } catch (error) {
+    // Only "no directory" is empty. A rate limit or outage must not read as "no named lists" (fail closed).
+    if (isNotFoundError(error)) return [];
+    throw error;
   }
   if (!Array.isArray(entries)) return [];
   const extra = [];
   for (const entry of entries) {
     if (entry.type !== 'file' || !entry.name?.endsWith('.txt') || entry.name === 'README.txt') continue;
-    const text = fetchFileText(repo, sha, token, entry.path);
+    const text = fetchFileText(repo, sha, token, entry.path, api);
     if (text == null) continue;
     extra.push(...parseNamedTestList(text, entry.path));
   }
@@ -1066,11 +1595,11 @@ export function trustedDesktopWorkflow(fetched, mainFallback = '') {
   return serializeAllowlistedDesktopWorkflow(allowlistedDesktopRunTargets(workflow), mainFallback);
 }
 
-function runCoverage(files, extraNamed, repo, sha, token) {
-  const mainWorkflow = readFileSync(path.join(root, '.github/workflows/desktop-checks.yml'), 'utf8');
-  const fetched = repo && sha && token
-    ? fetchFileText(repo, sha, token, '.github/workflows/desktop-checks.yml')
-    : null;
+function runCoverage(files, extraNamed, repo, sha, token, headFiles = null) {
+  const mainWorkflow = readFileSync(path.join(root, DESKTOP_WORKFLOW_PATH), 'utf8');
+  const fetched = headFiles
+    ? headFiles[DESKTOP_WORKFLOW_PATH]
+    : fetchFileText(repo, sha, token, DESKTOP_WORKFLOW_PATH);
   const workflow = trustedDesktopWorkflow(fetched, mainWorkflow);
   if (workflow == null) {
     console.error('Could not read pull request .github/workflows/desktop-checks.yml; failing closed.');
@@ -1107,26 +1636,27 @@ function readLocalDoc(doc) {
   }
 }
 
-function fetchMergeBaseSha(repo, token, baseRef, headSha) {
+function fetchMergeBaseSha(repo, token, baseRef, headSha, request = (requestPath, options) => ghApiWithRetry(repo, token, requestPath, options)) {
   if (!baseRef || !headSha) return null;
   try {
-    const payload = ghApiWithRetry(repo, token, `compare/${baseRef}...${headSha}`, {
+    const payload = request(`compare/${baseRef}...${headSha}`, {
       jq: '{sha:.merge_base_commit.sha}',
       retries: 6,
     });
     const sha = payload?.sha;
     return typeof sha === 'string' && /^[0-9a-f]{40}$/i.test(sha) ? sha : null;
-  } catch {
+  } catch (error) {
+    if (isRateLimitError(error) || isTransientGitHubError(error)) throw error;
     return null;
   }
 }
 
-function runMergeCommandCheck(repo, sha, token, prFiles = null, baseRef = null) {
+function runMergeCommandCheck(repo, sha, token, prFiles = null, baseRef = null, headFiles = null) {
   const dir = mkdtempSync(path.join(tmpdir(), 'merge-gate-trusted-docs-'));
   try {
     const headContents = {};
     for (const doc of docsToCheck) {
-      const text = fetchFileText(repo, sha, token, doc);
+      const text = headFiles ? headFiles[doc] : fetchFileText(repo, sha, token, doc);
       headContents[doc] = text;
       if (text == null) continue;
       const dest = path.join(dir, doc);
@@ -1313,6 +1843,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   }
 
   const jobStartedAt = Date.now();
+  gateApiBudget.budgetSeconds = Number(process.env.MERGE_GATE_API_WAIT_SECONDS ?? DEFAULT_API_WAIT_SECONDS);
+  gateApiBudget.startedAt = jobStartedAt;
   const files = fetchPrFiles(repo, prNumber, token);
   const changedFiles = changedFilesFromPrFiles(files);
   const body = fetchPrBody(repo, prNumber, token);
@@ -1325,7 +1857,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       ? fetchFileText(repo, sha, token, BUTTON_CRAWL_BASELINE)
       : null,
   });
-  const review = evaluateGateChangeReview({ changedFiles, body, headSha: sha, baselineGrew });
+  const request = (requestPath, options) => ghApiWithRetry(repo, token, requestPath, options);
+  const review = evaluateGateChangeReview({
+    changedFiles, body, headSha: sha, baselineGrew, files, baseRef, prNumber, request,
+  });
   writeSummary(formatGateChangeSummary(changedFiles));
   writeSummary(formatGateChangeReviewSummary(review));
   if (!review.ok) {
@@ -1334,8 +1869,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   }
 
   const extraNamed = fetchNamedTestLists(repo, sha, token);
-  if (!runCoverage(files, extraNamed, repo, sha, token)) process.exit(1);
-  if (!runMergeCommandCheck(repo, sha, token, files, baseRef)) {
+  const headFiles = fetchFileTextsBatch(repo, sha, token, [DESKTOP_WORKFLOW_PATH, ...docsToCheck]);
+  if (!runCoverage(files, extraNamed, repo, sha, token, headFiles)) process.exit(1);
+  if (!runMergeCommandCheck(repo, sha, token, files, baseRef, headFiles)) {
     console.error('Merge-command check failed on the pull request documentation.');
     process.exit(1);
   }

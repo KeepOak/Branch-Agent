@@ -1,21 +1,26 @@
 // The open conversation on the engine: history, the live run, approvals and sending. It starts on the
 // default Trunk's main conversation and switches with open(key) (DESIGN-SPEC §4.1.1.1 row click).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import type { EventFrame, HelloOk } from "@branch/gateway-client/browser";
+import type { EventFrame, GatewayProtocolRequestOptions, HelloOk } from "@branch/gateway-client/browser";
 import { BranchGateway, type GatewayStatus } from "./gateway";
-import type { SendExtras, WindowEngine } from "./engine";
+import type { EngineFeatures, SendExtras, WindowEngine } from "./engine";
 import { RunStreams, readRunEvent } from "./stream-order";
 import { storedOperatorToken } from "./device-token-store";
 import { withOwner } from "./agent-owner";
-import { projectRun, type Approval, type Block } from "../thread/model";
+import { withSafeVisibility } from "./safe-visibility";
+import { projectRun, settleRunBlocks, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/history";
 import { sanitizeBlocks } from "../thread/tool-output-display";
-import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "./preparation-status";
+import { friendlyError } from "./friendly-error";
+import { HISTORY_STARTING_LABEL, HISTORY_UNAVAILABLE_LABEL, HISTORY_RETRY_TIMEOUT_MS, isHistoryTemporarilyUnavailable, isPreparationPending, isPreparationStalled, isStartupUnavailable, PreparationRetry, preparationTimeoutLabel, type StartupWait } from "./preparation-status";
+import { readStartupPreparation } from "./startup-preparation";
 import { addNotSent, healNotSent } from "../composer/queue";
 import { droppedFiles, engineKeyOf, FirstSendEcho, heldRuns, UnconfirmedSends } from "./unconfirmed";
 import { failedAck, isRetryable, refusedOrUnsent, requestWithRetry } from "./send-errors";
 import { firstSendEcho, shouldKeepFirstSendEcho } from "../composer/sending";
+import { friendlyModelError } from "../composer/connect-model";
 import { safeStorage } from "../composer/drafts";
+import { trunkDisplayName, trunkNameForKey } from "./trunk-name";
 
 export type SessionSnapshot = {
   status: GatewayStatus;
@@ -37,6 +42,9 @@ export type SessionSnapshot = {
   doneAt: number | null;
   lastActivityAt: number | null;
   error: string | null;
+  /** Set while `error` is the engine's structured startup refusal (preparation-status isStartupUnavailable): the
+   *  window shows one calm line for it, with the engine's words kept for the Technical level. Null for any other error. */
+  startup?: StartupWait | null;
   /** How the last run in this conversation ended, so the done cheer speaks for that run only (§4.2.5). */
   ended: RunEnd | null;
   /** What you told the Trunk while it worked (sent with queueMode "steer"), until the turn ends (§4.2.2 Steered note). */
@@ -90,6 +98,20 @@ export function mergeQueued(
 
 export type GatewayEventListener = (event: string, payload: unknown) => void;
 
+const STARTUP_POLL_MS = 3_000;
+/** The window's reads right after a connection (agents, sessions, approvals, transcript). One that never answers is
+ *  given up after this long and read again, so a hung request cannot leave the window connecting. */
+const BOOTSTRAP_REQUEST: GatewayProtocolRequestOptions = { timeoutMs: 15_000 };
+const BOOTSTRAP_RETRY_MAX_MS = 10_000;
+/** A failed read as the snapshot keeps it: a startup wait by code, a retrying history UNAVAILABLE in plain words, else the engine's words. The one-minute history cap is applied in `set()`. */
+const failure = (error: unknown): Pick<SessionSnapshot, "error" | "startup"> => {
+  const message = error instanceof Error ? error.message : String(error);
+  if (isStartupUnavailable(error)) return { error: message, startup: { detail: message, stalled: false } };
+  if (isHistoryTemporarilyUnavailable(error)) return { error: HISTORY_STARTING_LABEL, startup: null };
+  return { error: message, startup: null };
+};
+/** The code the gateway client gives a request it gave up on (GatewayProtocolRequestTimeoutError). */
+const isRequestTimeout = (error: unknown): boolean => (error as { code?: unknown } | null)?.code === "CLIENT_TIMEOUT";
 
 /** The group chat a room's lead conversation belongs to: `agent:<lead>:room:<roomId>` (engine rooms.send). */
 export function roomIdOf(sessionKey: string): string {
@@ -105,6 +127,8 @@ export class SaplingSession {
   private readonly runs = new RunStreams();
   private readonly approvals = new Map<string, Approval>();
   private readonly finished = new Set<string>();
+  /** Prevent a history response from settling a run whose newer events arrived during the read. */
+  private runRevision = 0;
   /** Runs that were stopped (Stop, or the engine's "aborted"): their turn says "Stopped", never "Done". */
   private readonly stoppedRuns = new Set<string>();
   /** Messages this window sent, by run id (= the idempotency key, engine chat-send-session.ts): their text, and
@@ -152,7 +176,22 @@ export class SaplingSession {
   /** The newest `chat.history` read, so a finishing run can wait for the one that really lands. */
   private currentRead: Promise<void> | null = null;
   private preparationRetry: ReturnType<typeof setTimeout> | null = null;
+  /** Watches the Trunk while it gets ready (any page, not only the thread), and reads the conversation again once it is. */
+  private startupWatch: ReturnType<typeof setTimeout> | null = null;
+  /** Whether the engine has held the Trunk back during the current watch (so its release is a change worth a re-read). */
+  private startupHeld = false;
+  /** The next bootstrap read, scheduled after one of them timed out. */
+  private bootstrapRetry: ReturnType<typeof setTimeout> | null = null;
+  private bootstrapAttempts = 0;
+  /** Bumped on every gateway status change, so a read that timed out on an older connection never schedules a retry. */
+  private connectionId = 0;
+  /** Bumped each time a connection finishes reading its conversation, so the open pages re-read from the new engine. */
+  private connectionEpoch = 0;
   private readonly preparationBackoff = new PreparationRetry();
+  /** Separate from Trunk startup: `chat.history` UNAVAILABLE is retried for about a minute, then stopped. */
+  private readonly historyBackoff = new PreparationRetry(HISTORY_RETRY_TIMEOUT_MS);
+  /** The agents.list result of this connection: a conversation's own Trunk is named from it. */
+  private agentList: unknown = null;
   private stopped = false;
   private gateway: BranchGateway;
   private retiringGateway: BranchGateway | null = null;
@@ -182,6 +221,7 @@ export class SaplingSession {
       doneAt: null,
       lastActivityAt: null,
       error: null,
+      startup: null,
       steered: [],
       ended: null,
       historyReady: false,
@@ -214,6 +254,9 @@ export class SaplingSession {
     if (this.preparationRetry) clearTimeout(this.preparationRetry);
     this.preparationRetry = null;
     this.preparationBackoff.reset();
+    this.historyBackoff.reset();
+    this.stopStartupWatch();
+    this.cancelBootstrapRetry();
     this.gateway.stop();
     this.retiringGateway?.stop();
     this.retiringGateway = null;
@@ -251,15 +294,19 @@ export class SaplingSession {
 
   getSnapshot = (): SessionSnapshot => this.snapshot;
 
-  private engineCache: { key: string | null; hello: HelloOk | null; engine: WindowEngine } | null = null;
+  private engineCache: { key: string | null; hello: HelloOk | null; epoch: number; engine: WindowEngine } | null = null;
+  /** The last hello's features, kept through a reconnect so controls don't flip to Coming and back. */
+  private lastFeatures: EngineFeatures | undefined;
 
   /** The shared engine handle for the open conversation (rebuilt when the conversation or connection changes). */
   get engine(): WindowEngine {
     const status = this.snapshot.status;
     const hello = status.phase === "connected" ? status.hello : null;
     const key = this.snapshot.sessionKey;
-    if (!this.engineCache || this.engineCache.key !== key || this.engineCache.hello !== hello) {
-      this.engineCache = { key, hello, engine: buildEngine(this, key, hello) };
+    const epoch = this.connectionEpoch;
+    if (hello?.features) this.lastFeatures = hello.features;
+    if (!this.engineCache || this.engineCache.key !== key || this.engineCache.hello !== hello || this.engineCache.epoch !== epoch) {
+      this.engineCache = { key, hello, epoch, engine: buildEngine(this, key, hello, this.lastFeatures) };
     }
     return this.engineCache.engine;
   }
@@ -269,17 +316,19 @@ export class SaplingSession {
     return this.loadHistory();
   }
 
-  /** The Trunk got ready after this window stopped waiting for it: open the conversation again, with a fresh wait. */
-  retryOpen(): void {
+  /** Reads the open conversation again with a fresh wait (the startup watch calls this when the Trunk is ready). */
+  private retryOpen(): void {
     const { status, sessionKey } = this.snapshot;
     if (this.stopped || status.phase !== "connected" || !sessionKey) return;
     this.preparationBackoff.reset();
+    this.historyBackoff.reset();
     void this.bootstrap(status, sessionKey);
   }
 
   /** Any engine method, for the parts of the window that call the engine themselves. */
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
-    return this.gateway.request<T>(method, params);
+    const status = this.snapshot.status;
+    return this.gateway.request<T>(method, withSafeVisibility(method, params, status.phase === "connected" ? status.hello : null));
   }
 
   requestScopeUpgrade(options?: { onPending?: (requestId: string) => void }) {
@@ -324,6 +373,7 @@ export class SaplingSession {
     this.liveRefreshTimer = null;
     this.approvals.clear();
     this.ownSends.clear();
+    this.readError = null;
     const echo = this.firstEcho.peek(key);
     if (echo) this.ownSends.set(echo.runId, { text: echo.text, shown: true, attachments: 0 });
     const cached = this.cachedTranscript(key);
@@ -356,7 +406,7 @@ export class SaplingSession {
     try {
       await Promise.all([this.backfillApprovals().catch(() => undefined), this.loadHistory()]);
     } catch (error) {
-      this.set({ error: error instanceof Error ? error.message : String(error) });
+      this.set(failure(error));
     }
   }
 
@@ -396,10 +446,10 @@ export class SaplingSession {
   }
 
   /** The full transcript read. A click and a sidebar warm share one request while it is in flight. */
-  private chatHistory(sessionKey: string): Promise<unknown> {
+  private chatHistory(sessionKey: string, options?: GatewayProtocolRequestOptions): Promise<unknown> {
     const existing = this.transcriptFlight.get(sessionKey);
     if (existing) return existing;
-    const flight = this.gateway.request("chat.history", { sessionKey }).finally(() => {
+    const flight = this.gateway.request("chat.history", { sessionKey }, options).finally(() => {
       if (this.transcriptFlight.get(sessionKey) === flight) this.transcriptFlight.delete(sessionKey);
     });
     this.transcriptFlight.set(sessionKey, flight);
@@ -407,21 +457,34 @@ export class SaplingSession {
   }
 
   private set(patch: Partial<SessionSnapshot>): void {
-    const preparationDelay = patch.error && isPreparationPending(patch.error) ? this.preparationBackoff.nextDelay() : null;
-    if (patch.error && isPreparationPending(patch.error) && preparationDelay === null) {
-      patch = { ...patch, error: preparationTimeoutLabel(this.snapshot.name) };
+    // Any other error words replace the startup wait.
+    if (patch.error !== undefined && patch.startup === undefined) patch = { ...patch, startup: null };
+    const historyPending = Boolean(patch.error) && isHistoryTemporarilyUnavailable(patch.error);
+    const startupPending = Boolean(patch.error) && !historyPending && (Boolean(patch.startup) || isPreparationPending(patch.error));
+    const pending = historyPending || startupPending;
+    const retryDelay = historyPending ? this.historyBackoff.nextDelay() : startupPending ? this.preparationBackoff.nextDelay() : null;
+    if (pending && retryDelay === null) {
+      if (historyPending) {
+        const error = friendlyError(HISTORY_UNAVAILABLE_LABEL);
+        this.readError = error;
+        patch = { ...patch, error, startup: null };
+      } else {
+        patch = { ...patch, error: preparationTimeoutLabel(trunkNameForKey(this.agentList, patch.sessionKey ?? this.snapshot.sessionKey, this.snapshot.name)), startup: patch.startup ? { ...patch.startup, stalled: true } : null };
+      }
     }
     this.snapshot = { ...this.snapshot, ...patch };
+    this.syncStartupWatch(patch);
     if (patch.error === null || (patch.status && patch.status.phase !== "connected")) {
       if (this.preparationRetry) clearTimeout(this.preparationRetry);
       this.preparationRetry = null;
       this.preparationBackoff.reset();
-    } else if (!this.stopped && patch.error && isPreparationPending(patch.error) && !this.preparationRetry) {
+      this.historyBackoff.reset();
+    } else if (!this.stopped && pending && retryDelay !== null && !this.preparationRetry) {
       this.preparationRetry = setTimeout(() => {
         this.preparationRetry = null;
         const { status, sessionKey } = this.snapshot;
         if (status.phase === "connected" && sessionKey) void this.bootstrap(status, sessionKey);
-      }, preparationDelay ?? 500);
+      }, retryDelay ?? 500);
     }
     for (const listener of this.listeners) {
       listener();
@@ -429,10 +492,12 @@ export class SaplingSession {
   }
 
   private onStatus(status: GatewayStatus): void {
+    this.connectionId += 1;
     if (status.phase !== "connected") {
       // The engine no longer knows this device: its pairing there is gone, and so are its records for it. (A request
       // for more scopes keeps the pairing.)
       if (status.phase === "pairing" && status.reason === "not-paired") this.unconfirmed.unpaired(this.gatewayUrl);
+      this.cancelBootstrapRetry();
       this.set({ status });
       return;
     }
@@ -450,42 +515,120 @@ export class SaplingSession {
       const echo = sessionKey ? this.firstEcho.peek(sessionKey) : null;
       if (echo) this.ownSends.set(echo.runId, { text: echo.text, shown: true, attachments: 0 });
       const switching = sessionKey !== this.snapshot.sessionKey;
+      const defaultChanged = mainKey !== this.snapshot.mainKey;
       const cached = switching && sessionKey ? this.cachedTranscript(sessionKey) : null;
+      if (switching || defaultChanged) this.readError = null;
       this.set({
         sessionKey, mainKey, live: [], steered: [],
+        ...(switching || defaultChanged ? { error: null } : {}),
         ...(cached ? cached : {}),
         liveRunId: echo?.runId ?? null,
         liveStartedAt: echo ? Date.now() : null,
         pendingUser: echo?.text ?? null,
       });
     } else {
-      this.set({ sessionKey, mainKey });
+      const switching = sessionKey !== this.snapshot.sessionKey;
+      const defaultChanged = mainKey !== this.snapshot.mainKey;
+      if (switching || defaultChanged) this.readError = null;
+      this.set({ sessionKey, mainKey, ...(switching || defaultChanged ? { error: null } : {}) });
     }
+    this.cancelBootstrapRetry();
     void this.bootstrap(status, sessionKey);
   }
 
   private async bootstrap(status: GatewayStatus, sessionKey: string | null): Promise<void> {
+    const connection = this.connectionId;
+    const current = () => !this.stopped && connection === this.connectionId;
     if (!sessionKey) {
       this.set({ status, error: "The engine did not say which conversation is the default Trunk's." });
       return;
     }
     try {
       const [agents] = await Promise.all([
-        this.gateway.request("agents.list", {}),
-        this.gateway.request("sessions.subscribe", { limit: 20 }),
+        this.gateway.request("agents.list", {}, BOOTSTRAP_REQUEST),
+        this.gateway.request("sessions.subscribe", { limit: 20 }, BOOTSTRAP_REQUEST),
       ]);
+      if (!current()) return;
+      this.agentList = agents;
       this.set({ name: readAgentName(agents) });
-      await Promise.all([this.backfillApprovals().catch(() => undefined), this.loadHistory()]);
+      await Promise.all([this.backfillApprovals(BOOTSTRAP_REQUEST).catch(() => undefined), this.loadHistory(BOOTSTRAP_REQUEST)]);
+      if (!current() || this.snapshot.sessionKey !== sessionKey) return;
+      this.connectionEpoch += 1;
+      this.bootstrapAttempts = 0;
       this.set({ status, error: null });
       if (this.engineKey) this.unconfirmed.connected(this.engineKey);
     } catch (error) {
-      this.set({ status, error: error instanceof Error ? error.message : String(error) });
+      if (isRequestTimeout(error)) {
+        // The engine has not answered yet: the window stays connecting and reads again, instead of showing an error.
+        if (connection === this.connectionId && this.snapshot.sessionKey === sessionKey) this.retryBootstrap(status, sessionKey);
+        return;
+      }
+      if (!current() || this.snapshot.sessionKey !== sessionKey) return;
+      this.set({ status, ...failure(error) });
     }
   }
 
+  /** Reads the connection's state again after a read timed out: a short pause that grows, capped. It stops when the
+   *  connection changes or the window stops (onStatus and stop call cancelBootstrapRetry). */
+  private retryBootstrap(status: GatewayStatus, sessionKey: string | null): void {
+    if (this.stopped || !sessionKey || this.bootstrapRetry) return;
+    const delay = Math.min(BOOTSTRAP_RETRY_MAX_MS, 1_000 * 2 ** this.bootstrapAttempts);
+    this.bootstrapAttempts += 1;
+    this.bootstrapRetry = setTimeout(() => {
+      this.bootstrapRetry = null;
+      void this.bootstrap(status, sessionKey);
+    }, delay);
+  }
+
+  private cancelBootstrapRetry(): void {
+    if (this.bootstrapRetry) clearTimeout(this.bootstrapRetry);
+    this.bootstrapRetry = null;
+  }
+
+  /** While the open Trunk is getting ready, watch it from here so recovery never depends on the page showing. */
+  private syncStartupWatch(patch: Partial<SessionSnapshot>): void {
+    const error = patch.error === undefined ? this.snapshot.error : patch.error;
+    const waiting = Boolean(error) && !isHistoryTemporarilyUnavailable(error) && error !== HISTORY_UNAVAILABLE_LABEL && (isPreparationPending(error) || isPreparationStalled(error));
+    if (patch.status && patch.status.phase !== "connected") this.stopStartupWatch();
+    else if (waiting) this.armStartupWatch();
+    else if (patch.error === null) this.stopStartupWatch();
+  }
+
+  private armStartupWatch(): void {
+    if (this.startupWatch || this.stopped) return;
+    this.startupWatch = setTimeout(() => void this.checkStartup(), STARTUP_POLL_MS);
+  }
+
+  private stopStartupWatch(): void {
+    if (this.startupWatch) clearTimeout(this.startupWatch);
+    this.startupWatch = null;
+    this.startupHeld = false;
+  }
+
+  /** One look at the open Trunk: held back means keep watching; released (after it was held, or once the window
+   *  gave up re-reading) means read the conversation again. */
+  private async checkStartup(): Promise<void> {
+    this.startupWatch = null;
+    const { status, sessionKey, error } = this.snapshot;
+    const agentId = /^agent:([^:]+):/.exec(sessionKey ?? "")?.[1];
+    if (this.stopped || status.phase !== "connected" || !agentId || isHistoryTemporarilyUnavailable(error) || error === HISTORY_UNAVAILABLE_LABEL || !(isPreparationPending(error) || isPreparationStalled(error))) return;
+    try {
+      const preparing = readStartupPreparation(await this.gateway.request("agents.list", {}, BOOTSTRAP_REQUEST), agentId) !== null;
+      if (preparing) this.startupHeld = true;
+      else if (this.startupHeld || isPreparationStalled(error)) {
+        this.startupHeld = false;
+        this.retryOpen();
+        return;
+      }
+    } catch {
+      // The engine did not answer this look; the next one reads again.
+    }
+    this.armStartupWatch();
+  }
+
   /** Pending approvals that were raised before this connection (docs/gateway/clients.md). */
-  private async backfillApprovals(): Promise<void> {
-    const list = await this.gateway.request("exec.approval.list", {});
+  private async backfillApprovals(options?: GatewayProtocolRequestOptions): Promise<void> {
+    const list = await this.gateway.request("exec.approval.list", {}, options);
     const items = Array.isArray(list) ? list : (rec(list).items ?? rec(list).approvals);
     if (Array.isArray(items)) {
       for (const item of items) {
@@ -494,17 +637,17 @@ export class SaplingSession {
     }
   }
 
-  private loadHistory(): Promise<void> {
-    const read = this.readHistory().catch((error: unknown) => {
+  private loadHistory(options?: GatewayProtocolRequestOptions): Promise<void> {
+    const read = this.readHistory(options).catch((error: unknown) => {
       // Remembered so the next read that works can take back exactly this notice, and nothing else.
-      this.readError = error instanceof Error ? error.message : String(error);
+      this.readError = failure(error).error;
       throw error;
     });
     this.currentRead = read;
     return read;
   }
 
-  private async readHistory(): Promise<void> {
+  private async readHistory(options?: GatewayProtocolRequestOptions): Promise<void> {
     const sessionKey = this.snapshot.sessionKey;
     if (!sessionKey) {
       return;
@@ -513,12 +656,24 @@ export class SaplingSession {
     const gen = (this.historyReadGen.get(sessionKey) ?? 0) + 1;
     this.historyReadGen.set(sessionKey, gen);
     const epoch = this.historyEpoch;
+    const liveAtRead = this.snapshot.liveRunId;
+    const revisionAtRead = this.runRevision;
     // The approval ledger only dresses the steps; when it fails (right after a rewind it answered "approval not
     // found") the history still shows, without a raw notice that never clears.
-    const [history, ledger] = await Promise.all([
-      this.chatHistory(sessionKey),
-      this.gateway.request("approval.history", { limit: 100, kind: "exec" }).catch(() => null),
-    ]);
+    let history: unknown;
+    let ledger: unknown;
+    try {
+      [history, ledger] = await Promise.all([
+        this.chatHistory(sessionKey, options),
+        this.gateway.request("approval.history", { limit: 100, kind: "exec" }, options).catch(() => null),
+      ]);
+    } catch (error) {
+      // A late refusal for the conversation just left must not become this conversation's banner.
+      if (sessionKey !== this.snapshot.sessionKey || read !== this.historyReads || epoch !== this.historyEpoch || this.historyReadGen.get(sessionKey) !== gen) {
+        return;
+      }
+      throw error;
+    }
     if (epoch !== this.historyEpoch || this.historyReadGen.get(sessionKey) !== gen) {
       return; // a newer read of this conversation, or a different engine, replaced this one
     }
@@ -545,18 +700,29 @@ export class SaplingSession {
     this.set({
       history: blocks,
       historyReady: true,
+      ...(!this.snapshot.liveRunId && !inFlightRunId ? { live: [] } : {}),
       // The notice a failed read left goes once a read works; any other notice (a refused steer, an approval) stays.
       ...(staleNotice && this.snapshot.error === staleNotice ? { error: null } : {}),
       queued: mergeQueued(this.snapshot.queued, h.pendingInputs, sessionKey, true, this.shownRuns()),
       lastActivityAt: typeof info.lastActivityAt === "number" ? info.lastActivityAt : null,
       ...(inFlightRunId ? { liveRunId: inFlightRunId, liveStartedAt: runStart(inFlight) } : {}),
       ...(historyHasEcho && this.snapshot.pendingUser === echo?.text ? { pendingUser: null } : {}),
-      ...(!inFlightRunId && echo && !historyHasEcho ? { pendingUser: echo.text, liveRunId: this.snapshot.liveRunId ?? echo.runId, liveStartedAt: this.snapshot.liveStartedAt ?? Date.now() } : {}),
+      ...(!inFlightRunId && echo && !historyHasEcho && !this.finished.has(echo.runId) ? { pendingUser: echo.text, liveRunId: this.snapshot.liveRunId ?? echo.runId, liveStartedAt: this.snapshot.liveStartedAt ?? Date.now() } : {}),
     });
     if (inFlightRunId) {
       this.adoptInFlight(inFlightRunId, str(inFlight.text), inFlight);
     }
     this.settleRead(sessionKey, blocks, h.pendingInputs, inFlightId);
+    // A terminal event can be missed or name the runtime's run rather than the send id. A completed
+    // transcript plus an authoritative idle snapshot settles only that same, unchanged live turn.
+    const lastUser = blocks.findLastIndex((block) => block.kind === "user");
+    const user = blocks[lastUser];
+    const completed = blocks.slice(lastUser + 1).some((block) => block.kind === "done" &&
+      (block.runId === liveAtRead || (user?.kind === "user" && user.meta?.runKey === liveAtRead)));
+    if (!inFlightId && liveAtRead && this.snapshot.liveRunId === liveAtRead &&
+        revisionAtRead === this.runRevision && completed && !this.finished.has(liveAtRead)) {
+      void this.finishRun(liveAtRead);
+    }
   }
 
   /**
@@ -647,7 +813,7 @@ export class SaplingSession {
       // A turn can end with only this (a dispatch that failed before its run reported): end the live run with it,
       // so your message is kept as Not sent instead of the thread waiting on "Thinking it over".
       const phase = str(payload.phase);
-      const runId = str(payload.runId);
+      const runId = str(payload.clientRunId) || str(payload.runId);
       if ((phase === "error" || phase === "end") && runId && runId === this.snapshot.liveRunId && !this.finished.has(runId)) {
         void this.finishRun(runId, phase === "error" ? str(payload.error) || str(payload.errorMessage) || "It stopped before it started." : "");
       }
@@ -674,6 +840,7 @@ export class SaplingSession {
       return;
     }
     if (this.runs.accept(event) === "stale") return;
+    this.runRevision += 1;
     // Only a run with no live run before it becomes the live one; your send's turn is matched by its run id (the
     // idempotency key) alone, so another client's or a scheduled run can never take over your message.
     if (!this.snapshot.liveRunId) {
@@ -738,7 +905,8 @@ export class SaplingSession {
     if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
     this.liveRefreshTimer = null;
     const runId = this.snapshot.liveRunId;
-    this.set({ live: runId ? withWaitingApprovals(sanitizeBlocks(projectRun(this.runs.events(runId), this.approvals)), this.approvals, runId) : [] });
+    if (!runId) return; // A completed run's output stays until history replaces it.
+    this.set({ live: withWaitingApprovals(sanitizeBlocks(projectRun(this.runs.events(runId), this.approvals)), this.approvals, runId) });
   }
 
   private scheduleLiveRefresh(): void {
@@ -755,7 +923,7 @@ export class SaplingSession {
     const settled = liveRunId ? this.finished.has(liveRunId) : pendingUser === null;
     const waitingEcho = Boolean(sessionKey && this.firstEcho.peek(sessionKey) && !liveRunId);
     if (settled || waitingEcho) {
-      this.loadHistory().catch((error: unknown) => this.set({ error: error instanceof Error ? error.message : String(error) }));
+      this.loadHistory().catch((error: unknown) => this.set(failure(error)));
     } else {
       // A turn is running: the history waits for it to end, but what is waiting for a turn shows now.
       void this.loadQueued();
@@ -766,9 +934,16 @@ export class SaplingSession {
   private async loadQueued(): Promise<void> {
     const sessionKey = this.snapshot.sessionKey;
     if (!sessionKey) return;
+    const liveAtRead = this.snapshot.liveRunId;
+    const revisionAtRead = this.runRevision;
     const history = await this.gateway.request("chat.history", { sessionKey, limit: 1 }).catch(() => null);
     if (!history || sessionKey !== this.snapshot.sessionKey) return;
     this.set({ queued: mergeQueued(this.snapshot.queued, rec(history).pendingInputs, sessionKey, false, this.shownRuns()) });
+    if (liveAtRead && this.snapshot.liveRunId === liveAtRead && this.liveSeen &&
+        revisionAtRead === this.runRevision && !str(rec(rec(history).inFlightRun).runId)) {
+      // Reconcile the complete transcript instead of leaving an idle session behind working dots.
+      void this.loadHistory().catch(() => undefined);
+    }
   }
 
   /** The run ended: the engine's history becomes the record, replacing the live view in one step. `failure` is why
@@ -778,6 +953,13 @@ export class SaplingSession {
       return;
     }
     this.finished.add(runId);
+    // Stop presenting work as soon as the terminal event arrives; history/approval reads can be slow.
+    // Keep live blocks until the record lands, but never keep the working controls active behind it.
+    const liveBeforeRead = this.snapshot.liveRunId === runId;
+    if (liveBeforeRead) {
+      this.refreshLive(); // Flush any throttled final delta before retiring the working controls.
+      this.set({ liveRunId: null, liveStartedAt: null, live: settleRunBlocks(this.snapshot.live) });
+    }
     let read = false;
     try {
       await this.loadHistory();
@@ -785,11 +967,11 @@ export class SaplingSession {
       // stand down: wait for the newest so the turn's own history is in before the live view goes.
       read = await this.settledRead();
     } catch {
-      // The live view still goes; whether the message was kept waits for a read that works.
+      // Retain the completed output until a successful read can replace it.
     } finally {
       this.releaseRetiring(runId);
       this.runs.drop(runId);
-      const wasLive = this.snapshot.liveRunId === runId;
+      const wasLive = liveBeforeRead && this.snapshot.liveRunId === null;
       const outcome: RunEnd["outcome"] = this.stoppedRuns.has(runId) ? "stopped" : failure ? "failed" : absorbed ? "absorbed" : "done";
       const own = this.ownSends.get(runId);
       if (wasLive && own?.shown && failure) {
@@ -809,7 +991,7 @@ export class SaplingSession {
       this.set({
         // Only a run that finished plays "Done" (header, agent window, cheer); a stopped or failed one, or one whose
         // input another turn took in, does not.
-        ...(wasLive ? { liveRunId: null, liveStartedAt: null, live: [], pendingUser: keepEcho && own ? own.text : null, doneAt: outcome === "done" && !keepEcho ? Date.now() : null, ended: { runId, outcome, at: Date.now() } } : {}),
+        ...(wasLive ? { liveRunId: null, liveStartedAt: null, ...(read ? { live: [] } : {}), pendingUser: keepEcho && own ? own.text : null, doneAt: outcome === "done" && !keepEcho ? Date.now() : null, ended: { runId, outcome, at: Date.now() } } : {}),
         // Your send, taken into another turn that is still running: that turn's history has your message, so your
         // own bubble goes now instead of drawing it twice. Only when the bubble is that send's: someone else's run,
         // or a queued send of yours (not drawn) taken in, leaves the bubble alone.
@@ -957,7 +1139,7 @@ export class SaplingSession {
     if (!sessionKey) return;
     try {
       // Attachments aren't kept with it (the line holds words); the reason says so, so Try again isn't silently less.
-      addNotSent(safeStorage(), sessionKey, { id: runId, text, error: `${error}${droppedFiles(attachments)}` });
+      addNotSent(safeStorage(), sessionKey, { id: runId, text, error: `${friendlyModelError(error)}${droppedFiles(attachments)}` });
     } catch (stored) {
       this.set({ error: `${text.slice(0, 40)}… wasn't sent (${error}), and this computer couldn't keep it: ${stored instanceof Error ? stored.message : String(stored)}` });
     }
@@ -989,11 +1171,13 @@ export class SaplingSession {
   }
 }
 
-function buildEngine(session: SaplingSession, sessionKey: string | null, hello: HelloOk | null): WindowEngine {
+function buildEngine(session: SaplingSession, sessionKey: string | null, hello: HelloOk | null, features: EngineFeatures | undefined): WindowEngine {
   const attachments = hello?.policy.attachments;
   const agentId = sessionKey ? agentIdOf(sessionKey) : undefined;
   return {
     gatewayUrl: session.gatewayUrl,
+    connected: hello !== null,
+    reconnect: () => session.reconnectNow(),
     // With several Trunks, owned calls that name none go to the open conversation's Trunk (the default one).
     request: (method, params) => session.request(method, withOwner(method, params, agentId)),
     onEvent: (listener) => session.onGatewayEvent((event, payload) => listener({ event, payload })),
@@ -1003,6 +1187,7 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
     send: (text) => session.send(text),
     rewound: (entryId) => session.rewound(entryId),
     scopes: hello ? [...hello.auth.scopes] : [],
+    ...(features ? { features } : {}),
     requestScopeUpgrade: (options) => session.requestScopeUpgrade(options),
     cancelScopeUpgrade: () => session.cancelScopeUpgrade(),
     ...(attachments ? { attachmentPolicy: { maxBytes: attachments.maxBytes, maxImageBytes: attachments.maxImageBytes } } : {}),
@@ -1032,7 +1217,7 @@ function readAgentName(result: unknown): string {
   if (!agent) {
     return "";
   }
-  return str(rec(agent.identity).name) || str(agent.name) || str(agent.id);
+  return trunkDisplayName(agent);
 }
 
 /** A picture on the Trunk's computer, ready to show, or why it can't. */

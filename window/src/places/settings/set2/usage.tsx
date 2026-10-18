@@ -1,17 +1,20 @@
 // Settings › Data & usage (DESIGN-SPEC §4.7.14): the spend card and its report (sessions.usage, usage.cost,
 // sessions.usage.timeseries/logs), what each connection has left (usage.status), spend per Trunk, keeping
 // conversations (config `session.*`), backups (backup.status) and the rest, greyed with why where the engine has none.
+import { CheckedAt, useCheckedAt } from "../checked-at";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import type { WindowEngine } from "../../../connect/engine";
-import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Page, Pick, Pill, Plist, Prow, Sec, Seg, Switch, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Page, Pick, Pill, Plist, Prow, Sec, Seg, Switch, useConfig, useLevel, type RowEntry } from "../kit";
+import { showsInternals } from "../internals";
 import { errorText, list } from "../adapter";
+import { STALL_TEXT, stallAfter } from "../stall";
 import { Dialog } from "../../../shell/Dialog";
 import { Menu, type MenuAnchor } from "../../../shell/Menu";
 import { CallLine, CodeRow, CopyBtn, Kv, Tile, bytes, lvOf, openPlace, rec, span, str, useCall, useLive, useResource, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
 import { Logo } from "../set1/service";
-import { readLimits, resetWords as sharedResetWords, type LimitRow } from "../../../shell/status-data";
+import { accountEmails, readLimits, resetWords as sharedResetWords, withAccountEmails, type LimitRow } from "../../../shell/status-data";
 import { ModelPrices } from "./usage-prices";
 import { ReportProblem } from "./report-problem";
 import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
@@ -20,6 +23,8 @@ import "./usage.css";
 import { DesktopCtl } from "../desktop-ctl";
 import { formatMoney } from "../../../format/money";
 import { forgetDeletedConversationWindow } from "../../../shell/own-window";
+import { trunkDisplayName } from "../../../connect/trunk-name";
+import { plainError } from "../../../shell/plain-error";
 
 /* ---------- figures ---------- */
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -31,7 +36,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const pct = (v: number, digits = 0) => `${(v * 100).toFixed(digits)}%`;
 /** "4.7M", "472k", "262". */
-export function tok(n: unknown): string {
+function tok(n: unknown): string {
   const v = num(n);
   return v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(Math.round(v));
 }
@@ -42,24 +47,27 @@ const short = (date: string) => dayOf(date).toLocaleDateString(undefined, { mont
 /** One engine read that can be switched off (params null) and keeps its last answer while it reloads. */
 function useQuery(engine: WindowEngine, method: string, params: unknown) {
   const key = params === null ? "" : JSON.stringify(params);
+  const [attempt, setAttempt] = useState(0);
   const [st, setSt] = useState<{ data?: RecordValue; error?: string; loading: boolean }>({ loading: key !== "" });
   useEffect(() => {
     if (!key) { setSt({ loading: false }); return; }
     let live = true;
     setSt((s) => ({ data: s.data, loading: true }));
+    // No answer by the stall deadline says so; a late answer still replaces that line.
+    const stop = stallAfter(() => { if (live) setSt((s) => (s.data === undefined ? { loading: false, error: STALL_TEXT } : s)); });
     engine.request(method, JSON.parse(key)).then(
-      (d) => { if (live) setSt({ data: rec(d), loading: false }); },
-      (e: unknown) => { if (live) setSt({ error: errorText(e), loading: false }); },
+      (d) => { stop(); if (live) setSt({ data: rec(d), loading: false }); },
+      (e: unknown) => { stop(); if (live) setSt({ error: errorText(e), loading: false }); },
     );
-    return () => { live = false; };
-  }, [engine, method, key]);
-  return st;
+    return () => { live = false; stop(); };
+  }, [engine, method, key, attempt]);
+  return { ...st, reload: () => setAttempt((n) => n + 1) };
 }
 
 /** Trunk names by id, from agents.list. */
 function useNames(engine: WindowEngine): Map<string, string> {
   const agents = useLive<RecordValue>(engine, "agents.list", {}, []);
-  return useMemo(() => new Map(list(rec(agents.data).agents).map((a) => [str(a.id), str(rec(a.identity).name) || str(a.name) || str(a.id)])), [agents.data]);
+  return useMemo(() => new Map(list(rec(agents.data).agents).map((a) => [str(a.id), trunkDisplayName(a)])), [agents.data]);
 }
 
 const CHANNEL: Record<string, string> = {
@@ -84,17 +92,19 @@ export function UsagePage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede="What each account has left, what Branch spent, what it keeps.">
       <SpendCard spend={spend} days={days} setDays={setDays} onOpen={() => setReport(true)} />
-      <Allowances engine={props.engine} />
+      <Allowances engine={props.engine} openSettings={props.openSettings} />
       <TrunkSpend spend={spend} names={names} days={days} />
       <Keeping engine={props.engine} lv={lv} />
-      <TestModel />
-      <Evals lv={lv} />
+      {/* Test the model and Evals wait for evals in the engine: Coming, so Technical only (Private #1093 item 4). */}
+      {lv >= 2 ? <TestModel /> : null}
+      {lv >= 2 ? <Evals lv={lv} /> : null}
       <MovingInOut engine={props.engine} lv={lv} />
       {lv >= 1 ? <MoneyMore engine={props.engine} lv={lv} /> : null}
       {lv >= 1 ? <ModelPrices engine={props.engine} /> : null}
       {lv >= 1 ? <KeepingMore engine={props.engine} lv={lv} /> : null}
       {lv >= 2 ? <EverySetting engine={props.engine} /> : null}
-      <Flagged lv={lv} />
+      {/* Every Flagged replies row waits for a later update (Coming), so the card shows at Technical only. */}
+      {lv >= 2 ? <Flagged lv={lv} /> : null}
       <YourData engine={props.engine} />
       <ReportProblem />
       {report ? <ReportDialog engine={props.engine} lv={lv} days={days} names={names} onClose={() => setReport(false)} /> : null}
@@ -172,12 +182,21 @@ function Billing({ b }: { b: RecordValue }) {
   return <div className="s2usage-limw"><span>{label}</span><span>{amount(b.amount)}{str(b.period) ? ` · ${str(b.period)}` : ""}</span></div>;
 }
 
-function Provider({ p, limit, updatedAt }: { p: RecordValue; limit: LimitRow; updatedAt: unknown }) {
-  const name = limit.name;
+/** A usage-check error that means this account's sign-in is gone. */
+const SIGN_IN_ERROR = /token expired|\b401\b|\b403\b|unauthori[sz]ed|forbidden/i;
+function checkNeedsSignIn(limit: LimitRow, error: unknown): boolean {
+  return limit.signInNeeded === true || SIGN_IN_ERROR.test(str(error));
+}
+
+function Provider({ p, limit, updatedAt, openSettings, onCheck }: { p: RecordValue; limit: LimitRow; updatedAt: unknown; openSettings?: (page: string) => void; onCheck?: () => void }) {
+  // The account is named by its email; the plan is in words. The raw HTTP error never reaches the page.
+  const name = limit.email || limit.name;
   const windows = limit.windows.map((window) => ({ label: window.name, left: window.left, words: window.reset }));
   const billing = list(p.billing);
   const told = windows.length > 0 || billing.some(billingMeasured);
-  const sub = [str(p.accountEmail), str(p.plan)].filter(Boolean).join(" · ");
+  const signIn = checkNeedsSignIn(limit, p.error);
+  const failed = signIn || Boolean(p.error);
+  const sub = [limit.email ? limit.name : "", limit.plan].filter(Boolean).join(" · ");
   return (
     <div className="s2usage-lim" data-provider={str(p.provider)}>
       <Logo id={str(p.provider)} name={name} />
@@ -185,32 +204,65 @@ function Provider({ p, limit, updatedAt }: { p: RecordValue; limit: LimitRow; up
         <div className="s2usage-limh">
           <b>{name}</b>
           {sub ? <span className="s2usage-muted">{sub}</span> : null}
-          <span className={`pill ${p.error ? "bad" : told ? "ok" : "idle"}`}>{p.error ? "Couldn’t check" : told ? "Measured" : "Not published"}</span>
+          <span className={`pill ${failed ? "bad" : told ? "ok" : "idle"}`}>{signIn ? "Sign in again" : failed ? "Couldn’t check" : told ? "Measured" : "Not published"}</span>
         </div>
         {windows.map((w, i) => <LimWindow key={i} {...w} />)}
         {billing.map((b, i) => <Billing key={`b${i}`} b={b} />)}
-        {p.error ? <small className="s2-err">{str(p.error)}</small>
+        {failed ? <small className="s2-err">{plainError(limit.line || p.error)}</small>
           : told ? <small>{`as of ${ago(updatedAt)}, asked ${name}`}</small>
           : <small>{str(p.summary) || "This service does not say what it allows."}</small>}
+        {failed && onCheck ? <Btn onClick={onCheck}>Check again</Btn> : null}
+        {signIn && openSettings ? <Btn onClick={() => { sessionStorage.setItem("branch.openAddAccount", str(p.provider)); openSettings("accounts"); }}>Sign in again</Btn> : null}
       </div>
     </div>
   );
 }
 
-function Allowances({ engine }: { engine: WindowEngine }) {
+function Allowances({ engine, openSettings }: { engine: WindowEngine; openSettings?: (page: string) => void }) {
   const res = useLive<RecordValue>(engine, "usage.status", {}, []);
+  const auth = useLive<RecordValue>(engine, "models.authStatus", {}, []);
   const data = rec(res.data);
   const providers = list(data.providers);
-  const limits = readLimits(res.data);
+  // Saved accounts' emails, the same ones Settings › Accounts lists, name each row.
+  const limits = withAccountEmails(readLimits(res.data), accountEmails(auth.data));
   return (
     <Sec title="Account allowances" hint="What each account has left. Every figure comes from its service.">
-      {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
+      {res.error ? <p className="hint s2-err" role="alert">{plainError(res.error)}</p> : null}
       {res.loading && !res.data ? <Hint>Checking accounts…</Hint> : null}
       {res.data && !providers.length ? <Empty>No account reports an allowance yet.</Empty> : null}
-      {providers.length ? <div className="s2usage-lims">{providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} />)}</div> : null}
+      {providers.length ? <div className="s2usage-lims">{providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} openSettings={openSettings} onCheck={() => void res.reload()} />)}</div> : null}
       {data.refreshing === true ? <Hint>Checking accounts again…</Hint> : null}
       <AllowanceRows engine={engine} />
     </Sec>
+  );
+}
+
+/** Settings › Accounts & usage (R1): what Branch spent in the chosen period, with 7 / 30 / 90 days and the report
+ *  window, drawn as Classic's spend card above. */
+export function AccountSpend({ engine, level }: { engine: WindowEngine; level: number }) {
+  const [days, setDays] = useState("30");
+  const [report, setReport] = useState(false);
+  const names = useNames(engine);
+  const spend = useResource<RecordValue>(engine, "sessions.usage", { range: `${days}d`, ...ALL, ...LOCAL, limit: 1 });
+  return <>
+    <SpendCard spend={spend} days={days} setDays={setDays} onOpen={() => setReport(true)} />
+    {report ? <ReportDialog engine={engine} lv={level} days={days} names={names} onClose={() => setReport(false)} /> : null}
+  </>;
+}
+
+/** Settings › Accounts & usage (R1): what each account has left, as Classic's allowance list, without its heading and
+ *  without the rows the R1 page draws as its own rows. */
+export function AccountAllowanceList({ engine, openSettings }: { engine: WindowEngine; openSettings?: (page: string) => void }) {
+  const res = useLive<RecordValue>(engine, "usage.status", {}, []);
+  const auth = useLive<RecordValue>(engine, "models.authStatus", {}, []);
+  const data = rec(res.data);
+  const providers = list(data.providers);
+  const limits = withAccountEmails(readLimits(res.data), accountEmails(auth.data));
+  return (
+    <div className="s2usage-lims" data-need="usage.status">
+      {res.error ? <p className="hint s2-err" role="alert">{plainError(res.error)}</p> : null}
+      {providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} openSettings={openSettings} onCheck={() => void res.reload()} />)}
+    </div>
   );
 }
 
@@ -265,7 +317,7 @@ function periodDates(s: RepState): RecordValue {
 }
 
 /** The sessions.usage request for the report: who (Trunk, person), the time zone, the lineage, then the dates. */
-export function reportParams(s: RepState, sel: Sel): RecordValue {
+function reportParams(s: RepState, sel: Sel): RecordValue {
   return {
     ...(s.agent ? { agentId: s.agent } : ALL), ...(s.creator ? { creatorKey: s.creator } : {}),
     ...(s.utc ? { mode: "utc" } : LOCAL), groupBy: s.lineage, limit: 1000,
@@ -300,7 +352,7 @@ function daysOf(data: RecordValue): Day[] {
   });
 }
 
-export function ReportDialog({ engine, lv, days, names, onClose }: { engine: WindowEngine; lv: number; days: string; names: Map<string, string>; onClose: () => void }) {
+function ReportDialog({ engine, lv, days, names, onClose }: { engine: WindowEngine; lv: number; days: string; names: Map<string, string>; onClose: () => void }) {
   const [s, setS] = useState<RepState>(() => initial(days));
   const set = (patch: Partial<RepState>) => setS((o) => ({ ...o, ...patch }));
   const waiting = s.period === "Custom…" && !(s.from && s.to);
@@ -312,14 +364,17 @@ export function ReportDialog({ engine, lv, days, names, onClose }: { engine: Win
   const year = useQuery(engine, "usage.cost", lv >= 1 ? { days: 365, ...ALL, ...LOCAL } : null);
   const [menu, setMenu] = useState<MenuAnchor | null>(null);
   const error = period.error ?? picked.error;
+  // Export needs the counted numbers: it stays off while the report counts, and when no count ever arrived.
+  const counting = (period.loading && !period.data) || (sel !== null && !picked.data && !picked.error);
+  const exportOff = waiting || counting || !period.data;
   return (
-    <Dialog title={title(s)} wide onClose={onClose} footer={<><Btn ghost aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 120 }); }}>Export</Btn></>}>
+    <Dialog title={title(s)} wide onClose={onClose} footer={<><Btn ghost aria-haspopup="menu" disabled={exportOff} title={exportOff ? "Export is ready once the numbers are counted." : undefined} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 120 }); }}>Export</Btn></>}>
       <ReportTop s={s} set={set} lv={lv} />
       {lv >= 1 ? <ReportFilters s={s} set={set} names={names} creators={list(rec(period.data).creatorOptions)} all={all} /> : null}
       {lv >= 2 ? <QueryBox s={s} set={set} /> : null}
-      {error ? <p className="s2usage-err" role="alert">{error}</p> : null}
+      {error ? <p className="s2usage-err" role="alert">{error} <Btn sm onClick={() => { period.reload(); picked.reload(); }}>Try again</Btn></p> : null}
       {waiting ? <p className="hint">Pick both dates.</p> : null}
-      {(period.loading && !period.data) || (sel && !picked.data && !picked.error) ? <p className="hint">Counting…</p> : null}
+      {counting ? <p className="hint">Counting…</p> : null}
       {period.data && !waiting && (!sel || picked.data) ? <ReportBody s={s} set={set} lv={lv} data={data} all={all} year={rec(year.data)} names={names} filtered={Boolean(sel || s.agent || s.creator)} engine={engine} /> : null}
       <p className="hint">Estimated from each model’s published price. Plans are billed by their own sites.</p>
       {menu ? <Menu label="Export" at={menu} onClose={() => setMenu(null)} items={exportItems(data, all, names)} /> : null}
@@ -350,6 +405,8 @@ function ReportTop({ s, set, lv }: { s: RepState; set: (p: Partial<RepState>) =>
 }
 
 function ReportFilters({ s, set, names, creators, all }: { s: RepState; set: (p: Partial<RepState>) => void; names: Map<string, string>; creators: RecordValue[]; all: Day[] }) {
+  // Splitting by chat app, provider, model or tool is Coming (NO_SPLIT): Technical only.
+  const technical = useLevel() >= 2;
   const chip = s.days && all[s.days[0]] ? (s.days[0] === s.days[1] ? short(all[s.days[0]].date) : `${short(all[s.days[0]].date)}–${short(all[s.days[1]].date)}`) : "";
   return (
     <div className="s2usage-filt" style={s.pin ? { position: "sticky", top: -18, zIndex: 2, background: "var(--raise)", padding: "6px 0", borderBottom: "1px solid var(--line)" } : undefined}>
@@ -365,8 +422,8 @@ function ReportFilters({ s, set, names, creators, all }: { s: RepState; set: (p:
           {creators.map((c) => <option key={str(c.key)} value={str(c.key)}>{creatorName(c)}</option>)}
         </select>
       </label>
-      <label className="s2usage-tsel" title={NO_SPLIT}><span>Chat app</span><select className="inp" aria-label="Chat app" disabled><option>All</option></select></label>
-      {["Provider", "Model", "Tool"].map((k) => <span key={k} className="s2usage-ms"><button type="button" className="chip6" disabled title={NO_SPLIT}>{k}: All</button></span>)}
+      {technical ? <label className="s2usage-tsel" title={NO_SPLIT}><span>Chat app</span><select className="inp" aria-label="Chat app" disabled><option>All</option></select></label> : null}
+      {technical ? ["Provider", "Model", "Tool"].map((k) => <span key={k} className="s2usage-ms"><button type="button" className="chip6" disabled title={NO_SPLIT}>{k}: All</button></span>) : null}
       <Btn ghost sm aria-pressed={s.pin} onClick={() => set({ pin: !s.pin })}>Pin</Btn>
       {chip ? <span className="s2usage-chips"><span className="chip6">{chip}<button type="button" aria-label="Remove days filter" onClick={() => set({ days: null })}><Ico name="x" s /></button></span></span> : null}
     </div>
@@ -563,7 +620,7 @@ function Heat({ year }: { year: RecordValue }) {
 }
 
 /** Tokens and errors by local (or UTC) weekday and hour, from each conversation's quarter-hour buckets. */
-export function timeBuckets(rows: RecordValue[], utc: boolean) {
+function timeBuckets(rows: RecordValue[], utc: boolean) {
   const dow = Array<number>(7).fill(0); const hours = Array<number>(24).fill(0);
   const hourMsgs = Array<number>(24).fill(0); const hourErrs = Array<number>(24).fill(0);
   const at = (b: RecordValue) => { const d = new Date(`${str(b.date)}T00:00:00Z`); d.setTime(d.getTime() + num(b.quarterIndex) * 900_000); return d; };
@@ -714,7 +771,7 @@ const ROLE: Record<string, string> = { user: "You", tool: "Tool", toolResult: "T
 
 /* ---------- export ---------- */
 const cell = (v: unknown) => { const t = String(v ?? ""); return /[",\n]/.test(t) ? `"${t.replace(/"/g, "\"\"")}"` : t; };
-export function csv(rows: unknown[][]): string { return rows.map((r) => r.map(cell).join(",")).join("\n"); }
+function csv(rows: unknown[][]): string { return rows.map((r) => r.map(cell).join(",")).join("\n"); }
 
 function download(name: string, body: string, type: string) {
   const url = URL.createObjectURL(new Blob([body], { type }));
@@ -794,8 +851,8 @@ function AllowanceRows({ engine }: { engine: WindowEngine }) {
   return (
     <>
       <Ctl title="Offer to save progress at 95%" sub={<>It asks once per account window, never for an estimate. <button type="button" className="link-k" onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
-      <Ctl title="Asking a service what is left" off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
-      <DesktopCtl title="Show usage in the tray" sub="A small ring by the clock opens the same list." name="trayUsage" />
+      <Ctl title="Asking a service what is left" coming off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
+      <DesktopCtl title="Also show usage in the system tray" sub="The usage ring is in the bottom bar. In the desktop app, you can also show it in the system tray." name="trayUsage" />
     </>
   );
 }
@@ -820,7 +877,7 @@ function Keeping({ engine, lv }: { engine: WindowEngine; lv: number }) {
       <Ctl title="Keep conversations" sub={sub}>
         <Seg label="Keep conversations" value={keep} options={[{ id: "30", label: "30 days" }, { id: "365", label: "1 year" }, { id: "forever", label: "Forever" }]} disabled={config.loading} onChange={setKeep} />
       </Ctl>
-      <Ctl title="Checkpoints" sub="Kept before a Trunk changes files. Put any of them back." off={NO_CKPT}><Btn sm>See all</Btn></Ctl>
+      <Ctl title="Checkpoints" sub="Kept before a Trunk changes files. Put any of them back." coming off={NO_CKPT}><Btn sm>See all</Btn></Ctl>
       {lv >= 1 ? <Ctl title="Conversations" sub="Pick several to delete, or clear the archive."><Btn sm onClick={() => setManage(true)}>Manage</Btn></Ctl> : null}
       {manage ? <ManageDialog engine={engine} onClose={() => setManage(false)} /> : null}
     </Sec>
@@ -829,6 +886,7 @@ function Keeping({ engine, lv }: { engine: WindowEngine; lv: number }) {
 
 /** Manage conversations: sessions.list (active or archived), several deleted with sessions.delete. */
 function ManageDialog({ engine, onClose }: { engine: WindowEngine; onClose: () => void }) {
+  const level = useLevel();
   const [arch, setArch] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [ask, setAsk] = useState<"" | "some" | "archived">("");
@@ -861,7 +919,7 @@ function ManageDialog({ engine, onClose }: { engine: WindowEngine; onClose: () =
           <div className="rows">{rows.map((r) => (
             <label className="prow" key={str(r.key)}>
               <input type="checkbox" checked={sel.has(str(r.key))} onChange={(e) => toggle(str(r.key), e.target.checked)} />
-              <span className="grow"><b>{str(r.label) || str(r.derivedTitle) || str(r.displayName) || str(r.key)}</b><small>{when(r.updatedAt)}{r.archived === true ? " · archived" : ""}</small></span>
+              <span className="grow"><b>{str(r.label) || str(r.derivedTitle) || str(r.displayName) || (showsInternals(level) ? str(r.key) : "Conversation")}</b><small>{when(r.updatedAt)}{r.archived === true ? " · archived" : ""}</small></span>
             </label>
           ))}</div>
         </>
@@ -883,8 +941,8 @@ const SUITES: [string, string][] = [
   ["Check a change by running it", "Builds, tests and the page itself, before and after · Per change · Evidence · passes at 90%"],
 ];
 const BENCH: [string, string][] = [
-  ["Terminal tasks", "Terminal-Bench style tasks, failures sorted"], ["Coding exercises", "Exercises in many languages, in throwaway folders"],
-  ["Desktop tasks", "OSWorld, in virtual machines"], ["Web tasks", "WebVoyager"], ["Research questions", "FRAMES, graded by a judge"], ["Public benchmarks", "Several suites, run head to head"],
+  ["Terminal tasks", "Shell tasks, with the failures sorted"], ["Coding exercises", "Exercises in many languages, in throwaway folders"],
+  ["Desktop tasks", "Whole-desktop tasks, run in virtual machines"], ["Web tasks", "Browsing tasks on real sites"], ["Research questions", "Questions with checked answers, graded by a judge"], ["Public benchmarks", "Several suites, run head to head"],
 ];
 const EVAL_ROWS: [string, string, string][] = [
   ["Test sets", "Make from conversations", "Inputs and expected answers, versioned."], ["Write tests for me", "Start", "Reads what a Trunk does, writes scenarios, and keeps only the ones proved to work."],
@@ -895,7 +953,7 @@ const GRADERS = ["Exact: matches, coverage of key words, tone", "Judge model: fa
 function TestModel() {
   return (
     <Sec title="Test the model you use" hint="Check your model against a ready-made test set." help="Run a ready-made set of tasks against the model you use now, see which it got right, what it cost, and whether anything that used to work has stopped.">
-      <Ctl title="Test set" sub="Each task is checked the same way every time." off={NO_EVAL}>
+      <Ctl title="Test set" sub="Each task is checked the same way every time." coming off={NO_EVAL}>
         <Seg label="Test set" value="everyday" options={[{ id: "everyday", label: "Everyday" }, { id: "money", label: "Money" }, { id: "research", label: "Research" }]} onChange={() => undefined} />
       </Ctl>
       <Acts><Btn disabled title={NO_EVAL}>Run the test</Btn></Acts>
@@ -908,16 +966,16 @@ function Evals({ lv }: { lv: number }) {
   return (
     <Sec title="Evals" hint="Test sets you can run against your own model. Nothing runs by itself.">
       <Plist>{SUITES.map(([t, s]) => <Prow key={t} icon={<Tile><Ico name="check" s /></Tile>} title={t} sub={s}>{run}</Prow>)}</Plist>
-      <Ctl title="Run each suite" sub="Repeated runs reveal cases that change." help="Several runs show which cases flip, and whether the Trunk or the judge is to blame." off={NO_EVAL}>
+      <Ctl title="Run each suite" sub="Repeated runs reveal cases that change." help="Several runs show which cases flip, and whether the Trunk or the judge is to blame." coming off={NO_EVAL}>
         <select className="inp" aria-label="Run each suite"><option>Once</option><option>3 times</option><option>5 times</option></select>
       </Ctl>
-      <Ctl title="Replay recorded tool calls" sub="Tools aren’t run again; a call that doesn’t match stops the case." off={NO_EVAL}><Switch label="Replay recorded tool calls" checked={false} onChange={() => undefined} /></Ctl>
-      <Ctl title="Rehearse without running tools" sub="A model writes what each tool would have returned." off={NO_EVAL}><Switch label="Rehearse without running tools" checked={false} onChange={() => undefined} /></Ctl>
+      <Ctl title="Replay recorded tool calls" sub="Tools aren’t run again; a call that doesn’t match stops the case." coming off={NO_EVAL}><Switch label="Replay recorded tool calls" checked={false} onChange={() => undefined} /></Ctl>
+      <Ctl title="Rehearse without running tools" sub="A model writes what each tool would have returned." coming off={NO_EVAL}><Switch label="Rehearse without running tools" checked={false} onChange={() => undefined} /></Ctl>
       {lv >= 1 ? (
         <>
           <Hint>Graders</Hint>
           <ul className="s2usage-cmds">{GRADERS.map((g) => <li key={g}>{g}</li>)}</ul>
-          {EVAL_ROWS.map(([t, b, sub]) => <Ctl key={t} title={t} sub={sub || undefined} off={NO_EVAL}><Btn sm disabled>{b}</Btn></Ctl>)}
+          {EVAL_ROWS.map(([t, b, sub]) => <Ctl key={t} title={t} sub={sub || undefined} coming off={NO_EVAL}><Btn sm disabled>{b}</Btn></Ctl>)}
           <Hint>Benchmarks</Hint>
           <Plist>{BENCH.map(([t, s]) => <Prow key={t} title={t} sub={s}>{run}</Prow>)}</Plist>
           <Hint>Results over time and the hardest tasks show here after a run.</Hint>
@@ -943,11 +1001,11 @@ function MovingInOut({ engine, lv }: { engine: WindowEngine; lv: number }) {
   return (
     <Sec title="Moving in and out">
       <Ctl title="Move in from another assistant" sub="Bring in memories from other coding apps." help="Memory and instructions from Claude Code or Hermes Agent, as the engine finds them on this computer."><Btn sm onClick={() => setMove(true)}>Move in…</Btn></Ctl>
-      <Ctl title="Show other assistants’ conversations" sub="Show other coding-app conversations without copying them." help="Claude Code, Codex, OpenCode and other assistants on this computer and your paired computers, in their own group in the list. Shown, not copied. Off until you choose: it reads other assistants’ conversation history on this computer.">
+      <Ctl title="Show other assistants’ conversations" sub="Show other coding-app conversations without copying them." help="Claude Code, Codex, OpenCode and other assistants on this computer and your paired computers, in their own group in the list. Shown, not copied. Off until you choose: it reads other assistants’ conversation history on this computer." off={present.length || busy ? undefined : "No other assistants were found on this computer."}>
         <Switch label="Show other assistants’ conversations" checked={all} disabled={busy || !present.length} onChange={(v) => void setAll(v)} />
       </Ctl>
       {plugins.error ? <p className="hint s2-err" role="alert">{plugins.error}</p> : null}
-      <Ctl title="Take everything with you" sub="Your Trunks, skills, procedures, memory and settings as one file." help="Your Trunks, skills, procedures, memory and settings as one file. Keys never go in it." off={NO_EXPORT}><Btn sm>Export…</Btn></Ctl>
+      <Ctl title="Take everything with you" sub="Your Trunks, skills, procedures, memory and settings as one file." help="Your Trunks, skills, procedures, memory and settings as one file. Keys never go in it." coming off={NO_EXPORT}><Btn sm>Export…</Btn></Ctl>
       {lv >= 1 ? (
         <>
           <Hint>Show the conversations other coding apps keep, from this computer and your paired computers, in the sidebar. Applies to everyone on this Gateway.</Hint>
@@ -982,7 +1040,7 @@ function CodexFolders({ config }: { config: Cfg }) {
     <Ctl title="More Codex folders" sub="Folders Branch also reads Codex conversations from." help="Folders Branch also reads Codex conversations from. Takes effect after the Gateway restarts." after={
       <div className="s2usage-x">
         <div className="s2usage-list">{homes.length ? homes.map((h) => <span className="chip6" key={name(h)}>{name(h)}<button type="button" className="ib" aria-label={`Remove ${name(h)}`} onClick={() => void config.set(path, homes.filter((x) => x !== h))}><Ico name="x" s /></button></span>) : <small>None.</small>}</div>
-        <div className="acts"><input className="inp" aria-label="More Codex folders: add" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm onClick={add}>Add</Btn></div>
+        <div className="acts"><input className="inp" aria-label="More Codex folders: add" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm disabled={!draft.trim()} onClick={add}>Add</Btn></div>
         {err ? <small className="s2-err" role="alert">{err}</small> : null}
       </div>
     } />
@@ -1031,19 +1089,20 @@ export function MoveInDialog({ engine, onClose }: { engine: WindowEngine; onClos
 // a workspace folder on a schedule, or now). The artifact has no row for it; add one here, styled like "Backups",
 // once the engine has the method.
 function MoneyMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
+  const [checked, stamp] = useCheckedAt();
   const [backups, setBackups] = useState(false);
   const usage = useLive<RecordValue>(engine, "usage.status", {}, []);
   const balances = list(rec(usage.data).providers).flatMap((p) => list(p.billing).filter((b) => b.type === "balance").map((b) => `${str(p.displayName)}: ${str(b.unit) === "USD" ? money(b.amount) : `${num(b.amount)} ${str(b.unit)}`}`));
   return (
     <Sec title="Money and keeping, more" group="Keeping things" showHeading={false}>
-      <Ctl title="Spend caps per service" sub="Pauses work when a service reaches its monthly limit." help="A monthly limit for each service that bills per use; work pauses and asks when one is reached." off={NO_CAPS}><Btn sm>Set caps</Btn></Ctl>
+      <Ctl title="Spend caps per service" sub="Pauses work when a service reaches its monthly limit." help="A monthly limit for each service that bills per use; work pauses and asks when one is reached." coming off={NO_CAPS}><Btn sm>Set caps</Btn></Ctl>
       <Ctl title="Prepaid balances" sub={balances.length ? balances.join(" · ") : "For services that sell credit, how much is left, checked when you open this page."}>
-        <Btn sm disabled={usage.loading} onClick={() => void usage.reload()}>Check now</Btn>
+        <Btn sm disabled={usage.loading} onClick={() => void usage.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check now</Btn><CheckedAt at={checked} />
       </Ctl>
-      <Ctl title="What each project cost" sub="Spend by project and by conversation, for the period you pick." off={NO_PROJECT}><Btn sm>See projects</Btn></Ctl>
+      <Ctl title="What each project cost" sub="Spend by project and by conversation, for the period you pick." coming off={NO_PROJECT}><Btn sm>See projects</Btn></Ctl>
       <Ctl title="Backups" sub="Back up conversations, memory and settings on a schedule." help="A copy of your conversations, memory and settings, on a schedule you choose."><Btn sm onClick={() => setBackups(true)}>See backups</Btn></Ctl>
-      <Ctl title="Saved before it’s deleted" sub="Export old conversations before removing them." help="Conversations older than your limit are exported to a file first, then removed." off={NO_SAVE_FIRST}><Btn sm>See the next one</Btn></Ctl>
-      <Ctl title="Things held for your yes" sub="Hold restore conflicts here for your review." help="After a restore, anything that didn’t match waits here instead of being overwritten." off={NO_HELD}><Btn sm>See them</Btn></Ctl>
+      <Ctl title="Saved before it’s deleted" sub="Export old conversations before removing them." help="Conversations older than your limit are exported to a file first, then removed." coming off={NO_SAVE_FIRST}><Btn sm>See the next one</Btn></Ctl>
+      <Ctl title="Things held for your yes" sub="Hold restore conflicts here for your review." help="After a restore, anything that didn’t match waits here instead of being overwritten." coming off={NO_HELD}><Btn sm>See them</Btn></Ctl>
       {backups ? <BackupsDialog engine={engine} lv={lv} onClose={() => setBackups(false)} /> : null}
     </Sec>
   );
@@ -1106,16 +1165,16 @@ function KeepingMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
       <Ctl title="Tidy the list" sub={str(g("mode")) === "warn" ? "Branch only tells you what it would tidy." : "Idle conversations leave the list; search still finds them."}>
         <Seg label="Tidy the list" value={str(g("mode")) === "warn" ? "warn" : "enforce"} options={[{ id: "enforce", label: "Do it" }, { id: "warn", label: "Only warn" }]} disabled={config.loading} onChange={(v) => void config.set(`${M}.mode`, v)} />
       </Ctl>
-      <Ctl title="Archive conversations idle for" sub="They leave the list; search still finds them."><Num label="Archive conversations idle for" unit="days" min={1} placeholder="30" value={asNum(daysFrom(g("pruneAfter") ?? ""))} onCommit={(v) => void config.set(`${M}.pruneAfter`, v === null ? null : `${v}d`)} /></Ctl>
+      <Ctl title="Archive conversations idle for" sub="They leave the list; search still finds them. Unset keeps them forever."><Num label="Archive conversations idle for" unit="days" min={1} value={asNum(daysFrom(g("pruneAfter") ?? ""))} onCommit={(v) => void config.set(`${M}.pruneAfter`, v === null ? null : `${v}d`)} /></Ctl>
       <Ctl title="Most conversations in the list" sub="The oldest idle ones are archived first past this."><Num label="Most conversations in the list" min={1} placeholder="5000" value={asNum(str(g("maxEntries")))} onCommit={(v) => void config.set(`${M}.maxEntries`, v === null ? null : Math.round(v))} /></Ctl>
       <Ctl title="Space for conversations, per Trunk" sub="Past 80%, the oldest archived transcripts are removed first."><Num label="Space for conversations, per Trunk" unit="GB" min={1} placeholder="10" value={asNum(gbFrom(g("maxDiskBytes") ?? ""))} onCommit={(v) => void config.set(`${M}.maxDiskBytes`, v === null ? null : `${v}gb`)} /></Ctl>
-      <Ctl title="Try a tidy-up" sub="Lists what would be archived or removed, changing nothing." off={NO_DRY}><Btn sm>Show me</Btn></Ctl>
+      <Ctl title="Try a tidy-up" sub="Lists what would be archived or removed, changing nothing." coming off={NO_DRY}><Btn sm>Show me</Btn></Ctl>
       <Ctl title="Tidy now" sub={tidy.error ?? tidy.note ?? "Archives and removes what the rules above say, now."}><Btn sm disabled={tidy.busy} onClick={runTidy}>Tidy</Btn></Ctl>
       {lv >= 2 ? <CodeRow title="From a terminal" code="branch sessions cleanup --dry-run" sub="Shows what a tidy-up would do." /> : null}
       <Ctl title="Conversation storage" sub="Transcripts, databases and the archive."><Btn sm onClick={() => setStore(true)}>See it</Btn></Ctl>
       <Ctl title="Compress older transcripts" sub="Packs older transcripts into the archive." help="Packs older transcripts into the archive. Off until you choose: it uses processor and disk while it works."><Switch label="Compress older transcripts" checked={compress} disabled={config.loading} onChange={(v) => void config.set(`${M}.coldStorage.enabled`, v)} /></Ctl>
       <Ctl title="After" sub="At least 1 day."><Num label="After" unit="days" min={1} placeholder="30" value={asNum(str(g("coldStorage.afterDays")))} onCommit={(v) => void config.set(`${M}.coldStorage.afterDays`, v === null ? null : Math.round(v))} /></Ctl>
-      <Ctl title="Run now" sub={!compress ? "Turn on “Compress older transcripts” first." : cold.error ?? cold.note ?? "Packs transcripts older than the time above, now."}><Btn sm disabled={!compress || cold.busy} onClick={runCold}>Run now</Btn></Ctl>
+      <Ctl title="Run now" sub={compress ? cold.error ?? cold.note ?? "Packs transcripts older than the time above, now." : undefined} off={compress ? undefined : "Turn on “Compress older transcripts” first."}><Btn sm disabled={!compress || cold.busy} onClick={runCold}>Run now</Btn></Ctl>
       <Ctl title="Delete uploaded files after" sub="Files you and chat apps send in." help="Files you and chat apps send in. Pictures Trunks make are not affected. Off until you choose: it deletes files.">
         <Pick label="Delete uploaded files after" value={typeof ttl === "number" ? String(ttl) : "never"} options={[{ id: "never", label: "Never" }, ...[1, 6, 12, 24, 48, 72, 168].map((h) => ({ id: String(h), label: `${h} hour${h > 1 ? "s" : ""}` }))]} onChange={(v) => void config.set("attachments.ttlHours", v === "never" ? null : Number(v))} />
       </Ctl>
@@ -1177,7 +1236,7 @@ const SESSKEYS: Key[] = [
   ["session.resetByType", "The same, per kind of chat (direct, group, thread).", "json", null, "{}"],
   ["session.resetByChannel", "The same, per chat app.", "json", null, "{}"],
   ["session.maintenance.mode", "Tidy the list, or only warn.", "sel", ["enforce", "warn"], "enforce"],
-  ["session.maintenance.pruneAfter", "Time before an untouched conversation is archived.", "txt", null, "30d"],
+  ["session.maintenance.pruneAfter", "Time before an untouched conversation is archived.", "txt", null, "Forever"],
   ["session.maintenance.archiveDashboardAfter", "Time before an idle conversation in this window is archived.", "txt", null, "7d"],
   ["session.maintenance.maxEntries", "Most conversations in the list.", "num", null, "5000"],
   ["session.maintenance.preserveRecent", "Conversations active within this time are never tidied.", "txt", null, "unset"],
@@ -1190,7 +1249,7 @@ const SESSKEYS: Key[] = [
 ];
 
 /** The value as typed: numbers for num, JSON for json, booleans for bool; "" means back to default. */
-export function parseKey(kind: Key[2], raw: string): unknown {
+function parseKey(kind: Key[2], raw: string): unknown {
   if (raw.trim() === "") return null;
   if (kind === "num") { const n = Number(raw); if (!Number.isFinite(n)) throw new Error("Enter a number."); return n; }
   if (kind === "json") return JSON.parse(raw) as unknown;
@@ -1228,8 +1287,8 @@ function EverySetting({ engine }: { engine: WindowEngine }) {
 function Flagged({ lv }: { lv: number }) {
   return (
     <Sec title="Flagged replies">
-      <Ctl title="Let me send a flagged reply to the Branch team" sub="Even then each flag asks, and only that reply and your note go." help="Even then each flag asks, and only that reply and your note go. Off until you choose: it sends them outside Branch, to the Branch team." off={NO_FLAG}><Switch label="Let me send a flagged reply to the Branch team" checked={false} onChange={() => undefined} /></Ctl>
-      {lv >= 1 ? <Ctl title="Reset Branch" sub="Start over on this computer." off={NO_RESET}><Btn sm className="bad">Reset…</Btn></Ctl> : null}
+      <Ctl title="Let me send a flagged reply to the Branch team" sub="Even then each flag asks, and only that reply and your note go." help="Even then each flag asks, and only that reply and your note go. Off until you choose: it sends them outside Branch, to the Branch team." coming off={NO_FLAG}><Switch label="Let me send a flagged reply to the Branch team" checked={false} onChange={() => undefined} /></Ctl>
+      {lv >= 1 ? <Ctl title="Reset Branch" sub="Start over on this computer." coming off={NO_RESET}><Btn sm className="bad">Reset…</Btn></Ctl> : null}
     </Sec>
   );
 }
@@ -1261,15 +1320,15 @@ function YourData({ engine }: { engine: WindowEngine }) {
         <li><span>Web searches</span><span className="hint">{search}</span></li>
         <li><span>Nothing else, unless you connect it</span><span className="hint" /></li>
       </ul>} />
-      <Ctl title="Export everything" sub="Export your conversations, memory and files in one .zip." help="Conversations, memory, Library, attached originals, personality files and household defaults, in one .zip." off={NO_EXPORT}><Btn sm disabled>Export (.zip)</Btn></Ctl>
-      <Ctl title="Move to another computer" sub="A locked copy without keys or passwords." help="A locked copy without keys or passwords. Paste it into setup on the other computer and Branch rebuilds itself." off={CLI_BACKUP}><Btn sm disabled>Make a secure snapshot…</Btn></Ctl>
+      <Ctl title="Export everything" sub="Export your conversations, memory and files in one .zip." help="Conversations, memory, Library, attached originals, personality files and household defaults, in one .zip." coming off={NO_EXPORT}><Btn sm disabled>Export (.zip)</Btn></Ctl>
+      <Ctl title="Move to another computer" sub="A locked copy without keys or passwords." help="A locked copy without keys or passwords. Paste it into setup on the other computer and Branch rebuilds itself." coming off={CLI_BACKUP}><Btn sm disabled>Make a secure snapshot…</Btn></Ctl>
       <BackupsGo data={rec(backup.data)} />
-      <Ctl title="Back up to GitHub" sub="Back up to a private repository on a schedule." help="A private repository of yours, on a schedule or just before each update." off={CLI_BACKUP}>
+      <Ctl title="Back up to GitHub" sub="Back up to a private repository on a schedule." help="A private repository of yours, on a schedule or just before each update." coming off={CLI_BACKUP}>
         <Seg label="Back up to GitHub" value={git ? "daily" : "off"} options={[{ id: "off", label: "Off" }, { id: "daily", label: "Every day" }, { id: "update", label: "Before each update" }]} onChange={() => undefined} />
       </Ctl>
-      <Ctl title="Restore from a backup" sub="Restore newer files and list what could not be restored." help="A restore keeps this computer’s Trunks and any newer files, and lists exactly what it left out." off={CLI_BACKUP}><Btn sm disabled>Restore…</Btn></Ctl>
-      <Ctl title="Pictures and video this month" sub="Counted in the month’s cost with everything else." off={NO_MEDIA} />
-      <Ctl title="Delete everything" sub="See every copy of your conversations, files and memory." help="Every conversation, memory, file and backup, and what outside memory services hold for you." off={NO_WIPE}><Btn sm className="bad">Delete everything…</Btn></Ctl>
+      <Ctl title="Restore from a backup" sub="Restore newer files and list what could not be restored." help="A restore keeps this computer’s Trunks and any newer files, and lists exactly what it left out." coming off={CLI_BACKUP}><Btn sm disabled>Restore…</Btn></Ctl>
+      <Ctl title="Pictures and video this month" sub="Counted in the month’s cost with everything else." coming off={NO_MEDIA} />
+      <Ctl title="Delete everything" sub="See every copy of your conversations, files and memory." help="Every conversation, memory, file and backup, and what outside memory services hold for you." coming off={NO_WIPE}><Btn sm className="bad">Delete everything…</Btn></Ctl>
     </Sec>
   );
 }
@@ -1277,15 +1336,24 @@ function YourData({ engine }: { engine: WindowEngine }) {
 function BackupsGo({ data }: { data: RecordValue }) {
   const places = list(data.locations).map((l) => str(l.name));
   return (
-    <Ctl title="Backups go to" sub="Where scheduled backups are written." off={CLI_BACKUP}>
+    <Ctl title="Backups go to" sub="Where scheduled backups are written." coming off={CLI_BACKUP}>
       <select className="inp" aria-label="Backups go to">{["This computer", ...places].map((p) => <option key={p}>{p}</option>)}</select>
     </Ctl>
   );
 }
 
+/** Rows and cards that wait for a later update (each greyed with a Coming reason, or a whole card of them): they show at
+ *  Technical only (Private #1093 item 4), so search finds them only there too. */
+const COMING_CARDS = new Set(["Test the model you use", "Evals", "Flagged replies"]);
+const COMING_ROWS = new Set([
+  "Asking a service what is left", "Checkpoints", "Take everything with you", "Spend caps per service", "What each project cost",
+  "Saved before it’s deleted", "Things held for your yes", "Try a tidy-up", "Export everything", "Move to another computer",
+  "Backups go to", "Back up to GitHub", "Restore from a backup", "Pictures and video this month", "Delete everything",
+]);
+
 export const ROWS: RowEntry[] = ([
   ["Offer to save progress at 95%", "Account allowances", 0],
-  ["Asking a service what is left", "Account allowances", 0], ["Show usage in the tray", "Account allowances", 0],
+  ["Asking a service what is left", "Account allowances", 0], ["Also show usage in the system tray", "Account allowances", 0],
   ["Keep conversations", "Keeping things", 0], ["Checkpoints", "Keeping things", 0], ["Conversations", "Keeping things", 1],
   ["Test set", "Test the model you use", 0],
   ...SUITES.map(([t]): [string, string, number] => [t, "Evals", 0]),
@@ -1305,4 +1373,4 @@ export const ROWS: RowEntry[] = ([
   ["What’s kept on this computer", "Your data", 0], ["What leaves this computer", "Your data", 0], ["Export everything", "Your data", 0],
   ["Move to another computer", "Your data", 0], ["Backups go to", "Your data", 0], ["Back up to GitHub", "Your data", 0], ["Restore from a backup", "Your data", 0],
   ["Pictures and video this month", "Your data", 0], ["Delete everything", "Your data", 0],
-] as [string, string, number][]).map(([title, sec, lv]) => ({ page: "usage", title, ...(sec ? { sec } : {}), group: ({ "Money and keeping, more": "Keeping things", "Keeping things, more": "Keeping things", "Conversations, every setting": "Keeping things" } as Record<string, string>)[sec] ?? (sec || "Data & usage"), lv: lv as 0 | 1 | 2 }));
+] as [string, string, number][]).map(([title, sec, lv]) => ({ page: "usage", title, ...(sec ? { sec } : {}), group: ({ "Money and keeping, more": "Keeping things", "Keeping things, more": "Keeping things", "Conversations, every setting": "Keeping things" } as Record<string, string>)[sec] ?? (sec || "Data & usage"), lv: (COMING_CARDS.has(sec) || COMING_ROWS.has(title) ? 2 : lv) as 0 | 1 | 2 }));

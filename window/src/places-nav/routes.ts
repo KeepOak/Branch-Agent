@@ -1,8 +1,10 @@
 // Where the window can be (DESIGN-SPEC §3.3 saved layout, §4.6 Places, §4.7 Settings): a conversation,
 // one of the seven places, or a Settings page. The last route is kept on this computer and reopened at launch.
+import { DEFAULT_TRUNK_NAME } from "../connect/trunk-name";
 import type { IconName } from "../shell/icons";
 
-export type PlaceId = "overview" | "canopy" | "inbox" | "automations" | "library" | "people" | "customize" | "office";
+/** Grove (office) and Seedbank open from the sidebar, so they are places without a sidebar row. */
+export type PlaceId = "overview" | "canopy" | "inbox" | "automations" | "library" | "people" | "customize" | "office" | "seedbank";
 
 export type Route =
   | { kind: "chat"; key: string | null }
@@ -20,10 +22,22 @@ export const PLACES: { id: PlaceId; name: string; icon: IconName }[] = [
   { id: "customize", name: "Customize", icon: "sliders" },
 ];
 
+/** Grove and Seedbank have no sidebar row, so their titles sit beside the registry. */
+const UNLISTED_PLACE_NAMES: Record<"office" | "seedbank", string> = { office: "Grove", seedbank: "Seedbank" };
+
+/** Every place's title as a person reads it, from the registry above. */
+export const PLACE_NAMES: Record<PlaceId, string> = {
+  ...Object.fromEntries(PLACES.map((p) => [p.id, p.name])),
+  ...UNLISTED_PLACE_NAMES,
+} as Record<PlaceId, string>;
+
+/** A place's title for the header and the window title: its name, never its route id. */
+export const placeTitle = (place: PlaceId): string => PLACE_NAMES[place] ?? place;
+
 const KEY = "branch.route";
 
 export function isPlace(id: string): id is PlaceId {
-  return id === "office" || PLACES.some((p) => p.id === id);
+  return id === "office" || id === "seedbank" || PLACES.some((p) => p.id === id);
 }
 
 export function parseRoute(raw: string | null): Route | null {
@@ -70,8 +84,13 @@ export function saveRoute(route: Route): void {
   }
 }
 
-/** The window title (§3.2 Parity adds, document-title-status): "<page> — Branch", with "(N) " or "(Offline) " in front. */
+/** The product name in the window title: never the default agent's internal name. */
+const PRODUCT = "Branch";
+
+/** The window title (§3.2 Parity adds, document-title-status): "<page> — Branch", with "(N) " or "(Offline) " in front.
+ *  A fresh profile, and any page that is only the default agent or the product name itself, is just "Branch". */
 export function windowTitle(page: string, waiting: number, offline: boolean): string {
   const prefix = offline ? "(Offline) " : waiting > 0 ? `(${waiting}) ` : "";
-  return `${prefix}${page ? `${page} — ` : ""}Branch`;
+  const shown = page && page !== DEFAULT_TRUNK_NAME && page !== PRODUCT && page !== `${PRODUCT} Agent` ? page : "";
+  return `${prefix}${shown ? `${shown} — ` : ""}${PRODUCT}`;
 }

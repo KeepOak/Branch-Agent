@@ -17,7 +17,7 @@ import { Thread } from "./Thread";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }) });
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
+afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
 
 const KEY = "agent:main:main";
 const engine: WindowEngine = {
@@ -94,7 +94,7 @@ describe("Stop", () => {
     const container = await mount(<Thread name="Juniper" history={kept} live={[]} pendingUser={null} running={false} engine={engine} onAnswer={() => {}} onStart={() => {}} />);
     expect(container.querySelector('[data-testid="run-stopped"]')?.textContent).toBe("StoppedWhat it did so far is kept.");
     expect(container.querySelector('[data-testid="run-done"]')).toBeNull();
-    expect([...container.querySelectorAll('[data-testid="suggestion-row"] button')].map((b) => b.textContent)).toEqual(["Carry on"]);
+    expect([...container.querySelectorAll('[data-testid="suggestion-row"] button')].map((b) => b.getAttribute("aria-label"))).toEqual(["Reply: Carry on"]);
   });
 
   it("does not name gateway-injected as the model, or play Done after a stop", () => {
@@ -139,10 +139,11 @@ describe("done cheer", () => {
 
 describe("Couldn't finish", () => {
   it("has Details, Copy error, Check status (opens the Gateway popover) and Dismiss", async () => {
-    const history: Block[] = [{ kind: "user", key: "u", text: "x" }, { kind: "error", key: "e", message: "No API key found for provider \"llama-cpp\"." }];
+    localStorage.setItem("branch.level", "technical");
+    const history: Block[] = [{ kind: "user", key: "u", text: "x" }, { kind: "error", key: "e", message: "the provider timed out" }];
     const container = await mount(<Thread name="Juniper" history={history} live={[]} pendingUser={null} running={false} engine={engine} onAnswer={() => {}} />);
     const strip = container.querySelector('[data-testid="run-error"]')!;
-    expect([...strip.querySelectorAll("button")].map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual(["Dismiss", "Copy error", "Sign in an account", "Check status"]);
+    expect([...strip.querySelectorAll("button")].map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual(["Dismiss", "Copy error", "Check status"]);
     let opened = 0;
     window.addEventListener(CHECK_STATUS_EVENT, () => opened++);
     await act(async () => [...strip.querySelectorAll("button")].find((b) => b.textContent === "Check status")!.click());
@@ -153,17 +154,19 @@ describe("Couldn't finish", () => {
     const message = "401 Missing bearer or basic authentication in header";
     expect(isModelAccountMissingError(message)).toBe(true);
     expect(isModelAccountMissingError("No API key resolved for provider \"openai\" (auth mode: api-key, checked: env).")).toBe(true);
+    expect(isModelAccountMissingError("Install and sign in to Codex on this computer, then check again.")).toBe(true);
     expect(isModelAccountMissingError("socket hang up")).toBe(false);
     const history: Block[] = [{ kind: "user", key: "u", text: "x" }, { kind: "error", key: "e", message }];
     const container = await mount(<Thread name="Juniper" history={history} live={[]} pendingUser={null} running={false} engine={engine} onAnswer={() => {}} />);
-    const strip = container.querySelector('[data-testid="run-error"]')!;
-    expect(strip.textContent).toContain("Juniper couldn’t finish: no model account is signed in for this Trunk.");
+    const notice = container.querySelector('[data-testid="connect-model"]')!;
+    expect(notice.textContent).toContain("Connect a model to get answers");
+    expect([...notice.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Connect a model"]);
     let page = "";
     const listen = (event: Event) => {
       page = (event as CustomEvent<{ page?: string }>).detail?.page ?? "";
     };
     window.addEventListener("branch:navigate-settings", listen);
-    await act(async () => strip.querySelector<HTMLButtonElement>("[data-testid=open-accounts]")!.click());
+    await act(async () => notice.querySelector("button")!.click());
     window.removeEventListener("branch:navigate-settings", listen);
     expect(page).toBe("accounts");
   });
@@ -175,7 +178,7 @@ describe("Couldn't finish", () => {
     const history: Block[] = [{ kind: "user", key: "u", text: "x" }, { kind: "error", key: "e", message }];
     const container = await mount(<Thread name="Juniper" history={history} live={[]} pendingUser={null} running={false} engine={engine} onAnswer={() => {}} />);
     const strip = container.querySelector('[data-testid="run-error"]')!;
-    expect([...strip.querySelectorAll("button")].map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual(["Dismiss", "Copy error", "Open that switch", "Check status"]);
+    expect([...strip.querySelectorAll("button")].map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual(["Dismiss", "Open that switch", "Check status"]);
     let page = "";
     const listen = (event: Event) => {
       page = (event as CustomEvent<{ page?: string }>).detail?.page ?? "";

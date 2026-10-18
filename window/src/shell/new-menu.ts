@@ -2,6 +2,7 @@
 import type { PlaceId } from "../places-nav/routes";
 import type { MenuItem } from "./Menu";
 import { openNewGroupChat } from "../rooms/NewGroupChat";
+import { requestCustomize } from "../places/customize/r1-request";
 
 type Ctx = { newWith: (agentId: string) => void; trunks: { id: string; name: string }[]; defaultId: string | null; newTrunk: () => void; openPlace: (p: PlaceId) => void; makeTrunk: () => void; quickAsk: () => void };
 
@@ -25,11 +26,11 @@ export function newMenuItems(c: Ctx): MenuItem[] {
       label: `with ${trunk.name}${trunk.id === c.defaultId ? " (default)" : ""}`,
       run: () => c.newWith(trunk.id), testid: `new-with-${trunk.id}`,
     })) },
-    { label: "New Trunk", run: c.newTrunk, testid: "new-trunk" },
+    { label: "New Trunk", hint: "random character", run: c.newTrunk, testid: "new-trunk" },
+    { label: "Start from a template", sub: "Templates in Seedbank", run: () => { requestCustomize({ mode: "community" }); c.openPlace("customize"); }, testid: "new-trunk-from-job" },
+    { label: "Have Branch make a Trunk", run: c.makeTrunk, testid: "new-make-trunk" },
     { label: "New group chat", hint: "people, Trunks, agents", run: openNewGroupChat, testid: "new-group-chat" },
     { label: "New automation", run: () => c.openPlace("automations"), testid: "new-automation" },
-    { label: "A Trunk from a job…", run: () => c.openPlace("customize") },
-    { label: "Have Branch make a Trunk", run: c.makeTrunk, testid: "new-make-trunk" },
     { label: "Quick ask", hint: "Ctrl Shift Space", run: c.quickAsk, testid: "new-quick-ask" },
   ];
 }

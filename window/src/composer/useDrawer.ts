@@ -18,8 +18,8 @@ export type Pick =
   | { kind: "context"; token: Token; key: ContextKey };
 
 /** "@" adds context (the preview's CTX list, Cline's and Claude Code's @-mentions). */
-export type ContextKey = "file" | "folder" | "diff" | "git" | "url" | "web" | "conversation";
-export const CONTEXT: ReadonlyArray<{ key: ContextKey; icon: string; title: string; line: string }> = [
+type ContextKey = "file" | "folder" | "diff" | "git" | "url" | "web" | "conversation";
+const CONTEXT: ReadonlyArray<{ key: ContextKey; icon: string; title: string; line: string }> = [
   { key: "file", icon: "doc", title: "A file", line: "Its text goes with the message" },
   { key: "folder", icon: "folder", title: "A folder", line: "What’s in it, as a list" },
   { key: "diff", icon: "edit", title: "Changes not yet saved", line: "Your uncommitted changes" },
@@ -57,7 +57,8 @@ function useCatalogs(engine: WindowEngine | undefined) {
       (r) => setPeople(list(rec(r).users).map((u) => ({ profileId: str(u.profileId), name: str(u.displayName) }))),
       (e: unknown) => {
         // A conversation with no first message yet has no one in it to tell; it is asked again next time.
-        if (!/not found|unknown session/i.test(errorText(e))) setPeopleError(`Couldn't load People. Try again. (${errorText(e)})`);
+        // The engine's own words go to the log, never into the line (Private #1089).
+        if (!/not found|unknown session/i.test(errorText(e))) { console.warn("users.mentionable failed:", errorText(e)); setPeopleError("Couldn't load People. Try again."); }
       },
     );
   }, [engine, people]);

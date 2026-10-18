@@ -1,10 +1,16 @@
 // A Trunk's profile (preview 30-trunks profileHTMLC18 + 31-trunksp): a wide dialog with the 84 px face, the counts the
 // engine can give, one row per thing to change (each opens the editor where it changes), its automations, then
 // Pause / Make default / Edit. It loads its own data, so any place (the thread header too) can open it by id.
+// "What it can do" (parity row 16, owner placement 2026-10-14) re-hosts the Classic list from shell/CanDo.tsx as a section.
 import { useState, type ReactNode } from "react";
-import { shownWhy } from "../../shell/shown-why";
+import { usableModelName } from "../../composer/model";
+import { safeStorage, saveDraft } from "../../composer/drafts";
+import { CAN_DO, type CanDoGo } from "../../shell/CanDo";
+import { PairDialog } from "../customize/pairing";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
+import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
+import { menuAtLevel } from "../../shell/menu-level";
 import { Icon } from "../../shell/icons";
 import { notify } from "../../shell/notify";
 import { Switch } from "../../shell/Popover";
@@ -17,14 +23,15 @@ import { errorText, lookOf, type TrunkRow } from "./model";
 import { loadProfile, skillsLine, type ProfileData } from "./profile-data";
 import { TrunkEditor, type EditorTab } from "./TrunkEditor";
 import { RemoveTrunkDialog } from "./RemoveTrunk";
+import { ShareTrunkDialog } from "./ShareTrunk";
 import { TrunkFace } from "./TrunkFace";
 import { LineIcon } from "./TrunkFace";
 import { TrunkFiles } from "./TrunkFiles";
+import { requestCustomize } from "../customize/r1-request";
 import { Layer } from "./layer";
 import "./trunk.css";
 
-// TODO(engine-lane): pausing a Trunk (Customize › Trunks › Pause, Trunk profile) needs the engine's pause for a Trunk.
-export const PAUSE_WHY = "Needs the engine’s pause for a Trunk.";
+// Pausing has no engine call yet, so the profile shows no Pause control until it does. Seed actions stay greyed with their reason.
 
 export type TrunkProfileProps = {
   engine: WindowEngine;
@@ -33,6 +40,8 @@ export type TrunkProfileProps = {
   onClose: () => void;
   openSettings?: (page: string) => void;
   openPlace?: (place: PlaceId) => void;
+  /** Opens a conversation by key: What it can do's asks open this Trunk's own conversation. */
+  openConversation?: (key: string) => void;
 };
 
 function Row({ icon, label, value, mono, onClick }: { icon: ReactNode; label: string; value: string; mono?: boolean; onClick?: () => void }) {
@@ -66,7 +75,8 @@ function Head({ row, data, isDefault, level }: { row: TrunkRow; data: ProfileDat
   </>;
 }
 
-function Automations({ engine, data, reload }: { engine: WindowEngine; data: ProfileData; reload: () => void }) {
+/** Its automations with an on/off switch each (cron.update); the R1 details panel re-hosts this list as its routines. */
+export function Automations({ engine, data, reload }: { engine: WindowEngine; data: Pick<ProfileData, "automations">; reload: () => void }) {
   const [error, setError] = useState<string | null>(null);
   if (!data.automations?.length) return null;
   const toggle = (id: string, enabled: boolean) => engine.request("cron.update", { id, patch: { enabled } }).then(reload, (e: unknown) => setError(errorText(e)));
@@ -80,14 +90,14 @@ function Automations({ engine, data, reload }: { engine: WindowEngine; data: Pro
 function Rows({ row, data, level, edit, openPlace, showFiles }: { row: TrunkRow; data: ProfileData; level: Level; edit: (t: EditorTab) => void; openPlace?: (p: PlaceId) => void; showFiles: () => void }) {
   const may = readMay(data.snap, row.id);
   const where = may.startOn === "this" ? "This computer" : data.computers.find((c) => c.id === may.startOn)?.name || may.startOn;
-  const model = data.models.find((m) => m.ref === row.model)?.name || row.model.split("/").pop() || "Default model";
+  const model = usableModelName(row.model, data.models);
   const mayLine = [may.read ? "Reads your files" : "Only its own folder", may.browse ? "uses the browser" : "no browser"].join(" · ");
   return (
     <div className="tk-rows">
       <Row icon={<Icon name="monitor" small />} label="Its computer" value={where} onClick={() => edit("computers")} />
       <Row icon={<LineIcon name="spark" />} label="Model" value={model} onClick={() => edit("may")} />
       <Row icon={<LineIcon name="shield" />} label="May do" value={mayLine} onClick={() => edit("may")} />
-      <Row icon={<LineIcon name="plug" />} label="Its tools" value="Customize › Tools" onClick={openPlace && (() => openPlace("customize"))} />
+      <Row icon={<LineIcon name="plug" />} label="Its tools" value="" onClick={openPlace && (() => { requestCustomize({ kind: "Toolsets" }); openPlace("customize"); })} />
       <Row icon={<Icon name="book" small />} label="What it remembers" value={data.facts === null ? "Library › Memory" : data.facts === 1 ? "1 fact" : `${data.facts} facts`} onClick={openPlace && (() => openPlace("library"))} />
       {shows(level, "advanced") && <Row icon={<LineIcon name="spark" />} label="Skills it may use" value={skillsLine(data, row.id)} onClick={openPlace && (() => openPlace("customize"))} />}
       {shows(level, "technical") && <Row icon={<Icon name="folder" small />} label="Its folder" value={row.workspace || "Not reported"} mono onClick={showFiles} />}
@@ -96,32 +106,70 @@ function Rows({ row, data, level, edit, openPlace, showFiles }: { row: TrunkRow;
   );
 }
 
+/** What it can do: the Classic list, each row opening where it happens. A row this window can't open is disabled. */
+function CanDo({ reach, go }: { reach: (g: CanDoGo) => boolean; go: (g: CanDoGo) => void }) {
+  return <section className="tk-sec tk-sec-tight" aria-label="What it can do">
+    <h3 className="tk-h">What it can do</h3>
+    <div className="tk-rows">{CAN_DO.map(([title, line, g]) => (
+      <button key={title} type="button" className="tk-prow" disabled={!reach(g)} onClick={() => go(g)}>
+        <span className="tk-grow"><b>{title}</b></span><span className="tk-pf-val">{line}</span><span className="chev"><Icon name="chev" small /></span>
+      </button>
+    ))}</div>
+  </section>;
+}
+
 export function TrunkProfile(props: TrunkProfileProps) {
   const { engine, agentId, level, onClose } = props;
   const data = useLoad(() => loadProfile(engine, agentId), agentId);
   const [editing, setEditing] = useState<EditorTab | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [files, setFiles] = useState(false);
+  const [pairing, setPairing] = useState(false);
   const row = data.data?.roster.agents.find((a) => a.id === agentId);
   if (editing) return <TrunkEditor engine={engine} agentId={agentId} level={level} tab={editing} openSettings={props.openSettings} onClose={() => setEditing(null)} onSaved={data.reload} />;
   if (removing && row) return <RemoveTrunkDialog engine={engine} agentId={agentId} name={row.name} onClose={() => setRemoving(false)} onRemoved={onClose} />;
+  if (pairing) return <Layer><PairDialog engine={engine} close={() => setPairing(false)} /></Layer>;
+  if (sharing && row) return <ShareTrunkDialog engine={engine} agentId={agentId} name={row.name} onClose={() => setSharing(false)} />;
   if (!data.data || !row) {
     const line = data.error || (data.loading ? "Reading this Trunk…" : "This Trunk is no longer in the engine’s list.");
     return <Layer><Dialog title="Trunk" wide onClose={onClose} testid="trunk-profile"><p className={data.error ? "tk-error" : "tk-hint"} role={data.error ? "alert" : "status"}>{line}</p></Dialog></Layer>;
   }
-  return <ProfileBody {...props} data={data.data} row={row} reload={data.reload} edit={setEditing} remove={() => setRemoving(true)} files={files} setFiles={setFiles} />;
+  return <ProfileBody {...props} data={data.data} row={row} reload={data.reload} edit={setEditing} remove={() => setRemoving(true)} share={() => setSharing(true)} pair={() => setPairing(true)} files={files} setFiles={setFiles} />;
 }
 
-type BodyProps = TrunkProfileProps & { data: ProfileData; row: TrunkRow; reload: () => void; edit: (t: EditorTab) => void; remove: () => void; files: boolean; setFiles: (v: boolean) => void };
-function ProfileBody({ engine, level, onClose, openPlace, data, row, reload, edit, remove, files, setFiles }: BodyProps) {
+type BodyProps = TrunkProfileProps & { data: ProfileData; row: TrunkRow; reload: () => void; edit: (t: EditorTab) => void; remove: () => void; share: () => void; pair: () => void; files: boolean; setFiles: (v: boolean) => void };
+function ProfileBody({ engine, level, onClose, openPlace, openSettings, openConversation, data, row, reload, edit, remove, share, pair, files, setFiles }: BodyProps) {
   const [error, setError] = useState<string | null>(null);
+  const [more, setMore] = useState<MenuAnchor | null>(null);
   const isDefault = data.roster.defaultId === row.id;
   const block = defaultBlock(data.roster, row.id), write = canWrite(engine);
   const toDefault = () => makeDefault(engine, data.roster, row.id).then(() => { notify(`${row.name} is now your default Trunk. Unrouted chats go to it.`); reload(); }, (e: unknown) => setError(errorText(e)));
+  const reach = (g: CanDoGo) => g.kind === "pair" || Boolean(g.kind === "place" ? openPlace : g.kind === "settings" ? openSettings : openConversation);
+  // An ask waits in this Trunk's own message box (the composer reads it as the conversation's draft); nothing is sent.
+  const go = (g: CanDoGo) => {
+    if (g.kind === "pair") { pair(); return; }
+    onClose();
+    if (g.kind === "place") openPlace?.(g.place);
+    else if (g.kind === "settings") openSettings?.(g.page);
+    else { const key = `agent:${row.id}:main`; saveDraft(safeStorage(), key, g.text); openConversation?.(key); }
+  };
+  const noop = () => {};
+  const moreItems: MenuItem[] = [
+    { label: "Share this Trunk…", run: () => { setMore(null); share(); } },
+    { label: "Copy seed", run: noop, disabled: "Copy seed comes in a later update." },
+    { label: "Download seed", run: noop, disabled: "Download seed comes in a later update." },
+    { label: "Copy its look", run: noop, disabled: "Copy its look comes in a later update." },
+    { label: "Share to Seedbank…", run: noop, disabled: "Share to Seedbank comes in a later update." },
+    ...(isDefault ? [] : [
+      { kind: "sep" as const },
+      { label: "Remove Trunk…", danger: true, disabled: write ? undefined : WRITE_WHY, run: () => { setMore(null); remove(); } },
+    ]),
+  ];
+  const openMore = (e: { currentTarget: HTMLElement }) => { const r = e.currentTarget.getBoundingClientRect(); setMore({ x: r.left, y: r.bottom + 4 }); };
   const footer = <>
-    <button type="button" className="btn ghost tk-pf-pause" disabled title={shownWhy(PAUSE_WHY)}>Pause {row.name}</button>
     {!isDefault && <button type="button" className="btn ghost" disabled={!!block || !write} title={block || (write ? undefined : WRITE_WHY)} onClick={() => void toDefault()}>Make default</button>}
-    {!isDefault && <button type="button" className="btn ghost" disabled={!write} title={write ? undefined : WRITE_WHY} onClick={remove}>Remove {row.name}…</button>}
+    <button type="button" className="btn ghost" aria-label={`More for ${row.name}`} aria-haspopup="menu" onClick={openMore}>⋯</button>
     <button type="button" className="btn pri" onClick={() => edit("look")}>Edit {row.name}</button>
   </>;
   return (
@@ -131,9 +179,11 @@ function ProfileBody({ engine, level, onClose, openPlace, data, row, reload, edi
         <Rows row={row} data={data} level={level} edit={edit} openPlace={openPlace && ((p) => { onClose(); openPlace(p); })} showFiles={() => setFiles(!files)} />
         {files && shows(level, "technical") && <TrunkFiles engine={engine} agentId={row.id} />}
         <Automations engine={engine} data={data} reload={reload} />
+        <CanDo reach={reach} go={go} />
         {data.notes.map((n) => <p key={n} className="tk-hint" role="status">{n}</p>)}
         {error && <p className="tk-error" role="alert">{error}</p>}
       </div>
+      {more && <Menu at={more} label={`More for ${row.name}`} testid="trunk-more" onClose={() => setMore(null)} items={menuAtLevel(moreItems, shows(level, "technical"))} />}
     </Dialog></Layer>
   );
 }

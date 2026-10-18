@@ -1,5 +1,6 @@
 // Files, pictures and long pasted text in the draft (DESIGN-SPEC §4.3.7 File chips, Pasted text chip), sent with
 // chat.send's `attachments` as OpenClaw's browser UI does (ui/src/pages/chat/attachment-api.ts).
+import { plainError } from "../shell/plain-error";
 export type DraftFile = {
   id: string;
   kind: "file" | "text";
@@ -23,7 +24,7 @@ export type AttachmentPolicy = { maxBytes?: number; maxImageBytes?: number };
 /** Pasting more than this many characters makes a chip instead (§4.3.7 "Pasted text" chip). */
 export const PASTED_TEXT_CHIP_CHARS = 1000;
 
-export function isImage(mimeType: string): boolean {
+function isImage(mimeType: string): boolean {
   return mimeType.startsWith("image/");
 }
 
@@ -69,7 +70,7 @@ export function pastedTextFile(id: string, text: string): DraftFile {
   };
 }
 
-export function toBase64(bytes: Uint8Array): string {
+function toBase64(bytes: Uint8Array): string {
   let binary = "";
   const step = 0x8000;
   for (let i = 0; i < bytes.length; i += step) {
@@ -104,6 +105,6 @@ export async function readDraftFile(id: string, file: File, origin: DraftFile["o
     const content = toBase64(bytes);
     return { ...base, content, ...(isImage(mimeType) ? { preview: `data:${mimeType};base64,${content}` } : {}) };
   } catch (error) {
-    return { ...base, problem: `Couldn't attach: ${base.fileName}`, detail: error instanceof Error ? error.message : String(error) };
+    return { ...base, problem: `Couldn't attach: ${base.fileName}`, detail: plainError(error) };
   }
 }

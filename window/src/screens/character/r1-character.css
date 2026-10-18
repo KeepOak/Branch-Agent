@@ -1,0 +1,29 @@
+/* The re-hosted Classic character panel inside the R1 frame (parity row 19). Clear glass per README item 48: the card
+   adds no fill of its own; the face floats over the conversation and its name and state sit on small frosted pills. */
+.r1-character { display: contents; }
+/* The box the Classic card measures: the conversation column below the header, its foot lined up over the composer. */
+.r1-character-bounds { position: absolute; left: 0; right: 0; top: var(--hdr); bottom: var(--r1-character-foot, 0px); pointer-events: none; visibility: hidden; }
+.r1-character .character-panel { position: fixed; right: 18px; bottom: 96px; z-index: 20; display: flex; align-items: flex-end; gap: 4px; padding: 6px; border: 0; border-radius: 22px;
+  background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; cursor: grab; touch-action: none; user-select: none; outline-offset: 2px; }
+.r1-character .character-panel.dragging { cursor: grabbing; }
+.r1-character .character-panel-row { display: flex; align-items: flex-end; gap: 8px; }
+.r1-character .character-panel-body { display: grid; justify-items: center; gap: 4px; }
+.r1-character .character-panel-label { display: grid; justify-items: center; gap: 3px; text-align: center; max-width: 160px; }
+.r1-character .character-panel-label :is(b, small) { width: fit-content; max-width: 100%; box-sizing: border-box; padding: 2px 9px; border-radius: var(--r-pill, 999px);
+  background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); }
+.r1-character .character-panel-label b { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r1-character .character-panel-label small { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--gp-ink-2, var(--ink-2)); white-space: nowrap; }
+.r1-character .character-panel-label i { width: 7px; height: 7px; border-radius: 50%; background: var(--line-2); }
+.r1-character .character-panel-label i:is([data-state=think], [data-state=work], [data-state=search], [data-state=read], [data-state=wait]) { background: var(--accent); }
+.r1-character .character-panel-label i:is([data-state=yay], [data-state=talk]) { background: var(--ok); }
+.r1-character .character-panel-label i[data-state=oops] { background: var(--bad); }
+.r1-character .character-panel-controls { display: grid; gap: 2px; align-self: flex-start; cursor: auto; }
+.r1-character .character-panel-controls button { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; color: inherit; cursor: pointer; }
+/* A narrow window keeps the face, at the size Appearance chose (its drawing doesn't shrink with its box), and its state;
+   the name is in the header already (Classic drops it under 760px too). */
+@media (max-width: 760px) {
+  .r1-character .character-panel-label b { display: none; }
+}
+/* One view of the work at a time: the card steps aside while the small computer window or an open sidebar drawer covers it. */
+body:has(.pip7) .r1-character .character-panel, .r1-frame[data-drawer="true"] ~ .r1-character .character-panel { display: none; }
+:root[data-transparency="reduce"] .r1-character .character-panel-label :is(b, small) { background: var(--raise); }

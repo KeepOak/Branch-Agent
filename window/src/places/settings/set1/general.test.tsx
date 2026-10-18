@@ -10,7 +10,7 @@ import { GENERAL_ROWS, GeneralPage } from "./general";
 import { GENERAL_PREFS } from "./general-conversation";
 import { ttlMinutes } from "./general-summaries";
 import { IN_BROWSER } from "../../../connect/desktop-controls";
-import { platformName } from "../../../setup/steps-later";
+import { KEEP_SIGNED_OUT, START_AT_SIGN_IN, START_NEEDS_UPDATE } from "./general-more";
 import { visibleDevNotes } from "../../../shell/shown-why.testing";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -109,6 +109,42 @@ describe("Settings › General", () => {
     expect(projects.querySelector('[role="status"]')).toBeNull();
   });
 
+  it("puts added projects first and lets the Trunk folders unfold and fold again", async () => {
+    const { engine } = engineOf({ "projects.list": { projects: [
+      { id: "generated", displayName: "Trunk folder", source: "workspace" },
+      { id: "added", displayName: "Added project", source: "manual" },
+      { id: "legacy", displayName: "Older project" },
+    ] } });
+    await render(engine);
+    const projects = host.querySelector('[data-sec="Projects"]')!;
+    const fold = projects.querySelector("details")!;
+    expect(fold.open).toBe(false);
+    expect(fold.querySelector("summary")?.textContent).toBe("Folders Branch made for Trunks (1)");
+    expect([...projects.querySelectorAll(".prow b")].map((b) => b.textContent)).toEqual(["Added project", "Older project", "Trunk folder"]);
+    expect([...fold.querySelectorAll(".prow b")].map((b) => b.textContent)).toEqual(["Trunk folder"]);
+    await act(async () => fold.querySelector("summary")!.click());
+    expect(fold.open).toBe(true);
+    await act(async () => fold.querySelector("summary")!.click());
+    expect(fold.open).toBe(false);
+    expect(projects.textContent).not.toContain("Edit");
+  });
+
+  it("omits an empty Trunk fold and hides zero or unknown conversation counts", async () => {
+    const totals: Record<string, number | undefined> = { zero: 0, one: 1, many: 3, unknown: undefined };
+    const { engine, request } = engineOf({
+      "projects.list": { projects: Object.keys(totals).map((id) => ({ id, displayName: id })) },
+      "sessions.list": (params: unknown) => ({ totalCount: totals[(params as { projectId: string }).projectId] }),
+    });
+    await render(engine);
+    const projects = host.querySelector('[data-sec="Projects"]')!;
+    expect(projects.querySelector("details")).toBeNull();
+    const texts = [...projects.querySelectorAll(".prow")].map((p) => p.textContent);
+    expect(texts).toEqual(["zero", "one1 conversation", "many3 conversations", "unknown"]);
+    for (const projectId of Object.keys(totals)) {
+      expect(request).toHaveBeenCalledWith("sessions.list", { projectId, limit: 1, excludeSubagents: true, excludeCron: true });
+    }
+  });
+
   it("When you send while it works saves messages.queue.mode", async () => {
     const { engine, request } = engineOf();
     await render(engine, 1);
@@ -160,7 +196,7 @@ describe("Settings › General", () => {
     const { engine } = engineOf();
     await render(engine, 1);
     // In a plain browser the Branch app's own rows are greyed and say where they are changed.
-    for (const t of [`Start with ${platformName()}`]) {
+    for (const t of [START_AT_SIGN_IN, KEEP_SIGNED_OUT]) {
       expect(row(t).getAttribute("aria-disabled")).toBe("true");
       expect(row(t).querySelector(".why-k")?.textContent).toBe(IN_BROWSER);
     }
@@ -168,7 +204,7 @@ describe("Settings › General", () => {
     expect(host.querySelector(".status")).toBeNull();
   });
 
-  it("Start with macOS says why it is greyed when the Branch app is too old to change it (DA-78)", async () => {
+  it("Start Branch when I sign in says why it is greyed when the Branch app is too old to change it (DA-78)", async () => {
     const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
     Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
     // An older Branch app hands the window its gateway but not the startup controls.
@@ -176,10 +212,10 @@ describe("Settings › General", () => {
     try {
       const { engine } = engineOf();
       await render(engine, 0);
-      const start = row("Start with macOS");
+      const start = row(START_AT_SIGN_IN);
       expect(start.getAttribute("aria-disabled")).toBe("true");
       expect(start.querySelector<HTMLInputElement>("input")!.checked).toBe(false);
-      expect(start.querySelector(".why-k")?.textContent).toBe("Update the Branch app on this computer to change this.");
+      expect(start.querySelector(".why-k")?.textContent).toBe(START_NEEDS_UPDATE);
       expect(start.textContent).toContain("Opens quietly in the tray.");
       expect(visibleDevNotes(host)).toEqual([]);
     } finally {
@@ -199,9 +235,9 @@ describe("Settings › General", () => {
       const { engine } = engineOf();
       await render(engine, 0);
       expect(row("Keep working when the window closes")).toBeNull();
-      const start = () => row("Start with Windows").querySelector<HTMLInputElement>("input")!;
+      const start = () => row(START_AT_SIGN_IN).querySelector<HTMLInputElement>("input")!;
       expect(start().checked).toBe(false);
-      expect(row("Start with Windows").getAttribute("aria-disabled")).toBeNull();
+      expect(row(START_AT_SIGN_IN).getAttribute("aria-disabled")).toBeNull();
       await act(async () => start().click());
       expect(set).toHaveBeenCalledWith("startWithWindows", true);
       expect(start().checked).toBe(true);
@@ -212,20 +248,48 @@ describe("Settings › General", () => {
     }
   });
 
-  it("Starting up uses the real platform name, like setup", async () => {
+  it("writes the Keyboard shortcuts the way the Show all dialog does on this computer (DA-80)", async () => {
     const { engine } = engineOf();
     const prev = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
-    const cases: [string, string, string][] = [
-      ["Win32", "Start with Windows", "Start with macOS"],
-      ["MacIntel", "Start with macOS", "Start with Windows"],
-      ["Linux x86_64", "Start with Linux", "Start with Windows"],
-    ];
+    const sub = () => row("Keyboard shortcuts").textContent ?? "";
     try {
-      for (const [platform, title, absent] of cases) {
+      Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => "MacIntel" });
+      await render(engine, 1);
+      expect(sub()).toContain("⌘K to find anything, ⌘N for a new conversation.");
+      expect(sub()).not.toContain("Ctrl");
+      expect(row("Send with").textContent).toContain("⌘Enter");
+      localStorage.setItem("branch.keys", JSON.stringify({ palette: "Ctrl Shift P" }));
+      await render(engine, 0);
+      await act(async () => root.render(<></>));
+      await render(engine, 0);
+      expect(sub()).toContain("⌘⇧P to find anything, ⌘N for a new conversation.");
+      localStorage.setItem("branch.keys", JSON.stringify({ palette: "Ctrl Shift P", newConversation: "Ctrl Alt N" }));
+      Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => "Win32" });
+      await act(async () => root.render(<></>));
+      await render(engine, 0);
+      expect(sub()).toContain("Ctrl Shift P to find anything, Ctrl Alt N for a new conversation.");
+      localStorage.clear();
+      await act(async () => root.render(<></>));
+      await render(engine, 0);
+      expect(sub()).toContain("Ctrl K to find anything, Ctrl N for a new conversation.");
+      expect(sub()).not.toContain("⌘");
+    } finally {
+      if (prev) Object.defineProperty(Navigator.prototype, "platform", prev);
+      else delete (Navigator.prototype as { platform?: string }).platform;
+    }
+  });
+
+  it("Starting up uses the same Start Branch when I sign in words on every computer", async () => {
+    const { engine } = engineOf();
+    const prev = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+    try {
+      for (const platform of ["Win32", "MacIntel", "Linux x86_64"]) {
         Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => platform });
         await render(engine, 0);
-        expect(row(title)).toBeTruthy();
-        expect(host.textContent).not.toContain(absent);
+        expect(row(START_AT_SIGN_IN)).toBeTruthy();
+        expect(host.textContent).not.toContain("Start with Windows");
+        expect(host.textContent).not.toContain("Start with macOS");
+        expect(host.textContent).not.toContain("Start with Linux");
       }
     } finally {
       if (prev) Object.defineProperty(Navigator.prototype, "platform", prev);

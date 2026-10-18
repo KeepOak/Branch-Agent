@@ -2,6 +2,8 @@ import { useEffect, useSyncExternalStore } from "react";
 import { Pebble } from "../face/Pebble";
 import { Icon } from "./icons";
 import { dismiss, getToasts } from "./notify";
+import { onHostnames } from "./plain-address";
+import { plainText } from "./plain-error";
 
 // The notification banner (DESIGN-SPEC §4.10.1): one at a time, top right, 9 s, × and "Open". It says that a
 // Trunk finished something or needs the person, about a conversation that is not the one on screen.
@@ -17,16 +19,29 @@ export type BannerNews = {
   /** A problem banner (§4.10.1 line-icon variant): an alert or chat icon, and its own action in Open's place. */
   icon?: "alert" | "chat";
   action?: { label: string; run: () => void };
+  /** Stays until dismissed or cleared: no timer (the disk-full notice, while saving is paused). */
+  sticky?: boolean;
 };
-export type Banner = BannerNews & { id: number; at: number; count: number };
+type Banner = BannerNews & { id: number; at: number; count: number };
 
-export const BANNER_MS = 9000;
+const BANNER_MS = 9000;
 let current: Banner | null = null;
 let nextId = 1;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
-export function raiseBanner(news: BannerNews): void {
+onHostnames(() => {
+  if (!current) return;
+  const title = plainText(current.title);
+  const text = plainText(current.text);
+  if (title === current.title && text === current.text) return;
+  current = { ...current, title, text };
+  emit();
+});
+
+export function raiseBanner(raw: BannerNews): void {
+  // No hostname, IP address or URL (walkthrough B-026: "Can’t reach <hostname>") and no raw error (Private #1089) at Regular.
+  const news = { ...raw, title: plainText(raw.title), text: plainText(raw.text) };
   for (const toast of getToasts()) dismiss(toast.id);
   if (current && news.sameAs && current.sameAs === news.sameAs) {
     current = { ...current, count: current.count + 1, at: Date.now() };
@@ -49,10 +64,15 @@ const subscribe = (l: () => void) => {
 };
 const snapshot = () => current;
 
+/** The banner store, for a window that draws it with its own shell (screens/approvals/ProblemBanners.tsx). */
+export type ShownBanner = Banner;
+export const subscribeBanner = subscribe;
+export const currentBanner = snapshot;
+
 export function BannerView({ onOpen, setupOpen = false }: { onOpen: (sessionKey: string) => void; setupOpen?: boolean }) {
   const banner = useSyncExternalStore(subscribe, snapshot);
   useEffect(() => {
-    if (!banner) {
+    if (!banner || banner.sticky) {
       return;
     }
     const timer = setTimeout(() => clearBanner(banner.id), Math.max(0, banner.at + BANNER_MS - Date.now()));
@@ -73,10 +93,10 @@ export function BannerView({ onOpen, setupOpen = false }: { onOpen: (sessionKey:
       <div className="banner-body">
         <span className="banner-src">Branch · now</span>
         <b className="banner-title">
-          {banner.title}
+          {plainText(banner.title)}
           {banner.count > 1 ? ` ×${banner.count}` : ""}
         </b>
-        <span className="banner-text">{banner.text}</span>
+        <span className="banner-text">{plainText(banner.text)}</span>
       </div>
       <button type="button" className="ib sm" aria-label="Dismiss" title="Dismiss" onClick={() => clearBanner(banner.id)}>
         <Icon name="x" small />

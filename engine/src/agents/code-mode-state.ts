@@ -11,6 +11,7 @@ import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import { observeAgentRunApprovalWait } from "./agent-run-approval-wait.js";
 import { raceWithAbortSignal } from "./agent-tools.abort.js";
 import { runBridgeRequest } from "./code-mode-bridge.js";
+import { CodeModeToolProgress } from "./code-mode-call-timeout.js";
 import type { CodeModeCatalogProjection } from "./code-mode-catalog.js";
 import { CODE_MODE_EXEC_TOOL_NAME, CODE_MODE_WAIT_TOOL_NAME } from "./code-mode-control-tools.js";
 import type {
@@ -94,6 +95,8 @@ export function createCodeModeRunOwner(
 ) {
   let required = initialRequired;
   const inbox = new CodeModeProgramDataInbox(config);
+  // Live output of owned tool calls, reported if this cell times out.
+  const progress = new CodeModeToolProgress();
   // A parked cell still owns pending calls and their output. Re-admission waits
   // for its final exec/wait result rather than stranding or replaying that work.
   const releaseRuntimeRefresh = captureAgentPluginRuntimeRefresh().hold();
@@ -229,6 +232,7 @@ export function createCodeModeRunOwner(
     runId,
     signal,
     inbox,
+    progress,
     results: createCodeModeResultsAccess(ctx, config),
     sessionStore,
     close,
@@ -537,6 +541,7 @@ export function createPendingBridgeStates(
   params: {
     config: CodeModeConfig;
     inbox: CodeModeProgramDataInbox;
+    progress?: CodeModeToolProgress;
     results: CodeModeResultsAccess;
     sessionStore?: CodeModeSessionStoreAccess;
     runtime: ToolSearchRuntime;
@@ -587,7 +592,9 @@ export function createPendingBridgeStates(
       ctx: params.ctx,
       request,
       signal,
-      onUpdate: params.onUpdate,
+      onUpdate: params.progress
+        ? observeBridgeProgress(params.progress, request, params.onUpdate)
+        : params.onUpdate,
     });
     const completion = raceWithAbortSignal(bridgeCall, signal).catch(() => {
       // Canceled leases are fenced; this cannot retain an arbitrary abort reason.
@@ -602,6 +609,7 @@ export function createPendingBridgeStates(
       },
     };
     void completion.then(() => {
+      params.progress?.complete(request.id);
       params.signal.removeEventListener("abort", onAbort);
       state.settledSequence = ++nextPendingBridgeSettlementSequence;
       state.settled = true;
@@ -625,6 +633,29 @@ export function createPendingBridgeStates(
     });
     return state;
   });
+}
+
+function bridgeProgressLabel(request: PendingBridgeRequest): string {
+  const args = Array.isArray(request.args) ? request.args : [];
+  if (request.method === "callValue" && typeof args[0] === "string") {
+    return args[0];
+  }
+  if (request.method === "namespace" && Array.isArray(args[1])) {
+    return [args[0], ...args[1]].join(".");
+  }
+  return request.method;
+}
+
+function observeBridgeProgress(
+  progress: CodeModeToolProgress,
+  request: PendingBridgeRequest,
+  onUpdate?: AgentToolUpdateCallback,
+): AgentToolUpdateCallback {
+  const label = bridgeProgressLabel(request);
+  return (update) => {
+    progress.observe(request.id, label, update);
+    onUpdate?.(update);
+  };
 }
 
 export function storeSuspendedRun(

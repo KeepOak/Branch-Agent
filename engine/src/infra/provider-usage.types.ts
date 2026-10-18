@@ -83,6 +83,15 @@ export type ProviderUsageSnapshot = {
   readingAt?: number;
   /** Why the latest check couldn't replace a kept reading (the check's error). */
   staleReason?: string;
+  /**
+   * The account's token lacks a scope the usage endpoint requires (Claude setup-tokens have no user:profile).
+   * Signing in again with the account's full login reads its usage; no other retry will.
+   */
+  signInNeeded?: boolean;
+  /** Model or subscription limit reset time in ms. A usage-check 429 must not set this. */
+  rateLimitedUntil?: number;
+  /** The account can run. Set even when the usage-check endpoint itself returned 429. */
+  ready?: boolean;
 };
 
 export type UsageSummary = {

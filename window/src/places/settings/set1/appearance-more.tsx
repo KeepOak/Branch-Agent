@@ -10,7 +10,7 @@ import { askBeforeDelete } from "../../../shell/ConfirmDelete";
 import { list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Ctl, LinkBtn, Sec, Seg, Switch, useConfig, useLevel, useSaveRunner, Val } from "../kit";
-import { DESKTOP, FACE_KINDS, FACE_OFF, rowOf, rowsOf } from "./appearance-rows";
+import { DESKTOP, rowOf, rowsOf } from "./appearance-rows";
 import { SpecRow, type Look } from "./appearance-sections";
 import type { useTrunk } from "./appearance-top";
 
@@ -36,7 +36,6 @@ export function AppearanceMore(p: MoreProps) {
   );
 }
 
-const KINDS = FACE_KINDS.map((k) => ({ id: k, label: k, ...(k === "Videos" ? {} : { off: FACE_OFF }) }));
 const STAGE_BG = [["none", "None"], ["rings", "Growth rings"], ["oak", "Oak"]];
 
 function CharactersSec({ engine, look, trunk }: MoreProps) {
@@ -44,16 +43,12 @@ function CharactersSec({ engine, look, trunk }: MoreProps) {
   const still = first ? trunkAppearance(String(record(first.identity).avatar ?? "") || undefined, trunk.nameOf(first))?.still : undefined;
   return (
     <Sec title="Characters" group="The Trunk beside the conversation">
-      <Ctl title="How faces are drawn" sub="Every Trunk on one stage; each kind keeps its own settings."><Seg value="Videos" options={KINDS} label="How faces are drawn" onChange={() => undefined} /></Ctl>
       <div className="r618-stage ap-k">
         {still ? <img className="stage-av-k" src={still} alt="" width={64} height={64} /> : <span className="stage-av-k" aria-hidden="true">{first ? trunk.nameOf(first).slice(0, 1) : ""}</span>}
         <small>The animated 3D videos. Still at rest; they act on events.</small>
       </div>
       <TrunkCards engine={engine} look={look} trunk={trunk} />
-      <Ctl title="Bring in a character" sub="Live2D, VRM, MikuMikuDance or Spine." help="Live2D, VRM, MikuMikuDance or Spine. Checked before it joins your characters and kept for offline use." off="The engine can’t check and keep a character file yet."><Btn sm>Choose a .zip</Btn></Ctl>
       {rowsOf("Characters").map((r) => <SpecRow key={r.key} r={r} look={look} />)}
-      <Ctl title="Pose by hand" sub="Pose a 3D character with a joystick or keyframes." help="Pose a 3D character and make your own moves with a joystick or keyframes." off="Needs a 3D character, and the window draws faces as videos."><Btn sm>Open the poser</Btn></Ctl>
-      <Ctl title="Describe a pet" sub="An image model draws its sprite sheet." off="The engine can’t draw a pet’s sprite sheet yet."><input className="inp" placeholder="A small fox with a leaf scarf" aria-label="Describe a pet" /><Btn sm>Draw it</Btn></Ctl>
     </Sec>
   );
 }
@@ -61,7 +56,7 @@ function CharactersSec({ engine, look, trunk }: MoreProps) {
 function TrunkCards({ engine, look, trunk }: Omit<MoreProps, "openSettings">) {
   const save = useSaveRunner();
   const models = useResource<RecordValue>(engine, "models.list", {});
-  const refs = list(models.data?.models).map((m) => ({ id: `${String(m.provider)}/${String(m.id)}`, label: visible(m.name ?? m.id) }));
+  const refs = list(models.data?.models).filter((m) => m.available !== false).map((m) => ({ id: `${String(m.provider)}/${String(m.id)}`, label: visible(m.name ?? m.id) }));
   if (!trunk.agents.length) return null;
   const setModel = (id: string, v: string) => void save(async () => { await engine.request("agents.update", { agentId: id, model: v || null }); await trunk.reload(); });
   return (
@@ -72,12 +67,10 @@ function TrunkCards({ engine, look, trunk }: Omit<MoreProps, "openSettings">) {
         return (
           <div key={id} className="r618-char">
             <b>{trunk.nameOf(a)}</b>
-            <label><span>Look</span><select className="inp" value="Videos" aria-label={`${trunk.nameOf(a)}: look`} onChange={() => undefined}>{KINDS.map((k) => <option key={k.id} disabled={Boolean(k.off)}>{k.label}</option>)}</select></label>
-            <label title="Each Trunk’s voice is chosen in Settings › Voice."><span>Voice</span><select className="inp" disabled aria-label={`${trunk.nameOf(a)}: voice`}><option>Set in Voice</option></select></label>
             <label><span>Model</span>
               <select className="inp" value={model} disabled={models.loading} aria-label={`${trunk.nameOf(a)}: model`} onChange={(e) => setModel(id, e.target.value)}>
                 <option value="">Default</option>
-                {model && !refs.some((r) => r.id === model) ? <option value={model}>{visible(model)}</option> : null}
+                {model && !refs.some((r) => r.id === model) ? <option value={model}>No model is set up</option> : null}
                 {refs.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
               </select>
             </label>

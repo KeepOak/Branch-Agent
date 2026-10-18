@@ -7,17 +7,32 @@ export type DesktopControlsState = {
   keepWorking: boolean; keepAwake: boolean; trayUsage: boolean; autoApplyUpdates: boolean; startWithWindows: boolean; branchOnPath: boolean;
   /** Older desktop apps leave it out. */
   agentControl?: boolean;
+  /** Keep awake while Trunks work on battery too (Private #454 D); older desktop apps leave it out. */
+  keepAwakeOnBattery?: boolean;
+  /** Linux with the engine service only: keep working when nobody is signed in (systemd linger). */
+  keepWorkingSignedOut?: boolean;
+  /** One-time lines the app has for a control, such as why the engine runs inside the app on this computer. */
+  notes?: Partial<Record<string, string>>;
 };
-export type DesktopControlName = keyof DesktopControlsState;
+/** The switches: every key whose value is on or off. */
+export type DesktopControlName = { [K in keyof DesktopControlsState]-?: DesktopControlsState[K] extends boolean | undefined ? K : never }[keyof DesktopControlsState];
 export type DesktopControlsBridge = {
   get(): Promise<DesktopControlsState>;
   set(name: DesktopControlName, on: boolean): Promise<DesktopControlsState>;
   openDownload(id: string): Promise<void>;
   setTrayUsage(left: number | null): void;
   onOpenUsage(listener: () => void): () => void;
+  /** Settings › Remove Branch (Private #1102): what removing the app takes and keeps; older apps leave these out. */
+  removalPlan?(): Promise<AppRemovalPlan>;
+  /** Removes the app and quits it; the data folder (conversations, Trunks, settings) stays. */
+  removeApp?(): Promise<void>;
 };
+/** From the desktop (desktop-controls.ts appRemovalPlan): the confirm sheet shows exactly these lines. */
+export type AppRemovalPlan = { supported: boolean; reason?: string; removes: string[]; keeps: string[]; dataDir: string };
 
-const CHANGED = "branch:desktop-controls";
+/** Sent on window with the new state after any control changes, so every row showing a control follows it. */
+export const DESKTOP_CONTROLS_CHANGED = "branch:desktop-controls";
+const CHANGED = DESKTOP_CONTROLS_CHANGED;
 export const IN_BROWSER = "This is done by the Branch app on your computer; open Branch there to change it.";
 export const NEEDS_NEWER_APP = "Needs a newer Branch app on this computer.";
 
@@ -44,16 +59,19 @@ export function useDesktopControls() {
     window.addEventListener(CHANGED, follow);
     return () => { live = false; window.removeEventListener(CHANGED, follow); };
   }, [bridge]);
-  const set = useCallback(async (name: DesktopControlName, on: boolean) => {
-    if (!bridge) return;
+  /** Resolves true when the app saved the change. */
+  const set = useCallback(async (name: DesktopControlName, on: boolean): Promise<boolean> => {
+    if (!bridge) return false;
     setBusy(name);
     setError(null);
     try {
       const next = await bridge.set(name, on);
       setState(next);
       window.dispatchEvent(new CustomEvent(CHANGED, { detail: next }));
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setBusy(null);
     }

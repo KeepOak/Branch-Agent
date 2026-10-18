@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/agent-loop.ts (atlas AGENT-LOOP-0001). Changed for Branch: retain native continuation and steering integration; keep the newer executionStarted steering gate (never regress to the older pin).
+// Changed for Branch: retain native continuation and steering integration; keep the newer executionStarted steering gate (never regress to the older pin).
 import type { AssistantMessage, ToolResultMessage } from "@branch/llm-core";
 import { coerceErrorMessage } from "@branch/normalization-core/error-coercion";
 import { createStreamedSteeringConfig, getSteeringAtCheckpoint } from "./agent-loop-steering.js";
@@ -984,7 +984,7 @@ async function validateToolCallForBatchAdmission(
   }
   const tool = resolution.tool;
   if (!tool) {
-    return immediateToolCallError(`Tool ${toolCall.name} not found`);
+    return immediateToolCallError(formatMissingToolMessage(batch, toolCall));
   }
 
   let preparedToolCall: AgentToolCall;
@@ -1399,6 +1399,33 @@ function createToolExecutionErrorResult(error: unknown): AgentToolResult<unknown
   return typeof error === "object" && error !== null
     ? copyInternalToolResultState(error, result)
     : result;
+}
+
+/**
+ * Names the tools the model can call right now so a call to a tool the prompt
+ * mentions but the turn does not expose can be retried with a real one.
+ * Wording follows the Vercel AI SDK NoSuchToolError ("Available tools: a, b.").
+ * With no tools in the turn the upstream "Tool <name> not found" text is kept.
+ */
+function formatMissingToolMessage(batch: ToolBatchContext, toolCall: AgentToolCall): string {
+  const names = [
+    ...new Set((batch.currentContext.tools ?? []).map((candidate) => candidate.name)),
+  ].filter((name) => name.length > 0);
+  const available = names.length > 0 ? `Available tools: ${names.join(", ")}.` : undefined;
+  let guidance: string | undefined;
+  try {
+    guidance = batch.config
+      .describeMissingTool?.({
+        assistantMessage: batch.assistantMessage,
+        toolCall,
+        context: batch.currentContext,
+      })
+      ?.trim();
+  } catch {
+    guidance = undefined;
+  }
+  const detail = [available, guidance].filter(Boolean).join(" ");
+  return detail ? `Tool ${toolCall.name} not found. ${detail}` : `Tool ${toolCall.name} not found`;
 }
 
 function immediateToolCallError(message: string): ImmediateToolCallOutcome {

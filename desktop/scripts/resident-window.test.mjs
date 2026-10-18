@@ -43,7 +43,7 @@ function electronFixture() {
     destroy() { this.destroyed = true; } }
   return { app, get window() { return window; }, get tray() { return tray; }, electron: { app, BrowserWindow, Tray,
     Menu: { buildFromTemplate: value => value }, screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) }, ipcMain: Object.assign(new EventEmitter(), { handle() {} }), dialog: { showErrorBox: assert.fail },
-    session: { defaultSession: { setPermissionRequestHandler() {} } }, shell: { openExternal() {} } } };
+    session: { fromPartition() { return { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, on() {} }; }, defaultSession: { setPermissionRequestHandler() {} } }, shell: { openExternal() {} } } };
 }
 async function fixture(run, hidden = false) {
   const temp = join(tmpdir(), 'Codex-session-files'); await mkdir(temp, { recursive: true });
@@ -54,7 +54,7 @@ async function fixture(run, hidden = false) {
   await writeFile(join(engine, 'branch.mjs'), 'import http from "node:http";http.createServer((q,r)=>r.writeHead(200).end()).listen(Number(process.argv.at(-1)),"127.0.0.1");');
   await writeFile(join(windowDir, 'index.html'), '<html>fixture</html>');
   const cfg = { dataDir: root, engineDir: engine, windowDir, nodePath: process.execPath,
-    gatewayPort: await freePort(), windowPort: await freePort() };
+    gatewayPort: await freePort(), windowPort: await freePort(), alwaysOn: false };
   await writeFile(join(root, 'desktop.json'), JSON.stringify(cfg));
   const previousData = process.env.BRANCH_DESKTOP_DATA, previousHidden = process.env.BRANCH_DESKTOP_HIDDEN;
   process.env.BRANCH_DESKTOP_DATA = root; process.env.BRANCH_DESKTOP_HIDDEN = hidden ? '1' : '0';
@@ -130,7 +130,7 @@ test('usage-off setTrayUsage restores the darwin template and never branch-48.pn
   const desktop = join(process.env.BRANCH_DESKTOP_TEST_DIST, '..');
   const main = await readFile(join(desktop, 'src/main.ts'), 'utf8');
   const osSource = await readFile(join(desktop, 'src/desktop-os.ts'), 'utf8');
-  assert.match(main, /desktopOs\(app, cfg, \(\) => tray, TRAY_ICON\)/);
+  assert.match(main, /desktopOs\(app, cfg, \(\) => tray, TRAY_ICON, removeAppSteps\)/);
   assert.match(osSource, /t\.setImage\(menuBarIcon\(icon, process\.platform\)\)/);
   const template = join(desktop, 'assets', 'brand', 'linux', 'branchTemplate.png');
   Module._load = function (name, ...args) {

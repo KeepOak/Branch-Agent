@@ -1,16 +1,21 @@
-// The window's desktop controls: Start with Windows, keep working when the window closes, keep this computer awake,
+// The window's desktop controls: Start with Windows, keep working when the window closes, keep this computer awake
+// while Trunks work (Private #454 D: the blocker itself is keep-awake.ts, held only while a run is active), keep working
+// when nobody is signed in (Linux linger),
 // the branch command on PATH, the tray's usage ring and the "Get it" download pages. Every OS call is injected, so the
 // tests use fakes and never change this computer's startup, power or PATH settings.
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { saveUnlessDiskFull } from "./disk-full";
+import { dirname, join } from "node:path";
 import { RELEASE_REPOSITORY } from "./component-update-manifest";
 import { isOwnedComponentWindow } from "./component-update-ipc";
 
 export interface DesktopSettings {
   /** Closing the window hides it in the tray and the engine keeps working (on by default, as before). */
   keepWorking: boolean;
-  /** Holds off idle sleep while the app runs. Off until the owner chooses. */
+  /** Keeps this computer awake while a Trunk works, and only then (keep-awake.ts). On by default, when plugged in. */
   keepAwake: boolean;
+  /** Keep awake while a Trunk works on battery too. Off by default: on battery the computer may sleep. */
+  keepAwakeOnBattery: boolean;
   /** The tray icon shows the usage ring instead of the Branch icon. */
   trayUsage: boolean;
   /** Apply verified releases after a sustained idle period. */
@@ -22,10 +27,14 @@ export interface DesktopSettings {
 export interface ControlsState extends DesktopSettings {
   startWithWindows: boolean;
   branchOnPath: boolean;
+  /** Linux only: the engine service keeps running when nobody is signed in (systemd linger). Off by default. */
+  keepWorkingSignedOut?: boolean;
+  /** One-time lines for Settings under a control, such as why the engine runs inside the app on this computer. */
+  notes?: Partial<Record<string, string>>;
 }
-export type ControlName = keyof ControlsState;
+export type ControlName = { [K in keyof ControlsState]-?: ControlsState[K] extends boolean | undefined ? K : never }[keyof ControlsState];
 
-export const DEFAULT_SETTINGS: DesktopSettings = { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: true, agentControl: false };
+export const DEFAULT_SETTINGS: DesktopSettings = { keepWorking: true, keepAwake: true, keepAwakeOnBattery: false, trayUsage: false, autoApplyUpdates: true, agentControl: false };
 
 /** The engine's own app links (engine/ui/src/pages/apps/view.ts); desktops come from Branch's releases. */
 const DESKTOP_RELEASES = `https://github.com/${RELEASE_REPOSITORY}/releases/latest`;
@@ -38,10 +47,82 @@ export const DOWNLOAD_PAGES: Readonly<Record<string, string>> = {
   extension: "https://chromewebstore.google.com/detail/branch/kcdjddhmeafeomebliikmbpblkmkfoig",
 };
 
+/** How this copy of Branch was installed, so "Remove the app" takes away only the app (Private #1102). */
+export type AppRemoval =
+  | { kind: "windows"; uninstaller: string }
+  | { kind: "mac"; bundles: string[] }
+  | { kind: "appimage"; files: string[] }
+  | { kind: "none"; reason: string };
+export interface AppRemovalTarget {
+  platform: string; execPath: string; packaged: boolean;
+  /** %LOCALAPPDATA% on Windows: the per-user install's uninstaller sits in Programs\Branch Agent Uninstall. */
+  localAppData?: string;
+  /** $APPIMAGE on Linux: the file the app runs from. */
+  appImage?: string;
+  exists(path: string): boolean;
+}
+/** What the confirm sheet says: exactly what goes and what stays. */
+export interface AppRemovalPlan { supported: boolean; reason?: string; removes: string[]; keeps: string[]; dataDir: string }
+
+/** Inno Setup names a per-user install's uninstaller unins000.exe, in UninstallFilesDir (release-installers.mjs). */
+export const WINDOWS_UNINSTALL_DIR = ["Programs", "Branch Agent Uninstall"];
+export const APP_REMOVAL_KEEPS = ["Your conversations", "Your Trunks and what they remember", "Your settings and connected accounts"];
+const FROM_SOURCE = "This copy of Branch runs from its source folder, so there is no installed app to remove.";
+
+export function appRemoval(t: AppRemovalTarget): AppRemoval {
+  if (!t.packaged) return { kind: "none", reason: FROM_SOURCE };
+  if (t.platform === "win32") {
+    const uninstaller = t.localAppData ? join(t.localAppData, ...WINDOWS_UNINSTALL_DIR, "unins000.exe") : "";
+    return uninstaller && t.exists(uninstaller) ? { kind: "windows", uninstaller }
+      : { kind: "none", reason: "Branch’s uninstaller isn’t on this computer. Remove Branch from Settings › Apps instead." };
+  }
+  if (t.platform === "darwin") {
+    const at = t.execPath.indexOf(".app/Contents/");
+    if (at < 0) return { kind: "none", reason: FROM_SOURCE };
+    const bundle = t.execPath.slice(0, at + 4);
+    // A whole-app update leaves the old copy aside as .Branch.previous beside it (mac-applications.ts).
+    const aside = join(dirname(bundle), ".Branch.previous");
+    return { kind: "mac", bundles: [bundle, ...(t.exists(aside) ? [aside] : [])] };
+  }
+  if (t.platform === "linux") {
+    if (!t.appImage) return { kind: "none", reason: "Branch was installed by your package manager here. Remove it there; your data stays." };
+    const previous = `${t.appImage}.previous`;
+    return { kind: "appimage", files: [t.appImage, ...(t.exists(previous) ? [previous] : [])] };
+  }
+  return { kind: "none", reason: FROM_SOURCE };
+}
+
+export function appRemovalPlan(removal: AppRemoval, o: { dataDir: string; startsAtLogin: boolean; branchOnPath: boolean; service: boolean }): AppRemovalPlan {
+  const keeps = [...APP_REMOVAL_KEEPS];
+  if (removal.kind === "none") return { supported: false, reason: removal.reason, removes: [], keeps, dataDir: o.dataDir };
+  const removes = [
+    removal.kind === "windows" ? "The Branch app, with its Start menu and desktop shortcuts"
+      : removal.kind === "mac" ? "The Branch app (it goes to the Trash)" : "The Branch app (its AppImage file)",
+    ...(o.service ? ["Branch’s background service, so nothing keeps running"] : []),
+    ...(o.startsAtLogin ? ["Starting Branch when you sign in"] : []),
+    ...(o.branchOnPath ? ["The branch command in your terminal"] : []),
+  ];
+  return { supported: true, removes, keeps, dataDir: o.dataDir };
+}
+
 export interface ControlDeps {
   settingsFile: string;
+  /** "Remove the app, keep my data": the install it came from, and the steps that remove it. Absent in tests of
+   *  other controls and in older wiring, where the window shows why it can't. */
+  removeApp?: {
+    dataDir: string;
+    removal(): AppRemoval;
+    /** Stops and removes the engine service (`branch gateway uninstall`); absent when there is none. */
+    service?: () => Promise<void>;
+    /** Removes the app itself, or starts its uninstaller to do so once the app has quit. */
+    launch(removal: Exclude<AppRemoval, { kind: "none" }>): Promise<void>;
+    quit(): void;
+  };
   login: { get(): boolean; set(on: boolean): void };
-  awake: { start(): number; stop(id: number): void };
+  /** Linux: the engine's systemd-linger path (`branch gateway linger`); absent elsewhere. */
+  linger?: { get(): Promise<boolean>; set(on: boolean): Promise<void> };
+  /** One-time lines for Settings (the engine running inside the app, from engine-service takeChildModeNotice). */
+  notes?: () => Partial<Record<string, string>>;
   cli: {
     installed(): Promise<boolean>; install(): Promise<void>; uninstall(): Promise<void>;
     /** Rewrites shims that exist with this launch's node and engine paths (never creates one, never touches PATH). */
@@ -49,6 +130,8 @@ export interface ControlDeps {
   };
   tray: { usage(left: number | null, on: boolean): void };
   openExternal(url: string): Promise<void>;
+  /** Writes the settings file; tests inject a failing one. */
+  writeFile?: (path: string, text: string) => void;
   onChange?: (settings: DesktopSettings) => void;
 }
 
@@ -58,7 +141,10 @@ export interface DesktopControls {
   set(name: ControlName, on: boolean): Promise<ControlsState>;
   openDownload(id: string): Promise<void>;
   trayUsage(left: number | null): void;
-  /** Applies saved settings at launch (keep awake). */
+  removalPlan(): Promise<AppRemovalPlan>;
+  /** Removes the app and quits; conversations, Trunks and settings in the data folder stay. */
+  removeApp(): Promise<void>;
+  /** Applies saved settings at launch (refreshes the branch command). */
   apply(): void;
   dispose(): void;
 }
@@ -67,7 +153,7 @@ export function readSettings(file: string): DesktopSettings {
   try {
     const saved = JSON.parse(readFileSync(file, "utf8")) as Partial<DesktopSettings>;
     const pick = (key: keyof DesktopSettings) => typeof saved[key] === "boolean" ? saved[key] : DEFAULT_SETTINGS[key];
-    return { keepWorking: pick("keepWorking"), keepAwake: pick("keepAwake"), trayUsage: pick("trayUsage"), autoApplyUpdates: pick("autoApplyUpdates"), agentControl: pick("agentControl") };
+    return { keepWorking: pick("keepWorking"), keepAwake: pick("keepAwake"), keepAwakeOnBattery: pick("keepAwakeOnBattery"), trayUsage: pick("trayUsage"), autoApplyUpdates: pick("autoApplyUpdates"), agentControl: pick("agentControl") };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -75,25 +161,34 @@ export function readSettings(file: string): DesktopSettings {
 
 export function createDesktopControls(deps: ControlDeps): DesktopControls {
   let saved = readSettings(deps.settingsFile);
-  let blocker: number | undefined;
   let lastLeft: number | null = null;
+  // Linger is the OS's state, read once through the engine and then kept as changed here.
+  let linger: Promise<boolean | undefined> | undefined;
+  // A full disk keeps the new setting in memory and shows the disk-full banner; the next save writes it.
   const save = (): void => {
-    mkdirSync(dirname(deps.settingsFile), { recursive: true });
-    writeFileSync(deps.settingsFile, `${JSON.stringify(saved, null, 2)}\n`);
+    saveUnlessDiskFull(() => {
+      mkdirSync(dirname(deps.settingsFile), { recursive: true });
+      (deps.writeFile ?? writeFileSync)(deps.settingsFile, `${JSON.stringify(saved, null, 2)}\n`);
+    });
   };
-  const holdAwake = (on: boolean): void => {
-    if (on && blocker === undefined) blocker = deps.awake.start();
-    if (!on && blocker !== undefined) { deps.awake.stop(blocker); blocker = undefined; }
+  const get = async (): Promise<ControlsState> => {
+    linger ??= deps.linger?.get().catch(() => undefined);
+    const signedOut = await linger;
+    const notes = deps.notes?.() ?? {};
+    return { ...saved, startWithWindows: deps.login.get(), branchOnPath: await deps.cli.installed(),
+      ...(deps.linger ? { keepWorkingSignedOut: signedOut ?? false } : {}), ...(Object.keys(notes).length ? { notes } : {}) };
   };
-  const get = async (): Promise<ControlsState> => ({ ...saved, startWithWindows: deps.login.get(), branchOnPath: await deps.cli.installed() });
   const set = async (name: ControlName, on: boolean): Promise<ControlsState> => {
     if (typeof on !== "boolean") throw new Error("A desktop control takes on or off");
     if (name === "startWithWindows") deps.login.set(on);
     else if (name === "branchOnPath") await (on ? deps.cli.install() : deps.cli.uninstall());
-    else if (name === "keepWorking" || name === "keepAwake" || name === "trayUsage" || name === "autoApplyUpdates" || name === "agentControl") {
+    else if (name === "keepWorkingSignedOut") {
+      if (!deps.linger) throw new Error("Keeping Branch working when nobody is signed in is a Linux choice");
+      await deps.linger.set(on);
+      linger = Promise.resolve(on);
+    } else if (name === "keepWorking" || name === "keepAwake" || name === "keepAwakeOnBattery" || name === "trayUsage" || name === "autoApplyUpdates" || name === "agentControl") {
       saved = { ...saved, [name]: on };
       save();
-      if (name === "keepAwake") holdAwake(on);
       if (name === "trayUsage") deps.tray.usage(lastLeft, on);
       deps.onChange?.({ ...saved });
     } else throw new Error(`Unknown desktop control: ${String(name)}`);
@@ -110,12 +205,27 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
       lastLeft = typeof left === "number" && Number.isFinite(left) ? Math.max(0, Math.min(100, left)) : null;
       deps.tray.usage(lastLeft, saved.trayUsage);
     },
+    removalPlan: async () => {
+      const remove = deps.removeApp;
+      if (!remove) return appRemovalPlan({ kind: "none", reason: "Removing the app needs a newer Branch app." }, { dataDir: "", startsAtLogin: false, branchOnPath: false, service: false });
+      return appRemovalPlan(remove.removal(), { dataDir: remove.dataDir, startsAtLogin: deps.login.get(), branchOnPath: await deps.cli.installed(), service: Boolean(remove.service) });
+    },
+    removeApp: async () => {
+      const remove = deps.removeApp;
+      const removal = remove?.removal();
+      if (!remove || !removal || removal.kind === "none") throw new Error(removal?.kind === "none" ? removal.reason : "Removing the app needs a newer Branch app.");
+      // Everything outside the data folder that points at the app goes first; the data folder is never touched.
+      await remove.service?.();
+      if (deps.login.get()) deps.login.set(false);
+      if (await deps.cli.installed()) await deps.cli.uninstall();
+      await remove.launch(removal);
+      remove.quit();
+    },
     apply: () => {
-      holdAwake(saved.keepAwake);
       // An update can move the bundled node; the branch command (and agents registered with it) must keep working.
       try { deps.cli.refresh?.(); } catch { /* a locked or read-only shim keeps its old copy */ }
     },
-    dispose: () => holdAwake(false),
+    dispose: () => undefined,
   };
 }
 
@@ -142,6 +252,8 @@ export function registerDesktopControlsIpc(ipc: Ipc, owner: (event: InvokeEvent)
     if (typeof id !== "string") throw new Error("A download takes an app id");
     await controls.openDownload(id);
   });
+  ipc.handle("branch-desktop:controls:removal-plan", async (event) => { owned(event); return controls.removalPlan(); });
+  ipc.handle("branch-desktop:controls:remove-app", async (event) => { owned(event); await controls.removeApp(); });
   ipc.on("branch-desktop:controls:tray-usage", (event, left) => {
     if (!isOwnedComponentWindow(event, owner(event), servedUrl)) return;
     controls.trayUsage(typeof left === "number" ? left : null);
@@ -211,6 +323,72 @@ export function branchShShim(o: { dataDir: string; engineDir: string; nodePath: 
     `exec ${q(slash(o.nodePath))} "$engine/branch.mjs" "$@"`,
     "",
   ].join("\n");
+}
+
+/** The first lines of the macOS and Linux branch command, so the app only ever rewrites or removes its own file. */
+export const BRANCH_COMMAND_MARKER = "# Branch Agent's command, written by the Branch Agent app.";
+/** What the earlier installer wrote at the same place. Its command ran Contents/Resources/app/dist/cli.js, which the
+ *  packaged app (app.asar) no longer has, so the app takes that file over and points it at the engine it runs. */
+export const LEGACY_BRANCH_COMMAND_MARKER = "# Branch Agent's command, written by its installer.";
+
+/** The branch command for macOS and Linux: the same engine, node, token and live port as the Windows shims. The
+ *  engine is the unpacked copy the app runs (engine-running.txt, else engine-current.txt), never a path inside
+ *  app.asar, which only Electron can read. */
+export function branchPosixShim(o: { dataDir: string; engineDir: string; nodePath: string; gatewayPort: number }): string {
+  const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+  const firstLine = (file: string, name: string) =>
+    `if [ -f "$data/${file}" ]; then ${name}=$(head -n 1 "$data/${file}" | tr -d '\\r'); fi`;
+  return [
+    "#!/bin/sh",
+    BRANCH_COMMAND_MARKER,
+    "# Turning off \"Type branch in any terminal\" in Branch removes this file.",
+    `data=${q(o.dataDir)}`,
+    `engine=${q(o.engineDir)}`,
+    `current=; ${firstLine("engine-current.txt", "current")}; if [ -n "$current" ]; then engine=$current; fi`,
+    // The engine actually running wins over a staged one that has not been applied yet.
+    `running=; ${firstLine("engine-running.txt", "running")}; if [ -n "$running" ]; then engine=$running; fi`,
+    `if [ -f "$data/gateway-token" ]; then BRANCH_GATEWAY_TOKEN=$(head -n 1 "$data/gateway-token" | tr -d '\\r'); export BRANCH_GATEWAY_TOKEN; fi`,
+    `BRANCH_PROFILE=default; BRANCH_HOME="$data/home"; BRANCH_STATE_DIR="$data/home/.branch"; BRANCH_CONFIG_PATH="$data/home/.branch/branch.json"; BRANCH_GATEWAY_PORT=${o.gatewayPort}`,
+    `live=; ${firstLine("gateway-port", "live")}; if [ -n "$live" ]; then BRANCH_GATEWAY_PORT=$live; fi`,
+    "BRANCH_DATA=$data",
+    "export BRANCH_DATA BRANCH_PROFILE BRANCH_HOME BRANCH_STATE_DIR BRANCH_CONFIG_PATH BRANCH_GATEWAY_PORT",
+    `exec ${q(o.nodePath)} "$engine/branch.mjs" "$@"`,
+    "",
+  ].join("\n");
+}
+
+/** Who wrote the file at the branch command's place: this app, the earlier installer, someone else, or nobody. */
+export function branchCommandOwner(file: string): "app" | "installer" | "other" | "none" {
+  try {
+    if (lstatSync(file).isSymbolicLink()) return "other";
+    const head = readFileSync(file, "utf8").split("\n", 3);
+    if (head.includes(BRANCH_COMMAND_MARKER)) return "app";
+    return head.includes(LEGACY_BRANCH_COMMAND_MARKER) ? "installer" : "other";
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "none";
+    throw error;
+  }
+}
+
+/** The macOS and Linux branch command at `file` (~/.local/bin/branch). Someone else's file there is never touched. */
+export function posixBranchCommand(file: string, shim: () => string): ControlDeps["cli"] {
+  const write = (): void => {
+    mkdirSync(dirname(file), { recursive: true });
+    const next = `${file}.${process.pid}.tmp`;
+    writeFileSync(next, shim(), { mode: 0o755 });
+    chmodSync(next, 0o755);
+    renameSync(next, file);
+  };
+  return {
+    installed: async () => branchCommandOwner(file) === "app",
+    install: async () => {
+      if (branchCommandOwner(file) === "other") throw new Error(`${file} is another program's branch command, so Branch left it as it is`);
+      write();
+    },
+    uninstall: async () => { if (branchCommandOwner(file) !== "other") rmSync(file, { force: true }); },
+    // Also repairs the earlier installer's command, which points into a dist/cli.js the packaged app no longer has.
+    refresh: () => { if (["app", "installer"].includes(branchCommandOwner(file))) write(); },
+  };
 }
 
 const samePath =(a: string, b: string): boolean => a.trim().replace(/[\\/]+$/, "").toLowerCase() === b.replace(/[\\/]+$/, "").toLowerCase();

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { errorText, record, visible } from "../adapter";
 import { useSaveRunner } from "../kit";
+import { stalledRead } from "../stall";
 
 export const PREFS_KEY = "notifications.web.v1";
 export const CATEGORY_KEYS = ["approvalRequested", "agentFinished", "agentQuestion", "humanMentioned", "scheduledTaskFailed"] as const;
@@ -16,7 +17,7 @@ export type NotifyPrefs = { categories: Record<CategoryKey, boolean>; detailLeve
 
 /** The engine's own defaults (DEFAULT_WEB_PUSH_NOTIFICATION_PREFERENCES). */
 export const DEFAULT_PREFS: NotifyPrefs = {
-  categories: { approvalRequested: true, agentFinished: false, agentQuestion: false, humanMentioned: false, scheduledTaskFailed: false },
+  categories: { approvalRequested: true, agentFinished: true, agentQuestion: true, humanMentioned: true, scheduledTaskFailed: true },
   detailLevel: "private",
   quietHours: { enabled: false, startMinute: 22 * 60, endMinute: 7 * 60, timeZone: "UTC" },
   agentIds: [],
@@ -91,7 +92,7 @@ export function useNotifyPrefs(engine: WindowEngine) {
   const chain = useRef<Promise<unknown>>(Promise.resolve());
   const load = useCallback(async () => {
     try {
-      const { state: next, raw } = await readPrefs(engine);
+      const { state: next, raw } = await stalledRead(readPrefs(engine));
       latest.current = next.prefs; saved.current = raw; setState(next);
     } catch (error) {
       setState({ status: "error", prefs: latest.current, error: visible(errorText(error)) });

@@ -1,16 +1,20 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
 import { downloadComponent, move, replaceFile } from "./component-update-files";
 import { parseComponentRelease, RELEASE_MANIFEST_URL, trustedDownloadResponse, type ComponentRelease } from "./component-update-manifest";
-import { stageDesktopUpdate, stagedDesktopVersion, type DesktopInstall } from "./desktop-update";
+import { readDesktopJournal, stageDesktopUpdate, stagedDesktopVersion, type DesktopInstall } from "./desktop-update";
 
 export interface RefreshOptions {
   retryRejected?: boolean;
+  /** Stops a download the owner cancelled. */
+  signal?: AbortSignal;
+  /** Byte progress of the engine/window archives, for first-launch consent UI. */
+  onProgress?: (update: { name: string; bytes: number; total: number }) => void;
   /** The packaged desktop app to update as well; absent in development runs. */
   desktop?: DesktopInstall;
   /**
@@ -37,6 +41,8 @@ interface Publication {
   windowExisted: boolean;
   /** While a staged pair is being replaced in place: the staged engine it replaces. */
   engineReplaced?: string;
+  /** The release was published as a security fix. */
+  security?: true;
 }
 interface UndoReceipt {
   version: string; previousVersion: string; enginePrevious: string; engineNext: string;
@@ -48,6 +54,14 @@ const undoFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-up
 const undoneFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-undone.json");
 const rejectedFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-rejected.json");
 const timeoutFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-timeouts.json");
+const previousFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-previous.txt");
+const probationFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-probation.json");
+/**
+ * After an update is confirmed, its predecessor engine stays on disk for this long (Undo update), then it is removed.
+ * An installed engine is about 1 GB: keeping one for good doubled the installed size (Private #983).
+ */
+export const PREVIOUS_ENGINE_PROBATION_MS = 3 * 24 * 60 * 60 * 1000;
+interface Probation { previous: string; confirmedAt: number }
 const releaseIdentity = (release: ComponentRelease): ReleaseIdentity => ({ version: release.version,
   engineSha256: release.components.engine.sha256, windowSha256: release.components.window.sha256 });
 const sameIdentity = (a: ReleaseIdentity | undefined, b: ReleaseIdentity): boolean =>
@@ -126,6 +140,26 @@ export async function rollbackComponentUpdate(cfg: DesktopConfig, retryServedWin
   return true;
 }
 
+/**
+ * Ends a failed update's publication with `serving` (the build that serves again) still selected. A journal can stay
+ * pending after its engine started: the engine serves, but its update could not be confirmed. A later failed update then
+ * names that serving build as its own next engine, or an older one as its previous engine, and a plain rollback would
+ * point every restart and the next launch at a build older than the one that serves (Private #1048).
+ */
+export async function settleFailedComponentUpdate(cfg: DesktopConfig, serving: string | undefined): Promise<void> {
+  const pending = await publication(cfg);
+  if (!pending) return;
+  if (serving && pending.phase === "pending" && pending.engineNext === serving) {
+    // The build this journal stages already serves: it is confirmed, not rolled back. Cleanup waits for the next launch.
+    await confirmComponentUpdate(cfg, undefined, true);
+    return;
+  }
+  await rollbackComponentUpdate(cfg);
+  if (serving && serving !== pending.enginePrevious && existsSync(join(serving, "branch.mjs"))) {
+    await replaceFile(join(cfg.dataDir, "engine-current.txt"), `${serving}\n`);
+  }
+}
+
 const runProcessList = promisify(execFile);
 
 /** Adopt only old, fully published release layouts whose build identity matches the folder. */
@@ -174,14 +208,27 @@ async function runningProcessCommands(): Promise<string> {
   return (await runProcessList(command, args, { encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024 })).stdout;
 }
 
-/** Only completed release folders created directly under this data directory are owned by the updater. */
-async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previous: string, reportFailure?: (error: unknown) => void): Promise<void> {
+/** Count the removed tree without following links into another installation. */
+async function updateBytes(folder: string): Promise<number> {
+  const info = await lstat(folder);
+  if (!info.isDirectory()) return info.size;
+  let bytes = 0;
+  for (const entry of await readdir(folder)) bytes += await updateBytes(join(folder, entry));
+  return bytes;
+}
+
+/** Only completed folders created directly under this data directory are owned by the updater. */
+async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previous: string, reportFailure?: (error: unknown) => void, log?: (line: string) => void): Promise<void> {
   const updates = join(cfg.dataDir, "updates");
-  const running = await readOrEmpty(join(cfg.dataDir, "engine-running.txt"));
+  const stateFiles = ["engine-current.txt", "engine-running.txt", "component-update-pending.json", "desktop-update-pending.json", "desktop-update-retained.json"];
+  const snapshot = await Promise.all(stateFiles.map(file => readOrEmpty(join(cfg.dataDir, file))));
+  const running = snapshot[1];
+  if (!existsSync(updates)) { log?.("removed 0 old updates, freed 0.00 GB"); return; }
   const updatesReal = await realpath(updates);
+  let removed = 0, freed = 0;
   const retained = new Set<string>();
-  for (const engine of [current, previous, running]) {
-    if (!engine || basename(engine) !== "engine") continue;
+  for (const engine of [current, previous, running, cfg.engineDir, await readOrEmpty(join(cfg.dataDir, "engine-current.txt"))]) {
+    if (!engine) continue;
     try {
       const folder = await realpath(dirname(engine));
       if (dirname(folder) === updatesReal) retained.add(folder);
@@ -190,38 +237,101 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
     }
   }
   const pending = await publication(cfg);
-  if (pending) retained.add(await realpath(dirname(pending.engineNext)));
+  if (pending) {
+    for (const engine of [pending.engineNext, pending.enginePrevious, pending.engineReplaced]) {
+      if (engine && existsSync(dirname(engine))) retained.add(await realpath(dirname(engine)));
+    }
+  }
+  const desktop = await readDesktopJournal(cfg);
+  const desktopReceipt = await readOrEmpty(join(cfg.dataDir, "desktop-update-retained.json"));
+  const desktopRetained: string[] = desktopReceipt ? JSON.parse(desktopReceipt) : [];
+  if (desktopRetained.length < 2) {
+    const legacy: Array<{ folder: string; time: number }> = [];
+    for (const entry of await readdir(updates, { withFileTypes: true })) {
+      const folder = join(updates, entry.name);
+      if (!entry.isDirectory() || !entry.name.startsWith("desktop-") || existsSync(join(folder, ".update-staging"))
+        || desktop?.staged.startsWith(folder + (process.platform === "win32" ? "\\" : "/"))) continue;
+      const time = (await stat(folder)).mtimeMs;
+      if (existsSync(join(folder, ".desktop-complete")) || Date.now() - time >= 24 * 60 * 60 * 1000) legacy.push({ folder, time });
+    }
+    legacy.sort((a, b) => b.time - a.time || a.folder.localeCompare(b.folder));
+    for (const { folder } of legacy) {
+      if (desktopRetained.length >= 2) break;
+      if (!desktopRetained.includes(folder)) desktopRetained.push(folder);
+    }
+  }
+  for (const path of [desktop?.staged, desktop?.target, ...desktopRetained, process.execPath]) {
+    if (!path) continue;
+    const part = relative(updates, path).split(/[\\/]/)[0];
+    if (part && part !== ".." && existsSync(join(updates, part))) retained.add(await realpath(join(updates, part)));
+  }
   let commands: string;
   try { commands = await runningProcessCommands(); }
   catch (error) { reportFailure?.(error); return; }
   for (const entry of await readdir(updates, { withFileTypes: true })) {
-    if (entry.isDirectory() && entry.name.startsWith(".trash-release-")) {
-      try { await rm(join(updates, entry.name), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); }
+    if (entry.isDirectory() && /^\.trash-(release|desktop)-/.test(entry.name)) {
+      try { const bytes = await updateBytes(join(updates, entry.name)); await rm(join(updates, entry.name), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); removed++; freed += bytes; }
       catch (error) { reportFailure?.(new Error(`Could not finish pruning ${entry.name}: ${String(error)}`)); }
       continue;
     }
-    if (!entry.isDirectory() || !/^release-[\w.-]+-[A-Za-z0-9]{6}$/.test(entry.name)
+    if (!entry.isDirectory() || !/^(release|desktop)-[\w.-]+-[A-Za-z0-9]{6}$/.test(entry.name)
       || /(?:^|[-.])(staging|pending)(?:[-.]|$)/i.test(entry.name)) continue;
     const folder = resolve(updates, entry.name);
     const folderReal = await realpath(folder);
     // A download has the same release-* name until staging completes; never select it for pruning.
-    if (!existsSync(join(folder, ".release-complete"))) {
+    if (existsSync(join(folder, ".update-staging"))) continue;
+    if (entry.name.startsWith("desktop-")) {
+      // Older desktop downloads have no completion marker. Fresh, unjournaled
+      // folders can still be extracting in an older launcher.
+      if (!existsSync(join(folder, ".desktop-complete")) && Date.now() - (await stat(folder)).mtimeMs < 24 * 60 * 60 * 1000) continue;
+    } else if (!existsSync(join(folder, ".release-complete"))) {
       try { if (!await backfillLegacyReleaseMarker(folder, entry.name)) continue; }
       catch (error) { reportFailure?.(new Error(`Could not verify ${entry.name}: ${String(error)}`)); continue; }
     }
     const separator = process.platform === "win32" ? "\\" : "/";
     const commandsLower = commands.toLowerCase();
-    if (retained.has(folderReal) || [folder, folderReal].some(path => commandsLower.includes(`${path}${separator}`.toLowerCase()))) continue;
+    if (retained.has(folderReal) || [folder, folderReal].some(path => commandsLower.includes(`${path}${separator}`.toLowerCase()) || commandsLower.split("\n").includes(path.toLowerCase()))) continue;
     const trash = join(updates, `.trash-${entry.name}-${process.pid}-${Math.random().toString(36).slice(2)}`);
     try {
+      const bytes = await updateBytes(folder);
+      // A deferred prune can overlap a new publication. Stop if any owner changed
+      // while sizing this tree; the next startup will finish the remaining work.
+      const latest = await Promise.all(stateFiles.map(file => readOrEmpty(join(cfg.dataDir, file))));
+      if (latest.some((value, index) => value !== snapshot[index])) break;
       await rename(folder, trash);
       await rm(trash, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+      removed++; freed += bytes;
     } catch (error) { reportFailure?.(new Error(`Could not prune ${entry.name}: ${String(error)}`)); }
   }
+  log?.(`removed ${removed} old updates, freed ${(freed / 1_000_000_000).toFixed(2)} GB`);
 }
 
-/** Call only after the newly selected engine actually reaches readyz. Keep its predecessor for rollback. */
-export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFailure?: (error: unknown) => void, deferPrune = false): Promise<(() => Promise<void>) | undefined> {
+async function readProbation(cfg: DesktopConfig): Promise<Probation | undefined> {
+  const raw = await readOrEmpty(probationFile(cfg));
+  if (!raw) return undefined;
+  try {
+    const value = JSON.parse(raw) as Partial<Probation>;
+    return typeof value.previous === "string" && Number.isFinite(value.confirmedAt) ? value as Probation : undefined;
+  } catch (error) { if (error instanceof SyntaxError) return undefined; throw error; }
+}
+
+/**
+ * The predecessor to keep: it is kept only during its probation. One with no probation of its own (an older
+ * desktop confirmed it, or the install predates probation) starts one now, so nothing is removed on upgrade.
+ * A clock set back before the confirmation also restarts it: when in doubt, keep the engine.
+ */
+async function previousOnProbation(cfg: DesktopConfig, previous: string, now = Date.now()): Promise<string> {
+  if (!previous) return "";
+  const probation = await readProbation(cfg);
+  if (probation?.previous !== previous || probation.confirmedAt > now) {
+    await replaceFile(probationFile(cfg), JSON.stringify({ previous, confirmedAt: now } satisfies Probation));
+    return previous;
+  }
+  return now - probation.confirmedAt < PREVIOUS_ENGINE_PROBATION_MS ? previous : "";
+}
+
+/** Call only after the newly selected engine actually reaches readyz. Keep its predecessor for rollback during its probation. */
+export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFailure?: (error: unknown) => void, deferPrune = false, log?: (line: string) => void): Promise<(() => Promise<void>) | undefined> {
   const pending = await publication(cfg);
   if (!pending || pending.phase !== "pending") return;
   if (await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== pending.engineNext) throw new Error("Engine publication changed before update confirmation");
@@ -231,16 +341,67 @@ export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFail
       enginePrevious: pending.enginePrevious, engineNext: pending.engineNext,
       windowPrevious: pending.windowPrevious, identity: pending.identity } satisfies UndoReceipt));
   } else if (!previousVersion) await rm(undoFile(cfg), { force: true });
+  await replaceFile(probationFile(cfg), JSON.stringify({ previous: pending.enginePrevious, confirmedAt: Date.now() } satisfies Probation));
+  await replaceFile(previousFile(cfg), `${pending.enginePrevious}\n`);
   await replaceFile(versionFile(cfg), `${pending.version}\n`);
   await rm(journalFile(cfg));
   await rm(timeoutFile(cfg), { force: true });
   // Cleanup is maintenance, not a readiness failure: never roll back a healthy engine because a stale folder is locked.
   const prune = async () => {
-    try { await pruneConfirmedReleases(cfg, pending.engineNext, pending.enginePrevious, reportPruneFailure); }
+    try { await pruneConfirmedReleases(cfg, pending.engineNext, pending.enginePrevious, reportPruneFailure, log); }
     catch (error) { reportPruneFailure?.(error); }
   };
   if (deferPrune) return prune;
   await prune();
+}
+
+/** Once the startup engine is healthy, clean installations that have no pending update to confirm. */
+export async function pruneStartupUpdates(cfg: DesktopConfig, log: (line: string) => void): Promise<void> {
+  try {
+    const current = await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) || cfg.engineDir;
+    let previous = await readOrEmpty(previousFile(cfg));
+    if (!previous) {
+      const undo = await readOrEmpty(undoFile(cfg));
+      if (undo) previous = (JSON.parse(undo) as UndoReceipt).enginePrevious;
+    }
+    if (!previous && existsSync(join(cfg.dataDir, "updates"))) {
+      // Pre-retention installs have no receipt: keep the newest older engine.
+      const currentFolder = existsSync(dirname(current)) ? await realpath(dirname(current)) : dirname(current);
+      const currentTime = existsSync(currentFolder) ? (await stat(currentFolder)).mtimeMs : Infinity;
+      const candidates: Array<{ folder: string; time: number }> = [];
+      for (const entry of await readdir(join(cfg.dataDir, "updates"), { withFileTypes: true })) {
+        const folder = join(cfg.dataDir, "updates", entry.name);
+        if (!entry.isDirectory() || !entry.name.startsWith("release-") || await realpath(folder) === currentFolder
+          || existsSync(join(folder, ".update-staging")) || !existsSync(join(folder, "engine"))) continue;
+        const time = (await stat(folder)).mtimeMs;
+        if (!existsSync(join(folder, ".release-complete")) && !await backfillLegacyReleaseMarker(folder, entry.name)) continue;
+        if (time <= currentTime) candidates.push({ folder, time });
+      }
+      candidates.sort((a, b) => b.time - a.time || a.folder.localeCompare(b.folder));
+      if (candidates[0]) {
+        previous = join(candidates[0].folder, "engine");
+        await replaceFile(previousFile(cfg), `${previous}\n`);
+      }
+    }
+    const kept = await previousOnProbation(cfg, previous);
+    if (previous && !kept && existsSync(previous)) log("Update cleanup: the previous engine's probation ended; removing it");
+    await pruneConfirmedReleases(cfg, current, kept, error => log(`Update cleanup: ${String(error)}`), log);
+  } catch (error) { log(`Update cleanup: ${String(error)}`); }
+}
+
+/**
+ * The app can run for weeks without a restart: once the previous engine's probation ends, remove it then. Does
+ * nothing while an update is staged or in flight (its confirmation prunes), or before the probation ends.
+ */
+export async function pruneEndedProbation(cfg: DesktopConfig, log: (line: string) => void, now = Date.now()): Promise<boolean> {
+  try {
+    if (await publication(cfg)) return false;
+    const probation = await readProbation(cfg);
+    if (!probation?.previous || probation.confirmedAt > now || now - probation.confirmedAt < PREVIOUS_ENGINE_PROBATION_MS) return false;
+    if (await readOrEmpty(previousFile(cfg)) !== probation.previous || !existsSync(probation.previous)) return false;
+    await pruneStartupUpdates(cfg, log);
+    return true;
+  } catch (error) { log(`Update cleanup: ${String(error)}`); return false; }
 }
 
 /** Reverse the last confirmed publication while retaining the current release for rollback. */
@@ -290,13 +451,38 @@ export async function confirmComponentUpdateUndo(cfg: DesktopConfig): Promise<vo
   }
 }
 
-export async function canUndoComponentUpdate(cfg: DesktopConfig): Promise<boolean> {
+/**
+ * Whether the running update can be undone, and until when. `until` is the same deadline the pruning uses (the
+ * confirmation time plus PREVIOUS_ENGINE_PROBATION_MS); null only when the predecessor has no probation yet.
+ * `removed`: this update had an Undo, but its window ended or the previous engine is gone, so it can no longer run.
+ */
+/**
+ * The last update's Undo, for Settings' version line ("0.19.4 installed Sep 20."): `version` is the installed release and
+ * `installedAt` when it was confirmed; `until` ends the previous engine's probation, after which Undo cannot run.
+ */
+export interface UndoAvailability { available: boolean; until: number | null; removed: boolean; version: string | null; installedAt: number | null }
+
+export async function readUndoAvailability(cfg: DesktopConfig, now = Date.now()): Promise<UndoAvailability> {
+  const none: UndoAvailability = { available: false, until: null, removed: false, version: null, installedAt: null };
   const raw = await readOrEmpty(undoFile(cfg));
-  if (!raw) return false;
-  const undo = JSON.parse(raw) as UndoReceipt;
-  return await readOrEmpty(versionFile(cfg)) === undo.version &&
-    await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) === undo.engineNext &&
-    existsSync(undo.windowPrevious) && existsSync(undo.enginePrevious);
+  if (!raw) return none;
+  let undo: UndoReceipt;
+  try { undo = JSON.parse(raw) as UndoReceipt; } catch (error) { if (error instanceof SyntaxError) return none; throw error; }
+  if (await readOrEmpty(versionFile(cfg)) !== undo.version ||
+    await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== undo.engineNext) return none;
+  const probation = await readProbation(cfg);
+  const confirmedAt = probation?.previous === undo.enginePrevious ? probation.confirmedAt : null;
+  const until = confirmedAt === null ? null : confirmedAt + PREVIOUS_ENGINE_PROBATION_MS;
+  // The receipt is written when the update is confirmed, so it dates an update confirmed before probation records existed.
+  const installedAt = confirmedAt ?? (await stat(undoFile(cfg)).catch(() => undefined))?.mtimeMs ?? null;
+  const present = existsSync(undo.windowPrevious) && existsSync(undo.enginePrevious);
+  const ended = until !== null && now >= until;
+  const line = { until, version: undo.version, installedAt };
+  return present && !ended ? { available: true, removed: false, ...line } : { available: false, removed: true, ...line };
+}
+
+export async function canUndoComponentUpdate(cfg: DesktopConfig, now = Date.now()): Promise<boolean> {
+  return (await readUndoAvailability(cfg, now)).available;
 }
 
 export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> {
@@ -314,15 +500,21 @@ export async function readComponentManifest(request: typeof fetch = fetch): Prom
   return parseComponentRelease(JSON.parse(body));
 }
 
-async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch): Promise<{ engine: string; window: string }> {
+async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, options: RefreshOptions = {}): Promise<{ engine: string; window: string }> {
   const updates = join(cfg.dataDir, "updates");
   await mkdir(updates, { recursive: true });
   const directory = await mkdtemp(join(updates, `release-${release.version}-`));
   try {
+    await writeFile(join(directory, ".update-staging"), "");
     for (const name of ["engine", "window"] as const) {
       const archive = join(directory, `${name}.tar.gz`);
       const destination = join(directory, name);
-      await downloadComponent(release.components[name], archive, request);
+      await downloadComponent(release.components[name], archive, request, {
+        signal: options.signal,
+        onProgress: options.onProgress
+          ? (bytes, total) => options.onProgress?.({ name, bytes, total })
+          : undefined,
+      });
       await mkdir(destination);
       await extractComponentArchive(archive, destination, release.components[name].expandedBytes);
       await rm(archive);
@@ -337,6 +529,7 @@ async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typ
 
 async function publish(cfg: DesktopConfig, release: ComponentRelease, next: { engine: string; window: string }): Promise<void> {
   const pending: Publication = { version: release.version, identity: releaseIdentity(release), phase: "prepared",
+    ...(release.security ? { security: true as const } : {}),
     enginePrevious: await readOrEmpty(join(cfg.dataDir, "engine-current.txt")), engineNext: next.engine,
     windowPrevious: `${next.engine}-previous-window`, windowExisted: existsSync(cfg.windowDir) };
   await replaceFile(journalFile(cfg), JSON.stringify(pending));
@@ -348,6 +541,7 @@ async function publish(cfg: DesktopConfig, release: ComponentRelease, next: { en
     pending.phase = "pending";
     await replaceFile(journalFile(cfg), JSON.stringify(pending));
     await writeFile(join(dirname(next.engine), ".release-complete"), "");
+    await rm(join(dirname(next.engine), ".update-staging"), { force: true });
   } catch (error) { await rollbackComponentUpdate(cfg); throw error; }
 }
 
@@ -377,8 +571,9 @@ export function setReplacementMoveForTests(fn: typeof move | undefined): void { 
  * Resolves with the superseded folders, which the caller removes once the swap guard is released.
  */
 async function replaceStagedInPlace(cfg: DesktopConfig, held: Publication, release: ComponentRelease, next: { engine: string; window: string }, log?: (line: string) => void): Promise<string[]> {
-  const pending: Publication = { ...held, version: release.version, identity: releaseIdentity(release), phase: "prepared",
-    engineNext: next.engine, engineReplaced: held.engineNext };
+  const { security: _heldSecurity, ...heldRest } = held;
+  const pending: Publication = { ...heldRest, version: release.version, identity: releaseIdentity(release), phase: "prepared",
+    ...(release.security ? { security: true as const } : {}), engineNext: next.engine, engineReplaced: held.engineNext };
   await replaceFile(journalFile(cfg), JSON.stringify(pending));
   const supersededWindow = `${held.engineNext}-superseded-window`;
   let heldWindowMoved = false, nextWindowMoved = false;
@@ -389,6 +584,8 @@ async function replaceStagedInPlace(cfg: DesktopConfig, held: Publication, relea
     pending.phase = "pending";
     delete pending.engineReplaced;
     await replaceFile(journalFile(cfg), JSON.stringify(pending));
+    await writeFile(join(dirname(next.engine), ".release-complete"), "");
+    await rm(join(dirname(next.engine), ".update-staging"), { force: true });
   } catch (error) {
     try {
       if (nextWindowMoved && existsSync(cfg.windowDir)) await replacementMove(cfg.windowDir, next.window);
@@ -424,7 +621,7 @@ async function replaceStaged(cfg: DesktopConfig, held: Publication, release: Com
     return withdrawn === true ? "withdrawn" : false;
   }
   if (!options.retryRejected && await componentReleaseRejected(cfg, release)) return false;
-  const next = await stage(cfg, release, request);
+  const next = await stage(cfg, release, request, options);
   let superseded: string[] = [];
   try {
     const replaced = await options.underSwapGuard(async () => {
@@ -461,7 +658,7 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
   }
   let staged = false;
   if (await readOrEmpty(versionFile(cfg)) !== release.version && (options.retryRejected || !await componentReleaseRejected(cfg, release))) {
-    const next = await stage(cfg, release, request);
+    const next = await stage(cfg, release, request, options);
     await publish(cfg, release, next);
     staged = true;
   }
@@ -485,6 +682,8 @@ export interface ComponentUpdateState {
   pendingVersion: string | null;
   /** A staged engine/window pair, which the desktop applies in place without restarting the app. */
   componentsPendingVersion: string | null;
+  /** That staged pair was published as a security fix. */
+  componentsPendingSecurity: boolean;
   publicationInProgress: boolean;
   /** The window build the running engine was started with, kept beside the staged one until it is applied. */
   previousWindowDir: string | null;
@@ -496,12 +695,14 @@ export async function readComponentUpdateStatus(cfg: DesktopConfig): Promise<Com
   const previousWindowDir = pending?.phase === "pending" && typeof pending.windowPrevious === "string"
     && existsSync(join(pending.windowPrevious, "index.html")) ? pending.windowPrevious : null;
   return { currentVersion: await readOrEmpty(versionFile(cfg)) || null, pendingVersion: componentsPendingVersion ?? await stagedDesktopVersion(cfg),
-    componentsPendingVersion, publicationInProgress: Boolean(pending), previousWindowDir };
+    componentsPendingVersion, componentsPendingSecurity: componentsPendingVersion !== null && pending?.security === true,
+    publicationInProgress: Boolean(pending), previousWindowDir };
 }
 
 export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void, options: RefreshOptions & { onStaged?: () => void } = {}): () => void {
   let busy = false;
   let stopped = false;
+  let first = true;
   const tick = async (): Promise<void> => {
     if (busy || stopped) return;
     busy = true;
@@ -512,7 +713,12 @@ export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) =>
       }
     }
     catch (error) { log(`Component update check: ${error instanceof Error ? error.message : String(error)}`); }
-    finally { busy = false; }
+    finally {
+      // Startup already pruned: later checks remove a previous engine whose probation has ended since.
+      if (!first && !stopped) await pruneEndedProbation(cfg, log);
+      first = false;
+      busy = false;
+    }
   };
   void tick();
   const timer = setInterval(() => void tick(), COMPONENT_UPDATE_CHECK_MS);

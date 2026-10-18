@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Platform, Pressable, ScrollView, View } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NotificationPermission } from '../approvals/approvalAlerts';
 import {
@@ -15,10 +15,16 @@ import {
   outcomeWords,
   shortFolder,
 } from '../approvals/approvalWords';
+import { TEST_APPROVAL_DELAY_MS, TEST_APPROVAL_PLUGIN } from '../approvals/testApproval';
+import type { TestApprovalState } from '../approvals/useTestApproval';
 import { LIST_FAILED_MESSAGE, RECONNECT_WAIT_MS, trunkOf, type Answered, type Approval, type ApprovalDecision, type ApprovalsSnapshot, type Trunk } from '../approvals/approvals';
+import { groupByTrunk, INBOX_TABS, type InboxTab } from '../approvals/inboxGroups';
+import { chatTime } from '../chats/chatTime';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
+import { OfflineBanner } from '../ui/OfflineBanner';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const LONG_COMMAND = 160;
@@ -38,8 +44,8 @@ function useNow(fixed: number | undefined, ticking: boolean): number {
 function TrunkAvatar({ trunk, size = 36 }: { trunk: Trunk; size?: number }) {
   const { color, radius } = useTheme();
   return (
-    <View style={{ width: size, height: size, borderRadius: radius.pill, backgroundColor: color.accentTint, alignItems: 'center', justifyContent: 'center' }}>
-      <ThemedText variant={size >= 36 ? 'headline' : 'subhead'} tone="accentInk">
+    <View style={{ width: size, height: size, borderRadius: radius.pill, backgroundColor: color.fill, alignItems: 'center', justifyContent: 'center' }}>
+      <ThemedText variant={size >= 36 ? 'headline' : 'subhead'} tone="ink">
         {trunk.avatar}
       </ThemedText>
     </View>
@@ -90,7 +96,7 @@ function WhatItDoes({ approval }: { approval: Approval }) {
       </View>
       {long ? (
         <Pressable accessibilityRole="button" onPress={() => setAll((v) => !v)} hitSlop={8} style={{ alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' }}>
-          <ThemedText variant="footnote" tone="accentInk">
+          <ThemedText variant="footnote" tone="ink">
             {all ? 'Show less' : 'Show the whole command'}
           </ThemedText>
         </Pressable>
@@ -151,7 +157,7 @@ function ApprovalCard({
         padding: layout.cardInset,
         marginTop: space.md,
         borderWidth: focused ? 2 : 0,
-        borderColor: color.accent,
+        borderColor: color.ink,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
@@ -185,17 +191,17 @@ function ApprovalCard({
           <ThemedText variant="subhead" tone="ink2">
             {alwaysAllowCover(trunk.name)}
           </ThemedText>
-          <Button title={`Always allow for ${trunk.name}`} kind="secondary" busy={sending === 'allow-always'} disabled={busy} onPress={() => onAnswer(approval.id, 'allow-always')} testID={`always-${approval.id}`} />
-          <Button title="Cancel" kind="plain" disabled={busy} onPress={() => setAskAlways(false)} />
+          <Button title={`Always allow for ${trunk.name}`} kind="ink" busy={sending === 'allow-always'} disabled={busy} onPress={() => onAnswer(approval.id, 'allow-always')} testID={`always-${approval.id}`} />
+          <Button title="Cancel" kind="inkSecondary" disabled={busy} onPress={() => setAskAlways(false)} />
         </View>
       ) : (
         <>
           <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md }}>
             <View style={{ flex: 1 }}>
-              <Button title={verbs.no} kind="secondary" busy={sending === 'deny'} disabled={busy} onPress={() => onAnswer(approval.id, 'deny')} testID={`deny-${approval.id}`} />
+              <Button title={verbs.yes} kind="ink" busy={sending === 'allow-once'} disabled={busy} onPress={() => onAnswer(approval.id, 'allow-once')} testID={`allow-${approval.id}`} />
             </View>
             <View style={{ flex: 1 }}>
-              <Button title={verbs.yes} busy={sending === 'allow-once'} disabled={busy} onPress={() => onAnswer(approval.id, 'allow-once')} testID={`allow-${approval.id}`} />
+              <Button title={verbs.no} kind="inkSecondary" busy={sending === 'deny'} disabled={busy} onPress={() => onAnswer(approval.id, 'deny')} testID={`deny-${approval.id}`} />
             </View>
           </View>
           {always ? (
@@ -206,7 +212,7 @@ function ApprovalCard({
               onPress={() => setAskAlways(true)}
               style={({ pressed }) => ({ alignSelf: 'center', minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
             >
-              <ThemedText variant="subhead" tone="accentInk">
+              <ThemedText variant="subhead" tone="ink">
                 {`Always allow for ${trunk.name}…`}
               </ThemedText>
             </Pressable>
@@ -220,7 +226,7 @@ function ApprovalCard({
           onPress={onOpenChat}
           style={({ pressed }) => ({ marginTop: always && !expired && !askAlways ? 0 : space.sm, borderTopWidth: layout.hairline, borderTopColor: color.line, minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
         >
-          <ThemedText variant="subhead" tone="accentInk">
+          <ThemedText variant="subhead" tone="ink">
             Look at the chat first ›
           </ThemedText>
         </Pressable>
@@ -229,7 +235,81 @@ function ApprovalCard({
   );
 }
 
-function AnsweredRow({ answered, trunk }: { answered: Answered; trunk: Trunk }) {
+function InboxTabs({ tab, needs, onChange }: { tab: InboxTab; needs: number; onChange: (tab: InboxTab) => void }) {
+  const { color, space, radius, layout } = useTheme();
+  return (
+    <View testID="inbox-tabs" accessibilityRole="tablist" style={{ flexDirection: 'row', gap: space.xxs, padding: space.xxs + 1, marginTop: space.md, borderRadius: radius.md, backgroundColor: color.fill }}>
+      {INBOX_TABS.map(({ id, label }) => {
+        const on = tab === id;
+        const title = id === 'needs' && needs ? `${label} · ${needs}` : label;
+        return (
+          <Pressable
+            key={id}
+            testID={`inbox-tab-${id}`}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={title}
+            onPress={() => onChange(id)}
+            style={{
+              flex: 1,
+              minHeight: layout.rowMinHeight,
+              paddingHorizontal: space.xs,
+              borderRadius: radius.sm,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: on ? color.raise : 'transparent',
+            }}
+          >
+            <ThemedText variant="caption1" tone={on ? 'ink' : 'ink2'} style={{ fontWeight: on ? '600' : '400' }} numberOfLines={1}>
+              {title}
+            </ThemedText>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function TrunkGroup({ trunk, count, groupKey, children }: { trunk: Trunk; count: number; groupKey: string; children: ReactNode }) {
+  const { color, space, radius } = useTheme();
+  return (
+    <View testID={`inbox-group-${groupKey}`} style={{ marginTop: space.md }}>
+      <View testID={`inbox-group-head-${groupKey}`} accessibilityRole="header" style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.xs }}>
+        <TrunkAvatar trunk={trunk} size={26} />
+        <ThemedText variant="headline" numberOfLines={1} style={{ flexShrink: 1 }}>
+          {trunk.name}
+        </ThemedText>
+        {count ? (
+          <View style={{ minWidth: 20, height: 20, paddingHorizontal: space.sm, borderRadius: radius.pill, backgroundColor: color.fill, alignItems: 'center', justifyContent: 'center' }}>
+            <ThemedText variant="caption2" tone="ink2" style={{ fontWeight: '600' }}>
+              {count}
+            </ThemedText>
+          </View>
+        ) : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function HistoryRow({ answered, trunk, now }: { answered: Answered; trunk: Trunk; now: number }) {
+  const { space } = useTheme();
+  return (
+    <View testID={`history-${answered.id}`} style={{ paddingVertical: space.sm, gap: space.xxs }}>
+      <ThemedText variant="caption1" tone="ink3">
+        {chatTime(answered.at, now)}
+      </ThemedText>
+      <ThemedText variant="subhead">
+        {`${trunk.name} · ${headline(answered)}`}
+      </ThemedText>
+      <ThemedText variant="footnote" tone="ink2">
+        {outcomeWords(answered)}
+      </ThemedText>
+    </View>
+  );
+}
+
+function AnsweredRow({ answered, trunk, onOpen }: { answered: Answered; trunk: Trunk; onOpen?: () => void }) {
   const { color, space, radius } = useTheme();
   const fill = answered.outcome === 'allowed' ? color.okTint : answered.outcome === 'denied' ? color.badTint : color.fill;
   return (
@@ -249,6 +329,19 @@ function AnsweredRow({ answered, trunk }: { answered: Answered; trunk: Trunk }) 
             {outcomeWords(answered)}
           </ThemedText>
         </View>
+        {onOpen ? (
+          <Pressable
+            testID={`open-finished-${answered.id}`}
+            accessibilityRole="button"
+            onPress={onOpen}
+            hitSlop={8}
+            style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
+          >
+            <ThemedText variant="subhead" tone="ink">
+              Open
+            </ThemedText>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -267,14 +360,14 @@ function PermissionCard({ permission, onTurnOn, onSettings }: { permission: Noti
   if (permission !== 'undetermined' && permission !== 'denied') return null;
   const off = permission === 'denied';
   return (
-    <View testID="notifications-card" style={{ backgroundColor: color.accentTint, borderRadius: radius.lg, padding: layout.cardInset, marginTop: space.md, gap: space.sm }}>
+    <View testID="notifications-card" style={{ backgroundColor: color.fill, borderRadius: radius.lg, padding: layout.cardInset, marginTop: space.md, gap: space.sm }}>
       <ThemedText variant="headline">{off ? 'Notifications are off for Branch' : 'Get approvals as notifications'}</ThemedText>
       <ThemedText variant="subhead" tone="ink2">
         {off
           ? 'Turn them on in Settings to answer approvals from the lock screen.'
           : 'Answer with Allow or Deny right on the notification while Branch is in the background.'}
       </ThemedText>
-      <Button title={off ? 'Open Settings' : 'Turn on notifications'} kind="primary" onPress={off ? onSettings : onTurnOn} testID={off ? 'notifications-settings' : 'notifications-turn-on'} />
+      <Button title={off ? 'Open Settings' : 'Turn on notifications'} kind="ink" onPress={off ? onSettings : onTurnOn} testID={off ? 'notifications-settings' : 'notifications-turn-on'} />
     </View>
   );
 }
@@ -291,14 +384,69 @@ function Note({ title, body, testID, action }: { title: string; body: string; te
       </ThemedText>
       {action ? (
         <View style={{ marginTop: space.md, alignSelf: 'stretch' }}>
-          <Button title={action.title} kind="secondary" onPress={action.onPress} testID={`${testID}-action`} />
+          <Button title={action.title} kind="inkSecondary" onPress={action.onPress} testID={`${testID}-action`} />
         </View>
       ) : null}
     </View>
   );
 }
 
-/** Needs you: every approval waiting on the computer, answered right here, and what was answered lately. */
+/**
+ * For testing (a development build, or one built with EXPO_PUBLIC_BRANCH_TEST_APPROVALS=1): asks the computer for a
+ * test approval that runs nothing, now or in ten seconds so the phone can be locked to see the notification.
+ */
+function TestApprovalCard({ state, waiting, onSend, onCancel }: { state: TestApprovalState; waiting: boolean; onSend: (delayMs: number) => void; onCancel: () => void }) {
+  const { color, space, radius, layout } = useTheme();
+  const counting = state.phase === 'counting';
+  // Redraws four times a second while counting; the seconds are read from the clock each time.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!counting) return;
+    const tick = setInterval(() => setTick((n) => n + 1), 250);
+    return () => clearInterval(tick);
+  }, [counting]);
+  const secs = counting ? Math.max(1, Math.ceil((state.at - Date.now()) / 1000)) : 0;
+  return (
+    <View testID="test-approval-card" style={{ marginTop: space.xxl }}>
+      <ThemedText variant="footnote" tone="ink3" accessibilityRole="header" style={{ fontWeight: '600', textTransform: 'uppercase', marginBottom: space.xs }}>
+        For testing
+      </ThemedText>
+      <View style={{ backgroundColor: color.raise, borderRadius: radius.lg, padding: layout.cardInset, gap: space.sm }}>
+        <ThemedText variant="headline">Check that approvals work</ThemedText>
+        <ThemedText variant="subhead" tone="ink2">
+          Sends a test approval from this phone. Nothing runs, whatever you choose. It shows up here and in Branch on your computer, and either can answer it.
+        </ThemedText>
+        {counting ? (
+          <>
+            <ThemedText testID="test-approval-countdown" variant="subhead" tone="ink">
+              {`Sending in ${secs} s. Lock the phone now: the notification should arrive with Allow and Deny.`}
+            </ThemedText>
+            <Button title="Cancel" kind="plain" onPress={onCancel} testID="test-approval-cancel" />
+          </>
+        ) : (
+          <>
+            <Button title="Send a test approval" kind="inkSecondary" busy={state.phase === 'sending'} disabled={state.phase === 'sending'} onPress={() => onSend(0)} testID="test-approval-send" />
+            <Button
+              title={`Send one in ${Math.round(TEST_APPROVAL_DELAY_MS / 1000)} seconds`}
+              kind="plain"
+              disabled={state.phase === 'sending'}
+              onPress={() => onSend(TEST_APPROVAL_DELAY_MS)}
+              testID="test-approval-later"
+            />
+          </>
+        )}
+        {state.phase === 'sent' && waiting ? (
+          <ThemedText testID="test-approval-sent" variant="footnote" tone="ink2">
+            Sent. Answer it above, or on your computer.
+          </ThemedText>
+        ) : null}
+        {state.phase === 'failed' ? <Notice testID="test-approval-failed" tone="bad" text={state.message} /> : null}
+      </View>
+    </View>
+  );
+}
+
+/** Inbox: Needs you grouped by Trunk, then Finished, then History. Approvals still answer here. */
 export function ApprovalsScreen({
   snapshot,
   online,
@@ -311,7 +459,10 @@ export function ApprovalsScreen({
   onOpenChat,
   canOpenChat = () => false,
   focusId,
+  test,
   now: fixedNow,
+  bottomExtra = 0,
+  initialTab = 'needs',
 }: {
   snapshot: ApprovalsSnapshot;
   online: boolean;
@@ -326,42 +477,91 @@ export function ApprovalsScreen({
   canOpenChat?: (sessionKey: string) => boolean;
   /** The approval a notification was tapped for: it comes first and is outlined. */
   focusId?: string;
+  /** The test approval tools, in builds that have them (testApproval.ts testApprovalsOn). */
+  test?: { state: TestApprovalState; onSend: (delayMs: number) => void; onCancel: () => void };
   now?: number;
+  /** Extra padding above a floating Places bar. */
+  bottomExtra?: number;
+  /** Starts on this tab (screenshots and tests). Taps still switch. */
+  initialTab?: InboxTab;
 }) {
   const { color, space, radius, layout } = useTheme();
   const insets = useSafeAreaInsets();
   const now = useNow(fixedNow, snapshot.pending.some((a) => a.expiresAtMs));
+  const [tab, setTab] = useState<InboxTab>(initialTab);
   const pending = focusId ? [...snapshot.pending].sort((a, b) => Number(b.id === focusId) - Number(a.id === focusId)) : snapshot.pending;
   const waiting = snapshot.pending.filter((a) => !isExpired(a, now)).length;
+  const groups = groupByTrunk(pending, snapshot.trunks, focusId);
+  const finished = groupByTrunk(snapshot.answered, snapshot.trunks);
 
-  let body;
-  if (!snapshot.loaded && !snapshot.error) body = <Note testID="approvals-loading" title="Checking with your computer…" body="Anything a Trunk is waiting on shows up here." />;
+  let needsBody;
+  if (!snapshot.loaded && !snapshot.error) needsBody = <Note testID="approvals-loading" title="Checking with your computer…" body="Anything a Trunk is waiting on shows up here." />;
   else if (!snapshot.loaded)
-    body = online ? (
+    needsBody = online ? (
       // snapshot.error is already plain words (approvals.ts listFailureMessage); the fallback covers a blank one.
       <Note testID="approvals-error" title="Couldn’t check for approvals" body={snapshot.error || LIST_FAILED_MESSAGE} action={{ title: 'Try again', onPress: onRetry }} />
     ) : (
       <Note testID="approvals-waiting" title="Waiting for your computer" body="Approvals show up here as soon as this phone reaches it." />
     );
-  else if (pending.length === 0) body = <Note testID="approvals-empty" title="Nothing is waiting for you" body="Trunks show up here when they need a yes." />;
+  else if (pending.length === 0) needsBody = <Note testID="approvals-empty" title="Nothing is waiting for you" body="Trunks show up here when they need a yes." />;
   else
-    body = pending.map((approval) => (
-      <ApprovalCard
-        key={approval.id}
-        approval={approval}
-        trunk={trunkOf(approval, snapshot.trunks)}
-        now={now}
-        sending={snapshot.sending[approval.id]}
-        failed={snapshot.failed[approval.id]}
-        focused={approval.id === focusId && pending.length > 1}
-        onAnswer={onAnswer}
-        onOpenChat={onOpenChat && approval.sessionKey && canOpenChat(approval.sessionKey) ? () => onOpenChat(approval.sessionKey!) : undefined}
-      />
+    needsBody = groups.map((group) => (
+      <TrunkGroup key={group.key} groupKey={group.key} trunk={group.trunk} count={group.items.length}>
+        {group.items.map((approval) => (
+          <ApprovalCard
+            key={approval.id}
+            approval={approval}
+            trunk={group.trunk}
+            now={now}
+            sending={snapshot.sending[approval.id]}
+            failed={snapshot.failed[approval.id]}
+            focused={approval.id === focusId && pending.length > 1}
+            onAnswer={onAnswer}
+            onOpenChat={onOpenChat && approval.sessionKey && canOpenChat(approval.sessionKey) ? () => onOpenChat(approval.sessionKey!) : undefined}
+          />
+        ))}
+      </TrunkGroup>
     ));
+
+  const finishedBody = snapshot.answered.length ? (
+    <View testID="inbox-finished">
+      {finished.map((group) => (
+        <TrunkGroup key={group.key} groupKey={`finished-${group.key}`} trunk={group.trunk} count={group.items.length}>
+          <View style={{ backgroundColor: color.raise, borderRadius: radius.lg, paddingHorizontal: layout.cardInset, paddingVertical: space.xs }}>
+            {group.items.map((answered) => (
+              <AnsweredRow
+                key={answered.id}
+                answered={answered}
+                trunk={group.trunk}
+                onOpen={onOpenChat && answered.sessionKey && canOpenChat(answered.sessionKey) ? () => onOpenChat(answered.sessionKey!) : undefined}
+              />
+            ))}
+          </View>
+        </TrunkGroup>
+      ))}
+    </View>
+  ) : (
+    <Note testID="inbox-finished-empty" title="Nothing finished yet." body="Answered requests show up here." />
+  );
+
+  const historyBody = snapshot.answered.length ? (
+    <View testID="inbox-history" style={{ marginTop: space.md }}>
+      {snapshot.answered.map((answered) => (
+        <HistoryRow key={answered.id} answered={answered} trunk={trunkOf(answered, snapshot.trunks)} now={now} />
+      ))}
+    </View>
+  ) : (
+    <Note testID="inbox-history-empty" title="Nothing in History yet." body="A record of what you answered shows up here." />
+  );
 
   return (
     <View testID="approvals-screen" style={{ flex: 1, backgroundColor: color.grouped }}>
-      <ScrollView contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl }}>
+      <ScrollView
+        testID="inbox-scroll"
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl + bottomExtra }}
+      >
         <Pressable
           testID="approvals-back"
           accessibilityRole="button"
@@ -370,49 +570,48 @@ export function ApprovalsScreen({
           hitSlop={8}
           style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
         >
-          <ThemedText variant="body" tone="accentInk">
+          <ThemedText variant="body" tone="ink">
             ‹ Chats
           </ThemedText>
         </Pressable>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
           <ThemedText variant="largeTitle" accessibilityRole="header">
-            Needs you
+            Inbox
           </ThemedText>
           {waiting ? (
             <View
               testID="approvals-count"
               accessibilityLabel={`${waiting} waiting`}
-              style={{ minWidth: 24, height: 24, paddingHorizontal: space.sm, borderRadius: radius.pill, backgroundColor: color.accent, alignItems: 'center', justifyContent: 'center' }}
+              style={{ minWidth: 24, height: 24, paddingHorizontal: space.sm, borderRadius: radius.pill, backgroundColor: color.ink, alignItems: 'center', justifyContent: 'center' }}
             >
-              <ThemedText variant="footnote" tone="onAccent" style={{ fontWeight: '700' }}>
+              <ThemedText variant="footnote" style={{ fontWeight: '700', color: color.bg }}>
                 {waiting}
               </ThemedText>
             </View>
           ) : null}
         </View>
+        <ThemedText variant="subhead" tone="ink2" style={{ marginTop: space.xs }}>
+          Everything a Trunk is waiting on you for, what finished, and a record of what ran.
+        </ThemedText>
+        <InboxTabs tab={tab} needs={waiting} onChange={setTab} />
         {online ? null : (
-          <View testID="approvals-offline" style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, backgroundColor: color.warnTint, borderRadius: radius.md, padding: space.md }}>
-            <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: color.warn }} />
-            <ThemedText variant="footnote" tone="ink2" style={{ flex: 1 }}>
-              {/* answer() waits RECONNECT_WAIT_MS for the computer, then gives up with "Try again when it’s back". */}
-              {`Reconnecting to your computer… An answer sent now waits up to ${Math.round(RECONNECT_WAIT_MS / 1000)} seconds for it, then asks you to try again.`}
-            </ThemedText>
-          </View>
+          // answer() waits RECONNECT_WAIT_MS for the computer, then gives up with "Try again when it’s back".
+          <OfflineBanner
+            testID="approvals-offline"
+            message={`Reconnecting to your computer… An answer sent now waits up to ${Math.round(RECONNECT_WAIT_MS / 1000)} seconds for it, then asks you to try again.`}
+          />
         )}
-        <PermissionCard permission={permission} onTurnOn={onTurnOnNotifications} onSettings={onOpenSettings} />
-        {body}
-        {snapshot.answered.length ? (
-          <View testID="approvals-answered" style={{ marginTop: space.xxl }}>
-            <ThemedText variant="footnote" tone="ink3" accessibilityRole="header" style={{ fontWeight: '600', textTransform: 'uppercase', marginBottom: space.xs }}>
-              Answered
-            </ThemedText>
-            <View style={{ backgroundColor: color.raise, borderRadius: radius.lg, paddingHorizontal: layout.cardInset, paddingVertical: space.xs }}>
-              {snapshot.answered.map((answered) => (
-                <AnsweredRow key={answered.id} answered={answered} trunk={trunkOf(answered, snapshot.trunks)} />
-              ))}
-            </View>
-          </View>
+        {tab === 'needs' ? (
+          <>
+            <PermissionCard permission={permission} onTurnOn={onTurnOnNotifications} onSettings={onOpenSettings} />
+            {needsBody}
+            {test ? (
+              <TestApprovalCard state={test.state} waiting={snapshot.pending.some((a) => a.pluginId === TEST_APPROVAL_PLUGIN)} onSend={test.onSend} onCancel={test.onCancel} />
+            ) : null}
+          </>
         ) : null}
+        {tab === 'finished' ? finishedBody : null}
+        {tab === 'history' ? historyBody : null}
       </ScrollView>
     </View>
   );

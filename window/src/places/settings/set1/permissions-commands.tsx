@@ -11,15 +11,16 @@ import { useResource } from "../hooks";
 import { Btn, Ctl, Empty, Hint, Pick, Pill, Plist, Prow, Seg, Switch } from "../kit";
 import type { Ctx } from "./permissions-rows";
 import { withAgent, withDefault, type AllowEntry, type ApprovalsFile } from "./permissions-file";
+import { accessName, execMode } from "./permissions-top";
 
-export const RUN = [{ id: "deny", label: "None" }, { id: "allowlist", label: "Only listed ones" }, { id: "full", label: "Any" }];
+const RUN = [{ id: "deny", label: "None" }, { id: "allowlist", label: "Only listed ones" }, { id: "full", label: "Any" }];
 const ASK = [{ id: "off", label: "Never" }, { id: "on-miss", label: "When it isn’t listed" }, { id: "always", label: "Every time" }];
 const FALLBACK = [{ id: "deny", label: "Refuse" }, { id: "allowlist", label: "Only listed ones" }, { id: "full", label: "Run it" }];
 const UP = <svg className="i s" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 export const THIS_PC = "this";
 
-export const trunkName = (t: RecordValue): string => visible(record(t.identity).name ?? t.name ?? t.id);
-export const nodeName = (n: RecordValue): string => visible(n.displayName ?? n.nodeId);
+const trunkName = (t: RecordValue): string => visible(record(t.identity).name ?? t.name ?? t.id);
+const nodeName = (n: RecordValue): string => visible(n.displayName ?? n.nodeId);
 
 export function RulesFor({ x }: { x: Ctx }) {
   const opts = [{ id: THIS_PC, label: "This computer (the Gateway)" }, ...x.nodes.map((n) => ({ id: text(n.nodeId), label: nodeName(n) }))];
@@ -93,6 +94,33 @@ function NodeRules({ engine, node }: { engine: WindowEngine; node: RecordValue }
 
 const labelOf = (opts: { id: string; label: string }[], id: string) => opts.find((o) => o.id === id)?.label ?? visible(id);
 
+/** What each Access mode lets commands do (engine exec-approvals-core resolveExecPolicyForMode); no mode is the
+ *  engine's own default, any command without asking. */
+const MODE_POLICY: Record<string, { security: string; ask: string; review?: boolean }> = {
+  deny: { security: "deny", ask: "off" },
+  allowlist: { security: "allowlist", ask: "off" },
+  ask: { security: "allowlist", ask: "on-miss" },
+  auto: { security: "allowlist", ask: "on-miss", review: true },
+  full: { security: "full", ask: "off" },
+};
+const SECURITY_ORDER: Record<string, number> = { deny: 0, allowlist: 1, full: 2 };
+const ASK_ORDER: Record<string, number> = { off: 0, "on-miss": 1, always: 2 };
+
+/** What commands may do right now: Access and these defaults together, the stricter of each winning, the way the
+ *  engine combines them (exec-approvals-effective: minSecurity and maxAsk). One plain line. */
+export function commandsNow(mode: string, defaults: { security: string; ask: string }): string {
+  const byMode = MODE_POLICY[mode] ?? MODE_POLICY.full;
+  const security = (SECURITY_ORDER[defaults.security] ?? 2) < SECURITY_ORDER[byMode.security] ? defaults.security : byMode.security;
+  const ask = (ASK_ORDER[defaults.ask] ?? 0) > ASK_ORDER[byMode.ask] ? defaults.ask : byMode.ask;
+  if (security === "deny") return "No command runs.";
+  if (ask === "always") return "Branch asks you before every command.";
+  if (security === "full") return "Any command runs without asking.";
+  if (ask === "on-miss") return byMode.review && ask === byMode.ask
+    ? "Commands on the allowed list run. A reviewer checks any other and asks you when it isn’t sure."
+    : "Commands on the allowed list run. Any other waits for your yes.";
+  return "Only commands on the allowed list run. Any other is refused.";
+}
+
 /** Commands, by default: the file's defaults, then each Trunk's own policy and allowed commands. */
 export function CommandDefaults({ x }: { x: Ctx }) {
   const { ap } = x;
@@ -103,10 +131,15 @@ export function CommandDefaults({ x }: { x: Ctx }) {
   const r = ap.resolved;
   const set = (key: "security" | "ask" | "askFallback" | "autoAllowSkills") => (v: string | boolean) => void ap.update((f) => withDefault(f, key, v));
   const busy = ap.loading || Boolean(ap.error);
+  // Access and these defaults both apply and the stricter one wins, so the page says what that adds up to (#1093 item 3).
+  const mode = execMode(x.cfg, x.agents);
+  const access = accessName(mode);
+  const looser = (SECURITY_ORDER[r.security] ?? 2) > SECURITY_ORDER[(MODE_POLICY[mode] ?? MODE_POLICY.full).security];
   return (
     <>
-      <Hint>Follows Access unless you set it here.</Hint>
-      <Ctl title="Commands may run"><Seg label="Commands may run" value={r.security} options={RUN} disabled={busy} onChange={set("security")} /></Ctl>
+      <Hint>Access comes first. These can only make it stricter.</Hint>
+      <p className="hint pm-now" role="status">{access ? `Right now, with Access on ${access}: ` : "Right now: "}{commandsNow(mode, r)}</p>
+      <Ctl title="Commands may run" sub={looser && access ? `Access is on ${access}, which is stricter, so Access decides.` : undefined}><Seg label="Commands may run" value={r.security} options={RUN} disabled={busy} onChange={set("security")} /></Ctl>
       <Ctl title="Ask before a command" sub="The engine’s default starts on Full access."><Seg label="Ask before a command" value={r.ask} options={ASK} disabled={busy} onChange={set("ask")} /></Ctl>
       <Ctl title="When nobody can be asked" sub="When no window, phone or chat app can show the request."><Seg label="When nobody can be asked" value={r.askFallback} options={FALLBACK} disabled={busy} onChange={set("askFallback")} /></Ctl>
       <Ctl title="Let skill programs run" sub="Programs your installed skills list as their own run without a rule." help="Programs your installed skills list as their own run without a rule. Off until you choose: they would run without asking."><Switch label="Let skill programs run" checked={r.autoAllowSkills} disabled={busy} onChange={set("autoAllowSkills")} /></Ctl>

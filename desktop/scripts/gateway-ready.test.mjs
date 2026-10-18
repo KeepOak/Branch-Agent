@@ -1,12 +1,139 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createServer } from "node:http";
+import { connect as connectNet, createServer as createNetServer } from "node:net";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
 const { GatewayReadinessTimeoutError, killGatewayAndWait, waitForReady } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+
+test("a handed-out loopback port can be bound again on that exact port", async () => {
+  const { freeLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const port = await freeLoopbackPort();
+  const server = createNetServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, "127.0.0.1", resolve);
+    });
+    assert.equal(server.address().port, port);
+  } finally {
+    try { server.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } });
+  }
+});
+
+test("a held loopback port stays taken until it is released for the engine", async () => {
+  const { freeLoopbackPort, holdLoopbackServer, releaseHeldLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const port = await freeLoopbackPort();
+  const holder = createNetServer();
+  await new Promise((resolve, reject) => {
+    holder.once("error", reject);
+    holder.listen(port, "127.0.0.1", resolve);
+  });
+  holdLoopbackServer(port, holder);
+  const blocked = createNetServer();
+  try {
+    await assert.rejects(new Promise((resolve, reject) => {
+      blocked.once("error", reject);
+      blocked.listen(port, "127.0.0.1", resolve);
+    }), { code: "EADDRINUSE" });
+  } finally {
+    releaseHeldLoopbackPort(port);
+  }
+  const server = createNetServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, "127.0.0.1", resolve);
+    });
+    assert.equal(server.address().port, port);
+  } finally {
+    try { server.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } });
+  }
+});
+
+test("a held loopback port is handed to the engine before anyone else can bind it", async () => {
+  const previous = process.env.BRANCH_DESKTOP_HOLD_LOOPBACK;
+  process.env.BRANCH_DESKTOP_HOLD_LOOPBACK = "1";
+  const { reserveLoopbackPort, releaseHeldPortWhenBinding, releaseHeldLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  let child;
+  let port;
+  const thief = createNetServer();
+  try {
+    port = await reserveLoopbackPort();
+    child = spawn(process.execPath, ["--input-type=module", "-e", [
+      'import http from "node:http";',
+      'const listener = http.createServer((q, r) => r.writeHead(200).end("ok"));',
+      'process.on("message", (msg, handle) => {',
+      '  if (msg?.type !== "branch-desktop:listen-handle" || !handle) return;',
+      '  listener.listen(handle, () => { process.send({ type: "branch-desktop:bound" }); process.send({ listening: true }); });',
+      '});',
+      'process.send({ type: "branch-desktop:binding" });',
+    ].join("\n")], { stdio: ["ignore", "ignore", "pipe", "ipc"], windowsHide: true });
+    releaseHeldPortWhenBinding(child, port);
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("the engine did not adopt the listening socket")), 3000);
+      child.on("message", (msg) => { if (msg?.listening) { clearTimeout(timer); resolve(); } });
+      child.once("exit", (code) => { clearTimeout(timer); reject(new Error(`engine exited ${code} before it listened`)); });
+    });
+    await assert.rejects(new Promise((resolve, reject) => {
+      thief.once("error", reject);
+      thief.listen(port, "127.0.0.1", resolve);
+    }), { code: "EADDRINUSE" });
+    assert.equal(await (await fetch(`http://127.0.0.1:${port}`)).text(), "ok");
+  } finally {
+    try { thief.close(); } catch { /* not listening */ }
+    if (port !== undefined) releaseHeldLoopbackPort(port);
+    if (child?.pid) { try { child.kill(); } catch { /* already gone */ } }
+    if (previous === undefined) delete process.env.BRANCH_DESKTOP_HOLD_LOOPBACK;
+    else process.env.BRANCH_DESKTOP_HOLD_LOOPBACK = previous;
+  }
+});
+
+test("a client connected to a held loopback port does not keep it after release", async () => {
+  const { freeLoopbackPort, holdLoopbackServer, releaseHeldLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const port = await freeLoopbackPort();
+  const holder = createNetServer();
+  const rebound = createNetServer();
+  let client;
+  try {
+    await new Promise((resolve, reject) => {
+      holder.once("error", reject);
+      holder.listen(port, "127.0.0.1", resolve);
+    });
+    holdLoopbackServer(port, holder);
+    client = connectNet({ host: "127.0.0.1", port });
+    client.on("error", () => {});
+    const outcome = await new Promise((resolve) => {
+      client.once("connect", () => resolve("connect"));
+      client.once("error", (error) => resolve(error.code ?? "error"));
+    });
+    assert.notEqual(outcome, "ECONNREFUSED");
+    releaseHeldLoopbackPort(port);
+    const end = Date.now() + 2000;
+    let bound = false;
+    while (Date.now() < end && !bound) {
+      bound = await new Promise((resolve) => {
+        rebound.once("error", () => resolve(false));
+        rebound.listen(port, "127.0.0.1", () => resolve(true));
+      });
+      if (!bound) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(bound, true);
+  } finally {
+    client?.destroy();
+    releaseHeldLoopbackPort(port);
+    try { rebound.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise((resolve) => { try { rebound.close(() => resolve()); } catch { resolve(); } });
+    try { holder.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise((resolve) => { try { holder.close(() => resolve()); } catch { resolve(); } });
+  }
+});
 
 test("a child that never emits exit cannot hold the update lock indefinitely", async () => {
   const child = Object.assign(new EventEmitter(), { pid: undefined, exitCode: null, signalCode: null });
@@ -178,4 +305,92 @@ test("owned gateway shutdown also reaps its spawned child", async () => {
     // Windows can hold a just-killed child's working directory for a moment.
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
+});
+
+// Private #951 part 2: an update is promoted only once its agents are admitted; still refused at the deadline, it rolls back.
+const admission = () => import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "agent-admission.js")));
+/** A fake engine: /startupz and /readyz answer from `state()`, as the engine does for a local probe. */
+const fakeEngine = state => (req, res) => {
+  const { inspecting, refused } = state();
+  const body = req.url === "/startupz"
+    ? (inspecting ? { ok: false, status: "starting", pendingReason: "agent-database-inspection" } : { ok: true, status: "started" })
+    : { ready: true, failing: [], ...(refused.length ? { agentDatabases: refused.map(agentId => ({ agentId, code: "agent-database-inspection-pending" })) } : {}) };
+  res.writeHead(req.url === "/startupz" && inspecting ? 503 : 200, { "content-type": "application/json" }).end(JSON.stringify(body));
+};
+
+test("inspection stuck past the deadline rolls the update back automatically and never promotes it", async () => {
+  const { superviseUpdateAdmission, waitForAgentAdmission } = await admission();
+  await fixture(fakeEngine(() => ({ inspecting: true, refused: ["coordinator", "tk"] })), async cfg => {
+    const calls = [], lines = [];
+    const result = await superviseUpdateAdmission({
+      label: "0.5.0",
+      wait: () => waitForAgentAdmission({ port: () => cfg.gatewayPort, child: { exitCode: null, signalCode: null }, rollbackAfterMs: 300, pollMs: 40 }),
+      promote: () => { calls.push("promote"); },
+      rollback: async outcome => { calls.push(`rollback ${outcome.refused.join(",")}`); },
+      log: line => lines.push(line),
+    });
+    assert.equal(result.outcome, "refused");
+    assert.ok(result.waitedMs >= 300 && result.waitedMs < 2_000, `waited ${result.waitedMs} ms`);
+    assert.deepEqual(calls, ["rollback coordinator,tk"]);
+    assert.match(lines.join("\n"), /still refused .*coordinator, tk.*rolling back/);
+  });
+});
+
+test("an engine that stops answering after the swap is rolled back too", async () => {
+  const { superviseUpdateAdmission, waitForAgentAdmission } = await admission();
+  const calls = [];
+  const port = await new Promise(resolve => { const s = createServer(); s.listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => resolve(p)); }); });
+  const result = await superviseUpdateAdmission({
+    label: "0.5.0",
+    wait: () => waitForAgentAdmission({ port: () => port, child: { exitCode: null, signalCode: null }, rollbackAfterMs: 150, pollMs: 30 }),
+    promote: () => { calls.push("promote"); }, rollback: async () => { calls.push("rollback"); }, log: () => {},
+  });
+  assert.equal(result.outcome, "refused");
+  assert.deepEqual(result.refused, ["(engine not answering)"]);
+  assert.deepEqual(calls, ["rollback"]);
+});
+
+test("real admission promotes the update: every agent admitted once inspection ends, no rollback", async () => {
+  const { superviseUpdateAdmission, waitForAgentAdmission } = await admission();
+  let probes = 0;
+  // The listener is up from the first probe, but agents are admitted only after a few polls.
+  await fixture(fakeEngine(() => (++probes <= 6 ? { inspecting: true, refused: ["coordinator"] } : { inspecting: false, refused: [] })), async cfg => {
+    const calls = [];
+    const result = await superviseUpdateAdmission({
+      label: "0.5.0",
+      wait: () => waitForAgentAdmission({ port: () => cfg.gatewayPort, child: { exitCode: null, signalCode: null }, rollbackAfterMs: 5_000, pollMs: 20 }),
+      promote: () => { calls.push("promote"); }, rollback: async () => { calls.push("rollback"); }, log: () => {},
+    });
+    assert.equal(result.outcome, "admitted");
+    assert.deepEqual(calls, ["promote"]);
+    assert.ok(probes > 6, "the listener alone never promoted the update");
+  });
+});
+
+test("agents the old engine already refused never hold the promotion back", async () => {
+  const { readAgentAdmission, waitForAgentAdmission } = await admission();
+  await fixture(fakeEngine(() => ({ inspecting: true, refused: ["broken"] })), async cfg => {
+    assert.deepEqual(await readAgentAdmission(cfg.gatewayPort), { admitted: false, refused: ["broken"], startup: "inspecting" });
+    const result = await waitForAgentAdmission({ port: () => cfg.gatewayPort, child: { exitCode: null, signalCode: null },
+      rollbackAfterMs: 1_000, pollMs: 20, knownRefused: new Set(["broken"]) });
+    assert.equal(result.outcome, "admitted");
+  });
+});
+
+test("the admission watch ends without promoting or rolling back when the engine exits or the watch is stopped", async () => {
+  const { superviseUpdateAdmission, waitForAgentAdmission } = await admission();
+  await fixture(fakeEngine(() => ({ inspecting: true, refused: ["coordinator"] })), async cfg => {
+    const calls = [];
+    const run = (child, signal) => superviseUpdateAdmission({
+      label: "0.5.0", wait: () => waitForAgentAdmission({ port: () => cfg.gatewayPort, child, rollbackAfterMs: 5_000, pollMs: 20, signal }),
+      promote: () => { calls.push("promote"); }, rollback: async () => { calls.push("rollback"); }, log: () => {},
+    });
+    assert.equal((await run({ exitCode: 1, signalCode: null })).outcome, "exited");
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 100);
+    const started = Date.now();
+    assert.equal((await run({ exitCode: null, signalCode: null }, stop.signal)).outcome, "stopped");
+    assert.ok(Date.now() - started < 1_000);
+    assert.deepEqual(calls, []);
+  });
 });

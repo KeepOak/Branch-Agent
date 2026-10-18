@@ -1,4 +1,4 @@
-// From mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421:packages/core/src/llm/model/aisdk/v4/model.ts;packages/core/src/llm/model/aisdk/v5/model.ts;packages/core/src/llm/model/aisdk/v6/model.ts (atlas AGENT-LOOP-0026). Adapted wrapper dispatch to Branch's one-turn provider contract.
+// Wrapper dispatch adapted to Branch's one-turn provider contract.
 import type { LanguageModelV1, LanguageModelV1CallOptions } from "@ai-sdk/provider-v4";
 import type { LanguageModelV2, LanguageModelV2CallOptions } from "@ai-sdk/provider-v5";
 import type { LanguageModelV3, LanguageModelV3CallOptions } from "@ai-sdk/provider-v6";

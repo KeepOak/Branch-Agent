@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Dialog } from "./Dialog";
+import { plainError } from "../shell/plain-error";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
-const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const reason = (e: unknown): string => plainError(e);
 
 /** Runs an engine call from a dialog button: busy while it runs, its error under the body, closed when it works. */
 function useRun(onDone: () => void) {
@@ -23,7 +25,7 @@ function useRun(onDone: () => void) {
   return { busy, error, run };
 }
 
-export function StartOverDialog({ trunkName, onStart, onClose }: { trunkName: string; onStart: () => Promise<unknown>; onClose: () => void }) {
+export function StartOverDialog({ trunkName, onStart, onClose, clear }: { trunkName: string; onStart: () => Promise<unknown>; onClose: () => void; clear?: boolean }) {
   const { busy, error, run } = useRun(onClose);
   const footer = (
     <>
@@ -32,8 +34,8 @@ export function StartOverDialog({ trunkName, onStart, onClose }: { trunkName: st
     </>
   );
   return (
-    <Dialog title="Start this conversation over?" onClose={onClose} footer={footer} testid="start-over">
-      <p className="lede">{trunkName} starts fresh here with a new start: what was said before is cleared from this conversation. It stays in your list.</p>
+    <Dialog title="Start this conversation over?" onClose={onClose} footer={footer} testid="start-over" clear={clear}>
+      <p className={clear ? "lede g-label" : "lede"} data-lines={clear ? "" : undefined}>{trunkName} starts fresh here with a new start: what was said before is cleared from this conversation. It stays in your list.</p>
       {error ? <p className="field-error" role="alert">{error}</p> : null}
     </Dialog>
   );
@@ -42,7 +44,7 @@ export function StartOverDialog({ trunkName, onStart, onClose }: { trunkName: st
 type Tip = { leafEntryId: string; headline: string; messageCount: number; active: boolean };
 
 /** Map of this conversation: the paths it has taken (sessions.branches.list); picking one switches to it. */
-export function MapDialog({ engine, sessionKey, agentId, onSwitched, onClose }: { engine: WindowEngine; sessionKey: string; agentId?: string; onSwitched: () => void; onClose: () => void }) {
+export function MapDialog({ engine, sessionKey, agentId, onSwitched, onClose, clear }: { engine: WindowEngine; sessionKey: string; agentId?: string; onSwitched: () => void; onClose: () => void; clear?: boolean }) {
   const [tips, setTips] = useState<Tip[] | null>(null);
   const { busy, error, run } = useRun(() => {
     onSwitched();
@@ -57,9 +59,9 @@ export function MapDialog({ engine, sessionKey, agentId, onSwitched, onClose }: 
     );
   }, [engine, sessionKey, agentId]);
   return (
-    <Dialog title="Map of this conversation" wide onClose={onClose} footer={<button type="button" className="btn primary" onClick={onClose}>Close</button>} testid="conversation-map">
+    <Dialog title="Map of this conversation" wide onClose={onClose} footer={<button type="button" className="btn primary" onClick={onClose}>Close</button>} testid="conversation-map" clear={clear}>
       {loadError ? <p className="field-error" role="alert">{loadError}</p> : null}
-      {tips && tips.length < 2 ? <p className="hint">One path so far. Conversations branched off with “Branch from here” show here.</p> : null}
+      {tips && tips.length < 2 ? <p className={clear ? "hint g-label" : "hint"}>One path so far. Conversations branched off with “Branch from here” show here.</p> : null}
       {tips && tips.length > 1 ? (
         <ol className="conv-map">
           {tips.map((t) => (

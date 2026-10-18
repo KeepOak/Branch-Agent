@@ -121,6 +121,9 @@ describe('needs you screen', () => {
       { ...plugin, outcome: 'allowed', always: false, by: 'elsewhere', at: FIXTURE_NOW },
     ];
     await renderScreen({ pending: [], answered });
+    expect(screen.queryByTestId('approvals-answered')).toBeNull();
+    expect(screen.queryByTestId('answered-exec-1')).toBeNull();
+    await fireEvent.press(screen.getByTestId('inbox-tab-finished'));
     expect(within(screen.getByTestId('answered-exec-1')).getByText('Allowed on this phone')).toBeOnTheScreen();
     expect(within(screen.getByTestId('answered-plugin:mail-1')).getByText('Sent somewhere else')).toBeOnTheScreen();
   });
@@ -129,6 +132,38 @@ describe('needs you screen', () => {
     await renderScreen({}, { focusId: 'plugin:mail-1' });
     const ids = screen.getAllByTestId(/^approval-/).map((n) => n.props.testID);
     expect(ids[0]).toBe('approval-plugin:mail-1');
+  });
+
+  it('groups Needs you by Trunk, then Finished, then History', async () => {
+    const answered: Answered[] = [{ ...exec, outcome: 'allowed', always: false, by: 'phone', at: FIXTURE_NOW }];
+    await renderScreen({ answered });
+    expect(screen.getByText('Inbox')).toBeOnTheScreen();
+    expect(screen.getByText('Everything a Trunk is waiting on you for, what finished, and a record of what ran.')).toBeOnTheScreen();
+    expect(screen.getByTestId('inbox-tab-needs')).toHaveTextContent('Needs you · 2');
+    expect(screen.getByTestId('inbox-group-oak')).toBeOnTheScreen();
+    expect(within(screen.getByTestId('inbox-group-oak')).getByTestId('approval-exec-1')).toBeOnTheScreen();
+    expect(screen.getByTestId('inbox-group-main')).toBeOnTheScreen();
+    expect(within(screen.getByTestId('inbox-group-main')).getByTestId('approval-plugin:mail-1')).toBeOnTheScreen();
+    expect(screen.queryByTestId('approvals-answered')).toBeNull();
+    expect(screen.queryByTestId('answered-exec-1')).toBeNull();
+
+    await fireEvent.press(screen.getByTestId('inbox-tab-finished'));
+    expect(screen.getByTestId('inbox-finished')).toBeOnTheScreen();
+    expect(screen.getByTestId('answered-exec-1')).toBeOnTheScreen();
+    expect(screen.queryByTestId('approval-exec-1')).toBeNull();
+
+    await fireEvent.press(screen.getByTestId('inbox-tab-history'));
+    expect(screen.getByTestId('inbox-history')).toBeOnTheScreen();
+    expect(screen.getByTestId('history-exec-1')).toHaveTextContent(/Oak · Run a command/);
+    expect(screen.getByTestId('history-exec-1')).toHaveTextContent(/Allowed on this phone/);
+  });
+
+  it('says when Finished and History are empty', async () => {
+    await renderScreen({ pending: [], answered: [] });
+    await fireEvent.press(screen.getByTestId('inbox-tab-finished'));
+    expect(screen.getByTestId('inbox-finished-empty')).toHaveTextContent(/Nothing finished yet/);
+    await fireEvent.press(screen.getByTestId('inbox-tab-history'));
+    expect(screen.getByTestId('inbox-history-empty')).toHaveTextContent(/Nothing in History yet/);
   });
 });
 
@@ -149,15 +184,18 @@ describe('approvals in the app', () => {
     const { session, engine } = await pairedApp();
     expect(screen.getByTestId('needs-you-banner')).toHaveProp('accessibilityLabel', '2 approvals need your yes. Oak · Run a command and 1 more');
     await fireEvent.press(screen.getByTestId('needs-you-banner'));
-    expect(screen.getByText('Needs you')).toBeOnTheScreen();
+    // Places also labels its Inbox tab; the screen title lives on the approvals tree.
+    expect(within(screen.getByTestId('approvals-screen')).getByText('Inbox')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('allow-exec-1'));
-    await eventually(() => expect(within(screen.getByTestId('answered-exec-1')).getByText('Allowed on this phone')).toBeOnTheScreen());
+    await eventually(() => expect(screen.queryByTestId('approval-exec-1')).toBeNull());
     expect(engine.requests).toContainEqual({ method: 'exec.approval.resolve', params: { id: 'exec-1', decision: 'allow-once' } });
 
-    // The computer answers the other one: it moves to Answered here too.
+    // The computer answers the other one: both land on Finished, not under Needs you.
     engine.resolveApproval('plugin:mail-1', 'deny');
-    await eventually(() => expect(within(screen.getByTestId('answered-plugin:mail-1')).getByText('Not sent somewhere else')).toBeOnTheScreen());
-    expect(screen.getByTestId('approvals-empty')).toBeOnTheScreen();
+    await eventually(() => expect(screen.getByTestId('approvals-empty')).toBeOnTheScreen());
+    await fireEvent.press(screen.getByTestId('inbox-tab-finished'));
+    await eventually(() => expect(within(screen.getByTestId('answered-exec-1')).getByText('Allowed on this phone')).toBeOnTheScreen());
+    expect(within(screen.getByTestId('answered-plugin:mail-1')).getByText('Not sent somewhere else')).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByTestId('approvals-back'));
     expect(screen.queryByTestId('needs-you-banner')).toBeNull();

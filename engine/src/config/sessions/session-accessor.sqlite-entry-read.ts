@@ -11,6 +11,7 @@ import {
   sqliteStringSet,
 } from "../../infra/kysely-sync.js";
 import { runSqliteReadOperationSync } from "../../infra/sqlite-schema-facts.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import type { BranchAgentDatabase } from "../../state/branch-agent-db-contract.js";
 import type { DB as BranchAgentKyselyDatabase } from "../../state/branch-agent-db.generated.js";
@@ -37,6 +38,8 @@ import {
   readWithCanonicalSessionAdmission,
 } from "./session-canonical-key.js";
 import {
+  SessionCanonicalKeyMigrationRequiredError,
+  SessionRowRepairRequiredError,
   validateCanonicalSessionRowEntry,
   type CanonicalSessionValidationRow,
 } from "./session-canonical-row.js";
@@ -51,7 +54,17 @@ import {
 } from "./store-entry.js";
 import type { InternalSessionEntry as SessionEntry } from "./types.js";
 
+const log = createSubsystemLogger("sessions/entry-read");
+
 type BranchAgentDatabaseReader = Pick<BranchAgentDatabase, "agentId" | "db">;
+
+function isUnreadablePersistedSessionRow(error: unknown): boolean {
+  return (
+    error instanceof SessionCanonicalKeyMigrationRequiredError &&
+    error.message.includes("invalid persisted session row")
+  );
+}
+
 type SessionEntryRow = Selectable<BranchAgentKyselyDatabase["session_nodes"]> &
   SessionEntrySnapshotRow;
 
@@ -143,6 +156,11 @@ function parseReadableSessionEntryData(
   row: ResolvedSessionEntryRow["row"],
   projection: "full" | "list" | "delivery",
 ): SessionEntry | null {
+  // Startup quarantine settles the row invalid without touching its bytes; refuse it
+  // until doctor rewrites the row. "{}" with -1 is a retained placeholder, decided below.
+  if ("entry_valid" in row && row.entry_valid === -1 && row.entry_json !== "{}") {
+    throw new SessionRowRepairRequiredError(row.session_key);
+  }
   const parsed: SessionEntry | null =
     projection === "delivery"
       ? parseSqliteSessionEntryRecord(row)
@@ -232,7 +250,16 @@ export function parseReadableSqliteSessionEntryRows(
 ): SessionEntrySummary[] {
   const parsedEntries = new Map<string, SessionEntry>();
   for (const row of rows) {
-    const entry = parseReadableSessionEntryData(database, row, projection);
+    let entry: SessionEntry | null;
+    try {
+      entry = parseReadableSessionEntryData(database, row, projection);
+    } catch (error) {
+      if (!isUnreadablePersistedSessionRow(error)) {
+        throw error;
+      }
+      log.warn("Skipped unreadable persisted session row", { sessionKey: row.session_key });
+      continue;
+    }
     if (entry) {
       parsedEntries.set(row.session_key, entry);
     }
@@ -275,7 +302,8 @@ function selectReadableSessionEntryRows(
     // JSON and literal NUL retain the existing parser's semantics through the fallback.
     const deliveryJson =
       /* kysely-allow-raw: bounded delivery projection of exact session rows. */ sql<string>`
-      CASE WHEN json_valid(entry_json)
+      CASE WHEN entry_valid = -1 AND entry_json <> '{}' THEN ''
+      WHEN json_valid(entry_json)
         AND json_type(entry_json, '$.sessionId') = 'text'
         AND json_type(entry_json, '$.updatedAt') IN ('integer', 'real')
         AND length(CAST(entry_json AS BLOB)) = length(CAST(printf('%s', entry_json) AS BLOB))

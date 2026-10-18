@@ -80,7 +80,15 @@ export function currentThinking(row: Rec, defaults: Rec): string {
 }
 
 /** Preview §4.3.4 / rule 13: the chip when no usable model is connected. */
-export const NO_MODEL_CHIP = "No model";
+const NO_MODEL_CHIP = "No model";
+
+/** A configured ref only when that model is in the usable catalog; never a leftover name like gpt-6-astra. */
+export function usableModelName(ref: string | undefined, models: readonly { ref: string; name: string; available?: boolean }[]): string {
+  if (!ref) return "No model is set up";
+  const found = models.find((m) => m.ref === ref);
+  if (found && found.available !== false) return found.name;
+  return "No model is set up";
+}
 
 /** "<model> · <thinking>" in lower case for the level (§4.3.4 rule 1). */
 export function chipLabel(modelName: string, thinking: string): string {
@@ -99,7 +107,7 @@ export function composerChipLabel(current: ModelChoice | undefined, thinking: st
 }
 
 /** The service a model belongs to, as the group label in the model menu. */
-export function serviceName(m: ModelChoice): string {
+function serviceName(m: ModelChoice): string {
   return m.local ? "On this computer" : m.provider;
 }
 

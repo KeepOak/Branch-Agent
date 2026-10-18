@@ -2,11 +2,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { BranchConfig } from "../config/types.branch.js";
 import {
   startTrunkQueueSweep,
   TRUNK_QUEUE_SWEEP_MS,
   onTrunkRunLifecycle,
 } from "../gateway/server-methods/trunk-queue.js";
+import {
+  createAgentDatabaseInspectionRefusal,
+  recordAgentDatabaseAdmissions,
+} from "../state/agent-database-admission.js";
 import { isDefinitiveRunLifecycle } from "./agent-run-terminal-outcome.js";
 import { isTrunkStartupPending } from "./trunk-queue-policy.js";
 import {
@@ -42,7 +47,11 @@ function fakeGateway(liveKeys: string[] = []) {
         return { sessions: rows.slice(0, Number(params.limit ?? 50)) } as T;
       }
       if (method === "agents.list") {
-        return { agents: [{ id: "builder-ash" }] } as T;
+        // On a busy gateway agents.list builds every model catalog and outlasts the call timeout.
+        return await new Promise<T>(() => {});
+      }
+      if (method === "agent.wait") {
+        return { runId: params.runId, status: "ok" } as T;
       }
       return {} as T;
     },
@@ -261,6 +270,24 @@ describe("Trunk queue reconcile", () => {
   });
 });
 
+/** A Trunk whose startup failed once and is retrying on its own, as agents.list reports it. */
+function startupRefusal(agentId: string) {
+  return {
+    ...createAgentDatabaseInspectionRefusal({
+      agentId,
+      paths: [],
+      reason: `Agent ${agentId} is still starting`,
+      pending: true,
+    }),
+    preparation: { state: "retrying" as const, failures: 1, restarts: 0 },
+  };
+}
+
+/** A roster of builders, as the gateway config lists them. */
+function builderConfig(...ids: string[]): BranchConfig {
+  return { agents: { entries: Object.fromEntries(ids.map((id) => [id, {}])) } } as BranchConfig;
+}
+
 describe("Trunk queue sweep", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -270,26 +297,76 @@ describe("Trunk queue sweep", () => {
     vi.useFakeTimers();
     addQueueItem({ title: "job", brief_text: "b", priority: 1 });
     const { gateway, calls } = fakeGateway();
-    const agentListCalls = () => calls.filter((call) => call.method === "agents.list").length;
-    const config = { getConfig: () => undefined, log: () => {}, gateway };
+    const config = {
+      getConfig: () => builderConfig("builder-ash", "builder-birch"),
+      log: () => {},
+      gateway,
+    };
     const first = new AbortController();
 
     expect(startTrunkQueueSweep({ ...config, signal: first.signal })).toBe(true);
     expect(startTrunkQueueSweep({ ...config, signal: first.signal })).toBe(false);
 
     await vi.advanceTimersByTimeAsync(TRUNK_QUEUE_SWEEP_MS);
-    expect(agentListCalls()).toBe(1);
+    expect(briefedThreads(calls)).toHaveLength(1);
 
     first.abort();
-    await vi.advanceTimersByTimeAsync(TRUNK_QUEUE_SWEEP_MS * 3);
-    expect(agentListCalls()).toBe(1);
-
     addQueueItem({ title: "second job", brief_text: "b2", priority: 1 });
+    await vi.advanceTimersByTimeAsync(TRUNK_QUEUE_SWEEP_MS * 3);
+    expect(briefedThreads(calls)).toHaveLength(1);
+
     const second = new AbortController();
     expect(startTrunkQueueSweep({ ...config, signal: second.signal })).toBe(true);
     await vi.advanceTimersByTimeAsync(TRUNK_QUEUE_SWEEP_MS);
-    expect(agentListCalls()).toBe(2);
+    expect(briefedThreads(calls)).toHaveLength(2);
     second.abort();
+  });
+
+  it("gives every idle builder a job while agents.list is too slow to answer", async () => {
+    vi.useFakeTimers();
+    const jobs = ["one", "two", "three"].map((title) =>
+      addQueueItem({ title, brief_text: title, priority: 1 }),
+    );
+    const { gateway, calls } = fakeGateway();
+    const sweep = new AbortController();
+    const failures: string[] = [];
+
+    startTrunkQueueSweep({
+      getConfig: () => builderConfig("builder-ash", "builder-birch", "builder-cedar", "tk"),
+      log: (message) => failures.push(message),
+      gateway,
+      signal: sweep.signal,
+    });
+    await vi.advanceTimersByTimeAsync(TRUNK_QUEUE_SWEEP_MS);
+    sweep.abort();
+
+    expect(failures).toEqual([]);
+    expect(jobs.map((job) => rowById(job.id)?.claimed_by).toSorted()).toEqual([
+      "builder-ash",
+      "builder-birch",
+      "builder-cedar",
+    ]);
+    expect(briefedThreads(calls)).toHaveLength(3);
+    expect(calls.some((call) => call.method === "agents.list")).toBe(false);
+  });
+
+  it("skips a builder that is still retrying its startup", async () => {
+    vi.useFakeTimers();
+    const job = addQueueItem({ title: "job", brief_text: "b", priority: 1 });
+    const { gateway } = fakeGateway();
+    const sweep = new AbortController();
+    recordAgentDatabaseAdmissions([startupRefusal("builder-ash")]);
+
+    startTrunkQueueSweep({
+      getConfig: () => builderConfig("builder-ash", "builder-birch"),
+      log: () => {},
+      gateway,
+      signal: sweep.signal,
+    });
+    await vi.advanceTimersByTimeAsync(TRUNK_QUEUE_SWEEP_MS);
+    sweep.abort();
+
+    expect(rowById(job.id)?.claimed_by).toBe("builder-birch");
   });
 });
 

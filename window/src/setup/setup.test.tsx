@@ -99,6 +99,63 @@ function engine(answers: Record<string, unknown>) {
 const params = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter((c) => c[0] === method).map((c) => c[1] as Record<string, unknown>);
 
 describe("setup flow", () => {
+  it.each([
+    { label: "completes shell Make Trunk on its saved receipt", repeat: false },
+    { label: "guards synchronous repeat shell Make Trunk confirmations before the receipt", repeat: true },
+  ])("$label", async ({ repeat }) => {
+    vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} });
+    const snapshot = {
+      status: { phase: "connected" }, sessionKey: null, mainKey: null, name: "Branch", history: [], live: [],
+      pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null, doneAt: null,
+      lastActivityAt: null, error: null, steered: [],
+    };
+    let saved = false;
+    let resolveCreate!: (value: unknown) => void;
+    const receipt = new Promise((resolve) => { resolveCreate = resolve; });
+    const request = vi.fn(async (method: string) => {
+      if (method === "config.get") return { hash: "h", config: { wizard: { lastRunAt: "2026-10-06T00:00:00Z" } } };
+      if (method === "agents.list" && saved) throw new Error("Roster temporarily unavailable");
+      if (method === "agents.list") return { defaultId: "oak", agents: [{ id: "oak", kind: "agent", name: "Oak" }] };
+      if (method === "agents.create") return receipt;
+      if (method === "contacts.list") return { contacts: [] };
+      if (method === "rooms.list") return { rooms: [] };
+      if (method === "peers.list" || method === "a2a.peers.list") return { peers: [] };
+      if (method === "channels.status") return { channelOrder: [] };
+      return {};
+    });
+    const session = {
+      request, engine: { request, onEvent: () => () => {}, scopes: ["operator.admin"], agentId: "oak" },
+      gatewayUrl: "ws://127.0.0.1:19661", getSnapshot: () => snapshot, subscribe: () => () => {},
+      onGatewayEvent: () => () => {}, open: vi.fn(async () => {}), reload: vi.fn(),
+    } as unknown as SaplingSession;
+    const host = await show(<WindowShell session={session} url="ws://127.0.0.1:19661" />);
+    await act(async () => new Promise((r) => setTimeout(r, 750)));
+    await act(async () => tid(host, "new").click());
+    await act(async () => tid(host, "new-trunk").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const make = byText(document.body, "Create Trunk");
+    expect(make).toBeTruthy();
+    await act(async () => {
+      make.click();
+      // Same render, before either the receipt or a disabled-button rerender.
+      // Removing makingTrunkRef must allow two requests and fail this assertion.
+      if (repeat) make.click();
+    });
+    expect(params(request, "agents.create")).toHaveLength(1);
+    expect(document.querySelector('[data-testid="new-trunk-preview"]')).not.toBeNull();
+    await act(async () => {
+      saved = true;
+      resolveCreate({ ok: true, agentId: "fern" });
+    });
+    expect(params(request, "agents.create")).toHaveLength(1);
+    expect(document.querySelector('[data-testid="new-trunk-preview"]')).toBeNull();
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(document.body.textContent).toContain("is made.");
+  });
+
   it("shows the shared reserved-name wording from WindowShell New Trunk", async () => {
     vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
     HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -132,7 +189,7 @@ describe("setup flow", () => {
     const input = document.querySelector<HTMLInputElement>('[data-testid="new-trunk-preview"] input')!;
     expect(input).toBeTruthy();
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Branch"); input.dispatchEvent(new Event("input", { bubbles: true })); });
-    await act(async () => byText(document.body, "Make Trunk").click());
+    await act(async () => byText(document.body, "Create Trunk").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(request).toHaveBeenCalledWith("agents.create", expect.objectContaining({ name: "Branch" }));
     expect(document.body.textContent).toContain("That name is kept for Branch. Choose another Trunk name.");
@@ -387,17 +444,26 @@ describe("setup flow", () => {
     await act(async () => host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")[6].click());
     expect(host.textContent).toContain("No command-line tools found yet");
   });
-  it("routes a failed model check to the shared Add account dialog", async () => {
-    const { engine: e } = engine({ "branch.setup.verify": { ok: false, error: "No agent model is configured. Run 'branch onboard' first." }, health: { ok: true }, "system.info": { diskAvailableBytes: 2 * 1024 ** 3 } });
-    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={10} onClose={() => {}} onLocalModel={() => {}} />);
+  it("lets setup finish when the model check fails, without requiring an account", async () => {
+    const closed = vi.fn();
+    const { engine: e } = engine({
+      "branch.setup.verify": { ok: false, error: "No agent model is configured. Run 'branch onboard' first." },
+      health: { ok: true },
+      "system.info": { diskAvailableBytes: 2 * 1024 ** 3 },
+      "config.get": { hash: "h", config: {} },
+      "config.patch": { ok: true },
+    });
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={10} onClose={closed} onLocalModel={() => {}} />);
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(host.textContent).toContain("No model connected yet");
-    expect(host.textContent).toContain("Trunks can’t answer until a model is connected.");
+    expect(host.textContent).toContain("Connecting an account makes answers smarter and faster.");
     expect(host.textContent).not.toContain("branch onboard");
-    expect(tid(host, "setup-finish").textContent).toBe("Connect a model");
+    expect(tid(host, "setup-finish").textContent).toBe("Open Branch and take the walkthrough");
+    expect(tid(host, "setup-finish").disabled).toBe(false);
     await act(async () => tid(host, "setup-finish").click());
-    expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
-    expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(closed).toHaveBeenCalledWith(true);
+    expect(document.querySelector('[data-testid="add-account"]')).toBeNull();
   });
   it("finishes when a detected signed-in account is switched on despite a failed initial model check", async () => {
     const { engine: e, request } = engine({
@@ -574,7 +640,7 @@ describe("setup's Reach step", () => {
     await act(async () => byText(document.body, "Make the code").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(params(request, "device.pair.setupCode")).toHaveLength(1);
-    expect(document.body.textContent).toContain("ABCD-2345");
+    expect(document.body.textContent).toContain("THWBEN");
   });
 });
 

@@ -1,0 +1,17 @@
+/* A Classic page re-hosted in the R1 Settings frame (classic-host.tsx): one column without Classic's nav grid, on the
+   R1 page's clear glass (item 48) and the row pages' measure and padding. Its controls take the glass pill from .g-clear;
+   its cards drop Classic's fill so the page reads like the row pages beside it. The title scrolls with the page. */
+.r1s-classic.settings { display: block; min-height: 0; }
+.r1s-classic .set-col { max-width: 820px; margin: 0 auto; padding: 26px 32px 64px; }
+.r1s-classic .set-col h1 { margin-top: 0; font-size: 26px; letter-spacing: -.025em; }
+.r1s-classic .sec { background: transparent; box-shadow: none; }
+/* The save line takes no room (height 0, sticky at the top of the page's scroller): appearing or going it never moves
+   a row, so a second click lands where the person aimed (#1093 item 1). Its pill floats over the top right corner. */
+.r1s-classic .r1s-classic-save { position: sticky; top: 8px; z-index: 5; display: flex; justify-content: flex-end; height: 0; margin: 0; padding: 0; overflow: visible; pointer-events: none; }
+.r1s-classic-save-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--bg); box-shadow: var(--sh1-17); white-space: nowrap; }
+.r1s-classic-part + .r1s-classic-part { margin-top: 40px; }
+.r1s-classic-save.bad { color: var(--bad); }
+@media (max-width: 760px) {
+  .r1s-classic .set-col { padding: 16px 16px 48px; }
+  .r1s-classic .set-col h1 { font-size: 22px; }
+}

@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { tryReadJson } from "@openclaw/fs-safe/json";
+import { resolveStateDir } from "branch/plugin-sdk/state-paths";
 import { isRecord as isConfigRecord } from "branch/plugin-sdk/string-coerce-runtime";
 import { escapeRegExp } from "branch/plugin-sdk/text-utility-runtime";
 import {
@@ -29,6 +30,7 @@ import { splitCommandParts, type AcpxAgentCommand } from "./command-line.js";
 import { resolveAcpxPluginRoot } from "./config.js";
 import type { ResolvedAcpxPluginConfig } from "./config.js";
 import { BRANCH_ACPX_LEASE_ID_ARG, BRANCH_GATEWAY_INSTANCE_ID_ARG } from "./process-lease.js";
+import { WRAPPER_NPM_CLI_SOURCE } from "./wrapper-command.js";
 
 const CLAUDE_ACP_PACKAGE = "@agentclientprotocol/claude-agent-acp";
 const CLAUDE_ACP_BIN = "claude-agent-acp";
@@ -419,20 +421,8 @@ if (stderrLogPath) {
 
 const configuredArgs = stripBranchWrapperArgs(rawConfiguredArgs);
 
-function resolveNpmCliPath() {
-  const candidate = path.resolve(
-    path.dirname(process.execPath),
-    "..",
-    "lib",
-    "node_modules",
-    "npm",
-    "bin",
-    "npm-cli.js",
-  );
-  return existsSync(candidate) ? candidate : undefined;
-}
-
-const npmCliPath = resolveNpmCliPath();
+${WRAPPER_NPM_CLI_SOURCE}
+const npmCliPath = resolveNpmCliPath(process.execPath, process.platform, existsSync);
 const installedBinPath = ${params.installedBinPath ? JSON.stringify(params.installedBinPath) : "undefined"};
 let defaultCommand;
 let defaultArgs;
@@ -600,7 +590,28 @@ if (shouldWriteCodexApiKeyAuth) {
 const env = {
   ...process.env,
   CODEX_HOME: codexHome,
-};`,
+};
+// Release builds ship no Codex binary. Point codex-acp at a codex on PATH, else the
+// verified first-use download, unless CODEX_PATH is already chosen.
+if (!env.CODEX_PATH) {
+  const codexName = process.platform === "win32" ? "codex.exe" : "codex";
+  for (const dir of (env.PATH || env.Path || "").split(path.delimiter)) {
+    if (dir && path.isAbsolute(dir) && existsSync(path.join(dir, codexName))) {
+      env.CODEX_PATH = path.join(dir, codexName);
+      break;
+    }
+  }
+}
+if (!env.CODEX_PATH) {
+  try {
+    const downloadedCodex = JSON.parse(readFileSync(${JSON.stringify(path.join(resolveStateDir(), "tools", "codex", "current.json"))}, "utf8"));
+    if (typeof downloadedCodex?.native === "string" && existsSync(downloadedCodex.native)) {
+      env.CODEX_PATH = downloadedCodex.native;
+    }
+  } catch {
+    // No verified download yet: codex-acp keeps its own launcher.
+  }
+}`,
     envConfigSetup: `function isCodexConfigObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

@@ -38,8 +38,8 @@ function createOverview(defaultModel?: string): SystemAgentOverview {
       hash: null,
     },
     references: {
-      docsUrl: "https://docs.openclaw.ai",
-      sourceUrl: "https://github.com/openclaw/openclaw",
+      docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+      sourceUrl: "https://github.com/KeepOak/Branch-Agent",
     },
     agents: [{ id: "main", isDefault: true, ...(defaultModel ? { model: defaultModel } : {}) }],
     defaultAgentId: "main",
@@ -102,7 +102,10 @@ describe("loadSystemAgentOverview", () => {
     expect(overview.gateway.url).toBe("ws://127.0.0.1:19001");
     expect(overview.gateway.reachable).toBe(false);
     expect(overview.references.docsPath).toMatch(/docs$/);
-    expect(overview.references.sourceUrl).toBe("https://github.com/openclaw/openclaw");
+    expect(overview.references.docsUrl).toBe(
+      "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+    );
+    expect(overview.references.sourceUrl).toBe("https://github.com/KeepOak/Branch-Agent");
     expect(formatSystemAgentOverview(overview)).toContain(
       'Next: run "gateway status" or "restart gateway"',
     );

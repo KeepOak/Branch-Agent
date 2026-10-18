@@ -2,11 +2,12 @@
 // own answer", pick several, several questions one at a time, a step on a web page, and a secret. The first
 // waiting question sits above the message box; the thread keeps one line where it was asked.
 import { useState, type KeyboardEvent } from "react";
+import { plainError } from "../shell/plain-error";
 import { answerValues, outcome, pick, type, typesOwn, type Draft, type Question, type QuestionRecord } from "./questions";
 import "./questions.css";
 
 const KEYS = "ABCD";
-const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const reason = (e: unknown) => plainError(e);
 
 type Resolve = (id: string, resolution: { answers: Record<string, string[]> } | { cancel: true }) => Promise<void>;
 
@@ -46,7 +47,7 @@ export function DockQuestion({ record, trunkName, onResolve }: { record: Questio
   );
 }
 
-export function QuestionCard({ record, trunkName, onResolve }: { record: QuestionRecord; trunkName: string; onResolve: Resolve }) {
+function QuestionCard({ record, trunkName, onResolve }: { record: QuestionRecord; trunkName: string; onResolve: Resolve }) {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [at, setAt] = useState(0);
   const [busy, setBusy] = useState(false);

@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
-import { ModelsPage } from "./models";
+import { SettingsPage as ModelsAccountsPage } from "../index";
 import { connectionsOf, modelsOf } from "./models-data";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -35,8 +37,8 @@ function engineOf(config: Record<string, unknown> = {}) {
   return { engine: { request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine, request };
 }
 const report: SaveReport = { saving: vi.fn(), saved: vi.fn(), failed: vi.fn() };
-async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0, scope: string | null = null) {
-  await act(async () => root.render(<KitProvider level={level} report={report} scope={scope}><ModelsPage page="models" title="Models" level="regular" engine={engine} /></KitProvider>));
+async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0, scope: string | null = null, page = "models") {
+  await act(async () => root.render(<KitProvider level={level} report={report} scope={scope}><ModelsAccountsPage page={page} title="Models" level="regular" engine={engine} /></KitProvider>));
 }
 const click = async (text: string) => act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === text)!.click());
 const patches = (request: ReturnType<typeof vi.fn>) => request.mock.calls.filter(([m]) => m === "config.patch").map(([, p]) => JSON.parse((p as { raw: string }).raw));
@@ -47,17 +49,19 @@ describe("Settings › Models", () => {
     expect(conns.map((c) => [c.id, c.name, c.models.length])).toEqual([["openai", "ChatGPT", 1], ["anthropic", "Claude", 1], ["local", "This computer", 1]]);
   });
 
-  it("Connections groups each service's accounts with who answers first", async () => {
+  it("keeps account order in the shared Accounts view, not a duplicate Connections tab", async () => {
     const { engine } = engineOf();
     await render(engine);
-    expect([...host.querySelectorAll(".acct-gh b")].map((b) => b.textContent)).toEqual(["ChatGPT", "Claude"]);
-    expect(host.querySelector(".acct-r .pill.ok")?.textContent).toBe("Answers first");
+    await click("Accounts");
+    expect(host.querySelector('[data-sec="Order Branch uses them in"]')?.textContent).toContain("ChatGPT");
+    expect(host.querySelector('[data-sec="Order Branch uses them in"]')?.textContent).toContain("Claude");
+    expect(host.querySelector('[role="tablist"]')?.textContent).not.toContain("Connections");
   });
 
   it("Everyday answers sets the default model to that connection's default", async () => {
     const { engine, request } = engineOf({ agents: { defaults: { model: { primary: "openai/gpt-5.5" } } } });
     await render(engine);
-    await click("Defaults");
+    await click("Default");
     const seg = host.querySelector('[aria-label="Everyday answers"]')!;
     await act(async () => [...seg.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "This computer")!.click());
     expect(patches(request)).toContainEqual({ agents: { defaults: { model: { primary: "ollama/qwen3:8b" } } } });
@@ -66,15 +70,15 @@ describe("Settings › Models", () => {
   it("thinking is saved per model under a key that holds dots", async () => {
     const { engine, request } = engineOf({ agents: { defaults: { model: { primary: "openai/gpt-5.5" } } } });
     await render(engine);
-    await click("Defaults");
-    await act(async () => [...host.querySelector('[aria-label="ChatGPT thinking"]')!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "High")!.click());
+    await click("Default");
+    await act(async () => [...host.querySelector('[aria-label="ChatGPT thinking"]')!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Thorough")!.click());
     expect(patches(request)).toContainEqual({ agents: { defaults: { models: { "openai/gpt-5.5": { params: { thinking: "high" } } } } } });
   });
 
   it("Settings for a Trunk writes that Trunk's own model", async () => {
     const { engine, request } = engineOf({ agents: { defaults: { model: { primary: "openai/gpt-5.5" } } } });
     await render(engine, 1, "scout");
-    await click("Defaults");
+    await click("Default");
     const seg = host.querySelector('[aria-label="Everyday answers"]')!;
     await act(async () => [...seg.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Claude")!.click());
     expect(patches(request)).toContainEqual({ agents: { entries: { scout: { model: { primary: "anthropic/claude-opus-5" } } } } });
@@ -110,6 +114,46 @@ describe("Settings › Models", () => {
     expect(sw("Pick the model per task").checked).toBe(false);
   });
 
+  it.each([true, false])("model switching follows Settings off/on/off/on with full access %s", async (fullAccess) => {
+    // Load the real policy at test runtime without pulling the engine's source
+    // type graph into the window's separate TypeScript project.
+    const policyModule = pathToFileURL(resolve(process.cwd(), "../engine/src/agents/model-choice.ts")).href;
+    const { authorizeAgentModelChange, MODEL_CHOICE_OFF_MESSAGE } = await import(policyModule);
+    const config = { tools: { modelChoice: { enabled: false, perTask: false } } };
+    const { engine, request } = engineOf(config);
+    // Persist the exact Settings payload, then pass it to the real engine policy.
+    // Only the transport and the person's approval response are fixtures.
+    const originalRequest = request.getMockImplementation()!;
+    request.mockImplementation(async (method: string, ...args: unknown[]) => {
+      if (method === "config.patch") {
+        const patch = JSON.parse((args[0] as { raw: string }).raw);
+        Object.assign(config.tools.modelChoice, patch.tools.modelChoice);
+        return { ok: true, hash: "h2", config };
+      }
+      return originalRequest(method);
+    });
+    const requestApproval = vi.fn(async () => "allow" as const);
+    const authorize = () => authorizeAgentModelChange({
+      cfg: config, fullAccess, request: { model: "openai/gpt-5.5" }, requestApproval,
+    });
+    await render(engine, 1);
+    const sw = () => host.querySelector<HTMLInputElement>('input[aria-label="Trunks may switch their own model"]')!;
+    expect(sw().checked).toBe(false);
+    await expect(authorize()).resolves.toEqual({ ok: false, reason: MODEL_CHOICE_OFF_MESSAGE });
+    expect(requestApproval).not.toHaveBeenCalled();
+    for (const enabled of [true, false, true]) {
+      requestApproval.mockClear();
+      await act(async () => sw().click());
+      expect(sw().checked).toBe(enabled);
+      expect(config.tools.modelChoice).toEqual({ enabled, perTask: false });
+      await expect(authorize()).resolves.toEqual(enabled
+        ? { ok: true }
+        : { ok: false, reason: MODEL_CHOICE_OFF_MESSAGE });
+      expect(requestApproval).toHaveBeenCalledTimes(enabled && !fullAccess ? 1 : 0);
+    }
+    expect(patches(request)).toEqual([true, false, true].map((enabled) => ({ tools: { modelChoice: { enabled } } })));
+  });
+
   it("Technical shows one Per account heading with its sections together", async () => {
     const { engine } = engineOf();
     await render(engine, 2);
@@ -120,13 +164,29 @@ describe("Settings › Models", () => {
     expect([...host.querySelectorAll(".sec > h2")].filter((h) => h.textContent === "Per account")).toHaveLength(1);
   });
 
-  it("with no account and no local model it says No model set up and offers Add an account", async () => {
+  it("with no account offers one Add an account action in Accounts", async () => {
     const request = vi.fn(async (method: string) => method === "config.get" ? { hash: "h", valid: true, config: {} } : method === "models.authStatus" ? { providers: [] } : { models: [] });
     await render({ request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine);
-    expect(host.textContent).toContain("No model set up");
+    await click("Accounts");
+    expect(host.textContent).toContain("No account signed in");
     expect([...host.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Add an account")).toHaveLength(1);
     await click("Add an account");
     expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
+  });
+
+  it("gives Double-check and Media a plain reason, and never names an unusable model", async () => {
+    const request = vi.fn(async (method: string) => method === "config.get"
+      ? { hash: "h", valid: true, config: { agents: { defaults: { mediaModels: { image: "openai/gpt-6-astra" } } } } }
+      : method === "models.authStatus" ? { providers: [] } : { models: [] });
+    await render({ request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine);
+    await click("Double-check");
+    const second = host.querySelector('[data-row="Ask a second model on hard questions"]');
+    expect(second?.classList.contains("off-k")).toBe(true);
+    expect(second?.textContent).toContain("Connect a model first.");
+    await click("Media");
+    expect(host.querySelector('[data-row="Make pictures"]')?.textContent).toContain("Connect a model first.");
+    expect(host.querySelector('[data-row="Make short videos"]')?.textContent).toContain("Connect a model first.");
+    expect(host.textContent).not.toMatch(/gpt-6-astra/i);
   });
 
   it("calls the unconfigured xAI service by its product name", async () => {
@@ -134,7 +194,39 @@ describe("Settings › Models", () => {
       providers: [], providerCapabilities: [{ provider: "xai", loginOptions: [{ featured: true }] }],
     } : { models: [] });
     await render({ request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine);
-    expect(host.querySelector(".acct-gh > b")?.textContent).toBe("xAI");
-    expect([...host.querySelectorAll(".acct-g .add-row")].map((b) => b.textContent)).toEqual(["Sign in to xAI"]);
+    await click("Accounts");
+    expect([...host.querySelectorAll("button")].map((b) => b.textContent)).toContain("Sign in to xAI");
+  });
+});
+
+
+describe("DA-73 shared model setup", () => {
+  it.each([null, "scout"])("keeps local model selection writable for scope %s", async (scope) => {
+    const { engine, request } = engineOf({ agents: { defaults: { model: { primary: "openai/gpt-5.5" } } } });
+    await render(engine, 1, scope, "local");
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("Local");
+    expect(host.querySelectorAll('[data-row="Qwen3 8B"]')).toHaveLength(1);
+    await click("Use this");
+    const owner = scope ? { entries: { scout: { model: { primary: "ollama/qwen3:8b" } } } } : { defaults: { model: { primary: "ollama/qwen3:8b" } } };
+    expect(patches(request)).toContainEqual({ agents: owner });
+  });
+
+  it("keeps local model changes disabled for someone without setup permission", async () => {
+    const { engine, request } = engineOf();
+    await render({ ...engine, scopes: ["operator.read"] }, 0, null, "local");
+    const use = [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Use this")!;
+    expect(use.disabled).toBe(true);
+    await act(async () => use.click());
+    expect(patches(request)).toEqual([]);
+  });
+
+  it("search opens the matching model view without taking an account row to Default", async () => {
+    const { engine } = engineOf();
+    await act(async () => root.render(<KitProvider level={0} report={report} scope={null}><ModelsAccountsPage page="models" title="Models" level="regular" engine={engine} searchSection="Second opinion" /></KitProvider>));
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Double-check");
+    expect(host.querySelector('[data-row="Ask a second model on hard questions"]')).not.toBeNull();
+    await act(async () => root.render(<KitProvider level={0} report={report} scope={null}><ModelsAccountsPage page="accounts" title="Accounts" level="regular" engine={engine} searchSection="Order Branch uses them in" /></KitProvider>));
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("Accounts");
+    expect(host.querySelector('[data-sec="Order Branch uses them in"]')).not.toBeNull();
   });
 });

@@ -4,16 +4,17 @@ import { useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { notify } from "../../shell/notify";
+import { plainError } from "../../shell/plain-error";
 import { removeTrunk } from "./api";
 import { canWrite, WRITE_WHY } from "./data";
-import { errorText } from "./model";
 import { Layer } from "./layer";
 import "./trunk.css";
 
-export type RemoveTrunkProps = { engine: WindowEngine; agentId: string; name: string; onClose: () => void; onRemoved?: () => void };
+/** clear: the R1 window's item 48 glass (README 48), a clear dialog with its words on frosted pills; Remove stays solid. */
+export type RemoveTrunkProps = { engine: WindowEngine; agentId: string; name: string; onClose: () => void; onRemoved?: () => void; clear?: boolean };
 export const TRUNK_REMOVED_EVENT = "branch:trunk-removed";
 
-export function RemoveTrunkDialog({ engine, agentId, name, onClose, onRemoved }: RemoveTrunkProps) {
+export function RemoveTrunkDialog({ engine, agentId, name, onClose, onRemoved, clear }: RemoveTrunkProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const write = canWrite(engine);
@@ -27,17 +28,17 @@ export function RemoveTrunkDialog({ engine, agentId, name, onClose, onRemoved }:
       window.dispatchEvent(new CustomEvent(TRUNK_REMOVED_EVENT, { detail: { agentId } }));
       onRemoved?.(); onClose();
     }
-    catch (e) { setError(errorText(e)); }
+    catch (e) { setError(plainError(e)); }
     finally { setBusy(false); }
   };
   const footer = <>
     <button type="button" className="btn ghost" onClick={onClose}>Keep {name}</button>
-    <button type="button" className="btn bad" disabled={busy || !write} title={write ? undefined : WRITE_WHY} onClick={() => void go()}>{busy ? "Removing…" : "Remove"}</button>
+    <button type="button" className="btn bad" data-solid="" disabled={busy || !write} title={write ? undefined : WRITE_WHY} onClick={() => void go()}>{busy ? "Removing…" : "Remove"}</button>
   </>;
   return (
-    <Layer><Dialog title={`Remove ${name}?`} onClose={onClose} footer={footer} testid="trunk-remove">
-      <p className="tk-hint tk-plain">{name} and its conversations will be removed. Its files move to the Trash on this computer, and its automations stop. Branch cannot undo this removal.</p>
-      {error && <p className="tk-error" role="alert">{error}</p>}
+    <Layer><Dialog title={`Remove ${name}?`} onClose={onClose} footer={footer} testid="trunk-remove" clear={clear}>
+      <p className={clear ? "tk-hint tk-plain g-label" : "tk-hint tk-plain"} data-lines={clear ? "" : undefined}>{name}’s conversations and files move to the Trash. Its automations stop, and Branch can’t bring {name} back.</p>
+      {error && <p className={clear ? "tk-error g-label" : "tk-error"} data-lines={clear ? "" : undefined} role="alert">{plainError(error)}</p>}
     </Dialog></Layer>
   );
 }

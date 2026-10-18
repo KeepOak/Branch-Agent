@@ -10,6 +10,7 @@ import {
   readSkills, readWebSearchBase, setWebSearch, toggle, type Connector, type SkillRow, type ToolOverrides,
 } from "./tools";
 import { Switch } from "./ui";
+import { plainError } from "../shell/plain-error";
 import { shownWhy } from "../shell/shown-why";
 
 type Props = {
@@ -22,6 +23,8 @@ type Props = {
   patch: (fields: Record<string, unknown>) => Promise<string | null>;
   onToast?: (text: string) => void;
   onOpen?: (target: OpenTarget) => void;
+  /** Extra classes for the menu surface (the R1 composer's row passes its clear-glass menu class). */
+  surface?: string;
 };
 
 type Catalog = { connectors: Connector[]; skills: SkillRow[]; webBase: boolean; effective: unknown };
@@ -44,7 +47,7 @@ function useCatalog(engine: WindowEngine) {
       ]);
       setCatalog({ connectors: readConnectors(config), skills: readSkills(skills), webBase: readWebSearchBase(config), effective: await effective });
     } catch (e) {
-      setError(errorText(e));
+      setError(plainError(e));
     }
   }, [engine]);
   useEffect(() => {
@@ -63,12 +66,12 @@ export function PlugMenu(p: Props) {
   const reason = p.isAdmin ? undefined : "This needs admin access on this computer.";
   const write = async (next: ToolOverrides) => {
     const problem = await p.patch({ toolOverrides: patchValue(next) });
-    setFailed(problem);
+    setFailed(problem ? plainError(problem) : problem);
     return problem;
   };
   const changed = changedCount(overrides);
   return (
-    <Popover anchor={p.anchor} onClose={p.onClose} label="Tools: connectors, skills, plugins and command-line tools" className="c-plug">
+    <Popover anchor={p.anchor} onClose={p.onClose} label="Tools for this conversation" className={p.surface ? `c-plug ${p.surface}` : "c-plug"}>
       <div className="c-plug-h">
         <b>Tools for {p.trunkName}</b>
         <small>Switch one off for this conversation only.</small>
@@ -81,8 +84,8 @@ export function PlugMenu(p: Props) {
         {error ? <p className="c-pp bad">{error} <button type="button" className="c-link" onClick={() => void load()}>Try again</button></p> : null}
         {failed ? <p className="c-pp bad">{failed}</p> : null}
         {!catalog && !error ? <p className="c-pp">Loading tools…</p> : null}
-        {catalog && library ? <LibraryView skills={catalog.skills} overrides={overrides} changed={libChanged} isAdmin={p.isAdmin} reason={reason}
-          onBack={() => setLibrary(false)} write={async (next) => { const problem = await write(next); if (problem === null) setLibChanged(true); return problem; }} /> : null}
+        {catalog && library ? <LibraryView skills={catalog.skills.filter((s) => matchesQuery(s.name, s.line, query))} overrides={overrides} changed={libChanged} isAdmin={p.isAdmin} reason={reason}
+          onBack={() => { setLibrary(false); setQuery(""); }} write={async (next) => { const problem = await write(next); if (problem === null) setLibChanged(true); return problem; }} /> : null}
         {catalog && !library ? <PlugSections catalog={catalog} overrides={overrides} query={query} write={write} reason={reason} isAdmin={p.isAdmin} onLibrary={() => setLibrary(true)} /> : null}
       </div>
       {changed > 0 ? (
@@ -116,11 +119,12 @@ function PlugSections({ catalog, overrides, query, write, reason, isAdmin, onLib
   isAdmin: boolean;
 }) {
   const connectors = catalog.connectors.filter((c) => matchesQuery(c.name, c.line, query));
-  const skills = catalog.skills.filter((s) => matchesQuery(s.name, s.line, query));
+  const skills = query.trim() ? catalog.skills.filter((s) => matchesQuery(s.name, s.line, query)) : [];
   const webShown = matchesQuery("Web search", "Search the web in this conversation.", query);
   const webOn = catalog.webBase ? isOn(true, overrides.webSearch) : false;
   const staleOn = !catalog.webBase && overrides.webSearch === true;
   const nothing = connectors.length === 0 && skills.length === 0 && !webShown;
+  const { chosen, problems } = libraryLists(catalog.skills, overrides);
   return (
     <>
       {webShown ? (
@@ -141,15 +145,16 @@ function PlugSections({ catalog, overrides, query, write, reason, isAdmin, onLib
           ))}
         </Section>
       ) : null}
+      {!query.trim() && catalog.skills.length > 0 ? (
+        <button type="button" className="c-tool c-libadd" onClick={onLibrary}>
+          <span className="c-tile"><Icon name="doc" size={15} /></span>
+          <span className="c-tool-t"><b>Choose skills…</b><small>{chosen.length} on</small></span>
+          {problems.length > 0 ? <span className="c-pill warn">{problems.length === 1 ? "1 needs setup" : `${problems.length} need setup`}</span> : null}
+          <Icon name="chevRight" size={15} />
+        </button>
+      ) : null}
       {skills.length > 0 ? (
         <Section title="Skills" on={skills.filter((s) => !s.problem && isOn(s.baseEnabled, overrides.skills?.[s.key])).length}>
-          {!query ? (
-            <button type="button" className="c-tool c-libadd" onClick={onLibrary}>
-              <span className="c-tile"><Icon name="doc" size={15} /></span>
-              <span className="c-tool-t"><b>Add from your library…</b></span>
-              <Icon name="chevRight" size={15} />
-            </button>
-          ) : null}
           {skills.map((s) => (
             <ToolRow key={s.key} icon="puzzle" name={s.name} line={s.line} here={overrides.skills?.[s.key] !== undefined}>
               {s.problem ? (
@@ -250,22 +255,8 @@ function AddRow({ onOpen, onClose }: { onOpen?: (t: OpenTarget) => void; onClose
     onClose();
     onOpen?.("customize/tools");
   };
-  const kinds: Array<[string, "plug" | "puzzle" | "term" | "sliders"]> = [
-    ["Connector", "plug"],
-    ["Skill", "puzzle"],
-    ["Command-line tool", "term"],
-    ["Plugin", "sliders"],
-  ];
   return (
     <div className="c-plug-foot">
-      <div className="c-add">
-        {kinds.map(([label, icon]) => (
-          <button key={label} type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={go}>
-            <Icon name={icon} size={16} />
-            <span>{label}</span>
-          </button>
-        ))}
-      </div>
       <button type="button" className="c-manage" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={go}>
         <span>Manage tools</span>
         <Icon name="chevRight" size={15} />
@@ -274,11 +265,12 @@ function AddRow({ onOpen, onClose }: { onOpen?: (t: OpenTarget) => void; onClose
   );
 }
 
-/** The library split: skills on in this conversation, and the ones that could be added (skills with a problem are left out). */
-export function libraryLists(skills: SkillRow[], overrides: ToolOverrides): { chosen: SkillRow[]; rest: SkillRow[] } {
+/** The library split: skills on in this conversation, the ones that could be added, and the ones that can't run
+ *  until they are set up (a missing key or requirement), which are listed apart so the warning stays visible. */
+export function libraryLists(skills: SkillRow[], overrides: ToolOverrides): { chosen: SkillRow[]; rest: SkillRow[]; problems: SkillRow[] } {
   const usable = skills.filter((s) => !s.problem);
   const on = (s: SkillRow) => isOn(s.baseEnabled, overrides.skills?.[s.key]);
-  return { chosen: usable.filter(on), rest: usable.filter((s) => !on(s)) };
+  return { chosen: usable.filter(on), rest: usable.filter((s) => !on(s)), problems: skills.filter((s) => s.problem) };
 }
 
 /** Skills for this conversation (the preview's libPK18): the skills chosen here and the rest of your library, each
@@ -288,7 +280,7 @@ function LibraryView({ skills, overrides, changed, isAdmin, reason, onBack, writ
   write: (next: ToolOverrides) => Promise<string | null>;
 }) {
   const set = (s: SkillRow, value: boolean) => void write(toggle(overrides, "skills", s.key, value, s.baseEnabled));
-  const { chosen, rest } = libraryLists(skills, overrides);
+  const { chosen, rest, problems } = libraryLists(skills, overrides);
   const row = (s: SkillRow, button: React.ReactNode) => (
     <div key={s.key} className="c-librow">
       <span className="c-tool-t"><b>{s.name}</b><small>{s.line}</small></span>
@@ -299,12 +291,18 @@ function LibraryView({ skills, overrides, changed, isAdmin, reason, onBack, writ
     <div className="c-lib">
       <button type="button" className="c-tool c-libback" onClick={onBack}>
         <Icon name="back" size={15} />
-        <span className="c-tool-t"><b>Skills for this conversation</b></span>
+        <span className="c-tool-t"><b>Back to tools</b></span>
       </button>
       <div className="c-ph"><span>Chosen here</span></div>
-      {chosen.length ? chosen.map((s) => row(s, <button type="button" className="btn ghost sm" disabled={!isAdmin} title={shownWhy(reason)} onClick={() => set(s, false)}>Remove</button>)) : <p className="c-pp">No library skills chosen here.</p>}
+      {chosen.length ? chosen.map((s) => row(s, <button type="button" className="btn ghost sm" disabled={!isAdmin} title={shownWhy(reason)} onClick={() => set(s, false)}>Remove</button>)) : <p className="c-pp">No matching skills are on.</p>}
       <div className="c-ph"><span>Add from your libraries</span></div>
-      {rest.length ? rest.map((s) => row(s, <button type="button" className="btn sm" disabled={!isAdmin} title={shownWhy(reason)} onClick={() => set(s, true)}>Add</button>)) : <p className="c-pp">Every library skill is chosen here.</p>}
+      {rest.length ? rest.map((s) => row(s, <button type="button" className="btn sm" disabled={!isAdmin} title={shownWhy(reason)} onClick={() => set(s, true)}>Add</button>)) : <p className="c-pp">No matching skills to add.</p>}
+      {problems.length ? (
+        <>
+          <div className="c-ph"><span>Needs setup</span></div>
+          {problems.map((s) => row(s, <span className={`c-pill ${s.problem === "Needs a key" ? "warn" : "no"}`}>{s.problem}</span>))}
+        </>
+      ) : null}
       <p className="c-pp c-libhint">{changed ? "Skill changes apply from the next step. A step already running keeps its version." : "New conversations start with your default skills. This one keeps the ones chosen here."}</p>
     </div>
   );

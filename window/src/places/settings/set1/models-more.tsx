@@ -7,7 +7,7 @@ import { list, text, visible } from "../adapter";
 import { Btn, Ctl, Num, Pick, Sec, Seg, Switch, useLevel, useSaveRunner, type Opt } from "../kit";
 import { modelOpts, refOf, type ModelsCtx } from "./models-data";
 import { FallbackLists, HowTrunksWork, NewConversations, Nicknames } from "./models-defaults";
-import { LocalMore, MediaMore, SecondMore } from "./models-tabs";
+import { MediaMore, SecondMore } from "./models-tabs";
 import { Attachments, ConnectionsTechnical, DecisionTechnical, EachModel, HelpersTechnical, HowTurnsRun, PerConnection, PerConnectionMore, Retries } from "./models-tech";
 
 export const NONE = "Branch has no setting for this yet.";
@@ -15,10 +15,9 @@ const MODEL_CHOICE_ENABLED = ["tools", "modelChoice", "enabled"];
 const MODEL_CHOICE_PER_TASK = ["tools", "modelChoice", "perTask"];
 
 /** Every Advanced/Technical section, in the order the preview shows them for this tab. */
-export function ModelsSections({ m, tab, openSettings }: { m: ModelsCtx; tab: string; openSettings?: (page: string) => void }) {
+export function ModelsSections({ m, tab }: { m: ModelsCtx; tab: string; openSettings?: (page: string) => void }) {
   const t = useLevel() >= 2;
   const parts: [boolean, ReactNode][] = [
-    [tab === "local", <LocalMore key="fit" openSettings={openSettings} />],
     [true, <Budgets key="budgets" m={m} />],
     [true, <SmallerJobs key="smaller" m={m} />],
     [true, <CompareModels key="compare" />],
@@ -28,8 +27,9 @@ export function ModelsSections({ m, tab, openSettings }: { m: ModelsCtx; tab: st
     [true, <Mixtures key="mix" />],
     [tab === "second", <SecondMore key="second" />],
     [t && tab === "media", <MediaMore key="media" />],
-    [t && tab === "connections", <ConnectionsTechnical key="conntech" m={m} />],
-    [tab === "defaults", <HowTrunksWork key="how" />],
+    [t && tab === "defaults", <ConnectionsTechnical key="conntech" m={m} />],
+    // Every pattern waits for a setting the engine doesn't have yet (Coming): Technical only (Private #1093 item 4).
+    [t && tab === "defaults", <HowTrunksWork key="how" />],
     [true, <DecisionModels key="decide" m={m} />],
     [t, <DecisionTechnical key="decidet" />],
     [t, <Attachments key="attach" m={m} />],

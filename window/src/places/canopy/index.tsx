@@ -10,6 +10,7 @@ import { CardsTab } from "./CardsTab";
 import { CardsOff, isCardsOff } from "./CardsOff";
 import { CardSheet } from "./CardSheet";
 import { CardDialog, cardPatch, draftOf } from "./CardDialogs";
+import { plainError } from "../../shell/plain-error";
 import { FilterRow, Strip } from "./Strip";
 import type { Ctx } from "./ui";
 import type { Row } from "../automations/runtime";
@@ -62,14 +63,15 @@ export function CanopyPlace({ engine, openConversation, openPlace, level }: Plac
         <div className="cn-tabs" role="tablist" aria-label="Canopy">{TABS.map(([id, name], index) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} onKeyDown={event => moveTab(event, index, setTab)} onClick={() => setTab(id)}>{name}{id === "now" && n ? <span className="cn-tabn">{n}</span> : null}</button>))}</div>
         {state.loading && !d ? <p role="status" className="cn-hint">Reading live work…</p> : null}
-        {state.error ? <p role="alert" className="cn-err">{state.error}</p> : null}
-        {d?.errors.map(e => <p role="alert" className="cn-err" key={e}>{e}</p>)}
+        {/* No engine sentence, code, stack or path at Regular (Private #1089). */}
+        {state.error ? <p role="alert" className="cn-err">{plainError(state.error)}</p> : null}
+        {d?.errors.map(e => <p role="alert" className="cn-err" key={e}>{plainError(e)}</p>)}
         {state.notice ? <p role="status" className="cn-notice">{state.notice}</p> : null}
         {ctx ? <>
           <Strip ctx={ctx} runs={all} f={f} setF={setF} /><FilterRow ctx={ctx} f={f} setF={setF} />
-          {tab === "now" ? <NowTab ctx={ctx} all={all} list={filterRuns(all, f)} />
+          {tab === "now" ? <NowTab ctx={ctx} all={all} list={filterRuns(all, f)} filtered={!!(f.trunk.length || f.person.length || f.comp.length)} clear={() => setF(NO_FILTERS)} />
             : d && isCardsOff(d.cardsError) ? <CardsOff ctx={ctx} refresh={() => void state.refresh()} />
-            : d?.cardsError ? <p role="alert" className="cn-err">Cards: {d.cardsError}</p>
+            : d?.cardsError ? <p role="alert" className="cn-err">Cards: {plainError(d.cardsError)}</p>
             : <CardsTab ctx={ctx} trunks={f.trunk} setTrunks={t => setF({ ...f, trunk: t })} sheet={c => setSheet(String(c.id))} />}
           {sheet && !editing ? <CardSheet ctx={ctx} id={sheet} close={() => setSheet("")} edit={c => setEditing(c)} /> : null}
           {editing ? <CardDialog ctx={ctx} base={editing} start={draftOf(editing)} close={() => setEditing(null)}

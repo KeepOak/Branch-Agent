@@ -50,12 +50,6 @@ theme	window/src/places/customize/common.tsx	["#3b6e8f", "#5b6b2f", "#8a4b2a", "
 theme	window/src/places/customize/common.tsx	const TINTS = ["#3b6e8f", "#5b6b2f", "#8a4b2a", "#6d4c8f",
 theme	window/src/places/customize/common.tsx	const TINTS = ["#3b6e8f", "#5b6b2f", "#8a4b2a", "#6d4c8f", "#2f6f5b",
 theme	window/src/places/customize/common.tsx	nst TINTS = ["#3b6e8f", "#5b6b2f", "#8a4b2a", "#6d4c8f", "#2f6f5b", "#8f3b4b",
-theme	window/src/places/customize/connectors.tsx	0 .2.1.5.6.4A8 8 0 0 0 12 4z" fill="#fff"/>'],
-theme	window/src/places/customize/connectors.tsx	4.8H6l-3-4.8z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin
-theme	window/src/places/customize/connectors.tsx	[/^(google-?)?drive|^gdrive/i, "#1FA463", '<path d="M9 4.5h6l6 10.2-3 4.8H6
-theme	window/src/places/customize/connectors.tsx	[/^brave/i, "#FB542B", "B"],
-theme	window/src/places/customize/connectors.tsx	[/^github/i, "#181717", '<path d="M12 4a8 8 0 0 0-2.5 15.
-theme	window/src/places/customize/connectors.tsx	[/^outlook/i, "#0F6CBD", "O"],
 theme	window/src/places/customize/customize.css	-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
 theme	window/src/places/customize/customize.css	4%; border-radius: 50%; background: rgba(0,0,0,.72); }
 theme	window/src/places/customize/customize.css	idth: 15%; height: 24%; background: #fff; border-radius: 50%; transform: rot
@@ -73,10 +67,6 @@ theme	window/src/places/library/library.css	-weight: 600; box-shadow: 0 1px 2px 
 theme	window/src/places/office/pixel/webview-ui/src/branch/branchLayout.ts	{ label: AREA_GUESTS, color: '#48dbfb' },
 theme	window/src/places/office/pixel/webview-ui/src/branch/branchLayout.ts	{ label: AREA_MEETING, color: '#1dd1a1' },
 theme	window/src/places/office/pixel/webview-ui/src/branch/branchLayout.ts	{ label: AREA_OFFICE, color: '#feca57' },
-theme	window/src/places/office/pixel/webview-ui/src/branch/lighting.ts	const MIDDAY = 'rgba(255, 255, 240, 0.03)';
-theme	window/src/places/office/pixel/webview-ui/src/branch/lighting.ts	const NIGHT = 'rgba(10, 10, 50, 0.30)';
-theme	window/src/places/office/pixel/webview-ui/src/branch/lighting.ts	g.addColorStop(0, `rgba(${GLOW}, ${strength})`);
-theme	window/src/places/office/pixel/webview-ui/src/branch/lighting.ts	g.addColorStop(1, `rgba(${GLOW}, 0)`);
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	.86); color: #1c1a16; border-color: rgba(0, 0, 0, 0.18); }
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	.pa-name-three { font-family: Consolas, monospace; font-weight: 700; font-size: .9em;
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	: rgba(255, 252, 244, 0.86); color: #1c1a16; border-color: rgba(0, 0, 0, 0.18);
@@ -86,7 +76,6 @@ theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	color: #1c
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	color: #fff;
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	color: #fff;
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	eme='light'] .pa-name { background: rgba(255, 252, 244, 0.86); color: #1c1a16
-theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	font-family: 'FS Pixel Sans', sans-serif;
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	theme='light'] .text-white { color: #fff; }
 theme	window/src/places/office/pixel/webview-ui/src/branch/trunkSprites.ts	orHint ?? '') ? agent.colorHint! : '#56616B';
 theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#00ffff 50%, #0000ff 66.7%, #ff00ff 83.3%,
@@ -1434,9 +1423,7 @@ theme	window/src/stage/pane/pane.css	(--ok);border-color:var(--ok);color:#fff;}
 theme	window/src/stage/pane/pane.css	14px; overflow: hidden; background: #fff; }
 theme	window/src/stage/stage.css	(--ok);border-color:var(--ok);color:#fff;}
 theme	window/src/stage/stage.css	,0 0 0 1px var(--line-2);background:#0e1419;}
-theme	window/src/stage/stage.css	0 0;border-radius:9px 9px 0 0;color:#556666;max-width:220px;flex:0 1 auto;min-w
 theme	window/src/stage/stage.css	em {background:var(--accent);color:#fff;}
-theme	window/src/stage/stage.css	ex;flex-direction:column;background:#fff;}
 theme	window/src/stage/stage.css	hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.55),0 0 0 1px var(--line-2);b
 theme	window/src/stage/stage.css	ius:10px;overflow:hidden;background:#0e1419;cursor:pointer;}
 theme	window/src/stage/stage.css	lor:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}
@@ -1446,7 +1433,6 @@ theme	window/src/stage/stage.css	ow:hidden;cursor:pointer;background:#0e1419;bor
 theme	window/src/stage/stage.css	r(--accent) inset,0 30px 80px -30px rgba(0,0,0,.55);}
 theme	window/src/stage/stage.css	splay:grid;place-items:center;color:#8899a6;font-size:12.5px;}
 theme	window/src/stage/stage.css	t:hover:not([disabled]) {background:rgba(0,0,0,.06);}
-theme	window/src/stage/stage.css	tive;flex:1;min-height:0;background:#fff;}
 theme	window/src/stage/stage.css	var(--accent);color:var(--on-accent,#fff);font-size:12px;font-weight:600;whi
 theme	window/src/thread/activity-strip.css	18px; border: 1px solid var(--line, #8883); border-radius: 16px; background:
 theme	window/src/thread/activity-strip.css	8px; border: 1px solid var(--line, #8883); border-radius: 10px; }

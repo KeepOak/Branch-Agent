@@ -5,6 +5,7 @@ import { Fragment, useEffect, useState } from "react";
 import { Btn, Ctl, Pick, Sec, Seg, Switch, useLevel, useSaveRunner, type Opt } from "../kit";
 import { DESKTOP, READING_MORE, rowOf, rowsOf, type RowSpec } from "./appearance-rows";
 import { sceneFile, type useLook } from "./appearance-store";
+import { LANGUAGES } from "../../../i18n/language";
 
 export type Look = ReturnType<typeof useLook>;
 
@@ -28,10 +29,14 @@ export function SpecRow({ r, look, disabled }: { r: RowSpec; look: Look; disable
 export function AgentsSec({ look }: { look: Look }) {
   const save = useSaveRunner();
   const shown = look.val("agentShown", shellShown()) === true;
+  const cheer = look.val("cheer", false) === true;
   return (
     <Sec title="Agents">
       <Ctl title="Show the agent beside the conversation" sub="The Trunk’s character shows what it is doing." help="It acts out what the Trunk is doing: thinking, searching, reading, working, waiting for you, celebrating, resting.">
         <Switch checked={shown} label="Show the agent beside the conversation" onChange={(on) => void save(() => look.store.set("agentShown", on))} />
+      </Ctl>
+      <Ctl title="Celebrate when a task finishes" sub="A small card with the Trunk’s face shows when a task is done." help="Off until you turn it on. It never shows for a run you stopped or one that failed.">
+        <Switch checked={cheer} label="Celebrate when a task finishes" onChange={(on) => void save(() => look.store.set("cheer", on))} />
       </Ctl>
       <SpecRow r={rowOf("agentSize")} look={look} />
     </Sec>
@@ -39,9 +44,9 @@ export function AgentsSec({ look }: { look: Look }) {
 }
 function shellShown(): boolean {
   try {
-    return localStorage.getItem("branch.characterShown") !== "0";
+    return localStorage.getItem("branch.characterShown") === "1";
   } catch {
-    return true; // storage blocked: the shell shows it
+    return false; // storage blocked: the character stays hidden
   }
 }
 
@@ -152,11 +157,14 @@ export function ShownSec({ look }: { look: Look }) {
   return <Sec title="What’s shown">{rowsOf("What’s shown").map((r) => <SpecRow key={r.key} r={r} look={look} />)}</Sec>;
 }
 
-const LANGS: Opt[] = [{ id: "en", label: "English" }, ...["Français", "Español", "Deutsch", "Yorùbá"].map((l) => ({ id: l, label: l, off: "Other languages come with the Branch app." }))];
-export function LanguageSec() {
+const LANGS: Opt[] = LANGUAGES.map((l) => ({ id: l.id, label: l.name }));
+/** The window's language (Private #1100), kept in the person's look; i18n/language.ts follows it. */
+export function LanguageSec({ look }: { look: Look }) {
+  const save = useSaveRunner();
+  const lang = String(look.val("lang", "en"));
   return (
     <Sec title="Language">
-      <Ctl title="Language" sub="Dates and numbers follow it too."><Pick value="en" options={LANGS} label="Language" onChange={() => undefined} /></Ctl>
+      <Ctl title="Language" sub="Settings’ titles follow it where there is a translation; everything else stays in English for now." keep="everywhere"><Pick value={lang} options={LANGS} label="Language" onChange={(id) => void save(() => look.store.set("lang", id === "en" ? null : id))} /></Ctl>
     </Sec>
   );
 }
