@@ -115,6 +115,7 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
   const stack = row.control === "segmented" && options.length > 3;
   return (
     <div id={`row-${row.id}`} className={`r1s-row${stack ? " r1s-stack" : ""}`} data-row={row.id} data-lv={tag} aria-disabled={coming || undefined}
+      tabIndex={row.source.kind === "desktop" && r.state === "loading" ? 0 : undefined}
       aria-busy={r.state === "saving" || undefined} data-coming={coming ? r.need : undefined} title={coming ? r.reason : undefined}>
       <b className="g-label" data-lv={tag}>{r.label}</b>
       {r.help ? <small className="g-label" data-lines>{plainCopy(r.help, chosen)}</small> : null}

@@ -8,6 +8,7 @@ import type { Row } from "./rows";
 import { askBeforeDelete } from "../../shell/ConfirmDelete";
 import { IN_BROWSER, type DesktopControlsBridge, type DesktopControlsState } from "../../connect/desktop-controls";
 import { askBeforeDeleting } from "./pages/general";
+import { DESKTOP_OWN_STATE_KEY, readOwnDesktopState } from "./desktop-own-state";
 import { CHANGED_ELSEWHERE, INVALID_CONFIG, LOAD_FAILED, NEEDS_ADMIN, NEEDS_APP_UPDATE, NEEDS_WRITE, NO_PERSON, schemaDefault, useRow, type RowView } from "./useRow";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -65,6 +66,23 @@ describe("useRow on this device and the desktop app", () => {
 
   const startRow: Row = { id: "general.start.with-computer", page: "general", card: "Starting up", level: 0, control: "toggle", source: { kind: "desktop", name: "startWithWindows" }, fallback: false };
   const controls = (over: Partial<DesktopControlsState> = {}): DesktopControlsState => ({ keepWorking: false, keepAwake: false, trayUsage: false, autoApplyUpdates: false, startWithWindows: false, branchOnPath: false, ...over });
+
+  it("keeps an empty stored desktop snapshot unknown until an explicit read", async () => {
+    localStorage.setItem(DESKTOP_OWN_STATE_KEY, "{}");
+    const get = vi.fn(async () => controls());
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get, set: vi.fn() } };
+    await mount(engineOf().engine, { ...startRow, fallback: true });
+
+    expect(get).not.toHaveBeenCalled();
+    expect(view.state).toBe("loading");
+    expect(view.value).toBeUndefined();
+    expect(readOwnDesktopState()).toBeNull();
+
+    await act(async () => { await view.retry(); });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(view).toMatchObject({ state: "ready", value: false });
+    expect(readOwnDesktopState()).toEqual(controls());
+  });
 
   it("reads and changes a desktop app switch through the bridge, and follows a change made elsewhere", async () => {
     let state = controls();

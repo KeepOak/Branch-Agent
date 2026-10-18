@@ -120,6 +120,23 @@ describe("level switch and Regular Starting up never read other apps on first mo
     expect(view).toMatchObject({ value: false, state: "ready" });
   });
 
+  it("defers the desktop read until a keyboard user focuses the row", async () => {
+    const get = vi.fn(async () => offAtLogin);
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get, set: vi.fn(async () => offAtLogin) } as unknown as DesktopControlsBridge };
+    const { engine } = engineOf();
+    const start = startingUpRows("macOS").find((row) => row.id === "general.start.with-computer")!;
+    await mountRow(engine, start);
+    const row = document.getElementById("row-general.start.with-computer")!;
+    expect(get).not.toHaveBeenCalled();
+    expect(row.tabIndex).toBe(0);
+
+    await act(async () => { row.focus(); });
+    await flush();
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(row.querySelector<HTMLButtonElement>("[role=switch]")?.disabled).toBe(false);
+    expect(row.querySelector("[role=switch]")?.getAttribute("aria-checked")).toBe("false");
+  });
+
   it("shows Try again when the first load fails, and a later Try again reads the real state", async () => {
     const get = vi.fn()
       .mockRejectedValueOnce(new Error("closed"))

@@ -15,7 +15,7 @@ export const FOREIGN_DESKTOP_READS = [
 ] as const;
 
 /** A real snapshot has at least one on/off. An empty {} is not ready and must not fall back to a false on. */
-export function isDesktopStateReady(state: DesktopControlsState | null | undefined): state is DesktopControlsState {
+export function isDesktopStateReady(state: unknown): state is DesktopControlsState {
   return Boolean(state && typeof state === "object" && Object.values(state).some((value) => typeof value === "boolean"));
 }
 
@@ -24,7 +24,7 @@ export function readOwnDesktopState(): DesktopControlsState | null {
     const raw = typeof localStorage === "undefined" ? null : localStorage.getItem(DESKTOP_OWN_STATE_KEY);
     if (!raw) return null;
     const value = JSON.parse(raw) as unknown;
-    return value && typeof value === "object" ? value as DesktopControlsState : null;
+    return isDesktopStateReady(value) ? value : null;
   } catch {
     return null;
   }
