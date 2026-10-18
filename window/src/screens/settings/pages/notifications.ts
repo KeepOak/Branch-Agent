@@ -6,11 +6,11 @@
 import type { Level } from "../nav";
 import type { Control, Row, RowOption } from "../rows";
 
-type Extra = { help?: string; level?: Level; control?: Control; options?: RowOption[] };
+type Extra = { help?: string; level?: Level; control?: Control; options?: RowOption[]; bare?: true };
 const coming = (id: string, card: string, label: string, need: string, extra: Extra = {}): Row =>
   ({ id, page: "notifications", card, label, level: 0, control: "custom", ...extra, source: { kind: "coming", need, reason: `${label} comes in a later update.` } });
-const slot = (id: string, card: string, label: string, calls: string[], extra: Extra = {}): Row =>
-  ({ id, page: "notifications", card, label, level: 0, control: "custom", ...extra, source: { kind: "slot", calls, reason: `${label} comes in a later update.` } });
+const slot = (id: string, card: string, label: string | undefined, calls: string[], extra: Extra = {}): Row =>
+  ({ id, page: "notifications", card, ...(label ? { label } : {}), level: 0, control: "custom", ...extra, source: { kind: "slot", calls, reason: `${label ?? "This"} comes in a later update.` } });
 
 export const TELL = "Tell me when…";
 const PREFS = ["users.prefs.get", "users.prefs.set"];
@@ -31,7 +31,8 @@ const pcCat = (key: string) => { const [, label] = CATEGORIES.find((c) => c[0] =
 
 export const NOTIFICATIONS_ROWS: Row[] = [
   // Tell me when…
-  slot("notifications.tell.here", TELL, "Notifications on this computer", ["push.web.preferences.set"], { control: "toggle", help: "Off keeps this device quiet; your other devices still get them." }),
+  // Preview TELL_PE18 builds this switch's title at render time, so preview.html has no static label to copy. Draw the row without one.
+  slot("notifications.tell.here", TELL, undefined, ["push.web.preferences.set"], { control: "toggle", help: "Off keeps this device quiet; your other devices still get them.", bare: true }),
   cat("approvalRequested"), cat("agentQuestion"), cat("agentFinished"),
   coming("notifications.tell.replies", TELL, "A Trunk replies", KIND, { control: "toggle", help: "Only while Branch isn’t in front." }),
   coming("notifications.tell.stops", TELL, "Something stops working", KIND, { control: "toggle", help: "A chat app, an automation, the connection or the sealed box." }),

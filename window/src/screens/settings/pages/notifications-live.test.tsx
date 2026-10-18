@@ -22,7 +22,7 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 
 const PREVIEW_CARDS = ["Tell me when…", "Quiet", "When work stalls", "Live activity", "Kinds of notice", "Sorting", "This PC", "Send events to a web address", "Web Push"];
 const REGULAR: Record<string, string[]> = {
-  "Tell me when…": ["Notifications on this computer", "A Trunk needs a yes", "A Trunk asks you something", "A long task finishes", "A Trunk replies", "Something stops working",
+  "Tell me when…": ["A Trunk needs a yes", "A Trunk asks you something", "A long task finishes", "A Trunk replies", "Something stops working",
     "A Trunk sends a notification", "An automation fails", "Someone mentions you", "Play a sound", "Send a test notification"],
   Quiet: ["Quiet hours", "Time zone", "Days off"],
   "When work stalls": ["A conversation stopped moving"],
@@ -69,6 +69,9 @@ describe("R1 Settings › Notifications is a native R1 page with the preview's c
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Notifications");
     expect(host.querySelector(".r1s-lede")?.textContent).toContain(PAGES.notifications.lede);
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(Object.keys(REGULAR));
+    expect(row("notifications.tell.here")).not.toBeNull();
+    expect(row("notifications.tell.here")!.querySelector(":scope > b")).toBeNull();
+    expect(row("notifications.tell.here")!.querySelector("[role=switch]")).not.toBeNull();
     for (const [t, rows] of Object.entries(REGULAR)) expect(labels(card(t)), t).toEqual(rows);
     await click([...host.querySelectorAll("button")].find((b) => b.textContent === "Learn more"));
     expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(Object.keys(REGULAR));
