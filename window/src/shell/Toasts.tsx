@@ -1,6 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useDesktopAppliedUpdateNotice } from "../connect/desktop-component-updates";
 import { dismiss, getToasts, subscribeToasts, TOAST_MS, type Toast } from "./notify";
+import { plainError, plainText } from "./plain-error";
 
 /** One toast: 6 s, paused while hovered or focused; × closes it (DESIGN-SPEC §2.7, §5.11). */
 function ToastItem({ toast }: { toast: Toast }) {
@@ -38,8 +39,8 @@ function ToastItem({ toast }: { toast: Toast }) {
       onBlur={resume}
     >
       <div className="toast-text">
-        <span>{toast.text}</span>
-        {toast.line ? <small>{toast.line}</small> : null}
+        <span>{(toast.tone === "bad" ? plainError : plainText)(toast.text)}</span>
+        {toast.line ? <small>{(toast.tone === "bad" ? plainError : plainText)(toast.line)}</small> : null}
       </div>
       {toast.action ? (
         <button

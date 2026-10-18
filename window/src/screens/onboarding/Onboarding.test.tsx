@@ -9,12 +9,13 @@ import { readDetected } from "../../setup/setup-model";
 import { readFileSync } from "node:fs";
 import { answeredBy, canSayHello, freshState, greeting, MODES, picked, PLAN_FIRST_REASON, primary, STEPS, suggest, togglePick } from "./model";
 import { Onboarding } from "./Onboarding";
+import { recalledSessionName, rememberSessionName } from "./session-name";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
+afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; rememberSessionName(""); });
 
-const ALL = ["branch.setup.detect", "branch.setup.verify", "branch.setup.activate", "models.authStatus", "config.get", "config.patch", "trunks.template.list", "trunks.template.create", "agents.list", "chat.send"];
+const ALL = ["branch.setup.detect", "branch.setup.verify", "branch.setup.activate", "branch.setup.activate.start", "wizard.next", "wizard.cancel", "models.authStatus", "config.get", "config.patch", "trunks.template.list", "trunks.template.create", "agents.list", "chat.send"];
 type Answers = Record<string, unknown | ((params: unknown) => unknown)>;
 function fakeEngine(answers: Answers, methods = ALL) {
   const request = vi.fn(async (method: string, params?: unknown) => {
@@ -144,14 +145,31 @@ describe("Onboarding", () => {
   });
 
   it("says when no model is on this computer and offers Add one; examples are Coming", async () => {
-    const { engine, request } = fakeEngine({ "branch.setup.detect": { candidates: [] } });
+    const { engine, request } = fakeEngine({
+      "branch.setup.detect": { candidates: [] },
+      "branch.setup.activate.start": {},
+      "wizard.next": {
+        done: false,
+        step: {
+          id: "download",
+          type: "confirm",
+          message: "Download Qwen3.5 9B (5.7 GB), the local embedding model (about 0.3 GB), and the verified CPU runtime, then use this model?",
+          initialValue: false,
+        },
+      },
+    });
     const { host } = await show(engine, { startAt: 1 });
     await flush();
-    expect(host.textContent).toContain("No models on this computer yet. A free local model will be set up so you can chat without an account.");
+    expect(host.textContent).toContain("No models on this computer yet. Connect a model to get answers.");
+    expect(host.textContent).not.toMatch(/will be set up/i);
+    expect(host.textContent).toContain("5.7 GB");
     expect(button(host, "Add one")).toBeTruthy();
+    expect(button(host, "Cancel")).toBeTruthy();
     expect(button(host, "Say hello")).toBeUndefined();
     expect(button(host, "Try it with examples").getAttribute("aria-disabled")).toBe("true");
-    expect(calls(request, "branch.setup.activate")).toEqual([{ kind: "no-key-default", agentId: "main" }]);
+    expect(calls(request, "branch.setup.activate")).toEqual([]);
+    expect(calls(request, "branch.setup.activate.start")).toEqual([expect.objectContaining({ kind: "no-key-default", agentId: "main" })]);
+    expect(request.mock.calls.filter(([method, params]) => method === "wizard.next" && (params as { answer?: { value?: unknown } })?.answer?.value === true)).toHaveLength(0);
   });
 
   it("saves Ask first as tools.exec.mode and never offers Full access; Plan first is Coming", async () => {
@@ -269,6 +287,17 @@ describe("Your first Trunk (step 4)", () => {
     await act(async () => button(host, "Start with Sapling").click());
     await flush();
     expect(calls(request, "chat.send")).toEqual([expect.objectContaining({ sessionKey: "agent:sapling:main", message: greeting("Ada") })]);
+  });
+
+  it("remembers the name for later greetings when this connection has no profile", async () => {
+    const { engine, request } = fakeEngine({ "users.self": {} });
+    const { host } = await show(engine);
+    await typeName(host, "Ada");
+    await act(async () => button(host, "Get started").click());
+    await flush();
+    expect(recalledSessionName()).toBe("Ada");
+    expect(calls(request, "users.setDisplayName")).toEqual([]);
+    expect(host.querySelector("h1")?.textContent).toBe("Your models");
   });
 
   it("stays on Welcome when the profile refuses the name", async () => {

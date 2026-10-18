@@ -6,7 +6,9 @@ import type { WindowEngine } from "../../connect/engine";
 import { Icon } from "../../shell/icons";
 import { featured, KINDS, kindOf, matches, SEED_WHAT, SORTS, sortEntries, type Entry, type KindId, type Sort } from "./catalog";
 import { InstallSheet, PasteSheet } from "./InstallSheet";
-import { Adapters, Card, Row, Soon } from "./parts";
+import { Adapters, Card, ComingShown, Row, Soon } from "./parts";
+import { useLevelNow } from "../settings/level-now";
+import { COMING_FROM } from "../settings/rows";
 import { parseSeed, type Seed } from "./seed";
 import { looksLikeTeam, parseTeamMarkdown, type TeamFile } from "./team-markdown";
 import { TeamReview } from "./TeamReview";
@@ -39,6 +41,8 @@ export function Seedbank({ engine, variant = "place", initialKind = "all" }: Pro
   const [team, setTeam] = useState<TeamFile | null>(null);
   const [notice, setNotice] = useState<string | null>(null), [dropping, setDropping] = useState(false);
   const data = useSeedbank(engine, query);
+  // Coming controls (Open on keepoak.com, Most stars, an Add that waits on the engine) show only at Technical.
+  const comingShown = useLevelNow(engine) >= COMING_FROM;
   const shown = useMemo(() => sortEntries(data.entries.filter(e => (kind === "all" || e.kind === kind) && matches(e, query)), sort), [data.entries, kind, query, sort]);
 
   const openTeam = (text: string, seedReason: string): string | null => {
@@ -131,7 +135,7 @@ export function Seedbank({ engine, variant = "place", initialKind = "all" }: Pro
     </>;
   }
 
-  return <div className="sb g-clear" data-variant={variant} data-dropping={dropping || undefined}>
+  return <ComingShown.Provider value={comingShown}><div className="sb g-clear" data-variant={variant} data-dropping={dropping || undefined}>
     <div className="sb-top">
       <div>{variant === "place" && <h2 className="sb-title g-label">Seedbank</h2>}<p className="sb-hint g-label" data-lines>{LEDE}</p></div>
       <Soon className="sb-web" need="seedbank.web" reason={KEEPOAK_COMING} label="Open on keepoak.com (coming)">Open on keepoak.com ↗</Soon>
@@ -151,7 +155,7 @@ export function Seedbank({ engine, variant = "place", initialKind = "all" }: Pro
     {open && <InstallSheet entry={open} engine={engine} trunks={data.trunks} onClose={() => setOpen(null)} onDone={result => { setOpen(null); setNotice(result.notice); data.reload(); }} />}
     {team && <TeamReview team={team} engine={engine} onClose={() => setTeam(null)} onDone={result => { setTeam(null); setNotice(result.notice); data.reload(); }} />}
     {paste !== null && <PasteSheet initial={paste} onClose={() => setPaste(null)} onSeed={openSeed} />}
-  </div>;
+  </div></ComingShown.Provider>;
 }
 
 /** Customize with its Personal | Community switch. `initial` is the mode the mount was asked for; later requests (requestCustomize) switch it. */

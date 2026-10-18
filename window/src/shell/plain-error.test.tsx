@@ -111,6 +111,13 @@ describe("no raw error at Regular (Private #1089)", () => {
     }
   });
 
+  it("drops a leading Error: before it decides", () => {
+    expect(plainError("Error: something")).not.toContain("Error:");
+    expect(plainError("Error: something", true)).not.toContain("Error:");
+    expect(plainError("error:   The file was not found.", true)).toBe("The file was not found.");
+    expect(plainError(new Error("ERROR: connect ECONNREFUSED 127.0.0.1:18789"), true)).not.toMatch(/Error|ECONNREFUSED|127\.0/);
+  });
+
   it.each(["advanced", "technical"])("keeps the exact words at %s", (level) => {
     localStorage.setItem("branch.level", level);
     notify("Couldn't change Lockdown: unknown method: logbook.status");

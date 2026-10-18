@@ -1,0 +1,1 @@
+window:src/screens/onboarding/R1Tour.test.tsx

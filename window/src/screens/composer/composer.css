@@ -18,7 +18,7 @@
 @media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) { --r1c-p-fill: var(--raise); } }
 
 /* One frosted pill: the fill, the blur and a 1 px outline drawn inside; softer inks firm up to the pill's own ink. */
-.r1c-pill, .r1c-note, .r1c-quiet, .r1c-flag, .r1c-tile, .r1c-mi, .r1c-chip,
+.r1c-pill, .r1c-note, .r1c-quiet, .r1c-flag, .r1c-tile, .r1c-mi, .r1c-chip, .r1c-free,
 .r1c-menu :is(.c-pt, .c-pp, .c-grp, .c-mi, .c-row, .c-search, .c-seg, .r1c-runs, .r1c-line, .r1c-ctx, .r1c-more .bars, .mi, .pt, .ph, .acctT5, .sp-note),
 .r1c-plugpop :is(.c-plug-h, .c-search, .c-ph, .c-tool, .c-librow, .c-plug-changed, .c-manage, .c-pp) {
   background: var(--r1c-p-fill); backdrop-filter: var(--r1c-p-blur); -webkit-backdrop-filter: var(--r1c-p-blur);
@@ -45,10 +45,14 @@
 .r1c-menu :is(.r1c-ctx, .r1c-more .bars) { border-radius: 14px; }
 .r1c { position: relative; max-width: none; padding-inline: max(0px, calc(2.2cqi - 16px)); }
 @container (max-width: 760px) { .r1c { margin-bottom: -4px; } }
-.r1c-note { width: fit-content; margin: 0 auto 6px; padding: 3px 12px; border-radius: 999px; max-width: min(100%, 680px); color: var(--ink-3); font-size: var(--fs-12-5); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r1c-note { width: fit-content; margin: 0 auto 6px; padding: 3px 12px; border-radius: 14px; max-width: min(100%, 680px); color: var(--ink-3); font-size: var(--fs-12-5); text-align: center; overflow: visible; white-space: normal; }
 .r1c-note.bad { color: var(--bad); }
+.r1c-free { display: grid; gap: 8px; width: fit-content; margin: 0 auto 8px; padding: 10px 14px; border-radius: 16px; max-width: min(100%, 520px); color: var(--ink-2); font-size: var(--fs-13); text-align: left; }
+.r1c-free p { margin: 0; white-space: pre-wrap; }
+.r1c-free-acts { display: flex; gap: 8px; flex-wrap: wrap; }
 .r1c .r1c-connect { display: grid; justify-items: center; gap: 8px; margin: 0 auto 8px; }
 .r1c .r1c-connect p { margin: 0; font-size: var(--fs-13); color: var(--ink-2); }
+.r1c .connect-model-acts, .c-nomodel .connect-model-acts { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; }
 /* Improve my draft's Undo, inside its note (#977). */
 .r1c-undo { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
 
@@ -69,7 +73,7 @@
   font-size: 9.5px; font-weight: 600; line-height: 14px; text-align: center; box-shadow: 0 0 0 1.5px var(--bg); }
 .r1c-send { display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: var(--btn); color: var(--on-btn); cursor: pointer;
   animation: r1c-pop-in var(--spring-pop); transition: background-color .14s cubic-bezier(.2,.8,.2,1), opacity .14s; }
-.r1c-send:disabled { opacity: .35; cursor: default; }
+.r1c-send:disabled { opacity: 1; cursor: not-allowed; background: var(--fill); color: var(--ink-3); }
 @keyframes r1c-pop-in { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 .r1c-flag { align-self: center; flex: none; padding: 2px 8px; border-radius: 999px; color: var(--ink-3); font-size: 11.5px; }
 .r1c-pill .c-drawer { left: -1px; right: -1px; }

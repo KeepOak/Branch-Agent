@@ -3,7 +3,7 @@
 // failure reports through update.report, and the parts that only the Branch app can do, greyed with why.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { CheckedAt, useCheckedAt } from "../checked-at";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, useHeadless, type RowEntry } from "../kit";
 import { list } from "../adapter";
@@ -27,6 +27,8 @@ const OS: Record<string, string> = { win32: "Windows", darwin: "macOS", linux: "
 const APP_ONLY = "Runs in the Branch app on your computer.";
 const STORE_WHY = "Opens the store in your browser, from the Branch app.";
 const APK_WHY = "Downloads run in the Branch app on your computer.";
+/** The one visible line the greyed store links and downloads name with aria-describedby (Private #1093 item 7). */
+const STORES_LINE = "Get the apps from the Branch app on your computer: it opens the stores and downloads.";
 const NO_SKIP = "Skipping a version needs the engine to keep a skip list.";
 const NO_UNDO = "Undoing an update needs the engine's roll back.";
 const NO_DEADLINE = "The engine’s wait is fixed at 15 minutes; changing it needs an engine setting.";
@@ -288,8 +290,9 @@ const DEVICES: [string, string, string, string][] = [
   ["globe", "Browser extension", "Send pages to a Trunk.", "Chrome Web Store"],
 ];
 
-/** One device row. At Advanced the Android row adds the APK line, greyed until the Branch app can download it. */
-function DeviceRow({ icon, title, sub, store, apk }: { icon: string; title: string; sub: string; store: string; apk: boolean }) {
+/** One device row. At Advanced the Android row adds the APK line, greyed until the Branch app can download it. `whyId`
+ *  is the line under the list that says why its store links and downloads are greyed. */
+function DeviceRow({ icon, title, sub, store, apk, whyId }: { icon: string; title: string; sub: string; store: string; apk: boolean; whyId: string }) {
   return (
     <div className="prow" data-row={title}>
       <Tile><Ico name={icon} s /></Tile>
@@ -298,21 +301,23 @@ function DeviceRow({ icon, title, sub, store, apk }: { icon: string; title: stri
         {sub ? <small>{sub}</small> : null}
         {apk ? (
           <small className="up-apk">
-            <button type="button" className="link-k" disabled title={APK_WHY}>Download the APK</button> · <button type="button" className="link-k" disabled title={APK_WHY}>Checksum</button> · Not every release includes the APK. Check the checksum before installing.
+            <button type="button" className="link-k" disabled title={APK_WHY} aria-describedby={whyId}>Download the APK</button> · <button type="button" className="link-k" disabled title={APK_WHY} aria-describedby={whyId}>Checksum</button> · Not every release includes the APK. Check the checksum before installing.
           </small>
         ) : null}
       </span>
-      {store ? <Btn sm ghost disabled title={store === "Download" ? APP_ONLY : STORE_WHY}>{store}</Btn> : null}
+      {store ? <Btn sm ghost disabled title={store === "Download" ? APP_ONLY : STORE_WHY} aria-describedby={whyId}>{store}</Btn> : null}
     </div>
   );
 }
 
 function Devices({ lv }: { lv: number }) {
+  const whyId = useId();
   return (
     <Sec title="Branch on your other devices">
       <Plist>
-        {DEVICES.map(([icon, title, sub, store]) => <DeviceRow key={title} icon={icon} title={title} sub={sub} store={store} apk={title === "Android" && lv >= 1} />)}
+        {DEVICES.map(([icon, title, sub, store]) => <DeviceRow key={title} icon={icon} title={title} sub={sub} store={store} apk={title === "Android" && lv >= 1} whyId={whyId} />)}
       </Plist>
+      <p className="hint" id={whyId}>{STORES_LINE}</p>
       <Ctl title="Already have the app?" off="Pairing a phone needs the Branch phone app."><Btn sm>Pair your phone</Btn></Ctl>
       <Ctl title="Add more to Branch"><Btn sm onClick={() => openPlace("customize", "Plugins")}>Open Plugins</Btn><Btn sm ghost onClick={() => openPlace("customize", "Skills")}>Browse the skill library</Btn></Ctl>
     </Sec>
@@ -486,7 +491,8 @@ function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: 
         ]} />
       ) : <Empty>No update has been tried yet.</Empty>}
       <Ctl title="Update history" sub="Every update, who started it and how it went."><Btn sm onClick={() => setHistory(true)}>See all</Btn></Ctl>
-      <Ctl title="The engine" sub={version ? "The engine is installed and answering." : undefined}>
+      {/* Repair is greyed here, so the row says where it runs (Private #1093 item 7). */}
+      <Ctl title="The engine" sub={`${version ? "The engine is installed and answering. " : ""}Repair it from the Branch app on your computer.`}>
         <span className="val-k">{version ? `Installed ${version}` : ""}</span>
         <Btn sm disabled title={APP_ONLY}>Repair</Btn>
         <Btn sm ghost onClick={() => void data.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</Btn><CheckedAt at={checked} />
