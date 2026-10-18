@@ -86,6 +86,7 @@ import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
+import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
 import { isRecord } from "../utils.js";
 import { diffConfigPaths, diffGatewayReloadPaths } from "./config-diff.js";
 import {
@@ -1874,6 +1875,9 @@ describe("gateway hot reload model state", () => {
           await watchedRun?.waitForExtinction?.().catch(() => {});
           await state?.cronState.cron.stopAndDrain?.();
           await scheduler.stop();
+          // Real cron writes SQLite under BRANCH_STATE_DIR. Close those workers
+          // before afterEach rm, or Windows holds the temp dir with EPERM.
+          await cleanupSessionStateForTest({ stateDir: fixtureDir });
           spawn.mockRestore();
           vi.unstubAllEnvs();
         });
