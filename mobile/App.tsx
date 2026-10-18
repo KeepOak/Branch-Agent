@@ -237,6 +237,8 @@ function Shell({
   const insets = useSafeAreaInsets();
   const look = Platform.OS === 'ios' ? 'ios' : 'android';
   const tabPad = placesBarHeight(look, insets.bottom);
+  // Android's Places bar is in-flow, so extra list padding would double it.
+  const extraPad = look === 'ios' ? tabPad : 0;
   const goPlace = (place: Place) => {
     if (place === 'home') setPairedRoute({ name: 'home' });
     else if (place === 'chats') setPairedRoute(CHATS);
@@ -374,7 +376,7 @@ function Shell({
               onSettings={() => setPairedRoute({ name: 'settings', from: 'more' })}
               onTrunks={() => setPairedRoute({ name: 'agents', from: 'more' })}
               onBack={() => setPairedRoute(CHATS)}
-              bottomExtra={tabPad}
+              bottomExtra={extraPad}
             />
           </PhoneShell>
         );
@@ -408,7 +410,7 @@ function Shell({
               updateCard={updateCard}
               level={settingsLevelOf(showLevel)}
               backTo={pairedRoute.from === 'more' ? 'More' : 'Chats'}
-              bottomExtra={tabPad}
+              bottomExtra={extraPad}
             />
           </PhoneShell>
         );
@@ -460,7 +462,7 @@ function Shell({
               }}
               focusId={pairedRoute.focus}
               test={testTools ? { state: testApproval.state, onSend: testApproval.send, onCancel: testApproval.cancel } : undefined}
-              bottomExtra={tabPad}
+              bottomExtra={extraPad}
             />
           </PhoneShell>
         );
@@ -495,7 +497,7 @@ function Shell({
               updateBanner={updateBanner}
               look={look}
               level={showLevel}
-              bottomExtra={tabPad}
+              bottomExtra={extraPad}
             />
           </PhoneShell>
         );

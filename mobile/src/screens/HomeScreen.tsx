@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { ApprovalDecision, ApprovalsSnapshot } from '../approvals/approvals';
+import { LIST_FAILED_MESSAGE, type ApprovalDecision, type ApprovalsSnapshot } from '../approvals/approvals';
 import type { ChatListSnapshot, ChatRow } from '../chats/chatList';
 import { chatTime } from '../chats/chatTime';
 import {
@@ -170,7 +170,7 @@ export function HomeScreen({
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: space.sm, paddingHorizontal: layout.screenInset, paddingBottom: tabPad + space.xl }}
+        contentContainerStyle={{ paddingTop: space.sm, paddingHorizontal: layout.screenInset, paddingBottom: (ios ? tabPad : 0) + space.xl }}
         keyboardShouldPersistTaps="handled"
       >
         <View
@@ -264,9 +264,13 @@ export function HomeScreen({
               </View>
             </HomeCard>
           ))
-        ) : approvals.loaded ? (
+        ) : !approvals.loaded && !approvals.error ? (
+          <Calm testID="home-needs-loading" text="Checking with your computer…" />
+        ) : !approvals.loaded ? (
+          <Calm testID="home-needs-error" text={online ? approvals.error || LIST_FAILED_MESSAGE : 'Approvals show up here as soon as this phone reaches it.'} />
+        ) : (
           <Calm testID="home-needs-empty" text="Nothing needs you." />
-        ) : null}
+        )}
 
         <Section title="Working now" />
         {working.length ? (

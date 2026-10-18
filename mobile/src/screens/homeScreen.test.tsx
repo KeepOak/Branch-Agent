@@ -8,7 +8,7 @@ import { fixtureApprovals } from '../testing/approvalFixtures';
 import { FIXTURE_NOW, fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { createFakeSession } from '../testing/fakeSession';
 import { ThemeProvider } from '../theme/ThemeProvider';
-import { type } from '../theme/tokens';
+import { space, type } from '../theme/tokens';
 import { HomeScreen } from './HomeScreen';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 4000 });
@@ -92,6 +92,14 @@ describe('home screen', () => {
     expect(bar.borderRadius).toBe(32);
   });
 
+  it('does not pad the Home list for an in-flow Android Places bar', async () => {
+    await renderHome({ look: 'android' });
+    const bar = StyleSheet.flatten(screen.getByTestId('places-bar').props.style);
+    expect(bar.position).not.toBe('absolute');
+    const scroll = StyleSheet.flatten(screen.getByTestId('home-scroll').props.contentContainerStyle);
+    expect(scroll.paddingBottom).toBe(space.xl);
+  });
+
   it('says nothing needs you and nothing is running when the lists are empty', async () => {
     await renderHome({
       chats: { rows: [], loaded: true, error: null },
@@ -103,10 +111,27 @@ describe('home screen', () => {
     expect(screen.queryByTestId('home-finished')).toBeNull();
   });
 
-  it('does not say nothing needs you before approvals load', async () => {
+  it('does not say nothing needs you while approvals are still loading', async () => {
     await renderHome({
       approvals: { pending: [], answered: [], trunks, loaded: false, error: null, sending: {}, failed: {} },
     });
+    expect(screen.getByTestId('home-needs-loading')).toHaveTextContent('Checking with your computer…');
+    expect(screen.queryByTestId('home-needs-empty')).toBeNull();
+  });
+
+  it('does not say nothing needs you when the approvals list failed', async () => {
+    await renderHome({
+      approvals: {
+        pending: [],
+        answered: [],
+        trunks,
+        loaded: false,
+        error: 'Your computer is busy right now. Try again in a moment.',
+        sending: {},
+        failed: {},
+      },
+    });
+    expect(screen.getByTestId('home-needs-error')).toHaveTextContent('Your computer is busy right now. Try again in a moment.');
     expect(screen.queryByTestId('home-needs-empty')).toBeNull();
   });
 
