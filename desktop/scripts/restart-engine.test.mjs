@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
-import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -752,16 +752,10 @@ test("a handoff whose standby port was taken gives control back without rejectin
   await writeFile(join(root, "standby-binds-after-release"), "1");
   restart();
   // A staged update first runs a candidate check beside the engine; the standby is the launch marked as one.
-  // starts.json can drop a pid on Windows, so look at launch-*.json too. A mid-write is not a miss.
   const standbyLaunch = async () => {
-    let names = [];
-    try { names = await readdir(root); } catch { return; }
-    for (const name of names) {
-      if (!/^launch-\d+\.json$/.test(name)) continue;
-      try {
-        const launch = JSON.parse(await readFile(join(root, name), "utf8"));
-        if (launch.standby) return launch;
-      } catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+    for (const pid of await starts()) {
+      const file = join(root, `launch-${pid}.json`);
+      if (existsSync(file)) { const launch = JSON.parse(await readFile(file, "utf8")); if (launch.standby) return launch; }
     }
   };
   await eventually(async () => Boolean(await standbyLaunch()), 30_000);
@@ -775,9 +769,7 @@ test("a handoff whose standby port was taken gives control back without rejectin
   assert.equal(alive(old), true); assert.equal(await servingOn(gatewayPort), true);
   assert.equal(existsSync(join(root, "component-update-rejected.json")), false, "a healthy release was rejected for a port clash");
   assert.match(await readFile(join(root, "desktop.log"), "utf8"), /was taken before the standby could bind it/);
-  // Pin READY_TIMEOUT_MS: unset it is 10 minutes, and the Windows fixture deadline expires during
-  // the candidate check, so no standby is ever spawned (Desktop on windows-latest).
-}, false, false, false, true, false, handoffOn({ READY_TIMEOUT_MS: 30_000 })));
+}, false, false, false, true, false, handoffOn()));
 test("a handoff-only readiness timeout keeps the release eligible and the next attempt uses the guarded swap", () => fixture(async ({ root, runtime, starts, restart, offerStaged }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   await stageFixtureUpdate(root);
