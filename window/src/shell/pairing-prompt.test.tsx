@@ -75,10 +75,12 @@ const click = async (text: string) => {
 const REQUEST = {
   requestId: "6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
   displayName: "Pixel",
+  deviceId: "pixel-1",
   platform: "android",
   role: "operator",
   deviceFamily: "phone",
   scopes: ["operator.admin"],
+  isRepair: false,
   ts: 1,
 };
 
