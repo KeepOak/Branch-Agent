@@ -234,6 +234,9 @@ test("Git Bash shim reads the same files, drops CR and passes arguments through"
   assert.ok(shim.includes("$data/gateway.pid"));
   assert.ok(shim.includes("read_live_engine"));
   assert.ok(shim.includes('ps -o args= -p "$pid"'), "macOS reads the live command line from ps when /proc is absent");
+  assert.ok(shim.includes('ps -o command= -p "$pid"'), "Linux/Git Bash ps may only expose command=, not args=");
+  assert.ok(shim.includes(`tr '\\0' ' '`), "Git Bash reconstructs a ps-like line from /proc when ps -o is empty");
+  assert.ok(shim.includes(`tr -d '\"'`), "quoted Windows/Git Bash paths must not break the /branch.mjs gateway glob");
   assert.ok(shim.includes("/branch.mjs gateway"), "live pid must have gateway immediately after branch.mjs");
   assert.ok(shim.includes("BRANCH_SHIM_FORCE_PS"), "tests can skip /proc and exercise the ps parser");
   assert.ok(shim.includes("*[!0-9]*"), "pid and port must be digits before they are interpolated");

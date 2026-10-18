@@ -406,10 +406,14 @@ export function branchShShim(o: { dataDir: string; engineDir: string; nodePath: 
     `    live=$(tr '\\0' '\\n' < "/proc/$pid/cmdline" | parse_live_cmdline)`,
     "  fi",
     // macOS has no /proc; parse `ps -o args=` for .../branch.mjs gateway and the matching --port.
-    // A node path with spaces (Branch Agent.app) is stripped one word at a time until branch.mjs exists.
+    // Git Bash's ps has no BSD -o args= and quotes spaced paths; fall back to /proc cmdline
+    // space-joined (the same bytes macOS ps would print). Strip quotes so a spaced node path
+    // still matches. Walk the prefix one word at a time until branch.mjs exists.
     `  if [ -z "$live" ]; then`,
     `    args=$(ps -o args= -p "$pid" 2>/dev/null) || true`,
-    "    args=$(printf '%s' \"$args\" | sed 's/^[[:space:]]*//' | tr '\\\\' '/')",
+    `    if [ -z "$args" ]; then args=$(ps -o command= -p "$pid" 2>/dev/null) || true; fi`,
+    `    if [ -z "$args" ] && [ -r "/proc/$pid/cmdline" ]; then args=$(tr '\\0' ' ' < "/proc/$pid/cmdline"); fi`,
+    "    args=$(printf '%s' \"$args\" | tr -d '\"' | sed 's/^[[:space:]]*//' | tr '\\\\' '/')",
     "    case \"$args\" in",
     "      */branch.mjs\\ gateway\\ *|*/branch.mjs\\ gateway)",
     "        case \"$args\" in",
