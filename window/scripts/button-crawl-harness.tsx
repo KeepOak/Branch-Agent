@@ -212,7 +212,7 @@ function respond(method: string, params: CrawlParams | undefined) {
   }
   if (method === 'models.list') return { models: [{ id: 'fixture', provider: 'local', name: 'Local model', contextWindow: 32768 }] };
   // system.ts: diskPath is the data folder, as long as a real one (Settings › History & backups › Where your data lives).
-  if (method === 'system.info') return { machineName: 'This computer', diskPath: '/Users/someone/Library/Application Support/Branch/home/.branch/state' };
+  if (method === 'system.info') return { machineName: 'This computer', diskPath: '/srv/branch/Library/Application Support/Branch/agents/.branch/state' };
   // config-change-log.ts: one settings change, so Every change draws its row and its Roll back.
   if (method === 'branch.changes.list') return { entries: [{ id: 'c1', at: now - 60_000, kind: 'config-write', source: 'settings', summary: 'Changed a setting', changedPaths: ['ui.theme'] }] };
   if (method === 'health') return { ok: true, durationMs: 4 };

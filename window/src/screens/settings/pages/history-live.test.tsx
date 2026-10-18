@@ -173,7 +173,7 @@ describe("Private #1093: every greyed History & backups control says why next to
     const base = env.request.getMockImplementation()!;
     // backup.ts: no backups yet, no schedule. A long data folder, as on a real computer.
     env.request.mockImplementation(async (method: string, params?: unknown) => method === "backup.status" ? { suggestedFolder: "", targets: [], schedules: [], locations: [] }
-      : method === "system.info" ? { diskPath: "/Users/someone/Library/Application Support/Branch/home/.branch/state" } : base(method, params));
+      : method === "system.info" ? { diskPath: "/srv/branch/Library/Application Support/Branch/agents/.branch/state" } : base(method, params));
     await act(async () => root.render(<SettingsFrame engine={env.engine} page="history" pages={R1_PAGES} />));
     await settle();
     await setLevel(level);
@@ -226,6 +226,6 @@ describe("Private #1093: every greyed History & backups control says why next to
     await mountEmpty("Advanced");
     const data = row("history.copy.data")!;
     expect(data.classList.contains("r1s-stack")).toBe(true);
-    expect(data.querySelector(".r1s-path code")?.textContent).toContain("/Users/someone/Library/Application Support/Branch");
+    expect(data.querySelector(".r1s-path code")?.textContent).toContain("/srv/branch/Library/Application Support/Branch");
   });
 });
