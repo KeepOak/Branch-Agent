@@ -62,6 +62,10 @@ test("setting off preserves manual Restart and rejected releases are not retried
   assert.deepEqual(f.restarts, []);
 });
 
+async function flushAutoApply() {
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+}
+
 test("awaiting Restart still schedules the next check", async () => {
   const logs = [];
   let polls = 0;
@@ -76,15 +80,47 @@ test("awaiting Restart still schedules the next check", async () => {
     clear: () => {},
   });
   controller.start();
-  await Promise.resolve();
-  await Promise.resolve();
+  await flushAutoApply();
   assert.ok(logs.some(line => line.includes("off; awaiting Restart") && line.includes("retrying in 30s")), logs.join("\n"));
   assert.equal(typeof tickFn, "function", "the next check is scheduled while awaiting Restart");
   const before = polls;
   tickFn();
-  await Promise.resolve();
-  await Promise.resolve();
+  await flushAutoApply();
   assert.ok(polls > before, `the scheduled check ran while awaiting Restart, got ${polls}`);
+  controller.stop();
+});
+
+test("after applying a build, awaiting Restart still schedules the next check", async () => {
+  // Mac log: a build applied at 08:01 UTC, then `auto-apply: off; awaiting Restart`, then ten hours of silence.
+  const logs = [];
+  const restarts = [];
+  let polls = 0;
+  let tickFn;
+  let now = 0;
+  const controller = createAutoApplyUpdate({
+    pendingVersion: async () => { polls++; return "0.4.5"; },
+    enabled: () => true,
+    activity: async () => ({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    restart: async version => { restarts.push(version); },
+    log: line => logs.push(line),
+    now: () => now,
+    interval: fn => { tickFn = fn; return 1; },
+    clear: () => {},
+  });
+  controller.start();
+  await flushAutoApply();
+  assert.deepEqual(restarts, []);
+  assert.equal(typeof tickFn, "function", "the checker is scheduled before the build applies");
+  now += AUTO_APPLY_GAP_MS;
+  tickFn();
+  await flushAutoApply();
+  assert.deepEqual(restarts, ["0.4.5"], "the build applied in place");
+  const before = polls;
+  tickFn();
+  await flushAutoApply();
+  assert.ok(logs.some(line => line.includes("off; awaiting Restart") && line.includes("retrying in 30s")), logs.join("\n"));
+  assert.ok(polls > before, `the next check ran after applying, in the awaiting-Restart state, got ${polls}`);
+  assert.equal(typeof tickFn, "function", "the next check stays scheduled after applying a build");
   controller.stop();
 });
 
