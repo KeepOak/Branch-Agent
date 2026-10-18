@@ -71,13 +71,26 @@ const ledgerFace = () => host.querySelector<HTMLButtonElement>('.r1sb-pins [data
 const calls = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter(([name]) => name === method).map(([, params]) => params);
 
 describe("R1 sidebar right-click menus", () => {
+  it.each(["regular", "advanced"] as const)("hides unfinished Coming lines from the Trunk ••• menu at %s (#1874)", async (level) => {
+    localStorage.setItem("branch.level", level);
+    await render();
+    await click(host.querySelector('[aria-label="More for Scout"]'));
+    const menu = document.querySelector(".g-menu")!;
+    expect(menu.textContent).not.toMatch(/later update|coming/i);
+    for (const label of ["Hide from Involving me", "Open folder in", "Assign to…", "Icon and colour", "Archive", "Pause"]) {
+      expect(rowLabels(), label).not.toContain(label);
+    }
+    await click(entry("Copy"));
+    expect(document.querySelector(".g-menu")!.textContent).not.toMatch(/later update|coming/i);
+  });
+
   it("opens the preview's row menu on a Trunk row, exactly these items in this order", async () => {
     await render();
     await act(async () => { scoutRow().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); });
     expect(tileLabels()).toEqual([]);
-    expect(rowLabels()).toEqual(["Open", "Mark as unread", "Pin to top", "Move to group…", "Rename", "Open in its own window", "Copy into a new conversation", "Copy", "Snooze", "Mark done", "Archive", "Move to project", "Tidy up…", "New conversation with Scout", "What can Scout do?", "Pause", "Edit Trunk…", "Delete…", "Remove…"]);
+    expect(rowLabels()).toEqual(["Open", "Mark as unread", "Pin to top", "Move to group…", "Rename", "Open in its own window", "Copy into a new conversation", "Copy", "Snooze", "Mark done", "Move to project", "Tidy up…", "New conversation with Scout", "What can Scout do?", "Edit Trunk…", "Delete…", "Remove…"]);
     await click(entry("Copy"));
-    expect(rowLabels()).toEqual(["Copy", "Link to this conversation", "Link with a preview card", "Conversation as Markdown", "Conversation ID"]);
+    expect(rowLabels()).toEqual(["Copy", "Link to this conversation", "Conversation as Markdown", "Conversation ID"]);
     expect(undeclaredControls(document)).toEqual([]);
   });
 
@@ -85,7 +98,7 @@ describe("R1 sidebar right-click menus", () => {
     await render();
     await act(async () => { ledgerFace().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); });
     expect(tileLabels()).toEqual([]);
-    expect(rowLabels()).toEqual(["Open", "Mark as unread", "Unpin", "Move to group…", "Rename", "Open in its own window", "Copy into a new conversation", "Copy", "Snooze", "Mark done", "Archive", "Move to project", "Tidy up…", "New conversation with Ledger", "What can Ledger do?", "Pause", "Edit Trunk…", "Replace with a different Trunk…", "Delete…", "Remove…"]);
+    expect(rowLabels()).toEqual(["Open", "Mark as unread", "Unpin", "Move to group…", "Rename", "Open in its own window", "Copy into a new conversation", "Copy", "Snooze", "Mark done", "Move to project", "Tidy up…", "New conversation with Ledger", "What can Ledger do?", "Edit Trunk…", "Replace with a different Trunk…", "Delete…", "Remove…"]);
   });
 
   it("runs the existing actions: Pin, Unread, Copy › Conversation ID and Rename", async () => {

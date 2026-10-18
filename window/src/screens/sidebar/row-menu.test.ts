@@ -19,23 +19,22 @@ const ctx = (over: Partial<RowMenuContext> = {}): RowMenuContext => ({
   removeTrunk: vi.fn(), confirmDelete: vi.fn(), replacePin: vi.fn(), ...over,
 });
 
-const TRUNK_ROWS = ["Open", "Mark as unread", "Pin to top", "Move to group…", "Rename", "Open in its own window", "Copy into a new conversation", "Copy", "Snooze", "Mark done", "Archive", "Move to project", "Tidy up…", "New conversation with Ledger", "What can Ledger do?", "Pause", "Edit Trunk…", "Delete…", "Remove…"];
+const TRUNK_ROWS = ["Open", "Mark as unread", "Pin to top", "Move to group…", "Rename", "Open in its own window", "Copy into a new conversation", "Copy", "Snooze", "Mark done", "Move to project", "Tidy up…", "New conversation with Ledger", "What can Ledger do?", "Edit Trunk…", "Delete…", "Remove…"];
 
 describe("row ••• menu", () => {
   it("lists the preview's rows for a Trunk, with no tiles, in that order", () => {
     const { tiles, rows } = rowMenu(rowOf({}), ctx());
     expect(tiles).toEqual([]);
     expect(rows.map(row => row.label)).toEqual(TRUNK_ROWS);
-    expect(rows.map(row => row.letter).filter(Boolean)).toEqual(["u", "p", "r", "f", "c", "a", "d"]);
+    expect(rows.map(row => row.letter).filter(Boolean)).toEqual(["u", "p", "r", "f", "c", "d"]);
     expect(rows.find(row => row.label === "Snooze")?.gap).toBe(true);
     expect(rows.find(row => row.label === "Delete…")).toMatchObject({ danger: true, gap: true });
     expect(rows.find(row => row.label === "Remove…")).toMatchObject({ danger: true });
-    expect(rows.find(row => row.label === "Copy")?.submenu?.map(entry => entry.label)).toEqual(["Link to this conversation", "Link with a preview card", "Conversation as Markdown", "Conversation ID"]);
+    expect(rows.find(row => row.label === "Copy")?.submenu?.map(entry => entry.label)).toEqual(["Link to this conversation", "Conversation as Markdown", "Conversation ID"]);
     expect(rows.find(row => row.label === "Mark done")).toMatchObject({ need: "sessions.patch" });
     expect(rows.find(row => row.label === "Mark done")?.off).toBeUndefined();
-    expect(rows.find(row => row.label === "Archive")?.off).toBe("Archive comes in a later update.");
-    expect(rows.find(row => row.label === "Pause")?.off).toBe("Pause comes in a later update.");
-    expect(rows.find(row => row.label === "Copy")?.submenu?.find(entry => entry.label === "Link with a preview card")?.off).toBe("Link with a preview card comes in a later update.");
+    expect(rows.some(row => row.label === "Archive" || row.label === "Pause")).toBe(false);
+    expect(rows.find(row => row.label === "Copy")?.submenu?.some(entry => entry.label === "Link with a preview card")).toBe(false);
     expect(rows.find(row => row.label === "Move to project")?.off).toBe(NO_PROJECTS);
   });
   it("runs the engine actions it names", () => {
@@ -68,10 +67,11 @@ describe("row ••• menu", () => {
     expect(rows.some(row => row.label === "Snooze" || row.label === "Archive" || row.label.startsWith("Delete") || row.label.startsWith("Remove"))).toBe(false);
     expect(rows.at(-1)?.label).toBe("Mark done");
   });
-  it("greys Open in its own window when this window can't, and greys Pause", () => {
+  it("greys Open in its own window when this window can't, and hides Pause until Technical", () => {
     const { rows } = rowMenu(rowOf({}), ctx({ ownWindowOff: "Only in the desktop app." }));
     expect(rows.find(row => row.label === "Open in its own window")?.off).toBe("Only in the desktop app.");
-    expect(rows.find(row => row.label === "Pause")?.off).toBe("Pause comes in a later update.");
+    expect(rows.some(row => row.label === "Pause")).toBe(false);
+    expect(rowMenu(rowOf({}), ctx({ technical: true })).rows.find(row => row.label === "Pause")?.off).toBe("Pause comes in a later update.");
   });
   it("asks for a first message before acting on a conversation that doesn't exist yet", () => {
     const { rows } = rowMenu(rowOf({ thread: null }), ctx());
@@ -121,10 +121,16 @@ describe("row ••• menu", () => {
     expect(grafted.off).toBeUndefined();
     grafted.onSelect?.();
     expect(c.actions.archive).toHaveBeenCalledTimes(2);
-    expect(rowMenu(rowOf({ archivedAt: 4 }), ctx()).rows.find(row => row.label === "Restore")?.off).toBe("Restore comes in a later update.");
+    expect(rowMenu(rowOf({ archivedAt: 4 }), ctx()).rows.some(row => row.label === "Restore")).toBe(false);
+    expect(rowMenu(rowOf({ archivedAt: 4 }), ctx({ technical: true })).rows.find(row => row.label === "Restore")?.off).toBe("Restore comes in a later update.");
   });
-  it("shows the advanced-only rows greyed, in the preview's places", () => {
-    const { rows } = rowMenu(rowOf({}), ctx({ advanced: true }));
+  it("hides unfinished Coming rows at Advanced, and shows them greyed at Technical in the preview's places", () => {
+    const advanced = rowMenu(rowOf({}), ctx({ advanced: true })).rows;
+    for (const label of ["Hide from Involving me", "Open folder in", "Assign to…", "Icon and colour", "Archive", "Pause"]) {
+      expect(advanced.some(row => row.label === label), label).toBe(false);
+    }
+    expect(advanced.find(row => row.label === "Tidy up…")?.submenu?.map(entry => entry.label)).toEqual(["Tidy up this conversation", "Keep only the last 400 lines…"]);
+    const { rows } = rowMenu(rowOf({}), ctx({ advanced: true, technical: true }));
     const labels = rows.map(row => row.label);
     expect(labels.indexOf("Hide from Involving me")).toBe(labels.indexOf("Mark as unread") + 1);
     expect(labels.indexOf("Open folder in")).toBe(labels.indexOf("Open in its own window") + 1);
@@ -133,7 +139,6 @@ describe("row ••• menu", () => {
     for (const label of ["Hide from Involving me", "Open folder in", "Assign to…", "Icon and colour"]) {
       expect(rows.find(row => row.label === label)?.off).toBe(`${label} comes in a later update.`);
     }
-    expect(rows.find(row => row.label === "Tidy up…")?.submenu?.map(entry => entry.label)).toEqual(["Tidy up this conversation", "Keep only the last 400 lines…"]);
   });
 });
 

@@ -239,6 +239,7 @@ export function Sidebar(p: SidebarProps) {
     editTrunk: (agentId: string) => { p.onPlace("people"); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId, view: "edit" } })); },
     tidy: row => void tidy({ session, list: p.list }, row, false),
     advanced: readLevel() !== "regular",
+    technical: readLevel() === "technical",
     keepLast: row => setDialog({ kind: "keep", row }),
     removeTrunk: (agentId, name) => setDialog({ kind: "remove", agentId, name }),
     confirmDelete: row => (askBeforeDelete() ? setDialog({ kind: "delete", row }) : void actions.remove(row).then(refreshContacts)),

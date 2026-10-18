@@ -68,15 +68,16 @@ describe("R1 sidebar, the Coming contract", () => {
 
     await click(host.querySelector('[aria-label="More for Ledger"]'));
     expect(undeclared()).toEqual([]);
-    for (const label of ["Pin", "Mark as read", "Archive", "Delete"]) expect(row(label).getAttribute("aria-disabled"), label).toBe("true");
+    for (const label of ["Pin", "Mark as read", "Delete"]) expect(row(label).getAttribute("aria-disabled"), label).toBe("true");
+    expect(row("Archive")).toBeUndefined();
+    expect(row("Pause")).toBeUndefined();
     await click(row("Pin"));
     await press(document.querySelector(".g-menu")!, "p");
     await press(document.querySelector(".g-menu")!, "d");
     expect(request).not.toHaveBeenCalled();
     expect(needs()).toEqual(expect.arrayContaining(["sessions.patch", "contacts.markRead", "sessions.delete"]));
     expect(undeclared()).toEqual([]);
-    expect(row("Pause").title).toBe("Pause comes in a later update.");
-    expect(needs()).toEqual(expect.arrayContaining(["chat.send", "agents.update", "agents.delete"]));
+    expect(needs()).toEqual(expect.arrayContaining(["chat.send", "agents.delete"]));
     await press(document.querySelector(".g-menu")!, "Escape");
 
     await click(host.querySelector('[aria-label="New, places and more"]'));
@@ -109,10 +110,18 @@ describe("R1 sidebar, the Coming contract", () => {
     expect(row("Pin").dataset.need).toBe("sessions.patch");
     expect(row("Move to group…").getAttribute("aria-disabled")).toBeNull();
     expect(row("Move to group…").dataset.need).toBe("sessions.groups.list sessions.patch");
-    expect(row("Pause").getAttribute("aria-disabled")).toBe("true");
-    expect(comingControls()).toEqual(expect.arrayContaining([expect.objectContaining({ need: ["agents.update"], where: "Pause" })]));
+    expect(row("Pause")).toBeUndefined();
     await click(row("Pin"));
     expect(request).toHaveBeenCalledWith("sessions.patch", expect.objectContaining({ key: "agent:ledger:main", pinned: true }));
+  });
+
+  it("shows unfinished Coming rows at Technical, still naming their methods", async () => {
+    localStorage.setItem("branch.level", "technical");
+    await render(["agents.update"]);
+    await click(host.querySelector('[aria-label="More for Ledger"]'));
+    expect(row("Pause").getAttribute("aria-disabled")).toBe("true");
+    expect(row("Pause").title).toBe("Pause comes in a later update.");
+    expect(comingControls()).toEqual(expect.arrayContaining([expect.objectContaining({ need: ["agents.update"], where: "Pause" })]));
   });
 
   it("Guide › Take the full tour starts the window's walkthrough when the window offers it (parity row 14)", async () => {
