@@ -1350,29 +1350,33 @@ test("a timed-out check that ignores abort cannot overwrite a later staged updat
   const hold = new Promise(resolve => { releaseHold = resolve; });
   let signalHeld = () => {};
   const held = new Promise(resolve => { signalHeld = resolve; });
-  const first = source.refreshComponentUpdate(cfg, request, {
-    timeoutMs: 1000,
-    underSwapGuard: freeGuard,
-    onProgress: async ({ name, bytes, total }) => {
-      if (name === "window" && bytes === total) {
-        signalHeld();
-        await hold;
-      }
-    },
+  let heldOnce = false;
+  source.setStageHoldForTests(async (holdCfg) => {
+    if (holdCfg !== cfg) return;
+    if (heldOnce) return;
+    heldOnce = true;
+    signalHeld();
+    await hold;
   });
-  const reached = await Promise.race([
-    held.then(() => "held"),
-    first.then(() => "resolved", () => "rejected"),
-  ]);
-  assert.equal(reached, "held", "first check must finish the last archive before the timeout");
-  await assert.rejects(first, /timed out/);
-  const second = source.refreshComponentUpdate(cfg, newer.request, { timeoutMs: 15_000, underSwapGuard: freeGuard });
-  // Without the in-flight gate, 400ms is enough for check 2 to stage 0.4.4 on loopback while check 1 is still held.
-  await new Promise(resolve => setTimeout(resolve, 400));
-  releaseHold();
-  assert.equal(await second, true);
-  await new Promise(resolve => setTimeout(resolve, 300));
-  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.4");
+  try {
+    const first = source.refreshComponentUpdate(cfg, request, { timeoutMs: 1000, underSwapGuard: freeGuard });
+    const reached = await Promise.race([
+      held.then(() => "held"),
+      first.then(() => "resolved", () => "rejected"),
+    ]);
+    assert.equal(reached, "held", "first check must finish downloading before the timeout");
+    await assert.rejects(first, /timed out/);
+    const second = source.refreshComponentUpdate(cfg, newer.request, { timeoutMs: 15_000, underSwapGuard: freeGuard });
+    // Without the in-flight gate, 400ms is enough for check 2 to stage 0.4.4 on loopback while check 1 is still held.
+    await new Promise(resolve => setTimeout(resolve, 400));
+    releaseHold();
+    assert.equal(await second, true);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.4");
+  } finally {
+    source.setStageHoldForTests(undefined);
+    releaseHold();
+  }
 }));
 
 test("a hung probation prune times out and the next update check still runs", async () => fixture(async ({ cfg }) => {

@@ -14,7 +14,7 @@ export interface RefreshOptions {
   /** Stops a download the owner cancelled. */
   signal?: AbortSignal;
   /** Byte progress of the engine/window archives, for first-launch consent UI. */
-  onProgress?: (update: { name: string; bytes: number; total: number }) => void | Promise<void>;
+  onProgress?: (update: { name: string; bytes: number; total: number }) => void;
   /** The packaged desktop app to update as well; absent in development runs. */
   desktop?: DesktopInstall;
   /**
@@ -529,6 +529,7 @@ async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typ
       if (!(await stat(join(directory, file))).isFile()) throw new Error(`Incomplete release: ${file}`);
     }
     await replaceFile(join(directory, "window", "branch-build.txt"), `${release.version}\n`);
+    if (stageHold) await stageHold(cfg);
     return { engine: join(directory, "engine"), window: join(directory, "window") };
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
 }
@@ -568,6 +569,10 @@ async function removeStagedFolder(cfg: DesktopConfig, folder: string, log?: (lin
 /** Test seam: replaces the folder move used by a staged-pair replacement (to fail it part way). */
 let replacementMove: typeof move = move;
 export function setReplacementMoveForTests(fn: typeof move | undefined): void { replacementMove = fn ?? move; }
+
+/** Test seam: pause after archives are on disk, before publish, so a timed-out check can ignore abort and still finish. */
+let stageHold: ((cfg: DesktopConfig) => Promise<void>) | undefined;
+export function setStageHoldForTests(fn: ((cfg: DesktopConfig) => Promise<void>) | undefined): void { stageHold = fn; }
 
 /**
  * Replaces a staged, never-started engine/window pair with a newer release in place, under one journal. The running
@@ -714,15 +719,21 @@ export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch
       reject(new Error("Component update check timed out"));
     }, timeoutMs);
     timer.unref?.();
-    void work.then(resolve, reject);
-  }).finally(() => {
-    if (timer !== undefined) clearTimeout(timer);
+    void work.then(
+      value => {
+        if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
+        if (refreshes.get(cfg) === entry) refreshes.delete(cfg);
+        resolve(value);
+      },
+      error => {
+        if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
+        if (refreshes.get(cfg) === entry) refreshes.delete(cfg);
+        reject(error);
+      },
+    );
   });
   entry.outer = outer;
   refreshes.set(cfg, entry);
-  void work.finally(() => {
-    if (refreshes.get(cfg) === entry) refreshes.delete(cfg);
-  });
   return outer;
 }
 
