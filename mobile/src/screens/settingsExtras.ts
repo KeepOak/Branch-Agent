@@ -45,6 +45,11 @@ export function showsAt(level: SettingsLevel, min: SettingsLevel): boolean {
 export const KEEPOAK_SIGN_IN = 'Sign in with KeepOak';
 export const KEEPOAK_SIGN_IN_REASON = 'keepoak.com has no sign-in Branch Agent can use yet.';
 
+/** Controls that cannot be built honestly yet. Same disabled-row pattern as KeepOak sign-in. */
+export const LOCK_REASON = 'This phone cannot lock Branch Agent with a fingerprint yet.';
+export const PUSH_REASON = 'Alerts while the app is closed need a store account Branch Agent does not have yet.';
+export const WAKE_REASON = 'This phone cannot listen for a wake word yet.';
+
 export function laterUpdate(label: string): string {
   return `${label} comes in a later update.`;
 }
