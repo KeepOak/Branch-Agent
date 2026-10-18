@@ -947,14 +947,24 @@ describe("node host invoke", () => {
         saveExecApprovals({ version: 1, defaults: { security: "full", ask: "off" } });
         const root = fs.realpathSync(state.root);
         // Claude argv must stay a real Claude flag (`-p`). `--version` is
-        // rejected as unsupported before spawn. Windows cannot shebang-exec a
-        // .cjs as argv0, but the supervisor rewrites .cjs to
-        // [process.execPath, script, ...argv] (node-entrypoint). A copied
+        // rejected as unsupported before spawn. Approval pins a native
+        // executable (.com/.exe/.bat/.cmd on Windows); a raw .cjs is not one.
+        // A real Windows Claude CLI is a .cmd/.exe, so the plan is correct.
+        // A two-line %~dp0 .cmd forwarder is that identity; the supervisor
+        // then rewrites it to [process.execPath, script, ...argv]. A copied
         // node.exe cannot take `-p` because Node treats that as print.
-        const executable = path.join(root, "native-agent.cjs");
-        fs.writeFileSync(executable, `#!${process.execPath}\nprocess.stdout.write('ok');\n`, {
+        const script = path.join(root, "native-agent.cjs");
+        fs.writeFileSync(script, `#!${process.execPath}\nprocess.stdout.write('ok');\n`, {
           mode: 0o700,
         });
+        const executable =
+          process.platform === "win32" ? path.join(root, "native-agent.cmd") : script;
+        if (process.platform === "win32") {
+          fs.writeFileSync(
+            executable,
+            `@echo off\r\n"${path.join("%~dp0", path.basename(script))}" %*\r\n`,
+          );
+        }
         const request = vi.fn<GatewayClient["request"]>().mockResolvedValue(null);
         await handleInvoke(
           {
