@@ -71,6 +71,8 @@ test('docs and workflow name the production CLI release contract', () => {
   assert.match(config, /BranchAgent/);
   assert.match(doc, /~\/Library\/Application Support\/BranchAgent/);
   assert.match(doc, /~\/\.local\/share\/BranchAgent/);
+  assert.match(doc, /~\/\.local\/bin\/branch-agent/);
+  assert.match(read('desktop/scripts/release-installers.mjs'), /~\/\.local\/bin\/branch-agent/);
   assert.match(doc, /%LOCALAPPDATA%\\Programs\\Branch Agent/);
   assert.match(read('.github/workflows/merge-gate-recheck.yml'), /^\s+- CLI release checks$/m);
   assert.match(workflow, /PNPM_STORE_DIR/);
@@ -110,9 +112,44 @@ test('docs and workflow name the production CLI release contract', () => {
   assert.match(workflow, /timeout-minutes:\s*15/);
   assert.match(workflow, /scripts\/cli-release-contract\.test\.mjs/);
   assert.match(workflow, /scripts\/cli-release-smoke\.mjs/);
+  assert.match(workflow, /if: matrix\.os != 'macos-latest'/);
   assert.doesNotMatch(workflow, /macos-15/);
   assert.doesNotMatch(workflow, /\bios\b|iphone|ipad/i);
   assert.doesNotMatch(workflow, /notarize|AZURE_SIGNING|APPLE_DEVELOPER/i);
+});
+
+const REQUIRED_WORKFLOW_PATHS = [
+  'docs/cli-release.md',
+  'scripts/cli-release-*',
+  'scripts/feature-batch-ci-runtime.mjs',
+  '.github/workflows/cli-release-checks.yml',
+  '.github/workflows/merge-gate-recheck.yml',
+  'desktop/scripts/release-production-layout.mjs',
+  'desktop/scripts/release-build.mjs',
+  'desktop/src/desktop-os.ts',
+  'desktop/src/desktop-controls.ts',
+  'desktop/src/config.ts',
+  'desktop/src/mac-applications.ts',
+  'engine/branch.mjs',
+  'engine/package.json',
+  'engine/pnpm-lock.yaml',
+];
+
+function workflowPathLists(workflow) {
+  const matches = [...workflow.matchAll(/^\s+paths:\n((?:[ \t]+- .+\n)+)/gm)];
+  assert.equal(matches.length, 2, 'pull_request and push must each list paths');
+  return matches.map((match) => match[1].split('\n').map((line) => {
+    const item = line.replace(/^\s+- /, '').trim();
+    return item.replace(/^['"]|['"]$/g, '');
+  }).filter(Boolean));
+}
+
+test('workflow path lists cover every file the contract and smoke read', () => {
+  const lists = workflowPathLists(read(CLI_RELEASE_WORKFLOW));
+  assert.deepEqual(lists[0], lists[1], 'pull_request and push path lists must stay the same');
+  for (const required of REQUIRED_WORKFLOW_PATHS) {
+    assert(lists[0].includes(required), `missing workflow path ${required}`);
+  }
 });
 
 test('docs macOS app path follows MAC_BUNDLE_FOLDER and chooseApplicationsDirectory', () => {

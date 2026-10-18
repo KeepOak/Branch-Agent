@@ -23,9 +23,10 @@ Enabling **Type branch in any terminal** writes a shim that runs the packaged No
 against that engine's `branch.mjs`. The shim is not the engine; removing it does not
 uninstall the app.
 
-CI reproduces the production deploy (no Electron package, no signing) and runs the
-commands below. See `.github/workflows/cli-release-checks.yml` and
-`scripts/cli-release-smoke.mjs`.
+CI reproduces the production deploy on Ubuntu and Windows (no Electron package, no
+signing) and runs the commands below. macOS runs the same contract checks; the
+POSIX production deploy is the Ubuntu job. See `.github/workflows/cli-release-checks.yml`
+and `scripts/cli-release-smoke.mjs`.
 
 ## Versioning
 
