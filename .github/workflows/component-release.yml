@@ -606,6 +606,8 @@ jobs:
             echo "TAURI_SIGNING_PRIVATE_KEY is missing. Free update signing needs this repository secret (a Tauri/minisign private key). Generate with: cargo tauri signer generate. Put the public key in desktop/updater-pubkey.txt and engine/apps/linux/src-tauri/tauri.conf.json plugins.updater.pubkey. Never commit the private key. A key rotation must change the committed pubkey with it."
             exit 1
           fi
+          # A key with no password is valid: empty or missing TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
           node desktop/scripts/sign-release-updates.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.version }}"
       - name: Verify uploaded assets before exposing a stable update
         if: github.event_name != 'pull_request' && needs.identity.outputs.already_released != 'true'

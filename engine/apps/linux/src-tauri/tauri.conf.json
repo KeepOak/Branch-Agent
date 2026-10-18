@@ -5,7 +5,7 @@
   "identifier": "com.branch.linux",
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZBOTA5MTQwNEI5QTA0RTUKUldUNmtKRkFTNW9FNWZxUWtVQkxtZ1RsKzQ4KzBEblRuRzVtcTUxMnc0cDltSkl4amo5NG5pdm4K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBMTc2QUJDNDVBMzdERTAKUldUZ2ZhTkZ2R29YbW1udGNQVFhnNHQvMFVaL0RCM1drRFovVm5HWnBoNHdXZXcxdWJMVit4bXAK",
       "endpoints": [
         "https://github.com/KeepOak/Branch-Agent/releases/latest/download/latest.json"
       ]

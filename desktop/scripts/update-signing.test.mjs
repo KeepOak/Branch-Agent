@@ -23,10 +23,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 test("the committed desktop pubkey matches the Linux companion updater trust root", () => {
   const desktop = readUpdaterPubkey();
   assert.match(desktop, /^[A-Za-z0-9+/]+={0,2}$/);
+  assert.equal(desktop, "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBMTc2QUJDNDVBMzdERTAKUldUZ2ZhTkZ2R29YbW1udGNQVFhnNHQvMFVaL0RCM1drRFovVm5HWnBoNHdXZXcxdWJMVit4bXAK");
   assert.equal(desktop, readTrustedUpdaterPubkey());
   assert.equal(assertUpdaterTrustRoot(), desktop);
   const embedded = readFileSync(join(here, "../src/updater-pubkey.ts"), "utf8");
   assert.ok(embedded.includes(desktop), "desktop/src/updater-pubkey.ts must match updater-pubkey.txt; a rotation changes both");
+  assert.doesNotMatch(desktop, /FA9091404B9A04E5/);
 });
 
 test("component-release fails when the update signing secret is missing and skips the paid P12 when it is empty", () => {
@@ -43,6 +45,29 @@ test("component-release fails when the update signing secret is missing and skip
 test("a missing signing secret fails with the generate-and-commit-pubkey instructions", () => {
   assert.throws(() => requireUpdateSigningSecret({}), { message: MISSING_SIGNING_SECRET });
   assert.equal(requireUpdateSigningSecret({ TAURI_SIGNING_PRIVATE_KEY: "k" }), true);
+  assert.equal(requireUpdateSigningSecret({ TAURI_SIGNING_PRIVATE_KEY: "k", TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "" }), true);
+});
+
+test("an empty or missing signing password is valid for a passwordless key", async () => {
+  const root = await mkdtemp(join(tmpdir(), "branch-update-sign-nopw-"));
+  try {
+    const { writeFileSync } = await import("node:fs");
+    const file = join(root, "payload.bin");
+    await writeFile(file, "trusted-bytes");
+    const seen = [];
+    signUpdateFile(file, { TAURI_SIGNING_PRIVATE_KEY: "k" }, (path, env) => {
+      seen.push(env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD);
+      writeFileSync(`${path}.sig`, "c2lnbmF0dXJl");
+    });
+    signUpdateFile(file, { TAURI_SIGNING_PRIVATE_KEY: "k", TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "" }, (path, env) => {
+      seen.push(env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD);
+      writeFileSync(`${path}.sig`, "c2lnbmF0dXJl");
+    });
+    assert.deepEqual(seen, ["", ""]);
+    const workflow = readFileSync(join(here, "../../.github/workflows/component-release.yml"), "utf8");
+    assert.match(workflow, /TAURI_SIGNING_PRIVATE_KEY_PASSWORD="\$\{TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-\}"/);
+    assert.doesNotMatch(workflow, /if \[\[ -z "\$\{TAURI_SIGNING_PRIVATE_KEY_PASSWORD/);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("each platform names its shipped update payload", () => {

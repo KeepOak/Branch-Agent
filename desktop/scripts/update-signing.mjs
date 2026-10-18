@@ -90,8 +90,10 @@ export function collectSignedPlatforms(directory, version, urlBase, names = PLAT
 /** Sign `file` in place (bytes unchanged) and write `file.sig`. Inject `sign` in tests. */
 export function signUpdateFile(file, env = process.env, sign = defaultSign) {
   requireUpdateSigningSecret(env);
+  // A passwordless key is valid: empty or missing TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+  const signingEnv = { ...env, TAURI_SIGNING_PRIVATE_KEY_PASSWORD: env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || "" };
   const before = readFileSync(file);
-  sign(file, env);
+  sign(file, signingEnv);
   const after = readFileSync(file);
   assert(before.equals(after), "Signing must preserve the update payload bytes");
   const sig = `${file}.sig`;
@@ -104,7 +106,7 @@ function defaultSign(file, env) {
   execFileSync(binary, ["signer", "sign", file], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...env, TAURI_SIGNING_PRIVATE_KEY: env.TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD: env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ?? "" },
+    env: { ...env, TAURI_SIGNING_PRIVATE_KEY: env.TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD: env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || "" },
     timeout: 120_000,
     windowsHide: true,
   });
