@@ -128,12 +128,23 @@ function defaultVerify(file, sig, pubkey) {
   try {
     writeFileSync(pubFile, Buffer.from(pubkey, "base64"), { mode: 0o600 });
     writeFileSync(minisig, Buffer.from(readFileSync(sig, "utf8").trim(), "base64"), { mode: 0o600 });
-    execFileSync(binary, ["-Vm", file, "-x", minisig, "-p", pubFile], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 30_000,
-      windowsHide: true,
-    });
+    const args = ["-Vm", file, "-x", minisig, "-p", pubFile];
+    // A .js stub (tests) must run under node: Windows cannot spawnSync a .cmd via execFile.
+    if (/\.[cm]?js$/i.test(binary)) {
+      execFileSync(process.execPath, [binary, ...args], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 30_000,
+        windowsHide: true,
+      });
+    } else {
+      execFileSync(binary, args, {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 30_000,
+        windowsHide: true,
+      });
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

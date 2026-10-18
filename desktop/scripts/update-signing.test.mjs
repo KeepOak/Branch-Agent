@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -119,13 +119,8 @@ test("verify temps live under os.tmpdir and are deleted, never next to the paylo
     await writeFile(file, "trusted-bytes");
     await writeFile(`${file}.sig`, Buffer.from("untrusted comment: signature\n").toString("base64"));
     const seen = join(root, "minisign-args.txt");
-    const stub = join(root, process.platform === "win32" ? "minisign.cmd" : "minisign");
-    if (process.platform === "win32") {
-      writeFileSync(stub, `@echo off\r\necho %* > "${seen}"\r\n`);
-    } else {
-      writeFileSync(stub, `#!/bin/sh\nprintf '%s\\n' "$*" > "${seen}"\n`);
-      chmodSync(stub, 0o755);
-    }
+    const stub = join(root, "minisign.cjs");
+    writeFileSync(stub, `require("fs").writeFileSync(${JSON.stringify(seen)}, process.argv.slice(2).join(" "));\n`);
     process.env.MINISIGN = stub;
     verifyUpdateFile(file, Buffer.from("untrusted comment: minisign public key: TEST\n").toString("base64"));
     const args = readFileSync(seen, "utf8");
