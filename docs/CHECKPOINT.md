@@ -19,7 +19,7 @@ git ls-remote https://github.com/KeepOak/Branch-Agent main
 ## Coordination
 
 - **GOD** is the coordinator and sets priorities.
-- **Branch PR Closer** holds delegated merge authority: it may merge when the merge-gate check is green AND there is a MERGE review verdict on the PR's current head commit.
+- **Branch PR Closer** holds delegated merge authority: it may merge when the merge-gate check is green AND there is a MERGE review verdict on the PR's current head commit. The reviewer (Branch PR Closer) adds the `gate-change-reviewed: <head sha>` line; authors, fixers and GOD never add it.
 - Builder agents work on assigned tasks as directed by the coordinator.
 
 See [`AGENTS.md`](../AGENTS.md) for the full workflow.

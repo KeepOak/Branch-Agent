@@ -29,9 +29,8 @@ jobs:
       - name: Check out the PR merge commit and its base
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          # Final head walks every commit after the named sha. Depth 2 stops at the
-          # pull request head, so a merge of main has no parents in the clone.
-          # 2000 reaches those parents and recent main history.
+          # Coverage diffs against HEAD^1 (the pull request base). Depth 1
+          # has no parents. 2000 keeps the merge parents and recent main.
           fetch-depth: 2000
           persist-credentials: false
       - name: Set up reviewed Node

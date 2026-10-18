@@ -107,12 +107,9 @@ test('a body with no SELF-CHECK block fails', () => {
   assert.match(problems[0].message, /no SELF-CHECK block/);
 });
 
-test('a stale Final head after a new push fails', () => {
+test('a stale Final head after a new push is ignored', () => {
   const stale = BODY.replace(SHA, 'b'.repeat(40));
-  const problems = runPreflight(withInput({ body: stale }));
-  assert.deepEqual(checksOf(problems), ['self-check']);
-  assert.match(problems[0].message, /Final head bbbbbbbbb is stale/);
-  assert.match(problems[0].fix, new RegExp(`Final head: ${SHA}`));
+  assert.deepEqual(runPreflight(withInput({ body: stale })), []);
 });
 
 test('a changed engine test without a named-test list fails and names the file', () => {
@@ -162,7 +159,9 @@ test('a changed protected gate file needs the reviewer marker for this head', ()
   const problems = runPreflight(withInput({ changedFiles: ['scripts/merge-gate-trusted.test.mjs'] }));
   assert.deepEqual(checksOf(problems), ['gate-files']);
   assert.match(problems[0].message, /reviewer marker for this head/);
+  assert.match(problems[0].fix, /the reviewer \(Branch PR Closer\) adds the gate-change-reviewed: <head sha> line/);
   assert.match(problems[0].fix, /Do not add it yourself/);
+  assert.doesNotMatch(problems[0].fix, /GOD adds/);
 });
 
 test('the gate marker for this exact head satisfies the gate-file rule; a marker for another head does not', () => {
@@ -903,7 +902,7 @@ function cliHistoryRepo(after) {
   return { dir, bodyDir, bodyPath };
 }
 
-test('the CLI accepts a Final head when the only later commit merges main', () => {
+test('the CLI accepts an old Final head when the only later commit merges main', () => {
   const { dir, bodyDir, bodyPath } = cliHistoryRepo((git) => {
     git(['merge', '-q', '--no-ff', 'main', '-m', 'merge main']);
   });
@@ -917,7 +916,7 @@ test('the CLI accepts a Final head when the only later commit merges main', () =
   }
 });
 
-test('the CLI rejects a Final head when a regular commit follows it', () => {
+test('the CLI ignores a Final head when a regular commit follows it', () => {
   const { dir, bodyDir, bodyPath } = cliHistoryRepo((git, repo) => {
     writeFileSync(path.join(repo, 'base.txt'), 'more\n');
     git(['add', 'base.txt']);
@@ -925,8 +924,8 @@ test('the CLI rejects a Final head when a regular commit follows it', () => {
   });
   try {
     const result = runCli(['--body', bodyPath, '--base', 'main'], dir);
-    assert.equal(result.exitCode, 1);
-    assert.match(result.text, /\[self-check\].*not a merge commit/);
+    assert.equal(result.exitCode, 0, result.text);
+    assert.equal(result.text, 'preflight: ok');
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(bodyDir, { recursive: true, force: true });

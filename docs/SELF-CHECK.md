@@ -28,7 +28,6 @@ Every pull request from a `trunk/` branch carries the SELF-CHECK block below in 
 
 ```
 SELF-CHECK
-Final head: <40-char sha>
 Branch: trunk/<id>-<slug>
 Base: origin/main <sha it was branched from>
 Files: <n> (all expected: yes/no; CI test list: <file or none needed>)
@@ -40,7 +39,7 @@ Trailer and emails: ok
 ## What the check requires
 
 - A line that reads `SELF-CHECK` on its own (a `##` heading or a code fence is fine). The block runs to the next blank line, closing fence or heading.
-- `Final head:` is the current head, or an ancestor of it when every commit after that sha is a merge of main that adds nothing of its own. A later ordinary commit, or a merge of any other branch, still fails.
+- The current head is the pull request head from GitHub, not a line in this block.
 - `Files:` gives a number.
 - `Tests:` gives at least one `<n> passed` and one `<n> failed`, with at least one test passed.
 - Neither line keeps a template placeholder: `<...>`, `yes/no`, `pass/fail`, `TBD` or `TODO`.
@@ -50,7 +49,6 @@ Trailer and emails: ok
 
 ```
 SELF-CHECK
-Final head: 0123456789abcdef0123456789abcdef01234567
 Branch: trunk/tr-9-example
 Base: origin/main 89abcdef0123456789abcdef0123456789abcdef
 Files: 2 (all expected: yes; CI test list: scripts/feature-batch-ci-named/trunk-tr-9-example.txt)

@@ -46,7 +46,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
     - `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`
     - REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
     The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase.
-    Only the PR reviewer (Branch PR Closer) adds the `gate-change-reviewed: <full head SHA>` marker, after reviewing the workflow and gate-file changes on that exact head. An earlier head's marker also counts when every later commit only merges main cleanly and the gate-file diff is unchanged. Fixers and authors never add it.
+    The reviewer (Branch PR Closer) adds the `gate-change-reviewed: <head sha>` line after reviewing the workflow and gate-file changes on that exact head. An earlier head's marker also counts when every later commit only merges main cleanly and the gate-file diff is unchanged. Authors, fixers and GOD never add it.
 
 13. **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout.
 
@@ -57,7 +57,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 16. **No new OpenClaw wording.** `scripts/check-openclaw-wording.mjs` fails a PR that adds user-visible OpenClaw names or openclaw.ai / docs.openclaw.ai / github.com/openclaw links; write Branch Agent and Branch links instead.
 17. **Trunk pull requests carry a SELF-CHECK.** A pull request from a `trunk/` branch has the SELF-CHECK block from [`docs/SELF-CHECK.md`](docs/SELF-CHECK.md) in its description, with real test counts. `merge-gate` fails without it; fix it by editing the description (no new commit needed).
 
-18. **Preflight before every push and every PR body edit:** write the draft body to a file outside the repo, then run `node scripts/pr-preflight.mjs --body <that file>` (add `--cloud-agent` when you are a cloud agent). It runs the gate checks that need no CI: commit emails, the cloud-agent trailer (with `--cloud-agent`), the SELF-CHECK block and its Final head, the named-test list and desktop test coverage (the gate's own rules), UI proof, protected gate-file changes (passes only with the reviewer marker for this head), and personal paths or email addresses in added lines (test files are exempt), and email addresses in the entire PR body (all domains and Markdown contexts; GitHub noreply identities are exempt). The window-clean scan and the shard-budget test run only when their inputs changed. Locally it also checks a clean working tree. The trusted gate runs the subset that needs no checkout. It prints one line per problem with the fix. Fix every line and rerun until it prints `preflight: ok`. A body edit after a push needs a rerun too, because the gates read the body they see.
+18. **Preflight before every push and every PR body edit:** write the draft body to a file outside the repo, then run `node scripts/pr-preflight.mjs --body <that file>` (add `--cloud-agent` when you are a cloud agent). It runs the gate checks that need no CI: commit emails, the cloud-agent trailer (with `--cloud-agent`), the SELF-CHECK block, the named-test list and desktop test coverage (the gate's own rules), UI proof, protected gate-file changes (the reviewer (Branch PR Closer) adds the `gate-change-reviewed: <head sha>` line; authors never add it), and personal paths or email addresses in added lines (test files are exempt), and email addresses in the entire PR body (all domains and Markdown contexts; GitHub noreply identities are exempt). The window-clean scan and the shard-budget test run only when their inputs changed. Locally it also checks a clean working tree. The trusted gate runs the subset that needs no checkout. It prints one line per problem with the fix. Fix every line and rerun until it prints `preflight: ok`. A body edit after a push needs a rerun too, because the gates read the body they see.
 
 17. **No personal machine details.** Never put machine names, hostnames, personal paths, account emails or secrets in the public repo, its pull requests or issues. The personal-info PR scan fails when the title, body or added lines include them; editing the description re-runs it.
 
@@ -116,18 +116,20 @@ The preview (`design/spec-v23/index.html` plus Taofik's newer Branch App Preview
 
 3. **Review before merge.** Every head gets an adversarial read-only review: a MERGE or FIX verdict, `file:line` evidence, and CI log lines proving the changed tests actually ran on macOS, Ubuntu and Windows. A green check alone is not proof. A new push needs a new review.
 
-4. **Merging.** Branch PR Closer may merge a PR when both conditions hold: (1) the merge-gate check is green on the current head, and (2) a review gave a MERGE verdict for that exact commit SHA. Branch PR Closer merges by hand with a merge commit, pinned to the reviewed SHA:
+4. **Gate-change marker.** The reviewer (Branch PR Closer) adds the `gate-change-reviewed: <head sha>` line. Authors, fixers and GOD never add it. An earlier head's marker also counts when every later commit only merges main cleanly and the gate-file diff is unchanged.
+
+5. **Merging.** Branch PR Closer may merge a PR when both conditions hold: (1) the merge-gate check is green on the current head, and (2) a review gave a MERGE verdict for that exact commit SHA. Branch PR Closer merges by hand with a merge commit, pinned to the reviewed SHA:
    - `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`
    - Or via REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
    The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase.
 
-5. **Seamless handoff.** The hand-over is on by default (turned on by #628). Setting `"seamlessHandoff": false` in `desktop.json` turns it off; an automatic update that cannot hand over falls back to waiting for idle and draining.
+6. **Seamless handoff.** The hand-over is on by default (turned on by #628). Setting `"seamlessHandoff": false` in `desktop.json` turns it off; an automatic update that cannot hand over falls back to waiting for idle and draining.
 
-6. **Never rebase or force-push an open PR.** Once a PR is open, never rebase or force-push it. To bring it up to date, merge main in, because any push needs a fresh review on the new head.
+7. **Never rebase or force-push an open PR.** Once a PR is open, never rebase or force-push it. To bring it up to date, merge main in, because any push needs a fresh review on the new head.
 
-7. **No personal paths in the repo.** Never put machine names, hostnames, personal paths, account emails, or local file paths from any bot's computer in the repo.
+8. **No personal paths in the repo.** Never put machine names, hostnames, personal paths, account emails, or local file paths from any bot's computer in the repo.
 
-8. **Model access for builder agents.** Builder agents (including Trunks) use the owner's subscription sign-ins for model access, never paid API keys.
+9. **Model access for builder agents.** Builder agents (including Trunks) use the owner's subscription sign-ins for model access, never paid API keys.
 
 ### How GOD works
 

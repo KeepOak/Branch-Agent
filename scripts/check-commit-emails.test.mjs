@@ -1,5 +1,6 @@
 // node --test scripts/check-commit-emails.test.mjs
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   CUTOFF_ISO,
@@ -305,4 +306,10 @@ test('the email check shares one job budget across pages: two rate-limited pages
   assert.equal(secondError.budgetExhausted, true);
   assert.match(apiFailureLine(secondError, '1'), /job budget/);
   assert.match(apiFailureLine(secondError, '1'), /Not a commit-email failure/);
+});
+
+test('commit emails read the GitHub commit list, not a Final head line in the PR body', () => {
+  const source = readFileSync(new URL('./check-commit-emails.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /Final head/i);
+  assert.match(source, /pulls\/\$\{prNumber\}\/commits/);
 });

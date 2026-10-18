@@ -1,4 +1,6 @@
-// Final head stays valid when later commits only merge main into the pull request.
+// Clean merge-of-main history: a later commit is only a merge of the base branch
+// whose tree equals that merge. Used when a gate-change-reviewed marker carries
+// forward after main is merged into the pull request.
 // The named sha must be an ancestor of the head. Each later commit on the pull request
 // (first parent only; main's own commits arrived through the merge) must be a merge
 // whose other parents are on the current base (origin/main, or the pull request base

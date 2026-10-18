@@ -9,10 +9,9 @@ Preflight runs before every push: node scripts/pr-preflight.mjs --body <draft fi
 
 ## SELF-CHECK
 
-<!-- Required on trunk/ branches (docs/SELF-CHECK.md). Paste the block with the real head and test counts. -->
+<!-- Required on trunk/ branches (docs/SELF-CHECK.md). Paste the block with the real test counts. -->
 
 SELF-CHECK
-Final head: <40-char sha>
 Branch: <branch>
 Base: origin/main <sha>
 Files: <n> (all expected: yes/no; CI test list: <file or none needed>)

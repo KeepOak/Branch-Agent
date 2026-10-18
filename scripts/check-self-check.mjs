@@ -1,12 +1,9 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { explainFinalHeadDrift } from './final-head-history.mjs';
 import { liveContext, readLivePullRequest, snapshotFromEnv } from './live-pull-request.mjs';
 
 export const SELF_CHECK_DOC = 'docs/SELF-CHECK.md';
-
-const defaultRepoDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export function isTrunkBranch(ref) {
   return typeof ref === 'string' && ref.startsWith('trunk/');
@@ -65,27 +62,14 @@ function placeholder(text) {
   return text.match(/<[^>\n]*>|yes\/no|pass\/fail|\b(?:TBD|TODO)\b/)?.[0];
 }
 
-export function checkSelfCheck({ headRef, body, headSha, repoDir = defaultRepoDir }) {
+export function checkSelfCheck({ headRef, body }) {
   if (!isTrunkBranch(headRef)) return { ok: true, skipped: true, problems: [] };
   const problems = [];
   const problem = (sentence) => problems.push(`${sentence} (${SELF_CHECK_DOC}).`);
   const block = findSelfCheckBlock(body);
-  // With a known head, the block must name it. A body without a Final head line cannot be checked, so it fails.
-  // A later merge of main does not make the line stale: the named sha stays an ancestor, and each commit
-  // after it only brings main in.
-  const finalHead = /Final head:\s*([0-9a-f]{40})/i.exec(body ?? '');
-  if (headSha && !finalHead) {
-    problem(`The SELF-CHECK block has no Final head line, so it cannot be checked against the current head ${headSha.slice(0, 9)}. Edit the description and add "Final head: ${headSha}"`);
-  } else if (headSha && finalHead[1].toLowerCase() !== headSha.toLowerCase()) {
-    const drift = explainFinalHeadDrift({ repoDir, namedSha: finalHead[1], headSha });
-    if (!drift.ok) {
-      if (!drift.known) {
-        problem(`The SELF-CHECK Final head ${finalHead[1].slice(0, 9)} is not the current head ${headSha.slice(0, 9)}. Edit the description and set Final head to the current head`);
-      } else {
-        problem(`The SELF-CHECK ${drift.message}`);
-      }
-    }
-  }
+  // The current head is the pull request head from the GitHub API or event payload.
+  // A "Final head" line in the body is ignored: merging main changes the real head
+  // without a body edit, and agents are not asked to keep that line up to date.
   if (block === null) {
     return { ok: false, skipped: false, problems: [`The pull request description has no SELF-CHECK block. Edit the description and paste the Trunk's SELF-CHECK block (format: ${SELF_CHECK_DOC}).`] };
   }
@@ -118,7 +102,11 @@ export function checkSelfCheck({ headRef, body, headSha, repoDir = defaultRepoDi
 }
 
 export function inputFromEvent(event) {
-  return { headRef: event?.pull_request?.head?.ref ?? '', body: event?.pull_request?.body ?? '' };
+  return {
+    headRef: event?.pull_request?.head?.ref ?? '',
+    body: event?.pull_request?.body ?? '',
+    headSha: event?.pull_request?.head?.sha ?? '',
+  };
 }
 
 export function formatSelfCheckSummary(result) {

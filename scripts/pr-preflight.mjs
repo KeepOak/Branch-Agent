@@ -8,7 +8,6 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkSelfCheck } from './check-self-check.mjs';
-import { explainFinalHeadDrift } from './final-head-history.mjs';
 import { checkUIProof } from './check-ui-proof.mjs';
 import { ALLOWED_SUFFIX, FIX_LINES, evaluateCommits, fetchPrCommitsWithApi } from './check-commit-emails.mjs';
 import {
@@ -76,23 +75,12 @@ export function commitProblems(commits, { cloudAgent = false } = {}) {
   return [...addressProblems, ...trailerProblems];
 }
 
-// The SELF-CHECK block must exist and be valid. Final head must be this head, or this head
-// may be that commit plus later merges that only bring main in.
-export function selfCheckProblems({ branch, headSha, body, repoDir }) {
-  const problems = checkSelfCheck({ headRef: branch, body }).problems.map((message) => problem(
+// The SELF-CHECK block must exist and be valid. The current head comes from git or the
+// GitHub API / event payload, never from a "Final head" line in the body.
+export function selfCheckProblems({ branch, body }) {
+  return checkSelfCheck({ headRef: branch, body }).problems.map((message) => problem(
     'self-check', message, 'edit the draft body file, then rerun preflight',
   ));
-  const final = /Final head:\s*([0-9a-f]{40})/i.exec(body ?? '');
-  if (final && final[1].toLowerCase() !== headSha.toLowerCase()) {
-    const drift = repoDir ? explainFinalHeadDrift({ repoDir, namedSha: final[1], headSha }) : { ok: false, known: false };
-    if (!drift.ok) {
-      const message = drift.known
-        ? drift.message
-        : `Final head ${final[1].slice(0, 9)} is stale; HEAD is ${headSha.slice(0, 9)}`;
-      problems.push(problem('self-check', message, `set "Final head: ${headSha}" in the body`));
-    }
-  }
-  return problems;
 }
 
 // Named-test list: every changed engine or window test file must appear in the branch's list, sorted.
@@ -141,7 +129,7 @@ export function gateFileProblems({
   return [problem(
     'gate-files',
     `protected gate file(s) changed without a reviewer marker for this head: ${review.protectedFiles.join(', ')}`,
-    'this change needs a non-author review of this exact head; GOD adds the gate-change-reviewed marker after approval. Do not add it yourself',
+    'this change needs a non-author review of this exact head; the reviewer (Branch PR Closer) adds the gate-change-reviewed: <head sha> line. Do not add it yourself',
   )];
 }
 
@@ -271,7 +259,7 @@ export function runPreflight(input) {
   return [
     ...dirtyTreeProblems(input.dirtyCount ?? 0),
     ...commitProblems(input.commits ?? [], { cloudAgent: input.cloudAgent === true }),
-    ...selfCheckProblems({ branch: input.branch, headSha: input.headSha, body, repoDir: input.repoDir }),
+    ...selfCheckProblems({ branch: input.branch, body }),
     ...namedListProblems({ changedFiles, listText: input.listText ?? null, listPath: input.listPath }),
     ...priorArtProblems({ title: input.title, body }),
     ...uiProofProblems({ changedFiles, body }),
@@ -464,20 +452,23 @@ function apiInputFromEnv(env) {
   if (!repo || !prNumber || !token || !headSha || !headBranch) {
     throw new Error('CI mode needs REPO, PR_NUMBER, GITHUB_TOKEN, HEAD_SHA and HEAD_BRANCH');
   }
-  // The live title and body from the API: the event payload can predate an edit, so CI never reads them from there.
+  // Live title, body and head from the API. The event payload can predate an edit, so CI
+  // never reads those from there. A "Final head" line in the body is never used.
   const pr = ghApi(repo, token, `pulls/${prNumber}`);
   const body = typeof pr?.body === 'string' ? pr.body : '';
   const title = typeof pr?.title === 'string' ? pr.title : '';
+  const apiHeadSha = typeof pr?.head?.sha === 'string' && pr.head.sha ? pr.head.sha : '';
+  const resolvedHead = apiHeadSha || headSha;
   const baseRef = typeof pr?.base?.ref === 'string' && pr.base.ref ? pr.base.ref : null;
   const request = (requestPath, options) => ghApi(repo, token, requestPath, options);
   const files = fetchPrFiles(repo, prNumber, token);
   const commits = fetchPrCommitsWithApi({ repo, prNumber, token });
   const namedList = namedListPathFor(headBranch);
   const desktop = '.github/workflows/desktop-checks.yml';
-  const heads = fetchFileTextsBatch(repo, headSha, token, [namedList, desktop]);
+  const heads = fetchFileTextsBatch(repo, resolvedHead, token, [namedList, desktop]);
   return {
     ...inputFromApi({
-      headBranch, headSha, files, commits, listText: heads[namedList],
+      headBranch, headSha: resolvedHead, files, commits, listText: heads[namedList],
       desktopWorkflow: heads[desktop], title, baseRef, request, prNumber,
     }),
     body,

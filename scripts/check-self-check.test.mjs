@@ -110,7 +110,7 @@ test('body edits on the same head change failure to success', () => {
   const event = { action: 'edited', pull_request: { head: { ref: 'trunk/x', sha: 'same-head' }, body: 'no block' } };
   assert.equal(checkSelfCheck(inputFromEvent(event)).ok, false);
   assert.equal(checkSelfCheck(inputFromEvent({ ...event, pull_request: { ...event.pull_request, body: filled } })).ok, true);
-  assert.deepEqual(inputFromEvent({}), { headRef: '', body: '' });
+  assert.deepEqual(inputFromEvent({}), { headRef: '', body: '', headSha: '' });
 });
 
 test('CRLF blocks pass', () => {
@@ -465,9 +465,10 @@ test('readLivePullRequest gives up after its attempts with a clear message', () 
   assert.equal(calls, LIVE_READ_ATTEMPTS);
 });
 
-test('a Final head that is not the current head fails, and the current head passes', () => {
-  assert.equal(checkSelfCheck({ headRef: 'trunk/live-body', body: selfCheckBody(OLD), headSha: HEAD }).ok, false);
-  assert.match(checkSelfCheck({ headRef: 'trunk/live-body', body: selfCheckBody(OLD), headSha: HEAD }).problems.join('\n'), /not the current head/);
+test('a stale or missing Final head line is ignored when the real head is known', () => {
+  assert.equal(checkSelfCheck({ headRef: 'trunk/live-body', body: selfCheckBody(OLD), headSha: HEAD }).ok, true);
+  const noFinal = selfCheckBody(HEAD).replace(/Final head:.*\n/, '');
+  assert.equal(checkSelfCheck({ headRef: 'trunk/live-body', body: noFinal, headSha: HEAD }).ok, true);
   assert.equal(checkSelfCheck({ headRef: 'trunk/live-body', body: selfCheckBody(HEAD), headSha: HEAD }).ok, true);
 });
 
@@ -478,14 +479,6 @@ test('the merge gate reads the live body for its SELF-CHECK step and its UI-proo
   assert.match(selfStep.slice(0, 400), /GH_TOKEN: \$\{\{ github\.token \}\}/);
   const uiStep = yaml.slice(yaml.indexOf('name: Require screenshots for window UI changes'));
   assert.match(uiStep.slice(0, 400), /PR_NUMBER: \$\{\{ github\.event\.pull_request\.number \}\}/);
-});
-
-test('regression: a body with no Final head line fails when the head is known, instead of skipping the freshness check', () => {
-  const noFinal = selfCheckBody(HEAD).replace(/Final head:.*\n/, '');
-  const result = checkSelfCheck({ headRef: 'trunk/live-body', body: noFinal, headSha: HEAD });
-  assert.equal(result.ok, false);
-  assert.match(result.problems.join('\n'), /no Final head line/);
-  assert.equal(checkSelfCheck({ headRef: 'trunk/live-body', body: noFinal }).ok, true, 'no head known: nothing to compare');
 });
 
 test('regression: in CI a missing live context fails closed and never reads the event payload', () => {
@@ -571,7 +564,7 @@ function mergeMain(git) {
   return git(['rev-parse', 'HEAD']).trim();
 }
 
-function expectHistory(dir, named, head, pattern) {
+function expectIgnoredFinalHead(dir, named, head) {
   const checked = checkSelfCheck({
     headRef: 'trunk/live-body',
     body: selfCheckBody(named),
@@ -591,128 +584,41 @@ function expectHistory(dir, named, head, pattern) {
     repoDir: dir,
     protectedPaths: new Set(),
   });
-  if (pattern == null) {
-    assert.equal(checked.ok, true, checked.problems.join('\n'));
-    assert.deepEqual(problems, []);
-    return;
-  }
-  assert.equal(checked.ok, false);
-  assert.match(checked.problems.join('\n'), pattern);
-  assert.equal(problems.length, 1, problems.map((item) => item.message).join('\n'));
-  assert.equal(problems[0].check, 'self-check');
-  assert.match(problems[0].message, pattern);
+  assert.equal(checked.ok, true, checked.problems.join('\n'));
+  assert.deepEqual(problems, []);
 }
 
-test('Final head passes when it is the current head', () => {
-  const { dir, named } = initFeatureRepo();
-  try {
-    expectHistory(dir, named, named, null);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('Final head passes when the only later commit merges main', () => {
+test('a PR with main merged in and an old Final head line still passes', () => {
   const { dir, git, named } = initFeatureRepo();
   try {
-    expectHistory(dir, named, mergeMain(git), null);
+    expectIgnoredFinalHead(dir, named, mergeMain(git));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('Final head passes when two later commits each merge main', () => {
-  const { dir, git, named } = initFeatureRepo();
-  try {
-    mergeMain(git);
-    git(['checkout', '-q', 'main']);
-    writeFileSync(path.join(dir, 'main-2.txt'), 'main 2\n');
-    git(['add', 'main-2.txt']);
-    git(['commit', '-q', '-m', 'main 2']);
-    git(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
-    git(['checkout', '-q', 'feature']);
-    expectHistory(dir, named, mergeMain(git), null);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('Final head fails when a regular commit follows the named sha', () => {
-  const { dir, git, named } = initFeatureRepo();
-  try {
-    writeFileSync(path.join(dir, 'base.txt'), 'more\n');
-    git(['add', 'base.txt']);
-    git(['commit', '-q', '-m', 'regular']);
-    const head = git(['rev-parse', 'HEAD']).trim();
-    expectHistory(dir, named, head, /not a merge commit/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('Final head fails when a later commit merges a branch other than main', () => {
-  const { dir, git, named } = initFeatureRepo();
-  try {
-    git(['checkout', '-q', 'main']);
-    git(['checkout', '-q', '-b', 'side']);
-    writeFileSync(path.join(dir, 'side.txt'), 'side\n');
-    git(['add', 'side.txt']);
-    git(['commit', '-q', '-m', 'side']);
-    git(['checkout', '-q', 'feature']);
-    git(['merge', '-q', '--no-ff', 'side', '-m', 'merge side']);
-    const head = git(['rev-parse', 'HEAD']).trim();
-    expectHistory(dir, named, head, /merges something other than main/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('Final head fails when the named sha is not an ancestor of the head', () => {
-  const { dir, git, named } = initFeatureRepo();
-  try {
-    const mainTip = git(['rev-parse', 'origin/main']).trim();
-    expectHistory(dir, mainTip, named, /not an ancestor/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('Final head fails when a merge of main also changes files', () => {
-  const { dir, git, named } = initFeatureRepo();
-  try {
-    mergeMain(git);
-    writeFileSync(path.join(dir, 'base.txt'), 'sneaky\n');
-    git(['add', 'base.txt']);
-    git(['commit', '-q', '--amend', '--no-edit']);
-    const head = git(['rev-parse', 'HEAD']).trim();
-    expectHistory(dir, named, head, /changes files beyond the merge of main/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('Final head passes a merge of main when the checkout is GitHub\'s merge and main has no ref', () => {
-  const { dir, git, named } = initFeatureRepo();
-  try {
-    const head = mergeMain(git);
-    git(['checkout', '-q', '--detach', 'origin/main']);
-    git(['merge', '-q', '--no-ff', 'feature', '-m', 'github merge']);
-    git(['branch', '-D', 'main']);
-    git(['branch', '-D', 'feature']);
-    git(['update-ref', '-d', 'refs/remotes/origin/main']);
-    expectHistory(dir, named, head, null);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('the merge gate fetches enough history to see merges of main after Final head', () => {
-  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
-  const job = yaml.slice(yaml.indexOf('  changed-test-coverage:'), yaml.indexOf('  merge-gate:'));
-  assert.match(job, /fetch-depth:\s*2000\b/);
+test('commit-emails and preflight use the event or API head, not a Final head line', () => {
   const trusted = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
   const emails = trusted.slice(trusted.indexOf('  commit-emails:'), trusted.indexOf('  merge-gate-trusted:'));
-  assert.match(emails, /fetch-depth:\s*2000\b/);
-  assert.match(emails, /--depth=2000\b/);
-  assert.match(emails, /refs\/pull\/\$\{PR_NUMBER\}\/head/);
+  assert.match(emails, /HEAD_SHA:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/);
+  assert.doesNotMatch(emails, /Final head/);
+  const selfCheck = readFileSync(new URL('./check-self-check.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(selfCheck, /Final head:/);
+  const preflight = readFileSync(new URL('./pr-preflight.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(preflight, /Final head:/);
+  for (const rel of ['../AGENTS.md', '../docs/SELF-CHECK.md', '../.github/pull_request_template.md', '../CONTRIBUTING.md']) {
+    assert.doesNotMatch(readFileSync(new URL(rel, import.meta.url), 'utf8'), /Final head:/);
+  }
+});
+
+test('the reviewer, not GOD, adds the gate-change-reviewed line', () => {
+  const rule = /The reviewer \(Branch PR Closer\) adds the `gate-change-reviewed: <head sha>` line/;
+  for (const rel of ['../AGENTS.md', '../CONTRIBUTING.md', '../docs/CHECKPOINT.md', '../.cursor/BUGBOT.md']) {
+    const text = readFileSync(new URL(rel, import.meta.url), 'utf8');
+    assert.match(text, rule, rel);
+    assert.doesNotMatch(text, /GOD adds the gate-change-reviewed/);
+  }
+  const preflight = readFileSync(new URL('./pr-preflight.mjs', import.meta.url), 'utf8');
+  assert.match(preflight, /the reviewer \(Branch PR Closer\) adds the gate-change-reviewed: <head sha> line/);
+  assert.doesNotMatch(preflight, /GOD adds the gate-change-reviewed/);
 });

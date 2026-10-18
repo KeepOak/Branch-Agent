@@ -522,7 +522,7 @@ export function formatGateChangeSummary(changedFiles) {
 }
 
 export const GATE_CHANGE_REVIEW_REQUIRED =
-  'The gate change needs a separate review before the marker can be added for this head.';
+  'The reviewer (Branch PR Closer) adds the gate-change-reviewed: <head sha> line after review.';
 export const BUTTON_CRAWL_BASELINE = 'scripts/button-crawl/baseline.json';
 const GATE_CHANGE_REVIEWED_LINE = /^gate-change-reviewed: ([0-9a-f]{40})$/;
 
@@ -980,7 +980,7 @@ function mergeCommitIsClean(step, repoDir, request) {
   return apiCommitMatchesCleanMerge(request, step.sha, step.parents);
 }
 
-// API form of scripts/final-head-history.mjs explainFinalHeadDrift (rule 2):
+// API form of a clean merge-of-main walk (scripts/final-head-history.mjs):
 // every first-parent commit after the marker must be a merge of the base branch,
 // and its tree must equal a clean merge of those parents. The trusted job checks
 // out main at depth 1, so a commit that is not in this checkout is rebuilt from

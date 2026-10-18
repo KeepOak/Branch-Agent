@@ -44,6 +44,10 @@ Conventions and common failure modes for this repository. Bugbot should check th
 - **Right:** Run `pnpm lint` in engine or window, and the appropriate typecheck (`pnpm -C window typecheck` or `node scripts/strict-typecheck.mjs`) before pushing.
 - **I18n baselines:** Flag PRs that add Control UI copy or i18n strings without updating `engine/ui/src/i18n/.i18n/raw-copy-baseline.json`. Do not require `catalog-fallbacks.json` on source PRs; post-merge locale refresh owns that file.
 
+### Gate-change marker
+- **Wrong:** An author, fixer, or GOD adding `gate-change-reviewed: <head sha>` to the pull request body.
+- **Right:** The reviewer (Branch PR Closer) adds the `gate-change-reviewed: <head sha>` line after reviewing the workflow and gate-file changes on that exact head.
+
 ### Merge commands
 - **Wrong:** Merging without pinning to the reviewed head SHA, or using squash/rebase.
 - **Right:** Branch PR Closer merges by hand with a merge commit, pinned to the reviewed SHA:
