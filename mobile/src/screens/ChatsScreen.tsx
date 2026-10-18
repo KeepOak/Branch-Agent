@@ -25,6 +25,7 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { OfflineBanner } from '../ui/OfflineBanner';
+import { plainError } from '../ui/plainError';
 import { useNow } from '../ui/useNow';
 
 const AVATAR = 52;
@@ -823,7 +824,7 @@ export function ChatsScreen({
   if (!list.loaded && !list.error) empty = <Skeleton />;
   else if (!list.loaded && list.error)
     empty = online ? (
-      <Note testID="chats-error" title="Couldn’t load your chats" body={list.error} action={{ title: 'Try again', onPress: () => void refresh() }} />
+      <Note testID="chats-error" title="Couldn’t load your chats" body={plainError(list.error)} action={{ title: 'Try again', onPress: () => void refresh() }} />
     ) : (
       <Note testID="chats-waiting" title="Waiting for your computer" body="Your chats show up here as soon as this phone reaches it." />
     );

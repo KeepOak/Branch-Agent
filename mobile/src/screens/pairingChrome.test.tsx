@@ -95,12 +95,30 @@ describe('pairing chrome', () => {
     expect(screen.queryByRole('button', { name: /Sign in with KeepOak/i })).toBeNull();
   });
 
+  it('opens first-run on pairing, not the three-step intro', async () => {
+    const { session } = createFakeSession();
+    await render(<App scheme="light" session={session} />);
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
+    expect(screen.queryByTestId('welcome-screen')).toBeNull();
+    expect(screen.queryByTestId('pairing-steps')).toBeNull();
+    expect(screen.queryByText('How pairing works')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pair with your computer' })).toBeNull();
+    expect(screen.getByText('Connect to your Branch')).toBeOnTheScreen();
+    expect(screen.getByText(KEEPOAK_SIGN_IN_LATER)).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /Sign in with KeepOak/i })).toBeNull();
+    expect(screen.getByTestId('pairing-nearby')).toBeOnTheScreen();
+    expect(screen.getByTestId('nearby-status')).toHaveTextContent(/None found/);
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Look again' })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('look-again'));
+    expect(screen.getByTestId('nearby-status')).toHaveTextContent(/Looking for your Branch|None found/);
+    await eventually(() => expect(screen.getByTestId('nearby-status')).toHaveTextContent(/None found/));
+  });
+
   it('pairs from the connect screen’s code field without leaving the camera step', async () => {
     const { session, engine } = createFakeSession();
     await render(<App scheme="light" session={session} />);
-    await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
-    await fireEvent.press(screen.getByTestId('pair-button'));
-    expect(screen.getByTestId('camera-permission')).toBeOnTheScreen();
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
     expect(screen.getByText('Connect to your Branch')).toBeOnTheScreen();
     expect(screen.getByText('Scan the square code on the computer, or type the code.')).toBeOnTheScreen();
     expect(screen.getByTestId('connect-code')).toBeOnTheScreen();

@@ -1,3 +1,4 @@
+import { plainError } from '../ui/plainError';
 import type { ApkOffer } from './githubRelease';
 import { fetchReleases, findNewerApk } from './githubRelease';
 import { filePath } from './native';
@@ -37,7 +38,7 @@ function apkDest(cacheDir: string): string {
 }
 
 function asError(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+  return plainError(error, fallback);
 }
 
 export function createUpdateFlow(deps: UpdateFlowDeps) {

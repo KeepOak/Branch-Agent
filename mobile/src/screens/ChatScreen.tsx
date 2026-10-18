@@ -20,6 +20,7 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { OfflineBanner } from '../ui/OfflineBanner';
+import { plainError } from '../ui/plainError';
 import { Avatar } from './ChatsScreen';
 
 /** "12s", "3 min", "1 h 5 min": how long a turn worked. */
@@ -133,7 +134,7 @@ function SendLine({ send, onRetry }: { send: OwnSend; onRetry: (id: string) => v
       {send.state === 'failed' ? (
         <Pressable testID={`retry-${send.id}`} accessibilityRole="button" onPress={() => onRetry(send.id)} hitSlop={8} style={({ pressed }) => ({ minHeight: 32, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
           <ThemedText variant="footnote" tone="bad">
-            Not sent: {send.error ?? 'your computer didn’t answer'}. Tap to try again.
+            Not sent: {send.error ? plainError(send.error) : 'your computer didn’t answer'}. Tap to try again.
           </ThemedText>
         </Pressable>
       ) : send.state === 'sending' ? (
@@ -288,7 +289,7 @@ export function ChatScreen({
       const picked = kind === 'photo' ? await pickers.takePhoto(policy) : kind === 'library' ? await pickers.pickPhoto(policy) : await pickers.pickFile(policy);
       addPicked(picked);
     } catch (error) {
-      setPickError(error instanceof Error ? error.message : String(error));
+      setPickError(plainError(error, 'Couldn’t attach that file.'));
     } finally {
       setPreparing((n) => n - 1);
     }
@@ -332,7 +333,7 @@ export function ChatScreen({
     body = <Skeleton />;
   } else if (!snapshot.loaded) {
     body = online ? (
-      <Empty testID="chat-error" title="Couldn’t load this chat" body={snapshot.error ?? ''} action={{ title: 'Try again', onPress: () => void conversation.load() }} />
+      <Empty testID="chat-error" title="Couldn’t load this chat" body={plainError(snapshot.error)} action={{ title: 'Try again', onPress: () => void conversation.load() }} />
     ) : (
       <Empty testID="chat-waiting" title="Waiting for your computer" body="This chat shows up as soon as this phone reaches it." />
     );

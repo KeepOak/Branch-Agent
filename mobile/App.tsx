@@ -36,7 +36,6 @@ import { ProfileScreen } from './src/screens/ProfileScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import type { SettingsLevel } from './src/screens/settingsExtras';
 import { VoiceScreen } from './src/screens/VoiceScreen';
-import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { parseShowLevel, readShowLevel, settingsLevelOf, showLevelOf, writeShowLevel, type ShowLevel } from './src/settings/showLevel';
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
 import { PairingTheme, ThemeProvider, useTheme } from './src/theme/ThemeProvider';
@@ -48,7 +47,7 @@ import { useApkUpdate } from './src/updates/useApkUpdate';
 // The splash stays up until the saved pairing has been read, so the first frame is the right screen.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
-type Route = 'welcome' | 'scan' | 'code';
+type Route = 'scan' | 'code';
 type ComputerOrigin = {
   from?: 'more' | 'profile';
   profileRow?: AgentRow;
@@ -147,7 +146,7 @@ function Shell({
       apkUpdates={Platform.OS === 'android'}
     />
   );
-  const [route, setRoute] = useState<Route>('welcome');
+  const [route, setRoute] = useState<Route>('scan');
   const [pairedRoute, setPairedRoute] = useState<PairedRoute>(CHATS);
   // One list for the whole session, so going to Computers, Agents or Your computer and back doesn't reload it.
   const [chats] = useState(() => new ChatList(session));
@@ -218,7 +217,7 @@ function Shell({
       setPairedRoute(CHATS);
       return;
     }
-    setRoute('welcome');
+    setRoute('scan');
   }, [state.step, chats, agents, computers, inbox]);
 
   // Android's back gesture leaves take-control for Computers, Voice for its chat, and Computers, Agents, Your computer, Settings, More, Profile, a chat or Approvals, like the on-screen back button.
@@ -232,9 +231,9 @@ function Shell({
   }, [state.step, pairedRoute]);
 
   const begin = (setup: SetupPayload) => session.begin(setup);
-  const toWelcome = () => {
+  const toPair = () => {
     session.cancel();
-    setRoute('welcome');
+    setRoute('scan');
   };
   const scanAgain = () => {
     session.cancel();
@@ -259,17 +258,13 @@ function Shell({
       break;
     case 'unpaired':
       screen =
-        route === 'scan' ? (
+        route === 'code' ? (
           <PairingTheme>
-            <ScanScreen onCode={begin} onEnterCode={() => setRoute('code')} onCancel={toWelcome} />
-          </PairingTheme>
-        ) : route === 'code' ? (
-          <PairingTheme>
-            <EnterCodeScreen onCode={begin} onScan={() => setRoute('scan')} onCancel={toWelcome} />
+            <EnterCodeScreen onCode={begin} onScan={() => setRoute('scan')} onCancel={toPair} />
           </PairingTheme>
         ) : (
           <PairingTheme>
-            <WelcomeScreen onPair={() => setRoute('scan')} updateBanner={updateBanner} />
+            <ScanScreen onCode={begin} onEnterCode={() => setRoute('code')} updateBanner={updateBanner} />
           </PairingTheme>
         );
       break;
@@ -278,7 +273,7 @@ function Shell({
     case 'failed':
       screen = (
         <PairingTheme>
-          <ApprovalScreen state={state} onCancel={toWelcome} onScanAgain={scanAgain} />
+          <ApprovalScreen state={state} onCancel={toPair} onScanAgain={scanAgain} />
         </PairingTheme>
       );
       break;
@@ -457,7 +452,7 @@ function Shell({
 
   return (
     <>
-      <StatusBar style={route === 'scan' && state.step === 'unpaired' ? 'light' : theme.scheme === 'dark' ? 'light' : 'dark'} />
+      <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
       {screen}
     </>
   );
