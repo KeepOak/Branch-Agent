@@ -6,7 +6,6 @@ import { Dialog } from "../../shell/Dialog";
 import { notify } from "../../shell/notify";
 import { removeTrunk } from "./api";
 import { canWrite, WRITE_WHY } from "./data";
-import { errorText } from "./model";
 import { Layer } from "./layer";
 import "./trunk.css";
 
@@ -28,7 +27,7 @@ export function RemoveTrunkDialog({ engine, agentId, name, onClose, onRemoved, c
       window.dispatchEvent(new CustomEvent(TRUNK_REMOVED_EVENT, { detail: { agentId } }));
       onRemoved?.(); onClose();
     }
-    catch (e) { setError(errorText(e)); }
+    catch { setError("Couldn’t remove that Trunk. Try again."); }
     finally { setBusy(false); }
   };
   const footer = <>
