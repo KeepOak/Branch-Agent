@@ -256,6 +256,7 @@ export function wrapGithubRunWithRateLimit(run, {
     budgetSeconds,
     maxSleep,
     bufferSeconds,
+    spreadSeconds: 0, // one attach job; do not inherit merge-gate wake spread
     fetchRateLimit,
     random,
     log,
