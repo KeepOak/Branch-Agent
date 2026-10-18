@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
-const { createAutoApplyUpdate, readUpdateHealth, updateHealthRefusal, AUTO_APPLY_POLL_MS, AUTO_APPLY_GAP_MS, AUTO_APPLY_RETRY_MS,
-  TRUNK_UPDATE_MIN_INTERVAL_MS, TRUNK_WORK_SAMPLE_MS, AUTO_APPLY_PENDING_CAP_MS, AUTO_APPLY_HANDOFF_FAIL_DRAIN_MS } = await import(
+const { createAutoApplyUpdate, readUpdateHealth, updateHealthRefusal, parseWindowIdleSnapshot, turnWaiting, trustedWindowIdleSnapshot,
+  windowIdleFields, windowIdleSessionId, AUTO_APPLY_POLL_MS, AUTO_APPLY_GAP_MS, AUTO_APPLY_RETRY_MS,
+  TRUNK_UPDATE_MIN_INTERVAL_MS, TRUNK_WORK_SAMPLE_MS, AUTO_APPLY_PENDING_CAP_MS, AUTO_APPLY_HANDOFF_FAIL_DRAIN_MS,
+  WINDOW_IDLE_MAX_AGE_MS } = await import(
   pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "auto-apply-update.js"))
 );
 const { COMPONENT_UPDATE_CHECK_MS } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js")));
@@ -107,6 +109,94 @@ test("failed flagged handoff falls back after idle and notifies once per version
   now += AUTO_APPLY_GAP_MS; await controller.tick();
   assert.deepEqual(attempts, [true, false, true, false]);
   assert.deepEqual(failures, ["next", "later"]);
+});
+
+test("windowIdleFields: a silent window is unknown unless a persisted snapshot proves the counts", () => {
+  assert.deepEqual(windowIdleFields(undefined), { pendingApprovals: null, unsavedDraftFiles: null });
+  assert.deepEqual(windowIdleFields(undefined, { pendingApprovals: 0, unsavedDraftFiles: true }),
+    { pendingApprovals: 0, unsavedDraftFiles: true });
+  assert.deepEqual(windowIdleFields(undefined, { pendingApprovals: 2, unsavedDraftFiles: false }),
+    { pendingApprovals: 2, unsavedDraftFiles: false });
+  assert.deepEqual(windowIdleFields({ pendingApprovals: 0, unsavedDraftFiles: false }, { pendingApprovals: 9, unsavedDraftFiles: true }),
+    { pendingApprovals: 0, unsavedDraftFiles: false }, "a live window wins over a stale snapshot");
+  assert.equal(turnWaiting({ activeRuns: 0, pendingApprovals: null, streaming: false, unsavedDraftFiles: false }), true);
+  assert.equal(turnWaiting({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: null }), true);
+  assert.equal(turnWaiting({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }), false);
+  const fresh = { pendingApprovals: 1, unsavedDraftFiles: true, at: 10, sessionId: "this" };
+  assert.deepEqual(parseWindowIdleSnapshot(fresh), fresh);
+  assert.equal(parseWindowIdleSnapshot({ pendingApprovals: 1, unsavedDraftFiles: true }), undefined);
+  assert.equal(parseWindowIdleSnapshot({ pendingApprovals: -1, unsavedDraftFiles: false, at: 0, sessionId: "this" }), undefined);
+  assert.equal(parseWindowIdleSnapshot({ pendingApprovals: 0 }), undefined);
+  assert.equal(WINDOW_IDLE_MAX_AGE_MS, 2 * 60 * 1000);
+  assert.equal(windowIdleSessionId({ BRANCH_DESKTOP_WINDOW_IDLE_SESSION: " pinned " }), "pinned");
+  assert.notEqual(windowIdleSessionId({}), windowIdleSessionId({}));
+  assert.ok(trustedWindowIdleSnapshot(fresh, "this", 10));
+  assert.ok(trustedWindowIdleSnapshot(fresh, "this", 10 + WINDOW_IDLE_MAX_AGE_MS - 1));
+  assert.equal(trustedWindowIdleSnapshot(fresh, "this", 10 + WINDOW_IDLE_MAX_AGE_MS), undefined);
+  assert.equal(trustedWindowIdleSnapshot(fresh, "this", 9), undefined, "a future timestamp is not proof");
+  assert.equal(trustedWindowIdleSnapshot(fresh, "other", 10), undefined);
+});
+
+/** Failed handoff, then the 30-minute drain clock, with a silent window's idle fields. */
+async function drainAfterFailedHandoff(persisted) {
+  let now = 0; const attempts = []; const drains = []; const logs = [];
+  const idle = windowIdleFields(undefined, persisted);
+  const controller = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true,
+    seamlessHandoff: () => true, trunkWork: () => false,
+    activity: async () => ({ activeRuns: 1, streaming: false, ...idle }),
+    restart: async (_version, handoffOnly, drain) => {
+      attempts.push(handoffOnly);
+      if (drain) drains.push("next");
+      if (handoffOnly) throw new Error("standby failed");
+    },
+    log: line => logs.push(line), now: () => now });
+  await controller.tick();
+  now += AUTO_APPLY_GAP_MS; await controller.tick();
+  now += AUTO_APPLY_HANDOFF_FAIL_DRAIN_MS; await controller.tick();
+  return { attempts, drains, logs };
+}
+
+test("a silent window with an unsaved draft blocks the drain", async () => {
+  const f = await drainAfterFailedHandoff({ pendingApprovals: 0, unsavedDraftFiles: true });
+  assert.deepEqual(f.attempts, [true], "drained while an unsaved draft was only known from the persisted snapshot");
+  assert.deepEqual(f.drains, []);
+  assert.ok(f.logs.some(line => line.includes("unsaved draft files")), f.logs.join("\n"));
+});
+
+test("a silent window with a pending approval blocks the drain", async () => {
+  const f = await drainAfterFailedHandoff({ pendingApprovals: 1, unsavedDraftFiles: false });
+  assert.deepEqual(f.attempts, [true], "drained while a pending approval was only known from the persisted snapshot");
+  assert.deepEqual(f.drains, []);
+  assert.ok(f.logs.some(line => line.includes("waiting for 1 active runs, 1 approvals")), f.logs.join("\n"));
+});
+
+test("a silent window with proven-zero state still allows the drain", async () => {
+  const f = await drainAfterFailedHandoff({ pendingApprovals: 0, unsavedDraftFiles: false });
+  assert.deepEqual(f.attempts, [true, false]);
+  assert.deepEqual(f.drains, ["next"]);
+});
+
+test("a silent window with no proven snapshot blocks the drain", async () => {
+  const f = await drainAfterFailedHandoff(undefined);
+  assert.deepEqual(f.attempts, [true], "treated unknown approvals and drafts as zero and drained");
+  assert.deepEqual(f.drains, []);
+  assert.ok(f.logs.some(line => line.includes("unknown approvals") && line.includes("unknown draft files")), f.logs.join("\n"));
+});
+
+test("a stale proven-zero snapshot blocks the drain", async () => {
+  const snapshot = { pendingApprovals: 0, unsavedDraftFiles: false, at: 0, sessionId: "this" };
+  const f = await drainAfterFailedHandoff(trustedWindowIdleSnapshot(snapshot, "this", WINDOW_IDLE_MAX_AGE_MS));
+  assert.deepEqual(f.attempts, [true], "trusted an hours-old proven-zero snapshot and drained");
+  assert.deepEqual(f.drains, []);
+  assert.ok(f.logs.some(line => line.includes("unknown approvals") && line.includes("unknown draft files")), f.logs.join("\n"));
+});
+
+test("a previous-session snapshot blocks the drain", async () => {
+  const snapshot = { pendingApprovals: 0, unsavedDraftFiles: false, at: 0, sessionId: "previous" };
+  const f = await drainAfterFailedHandoff(trustedWindowIdleSnapshot(snapshot, "this", 0));
+  assert.deepEqual(f.attempts, [true], "trusted a previous launch's proven-zero snapshot and drained");
+  assert.deepEqual(f.drains, []);
+  assert.ok(f.logs.some(line => line.includes("unknown approvals") && line.includes("unknown draft files")), f.logs.join("\n"));
 });
 
 test("failed flagged handoff drains after 30 minutes even with active runs", async () => {

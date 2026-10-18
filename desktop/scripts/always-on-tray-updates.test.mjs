@@ -15,7 +15,8 @@ if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error('Compile the exact deskto
 const require = createRequire(import.meta.url), Module = require('node:module');
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 const { readEngineLiveState, stopBranchCompletely, trayLabel, trayMenu } = require(join(dist, 'tray-status.js'));
-const { sameEngineBuild, updateServiceEngine, TRUNKS_STILL_WORKING } = require(join(dist, 'service-update.js'));
+const { sameEngineBuild, updateServiceEngine, TRUNKS_STILL_WORKING, WINDOW_IDLE_UNKNOWN, serviceWorkRefusal } = require(join(dist, 'service-update.js'));
+const { WINDOW_IDLE_FILE, WINDOW_IDLE_MAX_AGE_MS } = require(join(dist, 'auto-apply-update.js'));
 const { engineServiceArgs } = require(join(dist, 'engine-service.js'));
 const originalLoad = Module._load, originalFetch = globalThis.fetch;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -387,13 +388,21 @@ test('Apply now in service mode: a silent window plus an active run refuses the 
     publish('engine-v2', 'v2');
     clickUpdate();
     await eventually(() => desktopLog().includes(`update failed: ${TRUNKS_STILL_WORKING}`), 15000);
-    assert.match(desktopLog(), /service update: waiting for 1 active runs, 0 approvals before the update; the engine service was not touched/);
+    assert.match(desktopLog(), /service update: waiting for 1 active runs, unknown approvals, unknown draft files before the update; the engine service was not touched/);
     assert.deepEqual(cliCalls(), [], 'no gateway restart (or any service) CLI call');
     assert.deepEqual(standbys(), [], 'not even a standby');
     assert.equal(serviceRuns(), 'engine');
     assert.deepEqual(dialogs.filter(d => d[0] === 'error').map(d => d[2]), [TRUNKS_STILL_WORKING]);
     assert.equal(await run, 'working done', 'the fake Trunk run finished on the engine it started on');
   }, updateEnv, root => writeFileSync(join(root, 'engine-health.json'), JSON.stringify({ ok: true, status: 'live', activeRuns: 1 })));
+});
+
+test('service work refuses unknown approvals or drafts, and a proven-zero snapshot is idle', () => {
+  assert.equal(serviceWorkRefusal({ activeRuns: 0, pendingApprovals: null, streaming: false, unsavedDraftFiles: null }), WINDOW_IDLE_UNKNOWN);
+  assert.equal(serviceWorkRefusal({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: true }), TRUNKS_STILL_WORKING);
+  assert.equal(serviceWorkRefusal({ activeRuns: 0, pendingApprovals: 1, streaming: false, unsavedDraftFiles: false }), TRUNKS_STILL_WORKING);
+  assert.equal(serviceWorkRefusal({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }), undefined);
+  assert.equal(serviceWorkRefusal({ activeRuns: 1, pendingApprovals: null, streaming: false, unsavedDraftFiles: null }), TRUNKS_STILL_WORKING);
 });
 
 test('Apply now in service mode: a silent window without engine activity refuses with a reason', async t => {
@@ -426,7 +435,9 @@ test('a running Trunk run survives an Update click in service mode: refused, no 
 });
 
 const pending = root => writeFileSync(join(root, 'component-update-pending.json'), JSON.stringify({ phase: 'pending', version: '9.9.9' }));
-const autoEnv = { ...updateEnv, BRANCH_DESKTOP_UPDATE_FREE_DISK: '0.9', BRANCH_DESKTOP_UPDATE_FREE_MEMORY: '0.9' };
+const WINDOW_IDLE_SESSION = 'always-on-window-idle-session';
+const autoEnv = { ...updateEnv, BRANCH_DESKTOP_UPDATE_FREE_DISK: '0.9', BRANCH_DESKTOP_UPDATE_FREE_MEMORY: '0.9',
+  BRANCH_DESKTOP_WINDOW_IDLE_SESSION: WINDOW_IDLE_SESSION };
 
 test('auto-apply in service mode reads the run count from the engine: the tick waits on the runs, no "activity check failed", no restart', async t => {
   await serviceApp(t, () => ({ pendingApprovals: 0, streaming: false, unsavedDraftFiles: false, workingTrunks: 2 }), async ({ cliCalls, standbys, serviceRuns, desktopLog }) => {
@@ -447,4 +458,66 @@ test('auto-apply in service mode: the handoff attempt makes no restart call and 
     assert.deepEqual(standbys(), [], 'nor warmed a standby');
     assert.equal(serviceRuns(), 'engine');
   }, autoEnv, pending);
+});
+
+function silentIdleSetup(snapshot, extras = {}) {
+  return root => {
+    pending(root);
+    writeFileSync(join(root, 'engine-health.json'), JSON.stringify({ ok: true, status: 'live', activeRuns: 0, totalActive: 0, pendingReplies: 0 }));
+    if (snapshot) {
+      writeFileSync(join(root, WINDOW_IDLE_FILE), JSON.stringify({
+        at: Date.now(), sessionId: WINDOW_IDLE_SESSION, ...snapshot, ...extras,
+      }));
+    }
+  };
+}
+
+test('auto-apply: a silent window with a persisted unsaved draft stays blocked', async t => {
+  await serviceApp(t, null, async ({ cliCalls, standbys, serviceRuns, desktopLog }) => {
+    await eventually(() => /auto-apply: waiting for 0 active runs, 0 approvals, unsaved draft files/.test(desktopLog()), 15000);
+    assert.doesNotMatch(desktopLog(), /idle hold for|restarting for|draining at a gap/);
+    assert.deepEqual(cliCalls(), []);
+    assert.deepEqual(standbys(), []);
+    assert.equal(serviceRuns(), 'engine');
+  }, autoEnv, silentIdleSetup({ pendingApprovals: 0, unsavedDraftFiles: true }));
+});
+
+test('auto-apply: a silent window with a persisted pending approval stays blocked', async t => {
+  await serviceApp(t, null, async ({ cliCalls, standbys, serviceRuns, desktopLog }) => {
+    await eventually(() => /auto-apply: waiting for 0 active runs, 1 approvals/.test(desktopLog()), 15000);
+    assert.doesNotMatch(desktopLog(), /idle hold for|restarting for|draining at a gap/);
+    assert.deepEqual(cliCalls(), []);
+    assert.deepEqual(standbys(), []);
+    assert.equal(serviceRuns(), 'engine');
+  }, autoEnv, silentIdleSetup({ pendingApprovals: 1, unsavedDraftFiles: false }));
+});
+
+test('auto-apply: a silent window with a proven-zero snapshot still idles', async t => {
+  await serviceApp(t, null, async ({ cliCalls, standbys, serviceRuns, desktopLog }) => {
+    await eventually(() => /auto-apply: idle hold for 9\.9\.9/.test(desktopLog()), 15000);
+    assert.doesNotMatch(desktopLog(), /unknown approvals|unsaved draft files/);
+    assert.deepEqual(cliCalls(), []);
+    assert.deepEqual(standbys(), []);
+    assert.equal(serviceRuns(), 'engine');
+  }, autoEnv, silentIdleSetup({ pendingApprovals: 0, unsavedDraftFiles: false }));
+});
+
+test('auto-apply: a stale proven-zero snapshot stays blocked', async t => {
+  await serviceApp(t, null, async ({ cliCalls, standbys, serviceRuns, desktopLog }) => {
+    await eventually(() => /auto-apply: waiting for 0 active runs, unknown approvals, unknown draft files/.test(desktopLog()), 15000);
+    assert.doesNotMatch(desktopLog(), /idle hold for|restarting for|draining at a gap/);
+    assert.deepEqual(cliCalls(), []);
+    assert.deepEqual(standbys(), []);
+    assert.equal(serviceRuns(), 'engine');
+  }, autoEnv, silentIdleSetup({ pendingApprovals: 0, unsavedDraftFiles: false }, { at: Date.now() - WINDOW_IDLE_MAX_AGE_MS }));
+});
+
+test('auto-apply: a previous-session proven-zero snapshot stays blocked', async t => {
+  await serviceApp(t, null, async ({ cliCalls, standbys, serviceRuns, desktopLog }) => {
+    await eventually(() => /auto-apply: waiting for 0 active runs, unknown approvals, unknown draft files/.test(desktopLog()), 15000);
+    assert.doesNotMatch(desktopLog(), /idle hold for|restarting for|draining at a gap/);
+    assert.deepEqual(cliCalls(), []);
+    assert.deepEqual(standbys(), []);
+    assert.equal(serviceRuns(), 'engine');
+  }, autoEnv, silentIdleSetup({ pendingApprovals: 0, unsavedDraftFiles: false }, { sessionId: 'previous-launch' }));
 });
