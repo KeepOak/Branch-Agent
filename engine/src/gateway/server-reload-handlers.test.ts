@@ -1834,18 +1834,37 @@ describe("gateway hot reload model state", () => {
           );
           expect(run.activity.resultSettled).toBe(false);
           expect(spawn).toHaveBeenCalledOnce();
-          expect(state?.cronState.cron.getJob(job.id)?.enabled).toBe(true);
+          expect(isGatewayWorkAdmissionClosed()).toBe(false);
+          const currentJob = state?.cronState.cron.getJob(job.id);
+          expect(currentJob?.enabled).toBe(true);
+          expect(currentJob?.agentId).toBe("main");
+          const replacementCron = state?.cronState.cron;
+          assert(
+            replacementCron && "runOnExit" in replacementCron,
+            "expected replacement cron runOnExit",
+          );
+          const runOnExit = vi.spyOn(replacementCron as CronService, "runOnExit");
           await writeFile(releasePath, "release");
           await waitForFast(() => expect(run.activity.resultSettled).toBe(true), {
             timeout: 10_000,
           });
+          await waitForFast(() => expect(runOnExit).toHaveBeenCalled(), { timeout: 10_000 });
+          await waitForFast(
+            () => {
+              const latest = state?.cronState.cron.getJob(job.id);
+              expect({
+                enabled: latest?.enabled,
+                lastError: latest?.state.lastError ?? null,
+                spawnCount: spawn.mock.calls.length,
+                runOnExitCalls: runOnExit.mock.calls.length,
+                runOnExitStatus: runOnExit.mock.results.at(-1)?.type ?? null,
+              }).toMatchObject({ enabled: false, spawnCount: 1 });
+            },
+            { timeout: 10_000 },
+          );
           if (run.waitForExtinction) {
             await withinTest(run.waitForExtinction(), signal);
           }
-          await waitForFast(
-            () => expect(state?.cronState.cron.getJob(job.id)?.enabled).toBe(false),
-            { timeout: 10_000 },
-          );
           expect(await readFile(markerPath, "utf8")).toBe("run\n");
           expect(spawn).toHaveBeenCalledOnce();
         });
