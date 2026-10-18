@@ -1439,10 +1439,16 @@ async function start(): Promise<void> {
     });
     log(`first-launch components: ${outcome}`);
     if (!firstLaunchAllowsWindow(outcome)) {
-      if (starting && !starting.isDestroyed()) {
-        await starting.webContents.executeJavaScript(firstLaunchNeedComponentsScript()).catch(() => undefined);
+      if (!starting || starting.isDestroyed()) { app.quit(); return; }
+      const { recoverFirstLaunchInstall } = await import("./first-launch-install.js");
+      const recovered = await recoverFirstLaunchInstall(starting, cfg, fetch, {
+        desktop: install, underSwapGuard, log,
+        choose: () => starting.webContents.executeJavaScript(firstLaunchNeedComponentsScript()),
+      });
+      if (recovered === "quit") {
+        app.quit();
+        return;
       }
-      return;
     }
   }
   servedWindowDir = cfg.windowDir;
