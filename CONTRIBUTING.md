@@ -96,6 +96,7 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
 - `gate-files-fresh` (`.github/workflows/gate-files-fresh.yml`) fails a PR that edits a merge-gate file but dropped a line main added since the PR forked; merge main in and keep main's version of this file.
 - Only the PR reviewer (Branch PR Closer) adds the `gate-change-reviewed: <full head SHA>` marker, after reviewing the workflow and gate-file changes on that exact head. An earlier head's marker also counts when every later commit only merges main cleanly and the gate-file diff is unchanged. Fixers and authors never add it.
 - The same reviewer adds `review-verdict: MERGE <full head SHA>` in the pull request body. merge-gate fails when that marker is missing, when the sha is stale, or when a later `review-verdict: FIX <same SHA>` comes after the MERGE. Authors never add it.
+- The `review-verdict` marker is enforced by the merge-gate-trusted check.
 - After review, Branch PR Closer merges by hand with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge:
 
   ```bash

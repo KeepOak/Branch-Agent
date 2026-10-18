@@ -2483,6 +2483,15 @@ test('a review-verdict with no marker fails', () => {
   assert.equal(fixOnly.message, formatReviewVerdictFailure('missing', REVIEW_HEAD));
 });
 
+test('a review-verdict MERGE with only the first 7 chars of the head fails as missing', () => {
+  const result = evaluateReviewVerdict({
+    body: `review-verdict: MERGE ${REVIEW_HEAD.slice(0, 7)}\n`,
+    headSha: REVIEW_HEAD,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.message, formatReviewVerdictFailure('missing', REVIEW_HEAD));
+});
+
 test('a review-verdict marker for a stale sha fails', () => {
   const result = evaluateReviewVerdict({
     body: `review-verdict: MERGE ${REVIEW_OLD}\n`,
