@@ -101,12 +101,9 @@ export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
 };
 
 /**
- * Settings pages that are a place: Memory & documents opens Library on its Memory tab, which has its controls.
- * Customize and Automations are R1 Settings pages of their own.
+ * Settings pages that are a place. None left: Memory & documents, Customize and Automations are R1 Settings pages.
  */
-export const SETTINGS_PLACE: Readonly<Record<string, { place: PlaceId; tab?: string }>> = {
-  memory: { place: "library", tab: "memory" },
-};
+export const SETTINGS_PLACE: Readonly<Record<string, { place: PlaceId; tab?: string }>> = {};
 
 /** The route a link, a saved route or a nav item really opens: a Settings page that is a place (by its id or an old id
  *  for it) opens that place. An old id for Customize opens the R1 Customize page. Every other route is itself. */

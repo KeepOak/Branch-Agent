@@ -9,6 +9,7 @@ import { APPEARANCE_ROWS } from "./pages/appearance";
 import { AUTOS_ROWS } from "./pages/autos";
 import { CUSTOMIZE_ROWS } from "./pages/customize";
 import { GENERAL_ROWS } from "./pages/general";
+import { MEMORY_ROWS } from "./pages/memory";
 
 export type RowSource =
   /** An engine config path: config.get, saved with config.patch through the window's one config store. */
@@ -117,7 +118,7 @@ export function shownLevel(row: Row, hints: UiHints, controls?: Readonly<Record<
 }
 
 /** Every row of the R1 Settings pages. Pages add their list here. */
-export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS, ...AUTOS_ROWS];
+export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS, ...AUTOS_ROWS, ...MEMORY_ROWS];
 
 /** The rows of one card at this level, in table order. A row above the level is hidden, and so is a Coming row at
  *  Regular. */

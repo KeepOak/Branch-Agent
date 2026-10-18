@@ -79,8 +79,8 @@ const SELECTOR = [
   '[role="tab"]', '[role="switch"]', 'input[type="checkbox"]', '.chip', '.ib',
 ].join(',');
 
-// Every R1 Settings page at each level it is shown at. A page that is a place (Customize, Automations, Memory &
-// documents) opens that place, so the place screens cover it and it is not repeated here.
+// Every R1 Settings page at each level it is shown at. A page that is a place opens that place, so the place screens
+// cover it and it is not repeated here. None of Customize, Automations or Memory & documents is a place now.
 const LEVEL_WORD_LIST: LevelWord[] = ['regular', 'advanced', 'technical'];
 function r1SettingsScreens() {
   return Object.keys(R1_PAGES_SPEC)
