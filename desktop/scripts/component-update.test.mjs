@@ -306,9 +306,9 @@ test("confirmed update retains current and previous releases but prunes older up
   await writeFile(join(cfg.dataDir, "engine-current.txt"), join(previous, "engine") + "\n");
   await source.refreshComponentUpdate(cfg, request);
   const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
-  assert.equal(await exists(stale), true, "nothing is pruned before readiness confirmation");
+  assert.equal(await exists(stale), false, "a successful stage prunes copies that are no longer current, previous or staged");
   const prune = await source.confirmComponentUpdate(cfg, undefined, true);
-  assert.equal(await exists(stale), true, "confirmation does not prune before the app reports ready");
+  assert.equal(await exists(stale), false, "confirmation still finds the staged-time cleanup already done");
   assert.equal(typeof prune, "function");
   await prune();
   assert.equal(await exists(current), true);
@@ -932,7 +932,8 @@ test("startup prunes old engine and desktop updates, retains rollback and stagin
   await source.pruneStartupUpdates(cfg, line => logs.push(line));
   for (const name of [names[0], names[3]]) assert.equal(await exists(join(updates, name)), false, name);
   for (const name of names.filter((_, index) => index !== 0 && index !== 3)) assert.equal(await exists(join(updates, name)), true, name);
-  assert.deepEqual(logs, ["removed 2 old updates, freed 0.00 GB"]);
+  assert.ok(logs.some(line => line.startsWith("keeping ")));
+  assert.equal(logs.at(-1), "removed 2 old updates, freed 0.00 GB");
   await source.pruneStartupUpdates(cfg, line => logs.push(line));
   assert.equal(logs.at(-1), "removed 0 old updates, freed 0.00 GB");
 }));
@@ -958,7 +959,8 @@ test("startup uses the confirmed predecessor instead of a newer incomplete downl
   assert.equal(await exists(selected), true);
   assert.equal(await exists(download), true);
   assert.equal(await exists(stale), false);
-  assert.deepEqual(logs, ["removed 1 old updates, freed 0.00 GB"]);
+  assert.ok(logs.some(line => line.startsWith("keeping ")));
+  assert.equal(logs.at(-1), "removed 1 old updates, freed 0.00 GB");
 }));
 
 test("deferred cleanup retains a newly selected engine and both sides of an in-progress publication", async () => fixture(async ({ cfg, request }) => {
@@ -997,7 +999,8 @@ test("startup reduces twenty legacy releases to current plus previous and remain
   const logs = [];
   await source.pruneStartupUpdates(cfg, line => logs.push(line));
   for (const [index, folder] of folders.entries()) assert.equal(await exists(folder), index >= 18, folder);
-  assert.deepEqual(logs, ["removed 18 old updates, freed 0.01 GB"]);
+  assert.ok(logs.some(line => line.startsWith("keeping ")));
+  assert.equal(logs.at(-1), "removed 18 old updates, freed 0.01 GB");
   await source.pruneStartupUpdates(cfg, line => logs.push(line));
   assert.equal(await exists(folders[18]), true);
   assert.equal(await exists(folders[19]), true);
@@ -1162,6 +1165,167 @@ test("prune retains a process working directly in an old release folder", { skip
     const exited = new Promise(resolve => child.once("exit", resolve));
     child.kill();
     await exited;
+  }
+}));
+
+async function completeEngine(folder) {
+  await mkdir(join(folder, "engine"), { recursive: true });
+  await writeFile(join(folder, "engine", "branch.mjs"), "payload");
+  await writeFile(join(folder, ".release-complete"), "");
+}
+
+async function completeDesktop(folder) {
+  await mkdir(join(folder, "payload"), { recursive: true });
+  await writeFile(join(folder, "payload", "app.asar"), "desktop");
+  await writeFile(join(folder, ".desktop-complete"), "");
+}
+
+test("periodic run prunes copies downloaded after startup", async () => fixture(async ({ cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const current = join(updates, "release-current-111aaa");
+  const previous = join(updates, "release-previous-222bbb");
+  await completeEngine(current);
+  await completeEngine(previous);
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-previous.txt"), join(previous, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-probation.json"), JSON.stringify({
+    previous: join(previous, "engine"), confirmedAt: Date.now(),
+  }));
+  await source.pruneStartupUpdates(cfg, () => {});
+  const downloaded = join(updates, "release-nightly-333ccc");
+  const desktopDownloaded = join(updates, "desktop-nightly-444ddd");
+  await completeEngine(downloaded);
+  await completeDesktop(desktopDownloaded);
+  let tick;
+  let intervalMs;
+  let unrefed = false;
+  const stop = source.watchUpdateCleanup(cfg, () => {}, {
+    interval: (fn, ms) => {
+      tick = fn;
+      intervalMs = ms;
+      return { unref() { unrefed = true; } };
+    },
+    clear: () => {},
+  });
+  assert.equal(intervalMs, source.UPDATE_CLEANUP_MS);
+  assert.equal(unrefed, true);
+  assert.equal(await exists(downloaded), true, "copies downloaded after startup remain until the periodic run");
+  assert.equal(await exists(desktopDownloaded), true);
+  await tick();
+  stop();
+  assert.equal(await exists(downloaded), false);
+  assert.equal(await exists(desktopDownloaded), false);
+  assert.equal(await exists(current), true);
+  assert.equal(await exists(previous), true);
+}));
+
+test("empty folders are excluded from the keep list", async () => fixture(async ({ cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const current = join(updates, "release-current-111aaa");
+  const previous = join(updates, "release-previous-222bbb");
+  const emptyEngine = join(updates, "release-empty-333ccc");
+  const emptyDesktopA = join(updates, "desktop-empty-111aaa");
+  const emptyDesktopB = join(updates, "desktop-empty-222bbb");
+  const realDesktopA = join(updates, "desktop-real-333ccc");
+  const realDesktopB = join(updates, "desktop-real-444ddd");
+  await completeEngine(current);
+  await completeEngine(previous);
+  await mkdir(emptyEngine, { recursive: true });
+  await writeFile(join(emptyEngine, ".release-complete"), "");
+  await mkdir(emptyDesktopA, { recursive: true });
+  await writeFile(join(emptyDesktopA, ".desktop-complete"), "");
+  await mkdir(emptyDesktopB, { recursive: true });
+  await writeFile(join(emptyDesktopB, ".desktop-complete"), "");
+  await completeDesktop(realDesktopA);
+  await completeDesktop(realDesktopB);
+  const older = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const newer = new Date(Date.now() - 36 * 60 * 60 * 1000);
+  await utimes(realDesktopA, older, older);
+  await utimes(realDesktopB, older, older);
+  await utimes(emptyDesktopA, newer, newer);
+  await utimes(emptyDesktopB, newer, newer);
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-previous.txt"), join(emptyEngine, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "desktop-update-retained.json"), JSON.stringify([emptyDesktopA, emptyDesktopB]));
+  const logs = [];
+  await source.pruneStartupUpdates(cfg, line => logs.push(line));
+  const keeping = logs.find(line => line.startsWith("keeping ")) ?? "";
+  assert.equal(keeping.includes("release-empty-333ccc"), false);
+  assert.equal(keeping.includes("desktop-empty-111aaa"), false);
+  assert.equal(keeping.includes("desktop-empty-222bbb"), false);
+  assert.match(keeping, /release-current-111aaa/);
+  assert.match(keeping, /desktop-real-333ccc/);
+  assert.match(keeping, /desktop-real-444ddd/);
+  assert.equal(await exists(emptyEngine), false);
+  assert.equal(await exists(emptyDesktopA), false);
+  assert.equal(await exists(emptyDesktopB), false);
+  assert.equal(await exists(realDesktopA), true);
+  assert.equal(await exists(realDesktopB), true);
+  assert.equal(await exists(current), true);
+}));
+
+test("live and staged copies are never deleted", async () => fixture(async ({ cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const live = join(updates, "release-live-111aaa");
+  const current = join(updates, "release-current-222bbb");
+  const staging = join(updates, "release-staging-333ccc");
+  const stale = join(updates, "release-stale-444ddd");
+  const desktopStaged = join(updates, "desktop-staged-111aaa");
+  const desktopKeepA = join(updates, "desktop-keepa-222bbb");
+  const desktopKeepB = join(updates, "desktop-keepb-333ccc");
+  const desktopStale = join(updates, "desktop-stale-444ddd");
+  for (const folder of [live, current, stale]) await completeEngine(folder);
+  await mkdir(join(staging, "engine"), { recursive: true });
+  await writeFile(join(staging, ".update-staging"), "");
+  await completeDesktop(desktopStaged);
+  await completeDesktop(desktopKeepA);
+  await completeDesktop(desktopKeepB);
+  await completeDesktop(desktopStale);
+  const oldest = new Date(Date.now() - 72 * 60 * 60 * 1000);
+  await utimes(desktopStaged, oldest, oldest);
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), join(live, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({
+    phase: "staged", staged: join(desktopStaged, "payload", "app.asar.staged"), target: join(cfg.dataDir, "app.asar"),
+  }));
+  await writeFile(join(cfg.dataDir, "desktop-update-retained.json"), JSON.stringify([desktopKeepA, desktopKeepB]));
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", join(live, "engine", "branch.mjs")], { stdio: "ignore", windowsHide: true });
+  try {
+    await new Promise((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
+    await source.pruneStartupUpdates(cfg, () => {});
+    assert.equal(await exists(live), true, "the live copy is never deleted");
+    assert.equal(await exists(current), true);
+    assert.equal(await exists(staging), true, "an in-progress download is never deleted");
+    assert.equal(await exists(desktopStaged), true, "the staged desktop copy is never deleted");
+    assert.equal(await exists(stale), false);
+    assert.equal(await exists(desktopStale), false);
+  } finally {
+    child.kill();
+    await new Promise(resolve => child.once("exit", resolve));
+  }
+}));
+
+test("no overlap between update cleanup runs", async () => fixture(async ({ cfg }) => {
+  await completeEngine(join(cfg.dataDir, "updates", "release-current-111aaa"));
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(cfg.dataDir, "updates", "release-current-111aaa", "engine") + "\n");
+  let overlap = 0, maxOverlap = 0;
+  source.setUpdateCleanupHookForTests(async run => {
+    overlap++;
+    maxOverlap = Math.max(maxOverlap, overlap);
+    await new Promise(resolve => setTimeout(resolve, 40));
+    try { return await run(); }
+    finally { overlap--; }
+  });
+  try {
+    await Promise.all([
+      source.pruneStartupUpdates(cfg, () => {}),
+      source.pruneStartupUpdates(cfg, () => {}),
+      source.pruneStartupUpdates(cfg, () => {}),
+    ]);
+    assert.equal(maxOverlap, 1);
+    assert.equal(overlap, 0);
+  } finally {
+    source.setUpdateCleanupHookForTests();
   }
 }));
 

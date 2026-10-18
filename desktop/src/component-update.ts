@@ -217,6 +217,51 @@ async function updateBytes(folder: string): Promise<number> {
   return bytes;
 }
 
+/**
+ * A keep-list entry must exist and hold a finished copy. Empty or in-progress folders never occupy a
+ * current/previous slot; live and staged copies are protected separately.
+ */
+async function holdsValidCopy(folder: string, name: string): Promise<boolean> {
+  let entries: string[];
+  try { entries = await readdir(folder); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+  if (entries.length === 0 || existsSync(join(folder, ".update-staging"))) return false;
+  const content = entries.filter(entry => entry !== ".release-complete" && entry !== ".desktop-complete");
+  if (content.length === 0) return false;
+  if (name.startsWith("desktop-")) {
+    if (existsSync(join(folder, ".desktop-complete"))) return true;
+    return Date.now() - (await stat(folder)).mtimeMs >= 24 * 60 * 60 * 1000;
+  }
+  if (!name.startsWith("release-")) return false;
+  if (existsSync(join(folder, ".release-complete"))) {
+    try { return (await readdir(join(folder, "engine"))).length > 0; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  }
+  return backfillLegacyReleaseMarker(folder, name);
+}
+
+/** One cleanup at a time: a download that lands mid-prune is collected by the queued run, never by overlapping work. */
+let cleanupTail: Promise<void> = Promise.resolve();
+let cleanupHook: ((run: () => Promise<void>) => Promise<void>) | undefined;
+export function setUpdateCleanupHookForTests(fn?: (run: () => Promise<void>) => Promise<void>): void {
+  cleanupHook = fn;
+}
+
+function enqueueCleanup(work: () => Promise<void>): Promise<void> {
+  const run = cleanupTail.then(
+    () => cleanupHook ? cleanupHook(work) : work(),
+    () => cleanupHook ? cleanupHook(work) : work(),
+  );
+  cleanupTail = run.then(() => undefined, () => undefined);
+  return run;
+}
+
 /** Only completed folders created directly under this data directory are owned by the updater. */
 async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previous: string, reportFailure?: (error: unknown) => void, log?: (line: string) => void): Promise<void> {
   const updates = join(cfg.dataDir, "updates");
@@ -227,44 +272,67 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
   const updatesReal = await realpath(updates);
   let removed = 0, freed = 0;
   const retained = new Set<string>();
-  for (const engine of [current, previous, running, cfg.engineDir, await readOrEmpty(join(cfg.dataDir, "engine-current.txt"))]) {
-    if (!engine) continue;
+  const kept = new Set<string>();
+  const retainFolder = async (folder: string, protect: boolean): Promise<void> => {
+    const valid = await holdsValidCopy(folder, basename(folder));
+    if (valid) kept.add(folder);
+    if (protect || valid) retained.add(folder);
+  };
+  const retainEngine = async (engine: string | undefined, protect: boolean): Promise<void> => {
+    if (!engine) return;
     try {
       const folder = await realpath(dirname(engine));
-      if (dirname(folder) === updatesReal) retained.add(folder);
+      if (dirname(folder) === updatesReal) await retainFolder(folder, protect);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
+  };
+  const retainOwnedPath = async (path: string | undefined, protect: boolean): Promise<void> => {
+    if (!path) return;
+    const part = relative(updates, path).split(/[\\/]/)[0];
+    if (!part || part === ".." || !existsSync(join(updates, part))) return;
+    await retainFolder(await realpath(join(updates, part)), protect);
+  };
+  // Live copies are always protected; they join the keep list only when they hold a valid copy.
+  for (const engine of [current, running, cfg.engineDir, await readOrEmpty(join(cfg.dataDir, "engine-current.txt"))]) {
+    await retainEngine(engine, true);
   }
+  // Previous rollback copy: never list an empty or partial folder as kept.
+  await retainEngine(previous, false);
   const pending = await publication(cfg);
   if (pending) {
     for (const engine of [pending.engineNext, pending.enginePrevious, pending.engineReplaced]) {
-      if (engine && existsSync(dirname(engine))) retained.add(await realpath(dirname(engine)));
+      await retainEngine(engine, true);
     }
   }
   const desktop = await readDesktopJournal(cfg);
   const desktopReceipt = await readOrEmpty(join(cfg.dataDir, "desktop-update-retained.json"));
-  const desktopRetained: string[] = desktopReceipt ? JSON.parse(desktopReceipt) : [];
-  if (desktopRetained.length < 2) {
+  const desktopRetained: string[] = desktopReceipt ? JSON.parse(desktopReceipt) as string[] : [];
+  const validDesktop: string[] = [];
+  for (const folder of desktopRetained) {
+    if (typeof folder === "string" && existsSync(folder) && await holdsValidCopy(folder, basename(folder))) validDesktop.push(folder);
+  }
+  if (validDesktop.length < 2) {
     const legacy: Array<{ folder: string; time: number }> = [];
     for (const entry of await readdir(updates, { withFileTypes: true })) {
       const folder = join(updates, entry.name);
       if (!entry.isDirectory() || !entry.name.startsWith("desktop-") || existsSync(join(folder, ".update-staging"))
         || desktop?.staged.startsWith(folder + (process.platform === "win32" ? "\\" : "/"))) continue;
-      const time = (await stat(folder)).mtimeMs;
-      if (existsSync(join(folder, ".desktop-complete")) || Date.now() - time >= 24 * 60 * 60 * 1000) legacy.push({ folder, time });
+      if (!await holdsValidCopy(folder, entry.name)) continue;
+      legacy.push({ folder, time: (await stat(folder)).mtimeMs });
     }
     legacy.sort((a, b) => b.time - a.time || a.folder.localeCompare(b.folder));
     for (const { folder } of legacy) {
-      if (desktopRetained.length >= 2) break;
-      if (!desktopRetained.includes(folder)) desktopRetained.push(folder);
+      if (validDesktop.length >= 2) break;
+      if (!validDesktop.includes(folder)) validDesktop.push(folder);
     }
   }
-  for (const path of [desktop?.staged, desktop?.target, ...desktopRetained, process.execPath]) {
-    if (!path) continue;
-    const part = relative(updates, path).split(/[\\/]/)[0];
-    if (part && part !== ".." && existsSync(join(updates, part))) retained.add(await realpath(join(updates, part)));
-  }
+  // Staged and running desktop copies are always protected; retained slots are valid copies only.
+  await retainOwnedPath(desktop?.staged, true);
+  await retainOwnedPath(desktop?.target, true);
+  for (const folder of validDesktop) await retainOwnedPath(folder, false);
+  await retainOwnedPath(process.execPath, true);
+  log?.(`keeping ${[...kept].map(folder => basename(folder)).sort().join(", ") || "none"}`);
   let commands: string;
   try { commands = await runningProcessCommands(); }
   catch (error) { reportFailure?.(error); return; }
@@ -295,7 +363,7 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
     try {
       const bytes = await updateBytes(folder);
       // A deferred prune can overlap a new publication. Stop if any owner changed
-      // while sizing this tree; the next startup will finish the remaining work.
+      // while sizing this tree; the next cleanup will finish the remaining work.
       const latest = await Promise.all(stateFiles.map(file => readOrEmpty(join(cfg.dataDir, file))));
       if (latest.some((value, index) => value !== snapshot[index])) break;
       await rename(folder, trash);
@@ -347,16 +415,20 @@ export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFail
   await rm(journalFile(cfg));
   await rm(timeoutFile(cfg), { force: true });
   // Cleanup is maintenance, not a readiness failure: never roll back a healthy engine because a stale folder is locked.
-  const prune = async () => {
+  const prune = () => enqueueCleanup(async () => {
     try { await pruneConfirmedReleases(cfg, pending.engineNext, pending.enginePrevious, reportPruneFailure, log); }
     catch (error) { reportPruneFailure?.(error); }
-  };
+  });
   if (deferPrune) return prune;
   await prune();
 }
 
 /** Once the startup engine is healthy, clean installations that have no pending update to confirm. */
 export async function pruneStartupUpdates(cfg: DesktopConfig, log: (line: string) => void): Promise<void> {
+  return enqueueCleanup(() => pruneStartupUpdatesWork(cfg, log));
+}
+
+async function pruneStartupUpdatesWork(cfg: DesktopConfig, log: (line: string) => void): Promise<void> {
   try {
     const current = await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) || cfg.engineDir;
     let previous = await readOrEmpty(previousFile(cfg));
@@ -372,7 +444,7 @@ export async function pruneStartupUpdates(cfg: DesktopConfig, log: (line: string
       for (const entry of await readdir(join(cfg.dataDir, "updates"), { withFileTypes: true })) {
         const folder = join(cfg.dataDir, "updates", entry.name);
         if (!entry.isDirectory() || !entry.name.startsWith("release-") || await realpath(folder) === currentFolder
-          || existsSync(join(folder, ".update-staging")) || !existsSync(join(folder, "engine"))) continue;
+          || existsSync(join(folder, ".update-staging")) || !await holdsValidCopy(folder, entry.name)) continue;
         const time = (await stat(folder)).mtimeMs;
         if (!existsSync(join(folder, ".release-complete")) && !await backfillLegacyReleaseMarker(folder, entry.name)) continue;
         if (time <= currentTime) candidates.push({ folder, time });
@@ -651,22 +723,27 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
   const held = await publication(cfg);
   if (held && (!options.underSwapGuard || !await replaceable(cfg, held))) return false;
   const release = await readComponentManifest(request);
+  let staged = false;
   if (held) {
     const result = await replaceStaged(cfg, held, release, request, options);
     if (!result) return false;
-    return await stageDesktopUpdate(cfg, release, request, options.desktop) || result === "replaced";
+    staged = await stageDesktopUpdate(cfg, release, request, options.desktop) || result === "replaced";
+  } else {
+    if (await readOrEmpty(versionFile(cfg)) !== release.version && (options.retryRejected || !await componentReleaseRejected(cfg, release))) {
+      const next = await stage(cfg, release, request, options);
+      await publish(cfg, release, next);
+      staged = true;
+    }
+    staged = await stageDesktopUpdate(cfg, release, request, options.desktop) || staged;
   }
-  let staged = false;
-  if (await readOrEmpty(versionFile(cfg)) !== release.version && (options.retryRejected || !await componentReleaseRejected(cfg, release))) {
-    const next = await stage(cfg, release, request, options);
-    await publish(cfg, release, next);
-    staged = true;
-  }
-  return await stageDesktopUpdate(cfg, release, request, options.desktop) || staged;
+  if (staged) await pruneStartupUpdates(cfg, options.log ?? (() => {}));
+  return staged;
 }
 
 const refreshes = new WeakMap<DesktopConfig, Promise<boolean>>();
 export const COMPONENT_UPDATE_CHECK_MS = 10 * 60 * 1000;
+/** Copies downloaded while the app runs are pruned on this cadence, not only at the next restart. */
+export const UPDATE_CLEANUP_MS = 60 * 60 * 1000;
 /** Startup, periodic and manual staging share one publication owner. */
 export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch = fetch, options: RefreshOptions = {}): Promise<boolean> {
   const active = refreshes.get(cfg);
@@ -674,6 +751,22 @@ export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch
   const next = refresh(cfg, request, options).finally(() => refreshes.delete(cfg));
   refreshes.set(cfg, next);
   return next;
+}
+
+export interface UpdateCleanupWatchOptions {
+  intervalMs?: number;
+  interval?: (tick: () => void, ms: number) => NodeJS.Timeout;
+  clear?: (timer: NodeJS.Timeout) => void;
+}
+
+/** Hourly cleanup while the app runs. The timer is unref'd so it never blocks quit. */
+export function watchUpdateCleanup(cfg: DesktopConfig, log: (line: string) => void, options: UpdateCleanupWatchOptions = {}): () => void {
+  const timer = (options.interval ?? setInterval)(
+    () => { void pruneStartupUpdates(cfg, log); },
+    options.intervalMs ?? UPDATE_CLEANUP_MS,
+  ) as NodeJS.Timeout;
+  timer.unref?.();
+  return () => (options.clear ?? clearInterval)(timer);
 }
 
 export interface ComponentUpdateState {
@@ -722,5 +815,6 @@ export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) =>
   };
   void tick();
   const timer = setInterval(() => void tick(), COMPONENT_UPDATE_CHECK_MS);
-  return () => { stopped = true; clearInterval(timer); };
+  const stopCleanup = watchUpdateCleanup(cfg, log);
+  return () => { stopped = true; clearInterval(timer); stopCleanup(); };
 }
