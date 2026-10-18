@@ -2860,6 +2860,50 @@
       "zh-CN",
       "zh-TW"
     ],
+    "configHints.memory%2Esearch%2Efallback.help.v1-95yd6b-8k": [
+      "ar",
+      "de",
+      "es",
+      "fa",
+      "fr",
+      "hi",
+      "id",
+      "it",
+      "ja-JP",
+      "ko",
+      "nl",
+      "pl",
+      "pt-BR",
+      "ru",
+      "th",
+      "tr",
+      "uk",
+      "vi",
+      "zh-CN",
+      "zh-TW"
+    ],
+    "configHints.memory%2Esearch%2Eprovider.help.v1-sisit0-aa": [
+      "ar",
+      "de",
+      "es",
+      "fa",
+      "fr",
+      "hi",
+      "id",
+      "it",
+      "ja-JP",
+      "ko",
+      "nl",
+      "pl",
+      "pt-BR",
+      "ru",
+      "th",
+      "tr",
+      "uk",
+      "vi",
+      "zh-CN",
+      "zh-TW"
+    ],
     "configHints.meta%2ElastTouchedVersion.help.v1-14ytynv-1m": [
       "ar",
       "de",
@@ -7855,6 +7899,6 @@
       "zh-TW"
     ]
   },
-  "sourceHash": "b70c4b99e4f31caf88b8916b7f4ce07a6dce9defe4cf4e985470b5f7beb57822",
+  "sourceHash": "5f237d84ac8411d2e2f38ae071718c219019b13f3a96f995471e8aa94c4499e5",
   "version": 1
 }
