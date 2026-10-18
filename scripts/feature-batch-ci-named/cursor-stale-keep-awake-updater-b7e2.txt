@@ -1,1 +1,4 @@
+engine:src/gateway/contacts/project.test.ts
 engine:src/infra/service-keep-awake.test.ts
+window:src/screens/settings/pages/customize-live.test.tsx
+window:src/screens/sidebar/Sidebar.test.tsx
