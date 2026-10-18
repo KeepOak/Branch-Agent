@@ -41,18 +41,33 @@ async function assertPublishableMainCommit(commit, request) {
   return latest;
 }
 
-async function ensureImmutableTag(tag, commit, request) {
+async function readTagCommit(tag, request) {
   let reference;
   try { reference = JSON.parse(await request(["api", `repos/${repository}/git/ref/tags/${tag}`])); }
   catch (error) { if (!error.stderr?.includes("HTTP 404")) throw error; }
-  if (!reference) {
-    await request(["api", "--method", "POST", `repos/${repository}/git/refs`, "-f", `ref=refs/tags/${tag}`, "-f", `sha=${commit}`]);
-    return;
-  }
+  if (!reference) return null;
   let object = reference.object;
   while (object.type === "tag") object = JSON.parse(await request(["api", `repos/${repository}/git/tags/${object.sha}`])).object;
   assert.equal(object.type, "commit");
-  assert.equal(object.sha, commit, "Existing immutable tag points at a different source commit");
+  return object.sha;
+}
+
+async function ensureImmutableTag(tag, commit, request) {
+  const sha = await readTagCommit(tag, request);
+  if (!sha) {
+    await request(["api", "--method", "POST", `repos/${repository}/git/refs`, "-f", `ref=refs/tags/${tag}`, "-f", `sha=${commit}`]);
+    return;
+  }
+  assert.equal(sha, commit, "Existing immutable tag points at a different source commit");
+}
+
+function existingReleaseCommit(release, tagSha) {
+  if (/^[a-f0-9]{40}$/.test(release?.target_commitish ?? "")) return release.target_commitish;
+  return tagSha;
+}
+
+export function alreadyPublishedMessage(tag) {
+  return `Release ${tag} already exists; skipping publish`;
 }
 
 // /releases/latest/download can keep serving the previous manifest after Latest
@@ -155,10 +170,17 @@ async function restorePreviousLatest(previous, tag, request) {
 export async function publishRelease(directory, commit, version, request = gh, download = fetch, options = {}) {
   const proof = await verifyReleaseDirectory(directory, commit, version);
   assert.deepEqual(proof.targets, ["darwin-arm64", "linux-x64", "win32-x64"], "All native release targets must pass");
-  await assertPublishableMainCommit(commit, request);
   const tag = `v${version}`;
   const existing = JSON.parse(await request(["api", `repos/${repository}/releases`, "--paginate", "--slurp"])).flat();
-  assert(!existing.some(item => item.tag_name === tag), "Release tags/assets are immutable; choose a new source version");
+  const found = existing.find(item => item.tag_name === tag);
+  if (found && found.draft !== true) {
+    const tagSha = await readTagCommit(tag, request);
+    assert.equal(existingReleaseCommit(found, tagSha), commit, "Existing immutable tag points at a different source commit");
+    const reason = alreadyPublishedMessage(tag);
+    console.log(reason);
+    return { skipped: true, reason, tag, commit };
+  }
+  await assertPublishableMainCommit(commit, request);
   await ensureImmutableTag(tag, commit, request);
   // The one-line install scripts ride along with every release and are checksummed like any other asset.
   await addInstallScripts(directory, proof.inventory);
