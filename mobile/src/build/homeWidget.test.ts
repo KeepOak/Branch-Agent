@@ -19,7 +19,8 @@ const plugins = app.expo.plugins as Plugin[];
 describe('the Android home-screen widget', () => {
   it('is wired through the Expo config plugin, not a committed android/ folder', () => {
     expect(plugins).toContain('./plugins/withHomeWidget.js');
-    expect(existsSync(path.join(mobileRoot, 'android'))).toBe(false);
+    const gitignore = readFileSync(path.join(mobileRoot, '.gitignore'), 'utf8');
+    expect(gitignore.split(/\r?\n/).map((line) => line.trim())).toContain('/android');
   });
 
   it('registers an AppWidgetProvider that opens Ask Branch', () => {
