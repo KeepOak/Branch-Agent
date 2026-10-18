@@ -93,11 +93,14 @@ export function parseSimctlLaunch(output) {
 
 export function discoverIosProject(iosDir) {
   const names = existsSync(iosDir) ? readdirSync(iosDir) : [];
-  const workspace = names.find((name) => name.endsWith('.xcworkspace') && name !== 'Pods.xcworkspace');
-  if (!workspace) throw new Error(`no iOS workspace in ${iosDir}`);
-  const scheme = workspace.replace(/\.xcworkspace$/, '');
+  const workspaceName = names.find((name) => name.endsWith('.xcworkspace') && name !== 'Pods.xcworkspace');
+  const projectName = names.find((name) => name.endsWith('.xcodeproj'));
+  const scheme = (workspaceName ?? projectName ?? '').replace(/\.xcworkspace$|\.xcodeproj$/, '');
+  if (!scheme) {
+    throw new Error(`no iOS project in ${iosDir} (found: ${names.join(', ') || 'empty'})`);
+  }
   return {
-    workspace: path.join(iosDir, workspace),
+    workspace: workspaceName ? path.join(iosDir, workspaceName) : '',
     scheme,
     project: path.join(iosDir, `${scheme}.xcodeproj`),
   };
@@ -332,10 +335,13 @@ function main() {
   if (wantPods) {
     if (!project) project = discoverIosProject(path.join(mobile, 'ios'));
     podInstall();
+    // `expo prebuild --no-install` writes the xcodeproj and Podfile; pod install creates the workspace.
+    project = discoverIosProject(path.join(mobile, 'ios'));
   }
   let appPath = process.env.IOS_APP_PATH || '';
   if (wantBuild) {
-    if (!project) project = discoverIosProject(path.join(mobile, 'ios'));
+    if (!project?.workspace) project = discoverIosProject(path.join(mobile, 'ios'));
+    if (!project.workspace) throw new Error('pod install did not create an xcworkspace');
     appPath = build(project);
   }
   const zipPath = appPath ? zipApp(appPath) : '';

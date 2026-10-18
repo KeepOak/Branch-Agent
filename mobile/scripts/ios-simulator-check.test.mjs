@@ -72,6 +72,12 @@ describe('iOS simulator CI contract', () => {
   it('discovers the generated workspace and prefers an iPhone simulator', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'ios-project-'));
     try {
+      mkdirSync(path.join(dir, 'BranchAgent.xcodeproj'));
+      assert.deepEqual(discoverIosProject(dir), {
+        workspace: '',
+        scheme: 'BranchAgent',
+        project: path.join(dir, 'BranchAgent.xcodeproj'),
+      });
       mkdirSync(path.join(dir, 'BranchAgent.xcworkspace'));
       mkdirSync(path.join(dir, 'Pods.xcworkspace'));
       assert.deepEqual(discoverIosProject(dir), {
