@@ -46,11 +46,11 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
     - `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`
     - REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
     The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase.
-    Only the PR reviewer (Branch PR Closer) adds the `gate-change-reviewed: <full head SHA>` marker, after reviewing the workflow and gate-file changes on that exact head. Fixers and authors never add it.
+    Only the PR reviewer (Branch PR Closer) adds the `gate-change-reviewed: <full head SHA>` marker, after reviewing the workflow and gate-file changes on that exact head. An earlier head's marker also counts when every later commit only merges main cleanly and the gate-file diff is unchanged. Fixers and authors never add it.
 
 13. **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout.
 
-14. **Releases are batched.** A merge touching `engine/`, `window/` or `desktop/` is built in CI and published in 30-minute batches: the schedule at :07 and :37, or a push to main when the latest release is more than 25 minutes old (backup if GitHub drops a cron slot). A batch publishes when at least one commit landed since the last release and no check run on main's head has failed. Installed apps pick up the batched release within the hour and apply on restart. Treat every merge as potentially shipping in the next batch.
+14. **Releases are batched.** A merge touching `engine/`, `window/` or `desktop/` is built in CI and published in 30-minute batches: the schedule at :07 and :37, or a push to main when the latest release is more than 25 minutes old (backup if GitHub drops a cron slot). A batch publishes when at least one commit landed since the last release and no push-validation check on main's head has failed (`recheck` / other `workflow_run` jobs that attach to main for other pull-request heads do not count). Installed apps pick up the batched release within the hour and apply on restart. Treat every merge as potentially shipping in the next batch.
 
 15. **Stop processes you start.** Any test, self-test or proof script that starts a process (MCP servers, mcporter, node, browsers) must stop it and its children before finishing. Leftover processes lock the app install folder and block updates.
 

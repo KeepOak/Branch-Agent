@@ -51,7 +51,12 @@ export function cleanupTempDirs(tempDirs: TempDirCollection): void {
   const errors: unknown[] = [];
   for (const dir of dirs) {
     try {
-      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+      fs.rmSync(dir, {
+        recursive: true,
+        force: true,
+        maxRetries: process.platform === "win32" ? 10 : 5,
+        retryDelay: process.platform === "win32" ? 50 : 20,
+      });
       if (Array.isArray(tempDirs)) {
         tempDirs.splice(tempDirs.indexOf(dir), 1);
       } else {

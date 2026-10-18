@@ -9,6 +9,7 @@ import {
   cloudAgentTrailer,
   ciSkippedLines,
   formatProblems,
+  gateFileProblems,
   inputFromApi,
   unverifiedFileNames,
   namedListPathFor,
@@ -170,6 +171,395 @@ test('the gate marker for this exact head satisfies the gate-file rule; a marker
 gate-change-reviewed: ${SHA}` }))), []);
   assert.deepEqual(checksOf(runPreflight(withInput({ ...gated, body: `${BODY}
 gate-change-reviewed: ${'b'.repeat(40)}` }))), ['gate-files']);
+});
+
+const MARKER_M = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const MERGE_ONE = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+const MERGE_TWO = 'cccccccccccccccccccccccccccccccccccccccc';
+const MAIN_P1 = '1111111111111111111111111111111111111111';
+const MAIN_P2 = '2222222222222222222222222222222222222222';
+const AUTHOR_SHA = 'dddddddddddddddddddddddddddddddddddddddd';
+const FOREIGN_SHA = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+const CARRY_FILE = '.github/workflows/desktop-checks.yml';
+const CARRY_PATCH = '@@ -1,2 +1,3 @@\n on: [push]\n+  pull_request:\n jobs: {}\n';
+const CARRY_PATHS = new Set([CARRY_FILE]);
+
+function apiCommit(sha, parents) {
+  return { sha, parents: parents.map((parent) => ({ sha: parent })) };
+}
+
+function carryFile(overrides = {}) {
+  return {
+    filename: CARRY_FILE,
+    status: 'modified',
+    patch: CARRY_PATCH,
+    ...overrides,
+  };
+}
+
+function gitIn(dir, args, input) {
+  return execFileSync('git', ['-C', dir, '-c', 'user.email=test@example.com', '-c', 'user.name=Test', '-c', 'commit.gpgsign=false', ...args], {
+    encoding: 'utf8',
+    input,
+    windowsHide: true,
+  }).trim();
+}
+
+function parseLsTree(raw) {
+  const entries = [];
+  for (const line of String(raw ?? '').split('\n')) {
+    if (!line) continue;
+    const match = /^([0-7]+) (blob|commit) ([0-9a-f]{40})\t(.*)$/.exec(line);
+    if (!match) throw new Error(`bad ls-tree line ${line}`);
+    entries.push({ mode: match[1], type: match[2], sha: match[3], path: match[4] });
+  }
+  return entries;
+}
+
+function snapshotTree(dir, sha) {
+  const tree = gitIn(dir, ['rev-parse', `${sha}^{tree}`]);
+  return { tree, entries: parseLsTree(gitIn(dir, ['ls-tree', '-r', tree])) };
+}
+
+// Real trees for the fake carry SHAs, so a clean merge of main proves itself through git merge-tree.
+function buildCleanCarryFixture() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'gate-clean-carry-'));
+  const commitAll = (message) => {
+    gitIn(dir, ['add', '.']);
+    gitIn(dir, ['commit', '-m', message]);
+    return gitIn(dir, ['rev-parse', 'HEAD']);
+  };
+  try {
+    gitIn(dir, ['init', '-q', '-b', 'main']);
+    writeFileSync(path.join(dir, 'README'), 'base\n');
+    const base = commitAll('base');
+    writeFileSync(path.join(dir, 'feature.txt'), 'from main\n');
+    const main1 = commitAll('main1');
+    gitIn(dir, ['checkout', '-q', '-b', 'pr', base]);
+    mkdirSync(path.join(dir, '.github', 'workflows'), { recursive: true });
+    writeFileSync(path.join(dir, CARRY_FILE), 'on: [push]\njobs: {}\n');
+    const marker = commitAll('marker');
+    gitIn(dir, ['merge', '-q', '--no-ff', 'main', '-m', 'merge1']);
+    const merge1 = gitIn(dir, ['rev-parse', 'HEAD']);
+    gitIn(dir, ['checkout', '-q', 'main']);
+    writeFileSync(path.join(dir, 'feature2.txt'), 'more main\n');
+    const main2 = commitAll('main2');
+    gitIn(dir, ['checkout', '-q', 'pr']);
+    gitIn(dir, ['merge', '-q', '--no-ff', 'main', '-m', 'merge2']);
+    const merge2 = gitIn(dir, ['rev-parse', 'HEAD']);
+    const commits = new Map([
+      [MARKER_M, snapshotTree(dir, marker)],
+      [MAIN_P1, snapshotTree(dir, main1)],
+      [MERGE_ONE, snapshotTree(dir, merge1)],
+      [MAIN_P2, snapshotTree(dir, main2)],
+      [MERGE_TWO, snapshotTree(dir, merge2)],
+    ]);
+    const baseTree = snapshotTree(dir, base);
+    const main1Tree = snapshotTree(dir, main1);
+    const trees = new Map();
+    for (const snap of [...commits.values(), baseTree, main1Tree]) {
+      trees.set(snap.tree, { sha: snap.tree, truncated: false, tree: snap.entries });
+    }
+    const bases = new Map([
+      [`${MARKER_M} ${MAIN_P1}`, { sha: base, tree: baseTree.tree }],
+      [`${MERGE_ONE} ${MAIN_P2}`, { sha: main1, tree: main1Tree.tree }],
+    ]);
+    return { commits, trees, bases };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const CLEAN_CARRY = buildCleanCarryFixture();
+
+function compareRequest({
+  baseRef = 'main',
+  markerSha = MARKER_M,
+  markerFiles = [carryFile()],
+  onBase = new Set([MAIN_P1, MAIN_P2]),
+  truncated = false,
+} = {}) {
+  return (requestPath) => {
+    const pathOnly = requestPath.split('?')[0];
+    const commitMatch = /^git\/commits\/([0-9a-f]{40})$/i.exec(pathOnly);
+    if (commitMatch) {
+      const found = CLEAN_CARRY.commits.get(commitMatch[1].toLowerCase());
+      if (!found) throw new Error(`unexpected ${requestPath}`);
+      return { sha: commitMatch[1].toLowerCase(), tree: { sha: found.tree } };
+    }
+    const treeMatch = /^git\/trees\/([0-9a-f]{40})$/i.exec(pathOnly);
+    if (treeMatch) {
+      const found = CLEAN_CARRY.trees.get(treeMatch[1].toLowerCase());
+      if (!found) throw new Error(`unexpected ${requestPath}`);
+      return found;
+    }
+    const compare = /^compare\/([^/?]+)\.\.\.([^/?]+)/.exec(requestPath);
+    if (!compare) throw new Error(`unexpected ${requestPath}`);
+    const left = compare[1];
+    const right = compare[2];
+    if (right === baseRef) {
+      return onBase.has(left.toLowerCase())
+        ? { status: 'ahead', behind_by: 0, ahead_by: 4 }
+        : { status: 'diverged', behind_by: 2, ahead_by: 1 };
+    }
+    if (left === baseRef && right.toLowerCase() === markerSha.toLowerCase()) {
+      return { truncated, files: markerFiles };
+    }
+    const pair = CLEAN_CARRY.bases.get(`${left.toLowerCase()} ${right.toLowerCase()}`);
+    if (pair) {
+      return { merge_base_commit: { sha: pair.sha, commit: { tree: { sha: pair.tree } } } };
+    }
+    throw new Error(`unexpected compare ${requestPath}`);
+  };
+}
+
+function carryGate(overrides = {}) {
+  const markerSha = overrides.markerSha ?? MARKER_M;
+  const files = overrides.files ?? [carryFile()];
+  return gateFileProblems({
+    changedFiles: overrides.changedFiles ?? [CARRY_FILE],
+    body: overrides.body ?? `gate-change-reviewed: ${markerSha}`,
+    headSha: overrides.headSha ?? MERGE_ONE,
+    protectedPaths: overrides.protectedPaths ?? CARRY_PATHS,
+    commits: overrides.commits,
+    files,
+    baseRef: overrides.baseRef ?? 'main',
+    request: overrides.request ?? compareRequest({
+      markerSha,
+      markerFiles: overrides.markerFiles ?? files,
+      onBase: overrides.onBase,
+      truncated: overrides.truncated,
+    }),
+    baselineGrew: overrides.baselineGrew,
+    repoDir: overrides.repoDir,
+  });
+}
+
+test('a gate marker carries across one merge of main', () => {
+  assert.deepEqual(carryGate({
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+  }), []);
+  const body = BODY.replaceAll(SHA, MERGE_ONE);
+  assert.deepEqual(checksOf(runPreflight(withInput({
+    body: `${body}\ngate-change-reviewed: ${MARKER_M}`,
+    headSha: MERGE_ONE,
+    changedFiles: [CARRY_FILE],
+    protectedPaths: CARRY_PATHS,
+    prCommits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+    files: [carryFile()],
+    baseRef: 'main',
+    request: compareRequest(),
+  }))), []);
+});
+
+test('a gate marker carries across two merges of main', () => {
+  assert.deepEqual(carryGate({
+    headSha: MERGE_TWO,
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+      apiCommit(MERGE_TWO, [MERGE_ONE, MAIN_P2]),
+    ],
+  }), []);
+});
+
+test('an author commit after the marker that touches a gate file does not carry', () => {
+  const problems = carryGate({
+    headSha: AUTHOR_SHA,
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(AUTHOR_SHA, [MARKER_M]),
+    ],
+    files: [carryFile({ patch: `${CARRY_PATCH}+author\n` })],
+  });
+  assert.deepEqual(checksOf(problems), ['gate-files']);
+});
+
+test('an author commit after the marker that touches no gate file does not carry', () => {
+  const problems = carryGate({
+    headSha: AUTHOR_SHA,
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(AUTHOR_SHA, [MARKER_M]),
+    ],
+  });
+  assert.deepEqual(checksOf(problems), ['gate-files']);
+});
+
+test('a merge whose conflict resolution changes the gate patch does not carry', () => {
+  const problems = carryGate({
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+    files: [carryFile({ patch: `${CARRY_PATCH}+resolved\n` })],
+    markerFiles: [carryFile()],
+  });
+  assert.deepEqual(checksOf(problems), ['gate-files']);
+});
+
+test('a merge whose second parent is not on the base branch does not carry', () => {
+  const problems = carryGate({
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, FOREIGN_SHA]),
+    ],
+    onBase: new Set([MAIN_P1]),
+  });
+  assert.deepEqual(checksOf(problems), ['gate-files']);
+});
+
+test('a marker SHA that is not a commit on the pull request does not carry', () => {
+  const problems = carryGate({
+    commits: [apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1])],
+  });
+  assert.deepEqual(checksOf(problems), ['gate-files']);
+});
+
+test('a missing or truncated protected-file patch does not carry', () => {
+  assert.deepEqual(checksOf(carryGate({
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+    markerFiles: [{ filename: CARRY_FILE, status: 'modified' }],
+  })), ['gate-files']);
+  assert.deepEqual(checksOf(carryGate({
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+    truncated: true,
+  })), ['gate-files']);
+});
+
+function withCarryHistory(run) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'gate-dirty-carry-'));
+  try {
+    gitIn(dir, ['init', '-q', '-b', 'main']);
+    writeFileSync(path.join(dir, 'README'), 'base\n');
+    gitIn(dir, ['add', '.']);
+    gitIn(dir, ['commit', '-m', 'base']);
+    const base = gitIn(dir, ['rev-parse', 'HEAD']);
+    writeFileSync(path.join(dir, 'from-main.txt'), 'from main\n');
+    gitIn(dir, ['add', '.']);
+    gitIn(dir, ['commit', '-m', 'main']);
+    const mainTip = gitIn(dir, ['rev-parse', 'HEAD']);
+    gitIn(dir, ['checkout', '-q', '-b', 'pr', base]);
+    mkdirSync(path.join(dir, '.github', 'workflows'), { recursive: true });
+    writeFileSync(path.join(dir, CARRY_FILE), 'on: [push]\njobs: {}\n');
+    gitIn(dir, ['add', '.']);
+    gitIn(dir, ['commit', '-m', 'marker']);
+    const marker = gitIn(dir, ['rev-parse', 'HEAD']);
+    gitIn(dir, ['merge', '-q', '--no-ff', 'main', '-m', 'clean']);
+    const clean = gitIn(dir, ['rev-parse', 'HEAD']);
+    gitIn(dir, ['checkout', '-q', marker]);
+    gitIn(dir, ['merge', '-q', '-s', 'ours', 'main', '-m', 'ours']);
+    const ours = gitIn(dir, ['rev-parse', 'HEAD']);
+    gitIn(dir, ['checkout', '-q', clean]);
+    writeFileSync(path.join(dir, 'extra.txt'), 'evil\n');
+    gitIn(dir, ['add', 'extra.txt']);
+    const extraTree = gitIn(dir, ['write-tree']);
+    const extra = gitIn(dir, ['commit-tree', extraTree, '-p', marker, '-p', mainTip, '-m', 'extra']);
+    run({ dir, base, mainTip, marker, clean, ours, extra });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function requestFromCarryRepo(repo, { marker, onBase }) {
+  const fallback = compareRequest({ markerSha: marker, onBase, markerFiles: [carryFile()] });
+  return (requestPath) => {
+    const pathOnly = requestPath.split('?')[0];
+    const commitMatch = /^git\/commits\/([0-9a-f]{40})$/i.exec(pathOnly);
+    if (commitMatch) {
+      const sha = commitMatch[1].toLowerCase();
+      return { sha, tree: { sha: gitIn(repo, ['rev-parse', `${sha}^{tree}`]) } };
+    }
+    const treeMatch = /^git\/trees\/([0-9a-f]{40})$/i.exec(pathOnly);
+    if (treeMatch) {
+      const tree = treeMatch[1].toLowerCase();
+      return { sha: tree, truncated: false, tree: parseLsTree(gitIn(repo, ['ls-tree', '-r', tree])) };
+    }
+    const blobMatch = /^git\/blobs\/([0-9a-f]{40})$/i.exec(pathOnly);
+    if (blobMatch) {
+      const sha = blobMatch[1].toLowerCase();
+      const bytes = execFileSync('git', ['-C', repo, 'cat-file', 'blob', sha], { windowsHide: true });
+      return { sha, encoding: 'base64', content: bytes.toString('base64') };
+    }
+    const compare = /^compare\/([0-9a-f]{40})\.\.\.([0-9a-f]{40})$/i.exec(pathOnly);
+    if (compare) {
+      const left = compare[1].toLowerCase();
+      const right = compare[2].toLowerCase();
+      const base = gitIn(repo, ['merge-base', left, right]);
+      return {
+        merge_base_commit: { sha: base, commit: { tree: { sha: gitIn(repo, ['rev-parse', `${base}^{tree}`]) } } },
+      };
+    }
+    return fallback(requestPath);
+  };
+}
+
+function historyProblems(repo, { head, marker, mainTip, base, parents }) {
+  const shared = {
+    headSha: head,
+    markerSha: marker,
+    commits: [apiCommit(marker, [base]), apiCommit(head, parents)],
+    onBase: new Set([mainTip]),
+    files: [carryFile()],
+    markerFiles: [carryFile()],
+  };
+  return {
+    local: carryGate({ ...shared, repoDir: repo }),
+    api: carryGate({ ...shared, request: requestFromCarryRepo(repo, { marker, onBase: shared.onBase }) }),
+  };
+}
+
+test('an ours merge that drops main\'s changes does not carry the marker', () => {
+  withCarryHistory(({ dir, base, mainTip, marker, clean, ours }) => {
+    const cleanCarry = historyProblems(dir, { head: clean, marker, mainTip, base, parents: [marker, mainTip] });
+    assert.deepEqual(cleanCarry.local, []);
+    assert.deepEqual(cleanCarry.api, []);
+    const dropped = historyProblems(dir, { head: ours, marker, mainTip, base, parents: [marker, mainTip] });
+    assert.deepEqual(checksOf(dropped.local), ['gate-files']);
+    assert.deepEqual(checksOf(dropped.api), ['gate-files']);
+  });
+});
+
+test('a merge that adds an extra untrusted file does not carry the marker', () => {
+  withCarryHistory(({ dir, base, mainTip, marker, extra }) => {
+    const added = historyProblems(dir, { head: extra, marker, mainTip, base, parents: [marker, mainTip] });
+    assert.deepEqual(checksOf(added.local), ['gate-files']);
+    assert.deepEqual(checksOf(added.api), ['gate-files']);
+  });
+});
+
+test('button-crawl baseline growth still requires the exact head marker', () => {
+  assert.deepEqual(checksOf(carryGate({
+    changedFiles: ['scripts/button-crawl/baseline.json'],
+    protectedPaths: new Set(),
+    baselineGrew: true,
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+  })), ['gate-files']);
+  assert.deepEqual(carryGate({
+    changedFiles: ['scripts/button-crawl/baseline.json'],
+    protectedPaths: new Set(),
+    baselineGrew: true,
+    body: `gate-change-reviewed: ${MERGE_ONE}`,
+    commits: [
+      apiCommit(MARKER_M, [SHA]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ],
+  }), []);
 });
 
 test('a desktop test that desktop-checks.yml does not run fails, and one it runs passes (the gate rule, not a copy)', () => {

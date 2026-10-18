@@ -11,6 +11,7 @@ import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
 import { useResource } from "../library/data";
+import { plainError } from "../../shell/plain-error";
 import { Status } from "../library/ui";
 import { ConsentDialog, readItems, usePluginAction, type Item } from "./catalog";
 import { Grey, list, Pill, rec, str, type Rec } from "./common";
@@ -141,7 +142,7 @@ export function GetCapabilitiesDialog({ engine, close, done, scope = {} }: { eng
     {kind ? <>
       <label className="cz-search"><Icon name="search" small /><input type="search" aria-label={`Search ${tab.toLowerCase()}`} placeholder={`Search ${tab.toLowerCase()}`} value={query} onChange={e => setQuery(e.target.value)} /></label>
       <Status {...plugins} /><Status {...skills} /><Status {...catalog} /><Status {...found} />
-      {remote && <p className="cz-hint">{remote}</p>}
+      {remote && <p className="cz-hint">{plainError(remote)}</p>}
       {plugins.data != null && !rows.length && <EmptyLine icon={<Icon name="search" />}>{q ? "Nothing matches. Try another search." : "Nothing to show yet."}</EmptyLine>}
       <div className="get-rows">{rows.map(r => <GetRowCard key={r.id} row={r} busy={action.busy === r.id}
         install={() => r.install && start(r, "Install", r.install)} remove={() => setConfirming(r)} />)}</div>
@@ -175,6 +176,6 @@ function ResultDialog({ work, busy, error, finished, close }: { work: Work; busy
   const said = busy ? `${install ? "Installing" : "Removing"} ${name}…` : finished ? `${name} is ${install ? "installed" : "removed"}.` : "";
   return <Dialog title={`${work.verb} ${name}`} onClose={close} testid="get-result" footer={<button type="button" className="btn pri" disabled={busy} onClick={close}>Done</button>}>
     <p className="dlg-p" role="status">{said}</p>
-    {error && <p role="alert" className="cz-error">{error}</p>}
+    {error && <p role="alert" className="cz-error">{plainError(error)}</p>}
   </Dialog>;
 }

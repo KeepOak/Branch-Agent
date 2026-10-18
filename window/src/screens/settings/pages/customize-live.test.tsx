@@ -61,7 +61,8 @@ it("draws the preview's Customize cards in order at each level", async () => {
   expect(host.querySelector("[data-testid=customize-hub]")).not.toBeNull();
   await act(async () => root.unmount()); root = createRoot(host); forgetLookStore();
   await mount(engine, "advanced");
-  expect(cards()).toEqual(["", "Saved prompts", "Tools and skills", "Skills", "Helpers and other agents", "What it can do", "Allow", "Connected agents", "Connect an agent", "Another Branch"]);
+  // Skills is all later-update rows: it shows with every Coming row, at Technical (Private #1093 item 4).
+  expect(cards()).toEqual(["", "Saved prompts", "Tools and skills", "Helpers and other agents", "What it can do", "Allow", "Connected agents", "Connect an agent", "Another Branch"]);
   await act(async () => root.unmount()); root = createRoot(host); forgetLookStore();
   await mount(engine, "technical");
   expect(cards()).toEqual(["", "Saved prompts", "Tools and skills", "Skills", "Plugins", "Helpers and other agents", "What it can do", "Allow", "Connected agents", "Connect an agent", "Another Branch"]);
@@ -70,9 +71,9 @@ it("draws the preview's Customize cards in order at each level", async () => {
 it("draws the kinds hub in the preview's order and words, with For:", async () => {
   await mount(engineOf().engine, "regular");
   const hub = host.querySelector<HTMLElement>("[data-testid=customize-hub]")!;
-  expect(hub.querySelector(".cz-lh")?.textContent).toBe("For:");
-  expect([...hub.querySelectorAll(".cz-whose .cz-chip")].map((b) => b.textContent)).toEqual(["All", "Sapling"]);
-  expect([...hub.querySelectorAll(".t9-kind b")].map((b) => b.textContent)).toEqual(["Toolsets", "Connectors", "Skills", "Plugins", "Command-line tools", "Agents & specialists"]);
+  expect(hub.querySelector(".cz-for-l")?.textContent).toBe("For:");
+  expect([...hub.querySelectorAll(".cz-for .cz-face")].map((b) => b.textContent)).toEqual(["All", "Sapling"]);
+  expect([...hub.querySelectorAll(".t9-kind > span")].map((b) => b.textContent)).toEqual(["Toolsets", "Connectors", "Skills", "Plugins", "Command-line tools", "Agents & specialists"]);
   expect(hub.textContent).toContain("2 agents connected · 1 online");
 });
 
@@ -129,26 +130,24 @@ const typeInto = async (input: HTMLInputElement, value: string) => {
   });
 };
 
-it("keeps All chosen in the For group and shows the open kind in the summary", async () => {
+it("keeps All chosen in the For group and opens the chosen kind's own list", async () => {
   await mount(engineOf().engine, "regular");
   const hub = host.querySelector<HTMLElement>("[data-testid=customize-hub]")!;
-  const group = hub.querySelector<HTMLElement>('[role="group"][aria-label="For:"]')!;
+  const group = hub.querySelector<HTMLElement>('.cz-for [role="group"]')!;
   const chip = (name: string) => [...group.querySelectorAll("button")].find((b) => b.textContent === name)!;
   expect(chip("All").getAttribute("aria-pressed")).toBe("true");
-  const summary = () => hub.querySelector("[data-testid=hub-summary]")!.textContent ?? "";
-  expect(summary()).toContain("Skills");
-  expect(summary()).toContain("All");
+  expect(hub.querySelector("[data-kind-list=Skills]")).not.toBeNull();
+  expect(hub.querySelector("[data-testid=hub-summary]")).toBeNull();
   expect(hub.querySelector(".t9-addbtn")).toBeNull();
   await act(async () => { chip("Sapling").click(); });
   expect(chip("Sapling").getAttribute("aria-pressed")).toBe("true");
   expect(chip("All").getAttribute("aria-pressed")).toBe("false");
-  expect(summary()).toContain("Sapling");
   const connectors = hub.querySelector<HTMLButtonElement>('[data-kind="Connectors"]')!;
   expect(connectors.getAttribute("aria-pressed")).toBe("false");
   await act(async () => { connectors.click(); });
   expect(connectors.getAttribute("aria-pressed")).toBe("true");
-  expect(summary()).toContain("Connectors");
-  expect(summary()).toContain("Sapling");
+  expect(hub.querySelector("[data-kind-list=Connectors]")).not.toBeNull();
+  expect(hub.querySelector("[data-kind-list=Skills]")).toBeNull();
 });
 
 it("adds a folder once a name is typed, and leaves an empty Add off", async () => {
