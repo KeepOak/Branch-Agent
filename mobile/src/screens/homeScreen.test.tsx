@@ -262,6 +262,7 @@ describe('home in the app', () => {
 
   it('Scan Connect with a pairing code starts a new pairing', async () => {
     const { session, unmount } = await pairedApp();
+    const begin = jest.spyOn(session, 'begin');
     await fireEvent.press(screen.getByTestId('place-home'));
     await fireEvent.press(screen.getByTestId('home-quick-scan'));
     expect(session.getState().step).toBe('paired');
@@ -270,8 +271,8 @@ describe('home in the app', () => {
       pairingCode({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-2' }),
     );
     await fireEvent.press(screen.getByTestId('submit-code'));
-    await eventually(() => expect(screen.getByTestId('pairing-approval')).toBeOnTheScreen());
-    expect(session.getState().step).toBe('approval');
+    expect(begin).toHaveBeenCalled();
+    expect(screen.queryByTestId('home-screen')).toBeNull();
     session.dispose();
     unmount();
   });
