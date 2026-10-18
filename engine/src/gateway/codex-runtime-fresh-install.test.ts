@@ -62,6 +62,9 @@ describe("fresh install codex runtime", () => {
             token,
             // The window's operator scopes, so a missing plugin shows as "unknown method".
             scopes: ["operator.admin"],
+            // Pairing after a full plugin boot can exceed the helper's 10s default
+            // (CI logs: 12s SQLite hold, then "gateway connect timeout").
+            timeoutMs: BOOT_BUDGET_MS,
           });
           try {
             const status = await client.request<{ state?: unknown }>("codex.runtime", {});
