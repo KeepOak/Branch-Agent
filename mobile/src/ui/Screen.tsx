@@ -2,13 +2,15 @@ import type { ReactNode } from 'react';
 import { KeyboardAvoidingView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeProvider';
-import { NoScrollbarScrollView as ScrollView } from './NoScrollbar';
+import { FadeScrollView as ScrollView } from './ScrollFade';
+import { LIST_FADE } from './scrollFade';
 
 /**
  * A screen with the iOS large-title margins: scrolling content above, actions pinned to the bottom. With
  * `avoidKeyboard`, the actions ride above the on-screen keyboard instead of sitting under it, so a tap meant
  * for them never lands on a key. Padding works on both platforms now that Android draws edge to edge and no
  * longer resizes the window for the keyboard. r50 never paints a scrollbar; scrolling still works.
+ * When the page continues below the fold, a spec-v23 bottom fade marks that more is reachable.
  */
 export function Screen({
   children,
@@ -32,7 +34,7 @@ export function Screen({
       <ScrollView
         testID={testID ? `${testID}-scroll` : undefined}
         style={styles.fill}
-        contentContainerStyle={{ paddingTop: insets.top + space.xxl, paddingHorizontal: layout.screenInset, paddingBottom: space.xl + bottomExtra }}
+        contentContainerStyle={{ paddingTop: insets.top + space.xxl, paddingHorizontal: layout.screenInset, paddingBottom: space.xl + bottomExtra + LIST_FADE }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}

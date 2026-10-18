@@ -7,8 +7,11 @@ import { approvalsAt, fixtureApprovals } from '../testing/approvalFixtures';
 import { FIXTURE_NOW, fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier';
 import { createFakeSession } from '../testing/fakeSession';
+import { fadeCue, overflowAt, queryFadeCue } from '../testing/scrollFadeEvents';
 import { ThemeProvider } from '../theme/ThemeProvider';
+import { LIST_FADE } from '../ui/scrollFade';
 import { ApprovalsScreen } from './ApprovalsScreen';
+import { StyleSheet } from 'react-native';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 4000 });
 const MINUTE = 60_000;
@@ -132,6 +135,18 @@ describe('needs you screen', () => {
     await renderScreen({}, { focusId: 'plugin:mail-1' });
     const ids = screen.getAllByTestId(/^approval-/).map((n) => n.props.testID);
     expect(ids[0]).toBe('approval-plugin:mail-1');
+  });
+
+  it('hides the Inbox scrollbar and fades the bottom when more sits below the fold', async () => {
+    await renderScreen();
+    const scroll = screen.getByTestId('inbox-scroll');
+    expect(scroll).toHaveProp('showsVerticalScrollIndicator', false);
+    expect(scroll).toHaveProp('showsHorizontalScrollIndicator', false);
+    expect(StyleSheet.flatten(scroll.props.contentContainerStyle).paddingBottom).toBeGreaterThanOrEqual(LIST_FADE);
+    expect(queryFadeCue('inbox-scroll-fade-end')).toBeNull();
+    await overflowAt('inbox-scroll', 'y', 1400, 640);
+    expect(fadeCue('inbox-scroll-fade-end')).toBeOnTheScreen();
+    expect(screen.getByTestId('approval-plugin:mail-1')).toBeOnTheScreen();
   });
 
   it('groups Needs you by Trunk, then Finished, then History', async () => {

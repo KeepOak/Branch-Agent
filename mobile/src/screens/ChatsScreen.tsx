@@ -25,6 +25,8 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { NoScrollbarFlatList as FlatList, NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
+import { FadeScrollView } from '../ui/ScrollFade';
+import { CHIP_FADE } from '../ui/scrollFade';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { statusBandHeight } from '../ui/PlacesBar';
 import { plainError } from '../ui/plainError';
@@ -252,11 +254,14 @@ function FilterChips({
   const android = look === 'android';
   return (
     <View testID="chat-filters" style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, marginHorizontal: -layout.screenInset, paddingRight: layout.screenInset }}>
-      <ScrollView
-        horizontal
+      <FadeScrollView
+        axis="x"
+        color={color.bg}
+        fadeSize={CHIP_FADE}
+        testID="chat-filters-scroll"
         accessibilityRole="tablist"
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: layout.screenInset, gap: space.sm }}
+        contentContainerStyle={{ paddingHorizontal: layout.screenInset, gap: space.sm, flexGrow: 0 }}
       >
         {CHAT_FILTERS.filter(([id]) => id === 'all' || id === value || counts[id] > 0).map(([id, label]) => {
           const on = id === value;
@@ -278,15 +283,17 @@ function FilterChips({
                 borderColor: color.line,
                 backgroundColor: on ? color.ink : android ? 'transparent' : color.fill,
                 opacity: pressed ? 0.7 : 1,
+                flexShrink: 0,
+                flexGrow: 0,
               })}
             >
-              <ThemedText variant="subhead" style={{ fontWeight: on ? '600' : '400', color: on ? color.bg : color.ink }}>
+              <ThemedText variant="subhead" numberOfLines={1} style={{ fontWeight: on ? '600' : '400', color: on ? color.bg : color.ink }}>
                 {label}
               </ThemedText>
             </Pressable>
           );
         })}
-      </ScrollView>
+      </FadeScrollView>
       <Pressable
         testID="chats-filter"
         accessibilityRole="button"

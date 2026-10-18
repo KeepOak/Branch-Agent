@@ -10,8 +10,10 @@ import { SHOW_LEVEL_KEY } from '../settings/showLevel';
 import { CYCLE_LABEL, PHONE_PREFS_DEFAULT } from '../settings/phonePrefs';
 import { DESKTOP_THEMES } from '../theme/desktopThemes';
 import { THEME_LOOK_KEY, THEME_PREFERENCE_KEY } from '../theme/preference';
+import { fadeCue, overflowAt, queryFadeCue } from '../testing/scrollFadeEvents';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { themeFor } from '../theme/tokens';
+import { LIST_FADE } from '../ui/scrollFade';
 import { permissionLabel, SettingsScreen, SETTINGS_GROUPS } from './SettingsScreen';
 import {
   ASSISTANT_REASON,
@@ -229,6 +231,17 @@ describe('r50 settings parity', () => {
     await renderSettings();
     expect(screen.getByTestId('settings-screen-scroll')).toHaveProp('showsVerticalScrollIndicator', false);
     expect(screen.getByTestId('settings-screen-scroll')).toHaveProp('showsHorizontalScrollIndicator', false);
+  });
+
+  it('fades the bottom edge when Settings continues below the fold, and keeps the last rows reachable', async () => {
+    await renderSettings();
+    const scroll = screen.getByTestId('settings-screen-scroll');
+    expect(StyleSheet.flatten(scroll.props.contentContainerStyle).paddingBottom).toBeGreaterThanOrEqual(LIST_FADE);
+    expect(queryFadeCue('settings-screen-scroll-fade-end')).toBeNull();
+    await overflowAt('settings-screen-scroll', 'y', 1600, 640);
+    expect(fadeCue('settings-screen-scroll-fade-end')).toBeOnTheScreen();
+    expect(screen.getByTestId('this-branch')).toBeOnTheScreen();
+    expect(screen.getByTestId('voice-card')).toBeOnTheScreen();
   });
 
   it('uses the r50 phone groups This Branch, Your assistant, On this phone and Voice', async () => {
