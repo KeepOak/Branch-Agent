@@ -121,6 +121,9 @@ describe('needs you screen', () => {
       { ...plugin, outcome: 'allowed', always: false, by: 'elsewhere', at: FIXTURE_NOW },
     ];
     await renderScreen({ pending: [], answered });
+    expect(screen.queryByTestId('approvals-answered')).toBeNull();
+    expect(screen.queryByTestId('answered-exec-1')).toBeNull();
+    await fireEvent.press(screen.getByTestId('inbox-tab-finished'));
     expect(within(screen.getByTestId('answered-exec-1')).getByText('Allowed on this phone')).toBeOnTheScreen();
     expect(within(screen.getByTestId('answered-plugin:mail-1')).getByText('Sent somewhere else')).toBeOnTheScreen();
   });
@@ -141,7 +144,8 @@ describe('needs you screen', () => {
     expect(within(screen.getByTestId('inbox-group-oak')).getByTestId('approval-exec-1')).toBeOnTheScreen();
     expect(screen.getByTestId('inbox-group-main')).toBeOnTheScreen();
     expect(within(screen.getByTestId('inbox-group-main')).getByTestId('approval-plugin:mail-1')).toBeOnTheScreen();
-    expect(screen.getByTestId('approvals-answered')).toBeOnTheScreen();
+    expect(screen.queryByTestId('approvals-answered')).toBeNull();
+    expect(screen.queryByTestId('answered-exec-1')).toBeNull();
 
     await fireEvent.press(screen.getByTestId('inbox-tab-finished'));
     expect(screen.getByTestId('inbox-finished')).toBeOnTheScreen();
@@ -182,13 +186,15 @@ describe('approvals in the app', () => {
     await fireEvent.press(screen.getByTestId('needs-you-banner'));
     expect(screen.getByText('Inbox')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('allow-exec-1'));
-    await eventually(() => expect(within(screen.getByTestId('answered-exec-1')).getByText('Allowed on this phone')).toBeOnTheScreen());
+    await eventually(() => expect(screen.queryByTestId('approval-exec-1')).toBeNull());
     expect(engine.requests).toContainEqual({ method: 'exec.approval.resolve', params: { id: 'exec-1', decision: 'allow-once' } });
 
-    // The computer answers the other one: it moves to Answered here too.
+    // The computer answers the other one: both land on Finished, not under Needs you.
     engine.resolveApproval('plugin:mail-1', 'deny');
-    await eventually(() => expect(within(screen.getByTestId('answered-plugin:mail-1')).getByText('Not sent somewhere else')).toBeOnTheScreen());
-    expect(screen.getByTestId('approvals-empty')).toBeOnTheScreen();
+    await eventually(() => expect(screen.getByTestId('approvals-empty')).toBeOnTheScreen());
+    await fireEvent.press(screen.getByTestId('inbox-tab-finished'));
+    await eventually(() => expect(within(screen.getByTestId('answered-exec-1')).getByText('Allowed on this phone')).toBeOnTheScreen());
+    expect(within(screen.getByTestId('answered-plugin:mail-1')).getByText('Not sent somewhere else')).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByTestId('approvals-back'));
     expect(screen.queryByTestId('needs-you-banner')).toBeNull();

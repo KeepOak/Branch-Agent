@@ -43,8 +43,8 @@ function useNow(fixed: number | undefined, ticking: boolean): number {
 function TrunkAvatar({ trunk, size = 36 }: { trunk: Trunk; size?: number }) {
   const { color, radius } = useTheme();
   return (
-    <View style={{ width: size, height: size, borderRadius: radius.pill, backgroundColor: color.accentTint, alignItems: 'center', justifyContent: 'center' }}>
-      <ThemedText variant={size >= 36 ? 'headline' : 'subhead'} tone="accentInk">
+    <View style={{ width: size, height: size, borderRadius: radius.pill, backgroundColor: color.fill, alignItems: 'center', justifyContent: 'center' }}>
+      <ThemedText variant={size >= 36 ? 'headline' : 'subhead'} tone="ink">
         {trunk.avatar}
       </ThemedText>
     </View>
@@ -95,7 +95,7 @@ function WhatItDoes({ approval }: { approval: Approval }) {
       </View>
       {long ? (
         <Pressable accessibilityRole="button" onPress={() => setAll((v) => !v)} hitSlop={8} style={{ alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' }}>
-          <ThemedText variant="footnote" tone="accentInk">
+          <ThemedText variant="footnote" tone="ink">
             {all ? 'Show less' : 'Show the whole command'}
           </ThemedText>
         </Pressable>
@@ -156,7 +156,7 @@ function ApprovalCard({
         padding: layout.cardInset,
         marginTop: space.md,
         borderWidth: focused ? 2 : 0,
-        borderColor: color.accent,
+        borderColor: color.ink,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
@@ -190,17 +190,17 @@ function ApprovalCard({
           <ThemedText variant="subhead" tone="ink2">
             {alwaysAllowCover(trunk.name)}
           </ThemedText>
-          <Button title={`Always allow for ${trunk.name}`} kind="secondary" busy={sending === 'allow-always'} disabled={busy} onPress={() => onAnswer(approval.id, 'allow-always')} testID={`always-${approval.id}`} />
-          <Button title="Cancel" kind="plain" disabled={busy} onPress={() => setAskAlways(false)} />
+          <Button title={`Always allow for ${trunk.name}`} kind="ink" busy={sending === 'allow-always'} disabled={busy} onPress={() => onAnswer(approval.id, 'allow-always')} testID={`always-${approval.id}`} />
+          <Button title="Cancel" kind="inkSecondary" disabled={busy} onPress={() => setAskAlways(false)} />
         </View>
       ) : (
         <>
           <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md }}>
             <View style={{ flex: 1 }}>
-              <Button title={verbs.no} kind="secondary" busy={sending === 'deny'} disabled={busy} onPress={() => onAnswer(approval.id, 'deny')} testID={`deny-${approval.id}`} />
+              <Button title={verbs.yes} kind="ink" busy={sending === 'allow-once'} disabled={busy} onPress={() => onAnswer(approval.id, 'allow-once')} testID={`allow-${approval.id}`} />
             </View>
             <View style={{ flex: 1 }}>
-              <Button title={verbs.yes} busy={sending === 'allow-once'} disabled={busy} onPress={() => onAnswer(approval.id, 'allow-once')} testID={`allow-${approval.id}`} />
+              <Button title={verbs.no} kind="inkSecondary" busy={sending === 'deny'} disabled={busy} onPress={() => onAnswer(approval.id, 'deny')} testID={`deny-${approval.id}`} />
             </View>
           </View>
           {always ? (
@@ -211,7 +211,7 @@ function ApprovalCard({
               onPress={() => setAskAlways(true)}
               style={({ pressed }) => ({ alignSelf: 'center', minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
             >
-              <ThemedText variant="subhead" tone="accentInk">
+              <ThemedText variant="subhead" tone="ink">
                 {`Always allow for ${trunk.name}…`}
               </ThemedText>
             </Pressable>
@@ -225,7 +225,7 @@ function ApprovalCard({
           onPress={onOpenChat}
           style={({ pressed }) => ({ marginTop: always && !expired && !askAlways ? 0 : space.sm, borderTopWidth: layout.hairline, borderTopColor: color.line, minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
         >
-          <ThemedText variant="subhead" tone="accentInk">
+          <ThemedText variant="subhead" tone="ink">
             Look at the chat first ›
           </ThemedText>
         </Pressable>
@@ -336,7 +336,7 @@ function AnsweredRow({ answered, trunk, onOpen }: { answered: Answered; trunk: T
             hitSlop={8}
             style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
           >
-            <ThemedText variant="subhead" tone="accentInk">
+            <ThemedText variant="subhead" tone="ink">
               Open
             </ThemedText>
           </Pressable>
@@ -359,14 +359,14 @@ function PermissionCard({ permission, onTurnOn, onSettings }: { permission: Noti
   if (permission !== 'undetermined' && permission !== 'denied') return null;
   const off = permission === 'denied';
   return (
-    <View testID="notifications-card" style={{ backgroundColor: color.accentTint, borderRadius: radius.lg, padding: layout.cardInset, marginTop: space.md, gap: space.sm }}>
+    <View testID="notifications-card" style={{ backgroundColor: color.fill, borderRadius: radius.lg, padding: layout.cardInset, marginTop: space.md, gap: space.sm }}>
       <ThemedText variant="headline">{off ? 'Notifications are off for Branch' : 'Get approvals as notifications'}</ThemedText>
       <ThemedText variant="subhead" tone="ink2">
         {off
           ? 'Turn them on in Settings to answer approvals from the lock screen.'
           : 'Answer with Allow or Deny right on the notification while Branch is in the background.'}
       </ThemedText>
-      <Button title={off ? 'Open Settings' : 'Turn on notifications'} kind="primary" onPress={off ? onSettings : onTurnOn} testID={off ? 'notifications-settings' : 'notifications-turn-on'} />
+      <Button title={off ? 'Open Settings' : 'Turn on notifications'} kind="ink" onPress={off ? onSettings : onTurnOn} testID={off ? 'notifications-settings' : 'notifications-turn-on'} />
     </View>
   );
 }
@@ -383,7 +383,7 @@ function Note({ title, body, testID, action }: { title: string; body: string; te
       </ThemedText>
       {action ? (
         <View style={{ marginTop: space.md, alignSelf: 'stretch' }}>
-          <Button title={action.title} kind="secondary" onPress={action.onPress} testID={`${testID}-action`} />
+          <Button title={action.title} kind="inkSecondary" onPress={action.onPress} testID={`${testID}-action`} />
         </View>
       ) : null}
     </View>
@@ -424,7 +424,7 @@ function TestApprovalCard({ state, waiting, onSend, onCancel }: { state: TestApp
           </>
         ) : (
           <>
-            <Button title="Send a test approval" kind="secondary" busy={state.phase === 'sending'} disabled={state.phase === 'sending'} onPress={() => onSend(0)} testID="test-approval-send" />
+            <Button title="Send a test approval" kind="inkSecondary" busy={state.phase === 'sending'} disabled={state.phase === 'sending'} onPress={() => onSend(0)} testID="test-approval-send" />
             <Button
               title={`Send one in ${Math.round(TEST_APPROVAL_DELAY_MS / 1000)} seconds`}
               kind="plain"
@@ -563,7 +563,7 @@ export function ApprovalsScreen({
           hitSlop={8}
           style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
         >
-          <ThemedText variant="body" tone="accentInk">
+          <ThemedText variant="body" tone="ink">
             ‹ Chats
           </ThemedText>
         </Pressable>
@@ -598,18 +598,6 @@ export function ApprovalsScreen({
           <>
             <PermissionCard permission={permission} onTurnOn={onTurnOnNotifications} onSettings={onOpenSettings} />
             {needsBody}
-            {snapshot.answered.length ? (
-              <View testID="approvals-answered" style={{ marginTop: space.xxl }}>
-                <ThemedText variant="footnote" tone="ink3" accessibilityRole="header" style={{ fontWeight: '600', textTransform: 'uppercase', marginBottom: space.xs }}>
-                  Finished
-                </ThemedText>
-                <View style={{ backgroundColor: color.raise, borderRadius: radius.lg, paddingHorizontal: layout.cardInset, paddingVertical: space.xs }}>
-                  {snapshot.answered.map((answered) => (
-                    <AnsweredRow key={answered.id} answered={answered} trunk={trunkOf(answered, snapshot.trunks)} />
-                  ))}
-                </View>
-              </View>
-            ) : null}
             {test ? (
               <TestApprovalCard state={test.state} waiting={snapshot.pending.some((a) => a.pluginId === TEST_APPROVAL_PLUGIN)} onSend={test.onSend} onCancel={test.onCancel} />
             ) : null}
