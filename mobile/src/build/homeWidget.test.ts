@@ -45,7 +45,7 @@ describe('the Android home-screen widget', () => {
 
   it('adds the receiver only once on the generated app manifest', () => {
     const { ensureHomeWidgetReceiver, PROVIDER_CLASS } = require(pluginPath) as {
-      ensureHomeWidgetReceiver: (manifest: { manifest: { application: Array<{ receiver?: unknown[] }> } }) => {
+      ensureHomeWidgetReceiver: (manifest: unknown) => {
         manifest: { application: Array<{ receiver: Array<{ $: { 'android:name': string } }> }> };
       };
       PROVIDER_CLASS: string;
