@@ -90,7 +90,7 @@ jobs:
         run: node scripts/ios-simulator-check.mjs --ci
 
       - name: Save CocoaPods cache
-        if: always()
+        if: success()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         continue-on-error: true
         with:
@@ -98,7 +98,7 @@ jobs:
           key: cocoapods-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json') }}
 
       - name: Save Xcode derived data
-        if: always()
+        if: success()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         continue-on-error: true
         with:
