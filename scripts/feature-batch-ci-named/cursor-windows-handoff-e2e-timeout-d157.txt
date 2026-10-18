@@ -1,2 +1,2 @@
-# Covered by engine-handoff-checks. Feature-batch omits *.e2e.test.ts from namedTests.
+# Covered by engine-handoff-checks. namedTests omits *.e2e.test.ts so this listing is preflight-only.
 engine:test/gateway-desktop-handoff.e2e.test.ts
