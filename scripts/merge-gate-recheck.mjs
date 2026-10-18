@@ -44,21 +44,32 @@ export function runGh(args, env = process.env, {
   });
 }
 
+function isCancelledRun(run) {
+  return run?.status === 'completed' && run.conclusion === 'cancelled';
+}
+
+// Newest non-cancelled run wins. A cancelled run is pending, not failed, when
+// another run of the same workflow exists or is queued. Cancelled-only still
+// counts as a failure, same as merge-gate and merge-gate-trusted.
+function newestRelevant(runs) {
+  const active = runs.filter((run) => !isCancelledRun(run));
+  const pool = active.length ? active : runs;
+  return [...pool].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0] ?? null;
+}
+
 // runs: every run on the head, as { id, workflowName, status, conclusion, createdAt }.
 export function summarizeRuns(runs) {
-  const gates = Object.fromEntries(GATE_NAMES.map((name) => {
-    const named = runs.filter((run) => run.workflowName === name)
-      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-    return [name, named[0] ?? null];
-  }));
-  // Only the newest run per workflow counts: a cancelled or failed older run is superseded by its rerun or its replacement.
-  const newest = new Map();
+  const gates = Object.fromEntries(GATE_NAMES.map((name) => (
+    [name, newestRelevant(runs.filter((run) => run.workflowName === name))]
+  )));
+  const byWorkflow = new Map();
   for (const run of runs) {
     if (GATE_NAMES.includes(run.workflowName) || run.workflowName === RECHECK_NAME) continue;
-    const current = newest.get(run.workflowName);
-    if (!current || String(run.createdAt).localeCompare(String(current.createdAt)) > 0) newest.set(run.workflowName, run);
+    const named = byWorkflow.get(run.workflowName);
+    if (named) named.push(run);
+    else byWorkflow.set(run.workflowName, [run]);
   }
-  const content = [...newest.values()];
+  const content = [...byWorkflow.values()].map((named) => newestRelevant(named)).filter(Boolean);
   return {
     gates,
     contentPending: content.some((run) => run.status !== 'completed'),

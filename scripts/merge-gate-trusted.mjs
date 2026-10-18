@@ -151,13 +151,32 @@ export function sameCheckKey(run, workflowsByCheckId = {}) {
   return path ? `${path}\t${run.name}` : run.name;
 }
 
+export function workflowPrNumbers(run, workflowsByCheckId = {}) {
+  return (lookupWorkflow(workflowsByCheckId, run.id)?.pullRequests ?? [])
+    .map((pr) => Number(pr.number))
+    .filter((number) => Number.isFinite(number));
+}
+
+// A sibling can hide a cancelled run only when it belongs to this PR, or to no
+// PR. A success on another PR that shares the commit must not hide this PR's
+// cancelled run.
+export function isSamePrOrUnattachedSibling(run, workflowsByCheckId = {}, prNumber) {
+  const prs = workflowPrNumbers(run, workflowsByCheckId);
+  if (!prs.length) return true;
+  const thisPr = Number(prNumber);
+  return Number.isFinite(thisPr) && prs.includes(thisPr);
+}
+
 // A cancelled run is not a failure when another run of the same check on this
-// SHA exists or is queued. Only a check that is cancelled with no other run
-// still blocks. Same-named jobs from different workflow paths stay distinct.
-export function dropSupersededCancelled(checkRuns, workflowsByCheckId = {}) {
+// SHA exists or is queued and is tied to this PR or to no PR. Only a check
+// that is cancelled with no such run still blocks. Same-named jobs from
+// different workflow paths stay distinct.
+export function dropSupersededCancelled(checkRuns, workflowsByCheckId = {}, { prNumber } = {}) {
   const activeKeys = new Set();
   for (const run of checkRuns) {
-    if (!isCancelledRun(run)) activeKeys.add(sameCheckKey(run, workflowsByCheckId));
+    if (isCancelledRun(run)) continue;
+    if (!isSamePrOrUnattachedSibling(run, workflowsByCheckId, prNumber)) continue;
+    activeKeys.add(sameCheckKey(run, workflowsByCheckId));
   }
   return checkRuns.filter((run) => !isCancelledRun(run) || !activeKeys.has(sameCheckKey(run, workflowsByCheckId)));
 }
@@ -229,7 +248,7 @@ export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, { sha
       if (!kept.has(run)) drop.add(run);
     }
   }
-  return dropSupersededCancelled(checkRuns.filter((run) => !drop.has(run)), workflowsByCheckId);
+  return dropSupersededCancelled(checkRuns.filter((run) => !drop.has(run)), workflowsByCheckId, { prNumber });
 }
 
 export function isVisualTourWorkflow(workflow) {

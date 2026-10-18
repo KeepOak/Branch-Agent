@@ -997,6 +997,36 @@ test('cancelled duplicate plus a success of the same check on the same SHA passe
   assert.deepEqual(trustedResult.failed, []);
 });
 
+test('a success on another PR sharing the commit does not hide this PR\'s cancelled run', () => {
+  const cancelled = gateFilesFreshRun(90, 490, { conclusion: 'cancelled' });
+  const otherPrSuccess = gateFilesFreshRun(110, 501);
+  const workflows = {
+    90: gateFilesFreshWorkflow(490),
+    110: gateFilesFreshWorkflow(501, { pullRequests: [{ number: 1860, base: BASE_REF }] }),
+  };
+  const ordinary = assertOrdinaryAgreesWithYaml([cancelled, otherPrSuccess, analyzeCheck], workflows);
+  assert.equal(ordinary.ready, false);
+  assert.deepEqual(ordinary.failed.map((run) => run.id), [90]);
+
+  const noPrSuccess = assertOrdinaryAgreesWithYaml(
+    [cancelled, otherPrSuccess, analyzeCheck],
+    { 90: gateFilesFreshWorkflow(490), 110: gateFilesFreshWorkflow(501, { pullRequests: [] }) },
+  );
+  assert.equal(noPrSuccess.ready, true);
+  assert.deepEqual(noPrSuccess.failed, []);
+
+  const trustedResult = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, cancelled, otherPrSuccess],
+    workflowsByCheckId: { ...passWorkflows, ...workflows },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(trustedResult.ok, false);
+  assert.deepEqual(trustedResult.failed.map((run) => run.id), [90]);
+});
+
 test('a check that is only cancelled, with no other run, still blocks both gates', () => {
   const cancelled = gateFilesFreshRun(90, 490, { conclusion: 'cancelled' });
   const workflows = { 90: gateFilesFreshWorkflow(490) };
@@ -2527,6 +2557,13 @@ test('ordinary JS waiter additions stay aligned with the yaml jq filters', () =>
   align(
     [freshCancelled, { ...freshSuccess, conclusion: 'failure' }, analyzeCheck],
     { 90: freshWorkflow(490), 110: freshWorkflow(501) },
+  );
+  align(
+    [freshCancelled, freshSuccess, analyzeCheck],
+    {
+      90: freshWorkflow(490),
+      110: { ...freshWorkflow(501), pullRequests: [{ number: 1860, base: BASE_REF }] },
+    },
   );
   align([...harvestCancelledChecks, analyzeCheck], harvestWorkflows);
   align(

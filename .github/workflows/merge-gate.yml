@@ -273,8 +273,15 @@ jobs:
               def check_key($run):
                 (($attrs[$run.id | tostring] // {}) | .path // "") as $path
                 | if $path != "" then $path + "\t" + $run.name else $run.name end;
+              def run_prs($run):
+                [(($attrs[$run.id | tostring].pullRequests // [])[] | .number | as_num)]
+                | map(select(. != null));
+              def sibling_for_this_pr($run):
+                (run_prs($run)) as $prs
+                | ($prs | length) == 0
+                  or ($pr != "" and ($prs | any(. == ($pr | as_num))));
               def drop_superseded_cancelled:
-                ([.[] | select(is_cancelled | not) | check_key(.)]) as $active
+                ([.[] | select((is_cancelled | not) and sibling_for_this_pr(.)) | check_key(.)]) as $active
                 | map(. as $run
                   | select(($run | is_cancelled | not)
                     or (($active | index(check_key($run))) == null)));

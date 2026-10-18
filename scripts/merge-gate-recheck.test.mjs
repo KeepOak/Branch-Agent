@@ -194,6 +194,35 @@ test('regression: a cancelled older run of a check does not count once its newer
   assert.equal(actions(plan)['Merge gate'], 'rerun');
 });
 
+test('a newer cancelled run does not hide an older success of the same workflow', () => {
+  const older = { id: 70, workflowName: 'Feature batch checks', status: 'completed', conclusion: 'success', createdAt: '2026-10-10T01:00:00Z' };
+  const newer = { id: 71, workflowName: 'Feature batch checks', status: 'completed', conclusion: 'cancelled', createdAt: '2026-10-10T02:00:00Z' };
+  const plan = recheckPlan({
+    trigger: { kind: 'content', conclusion: 'success' },
+    runs: [gate('failure'), older, newer],
+  });
+  assert.equal(summarizeRuns([older, newer]).contentFailed, false);
+  assert.equal(actions(plan)['Merge gate'], 'rerun');
+});
+
+test('a check that is only cancelled still fails the recheck, and a real failure still fails', () => {
+  const cancelled = { id: 70, workflowName: 'Feature batch checks', status: 'completed', conclusion: 'cancelled', createdAt: '2026-10-10T01:00:00Z' };
+  const cancelledOnly = recheckPlan({
+    trigger: { kind: 'content', conclusion: 'success' },
+    runs: [gate('failure'), cancelled],
+  });
+  assert.equal(summarizeRuns([cancelled]).contentFailed, true);
+  assert.equal(actions(cancelledOnly)['Merge gate'], 'skip');
+
+  const failed = { id: 71, workflowName: 'Feature batch checks', status: 'completed', conclusion: 'failure', createdAt: '2026-10-10T02:00:00Z' };
+  const withFailure = recheckPlan({
+    trigger: { kind: 'content', conclusion: 'success' },
+    runs: [gate('failure'), cancelled, failed],
+  });
+  assert.equal(summarizeRuns([cancelled, failed]).contentFailed, true);
+  assert.equal(actions(withFailure)['Merge gate'], 'skip');
+});
+
 test('an outage listing the runs reports "Attribution lookup failed" and does not crash or rerun', () => {
   const logged = [];
   const reruns = [];
