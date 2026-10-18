@@ -288,9 +288,9 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('scripts/android-release.mjs');
     expect(workflow).toContain('apk_name');
     expect(workflow).toMatch(/if: steps\.plan\.outputs\.attach_release == 'true'/);
-    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*gh release upload/);
-    expect(workflow).toMatch(/gh release upload[\s\S]*--clobber/);
-    expect(workflow).not.toMatch(/gh release upload[\s\S]*attach_release == 'false'/);
+    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*--attach-release/);
+    expect(workflow).toContain('--attach-release');
+    expect(workflow).not.toMatch(/--attach-release[\s\S]*attach_release == 'false'/);
     expect(workflow).toContain('timeout-minutes:');
     expect(workflow).toContain('persist-credentials: false');
   });
@@ -300,7 +300,7 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('SHA256_NAME');
     expect(workflow).toContain('${APK_NAME}.sha256');
     expect(workflow).toMatch(/--sha256[\s\S]*Verify APK signature/);
-    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*SHA256_PATH[\s\S]*gh release upload/);
+    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*SHA256_PATH[\s\S]*--attach-release/);
     expect(workflow).not.toMatch(/--sha256[\s\S]*attach_release == 'false'/);
   });
 
@@ -311,11 +311,11 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('VERSIONCODE_NAME');
     expect(workflow).toContain('ANDROID_VERSION_CODE');
     expect(workflow).toMatch(/Stage the APK[\s\S]*ANDROID_VERSION_CODE[\s\S]*SIGNED" == "true"[\s\S]*--sha256/);
-    expect(workflow).toMatch(/Verify APK signature[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
+    expect(workflow).toMatch(/Verify APK signature[\s\S]*VERSIONCODE_PATH[\s\S]*--attach-release/);
     expect(workflow).toMatch(/apksigner verify --print-certs[\s\S]*actions\/upload-artifact/);
-    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
+    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*VERSIONCODE_PATH[\s\S]*--attach-release/);
     expect(workflow).toContain('${APK_NAME}.versioncode.');
-    expect(workflow).not.toMatch(/-unsigned\.apk[\s\S]*gh release upload/);
+    expect(workflow).not.toMatch(/-unsigned\.apk[\s\S]*--attach-release/);
   });
 
   it('verifies the APK certificate fingerprint matches the expected release key SHA-256', () => {
@@ -415,6 +415,8 @@ describe('the mobile Android release workflow', () => {
       resolveReleaseTag, buildReleaseTag, pickLatestBuildReleaseTag, desktopSourceVersionFromRepo,
       createGithubRelease, releaseAlreadyExists, staleVersionCodeAssetNames, versionCodeFileName,
       LAST_SHIPPED_VERSION_CODE, missingPushReleaseVersionError,
+      findGithubRelease, attachSignedApkAssets, githubReleaseLookupMiss, missingAttachReleaseError,
+      releaseAssetUploadUrl, RELEASE_LOOKUP_WAIT,
     } from ${JSON.stringify(helper)};
       const createdCalls = [];
       const latestPath = await resolveReleaseTag({
@@ -480,6 +482,80 @@ describe('the mobile Android release workflow', () => {
       const release = await resolveReleaseTag({ eventName: 'release', releaseTag: ${JSON.stringify(dispatchTag)} });
       const dispatch = await resolveReleaseTag({ eventName: 'workflow_dispatch', releaseTag: ${JSON.stringify(dispatchTag)} });
       const artifactOnly = await resolveReleaseTag({ eventName: 'workflow_dispatch', releaseTag: '' });
+      const miss = { stderr: 'gh: Not Found (HTTP 404)\\nrelease not found' };
+      const tag404 = new Error('HTTP 404: Not Found');
+      tag404.stderr = 'gh: Not Found (HTTP 404)';
+      let tagGets = 0;
+      const listPages = [[{
+        tag_name: ${JSON.stringify(created)},
+        upload_url: 'https://uploads.github.com/repos/KeepOak/Branch-Agent/releases/9/assets{?name,label}',
+        assets: [{ id: 7, name: versionCodeFileName('branch-android-0.4.4-build-14e1361bed24.apk', 5) }],
+      }]];
+      const foundAfter404 = await findGithubRelease({
+        tag: ${JSON.stringify(created)},
+        repository: 'KeepOak/Branch-Agent',
+        wait: { intervalMs: 15, maxAttempts: 3, backoff: 2 },
+        sleep: async (ms) => { waits.push(ms); },
+        run: (file, args) => {
+          ghCalls.push([file, args]);
+          if (String(args[1] ?? '').includes('/releases/tags/')) {
+            tagGets += 1;
+            throw tag404;
+          }
+          return JSON.stringify(listPages);
+        },
+      });
+      const attachCalls = [];
+      const attached = await attachSignedApkAssets({
+        tag: ${JSON.stringify(created)},
+        apkPath: '/tmp/apk.apk',
+        apkName: 'branch-android-0.4.4-build-14e1361bed24.apk',
+        sha256Path: '/tmp/apk.apk.sha256',
+        sha256Name: 'branch-android-0.4.4-build-14e1361bed24.apk.sha256',
+        versioncodePath: '/tmp/apk.apk.versioncode.8',
+        versioncodeName: versionCodeFileName('branch-android-0.4.4-build-14e1361bed24.apk', 8),
+        repository: 'KeepOak/Branch-Agent',
+        wait: { intervalMs: 1, maxAttempts: 2, backoff: 2 },
+        sleep: async () => {},
+        run: (file, args) => {
+          attachCalls.push([file, args]);
+          if (String(args[1] ?? '').includes('/releases/tags/')) throw tag404;
+          if (args.includes('--paginate')) return JSON.stringify(listPages);
+          return '';
+        },
+      });
+      let missingRelease = null;
+      try {
+        await findGithubRelease({
+          tag: ${JSON.stringify(created)},
+          repository: 'KeepOak/Branch-Agent',
+          wait: { intervalMs: 4, maxAttempts: 2, backoff: 2 },
+          sleep: async () => {},
+          run: () => { throw tag404; },
+        });
+      } catch (error) {
+        missingRelease = String(error.message);
+      }
+      const lookupWaits = [];
+      let delayedGets = 0;
+      const foundAfterWait = await findGithubRelease({
+        tag: ${JSON.stringify(created)},
+        repository: 'KeepOak/Branch-Agent',
+        wait: { intervalMs: 10, maxAttempts: 3, backoff: 2 },
+        sleep: async (ms) => { lookupWaits.push(ms); },
+        run: (file, args) => {
+          if (String(args[1] ?? '').includes('/releases/tags/')) {
+            delayedGets += 1;
+            if (delayedGets < 2) throw tag404;
+            return JSON.stringify({
+              tag_name: ${JSON.stringify(created)},
+              upload_url: 'https://uploads.github.com/repos/KeepOak/Branch-Agent/releases/9/assets{?name,label}',
+              assets: [],
+            });
+          }
+          return JSON.stringify([[]]);
+        },
+      });
       console.log(JSON.stringify({
         latestPath, createdPath, afterRetry, createdCalls, retried, waits, missingVersion,
         expectedMissing: missingPushReleaseVersionError(${JSON.stringify(sha)}),
@@ -492,6 +568,15 @@ describe('the mobile Android release workflow', () => {
         ], apkName, keep),
         release, dispatch, artifactOnly,
         lastShipped: LAST_SHIPPED_VERSION_CODE,
+        foundAfter404, tagGets, attached, attachCalls,
+        miss: githubReleaseLookupMiss(miss),
+        missingRelease,
+        expectedMissingRelease: missingAttachReleaseError(${JSON.stringify(created)}, { intervalMs: 4, maxAttempts: 2, backoff: 2 }),
+        uploadUrl: releaseAssetUploadUrl({
+          upload_url: 'https://uploads.github.com/repos/KeepOak/Branch-Agent/releases/9/assets{?name,label}',
+        }, 'branch-android-0.4.4-build-14e1361bed24.apk'),
+        lookupWait: RELEASE_LOOKUP_WAIT,
+        foundAfterWait, lookupWaits, delayedGets,
       }));`);
     expect(result.latestPath).toEqual({ tag: latest, shouldAttach: true });
     expect(result.createdPath).toEqual({ tag: created, shouldAttach: true });
@@ -513,11 +598,31 @@ describe('the mobile Android release workflow', () => {
     expect(result.dispatch).toEqual({ tag: dispatchTag, shouldAttach: true });
     expect(result.artifactOnly).toEqual({ tag: '', shouldAttach: false });
     expect(result.lastShipped).toBe(5);
+    expect(result.foundAfter404.tag_name).toBe(created);
+    expect(result.tagGets).toBe(1);
+    expect(result.miss).toBe(true);
+    expect(result.missingRelease).toBe(result.expectedMissingRelease);
+    expect(result.uploadUrl).toContain('https://uploads.github.com/repos/KeepOak/Branch-Agent/releases/9/assets');
+    expect(result.uploadUrl).toContain('name=branch-android-0.4.4-build-14e1361bed24.apk');
+    expect(result.lookupWait.maxAttempts).toBeGreaterThan(1);
+    expect(result.attached.uploaded).toEqual([
+      'branch-android-0.4.4-build-14e1361bed24.apk',
+      'branch-android-0.4.4-build-14e1361bed24.apk.sha256',
+      'branch-android-0.4.4-build-14e1361bed24.apk.versioncode.8',
+    ]);
+    expect(result.attached.stale).toEqual(['branch-android-0.4.4-build-14e1361bed24.apk.versioncode.5']);
+    expect(result.attachCalls.some((call: string[]) => call[1].includes('--paginate'))).toBe(true);
+    expect(result.attachCalls.some((call: string[]) => call[1].includes('--method') && call[1].includes('POST'))).toBe(true);
+    expect(result.attachCalls.some((call: string[]) => call[1].includes('--method') && call[1].includes('DELETE'))).toBe(true);
+    expect(result.attachCalls.some((call: string[]) => call[1].includes('release') && call[1].includes('upload'))).toBe(false);
+    expect(result.foundAfterWait.tag_name).toBe(created);
+    expect(result.delayedGets).toBe(2);
+    expect(result.lookupWaits).toEqual([10]);
+    expect(workflow).toMatch(/apk:[\s\S]*permissions:\n\s+contents: write/);
     expect(workflow).toMatch(/resolve-tag:[\s\S]*timeout-minutes: 12/);
     expect(workflow).toMatch(/resolve-tag:\n(?:.*\n)*?\s+permissions:\n\s+contents: write/);
-    expect(workflow).toContain('--stale-versioncode-assets');
-    expect(workflow).toContain('gh release delete-asset');
-    expect(workflow).toContain('--clobber');
+    expect(workflow).toContain('--attach-release');
+    expect(workflow).toContain('contents: write');
     expect(workflow).not.toMatch(/resolve-tag:[\s\S]*?contents: read/);
   });
 });
