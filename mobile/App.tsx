@@ -13,7 +13,7 @@ import { createExpoNotifier, noNotifier } from './src/approvals/expoNotifier';
 import { AgentList } from './src/agents/agentList';
 import { appIdentity, type AppIdentity } from './src/build/appIdentity';
 import { Conversation } from './src/chat/conversation';
-import { ChatList, type ChatRow } from './src/chats/chatList';
+import { ChatList, filterRows, type ChatRow } from './src/chats/chatList';
 import { ComputerList } from './src/computers/computerList';
 import { messageSearcher } from './src/chats/messageSearch';
 import { createDeviceSession } from './src/pairing/createDeviceSession';
@@ -26,14 +26,17 @@ import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { ChatsScreen } from './src/screens/ChatsScreen';
 import { ComputersScreen } from './src/screens/ComputersScreen';
+import { TakeControlScreen } from './src/screens/TakeControlScreen';
+import type { ComputerRow } from './src/computers/computerList';
 import { EnterCodeScreen } from './src/screens/EnterCodeScreen';
 import { PairedScreen } from './src/screens/PairedScreen';
 import { RefusedScreen } from './src/screens/RefusedScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { VoiceScreen } from './src/screens/VoiceScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
-import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
+import { PairingTheme, ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import type { ColorScheme } from './src/theme/tokens';
 import { applyQuietJsUpdate } from './src/updates/ota';
 import { SettingsUpdateCard, UpdateBanner } from './src/updates/UpdateBanner';
@@ -46,9 +49,11 @@ type Route = 'welcome' | 'scan' | 'code';
 type PairedRoute =
   | { name: 'chats' }
   | { name: 'computers' }
+  | { name: 'take-control'; computer: ComputerRow }
   | { name: 'computer'; from?: 'settings' }
   | { name: 'agents' }
   | { name: 'chat'; row: ChatRow }
+  | { name: 'voice'; row: ChatRow }
   | { name: 'approvals'; focus?: string }
   | { name: 'settings' };
 
@@ -68,6 +73,7 @@ function OpenChat({
   row,
   online,
   onBack,
+  onTalk,
   onTakeControl,
   computerName,
   pending,
@@ -79,6 +85,7 @@ function OpenChat({
   row: ChatRow;
   online: boolean;
   onBack: () => void;
+  onTalk: () => void;
   onTakeControl: () => void;
   computerName: string;
   pending: readonly Approval[];
@@ -102,6 +109,7 @@ function OpenChat({
       conversation={conversation}
       online={online}
       onBack={onBack}
+      onTalk={onTalk}
       hello={session.hello}
       onTakeControl={onTakeControl}
       computerName={computerName}
@@ -118,11 +126,13 @@ function Shell({
   notifier,
   appState,
   identity,
+  store,
 }: {
   session: PairingSession;
   notifier: Notifier;
   appState: AppStateSource;
   identity: AppIdentity;
+  store?: KeyValueStore;
 }) {
   const theme = useTheme();
   const state = usePairingState(session);
@@ -219,11 +229,13 @@ function Shell({
     setRoute('welcome');
   }, [state.step, chats, agents, computers, inbox]);
 
-  // Android's back gesture leaves Computers, Agents, Your computer, Settings, a chat or Approvals for Chats, like the on-screen back button.
+  // Android's back gesture leaves take-control for Computers, Voice for its chat, and Computers, Agents, Your computer, Settings, a chat or Approvals for Chats, like the on-screen back button.
   useEffect(() => {
     if (state.step !== 'paired' || pairedRoute.name === 'chats') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (pairedRoute.name === 'computer' && pairedRoute.from === 'settings') setPairedRoute({ name: 'settings' });
+      if (pairedRoute.name === 'take-control') setPairedRoute({ name: 'computers' });
+      else if (pairedRoute.name === 'computer' && pairedRoute.from === 'settings') setPairedRoute({ name: 'settings' });
+      else if (pairedRoute.name === 'voice') setPairedRoute({ name: 'chat', row: pairedRoute.row });
       else setPairedRoute(CHATS);
       return true;
     });
@@ -253,17 +265,27 @@ function Shell({
     case 'unpaired':
       screen =
         route === 'scan' ? (
-          <ScanScreen onCode={begin} onEnterCode={() => setRoute('code')} onCancel={toWelcome} />
+          <PairingTheme>
+            <ScanScreen onCode={begin} onEnterCode={() => setRoute('code')} onCancel={toWelcome} />
+          </PairingTheme>
         ) : route === 'code' ? (
-          <EnterCodeScreen onCode={begin} onScan={() => setRoute('scan')} onCancel={toWelcome} />
+          <PairingTheme>
+            <EnterCodeScreen onCode={begin} onScan={() => setRoute('scan')} onCancel={toWelcome} />
+          </PairingTheme>
         ) : (
-          <WelcomeScreen onPair={() => setRoute('scan')} updateBanner={updateBanner} />
+          <PairingTheme>
+            <WelcomeScreen onPair={() => setRoute('scan')} updateBanner={updateBanner} />
+          </PairingTheme>
         );
       break;
     case 'connecting':
     case 'approval':
     case 'failed':
-      screen = <ApprovalScreen state={state} onCancel={toWelcome} onScanAgain={scanAgain} />;
+      screen = (
+        <PairingTheme>
+          <ApprovalScreen state={state} onCancel={toWelcome} onScanAgain={scanAgain} />
+        </PairingTheme>
+      );
       break;
     case 'paired':
       if (pairedRoute.name === 'computers') {
@@ -274,6 +296,17 @@ function Shell({
             onRefresh={() => computers.refresh()}
             onBack={() => setPairedRoute(CHATS)}
             onThisPhone={() => setPairedRoute({ name: 'computer' })}
+            onOpenComputer={(computer) => setPairedRoute({ name: 'take-control', computer })}
+          />
+        );
+      } else if (pairedRoute.name === 'take-control') {
+        screen = (
+          <TakeControlScreen
+            computer={pairedRoute.computer}
+            link={session}
+            newId={() => session.newId()}
+            store={store}
+            onBack={() => setPairedRoute({ name: 'computers' })}
           />
         );
       } else if (pairedRoute.name === 'computer') {
@@ -299,12 +332,27 @@ function Shell({
             onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
             onTurnOnNotifications={turnOnNotifications}
             onBack={() => setPairedRoute(CHATS)}
+            updateCard={updateCard}
+          />
+        );
+      } else if (pairedRoute.name === 'voice') {
+        const row = chatList.rows.find((r) => r.key === pairedRoute.row.key) ?? pairedRoute.row;
+        const toChat = () => setPairedRoute({ name: 'chat', row });
+        screen = (
+          <VoiceScreen
+            row={row}
+            online={state.online}
+            link={session}
+            pending={approvals.pending}
+            onAnswer={(id, decision) => void inbox.answer(id, decision)}
+            onClose={toChat}
+            onEnd={toChat}
+            onKeyboard={toChat}
           />
         );
       } else if (pairedRoute.name === 'chat') {
         // The header follows the list live (a rename, the working dot); the row it was opened from fills in until then.
         const row = chatList.rows.find((r) => r.key === pairedRoute.row.key) ?? pairedRoute.row;
-        const host = computerList.rows.find((computer) => computer.id === 'gateway') ?? computerList.rows[0];
         screen = (
           <OpenChat
             key={row.key}
@@ -312,8 +360,9 @@ function Shell({
             row={row}
             online={state.online}
             onBack={() => setPairedRoute(CHATS)}
+            onTalk={() => setPairedRoute({ name: 'voice', row })}
             onTakeControl={() => setPairedRoute({ name: 'computers' })}
-            computerName={host?.name ?? 'This computer'}
+            computerName="This computer"
             pending={approvals.pending}
             sending={approvals.sending}
             failed={approvals.failed}
@@ -354,6 +403,11 @@ function Shell({
             onAgents={() => setPairedRoute({ name: 'agents' })}
             onSettings={() => setPairedRoute({ name: 'settings' })}
             onOpen={(row) => setPairedRoute({ name: 'chat', row })}
+            onNewChat={() => {
+              const shown = filterRows(chatList.rows, 'all', Date.now());
+              const main = shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
+              if (main) setPairedRoute({ name: 'chat', row: main });
+            }}
             needsYou={first ? { count: approvals.pending.length, line: `${trunkOf(first, approvals.trunks).name} · ${headline(first)}${more > 0 ? ` and ${more} more` : ''}` } : null}
             onNeedsYou={() => setPairedRoute({ name: 'approvals' })}
             updateBanner={updateBanner}
@@ -362,7 +416,11 @@ function Shell({
       }
       break;
     case 'refused':
-      screen = <RefusedScreen state={state} onPairAgain={pairAgain} onRetry={() => session.retry()} onForget={() => void session.unpair()} />;
+      screen = (
+        <PairingTheme>
+          <RefusedScreen state={state} onPairAgain={pairAgain} onRetry={() => session.retry()} onForget={() => void session.unpair()} />
+        </PairingTheme>
+      );
   }
 
   return (
@@ -402,7 +460,7 @@ export default function App({
     // Starting from the window's known insets draws the first frame at once instead of a blank one.
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <ThemeProvider scheme={scheme} store={themeStore ?? (given ? undefined : deviceStore())}>
-        <Shell session={session} notifier={notifier} appState={appState} identity={identity} />
+        <Shell session={session} notifier={notifier} appState={appState} identity={identity} store={themeStore ?? (given ? undefined : deviceStore())} />
       </ThemeProvider>
     </SafeAreaProvider>
   );

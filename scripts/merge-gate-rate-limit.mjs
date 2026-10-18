@@ -202,23 +202,30 @@ export function rateLimitSleepSeconds({
   retryAttempt = 0,
   maxSleep = MAX_RATE_LIMIT_SLEEP_SECONDS,
   random = Math.random,
+  bufferSeconds = 0,
 } = {}) {
   const fromObject = parseRateLimitHeaders(error?.headers ?? error);
   const fromText = parseRateLimitHeaders(errorText(error));
   const retryAfter = fromObject.retryAfter ?? fromText.retryAfter;
   const resetEpoch = fromObject.resetEpoch ?? fromText.resetEpoch;
+  const buffer = Number.isFinite(bufferSeconds) && bufferSeconds > 0 ? bufferSeconds : 0;
   let seconds = null;
+  let fromReset = false;
   if (Number.isFinite(retryAfter)) seconds = retryAfter;
   else if (Number.isFinite(resetEpoch) && Number.isFinite(nowSeconds)) {
     seconds = resetEpoch - nowSeconds;
+    fromReset = true;
   } else {
     const resetFromPayload = resetEpochFromRateLimit(rateLimit);
     if (Number.isFinite(resetFromPayload) && Number.isFinite(nowSeconds)) {
       seconds = resetFromPayload - nowSeconds;
+      fromReset = true;
     }
   }
   if (seconds == null || seconds <= 0) {
     seconds = backoffSeconds(retryAttempt, { random, cap: maxSleep });
+  } else if (fromReset) {
+    seconds += buffer;
   }
   return Math.min(maxSleep, Math.max(1, Math.ceil(seconds)));
 }
@@ -406,6 +413,8 @@ export function withRateLimitRetry(fn, {
   budgetSeconds = DEFAULT_WAIT_BUDGET_SECONDS,
   maxRetries = Number.POSITIVE_INFINITY,
   maxSleep = MAX_RATE_LIMIT_SLEEP_SECONDS,
+  bufferSeconds = 0,
+  retryTransient = true,
   random = Math.random,
   log,
 } = {}) {
@@ -417,7 +426,7 @@ export function withRateLimitRetry(fn, {
     } catch (error) {
       if (!isRateLimitError(error)) {
         const remaining = budgetSeconds - (now() - start) / 1000;
-        if (!isTransientGitHubError(error) || transientRetries >= TRANSIENT_RETRY_LIMIT || remaining < 1) {
+        if (!retryTransient || !isTransientGitHubError(error) || transientRetries >= TRANSIENT_RETRY_LIMIT || remaining < 1) {
           throw error;
         }
         const transientWait = transientBackoffSeconds(transientRetries, random);
@@ -443,6 +452,7 @@ export function withRateLimitRetry(fn, {
         retryAttempt,
         maxSleep,
         random,
+        bufferSeconds,
       });
       const sleepFor = Math.min(wait, remaining);
       if (sleepFor < 1) throw error;

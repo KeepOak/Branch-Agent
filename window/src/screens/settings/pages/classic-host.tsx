@@ -62,8 +62,10 @@ export function ClassicHost({ engine, page, classic, coming, onPage }: { engine:
   return (
     <div className="settings r1s-classic" data-classic={list.join(" ")}>
       <div className="set-col">
-        <p className={`set-save r1s-classic-save g-label${save?.kind === "failed" ? " bad" : ""}`} role="status" aria-live="polite" hidden={!save}>
-          {save?.kind === "saved" ? <><Icon name="check" small />Saved</> : save?.kind === "saving" ? "Saving…" : save?.kind === "failed" ? `Not saved: ${visible(save.message)}` : null}
+        {/* Out of flow (classic-host.css): "Saved" floats over the page's top corner and never pushes a row under the
+            pointer. It is drawn from the first frame, empty, so the live region is in place before it speaks. */}
+        <p className={`set-save r1s-classic-save g-label${save?.kind === "failed" ? " bad" : ""}`} role="status" aria-live="polite">
+          {save ? <span className="r1s-classic-save-pill">{save.kind === "saved" ? <><Icon name="check" small />Saved</> : save.kind === "saving" ? "Saving…" : `Not saved: ${visible(save.message)}`}</span> : null}
         </p>
         <KitProvider level={level} report={report} scope={null} pins={pins}>
           {list.map((id, i) => {

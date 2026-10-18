@@ -7,10 +7,12 @@ import type { SaplingSession } from "../../connect/session";
 import { PLACES } from "../../places-nav/routes";
 import { getToasts } from "../../shell/notify";
 import { FIND_EVENT } from "../../thread/FindBar";
+import { DEFAULT_TRUNK_WHY } from "../chat/examples-greeting";
 import { R1Window } from "../frame/R1Window";
+import { EXAMPLES_READY_EVENT, resetTryExamples, tryExamplesState } from "../onboarding/try-examples";
 import { FindAnything, r1PaletteRows, type FindAnythingProps } from "./FindAnything";
 
-vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <p>{name}</p> }));
+vi.mock("../chat/ChatView", () => ({ ChatView: ({ name, examplesWhy }: { name: string; examplesWhy?: string }) => <p>{name}{examplesWhy ? <i data-testid="examples-why">{examplesWhy}</i> : null}</p> }));
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
 vi.mock("../../shell/use-status", () => ({ useLimits: () => null }));
 vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
@@ -30,7 +32,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = () => undefined; // jsdom draws no layout
   host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
+afterEach(async () => { resetTryExamples(); await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 
 const wait = (ms: number) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)); });
 const RESPONSES: Record<string, unknown> = {
@@ -38,7 +40,7 @@ const RESPONSES: Record<string, unknown> = {
   "agents.list": { defaultId: "ledger", agents: [{ id: "ledger", identity: { name: "Ledger" } }] },
   "sessions.search": { results: [{ sessionKey: "agent:ledger:quotes", role: "assistant", snippet: "The supplier quote came in at 412 dollars.", timestamp: 5, messageId: "m1" }] },
 };
-const engineFor = (request: ReturnType<typeof vi.fn>) => ({ request, onEvent: () => () => undefined, agentId: "ledger", sessionKey: "agent:ledger:main", features: { methods: ["sessions.search", "agents.list", "sessions.create"], events: [] } });
+const engineFor = (request: ReturnType<typeof vi.fn>) => ({ request, onEvent: () => () => undefined, agentId: "ledger", sessionKey: "agent:ledger:main", features: { methods: ["sessions.search", "agents.list", "sessions.create", "trunks.template.starters"], events: [] } });
 
 describe("Find anything in the R1 window", () => {
   it("Ctrl K opens Find anything centered over the window, and Escape puts the window back", async () => {
@@ -78,6 +80,35 @@ const type = async (value: string) => {
 };
 const row = (label: string) => [...document.querySelectorAll<HTMLElement>('[data-testid="palette-row"]')].find(node => node.querySelector(".pal-label")?.textContent === label)!;
 
+describe("Find anything offers Try it with examples", () => {
+  it("runs the onboarding starters call and opens Settings › Trunks", async () => {
+    const { render, request, props } = setupFind();
+    request.mockImplementation(async (method: string) => {
+      if (method === "trunks.template.starters") return { offer: [{ id: "home-desk", name: "Home Desk", pitch: "Family admin." }] };
+      return RESPONSES[method] ?? {};
+    });
+    await render();
+    await type("examples");
+    const hit = row("Try it with examples");
+    expect(hit.querySelector(".pal-hint")?.textContent ?? "").not.toBe("Coming");
+    await act(async () => hit.click());
+    await wait(20);
+    expect(request).toHaveBeenCalledWith("trunks.template.starters", {});
+    expect(props.onSettings).toHaveBeenCalledWith("trunks");
+    expect(tryExamplesState()).toEqual({ status: "ready", examples: [{ id: "home-desk", name: "Home Desk", pitch: "Family admin." }] });
+  });
+
+  it("opens that conversation with the examples greeting", async () => {
+    const snapshot = { status: { phase: "connected" }, name: "Ledger", sessionKey: "agent:ledger:main", mainKey: "agent:ledger:main", history: [], live: [], queued: [] };
+    const request = vi.fn(async (method: string) => RESPONSES[method] ?? {});
+    const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, request, onGatewayEvent: () => () => undefined, open: vi.fn(async () => undefined), send: vi.fn(), engine: engineFor(request) } as unknown as SaplingSession;
+    await act(async () => root.render(<R1Window session={session} />));
+    await wait(40);
+    await act(async () => { window.dispatchEvent(new CustomEvent(EXAMPLES_READY_EVENT, { detail: { sessionKey: "agent:ledger:main" } })); });
+    expect(document.querySelector("[data-testid=examples-why]")?.textContent).toBe(DEFAULT_TRUNK_WHY);
+  });
+});
+
 describe("FindAnything (the Classic palette re-hosted)", () => {
   it("lists the Classic actions and says Coming for the commands R1 has no home for", async () => {
     const { render } = setupFind();
@@ -88,6 +119,20 @@ describe("FindAnything (the Classic palette re-hosted)", () => {
     expect(focus.querySelector(".pal-hint")?.textContent).toBe("Coming");
     await act(async () => focus.click());
     expect(getToasts().map(toast => toast.text)).toContain("Coming · Focus mode comes in a later update.");
+  });
+
+  it("Take the walkthrough starts the window's tour", async () => {
+    const { render } = setupFind();
+    await render();
+    await type("walkthrough");
+    const hit = row("Take the walkthrough");
+    expect(hit.querySelector(".pal-hint")?.textContent).not.toBe("Coming");
+    const seen: string[] = [];
+    const listen = (event: Event) => seen.push(event.type);
+    window.addEventListener("branch:welcome-tour", listen);
+    await act(async () => hit.click());
+    window.removeEventListener("branch:welcome-tour", listen);
+    expect(seen).toEqual(["branch:welcome-tour"]);
   });
 
   it("opens places, Settings pages and conversations through the R1 routes", async () => {

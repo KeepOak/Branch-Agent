@@ -7,6 +7,7 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { Card, Screen } from '../ui/Screen';
+import { PairingCodeField } from './pairingFields';
 
 export function setupCodeProblem(error: unknown): string {
   const kind = error instanceof SetupCodeError ? error.kind : 'invalid';
@@ -15,7 +16,7 @@ export function setupCodeProblem(error: unknown): string {
   return 'That isn’t a Branch pairing code. Use the code from Pair a phone in Branch on your computer.';
 }
 
-/** Full-screen camera that reads the pairing QR code; the code can also be typed. */
+/** Full-screen camera that reads the pairing QR code; the code can also be typed on this screen. */
 export function ScanScreen({
   onCode,
   onEnterCode,
@@ -29,16 +30,26 @@ export function ScanScreen({
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [problem, setProblem] = useState<string | null>(null);
+  const [text, setText] = useState('');
   const lastScan = useRef<string | null>(null);
+
+  const read = (raw: string) => {
+    try {
+      onCode(decodeSetupCode(raw));
+    } catch (error) {
+      setProblem(setupCodeProblem(error));
+    }
+  };
 
   const onScanned = ({ data }: BarcodeScanningResult) => {
     if (data === lastScan.current) return;
     lastScan.current = data;
-    try {
-      onCode(decodeSetupCode(data));
-    } catch (error) {
-      setProblem(setupCodeProblem(error));
-    }
+    read(data);
+  };
+
+  const submitCode = () => {
+    if (!text.trim()) return;
+    read(text);
   };
 
   if (!permission?.granted) {
@@ -46,8 +57,10 @@ export function ScanScreen({
     return (
       <Screen
         testID="camera-permission"
+        avoidKeyboard
         footer={
           <>
+            <Button title="Pair" onPress={submitCode} disabled={!text.trim()} testID="submit-code" />
             {permission === null ? null : blocked ? (
               <Button title="Open Settings" onPress={() => void Linking.openSettings()} />
             ) : (
@@ -59,7 +72,10 @@ export function ScanScreen({
         }
       >
         <ThemedText variant="largeTitle" accessibilityRole="header">
-          Scan the code
+          Connect to your Branch
+        </ThemedText>
+        <ThemedText variant="body" tone="ink2" style={{ marginTop: space.xs }}>
+          Scan the square code on the computer, or type the code.
         </ThemedText>
         <Card>
           <ThemedText variant="headline">{blocked ? 'The camera is off for Branch' : 'Branch needs the camera'}</ThemedText>
@@ -68,6 +84,17 @@ export function ScanScreen({
               ? 'Turn on the camera for Branch in Settings, or type the code your computer shows.'
               : 'It reads the pairing code on your computer’s screen. Nothing is recorded or kept.'}
           </ThemedText>
+        </Card>
+        <Card testID="connect-code">
+          <PairingCodeField
+            value={text}
+            onChange={(value) => {
+              setText(value);
+              setProblem(null);
+            }}
+            problem={problem}
+            onSubmit={submitCode}
+          />
         </Card>
       </Screen>
     );

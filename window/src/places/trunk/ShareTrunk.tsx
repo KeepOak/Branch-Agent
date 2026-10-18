@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { Dialog } from "../../shell/Dialog";
-import { errorText, rec, str } from "./model";
+import { plainError } from "../../shell/plain-error";
+import { rec, str } from "./model";
 import { Layer } from "./layer";
 
 export type Shared = { template: unknown; link: string; warnings: string[]; routines: number; skills: number };
@@ -45,7 +46,7 @@ export function ShareTrunkDialog({ engine, agentId, name, onClose }: { engine: W
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
-    engine.request("trunks.template.export", { agentId }).then((r) => { if (live) setShared(readShared(r)); }, (e: unknown) => { if (live) setError(errorText(e)); });
+    engine.request("trunks.template.export", { agentId }).then((r) => { if (live) setShared(readShared(r)); }, (e: unknown) => { if (live) setError(plainError(e)); });
     return () => { live = false; };
   }, [engine, agentId]);
   const save = () => {
@@ -59,7 +60,7 @@ export function ShareTrunkDialog({ engine, agentId, name, onClose }: { engine: W
     <div className="tabs" role="tablist" style={{ margin: 0 }}>
       {TABS.map(([v, l]) => <button key={v} type="button" role="tab" className="tk-tab" aria-selected={tab === v} onClick={() => setTab(v)}>{l}</button>)}
     </div>
-    {error && <p className="tk-error" role="alert">{error}</p>}
+    {error && <p className="tk-error" role="alert">{plainError(error)}</p>}
     {tab === "people" && <p className="tk-hint">{PEOPLE_WHY}</p>}
     {tab === "file" && <FileTab name={name} shared={shared} onSave={save} />}
     {tab === "team" && <>

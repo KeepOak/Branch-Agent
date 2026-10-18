@@ -7,6 +7,7 @@ import { SIcon } from "../stage-icons";
 import { gapBetween, parsePatch, splitRows, type DiffLine, type Hunk } from "./diff";
 import { PullRequestBox } from "./PullRequest";
 import "./coding.css";
+import { plainError } from "../../shell/plain-error";
 
 type DiffFile = { path: string; oldPath?: string; status: "added" | "modified" | "deleted" | "renamed"; additions: number; deletions: number; binary?: boolean; untracked?: boolean; patch?: string; truncated?: boolean };
 type Diff = { root?: string; branch?: string; baseRef?: string; aheadCount?: number; commits?: { sha: string; subject: string }[]; files: DiffFile[]; additions: number; deletions: number; truncated?: boolean; unavailableReason?: string };
@@ -21,7 +22,8 @@ const UNAVAILABLE: Record<string, string> = {
 };
 const NO_COMMIT = "The engine can't make a commit from the window yet; opening a pull request commits the changes.";
 const NO_COPY = "Moving a conversation into a separate copy isn't wired in this window yet.";
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const errorText = (e: unknown): string => plainError(e);
 
 function Line({ l, wrap }: { l: DiffLine; wrap: boolean }) {
   return (

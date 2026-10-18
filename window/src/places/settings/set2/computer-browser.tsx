@@ -30,7 +30,7 @@ export const BROWSER_BASIC: SecSpec = { t: "The browser", lv: 0, hint: "Private 
 ] };
 
 const MORE: SecSpec = { t: "The browser, more", group: "The browser", showHeading: false, lv: 1, rows: [
-  { t: "Run the browser in a sandbox", k: "seg", key: "browser.noSandbox", def: false, opts: [{ v: true, l: "Off" }, { v: "auto", l: "When needed", off: "The browser’s own sandbox is either on or off." }, { v: false, l: "On" }] },
+  { t: "Run the browser in a sandbox", k: "seg", key: "browser.noSandbox", def: false, sub: "“When needed” isn’t offered: the browser’s own sandbox is either on or off.", opts: [{ v: true, l: "Off" }, { v: "auto", l: "When needed", off: "The browser’s own sandbox is either on or off." }, { v: false, l: "On" }] },
   sw("Record browser tasks", "Needs the engine to record browser traces.", "A step-by-step trace you can replay. Off until you choose: recordings take disk space."),
   sw("Number the clickable things", "Needs the engine to number what can be clicked.", "Faster and steadier on busy pages."),
   { t: "Site skills", sub: "What Branch learned about the sites you use.", k: "btn", btn: "See", off: "Needs the engine to keep notes for each site." },

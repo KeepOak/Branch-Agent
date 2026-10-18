@@ -504,6 +504,7 @@ export function ChatScreen({
   conversation,
   online,
   onBack,
+  onTalk,
   hello = null,
   pickers = expoPickers,
   onTakeControl,
@@ -518,6 +519,7 @@ export function ChatScreen({
   conversation: Conversation;
   online: boolean;
   onBack: () => void;
+  onTalk?: () => void;
   hello?: HelloAttachments | null;
   pickers?: AttachmentPickers;
   /** Opens Computers, the existing take-control route. */
@@ -673,6 +675,20 @@ export function ChatScreen({
               </ThemedText>
             ) : null}
           </View>
+          {onTalk ? (
+            <Pressable
+              testID="chat-talk"
+              accessibilityRole="button"
+              accessibilityLabel="Talk"
+              onPress={onTalk}
+              hitSlop={8}
+              style={({ pressed }) => ({ minWidth: layout.rowMinHeight, minHeight: layout.rowMinHeight, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.xs, opacity: pressed ? 0.6 : 1 })}
+            >
+              <ThemedText variant="headline" tone="accentInk">
+                Talk
+              </ThemedText>
+            </Pressable>
+          ) : null}
         </View>
         {online ? null : (
           <View style={{ paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
