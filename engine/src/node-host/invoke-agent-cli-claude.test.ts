@@ -168,6 +168,7 @@ describe("Claude CLI node command", () => {
 
   it.each([
     { argv: ["--model"], error: "requires a value" },
+    { argv: ["--version"], error: "unsupported Claude CLI argument" },
     { argv: ["--mcp-config", "/tmp/mcp.json"], error: "unsupported Claude CLI argument" },
     { argv: ["--allowedTools", "Bash"], error: "unsupported Claude CLI argument" },
     // Tool policy must arrive as one comma-joined value; the multi-token

@@ -946,18 +946,15 @@ describe("node host invoke", () => {
         await state.writeConfig({ tools: { exec: { mode: "full" } } });
         saveExecApprovals({ version: 1, defaults: { security: "full", ask: "off" } });
         const root = fs.realpathSync(state.root);
-        const executable =
-          process.platform === "win32"
-            ? path.join(root, "native-agent.exe")
-            : path.join(root, "native-agent.cjs");
-        if (process.platform === "win32") {
-          // Windows will not run a shebang script as argv0; a copy of this Node can take --version.
-          fs.copyFileSync(process.execPath, executable);
-        } else {
-          fs.writeFileSync(executable, `#!${process.execPath}\nprocess.stdout.write('ok');\n`, {
-            mode: 0o700,
-          });
-        }
+        // Claude argv must stay a real Claude flag (`-p`). `--version` is
+        // rejected as unsupported before spawn. Windows cannot shebang-exec a
+        // .cjs as argv0, but the supervisor rewrites .cjs to
+        // [process.execPath, script, ...argv] (node-entrypoint). A copied
+        // node.exe cannot take `-p` because Node treats that as print.
+        const executable = path.join(root, "native-agent.cjs");
+        fs.writeFileSync(executable, `#!${process.execPath}\nprocess.stdout.write('ok');\n`, {
+          mode: 0o700,
+        });
         const request = vi.fn<GatewayClient["request"]>().mockResolvedValue(null);
         await handleInvoke(
           {
@@ -968,7 +965,7 @@ describe("node host invoke", () => {
               command === "system.run"
                 ? { command: [process.execPath, "--version"] }
                 : {
-                    argv: process.platform === "win32" ? ["--version"] : ["-p"],
+                    argv: ["-p"],
                     timeoutMs: 5000,
                     idleTimeoutMs: 1000,
                   },
@@ -987,8 +984,15 @@ describe("node host invoke", () => {
         const result = request.mock.calls.find(
           ([method]) => method === "node.invoke.result",
         )?.[1] as InvokeResult;
-        expect(result).toMatchObject({ ok: true });
-        expect(JSON.parse(result.payloadJSON ?? "{}")).toMatchObject({ exitCode: 0 });
+        const failurePayload = JSON.stringify({
+          ok: result?.ok,
+          payloadJSON: result?.payloadJSON,
+          error: result?.error,
+        });
+        expect(result, failurePayload).toMatchObject({ ok: true });
+        expect(JSON.parse(result.payloadJSON ?? "{}"), failurePayload).toMatchObject({
+          exitCode: 0,
+        });
       } finally {
         await state.cleanup();
       }
