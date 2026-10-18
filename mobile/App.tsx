@@ -18,7 +18,7 @@ import { ComputerList, computerName, type ComputerRow } from './src/computers/co
 import { messageSearcher } from './src/chats/messageSearch';
 import { createDeviceSession } from './src/pairing/createDeviceSession';
 import type { PairingSession } from './src/pairing/pairingSession';
-import type { SetupPayload } from './src/pairing/setupCode';
+import { gatewayHost, type SetupPayload } from './src/pairing/setupCode';
 import { usePairingState } from './src/pairing/usePairingState';
 import { AgentsScreen } from './src/screens/AgentsScreen';
 import { ApprovalScreen } from './src/screens/ApprovalScreen';
@@ -34,6 +34,8 @@ import { RefusedScreen } from './src/screens/RefusedScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
 import { MoreScreen } from './src/screens/MoreScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
+import { YouScreen } from './src/screens/YouScreen';
+import { useSelf } from './src/people/useSelf';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import type { SettingsLevel } from './src/screens/settingsExtras';
 import { VoiceScreen } from './src/screens/VoiceScreen';
@@ -52,9 +54,10 @@ void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 type Route = 'scan' | 'code';
 type ComputerOrigin = {
-  from?: 'more' | 'profile';
+  from?: 'more' | 'profile' | 'you';
   profileRow?: AgentRow;
   profileFrom?: 'agents' | 'more';
+  youFrom?: 'more' | 'home';
 };
 type PairedRoute =
   | { name: 'home' }
@@ -70,7 +73,8 @@ type PairedRoute =
   | { name: 'approvals'; focus?: string }
   | { name: 'settings'; from?: 'more' }
   | { name: 'more' }
-  | { name: 'profile'; row: AgentRow; from?: 'agents' | 'more' };
+  | { name: 'profile'; row: AgentRow; from?: 'agents' | 'more' }
+  | { name: 'you'; from?: 'more' | 'home' };
 
 const CHATS: PairedRoute = { name: 'chats' };
 const HOME: PairedRoute = { name: 'home' };
@@ -154,7 +158,7 @@ function OpenChat({
 
 function pairedBack(route: PairedRoute): PairedRoute {
   if (route.name === 'take-control') {
-    return { name: 'computers', from: route.from, profileRow: route.profileRow, profileFrom: route.profileFrom };
+    return { name: 'computers', from: route.from, profileRow: route.profileRow, profileFrom: route.profileFrom, youFrom: route.youFrom };
   }
   if (route.name === 'voice') return { name: 'chat', row: route.row };
   if (route.name === 'scan' || route.name === 'code') return HOME;
@@ -163,8 +167,12 @@ function pairedBack(route: PairedRoute): PairedRoute {
   if (route.name === 'settings' && route.from === 'more') return { name: 'more' };
   if (route.name === 'agents' && route.from === 'more') return { name: 'more' };
   if (route.name === 'profile') return { name: 'agents', from: route.from === 'more' ? 'more' : undefined };
+  if (route.name === 'you') return route.from === 'home' ? HOME : { name: 'more' };
   if (route.name === 'computers' && route.from === 'profile' && route.profileRow) {
     return { name: 'profile', row: route.profileRow, from: route.profileFrom };
+  }
+  if (route.name === 'computers' && route.from === 'you') {
+    return { name: 'you', from: route.youFrom };
   }
   if (route.name === 'computers' && route.from === 'more') return { name: 'more' };
   return CHATS;
@@ -218,6 +226,7 @@ function Shell({
   const [computers] = useState(() => new ComputerList(session));
   const computerList = useSyncExternalStore(computers.subscribe, computers.getSnapshot);
   const [searchMessages] = useState(() => messageSearcher((method, params) => session.request(method, params)));
+  const { self, reload: reloadSelf } = useSelf(session, state.step === 'paired' && state.online);
 
   useEffect(() => {
     chats.attach();
@@ -330,6 +339,7 @@ function Shell({
     from: route.from,
     profileRow: route.profileRow,
     profileFrom: route.profileFrom,
+    youFrom: route.youFrom,
   });
 
   let screen = null;
@@ -368,7 +378,7 @@ function Shell({
             onBack={() => setPairedRoute(pairedBack(pairedRoute))}
             onThisPhone={() => setPairedRoute({ name: 'computer', from: pairedRoute.from === 'more' ? 'more' : undefined })}
             onOpenComputer={(computer) => setPairedRoute({ name: 'take-control', computer, ...origin })}
-            backTo={pairedRoute.from === 'profile' ? 'Profile' : pairedRoute.from === 'more' ? 'More' : 'Chats'}
+            backTo={pairedRoute.from === 'profile' ? 'Profile' : pairedRoute.from === 'you' ? 'You' : pairedRoute.from === 'more' ? 'More' : 'Chats'}
           />
         );
       } else if (pairedRoute.name === 'take-control') {
@@ -423,6 +433,8 @@ function Shell({
               else setPairedRoute(CHATS);
             }}
             onComputer={() => setPairedRoute({ name: 'computers' })}
+            onYou={() => setPairedRoute({ name: 'you', from: 'home' })}
+            youName={self.name}
             onScan={() => setPairedRoute(SCAN)}
             onAnswer={(id, decision) => void inbox.answer(id, decision)}
             onLookFirst={(_id, sessionKey) => {
@@ -442,6 +454,9 @@ function Shell({
               level={showLevel}
               trunkCount={agentList.rows.length}
               workingCount={agentList.rows.filter((row) => row.status === 'running').length}
+              youName={self.name}
+              youRole={self.role}
+              onYou={() => setPairedRoute({ name: 'you', from: 'more' })}
               onSettings={() => setPairedRoute({ name: 'settings', from: 'more' })}
               onTrunks={() => setPairedRoute({ name: 'agents', from: 'more' })}
               onBack={() => setPairedRoute(CHATS)}
@@ -462,6 +477,27 @@ function Shell({
             }
             onBack={() => setPairedRoute(pairedBack(pairedRoute))}
             backTo={pairedRoute.from === 'more' ? 'More' : 'Agents'}
+          />
+        );
+      } else if (pairedRoute.name === 'you') {
+        screen = (
+          <YouScreen
+            self={self}
+            level={showLevel}
+            scopes={session.hello?.auth.scopes ?? []}
+            computer={gatewayHost(state.url)}
+            computerStatus={state.online ? 'Connected to your computer' : 'Reconnecting to your computer…'}
+            onComputer={() => setPairedRoute({ name: 'computers', from: 'you', youFrom: pairedRoute.from })}
+            onBack={() => setPairedRoute(pairedBack(pairedRoute))}
+            onRename={
+              self.id
+                ? async (name) => {
+                    await session.request('users.setDisplayName', { profileId: self.id, displayName: name });
+                    await reloadSelf();
+                  }
+                : undefined
+            }
+            backTo={pairedRoute.from === 'home' ? 'Home' : 'More'}
           />
         );
       } else if (pairedRoute.name === 'settings') {
