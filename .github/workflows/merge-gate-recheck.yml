@@ -22,7 +22,6 @@ on:
       - Gate files fresh
       - GitHub component release
       - Harvest checks
-      - Local worker measurement
       - macOS checks for OS-specific changes
       - Merge gate
       - Merge gate trusted

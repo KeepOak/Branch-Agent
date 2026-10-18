@@ -134,7 +134,7 @@
   border-radius: 20px 20px 6px 20px;
   padding: 10px 16px;
   max-width: 100%;
-  font-size: 14px;
+  font-size: calc(14px * var(--chat-text, 1));
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -176,7 +176,7 @@
 .thread .segment-line strong { font-size: 11px; color: var(--ink-2); }
 
 .thread .reply-text {
-  font-size: clamp(14px, .35cqi + 10px, 15.5px);
+  font-size: calc(clamp(14px, .35cqi + 10px, 15.5px) * var(--chat-text, 1));
   line-height: 1.62;
   max-width: min(78%, 82ch);
   white-space: normal;
@@ -202,7 +202,7 @@
 }
 
 .thread .reply-text code {
-  font: 13px var(--mono);
+  font: calc(13px * var(--chat-text, 1)) var(--mono);
   background: var(--wash17);
   border-radius: 6px;
   padding: 1px 5px;
@@ -225,15 +225,15 @@
 }
 
 .thread .md-h1 {
-  font-size: 18px;
+  font-size: calc(18px * var(--chat-text, 1));
 }
 
 .thread .md-h2 {
-  font-size: 16px;
+  font-size: calc(16px * var(--chat-text, 1));
 }
 
 .thread .md-h3 {
-  font-size: 15px;
+  font-size: calc(15px * var(--chat-text, 1));
 }
 
 .thread .reply-text ul,
