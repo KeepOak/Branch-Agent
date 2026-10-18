@@ -7,8 +7,20 @@ import { PHONE_PREFS_DEFAULT, type PhonePrefs } from '../settings/phonePrefs';
 export const ANDROID_CHANNELS = [
   { id: 'approvals', name: 'Approvals', description: 'A Trunk needs your yes before it goes on.' },
   { id: 'replies', name: 'Replies', description: 'A Trunk finished a reply while you were away.' },
-  { id: 'questions', name: 'Questions', description: 'A Trunk needs an answer before it can go on.' },
-  { id: 'mentions', name: 'Mentions', description: 'Someone mentioned you in a conversation.' },
+  {
+    id: 'questions',
+    name: 'Questions',
+    description: 'A Trunk needs an answer before it can go on.',
+    // Hide the question text on the lock screen. Do not swap this for generic notification copy.
+    lockscreenVisibility: 'private',
+  },
+  {
+    id: 'mentions',
+    name: 'Mentions',
+    description: 'Someone mentioned you in a conversation.',
+    // Hide who mentioned you, and the excerpt, on the lock screen. Do not swap this for generic copy.
+    lockscreenVisibility: 'private',
+  },
   { id: 'automations', name: 'Routines', description: 'A routine finished or could not finish.' },
   { id: 'updates', name: 'Updates', description: 'A Branch update is ready to install.' },
 ] as const;

@@ -109,11 +109,15 @@ describe('the phone’s own notifications', () => {
         name: 'Approvals',
         description: 'A Trunk needs your yes before it goes on.',
       });
-      expect(mocked.setNotificationChannelAsync.mock.calls[0][1].lockscreenVisibility).toBeUndefined();
-      const questions = mocked.setNotificationChannelAsync.mock.calls.find((call) => call[0] === 'questions');
-      const mentions = mocked.setNotificationChannelAsync.mock.calls.find((call) => call[0] === 'mentions');
-      expect(questions?.[1]).toMatchObject({ lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE });
-      expect(mentions?.[1]).toMatchObject({ lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE });
+      const byId = Object.fromEntries(
+        mocked.setNotificationChannelAsync.mock.calls.map((call) => [call[0], call[1] as { lockscreenVisibility?: number }]),
+      );
+      expect(byId.approvals.lockscreenVisibility).toBeUndefined();
+      expect(byId.replies.lockscreenVisibility).toBeUndefined();
+      expect(byId.questions.lockscreenVisibility).toBe(Notifications.AndroidNotificationVisibility.PRIVATE);
+      expect(byId.mentions.lockscreenVisibility).toBe(Notifications.AndroidNotificationVisibility.PRIVATE);
+      expect(byId.automations.lockscreenVisibility).toBeUndefined();
+      expect(byId.updates.lockscreenVisibility).toBeUndefined();
     } finally {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: previous });
     }

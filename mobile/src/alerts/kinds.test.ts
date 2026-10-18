@@ -11,6 +11,13 @@ describe('notification kinds', () => {
     expect(ANDROID_CHANNELS.map((c) => c.id)).toEqual(['approvals', 'replies', 'questions', 'mentions', 'automations', 'updates']);
   });
 
+  it('sets lockscreenVisibility PRIVATE on questions and mentions instead of using generic copy', () => {
+    const privateIds = ANDROID_CHANNELS.filter(
+      (channel) => 'lockscreenVisibility' in channel && channel.lockscreenVisibility === 'private',
+    ).map((channel) => channel.id);
+    expect(privateIds).toEqual(['questions', 'mentions']);
+  });
+
   it('follows the Settings › Notifications kind switches', () => {
     const offFinished = { ...PHONE_PREFS_DEFAULT, notifKinds: [true, false, true, false, false] };
     expect(kindEnabled(PHONE_PREFS_DEFAULT, 'approval')).toBe(true);
