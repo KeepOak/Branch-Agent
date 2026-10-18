@@ -222,7 +222,7 @@ describe("Settings › Advanced", () => {
 
   it("Get the model starts llama.cpp setup for the memory embedding model", async () => {
     const off = { provider: "local", embedding: { ok: false, checked: true, error: "Search by meaning is off until this computer has the small model that powers it. Branch still finds memories by matching words." } };
-    const question = "Download the small model that lets Branch search memories by meaning (about 0.3 GB)? Your chat model stays the same. If you skip this, Branch still finds memories by matching words.";
+    const question = "Download the small model that lets Branch search memories by meaning (about 0.3 GB, plus a small helper program)? Your chat model stays the same. If you skip this, Branch still finds memories by matching words.";
     const { engine, request } = engineWith({ ...CONFIG, "doctor.memory.status": off, "branch.setup.prepare.start": {}, "wizard.next": { done: false, step: { id: "ask", type: "confirm", message: question } } });
     await show(engine, "advanced");
     const meaning = row("Meaning search");
@@ -243,7 +243,7 @@ describe("Settings › Advanced", () => {
 
   it("Get the model decline shows no success text and changes no config", async () => {
     const off = { provider: "local", embedding: { ok: false, checked: true, error: "Search by meaning is off until this computer has the small model that powers it. Branch still finds memories by matching words." } };
-    const question = "Download the small model that lets Branch search memories by meaning (about 0.3 GB)? Your chat model stays the same. If you skip this, Branch still finds memories by matching words.";
+    const question = "Download the small model that lets Branch search memories by meaning (about 0.3 GB, plus a small helper program)? Your chat model stays the same. If you skip this, Branch still finds memories by matching words.";
     const skipped = "Nothing was downloaded. Branch still finds memories by matching words.";
     const { engine, request } = engineWith({
       ...CONFIG,
@@ -268,7 +268,7 @@ describe("Settings › Advanced", () => {
 
   it("Get the model success then Test shows meaning search working", async () => {
     const off = { provider: "local", embedding: { ok: false, checked: true, error: "Search by meaning is off until this computer has the small model that powers it. Branch still finds memories by matching words." } };
-    const question = "Download the small model that lets Branch search memories by meaning (about 0.3 GB)? Your chat model stays the same. If you skip this, Branch still finds memories by matching words.";
+    const question = "Download the small model that lets Branch search memories by meaning (about 0.3 GB, plus a small helper program)? Your chat model stays the same. If you skip this, Branch still finds memories by matching words.";
     const { engine, request } = engineWith({
       ...CONFIG,
       "doctor.memory.status": (p: Record<string, unknown>) => (p.probe ? { provider: "local", embedding: { ok: true, checked: true } } : off),

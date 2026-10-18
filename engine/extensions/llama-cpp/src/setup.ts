@@ -51,7 +51,7 @@ type LlamaCppSetupPlan =
   | { kind: "embedding-only"; preserveChat?: boolean };
 
 const MEMORY_DOWNLOAD_QUESTION =
-  "Download the small model that lets Branch search memories by meaning (about 0.3 GB)? Your chat model stays the same. If you skip this, Branch still finds memories by matching words.";
+  "Download the small model that lets Branch search memories by meaning (about 0.3 GB, plus a small helper program)? Your chat model stays the same. If you skip this, Branch still finds memories by matching words.";
 const MEMORY_SKIPPED =
   "Nothing was downloaded. Branch still finds memories by matching words.";
 const MEMORY_EXISTING_EXTERNAL =
@@ -421,10 +421,17 @@ export async function runLlamaCppSetup(
   const hardware = await detectLlamaCppHardware({ cacheDir, signal: ctx.signal });
   let asset: LlamaServerAsset;
   let runtimeNote: string | undefined;
+  // Memory-only setup only needs the small embedding model. The Windows CUDA
+  // server plus its runtime is about 650 MB, which would make "about 0.3 GB"
+  // a lie. CPU builds are 11–37 MB and are enough for meaning search.
+  const acceleration =
+    memoryOnly && hardware.accelerator.kind === "cuda"
+      ? { kind: "cpu" as const }
+      : hardware.accelerator;
   try {
-    asset = selectLlamaServerAsset(hardware.platform, hardware.arch, hardware.accelerator);
+    asset = selectLlamaServerAsset(hardware.platform, hardware.arch, acceleration);
   } catch (error) {
-    if (hardware.accelerator.kind !== "cuda") {
+    if (hardware.accelerator.kind !== "cuda" || memoryOnly) {
       throw memoryOnly ? new Error(MEMORY_FAILED, { cause: error }) : error;
     }
     // CUDA cannot silently fall back: the download confirmation names the CPU runtime.

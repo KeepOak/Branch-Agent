@@ -28,7 +28,8 @@ vi.mock("./hardware.js", async (importOriginal) => ({
   detectLlamaCppHardware: mocks.hardware,
 }));
 
-import { LLAMA_CPP_PROVIDER_ID } from "./defaults.js";
+import { DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_SIZE_BYTES, LLAMA_CPP_PROVIDER_ID } from "./defaults.js";
+import { selectLlamaServerAsset, type LlamaServerAsset } from "./llama-server-assets.js";
 import { resolveLlamaCppCatalogArtifact } from "./model-catalog.js";
 import { runLlamaCppMemorySetup } from "./setup.js";
 
@@ -121,7 +122,7 @@ describe("llama.cpp memory-only setup", () => {
     const result = await runLlamaCppMemorySetup(ctx);
 
     expect(ctx.prompter.confirm).toHaveBeenCalledTimes(1);
-    expect(question(ctx)).toContain("about 0.3 GB");
+    expect(question(ctx)).toContain("about 0.3 GB, plus a small helper program");
     expect(question(ctx)).toContain("Your chat model stays the same");
     expect(question(ctx)).not.toContain("gateway-host");
     expect(question(ctx)).not.toMatch(/runtime|llama\.cpp|verified CPU/i);
@@ -161,7 +162,7 @@ describe("llama.cpp memory-only setup", () => {
     provider.models = [CHAT];
 
     const result = await runLlamaCppMemorySetup(ctx);
-    expect(question(ctx)).toContain("about 0.3 GB");
+    expect(question(ctx)).toContain("about 0.3 GB, plus a small helper program");
     expect(result.defaultModel).toBeUndefined();
     expect(result.configPatch?.models?.providers?.[LLAMA_CPP_PROVIDER_ID]?.models).toEqual([CHAT]);
     expect(mocks.prepareServer).toHaveBeenCalledWith(
@@ -199,6 +200,72 @@ describe("llama.cpp memory-only setup", () => {
     mocks.prepareServer.mockRejectedValue(new Error("runtime installation failed"));
     await expect(runLlamaCppMemorySetup(ctx)).rejects.toThrow(
       /^Couldn’t get the meaning-search model\. Branch still finds memories by matching words\.$/u,
+    );
+  });
+
+  it("uses the CPU server on Windows NVIDIA so the download stays about 0.3 GB", async () => {
+    mocks.hardware.mockResolvedValue({
+      platform: "win32",
+      arch: "x64",
+      accelerator: {
+        kind: "cuda",
+        devices: [
+          {
+            name: "GPU",
+            totalMemoryBytes: 8 * GIB,
+            availableMemoryBytes: 8 * GIB,
+            driverVersion: "580.65",
+            computeCapability: 8.6,
+          },
+        ],
+      },
+      totalMemoryBytes: 16 * GIB,
+      availableMemoryBytes: 16 * GIB,
+      availableDiskBytes: 100 * GIB,
+      availableRuntimeDiskBytes: 100 * GIB,
+      sharedDisk: true,
+    });
+    const ctx = authContext(true);
+    delete ctx.config.models?.providers?.[LLAMA_CPP_PROVIDER_ID];
+
+    await runLlamaCppMemorySetup(ctx);
+
+    expect(question(ctx)).toContain("about 0.3 GB, plus a small helper program");
+    expect(question(ctx)).not.toMatch(/runtime|llama\.cpp|verified CPU|CUDA/i);
+    expect(mocks.prepareServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        asset: expect.objectContaining({
+          platform: "win32",
+          arch: "x64",
+          backend: "cpu",
+          name: expect.stringContaining("win-cpu-x64"),
+        }),
+      }),
+    );
+    const prepared = mocks.prepareServer.mock.calls[0]?.[0] as { asset: LlamaServerAsset } | undefined;
+    if (!prepared) {
+      throw new Error("prepareManagedLlamaServer was not called");
+    }
+    const { asset } = prepared;
+    expect(asset.dependencies?.some((dep) => dep.name.includes("cudart"))).toBe(false);
+
+    const helperBytes = (asset.dependencies ?? []).reduce(
+      (total, dep) => total + ("size" in dep && typeof dep.size === "number" ? dep.size : 0),
+      0,
+    );
+    const memoryOnlyBytes = DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_SIZE_BYTES + helperBytes;
+    const cuda = selectLlamaServerAsset("win32", "x64", {
+      kind: "cuda",
+      devices: [{ driverVersion: "580.65", computeCapability: 8.6 }],
+    });
+    const cudaCeiling = (cuda.dependencies ?? []).reduce((total, dep) => {
+      const archiveLimit = "limits" in dep ? (dep.limits?.maxArchiveBytes ?? 0) : 0;
+      const size = "size" in dep && typeof dep.size === "number" ? dep.size : 0;
+      return total + archiveLimit + size;
+    }, cuda.limits?.maxArchiveBytes ?? 0);
+    expect(memoryOnlyBytes).toBeLessThan(400_000_000);
+    expect(DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_SIZE_BYTES + cudaCeiling).toBeGreaterThan(
+      900_000_000,
     );
   });
 });
