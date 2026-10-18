@@ -3,6 +3,7 @@ window:src/connect/run-outcome.test.ts
 window:src/connect/session-error-refresh.test.ts
 window:src/connect/session-startup-code.test.ts
 window:src/connect/session.plain-error.test.ts
+window:src/screens/chat/Steps.test.tsx
 window:src/shell/SplitPanes.plain-error.test.tsx
 window:src/thread/Helpers.plain-error.test.tsx
 window:src/thread/blocks.plain-error.test.tsx

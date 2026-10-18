@@ -123,12 +123,24 @@ it.each(["advanced", "technical"])("%s: the full sentence stays, with the failur
   expect(fold.className).not.toContain("r1c-steps-quiet");
 });
 
-it("a failed step gives a plain reason and never a local path, at every level", async () => {
-  const failing: Step[] = [{ kind: "step", key: "f1", tool: "read", title: "notes", detail: "Permission denied: /Users/someone/Secret/notes.txt", status: "failed" }];
-  for (const level of ["regular", "advanced", "technical"]) {
+it.each(["regular", "advanced", "technical"])("%s: failed steps hide paths while preserving the level's wording", async (level) => {
+  const cases = [
+    {
+      detail: "Permission denied: /Users/someone/Secret/notes.txt",
+      regular: "Permission denied: a local file",
+      exact: "Permission denied: a local file",
+    },
+    {
+      detail: "ENOENT: no such file '/tmp/example/notes.txt' was found. Try another file.",
+      regular: "That file or folder isn’t there. Check that it still exists, then try again.",
+      exact: "ENOENT: no such file 'a local file' was found. Try another file.",
+    },
+  ];
+  for (const { detail, regular, exact } of cases) {
+    const failing: Step[] = [{ kind: "step", key: "f1", tool: "read", title: "notes", detail, status: "failed" }];
     localStorage.setItem("branch.level", level);
     await act(async () => root.render(<StepsList steps={fresh(failing)} thoughts={[]} live={false} mode="normal" />));
-    expect(host.querySelector(".r1c-step-err")!.textContent).toBe("Permission denied: a local file");
-    expect(host.textContent).not.toContain("/Users");
+    expect(host.querySelector(".r1c-step-err")!.textContent).toBe(level === "regular" ? regular : exact);
+    expect(host.textContent).not.toMatch(/\/Users|\/tmp/);
   }
 });

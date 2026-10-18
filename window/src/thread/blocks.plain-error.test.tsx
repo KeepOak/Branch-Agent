@@ -91,12 +91,12 @@ describe("engine Notice text", () => {
     expect(host.textContent).toBe(text);
   });
 
-  it.each(["advanced", "technical"])("keeps plugin, JSON and path errors exact at %s", async (level) => {
+  it.each(["advanced", "technical"])("keeps error wording at %s while short reasons hide paths", async (level) => {
     localStorage.setItem("branch.level", level);
     const host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
-    for (const text of ["PLUGIN_STATE_READ_FAILED. Try again.", JSON_DUMP, "Failed in /tmp/example/log.txt. Try again."]) {
-      expect(shortReason(text)).toBe(text);
+    for (const text of ["PLUGIN_STATE_READ_FAILED. Try again.", JSON_DUMP, "Failed in '/tmp/example/log.txt'. Try again."]) {
+      expect(shortReason(text)).toBe(text.replace("/tmp/example/log.txt", "a local file"));
       await act(async () => root!.render(<Notice block={{ kind: "notice", key: "n", text }} />));
       expect(host.textContent).toBe(text);
     }
