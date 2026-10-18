@@ -137,6 +137,7 @@ export async function resolveManagedCodexAppServerStartOptions(
         pluginRoot,
         platform,
         managedCommandOrder,
+        installed,
         onDemand,
         pathExists,
         download: options.download ?? true,
@@ -205,7 +206,14 @@ export async function isManagedCodexDownloadPending(
       }
     }
   }
-  if (managedCommandOrder !== "package-only" && (await onDemand.findPathCommand())) {
+  const installed =
+    options.installed === null
+      ? undefined
+      : (options.installed ?? registeredCodexInstalled.provider);
+  if (
+    managedCommandOrder !== "package-only" &&
+    ((await installed?.findPathCommand()) ?? (await onDemand.findPathCommand()))
+  ) {
     return false;
   }
   const bundledReady =
@@ -362,6 +370,7 @@ async function resolveOnDemandCommandCandidates(params: {
   pluginRoot: string;
   platform: NodeJS.Platform;
   managedCommandOrder: CodexManagedCommandOrder;
+  installed?: ManagedCodexInstalled;
   onDemand: ManagedCodexOnDemand;
   pathExists: (filePath: string, platform: NodeJS.Platform) => Promise<boolean>;
   download: boolean;
@@ -378,7 +387,9 @@ async function resolveOnDemandCommandCandidates(params: {
       installedDesktop.push(command);
     }
   }
-  const onPath = packageOnly ? undefined : (await onDemand.findPathCommand())?.command;
+  const onPath = packageOnly
+    ? undefined
+    : ((await params.installed?.findPathCommand()) ?? (await onDemand.findPathCommand()))?.command;
   const bundled = resolveManagedCodexPackageEntrypoint(params.pluginRoot);
   let pinned =
     bundled && params.bundledReady(bundled, platform)

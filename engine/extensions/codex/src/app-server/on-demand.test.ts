@@ -19,6 +19,7 @@ import { gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerCodexRuntime } from "../codex-runtime.js";
 import type { CodexAppServerStartOptions } from "./config-contracts.js";
+import { createInstalledCodex } from "./installed-codex.js";
 import {
   isManagedCodexDownloadPending,
   resolveManagedCodexAppServerStartOptions,
@@ -236,6 +237,61 @@ describe("Codex on demand", () => {
     };
   }
 
+  it.each([".local/bin", ".codex/packages/standalone/current"])(
+    "uses an installed Codex under ~/%s without a download prompt or fetch",
+    async (installDir) => {
+      const platform = process.platform;
+      const home = path.join(root, "home");
+      const command = path.join(home, installDir, platform === "win32" ? "codex.exe" : "codex");
+      await mkdir(path.dirname(command), { recursive: true });
+      await writeFile(command, "#!/bin/sh\n");
+      await chmod(command, 0o755);
+      const env = { HOME: home, USERPROFILE: home, PATH: "" };
+      const readVersion = async () => "codex-cli 0.161.2";
+      const fetch = vi.fn();
+      const onDemand = createCodexOnDemand(
+        deps({ platform, env, readVersion, fetch: fetch as unknown as typeof globalThis.fetch }),
+      );
+      const lookup = {
+        platform,
+        pluginRoot,
+        installed: createInstalledCodex({ platform, env, readVersion }),
+        onDemand,
+        pathExists: noDesktopApps,
+        bundledReady: () => false,
+      };
+      const pathLookup = vi.spyOn(onDemand, "findPathCommand");
+
+      await expect(isManagedCodexDownloadPending(startOptions(), lookup)).resolves.toBe(false);
+      const events: CodexTurnDownloadEvent[] = [];
+      await prepareCodexForTurn({
+        startOptions: startOptions(),
+        signal: new AbortController().signal,
+        onDemand,
+        pending: (start) => isManagedCodexDownloadPending(start, lookup),
+        emit: (event) => {
+          events.push(event);
+        },
+      });
+      expect(events).toEqual([]);
+      await expect(
+        resolveManagedCodexAppServerStartOptions(startOptions(), lookup),
+      ).resolves.toMatchObject({
+        command,
+        commandSource: "resolved-managed",
+      });
+      expect(pathLookup).not.toHaveBeenCalled();
+      await expect(onDemand.status()).resolves.toMatchObject({
+        state: "ready",
+        source: "path",
+        command,
+        version: "0.161.2",
+      });
+      expect(onDemand.downloadAllowed()).toBe(false);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
   it("prefers a codex on PATH that meets the minimum version, without downloading", async () => {
     const bin = path.join(root, "bin");
     const oldBin = path.join(root, "old-bin");
@@ -332,7 +388,9 @@ describe("Codex on demand", () => {
       "bin",
       "codex",
     );
-    expect((await stat(native)).mode & 0o111).not.toBe(0);
+    if (process.platform !== "win32") {
+      expect((await stat(native)).mode & 0o111).not.toBe(0);
+    }
     // Exactly the entries the package marks executable, and only after verification.
     expect(chmodCalls.map((file) => file.split(path.sep).slice(-2).join("/")).toSorted()).toEqual([
       "bin/codex",
@@ -373,7 +431,9 @@ describe("Codex on demand", () => {
       onDemand: later,
       pathExists: noDesktopApps,
     };
-    await expect(resolveManagedCodexAppServerStartOptions(startOptions(), lookup)).resolves.toMatchObject({
+    await expect(
+      resolveManagedCodexAppServerStartOptions(startOptions(), lookup),
+    ).resolves.toMatchObject({
       command: resolved.command,
       commandSource: "resolved-managed",
     });

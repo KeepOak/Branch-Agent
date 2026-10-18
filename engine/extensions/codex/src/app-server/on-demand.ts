@@ -28,12 +28,13 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
-import { createDownloadConsent } from "./on-demand-consent.js";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { parse as parseSemver } from "semver";
+import { createInstalledCodex } from "./installed-codex.js";
 import { resolveCodexDownloadAsset, type CodexDownloadAsset } from "./on-demand-assets.js";
+import { createDownloadConsent } from "./on-demand-consent.js";
 import { extractPackageTarball } from "./on-demand-tar.js";
 import { MIN_SUPPORTED_CODEX_APP_SERVER_VERSION } from "./version.js";
 
@@ -216,6 +217,7 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
   const readVersion = deps.readVersion ?? defaultReadVersion;
   const chmod = deps.chmod ?? ((file: string, mode: number) => fsChmod(file, mode));
   const now = deps.now ?? Date.now;
+  const installedCodex = createInstalledCodex({ platform, env, readVersion, now });
   let pathCache:
     | { key: string; at: number; found?: { command: string; version: string } }
     | undefined;
@@ -229,6 +231,12 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
       : undefined;
 
   async function findPathCommand() {
+    // Keep the official standalone/tilde-aware lookup even when the downloader
+    // is registered, including status reads from Settings and the model menu.
+    const existing = await installedCodex.findPathCommand();
+    if (existing) {
+      return existing;
+    }
     const key = env.PATH ?? env.Path ?? "";
     if (pathCache && pathCache.key === key && now() - pathCache.at < PATH_CACHE_MS) {
       return pathCache.found;
@@ -524,13 +532,20 @@ function pathCandidates(searchPath: string, platform: NodeJS.Platform): string[]
   const pathApi = platform === "win32" ? path.win32 : path.posix;
   const names = platform === "win32" ? ["codex.exe", "codex.cmd"] : ["codex"];
   const result: string[] = [];
-  for (const dir of searchPath.split(platform === "win32" ? ";" : ":")) {
+  // A pinned target platform can differ from the host in tests. Preserve host
+  // drive letters as well as the target's absolute paths.
+  const dirs =
+    process.platform === "win32" && platform !== "win32"
+      ? (searchPath.match(/(?:[A-Za-z]:)?[^:]+/gu) ?? [])
+      : searchPath.split(platform === "win32" ? ";" : ":");
+  for (const dir of dirs) {
     const trimmed = dir.trim().replace(/^"(.*)"$/u, "$1");
-    if (!trimmed || !pathApi.isAbsolute(trimmed)) {
+    if (!trimmed || (!pathApi.isAbsolute(trimmed) && !path.isAbsolute(trimmed))) {
       continue;
     }
+    const candidatePath = path.isAbsolute(trimmed) ? path : pathApi;
     for (const name of names) {
-      result.push(pathApi.join(trimmed, name));
+      result.push(candidatePath.join(trimmed, name));
     }
   }
   return result;
