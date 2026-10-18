@@ -212,7 +212,10 @@ async function createFixtureFiles(root) {
   const script = `import fs from "node:fs";import http from "node:http";import net from "node:net";
 const root=${JSON.stringify(root)}, file=root+"/starts.json";
 const starts=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[];
-starts.push(process.pid);const tmp=file+"."+process.pid+".tmp";fs.writeFileSync(tmp,JSON.stringify(starts));fs.renameSync(tmp,file);
+// The parent polls this file with readFile. On Windows its open reader can deny
+// rename/delete sharing and make renameSync exit the engine before it binds.
+// Readers already treat partial JSON as not-yet; publish without replacing the file.
+starts.push(process.pid);fs.writeFileSync(file,JSON.stringify(starts));
 const peers=starts.filter(p=>p!==process.pid&&(()=>{try{process.kill(p,0);return true;}catch{return false;}})());
 fs.writeFileSync(root+"/launch-"+process.pid+".json",JSON.stringify({port:Number(process.argv.at(-1)),standby:process.env.BRANCH_GATEWAY_STANDBY==="1",token:process.env.BRANCH_GATEWAY_TOKEN,peers}));
 let listener;const sockets=new Set();let exiting=false;
