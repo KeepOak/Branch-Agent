@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Face } from "../../face/Face";
 import { Dialog } from "../../shell/Dialog";
-import { plainError } from "../../shell/plain-error";
 import { Layer } from "./layer";
 import { canCreateTrunk, SHAPE_RADII, startingLook, TRUNK_COLOURS, TRUNK_SHAPES, type NewTrunkDraft, type TrunkColour, type TrunkShape } from "./new-trunk-sheet";
 import "./new-trunk-sheet.css";
@@ -54,7 +53,7 @@ export function NewTrunkSheet({ count, busy, error, onClose, onCreate }: {
             </div>
           </div>
           <span className="nt-vh" role="status">{shape}, colour {colour}.</span>
-          {error ? <p className="nt-error" role="alert">{plainError(error)}</p> : null}
+          {error ? <p className="nt-error" role="alert">{error}</p> : null}
         </form>
       </Dialog>
     </Layer>

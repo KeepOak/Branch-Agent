@@ -7,7 +7,6 @@ import type { WindowEngine } from "../../connect/engine";
 import { loadTrunkData } from "./data";
 import { AccountsTab } from "./AccountsTab";
 import { NewTrunkPreview } from "./NewTrunkPreview";
-import { NewTrunkSheet } from "./NewTrunkSheet";
 import { RemoveTrunkDialog } from "./RemoveTrunk";
 import { ShareTrunkDialog } from "./ShareTrunk";
 import { TrunkDefaults } from "./TrunkDefaults";
@@ -173,12 +172,6 @@ describe("Trunk pages never show a raw engine error at Regular", () => {
     expect(alertText()).not.toMatch(RAW);
   });
 
-  it("names a failed new-Trunk sheet in a plain sentence", async () => {
-    await act(async () => root.render(<NewTrunkSheet count={0} error={ENGINE} onClose={() => undefined} onCreate={() => undefined} />));
-    expect(alertText()).toBe(REACH);
-    expect(alertText()).not.toMatch(RAW);
-  });
-
   it("names a failed new-Trunk preview in a plain sentence", async () => {
     await act(async () => root.render(<NewTrunkPreview roster={ROSTER} error={ENGINE} onConfirm={() => undefined} onClose={() => undefined} />));
     expect(alertText()).toBe(REACH);
@@ -241,7 +234,7 @@ describe("Trunk pages never show a raw engine error at Regular", () => {
     await act(async () => root.render(<AccountsTab engine={engineOf(request)} agentId="oak" />));
     await settle();
     expect(alertText()).toBe(ENGINE);
-    await act(async () => root.render(<NewTrunkSheet count={0} error={ENGINE} onClose={() => undefined} onCreate={() => undefined} />));
+    await act(async () => root.render(<NewTrunkPreview roster={ROSTER} error={ENGINE} onConfirm={() => undefined} onClose={() => undefined} />));
     expect(alertText()).toBe(ENGINE);
     const share = vi.fn(async () => { throw new Error(ENGINE); });
     await act(async () => root.render(<ShareTrunkDialog engine={engineOf(share)} agentId="night" name="Night Shift" onClose={() => undefined} />));
