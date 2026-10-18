@@ -13,8 +13,9 @@ permissions:
   actions: read
 
 concurrency:
-  # Body edits keep the same SHA; do not cancel the wait already running for this PR.
-  group: merge-gate-${{ github.ref }}
+  # Workflow + PR + head SHA so a duplicate event on the same commit cancels the extra run.
+  # Body edits keep the same SHA; do not cancel the wait already running for this SHA.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
   cancel-in-progress: ${{ github.event.action != 'edited' }}
 
 jobs:
@@ -195,14 +196,16 @@ jobs:
             ' <<<"$runs")
             # A close/reopen starts a new run on the same SHA. For each GitHub
             # Actions app, workflow path, event, and job, keep every same-name
-            # check from the newest suite. Only a success, or a suite that is
-            # still running, replaces an earlier hard non-pass. A completed
-            # success/skipped/neutral suite supersedes cancelled-only suites of
-            # the same identity, even when the cancelled suite has a higher ID.
-            # A newer skipped or neutral run must not hide failure, timed_out,
-            # action_required, or startup_failure. Unattributed checks, and
-            # checks bound to another path, event, SHA, suite, or PR, never
-            # collapse.
+            # check from the newest non-cancelled suite. Only a success, or a
+            # suite that is still running, replaces an earlier hard non-pass. A
+            # cancelled run is pending, not failed, when another run of the same
+            # check on this SHA exists or is queued. A check that is only
+            # cancelled still blocks. A completed success/skipped/neutral suite
+            # supersedes cancelled-only suites of the same identity, even when
+            # the cancelled suite has a higher ID. A newer skipped or neutral
+            # run must not hide failure, timed_out, action_required, or
+            # startup_failure. Unattributed checks, and checks bound to another
+            # path, event, SHA, suite, or PR, never collapse.
             dup_ids=$(jq -c '[group_by(.name)[] | select(length > 1) | .[].id]' <<<"$runs")
             attrs='{}'
             while IFS= read -r check; do
@@ -265,8 +268,20 @@ jobs:
                   (.status != "completed")
                   or (.conclusion | pass_conclusion)
                   or .conclusion == "cancelled");
+              def is_cancelled:
+                .status == "completed" and .conclusion == "cancelled";
+              def check_key($run):
+                (($attrs[$run.id | tostring] // {}) | .path // "") as $path
+                | if $path != "" then $path + "\t" + $run.name else $run.name end;
+              def drop_superseded_cancelled:
+                ([.[] | select(is_cancelled | not) | check_key(.)]) as $active
+                | map(. as $run
+                  | select(($run | is_cancelled | not)
+                    or (($active | index(check_key($run))) == null)));
               def keep_newest:
-                ([.[].check_suite.id | as_num] | max) as $suite
+                ([.[] | select(is_cancelled | not)]) as $active
+                | (if ($active | length) > 0 then $active else . end)
+                | ([.[].check_suite.id | as_num] | max) as $suite
                 | [.[] | select((.check_suite.id | as_num) == $suite)] as $newest
                 | if ($newest | suite_supersedes) then $newest
                   else
@@ -288,6 +303,7 @@ jobs:
               | [ $acc.groups[] | keep_newest ]
               | add // []
               | $acc.unbound + .
+              | drop_superseded_cancelled
             ' <<<"$runs")
             # CodeQL default setup can register Analyze after all other checks finish.
             pending=$(jq '([.[] | select(.status != "completed")] | length) + (if any(.[]; .name == "Analyze (actions)") then 0 else 1 end)' <<<"$runs")

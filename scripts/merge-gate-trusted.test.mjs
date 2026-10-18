@@ -636,8 +636,8 @@ test('reopened same SHA keeps newest check per App workflow and name over old ca
     coreWorkflows,
     currentRunId: CURRENT_RUN_ID,
   });
-  assert.equal(result.ok, false);
-  assert.equal(result.failed[0].id, 110);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.failed, []);
   const pending = evaluateTrustedGate({
     checkRuns: [...passCheckRuns, { ...passCheckRuns[0], id: 110, status: 'queued', conclusion: null }],
     workflowsByCheckId: { ...passWorkflows, 110: mergeGateWorkflow },
@@ -923,6 +923,175 @@ test('regression: #767 cancelled harvest suite is superseded by skipped+success 
   ]) {
     assertHarvestPairPasses(pair);
   }
+});
+
+function gateFilesFreshRun(id, suite, patch = {}) {
+  return {
+    id,
+    app: { id: 15368 },
+    name: 'gate-files-fresh',
+    status: 'completed',
+    conclusion: 'success',
+    check_suite: { id: suite },
+    details_url: `https://github.com/example/repo/actions/runs/${id}/job/${id}`,
+    ...patch,
+  };
+}
+
+function gateFilesFreshWorkflow(suite, patch = {}) {
+  return {
+    path: '.github/workflows/gate-files-fresh.yml',
+    event: 'pull_request_target',
+    headSha: SHA,
+    checkSuiteId: suite,
+    pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+    ...patch,
+  };
+}
+
+test('cancelled duplicate plus a success of the same check on the same SHA passes', () => {
+  const cancelled = gateFilesFreshRun(90, 490, { conclusion: 'cancelled' });
+  const success = gateFilesFreshRun(110, 501);
+  const workflows = { 90: gateFilesFreshWorkflow(490), 110: gateFilesFreshWorkflow(501) };
+  for (const pair of [[cancelled, success, analyzeCheck], [success, cancelled, analyzeCheck]]) {
+    const ordinary = assertOrdinaryAgreesWithYaml(pair, workflows);
+    assert.equal(ordinary.ready, true);
+    assert.deepEqual(ordinary.failed, []);
+    assert.deepEqual(ordinary.others.map((run) => run.id).sort((left, right) => left - right), [
+      analyzeCheck.id,
+      success.id,
+    ]);
+  }
+
+  const newerCancelled = gateFilesFreshRun(120, 502, { conclusion: 'cancelled' });
+  const olderSuccess = gateFilesFreshRun(100, 480);
+  const flipped = assertOrdinaryAgreesWithYaml(
+    [newerCancelled, olderSuccess, analyzeCheck],
+    { 120: gateFilesFreshWorkflow(502), 100: gateFilesFreshWorkflow(480) },
+  );
+  assert.equal(flipped.ready, true);
+  assert.deepEqual(flipped.failed, []);
+
+  const queued = gateFilesFreshRun(130, 503, { status: 'queued', conclusion: null });
+  const waiting = assertOrdinaryAgreesWithYaml(
+    [cancelled, queued, analyzeCheck],
+    { 90: gateFilesFreshWorkflow(490), 130: gateFilesFreshWorkflow(503) },
+  );
+  assert.equal(waiting.ready, false);
+  assert.deepEqual(waiting.failed, []);
+  assert.deepEqual(waiting.pending.map((run) => run.id), [130]);
+
+  const unbound = assertOrdinaryAgreesWithYaml([cancelled, success, analyzeCheck], {});
+  assert.equal(unbound.ready, true);
+  assert.deepEqual(unbound.failed, []);
+
+  const trustedResult = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, cancelled, success],
+    workflowsByCheckId: { ...passWorkflows, ...workflows },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(trustedResult.ok, true);
+  assert.deepEqual(trustedResult.failed, []);
+});
+
+test('a check that is only cancelled, with no other run, still blocks both gates', () => {
+  const cancelled = gateFilesFreshRun(90, 490, { conclusion: 'cancelled' });
+  const workflows = { 90: gateFilesFreshWorkflow(490) };
+  const ordinary = assertOrdinaryAgreesWithYaml([cancelled, analyzeCheck], workflows);
+  assert.equal(ordinary.ready, false);
+  assert.deepEqual(ordinary.failed.map((run) => `${run.name}: ${run.conclusion}`), [
+    'gate-files-fresh: cancelled',
+  ]);
+
+  const twoCancelled = assertOrdinaryAgreesWithYaml(
+    [cancelled, gateFilesFreshRun(91, 491, { conclusion: 'cancelled' }), analyzeCheck],
+    { 90: gateFilesFreshWorkflow(490), 91: gateFilesFreshWorkflow(491) },
+  );
+  assert.equal(twoCancelled.ready, false);
+  assert.ok(twoCancelled.failed.every((run) => run.conclusion === 'cancelled'));
+
+  const trustedResult = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, cancelled],
+    workflowsByCheckId: { ...passWorkflows, ...workflows },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(trustedResult.ok, false);
+  assert.deepEqual(trustedResult.failed.map((run) => `${run.name}: ${run.conclusion}`), [
+    'gate-files-fresh: cancelled',
+  ]);
+});
+
+test('cancelled run of one workflow is not hidden by a same-named success from another', () => {
+  const cancelled = {
+    id: 90,
+    app: { id: 15368 },
+    name: 'build',
+    status: 'completed',
+    conclusion: 'cancelled',
+    check_suite: { id: 490 },
+  };
+  const success = {
+    id: 110,
+    app: { id: 15368 },
+    name: 'build',
+    status: 'completed',
+    conclusion: 'success',
+    check_suite: { id: 501 },
+  };
+  const workflows = {
+    90: {
+      path: '.github/workflows/visual-tour.yml',
+      event: 'pull_request',
+      headSha: SHA,
+      checkSuiteId: 490,
+      pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+    },
+    110: {
+      path: '.github/workflows/engine-build-pr.yml',
+      event: 'pull_request',
+      headSha: SHA,
+      checkSuiteId: 501,
+      pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+    },
+  };
+  const ordinary = assertOrdinaryAgreesWithYaml([cancelled, success, analyzeCheck], workflows);
+  assert.equal(ordinary.ready, false);
+  assert.deepEqual(ordinary.failed.map((run) => run.id), [90]);
+});
+
+test('a real failure still fails both gates when a cancelled duplicate also exists', () => {
+  const cancelled = gateFilesFreshRun(90, 490, { conclusion: 'cancelled' });
+  const failed = gateFilesFreshRun(110, 501, { conclusion: 'failure' });
+  const workflows = { 90: gateFilesFreshWorkflow(490), 110: gateFilesFreshWorkflow(501) };
+  const ordinary = assertOrdinaryAgreesWithYaml([cancelled, failed, analyzeCheck], workflows);
+  assert.equal(ordinary.ready, false);
+  assert.deepEqual(ordinary.failed.map((run) => run.id), [110]);
+
+  const onlyFailed = assertOrdinaryAgreesWithYaml(
+    [failed, analyzeCheck],
+    { 110: gateFilesFreshWorkflow(501) },
+  );
+  assert.equal(onlyFailed.ready, false);
+  assert.deepEqual(onlyFailed.failed.map((run) => `${run.name}: ${run.conclusion}`), [
+    'gate-files-fresh: failure',
+  ]);
+
+  const trustedResult = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, cancelled, failed],
+    workflowsByCheckId: { ...passWorkflows, ...workflows },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(trustedResult.ok, false);
+  assert.deepEqual(trustedResult.failed.map((run) => run.id), [110]);
 });
 
 test('regression: cancelled harvest suite with no replacement still fails both gates', () => {
@@ -2072,6 +2241,17 @@ test('merge-gate edited trigger does not cancel an in-progress wait', () => {
   assert.match(yaml, /cancel-in-progress:\s*\$\{\{\s*github\.event\.action\s*!=\s*'edited'\s*\}\}/);
 });
 
+test('gate workflows collapse duplicate runs with workflow + PR + SHA concurrency', () => {
+  const group = /group:\s*\$\{\{\s*github\.workflow\s*\}\}-\$\{\{\s*github\.event\.pull_request\.number\s*\}\}-\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/;
+  const ordinary = ordinaryYaml();
+  const trusted = readFileSync(new URL(`../${TRUSTED_WORKFLOW_PATH}`, import.meta.url), 'utf8');
+  const fresh = readFileSync(new URL('../.github/workflows/gate-files-fresh.yml', import.meta.url), 'utf8');
+  for (const yaml of [ordinary, trusted, fresh]) assert.match(yaml, group);
+  assert.match(ordinary, /cancel-in-progress:\s*\$\{\{\s*github\.event\.action\s*!=\s*'edited'\s*\}\}/);
+  assert.match(trusted, /cancel-in-progress:\s*\$\{\{\s*github\.event\.action\s*!=\s*'edited'\s*\}\}/);
+  assert.match(fresh, /cancel-in-progress:\s*true/);
+});
+
 test('merge-gate wait ignores merge-gate-trusted so the two gates cannot deadlock', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /select\(\.name != "merge-gate" and \.name != "merge-gate-trusted"( and \.name != "recheck")?\)/);
@@ -2327,6 +2507,27 @@ test('ordinary JS waiter additions stay aligned with the yaml jq filters', () =>
     { 90: desktopWorkflow(490), 110: desktopWorkflow(501, { pullRequests: [{ number: 900, base: BASE_REF }] }) },
   );
   align([...harvestCancelledChecks, ...harvestPassingChecks, analyzeCheck], harvestWorkflows);
+  const freshCancelled = {
+    id: 90, app: { id: 15368 }, name: 'gate-files-fresh', status: 'completed',
+    conclusion: 'cancelled', check_suite: { id: 490 },
+  };
+  const freshSuccess = {
+    id: 110, app: { id: 15368 }, name: 'gate-files-fresh', status: 'completed',
+    conclusion: 'success', check_suite: { id: 501 },
+  };
+  const freshWorkflow = (suite) => ({
+    path: '.github/workflows/gate-files-fresh.yml', event: 'pull_request_target',
+    headSha: SHA, checkSuiteId: suite, pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+  });
+  align(
+    [freshCancelled, freshSuccess, analyzeCheck],
+    { 90: freshWorkflow(490), 110: freshWorkflow(501) },
+  );
+  align([freshCancelled, analyzeCheck], { 90: freshWorkflow(490) });
+  align(
+    [freshCancelled, { ...freshSuccess, conclusion: 'failure' }, analyzeCheck],
+    { 90: freshWorkflow(490), 110: freshWorkflow(501) },
+  );
   align([...harvestCancelledChecks, analyzeCheck], harvestWorkflows);
   align(
     [

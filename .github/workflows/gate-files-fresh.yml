@@ -12,7 +12,9 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: gate-files-fresh-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+  # Workflow + PR + head SHA so a duplicate pull_request_target on the same commit
+  # cancels the extra run instead of leaving two checks for merge-gate to reconcile.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
   cancel-in-progress: true
 
 jobs:

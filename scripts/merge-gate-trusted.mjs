@@ -142,7 +142,29 @@ function newestSuiteSupersedes(runs) {
   return runs.every((run) => run.status !== 'completed' || run.conclusion === 'success');
 }
 
+export function isCancelledRun(run) {
+  return run?.status === 'completed' && run.conclusion === 'cancelled';
+}
+
+export function sameCheckKey(run, workflowsByCheckId = {}) {
+  const path = lookupWorkflow(workflowsByCheckId, run.id)?.path;
+  return path ? `${path}\t${run.name}` : run.name;
+}
+
+// A cancelled run is not a failure when another run of the same check on this
+// SHA exists or is queued. Only a check that is cancelled with no other run
+// still blocks. Same-named jobs from different workflow paths stay distinct.
+export function dropSupersededCancelled(checkRuns, workflowsByCheckId = {}) {
+  const activeKeys = new Set();
+  for (const run of checkRuns) {
+    if (!isCancelledRun(run)) activeKeys.add(sameCheckKey(run, workflowsByCheckId));
+  }
+  return checkRuns.filter((run) => !isCancelledRun(run) || !activeKeys.has(sameCheckKey(run, workflowsByCheckId)));
+}
+
 function keepNewestSuite(runs) {
+  const active = runs.filter((run) => !isCancelledRun(run));
+  if (active.length) runs = active;
   const bySuite = new Map();
   for (const run of runs) {
     const suite = suiteNumber(run);
@@ -158,11 +180,11 @@ function keepNewestSuite(runs) {
   const inNewest = bySuite.get(newestSuite) ?? [];
   if (newestSuiteSupersedes(inNewest)) return inNewest;
 
-  // A completed success/skipped/neutral suite supersedes cancelled-only
-  // suites of the same identity. Concurrency can cancel a later-numbered
-  // duplicate, so a cancelled suite with a higher ID does not hide a pass.
-  // A skipped or neutral suite must not hide failure, timed_out,
-  // action_required, or startup_failure.
+  // Newest non-cancelled suite wins. A completed success/skipped/neutral
+  // suite supersedes cancelled-only suites of the same identity. Concurrency
+  // can cancel a later-numbered duplicate, so a cancelled suite with a higher
+  // ID does not hide a pass. A skipped or neutral suite must not hide
+  // failure, timed_out, action_required, or startup_failure.
   let passSuiteId = Number.NEGATIVE_INFINITY;
   let passSuite = null;
   for (const [suite, suiteRuns] of bySuite) {
@@ -207,7 +229,7 @@ export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, { sha
       if (!kept.has(run)) drop.add(run);
     }
   }
-  return checkRuns.filter((run) => !drop.has(run));
+  return dropSupersededCancelled(checkRuns.filter((run) => !drop.has(run)), workflowsByCheckId);
 }
 
 export function isVisualTourWorkflow(workflow) {
