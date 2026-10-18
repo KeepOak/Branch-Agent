@@ -15,9 +15,8 @@ import {
 export const LIVE_READ_ATTEMPTS = 4;
 export const LIVE_READ_DELAYS_SECONDS = [5, 10, 20];
 
-// The changed-test-coverage job allows 70 minutes. An installation rate limit resets within an hour.
-// This budget covers that reset plus a small buffer and leaves the rest of the job room to finish.
-export const COVERAGE_RATE_LIMIT_BUDGET_SECONDS = 62 * 60;
+// Match commit-emails' 10-minute budget, leaving room within the 15-minute job cap.
+export const COVERAGE_RATE_LIMIT_BUDGET_SECONDS = 600;
 export const COVERAGE_RATE_LIMIT_BUFFER_SECONDS = 15;
 
 // Live mode when the repo, the PR number and a token are set. Local runs fall back to GITHUB_EVENT_PATH.
@@ -94,7 +93,7 @@ export function readLivePullRequest(ctx, {
     if (!isRateLimitError(error)) throw error;
     const detail = String(error?.message ?? error).split('\n')[0];
     throw new Error(
-      `GitHub API rate limit outlasted the ${budgetSeconds}s wait while reading pull request #${ctx.prNumber}. Not a coverage failure; re-run the check. ${detail}`,
+      `checks-unavailable: GitHub API rate limit outlasted the ${budgetSeconds}s wait while reading pull request #${ctx.prNumber}. Not a coverage failure; re-run the check. ${detail}`,
     );
   }
 }
@@ -116,12 +115,22 @@ export function snapshotFromEnv(env = process.env, { read = readFileSync } = {})
   };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const ctx = liveContext();
-  const outFile = process.argv[2];
+export function main(args = process.argv.slice(2), { env = process.env, ...readOptions } = {}) {
+  const ctx = liveContext(env);
+  const outFile = args[0];
   if (!ctx || !outFile) {
     console.error('Usage: REPO, PR_NUMBER and GH_TOKEN set; node scripts/live-pull-request.mjs <out.json>');
-    process.exit(1);
+    return 1;
   }
-  writeFileSync(outFile, JSON.stringify(readLivePullRequest(ctx)));
+  try {
+    writeFileSync(outFile, JSON.stringify(readLivePullRequest(ctx, readOptions)));
+    return 0;
+  } catch (error) {
+    console.error(error.message);
+    return 1;
+  }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = main();
 }

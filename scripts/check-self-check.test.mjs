@@ -332,6 +332,65 @@ test('readLivePullRequest waits out a secondary rate limit from gh api rate_limi
   assert.equal(pr.body, 'live');
 });
 
+test('readLivePullRequest waits exactly retry-after for a 429 without a reset buffer', () => {
+  let now = 1_700_000_000_000;
+  let calls = 0;
+  const sleeps = [];
+  const pr = readLivePullRequest(LIVE_CTX, {
+    request: () => {
+      if (++calls === 1) {
+        throw rateLimitError('Too many requests', {
+          httpStatus: 429,
+          headers: { 'retry-after': '20' },
+        });
+      }
+      return { body: 'live', head: { ref: 'trunk/live-body', sha: HEAD } };
+    },
+    sleep: (seconds) => {
+      sleeps.push(seconds);
+      now += seconds * 1000;
+    },
+    now: () => now,
+    fetchRateLimit: () => null,
+    log: () => {},
+  });
+  assert.equal(calls, 2);
+  assert.deepEqual(sleeps, [20]);
+  assert.deepEqual(pr, { body: 'live', headRef: 'trunk/live-body', headSha: HEAD });
+});
+
+test('the live pull request CLI fails without writing a snapshot when rate limiting persists', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'live-pr-rate-limit-'));
+  const out = path.join(dir, 'snapshot.json');
+  try {
+    const entry = new URL('./live-pull-request.mjs', import.meta.url).href;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import { main } from ${JSON.stringify(entry)};
+      let now = 1_700_000_000_000;
+      process.exitCode = main([${JSON.stringify(out)}], {
+        env: { REPO: 'o/r', PR_NUMBER: '7', GH_TOKEN: 'fake-token' },
+        request: () => {
+          throw Object.assign(new Error('API rate limit exceeded'), {
+            httpStatus: 403,
+            headers: { 'retry-after': '20' },
+          });
+        },
+        sleep: (seconds) => { now += seconds * 1000; },
+        now: () => now,
+        budgetSeconds: 30,
+        fetchRateLimit: () => null,
+        log: () => {},
+      });
+    `], { encoding: 'utf8', windowsHide: true, timeout: 10_000 });
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /^checks-unavailable: GitHub API rate limit outlasted the 30s wait/);
+    assert.equal(existsSync(out), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a non-rate-limit 403, 404, or 500 fails without waiting for a rate-limit reset', () => {
   for (const status of [403, 404, 500]) {
     const sleeps = [];
@@ -374,7 +433,11 @@ test('a rate limit that outlasts the wait budget fails and is not reported as mi
     bufferSeconds: COVERAGE_RATE_LIMIT_BUFFER_SECONDS,
     fetchRateLimit: () => ({ resources: { core: { remaining: 0, reset: start / 1000 + 10_000 } } }),
     log: () => {},
-  }), /outlasted the 100s wait/);
+  }), (error) => {
+    assert.match(error.message, /^checks-unavailable: GitHub API rate limit outlasted the 100s wait/);
+    assert.match(error.message, /Not a coverage failure; re-run the check/);
+    return true;
+  });
   const waited = sleeps.reduce((sum, seconds) => sum + seconds, 0);
   assert.ok(waited <= 100, `waited ${waited}s, over the 100s cap`);
   assert.ok(waited >= 100 - COVERAGE_RATE_LIMIT_BUFFER_SECONDS);
@@ -384,13 +447,13 @@ test('the changed-test-coverage job timeout outlasts the rate-limit wait budget'
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   const job = yaml.slice(yaml.indexOf('  changed-test-coverage:'), yaml.indexOf('  merge-gate:'));
   const timeoutMinutes = Number(/timeout-minutes:\s*(\d+)/.exec(job)?.[1]);
-  assert.equal(timeoutMinutes, 70);
-  assert.ok(timeoutMinutes <= 70);
+  assert.equal(timeoutMinutes, 15);
+  assert.ok(timeoutMinutes <= 15);
+  assert.equal(COVERAGE_RATE_LIMIT_BUDGET_SECONDS, 600);
   assert.ok(
-    timeoutMinutes * 60 >= COVERAGE_RATE_LIMIT_BUDGET_SECONDS + 6 * 60,
-    `timeout ${timeoutMinutes}m must leave 6 minutes after the ${COVERAGE_RATE_LIMIT_BUDGET_SECONDS}s wait`,
+    timeoutMinutes * 60 >= COVERAGE_RATE_LIMIT_BUDGET_SECONDS + 3 * 60,
+    `timeout ${timeoutMinutes}m must leave 3 minutes after the ${COVERAGE_RATE_LIMIT_BUDGET_SECONDS}s wait`,
   );
-  assert.ok(COVERAGE_RATE_LIMIT_BUDGET_SECONDS >= 60 * 60 + COVERAGE_RATE_LIMIT_BUFFER_SECONDS);
 });
 
 test('readLivePullRequest gives up after its attempts with a clear message', () => {
