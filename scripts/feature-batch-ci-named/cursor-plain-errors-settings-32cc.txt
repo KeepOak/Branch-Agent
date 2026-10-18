@@ -1,0 +1,5 @@
+window:src/places-nav/SettingsFrame.plain-error.test.tsx
+window:src/places/settings/adapter.plain-error.test.ts
+window:src/places/settings/set2/set2.plain-error.test.tsx
+window:src/places/settings/settings-kit.plain-error.test.tsx
+window:src/places/settings/settings.test.tsx

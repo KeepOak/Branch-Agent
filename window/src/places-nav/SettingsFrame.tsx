@@ -3,7 +3,8 @@ import type { WindowEngine } from "../connect/engine";
 import { SettingsPage, SETTINGS_ROWS } from "../places/settings";
 import { KitProvider, SetupLock, type Lv, type SaveReport } from "../places/settings/kit";
 import { configStore } from "../places/settings/config-store";
-import { errorText, list, record, text, visible, type RecordValue } from "../places/settings/adapter";
+import { list, record, text, visible, type RecordValue } from "../places/settings/adapter";
+import { plainError } from "../shell/plain-error";
 import { useResource } from "../places/settings/hooks";
 import { usePins, type Pin } from "../places/settings/pins";
 import { CharacterFace } from "../face/CharacterFace";
@@ -102,7 +103,7 @@ function useSaveState(): [SaveState, SaveReport] {
 function SaveLine({ state }: { state: SaveState }) {
   return (
     <p className={`set-save${state?.kind === "failed" ? " bad" : ""}`} role="status" aria-live="polite" hidden={!state}>
-      {state?.kind === "saved" ? <><Icon name="check" small />Saved</> : state?.kind === "saving" ? "Saving…" : state?.kind === "failed" ? `Not saved: ${visible(state.message)}` : null}
+      {state?.kind === "saved" ? <><Icon name="check" small />Saved</> : state?.kind === "saving" ? "Saving…" : state?.kind === "failed" ? `Not saved: ${plainError(state.message)}` : null}
     </p>
   );
 }
@@ -166,7 +167,7 @@ function FileProblem({ engine }: { engine: WindowEngine }) {
   const [snap, setSnap] = useState(store.snap);
   useEffect(() => { const off = store.subscribe(() => setSnap(store.snap)); if (!store.snap) void store.load(); return () => { off(); }; }, [store]);
   if (snap?.valid !== false) return null;
-  const issues = list(snap.issues).map((i) => visible(i.message ?? i.path ?? JSON.stringify(i)));
+  const issues = list(snap.issues).map((i) => plainError(i.message ?? i.path ?? i));
   return (
     <div className="status set-fileproblem" role="alert">
       <span className="sdot bad" />
@@ -253,7 +254,7 @@ export function SettingsFrame({ page, backName, running, engine, onPage, onBack,
   }, [level, onPage, jump]);
   const runSave = useCallback((run: () => Promise<unknown>) => {
     report.saving();
-    run().then(report.saved, (error: unknown) => report.failed(errorText(error)));
+    run().then(report.saved, (error: unknown) => report.failed(plainError(error)));
   }, [report]);
   const goPin = useCallback((p: Pin) => go(p[0], { page: p[0], title: p[1], lv: p[2] }), [go]);
   const pins = usePins(engine, shown, LV[level], runSave, goPin);

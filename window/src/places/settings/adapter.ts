@@ -1,13 +1,19 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../connect/engine";
 import { displayName } from "../../display-names";
+import { plainError } from "../../shell/plain-error";
 
 export type RecordValue = Record<string, unknown>;
 export function record(value: unknown): RecordValue { return value && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : {}; }
 export function list(value: unknown): RecordValue[] { return Array.isArray(value) ? value.map(record) : []; }
 export function at(value: unknown, path: string): unknown { return path.split(".").reduce<unknown>((v, key) => record(v)[key], value); }
 export function text(value: unknown): string { return value === undefined || value === null ? "Not set" : typeof value === "object" ? JSON.stringify(value) : String(value); }
-export function errorText(error: unknown): string { return error instanceof Error ? error.message : text(error); }
+/** Exact engine words save-retry and conflict checks match on, so those paths still see the original sentence. */
+const RETRY_WORDS = /config changed since last load|changed since last load|changed since it was read|base hash/i;
+export function errorText(error: unknown): string {
+  const words = error instanceof Error ? error.message : text(error);
+  return RETRY_WORDS.test(words) ? words : plainError(error);
+}
 
 export type ConfigSnapshot = { hash?: string; valid?: boolean; config?: RecordValue; issues?: unknown; writeError?: unknown };
 export async function saveConfig(engine: WindowEngine, snapshot: ConfigSnapshot, changes: Record<string, unknown>): Promise<ConfigSnapshot> {

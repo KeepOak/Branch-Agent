@@ -65,14 +65,14 @@ describe("Settings repeated and interrupted flows", () => {
   });
   it("ignores an interrupted load and allows retry after a failed load", async () => {
     const first = deferred<string>(); const second = deferred<string>();
-    const request = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise).mockRejectedValueOnce(new Error("disconnected")).mockResolvedValueOnce("recovered");
+    const request = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise).mockRejectedValueOnce(new Error("The engine is not answering.")).mockResolvedValueOnce("recovered");
     const connection = engine(request); let reload!: () => Promise<unknown>;
     function View({ method }: { method: string }) { const state = useResource<string>(connection, method); reload = state.reload; return <span>{state.loading ? "Loading" : state.error ?? state.data}</span>; }
     await act(async () => root.render(<View method="first" />));
     await act(async () => root.render(<View method="second" />));
     await act(async () => second.resolve("current")); expect(host.textContent).toBe("current");
     await act(async () => first.resolve("stale")); expect(host.textContent).toBe("current");
-    await act(async () => reload()); expect(host.textContent).toBe("disconnected");
+    await act(async () => reload()); expect(host.textContent).toBe("The engine is not answering.");
     await act(async () => reload()); expect(host.textContent).toBe("recovered");
   });
   it("serializes repeated clicks and recovers after a rejected mutation", async () => {
@@ -82,7 +82,7 @@ describe("Settings repeated and interrupted flows", () => {
     await act(async () => root.render(<View />));
     let first!: Promise<void>;
     await act(async () => { first = run(); await run(); }); expect(mutate).toHaveBeenCalledTimes(1);
-    await act(async () => { pending.reject(new Error("conflict")); await first; }); expect(host.textContent).toBe("conflict");
+    await act(async () => { pending.reject(new Error("The save conflicted.")); await first; }); expect(host.textContent).toBe("The save conflicted.");
     await act(async () => run()); expect(mutate).toHaveBeenCalledTimes(2); expect(host.textContent).toBe("Saved");
   });
   it("routes all21 Settings ids and reports engine failures without success data", async () => {
