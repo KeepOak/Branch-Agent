@@ -51,9 +51,22 @@ vi.mock("./lifecycle.runtime.js", () => ({
 vi.mock("./app-child-supervisor.js", () => ({
   runAppChildSupervisor: (opts: unknown) => runAppChildSupervisor(opts),
 }));
-vi.mock("../../infra/runtime-process-entrypoints.js", () => ({
-  runtimeProcessEntrypoints: [],
-}));
+vi.mock("../../infra/runtime-process-entrypoints.js", () => {
+  const dummy = (name: string) => ({
+    currentModuleUrl: import.meta.url,
+    sourceWorkerName: name,
+    distWorkerPath: `${name}.js`,
+  });
+  return {
+    SQLITE_READONLY_CHILD_ARG: "--branch-sqlite-readonly-child",
+    runtimeProcessEntrypoints: new Proxy(
+      {},
+      {
+        get: (_target, prop) => dummy(String(prop)),
+      },
+    ),
+  };
+});
 
 function createGatewayParentLikeCommand(program?: Command) {
   const gateway = program ? program.command("gateway") : new Command().name("gateway");
