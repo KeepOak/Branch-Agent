@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { newestChecksByIdentity, workflowFromActionsRun } from './merge-gate-trusted.mjs';
 
 export const MAX_RATE_LIMIT_SLEEP_SECONDS = 120;
+// Extra delay after a shared reset so concurrent waiters do not retry in lock-step.
+export const RATE_LIMIT_WAKE_SPREAD_SECONDS = 45;
 export const DEFAULT_WAIT_BUDGET_SECONDS = 32 * 60;
 export const GH_API_MAX_BUFFER = 64 * 1024 * 1024;
 export const POLL_INTERVAL_SECONDS = [30, 60, 90];
@@ -414,6 +416,7 @@ export function withRateLimitRetry(fn, {
   maxRetries = Number.POSITIVE_INFINITY,
   maxSleep = MAX_RATE_LIMIT_SLEEP_SECONDS,
   bufferSeconds = 0,
+  spreadSeconds = 0,
   retryTransient = true,
   random = Math.random,
   log,
@@ -445,16 +448,29 @@ export function withRateLimitRetry(fn, {
           rateLimit = null;
         }
       }
+      const fromHeaders = parseRateLimitHeaders(error?.headers ?? error);
+      const fromText = parseRateLimitHeaders(errorText(error));
+      const retryAfter = fromHeaders.retryAfter ?? fromText.retryAfter;
+      const resetAt = fromHeaders.resetEpoch ?? fromText.resetEpoch ?? resetEpochFromRateLimit(rateLimit);
+      const untilReset = Number.isFinite(resetAt) ? resetAt - now() / 1000 : null;
+      // Waiting when the window reopens after this job keeps every waiter in lock-step
+      // for the next hour. Fail closed now; a later event can recheck after the reset.
+      if (!Number.isFinite(retryAfter) && Number.isFinite(untilReset) && untilReset > remaining) {
+        throw error;
+      }
       const wait = rateLimitSleepSeconds({
         error,
         nowSeconds: now() / 1000,
         rateLimit,
         retryAttempt,
-        maxSleep,
+        maxSleep: Number.isFinite(untilReset) && !Number.isFinite(retryAfter) ? remaining : maxSleep,
         random,
         bufferSeconds,
       });
-      const sleepFor = Math.min(wait, remaining);
+      const spread = Math.max(0, Number(spreadSeconds)) > 0
+        ? Math.round(random() * Math.max(0, Number(spreadSeconds)))
+        : 0;
+      const sleepFor = Math.min(wait + spread, remaining);
       if (sleepFor < 1) throw error;
       log?.(`GitHub API rate limited; retrying in ${Math.ceil(sleepFor)}s…`);
       sleep(sleepFor);
@@ -495,6 +511,7 @@ export function runGhWithRetry(args, {
   startedAt,
   budgetSeconds,
   maxSleep,
+  spreadSeconds = RATE_LIMIT_WAKE_SPREAD_SECONDS,
   random = Math.random,
   log = console.error,
 } = {}) {
@@ -511,6 +528,7 @@ export function runGhWithRetry(args, {
     startedAt: startedAt ?? wait.startedAt,
     budgetSeconds: budgetSeconds ?? wait.budgetSeconds,
     maxSleep: maxSleep ?? wait.maxSleep,
+    spreadSeconds,
     random,
     log,
   });
@@ -697,6 +715,7 @@ export function pollOrdinaryGate({
           fetchRateLimit: fetchRateLimit ?? (() => fetchGitHubRateLimit(token)),
           startedAt,
           budgetSeconds: waitBudgetSeconds,
+          spreadSeconds: RATE_LIMIT_WAKE_SPREAD_SECONDS,
           random,
           log,
         },
