@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
+import { chmodSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   MISSING_SIGNING_SECRET,
@@ -15,6 +15,7 @@ import {
   requireUpdateSigningSecret,
   signUpdateFile,
   updaterAssetName,
+  verifyUpdateFile,
   writeReleaseLatestJson,
 } from "./update-signing.mjs";
 
@@ -108,6 +109,36 @@ test("signing refuses a missing secret, keeps bytes, and writes the .sig", async
     assert.equal(await readFile(`${file}.sig`, "utf8"), "c2lnbmF0dXJl");
     assert.deepEqual(signed, [file]);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("verify temps live under os.tmpdir and are deleted, never next to the payload", async () => {
+  const root = await mkdtemp(join(tmpdir(), "branch-update-verify-tmp-"));
+  const previous = process.env.MINISIGN;
+  try {
+    const file = join(root, "payload.bin");
+    await writeFile(file, "trusted-bytes");
+    await writeFile(`${file}.sig`, Buffer.from("untrusted comment: signature\n").toString("base64"));
+    const seen = join(root, "minisign-args.txt");
+    const stub = join(root, process.platform === "win32" ? "minisign.cmd" : "minisign");
+    if (process.platform === "win32") {
+      writeFileSync(stub, `@echo off\r\necho %* > "${seen}"\r\n`);
+    } else {
+      writeFileSync(stub, `#!/bin/sh\nprintf '%s\\n' "$*" > "${seen}"\n`);
+      chmodSync(stub, 0o755);
+    }
+    process.env.MINISIGN = stub;
+    verifyUpdateFile(file, Buffer.from("untrusted comment: minisign public key: TEST\n").toString("base64"));
+    const args = readFileSync(seen, "utf8");
+    assert.match(args, /minisign\.pub/);
+    assert.match(args, /minisign\.minisig/);
+    assert.ok(args.includes(tmpdir()), "verify materials must be under os.tmpdir");
+    assert.equal(readdirSync(root).some(name => name.startsWith(".updater-") || name.endsWith(".pub") || name.endsWith(".minisig")), false);
+    assert.equal(existsSync(file), true);
+  } finally {
+    if (previous === undefined) delete process.env.MINISIGN;
+    else process.env.MINISIGN = previous;
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("collectSignedPlatforms and writeReleaseLatestJson publish one .sig per present platform", async () => {

@@ -20,6 +20,8 @@ import {
   windowsInstallRoot, windowsVersionFolderName,
 } from "./desktop-update-helper";
 import { assertNoMacSigningDowngrade, chooseStagedMacBundle, ensureMacApplicationsInstall, readMacSignature } from "./mac-applications";
+import { assertUpdateSignature, MISSING_UPDATE_SIGNATURE, requiresUpdateSignature } from "./update-signature";
+import { UPDATER_PUBKEY } from "./updater-pubkey";
 import {
   WINDOWS_APP_USER_MODEL_ID, WINDOWS_LAUNCHER, WINDOWS_LAUNCHER_EXE, WINDOWS_LAUNCHER_RESOURCE, WINDOWS_LAUNCHER_REVISION,
   WINDOWS_LAUNCHER_REVISION_FILE, windowsLauncherScript, windowsShortcutNeedsLauncher,
@@ -50,6 +52,11 @@ export interface DesktopInstall {
   platform?: NodeJS.Platform;
   /** An app's code signature report (macOS); defaults to codesign. */
   readSignature?: (app: string) => Promise<string | undefined>;
+  /**
+   * Updater minisign public key. Omit to use the embedded UPDATER_PUBKEY. An empty string is a build
+   * that shipped before the key: the first signed update is accepted without a .sig.
+   */
+  updaterPubkey?: string;
 }
 export interface DesktopJournal {
   version: string;
@@ -220,6 +227,37 @@ function releaseBase(release: ComponentRelease): string {
 /** The Linux AppImage a release publishes (release-installers.mjs names it). */
 export const appImageAssetName = (version: string): string => `Branch-Agent-${version}-linux-x64.AppImage`;
 
+/** Empty when this install shipped before the key; those builds still accept the first signed update. */
+export function updateTrustRoot(install?: DesktopInstall): string {
+  if (install && Object.hasOwn(install, "updaterPubkey")) return (install.updaterPubkey ?? "").trim();
+  return UPDATER_PUBKEY.trim();
+}
+
+async function readPublishedSignature(release: ComponentRelease, assetName: string, request: typeof fetch): Promise<string | undefined> {
+  const base = releaseBase(release);
+  const sigResponse = await request(`${base}/${assetName}.sig`, { signal: AbortSignal.timeout(60_000) });
+  if (sigResponse.ok) return (await sigResponse.text()).trim();
+  if (sigResponse.status !== 404) trustedDownloadResponse(sigResponse);
+  const latestResponse = await request(`${base}/latest.json`, { signal: AbortSignal.timeout(60_000) });
+  if (latestResponse.status === 404) return undefined;
+  trustedDownloadResponse(latestResponse);
+  const latest = JSON.parse(await latestResponse.text()) as { platforms?: Record<string, { url?: string; signature?: string }> };
+  for (const entry of Object.values(latest.platforms ?? {})) {
+    if (typeof entry?.url !== "string" || typeof entry.signature !== "string") continue;
+    if (basename(new URL(entry.url).pathname) === assetName) return entry.signature.trim();
+  }
+  return undefined;
+}
+
+/** Builds that embed a pubkey require a valid .sig before staging; keyless installs skip this check. */
+export async function assertStagedUpdateSignature(release: ComponentRelease, assetName: string, file: string, request: typeof fetch, install?: DesktopInstall): Promise<void> {
+  const pubkey = updateTrustRoot(install);
+  if (!requiresUpdateSignature(pubkey)) return;
+  const signature = await readPublishedSignature(release, assetName, request);
+  if (!signature) throw new Error(`${assetName} ${MISSING_UPDATE_SIGNATURE}`);
+  assertUpdateSignature(await readFile(file), signature, pubkey);
+}
+
 /**
  * The release's SHA256SUMS as name to digest. `required` refuses a release without one; otherwise a release
  * published before SHA256SUMS existed (404) returns undefined and its manifest digests stand alone.
@@ -265,7 +303,7 @@ async function downloadVerified(url: string, sha256: string, file: string, reque
  * The AppImage update: the release's AppImage, checked against its SHA256SUMS entry, staged executable beside
  * the running file so the helper's rename over it is atomic (same folder, same filesystem).
  */
-async function stageAppImageUpdate(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, appImage: string): Promise<boolean> {
+async function stageAppImageUpdate(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, appImage: string, install?: DesktopInstall): Promise<boolean> {
   const name = appImageAssetName(release.version);
   const sha256 = (await releaseSha256Sums(release, request, true))!.get(name);
   if (!sha256) throw new Error(`Release ${release.version} lists no ${name} in SHA256SUMS`);
@@ -281,6 +319,7 @@ async function stageAppImageUpdate(cfg: DesktopConfig, release: ComponentRelease
   try {
     await writeFile(join(work, ".update-staging"), "");
     await downloadVerified(`${releaseBase(release)}/${name}`, sha256, staged, request);
+    await assertStagedUpdateSignature(release, name, staged, request, install);
     await chmod(staged, 0o755);
     const journal: DesktopJournal = { version: release.version, sha256, kind: "appimage", staged, target: appImage, phase: "staged", stagedSha256: sha256, work };
     await replaceFile(journalFile(cfg), JSON.stringify(journal));
@@ -306,7 +345,7 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
   }
   if (install.appImage) {
     if (await readOrEmpty(versionFile(cfg)) === release.version) return false;
-    return stageAppImageUpdate(cfg, release, request, install.appImage);
+    return stageAppImageUpdate(cfg, release, request, install.appImage, install);
   }
   if (process.platform === "win32" && await readOrEmpty(packagedIconFile(install)) === ICON_REVISION
     && await readOrEmpty(iconFile(cfg)) !== ICON_REVISION) {
@@ -334,6 +373,7 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
     const archive = join(directory, "desktop.tar.gz");
     const payload = join(directory, "payload");
     await downloadComponent(choice.asset, archive, request);
+    await assertStagedUpdateSignature(release, assetName, archive, request, install);
     await mkdir(payload);
     await extractComponentArchive(archive, payload, choice.asset.expandedBytes, stagedName);
     await rm(archive);

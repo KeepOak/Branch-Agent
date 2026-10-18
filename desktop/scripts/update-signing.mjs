@@ -3,8 +3,9 @@
 // platform's update payload gets a .sig verified against that pubkey. No paid certificate.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const UPDATER_PUBKEY_FILE = fileURLToPath(new URL("../updater-pubkey.txt", import.meta.url));
@@ -121,12 +122,12 @@ export function verifyUpdateFile(file, pubkey, verify = defaultVerify) {
 
 function defaultVerify(file, sig, pubkey) {
   const binary = process.env.MINISIGN ?? "minisign";
-  const dir = dirname(file);
-  const pubFile = join(dir, `.updater-${process.pid}.pub`);
-  const minisig = join(dir, `.updater-${process.pid}.minisig`);
-  writeFileSync(pubFile, Buffer.from(pubkey, "base64"), { mode: 0o600 });
-  writeFileSync(minisig, Buffer.from(readFileSync(sig, "utf8").trim(), "base64"), { mode: 0o600 });
+  const dir = mkdtempSync(join(tmpdir(), "branch-updater-verify-"));
+  const pubFile = join(dir, "minisign.pub");
+  const minisig = join(dir, "minisign.minisig");
   try {
+    writeFileSync(pubFile, Buffer.from(pubkey, "base64"), { mode: 0o600 });
+    writeFileSync(minisig, Buffer.from(readFileSync(sig, "utf8").trim(), "base64"), { mode: 0o600 });
     execFileSync(binary, ["-Vm", file, "-x", minisig, "-p", pubFile], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -134,7 +135,7 @@ function defaultVerify(file, sig, pubkey) {
       windowsHide: true,
     });
   } finally {
-    try { writeFileSync(pubFile, ""); } catch { /* ignore */ }
+    rmSync(dir, { recursive: true, force: true });
   }
 }
 

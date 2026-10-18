@@ -16,6 +16,7 @@ const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 const updater = await import(pathToFileURL(join(dist, "component-update.js")));
 const desktopUpdate = await import(pathToFileURL(join(dist, "desktop-update.js")));
 const { runHelper } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
+const { assertUpdateSignature, minisignTestKey, INVALID_UPDATE_SIGNATURE } = await import(pathToFileURL(join(dist, "update-signature.js")));
 const { parseComponentRelease } = await import(pathToFileURL(join(dist, "component-update-manifest.js")));
 const { cwdHoldsAppFolder, leaveAppWorkingFolder, userHome } = await import(pathToFileURL(join(dist, "app-working-folder.js")));
 const holders = await import(pathToFileURL(join(dist, "install-folder-holders.js")));
@@ -65,7 +66,7 @@ async function fixture(run, { runtime = false, iconRuntime = false, macBundle = 
   const installedApp = macBundle ? join(installed, "Branch Agent.app") : installed;
   const install = { appDir: installedApp, resourcesDir: join(installedApp, macBundle ? "Contents/Resources" : "resources"),
     executable: join(installedApp, macBundle ? "Contents/MacOS/Branch Agent" : "Branch Agent.exe"),
-    electronVersion: ELECTRON, nodePath: process.execPath };
+    electronVersion: ELECTRON, nodePath: process.execPath, updaterPubkey: "" };
   try { await run({ root, cfg, release, request, install }); }
   finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
 }
@@ -863,6 +864,86 @@ test("the engine node is copied outside the shell folder and other node binaries
     await rm(root, { recursive: true, force: true });
   }
 });
+
+function breakMinisignSignature(signature) {
+  const lines = Buffer.from(signature, "base64").toString("utf8").split("\n");
+  const block = Buffer.from(lines[1], "base64");
+  block[20] ^= 0xff;
+  lines[1] = block.toString("base64");
+  return Buffer.from(lines.join("\n")).toString("base64");
+}
+
+const sha256Hex = bytes => createHash("sha256").update(bytes).digest("hex");
+
+/** A Linux AppImage install plus a signed release, so a bad .sig can be shown to leave the running file alone. */
+async function signedAppImage(run, { mutate } = {}) {
+  const parent = join(tmpdir(), "Codex-session-files"); await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(join(parent, "signed-update-"));
+  const dataDir = join(root, "data"), bin = join(root, "bin"), releaseDir = join(root, "release");
+  await mkdir(dataDir); await mkdir(bin); await mkdir(releaseDir);
+  const appImage = join(bin, "branch-agent");
+  await writeFile(appImage, "#!/bin/sh\n# old appimage\n", { mode: 0o755 });
+  const key = minisignTestKey();
+  const original = Buffer.from("#!/bin/sh\n# Branch Agent AppImage fixture\n# version 0.4.5\n");
+  let published = original;
+  let signature = key.sign(original);
+  if (mutate === "file") {
+    published = Buffer.from(original);
+    published[published.length - 1] ^= 0xff;
+  }
+  if (mutate === "sig") signature = breakMinisignSignature(signature);
+  const pubkey = mutate === "key" ? minisignTestKey().pubkey : key.pubkey;
+  const name = desktopUpdate.appImageAssetName("0.4.5");
+  await writeFile(join(releaseDir, name), published);
+  if (mutate !== "missing") await writeFile(join(releaseDir, `${name}.sig`), signature);
+  await writeFile(join(releaseDir, "SHA256SUMS"), `${sha256Hex(published)}  ${name}\n`);
+  const release = { schemaVersion: 1, version: "0.4.5", components: {
+    engine: { url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0.4.5/branch-engine-0.4.5-linux-x64.tar.gz", sha256: "a".repeat(64), bytes: 1, expandedBytes: 1 },
+    window: { url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0.4.5/branch-window-0.4.5.tar.gz", sha256: "b".repeat(64), bytes: 1, expandedBytes: 1 },
+  } };
+  const server = createServer((request, response) => {
+    createReadStream(join(releaseDir, decodeURIComponent(request.url.slice(1)))).on("error", () => response.writeHead(404).end()).pipe(response);
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const request = async (url, options) => {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/${new URL(url).pathname.split("/").at(-1)}`, options);
+    return new Response(response.body, { status: response.status, headers: response.headers });
+  };
+  const cfg = { dataDir, windowDir: join(dataDir, "window-current"), engineDir: join(root, "old-engine") };
+  const install = { appDir: bin, resourcesDir: join(bin, "resources"), executable: appImage, electronVersion: ELECTRON,
+    nodePath: process.execPath, appImage, platform: "linux", updaterPubkey: pubkey };
+  try { await run({ root, cfg, release, request, install, name, original, published, signature, key }); }
+  finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
+}
+
+test("a valid minisign signature stages; a changed file, changed sig or wrong key fails and leaves the install untouched", async () => {
+  const key = minisignTestKey();
+  const bytes = Buffer.from("trusted-update-bytes");
+  const signature = key.sign(bytes);
+  assert.doesNotThrow(() => assertUpdateSignature(bytes, signature, key.pubkey));
+  assert.throws(() => assertUpdateSignature(Buffer.from("changed-update-bytes"), signature, key.pubkey), { message: INVALID_UPDATE_SIGNATURE });
+  assert.throws(() => assertUpdateSignature(bytes, breakMinisignSignature(signature), key.pubkey), { message: INVALID_UPDATE_SIGNATURE });
+  assert.throws(() => assertUpdateSignature(bytes, signature, minisignTestKey().pubkey), { message: INVALID_UPDATE_SIGNATURE });
+
+  await signedAppImage(async ({ cfg, release, request, install }) => {
+    assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, install), true);
+    assert.equal(await readFile(install.appImage, "utf8"), "#!/bin/sh\n# old appimage\n", "staging does not replace the running AppImage");
+    assert.equal((await desktopUpdate.readDesktopJournal(cfg)).kind, "appimage");
+  });
+  for (const mutate of ["file", "sig", "key", "missing"]) {
+    await signedAppImage(async ({ cfg, release, request, install }) => {
+      await assert.rejects(desktopUpdate.stageDesktopUpdate(cfg, release, request, install), mutate === "missing" ? /has no \.sig/ : { message: INVALID_UPDATE_SIGNATURE });
+      assert.equal(await readFile(install.appImage, "utf8"), "#!/bin/sh\n# old appimage\n");
+      assert.equal(await desktopUpdate.readDesktopJournal(cfg), undefined);
+      assert.deepEqual((await readdir(join(install.appImage, ".."))).sort(), ["branch-agent"]);
+    }, { mutate });
+  }
+});
+
+test("a build without the updater key still accepts the first signed update", () => signedAppImage(async ({ cfg, release, request, install }) => {
+  assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, { ...install, updaterPubkey: "" }), true);
+  assert.equal(await readFile(install.appImage, "utf8"), "#!/bin/sh\n# old appimage\n");
+}));
 
 test("the helper copies holders beside itself and releases them before an in-place rename", () => {
   const update = readFileSync(join(import.meta.dirname, "../src/desktop-update.ts"), "utf8");

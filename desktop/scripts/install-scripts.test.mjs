@@ -186,6 +186,24 @@ for (const target of TARGETS) {
   });
 }
 
+for (const target of TARGETS) {
+  test(`${target}: a signed release's extra latest.json and .sig lines do not block the old installer`, { skip }, () => {
+    const f = fixture(undefined, { target });
+    try {
+      const dir = join(f.releases, "latest", "download");
+      const asset = readdirSync(dir).find(isInstallAsset);
+      writeFileSync(join(dir, "latest.json"), "{}\n");
+      writeFileSync(join(dir, `${asset}.sig`), "c2lnbmF0dXJl");
+      const sums = readdirSync(dir).sort().filter(name => name !== "SHA256SUMS")
+        .map(name => `${sha256(join(dir, name))}  ${name}`).join("\n") + "\n";
+      writeFileSync(join(dir, "SHA256SUMS"), sums);
+      const result = f.run();
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(f.installed(), "1.2.3");
+    } finally { f.cleanup(); }
+  });
+}
+
 test("Linux installs the AppImage, never the tar.gz, as an executable with a desktop entry, idempotently", { skip }, () => {
   const f = fixture(undefined, { target: "linux-x64" });
   try {
