@@ -114,8 +114,8 @@ describe('settings screen', () => {
     expect(identity).toEqual({ version: '0.4.4-build-e5d86fab32b5', build: '12' });
     expect(identity).not.toEqual({ version: '0.1.0', build: '1' });
     await renderSettings({ identity });
-    expect(screen.getByTestId('settings-about')).toHaveTextContent('0.4.4-build-e5d86fab32b5');
-    expect(screen.getByTestId('settings-about')).not.toHaveTextContent('0.1.0');
+    expect(screen.getByTestId('settings-about')).toHaveTextContent(/0\.4\.4-build-e5d86fab32b5/);
+    expect(screen.getByTestId('settings-about')).not.toHaveTextContent(/0\.1\.0/);
     await fireEvent.press(screen.getByTestId('settings-about'));
     expect(within(screen.getByTestId('app-card')).getByText('0.4.4-build-e5d86fab32b5')).toBeOnTheScreen();
     expect(within(screen.getByTestId('app-card')).getByText('12')).toBeOnTheScreen();
