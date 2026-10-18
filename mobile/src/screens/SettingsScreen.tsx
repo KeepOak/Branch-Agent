@@ -249,6 +249,7 @@ export function SettingsScreen({
   onLevel,
   updateCard,
   level: pinnedLevel,
+  bottomExtra = 0,
   backTo = 'Chats',
 }: {
   state: Extract<PairingState, { step: 'paired' }>;
@@ -261,6 +262,8 @@ export function SettingsScreen({
   onLevel?: (next: SettingsLevel) => void;
   updateCard?: ReactNode;
   level?: SettingsLevel;
+  /** Extra padding above a floating Places bar. */
+  bottomExtra?: number;
   backTo?: 'Chats' | 'More';
 }) {
   const { color, space, radius, layout } = useTheme();
@@ -292,7 +295,7 @@ export function SettingsScreen({
 
   if (page === 'language') {
     return (
-      <Screen testID="settings-screen">
+      <Screen testID="settings-screen" bottomExtra={bottomExtra}>
         <BackRow label="Settings" onPress={() => setPage('main')} testID="settings-language-back" />
         <ThemedText variant="settingsTitle" accessibilityRole="header">
           Language
@@ -336,7 +339,7 @@ export function SettingsScreen({
 
   if (page === 'themes') {
     return (
-      <Screen testID="settings-screen">
+      <Screen testID="settings-screen" bottomExtra={bottomExtra}>
         <BackRow label="Settings" onPress={() => setPage('main')} testID="settings-themes-back" />
         <ThemedText variant="settingsTitle" accessibilityRole="header">
           Theme
@@ -382,7 +385,7 @@ export function SettingsScreen({
   if (page === 'help' || helpPage) {
     const topic = helpPage;
     return (
-      <Screen testID="settings-screen">
+      <Screen testID="settings-screen" bottomExtra={bottomExtra}>
         <BackRow
           label={topic ? 'Help' : 'Settings'}
           onPress={() => setPage(topic ? 'help' : 'main')}
@@ -423,7 +426,7 @@ export function SettingsScreen({
   const appearanceLater = laterRowsAt(level, 'Appearance');
 
   return (
-    <Screen testID="settings-screen">
+    <Screen testID="settings-screen" bottomExtra={bottomExtra}>
       <BackRow label={backTo} onPress={onBack} testID="settings-back" />
       <ThemedText variant="settingsTitle" accessibilityRole="header">
         Settings

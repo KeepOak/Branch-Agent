@@ -2,9 +2,9 @@
 // (status, delta, then final, error or aborted), and what you send with chat.send. It follows the window's
 // SaplingSession (window/src/connect/session.ts) in the parts a phone needs: the idempotency key is the run id,
 // a finished run reads the history again, and every reconnect reads it again, so the engine's copy always wins.
-import { attachmentSendLabel, toChatAttachments, type DraftFile } from './attachments';
+import { loadFailure } from '../connect/plainError';
 import type { EngineLink } from '../pairing/pairingSession';
-import { plainError } from '../ui/plainError';
+import { attachmentSendLabel, toChatAttachments, type DraftFile } from './attachments';
 
 export type ChatItem =
   | { kind: 'user'; key: string; text: string; at: number }
@@ -202,10 +202,6 @@ export function phaseLabel(phase: string | null): string {
   return (phase && PHASES[phase]) || 'Thinking…';
 }
 
-function messageOf(error: unknown): string {
-  return plainError(error);
-}
-
 export class Conversation {
   private snapshot: ConversationSnapshot = { items: [], loaded: false, error: null, sends: [], live: null, ended: null };
   private readonly listeners = new Set<() => void>();
@@ -295,7 +291,7 @@ export class Conversation {
       this.set({ items, loaded: true, error: null, sends, live: next });
     } catch (error) {
       if (read !== this.reads || this.disposed) return;
-      this.set({ error: messageOf(error) });
+      this.set({ error: loadFailure(error) });
     }
   }
 
@@ -337,8 +333,8 @@ export class Conversation {
     if (!live) return;
     try {
       await this.link.request('chat.abort', { sessionKey: this.sessionKey, runId: live.runId });
-    } catch (error) {
-      this.set({ ended: { runId: live.runId, text: `Couldn’t stop it: ${messageOf(error)}`, failed: true } });
+    } catch {
+      this.set({ ended: { runId: live.runId, text: 'Couldn’t stop it. Check your connection.', failed: true } });
     }
   }
 
@@ -361,7 +357,7 @@ export class Conversation {
       });
       this.patchSend(id, { state: 'sent' });
     } catch (error) {
-      this.patchSend(id, { state: 'failed', error: messageOf(error) });
+      this.patchSend(id, { state: 'failed', error: loadFailure(error) });
       if (this.snapshot.live?.runId === id) this.set({ live: null });
     }
   }

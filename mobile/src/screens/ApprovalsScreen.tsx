@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Platform, Pressable, ScrollView, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NotificationPermission } from '../approvals/approvalAlerts';
 import {
@@ -23,6 +23,7 @@ import { chatTime } from '../chats/chatTime';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { OfflineBanner } from '../ui/OfflineBanner';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
@@ -460,6 +461,7 @@ export function ApprovalsScreen({
   focusId,
   test,
   now: fixedNow,
+  bottomExtra = 0,
   initialTab = 'needs',
 }: {
   snapshot: ApprovalsSnapshot;
@@ -478,6 +480,8 @@ export function ApprovalsScreen({
   /** The test approval tools, in builds that have them (testApproval.ts testApprovalsOn). */
   test?: { state: TestApprovalState; onSend: (delayMs: number) => void; onCancel: () => void };
   now?: number;
+  /** Extra padding above a floating Places bar. */
+  bottomExtra?: number;
   /** Starts on this tab (screenshots and tests). Taps still switch. */
   initialTab?: InboxTab;
 }) {
@@ -556,7 +560,7 @@ export function ApprovalsScreen({
         testID="inbox-scroll"
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl }}
+        contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl + bottomExtra }}
       >
         <Pressable
           testID="approvals-back"

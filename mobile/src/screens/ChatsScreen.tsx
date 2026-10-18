@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { FlatList, Modal, Platform, Pressable, RefreshControl, ScrollView, TextInput, View } from 'react-native';
+import { Modal, Platform, Pressable, RefreshControl, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { matchingActions, runAction, type ActionHit } from '../chats/chatActions';
 import {
@@ -24,7 +24,9 @@ import { laterUpdate, levelRank, type ExperienceLevel } from '../settings/level'
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { NoScrollbarFlatList as FlatList, NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { OfflineBanner } from '../ui/OfflineBanner';
+import { statusBandHeight } from '../ui/PlacesBar';
 import { plainError } from '../ui/plainError';
 import { useNow } from '../ui/useNow';
 
@@ -252,7 +254,6 @@ function FilterChips({
     <View testID="chat-filters" style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, marginHorizontal: -layout.screenInset, paddingRight: layout.screenInset }}>
       <ScrollView
         horizontal
-        showsHorizontalScrollIndicator={false}
         accessibilityRole="tablist"
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: layout.screenInset, gap: space.sm }}
@@ -321,7 +322,6 @@ function PinnedRow({ pins, onOpen }: { pins: ChatRow[]; onOpen?: (row: ChatRow) 
       testID="pinned-trunks"
       accessibilityRole="list"
       accessibilityLabel="Pinned Trunks"
-      showsHorizontalScrollIndicator={false}
       style={{ marginHorizontal: -layout.screenInset }}
       contentContainerStyle={{ paddingHorizontal: layout.screenInset, paddingTop: space.sm, paddingBottom: space.md, gap: 14 }}
     >
@@ -502,9 +502,9 @@ export function ChatsScreen({
   onNeedsYou,
   now: fixedNow,
   updateBanner,
-  bottomExtra = 0,
   level = 'regular',
   look = Platform.OS === 'ios' ? 'ios' : 'android',
+  bottomExtra = 0,
 }: {
   list: ChatListSnapshot;
   online: boolean;
@@ -515,8 +515,6 @@ export function ChatsScreen({
   onAgents?: () => void;
   /** Opens Settings. */
   onSettings?: () => void;
-  /** Extra space above a places bar so the last row is not hidden. */
-  bottomExtra?: number;
   /** Opens More. */
   onMore?: () => void;
   /** Opens a chat. */
@@ -537,6 +535,8 @@ export function ChatsScreen({
   level?: ExperienceLevel;
   /** Android uses the preview's app bar, chips and New chat FAB. */
   look?: 'ios' | 'android';
+  /** Extra list padding above a floating Places bar. */
+  bottomExtra?: number;
 }) {
   const { color, space, radius, layout, type } = useTheme();
   // The list can stay open for hours: a render every half minute moves rows from "Now" to a time, and from
@@ -617,7 +617,7 @@ export function ChatsScreen({
   );
 
   const header = (
-    <View style={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
+    <View style={{ paddingTop: statusBandHeight(look, insets.top) + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
       <View style={{ flexDirection: 'row', justifyContent: onNeedsYou ? 'space-between' : 'flex-end', alignItems: 'center' }}>
         {onNeedsYou ? (
           <Pressable
@@ -860,8 +860,6 @@ export function ChatsScreen({
         contentContainerStyle={{ paddingBottom: insets.bottom + space.xl + bottomExtra + (android && onNewChat ? 72 : 0) }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
-        showsHorizontalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={color.ink3} colors={[color.ink]} />}
       />
       {android && onNewChat ? newChat : null}

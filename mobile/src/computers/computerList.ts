@@ -1,8 +1,8 @@
 // The Computers list: the engine's environments, read with environments.list and refreshed on
 // every environments.changed (and node presence) event, the way the window's listComputers
 // (window/src/stage/computers.ts) does. The phone shows names and online/offline status only.
+import { loadFailure } from '../connect/plainError';
 import type { EngineLink } from '../pairing/pairingSession';
-import { plainError } from '../ui/plainError';
 
 export type ComputerStatus = 'online' | 'offline' | 'starting' | 'stopping' | 'error';
 
@@ -128,7 +128,7 @@ export class ComputerList {
     try {
       this.apply(await this.link.request('environments.list', {}));
     } catch (error) {
-      this.set({ error: messageOf(error) });
+      this.set({ error: loadFailure(error) });
     }
   }
 
@@ -160,7 +160,7 @@ export class ComputerList {
           try {
             this.apply(await this.link.request('environments.list', {}));
           } catch (error) {
-            this.set({ error: messageOf(error) });
+            this.set({ error: loadFailure(error) });
           }
         } while (this.again && !this.disposed);
       } finally {
@@ -182,6 +182,3 @@ export class ComputerList {
   }
 }
 
-function messageOf(error: unknown): string {
-  return plainError(error);
-}

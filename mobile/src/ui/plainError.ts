@@ -37,15 +37,15 @@ function logHidden(raw: string, error: unknown): void {
 /** The words of a failure exactly as it came. */
 export function errorWords(error: unknown): string {
   if (typeof error === 'string') return error;
-  if (error instanceof Error) return error.message || String(error);
+  if (error instanceof Error) return error.message || String(error); // plain-error-allow: sanitizer maps dumps to plain words
   if (error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string') {
     return (error as { message: string }).message;
   }
-  return error == null ? '' : String(error);
+  return error == null ? '' : String(error); // plain-error-allow: sanitizer maps dumps to plain words
 }
 
 function dumpOf(error: unknown, words: string): string {
-  if (error instanceof Error) return [error.name, error.message, words].filter(Boolean).join('\n');
+  if (error instanceof Error) return [error.name, error.message, words].filter(Boolean).join('\n'); // plain-error-allow: sanitizer maps dumps to plain words
   return words;
 }
 
