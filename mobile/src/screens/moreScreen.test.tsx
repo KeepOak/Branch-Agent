@@ -12,10 +12,10 @@ const eventually = (check: () => void) => waitFor(check, { timeout: 4000 });
 jest.setTimeout(20_000);
 
 async function renderMore(extra: Partial<Parameters<typeof MoreScreen>[0]> = {}) {
-  const mocks = { onSettings: jest.fn(), onTrunks: jest.fn(), onBack: jest.fn() };
+  const mocks = { onYou: jest.fn(), onSettings: jest.fn(), onTrunks: jest.fn(), onBack: jest.fn() };
   await render(
     <ThemeProvider scheme="light">
-      <MoreScreen level="regular" trunkCount={3} workingCount={1} {...mocks} {...extra} />
+      <MoreScreen level="regular" trunkCount={3} workingCount={1} youName="Owner" {...mocks} {...extra} />
     </ThemeProvider>,
   );
   return { mocks };
@@ -41,17 +41,17 @@ async function pairedApp(extra: Parameters<typeof App>[0] = {}) {
 }
 
 describe('more rows', () => {
-  it('keeps Trunks and Settings at Regular, and hides unfinished rows', () => {
-    const groups = moreRows({ level: 'regular', trunkCount: 3, workingCount: 1 });
+  it('keeps You, Trunks and Settings at Regular, and hides unfinished rows', () => {
+    const groups = moreRows({ level: 'regular', trunkCount: 3, workingCount: 1, youName: 'Owner' });
     const ids = groups.flatMap((group) => group.rows.map((row) => row.id));
-    expect(ids).toEqual(['trunks', 'settings']);
+    expect(ids).toEqual(['you', 'trunks', 'settings']);
     expect(groups.find((group) => group.id === 'keepoak')).toBeUndefined();
   });
 
   it('adds every preview More row at Advanced, with a later-update line on unfinished ones', () => {
-    const groups = moreRows({ level: 'advanced', trunkCount: 3, workingCount: 1 });
+    const groups = moreRows({ level: 'advanced', trunkCount: 3, workingCount: 1, youName: 'Owner', youRole: 'Owner' });
     const rows = groups.flatMap((group) => group.rows);
-    expect(rows.map((row) => row.id)).toEqual(['signin', 'canopy', 'people', 'automations', 'library', 'trunks', 'usage', 'settings', 'widgets']);
+    expect(rows.map((row) => row.id)).toEqual(['you', 'signin', 'canopy', 'people', 'automations', 'library', 'trunks', 'usage', 'settings', 'widgets']);
     expect(rows.find((row) => row.id === 'canopy')?.detail).toBe(laterUpdate('Canopy'));
     expect(rows.find((row) => row.id === 'trunks')?.detail).toBe('Each Trunk, its computer and its rules');
     expect(rows.find((row) => row.id === 'settings')?.action).toBe('settings');
@@ -62,10 +62,13 @@ describe('more screen', () => {
   it('shows a short line under every row and opens Trunks and Settings', async () => {
     const { mocks } = await renderMore({ level: 'advanced' });
     expect(screen.getByRole('header')).toHaveTextContent('More');
+    expect(screen.getByTestId('more-you')).toHaveTextContent(/Your name, picture and what this phone may do/);
     expect(screen.getByTestId('more-trunks')).toHaveTextContent(/Each Trunk, its computer and its rules/);
     expect(screen.getByTestId('more-settings')).toHaveTextContent(/Connection, voice, notifications and privacy/);
     expect(screen.getByTestId('more-canopy')).toHaveTextContent(/Canopy comes in a later update/);
     expect(within(screen.getByTestId('more-work')).getByText('3')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('more-you'));
+    expect(mocks.onYou).toHaveBeenCalledTimes(1);
     await fireEvent.press(screen.getByTestId('more-trunks'));
     expect(mocks.onTrunks).toHaveBeenCalledTimes(1);
     await fireEvent.press(screen.getByTestId('more-settings'));
@@ -82,11 +85,17 @@ describe('more in the app', () => {
     await fireEvent.press(screen.getByTestId('more-button'));
     expect(screen.getByTestId('more-screen')).toBeOnTheScreen();
     expect(screen.getByTestId('more-settings')).toBeOnTheScreen();
+    expect(screen.getByTestId('more-you')).toBeOnTheScreen();
     expect(screen.queryByTestId('more-canopy')).toBeNull();
 
     await fireEvent.press(screen.getByTestId('more-settings'));
     expect(screen.getByTestId('settings-screen')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('settings-back'));
+    expect(screen.getByTestId('more-screen')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByTestId('more-you'));
+    expect(screen.getByTestId('you-screen')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('you-back'));
     expect(screen.getByTestId('more-screen')).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByTestId('more-trunks'));
