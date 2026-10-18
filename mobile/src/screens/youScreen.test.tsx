@@ -86,6 +86,19 @@ describe('you screen', () => {
     expect(screen.getByTestId('you-name-disabled')).toHaveTextContent(/signed-in profile/);
     expect(screen.queryByTestId('you-name-change')).toBeNull();
   });
+
+  it('shows a plain save failure, never raw exception text', async () => {
+    const onRename = jest.fn(async () => {
+      throw new Error('users.setDisplayName: ECONNREFUSED at EngineLink.request');
+    });
+    await renderYou({ onRename });
+    await fireEvent.press(screen.getByTestId('you-name-change'));
+    await fireEvent.changeText(screen.getByTestId('you-name-input'), 'Ada');
+    await fireEvent.press(screen.getByTestId('you-name-save'));
+    await waitFor(() => expect(screen.getByTestId('you-name-error')).toBeOnTheScreen());
+    expect(screen.getByTestId('you-name-error')).toHaveTextContent(/Can’t reach Branch|Couldn’t save your name|That didn’t work/);
+    expect(screen.getByTestId('you-name-error')).not.toHaveTextContent(/ECONNREFUSED|EngineLink|setDisplayName/);
+  });
 });
 
 describe('you in the app', () => {

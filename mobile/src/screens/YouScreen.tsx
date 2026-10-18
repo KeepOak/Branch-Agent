@@ -6,6 +6,7 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { DetailRow } from '../ui/DetailRow';
+import { plainError } from '../ui/plainError';
 import { Card, Screen } from '../ui/Screen';
 
 /** Preview People › you (youSecPE18 / MineHead): name, face, access, this Branch. */
@@ -55,7 +56,7 @@ export function YouScreen({
       await onRename(draft);
       setEdit(null);
     } catch (error) {
-      setFailed(error instanceof Error ? error.message : 'Couldn’t save your name.');
+      setFailed(plainError(error, 'Couldn’t save your name.'));
     } finally {
       setBusy(false);
     }
