@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs, { statfsSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import test from "node:test";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -132,7 +134,7 @@ test("failed flagged handoff falls back after idle without notifying or waiting 
 /** A seamless-handoff machine with an injectable clock, activity, health and security flag (Private #951). */
 function cadence({ security = false, handoff = true } = {}) {
   const state = { now: 0, version: "next", activity: { activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false },
-    health: { diskFree: 0.5, memoryFree: 0.5 }, security };
+    health: { diskFreeBytes: 87_000_000_000, memoryFree: 0.5 }, security };
   const restarts = [], drains = [], logs = [];
   const controller = createAutoApplyUpdate({ pendingVersion: async () => state.version, enabled: () => true, seamlessHandoff: () => handoff,
     activity: async () => state.activity, activeRuns: async () => state.activity.activeRuns, health: () => state.health, securityFix: async () => state.security,
@@ -217,26 +219,67 @@ test("Trunk work seen while nothing is pending batches the next update", async (
   assert.deepEqual(f.restarts, [["next", true]]);
 });
 
-for (const [name, health, reason] of [["low-disk", { diskFree: 0.09, memoryFree: 0.5 }, /low disk: 9% free, under 10%/],
-  ["low-RAM", { diskFree: 0.5, memoryFree: 0.19 }, /low memory: 19% free, under 20%/]]) {
+for (const [name, health, reason] of [["low-disk", { diskFreeBytes: 3_200_000_000, memoryFree: 0.5 }, /low disk: 3\.2 GB free, the update needs about 6\.0 GB/],
+  ["low-RAM", { diskFreeBytes: 87_000_000_000, memoryFree: 0.19 }, /low memory: 19% free, under 20%/]]) {
   test(`a ${name} host refuses to start an update, a security fix included`, async () => {
     const f = cadence({ security: true });
     f.state.health = health;
     await f.tick(); f.state.now += AUTO_APPLY_GAP_MS * 2; await f.tick(); await f.tick();
     assert.deepEqual(f.restarts, []);
     assert.ok(f.logs.some(line => reason.test(line)), f.logs.join("\n"));
-    f.state.health = { diskFree: 0.5, memoryFree: 0.5 }; await f.tick();
+    f.state.health = { diskFreeBytes: 87_000_000_000, memoryFree: 0.5 }; await f.tick();
     assert.deepEqual(f.restarts, [["next", true]]);
   });
 }
 
 test("update health reads the data volume and RAM, and tests can pin either", () => {
-  assert.equal(updateHealthRefusal({ diskFree: 0.10, memoryFree: 0.20 }), undefined);
+  assert.equal(updateHealthRefusal({ diskFreeBytes: 6_000_000_000, memoryFree: 0.20 }), undefined);
+  assert.match(updateHealthRefusal({ diskFreeBytes: 5_999_999_999, memoryFree: 0.5 }), /low disk:/);
   const real = readUpdateHealth(process.cwd(), 4, 16, {});
-  assert.ok(real.diskFree > 0 && real.diskFree <= 1);
+  const disk = statfsSync(process.cwd());
+  assert.ok(Number.isFinite(real.diskFreeBytes) && real.diskFreeBytes >= 0);
+  assert.ok(real.diskFreeBytes <= disk.blocks * disk.bsize);
   assert.equal(real.memoryFree, 0.25);
-  assert.deepEqual(readUpdateHealth(process.cwd(), 4, 16, { BRANCH_DESKTOP_UPDATE_FREE_DISK: "0.05", BRANCH_DESKTOP_UPDATE_FREE_MEMORY: "0.1" }),
-    { diskFree: 0.05, memoryFree: 0.1 });
+  assert.deepEqual(readUpdateHealth(process.cwd(), 4, 16, { BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES: "3200000000", BRANCH_DESKTOP_UPDATE_FREE_MEMORY: "0.1" }),
+    { diskFreeBytes: 3_200_000_000, memoryFree: 0.1 });
+  assert.equal(readUpdateHealth("unused", 4, 16, { BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES: "0" }).diskFreeBytes, 0);
+});
+
+test("87 GB free on a roughly 950 GB drive lets a staged update apply", async (t) => {
+  const f = cadence();
+  const disk = t.mock.method(fs, "statfsSync", () => ({ bavail: 87_000_000, blocks: 950_000_000, bsize: 1000 }));
+  syncBuiltinESMExports();
+  try {
+    f.state.health = readUpdateHealth("unused", 8, 16, {});
+  } finally {
+    disk.mock.restore();
+    syncBuiltinESMExports();
+  }
+  await f.tick(); f.state.now += AUTO_APPLY_GAP_MS; await f.tick();
+  assert.deepEqual(f.restarts, [["next", true]]);
+});
+
+test("Windows cluster units: 87 GB free of ~950 GB (under 10%) still allows an update", async (t) => {
+  const f = cadence();
+  const cluster = 4096;
+  const freeClusters = 21_240_234;
+  const totalClusters = 231_933_594;
+  const disk = t.mock.method(fs, "statfsSync", dir => {
+    assert.equal(dir, "data-dir");
+    return { bavail: freeClusters, blocks: totalClusters, bsize: cluster };
+  });
+  syncBuiltinESMExports();
+  try {
+    f.state.health = readUpdateHealth("data-dir", 8, 16, {});
+  } finally {
+    disk.mock.restore();
+    syncBuiltinESMExports();
+  }
+  assert.ok(freeClusters / totalClusters < 0.10, "this volume is under the old 10% rule");
+  assert.equal(f.state.health.diskFreeBytes, freeClusters * cluster);
+  assert.equal(updateHealthRefusal(f.state.health), undefined);
+  await f.tick(); f.state.now += AUTO_APPLY_GAP_MS; await f.tick();
+  assert.deepEqual(f.restarts, [["next", true]]);
 });
 
 test("a pending update that keeps being replaced by newer releases still lands once it has waited the cap", async () => {

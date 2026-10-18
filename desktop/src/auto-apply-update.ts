@@ -24,38 +24,46 @@ export const TRUNK_UPDATE_MIN_INTERVAL_MS = 60 * 60_000;
 export const TRUNK_WORK_WINDOW_MS = 24 * 60 * 60_000;
 /** With no update pending, the engine's activity is sampled this often to notice Trunk work. */
 export const TRUNK_WORK_SAMPLE_MS = 5 * 60_000;
-/** Private #951 health rule: no update starts below these free fractions of disk and RAM, security fixes included. */
-export const UPDATE_MIN_FREE_DISK = 0.10;
+/** Staged journals do not retain sizes. Allow 1 GB for an update, plus 5 GB of working space. */
+export const UPDATE_EXPECTED_SIZE_BYTES = 1_000_000_000;
+export const UPDATE_DISK_MARGIN_BYTES = 5_000_000_000;
+/** Private #951 free RAM rule, security fixes included. */
 export const UPDATE_MIN_FREE_MEMORY = 0.20;
 
-/** Free fractions (0 to 1) of the disk holding Branch's data and of the machine's RAM. */
+/** Available bytes on the disk holding Branch's data, and the free fraction (0 to 1) of RAM. */
 export interface UpdateHealth {
-  diskFree: number;
+  diskFreeBytes: number;
   memoryFree: number;
 }
 
 /**
- * This host's free disk (the volume holding Branch's data) and free RAM as fractions. Tests pin either reading with
- * BRANCH_DESKTOP_UPDATE_FREE_DISK or BRANCH_DESKTOP_UPDATE_FREE_MEMORY (a fraction from 0 to 1).
+ * Free bytes on the volume that holds `dataDir` (Windows: `bavail` clusters times `bsize` bytes per cluster from
+ * GetDiskFreeSpaceW) and free RAM as a fraction. Tests pin available disk with BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES,
+ * or the free RAM fraction with BRANCH_DESKTOP_UPDATE_FREE_MEMORY (a fraction from 0 to 1).
  */
 export function readUpdateHealth(dataDir: string, availableMemoryBytes: number, totalMemoryBytes: number, env: NodeJS.ProcessEnv = process.env): UpdateHealth {
   const pinned = (value: string | undefined): number | undefined => {
     const fraction = Number(value);
     return value && Number.isFinite(fraction) && fraction >= 0 && fraction <= 1 ? fraction : undefined;
   };
-  let diskFree = pinned(env.BRANCH_DESKTOP_UPDATE_FREE_DISK);
-  if (diskFree === undefined) {
+  const diskPin = env.BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES;
+  let diskFreeBytes = diskPin?.trim() && Number.isSafeInteger(Number(diskPin)) && Number(diskPin) >= 0
+    ? Number(diskPin) : undefined;
+  if (diskFreeBytes === undefined) {
     const disk = statfsSync(dataDir);
-    diskFree = disk.blocks > 0 ? disk.bavail / disk.blocks : 1;
+    // Node's Windows statfs is cluster counts (bavail/blocks) and cluster size (bsize), not a free-space fraction.
+    diskFreeBytes = Number(disk.bavail) * Number(disk.bsize);
   }
   const memoryFree = pinned(env.BRANCH_DESKTOP_UPDATE_FREE_MEMORY) ?? (totalMemoryBytes > 0 ? availableMemoryBytes / totalMemoryBytes : 1);
-  return { diskFree, memoryFree };
+  return { diskFreeBytes, memoryFree };
 }
 
 /** Why an update must not start on this host now, or undefined when it may. */
 export function updateHealthRefusal(health: UpdateHealth): string | undefined {
   const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
-  if (health.diskFree < UPDATE_MIN_FREE_DISK) return `low disk: ${percent(health.diskFree)} free, under ${percent(UPDATE_MIN_FREE_DISK)}`;
+  const requiredBytes = UPDATE_EXPECTED_SIZE_BYTES + UPDATE_DISK_MARGIN_BYTES;
+  const gigabytes = (bytes: number) => `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+  if (health.diskFreeBytes < requiredBytes) return `low disk: ${gigabytes(health.diskFreeBytes)} free, the update needs about ${gigabytes(requiredBytes)}`;
   if (health.memoryFree < UPDATE_MIN_FREE_MEMORY) return `low memory: ${percent(health.memoryFree)} free, under ${percent(UPDATE_MIN_FREE_MEMORY)}`;
   return undefined;
 }
