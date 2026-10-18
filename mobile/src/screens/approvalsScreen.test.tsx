@@ -9,7 +9,7 @@ import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier'
 import { createFakeSession } from '../testing/fakeSession';
 import { fadeCue, overflowAt, queryFadeCue } from '../testing/scrollFadeEvents';
 import { ThemeProvider } from '../theme/ThemeProvider';
-import { LIST_FADE } from '../ui/scrollFade';
+import { LIST_FADE } from '../ui/scrollEdges';
 import { ApprovalsScreen } from './ApprovalsScreen';
 import { StyleSheet } from 'react-native';
 

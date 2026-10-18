@@ -13,7 +13,7 @@ import { THEME_LOOK_KEY, THEME_PREFERENCE_KEY } from '../theme/preference';
 import { fadeCue, overflowAt, queryFadeCue } from '../testing/scrollFadeEvents';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { themeFor } from '../theme/tokens';
-import { LIST_FADE } from '../ui/scrollFade';
+import { LIST_FADE } from '../ui/scrollEdges';
 import { permissionLabel, SettingsScreen, SETTINGS_GROUPS } from './SettingsScreen';
 import {
   ASSISTANT_REASON,

@@ -24,7 +24,7 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { FadeScrollView as ScrollView } from '../ui/ScrollFade';
-import { LIST_FADE } from '../ui/scrollFade';
+import { LIST_FADE } from '../ui/scrollEdges';
 import { OfflineBanner } from '../ui/OfflineBanner';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });

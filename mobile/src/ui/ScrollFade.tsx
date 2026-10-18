@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewProps } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { NoScrollbarScrollView } from './NoScrollbar';
-import { CHIP_FADE, LIST_FADE, scrollOverflow } from './scrollFade';
+import { CHIP_FADE, LIST_FADE, scrollOverflow } from './scrollEdges';
 
 const STEPS = 10;
 
@@ -57,6 +57,7 @@ export function FadeScrollView({
   style,
   onScroll,
   onContentSizeChange,
+  scrollEventThrottle,
   ...rest
 }: ScrollViewProps & {
   axis?: 'x' | 'y';
@@ -113,7 +114,7 @@ export function FadeScrollView({
         style={{ flex: 1 }}
         onContentSizeChange={onSize}
         onScroll={onMove}
-        scrollEventThrottle={16}
+        scrollEventThrottle={scrollEventThrottle ?? 16}
         accessibilityHint={hint}
       />
       {edges.moreStart ? (

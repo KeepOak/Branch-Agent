@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeProvider';
 import { FadeScrollView as ScrollView } from './ScrollFade';
-import { LIST_FADE } from './scrollFade';
+import { LIST_FADE } from './scrollEdges';
 
 /**
  * A screen with the iOS large-title margins: scrolling content above, actions pinned to the bottom. With

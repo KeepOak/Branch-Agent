@@ -26,7 +26,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { NoScrollbarFlatList as FlatList, NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { FadeScrollView } from '../ui/ScrollFade';
-import { CHIP_FADE } from '../ui/scrollFade';
+import { CHIP_FADE } from '../ui/scrollEdges';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { statusBandHeight } from '../ui/PlacesBar';
 import { plainError } from '../ui/plainError';
