@@ -110,9 +110,17 @@ describe("plain error copy", () => {
   });
 
   it("maps main's unchanged engine GatewayLockError (String(error), no handoff wrapper)", () => {
-    const fromEngine = "GatewayLockError: failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
-    const fromMainHandoffLog = `desktop handoff recovery failed: ${fromEngine}`;
-    const fromErrorMessage = "failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
+    class GatewayLockError extends Error {
+      constructor(message: string, public override readonly cause?: unknown) {
+        super(message);
+        this.name = "GatewayLockError";
+      }
+    }
+    const error = new GatewayLockError("failed to acquire gateway state ownership");
+    const fromEngine = String(error);
+    const fromMainHandoffLog = `desktop handoff recovery failed: ${String(error)}`;
+    const fromErrorMessage = error instanceof Error ? error.message : String(error);
+    expect(fromEngine).toBe("GatewayLockError: failed to acquire gateway state ownership");
     for (const raw of [fromEngine, fromMainHandoffLog, fromErrorMessage]) {
       expect(shortReason(raw)).toBe(LOCK_BUSY);
       expect(shortReason(raw)).not.toMatch(/GatewayLockError/);

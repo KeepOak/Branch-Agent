@@ -145,17 +145,51 @@ describe("no raw error at Regular (Private #1089)", () => {
   });
 });
 
-/** Main's unchanged engine path (`run-loop.ts`): `desktop handoff recovery failed: ${String(error)}`.
- *  `String(GatewayLockError)` is `GatewayLockError: <message>`. The window maps that itself via plainText /
- *  plainError / shortReason. It must not depend on a deleted engine handoff wrapper. */
+/** Same class as engine/src/infra/gateway-lock.ts. The window never imports the engine. */
+class GatewayLockError extends Error {
+  constructor(
+    message: string,
+    public override readonly cause?: unknown,
+  ) {
+    super(message);
+    this.name = "GatewayLockError";
+  }
+}
+
+/** Main's unchanged engine path (`engine/src/cli/gateway-cli/run-loop.ts`):
+ *    throw new GatewayLockError("failed to acquire gateway state ownership", cause)
+ *    gatewayLog.error(`desktop handoff recovery failed: ${String(error)}`)
+ *  Window session snapshot (`window/src/connect/session.ts`):
+ *    error instanceof Error ? error.message : String(error)
+ *  The window maps those itself via plainText / plainError / shortReason. It must not depend on a deleted engine
+ *  handoff wrapper. */
+function mainEngineLockArrival(): { stringed: string; handoffLog: string; sessionError: string } {
+  const error = new GatewayLockError(
+    "failed to acquire gateway state ownership",
+    Object.assign(new Error("Branch Agent state database is busy at state/branch.sqlite"), {
+      name: "GatewayStateOwnerContentionError",
+    }),
+  );
+  return {
+    stringed: String(error),
+    handoffLog: `desktop handoff recovery failed: ${String(error)}`,
+    sessionError: error instanceof Error ? error.message : String(error),
+  };
+}
+
 describe("window maps main's unchanged engine GatewayLockError", () => {
-  const fromEngine = "GatewayLockError: failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
-  const fromMainHandoffLog = `desktop handoff recovery failed: ${fromEngine}`;
-  const fromErrorMessage = "failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
+  it("String(GatewayLockError) is the class name plus the acquire message, as run-loop logs it", () => {
+    const { stringed, handoffLog, sessionError } = mainEngineLockArrival();
+    expect(stringed).toBe("GatewayLockError: failed to acquire gateway state ownership");
+    expect(handoffLog).toBe("desktop handoff recovery failed: GatewayLockError: failed to acquire gateway state ownership");
+    expect(sessionError).toBe("failed to acquire gateway state ownership");
+  });
 
   it.each(["", "advanced", "technical"])("notice shows the friendly busy sentence and never GatewayLockError at %j", async (level) => {
     if (level) localStorage.setItem("branch.level", level);
-    for (const raw of [fromEngine, fromMainHandoffLog, fromErrorMessage]) {
+    const { stringed, handoffLog, sessionError } = mainEngineLockArrival();
+    const longerSeenInUi = "GatewayLockError: failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
+    for (const raw of [stringed, handoffLog, sessionError, longerSeenInUi, `desktop handoff recovery failed: ${longerSeenInUi}`]) {
       host = document.body.appendChild(document.createElement("div"));
       root = createRoot(host);
       await act(async () => root!.render(<Frame navigationKey="one" sidebar={<button>Conversation</button>} main={<p>Empty</p>} header={{ title: "Conversation" }} notice={raw} />));

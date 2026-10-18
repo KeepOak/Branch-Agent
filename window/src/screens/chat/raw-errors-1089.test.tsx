@@ -98,4 +98,21 @@ describe("a failed run never shows the engine's raw words at Regular (Private #1
     expect(line).not.toMatch(/GatewayLockError/);
     expect(host.textContent ?? "").not.toMatch(/GatewayLockError/);
   });
+
+  it.each(["", "advanced", "technical"])("maps String(GatewayLockError) from main's engine path through the run-error line at %j", async (level) => {
+    if (level) localStorage.setItem("branch.level", level);
+    class GatewayLockError extends Error {
+      constructor(message: string, public override readonly cause?: unknown) {
+        super(message);
+        this.name = "GatewayLockError";
+      }
+    }
+    const error = new GatewayLockError("failed to acquire gateway state ownership");
+    for (const raw of [String(error), `desktop handoff recovery failed: ${String(error)}`, error.message]) {
+      const line = await runError(raw);
+      expect(line).toBe("Researcher couldn’t finish: Branch is busy right now. Try again in a moment.");
+      expect(line).not.toMatch(/GatewayLockError/);
+      expect(host.textContent ?? "").not.toMatch(/GatewayLockError/);
+    }
+  });
 });
