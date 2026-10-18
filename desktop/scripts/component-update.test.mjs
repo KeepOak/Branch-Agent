@@ -45,9 +45,20 @@ async function fixture(run, modify = () => {}) {
   const requests = [];
   const server = createServer((request, response) => {
     const filename = request.url?.slice(1);
-    if (filename === `branch-release-${process.platform}-${process.arch}.json`) { response.end(JSON.stringify(release)); return; }
+    if (filename === `branch-release-${process.platform}-${process.arch}.json`) {
+      const body = JSON.stringify(release);
+      response.writeHead(200, { "Content-Length": Buffer.byteLength(body) });
+      response.end(body);
+      return;
+    }
     if (!Object.values(release.components).some(asset => asset.url.endsWith("/" + filename))) { response.writeHead(404).end(); return; }
-    createReadStream(join(output, filename)).on("error", () => response.destroy()).pipe(response);
+    // Send the whole file with its length. A piped stream without Content-Length can
+    // end early on Windows under the native job's 96 MB heap; downloadComponent then
+    // hashes a short body and throws SHA256/size mismatch.
+    readFile(join(output, filename)).then(body => {
+      response.writeHead(200, { "Content-Length": body.length });
+      response.end(body);
+    }, () => { if (!response.headersSent) response.writeHead(404); response.end(); });
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port;
@@ -56,7 +67,10 @@ async function fixture(run, modify = () => {}) {
     const filename = new URL(url).pathname.split("/").at(-1);
     const response = await fetch(`http://127.0.0.1:${port}/${filename}`, options);
     // Real loopback HTTP bytes; production still validates the real GitHub redirect URL.
-    return new Response(response.body, { status: response.status, headers: response.headers });
+    // Hold the bytes before wrapping so the inner fetch response cannot be collected
+    // while downloadComponent is still reading the stream.
+    const body = response.body ? await response.arrayBuffer() : new ArrayBuffer(0);
+    return new Response(body, { status: response.status, headers: response.headers });
   };
   try { await run({ root, engine, window, output, cfg, release, request, requests }); }
   finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
@@ -154,14 +168,61 @@ test("a staged update is not replaced while the swap guard is held, or once its 
   const staged = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
   const newer = await newerRelease(context);
   await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
-  // An update or recovery holds the guard: the newer download is discarded, the staged pair stays.
+  // An update or recovery holds the guard: the newer download stays, and the staged pair stays.
   assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: busyGuard }), false);
   assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
-  assert.deepEqual((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")), [], "the discarded download was left on disk");
+  assert.equal((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")).length, 1, "the download stays while the lock is held");
   // The staged engine already runs: it is never replaced underneath itself.
   await writeFile(join(cfg.dataDir, "engine-running.txt"), staged + "\n");
   assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: freeGuard }), false);
   assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
+}));
+
+test("a release downloaded while the update lock is held is staged once the lock is free", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const newer = await newerRelease(context);
+  let fetches = 0;
+  const counting = async (url) => { fetches += 1; return newer.request(url); };
+  const logs = [];
+  const log = line => logs.push(line);
+  assert.equal(await source.refreshComponentUpdate(cfg, counting, { underSwapGuard: busyGuard, log }), false);
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.3");
+  const kept = (await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-"));
+  assert.equal(kept.length, 1);
+  assert.equal(existsSync(join(cfg.dataDir, "updates", kept[0], ".update-kept")), true);
+  assert.match(logs.join("\n"), /Skipped staging 0\.4\.4 because the update lock is held\. The download stays and staging will retry\./);
+  const downloaded = fetches;
+  assert.equal(await source.refreshComponentUpdate(cfg, counting, { underSwapGuard: freeGuard, log }), true);
+  assert.equal(fetches, downloaded + 1, "the kept download was fetched again");
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.4");
+  assert.equal(await readFile(join(cfg.windowDir, "index.html"), "utf8"), "<title>0.4.4 window</title>");
+  assert.deepEqual((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")), kept);
+  // The next manifest is older: it must not replace the newer staged build.
+  assert.equal(await source.refreshComponentUpdate(cfg, request, { underSwapGuard: freeGuard, log }), false);
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.4");
+  assert.match(logs.join("\n"), /Skipped staging 0\.4\.3 because 0\.4\.4 is newer\./);
+}));
+
+test("a marker that cannot be written while the lock is held does not delete the download", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const newer = await newerRelease(context);
+  // The download is in place before the guard returns. A directory where the marker file should go
+  // makes the write fail the way a Windows lock does, after the download exists.
+  const guard = async () => {
+    const updates = join(cfg.dataDir, "updates");
+    for (const name of await readdir(updates)) {
+      if (name.startsWith("release-0.4.4-")) await mkdir(join(updates, name, ".update-kept"));
+    }
+    return undefined;
+  };
+  await assert.rejects(() => source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: guard }), { code: "EISDIR" });
+  assert.equal((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")).length, 1,
+    "the download was deleted when the kept marker could not be written");
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.3");
 }));
 
 /** Fails the replacement's folder moves chosen by `fails(from, to)`; every other move runs for real. */
@@ -392,6 +453,41 @@ test("new per-user installation stages components and creates a stable local tok
   await source.confirmComponentUpdate(cfg);
   assert.equal(await readFile(join(cfg.windowDir, "index.html"), "utf8"), "<title>new window</title>");
 }));
+
+test("loopback component archives advertise their exact byte count", async () => fixture(async ({ request, release }) => {
+  for (const asset of Object.values(release.components)) {
+    const response = await request(asset.url);
+    assert.equal(response.headers.get("content-length"), String(asset.bytes));
+    const body = Buffer.from(await response.arrayBuffer());
+    assert.equal(body.length, asset.bytes);
+    assert.equal(createHash("sha256").update(body).digest("hex"), asset.sha256);
+  }
+}));
+
+test("a component download that ends before the manifest size is refused", async () => {
+  const files = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-files.js")));
+  const root = await mkdtemp(join(tmpdir(), "branch-truncated-"));
+  const server = createServer((_request, response) => { response.end("partial"); });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  const asset = {
+    url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0.4.3/branch-window-0.4.3.tar.gz",
+    sha256: "ab".repeat(32),
+    bytes: 64,
+    expandedBytes: 64,
+  };
+  const request = async (_url, options) => {
+    const response = await fetch(`http://127.0.0.1:${port}/partial`, options);
+    return new Response(response.body, { status: response.status, headers: response.headers });
+  };
+  try {
+    await assert.rejects(files.downloadComponent(asset, join(root, "window.tar.gz"), request), /SHA256\/size mismatch/);
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+});
 
 test("packaging bundles a real Node24 runtime with hash receipt", async () => fixture(async ({ root }) => {
   const resources = join(root, "resources"); const receipt = await bundleNode(resources);
