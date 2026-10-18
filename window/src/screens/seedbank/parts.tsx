@@ -6,6 +6,7 @@ import { Coming } from "../../glass/coming";
 import { AppLogo } from "../../places/customize/app-logos";
 import { Glyph } from "../../places/customize/glyphs";
 import { useLevel } from "../../places-nav/level";
+import { writeClipboard } from "../../shell/clipboard";
 import { Icon } from "../../shell/icons";
 import { kindOf, shortCount, type Entry } from "./catalog";
 import { ItemDetail } from "./ItemDetail";
@@ -68,6 +69,8 @@ function download(name: string, text: string) {
   a.click(); setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 export const SEED_COMING = "Sharing this kind as a seed comes in a later update.";
+/** When neither the window's clipboard nor the Branch app's takes the seed: what happened, and the one next step. */
+export const SEED_NOT_COPIED = "The seed couldn’t be copied. Use Download, next to Copy, to save it as a file instead.";
 /** Copy seed (a short link) and Download (.seed) on every card (preview seedIcons). A kind with no seed yet shows both
  *  as Coming at Technical, and none at Regular and Advanced. */
 export function SeedIcons({ entry, onNotice }: { entry: Entry; onNotice: (text: string) => void }) {
@@ -77,7 +80,9 @@ export function SeedIcons({ entry, onNotice }: { entry: Entry; onNotice: (text: 
     <Soon className="sb-icon" need="seedbank.seed" reason={SEED_COMING} label={"Copy " + entry.name + "’s seed"}><Icon name="copy" size={13} /></Soon>
     <Soon className="sb-icon" need="seedbank.seed" reason={SEED_COMING} label={"Download " + entry.name + "’s seed"}><Icon name="download" size={13} /></Soon>
   </span>;
-  const copy = () => { void navigator.clipboard?.writeText(link).then(() => onNotice("Copied " + entry.name + "’s seed. Paste it anywhere in Branch."), () => onNotice("The seed couldn’t be copied.")); };
+  // The window's clipboard first, then the Branch app's (shell/clipboard.ts): in the desktop app the window's clipboard
+  // can refuse or never answer, which showed "The seed couldn't be copied." (Private #1089).
+  const copy = () => { void writeClipboard(link).then((ok) => onNotice(ok ? "Copied " + entry.name + "’s seed. Paste it anywhere in Branch." : SEED_NOT_COPIED)); };
   return <span className="sb-seed" data-local="">
     <button type="button" className="sb-icon" aria-label={"Copy " + entry.name + "’s seed"} title="Copy seed" onClick={copy}><Icon name="copy" size={13} /></button>
     <button type="button" className="sb-icon" aria-label={"Download " + entry.name + "’s seed"} title="Download .seed" onClick={() => download(entry.name, text)}><Icon name="download" size={13} /></button>

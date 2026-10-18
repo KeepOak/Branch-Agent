@@ -1,0 +1,8 @@
+window:scripts/button-crawl-reason.test.ts
+window:src/places/settings/desktop-ctl.test.tsx
+window:src/places/settings/disabled-reasons.test.tsx
+window:src/places/settings/greyed-why-1093.test.tsx
+window:src/places/settings/set1/permissions-platform.test.tsx
+window:src/places/settings/set2/developer.test.tsx
+window:src/screens/seedbank/seedbank-detail.test.tsx
+window:src/screens/settings/pages/history-live.test.tsx

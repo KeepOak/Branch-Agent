@@ -2,7 +2,7 @@
 // branch.setup.detect candidate or a local model of it), else "Look for it", which runs detection again and reports in
 // place. At Advanced, "Share with your other computers" under a found Ollama is the Ollama plugin's node-inference
 // switch. A runtime the engine reports as inside WSL and unreachable asks before changing WSL's networking.
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
@@ -37,6 +37,7 @@ function reasonFor(r: Runtime, detect: RecordValue | undefined): string | undefi
 
 export function Runtimes({ engine, hw, detect, models, found }: Props) {
   const lv = useLevel();
+  const ids = useId();
   const [looked, setLooked] = useState<Set<string>>(new Set());
   const [wsl, setWsl] = useState(false);
   // Looking waits on the reads, which show their own "Looking…" and stall line; a click never waits on an answer itself.
@@ -55,9 +56,12 @@ export function Runtimes({ engine, hw, detect, models, found }: Props) {
       <div className="rows rt-k">
         {RUNTIMES.map((r) => {
           const on = found.has(r.id);
+          // A runtime Branch can't look for says so on its own line, named by its greyed Look for it (Private #1093).
+          const why = !on && !detect.loading && !detect.error ? shownWhy(r.off) : undefined;
+          const whyId = ids + r.id;
           return [
-            <Prow key={r.id} icon={<Logo id={r.id} name={r.mark} size={30} />} title={r.name} sub={!on && looked.has(r.id) ? reasonFor(r, detect.data) ?? NOT_FOUND : r.note}>
-              <RuntimeRight r={r} on={on} loading={detect.loading} failed={Boolean(detect.error)} looked={looked.has(r.id)} onLook={() => lookFor(r)} />
+            <Prow key={r.id} icon={<Logo id={r.id} name={r.mark} size={30} />} title={r.name} sub={!on && looked.has(r.id) ? reasonFor(r, detect.data) ?? NOT_FOUND : r.note} why={why} whyId={whyId}>
+              <RuntimeRight r={r} on={on} loading={detect.loading} failed={Boolean(detect.error)} looked={looked.has(r.id)} whyId={why ? whyId : undefined} onLook={() => lookFor(r)} />
             </Prow>,
             on && r.id === "ollama" && lv >= 1 ? <ShareRow key="share" engine={engine} /> : null,
           ];
@@ -68,12 +72,12 @@ export function Runtimes({ engine, hw, detect, models, found }: Props) {
   );
 }
 
-type RightProps = { r: Runtime; on: boolean; loading: boolean; failed: boolean; looked: boolean; onLook: () => void };
-function RuntimeRight({ r, on, loading, failed, looked, onLook }: RightProps) {
+type RightProps = { r: Runtime; on: boolean; loading: boolean; failed: boolean; looked: boolean; whyId?: string; onLook: () => void };
+function RuntimeRight({ r, on, loading, failed, looked, whyId, onLook }: RightProps) {
   if (on) return <Pill tone="ok">Found</Pill>;
   if (loading) return <Pill tone="idle">Looking…</Pill>;
   if (failed) return <><Pill tone="idle">Couldn’t check</Pill><Btn ghost sm onClick={onLook}>Try again</Btn></>;
-  if (r.off) return <Btn ghost sm disabled title={shownWhy(r.off)}>Look for it</Btn>;
+  if (r.off) return <Btn ghost sm disabled aria-describedby={whyId}>Look for it</Btn>;
   return <>{looked ? <Pill tone="idle">Not found</Pill> : null}<Btn ghost sm onClick={onLook}>{looked ? "Look again" : "Look for it"}</Btn></>;
 }
 

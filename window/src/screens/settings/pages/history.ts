@@ -112,7 +112,7 @@ export const HISTORY_ROWS: Row[] = [
     { level: 1, control: "select", options: [{ v: "local", label: "This computer" }, { v: "pg", label: "PostgreSQL" }], help: "PostgreSQL for a shared server. Changing it copies them across." }),
   coming("history.copy.files", COPY, "Where files are kept", "engine: keeping files somewhere else", "Needs the engine to keep files somewhere else.",
     { level: 1, control: "select", options: [{ v: "local", label: "This computer" }, { v: "s3", label: "Amazon S3" }, { v: "gcs", label: "Google Cloud Storage" }, { v: "azure", label: "Azure Blob" }], help: "Attachments and what Trunks make." }),
-  slot("history.copy.data", COPY, "Where your data lives", ["system.info"], { control: "text", level: 1, help: "Moves conversations, memory and settings together. Portable mode (Developer) keeps them beside the program." }),
+  slot("history.copy.data", COPY, "Where your data lives", ["system.info"], { level: 1, help: "Moves conversations, memory and settings together. Portable mode (Developer) keeps them beside the program." }),
   coming("history.copy.usb", COPY, "Put Branch on a USB stick", "desktop: writing a copy to a USB stick", "Writing a copy to a USB stick needs the Branch app.",
     { level: 1, help: "Runs on Mac, Windows or Linux from the stick." }),
 ];

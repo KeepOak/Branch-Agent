@@ -26,7 +26,7 @@ import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
 import { menuAtLevel } from "../../../shell/menu-level";
 import { Segmented, Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
-import { Failed, Needs, useFailure } from "./appearance-live";
+import { Failed, Needs, useFailure, Why } from "./appearance-live";
 import { Coming } from "../../../glass/coming";
 import { AccountAllowanceList, AccountSpend } from "../../../places/settings/set2/usage";
 import { lookStore, useLook } from "../../../places/settings/set1/appearance-store";
@@ -218,6 +218,7 @@ function AccountAction({ engine, kind }: SlotControlProps & { kind: ActKind }) {
         <button type="button" className="r1s-btn" disabled={Boolean(why)} title={why} onClick={go}>{ACT[kind].label}</button>
       </Needs>
     </span>
+    {why ? <Why>{why}</Why> : null}
     {done ? <Line>{done}</Line> : null}
     <Failed text={failed} />
   </>;
@@ -261,6 +262,7 @@ export function AddAccount({ engine }: SlotControlProps) {
         </Needs>
       )) : null}
     </div>
+    {admin ? <Why>{admin}</Why> : null}
     <Failed text={failed} />
     {add ? <AddAccountDialog clear engine={engine} start={add} caps={caps} providers={providers} agent={agent} onClose={(added) => { setAdd(null); if (added) void status.reload(); }} /> : null}
   </Kit>;
@@ -282,6 +284,7 @@ export function SelectAccounts({ engine }: SlotControlProps) {
       <button type="button" className="r1s-btn" data-local="" aria-pressed={picked !== null} disabled={!all.length} title={all.length ? undefined : "Add an account first."}
         onClick={() => setPicked(picked === null ? [] : null)}>{picked === null ? "Select accounts" : "Done selecting"}</button>
     </span>
+    {!all.length && !status.loading ? <Why>Add an account first.</Why> : null}
     {picked !== null ? <>
       <div className="r1s-items">
         {all.map((acc) => (
@@ -293,7 +296,7 @@ export function SelectAccounts({ engine }: SlotControlProps) {
         ))}
       </div>
       <div className="r1s-acts" role="toolbar" aria-label="With the selected accounts">
-        <Val>{chosen.length ? chosen.length + " selected" : "Tick the accounts"}</Val>
+        {chosen.length ? <Val>{chosen.length + " selected"}</Val> : <Why>Tick the accounts first.</Why>}
         <Needs engine={engine} need={["models.authOrderSet"]} where="Move to the top">
           <button type="button" className="r1s-btn" disabled={Boolean(admin) || !chosen.length || locked} title={admin ?? (locked ? "The order is set in the settings file." : undefined)} onClick={() => act(() => moveToTop(engine, all, chosen, agent))}>Move to the top</button>
         </Needs>
@@ -302,6 +305,7 @@ export function SelectAccounts({ engine }: SlotControlProps) {
           <button type="button" className="r1s-btn" disabled={Boolean(admin) || !leaving.length} title={admin ?? (chosen.length && !leaving.length ? "These sign-ins can’t be removed from here." : undefined)} onClick={() => act(() => signOutAll(engine, chosen, agent))}>Sign out</button>
         </Needs>
       </div>
+      {admin ? <Why>{admin}</Why> : chosen.length && locked ? <Why>The order is set in the settings file.</Why> : chosen.length && !leaving.length ? <Why>These sign-ins can’t be removed from here.</Why> : null}
     </> : null}
     <Failed text={failed} />
   </>;
@@ -332,7 +336,8 @@ export function FallBackHere({ engine }: SlotControlProps) {
         <Toggle label="Fall back to this computer" on={on} disabled={Boolean(adminWhy(engine)) || !local || !snap} onChange={(v) => void run(() => store.set("agents.defaults.model.fallbacks", v ? [...fallbacks, ref] : fallbacks.filter((f) => f !== ref)))} />
       </span>
     </Needs>
-    <Line>{local ? "When every account is out, keep going on " + visible(local.name ?? local.id) + " instead of stopping." : models.loading ? "Looking for a model on this computer…" : "Needs a model on this computer first."}</Line>
+    {local ? <Line>{"When every account is out, keep going on " + visible(local.name ?? local.id) + " instead of stopping."}</Line> : <Why>{models.loading ? "Looking for a model on this computer…" : "Needs a model on this computer first."}</Why>}
+    {local && adminWhy(engine) ? <Why>{adminWhy(engine)}</Why> : null}
     <Failed text={failed} />
   </>;
 }
@@ -488,7 +493,8 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
       <Logo id={app.brand} size={22} />
       <span className="r1s-item-t g-label" data-lines>
         <b>{word}{app.kind === "claude-cli" && claude?.accountEmail ? " · " + text(claude.accountEmail) : ""}</b>
-        <small>{detect.error ? visible(detect.error) : sub}</small>
+        {/* The line says why the switch is greyed when it is (not found, not signed in): it is the reason, not a description. */}
+        <small data-why={!app.plugin || f.state !== "ready" ? "" : undefined}>{detect.error ? visible(detect.error) : sub}</small>
         {detect.error ? <button type="button" className="r1s-btn" onClick={() => void detect.reload()}>Try again</button> : null}
       </span>
       {app.plugin ? (
@@ -596,7 +602,7 @@ export function GitHubRow({ engine }: SlotControlProps) {
         <small><a href="https://github.com/login/device" target="_blank" rel="noopener noreferrer" data-local="">Open GitHub sign-in</a> · Code expires {new Date(view.expiresAt ?? 0).toLocaleTimeString()} · {view.phase.replaceAll("_", " ")}</small>
       </span>
     ) : null}
-    {adminWhy ? <Line>{adminWhy}</Line> : null}
+    {adminWhy ? <Why>{adminWhy}</Why> : null}
     <Line>Removing this connection retires its managed sign-in in Branch. To revoke access on GitHub, <a href="https://github.com/settings/applications" target="_blank" rel="noopener noreferrer" data-local="">manage authorized applications</a>.</Line>
   </>;
 }

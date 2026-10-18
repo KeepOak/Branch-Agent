@@ -46,13 +46,14 @@ export const stateOf = (status: ChannelsStatus | undefined, app: ChatApp): App =
   appOf(status, catalogue(status).find((c) => c.id === (app.channel ?? app.id)) ?? { id: app.channel ?? app.id, name: app.name, detail: "" });
 
 /** One settings line in the R1 row look (screens/settings RowView): label, help, its control, and a Coming reason. */
-export function Line({ id, label, help, coming, need, ctlNeed, stack, children }: { id?: string; label: ReactNode; help?: ReactNode; coming?: string; need?: string; ctlNeed?: string; stack?: boolean; children?: ReactNode }) {
+/** `why`: why the control is greyed for a real condition, on its own line (Private #1093: every greyed control says why). */
+export function Line({ id, label, help, coming, need, ctlNeed, stack, why, children }: { id?: string; label: ReactNode; help?: ReactNode; coming?: string; need?: string; ctlNeed?: string; stack?: boolean; why?: ReactNode; children?: ReactNode }) {
   return (
     <div id={id} className={"r1s-row r1-ca-line" + (stack ? " r1s-stack" : "")} aria-disabled={coming ? true : undefined} data-coming={coming ? need ?? NEEDS_KEY : undefined} title={coming}>
       <b className="g-label">{label}</b>
       {help ? <small className="g-label" data-lines>{help}</small> : null}
       {children !== undefined && children !== null && children !== false ? <div className="r1s-ctl" data-need={ctlNeed}>{children}</div> : null}
-      {coming ? <small className="r1s-note g-label" data-lines>{coming}</small> : null}
+      {coming ? <small className="r1s-note g-label" data-lines>{coming}</small> : why ? <small className="r1s-note g-label" data-lines>{why}</small> : null}
     </div>
   );
 }

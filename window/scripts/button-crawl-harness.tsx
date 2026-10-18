@@ -15,7 +15,7 @@ import '../src/shell/shell.css';
 import '../src/shell/frame.css';
 import '../src/shell/controls.css';
 import { createCrawlCapture } from './button-crawl-capture';
-import { disabledWithoutReason } from './button-crawl-reason';
+import { disabledWithoutReason, isGreyed } from './button-crawl-reason';
 import { applyApprovalsSet, applyConfigPatch, applyOutsideSet, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshOutside, freshPrefs, freshVoice, voiceProviders, voiceStatus, type CrawlApprovals, type CrawlConfig, type CrawlOutside, type CrawlPrefs, type CrawlVoice } from './button-crawl-state';
 
 type Call = { method: string; ok: boolean; error?: string };
@@ -78,6 +78,9 @@ const SELECTOR = [
   'button', 'a[href]', '[role="button"]', '[role="menuitem"]', '[role="menuitemradio"]', '[role="menuitemcheckbox"]',
   '[role="tab"]', '[role="switch"]', 'input[type="checkbox"]', '.chip', '.ib',
 ].join(',');
+/** Fields the crawl never clicks; a greyed one is still held to the reason rule (Backups' media sizes, Permissions'
+ *  standing-permission expiry: Private #1093). */
+const FIELD = 'input:not([type="checkbox"]):not([type="hidden"]):not([type="file"]):not([type="color"]), select, textarea';
 
 // Every R1 Settings page at each level it is shown at. A page that is a place (Customize, Automations, Memory &
 // documents) opens that place, so the place screens cover it and it is not repeated here.
@@ -208,7 +211,10 @@ function respond(method: string, params: CrawlParams | undefined) {
     return { status: 'ok' };
   }
   if (method === 'models.list') return { models: [{ id: 'fixture', provider: 'local', name: 'Local model', contextWindow: 32768 }] };
-  if (method === 'system.info') return { machineName: 'This computer' };
+  // system.ts: diskPath is the data folder, as long as a real one (Settings › History & backups › Where your data lives).
+  if (method === 'system.info') return { machineName: 'This computer', diskPath: '/Users/someone/Library/Application Support/Branch/home/.branch/state' };
+  // config-change-log.ts: one settings change, so Every change draws its row and its Roll back.
+  if (method === 'branch.changes.list') return { entries: [{ id: 'c1', at: now - 60_000, kind: 'config-write', source: 'settings', summary: 'Changed a setting', changedPaths: ['ui.theme'] }] };
   if (method === 'health') return { ok: true, durationMs: 4 };
   // Replies for the methods R1 calls. Each cites the engine handler that answers it, so a control reads the fields it
   // reads on a real engine.
@@ -255,7 +261,7 @@ const ADVERTISED_METHODS = [
   'users.prefs.get', 'users.prefs.set', 'models.list', 'models.authStatus', 'system.info', 'health', 'usage.status',
   'commands.list', 'skills.status', 'users.mentionable', 'computer.status', 'browser.request', 'node.list', 'memory.export',
   'gateway.restart.request', 'portal.list', 'progressCard.get', 'plugins.catalog.browse', 'branch.setup.detect',
-  'backup.status', 'backup.schedule.set', 'backup.schedule.clear', 'backup.run',
+  'backup.status', 'backup.schedule.set', 'backup.schedule.clear', 'backup.run', 'branch.changes.list',
 ];
 
 const fixture = {
@@ -287,6 +293,17 @@ const fixture = {
 function visible(el: Element) {
   if (!(el instanceof HTMLElement)) return false;
   if (el.closest('[hidden], [inert]')) return false;
+  const style = getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden') return false;
+  const rect = el.getBoundingClientRect();
+  return rect.width > 1 && rect.height > 1;
+}
+
+/** Drawn on the page, even inside an inert block. A greyed settings row (kit Ctl `off`) makes its controls inert, so
+ *  the click checks never reach them, but a person still sees them greyed: the reason rule reads them too. */
+function drawn(el: Element) {
+  if (!(el instanceof HTMLElement)) return false;
+  if (el.closest('[hidden]')) return false;
   const style = getComputedStyle(el);
   if (style.display === 'none' || style.visibility === 'hidden') return false;
   const rect = el.getBoundingClientRect();
@@ -365,22 +382,27 @@ function collect(overlay = false) {
   if (!root) return [];
   const seen = new Map<string, number>();
   const elements: { name: string; href: string; disabled: boolean; noReason: boolean; selected: boolean; occurrence: number; region: string }[] = [];
-  for (const el of root.querySelectorAll(SELECTOR)) {
-    if (!visible(el)) continue;
+  for (const el of root.querySelectorAll(SELECTOR + ',' + FIELD)) {
+    // An inert control is skipped by the click checks, unless it is drawn greyed: then it is collected as disabled. A field
+    // is collected only when greyed, as disabled, so it is checked for its reason and never clicked.
+    const field = el.matches(FIELD);
+    const live = !field && visible(el);
+    if (!live && !(isGreyed(el) && drawn(el))) continue;
     const region = regionOf(el);
     if (region === 'ignored') continue;
     if (overlay ? region !== 'overlay' : region === 'overlay') continue;
     const name = nameOf(el);
-    const key = `${region}\0${name}`;
+    // Inert controls count apart, so a live control keeps the occurrence findMarked (live controls only) gives it.
+    const key = `${field ? 'field\0' : live ? '' : 'inert\0'}${region}\0${name}`;
     const occurrence = seen.get(key) ?? 0;
     seen.set(key, occurrence + 1);
     const control = el as HTMLButtonElement;
     elements.push({
       name,
       href: el instanceof HTMLAnchorElement ? el.href : '',
-      disabled: control.disabled === true || el.getAttribute('aria-disabled') === 'true',
+      disabled: !live || control.disabled === true || el.getAttribute('aria-disabled') === 'true',
       // Greyed with no visible line that says why (button-crawl-reason.ts); a tooltip alone does not count.
-      noReason: disabledWithoutReason(el, visible),
+      noReason: disabledWithoutReason(el, drawn),
       // A tab, or a radio option that is already the chosen value, has nothing to change: clicking it is a no-op
       // by design, so the crawl skips it ("already-selected") instead of calling it dead.
       // A menu's radio choice that is already chosen (a scope, a sort) has nothing to change, like a tab that is open.

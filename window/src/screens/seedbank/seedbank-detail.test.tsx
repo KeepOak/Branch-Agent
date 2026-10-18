@@ -8,6 +8,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { Seedbank } from "./index";
 import { parseSeed, SEED_KIND_COMING, SEED_KIND_UNKNOWN } from "./seed";
+import { SEED_NOT_COPIED } from "./parts";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 window.matchMedia ??= ((query: string) => ({ matches: false, media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
@@ -74,6 +75,32 @@ describe("#1049 Seedbank item dialog and seeds", () => {
     expect(link).toBe("branch://seed/mcp/%40ada%2Fgithub");
     expect(link).not.toContain("{");
     expect(parseSeed(link)).toEqual({ ok: true, seed: { kind: "mcp", ref: "@ada/github", name: "@ada/github", by: "" } });
+  });
+
+  // Private #1089: the desktop window refuses the web clipboard (its session denies every permission request), so Copy
+  // showed "The seed couldn't be copied." The Branch app's own clipboard takes the seed instead.
+  it("copies the seed with the Branch app's clipboard when the window's clipboard refuses", async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn(async () => { throw new Error("Write permission denied."); }) } });
+    const desktop = vi.fn(async (_text: string) => undefined);
+    Object.assign(window, { branchDesktop: { clipboard: { writeText: desktop } } });
+    try {
+      const { engine } = engineOf(METHODS, handler);
+      const host = await render(engine);
+      await click(host.querySelector<HTMLElement>("[data-id='mcp:github'] [aria-label='Copy GitHub’s seed']")!);
+      expect(desktop).toHaveBeenCalledWith("branch://seed/mcp/%40ada%2Fgithub");
+      expect(host.textContent).toContain("Copied GitHub’s seed. Paste it anywhere in Branch.");
+      expect(host.textContent).not.toContain("couldn’t be copied");
+    } finally { delete (window as { branchDesktop?: unknown }).branchDesktop; }
+  });
+
+  it("when no clipboard takes the seed, says so with one next step: Download, beside Copy", async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn(async () => { throw new Error("Write permission denied."); }) } });
+    const { engine } = engineOf(METHODS, handler);
+    const host = await render(engine);
+    await click(host.querySelector<HTMLElement>("[data-id='mcp:github'] [aria-label='Copy GitHub’s seed']")!);
+    expect(host.textContent).toContain(SEED_NOT_COPIED);
+    expect(SEED_NOT_COPIED).toMatch(/Use Download/);
+    expect(host.querySelector("[data-id='mcp:github'] [aria-label='Download GitHub’s seed']")).not.toBeNull();
   });
 
   it("at Technical, a kind with no seed yet shows Copy seed and Download as Coming", async () => {

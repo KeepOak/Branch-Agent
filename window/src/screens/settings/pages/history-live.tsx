@@ -3,7 +3,7 @@
 // Backups (set2/backups.tsx: backup.status, backup.schedule.set / clear, backup.run), the overnight memory cleanup's
 // diary, fill-in and maintenance (set2/seasons.tsx: doctor.memory.*, memory.sessionBackfill.*), Every change
 // (set2/self.tsx: branch.changes.list) and Your settings' Export and Import (set2/self.tsx).
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Coming } from "../../../glass/coming";
 import { list, record, type RecordValue } from "../../../places/settings/adapter";
@@ -22,9 +22,11 @@ import { copyAndSay } from "../../../shell/clipboard";
 import { CLEANUP_CODE, NEVER_DIES } from "./history";
 
 const Line = ({ children, bad }: { children: ReactNode; bad?: boolean }) => <small className={"r1s-msg g-label" + (bad ? " r1s-bad" : "")} role={bad ? "status" : undefined} data-lines>{children}</small>;
+/** Why the control beside it is greyed, in one line the control names (Private #1093: every greyed control says why). */
+const Why = ({ id, children }: { id?: string; children: ReactNode }) => <small id={id} className="r1s-msg g-label" data-why="" data-lines>{children}</small>;
 const Val = ({ children }: { children: ReactNode }) => <span className="r1s-val g-label" data-lines>{children}</span>;
 /** A button that keeps the attributes <Coming> gives it (data-need), so the control stays declared. */
-const Btn = ({ children, disabled, onClick, ...rest }: { children: ReactNode; disabled?: boolean; onClick: () => void }) =>
+const Btn = ({ children, disabled, onClick, ...rest }: { children: ReactNode; disabled?: boolean; onClick: () => void; "aria-describedby"?: string }) =>
   <button type="button" className="r1s-btn" disabled={disabled} onClick={onClick} {...rest}>{children}</button>;
 
 /** The backup schedule Settings manages (the Git one), shared by every Backups row: one read, one way to save. */
@@ -42,19 +44,24 @@ function useBackups(engine: WindowEngine) {
     await engine.request("backup.schedule.set", { destination, everyMs: next.everyMs ?? every, enabled: next.enabled ?? schedule?.enabled === true, ...(next.limits ?? media) });
     await status.reload();
   };
-  return { status, schedule, saved, media, every, enabled: schedule?.enabled === true, set };
+  // Why a control that needs a backup place is greyed: still reading, or no place chosen yet.
+  const why = status.loading && !status.data ? READING : !saved ? NO_PLACE : "";
+  return { status, schedule, saved, media, every, enabled: schedule?.enabled === true, set, why };
 }
 const BACKUP_NEED = ["backup.status", "backup.schedule.set"];
+const NO_PLACE = "Choose where backups go first.";
+const READING = "Reading your backups…";
 
 /** Back up on a schedule: on runs it every day (or as often as it last did); off keeps where it goes. */
 export function BackupSchedule({ engine, row }: SlotControlProps) {
   const b = useBackups(engine);
   const [failed, run] = useFailure();
+  const whyId = useId();
   return <>
     <Needs engine={engine} need={BACKUP_NEED} where={row.label ?? ""}>
-      <span className="r1s-own-ctl"><Toggle label="Back up on a schedule" on={b.enabled} disabled={!b.saved} onChange={(on) => { if (b.saved) void run(() => b.set(b.saved!, { enabled: on })); }} /></span>
+      <span className="r1s-own-ctl"><Toggle label="Back up on a schedule" on={b.enabled} disabled={!b.saved} aria-describedby={b.why ? whyId : undefined} onChange={(on) => { if (b.saved) void run(() => b.set(b.saved!, { enabled: on })); }} /></span>
     </Needs>
-    {!b.saved && !b.status.loading ? <Line>Choose where backups go first.</Line> : null}
+    {b.why ? <Why id={whyId}>{b.why}</Why> : null}
     {b.status.error ? <Line bad>{b.status.error}</Line> : null}
     <Failed text={failed} />
   </>;
@@ -64,13 +71,14 @@ export function BackupSchedule({ engine, row }: SlotControlProps) {
 export function BackupOften({ engine, row }: SlotControlProps) {
   const b = useBackups(engine);
   const [failed, run] = useFailure();
+  const whyId = useId();
   const value = b.every === WEEK ? "week" : b.every === DAY ? "day" : String(b.every);
   const options = [{ v: "day", label: "Every night" }, { v: "week", label: "Every week" }, ...(value === "day" || value === "week" ? [] : [{ v: value, label: `Every ${Math.round(b.every / 3_600_000)} hours` }])];
   return <>
     <Needs engine={engine} need={BACKUP_NEED} where={row.label ?? ""}>
       <span className="r1s-own-ctl"><Segmented label="How often" value={value} options={options} disabled={!b.saved} onChange={(v) => { if (b.saved) void run(() => b.set(b.saved!, { everyMs: v === "week" ? WEEK : v === "day" ? DAY : Number(v) })); }} /></span>
     </Needs>
-    <Line>{b.enabled && b.schedule?.nextRunAtMs ? `Next: ${when(b.schedule.nextRunAtMs)}` : b.saved ? "Off. Back up now still works." : "Choose where backups go first."}</Line>
+    {b.saved ? <Line>{b.enabled && b.schedule?.nextRunAtMs ? `Next: ${when(b.schedule.nextRunAtMs)}` : "Off. Back up now still works."}</Line> : <Why id={whyId}>{b.why || NO_PLACE}</Why>}
     <Failed text={failed} />
   </>;
 }
@@ -89,17 +97,22 @@ export function BackupWhere({ engine, row }: SlotControlProps) {
   const changed = value.trim() !== "" && (kind !== saved?.kind || value.trim() !== savedValue);
   const go = (fn: () => Promise<unknown>) => { setBusy(true); void run(fn).finally(() => setBusy(false)); };
   const label = kind === "git" ? "Repository address" : "Folder";
+  const whyId = useId();
+  // Save is greyed until there is something new to save; the line says what to do.
+  const saveWhy = busy ? "Saving…" : value.trim() === "" ? (kind === "git" ? "Type the repository address, then Save." : "Type the folder, then Save.")
+    : !changed ? (kind === "git" ? "Saved. Type another address to change it." : "Saved. Type another folder to change it.") : "";
   return <>
     <Needs engine={engine} need={[...BACKUP_NEED, "backup.schedule.clear"]} where={row.label ?? ""}>
       <div className="r1s-own-ctl">
         <Segmented label="Where backups go" value={kind} disabled={busy} options={[{ v: "git", label: "A Git repository" }, { v: "folder", label: "A folder on this computer" }]} onChange={(v) => setKind(v as "git" | "folder")} />
         <input className="r1s-inp" aria-label={label} value={value} disabled={busy} placeholder={kind === "git" ? "https://github.com/you/branch-backups.git" : "C:\\Users\\you\\Backups\\Branch"} onChange={(e) => setValue(e.target.value)} />
         <span className="r1s-acts">
-          <Btn disabled={busy || !changed} onClick={() => go(() => (saved ? b.set(destination) : b.set(destination, { everyMs: DAY, enabled: true })))}>Save</Btn>
+          <Btn disabled={busy || !changed} aria-describedby={saveWhy ? whyId : undefined} onClick={() => go(() => (saved ? b.set(destination) : b.set(destination, { everyMs: DAY, enabled: true })))}>Save</Btn>
           {saved ? <Btn disabled={busy} onClick={() => go(async () => { await engine.request("backup.schedule.clear", {}); await b.status.reload(); })}>Stop backing up here</Btn> : null}
         </span>
       </div>
     </Needs>
+    {saveWhy ? <Why id={whyId}>{saveWhy}</Why> : null}
     <Line>{kind === "git" ? "Branch pushes to its backups branch with your Git sign-in." : "It becomes a Git history of your backups."}</Line>
     <Failed text={failed} />
   </>;
@@ -111,13 +124,15 @@ export function BackupNow({ engine, row }: SlotControlProps) {
   const [note, setNote] = useState("");
   const [failed, run] = useFailure();
   const [busy, setBusy] = useState(false);
+  const whyId = useId();
   const start = () => { setBusy(true); setNote(""); void run(async () => {
     const r = record(await engine.request("backup.run", {}));
     setNote(r.started === true ? "Backing up…" : r.reason === "already-running" ? "A backup is already running." : `Didn’t start: ${str(r.reason) || "the engine declined"}.`);
     await b.status.reload();
   }).finally(() => setBusy(false)); };
   return <>
-    <Needs engine={engine} need={["backup.run"]} where={row.label ?? ""}><Btn disabled={!b.saved || busy} onClick={start}>Back up now</Btn></Needs>
+    <Needs engine={engine} need={["backup.run"]} where={row.label ?? ""}><Btn disabled={!b.saved || busy} aria-describedby={b.why ? whyId : undefined} onClick={start}>Back up now</Btn></Needs>
+    {b.why ? <Why id={whyId}>{b.why}</Why> : null}
     {note ? <Line>{note}</Line> : null}
     <Failed text={failed} />
   </>;
@@ -127,10 +142,11 @@ export function BackupNow({ engine, row }: SlotControlProps) {
  *  put back from here). */
 export function LastBackup({ engine }: SlotControlProps) {
   const b = useBackups(engine);
+  const [level] = useLevel(engine);
   const last = lastBackup(b.status.data, str(b.schedule?.target));
   return <>
     <span className="r1s-own-ctl"><Val>{last.pill ? last.pill.label : "None"}</Val>
-      <Coming engine={engine} need="backup.restore" unwired reason="Restoring a copy comes in a later update." where="Restore…"><button type="button" className="r1s-btn" disabled>Restore…</button></Coming></span>
+      <Coming engine={engine} need="backup.restore" unwired hidden={!showsInternals(level)} reason="Restoring a copy comes in a later update." where="Restore…"><button type="button" className="r1s-btn" disabled>Restore…</button></Coming></span>
     <Line bad={last.pill?.tone === "bad"}>{last.sub}</Line>
   </>;
 }
@@ -140,6 +156,7 @@ function MediaLimit({ engine, row, field, fallback }: SlotControlProps & { field
   const [failed, run] = useFailure();
   const shown = b.media[field] === undefined ? "" : String(b.media[field]);
   const [text, setText] = useState(shown);
+  const whyId = useId();
   useEffect(() => setText(shown), [shown]);
   const commit = () => {
     if (!b.saved || text === shown) return;
@@ -152,10 +169,11 @@ function MediaLimit({ engine, row, field, fallback }: SlotControlProps & { field
   return <>
     <Needs engine={engine} need={BACKUP_NEED} where={row.label ?? ""}>
       <span className="r1s-own-ctl">
-        <input className="r1s-inp" type="number" min={1} aria-label={row.label} value={text} placeholder={String(fallback)} disabled={!b.saved} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") commit(); }} />
+        <input className="r1s-inp" type="number" min={1} aria-label={row.label} value={text} placeholder={String(fallback)} disabled={!b.saved} aria-describedby={b.why ? whyId : undefined} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") commit(); }} />
         <span className="r1s-unit g-label">MB</span>
       </span>
     </Needs>
+    {b.why ? <Why id={whyId}>{b.why}</Why> : null}
     <Failed text={failed} />
   </>;
 }
@@ -179,7 +197,7 @@ export function FillIn({ engine, row }: SlotControlProps) {
   const agent = agentOf(engine);
   return <>
     <Needs engine={engine} need={["memory.sessionBackfill.preview", "memory.sessionBackfill.apply", "memory.sessionBackfill.rollback"]} where={row.label ?? ""}><Btn disabled={!agent} onClick={() => setOpen(true)}>Choose…</Btn></Needs>
-    {!agent ? <Line>Needs a Trunk to fill in for.</Line> : null}
+    {!agent ? <Why>Needs a Trunk to fill in for.</Why> : null}
     {open ? <BackfillDialog engine={engine} agent={agent} onClose={() => setOpen(false)} /> : null}
   </>;
 }
@@ -252,7 +270,8 @@ export function EveryChange({ engine, row }: SlotControlProps) {
               <li key={str(e.id)} className="r1s-change" data-bad={e.invalid === true || undefined}>
                 <span className="r1s-change-t">{line.title}</span>
                 <time className="r1s-change-when" dateTime={typeof e.at === "number" ? new Date(e.at).toISOString() : undefined}>{line.sub}</time>
-                {e.kind === "config-write" ? <div className="r1s-change-acts"><Coming engine={engine} need="engine: rolling back a settings change" unwired reason="Rolling back a change comes in a later update." where="Roll back">
+                {/* Coming: shown greyed only at Technical, as every not-built-yet control (Private #1093 item 4). */}
+                {e.kind === "config-write" ? <div className="r1s-change-acts"><Coming engine={engine} need="engine: rolling back a settings change" unwired hidden={!showsInternals(level)} reason="Rolling back a change comes in a later update." where="Roll back">
                   <button type="button" className="r1s-link" disabled>Roll back</button></Coming></div> : null}
               </li>
             ); })}
@@ -281,12 +300,14 @@ export function ImportSettings({ engine, row }: SlotControlProps) {
   </>;
 }
 
-/** Where your data lives: the folder the engine reports; moving it needs the Branch app. */
+/** Where your data lives: the folder the engine reports, on its own line under the label so a long path never squeezes
+ *  the label (history.ts draws this row full width). Moving it isn't built yet: Move… is Coming, shown only at Technical. */
 export function DataFolder({ engine, row }: SlotControlProps) {
+  const [level] = useLevel(engine);
   const sys = record(useLive<RecordValue>(engine, "system.info", {}, []).data);
-  return <span className="r1s-own-ctl">
+  return <span className="r1s-own-ctl r1s-path">
     {str(sys.diskPath) ? <code className="r1s-val">{str(sys.diskPath)}</code> : null}
-    <Coming engine={engine} need="desktop: moving Branch's data" unwired reason="Moving your data needs the Branch app." where={row.label}>
+    <Coming engine={engine} need="desktop: moving Branch's data" unwired hidden={!showsInternals(level)} reason="Moving your data folder comes in a later update." where={row.label}>
       <button type="button" className="r1s-btn" disabled>Move…</button>
     </Coming>
   </span>;

@@ -115,6 +115,10 @@
 .r1s-row.r1s-stack > .r1s-own { justify-self: stretch; overflow: visible; display: grid; gap: 8px; }
 .r1s-row > .r1s-own:not(:has(.r1s-items, .r1s-item)) { flex-wrap: wrap; justify-content: flex-end; }
 .r1s-own-ctl { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* A folder path (Where your data lives) sits under its label at full width and wraps, so it never squeezes the label. */
+.r1s-own-ctl.r1s-path { justify-content: flex-start; min-width: 0; }
+.r1s-path > code { min-width: 0; overflow-wrap: anywhere; }
+.r1s-row > .r1s-own:has(> .r1s-path) { justify-content: start; }
 .r1s-items { display: grid; gap: 6px; }
 .r1s-item { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
 .r1s-item-t { display: grid; gap: 1px; flex: 1 1 200px; min-width: 0; padding: 4px 12px; border-radius: 14px; }

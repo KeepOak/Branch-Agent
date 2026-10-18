@@ -2,7 +2,7 @@
 // mode box and "Mode everywhere" (tools.exec.mode, the same engine key behind the composer's modes), Work style,
 // Lockdown, who may run commands outside the sandbox (tools.elevated.allowFrom) and connectors.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
 import { Icon } from "../../../shell/icons";
@@ -11,7 +11,7 @@ import { notify } from "../../../shell/notify";
 import { MODE_ROWS, blockedReason, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { platformName } from "../../../setup/steps-later";
 import { record, text, visible, type RecordValue } from "../adapter";
-import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg } from "../kit";
+import { Btn, Ctl, Empty, Pick, Plist, Prow, Sec, Seg } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
 
 /** Wording and the open-settings label for This computer, from the real platform. Linux has no one settings app. */
@@ -59,16 +59,18 @@ export const THIS_PC_ROWS: [string, ReactNode, string, boolean][] = [
 
 export function ThisPc() {
   const copy = thisPcCopy();
+  const whyId = useId();
   return (
     <Sec title="This computer" hint={copy.hint}>
       <Plist>
         {THIS_PC_ROWS.map(([t, icon, sub, open]) => (
           <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={t === "Installing tools" ? copy.install : t === "Location" ? copy.locationHelp : sub}>
-            {open && copy.open ? <Btn sm disabled title={copy.why}>{copy.open}</Btn> : null}
+            {open && copy.open ? <Btn sm disabled aria-describedby={whyId}>{copy.open}</Btn> : null}
           </Prow>
         ))}
       </Plist>
-      <Hint>{copy.why}</Hint>
+      {/* Each greyed Open … Settings names this line (Private #1093). */}
+      <p className="hint" id={whyId}>{copy.why}</p>
     </Sec>
   );
 }

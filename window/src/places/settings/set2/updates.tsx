@@ -492,7 +492,7 @@ function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: 
       ) : <Empty>No update has been tried yet.</Empty>}
       <Ctl title="Update history" sub="Every update, who started it and how it went."><Btn sm onClick={() => setHistory(true)}>See all</Btn></Ctl>
       {/* Repair is greyed here, so the row says where it runs (Private #1093 item 7). */}
-      <Ctl title="The engine" sub={`${version ? "The engine is installed and answering. " : ""}Repair it from the Branch app on your computer.`}>
+      <Ctl title="The engine" subWhy sub={`${version ? "The engine is installed and answering. " : ""}Repair it from the Branch app on your computer.`}>
         <span className="val-k">{version ? `Installed ${version}` : ""}</span>
         <Btn sm disabled title={APP_ONLY}>Repair</Btn>
         <Btn sm ghost onClick={() => void data.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</Btn><CheckedAt at={checked} />

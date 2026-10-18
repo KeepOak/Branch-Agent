@@ -23,6 +23,8 @@ async function show(platform: string) {
   Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => platform });
   await act(async () => root.render(<KitProvider level={0} report={report} scope={null}><ThisPc /></KitProvider>));
 }
+/** The visible line a greyed button names (Private #1093: a reason a person can read, not only a tooltip). */
+const reasonOf = (el: Element | null | undefined) => { const id = el?.getAttribute("aria-describedby"); return id ? document.getElementById(id)?.textContent ?? "" : ""; };
 const button = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === label);
 
 describe("Settings › Permissions › This computer", () => {
@@ -32,7 +34,7 @@ describe("Settings › Permissions › This computer", () => {
     expect(host.textContent).toContain("Windows asks for an administrator yes each time. Branch asks you first.");
     expect(host.textContent).toContain("Windows permissions open from the Branch app on your computer.");
     expect(button("Open Windows Settings")?.disabled).toBe(true);
-    expect(button("Open Windows Settings")?.title).toBe("Windows permissions open from the Branch app on your computer.");
+    expect(reasonOf(button("Open Windows Settings"))).toBe("Windows permissions open from the Branch app on your computer.");
     expect(host.textContent).not.toContain("Open System Settings");
     expect(host.textContent).not.toContain("PipeWire");
   });
@@ -43,7 +45,7 @@ describe("Settings › Permissions › This computer", () => {
     expect(host.textContent).toContain("macOS asks for an administrator yes each time. Branch asks you first.");
     expect(host.textContent).toContain("System Settings › Privacy & Security");
     expect(button("Open System Settings")?.disabled).toBe(true);
-    expect(button("Open System Settings")?.title).toBe("System Settings › Privacy & Security opens from the Branch app on your computer.");
+    expect(reasonOf(button("Open System Settings"))).toBe("System Settings › Privacy & Security opens from the Branch app on your computer.");
     expect(host.textContent).not.toContain("Windows");
     expect(host.textContent).not.toContain("Open Windows Settings");
   });

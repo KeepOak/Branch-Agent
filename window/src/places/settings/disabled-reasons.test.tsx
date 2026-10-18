@@ -8,7 +8,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { Menu } from "../../shell/Menu";
-import { Ctl, KitProvider, Switch, type SaveReport } from "./kit";
+import { CANT_YET, Ctl, KitProvider, Switch, type SaveReport } from "./kit";
 import { SecondTab } from "./set1/models-tabs";
 import { SettingsPage } from "./index";
 import { placePages } from "../../screens/settings/pages/places-live";
@@ -40,12 +40,12 @@ describe("a settings row greyed by a real condition says what to do, visibly", (
     expect(describedBy(host.querySelector("input"))).toBe("Turn on notifications first.");
   });
 
-  it("gives a Coming row (a developer note) no reason line, and never says 'comes in a later update' (B-041)", async () => {
+  it("gives a row greyed by a developer note one plain line, never the note, and never says 'comes in a later update' (B-041)", async () => {
     await act(async () => root.render(<KitProvider level={0} report={report} scope={null}><SecondTab /></KitProvider>));
     const sw = host.querySelector<HTMLInputElement>('input[aria-label="Ask a second model on hard questions"]')!;
     expect(sw.closest(".ctl")?.getAttribute("aria-disabled")).toBe("true");
-    expect(sw.getAttribute("aria-describedby")).toBeNull();
-    expect(host.querySelector(".why-k")).toBeNull();
+    // Private #1093: a greyed control is never left without a visible reason.
+    expect(describedBy(sw)).toBe(CANT_YET);
     expect(host.textContent).not.toContain("later update");
     expect(host.textContent).not.toContain("Branch has no setting for this yet.");
   });

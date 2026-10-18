@@ -158,6 +158,8 @@ function FileRow({ name, what, file, workspace, loading, never, onOpen }: RowPro
         <b>{what}</b><small>{sub}</small>
         {lv >= 2 && path ? <small className="if-path">{visible(path)}</small> : null}
         {shownWhy(why) ? <small className="why-k">{shownWhy(why)}</small> : null}
+        {/* The Read switch only shows what Branch does, so it is greyed: this line says why (Private #1093). */}
+        {boot || shownWhy(why) ? null : <small className="why-k">{readWhy}</small>}
       </span>
       {boot ? null : <span title={readWhy}><Switch checked={n > 0 && !never} disabled label={`Read ${name}`} onChange={() => undefined} /></span>}
       <Btn sm disabled={!editable || !file || Boolean(file.error)} onClick={onOpen}>{n ? "Edit" : "Write"}</Btn>

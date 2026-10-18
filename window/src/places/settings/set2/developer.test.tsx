@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { SettingsPage } from "../index";
+import { CANT_YET } from "../kit";
 import { ROWS, codeModeWith, execLine, toolSearchOn } from "./developer";
 import { runsFrom, warningsOf } from "./developer-more";
 
@@ -96,7 +97,8 @@ describe("Settings › Developer", () => {
     await show(engine);
     const r = row("Use language servers");
     expect(r?.getAttribute("aria-disabled")).toBe("true"); expect(r?.querySelector(".right")?.hasAttribute("inert")).toBe(true);
-    expect(r?.textContent).not.toContain("Needs the engine"); expect(r?.querySelector(".why-k")).toBeNull();
+    // Private #1093: the developer note stays hidden, and a plain line says why in its place.
+    expect(r?.textContent).not.toContain("Needs the engine"); expect(r?.textContent).toContain(CANT_YET);
     expect(visibleDevNotes(document.body)).toEqual([]);
     expect(row("Look at a project’s code")?.textContent).toContain("no code map yet");
   });

@@ -46,7 +46,7 @@ export function CodingApps({ engine }: { engine: WindowEngine }) {
         const [tone, word] = detect.error ? ["idle", "Couldn’t check"] : detect.loading ? ["idle", "Looking…"] : PILL[f.state];
         const pluginOn = app.plugin ? cfg.get(`plugins.entries.${app.plugin}.enabled`) === true : f.state === "ready";
         return (
-          <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={detect.error ? visible(detect.error) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn)} after={detect.error ? <Btn sm onClick={() => void detect.reload()}>Try again</Btn> : undefined}>
+          <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} subWhy={!app.plugin || f.state !== "ready"} sub={detect.error ? visible(detect.error) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn)} after={detect.error ? <Btn sm onClick={() => void detect.reload()}>Try again</Btn> : undefined}>
             {app.plugin
               ? <Switch checked={f.state === "ready" && pluginOn} label={`Use ${app.name}`} disabled={cfg.loading || f.state !== "ready"} onChange={(v) => void cfg.set(`plugins.entries.${app.plugin}.enabled`, v)} />
               : <span title={`Follows ${app.name}’s own sign-in on this computer.`}><Switch checked={pluginOn} label={`Use ${app.name}`} disabled onChange={() => undefined} /></span>}

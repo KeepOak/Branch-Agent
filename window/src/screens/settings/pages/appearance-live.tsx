@@ -22,6 +22,8 @@ import { useThemeChoice, useTrunk } from "../../../places/settings/set1/appearan
 import { r1DefaultTopicLayout, r1TopicLayoutNames, setR1TopicLayout, TOPIC_LAYOUT_KEY, type R1TopicLayout } from "../../../shell/topic-layout";
 import { setThemeChoice, type ThemeChoice } from "../../../theme/theme";
 import { Segmented } from "../RowView";
+import { COMING_FROM } from "../rows";
+import { useLevel } from "../SettingsFrame";
 import type { SlotControlProps } from "../slots";
 
 type Look = ReturnType<typeof useLook>;
@@ -29,11 +31,18 @@ type Look = ReturnType<typeof useLook>;
 /** The calls a change to the person's look makes: none while the look stays on this device (no signed-in person). */
 const lookCalls = (look: Look): string[] => (look.snap.where === "device" ? [] : ["users.prefs.set"]);
 
-/** One control and the calls it makes: through Coming when it makes some, else marked data-local. `hidden`: while this
- *  engine lacks a call the control is Coming, and is not drawn (below Technical, rows.ts COMING_FROM). */
+/** One control and the calls it makes: through Coming when it makes some, else marked data-local. While this engine
+ *  lacks a call the control is Coming, and below Technical it is not drawn (rows.ts COMING_FROM), as every Coming row:
+ *  greyed, it would only say so in a tooltip (Private #1093, every greyed control says why). `hidden` hides it at
+ *  Technical too. */
 export function Needs({ engine, need, where, hidden, children }: { engine: WindowEngine; need: string[]; where: string; hidden?: boolean; children: ReactElement }) {
-  return need.length ? <Coming engine={engine} need={need} where={where} hidden={hidden}>{children}</Coming> : cloneElement(children, { "data-local": "" } as Record<string, unknown>);
+  const [level] = useLevel(engine);
+  return need.length ? <Coming engine={engine} need={need} where={where} hidden={hidden || level < COMING_FROM}>{children}</Coming> : cloneElement(children, { "data-local": "" } as Record<string, unknown>);
 }
+
+/** Why the control beside it is greyed, on its own line; the control names it with aria-describedby when it can
+ *  (Private #1093). A row's description is not a reason: only this line, or a status, says why. */
+export const Why = ({ id, children }: { id?: string; children: ReactNode }) => <small id={id} className="r1s-msg g-label" data-why="" data-lines>{children}</small>;
 
 /** A failed change, on its own pill under the control. */
 export const Failed = ({ text }: { text: string }) => (text ? <small className="r1s-msg r1s-bad g-label" role="status" data-lines>{text}</small> : null);
@@ -116,7 +125,7 @@ function ThemeNow({ engine, failed }: SlotControlProps & { failed: string }) {
         </Needs>
       ) : null}
     </div>
-    {themes.error ? <small className="r1s-msg r1s-bad g-label" data-lines>{visible(themes.error)}</small> : null}
+    {themes.error ? <small className="r1s-msg r1s-bad g-label" data-why="" data-lines>{visible(themes.error)}</small> : themes.loading && canAll(engine, pickCalls) ? <Why>Reading your themes…</Why> : null}
     {look.snap.where === "device" ? <small className="r1s-msg g-label" data-lines>{look.snap.error ? `Kept on this computer: your look couldn’t be read from Branch: ${visible(look.snap.error)}` : "Kept on this computer: this window has no signed-in profile, so your look stays here instead of following you."}</small> : null}
     <Failed text={failed} />
     {open?.kind === "gallery" ? (
@@ -172,7 +181,7 @@ export function BackgroundPreview({ engine }: SlotControlProps) {
   return <>
     <button type="button" className="r1s-btn" data-local="" disabled={Boolean(why)} title={why}
       onPointerDown={(e) => { e.preventDefault(); setHeld(true); }} onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); if (!e.repeat) setHeld(true); } }}>See it clearly</button>
-    {why ? <small className="r1s-msg g-label" data-lines>{why}</small> : null}
+    {why ? <Why>{why}</Why> : null}
   </>;
 }
 
