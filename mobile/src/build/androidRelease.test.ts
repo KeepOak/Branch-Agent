@@ -842,9 +842,10 @@ describe('attach retries GitHub rate limits', () => {
     expect(result.message).toBe(result.expected);
     expect(result.message).toContain(`APK artifact ${files.artifactName}`);
     expect(result.message).toContain(`run ${runId}`);
-    expect(result.waited).toBeLessThanOrEqual(100);
-    expect(result.sleeps.length).toBeGreaterThanOrEqual(1);
-    expect(result.sleeps.every((seconds: number) => seconds <= 100)).toBe(true);
+    // #1898: a reset past the step budget fails closed immediately so waiters
+    // do not lock-step for the next hour.
+    expect(result.sleeps).toEqual([]);
+    expect(result.waited).toBe(0);
   });
 
   it('does not retry a generic 403 and does not call rate_limit', () => {
