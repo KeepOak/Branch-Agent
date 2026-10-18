@@ -297,6 +297,8 @@ function Shell({
   const tabPad = placesBarHeight(look, insets.bottom);
   // Android's Places bar is in-flow, so extra list padding would double it.
   const extraPad = look === 'ios' ? tabPad : 0;
+  const hostComputer = computerList.rows.find((row) => row.id === 'gateway');
+  const computerTitle = hostComputer ? [hostComputer.name, hostComputer.os].filter(Boolean).join(' · ') : undefined;
   const goPlace = (place: Place) => {
     if (place === 'home') setPairedRoute({ name: 'home' });
     else if (place === 'chats') setPairedRoute(CHATS);
@@ -469,15 +471,27 @@ function Shell({
               state={state}
               permission={permission}
               identity={identity}
+              computerTitle={computerTitle}
               onThisPhone={() => setPairedRoute({ name: 'computer', from: 'settings', settingsFrom: pairedRoute.from })}
               onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
               onTurnOnNotifications={turnOnNotifications}
+              onConnectAnother={() => setPairedRoute(SCAN)}
+              onForget={() => void session.unpair()}
+              onSetupTalk={() => {
+                const row = chatForTalk(chatList.rows);
+                if (row) setPairedRoute({ name: 'voice', row });
+              }}
+              onAskHelp={() => {
+                const row = chatForTalk(chatList.rows);
+                if (row) setPairedRoute({ name: 'chat', row });
+              }}
               onBack={() => setPairedRoute(pairedBack(pairedRoute))}
               onLevel={(next: SettingsLevel) => onShowLevel(showLevelOf(next))}
               updateCard={updateCard}
               level={settingsLevelOf(showLevel)}
               backTo={pairedRoute.from === 'more' ? 'More' : 'Chats'}
               bottomExtra={extraPad}
+              store={store}
             />
           </PhoneShell>
         );
