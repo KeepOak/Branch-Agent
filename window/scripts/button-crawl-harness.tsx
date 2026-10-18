@@ -15,6 +15,7 @@ import '../src/shell/shell.css';
 import '../src/shell/frame.css';
 import '../src/shell/controls.css';
 import { createCrawlCapture } from './button-crawl-capture';
+import { disabledWithoutReason } from './button-crawl-reason';
 import { applyApprovalsSet, applyConfigPatch, applyOutsideSet, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshOutside, freshPrefs, freshVoice, voiceProviders, voiceStatus, type CrawlApprovals, type CrawlConfig, type CrawlOutside, type CrawlPrefs, type CrawlVoice } from './button-crawl-state';
 
 type Call = { method: string; ok: boolean; error?: string };
@@ -363,7 +364,7 @@ function collect(overlay = false) {
   const root = overlay ? document.querySelector('[role="menu"], [role="dialog"], [role="alertdialog"]') : document;
   if (!root) return [];
   const seen = new Map<string, number>();
-  const elements: { name: string; href: string; disabled: boolean; selected: boolean; occurrence: number; region: string }[] = [];
+  const elements: { name: string; href: string; disabled: boolean; noReason: boolean; selected: boolean; occurrence: number; region: string }[] = [];
   for (const el of root.querySelectorAll(SELECTOR)) {
     if (!visible(el)) continue;
     const region = regionOf(el);
@@ -378,6 +379,8 @@ function collect(overlay = false) {
       name,
       href: el instanceof HTMLAnchorElement ? el.href : '',
       disabled: control.disabled === true || el.getAttribute('aria-disabled') === 'true',
+      // Greyed with no visible line that says why (button-crawl-reason.ts); a tooltip alone does not count.
+      noReason: disabledWithoutReason(el, visible),
       // A tab, or a radio option that is already the chosen value, has nothing to change: clicking it is a no-op
       // by design, so the crawl skips it ("already-selected") instead of calling it dead.
       // A menu's radio choice that is already chosen (a scope, a sort) has nothing to change, like a tab that is open.

@@ -2,6 +2,7 @@
 // message tells, and Steer. Chip order is fixed (rule 1); the row shows only when it has a chip.
 import { useEffect, useRef, useState } from "react";
 import { formatSize, preparingLine, type DraftFile } from "./attachments";
+import { plainError } from "../shell/plain-error";
 import { Pebble } from "../face/Pebble";
 import { Icon } from "./icons";
 import { Popover } from "./Popover";
@@ -156,7 +157,7 @@ function PlanChip({ plan, starts }: { plan: NonNullable<Props["plan"]>; starts: 
 
 function FileChip({ file, onRemove, onShowText }: { file: DraftFile; onRemove: () => void; onShowText: () => void }) {
   return (
-    <span className={`c-chip file${file.problem ? " bad" : ""}`} data-testid="file-chip" title={file.detail}>
+    <span className={`c-chip file${file.problem ? " bad" : ""}`} data-testid="file-chip" title={file.problem}>
       {file.preview ? <img src={file.preview} alt="" width={20} height={20} /> : <Icon name={file.kind === "text" ? "text" : "file"} size={14} />}
       {file.problem ?? file.fileName}
       {!file.problem ? <small>{formatSize(file.sizeBytes)}</small> : null}
@@ -194,7 +195,7 @@ function QueuePop(p: Props & PopBase) {
           ) : null}
           <button type="button" className="c-x" aria-label="Move up" disabled={i === 0} onClick={() => p.onMoveUp(item.id)}><Icon name="up" size={13} /></button>
           <button type="button" className="c-x" aria-label="Remove" onClick={() => p.onRemove(item.id)}><Icon name="x" size={13} /></button>
-          {item.state === "failed" ? <small className="c-qstate">Not sent{item.error ? `: ${item.error}` : ""}</small> : null}
+          {item.state === "failed" ? <small className="c-qstate">Not sent{item.error ? `: ${plainError(item.error)}` : ""}</small> : null}
           {item.state === "sending" ? <small className="c-qstate">Sending…</small> : null}
           {item.state === "checking" ? <small className="c-qstate">Not confirmed yet · Branch checks whether it arrived</small> : null}
           {p.offline && item.state === "waiting" ? <small className="c-qstate">Offline · sends when Branch is back</small> : null}

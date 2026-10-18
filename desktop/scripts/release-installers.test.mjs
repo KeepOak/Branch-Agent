@@ -30,9 +30,10 @@ test("the Windows installer is per-user and leaves nothing the desktop updater s
   assert.ok(lines.includes("MinVersion=10.0"), "Setup refuses Windows the bundled Electron can't run on");
   assert.ok(lines.includes("DefaultDirName={localappdata}\\Programs\\Branch Agent"), "a user-writable install root");
   assert.ok(lines.includes("UninstallFilesDir={localappdata}\\Programs\\Branch Agent Uninstall"), "the uninstaller survives leftover folders");
-  const shortcut = `Filename: "${exe}"; WorkingDir: "{app}"; AppUserModelID: "dev.branch.agent.desktop"`;
-  assert.ok(lines.includes(`Name: "{autoprograms}\\Branch Agent"; ${shortcut}`), "the Start-menu shortcut opens the stable launcher");
+  const shortcut = `Filename: "${exe}"; WorkingDir: "{%USERPROFILE}"; AppUserModelID: "dev.branch.agent.desktop"`;
+  assert.ok(lines.includes(`Name: "{autoprograms}\\Branch Agent"; ${shortcut}`), "the Start-menu shortcut opens the stable launcher from the user folder");
   assert.ok(lines.includes(`Name: "{autodesktop}\\Branch Agent"; ${shortcut}; Tasks: desktopicon`), "so does the desktop shortcut");
+  assert.doesNotMatch(script, /WorkingDir:\s*"\{app\}"/, "no shortcut or Run entry Starts in the install folder");
   assert.doesNotMatch(script, /\{app\}\\app-/, "no shortcut, icon or run entry names a version folder a prune can remove");
   assert.ok(lines.includes(`UninstallDisplayIcon=${exe}`));
   assert.ok(lines.includes('Type: filesandordirs; Name: "{app}"'));
@@ -139,8 +140,9 @@ test("the stable launcher reads current.txt and starts that version folder's Bra
   const files = { [join(root, "current.txt")]: "\uFEFFapp-0.4.5-abcdef\r\n", [exe("app-0.4.4-123456")]: "", [exe("app-0.4.5-abcdef")]: "" };
   const started = [];
   const spawn = (command, args, options) => started.push({ command, args, cwd: options.cwd, detached: options.detached, windowsHide: options.windowsHide });
-  assert.equal(launcher.runWindowsLauncher({ root, args: ["--from-shortcut", "a b"], fs: fakeFs(files), spawn }), exe("app-0.4.5-abcdef"));
-  assert.deepEqual(started, [{ command: exe("app-0.4.5-abcdef"), args: ["--from-shortcut", "a b"], cwd: join(root, "app-0.4.5-abcdef"), detached: true, windowsHide: false }]);
+  const home = join("C:", "Users", "person");
+  assert.equal(launcher.runWindowsLauncher({ root, args: ["--from-shortcut", "a b"], fs: fakeFs(files), spawn, env: { USERPROFILE: home } }), exe("app-0.4.5-abcdef"));
+  assert.deepEqual(started, [{ command: exe("app-0.4.5-abcdef"), args: ["--from-shortcut", "a b"], cwd: home, detached: true, windowsHide: false }]);
   // The pointer moves after an update: the same launcher starts the new folder.
   files[join(root, "current.txt")] = "app-0.4.4-123456\n";
   assert.equal(launcher.windowsLaunchTarget(root, fakeFs(files)), exe("app-0.4.4-123456"));
@@ -174,6 +176,8 @@ test("the compiled launcher follows the same rules as a windowed exe", () => {
   assert.match(source, /Regex\.IsMatch\(folder, "\^app-\[A-Za-z0-9\._-\]\+\$"\)/);
   assert.match(source, /"Branch Agent\.exe"/);
   assert.match(source, /UseShellExecute = false/);
+  assert.match(source, /GetEnvironmentVariable\("USERPROFILE"\)/);
+  assert.doesNotMatch(source, /WorkingDirectory = Path\.GetDirectoryName\(exe\)/);
   assert.deepEqual(launcher.windowsLauncherCompileArgs({ source: "l.cs", out: "o.exe" }),
     ["/nologo", "/target:winexe", "/optimize+", "/platform:anycpu", "/out:o.exe", "l.cs"], "winexe: no console window");
   const csc = launcher.windowsLauncherCompiler({ SystemRoot: "C:\\Windows" }, file => file.includes("Framework64"));
@@ -270,7 +274,8 @@ test("Windows: the built launcher has no console, starts the folder current.txt 
     for (const end = Date.now() + 10_000; !existsSync(ran) && Date.now() < end;) spawnSync(process.execPath, ["-e", "setTimeout(() => {}, 100)"]);
     // The runner may hand back the 8.3 short form of the temp folder (C:\\Users\\RUNNER~1\\...), so compare real paths.
     const [cwd, ...args] = readFileSync(ran, "utf8").split("|");
-    assert.equal(realpathSync.native(cwd).toLowerCase(), realpathSync.native(join(root, "app-0.4.5-bbbbbb")).toLowerCase());
+    assert.equal(realpathSync.native(cwd).toLowerCase(), realpathSync.native(process.env.USERPROFILE).toLowerCase());
+    assert.notEqual(realpathSync.native(cwd).toLowerCase(), realpathSync.native(join(root, "app-0.4.5-bbbbbb")).toLowerCase());
     assert.deepEqual(args, ["--hidden", "two words"]);
     appPid = Number(readFileSync(join(root, "app-0.4.5-bbbbbb", "pid.txt"), "utf8"));
   } finally {

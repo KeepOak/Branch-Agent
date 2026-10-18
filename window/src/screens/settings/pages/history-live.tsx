@@ -3,7 +3,7 @@
 // Backups (set2/backups.tsx: backup.status, backup.schedule.set / clear, backup.run), the overnight memory cleanup's
 // diary, fill-in and maintenance (set2/seasons.tsx: doctor.memory.*, memory.sessionBackfill.*), Every change
 // (set2/self.tsx: branch.changes.list) and Your settings' Export and Import (set2/self.tsx).
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Coming } from "../../../glass/coming";
 import { list, record, type RecordValue } from "../../../places/settings/adapter";
@@ -18,12 +18,13 @@ import { useLevel } from "../SettingsFrame";
 import type { SlotControlProps } from "../slots";
 import { useRead } from "./accounts-live";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { copyAndSay } from "../../../shell/clipboard";
 import { CLEANUP_CODE, NEVER_DIES } from "./history";
 
-const Line = ({ children, bad }: { children: ReactNode; bad?: boolean }) => <small className={"r1s-msg g-label" + (bad ? " r1s-bad" : "")} role={bad ? "status" : undefined} data-lines>{children}</small>;
+const Line = ({ children, bad, id }: { children: ReactNode; bad?: boolean; id?: string }) => <small className={"r1s-msg g-label" + (bad ? " r1s-bad" : "")} role={bad ? "status" : undefined} data-lines id={id}>{children}</small>;
 const Val = ({ children }: { children: ReactNode }) => <span className="r1s-val g-label" data-lines>{children}</span>;
 /** A button that keeps the attributes <Coming> gives it (data-need), so the control stays declared. */
-const Btn = ({ children, disabled, onClick, ...rest }: { children: ReactNode; disabled?: boolean; onClick: () => void }) =>
+const Btn = ({ children, disabled, onClick, ...rest }: { children: ReactNode; disabled?: boolean; onClick: () => void; "aria-describedby"?: string }) =>
   <button type="button" className="r1s-btn" disabled={disabled} onClick={onClick} {...rest}>{children}</button>;
 
 /** The backup schedule Settings manages (the Git one), shared by every Backups row: one read, one way to save. */
@@ -88,17 +89,22 @@ export function BackupWhere({ engine, row }: SlotControlProps) {
   const changed = value.trim() !== "" && (kind !== saved?.kind || value.trim() !== savedValue);
   const go = (fn: () => Promise<unknown>) => { setBusy(true); void run(fn).finally(() => setBusy(false)); };
   const label = kind === "git" ? "Repository address" : "Folder";
+  const saveWhyId = useId();
+  const saveWhy = !busy && !changed
+    ? (value.trim() === "" ? "Type a folder or repository address first." : "Already saved. Change the address to save a new one.")
+    : undefined;
   return <>
     <Needs engine={engine} need={[...BACKUP_NEED, "backup.schedule.clear"]} where={row.label ?? ""}>
       <div className="r1s-own-ctl">
         <Segmented label="Where backups go" value={kind} disabled={busy} options={[{ v: "git", label: "A Git repository" }, { v: "folder", label: "A folder on this computer" }]} onChange={(v) => setKind(v as "git" | "folder")} />
         <input className="r1s-inp" aria-label={label} value={value} disabled={busy} placeholder={kind === "git" ? "https://github.com/you/branch-backups.git" : "C:\\Users\\you\\Backups\\Branch"} onChange={(e) => setValue(e.target.value)} />
         <span className="r1s-acts">
-          <Btn disabled={busy || !changed} onClick={() => go(() => (saved ? b.set(destination) : b.set(destination, { everyMs: DAY, enabled: true })))}>Save</Btn>
+          <Btn disabled={busy || !changed} aria-describedby={saveWhy ? saveWhyId : undefined} onClick={() => go(() => (saved ? b.set(destination) : b.set(destination, { everyMs: DAY, enabled: true })))}>Save</Btn>
           {saved ? <Btn disabled={busy} onClick={() => go(async () => { await engine.request("backup.schedule.clear", {}); await b.status.reload(); })}>Stop backing up here</Btn> : null}
         </span>
       </div>
     </Needs>
+    {saveWhy ? <Line id={saveWhyId}>{saveWhy}</Line> : null}
     <Line>{kind === "git" ? "Branch pushes to its backups branch with your Git sign-in." : "It becomes a Git history of your backups."}</Line>
     <Failed text={failed} />
   </>;
@@ -110,13 +116,16 @@ export function BackupNow({ engine, row }: SlotControlProps) {
   const [note, setNote] = useState("");
   const [failed, run] = useFailure();
   const [busy, setBusy] = useState(false);
+  const whyId = useId();
+  const why = !b.saved ? "Choose where backups go first." : undefined;
   const start = () => { setBusy(true); setNote(""); void run(async () => {
     const r = record(await engine.request("backup.run", {}));
     setNote(r.started === true ? "Backing up…" : r.reason === "already-running" ? "A backup is already running." : `Didn’t start: ${str(r.reason) || "the engine declined"}.`);
     await b.status.reload();
   }).finally(() => setBusy(false)); };
   return <>
-    <Needs engine={engine} need={["backup.run"]} where={row.label ?? ""}><Btn disabled={!b.saved || busy} onClick={start}>Back up now</Btn></Needs>
+    <Needs engine={engine} need={["backup.run"]} where={row.label ?? ""}><Btn disabled={!b.saved || busy} aria-describedby={why ? whyId : undefined} onClick={start}>Back up now</Btn></Needs>
+    {why ? <Line id={whyId}>{why}</Line> : null}
     {note ? <Line>{note}</Line> : null}
     <Failed text={failed} />
   </>;
@@ -140,6 +149,8 @@ function MediaLimit({ engine, row, field, fallback }: SlotControlProps & { field
   const shown = b.media[field] === undefined ? "" : String(b.media[field]);
   const [text, setText] = useState(shown);
   useEffect(() => setText(shown), [shown]);
+  const whyId = useId();
+  const why = !b.saved ? "Choose where backups go first." : undefined;
   const commit = () => {
     if (!b.saved || text === shown) return;
     const n = Number(text);
@@ -151,10 +162,11 @@ function MediaLimit({ engine, row, field, fallback }: SlotControlProps & { field
   return <>
     <Needs engine={engine} need={BACKUP_NEED} where={row.label ?? ""}>
       <span className="r1s-own-ctl">
-        <input className="r1s-inp" type="number" min={1} aria-label={row.label} value={text} placeholder={String(fallback)} disabled={!b.saved} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") commit(); }} />
+        <input className="r1s-inp" type="number" min={1} aria-label={row.label} value={text} placeholder={String(fallback)} disabled={!b.saved} aria-describedby={why ? whyId : undefined} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") commit(); }} />
         <span className="r1s-unit g-label">MB</span>
       </span>
     </Needs>
+    {why ? <Line id={whyId}>{why}</Line> : null}
     <Failed text={failed} />
   </>;
 }
@@ -189,7 +201,7 @@ export function CleanupCode({ row }: SlotControlProps) {
   const [copied, setCopied] = useState(false);
   return <span className="r1s-own-ctl" data-local="">
     <code className="r1s-val">{code}</code>
-    <Btn onClick={() => void navigator.clipboard?.writeText(code).then(() => setCopied(true), () => undefined)}>{copied ? "Copied" : "Copy"}</Btn>
+    <Btn onClick={() => void copyAndSay(code).then(setCopied)}>{copied ? "Copied" : "Copy"}</Btn>
   </span>;
 }
 

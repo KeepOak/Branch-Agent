@@ -37,7 +37,7 @@ function ProgressBar({ value }: { value: number }) {
   const pct = Math.max(0, Math.min(100, Math.round(value * 100)));
   return (
     <View testID="update-progress" accessibilityValue={{ now: pct, min: 0, max: 100 }} style={{ height: 4, backgroundColor: color.fill, borderRadius: radius.pill, overflow: 'hidden' }}>
-      <View style={{ width: `${pct}%`, height: 4, backgroundColor: color.accent }} />
+      <View style={{ width: `${pct}%`, height: 4, backgroundColor: color.ink }} />
     </View>
   );
 }
@@ -148,11 +148,11 @@ export function SettingsUpdateCard({
       {apkUpdates ? (
         <View style={{ marginTop: space.md, gap: space.sm }}>
           {state.status === 'needsPermission' ? (
-            <Button title="Allow installs" kind="primary" onPress={onAllowInstalls} testID="update-allow-installs" />
+            <Button title="Allow installs" kind="ink" onPress={onAllowInstalls} testID="update-allow-installs" />
           ) : state.status === 'available' || (state.status === 'error' && state.offer) ? (
-            <Button title="Update" kind="primary" onPress={onUpdate} busy={busy} testID="update-button" />
+            <Button title="Update" kind="ink" onPress={onUpdate} busy={busy} testID="update-button" />
           ) : null}
-          <Button title="Check for update" kind="secondary" onPress={onCheck} busy={checking} disabled={busy} testID="update-check" />
+          <Button title="Check for update" kind="inkSecondary" onPress={onCheck} busy={checking} disabled={busy} testID="update-check" />
         </View>
       ) : null}
     </View>

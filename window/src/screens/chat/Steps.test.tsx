@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Block } from "../../thread/model";
 import { StepsList } from "./Steps";
 
@@ -19,6 +19,22 @@ const fresh = (list: Step[]) => list.map((s) => ({ ...s, key: s.key + ":" + n })
 const freshThoughts = () => thoughts.map((t) => ({ ...t, key: t.key + ":" + n }));
 beforeEach(() => { localStorage.clear(); n += 1; host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
+
+it("Private #1103: a very long changed path ends in an ellipsis with Copy path, and a long step keeps its whole title", async () => {
+  const path = "workspace/example-app/" + "a".repeat(300) + ".tsx";
+  const writeText = vi.fn(async (_text: string) => undefined);
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  const long: Step[] = [{ kind: "step", key: "long", tool: "edit", title: "Edited " + path, detail: "", status: "ok", changes: [{ path, added: 2, removed: 1 }] }];
+  await act(async () => root.render(<StepsList steps={fresh(long)} live={false} mode="verbose" />));
+  const file = host.querySelector(".r1c-step-file")!;
+  expect(file.querySelector<HTMLElement>(".copy-token-text")!.title).toBe(path);
+  expect(host.querySelector<HTMLElement>(".r1c-step-title")!.title).toBeTruthy();
+  const copy = [...file.querySelectorAll("button")].find((b) => b.textContent === "Copy path")!;
+  await act(async () => { copy.click(); });
+  await act(async () => { await Promise.resolve(); });
+  expect(writeText).toHaveBeenCalledWith(path);
+  expect(copy.textContent).toBe("Copied");
+});
 
 it("Normal: one closed summary line with the failure count, no thoughts", async () => {
   await act(async () => root.render(<StepsList steps={fresh(steps)} thoughts={freshThoughts()} live={false} mode="normal" />));

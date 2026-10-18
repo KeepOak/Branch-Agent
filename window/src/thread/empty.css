@@ -4,6 +4,8 @@
   font-size: 13px;
   color: var(--ink-3);
 }
+.empty-connect { display: grid; justify-items: center; gap: 10px; }
+.empty-connect p { margin: 0; font-size: 13px; color: var(--ink-3); }
 .thread .starters {
   display: flex;
   overflow-x: auto;
