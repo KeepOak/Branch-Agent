@@ -107,7 +107,15 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
         }));
       }
     } catch (error) {
-      if (live.current === key) setState((s) => ({ ...s, modelsLoading: false, modelsError: errorText(error) }));
+      if (live.current === key) {
+        setState((s) => (
+          // A failed refresh must keep the last good catalog. Writing modelsError here makes
+          // hasNoModel false and unmounts FreeModelSetup, which cancels the ask-before-download wizard.
+          s.modelsLoaded
+            ? { ...s, modelsLoading: false }
+            : { ...s, modelsLoading: false, modelsError: errorText(error) }
+        ));
+      }
     }
   }, [engine, key]);
 
@@ -176,8 +184,14 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
       // to. The engine announces every committed write as config.changed; the chip reads the Trunk list, so it re-reads it here.
       if (event === "config.changed" || event === "agents.changed") readTrunkList().catch(() => undefined);
       // Same events the engine UI uses to invalidate models.list: a signed-in account or a config reload changes the
-      // catalog. The composer must re-read it so Send is not stuck on the list from when the window opened.
-      if (event === "config.changed" || event === "agents.changed" || event === "chat.metadata.changed") refreshModels();
+      // catalog. Usage-only metadata sets modelCatalogChanged false; skip those the way model-catalog-cache does.
+      if (
+        event === "config.changed"
+        || event === "agents.changed"
+        || (event === "chat.metadata.changed" && rec(payload).modelCatalogChanged !== false)
+      ) {
+        refreshModels();
+      }
     });
     const onFocus = () => {
       if (typeof document !== "undefined" && document.visibilityState && document.visibilityState !== "visible") return;

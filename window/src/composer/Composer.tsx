@@ -21,7 +21,7 @@ import { NO_ROUTE, type OpenTarget } from "./nav";
 import { PhotoDialog, PictureDialog } from "./PhotoDialog";
 import { PlugMenu } from "./PlugMenu";
 import { PlusMenu } from "./PlusMenu";
-import { buildExtras, planSend, sendHoldReason, sendTooltip, type Reply } from "./sending";
+import { buildExtras, planSend, sendTooltip, type Reply } from "./sending";
 import { Drawer } from "./SlashDrawer";
 import { useBackground } from "./useBackground";
 import { CONNECT_MODEL_ANSWERS } from "./connect-model";
@@ -154,20 +154,13 @@ export function Composer(props: Props) {
   // No model set up: the engine names a default model but none is connected (models.list has none usable), or none at all.
   const noModel = hasNoModel(conv, currentRef);
   const waitingForFreeModel = noModel && !conv.noKeySettled && !conv.noKeyError;
+  const freeModelBlocked = noModel;
   const admin = isAdmin(engine?.scopes ?? []);
   const mode: EngineMode | null = isEngineMode(row.permissionMode) ? row.permissionMode : null;
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;
   const queueMode = str(row.effectiveQueueMode);
   const trunkName = conv.trunk?.name || name;
   const conversationProblem = conv.error ?? (isPreparationPending(conv.modelsError) || conv.modelsError?.includes("is still starting up.") ? conv.modelsError : null);
-  const holdReason = sendHoldReason({
-    offline: Boolean(props.offline),
-    loadingModels: conv.modelsLoading && !conv.models.some((m) => m.available),
-    preparing: isPreparationPending(conversationProblem),
-    noKeyError: conv.noKeyError,
-    waitingForFreeModel,
-    noModel,
-  });
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
 
   const levels = current?.levels ?? [];
@@ -240,11 +233,8 @@ export function Composer(props: Props) {
       draft.clear();
       return;
     }
-    if (holdReason && plan.kind !== "command" && (plan.kind !== "background" || !isPreparationPending(conversationProblem))) {
-      setProblem(holdReason);
-      if (!conv.modelsLoading) void conv.readModelList({ refresh: true });
-      return;
-    }
+    if (freeModelBlocked && plan.kind !== "command") return;
+    if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") {
       void runBackground(plan.text);
       return;
@@ -429,7 +419,7 @@ export function Composer(props: Props) {
   const hasDraft = draft.text.trim().length > 0 || draft.files.length > 0;
   const stopMode = working && !hasDraft;
   // Sessions and history arrive before the engine finishes starting; sending waits for this Trunk.
-  const ready = hasDraft && !disabled && !props.lockdown && draft.preparing === 0 && !holdReason;
+  const ready = hasDraft && !disabled && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && !freeModelBlocked;
   // The session row's estimatedCostUsd is the latest run, not the conversation total.
   const [usageCost, setUsageCost] = useState<{ key: string; value: number } | null>(null);
   useEffect(() => {
@@ -603,7 +593,7 @@ export function Composer(props: Props) {
           type="submit"
           className={stopMode ? "send stop" : ready ? "send ready" : "send"}
           aria-label={stopMode ? "Stop" : "Send"}
-          title={holdReason ?? (working && hasDraft ? sendTooltip(queueMode) : undefined)}
+          title={working && hasDraft ? sendTooltip(queueMode) : undefined}
           disabled={!stopMode && !ready}
         >
           {stopMode ? <StopMark /> : <Icon name="up" stroke={2.2} />}
