@@ -2,6 +2,14 @@ import { useState, useSyncExternalStore } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  actionFields,
+  actionWords,
+  headline,
+  isExpired,
+  maskCommand,
+} from '../approvals/approvalWords';
+import type { Approval, ApprovalDecision } from '../approvals/approvals';
+import {
   canSendAttachments,
   formatSize,
   NO_ATTACH_METHOD_NOTE,
@@ -33,11 +41,35 @@ export function workedFor(ms: number): string {
   return `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ''}`;
 }
 
+const COMPUTER_STEPS_SHOWN = 5;
+/** Same cut as Inbox (`ApprovalsScreen` LONG_COMMAND): a command this long gets an expand control. */
+const LONG_COMMAND = 160;
+
+/** Status words on the Take control strip (preview p50sStrip). Rooms have no strip. */
+export function takeControlCopy(input: { room: boolean; working: boolean; live: boolean; online: boolean; yours?: boolean }): { state: string; liveOn: boolean } | null {
+  if (input.room) return null;
+  if (input.yours) return { state: 'You have the computer', liveOn: false };
+  if (input.working || input.live) return { state: 'Working on its computer', liveOn: true };
+  if (!input.online) return { state: 'Computer idle', liveOn: false };
+  return { state: 'Computer ready', liveOn: false };
+}
+
+/** The strip does not guess a step total; the engine does not send one. */
+export function takeControlDetail(_items: readonly ChatItem[], _working: boolean): string {
+  return '';
+}
+
+/** Pending approvals that belong in this chat, still waiting. */
+export function threadApprovals(pending: readonly Approval[], sessionKey: string, now: number): Approval[] {
+  return pending.filter((approval) => approval.sessionKey === sessionKey && !isExpired(approval, now));
+}
+
 type Line =
   | { kind: 'item'; key: string; item: ChatItem }
   | { kind: 'send'; key: string; send: OwnSend }
   | { kind: 'live'; key: string; live: LiveReply }
-  | { kind: 'ended'; key: string; text: string; failed: boolean };
+  | { kind: 'ended'; key: string; text: string; failed: boolean }
+  | { kind: 'ask'; key: string; approval: Approval };
 
 /** Everything the chat shows, oldest first: the history, your messages on their way, how a reply ended, the live reply. */
 export function chatLines(snapshot: ConversationSnapshot): Line[] {
@@ -147,19 +179,275 @@ function SendLine({ send, onRetry }: { send: OwnSend; onRetry: (id: string) => v
   );
 }
 
-/** The reply being written: its words as they arrive, or what the Trunk is doing before the first one. */
+/** The reply being written: its words as they arrive, or one quiet working line before the first one. */
 function LiveBubble({ live }: { live: LiveReply }) {
-  const { color, space, radius } = useTheme();
   if (live.text) return <Bubble mine={false} text={live.text} testID="live-reply" />;
   return (
-    <View
-      testID="live-reply"
-      accessibilityLiveRegion="polite"
-      style={{ alignSelf: 'flex-start', backgroundColor: color.raise, borderRadius: radius.bubble, borderBottomLeftRadius: space.xs + 2, paddingHorizontal: space.md + 2, paddingVertical: space.sm + 1 }}
-    >
-      <ThemedText variant="body" tone="ink3">
+    <View testID="live-reply" accessibilityLiveRegion="polite" style={{ alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' }}>
+      <ThemedText variant="footnote" tone="ink3">
         {phaseLabel(live.phase)}
       </ThemedText>
+    </View>
+  );
+}
+
+/** Entry point for the computer pane. The pane itself is another screen; this only opens Computers. */
+function TakeControlStrip({
+  computerName,
+  state,
+  liveOn,
+  detail,
+  onTakeControl,
+}: {
+  computerName: string;
+  state: string;
+  liveOn: boolean;
+  detail: string;
+  onTakeControl: () => void;
+}) {
+  const { color, space, radius } = useTheme();
+  return (
+    <View
+      testID="take-control-strip"
+      accessibilityRole="summary"
+      accessibilityLabel={`${computerName}: ${state}${detail}`}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: space.sm,
+        marginHorizontal: space.md,
+        marginBottom: space.sm,
+        paddingHorizontal: space.md,
+        paddingVertical: space.sm,
+        borderRadius: 14,
+        backgroundColor: color.fill,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flex: 1, minWidth: 0 }}>
+        <View testID="take-control-live" style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: liveOn ? color.ok : color.ink3 }} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <ThemedText variant="footnote" numberOfLines={1} style={{ fontWeight: '600' }}>
+            {state}
+          </ThemedText>
+          <ThemedText variant="caption1" tone="ink3" numberOfLines={1}>
+            {computerName}
+            {detail}
+          </ThemedText>
+        </View>
+      </View>
+      <Pressable
+        testID="take-control"
+        accessibilityRole="button"
+        accessibilityLabel="Take control"
+        onPress={onTakeControl}
+        style={({ pressed }) => ({
+          paddingHorizontal: space.md,
+          paddingVertical: space.xs + 2,
+          borderRadius: radius.pill,
+          backgroundColor: color.ink,
+          opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <ThemedText variant="footnote" style={{ fontWeight: '600', color: color.bg }}>
+          Take control
+        </ThemedText>
+      </Pressable>
+    </View>
+  );
+}
+
+/** A computer or browser turn: Used computer, the action count, the steps, and Watch or Open computer. */
+function ComputerMessage({
+  item,
+  computerName,
+  working,
+  onOpen,
+}: {
+  item: Extract<ChatItem, { kind: 'computer' }>;
+  computerName: string;
+  working: boolean;
+  onOpen: () => void;
+}) {
+  const { color, space, radius } = useTheme();
+  const count = item.steps.length;
+  const extra = count > COMPUTER_STEPS_SHOWN ? count - COMPUTER_STEPS_SHOWN : 0;
+  const shown = extra ? item.steps.slice(0, COMPUTER_STEPS_SHOWN) : item.steps;
+  const action = working ? 'Watch' : 'Open computer';
+  return (
+    <View
+      testID={`computer-${item.key}`}
+      accessibilityLabel={`Used computer, ${count} ${count === 1 ? 'action' : 'actions'}`}
+      style={{ alignSelf: 'stretch', backgroundColor: color.raise, borderRadius: radius.lg, padding: space.md, gap: space.xs }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+        <ThemedText variant="footnote" style={{ fontWeight: '600' }}>
+          Used computer
+        </ThemedText>
+        <ThemedText variant="caption1" tone="ink3" style={{ marginLeft: 'auto' }}>
+          {count} {count === 1 ? 'action' : 'actions'}
+        </ThemedText>
+      </View>
+      <ThemedText variant="caption1" tone="ink2">
+        {computerName} · {item.title}
+      </ThemedText>
+      <View testID={`computer-steps-${item.key}`} style={{ marginTop: space.xs, gap: 3 }}>
+        {shown.map((step, i) => (
+          <ThemedText key={i} variant="footnote" tone="ink2">
+            {step}
+          </ThemedText>
+        ))}
+        {extra ? (
+          <ThemedText variant="footnote" tone="ink3">
+            {`+${extra} more`}
+          </ThemedText>
+        ) : null}
+      </View>
+      <Pressable
+        testID={`computer-open-${item.key}`}
+        accessibilityRole="button"
+        accessibilityLabel={action}
+        onPress={onOpen}
+        style={({ pressed }) => ({
+          alignSelf: 'flex-start',
+          marginTop: space.xs,
+          paddingHorizontal: space.md,
+          paddingVertical: space.xs + 2,
+          borderRadius: radius.pill,
+          backgroundColor: working ? color.ink : color.fill,
+          opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <ThemedText variant="footnote" style={{ fontWeight: '600', color: working ? color.bg : color.ink }}>
+          {action}
+        </ThemedText>
+      </Pressable>
+    </View>
+  );
+}
+
+/** An approval waiting in this chat: the question, the full ask, Allow or Deny. */
+function ThreadApprovalCard({
+  approval,
+  sending,
+  failed,
+  onAnswer,
+}: {
+  approval: Approval;
+  sending?: ApprovalDecision;
+  failed?: string;
+  onAnswer: (id: string, decision: ApprovalDecision) => void;
+}) {
+  const { color, space, radius } = useTheme();
+  const [all, setAll] = useState(false);
+  const verbs = actionWords(approval);
+  const parsed = approval.kind === 'plugin' ? actionFields(approval.description ?? '') : { fields: [] as [string, string][], body: '' };
+  const command = approval.kind === 'exec' ? maskCommand(approval.command) : '';
+  const long = command.length > LONG_COMMAND;
+  const busy = Boolean(sending);
+  // Allow waits until the ask is on the card: a plugin body (or its field rows), or a non-empty command.
+  const canAllow = approval.kind === 'plugin' ? Boolean(parsed.body || parsed.fields.length) : command.trim().length > 0;
+  const allowDisabled = busy || !canAllow;
+  return (
+    <View
+      testID={`approval-${approval.id}`}
+      accessibilityLabel={headline(approval)}
+      style={{ alignSelf: 'stretch', backgroundColor: color.raise, borderRadius: radius.lg, padding: space.md, gap: space.xs }}
+    >
+      <ThemedText variant="footnote" style={{ fontWeight: '600' }}>
+        {headline(approval)}
+      </ThemedText>
+      {parsed.fields.map(([k, v]) => (
+        <View key={k} style={{ flexDirection: 'row', gap: space.sm }}>
+          <ThemedText variant="footnote" tone="ink3" style={{ minWidth: 56 }}>
+            {k}
+          </ThemedText>
+          <ThemedText variant="footnote" style={{ flex: 1 }}>
+            {v}
+          </ThemedText>
+        </View>
+      ))}
+      {parsed.body ? (
+        <ThemedText testID={`ask-body-${approval.id}`} variant="footnote" tone="ink2">
+          {parsed.body}
+        </ThemedText>
+      ) : null}
+      {approval.kind === 'exec' ? (
+        <>
+          <ThemedText testID={`command-${approval.id}`} variant="footnote" tone="ink2" numberOfLines={all || !long ? undefined : 4}>
+            {command}
+          </ThemedText>
+          {long ? (
+            <Pressable
+              testID={`command-more-${approval.id}`}
+              accessibilityRole="button"
+              onPress={() => setAll((v) => !v)}
+              hitSlop={8}
+              style={{ alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' }}
+            >
+              <ThemedText variant="footnote" tone="accentInk">
+                {all ? 'Show less' : 'Show the whole command'}
+              </ThemedText>
+            </Pressable>
+          ) : null}
+        </>
+      ) : null}
+      {failed ? (
+        <ThemedText testID={`failed-${approval.id}`} variant="footnote" tone="bad">
+          {failed}
+        </ThemedText>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.xs }}>
+        <Pressable
+          testID={`deny-${approval.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={verbs.no}
+          accessibilityState={{ disabled: busy, busy: sending === 'deny' }}
+          disabled={busy}
+          onPress={() => onAnswer(approval.id, 'deny')}
+          style={({ pressed }) => ({
+            flex: 1,
+            minHeight: 40,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: space.md,
+            paddingVertical: space.xs + 2,
+            borderRadius: radius.pill,
+            backgroundColor: color.fill,
+            opacity: busy ? 0.45 : pressed ? 0.7 : 1,
+          })}
+        >
+          <ThemedText variant="footnote" style={{ fontWeight: '600' }}>
+            {verbs.no}
+          </ThemedText>
+        </Pressable>
+        <Pressable
+          testID={`allow-${approval.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={verbs.yes}
+          accessibilityState={{ disabled: allowDisabled, busy: sending === 'allow-once' }}
+          disabled={allowDisabled}
+          onPress={() => {
+            if (!canAllow) return;
+            onAnswer(approval.id, 'allow-once');
+          }}
+          style={({ pressed }) => ({
+            flex: 1,
+            minHeight: 40,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: space.md,
+            paddingVertical: space.xs + 2,
+            borderRadius: radius.pill,
+            backgroundColor: color.ink,
+            opacity: allowDisabled ? 0.45 : pressed ? 0.7 : 1,
+          })}
+        >
+          <ThemedText variant="footnote" style={{ fontWeight: '600', color: color.bg }}>
+            {verbs.yes}
+          </ThemedText>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -249,6 +537,13 @@ export function ChatScreen({
   onTalk,
   hello = null,
   pickers = expoPickers,
+  onTakeControl,
+  computerName = 'This computer',
+  pending = [],
+  sending = {},
+  failed = {},
+  onAnswer,
+  now = Date.now(),
 }: {
   row: ChatRow;
   conversation: Conversation;
@@ -257,6 +552,15 @@ export function ChatScreen({
   onTalk?: () => void;
   hello?: HelloAttachments | null;
   pickers?: AttachmentPickers;
+  /** Opens Computers, the existing take-control route. */
+  onTakeControl?: () => void;
+  /** What the strip calls the computer: "This computer", never a hostname. */
+  computerName?: string;
+  pending?: readonly Approval[];
+  sending?: Record<string, ApprovalDecision>;
+  failed?: Record<string, string>;
+  onAnswer?: (id: string, decision: ApprovalDecision) => void;
+  now?: number;
 }) {
   const { color, space, radius, layout, type } = useTheme();
   const insets = useSafeAreaInsets();
@@ -267,8 +571,17 @@ export function ChatScreen({
   const [pickError, setPickError] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(0);
   const [nextFileId, setNextFileId] = useState(1);
-  const lines = chatLines(snapshot);
+  const historyLines = chatLines(snapshot);
   const live = snapshot.live;
+  const working = Boolean(row.working || live);
+  const strip = takeControlCopy({ room: row.room, working, live: Boolean(live), online });
+  const stripDetail = takeControlDetail(snapshot.items, working);
+  const asks = onAnswer ? threadApprovals(pending, row.key, now) : [];
+  const openComputer = onTakeControl ?? (() => undefined);
+  const lines: Line[] = [
+    ...historyLines,
+    ...asks.map((approval) => ({ kind: 'ask' as const, key: `ask:${approval.id}`, approval })),
+  ];
   const status = live ? (live.text ? 'Typing…' : phaseLabel(live.phase)) : !online ? 'Reconnecting…' : row.room ? 'Room' : row.trunkName ? `With ${row.trunkName}` : '';
   const canAttach = online && canSendAttachments(hello);
   const policy = resolvedAttachmentPolicy(hello);
@@ -319,15 +632,38 @@ export function ChatScreen({
           if (line.kind === 'send') return <SendLine send={line.send} onRetry={(id) => void conversation.retry(id)} />;
           if (line.kind === 'live') return <LiveBubble live={line.live} />;
           if (line.kind === 'ended') return <Notice text={line.text} failed={line.failed} testID="reply-ended" />;
+          if (line.kind === 'ask') {
+            return (
+              <ThreadApprovalCard
+                approval={line.approval}
+                sending={sending[line.approval.id]}
+                failed={failed[line.approval.id]}
+                onAnswer={onAnswer!}
+              />
+            );
+          }
           const item = line.item;
           if (item.kind === 'user') return <Bubble mine text={item.text} testID={`msg-${item.key}`} />;
           if (item.kind === 'assistant') return <Bubble mine={false} text={item.text} testID={`msg-${item.key}`} />;
           if (item.kind === 'work') return <WorkLine item={item} />;
+          if (item.kind === 'computer') {
+            const latestComputer = [...snapshot.items].reverse().find((entry) => entry.kind === 'computer');
+            return (
+              <ComputerMessage
+                item={item}
+                computerName={computerName}
+                working={working && latestComputer?.key === item.key}
+                onOpen={openComputer}
+              />
+            );
+          }
           return <Notice text={item.text} failed={item.kind === 'error'} testID={`msg-${item.key}`} />;
         }}
         contentContainerStyle={{ paddingHorizontal: layout.screenInset - space.xs, paddingVertical: space.md, gap: space.sm }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
       />
     );
   } else if (!snapshot.loaded && !snapshot.error) {
@@ -390,6 +726,9 @@ export function ChatScreen({
           </View>
         )}
       </View>
+      {strip && onTakeControl ? (
+        <TakeControlStrip computerName={computerName} state={strip.state} liveOn={strip.liveOn} detail={stripDetail} onTakeControl={onTakeControl} />
+      ) : null}
       <View style={{ flex: 1 }}>{body}</View>
       <View style={{ paddingHorizontal: layout.screenInset - space.xs, paddingTop: space.sm, paddingBottom: insets.bottom + space.sm, borderTopWidth: layout.hairline, borderTopColor: color.line, backgroundColor: color.bg, gap: space.sm }}>
         {files.length || preparing ? (
