@@ -39,7 +39,7 @@ export function Seedbank({ engine, variant = "place", initialKind = "all" }: Pro
   const [query, setQuery] = useState(""), [sort, setSort] = useState<Sort>("popular"), [cat, setCat] = useState("All");
   const [open, setOpen] = useState<Entry | null>(null), [paste, setPaste] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamFile | null>(null);
-  const [notice, setNotice] = useState<string | null>(null), [dropping, setDropping] = useState(false);
+  const [notice, setNotice] = useState<ReactNode>(null), [dropping, setDropping] = useState(false);
   const data = useSeedbank(engine, query);
   // Coming controls (Open on keepoak.com, Most stars, an Add that waits on the engine) show only at Technical.
   const comingShown = useLevelNow(engine) >= COMING_FROM;

@@ -63,6 +63,7 @@
 .sb-desc { font-size: var(--fs-12-5); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-counts { display: inline-flex; gap: 10px; font-size: var(--fs-11-5); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .sb-seed { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.sb-notice .sb-seed-link { width: 22rem; max-width: 100%; min-width: 0; margin: 0 6px; border: 0; border-radius: var(--r-pill); padding: 4px 8px; font: inherit; font-size: var(--fs-11-5); color: var(--ink); vertical-align: middle; }
 .sb-icon { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; cursor: pointer; }
 .sb-add { flex: none; border: 0; font: inherit; cursor: pointer; padding: 5px 14px; border-radius: var(--r-pill); font-size: var(--fs-12-5); font-weight: 600; transition: transform .2s cubic-bezier(.3, 1.4, .5, 1); }
 .sb-add:active { transform: scale(.94); }
