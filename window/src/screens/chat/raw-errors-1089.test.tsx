@@ -89,4 +89,13 @@ describe("a failed run never shows the engine's raw words at Regular (Private #1
     expect(line).not.toMatch(/GatewayLockError/);
     expect(host.textContent ?? "").not.toMatch(/GatewayLockError/);
   });
+
+  it.each(["", "advanced", "technical"])("maps main's unchanged engine handoff log through the run-error line at %j", async (level) => {
+    if (level) localStorage.setItem("branch.level", level);
+    const raw = "desktop handoff recovery failed: GatewayLockError: failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
+    const line = await runError(raw);
+    expect(line).toBe("Researcher couldn’t finish: Branch is busy right now. Try again in a moment.");
+    expect(line).not.toMatch(/GatewayLockError/);
+    expect(host.textContent ?? "").not.toMatch(/GatewayLockError/);
+  });
 });

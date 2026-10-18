@@ -144,3 +144,31 @@ describe("no raw error at Regular (Private #1089)", () => {
     expect(plainText(LOCK)).toBe(LOCK_BUSY);
   });
 });
+
+/** Main's unchanged engine path (`run-loop.ts`): `desktop handoff recovery failed: ${String(error)}`.
+ *  `String(GatewayLockError)` is `GatewayLockError: <message>`. The window maps that itself via plainText /
+ *  plainError / shortReason. It must not depend on a deleted engine handoff wrapper. */
+describe("window maps main's unchanged engine GatewayLockError", () => {
+  const fromEngine = "GatewayLockError: failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
+  const fromMainHandoffLog = `desktop handoff recovery failed: ${fromEngine}`;
+  const fromErrorMessage = "failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
+
+  it.each(["", "advanced", "technical"])("notice shows the friendly busy sentence and never GatewayLockError at %j", async (level) => {
+    if (level) localStorage.setItem("branch.level", level);
+    for (const raw of [fromEngine, fromMainHandoffLog, fromErrorMessage]) {
+      host = document.body.appendChild(document.createElement("div"));
+      root = createRoot(host);
+      await act(async () => root!.render(<Frame navigationKey="one" sidebar={<button>Conversation</button>} main={<p>Empty</p>} header={{ title: "Conversation" }} notice={raw} />));
+      const shown = host.textContent ?? "";
+      expect(host.querySelector(".r1-notice")?.textContent).toBe(LOCK_BUSY);
+      expect(shown).toContain(LOCK_BUSY);
+      expect(shown).not.toMatch(/GatewayLockError/);
+      expect(plainText(raw)).toBe(LOCK_BUSY);
+      expect(plainError(raw)).toBe(LOCK_BUSY);
+      await act(async () => root!.unmount());
+      host.remove();
+      root = null;
+      host = null;
+    }
+  });
+});

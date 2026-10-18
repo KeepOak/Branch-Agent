@@ -109,6 +109,16 @@ describe("plain error copy", () => {
     expect(shortReason(raw)).not.toMatch(/GatewayLockError/);
   });
 
+  it("maps main's unchanged engine GatewayLockError (String(error), no handoff wrapper)", () => {
+    const fromEngine = "GatewayLockError: failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
+    const fromMainHandoffLog = `desktop handoff recovery failed: ${fromEngine}`;
+    const fromErrorMessage = "failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
+    for (const raw of [fromEngine, fromMainHandoffLog, fromErrorMessage]) {
+      expect(shortReason(raw)).toBe(LOCK_BUSY);
+      expect(shortReason(raw)).not.toMatch(/GatewayLockError/);
+    }
+  });
+
   it("never shows a local file path in the plain sentence", () => {
     expect(shortReason("ENOENT: no such file '/Users/someone/Library/Caches/run/out.json' was found.")).not.toMatch(/\/Users\//);
     expect(shortReason("Could not write C:\\Users\\someone\\notes.md. Try again.")).not.toMatch(/Users|C:\\/);
