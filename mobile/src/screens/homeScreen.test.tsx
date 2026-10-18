@@ -262,17 +262,28 @@ describe('home in the app', () => {
 
   it('Scan Connect with a pairing code starts a new pairing', async () => {
     const { session, unmount } = await pairedApp();
+    const unpair = jest.spyOn(session, 'unpair');
     const begin = jest.spyOn(session, 'begin');
     await fireEvent.press(screen.getByTestId('place-home'));
     await fireEvent.press(screen.getByTestId('home-quick-scan'));
     expect(session.getState().step).toBe('paired');
+    // boot-2 is not this fake engine's code. After unpair the stored device token is gone, so
+    // begin asks the computer with that code and the engine answers AUTH_BOOTSTRAP_TOKEN_INVALID
+    // (pairing-failed). Without unpair, begin would reuse the saved token and stay paired.
     await fireEvent.changeText(
       screen.getByTestId('code-input'),
       pairingCode({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-2' }),
     );
     await fireEvent.press(screen.getByTestId('submit-code'));
-    expect(begin).toHaveBeenCalled();
-    expect(screen.queryByTestId('home-screen')).toBeNull();
+    await eventually(() => {
+      expect(unpair).toHaveBeenCalled();
+      expect(begin).toHaveBeenCalled();
+    });
+    await eventually(() => {
+      expect(screen.queryByTestId('home-screen')).toBeNull();
+      expect(screen.getByTestId('pairing-failed')).toBeOnTheScreen();
+    });
+    expect(session.getState().step).toBe('failed');
     session.dispose();
     unmount();
   });

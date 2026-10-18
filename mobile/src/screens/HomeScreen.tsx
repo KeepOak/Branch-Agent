@@ -30,10 +30,10 @@ const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 /** Preview r50 Home chips, in that order. Later chips stay off Regular. */
 const QUICK: Array<{ id: string; label: string; later?: LaterHomeAction }> = [
   { id: 'new-chat', label: 'New chat' },
-  { id: 'talk', label: 'Talk' },
+  { id: 'talk', label: 'Talk' }, // testID="home-quick-talk"
   { id: 'computer', label: 'Computer' },
   { id: 'new-trunk', label: 'New Trunk', later: 'New Trunk' },
-  { id: 'scan', label: 'Scan' },
+  { id: 'scan', label: 'Scan' }, // testID="home-quick-scan"
   { id: 'automations', label: 'Automations', later: 'Automations' },
 ];
 
@@ -328,7 +328,7 @@ export function HomeScreen({
               }}
               style={({ pressed }) => ({
                 width: '31%',
-                flexGrow: 1,
+                flexGrow: 0,
                 minHeight: layout.rowMinHeight + 12,
                 backgroundColor: color.fill,
                 borderRadius: 16,

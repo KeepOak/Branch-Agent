@@ -115,8 +115,8 @@
   ],
   "features": [
     { "id": "home-screen", "title": "Home", "file": "src/screens/HomeScreen.tsx", "marker": "testID=\"home-screen\"" },
-    { "id": "home-quick-talk", "title": "Talk from Home", "file": "src/screens/HomeScreen.tsx", "marker": "{ id: 'talk', label: 'Talk' }" },
-    { "id": "home-quick-scan", "title": "Scan from Home", "file": "src/screens/HomeScreen.tsx", "marker": "{ id: 'scan', label: 'Scan' }" },
+    { "id": "home-quick-talk", "title": "Talk from Home", "file": "src/screens/HomeScreen.tsx", "marker": "testID=\"home-quick-talk\"" },
+    { "id": "home-quick-scan", "title": "Scan from Home", "file": "src/screens/HomeScreen.tsx", "marker": "testID=\"home-quick-scan\"" },
     { "id": "pair-button", "title": "Pair with your computer", "file": "src/screens/WelcomeScreen.tsx", "marker": "testID=\"pair-button\"" },
     { "id": "scan-camera", "title": "QR camera scan", "file": "src/screens/ScanScreen.tsx", "marker": "testID=\"scan-screen\"" },
     { "id": "enter-code-input", "title": "Paste pairing code", "file": "src/screens/pairingFields.tsx", "marker": "testID=\"code-input\"" },

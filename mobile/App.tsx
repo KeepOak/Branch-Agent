@@ -255,8 +255,7 @@ function Shell({
   const begin = (setup: SetupPayload) => session.begin(setup);
   // A new pairing from Home replaces this computer only once a code is submitted (that is the confirm).
   const beginNewPair = (setup: SetupPayload) => {
-    setPairedRoute(CHATS);
-    session.begin(setup);
+    void session.unpair().then(() => session.begin(setup));
   };
   const toPair = () => {
     session.cancel();
