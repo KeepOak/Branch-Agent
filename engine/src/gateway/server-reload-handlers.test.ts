@@ -1737,29 +1737,16 @@ describe("gateway hot reload model state", () => {
       setRuntimeConfigSnapshot(config, config);
 
       const scheduler = createTestGatewayScheduler();
-      const replacementCronStarted = createDeferred();
-      let observeReplacementCronStart = false;
+      const cronReconciliation = createTestCronReconciliation();
       try {
         const actualCron =
           await vi.importActual<typeof import("./server-cron.js")>("./server-cron.js");
-        hoisted.buildGatewayCronService.mockImplementation((params) => {
-          const cronState = actualCron.buildGatewayCronService(
-            params as Parameters<typeof actualCron.buildGatewayCronService>[0],
-          );
-          if (observeReplacementCronStart) {
-            const start = cronState.cron.start.bind(cronState.cron);
-            cronState.cron.start = async () => {
-              try {
-                await start();
-                replacementCronStarted.resolve();
-              } catch (error) {
-                replacementCronStarted.reject(error);
-                throw error;
-              }
-            };
-          }
-          return cronState as unknown as ReturnType<typeof hoisted.buildGatewayCronService>;
-        });
+        hoisted.buildGatewayCronService.mockImplementation(
+          (params) =>
+            actualCron.buildGatewayCronService(
+              params as Parameters<typeof actualCron.buildGatewayCronService>[0],
+            ) as unknown as ReturnType<typeof hoisted.buildGatewayCronService>,
+        );
         const initialCronState = createLazyGatewayCronState({
           scheduler,
           cfg: config,
@@ -1797,6 +1784,7 @@ describe("gateway hot reload model state", () => {
         const handlers = createGatewayReloadHandlers({
           scheduler,
           resolveGatewayContext,
+          cronReconciliation,
           getState: () => {
             if (!state) {
               throw new Error("expected gateway state");
@@ -1808,7 +1796,6 @@ describe("gateway hot reload model state", () => {
           },
         });
 
-        observeReplacementCronStart = true;
         await withGatewayRestartSignal(async () => {
           await handlers.applyHotReload(createCronRestartPlan(), config);
         });
@@ -1821,8 +1808,19 @@ describe("gateway hot reload model state", () => {
         expect(spawn).toHaveBeenCalledOnce();
 
         // applyHotReload starts the replacement scheduler without awaiting it.
-        // fireOnExit will not admit the watched exit until that start settles.
-        await waitForFast(() => replacementCronStarted.promise, { timeout: 10_000 });
+        // fireOnExit will not admit the watched exit until that start, afterStart
+        // reconcile, and reconciliation.complete() finish.
+        await waitForFast(() => expect(cronReconciliation.arm).toHaveBeenCalled(), {
+          timeout: 10_000,
+        });
+        const replacementStart = cronReconciliation.arm.mock.results.at(-1)?.value;
+        assert(
+          replacementStart && typeof replacementStart.complete === "function",
+          "expected cron reload to arm reconciliation",
+        );
+        await waitForFast(() => expect(replacementStart.complete).toHaveBeenCalled(), {
+          timeout: 10_000,
+        });
         await writeFile(releasePath, "release");
         await waitForFast(() => expect(run.activity.resultSettled).toBe(true), {
           timeout: 10_000,
