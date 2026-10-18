@@ -102,8 +102,8 @@ describe("a failed run never shows the engine's raw words at Regular (Private #1
   it.each(["", "advanced", "technical"])("maps String(GatewayLockError) from main's engine path through the run-error line at %j", async (level) => {
     if (level) localStorage.setItem("branch.level", level);
     class GatewayLockError extends Error {
-      constructor(message: string, public override readonly cause?: unknown) {
-        super(message);
+      constructor(message: string, cause?: unknown) {
+        super(message, cause === undefined ? undefined : { cause });
         this.name = "GatewayLockError";
       }
     }

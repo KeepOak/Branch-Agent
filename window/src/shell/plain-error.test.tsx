@@ -145,13 +145,11 @@ describe("no raw error at Regular (Private #1089)", () => {
   });
 });
 
-/** Same class as engine/src/infra/gateway-lock.ts. The window never imports the engine. */
+/** Same class as engine/src/infra/gateway-lock.ts. The window never imports the engine.
+ *  Parameter properties are banned under window `erasableSyntaxOnly`. */
 class GatewayLockError extends Error {
-  constructor(
-    message: string,
-    public override readonly cause?: unknown,
-  ) {
-    super(message);
+  constructor(message: string, cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause });
     this.name = "GatewayLockError";
   }
 }

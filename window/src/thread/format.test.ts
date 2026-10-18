@@ -111,8 +111,8 @@ describe("plain error copy", () => {
 
   it("maps main's unchanged engine GatewayLockError (String(error), no handoff wrapper)", () => {
     class GatewayLockError extends Error {
-      constructor(message: string, public override readonly cause?: unknown) {
-        super(message);
+      constructor(message: string, cause?: unknown) {
+        super(message, cause === undefined ? undefined : { cause });
         this.name = "GatewayLockError";
       }
     }
