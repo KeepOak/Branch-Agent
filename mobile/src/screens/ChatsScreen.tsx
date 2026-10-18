@@ -493,6 +493,7 @@ export function ChatsScreen({
   onComputer,
   onAgents,
   onSettings,
+  onMore,
   onOpen,
   onNewChat,
   searchMessages,
@@ -512,6 +513,8 @@ export function ChatsScreen({
   onAgents?: () => void;
   /** Opens Settings. */
   onSettings?: () => void;
+  /** Opens More. */
+  onMore?: () => void;
   /** Opens a chat. */
   onOpen?: (row: ChatRow) => void;
   /** Starts or carries on a conversation (the preview's New chat). */
@@ -632,6 +635,18 @@ export function ChatsScreen({
           </Pressable>
         ) : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          {onMore ? (
+            <Pressable
+              testID="more-button"
+              accessibilityRole="button"
+              accessibilityLabel="More"
+              onPress={onMore}
+              hitSlop={8}
+              style={({ pressed }) => ({ minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
+            >
+              <ThemedText variant="body">More</ThemedText>
+            </Pressable>
+          ) : null}
           {onSettings ? (
             <Pressable
               testID="settings-button"
