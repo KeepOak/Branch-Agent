@@ -13,6 +13,7 @@ import {
   readTrustedUpdaterPubkey,
   readUpdaterPubkey,
   requireUpdateSigningSecret,
+  signingToolInvocation,
   signUpdateFile,
   updaterAssetName,
   verifyUpdateFile,
@@ -109,6 +110,23 @@ test("signing refuses a missing secret, keeps bytes, and writes the .sig", async
     assert.equal(await readFile(`${file}.sig`, "utf8"), "c2lnbmF0dXJl");
     assert.deepEqual(signed, [file]);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("Windows .cmd and .bat signing tools go through cmd.exe so execFileSync is not EINVAL", () => {
+  assert.deepEqual(signingToolInvocation("minisign", ["-Vm", "file"], "linux"), { file: "minisign", args: ["-Vm", "file"] });
+  assert.deepEqual(signingToolInvocation("minisign.exe", ["-Vm", "file"], "win32"), { file: "minisign.exe", args: ["-Vm", "file"] });
+  assert.deepEqual(signingToolInvocation("minisign.cjs", ["-Vm", "file"], "win32"), {
+    file: process.execPath,
+    args: ["minisign.cjs", "-Vm", "file"],
+  });
+  assert.deepEqual(signingToolInvocation(join("C:", "tools", "minisign.cmd"), ["-Vm", "payload"], "win32"), {
+    file: "cmd.exe",
+    args: ["/d", "/c", join("C:", "tools", "minisign.cmd"), "-Vm", "payload"],
+  });
+  assert.deepEqual(signingToolInvocation("cargo-tauri.bat", ["signer", "sign", "file"], "win32"), {
+    file: "cmd.exe",
+    args: ["/d", "/c", "cargo-tauri.bat", "signer", "sign", "file"],
+  });
 });
 
 test("verify temps live under os.tmpdir and are deleted, never next to the payload", async () => {

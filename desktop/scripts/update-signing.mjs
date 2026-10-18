@@ -102,9 +102,25 @@ export function signUpdateFile(file, env = process.env, sign = defaultSign) {
   return sig;
 }
 
+/** Windows `execFileSync` cannot launch `.cmd`/`.bat` without `cmd.exe` (EINVAL). A `.js` stub runs under node. */
+export function signingToolInvocation(binary, args, platform = process.platform) {
+  if (/\.[cm]?js$/i.test(binary)) {
+    return { file: process.execPath, args: [binary, ...args] };
+  }
+  if (platform === "win32" && /\.(cmd|bat)$/i.test(binary)) {
+    return { file: "cmd.exe", args: ["/d", "/c", binary, ...args] };
+  }
+  return { file: binary, args };
+}
+
+function execSigningTool(binary, args, options) {
+  const invocation = signingToolInvocation(binary, args);
+  return execFileSync(invocation.file, invocation.args, options);
+}
+
 function defaultSign(file, env) {
   const binary = env.CARGO_TAURI ?? "cargo-tauri";
-  execFileSync(binary, ["signer", "sign", file], {
+  execSigningTool(binary, ["signer", "sign", file], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...env, TAURI_SIGNING_PRIVATE_KEY: env.TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD: env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || "" },
@@ -128,23 +144,12 @@ function defaultVerify(file, sig, pubkey) {
   try {
     writeFileSync(pubFile, Buffer.from(pubkey, "base64"), { mode: 0o600 });
     writeFileSync(minisig, Buffer.from(readFileSync(sig, "utf8").trim(), "base64"), { mode: 0o600 });
-    const args = ["-Vm", file, "-x", minisig, "-p", pubFile];
-    // A .js stub (tests) must run under node: Windows cannot spawnSync a .cmd via execFile.
-    if (/\.[cm]?js$/i.test(binary)) {
-      execFileSync(process.execPath, [binary, ...args], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-        timeout: 30_000,
-        windowsHide: true,
-      });
-    } else {
-      execFileSync(binary, args, {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-        timeout: 30_000,
-        windowsHide: true,
-      });
-    }
+    execSigningTool(binary, ["-Vm", file, "-x", minisig, "-p", pubFile], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 30_000,
+      windowsHide: true,
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
