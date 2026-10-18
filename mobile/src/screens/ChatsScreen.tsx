@@ -26,6 +26,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { NoScrollbarFlatList as FlatList, NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { OfflineBanner } from '../ui/OfflineBanner';
+import { statusBandHeight } from '../ui/PlacesBar';
 import { plainError } from '../ui/plainError';
 import { useNow } from '../ui/useNow';
 
@@ -501,9 +502,9 @@ export function ChatsScreen({
   onNeedsYou,
   now: fixedNow,
   updateBanner,
-  bottomExtra = 0,
   level = 'regular',
   look = Platform.OS === 'ios' ? 'ios' : 'android',
+  bottomExtra = 0,
 }: {
   list: ChatListSnapshot;
   online: boolean;
@@ -514,8 +515,6 @@ export function ChatsScreen({
   onAgents?: () => void;
   /** Opens Settings. */
   onSettings?: () => void;
-  /** Extra space above a places bar so the last row is not hidden. */
-  bottomExtra?: number;
   /** Opens More. */
   onMore?: () => void;
   /** Opens a chat. */
@@ -536,6 +535,8 @@ export function ChatsScreen({
   level?: ExperienceLevel;
   /** Android uses the preview's app bar, chips and New chat FAB. */
   look?: 'ios' | 'android';
+  /** Extra list padding above a floating Places bar. */
+  bottomExtra?: number;
 }) {
   const { color, space, radius, layout, type } = useTheme();
   // The list can stay open for hours: a render every half minute moves rows from "Now" to a time, and from
@@ -616,7 +617,7 @@ export function ChatsScreen({
   );
 
   const header = (
-    <View style={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
+    <View style={{ paddingTop: statusBandHeight(look, insets.top) + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
       <View style={{ flexDirection: 'row', justifyContent: onNeedsYou ? 'space-between' : 'flex-end', alignItems: 'center' }}>
         {onNeedsYou ? (
           <Pressable

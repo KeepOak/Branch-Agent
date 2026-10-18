@@ -74,6 +74,7 @@ export function MoreScreen({
   onSettings,
   onTrunks,
   onBack,
+  bottomExtra = 0,
 }: {
   level: ShowLevel;
   trunkCount: number;
@@ -81,6 +82,8 @@ export function MoreScreen({
   onSettings: () => void;
   onTrunks: () => void;
   onBack: () => void;
+  /** Extra padding above a floating Places bar. */
+  bottomExtra?: number;
 }) {
   const { space, layout } = useTheme();
   const groups = moreRows({ level, trunkCount, workingCount });
@@ -90,7 +93,7 @@ export function MoreScreen({
   };
 
   return (
-    <Screen testID="more-screen">
+    <Screen testID="more-screen" bottomExtra={bottomExtra}>
       <Pressable
         testID="more-back"
         accessibilityRole="button"

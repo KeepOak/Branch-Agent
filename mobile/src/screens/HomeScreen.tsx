@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { ApprovalDecision, ApprovalsSnapshot } from '../approvals/approvals';
+import { LIST_FAILED_MESSAGE, type ApprovalDecision, type ApprovalsSnapshot } from '../approvals/approvals';
 import type { ChatListSnapshot, ChatRow } from '../chats/chatList';
 import { chatTime } from '../chats/chatTime';
 import {
@@ -22,7 +22,7 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { OfflineBanner } from '../ui/OfflineBanner';
-import { PlacesBar, type Place } from '../ui/PlacesBar';
+import { PlacesBar, placesBarHeight, statusBandHeight, type PhoneLook, type Place } from '../ui/PlacesBar';
 import { Avatar } from './ChatsScreen';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
@@ -57,7 +57,7 @@ function Section({ title, count, action }: { title: string; count?: number; acti
 }
 
 function HomeCard({ children, testID }: { children: ReactNode; testID?: string }) {
-  const { color, space, radius } = useTheme();
+  const { color, space } = useTheme();
   return (
     <View testID={testID} style={{ backgroundColor: color.fill, borderRadius: 24, padding: space.md, marginBottom: space.sm }}>
       {children}
@@ -107,6 +107,8 @@ function Chip({ title, onPress, kind = 'quiet', testID, disabled }: { title: str
  * now with the last real line as the current step, What’s left, quick actions (New chat, Talk,
  * Computer, Scan; New Trunk and Automations at Advanced+), Finished, and Branch on your computer.
  * Unfinished destinations stay off Regular; at Advanced they say "<label> comes in a later update."
+ * iPhone chrome is the large title and status band; Android keeps the app-bar title. One
+ * implementation for both looks.
  */
 export function HomeScreen({
   chats,
@@ -123,6 +125,7 @@ export function HomeScreen({
   onOpenChat,
   now: fixedNow,
   updateBanner,
+  look = Platform.OS === 'ios' ? 'ios' : 'android',
 }: {
   chats: ChatListSnapshot;
   approvals: ApprovalsSnapshot;
@@ -138,6 +141,7 @@ export function HomeScreen({
   onOpenChat?: (row: ChatRow) => void;
   now?: number;
   updateBanner?: ReactNode;
+  look?: PhoneLook;
 }) {
   const { color, space, layout } = useTheme();
   const insets = useSafeAreaInsets();
@@ -148,6 +152,9 @@ export function HomeScreen({
   const finished = finishedNow(chats.rows, now);
   const waiting = approvals.pending.length;
   const [later, setLater] = useState<string | null>(null);
+  const ios = look === 'ios';
+  const tabPad = placesBarHeight(look, insets.bottom);
+  const statusH = statusBandHeight(look, insets.top);
 
   const showLater = (label: LaterHomeAction) => {
     if (!advanced) return;
@@ -158,16 +165,20 @@ export function HomeScreen({
 
   return (
     <View testID="home-screen" style={{ flex: 1, backgroundColor: color.bg }}>
+      <View testID="phone-status-band" style={{ height: statusH, backgroundColor: color.bg }} />
       <ScrollView
         testID="home-scroll"
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: insets.top + space.sm, paddingHorizontal: layout.screenInset, paddingBottom: space.xl }}
+        contentContainerStyle={{ paddingTop: space.sm, paddingHorizontal: layout.screenInset, paddingBottom: (ios ? tabPad : 0) + space.xl }}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, marginBottom: space.sm }}>
-          <ThemedText testID="home-greeting" variant="title2" accessibilityRole="header">
+        <View
+          testID="phone-large-title"
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, marginBottom: space.sm }}
+        >
+          <ThemedText testID="home-greeting" variant={ios ? 'largeTitle' : 'title2'} accessibilityRole="header">
             {greet(now)}
           </ThemedText>
           <View
@@ -254,6 +265,10 @@ export function HomeScreen({
               </View>
             </HomeCard>
           ))
+        ) : !approvals.loaded && !approvals.error ? (
+          <Calm testID="home-needs-loading" text="Checking with your computer…" />
+        ) : !approvals.loaded ? (
+          <Calm testID="home-needs-error" text={online ? approvals.error || LIST_FAILED_MESSAGE : 'Approvals show up here as soon as this phone reaches it.'} />
         ) : (
           <Calm testID="home-needs-empty" text="Nothing needs you." />
         )}
@@ -397,7 +412,7 @@ export function HomeScreen({
           </View>
         </HomeCard>
       </ScrollView>
-      <PlacesBar current="home" inboxCount={waiting} onPlace={onPlace} />
+      <PlacesBar current="home" inboxCount={waiting} onPlace={onPlace} look={look} />
     </View>
   );
 }
