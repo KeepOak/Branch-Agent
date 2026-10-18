@@ -3,7 +3,7 @@ import type {
   ReplyMessageInjectionTarget,
 } from "../../auto-reply/reply/reply-run-registry.js";
 
-/** What a chat.send did to its thread, reported in the ack (upstream sessions_send shape). */
+/** What a chat.send did to its thread, reported in the ack (the sessions_send ack shape). */
 export type ChatSendTargetDisposition = "steered" | "queued" | "started";
 
 export type ChatSendDisposition = {
