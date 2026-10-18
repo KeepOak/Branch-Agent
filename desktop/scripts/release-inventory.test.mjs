@@ -11,7 +11,7 @@ import { publishRelease, verifyPublicLatest } from "./publish-component-release.
 
 const commit = "a".repeat(40);
 const version = "0.4.3-build-aaaaaaaaaaaa";
-const targets = [["win32", "x64"], ["darwin", "arm64"], ["linux", "x64"]];
+const targets = [["win32", "x64"], ["darwin", "arm64"], ["darwin", "x64"], ["linux", "x64"]];
 async function fixture(body) {
   const root = await mkdtemp(join(process.env.BRANCH_RELEASE_TEST_TEMP ?? process.env.RUNNER_TEMP ?? tmpdir(), "release-inventory-test-"));
   try {
@@ -31,7 +31,7 @@ async function fixture(body) {
     await writeFile(join(macApp, "Resources/app.asar"), "offline fixture asar");
     await writeFile(join(macApp, "MacOS/Branch Agent"), "offline fixture app");
     for (const [platform, arch] of targets) {
-      const output = join(root, platform); await mkdir(output);
+      const output = join(root, `${platform}-${arch}`); await mkdir(output);
       const desktop = { app: asar, electronVersion: "44.5.1", runtime: app };
       const manifest = await makeComponentRelease({ version, sourceCommit: commit, tag: `v${version}`, engine, window, desktop, output, platform, arch });
       const name = `branch-desktop-${version}-${platform}-${arch}.tar.gz`;
@@ -59,8 +59,8 @@ async function alterManifest(assets, edit) {
 
 test("full native release inventories bind all targets to one exact source and shared renderer", () => fixture(async ({ assets }) => {
   const result = await verifyReleaseDirectory(assets, commit, version);
-  assert.deepEqual(result.targets, ["darwin-arm64", "linux-x64", "win32-x64"]);
-  assert.equal(Object.keys(result.inventory).length, 16);
+  assert.deepEqual(result.targets, ["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64"]);
+  assert.equal(Object.keys(result.inventory).length, 21);
 }));
 
 for (const [label, edit, message] of [
@@ -106,7 +106,7 @@ test("release inventory rejects corrupted payload and unlisted assets", () => fi
 
 test("macOS proofs declare identity or ad-hoc signing; other targets declare none", () => fixture(async ({ assets }) => {
   await alterProof(assets, proof => { proof.signing = "adhoc"; }, "darwin-arm64");
-  assert.deepEqual((await verifyReleaseDirectory(assets, commit, version)).targets, ["darwin-arm64", "linux-x64", "win32-x64"]);
+  assert.deepEqual((await verifyReleaseDirectory(assets, commit, version)).targets, ["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64"]);
   await alterProof(assets, proof => { delete proof.signing; }, "darwin-arm64");
   await assert.rejects(verifyReleaseDirectory(assets, commit, version), /must declare signing/);
   await alterProof(assets, proof => { proof.signing = "self"; }, "darwin-arm64");
@@ -117,7 +117,7 @@ test("macOS proofs declare identity or ad-hoc signing; other targets declare non
 }));
 
 const installerNames = { "win32-x64": `Branch-Agent-Setup-${version}-win32-x64.exe`, "darwin-arm64": `Branch-Agent-${version}-darwin-arm64.dmg`,
-  "linux-x64": `Branch-Agent-${version}-linux-x64.AppImage` };
+  "darwin-x64": `Branch-Agent-${version}-darwin-x64.dmg`, "linux-x64": `Branch-Agent-${version}-linux-x64.AppImage` };
 /** Puts an installer beside the assets and lists it in its target's proof, optionally with a different listed digest. */
 async function listInstaller(assets, target, { name = installerNames[target], place = true, listed } = {}) {
   const file = join(assets, name);
@@ -129,7 +129,7 @@ async function listInstaller(assets, target, { name = installerNames[target], pl
 
 test("each platform's release proof lists its installer by name, size and sha256", () => fixture(async ({ root, assets }) => {
   const built = join(root, "installers"); await mkdir(built);
-  for (const target of ["win32-x64", "darwin-arm64", "linux-x64"]) {
+  for (const target of ["win32-x64", "darwin-arm64", "darwin-x64", "linux-x64"]) {
     const file = join(built, installerNames[target]);
     await writeFile(file, `${target} installer bytes`);
     await inventoryModule.recordInstaller(assets, target, file);
@@ -138,7 +138,7 @@ test("each platform's release proof lists its installer by name, size and sha256
     await cp(file, join(assets, installerNames[target]));
   }
   const result = await verifyReleaseDirectory(assets, commit, version);
-  assert.equal(Object.keys(result.inventory).length, 19);
+  assert.equal(Object.keys(result.inventory).length, 25);
   // Linux ships the AppImage; its proof lists it beside the tar.gz bootstrap package the updater uses.
   assert(Object.hasOwn(result.inventory, `Branch-Agent-${version}-linux-x64.AppImage`));
   for (const name of Object.values(installerNames)) assert.deepEqual(result.inventory[name], await fileDigest(join(assets, name)));
@@ -149,7 +149,7 @@ test("each platform's release proof lists its installer by name, size and sha256
 test("a target without an installer still verifies beside targets that have one", () => fixture(async ({ assets }) => {
   await listInstaller(assets, "win32-x64");
   const result = await verifyReleaseDirectory(assets, commit, version);
-  assert.deepEqual(result.targets, ["darwin-arm64", "linux-x64", "win32-x64"]);
+  assert.deepEqual(result.targets, ["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64"]);
   assert(Object.hasOwn(result.inventory, installerNames["win32-x64"]));
   assert(!Object.keys(result.inventory).some(name => name.endsWith(".dmg")));
 }));
@@ -174,6 +174,11 @@ test("release inventory refuses an AppImage listed for another target", () => fi
   await assert.rejects(verifyReleaseDirectory(assets, commit, version), /Unexpected installer/);
 }));
 
+test("release inventory refuses the other Mac's disk image on this architecture", () => fixture(async ({ assets }) => {
+  await listInstaller(assets, "darwin-x64", { name: `Branch-Agent-${version}-darwin-arm64.dmg` });
+  await assert.rejects(verifyReleaseDirectory(assets, commit, version), /Unexpected installer/);
+}));
+
 test("renderer TAR mode is deterministic while engine executable modes remain native", () => fixture(async ({ root, engine, window }) => {
   await chmod(join(window, "index.html"), 0o755);
   const output = join(root, "mode-check");
@@ -193,6 +198,11 @@ test("shared renderer archive bytes do not depend on the native build host", () 
   assert.deepEqual(archive.subarray(4, 8), Buffer.alloc(4), "Renderer archive must not record a build time");
   assert(gunzipSync(archive).length > 0);
 }));
+
+test("installer names and required targets include both Mac architectures", () => {
+  assert.equal(inventoryModule.installerAssetName(version, "darwin-x64"), `Branch-Agent-${version}-darwin-x64.dmg`);
+  assert.deepEqual(inventoryModule.NATIVE_RELEASE_TARGETS, ["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64"]);
+});
 
 test("identity rejects abbreviated commits and non-semver source versions", () => {
   const valid = { commit, version, platform: "win32", arch: "x64" };

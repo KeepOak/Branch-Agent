@@ -15,7 +15,7 @@ const older = "c".repeat(40);
 const version = "0.4.3-build-aaaaaaaaaaaa";
 const tag = `v${version}`;
 const previousTag = "v0.0.1";
-const targets = [["win32", "x64"], ["darwin", "arm64"], ["linux", "x64"]];
+const targets = [["win32", "x64"], ["darwin", "arm64"], ["darwin", "x64"], ["linux", "x64"]];
 
 async function fixture(body) {
   const root = await mkdtemp(join(process.env.BRANCH_RELEASE_TEST_TEMP ?? process.env.RUNNER_TEMP ?? tmpdir(), "release-publish-test-"));
@@ -36,7 +36,7 @@ async function fixture(body) {
     await writeFile(join(macApp, "Resources/app.asar"), "offline fixture asar");
     await writeFile(join(macApp, "MacOS/Branch Agent"), "offline fixture app");
     for (const [platform, arch] of targets) {
-      const output = join(root, platform); await mkdir(output);
+      const output = join(root, `${platform}-${arch}`); await mkdir(output);
       const desktop = { app: asar, electronVersion: "44.5.1", runtime: app };
       const manifest = await makeComponentRelease({ version, sourceCommit: commit, tag, engine, window, desktop, output, platform, arch });
       const identity = { commit, version, platform, arch, electronVersion: "44.5.1", ...(platform === "darwin" ? { signing: "identity" } : {}), runtime: {
@@ -273,7 +273,7 @@ test("an existing release whose tag points at another commit still fails", () =>
 }));
 
 const installerNames = { "win32-x64": `Branch-Agent-Setup-${version}-win32-x64.exe`, "darwin-arm64": `Branch-Agent-${version}-darwin-arm64.dmg`,
-  "linux-x64": `Branch-Agent-${version}-linux-x64.AppImage` };
+  "darwin-x64": `Branch-Agent-${version}-darwin-x64.dmg`, "linux-x64": `Branch-Agent-${version}-linux-x64.AppImage` };
 async function listInstaller(assets, target, { place = true, listed } = {}) {
   const name = installerNames[target], file = join(assets, name);
   await writeFile(file, `unsigned ${target} installer`);
@@ -288,24 +288,30 @@ async function listInstaller(assets, target, { place = true, listed } = {}) {
 test("generated release notes start with one download per platform and label every other file", () => {
   const names = [
     `Branch-Agent-${version}-darwin-arm64.dmg`,
+    `Branch-Agent-${version}-darwin-x64.dmg`,
     `Branch-Agent-${version}-linux-x64.AppImage`,
     `Branch-Agent-Setup-${version}-win32-x64.exe`,
     `branch-desktop-${version}-darwin-arm64.tar.gz`,
+    `branch-desktop-${version}-darwin-x64.tar.gz`,
     `branch-desktop-${version}-linux-x64.tar.gz`,
     `branch-desktop-${version}-win32-x64.tar.gz`,
     `branch-desktop-app-${version}-darwin-arm64.tar.gz`,
+    `branch-desktop-app-${version}-darwin-x64.tar.gz`,
     `branch-desktop-app-${version}-linux-x64.tar.gz`,
     `branch-desktop-app-${version}-win32-x64.tar.gz`,
     `branch-engine-${version}-darwin-arm64.tar.gz`,
+    `branch-engine-${version}-darwin-x64.tar.gz`,
     `branch-engine-${version}-linux-x64.tar.gz`,
     `branch-engine-${version}-win32-x64.tar.gz`,
     "branch-release-darwin-arm64.json",
+    "branch-release-darwin-x64.json",
     "branch-release-linux-x64.json",
     "branch-release-win32-x64.json",
     `branch-window-${version}.tar.gz`,
     "install.ps1",
     "install.sh",
     "release-proof-darwin-arm64.json",
+    "release-proof-darwin-x64.json",
     "release-proof-linux-x64.json",
     "release-proof-win32-x64.json",
     "SHA256SUMS",
@@ -316,6 +322,7 @@ test("generated release notes start with one download per platform and label eve
     "Download this",
     "",
     `- macOS: [Branch-Agent-${version}-darwin-arm64.dmg](${base}/Branch-Agent-${version}-darwin-arm64.dmg)`,
+    `- macOS Intel: [Branch-Agent-${version}-darwin-x64.dmg](${base}/Branch-Agent-${version}-darwin-x64.dmg)`,
     `- Windows: [Branch-Agent-Setup-${version}-win32-x64.exe](${base}/Branch-Agent-Setup-${version}-win32-x64.exe)`,
     `- Linux: [Branch-Agent-${version}-linux-x64.AppImage](${base}/Branch-Agent-${version}-linux-x64.AppImage)`,
     "",
@@ -323,27 +330,32 @@ test("generated release notes start with one download per platform and label eve
     "",
     `- SHA256SUMS: ${UPDATE_ONLY_LABEL}`,
     `- branch-desktop-${version}-darwin-arm64.tar.gz: ${UPDATE_ONLY_LABEL}`,
+    `- branch-desktop-${version}-darwin-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
     `- branch-desktop-${version}-linux-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
     `- branch-desktop-${version}-win32-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
     `- branch-desktop-app-${version}-darwin-arm64.tar.gz: ${UPDATE_ONLY_LABEL}`,
+    `- branch-desktop-app-${version}-darwin-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
     `- branch-desktop-app-${version}-linux-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
     `- branch-desktop-app-${version}-win32-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
     `- branch-engine-${version}-darwin-arm64.tar.gz: ${UPDATE_ONLY_LABEL}`,
+    `- branch-engine-${version}-darwin-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
     `- branch-engine-${version}-linux-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
     `- branch-engine-${version}-win32-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
     `- branch-release-darwin-arm64.json: ${UPDATE_ONLY_LABEL}`,
+    `- branch-release-darwin-x64.json: ${UPDATE_ONLY_LABEL}`,
     `- branch-release-linux-x64.json: ${UPDATE_ONLY_LABEL}`,
     `- branch-release-win32-x64.json: ${UPDATE_ONLY_LABEL}`,
     `- branch-window-${version}.tar.gz: ${UPDATE_ONLY_LABEL}`,
     `- install.ps1: ${UPDATE_ONLY_LABEL}`,
     `- install.sh: ${UPDATE_ONLY_LABEL}`,
     `- release-proof-darwin-arm64.json: ${UPDATE_ONLY_LABEL}`,
+    `- release-proof-darwin-x64.json: ${UPDATE_ONLY_LABEL}`,
     `- release-proof-linux-x64.json: ${UPDATE_ONLY_LABEL}`,
     `- release-proof-win32-x64.json: ${UPDATE_ONLY_LABEL}`,
     "",
     `Branch Agent built from ${commit}.`,
     "",
-    "Native Windows x64, macOS arm64 and Linux x64 packages; verified engine, renderer and desktop app update components. Existing data and credentials are retained. Installed desktop apps take the new desktop app on their next start.",
+    "Native Windows x64, macOS arm64, macOS x64 and Linux x64 packages; verified engine, renderer and desktop app update components. Existing data and credentials are retained. Installed desktop apps take the new desktop app on their next start.",
     "",
   ].join("\n"));
   assert.match(notes, /^Download this\n/);
@@ -367,6 +379,7 @@ test("release notes omit a platform whose installer is not on the release", () =
   assert.match(notes, /^Other files$/m);
   assert.match(notes, /^- Linux: /m);
   assert.doesNotMatch(notes, /^- macOS: /m);
+  assert.doesNotMatch(notes, /^- macOS Intel: /m);
   assert.doesNotMatch(notes, /^- Windows: /m);
   assert.match(notes, new RegExp(`^- SHA256SUMS: ${UPDATE_ONLY_LABEL}$`, "m"));
   assert.match(notes, new RegExp(`^- branch-desktop-${version}-linux-x64\\.tar\\.gz: ${UPDATE_ONLY_LABEL}$`, "m"));
@@ -374,7 +387,8 @@ test("release notes omit a platform whose installer is not on the release", () =
 });
 
 test("listed installers, the Linux AppImage included, are uploaded as release assets and listed in SHA256SUMS", () => fixture(async assets => {
-  await listInstaller(assets, "win32-x64"); await listInstaller(assets, "darwin-arm64"); await listInstaller(assets, "linux-x64");
+  await listInstaller(assets, "win32-x64"); await listInstaller(assets, "darwin-arm64");
+  await listInstaller(assets, "darwin-x64"); await listInstaller(assets, "linux-x64");
   const remote = githubMock(assets);
   await publishRelease(assets, commit, version, remote.request, remote.download, { sleep: remote.sleep, now: remote.now });
   const created = remote.calls.find(args => args[1] === "create");

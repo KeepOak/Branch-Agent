@@ -43,10 +43,11 @@ test("nothing configured: one plain line per target, exit 0, nothing runs", () =
   assert.deepEqual(lines, [
     "Windows signing: not configured (set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and the three AZURE_SIGNING_* variables). Shipping unsigned.",
     "macOS signing: not configured (set APPLE_DEVELOPER_ID_P12, APPLE_DEVELOPER_ID_PASSWORD, APPLE_NOTARY_KEY_ID, APPLE_NOTARY_ISSUER_ID and APPLE_NOTARY_KEY). Shipping the self-signed app, not notarized.",
+    "macOS x64 signing: not configured (set APPLE_DEVELOPER_ID_P12, APPLE_DEVELOPER_ID_PASSWORD, APPLE_NOTARY_KEY_ID, APPLE_NOTARY_ISSUER_ID and APPLE_NOTARY_KEY). Shipping the self-signed app, not notarized.",
     "Linux signing: nothing to sign (no Linux installer yet).",
   ]);
   assert.deepEqual(capture((log) => main(["status", "--target", "win32-x64"], { AZURE_TENANT_ID: "  " }, log)), { code: 0, lines: [lines[0]] }, "blank counts as unset");
-  for (const target of ["win32-x64", "darwin-arm64", "linux-x64"]) {
+  for (const target of ["win32-x64", "darwin-arm64", "darwin-x64", "linux-x64"]) {
     const calls = [];
     const signer = createSigner({ target, env: {}, run: (...args) => calls.push(args), log: () => {} });
     assert.equal(signer.enabled, false);

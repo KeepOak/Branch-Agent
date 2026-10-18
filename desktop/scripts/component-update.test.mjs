@@ -18,7 +18,7 @@ import { bundleNode, validateRuntime } from "./bundle-node.mjs";
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
 const source = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js")));
 const { createComponentUpdateController } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-ipc.js")));
-const { parseComponentRelease } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-manifest.js")));
+const { parseComponentRelease, RELEASE_MANIFEST_URL, releaseManifestName, releaseManifestUrl } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-manifest.js")));
 const { defaultDataDirectory } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "config.js")));
 const { readToken } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
 const { GatewayReadinessTimeoutError } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
@@ -450,6 +450,36 @@ test("prepared publication interrupted after window swap restores both component
     enginePrevious: cfg.engineDir, engineNext: join(root, "uncommitted-engine"), windowPrevious: backup, windowExisted: true }));
   await source.recoverComponentUpdate(cfg); await unchanged(cfg);
 }));
+
+test("the updater fetches the manifest and assets for this machine's architecture", () => {
+  assert.equal(releaseManifestName("darwin", "arm64"), "branch-release-darwin-arm64.json");
+  assert.equal(releaseManifestName("darwin", "x64"), "branch-release-darwin-x64.json");
+  assert.equal(releaseManifestUrl("darwin", "x64"), "https://github.com/KeepOak/Branch-Agent/releases/latest/download/branch-release-darwin-x64.json");
+  assert.equal(RELEASE_MANIFEST_URL, releaseManifestUrl(process.platform, process.arch));
+  const component = (arch, name) => ({
+    url: `https://github.com/KeepOak/Branch-Agent/releases/download/v0.4.3/${name}-0.4.3-darwin-${arch}.tar.gz`,
+    sha256: "a".repeat(64), bytes: 1, expandedBytes: 1, platform: "darwin", arch,
+  });
+  const window = { url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0.4.3/branch-window-0.4.3.tar.gz",
+    sha256: "b".repeat(64), bytes: 1, expandedBytes: 1 };
+  const manifest = (arch) => ({
+    schemaVersion: 1, version: "0.4.3",
+    components: {
+      engine: component(arch, "branch-engine"),
+      window,
+      desktop: { ...component(arch, "branch-desktop-app"), electronVersion: "44.5.1" },
+      desktopRuntime: { ...component(arch, "branch-desktop"), electronVersion: "44.5.1" },
+    },
+  });
+  const intel = parseComponentRelease(manifest("x64"), { platform: "darwin", arch: "x64" });
+  assert.equal(intel.components.engine.arch, "x64");
+  assert.equal(intel.components.desktop.arch, "x64");
+  assert.equal(intel.components.desktopRuntime.arch, "x64");
+  assert.match(intel.components.desktopRuntime.url, /branch-desktop-0\.4\.3-darwin-x64\.tar\.gz$/);
+  assert.doesNotThrow(() => parseComponentRelease(manifest("arm64"), { platform: "darwin", arch: "arm64" }));
+  assert.throws(() => parseComponentRelease(manifest("arm64"), { platform: "darwin", arch: "x64" }), /architecture mismatch/);
+  assert.throws(() => parseComponentRelease(manifest("x64"), { platform: "darwin", arch: "arm64" }), /architecture mismatch/);
+});
 
 test("manifest refuses foreign repository, digest, platform and traversal version", async () => fixture(async ({ release }) => {
   for (const change of [value => { value.components.engine.url = "https://github.com/other/repo/releases/download/v1/engine.tar.gz"; },

@@ -55,8 +55,7 @@ if [ -n "${BRANCH_INSTALL_TEST_TARGET:-}" ]; then
   target=$BRANCH_INSTALL_TEST_TARGET os=${BRANCH_INSTALL_TEST_TARGET%-*}
 fi
 case $target in
-  darwin-arm64|linux-x64) ;;
-  darwin-x64) fail "Branch Agent ships for Apple silicon Macs only (no Intel build yet)" ;;
+  darwin-arm64|darwin-x64|linux-x64) ;;
   *) fail "no Branch Agent build for $target yet" ;;
 esac
 [ "$os" = linux ] || command -v tar >/dev/null 2>&1 || fail "tar is required"
@@ -89,12 +88,14 @@ fetch() {
 asset_suffix() {
   case $target in
     darwin-arm64) say "darwin-arm64.tar.gz" ;;
+    darwin-x64) say "darwin-x64.tar.gz" ;;
     linux-x64) say "linux-x64.AppImage" ;;
   esac
 }
 asset_pattern() {
   case $target in
     darwin-arm64) say "branch-desktop-[0-9][^ ]*-darwin-arm64[.]tar[.]gz" ;;
+    darwin-x64) say "branch-desktop-[0-9][^ ]*-darwin-x64[.]tar[.]gz" ;;
     linux-x64) say "Branch-Agent-[0-9][^ ]*-linux-x64[.]AppImage" ;;
   esac
 }

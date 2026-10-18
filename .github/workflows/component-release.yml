@@ -294,10 +294,16 @@ jobs:
         include:
           - os: windows-latest
             target: win32-x64
+            node_arch: x64
           - os: macos-15
             target: darwin-arm64
+            node_arch: arm64
+          - os: macos-15
+            target: darwin-x64
+            node_arch: x64
           - os: ubuntu-latest
             target: linux-x64
+            node_arch: x64
     env:
       BRANCH_RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
       BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
@@ -315,6 +321,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24.19.0'
+          architecture: ${{ matrix.node_arch }}
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       # Reuse the engine pnpm store and Electron zips. Cache misses must not fail a release.
@@ -323,9 +330,9 @@ jobs:
         continue-on-error: true
         with:
           path: ${{ github.workspace }}/.cache/pnpm-store
-          key: component-release-pnpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('engine/pnpm-lock.yaml') }}
+          key: component-release-pnpm-${{ matrix.target }}-${{ hashFiles('engine/pnpm-lock.yaml') }}
           restore-keys: |
-            component-release-pnpm-${{ runner.os }}-${{ runner.arch }}-
+            component-release-pnpm-${{ matrix.target }}-
       - name: Cache Electron downloads
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         continue-on-error: true
@@ -335,9 +342,9 @@ jobs:
             ${{ github.workspace }}/.cache/electron-builder
             ~/Library/Caches/electron
             ~/Library/Caches/electron-builder
-          key: component-release-electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('desktop/package-lock.json') }}
+          key: component-release-electron-${{ matrix.target }}-${{ hashFiles('desktop/package-lock.json') }}
           restore-keys: |
-            component-release-electron-${{ runner.os }}-${{ runner.arch }}-
+            component-release-electron-${{ matrix.target }}-
       - name: Prepare stable macOS release signing identity
         if: matrix.target == 'darwin-arm64'
         shell: bash
@@ -398,7 +405,7 @@ jobs:
           touch "$BRANCH_RELEASE_WINDOW_READY"
           wait "$build"
       - name: Verify extracted macOS app signature
-        if: matrix.target == 'darwin-arm64'
+        if: startsWith(matrix.target, 'darwin-')
         shell: bash
         env:
           RELEASE_ASSETS: ${{ runner.temp }}/release-assets
@@ -406,16 +413,16 @@ jobs:
           set -euo pipefail
           extracted="$RUNNER_TEMP/verified-macos-app"
           mkdir -p "$extracted"
-          tar -xzf "$RELEASE_ASSETS/branch-desktop-${BRANCH_RELEASE_VERSION}-darwin-arm64.tar.gz" -C "$extracted"
+          tar -xzf "$RELEASE_ASSETS/branch-desktop-${BRANCH_RELEASE_VERSION}-${BRANCH_RELEASE_TARGET}.tar.gz" -C "$extracted"
           app="$extracted/Branch Agent.app"
           test -f "$app/Contents/_CodeSignature/CodeResources"
           test -L "$app/Contents/Frameworks/Electron Framework.framework/Versions/Current"
           codesign --verify --deep --strict --verbose=2 "$app"
           node_hash="$(shasum -a 256 "$app/Contents/Resources/node/node" | cut -d' ' -f1)"
-          recorded_node_hash="$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).runtime.node.sha256' "$RELEASE_ASSETS/release-proof-darwin-arm64.json")"
+          recorded_node_hash="$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).runtime.node.sha256' "$RELEASE_ASSETS/release-proof-${BRANCH_RELEASE_TARGET}.json")"
           test "$node_hash" = "$recorded_node_hash"
           # The build declares how it signed; ad-hoc passes only when the release proof says "adhoc".
-          signing="$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).signing' "$RELEASE_ASSETS/release-proof-darwin-arm64.json")"
+          signing="$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).signing' "$RELEASE_ASSETS/release-proof-${BRANCH_RELEASE_TARGET}.json")"
           report="$RUNNER_TEMP/mac-signature-report.txt"
           {
             codesign -dv --verbose=4 "$app"
@@ -430,7 +437,7 @@ jobs:
               printf 'SHA1 Fingerprint=%s\n' "$fingerprint" >> "$report"
               ;;
             adhoc) echo "macOS signing: the release declares ad-hoc signing" ;;
-            *) echo "release-proof-darwin-arm64.json declares no known signing: $signing" >&2; exit 1 ;;
+            *) echo "release-proof-${BRANCH_RELEASE_TARGET}.json declares no known signing: $signing" >&2; exit 1 ;;
           esac
           node --input-type=module -e 'import { readFileSync } from "node:fs"; import { pathToFileURL } from "node:url"; const mod = await import(pathToFileURL(process.argv[1])); if (process.env.BRANCH_MACOS_SIGNING_IDENTITY !== mod.macReleaseSigning.identitySha1) throw new Error("workflow signing identity differs from the pinned release identity"); const text = readFileSync(process.argv[2], "utf8"); const actual = (text.match(/SHA1 Fingerprint=([0-9A-Fa-f]+)/) || [])[1] || ""; mod.assertMacReleaseSignature(text, actual, process.argv[3]);' "$GITHUB_WORKSPACE/desktop/dist/mac-applications.js" "$report" "$signing"
           # The self-signed identity is stable but not notarized; report Gatekeeper's assessment.

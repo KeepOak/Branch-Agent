@@ -817,8 +817,8 @@ test("native job caches npm, the pnpm store and Electron downloads without chang
   assert.match(native, /cache: npm/);
   assert.match(native, /cache-dependency-path: desktop\/package-lock\.json/);
   assert.match(native, /actions\/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9/);
-  assert.match(native, /component-release-pnpm-\$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-\$\{\{ hashFiles\('engine\/pnpm-lock\.yaml'\) \}\}/);
-  assert.match(native, /component-release-electron-\$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-\$\{\{ hashFiles\('desktop\/package-lock\.json'\) \}\}/);
+  assert.match(native, /component-release-pnpm-\$\{\{ matrix\.target \}\}-\$\{\{ hashFiles\('engine\/pnpm-lock\.yaml'\) \}\}/);
+  assert.match(native, /component-release-electron-\$\{\{ matrix\.target \}\}-\$\{\{ hashFiles\('desktop\/package-lock\.json'\) \}\}/);
   assert.match(native, /Library\/Caches\/electron/);
   assert.match(native, /Library\/Caches\/electron-builder/);
   assert.match(native, /PNPM_STORE_DIR: \$\{\{ github\.workspace \}\}\/\.cache\/pnpm-store/);

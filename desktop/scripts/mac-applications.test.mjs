@@ -316,7 +316,7 @@ test("packaging, updates, and CI keep the Applications install and the pinned si
   const stampAt = release.indexOf("await stampMacBundle");
   assert.ok(stampAt !== -1 && release.indexOf("macSignCommand(macSigning, join(app, MAC_ARCHIVE_BUNDLE_FOLDER))", stampAt) > stampAt);
   // The workflow reads the declared signing from the release proof and allows ad-hoc only for an "adhoc" build.
-  assert.match(componentRelease, /signing="\$\(node -p 'JSON\.parse\(require\("node:fs"\)\.readFileSync\(process\.argv\[1\], "utf8"\)\)\.signing' "\$RELEASE_ASSETS\/release-proof-darwin-arm64\.json"\)"/);
+  assert.match(componentRelease, /signing="\$\(node -p 'JSON\.parse\(require\("node:fs"\)\.readFileSync\(process\.argv\[1\], "utf8"\)\)\.signing' "\$RELEASE_ASSETS\/release-proof-\$\{BRANCH_RELEASE_TARGET\}\.json"\)"/);
   assert.match(componentRelease, /mod\.assertMacReleaseSignature\(text, actual, process\.argv\[3\]\);' "\$GITHUB_WORKSPACE\/desktop\/dist\/mac-applications\.js" "\$report" "\$signing"/);
   assert.match(updater, /ensureMacApplicationsInstall/);
   assert.match(updater, /chooseStagedMacBundle/);

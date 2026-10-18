@@ -6,6 +6,7 @@ export const UPDATE_ONLY_LABEL = "used by automatic updates, you don't need this
 /** One person-facing installer per platform, in the order a stranger reads the release page. */
 export const DOWNLOAD_PLATFORMS = Object.freeze([
   ["macOS", "darwin-arm64"],
+  ["macOS Intel", "darwin-x64"],
   ["Windows", "win32-x64"],
   ["Linux", "linux-x64"],
 ]);
@@ -44,7 +45,7 @@ export function formatReleaseNotes({ commit, version, names }) {
     ...(others.length ? [""] : []),
     `Branch Agent built from ${commit}.`,
     "",
-    "Native Windows x64, macOS arm64 and Linux x64 packages; verified engine, renderer and desktop app update components. Existing data and credentials are retained. Installed desktop apps take the new desktop app on their next start.",
+    "Native Windows x64, macOS arm64, macOS x64 and Linux x64 packages; verified engine, renderer and desktop app update components. Existing data and credentials are retained. Installed desktop apps take the new desktop app on their next start.",
     "",
   ].join("\n");
 }
