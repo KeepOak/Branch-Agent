@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View, type TextProps } from 'react-native';
+import { Pressable, Text, View, type TextProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Approval, ApprovalDecision } from '../approvals/approvals';
 import { actionWords } from '../approvals/approvalWords';
 import type { ChatRow } from '../chats/chatList';
 import type { EngineLink } from '../pairing/pairingSession';
 import { useTheme } from '../theme/ThemeProvider';
+import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { voice, voiceRadius, voiceSans, voiceType, type VoiceTypeName } from '../voice/chrome';
 import { later, shows, type Level } from '../voice/level';
 import { spokenAnswer } from '../voice/spokenAnswer';
@@ -314,8 +315,6 @@ export function VoiceScreen({
             testID="voice-transcript"
             style={{ width: '100%', maxHeight: 140, marginTop: space.md }}
             contentContainerStyle={{ gap: space.sm, alignItems: 'center' }}
-            showsVerticalScrollIndicator={false}
-            showsHorizontalScrollIndicator={false}
           >
             {userLine ? (
               <VoiceText size="fs15" color={voice.ink3} style={{ textAlign: 'center' }}>

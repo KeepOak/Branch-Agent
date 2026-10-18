@@ -1,46 +1,60 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { missingFeatures, MOBILE_FEATURE_MAP } from './featureMap';
+import { loadFeatureMap, missingFeatures, missingRoutes } from './featureMap';
 import { mobileRoot } from './sourceScan';
 
+function readRepo(file: string): string | null {
+  const abs = path.join(mobileRoot, file);
+  return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null;
+}
+
 describe('mobile feature map', () => {
-  it('lists every current screen and the working features on those screens', () => {
-    const screens = MOBILE_FEATURE_MAP.filter((entry) => entry.kind === 'screen').map((entry) => entry.id);
-    expect(screens).toEqual([
-      'welcome-screen',
-      'scan-screen',
-      'enter-code-screen',
-      'pairing-approval-screen',
-      'pairing-refused-screen',
-      'paired-screen',
-      'chats-screen',
-      'chat-screen',
-      'approvals-screen',
-      'agents-screen',
-      'computers-screen',
-      'settings-screen',
+  it('lists every current route in feature-map.json', () => {
+    const { routes } = loadFeatureMap(readRepo);
+    expect(routes.map((entry) => entry.id)).toEqual([
+      'welcome',
+      'scan',
+      'code',
+      'pairing-approval',
+      'pairing-refused',
+      'chats',
+      'computers',
+      'take-control',
+      'computer',
+      'agents',
+      'chat',
+      'voice',
+      'approvals',
+      'settings',
     ]);
-    expect(MOBILE_FEATURE_MAP.filter((entry) => entry.kind === 'feature').length).toBeGreaterThan(0);
   });
 
-  it('reports a listed screen or feature whose file or marker is gone', () => {
-    const files = new Map(MOBILE_FEATURE_MAP.map((entry) => [entry.file, 'export function WelcomeScreen\n']));
-    expect(
-      missingFeatures([{ id: 'welcome-screen', kind: 'screen', title: 'Welcome', file: 'src/screens/WelcomeScreen.tsx', marker: 'export function WelcomeScreen' }], (file) => files.get(file) ?? null),
-    ).toEqual([]);
-    expect(
-      missingFeatures([{ id: 'welcome-screen', kind: 'screen', title: 'Welcome', file: 'src/screens/WelcomeScreen.tsx', marker: 'export function WelcomeScreen' }], () => null),
-    ).toEqual(['welcome-screen: removed file src/screens/WelcomeScreen.tsx (Welcome)']);
-    expect(
-      missingFeatures([{ id: 'pair-button', kind: 'feature', title: 'Pair with your computer', file: 'src/screens/WelcomeScreen.tsx', marker: 'testID="pair-button"' }], () => 'export function WelcomeScreen() { return null; }'),
-    ).toEqual(['pair-button: removed marker in src/screens/WelcomeScreen.tsx (Pair with your computer)']);
+  it('reports a listed route whose file, marker or App.tsx wiring is gone', () => {
+    const route = {
+      id: 'voice',
+      title: 'Voice',
+      file: 'src/screens/VoiceScreen.tsx',
+      marker: 'export function VoiceScreen',
+      route: "{ name: 'voice'; row: ChatRow }",
+    };
+    const files = new Map([
+      ['src/screens/VoiceScreen.tsx', 'export function VoiceScreen\n'],
+      ['App.tsx', "type PairedRoute =\n  | { name: 'voice'; row: ChatRow }\n"],
+    ]);
+    const read = (file: string) => files.get(file) ?? null;
+    expect(missingRoutes([route], read, files.get('App.tsx') ?? null)).toEqual([]);
+    expect(missingRoutes([route], () => null, files.get('App.tsx') ?? null)).toEqual([
+      'voice: removed file src/screens/VoiceScreen.tsx (Voice)',
+    ]);
+    expect(missingRoutes([route], read, null)).toEqual(['voice: App.tsx is gone (Voice)']);
+    expect(missingRoutes([route], read, "type PairedRoute = { name: 'chats' }")).toEqual([
+      'voice: removed route in App.tsx (Voice)',
+    ]);
   });
 
-  it('fails if a listed screen or feature is removed', () => {
-    const missing = missingFeatures(MOBILE_FEATURE_MAP, (file) => {
-      const abs = path.join(mobileRoot, file);
-      return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null;
-    });
-    expect(missing).toEqual([]);
+  it('fails if a listed route disappears', () => {
+    const map = loadFeatureMap(readRepo);
+    expect(missingRoutes(map.routes, readRepo, readRepo('App.tsx'))).toEqual([]);
+    expect(missingFeatures(map.features, readRepo)).toEqual([]);
   });
 });
