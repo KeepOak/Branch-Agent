@@ -1,7 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import App from '../../App';
 import { createFakeEngine } from '../connect/fakeEngine';
-import { laterUpdate } from '../settings/showLevel';
 import { fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier';
 import { createFakeSession } from '../testing/fakeSession';
@@ -56,10 +55,10 @@ describe('you screen', () => {
     const { mocks } = await renderYou({ level: 'advanced' });
     expect(screen.getByTestId('you-name')).toHaveTextContent('Owner');
     expect(screen.getByTestId('you-role')).toHaveTextContent('Owner');
-    expect(screen.getByTestId('you-access')).toHaveTextContent(/You may send messages and make changes/);
-    expect(screen.getByTestId('you-picture')).toHaveTextContent(laterUpdate('Your picture'));
-    expect(screen.getByTestId('you-computer')).toHaveTextContent(/computer\.local:19031/);
-    await fireEvent.press(screen.getByTestId('you-computer'));
+    expect(screen.getByTestId('you-row-access')).toHaveTextContent(/You may send messages and make changes/);
+    expect(screen.getByTestId('you-row-picture')).toHaveTextContent(/Your picture comes in a later update/);
+    expect(screen.getByTestId('you-row-computer')).toHaveTextContent(/computer\.local:19031/);
+    await fireEvent.press(screen.getByTestId('you-row-computer'));
     expect(mocks.onComputer).toHaveBeenCalledTimes(1);
     await fireEvent.press(screen.getByTestId('you-back'));
     expect(mocks.onBack).toHaveBeenCalledTimes(1);
@@ -67,9 +66,9 @@ describe('you screen', () => {
 
   it('shows your picture as later-update at Regular and does not invent an email', async () => {
     await renderYou();
-    expect(screen.getByTestId('you-picture')).toHaveTextContent(laterUpdate('Your picture'));
-    expect(screen.queryByTestId('you-instructions')).toBeNull();
-    expect(screen.queryByTestId('you-emails')).toBeNull();
+    expect(screen.getByTestId('you-row-picture')).toHaveTextContent(/Your picture comes in a later update/);
+    expect(screen.queryByTestId('you-row-instructions')).toBeNull();
+    expect(screen.queryByTestId('you-row-emails')).toBeNull();
     expect(screen.getByTestId('you-name')).toHaveTextContent('Owner');
     expect(screen.getByTestId('you-screen-scroll')).toHaveProp('showsVerticalScrollIndicator', false);
   });
@@ -94,15 +93,15 @@ describe('you in the app', () => {
     const { session } = await pairedApp();
     await fireEvent.press(screen.getByTestId('more-button'));
     expect(screen.getByTestId('more-screen')).toBeOnTheScreen();
-    await eventually(() => expect(screen.getByTestId('more-you')).toHaveTextContent('Owner'));
+    await eventually(() => expect(screen.getByTestId('more-you')).toHaveTextContent(/Owner/));
     await fireEvent.press(screen.getByTestId('more-you'));
     expect(screen.getByTestId('you-screen')).toBeOnTheScreen();
     expect(screen.getByTestId('you-name')).toHaveTextContent('Owner');
-    expect(screen.getByTestId('you-access')).toHaveTextContent(/You may send messages and make changes/);
-    expect(screen.getByTestId('you-picture')).toHaveTextContent(laterUpdate('Your picture'));
-    expect(screen.queryByTestId('you-instructions')).toBeNull();
+    expect(screen.getByTestId('you-row-access')).toHaveTextContent(/You may send messages and make changes/);
+    expect(screen.getByTestId('you-row-picture')).toHaveTextContent(/Your picture comes in a later update/);
+    expect(screen.queryByTestId('you-row-instructions')).toBeNull();
 
-    await fireEvent.press(screen.getByTestId('you-computer'));
+    await fireEvent.press(screen.getByTestId('you-row-computer'));
     expect(screen.getByTestId('computers-screen')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('computers-back'));
     expect(screen.getByTestId('you-screen')).toBeOnTheScreen();
@@ -118,7 +117,7 @@ describe('you in the app', () => {
     await eventually(() => expect(screen.getByTestId('home-screen')).toBeOnTheScreen());
     await fireEvent.press(screen.getByTestId('home-you'));
     expect(screen.getByTestId('you-screen')).toBeOnTheScreen();
-    expect(screen.getByTestId('you-picture')).toHaveTextContent(laterUpdate('Your picture'));
+    expect(screen.getByTestId('you-row-picture')).toHaveTextContent(/Your picture comes in a later update/);
     expect(screen.queryByTestId('you-screen')).not.toHaveTextContent(/keepoak|Hartwell|Taofik/i);
 
     await fireEvent.press(screen.getByTestId('you-name-change'));

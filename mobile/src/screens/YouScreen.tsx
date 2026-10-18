@@ -149,12 +149,12 @@ export function YouScreen({
         ) : null}
       </View>
       {groups.map((group) => (
-        <Card key={group.id} testID={`you-${group.id}`}>
+        <Card key={group.id} testID={`you-group-${group.id}`}>
           <ThemedText variant="headline">{group.title}</ThemedText>
           {group.rows.map((item, index) => (
             <DetailRow
               key={item.id}
-              testID={`you-${item.id}`}
+              testID={`you-row-${item.id}`}
               label={item.label}
               detail={item.detail}
               value={item.value}
