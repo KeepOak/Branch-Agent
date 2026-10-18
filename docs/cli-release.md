@@ -50,7 +50,7 @@ The app install and the `branch` command are separate.
 
 | OS | App (from the latest release) | `branch` command (Settings toggle) | App data / engine copies |
 |---|---|---|---|
-| macOS | `~/Applications/Branch Agent.app` | `~/.local/bin/branch` | `~/Library/Application Support/BranchAgent` |
+| macOS | `/Applications/Branch.app` when writable, else `~/Applications/Branch.app` (legacy name `Branch Agent.app`) | `~/.local/bin/branch` | `~/Library/Application Support/BranchAgent` |
 | Linux | `~/.local/bin/branch-agent` (AppImage) | `~/.local/bin/branch` | `$XDG_DATA_HOME/BranchAgent` or `~/.local/share/BranchAgent` |
 | Windows | `%LOCALAPPDATA%\Programs\Branch Agent` | `%LOCALAPPDATA%\BranchAgent\bin\branch.cmd` and `branch` (Git Bash); that `bin` folder is added to the user Path | `%LOCALAPPDATA%\BranchAgent` |
 

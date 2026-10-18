@@ -22,6 +22,20 @@ import {
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (file) => readFileSync(join(root, file), 'utf8');
 
+function exportedTsValue(source, name, seen = new Set()) {
+  assert.equal(seen.has(name), false, `circular export ${name}`);
+  seen.add(name);
+  const string = source.match(new RegExp(`export const ${name} = "([^"]+)"`));
+  if (string) return string[1];
+  const alias = source.match(new RegExp(`export const ${name} = ([A-Z][A-Z0-9_]+)`));
+  assert(alias, `desktop/src/mac-applications.ts must export ${name}`);
+  return exportedTsValue(source, alias[1], seen);
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 test('docs and workflow name the production CLI release contract', () => {
   const doc = read(CLI_RELEASE_DOC);
   const workflow = read(CLI_RELEASE_WORKFLOW);
@@ -58,6 +72,9 @@ test('docs and workflow name the production CLI release contract', () => {
   assert.match(doc, /~\/Library\/Application Support\/BranchAgent/);
   assert.match(doc, /~\/\.local\/share\/BranchAgent/);
   assert.match(doc, /%LOCALAPPDATA%\\Programs\\Branch Agent/);
+  assert.match(read('.github/workflows/merge-gate-recheck.yml'), /^\s+- CLI release checks$/m);
+  assert.match(workflow, /PNPM_STORE_DIR/);
+  assert.match(workflow, /timeout-minutes:\s*15/);
 
   assert.match(doc, /engine\/package\.json/);
   assert.match(doc, /dist\/build-info\.json/);
@@ -96,6 +113,23 @@ test('docs and workflow name the production CLI release contract', () => {
   assert.doesNotMatch(workflow, /macos-15/);
   assert.doesNotMatch(workflow, /\bios\b|iphone|ipad/i);
   assert.doesNotMatch(workflow, /notarize|AZURE_SIGNING|APPLE_DEVELOPER/i);
+});
+
+test('docs macOS app path follows MAC_BUNDLE_FOLDER and chooseApplicationsDirectory', () => {
+  const mac = read('desktop/src/mac-applications.ts');
+  const doc = read(CLI_RELEASE_DOC);
+  const bundle = exportedTsValue(mac, 'MAC_BUNDLE_FOLDER');
+  const legacy = exportedTsValue(mac, 'MAC_LEGACY_BUNDLE_FOLDER');
+  assert.match(mac, /export async function chooseApplicationsDirectory/);
+  assert.match(mac, /systemApplications \?\? "\/Applications"/);
+  assert.match(mac, /join\(options\.homeDirectory \?\? homedir\(\), "Applications"\)/);
+  const systemApp = `/Applications/${bundle}`;
+  const userApp = `~/Applications/${bundle}`;
+  assert.match(doc, new RegExp(escapeRegExp(systemApp)));
+  assert.match(doc, new RegExp(escapeRegExp(userApp)));
+  assert.match(doc, /when writable/);
+  assert.match(doc, new RegExp(`legacy name \`${escapeRegExp(legacy)}\``));
+  assert.doesNotMatch(doc, /~\/Applications\/Branch Agent\.app` \|/);
 });
 
 test('production deploy arguments stay the release hoisted copy deploy', () => {

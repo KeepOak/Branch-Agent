@@ -39,6 +39,9 @@ jobs:
       max-parallel: 3
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      PNPM_STORE_DIR: ${{ github.workspace }}/.cache/pnpm-store
+      PNPM_CONFIG_STORE_DIR: ${{ github.workspace }}/.cache/pnpm-store
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -50,6 +53,15 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Cache the engine pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.cache/pnpm-store
+          key: cli-release-pnpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('engine/pnpm-lock.yaml') }}
+          restore-keys: |
+            cli-release-pnpm-${{ runner.os }}-${{ runner.arch }}-
+            component-release-pnpm-${{ runner.os }}-${{ runner.arch }}-
       - name: Check the CLI release contract
         run: node --test scripts/cli-release-contract.test.mjs
       - name: Production-deploy the CLI and run --version, --help, and status --json
