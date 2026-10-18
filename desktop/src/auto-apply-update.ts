@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { statfsSync } from "node:fs";
 
 /** Holds a staged release until the renderer's gateway snapshot stays idle long enough. */
@@ -10,31 +11,63 @@ export interface UpdateActivity {
   unsavedDraftFiles: boolean | null;
 }
 
-/** Last proven window idle fields, written when a window answers the activity probe. */
-export interface WindowIdleSnapshot {
+/** Counts a live window or a trusted persisted snapshot can prove. */
+export interface WindowIdleCounts {
   pendingApprovals: number;
   unsavedDraftFiles: boolean;
 }
 
+/** Last proven window idle fields, written when a window answers the activity probe. */
+export interface WindowIdleSnapshot extends WindowIdleCounts {
+  /** Unix milliseconds when the window answered. */
+  at: number;
+  /** The desktop process that took the snapshot; a new launch is a new session. */
+  sessionId: string;
+}
+
 /** Under the desktop data dir: the last window snapshot that proved approvals and drafts. */
 export const WINDOW_IDLE_FILE = "update-window-idle.json";
+/** A snapshot older than this, or from another launch, is unknown (not idle). */
+export const WINDOW_IDLE_MAX_AGE_MS = 2 * 60 * 1000;
+
+/** Tests pin the session with BRANCH_DESKTOP_WINDOW_IDLE_SESSION; otherwise each launch is a new id. */
+export function windowIdleSessionId(env: NodeJS.ProcessEnv = process.env): string {
+  const pinned = env.BRANCH_DESKTOP_WINDOW_IDLE_SESSION;
+  return typeof pinned === "string" && pinned.trim() ? pinned.trim() : randomUUID();
+}
 
 /** A probe snapshot, or `undefined` when the file is missing or not a proven count. */
 export function parseWindowIdleSnapshot(value: unknown): WindowIdleSnapshot | undefined {
   if (!value || typeof value !== "object") return undefined;
-  const rec = value as { pendingApprovals?: unknown; unsavedDraftFiles?: unknown };
+  const rec = value as { pendingApprovals?: unknown; unsavedDraftFiles?: unknown; at?: unknown; sessionId?: unknown };
   if (typeof rec.pendingApprovals !== "number" || !Number.isInteger(rec.pendingApprovals) || rec.pendingApprovals < 0) return undefined;
   if (typeof rec.unsavedDraftFiles !== "boolean") return undefined;
-  return { pendingApprovals: rec.pendingApprovals, unsavedDraftFiles: rec.unsavedDraftFiles };
+  if (typeof rec.at !== "number" || !Number.isInteger(rec.at) || rec.at < 0) return undefined;
+  if (typeof rec.sessionId !== "string" || rec.sessionId.length === 0) return undefined;
+  return { pendingApprovals: rec.pendingApprovals, unsavedDraftFiles: rec.unsavedDraftFiles, at: rec.at, sessionId: rec.sessionId };
+}
+
+/** Proof only in this app session and only while younger than WINDOW_IDLE_MAX_AGE_MS. Anything else is unknown. */
+export function trustedWindowIdleSnapshot(
+  snapshot: WindowIdleSnapshot | undefined,
+  sessionId: string,
+  now: number,
+  maxAgeMs = WINDOW_IDLE_MAX_AGE_MS,
+): WindowIdleSnapshot | undefined {
+  if (!snapshot) return undefined;
+  if (snapshot.sessionId !== sessionId) return undefined;
+  const age = now - snapshot.at;
+  if (!Number.isFinite(age) || age < 0 || age >= maxAgeMs) return undefined;
+  return snapshot;
 }
 
 /**
- * Live window wins. Else a persisted snapshot (the last answered probe, kept on disk). Else unknown:
+ * Live window wins. Else a persisted snapshot that `trustedWindowIdleSnapshot` already accepted. Else unknown:
  * pending approvals and unsaved drafts are `null`, which blocks idle, drain and restart.
  */
 export function windowIdleFields(
-  window?: WindowIdleSnapshot,
-  persisted?: WindowIdleSnapshot,
+  window?: WindowIdleCounts,
+  persisted?: WindowIdleCounts,
 ): { pendingApprovals: number | null; unsavedDraftFiles: boolean | null } {
   const source = window ?? persisted;
   if (!source) return { pendingApprovals: null, unsavedDraftFiles: null };

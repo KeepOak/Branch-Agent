@@ -35,7 +35,7 @@ import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./ti
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, ensureWindowsLauncher, handOffDesktopUpdate, pruneWindowsInstall, runsFromAppImage, windowsRelaunchDetails, type DesktopInstall } from "./desktop-update";
-import { createAutoApplyUpdate, parseWindowIdleSnapshot, readUpdateHealth, WINDOW_IDLE_FILE, windowIdleFields, type WindowIdleSnapshot } from "./auto-apply-update";
+import { createAutoApplyUpdate, parseWindowIdleSnapshot, readUpdateHealth, trustedWindowIdleSnapshot, WINDOW_IDLE_FILE, windowIdleFields, windowIdleSessionId, type WindowIdleSnapshot } from "./auto-apply-update";
 import { candidateCheckSkippedLine, candidateMinFreeBytes, HEALTH_MEMORY_MAX_AGE_MS, measureAvailableMemory } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
 import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
@@ -386,26 +386,31 @@ function windowSilent(error: unknown): undefined {
 const ENGINE_ACTIVITY_UNAVAILABLE = "The window did not report activity and the engine's own activity is unavailable";
 type EngineWork = { activeRuns: number; totalActive: number; pendingReplies: number };
 const windowRuns = (window: WindowState): number => window.workingTrunks ?? (window.streaming ? 1 : 0);
+const windowIdleSession = windowIdleSessionId();
 let lastWindowIdle: WindowIdleSnapshot | undefined;
 
 function rememberWindowIdle(window: WindowState): WindowIdleSnapshot {
-  const snapshot = { pendingApprovals: window.pendingApprovals, unsavedDraftFiles: window.unsavedDraftFiles };
+  const snapshot = {
+    pendingApprovals: window.pendingApprovals, unsavedDraftFiles: window.unsavedDraftFiles,
+    at: Date.now(), sessionId: windowIdleSession,
+  };
   lastWindowIdle = snapshot;
   saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, WINDOW_IDLE_FILE), JSON.stringify(snapshot)));
   return snapshot;
 }
 
 function readPersistedWindowIdle(): WindowIdleSnapshot | undefined {
-  if (lastWindowIdle) return lastWindowIdle;
-  try {
-    lastWindowIdle = parseWindowIdleSnapshot(JSON.parse(readFileSync(join(cfg.dataDir, WINDOW_IDLE_FILE), "utf8")));
-    return lastWindowIdle;
-  } catch {
-    return undefined;
+  if (!lastWindowIdle) {
+    try {
+      lastWindowIdle = parseWindowIdleSnapshot(JSON.parse(readFileSync(join(cfg.dataDir, WINDOW_IDLE_FILE), "utf8")));
+    } catch {
+      return undefined;
+    }
   }
+  return trustedWindowIdleSnapshot(lastWindowIdle, windowIdleSession, Date.now());
 }
 
-/** Live window, else the last proven snapshot. Unknown (null) counts must not be treated as zero. */
+/** Live window, else a this-session snapshot younger than two minutes. Unknown (null) is not zero. */
 function resolvedWindowIdle(window?: WindowState) {
   return windowIdleFields(window ? rememberWindowIdle(window) : undefined, readPersistedWindowIdle());
 }
