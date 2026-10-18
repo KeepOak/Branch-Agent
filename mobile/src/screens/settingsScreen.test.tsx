@@ -7,12 +7,22 @@ import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier'
 import { createFakeSession } from '../testing/fakeSession';
 import { memoryStore } from '../storage/keyValueStore';
 import { SHOW_LEVEL_KEY } from '../settings/showLevel';
+import { CYCLE_LABEL, PHONE_PREFS_DEFAULT } from '../settings/phonePrefs';
 import { DESKTOP_THEMES } from '../theme/desktopThemes';
 import { THEME_LOOK_KEY, THEME_PREFERENCE_KEY } from '../theme/preference';
+import { fadeCue, overflowAt, queryFadeCue } from '../testing/scrollFadeEvents';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { themeFor } from '../theme/tokens';
-import { permissionLabel, SettingsScreen, LATER_ROWS, SETTINGS_GROUPS } from './SettingsScreen';
-import { CHEER_DEFAULT, HELP_PAGES, PET_DEFAULT, laterRowsAt, laterUpdate } from './settingsExtras';
+import { LIST_FADE } from '../ui/scrollEdges';
+import { permissionLabel, SettingsScreen, SETTINGS_GROUPS } from './SettingsScreen';
+import {
+  ASSISTANT_REASON,
+  HELP_PAGES,
+  KEEPOAK_SIGN_IN,
+  KEEPOAK_SIGN_IN_REASON,
+  RUN_ON_PHONE,
+  RUN_ON_PHONE_REASON,
+} from './settingsExtras';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 4000 });
 jest.setTimeout(20_000);
@@ -29,6 +39,10 @@ async function renderSettings(extra: Partial<Parameters<typeof SettingsScreen>[0
     onThisPhone: jest.fn(),
     onOpenSettings: jest.fn(),
     onTurnOnNotifications: jest.fn(),
+    onConnectAnother: jest.fn(),
+    onForget: jest.fn(),
+    onSetupTalk: jest.fn(),
+    onAskHelp: jest.fn(),
     onBack: jest.fn(),
   };
   await render(
@@ -37,6 +51,7 @@ async function renderSettings(extra: Partial<Parameters<typeof SettingsScreen>[0
         state={paired}
         permission="granted"
         identity={{ version: '0.1.0', build: '14' }}
+        computerTitle="This computer · macOS"
         {...mocks}
         {...extra}
       />
@@ -75,32 +90,37 @@ describe('permission labels', () => {
 });
 
 describe('settings screen', () => {
-  it('shows the app version and build, the paired computer, and About', async () => {
+  it('shows Branch Agent, the paired computer, and About', async () => {
     await renderSettings();
     expect(screen.getByRole('header')).toHaveTextContent('Settings');
+    expect(screen.getByText('This computer · macOS')).toBeOnTheScreen();
+    expect(screen.getByText('Connected to your computer')).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-about')).toHaveTextContent(/0\.1\.0/);
+    await fireEvent.press(screen.getByTestId('settings-about'));
+    expect(screen.getByRole('header')).toHaveTextContent('About');
     expect(within(screen.getByTestId('app-card')).getByText('0.1.0')).toBeOnTheScreen();
     expect(within(screen.getByTestId('app-card')).getByText('14')).toBeOnTheScreen();
-    expect(screen.getByText('This Branch')).toBeOnTheScreen();
-    expect(screen.getByText('Connected to your computer')).toBeOnTheScreen();
-    expect(screen.getByText('paired.example:18765')).toBeOnTheScreen();
-    expect(screen.getByText('2026.10.8')).toBeOnTheScreen();
-    expect(screen.getByTestId('this-phone')).toHaveTextContent(/This phone/);
     expect(screen.getByTestId('about-card')).toHaveTextContent(/Your Trunks and Branch Agent, in your pocket/);
     expect(within(screen.getByTestId('about-card')).getByText('0.1.0 (14)')).toBeOnTheScreen();
     expect(within(screen.getByTestId('about-card')).getByText('KeepOak')).toBeOnTheScreen();
+    expect(within(screen.getByTestId('about-card')).getByText('2026.10.8')).toBeOnTheScreen();
   });
 
-  it('opens This phone (Your computer) and offers system Settings for notifications', async () => {
+  it('opens This phone from This Branch and offers system Settings on Notifications', async () => {
     const { mocks } = await renderSettings({ permission: 'denied' });
-    expect(screen.getByTestId('settings-notifications-status')).toHaveTextContent('Off');
+    await fireEvent.press(screen.getByTestId('this-branch-row'));
     await fireEvent.press(screen.getByTestId('this-phone'));
     expect(mocks.onThisPhone).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByTestId('settings-thisbranch-back'));
+    await fireEvent.press(screen.getByTestId('settings-notif'));
+    expect(screen.getByTestId('settings-notifications-status')).toHaveTextContent('Off');
     await fireEvent.press(screen.getByTestId('notifications-system-settings'));
     expect(mocks.onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
   it('asks to turn notifications on when the phone has not decided yet', async () => {
     const asking = await renderSettings({ permission: 'undetermined' });
+    await fireEvent.press(screen.getByTestId('settings-notif'));
     expect(screen.getByText('Not yet')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('settings-notifications-turn-on'));
     expect(asking.mocks.onTurnOnNotifications).toHaveBeenCalledTimes(1);
@@ -108,6 +128,7 @@ describe('settings screen', () => {
 
   it('says notifications need the installed app, with no system Settings button', async () => {
     await renderSettings({ permission: 'unavailable' });
+    await fireEvent.press(screen.getByTestId('settings-notif'));
     expect(screen.getByTestId('settings-notifications-unavailable')).toBeOnTheScreen();
     expect(screen.queryByTestId('notifications-system-settings')).toBeNull();
   });
@@ -119,14 +140,20 @@ describe('settings in the app', () => {
     expect(screen.getByTestId('settings-button')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('settings-button'));
     expect(screen.getByTestId('settings-screen')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('settings-about'));
     expect(within(screen.getByTestId('app-card')).getByText('0.1.0')).toBeOnTheScreen();
     expect(within(screen.getByTestId('app-card')).getByText('14')).toBeOnTheScreen();
-    expect(screen.getByTestId('settings-notifications-status')).toHaveTextContent('On');
     expect(screen.getByTestId('update-settings-card')).toBeOnTheScreen();
     expect(screen.getByTestId('apk-update-help')).toHaveTextContent(/checksum/);
     expect(screen.getByTestId('apk-update-help')).toHaveTextContent(/signing certificate/);
     expect(screen.getByTestId('apk-update-help')).toHaveTextContent(/install permission/);
+    await fireEvent.press(screen.getByTestId('settings-about-back'));
 
+    await fireEvent.press(screen.getByTestId('settings-notif'));
+    expect(screen.getByTestId('settings-notifications-status')).toHaveTextContent('On');
+    await fireEvent.press(screen.getByTestId('settings-notif-back'));
+
+    await fireEvent.press(screen.getByTestId('this-branch-row'));
     await fireEvent.press(screen.getByTestId('this-phone'));
     expect(screen.getByTestId('paired-screen')).toBeOnTheScreen();
     expect(screen.getByText('Your computer')).toBeOnTheScreen();
@@ -145,6 +172,7 @@ describe('settings in the app', () => {
       const fake = createFakeNotifier('denied');
       const { session } = await pairedApp({ notifier: fake.notifier });
       await fireEvent.press(screen.getByTestId('settings-button'));
+      await fireEvent.press(screen.getByTestId('settings-notif'));
       await eventually(() => expect(screen.getByTestId('settings-notifications-status')).toHaveTextContent('Off'));
       await fireEvent.press(screen.getByTestId('notifications-system-settings'));
       expect(open).toHaveBeenCalled();
@@ -186,7 +214,7 @@ describe('settings in the app', () => {
     await fireEvent.press(screen.getByTestId('settings-level-advanced'));
     expect(store.dump()[SHOW_LEVEL_KEY]).toBe('advanced');
     expect(screen.getByTestId('settings-level-advanced')).toHaveProp('accessibilityState', { selected: true });
-    await eventually(() => expect(screen.getByTestId('later-keepoak')).toBeOnTheScreen());
+    await eventually(() => expect(screen.getByTestId('settings-mic')).toBeOnTheScreen());
     first.session.dispose();
     await first.unmount();
 
@@ -205,56 +233,113 @@ describe('r50 settings parity', () => {
     expect(screen.getByTestId('settings-screen-scroll')).toHaveProp('showsHorizontalScrollIndicator', false);
   });
 
-  it('uses the desktop Regular groups plus Appearance', async () => {
+  it('fades the bottom edge when Settings continues below the fold, and keeps the last rows reachable', async () => {
     await renderSettings();
-    expect([...SETTINGS_GROUPS]).toEqual(['General', 'Computer', 'Usage', 'Updates', 'Appearance']);
-    expect(screen.getByTestId('general-card')).toHaveTextContent(/^General/);
-    expect(screen.getByTestId('computer-card')).toHaveTextContent(/^Computer/);
-    expect(screen.getByTestId('usage-card')).toHaveTextContent(/^Usage/);
-    expect(screen.getByTestId('updates-card')).toHaveTextContent(/^Updates/);
-    expect(screen.getByTestId('appearance-card')).toHaveTextContent(/^Appearance/);
+    const scroll = screen.getByTestId('settings-screen-scroll');
+    expect(StyleSheet.flatten(scroll.props.contentContainerStyle).paddingBottom).toBeGreaterThanOrEqual(LIST_FADE);
+    expect(queryFadeCue('settings-screen-scroll-fade-end')).toBeNull();
+    await overflowAt('settings-screen-scroll', 'y', 1600, 640);
+    expect(fadeCue('settings-screen-scroll-fade-end')).toBeOnTheScreen();
+    expect(screen.getByTestId('this-branch')).toBeOnTheScreen();
+    expect(screen.getByTestId('voice-card')).toBeOnTheScreen();
   });
 
-  it('hides unfinished rows at Regular, and never draws them as Off', async () => {
+  it('uses the r50 phone groups This Branch, Your assistant, On this phone and Voice', async () => {
     await renderSettings();
-    expect(laterRowsAt(0)).toEqual([]);
-    for (const row of LATER_ROWS) {
-      expect(screen.queryByTestId(row.testID)).toBeNull();
-    }
-    expect(screen.queryByText('Off')).toBeNull();
+    expect([...SETTINGS_GROUPS]).toEqual([
+      'This Branch',
+      'Your assistant',
+      'Connections',
+      'On this phone',
+      'This phone, more',
+      'Voice',
+    ]);
+    expect(screen.getByTestId('this-branch')).toHaveTextContent(/^This Branch/);
+    expect(screen.getByTestId('assistant-card')).toHaveTextContent(/^Your assistant/);
+    expect(screen.getByTestId('connections-card')).toHaveTextContent(/^Connections/);
+    expect(screen.getByTestId('on-phone-card')).toHaveTextContent(/^On this phone/);
+    expect(screen.getByTestId('phone-more-card')).toHaveTextContent(/^This phone, more/);
+    expect(screen.getByTestId('voice-card')).toHaveTextContent(/^Voice/);
+  });
+
+  it('never writes later-update or coming-soon copy, and names Branch Agent', async () => {
+    await renderSettings();
     expect(screen.queryByText(/comes in a later update/)).toBeNull();
+    expect(screen.queryByText(/coming soon/i)).toBeNull();
+    expect(screen.getByText(KEEPOAK_SIGN_IN)).toBeOnTheScreen();
+    expect(screen.getByTestId('later-keepoak-reason')).toHaveTextContent(KEEPOAK_SIGN_IN_REASON);
+    expect(screen.getByText('Lend this phone to Branch Agent')).toBeOnTheScreen();
+    expect(screen.getByText('Forget this Branch Agent')).toBeOnTheScreen();
+    expect(screen.getByText('Lock with fingerprint')).toBeOnTheScreen();
+    expect(screen.getByText(RUN_ON_PHONE)).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-run-on-phone-reason')).toHaveTextContent(RUN_ON_PHONE_REASON);
+    expect(screen.getByTestId('settings-chatapps')).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-models')).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-skills')).toBeOnTheScreen();
+    expect(screen.queryByText(/^Branch$/)).toBeNull();
   });
 
-  it('shows later-update copy at Advanced, including Lend this phone to Branch', async () => {
-    await renderSettings({ level: 1 });
-    const advanced = laterRowsAt(1);
-    expect(advanced.length).toBeGreaterThan(0);
-    expect(advanced.some((row) => row.label === 'Lend this phone to Branch')).toBe(true);
-    expect(screen.getByTestId('later-keepoak-reason')).toHaveTextContent('Sign in with KeepOak comes in a later update.');
-    for (const row of advanced) {
-      expect(screen.getByTestId(row.testID)).toBeOnTheScreen();
-      expect(screen.getByTestId(`${row.testID}-reason`)).toHaveTextContent(laterUpdate(row.label));
-      expect(screen.getByTestId(row.testID)).not.toHaveTextContent(/^Off$/);
-    }
-    expect(screen.queryByTestId('later-on-phone-engine')).toBeNull();
-  });
-
-  it('shows Technical rows only at Technical', async () => {
-    await renderSettings({ level: 2 });
-    expect(screen.getByTestId('later-on-phone-engine-reason')).toHaveTextContent(
-      laterUpdate('Run Branch on this phone'),
-    );
-  });
-
-  it('keeps pets and cheer off by default, and only names them at Advanced', async () => {
-    expect(PET_DEFAULT).toBe('none');
-    expect(CHEER_DEFAULT).toBe(false);
+  it('hides Advanced rows at Regular, including Microphone and Reset', async () => {
     await renderSettings();
-    expect(screen.queryByTestId('later-pet')).toBeNull();
-    expect(screen.queryByTestId('later-cheer')).toBeNull();
-    await fireEvent.press(screen.getByTestId('settings-level-advanced'));
-    expect(screen.getByTestId('later-pet-reason')).toHaveTextContent(laterUpdate('Pet'));
-    expect(screen.getByTestId('later-cheer-reason')).toHaveTextContent(laterUpdate('Celebrate when a task finishes'));
+    expect(screen.queryByTestId('settings-mic')).toBeNull();
+    expect(screen.queryByTestId('settings-assistant')).toBeNull();
+    expect(screen.queryByTestId('settings-talk-bg')).toBeNull();
+    expect(screen.queryByTestId('settings-reset')).toBeNull();
+    expect(screen.queryByText('Push to talk from Branch Agent')).toBeNull();
+  });
+
+  it('shows real Advanced rows, not later-update stubs', async () => {
+    await renderSettings({ level: 1 });
+    expect(screen.queryByText(/comes in a later update/)).toBeNull();
+    expect(screen.getByTestId('later-lend')).toBeOnTheScreen();
+    expect(screen.getByTestId('later-lend')).not.toHaveTextContent(/later update/);
+    expect(screen.getByTestId('settings-mic')).toBeOnTheScreen();
+    expect(screen.getByText(ASSISTANT_REASON)).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-talk-bg')).toBeOnTheScreen();
+    expect(screen.getByText('Push to talk from Branch Agent')).toBeOnTheScreen();
+    expect(screen.getByText('Live talk')).toBeOnTheScreen();
+    expect(screen.getByText('Dictation')).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-reset')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('this-branch-row'));
+    expect(screen.getByTestId('settings-auto-conn')).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-checks')).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-connection')).toBeOnTheScreen();
+  });
+
+  it('cycles On / When needed / Off on Regular phone rows', async () => {
+    await renderSettings();
+    expect(screen.getByTestId('settings-lock-value')).toHaveTextContent(CYCLE_LABEL[PHONE_PREFS_DEFAULT.lock]);
+    await fireEvent.press(screen.getByTestId('settings-lock'));
+    expect(screen.getByTestId('settings-lock-value')).toHaveTextContent('When needed');
+    await fireEvent.press(screen.getByTestId('settings-lock'));
+    expect(screen.getByTestId('settings-lock-value')).toHaveTextContent('On');
+    expect(screen.getByTestId('settings-awake')).toHaveProp('accessibilityState', { checked: true });
+    await fireEvent.press(screen.getByTestId('settings-awake'));
+    expect(screen.getByTestId('settings-awake')).toHaveProp('accessibilityState', { checked: false });
+  });
+
+  it('plays Test sound and opens Lend this phone', async () => {
+    const { mocks } = await renderSettings();
+    await fireEvent.press(screen.getByTestId('settings-test-sound'));
+    expect(screen.getByTestId('settings-test-sound-played')).toHaveTextContent('Played on this phone.');
+    await fireEvent.press(screen.getByTestId('later-lend'));
+    expect(screen.getByRole('header')).toHaveTextContent('Lend this phone');
+    expect(screen.getByTestId('lend-cam')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('lend-toggle'));
+    expect(screen.getByText('Lend this phone to Branch Agent')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('settings-lend-back'));
+    await fireEvent.press(screen.getByTestId('settings-setup-talk'));
+    expect(mocks.onSetupTalk).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByTestId('settings-connect-another'));
+    expect(mocks.onConnectAnother).toHaveBeenCalledTimes(1);
+  });
+
+  it('forgets this Branch Agent after a confirm', async () => {
+    const { mocks } = await renderSettings();
+    await fireEvent.press(screen.getByTestId('settings-forget'));
+    expect(screen.getByTestId('forget-ask')).toHaveTextContent(/Forget this Branch Agent/);
+    await fireEvent.press(screen.getByTestId('forget-ask-yes'));
+    expect(mocks.onForget).toHaveBeenCalledTimes(1);
   });
 
   it('offers the same desktop themes, with Branch Slate selected', async () => {
@@ -297,6 +382,7 @@ describe('r50 settings parity', () => {
       selected: true,
       disabled: false,
     });
+    expect(screen.getByTestId('language-English')).toBeOnTheScreen();
     expect(screen.queryByTestId('language-Français')).toBeNull();
     await fireEvent.press(screen.getByTestId('settings-language-back'));
     expect(screen.getByRole('header')).toHaveTextContent('Settings');
@@ -320,7 +406,7 @@ describe('r50 settings parity', () => {
 
   it('uses desktop glass and radii on Settings groups', async () => {
     await renderSettings();
-    const card = StyleSheet.flatten(screen.getByTestId('general-card-surface').props.style);
+    const card = StyleSheet.flatten(screen.getByTestId('this-branch-surface').props.style);
     expect(card.backgroundColor).toBe(themeFor('light').color.glass);
     expect(card.borderRadius).toBe(themeFor('light').radius.md);
   });

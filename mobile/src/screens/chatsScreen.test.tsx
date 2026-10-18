@@ -4,8 +4,10 @@ import { createFakeEngine } from '../connect/fakeEngine';
 import { createFakeSession } from '../testing/fakeSession';
 import { FIXTURE_NOW, fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { ChatsScreen } from './ChatsScreen';
+import { fadeCue, overflowAt, queryFadeCue } from '../testing/scrollFadeEvents';
 import { ThemeProvider } from '../theme/ThemeProvider';
-import { chatRows, readAgents, type ChatListSnapshot } from '../chats/chatList';
+import { chatRows, CHAT_FILTERS, readAgents, type ChatListSnapshot } from '../chats/chatList';
+import { StyleSheet } from 'react-native';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 3000 });
 const { agents, mainKey } = readAgents(fixtureAgents);
@@ -191,6 +193,26 @@ describe('chats screen', () => {
     await fireEvent.press(screen.getByTestId('layout-compact'));
     expect(screen.getByTestId('chat-agent:main:old')).toBeOnTheScreen();
     expect(screen.queryByText('Your expenses for September are filed. Anything else?')).toBeNull();
+  });
+
+  it('keeps every filter chip label whole, and fades the row when it overflows', async () => {
+    await renderList({ rows, loaded: true, error: null }, true, { look: 'android' });
+    expect(screen.getByTestId('filter-needsYou')).toHaveTextContent('Needs you');
+    expect(screen.getByTestId('filter-needsYou')).not.toHaveTextContent(/^Nee$/);
+    for (const [id, label] of CHAT_FILTERS) {
+      const chip = screen.queryByTestId(`filter-${id}`);
+      if (chip) {
+        expect(chip).toHaveTextContent(label);
+        const chipStyle = typeof chip.props.style === 'function' ? chip.props.style({ pressed: false }) : chip.props.style;
+        expect(StyleSheet.flatten(chipStyle).flexShrink).toBe(0);
+      }
+    }
+    expect(screen.getByTestId('chat-filters-scroll')).toHaveProp('showsHorizontalScrollIndicator', false);
+    expect(screen.getByTestId('chat-filters-scroll')).toHaveProp('showsVerticalScrollIndicator', false);
+    expect(queryFadeCue('chat-filters-scroll-fade-end')).toBeNull();
+    await overflowAt('chat-filters-scroll', 'x', 520, 220);
+    expect(fadeCue('chat-filters-scroll-fade-end')).toBeOnTheScreen();
+    expect(screen.getByTestId('filter-needsYou')).toHaveTextContent('Needs you');
   });
 
   it('shows the Android New chat control and opens the default Trunk', async () => {
