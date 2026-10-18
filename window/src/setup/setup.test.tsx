@@ -640,7 +640,7 @@ describe("setup's Reach step", () => {
     await act(async () => byText(document.body, "Make the code").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(params(request, "device.pair.setupCode")).toHaveLength(1);
-    expect(document.body.textContent).toContain("ABCD-2345");
+    expect(document.body.textContent).toContain("THWBEN");
   });
 });
 

@@ -76,6 +76,40 @@ describe("Settings › Accounts", () => {
     expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
     expect(sessionStorage.getItem("branch.openAddAccount")).toBeNull();
   });
+
+  it("keeps Add an account on the skeleton until account status arrives, then shows the list once", async () => {
+    let resolveStatus!: (value: unknown) => void;
+    const pending = new Promise<unknown>((resolve) => { resolveStatus = resolve; });
+    const request = vi.fn(async (method: string) => {
+      if (method === "models.authStatus") return pending;
+      if (method === "branch.setup.detect") return {
+        prepareOptions: [{ id: "ollama", brandId: "ollama", label: "Ollama" }],
+        authOptions: [{ id: "custom-endpoint", kind: "custom", label: "Your own" }],
+      };
+      if (method === "config.get") return { hash: "h1", valid: true, config: {} };
+      return {};
+    });
+    const engine = { request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine;
+    await render(engine);
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add an account")!.click());
+    await act(async () => { await Promise.resolve(); });
+    expect(document.querySelector('[data-testid="add-account-loading"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="add-account"]')?.textContent).not.toMatch(/\d+ services/);
+
+    await act(async () => resolveStatus({ providers: PROVIDERS, providerCapabilities: CAPS }));
+    expect(document.querySelector('[data-testid="add-account-loading"]')).toBeNull();
+    const tiles = [...document.querySelectorAll(".aa-grp .prov")].map((tile) => tile.querySelector(":scope > b")?.textContent ?? "");
+    const lede = document.querySelector('[data-testid="add-account"] .aa-lede')?.textContent ?? "";
+    expect(lede).toMatch(/\d+ services/);
+    expect(tiles).toEqual(expect.arrayContaining(["ChatGPT", "Mistral", "Ollama"]));
+    const before = { lede, tiles, tabs: [...document.querySelectorAll('[data-testid="add-account"] [role="tab"]')].map((tab) => tab.textContent) };
+    await act(async () => { await Promise.resolve(); });
+    expect({
+      lede: document.querySelector('[data-testid="add-account"] .aa-lede')?.textContent ?? "",
+      tiles: [...document.querySelectorAll(".aa-grp .prov")].map((tile) => tile.querySelector(":scope > b")?.textContent ?? ""),
+      tabs: [...document.querySelectorAll('[data-testid="add-account"] [role="tab"]')].map((tab) => tab.textContent),
+    }).toEqual(before);
+  });
   it("opens Claude browser sign-in first and keeps token paste collapsed", async () => {
     const { engine, request } = engineOf({
       "models.authStatus": { providers: PROVIDERS, providerCapabilities: [...CAPS, { provider: "anthropic", apiKeySupported: true, loginOptions: [{ id: "anthropic/claude-browser", kind: "oauth", label: "Sign in with Claude" }] }] },
@@ -190,7 +224,7 @@ describe("Settings › Accounts", () => {
 
   it("the wizard lists every service the engine can sign in to, by kind", () => {
     const services = servicesOf(CAPS, PROVIDERS, { prepareOptions: [{ id: "ollama", label: "Ollama" }] });
-    expect(services.map((s) => [s.kind, s.name, s.signedIn])).toEqual([["local", "Ollama", 0], ["plan", "ChatGPT", 2], ["key", "Mistral", 0]]);
+    expect(services.map((s) => [s.kind, s.name, s.signedIn])).toEqual([["local", "Ollama", 0], ["plan", "ChatGPT", 2], ["key", "ChatGPT", 0], ["key", "Mistral", 0]]);
     expect(services.find((s) => s.name === "ChatGPT")?.keySupported).toBe(true);
   });
 

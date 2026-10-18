@@ -2,8 +2,9 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { Walkthrough } from "./Walkthrough";
-import { coachCardPlace, type Box } from "./walkthrough-place";
+import { coachCardPlace, overlaps as boxesOverlap, type Box } from "./walkthrough-place";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -45,6 +46,11 @@ describe("coach card placement", () => {
     expect(overlaps(place, sidebar)).toBe(false);
     expect(place.left).toBeGreaterThanOrEqual(sidebar.left + sidebar.width);
   });
+
+  it("treats a control inside the sidebar as overlapping it", () => {
+    expect(boxesOverlap({ top: 120, left: 16, width: 248, height: 48 }, sidebar)).toBe(true);
+    expect(boxesOverlap({ top: 0, left: 292, width: 340, height: 220 }, sidebar)).toBe(false);
+  });
 });
 
 describe("walkthrough card", () => {
@@ -54,6 +60,51 @@ describe("walkthrough card", () => {
     root = undefined;
     document.body.innerHTML = "";
     vi.unstubAllGlobals();
+  });
+
+  it("does not dim the sidebar when the control sits inside it", async () => {
+    vi.stubGlobal("innerWidth", 1440);
+    vi.stubGlobal("innerHeight", 900);
+    vi.stubGlobal("requestAnimationFrame", (fn: FrameRequestCallback) => { fn(0); return 0; });
+    const side = document.body.appendChild(document.createElement("aside"));
+    side.dataset.testid = "sidebar";
+    const target = document.body.appendChild(document.createElement("button"));
+    target.dataset.testid = "conversation-list";
+    const sideRect = new DOMRect(0, 0, 280, 900);
+    const targetRect = new DOMRect(16, 120, 248, 48);
+    vi.spyOn(side, "getBoundingClientRect").mockReturnValue(sideRect);
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(targetRect);
+    vi.spyOn(target, "getClientRects").mockReturnValue([targetRect] as unknown as DOMRectList);
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root?.render(<Walkthrough defaultName="Sapling" onClose={() => {}} cards={[{ title: "Your Trunks", text: "Each Trunk is one job.", target: "[data-testid=conversation-list]" }]} />));
+    const spot = host.querySelector<HTMLElement>(".tour-spot")!;
+    const drawn = host.querySelector<HTMLElement>(".tour-card")!;
+    expect(spot.classList.contains("none")).toBe(true);
+    expect(overlaps({
+      top: parseFloat(drawn.style.top) || 0,
+      left: parseFloat(drawn.style.left) || 0,
+      maxWidth: parseFloat(drawn.style.maxWidth) || 340,
+    }, sidebar)).toBe(false);
+  });
+
+  it("clears the overlay and touring class when skipped", async () => {
+    vi.stubGlobal("innerWidth", 1440);
+    vi.stubGlobal("innerHeight", 900);
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root?.render(<Walkthrough defaultName="Sapling" onClose={() => {}} cards={[{ title: "Your Trunks", text: "Each Trunk is one job.", target: null }]} />));
+    expect(document.documentElement.classList.contains("touring")).toBe(true);
+    expect(host.querySelector('[data-testid="walkthrough"]')).not.toBeNull();
+    await act(async () => (host.querySelector('[data-testid="tour-end"]') as HTMLButtonElement).click());
+    expect(host.querySelector('[data-testid="walkthrough"]')).toBeNull();
+    expect(document.documentElement.classList.contains("touring")).toBe(false);
+  });
+
+  it("a card with no control does not throw a dim overlay over the sidebar", () => {
+    const css = readFileSync("src/shell/walkthrough.css", "utf8");
+    const none = css.slice(css.indexOf(".tour-spot.none"), css.indexOf("}", css.indexOf(".tour-spot.none")));
+    expect(none).toContain("box-shadow: none");
   });
 
   it("draws the card beside the sidebar instead of on the control it points at", async () => {

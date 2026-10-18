@@ -1,14 +1,14 @@
 // No raw engine error at Regular (Private #1089). A failure's words reach a person through plainError(): at Regular,
-// words that PR 1700's friendlyError() would replace (a dump, JSON, an HTTP status, an id, a code, a method name), or that
+// words that issue 1700's friendlyError() would replace (a dump, JSON, an HTTP status, an id, a code, a method name), or that
 // carry a stack, an error class or errno code (CodexNotInstalledError, ECONNREFUSED), a file path or an engine sentence
 // such as `unknown method: logbook.status`, read as one plain sentence with one next step chosen from the map below,
-// and any web or computer address reads as plainAddresses() (PR 1706) says. Words that are already plain pass through
+// and any web or computer address reads as plainAddresses() (#1706) says. Words that are already plain pass through
 // unchanged, with the lead a screen put before the raw part (`Couldn't change Lockdown: …`). Advanced and Technical keep
 // the exact words.
 //
 // plainText() is for words that are not always a failure (a toast like "Copied.", a banner title, the line above the
 // page). friendlyError() reads a one-word or numbered line as raw, so those use the strong markers only, which include
-// PR 1700's id shapes (a UUID, a long hex id, a named id, a session key with or without `agent:`).
+// issue 1700's id shapes (a UUID, a long hex id, a named id, a session key with or without `agent:`).
 import { FRIENDLY_ERROR, friendlyError } from "../connect/friendly-error";
 import { plainAddresses } from "./plain-address";
 
@@ -48,7 +48,7 @@ const RAW: RegExp[] = [
   /\b(?:INVALID_REQUEST|UNAVAILABLE|NOT_FOUND|NOT_PAIRED|FORBIDDEN|UNAUTHORIZED|INTERNAL(?:_ERROR)?|ERR_[A-Z0-9_]+|[A-Z]{2,}_[A-Z0-9_]{2,})\b/, // a gateway or library code
   /\bunknown (?:method|agent id)\b|\bmethod not found\b/i, // an engine refusal in its own words
   /\b(?:sessions|chat|agents|config|models|plugins|skills|cron|memory|logbook|doctor|exec|node|tts|rooms|contacts|users|usage|backup|browser|computer|system|update|gateway|channels|canopy|projects|themes|wizard|portal|branch)\.[a-z][A-Za-z]*(?:\.[a-z][A-Za-z]*)*\b/, // an engine method name
-  /(?:^|[\s'"(=:])(?:~|\/(?:home|Users|root|opt|var|tmp|usr|etc|private|mnt|workspace|app|srv|snap|run|Library|Applications|Volumes))\/\S*/, // a file path
+  /(?:^|[\s\x27\x22(=:])(?:~|\/(?:home|Users|root|opt|var|tmp|usr|etc|private|mnt|workspace|app|srv|snap|run|Library|Applications|Volumes))\/\S*/, // a file path
   /\b[A-Za-z]:\\[^\s]*/, // a Windows path
   /^\s*[{[]|\{\s*"\w+"\s*:/, // JSON
   /\b(?:HTTP|status(?: code)?)\s*[:=]?\s*[1-5]\d{2}\b/i, // an HTTP status
@@ -67,7 +67,7 @@ export function looksRaw(text: string): boolean {
   return RAW.some((re) => re.test(text));
 }
 
-/** True when a failure's words are raw: PR 1700's friendlyError() would replace them, or they carry a strong marker. */
+/** True when a failure's words are raw: issue 1700's friendlyError() would replace them, or they carry a strong marker. */
 export function looksRawError(text: string): boolean {
   const trimmed = text.trim();
   return Boolean(trimmed) && (looksRaw(trimmed) || friendlyError(trimmed) === FRIENDLY_ERROR);
@@ -86,22 +86,10 @@ export function errorWords(error: unknown): string {
   return String(error ?? "");
 }
 
-/** The bare label a runtime puts before a message ("Error: ", "Uncaught Error: "): not a screen's own lead. A named class
- *  (TypeError, CodexNotInstalledError) is already raw, so it never reads as a lead and its name still picks the sentence. */
-const ERROR_LABEL = /^(?:Uncaught\s+)?Error\s*:\s*/;
-
 function plainWords(text: string, raw: (words: string) => boolean): string {
   const trimmed = text.trim();
   // Plain words keep their spacing: a status line can be built from parts ("Branch ", version, " keeps running.").
   if (!raw(trimmed)) return plainAddresses(text, true);
-  // "Error: <words>" never shows its label: plain words after it stay, raw ones read as the sentence for them below.
-  const label = ERROR_LABEL.exec(trimmed);
-  const rest = label ? trimmed.slice(label[0].length).trim() : "";
-  if (label && rest) {
-    if (!raw(rest)) return plainAddresses(rest, true);
-    const inner = plainWords(rest, raw);
-    return inner === PLAIN_FAILURE ? sentenceFor(trimmed) : inner;
-  }
   // A plain sentence that ends with the raw words in brackets keeps the sentence: "… full. (QuotaExceededError: …)".
   const bracket = /^(.*?[.!?])\s*\(([^]*)\)\.?$/.exec(trimmed);
   if (bracket && !raw(bracket[1])) return plainAddresses(bracket[1], true);
@@ -117,10 +105,14 @@ function plainWords(text: string, raw: (words: string) => boolean): string {
   return sentenceFor(trimmed);
 }
 
+/** A leading `Error:` (any case, with the spaces after it) is how a thrown message prints, not the failure's words. */
+const ERROR_LEAD = /^\s*error:\s*/i;
+
 /** A failure as a person reads it: at Regular one plain sentence and a next step, at Advanced and Technical the exact
  *  words. `always` skips the level check (tests, and callers that know). */
 export function plainError(error: unknown, always = false): string {
-  const words = errorWords(error);
+  const exact = errorWords(error);
+  const words = exact.replace(ERROR_LEAD, "") || exact;
   if (!words || (!always && !atRegular())) return words;
   return plainWords(words, looksRawError);
 }

@@ -17,6 +17,7 @@ import { KindHead, TechnicalOnly } from "./kind-chrome";
 import { AgentsTeamwork } from "./agent-teamwork";
 import { useToolSetup, type Setup } from "./tool-setup";
 import type { ToolsCtx } from "./tools";
+import { plainError } from "../../shell/plain-error";
 
 // ---- Command-line tools ----
 type Bin = { name: string; present: boolean; skills: string[] };
@@ -58,7 +59,7 @@ export function Clis({ ctx }: { ctx: ToolsCtx }) {
       <TechnicalOnly><div className="cz-found"><b>Found on this computer</b><Grey reason="Finding programs on this computer comes in a later update.">Allow</Grey></div></TechnicalOnly>
       <div className="cz-path"><input id="cz-clis-path" className="inp" value={path} onChange={e => setPath(e.target.value)} placeholder="Or add one by its path, like /usr/local/bin/rg" aria-label="Add a command-line tool by its path" />
         <button type="button" className="btn sm" disabled={busy || !path.trim()} onClick={() => void add()}>Add</button></div>
-      {error && <p role="alert" className="cz-error">{error}</p>}
+      {error && <p role="alert" className="cz-error">{plainError(error)}</p>}
       <Status {...ctx.skills} />
       {ctx.skills.data != null && !shown.length && <EmptyLine icon={<Glyph name="terminal" size={22} />}>Nothing here for this Trunk.</EmptyLine>}
       {shown.map(b => <button key={b.name} type="button" className="t9-item" aria-current={b.name === bin?.name} onClick={() => setChosen(b.name)}>
@@ -114,7 +115,7 @@ export function AddTool({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
     <p className="cz-hint" title="The engine lists this computer's programs only to its own computers.">Finding programs needs the engine’s program list for this window.</p>
     <label className="cz-field"><span>Or add one by its path</span><span className="cz-row"><input className="inp" value={path} onChange={e => setPath(e.target.value)} placeholder="/usr/local/bin/gh" /><button type="button" className="btn sm" disabled={busy || !path.trim()} onClick={() => void allow()}>Allow</button></span></label>
     {added.map(a => <p key={a} role="status" className="cz-hint">{a} is allowed.</p>)}
-    {error && <p role="alert" className="cz-error">{error}</p>}
+    {error && <p role="alert" className="cz-error">{plainError(error)}</p>}
   </Dialog>;
 }
 
@@ -148,7 +149,7 @@ export function Agents({ ctx }: { ctx: ToolsCtx }) {
     {agent ? <div className="t9-detail" data-testid="agent-detail">
       <div className="t9-dh"><span className="cz-tile big"><Glyph name="terminal" /></span><span className="grow"><b>{agent.name}</b><small>ACP · {agent.runtimeId}{agent.installation === "missing" ? " · not installed on this computer" : ""}</small></span>
         <Switch label={`${agent.name} on or off`} on={agent.enabled} onChange={on => { void ctx.config.patch({ plugins: { entries: { acpx: { config: { nativeAgents: { [agent.id]: on } } } } } }).then(ok => ok && ctx.agents.reload()); }} /></div>
-      {ctx.config.writeError && <p role="alert" className="cz-error">{ctx.config.writeError}</p>}
+      {ctx.config.writeError && <p role="alert" className="cz-error">{plainError(ctx.config.writeError)}</p>}
       <TechnicalOnly><Sec title="Who may use it"><div className="cz-line"><span>Which Trunks may use it</span><Grey reason="Choosing which Trunks may talk to an agent comes in a later update.">Choose</Grey></div></Sec>
       <Sec title="What it may do"><div className="cz-line"><span>What it may be asked</span><Grey reason="Choosing what an agent may be asked comes in a later update.">Choose</Grey></div></Sec></TechnicalOnly>
       <Sec title="Set it up"><h3 className="cz-h3">Rules</h3><dl className="cz-kv cz-box"><dt>Runs as</dt><dd><code>{agent.runtimeId}</code></dd></dl>
@@ -190,7 +191,7 @@ export function AddAgent({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
         <label>Name<input aria-label="Agent name" value={name} onChange={event => setName(event.target.value)} /></label>
         <label>Address<input aria-label="Agent address" type="url" value={url} onChange={event => setUrl(event.target.value)} /></label>
         <label>Outbound token<input aria-label="Outbound token" type="password" value={outboundToken} onChange={event => setOutboundToken(event.target.value)} /></label>
-        {(error || ctx.config.writeError) && <p role="alert" className="cz-error">{error || ctx.config.writeError}</p>}</div>
+        {(error || ctx.config.writeError) && <p role="alert" className="cz-error">{plainError(error || ctx.config.writeError)}</p>}</div>
       <div className="cz-prov"><b>Branch on another computer</b><small>Pair → Let it in → Name it → What it may do, with a check code.</small><button type="button" className="btn sm" onClick={() => setLinkBranch(true)}>Connect</button></div>
       <TechnicalOnly><div className="cz-prov"><b>An agent on your KeepOak computer</b><small>Hermes Agent or another Branch.</small><Grey reason="Connecting to keepoak.com from here comes in a later update.">Connect</Grey></div></TechnicalOnly>
     </div>
@@ -267,7 +268,7 @@ export function Toolsets({ ctx }: { ctx: ToolsCtx }) {
         <small>Set by: {profile.by} · {on} of {total} tools on</small>
         <span className="cz-acts"><button type="button" className="btn ghost sm" disabled={ctx.config.busy} onClick={() => setAll(true)}>Turn all on</button><button type="button" className="btn ghost sm" disabled={ctx.config.busy} onClick={() => setAll(false)}>Turn all off</button></span>
       </div>
-      {ctx.config.writeError && <p role="alert" className="cz-error">{ctx.config.writeError}</p>}
+      {ctx.config.writeError && <p role="alert" className="cz-error">{plainError(ctx.config.writeError)}</p>}
       <Status {...ctx.catalog} />
       {ctx.catalog.data != null && !groups.length && <EmptyLine icon={<Glyph name="grid" size={22} />}>No toolsets yet.</EmptyLine>}
       {madeByTrunks.length > 0 && <h3 className="cz-h3">Made by Trunks</h3>}
@@ -295,7 +296,7 @@ function ToolsetDetail({ ctx, group, need }: { ctx: ToolsCtx; group: Group; need
     <div className="t9-dh"><span className="cz-tile big"><Glyph name="grid" /></span><span className="grow"><b>{group.label}</b><small>Comes with Branch · {group.tools.length} {group.tools.length === 1 ? "tool" : "tools"}</small></span>
       <Switch label={`${group.label} on or off`} on={groupOn(ctx, group, ctx.whose)} onChange={on => setGroup(ctx.whose, on)} /></div>
     {need && <div className="cz-line" data-testid="toolset-setup"><span><NeedsSetup setup={need} /> {need.why}</span><SetUp ctx={ctx} setup={need} label={group.label} /></div>}
-    {ctx.config.writeError && <p role="alert" className="cz-error">{ctx.config.writeError}</p>}
+    {ctx.config.writeError && <p role="alert" className="cz-error">{plainError(ctx.config.writeError)}</p>}
     {!ctx.whose && <Sec title="Which Trunks may use it"><WhoChips trunks={ctx.trunks} may={id => groupOn(ctx, group, id)} toggle={ctx.config.busy ? undefined : (id, on) => setGroup(id, on)} reason="Saving…" /></Sec>}
     <Sec title="In this toolset">{group.tools.map(t => <PermRow key={t.id} name={shows(ctx.level, "technical") ? t.id : t.label} value={deny.includes(t.id) ? "never" : "allowed"} disabled={ctx.config.busy} change={v => setTool(t.id, v === "never")} />)}</Sec>
   </div>;

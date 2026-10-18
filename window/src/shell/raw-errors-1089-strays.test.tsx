@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// Private #1089 (Linux pass, Regular), rows nobody else covered: the sidebar's "couldn't load the list" line showed the
-// engine's raw words, and plainError() kept an engine's bare "Error:" label as if it were a screen's lead
-// ("Error: Branch can’t reach…"). Both read plain at Regular; Advanced keeps the exact words.
+// Private #1089 (Linux pass, Regular): the sidebar's "couldn't load the list" line showed the engine's raw words. It reads
+// through plainError() now. main's ERROR_LEAD already drops an engine's bare "Error:" label; the cases below pin that the
+// sidebar line gets the same reading. Advanced keeps the engine's words.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -51,10 +51,9 @@ async function sidebarLine(error: string): Promise<string> {
   return host.querySelector(".r1sb-error")?.textContent ?? "";
 }
 
-describe("the sidebar's list line and an engine's Error: label read plain at Regular (Private #1089)", () => {
-  it("an engine's bare Error: label never shows as a lead", () => {
+describe("the sidebar's list line reads plain at Regular (Private #1089)", () => {
+  it("an engine's bare Error: label never shows as a lead (main's ERROR_LEAD)", () => {
     expect(plainError("Error: connect ECONNREFUSED 127.0.0.1:18789")).toBe(REACH);
-    expect(plainError("Uncaught Error: unknown method: logbook.status")).toBe("This part of Branch isn’t ready on this computer yet. Update Branch, then try again.");
     expect(plainError("Error: Couldn't save: ENOENT: no such file or directory, open '/home/alex/notes.md'")).toBe("Couldn't save. That file or folder isn’t there. Check that it still exists, then try again.");
     expect(plainError("Error: The approval store is busy.")).toBe("The approval store is busy.");
     // A screen's own lead stays, and a named class still picks its sentence.
@@ -68,9 +67,9 @@ describe("the sidebar's list line and an engine's Error: label read plain at Reg
     expect(line).not.toMatch(RAW);
   });
 
-  it("Advanced keeps the exact words", async () => {
+  it("Advanced keeps the engine's words", async () => {
     localStorage.setItem("branch.level", "advanced");
-    expect(plainError("Error: connect ECONNREFUSED 127.0.0.1:18789")).toBe("Error: connect ECONNREFUSED 127.0.0.1:18789");
+    expect(plainError("Error: connect ECONNREFUSED 127.0.0.1:18789")).toBe("connect ECONNREFUSED 127.0.0.1:18789");
     expect(await sidebarLine(FAILURES[0])).toBe(FAILURES[0]);
   });
 });

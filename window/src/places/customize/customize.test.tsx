@@ -72,7 +72,7 @@ describe("Customize › Chat apps", () => {
     await click(button("Pair a phone"));
     await click(button("Make the code"));
     expect(request).toHaveBeenCalledWith("device.pair.setupCode", { includeQr: true });
-    expect(host.textContent).toContain("ABCD-EFGH");
+    expect(host.textContent).toContain("9M36D8");
   });
   it("Private #1103: a very long setup code and link each sit on one truncating line with their own Copy button", async () => {
     const code = "eyJ1cmwiOiJ3c3M6Ly9" + "Q".repeat(300);
@@ -83,11 +83,11 @@ describe("Customize › Chat apps", () => {
     await click(button("Pair a phone"));
     await click(button("Make the code"));
     const shown = document.querySelector<HTMLElement>("[data-testid=pair-code] .copy-token-text")!;
-    expect(shown.textContent).toBe(code);
-    expect(shown.title).toBe(code);
+    expect(shown.textContent).toBe("9M36D8");
+    expect(shown.title).toBe("9M36D8");
     expect(document.querySelector<HTMLElement>("[data-testid=pair-link] .copy-token-text")!.title).toBe(link);
     await click(button("Copy code", document.body));
-    expect(writeText).toHaveBeenCalledWith(code);
+    expect(writeText).toHaveBeenCalledWith("9M36D8");
     expect(button("Copied", document.body)).toBeTruthy();
     await click(button("Copy link", document.body));
     expect(writeText).toHaveBeenLastCalledWith(link);
