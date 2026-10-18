@@ -1,6 +1,6 @@
 r50 More, Profile, Home, Inbox, Chats, Thread, Settings and Android Voice parity shots.
 
-Preview: Android phone frame in the r50 preview (design/spec-v23, surface switcher set to Android).
+Preview: Android phone frame in the r50 preview (historical `design/spec-v23`, surface switcher set to Android). Not the current parity target; that is the owner's latest Branch App Preview, kept privately.
 App: Expo web / react-native-web render of the matching screen at Regular or Advanced, 393×852 viewport.
 
 Settings files:
