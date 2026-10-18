@@ -37,6 +37,70 @@ it("is skippable, and the card set ends in the message box", async () => {
   expect(document.activeElement).toBe(document.querySelector('[data-testid="composer"]'));
 });
 
+it("after setup, each intro card marks a visible part of the conversation, or sits centred with no spotlight", async () => {
+  vi.stubGlobal("innerWidth", 1440);
+  vi.stubGlobal("innerHeight", 900);
+  document.body.querySelector("nav")?.remove();
+  document.body.querySelector(".r1sb-seed")?.remove();
+  document.body.querySelector(".r1sb-me")?.remove();
+  document.body.querySelector('[data-testid="composer"]')?.remove();
+  const side = document.body.appendChild(document.createElement("aside"));
+  side.className = "r1-sidebar";
+  side.innerHTML = '<section class="r1sb-sec" data-section="trunks"></section><button class="r1sb-seed"></button><button class="r1sb-me"></button>';
+  const header = document.body.appendChild(document.createElement("header"));
+  header.className = "r1-header";
+  const pill = header.appendChild(document.createElement("button"));
+  pill.className = "g-pill";
+  pill.textContent = "Sapling";
+  const composer = document.body.appendChild(document.createElement("textarea"));
+  composer.dataset.testid = "composer";
+  const box = (el: Element, x: number, y: number, w: number, h: number) => {
+    const r = new DOMRect(x, y, w, h);
+    vi.spyOn(el, "getBoundingClientRect").mockReturnValue(r);
+    vi.spyOn(el, "getClientRects").mockReturnValue([r] as unknown as DOMRectList);
+    return r;
+  };
+  const sidebar = box(side, 0, 0, 280, 900);
+  box(side.querySelector(".r1sb-sec")!, 12, 120, 248, 180);
+  box(side.querySelector(".r1sb-seed")!, 16, 760, 200, 36);
+  box(side.querySelector(".r1sb-me")!, 16, 820, 36, 36);
+  const trunk = box(pill, 640, 18, 160, 36);
+  box(composer, 360, 780, 640, 44);
+  const hits = (a: { left: number; top: number; width: number; height: number }, b: { left: number; top: number; width: number; height: number }) =>
+    a.left < b.left + b.width && a.left + a.width > b.left && a.top < b.top + b.height && a.top + a.height > b.top;
+  const spot = () => document.querySelector<HTMLElement>(".tour-spot")!;
+  const place = () => {
+    const node = card();
+    return { left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: Math.min(340, parseFloat(node.style.maxWidth) || 340), height: 220 };
+  };
+  await act(async () => root.render(<R1Tour kind="intro" defaultName="Sapling" onClose={() => {}} />));
+  const marked = spot();
+  const hole = { left: parseFloat(marked.style.left), top: parseFloat(marked.style.top), width: parseFloat(marked.style.width), height: parseFloat(marked.style.height) };
+  expect(marked.classList.contains("none")).toBe(false);
+  expect(hits(hole, trunk)).toBe(true);
+  expect(hits(hole, sidebar)).toBe(false);
+  expect(hits(place(), sidebar)).toBe(false);
+  await click(button("Next"));
+  expect(card().querySelector("b")?.textContent).toBe("Customize & Seedbank");
+  expect(spot().classList.contains("none")).toBe(true);
+  const customize = place();
+  expect(customize.left).toBeGreaterThan(sidebar.left + sidebar.width + 80);
+  expect(customize.top).toBeGreaterThan(280);
+  expect(customize.top).toBeLessThan(420);
+  expect(hits(customize, sidebar)).toBe(false);
+  await click(button("Next"));
+  expect(card().querySelector("b")?.textContent).toBe("Settings, Guide & help");
+  expect(card().querySelector("p")?.textContent).toBe("Everything has a home in Settings, and search finds anything. The Guide, in the menu on your name, takes you on the full tour any time.");
+  expect(spot().classList.contains("none")).toBe(true);
+  const guide = place();
+  expect(guide.left).toBeGreaterThan(sidebar.left + sidebar.width + 80);
+  expect(guide.top).toBeGreaterThan(280);
+  expect(guide.top).toBeLessThan(420);
+  expect(hits(guide, sidebar)).toBe(false);
+  // Your Trunks marks the name in the header. The other two have nothing on the conversation to mark.
+  expect(INTRO_CARDS.map((c) => c.target)).toEqual([".r1-header .g-pill", null, null]);
+});
+
 it("the full tour counts only the cards that can show in this window, so the counter never jumps", async () => {
   const all = tourCards("Sapling");
   const shown = all.filter((c) => canShow(c));
