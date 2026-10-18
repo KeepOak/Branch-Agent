@@ -4,6 +4,7 @@
 // a finished run reads the history again, and every reconnect reads it again, so the engine's copy always wins.
 import { attachmentSendLabel, toChatAttachments, type DraftFile } from './attachments';
 import type { EngineLink } from '../pairing/pairingSession';
+import { plainError } from '../ui/plainError';
 
 export type ChatItem =
   | { kind: 'user'; key: string; text: string; at: number }
@@ -171,7 +172,7 @@ export function phaseLabel(phase: string | null): string {
 }
 
 function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return plainError(error);
 }
 
 export class Conversation {

@@ -4,6 +4,7 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { Card, Screen } from '../ui/Screen';
+import { plainError } from '../ui/plainError';
 
 /**
  * The computer this phone paired with stopped accepting it, and the engine's client has stopped asking.
@@ -38,7 +39,7 @@ export function RefusedScreen({
       <Card>
         <ThemedText variant="headline">Your computer stopped letting this phone in</ThemedText>
         <ThemedText variant="body" style={{ marginTop: space.xs }} testID="refused-message">
-          {state.message}
+          {plainError(state.message)}
         </ThemedText>
         <ThemedText variant="subhead" tone="ink2" style={{ marginTop: space.sm }}>
           {`Computer: ${gatewayHost(state.url)}`}
