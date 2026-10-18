@@ -102,9 +102,22 @@ export function signUpdateFile(file, env = process.env, sign = defaultSign) {
   return sig;
 }
 
+/** Windows `execFileSync` cannot launch `.cmd`/`.bat` without `cmd.exe` (EINVAL). */
+export function signingToolInvocation(binary, args, platform = process.platform) {
+  if (platform === "win32" && /\.(cmd|bat)$/i.test(binary)) {
+    return { file: "cmd.exe", args: ["/d", "/c", binary, ...args] };
+  }
+  return { file: binary, args };
+}
+
+function execSigningTool(binary, args, options) {
+  const invocation = signingToolInvocation(binary, args);
+  return execFileSync(invocation.file, invocation.args, options);
+}
+
 function defaultSign(file, env) {
   const binary = env.CARGO_TAURI ?? "cargo-tauri";
-  execFileSync(binary, ["signer", "sign", file], {
+  execSigningTool(binary, ["signer", "sign", file], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...env, TAURI_SIGNING_PRIVATE_KEY: env.TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD: env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || "" },
@@ -128,7 +141,7 @@ function defaultVerify(file, sig, pubkey) {
   try {
     writeFileSync(pubFile, Buffer.from(pubkey, "base64"), { mode: 0o600 });
     writeFileSync(minisig, Buffer.from(readFileSync(sig, "utf8").trim(), "base64"), { mode: 0o600 });
-    execFileSync(binary, ["-Vm", file, "-x", minisig, "-p", pubFile], {
+    execSigningTool(binary, ["-Vm", file, "-x", minisig, "-p", pubFile], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 30_000,
