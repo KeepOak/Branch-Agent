@@ -507,6 +507,7 @@ function Shell({
             online={state.online}
             link={session}
             pending={approvals.pending}
+            level={showLevel}
             onAnswer={(id, decision) => void inbox.answer(id, decision)}
             onClose={toChat}
             onEnd={toChat}

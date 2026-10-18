@@ -145,6 +145,8 @@
     { "id": "voice-speaker", "title": "Speaker on Voice", "file": "src/screens/VoiceScreen.tsx", "marker": "testID=\"voice-speaker\"" },
     { "id": "voice-end", "title": "End Voice", "file": "src/screens/VoiceScreen.tsx", "marker": "testID=\"voice-end\"" },
     { "id": "voice-keyboard", "title": "Keyboard from Voice", "file": "src/screens/VoiceScreen.tsx", "marker": "testID=\"voice-keyboard\"" },
+    { "id": "voice-more", "title": "Voice menu at Advanced", "file": "src/screens/VoiceScreen.tsx", "marker": "testID=\"voice-more\"" },
+    { "id": "voice-choice", "title": "Oak and Birch voice picker", "file": "src/screens/VoiceScreen.tsx", "marker": "voice-choice-" },
     { "id": "approvals-allow", "title": "Allow an approval", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID={`allow-${approval.id}`}" },
     { "id": "approvals-deny", "title": "Deny an approval", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID={`deny-${approval.id}`}" },
     { "id": "approvals-always", "title": "Always allow", "file": "src/screens/ApprovalsScreen.tsx", "marker": "Always allow" },
