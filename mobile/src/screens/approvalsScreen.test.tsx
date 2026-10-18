@@ -8,8 +8,10 @@ import { approvalsAt, fixtureApprovals } from '../testing/approvalFixtures';
 import { FIXTURE_NOW, fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier';
 import { createFakeSession } from '../testing/fakeSession';
+import { fadeCue, overflowAt, queryFadeCue } from '../testing/scrollFadeEvents';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { space } from '../theme/tokens';
+import { LIST_FADE } from '../ui/scrollEdges';
 import { ApprovalsScreen } from './ApprovalsScreen';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 4000 });
@@ -136,6 +138,18 @@ describe('needs you screen', () => {
     expect(ids[0]).toBe('approval-plugin:mail-1');
   });
 
+  it('hides the Inbox scrollbar and fades the bottom when more sits below the fold', async () => {
+    await renderScreen();
+    const scroll = screen.getByTestId('inbox-scroll');
+    expect(scroll).toHaveProp('showsVerticalScrollIndicator', false);
+    expect(scroll).toHaveProp('showsHorizontalScrollIndicator', false);
+    expect(StyleSheet.flatten(scroll.props.contentContainerStyle).paddingBottom).toBeGreaterThanOrEqual(LIST_FADE);
+    expect(queryFadeCue('inbox-scroll-fade-end')).toBeNull();
+    await overflowAt('inbox-scroll', 'y', 1400, 640);
+    expect(fadeCue('inbox-scroll-fade-end')).toBeOnTheScreen();
+    expect(screen.getByTestId('approval-plugin:mail-1')).toBeOnTheScreen();
+  });
+
   it('groups Needs you by Trunk, then Finished, then History', async () => {
     const answered: Answered[] = [{ ...exec, outcome: 'allowed', always: false, by: 'phone', at: FIXTURE_NOW }];
     await renderScreen({ answered });
@@ -181,7 +195,7 @@ describe('needs you screen', () => {
     const bar = StyleSheet.flatten(screen.getByTestId('places-bar').props.style);
     expect(bar.position).not.toBe('absolute');
     const scroll = StyleSheet.flatten(screen.getByTestId('inbox-scroll').props.contentContainerStyle);
-    expect(scroll.paddingBottom).toBe(space.xl);
+    expect(scroll.paddingBottom).toBe(space.xl + LIST_FADE);
     await fireEvent.press(screen.getByTestId('place-home'));
     await fireEvent.press(screen.getByTestId('place-chats'));
     await fireEvent.press(screen.getByTestId('place-more'));
