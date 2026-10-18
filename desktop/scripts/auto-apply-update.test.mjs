@@ -310,15 +310,14 @@ test("crash recovery holding the update lock postpones auto-apply without turnin
 });
 
 test("a lock that appears after the idle gap still postpones before restart (Private #1054)", async () => {
-  let now = 0; let holder; let probes = 0;
+  let now = 0; let holder; let seize = false;
   const restarts = []; const logs = [];
   const controller = createAutoApplyUpdate({
     pendingVersion: async () => "0.4.4-build-next",
     enabled: () => true,
     busy: () => holder,
     activity: async () => {
-      probes++;
-      if (probes >= 3) holder = "replace the staged update";
+      if (seize) holder = "replace the staged update";
       return { activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false };
     },
     restart: async version => { restarts.push(version); },
@@ -327,11 +326,13 @@ test("a lock that appears after the idle gap still postpones before restart (Pri
   });
   await controller.tick();
   assert.ok(logs.some(line => line.includes("idle hold for 0.4.4-build-next")));
+  seize = true;
   now += AUTO_APPLY_GAP_MS;
   await controller.tick();
   assert.deepEqual(restarts, [], "applied while the lock was held");
   assert.ok(logs.some(line => line.includes("waiting; replace the staged update in progress; 0.4.4-build-next applies once it ends")), logs.join("\n"));
   assert.ok(logs.every(line => !line.includes("off")), logs.join("\n"));
+  seize = false;
   holder = undefined;
   await controller.tick(); now += AUTO_APPLY_GAP_MS; await controller.tick();
   assert.deepEqual(restarts, ["0.4.4-build-next"]);
