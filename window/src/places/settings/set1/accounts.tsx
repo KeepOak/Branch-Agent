@@ -158,7 +158,7 @@ export function AccountsPage(props: SettingsPageProps) {
           <Btn key={id} onClick={() => setAdd({ provider: id })}>Sign in to {serviceName(id)}</Btn>
         ))}
       </div> : null}
-      <CodingApps engine={props.engine} />
+      <CodingApps engine={props.engine} caps={caps} onSignIn={(provider) => setAdd({ provider })} />
       <WhenOneRunsOut engine={props.engine} />
       <OwnAccounts engine={props.engine} />
       <GitHubSettings engine={props.engine} />

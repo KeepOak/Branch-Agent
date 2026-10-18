@@ -11,10 +11,13 @@ import { APPS, CodingApps } from "./coding-apps";
 const NETWORK_ERROR = "connect ECONNREFUSED";
 const NETWORK_REASON = "Branch can’t reach its engine right now. It keeps trying, so try again in a moment.";
 const REPORT = { saving: () => undefined, saved: () => undefined, failed: () => undefined };
+const CAPS = ["anthropic", "openai-codex", "google-gemini-cli"].map((provider) => ({ provider, loginOptions: [{ kind: "oauth" }] }));
+const signIn = vi.fn();
 let host: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
+  signIn.mockClear();
   localStorage.clear();
   host = document.createElement("div");
   document.body.append(host);
@@ -41,11 +44,11 @@ function engineWith(error: string) {
   return { engine, request, recover: () => { failed = false; } };
 }
 
-async function show(engine: WindowEngine, level: "regular" | "advanced" | "technical" = "regular") {
+async function show(engine: WindowEngine, level: "regular" | "advanced" | "technical" = "regular", caps = CAPS) {
   localStorage.setItem("branch.level", level);
   await act(async () => root.render(
     <KitProvider level={level === "regular" ? 0 : level === "advanced" ? 1 : 2} report={REPORT} scope={null}>
-      <CodingApps engine={engine} />
+      <CodingApps engine={engine} caps={caps} onSignIn={signIn} />
     </KitProvider>,
   ));
 }
@@ -83,9 +86,35 @@ describe("Coding-app rows that could not check", () => {
     await show(engine);
     for (const { name } of APPS) action(name, "Sign in again");
     request.mockClear();
-    await act(async () => action("Codex", "Sign in again").click());
+    for (const { name } of APPS) await act(async () => action(name, "Sign in again").click());
+    expect(signIn.mock.calls).toEqual([["anthropic"], ["openai-codex"], ["google-gemini-cli"]]);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("gives guidance without a pretend sign-in when the app has no sign-in path", async () => {
+    const { engine, request, recover } = engineWith("Token expired");
+    await show(engine, "regular", []);
+    for (const { name } of APPS) {
+      expect(row(name).querySelector("small")?.textContent).toBe(`Open ${name} on this computer and sign in there, then choose Check again.`);
+      expect([...row(name).querySelectorAll("button")].filter((button) => button.getAttribute("role") !== "switch")).toHaveLength(0);
+    }
+    request.mockClear();
+    recover();
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Check again")!.click());
     expect(request.mock.calls.map(([method]) => method)).toEqual(["branch.setup.detect"]);
-    for (const { name } of APPS) action(name, "Sign in again");
+    expect(signIn).not.toHaveBeenCalled();
+    for (const { name } of APPS) expect(row(name).textContent).toContain("Models ready");
+  });
+
+  it("only offers the sign-in path for the matching app, not key-only capabilities", async () => {
+    const { engine } = engineWith("HTTP 401");
+    await show(engine, "regular", [CAPS[1], { provider: "google", loginOptions: [{ kind: "api-key" }] }]);
+    await act(async () => action("Codex", "Sign in again").click());
+    expect(signIn).toHaveBeenCalledExactlyOnceWith("openai-codex");
+    for (const name of ["Claude Code", "Gemini CLI"]) {
+      expect(row(name).textContent).toContain(`Open ${name} on this computer and sign in there`);
+      expect(row(name).textContent).not.toContain("Sign in again");
+    }
   });
 
   it.each(["advanced", "technical"] as const)("keeps the raw reason for %s and formats it again at draw time", async (level) => {
