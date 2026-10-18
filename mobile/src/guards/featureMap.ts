@@ -13,7 +13,7 @@ export type FeatureRoute = {
   file: string;
   /** Must still appear in that screen file. */
   marker: string;
-  /** Must still appear in App.tsx so the route is wired. */
+  /** JSX render marker that must still appear in App.tsx (not a type or import). */
   route: string;
 };
 

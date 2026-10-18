@@ -5,98 +5,98 @@
       "title": "Welcome",
       "file": "src/screens/WelcomeScreen.tsx",
       "marker": "export function WelcomeScreen",
-      "route": "type Route = 'welcome' | 'scan' | 'code'"
+      "route": "<WelcomeScreen"
     },
     {
       "id": "scan",
       "title": "Scan pairing code",
       "file": "src/screens/ScanScreen.tsx",
       "marker": "export function ScanScreen",
-      "route": "route === 'scan'"
+      "route": "<ScanScreen"
     },
     {
       "id": "code",
       "title": "Enter pairing code",
       "file": "src/screens/EnterCodeScreen.tsx",
       "marker": "export function EnterCodeScreen",
-      "route": "route === 'code'"
+      "route": "<EnterCodeScreen"
     },
     {
       "id": "pairing-approval",
       "title": "Waiting for computer approval",
       "file": "src/screens/ApprovalScreen.tsx",
       "marker": "export function ApprovalScreen",
-      "route": "from './src/screens/ApprovalScreen'"
+      "route": "<ApprovalScreen "
     },
     {
       "id": "pairing-refused",
       "title": "Pairing refused",
       "file": "src/screens/RefusedScreen.tsx",
       "marker": "export function RefusedScreen",
-      "route": "from './src/screens/RefusedScreen'"
+      "route": "<RefusedScreen"
     },
     {
       "id": "chats",
       "title": "Chats",
       "file": "src/screens/ChatsScreen.tsx",
       "marker": "export function ChatsScreen",
-      "route": "{ name: 'chats' }"
+      "route": "<ChatsScreen"
     },
     {
       "id": "computers",
       "title": "Computers",
       "file": "src/screens/ComputersScreen.tsx",
       "marker": "export function ComputersScreen",
-      "route": "{ name: 'computers' }"
+      "route": "<ComputersScreen"
     },
     {
       "id": "take-control",
       "title": "Take control",
       "file": "src/screens/TakeControlScreen.tsx",
       "marker": "export function TakeControlScreen",
-      "route": "name: 'take-control'"
+      "route": "<TakeControlScreen"
     },
     {
       "id": "computer",
       "title": "Your computer",
       "file": "src/screens/PairedScreen.tsx",
       "marker": "export function PairedScreen",
-      "route": "name: 'computer'"
+      "route": "<PairedScreen"
     },
     {
       "id": "agents",
       "title": "Agents",
       "file": "src/screens/AgentsScreen.tsx",
       "marker": "export function AgentsScreen",
-      "route": "{ name: 'agents' }"
+      "route": "<AgentsScreen"
     },
     {
       "id": "chat",
       "title": "Chat",
       "file": "src/screens/ChatScreen.tsx",
       "marker": "export function ChatScreen",
-      "route": "{ name: 'chat'; row: ChatRow }"
+      "route": "<OpenChat"
     },
     {
       "id": "voice",
       "title": "Voice",
       "file": "src/screens/VoiceScreen.tsx",
       "marker": "export function VoiceScreen",
-      "route": "{ name: 'voice'; row: ChatRow }"
+      "route": "<VoiceScreen"
     },
     {
       "id": "approvals",
-      "title": "Approvals",
+      "title": "Inbox",
       "file": "src/screens/ApprovalsScreen.tsx",
       "marker": "export function ApprovalsScreen",
-      "route": "name: 'approvals'"
+      "route": "<ApprovalsScreen"
     },
     {
       "id": "settings",
       "title": "Settings",
       "file": "src/screens/SettingsScreen.tsx",
       "marker": "export function SettingsScreen",
-      "route": "{ name: 'settings' }"
+      "route": "<SettingsScreen"
     }
   ],
   "features": [
@@ -132,8 +132,11 @@
     { "id": "approvals-deny", "title": "Deny an approval", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID={`deny-${approval.id}`}" },
     { "id": "approvals-always", "title": "Always allow", "file": "src/screens/ApprovalsScreen.tsx", "marker": "Always allow" },
     { "id": "approvals-look", "title": "Look at the chat first", "file": "src/screens/ApprovalsScreen.tsx", "marker": "Look at the chat first" },
-    { "id": "approvals-notifications", "title": "Notification permission on Approvals", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID=\"notifications-card\"" },
+    { "id": "approvals-notifications", "title": "Notification permission on Inbox", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID=\"notifications-card\"" },
     { "id": "approvals-test", "title": "Send a test approval", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID=\"test-approval-card\"" },
+    { "id": "inbox-tabs", "title": "Inbox tabs (Needs you, Finished, History)", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID=\"inbox-tabs\"" },
+    { "id": "inbox-finished", "title": "Finished tab", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID=\"inbox-finished\"" },
+    { "id": "inbox-history", "title": "History tab", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID=\"inbox-history\"" },
     { "id": "agents-list", "title": "Agents list", "file": "src/screens/AgentsScreen.tsx", "marker": "testID=\"agents-screen\"" },
     { "id": "computers-list", "title": "Computers list", "file": "src/screens/ComputersScreen.tsx", "marker": "testID=\"computers-screen\"" },
     { "id": "this-phone", "title": "This phone from Computers", "file": "src/screens/ComputersScreen.tsx", "marker": "testID=\"this-phone\"" },

@@ -35,11 +35,11 @@ describe('mobile feature map', () => {
       title: 'Voice',
       file: 'src/screens/VoiceScreen.tsx',
       marker: 'export function VoiceScreen',
-      route: "{ name: 'voice'; row: ChatRow }",
+      route: '<VoiceScreen',
     };
     const files = new Map([
       ['src/screens/VoiceScreen.tsx', 'export function VoiceScreen\n'],
-      ['App.tsx', "type PairedRoute =\n  | { name: 'voice'; row: ChatRow }\n"],
+      ['App.tsx', "<VoiceScreen row={row} />\n"],
     ]);
     const read = (file: string) => files.get(file) ?? null;
     expect(missingRoutes([route], read, files.get('App.tsx') ?? null)).toEqual([]);
@@ -47,9 +47,26 @@ describe('mobile feature map', () => {
       'voice: removed file src/screens/VoiceScreen.tsx (Voice)',
     ]);
     expect(missingRoutes([route], read, null)).toEqual(['voice: App.tsx is gone (Voice)']);
-    expect(missingRoutes([route], read, "type PairedRoute = { name: 'chats' }")).toEqual([
+    expect(missingRoutes([route], read, "type PairedRoute =\n  | { name: 'voice'; row: ChatRow }\n")).toEqual([
       'voice: removed route in App.tsx (Voice)',
     ]);
+    expect(missingRoutes([route], read, "import { VoiceScreen } from './src/screens/VoiceScreen';")).toEqual([
+      'voice: removed route in App.tsx (Voice)',
+    ]);
+    const pairing = {
+      id: 'pairing-approval',
+      title: 'Waiting for computer approval',
+      file: 'src/screens/ApprovalScreen.tsx',
+      marker: 'export function ApprovalScreen',
+      route: '<ApprovalScreen ',
+    };
+    expect(
+      missingRoutes(
+        [pairing],
+        () => 'export function ApprovalScreen\n',
+        "<ApprovalsScreen snapshot={approvals} />\n",
+      ),
+    ).toEqual(['pairing-approval: removed route in App.tsx (Waiting for computer approval)']);
   });
 
   it('fails if a listed route disappears', () => {
