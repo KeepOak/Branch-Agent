@@ -126,7 +126,7 @@ describe('one chat, live', () => {
     await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
     engine.failMethod('chat.send', 'The engine is busy');
     await chat.send('Book the table');
-    expect(chat.getSnapshot().sends).toMatchObject([{ id: 'run-1', state: 'failed', error: 'The engine is busy' }]);
+    expect(chat.getSnapshot().sends).toMatchObject([{ id: 'run-1', state: 'failed', error: "Can't reach Branch. Check your connection." }]);
     expect(chat.getSnapshot().live).toBeNull();
     engine.failMethod('chat.send', null);
     await chat.retry('run-1');
@@ -357,7 +357,7 @@ describe('one chat, around the reply', () => {
     const { session, engine } = await paired();
     engine.failMethod('chat.history', 'history unavailable');
     const chat = open(session);
-    await eventually(() => expect(chat.getSnapshot().error).toBe('history unavailable'));
+    await eventually(() => expect(chat.getSnapshot().error).toBe("Can't reach Branch. Check your connection."));
     expect(chat.getSnapshot().loaded).toBe(false);
     engine.failMethod('chat.history', null);
     await chat.load();

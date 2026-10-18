@@ -8,10 +8,18 @@ export const CERT_MISMATCH_MESSAGE =
 export const CERT_UNREADABLE_MESSAGE =
   'Branch couldn’t read the update’s signing certificate.';
 
+/** An update check that already has plain words for the screen. */
+export class VerifyError extends Error {
+  constructor(readonly userText: string) {
+    super(userText);
+    this.name = 'VerifyError';
+  }
+}
+
 /** First 64-char hex in a `.sha256` sidecar (`<hex>  filename`, `SHA256 (…) = <hex>`, or the hex alone). */
 export function parseSha256Asset(text: string): string {
   const match = HEX64.exec(text);
-  if (!match) throw new Error(CHECKSUM_MISSING_MESSAGE);
+  if (!match) throw new VerifyError(CHECKSUM_MISSING_MESSAGE);
   return match[0].toLowerCase();
 }
 
@@ -20,7 +28,7 @@ export function checksumMatches(actual: string, expected: string): boolean {
 }
 
 export function assertChecksum(actual: string, expected: string): void {
-  if (!checksumMatches(actual, expected)) throw new Error(CHECKSUM_MISMATCH_MESSAGE);
+  if (!checksumMatches(actual, expected)) throw new VerifyError(CHECKSUM_MISMATCH_MESSAGE);
 }
 
 /** True when both sides are exactly one cert and those fingerprints are the same. */
@@ -32,5 +40,5 @@ export function certsMatch(installed: string[], apk: string[]): boolean {
 }
 
 export function assertCertsMatch(installed: string[], apk: string[]): void {
-  if (!certsMatch(installed, apk)) throw new Error(CERT_MISMATCH_MESSAGE);
+  if (!certsMatch(installed, apk)) throw new VerifyError(CERT_MISMATCH_MESSAGE);
 }

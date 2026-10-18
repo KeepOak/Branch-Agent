@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { FlatList, Modal, Platform, Pressable, RefreshControl, ScrollView, TextInput, View } from 'react-native';
+import { Modal, Platform, Pressable, RefreshControl, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { matchingActions, runAction, type ActionHit } from '../chats/chatActions';
 import {
@@ -24,6 +24,7 @@ import { laterUpdate, levelRank, type ExperienceLevel } from '../settings/level'
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { NoScrollbarFlatList as FlatList, NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { statusBandHeight } from '../ui/PlacesBar';
 import { plainError } from '../ui/plainError';
@@ -253,7 +254,6 @@ function FilterChips({
     <View testID="chat-filters" style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, marginHorizontal: -layout.screenInset, paddingRight: layout.screenInset }}>
       <ScrollView
         horizontal
-        showsHorizontalScrollIndicator={false}
         accessibilityRole="tablist"
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: layout.screenInset, gap: space.sm }}
@@ -322,7 +322,6 @@ function PinnedRow({ pins, onOpen }: { pins: ChatRow[]; onOpen?: (row: ChatRow) 
       testID="pinned-trunks"
       accessibilityRole="list"
       accessibilityLabel="Pinned Trunks"
-      showsHorizontalScrollIndicator={false}
       style={{ marginHorizontal: -layout.screenInset }}
       contentContainerStyle={{ paddingHorizontal: layout.screenInset, paddingTop: space.sm, paddingBottom: space.md, gap: 14 }}
     >
@@ -861,8 +860,6 @@ export function ChatsScreen({
         contentContainerStyle={{ paddingBottom: insets.bottom + space.xl + bottomExtra + (android && onNewChat ? 72 : 0) }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
-        showsHorizontalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={color.ink3} colors={[color.ink]} />}
       />
       {android && onNewChat ? newChat : null}

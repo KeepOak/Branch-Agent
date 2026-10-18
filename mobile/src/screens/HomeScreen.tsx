@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Platform, Pressable, ScrollView, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LIST_FAILED_MESSAGE, type ApprovalDecision, type ApprovalsSnapshot } from '../approvals/approvals';
 import type { ChatListSnapshot, ChatRow } from '../chats/chatList';
@@ -20,6 +20,7 @@ import {
 } from '../home/homeModel';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
+import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { PlacesBar, placesBarHeight, statusBandHeight, type PhoneLook, type Place } from '../ui/PlacesBar';
 import { Avatar } from './ChatsScreen';

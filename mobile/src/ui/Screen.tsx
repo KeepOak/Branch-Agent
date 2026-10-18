@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeProvider';
+import { NoScrollbarScrollView as ScrollView } from './NoScrollbar';
 
 /**
  * A screen with the iOS large-title margins: scrolling content above, actions pinned to the bottom. With

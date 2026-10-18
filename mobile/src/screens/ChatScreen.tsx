@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
-import { FlatList, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   canSendAttachments,
@@ -14,11 +14,12 @@ import {
   type PickedFile,
 } from '../chat/attachments';
 import { phaseLabel, type ChatItem, type Conversation, type ConversationSnapshot, type LiveReply, type OwnSend } from '../chat/conversation';
-import { expoPickers, type AttachmentPickers } from '../chat/pickAttachment';
+import { attachFailure, expoPickers, type AttachmentPickers } from '../chat/pickAttachment';
 import type { ChatRow } from '../chats/chatList';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { NoScrollbarFlatList as FlatList, NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { plainError } from '../ui/plainError';
 import { Avatar } from './ChatsScreen';
@@ -134,7 +135,7 @@ function SendLine({ send, onRetry }: { send: OwnSend; onRetry: (id: string) => v
       {send.state === 'failed' ? (
         <Pressable testID={`retry-${send.id}`} accessibilityRole="button" onPress={() => onRetry(send.id)} hitSlop={8} style={({ pressed }) => ({ minHeight: 32, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
           <ThemedText variant="footnote" tone="bad">
-            Not sent: {send.error ? plainError(send.error) : 'your computer didn’t answer'}. Tap to try again.
+            Not sent: {send.error ?? 'your computer didn’t answer.'} Tap to try again.
           </ThemedText>
         </Pressable>
       ) : send.state === 'sending' ? (
@@ -289,7 +290,7 @@ export function ChatScreen({
       const picked = kind === 'photo' ? await pickers.takePhoto(policy) : kind === 'library' ? await pickers.pickPhoto(policy) : await pickers.pickFile(policy);
       addPicked(picked);
     } catch (error) {
-      setPickError(plainError(error, 'Couldn’t attach that file.'));
+      setPickError(attachFailure(error));
     } finally {
       setPreparing((n) => n - 1);
     }
@@ -392,7 +393,7 @@ export function ChatScreen({
       <View style={{ flex: 1 }}>{body}</View>
       <View style={{ paddingHorizontal: layout.screenInset - space.xs, paddingTop: space.sm, paddingBottom: insets.bottom + space.sm, borderTopWidth: layout.hairline, borderTopColor: color.line, backgroundColor: color.bg, gap: space.sm }}>
         {files.length || preparing ? (
-          <ScrollView horizontal testID="file-chips" showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.xs, alignItems: 'center' }}>
+          <ScrollView horizontal testID="file-chips" contentContainerStyle={{ gap: space.xs, alignItems: 'center' }}>
             {preparing ? (
               <ThemedText testID="preparing-attachments" variant="caption1" tone="ink3">
                 {preparingLine(preparing)}

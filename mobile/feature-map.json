@@ -1,0 +1,170 @@
+{
+  "routes": [
+    {
+      "id": "home",
+      "title": "Home",
+      "file": "src/screens/HomeScreen.tsx",
+      "marker": "export function HomeScreen",
+      "route": "<HomeScreen"
+    },
+    {
+      "id": "scan",
+      "title": "Scan pairing code",
+      "file": "src/screens/ScanScreen.tsx",
+      "marker": "export function ScanScreen",
+      "route": "<ScanScreen"
+    },
+    {
+      "id": "code",
+      "title": "Enter pairing code",
+      "file": "src/screens/EnterCodeScreen.tsx",
+      "marker": "export function EnterCodeScreen",
+      "route": "<EnterCodeScreen"
+    },
+    {
+      "id": "pairing-approval",
+      "title": "Waiting for computer approval",
+      "file": "src/screens/ApprovalScreen.tsx",
+      "marker": "export function ApprovalScreen",
+      "route": "<ApprovalScreen "
+    },
+    {
+      "id": "pairing-refused",
+      "title": "Pairing refused",
+      "file": "src/screens/RefusedScreen.tsx",
+      "marker": "export function RefusedScreen",
+      "route": "<RefusedScreen"
+    },
+    {
+      "id": "chats",
+      "title": "Chats",
+      "file": "src/screens/ChatsScreen.tsx",
+      "marker": "export function ChatsScreen",
+      "route": "<ChatsScreen"
+    },
+    {
+      "id": "computers",
+      "title": "Computers",
+      "file": "src/screens/ComputersScreen.tsx",
+      "marker": "export function ComputersScreen",
+      "route": "<ComputersScreen"
+    },
+    {
+      "id": "take-control",
+      "title": "Take control",
+      "file": "src/screens/TakeControlScreen.tsx",
+      "marker": "export function TakeControlScreen",
+      "route": "<TakeControlScreen"
+    },
+    {
+      "id": "computer",
+      "title": "Your computer",
+      "file": "src/screens/PairedScreen.tsx",
+      "marker": "export function PairedScreen",
+      "route": "<PairedScreen"
+    },
+    {
+      "id": "agents",
+      "title": "Agents",
+      "file": "src/screens/AgentsScreen.tsx",
+      "marker": "export function AgentsScreen",
+      "route": "<AgentsScreen"
+    },
+    {
+      "id": "chat",
+      "title": "Chat",
+      "file": "src/screens/ChatScreen.tsx",
+      "marker": "export function ChatScreen",
+      "route": "<OpenChat"
+    },
+    {
+      "id": "voice",
+      "title": "Voice",
+      "file": "src/screens/VoiceScreen.tsx",
+      "marker": "export function VoiceScreen",
+      "route": "<VoiceScreen"
+    },
+    {
+      "id": "approvals",
+      "title": "Inbox",
+      "file": "src/screens/ApprovalsScreen.tsx",
+      "marker": "export function ApprovalsScreen",
+      "route": "<ApprovalsScreen"
+    },
+    {
+      "id": "settings",
+      "title": "Settings",
+      "file": "src/screens/SettingsScreen.tsx",
+      "marker": "export function SettingsScreen",
+      "route": "<SettingsScreen"
+    },
+    {
+      "id": "more",
+      "title": "More",
+      "file": "src/screens/MoreScreen.tsx",
+      "marker": "export function MoreScreen",
+      "route": "<MoreScreen"
+    },
+    {
+      "id": "profile",
+      "title": "Profile",
+      "file": "src/screens/ProfileScreen.tsx",
+      "marker": "export function ProfileScreen",
+      "route": "<ProfileScreen"
+    }
+  ],
+  "features": [
+    { "id": "home-screen", "title": "Home", "file": "src/screens/HomeScreen.tsx", "marker": "testID=\"home-screen\"" },
+    { "id": "pair-button", "title": "Pair with your computer", "file": "src/screens/WelcomeScreen.tsx", "marker": "testID=\"pair-button\"" },
+    { "id": "scan-camera", "title": "QR camera scan", "file": "src/screens/ScanScreen.tsx", "marker": "testID=\"scan-screen\"" },
+    { "id": "enter-code-input", "title": "Paste pairing code", "file": "src/screens/pairingFields.tsx", "marker": "testID=\"code-input\"" },
+    { "id": "unpair", "title": "Unpair this phone", "file": "src/screens/PairedScreen.tsx", "marker": "testID=\"unpair\"" },
+    { "id": "pair-again", "title": "Pair again after refuse", "file": "src/screens/RefusedScreen.tsx", "marker": "testID=\"pair-again\"" },
+    { "id": "chats-search", "title": "Search chats and messages", "file": "src/screens/ChatsScreen.tsx", "marker": "testID=\"chat-search\"" },
+    { "id": "chats-filters", "title": "Chat filter chips", "file": "src/screens/ChatsScreen.tsx", "marker": "testID=\"chat-filters\"" },
+    { "id": "chats-approvals-button", "title": "Approvals from Chats", "file": "src/screens/ChatsScreen.tsx", "marker": "testID=\"approvals-button\"" },
+    { "id": "chats-settings-button", "title": "Settings from Chats", "file": "src/screens/ChatsScreen.tsx", "marker": "testID=\"settings-button\"" },
+    { "id": "chats-agents-button", "title": "Agents from Chats", "file": "src/screens/ChatsScreen.tsx", "marker": "testID=\"agents-button\"" },
+    { "id": "chats-computers-button", "title": "Computers from Chats", "file": "src/screens/ChatsScreen.tsx", "marker": "testID=\"computer-button\"" },
+    { "id": "chats-needs-you", "title": "Needs your yes banner", "file": "src/screens/ChatsScreen.tsx", "marker": "testID=\"needs-you-banner\"" },
+    { "id": "chats-new", "title": "New chat", "file": "src/screens/ChatsScreen.tsx", "marker": "testID=\"chats-new\"" },
+    { "id": "chats-pinned", "title": "Pinned Trunks", "file": "src/screens/ChatsScreen.tsx", "marker": "testID=\"pinned-trunks\"" },
+    { "id": "chats-filter-sheet", "title": "Filter and sort", "file": "src/screens/ChatsScreen.tsx", "marker": "testID=\"chats-filter\"" },
+    { "id": "chats-offline", "title": "Chats offline banner", "file": "src/screens/ChatsScreen.tsx", "marker": "testID=\"chats-offline\"" },
+    { "id": "chat-messages", "title": "Live chat transcript", "file": "src/screens/ChatScreen.tsx", "marker": "testID=\"chat-messages\"" },
+    { "id": "chat-send", "title": "Send a message", "file": "src/screens/ChatScreen.tsx", "marker": "testID=\"send\"" },
+    { "id": "chat-stop", "title": "Stop a live reply", "file": "src/screens/ChatScreen.tsx", "marker": "testID=\"stop-reply\"" },
+    { "id": "chat-attach", "title": "Attach a photo or file", "file": "src/screens/ChatScreen.tsx", "marker": "testID=\"attach\"" },
+    { "id": "chat-talk", "title": "Talk from Chat", "file": "src/screens/ChatScreen.tsx", "marker": "testID=\"chat-talk\"" },
+    { "id": "chat-work-line", "title": "Folded work line", "file": "src/screens/ChatScreen.tsx", "marker": "export function workedFor" },
+    { "id": "chat-composer", "title": "Composer", "file": "src/screens/ChatScreen.tsx", "marker": "testID=\"composer\"" },
+    { "id": "voice-screen", "title": "Voice call", "file": "src/screens/VoiceScreen.tsx", "marker": "testID=\"voice-screen\"" },
+    { "id": "voice-mute", "title": "Mute on Voice", "file": "src/screens/VoiceScreen.tsx", "marker": "testID=\"voice-mute\"" },
+    { "id": "voice-speaker", "title": "Speaker on Voice", "file": "src/screens/VoiceScreen.tsx", "marker": "testID=\"voice-speaker\"" },
+    { "id": "voice-end", "title": "End Voice", "file": "src/screens/VoiceScreen.tsx", "marker": "testID=\"voice-end\"" },
+    { "id": "voice-keyboard", "title": "Keyboard from Voice", "file": "src/screens/VoiceScreen.tsx", "marker": "testID=\"voice-keyboard\"" },
+    { "id": "approvals-allow", "title": "Allow an approval", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID={`allow-${approval.id}`}" },
+    { "id": "approvals-deny", "title": "Deny an approval", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID={`deny-${approval.id}`}" },
+    { "id": "approvals-always", "title": "Always allow", "file": "src/screens/ApprovalsScreen.tsx", "marker": "Always allow" },
+    { "id": "approvals-look", "title": "Look at the chat first", "file": "src/screens/ApprovalsScreen.tsx", "marker": "Look at the chat first" },
+    { "id": "approvals-notifications", "title": "Notification permission on Inbox", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID=\"notifications-card\"" },
+    { "id": "approvals-test", "title": "Send a test approval", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID=\"test-approval-card\"" },
+    { "id": "inbox-tabs", "title": "Inbox tabs (Needs you, Finished, History)", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID=\"inbox-tabs\"" },
+    { "id": "inbox-finished", "title": "Finished tab", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID=\"inbox-finished\"" },
+    { "id": "inbox-history", "title": "History tab", "file": "src/screens/ApprovalsScreen.tsx", "marker": "testID=\"inbox-history\"" },
+    { "id": "agents-list", "title": "Agents list", "file": "src/screens/AgentsScreen.tsx", "marker": "testID=\"agents-screen\"" },
+    { "id": "computers-list", "title": "Computers list", "file": "src/screens/ComputersScreen.tsx", "marker": "testID=\"computers-screen\"" },
+    { "id": "this-phone", "title": "This phone from Computers", "file": "src/screens/ComputersScreen.tsx", "marker": "testID=\"this-phone\"" },
+    { "id": "take-over", "title": "Take over a computer", "file": "src/screens/TakeControlScreen.tsx", "marker": "testID=\"take-over\"" },
+    { "id": "hand-back", "title": "Hand back the computer", "file": "src/screens/TakeControlScreen.tsx", "marker": "testID=\"hand-back\"" },
+    { "id": "more-screen", "title": "More", "file": "src/screens/MoreScreen.tsx", "marker": "testID=\"more-screen\"" },
+    { "id": "profile-screen", "title": "Profile", "file": "src/screens/ProfileScreen.tsx", "marker": "testID=\"profile-screen\"" },
+    { "id": "settings-appearance", "title": "Appearance (system, light, dark)", "file": "src/screens/SettingsScreen.tsx", "marker": "testID=\"theme-picker\"" },
+    { "id": "settings-notifications", "title": "Notification settings", "file": "src/screens/SettingsScreen.tsx", "marker": "testID=\"settings-notifications\"" },
+    { "id": "settings-about", "title": "About this app", "file": "src/screens/SettingsScreen.tsx", "marker": "testID=\"about-card\"" },
+    { "id": "offline-banner", "title": "Offline reconnect banner", "file": "src/ui/OfflineBanner.tsx", "marker": "export function OfflineBanner" },
+    { "id": "update-banner", "title": "APK update banner", "file": "src/updates/UpdateBanner.tsx", "marker": "export function UpdateBanner" },
+    { "id": "settings-update-card", "title": "Settings update card", "file": "src/updates/UpdateBanner.tsx", "marker": "export function SettingsUpdateCard" },
+    { "id": "experience-level", "title": "Regular / Advanced / Technical level", "file": "src/settings/level.ts", "marker": "export function laterUpdate" }
+  ]
+}
