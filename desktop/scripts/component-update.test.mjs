@@ -1346,11 +1346,14 @@ test("a timed-out check that ignores abort cannot overwrite a later staged updat
   const { cfg, request } = context;
   await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
   const newer = await newerRelease(context);
+  const pending = async () => (await source.readComponentUpdateStatus(cfg)).componentsPendingVersion;
+  let released = false;
   let releaseHold = () => {};
   const hold = new Promise(resolve => { releaseHold = resolve; });
   let signalHeld = () => {};
   const held = new Promise(resolve => { signalHeld = resolve; });
   let heldOnce = false;
+  let secondFetchedDuringHold = false;
   source.setStageHoldForTests(async (holdCfg) => {
     if (holdCfg !== cfg) return;
     if (heldOnce) return;
@@ -1358,6 +1361,10 @@ test("a timed-out check that ignores abort cannot overwrite a later staged updat
     signalHeld();
     await hold;
   });
+  const secondRequest = async (url) => {
+    if (!released) secondFetchedDuringHold = true;
+    return newer.request(url);
+  };
   try {
     const first = source.refreshComponentUpdate(cfg, request, { timeoutMs: 1000, underSwapGuard: freeGuard });
     const reached = await Promise.race([
@@ -1366,15 +1373,37 @@ test("a timed-out check that ignores abort cannot overwrite a later staged updat
     ]);
     assert.equal(reached, "held", "first check must finish downloading before the timeout");
     await assert.rejects(first, /timed out/);
-    const second = source.refreshComponentUpdate(cfg, newer.request, { timeoutMs: 15_000, underSwapGuard: freeGuard });
-    // Without the in-flight gate, 400ms is enough for check 2 to stage 0.4.4 on loopback while check 1 is still held.
-    await new Promise(resolve => setTimeout(resolve, 400));
+    const second = source.refreshComponentUpdate(cfg, secondRequest, { timeoutMs: 15_000, underSwapGuard: freeGuard });
+    // Concurrent path (old refreshes map): check 2 stages 0.4.4 while check 1 is still held.
+    // Wait path (fix): check 2 does not fetch until check 1 is released, so this poll times out.
+    const until = Date.now() + 1000;
+    let stagedDuringHold = false;
+    while (Date.now() < until) {
+      if (await pending() === "0.4.4") { stagedDuringHold = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    // Check 2 started during the hold but has not published yet: wait for that publish before letting check 1 finish.
+    if (secondFetchedDuringHold && !stagedDuringHold) {
+      const extra = Date.now() + 5000;
+      while (Date.now() < extra) {
+        if (await pending() === "0.4.4") { stagedDuringHold = true; break; }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    }
+    if (stagedDuringHold) await second;
+    released = true;
     releaseHold();
-    assert.equal(await second, true);
-    await new Promise(resolve => setTimeout(resolve, 300));
-    assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.4");
+    assert.equal(await second, true, "check 2 must stage its update");
+    // Check 1's ignored-abort publish runs after the hold; wait long enough for it to land if it will overwrite.
+    const lateUntil = Date.now() + 500;
+    while (Date.now() < lateUntil) await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal(await pending(), "0.4.4", "check 2's staged update must remain after check 1 finishes");
+    if (!stagedDuringHold) {
+      assert.equal(secondFetchedDuringHold, false, "check 2 waited for check 1 to settle before staging");
+    }
   } finally {
     source.setStageHoldForTests(undefined);
+    released = true;
     releaseHold();
   }
 }));
