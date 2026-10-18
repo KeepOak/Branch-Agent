@@ -127,7 +127,7 @@ async function listInstaller(assets, target, { name = installerNames[target], pl
   await alterProof(assets, proof => { proof.installers = { ...proof.installers, [name]: digest }; }, target);
 }
 
-test("each platform's release proof lists its installer by name, size and sha256", () => fixture(async ({ root, assets }) => {
+test("each platform's release proof lists its installer and its stable download by name, size and sha256", () => fixture(async ({ root, assets }) => {
   const built = join(root, "installers"); await mkdir(built);
   for (const target of ["win32-x64", "darwin-arm64", "linux-x64"]) {
     const file = join(built, installerNames[target]);
@@ -135,13 +135,20 @@ test("each platform's release proof lists its installer by name, size and sha256
     await inventoryModule.recordInstaller(assets, target, file);
     const proof = JSON.parse(await readFile(join(assets, `release-proof-${target}.json`), "utf8"));
     assert.deepEqual(proof.installers, { [installerNames[target]]: { sha256: (await fileDigest(file)).sha256, bytes: Buffer.byteLength(`${target} installer bytes`) } });
+    const alias = inventoryModule.publicDownloadName(target);
+    const aliasFile = join(built, alias);
+    await writeFile(aliasFile, `${target} download bytes`);
+    await inventoryModule.recordInstaller(assets, target, aliasFile);
     await cp(file, join(assets, installerNames[target]));
+    await cp(aliasFile, join(assets, alias));
   }
   const result = await verifyReleaseDirectory(assets, commit, version);
-  assert.equal(Object.keys(result.inventory).length, 19);
-  // Linux ships the AppImage; its proof lists it beside the tar.gz bootstrap package the updater uses.
+  assert.equal(Object.keys(result.inventory).length, 22);
+  // Linux keeps the AppImage the updater fetches, and also ships the stable .deb download.
   assert(Object.hasOwn(result.inventory, `Branch-Agent-${version}-linux-x64.AppImage`));
+  assert(Object.hasOwn(result.inventory, "Branch-Linux.deb"));
   for (const name of Object.values(installerNames)) assert.deepEqual(result.inventory[name], await fileDigest(join(assets, name)));
+  for (const name of Object.values(inventoryModule.PUBLIC_DOWNLOAD_NAMES)) assert.deepEqual(result.inventory[name], await fileDigest(join(assets, name)));
   const stray = join(built, "Branch-Agent-other.exe"); await writeFile(stray, "x");
   await assert.rejects(inventoryModule.recordInstaller(assets, "win32-x64", stray), /Unexpected installer/);
 }));

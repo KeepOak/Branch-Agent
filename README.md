@@ -1,10 +1,20 @@
 # Branch Agent
 
+## Download
+
+- [Windows](https://github.com/KeepOak/Branch-Agent/releases/latest/download/Branch-Setup-Windows.exe)
+- [macOS](https://github.com/KeepOak/Branch-Agent/releases/latest/download/Branch-macOS.dmg)
+- [Linux (.deb)](https://github.com/KeepOak/Branch-Agent/releases/latest/download/Branch-Linux.deb)
+
+Open the Windows setup, or open the macOS disk image and drag Branch Agent to Applications. On Linux, install the package (`sudo apt install ./Branch-Linux.deb`); it adds an application-menu entry. The build isn't signed yet, so macOS needs right-click → Open on first launch and Windows SmartScreen needs More info → Run anyway.
+
 Branch Agent is a desktop AI assistant from [KeepOak](https://keepoak.com). This repository contains the engine, React window, Electron desktop launcher, and product artwork.
 
 This is a source snapshot under active development. A feature being present in source does not establish that every workflow is complete or released.
 
-## Install
+## Advanced
+
+### Install
 
 macOS (Apple silicon) and Linux (x64):
 
