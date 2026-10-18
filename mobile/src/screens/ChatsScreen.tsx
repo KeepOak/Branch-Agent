@@ -503,7 +503,6 @@ export function ChatsScreen({
   onNeedsYou,
   now: fixedNow,
   updateBanner,
-  bottomExtra = 0,
   level = 'regular',
   look = Platform.OS === 'ios' ? 'ios' : 'android',
   bottomExtra = 0,
@@ -517,8 +516,6 @@ export function ChatsScreen({
   onAgents?: () => void;
   /** Opens Settings. */
   onSettings?: () => void;
-  /** Extra space above a places bar so the last row is not hidden. */
-  bottomExtra?: number;
   /** Opens More. */
   onMore?: () => void;
   /** Opens a chat. */
