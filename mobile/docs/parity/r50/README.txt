@@ -1,7 +1,9 @@
-r50 More and Profile parity shots at 393x852.
+r50 More, Profile, Home, Inbox, Chats, Thread and Settings parity shots.
 
-Preview: Android phone frame in the r50 preview (surface switcher set to Android).
-App: Expo web / react-native-web render of MoreScreen and ProfileScreen at Advanced, same 393x852 viewport.
+Preview: Android phone frame in the r50 preview (design/spec-v23, surface switcher set to Android).
+App: Expo web / react-native-web render of the matching screen at Regular or Advanced, 393×852 viewport.
 
-more-side-by-side.png and profile-side-by-side.png put those two frames next to each other.
-app-more-setup.png is the same More screen after scrolling so Setup (Settings, widgets) is in view.
+Settings files:
+- preview-android-settings-{light,dark}.png and preview-android-settings-advanced-{light,dark}.png
+- app-android-settings-{light,dark}.png and app-android-settings-advanced-{light,dark}.png
+- side-by-side-settings-{light,dark}.png and side-by-side-settings-advanced-light.png

@@ -3,7 +3,7 @@
 // Secrets stay in the environment; this file never writes a keystore or password.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -73,6 +73,13 @@ export const ANDROID_RELEASE_CONCURRENCY_GROUP = 'mobile-android-release';
 export const PUSH_RELEASE_WAIT = {
   intervalMs: 10_000,
   maxAttempts: 3,
+};
+// gh release upload looks up GET /releases/tags/{tag} and can 404 for GITHUB_TOKEN
+// even when listing the same published release works. Retry, then attach by id.
+export const RELEASE_LOOKUP_WAIT = {
+  intervalMs: 2_000,
+  maxAttempts: 5,
+  backoff: 2,
 };
 // workflow_dispatch run 38919220548 shipped versionCode 5. Later builds must be newer.
 export const LAST_SHIPPED_VERSION_CODE = 5;
@@ -163,28 +170,211 @@ export function missingPushReleaseVersionError(sha) {
   return `Cannot construct vX.Y.Z-build-${id} without a dotted source version`;
 }
 
+export function ghCommandText(error) {
+  return [
+    error?.stderr,
+    error?.message,
+    error?.stdout,
+    error,
+  ].map((part) => String(part ?? '')).join('\n');
+}
+
+export function githubReleaseLookupMiss(error) {
+  const text = ghCommandText(error);
+  return /release not found/i.test(text)
+    || /HTTP 404/.test(text)
+    || /Not Found \(HTTP 404\)/i.test(text);
+}
+
+export function flattenReleasePages(parsed) {
+  if (!Array.isArray(parsed)) return null;
+  if (parsed.length && Array.isArray(parsed[0])) return parsed.flat();
+  return parsed;
+}
+
 export function listGithubReleases({
   repository = process.env.GITHUB_REPOSITORY,
   run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+  paginate = false,
 } = {}) {
   if (!String(repository ?? '').trim()) {
     throw new Error('GITHUB_REPOSITORY is required to list releases');
   }
-  const raw = run('gh', ['api', `repos/${repository}/releases?per_page=100`]);
-  const releases = JSON.parse(raw);
+  const args = paginate
+    ? ['api', `repos/${repository}/releases`, '--paginate', '--slurp']
+    : ['api', `repos/${repository}/releases?per_page=100`];
+  const releases = flattenReleasePages(JSON.parse(run('gh', args)));
   if (!Array.isArray(releases)) {
     throw new Error('GitHub releases response was not a list');
   }
   return releases;
 }
 
+export function pickReleaseFromList(releases, tag) {
+  const t = String(tag ?? '').trim();
+  if (!t) return null;
+  return (releases ?? []).find((item) => String(item?.tag_name ?? '').trim() === t) ?? null;
+}
+
+export function readGithubReleaseByTag({
+  tag,
+  repository = process.env.GITHUB_REPOSITORY,
+  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+} = {}) {
+  const repo = String(repository ?? '').trim();
+  const t = String(tag ?? '').trim();
+  if (!repo) throw new Error('GITHUB_REPOSITORY is required to find a release');
+  if (!t) throw new Error('A release tag is required to attach APK assets');
+  const release = JSON.parse(run('gh', ['api', `repos/${repo}/releases/tags/${t}`]));
+  if (!release || typeof release !== 'object' || Array.isArray(release)) {
+    throw new Error('GitHub release response was not an object');
+  }
+  return release;
+}
+
+export function releaseLookupDelayMs(attempt, wait = RELEASE_LOOKUP_WAIT) {
+  const n = Math.max(1, Number(attempt) || 1);
+  const base = Number(wait?.intervalMs) || 0;
+  const factor = Number(wait?.backoff) || 1;
+  return base * (factor ** (n - 1));
+}
+
+export function missingAttachReleaseError(tag, wait = RELEASE_LOOKUP_WAIT) {
+  const seconds = Math.round(
+    Array.from({ length: Math.max(0, Number(wait.maxAttempts) - 1) }, (_, i) => (
+      releaseLookupDelayMs(i + 1, wait)
+    )).reduce((sum, ms) => sum + ms, 0) / 1000,
+  );
+  return `GitHub release ${String(tag ?? '').trim()} not found after ${wait.maxAttempts} lookups (${seconds}s)`;
+}
+
+export async function findGithubRelease({
+  tag,
+  repository = process.env.GITHUB_REPOSITORY,
+  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+  sleep,
+  wait = RELEASE_LOOKUP_WAIT,
+} = {}) {
+  const repo = String(repository ?? '').trim();
+  const t = String(tag ?? '').trim();
+  if (!repo) throw new Error('GITHUB_REPOSITORY is required to find a release');
+  if (!t) throw new Error('A release tag is required to attach APK assets');
+  const nap = typeof sleep === 'function' ? sleep : (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  let lastMiss;
+  for (let attempt = 1; attempt <= wait.maxAttempts; attempt += 1) {
+    try {
+      return readGithubReleaseByTag({ tag: t, repository: repo, run });
+    } catch (error) {
+      if (!githubReleaseLookupMiss(error)) throw error;
+      lastMiss = error;
+    }
+    try {
+      const listed = pickReleaseFromList(listGithubReleases({ repository: repo, run, paginate: true }), t);
+      if (listed) return listed;
+    } catch (error) {
+      if (!githubReleaseLookupMiss(error)) throw error;
+      lastMiss = error;
+    }
+    if (attempt < wait.maxAttempts) await nap(releaseLookupDelayMs(attempt, wait));
+  }
+  throw new Error(missingAttachReleaseError(t, wait), { cause: lastMiss });
+}
+
+export function releaseAssetUploadUrl(release, name) {
+  const base = String(release?.upload_url ?? '').replace(/\{[^}]*\}/g, '');
+  if (!/^https:\/\//i.test(base)) throw new Error('GitHub release is missing upload_url');
+  const url = new URL(base);
+  url.searchParams.set('name', String(name ?? ''));
+  return url.toString();
+}
+
+export function existingReleaseAsset(release, name) {
+  const n = String(name ?? '');
+  return (release?.assets ?? []).find((asset) => String(asset?.name ?? '') === n) ?? null;
+}
+
+export function deleteGithubReleaseAsset({
+  repository = process.env.GITHUB_REPOSITORY,
+  assetId,
+  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+} = {}) {
+  const repo = String(repository ?? '').trim();
+  const id = String(assetId ?? '').trim();
+  if (!repo) throw new Error('GITHUB_REPOSITORY is required to delete a release asset');
+  if (!id) throw new Error('deleteGithubReleaseAsset needs an asset id');
+  run('gh', ['api', '--method', 'DELETE', `repos/${repo}/releases/assets/${id}`]);
+}
+
+export function uploadGithubReleaseAsset({
+  uploadUrl,
+  filePath,
+  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+} = {}) {
+  const url = String(uploadUrl ?? '').trim();
+  const file = String(filePath ?? '').trim();
+  if (!url) throw new Error('uploadGithubReleaseAsset needs upload_url');
+  if (!file) throw new Error('uploadGithubReleaseAsset needs a file path');
+  run('gh', [
+    'api',
+    '--method', 'POST',
+    '-H', 'Content-Type: application/octet-stream',
+    '--input', file,
+    url,
+  ]);
+}
+
+export async function attachSignedApkAssets({
+  tag,
+  apkPath,
+  apkName,
+  sha256Path,
+  sha256Name,
+  versioncodePath,
+  versioncodeName,
+  repository = process.env.GITHUB_REPOSITORY,
+  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+  sleep,
+  wait = RELEASE_LOOKUP_WAIT,
+} = {}) {
+  const files = [
+    { path: apkPath, name: apkName },
+    { path: sha256Path, name: sha256Name },
+    { path: versioncodePath, name: versioncodeName },
+  ];
+  if (files.some((file) => !String(file.path ?? '').trim() || !String(file.name ?? '').trim())) {
+    throw new Error('attachSignedApkAssets needs APK, checksum and versionCode files');
+  }
+  const release = await findGithubRelease({ tag, repository, run, sleep, wait });
+  let assets = [...(release.assets ?? [])];
+  for (const file of files) {
+    const existing = existingReleaseAsset({ ...release, assets }, file.name);
+    if (existing?.id != null) {
+      deleteGithubReleaseAsset({ repository, assetId: existing.id, run });
+      assets = assets.filter((asset) => asset.id !== existing.id);
+    }
+    uploadGithubReleaseAsset({
+      uploadUrl: releaseAssetUploadUrl(release, file.name),
+      filePath: file.path,
+      run,
+    });
+    assets.push({ name: file.name });
+  }
+  const stale = staleVersionCodeAssetNames(
+    assets.map((asset) => asset.name),
+    apkName,
+    versioncodeName,
+  );
+  for (const name of stale) {
+    const asset = existingReleaseAsset({ ...release, assets }, name);
+    if (asset?.id == null) continue;
+    deleteGithubReleaseAsset({ repository, assetId: asset.id, run });
+    assets = assets.filter((item) => item.id !== asset.id);
+  }
+  return { tag: release.tag_name || tag, uploaded: files.map((file) => file.name), stale };
+}
+
 export function releaseAlreadyExists(error) {
-  const text = [
-    error?.stderr,
-    error?.message,
-    error?.stdout,
-    error,
-  ].map((part) => String(part ?? '')).join('\n');
+  const text = ghCommandText(error);
   return /already exists/i.test(text) || /HTTP 422/.test(text);
 }
 
@@ -282,6 +472,28 @@ async function resolveTagMain() {
     createRelease: (args) => createGithubRelease(args),
   });
   process.stdout.write(`tag=${result.tag}\nshould_attach=${result.shouldAttach ? 'true' : 'false'}\n`);
+}
+
+async function attachReleaseMain() {
+  const env = process.env;
+  const required = [
+    'TAG', 'APK_PATH', 'APK_NAME', 'SHA256_PATH', 'SHA256_NAME', 'VERSIONCODE_PATH', 'VERSIONCODE_NAME',
+  ];
+  const missing = required.filter((name) => !String(env[name] ?? '').trim());
+  if (missing.length) throw new Error(`--attach-release needs ${missing.join(', ')}`);
+  for (const name of ['APK_PATH', 'SHA256_PATH', 'VERSIONCODE_PATH']) {
+    if (!existsSync(env[name])) throw new Error(`missing ${name} file`);
+  }
+  const result = await attachSignedApkAssets({
+    tag: env.TAG,
+    apkPath: env.APK_PATH,
+    apkName: env.APK_NAME,
+    sha256Path: env.SHA256_PATH,
+    sha256Name: env.SHA256_NAME,
+    versioncodePath: env.VERSIONCODE_PATH,
+    versioncodeName: env.VERSIONCODE_NAME,
+  });
+  for (const name of result.uploaded) process.stdout.write(`uploaded ${name}\n`);
 }
 
 export function releaseVersion({ tag, runNumber, fallbackVersion } = {}) {
@@ -496,6 +708,10 @@ function printSha256Output(sidecar) {
 function main() {
   if (process.argv.includes('--resolve-tag')) {
     return resolveTagMain();
+  }
+
+  if (process.argv.includes('--attach-release')) {
+    return attachReleaseMain();
   }
 
   const staleIndex = process.argv.indexOf('--stale-versioncode-assets');
