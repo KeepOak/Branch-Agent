@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CONNECT_MODEL_ANSWERS } from "../../composer/connect-model";
 import type { WindowEngine } from "../../composer/engine";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import type { Limits } from "../../shell/status-data";
@@ -36,6 +37,19 @@ async function mount(opts: { methods?: string[]; models?: boolean; activate?: "h
     if (method === "talk.catalog") return { transcription: { ready: Boolean(opts.dictation) }, realtime: { ready: false } };
     if (method === "sessions.patch") { row = { ...row, ...params }; return {}; }
     if (method === "chat.send") return opts.chatSend ? opts.chatSend() : {};
+    if (method === "branch.setup.activate.start") {
+      if (opts.activate === "hang" && opts.models === false) return {};
+      return {};
+    }
+    if (method === "wizard.next") {
+      if (opts.activate === "fail") return { done: true, status: "error", error: "A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster." };
+      if (opts.activate === "ok") return { done: true, status: "done" };
+      if (opts.activate === "hang" || opts.models === false) {
+        return { done: false, step: { id: "download", type: "confirm", message: "Download Qwen3.5 9B (5.7 GB) and the verified runtime, then use this model?", initialValue: false } };
+      }
+      return { done: true, status: "done" };
+    }
+    if (method === "wizard.cancel") return {};
     if (method === "branch.setup.activate") {
       if (opts.activate === "fail") return { ok: false, error: "A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster." };
       if (opts.activate === "ok") return { ok: true, modelRef: "llama-cpp/gemma" };
@@ -181,9 +195,12 @@ describe("R1-04 composer", () => {
     for (const part of ["This computer", "Running", "Context", "36k / 256k (14%)", "Every account", "Check every account now", "Accounts and usage…"]) expect(text).toContain(part);
   });
 
-  it("with no model connected keeps chat open and suggests an account", async () => {
-    const { host, opened } = await mount({ models: false, activate: "hang" });
-    expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Getting a free model ready…");
+  it("with no model connected keeps chat open and suggests connecting a model", async () => {
+    const { host, opened, request } = await mount({ models: false, activate: "hang" });
+    expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Connect a model to start");
+    expect(host.textContent).toContain("5.7 GB");
+    expect(button("Cancel")).toBeTruthy();
+    expect(request.mock.calls.filter(([method, params]) => method === "wizard.next" && (params as { answer?: { value?: unknown } })?.answer?.value === true)).toHaveLength(0);
     await act(async () => button("Connect a model to get answers")!.click());
     expect(opened).toHaveBeenCalledWith("settings/accounts/add");
   });
@@ -195,27 +212,30 @@ describe("R1-04 composer", () => {
     expect(opened).toHaveBeenCalledWith("settings/accounts/add");
   });
 
-  it("lets you send when no model is usable", async () => {
+  it("keeps the draft and disables Send when no model is usable", async () => {
     const { host, send } = await mount({ models: false });
     await vi.waitFor(() => expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Connect a model to start"));
     await type(host, "Hello");
-    expect(button("Send")?.disabled).toBe(false);
+    expect(button("Send")?.disabled).toBe(true);
+    expect(button("Send")?.title).toBe(CONNECT_MODEL_ANSWERS);
     await act(async () => button("Send")!.click());
-    expect(send).toHaveBeenCalledWith("Hello", {}, undefined);
+    expect(send).not.toHaveBeenCalled();
+    expect(host.querySelector<HTMLTextAreaElement>('[data-testid="composer"]')?.value).toBe("Hello");
   });
 
   it("shows the failure and Try again when a free model is not ready", async () => {
     const { host, request } = await mount({ models: false, activate: "fail" });
     await vi.waitFor(() => expect(host.querySelector('[data-testid="no-key-failed"]')).not.toBeNull());
     const failed = host.querySelector('[data-testid="no-key-failed"]')!;
-    expect(failed.textContent).toContain("Connect a model to get answers");
-    expect(failed.querySelector("button")?.textContent).toBe("Try again");
+    expect(failed.textContent).toContain("A free local model isn’t ready");
+    expect(button("Try again")?.textContent).toBe("Try again");
     expect(host.querySelector("textarea")?.getAttribute("placeholder")).not.toBe("Getting a free model ready…");
+    expect(button("Connect a model to get answers")).toBeTruthy();
     await type(host, "Hello");
     expect(button("Send")?.disabled).toBe(true);
-    expect(button("Send")?.title).toBe("Connect a model to get answers");
-    await act(async () => failed.querySelector("button")!.click());
-    expect(request.mock.calls.filter((c) => c[0] === "branch.setup.activate").length).toBe(2);
+    expect(button("Send")?.title).toBe(CONNECT_MODEL_ANSWERS);
+    await act(async () => button("Try again")!.click());
+    expect(request.mock.calls.filter((c) => c[0] === "branch.setup.activate.start").length).toBeGreaterThanOrEqual(2);
   });
 
   it("says the room's words in a group chat, and the Trunk's name everywhere else", async () => {
@@ -230,7 +250,9 @@ describe("R1-04 composer", () => {
     root = undefined;
     document.body.innerHTML = "";
     const noModel = await mount({ models: false, activate: "hang", placeholder: "Message the group · @ to call a Trunk" });
-    expect(noModel.host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Getting a free model ready…");
+    expect(noModel.host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Connect a model to start");
+    expect(noModel.host.textContent).toContain("5.7 GB");
+    expect(button("Cancel")).toBeTruthy();
   });
 
   it("disables send with its reason while offline", async () => {
