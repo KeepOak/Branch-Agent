@@ -35,7 +35,7 @@ import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./ti
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, ensureWindowsLauncher, handOffDesktopUpdate, pruneWindowsInstall, runsFromAppImage, windowsRelaunchDetails, type DesktopInstall } from "./desktop-update";
-import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
+import { createAutoApplyUpdate, parseWindowIdleSnapshot, readUpdateHealth, WINDOW_IDLE_FILE, windowIdleFields, type WindowIdleSnapshot } from "./auto-apply-update";
 import { candidateCheckSkippedLine, candidateMinFreeBytes, HEALTH_MEMORY_MAX_AGE_MS, measureAvailableMemory } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
 import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
@@ -386,6 +386,29 @@ function windowSilent(error: unknown): undefined {
 const ENGINE_ACTIVITY_UNAVAILABLE = "The window did not report activity and the engine's own activity is unavailable";
 type EngineWork = { activeRuns: number; totalActive: number; pendingReplies: number };
 const windowRuns = (window: WindowState): number => window.workingTrunks ?? (window.streaming ? 1 : 0);
+let lastWindowIdle: WindowIdleSnapshot | undefined;
+
+function rememberWindowIdle(window: WindowState): WindowIdleSnapshot {
+  const snapshot = { pendingApprovals: window.pendingApprovals, unsavedDraftFiles: window.unsavedDraftFiles };
+  lastWindowIdle = snapshot;
+  saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, WINDOW_IDLE_FILE), JSON.stringify(snapshot)));
+  return snapshot;
+}
+
+function readPersistedWindowIdle(): WindowIdleSnapshot | undefined {
+  if (lastWindowIdle) return lastWindowIdle;
+  try {
+    lastWindowIdle = parseWindowIdleSnapshot(JSON.parse(readFileSync(join(cfg.dataDir, WINDOW_IDLE_FILE), "utf8")));
+    return lastWindowIdle;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Live window, else the last proven snapshot. Unknown (null) counts must not be treated as zero. */
+function resolvedWindowIdle(window?: WindowState) {
+  return windowIdleFields(window ? rememberWindowIdle(window) : undefined, readPersistedWindowIdle());
+}
 
 /** The owned child answers over its channel; the service engine reports runs on /health when it can. */
 async function engineOwnActivity(): Promise<EngineWork> {
@@ -948,8 +971,9 @@ const autoApply = createAutoApplyUpdate({
   activity: async () => {
     const { window, engine } = await probeWindowOrEngine();
     const runs = Math.max(engine.activeRuns, engine.totalActive, window ? windowRuns(window) : 0);
-    return { activeRuns: runs, pendingApprovals: window?.pendingApprovals ?? 0,
-      streaming: engine.pendingReplies > 0 || Boolean(window?.streaming), unsavedDraftFiles: Boolean(window?.unsavedDraftFiles) };
+    const idle = resolvedWindowIdle(window);
+    return { activeRuns: runs, pendingApprovals: idle.pendingApprovals,
+      streaming: engine.pendingReplies > 0 || Boolean(window?.streaming), unsavedDraftFiles: idle.unsavedDraftFiles };
   },
   restart: async (version, handoffOnly, drain) => {
     if ((await readComponentUpdateStatus(cfg)).componentsPendingVersion !== version) {
@@ -1804,8 +1828,9 @@ async function undoLastUpdate(automatic = false): Promise<void> {
     if (!serviceEngine && (!gateway || !engineServing())) throw new Error("The engine is not ready to switch");
     if (!automatic) {
       const { window, engine } = await probeWindowOrEngine();
-      if (engine.activeRuns || engine.totalActive || engine.pendingReplies || window?.pendingApprovals ||
-        window?.streaming || window?.unsavedDraftFiles) throw new Error("The previous version cannot take over while work is running");
+      const idle = resolvedWindowIdle(window);
+      if (engine.activeRuns || engine.totalActive || engine.pendingReplies || idle.pendingApprovals !== 0 ||
+        window?.streaming || idle.unsavedDraftFiles !== false) throw new Error("The previous version cannot take over while work is running");
     }
     // After the probation the previous engine is (or is about to be) pruned: Undo never runs past its deadline.
     if (!await canUndoComponentUpdate(cfg)) throw new Error("The previous version is no longer available");
@@ -1874,8 +1899,9 @@ async function engineActivity(): Promise<EngineWork> {
 async function serviceWork(): Promise<ServiceWork> {
   const { window, engine } = await probeWindowOrEngine();
   const runs = Math.max(engine.activeRuns, engine.totalActive, window ? windowRuns(window) : 0);
-  return { activeRuns: runs, pendingApprovals: window?.pendingApprovals ?? 0,
-    streaming: engine.pendingReplies > 0 || Boolean(window?.streaming) };
+  const idle = resolvedWindowIdle(window);
+  return { activeRuns: runs, pendingApprovals: idle.pendingApprovals,
+    streaming: engine.pendingReplies > 0 || Boolean(window?.streaming), unsavedDraftFiles: idle.unsavedDraftFiles };
 }
 
 /** The engine's live state for the tray, from the engine calls the app already makes. */

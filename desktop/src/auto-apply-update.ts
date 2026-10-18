@@ -3,9 +3,54 @@ import { statfsSync } from "node:fs";
 /** Holds a staged release until the renderer's gateway snapshot stays idle long enough. */
 export interface UpdateActivity {
   activeRuns: number;
-  pendingApprovals: number;
+  /** `null`: the window was silent and nothing has proven the count; that is not idle. */
+  pendingApprovals: number | null;
   streaming: boolean;
+  /** `null`: the window was silent and nothing has proven there are no unsaved drafts; that is not idle. */
+  unsavedDraftFiles: boolean | null;
+}
+
+/** Last proven window idle fields, written when a window answers the activity probe. */
+export interface WindowIdleSnapshot {
+  pendingApprovals: number;
   unsavedDraftFiles: boolean;
+}
+
+/** Under the desktop data dir: the last window snapshot that proved approvals and drafts. */
+export const WINDOW_IDLE_FILE = "update-window-idle.json";
+
+/** A probe snapshot, or `undefined` when the file is missing or not a proven count. */
+export function parseWindowIdleSnapshot(value: unknown): WindowIdleSnapshot | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const rec = value as { pendingApprovals?: unknown; unsavedDraftFiles?: unknown };
+  if (typeof rec.pendingApprovals !== "number" || !Number.isInteger(rec.pendingApprovals) || rec.pendingApprovals < 0) return undefined;
+  if (typeof rec.unsavedDraftFiles !== "boolean") return undefined;
+  return { pendingApprovals: rec.pendingApprovals, unsavedDraftFiles: rec.unsavedDraftFiles };
+}
+
+/**
+ * Live window wins. Else a persisted snapshot (the last answered probe, kept on disk). Else unknown:
+ * pending approvals and unsaved drafts are `null`, which blocks idle, drain and restart.
+ */
+export function windowIdleFields(
+  window?: WindowIdleSnapshot,
+  persisted?: WindowIdleSnapshot,
+): { pendingApprovals: number | null; unsavedDraftFiles: boolean | null } {
+  const source = window ?? persisted;
+  if (!source) return { pendingApprovals: null, unsavedDraftFiles: null };
+  return { pendingApprovals: source.pendingApprovals, unsavedDraftFiles: source.unsavedDraftFiles };
+}
+
+/** A turn is streaming, an approval waits, a draft is unsaved, or either count is unknown. */
+export function turnWaiting(activity: UpdateActivity): boolean {
+  return Boolean(activity.streaming) || activity.pendingApprovals !== 0 || activity.unsavedDraftFiles !== false;
+}
+
+function waitingLine(activity: UpdateActivity, extra = ""): string {
+  const approvals = activity.pendingApprovals === null ? "unknown" : String(activity.pendingApprovals);
+  const drafts = activity.unsavedDraftFiles === null ? ", unknown draft files"
+    : activity.unsavedDraftFiles ? ", unsaved draft files" : "";
+  return `waiting for ${activity.activeRuns} active runs, ${approvals} approvals${activity.streaming ? ", streaming reply" : ""}${drafts}${extra}`;
 }
 
 export const AUTO_APPLY_POLL_MS = 30_000;
@@ -115,8 +160,6 @@ export function createAutoApplyUpdate(options: {
   const decision = (line: string) => {
     if (line !== lastDecision) { options.log(`auto-apply: ${line}`); lastDecision = line; }
   };
-  /** A turn is streaming, an approval waits, or a draft is unsaved: the gap rule holds the update off. */
-  const turnWaiting = (activity: UpdateActivity) => Boolean(activity.streaming || activity.pendingApprovals || activity.unsavedDraftFiles);
   /** Every activity read notes a run in flight, which marks this machine as running Trunk work. */
   const readActivity = async (): Promise<UpdateActivity> => {
     const activity = await options.activity();
@@ -208,7 +251,7 @@ export function createAutoApplyUpdate(options: {
       const activity = await readActivity();
       if (busy(activity)) {
         idleSince = undefined;
-        decision(`waiting for ${activity.activeRuns} active runs, ${activity.pendingApprovals} approvals${activity.streaming ? ", streaming reply" : ""}${activity.unsavedDraftFiles ? ", unsaved draft files" : ""}${batched ? `; deferring ${version} until a gap in Trunk work` : ""}`);
+        decision(waitingLine(activity, batched ? `; deferring ${version} until a gap in Trunk work` : ""));
         return;
       }
       idleSince ??= now();
@@ -220,7 +263,7 @@ export function createAutoApplyUpdate(options: {
       const final = await readActivity();
       if (busy(final) || !options.enabled()) {
         idleSince = undefined;
-        decision(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals`);
+        decision(waitingLine(final));
         return;
       }
       // The handoff keeps running work alive, so it lands at a gap whatever Trunks are doing.
@@ -237,7 +280,7 @@ export function createAutoApplyUpdate(options: {
       const handoffDrainReady = failedVersion === version && handoffFailedAt !== undefined
         && now() - handoffFailedAt >= AUTO_APPLY_HANDOFF_FAIL_DRAIN_MS;
       if (final.activeRuns && !capped && !handoffDrainReady) {
-        decision(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals; no standby to hand off to for ${version}`);
+        decision(`${waitingLine(final)}; no standby to hand off to for ${version}`);
         return;
       }
       restarting = true;
