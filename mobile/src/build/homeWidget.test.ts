@@ -30,7 +30,7 @@ describe('the Android home-screen widget', () => {
     expect(plugin).toContain('expo.modules.homewidget.HomeWidgetProvider');
     expect(plugin).toContain('android.appwidget.action.APPWIDGET_UPDATE');
     expect(plugin).toContain('@xml/branch_home_widget_info');
-    expect(plugin).toContain('Ask Branch');
+    expect(plugin).toContain('@string/branch_home_widget_label');
 
     const kotlin = readFileSync(provider, 'utf8');
     expect(kotlin).toContain('class HomeWidgetProvider : AppWidgetProvider()');

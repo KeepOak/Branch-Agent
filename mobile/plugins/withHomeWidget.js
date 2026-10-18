@@ -15,7 +15,7 @@ function ensureHomeWidgetReceiver(androidManifest) {
       $: {
         'android:name': PROVIDER_CLASS,
         'android:exported': 'true',
-        'android:label': 'Ask Branch',
+        'android:label': '@string/branch_home_widget_label',
       },
       'intent-filter': [
         {
