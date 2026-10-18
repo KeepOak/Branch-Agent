@@ -4,7 +4,7 @@
 // GitHubSettings.tsx): the accounts in order with Move up and the ⋯ menu, Select accounts, Add an account, falling back
 // to this computer, which account goes next, where each sign-in comes from, your own accounts, coding apps, GitHub and
 // the rows that show what the engine reports. The rows of one list share one read, so a change in one row shows in all.
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { canAll } from "../../../connect/capabilities";
 import { configStore } from "../../../places/settings/config-store";
@@ -33,6 +33,7 @@ import { lookStore, useLook } from "../../../places/settings/set1/appearance-sto
 import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
 import { pageFor } from "../nav";
 import { useLevel } from "../SettingsFrame";
+import { COMING_FROM } from "../rows";
 import { STALL_TEXT, stallAfter } from "../../../places/settings/stall";
 
 // One engine read shared by every row that shows it (the accounts list, Select accounts, Which goes next…): a change
@@ -451,13 +452,19 @@ export function OwnAccountList({ engine }: SlotControlProps) {
 /** Add your own account: Classic's picker of the accounts this person can use first (users.selectModelAccount). */
 export function AddOwnAccount({ engine }: SlotControlProps) {
   const own = useRead(engine, "users.listModelAccounts");
+  const [level] = useLevel(engine);
   const [failed, , report] = useFailure();
   const [adding, setAdding] = useState(false);
+  const whyId = useId();
   const accounts = list(own.data?.accounts);
+  // A real condition says what to do in one visible line (Private #1093 item 7); an engine without the calls makes it
+  // Coming, which shows only at Technical.
+  const why = writeWhy(engine) ?? (!own.loading && !own.error && !accounts.length ? "Add an account above first." : undefined);
   return <Kit report={report}>
-    <Needs engine={engine} need={["users.listModelAccounts", "users.selectModelAccount"]} where="Add your own account">
-      <button type="button" className="r1s-btn" disabled={Boolean(writeWhy(engine)) || own.loading || Boolean(own.error) || !accounts.length} title={writeWhy(engine) ?? (!own.loading && !accounts.length ? "Add an account above first." : undefined)} onClick={() => setAdding(true)}>Add your own account</button>
+    <Needs engine={engine} need={["users.listModelAccounts", "users.selectModelAccount"]} where="Add your own account" hidden={level < COMING_FROM}>
+      <button type="button" className="r1s-btn" disabled={Boolean(why) || own.loading || Boolean(own.error)} title={why} aria-describedby={why ? whyId : undefined} onClick={() => setAdding(true)}>Add your own account</button>
     </Needs>
+    {why && canAll(engine, ["users.listModelAccounts", "users.selectModelAccount"]) ? <small id={whyId} className="r1s-note g-label" data-lines>{why}</small> : null}
     <Failed text={failed} />
     {adding ? <PickOwn engine={engine} accounts={accounts.filter((a) => a.selected !== true)} onClose={(picked) => { setAdding(false); if (picked) void own.reload(); }} /> : null}
   </Kit>;

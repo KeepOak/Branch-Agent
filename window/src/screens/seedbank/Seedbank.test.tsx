@@ -82,6 +82,8 @@ describe("Seedbank", () => {
 
   it("R1-10: Soon controls go through <Coming>: nothing they wrap runs or bubbles, even when the engine offers the call", async () => {
     const soon = ["mcp.import", "mcp.registry.search", "mcp.servers.add", "skills.import", "skills.workshop.create"];
+    // Coming controls are drawn only at Technical (Private #1093 item 7).
+    localStorage.setItem("branch.level", "technical");
     const { engine } = engineOf(soon);
     const outer = vi.fn();
     const host = await render(engine, <div onClick={outer} onKeyDown={outer}><Seedbank engine={engine} /></div>);
