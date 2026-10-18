@@ -312,13 +312,33 @@ test("generated release notes start with one download per platform and label eve
   assert.match(notes, /^Other files$/m);
   assert.equal(UPDATE_ONLY_LABEL, "used by automatic updates, you don't need this");
   for (const [label, target] of DOWNLOAD_PLATFORMS) {
-    const name = downloadAssetName(version, target);
+    const name = downloadAssetName(version, target, names);
     assert.equal(name, installerNames[target]);
     assert.ok(notes.includes(`- ${label}: [${name}](${base}/${name})`));
     assert.equal(notes.includes(`- ${name}: ${UPDATE_ONLY_LABEL}`), false);
   }
   for (const name of names.filter((item) => !Object.values(installerNames).includes(item))) {
     assert.ok(notes.includes(`- ${name}: ${UPDATE_ONLY_LABEL}`), `${name} is not labeled update-only`);
+  }
+});
+
+test("release notes lead with the stable download names and label the versioned installers update-only", () => {
+  const stable = ["Branch-Setup-Windows.exe", "Branch-macOS.dmg", "Branch-Linux.deb"];
+  const names = [...Object.values(installerNames), ...stable, "SHA256SUMS", `branch-engine-${version}-linux-x64.tar.gz`];
+  const notes = formatReleaseNotes({ commit, version, names });
+  const base = `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}`;
+  assert.deepEqual(notes.split("\n").slice(0, 6), [
+    "Download this",
+    "",
+    `- macOS: [Branch-macOS.dmg](${base}/Branch-macOS.dmg)`,
+    `- Windows: [Branch-Setup-Windows.exe](${base}/Branch-Setup-Windows.exe)`,
+    `- Linux: [Branch-Linux.deb](${base}/Branch-Linux.deb)`,
+    "",
+  ]);
+  for (const [, target] of DOWNLOAD_PLATFORMS) {
+    assert.equal(downloadAssetName(version, target, names), publicDownloadName(target));
+    assert.equal(notes.includes(`- ${publicDownloadName(target)}: ${UPDATE_ONLY_LABEL}`), false);
+    assert.ok(notes.includes(`- ${installerNames[target]}: ${UPDATE_ONLY_LABEL}`), `${installerNames[target]} is not labeled update-only`);
   }
 });
 
@@ -346,6 +366,7 @@ test("listed installers, the Linux AppImage included, are uploaded as release as
   for (const target of ["win32-x64", "darwin-arm64", "linux-x64"]) assert(uploaded.includes(publicDownloadName(target)), `${publicDownloadName(target)} was not uploaded`);
   assert.equal(await readFile(join(assets, "release-notes.txt"), "utf8"), formatReleaseNotes({ commit, version, names: uploaded }));
   assert.match(await readFile(join(assets, "release-notes.txt"), "utf8"), /^Download this\n/);
+  for (const target of ["win32-x64", "darwin-arm64", "linux-x64"]) assert.match(await readFile(join(assets, "release-notes.txt"), "utf8"), new RegExp(`^- \\w+: \\[${publicDownloadName(target).replace(/\./g, "\\.")}\\]`, "m"));
   assert(!uploaded.some(name => /linux-x64\.deb$/.test(name)));
   const sums = await readFile(join(assets, "SHA256SUMS"), "utf8");
   for (const name of Object.values(installerNames)) assert.match(sums, new RegExp(`^${(await fileDigest(join(assets, name))).sha256}  ${name.replace(/\./g, "\\.")}$`, "m"));
