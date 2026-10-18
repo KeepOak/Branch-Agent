@@ -246,8 +246,10 @@ export function SettingsScreen({
   onOpenSettings,
   onTurnOnNotifications,
   onBack,
+  onLevel,
   updateCard,
   level: pinnedLevel,
+  backTo = 'Chats',
 }: {
   state: Extract<PairingState, { step: 'paired' }>;
   permission: NotificationPermission | null;
@@ -256,13 +258,19 @@ export function SettingsScreen({
   onOpenSettings: () => void;
   onTurnOnNotifications?: () => void;
   onBack: () => void;
+  onLevel?: (next: SettingsLevel) => void;
   updateCard?: ReactNode;
   level?: SettingsLevel;
+  backTo?: 'Chats' | 'More';
 }) {
   const { color, space, radius, layout } = useTheme();
   const { preference, setPreference, lookId, setLookId } = useThemePreference();
   const [page, setPage] = useState<Page>('main');
   const [level, setLevel] = useState<SettingsLevel>(pinnedLevel ?? 0);
+  const chooseLevel = (next: SettingsLevel) => {
+    setLevel(next);
+    onLevel?.(next);
+  };
   const host = gatewayHost(state.url);
   const connected = state.online ? 'Connected' : 'Reconnecting';
   const status = permissionLabel(permission);
@@ -416,7 +424,7 @@ export function SettingsScreen({
 
   return (
     <Screen testID="settings-screen">
-      <BackRow label="Chats" onPress={onBack} testID="settings-back" />
+      <BackRow label={backTo} onPress={onBack} testID="settings-back" />
       <ThemedText variant="settingsTitle" accessibilityRole="header">
         Settings
       </ThemedText>
@@ -445,7 +453,7 @@ export function SettingsScreen({
               accessibilityRole="radio"
               accessibilityState={{ selected: on }}
               accessibilityLabel={option.label}
-              onPress={() => setLevel(option.v)}
+              onPress={() => chooseLevel(option.v)}
               style={({ pressed }) => ({
                 flex: 1,
                 minHeight: layout.rowMinHeight,
