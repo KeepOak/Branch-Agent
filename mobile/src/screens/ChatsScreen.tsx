@@ -25,6 +25,7 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { OfflineBanner } from '../ui/OfflineBanner';
+import { plainError } from '../ui/plainError';
 import { useNow } from '../ui/useNow';
 
 const AVATAR = 52;
@@ -485,7 +486,7 @@ function RadioRow({ label, selected, onPress, testID }: { label: string; selecte
   );
 }
 
-/** The paired home: every chat with your Trunks, newest first, live from the computer. */
+/** The paired chats list: every chat with your Trunks, newest first, live from the computer. */
 export function ChatsScreen({
   list,
   online,
@@ -493,6 +494,7 @@ export function ChatsScreen({
   onComputer,
   onAgents,
   onSettings,
+  onMore,
   onOpen,
   onNewChat,
   searchMessages,
@@ -500,6 +502,7 @@ export function ChatsScreen({
   onNeedsYou,
   now: fixedNow,
   updateBanner,
+  bottomExtra = 0,
   level = 'regular',
   look = Platform.OS === 'ios' ? 'ios' : 'android',
 }: {
@@ -512,6 +515,10 @@ export function ChatsScreen({
   onAgents?: () => void;
   /** Opens Settings. */
   onSettings?: () => void;
+  /** Extra space above a places bar so the last row is not hidden. */
+  bottomExtra?: number;
+  /** Opens More. */
+  onMore?: () => void;
   /** Opens a chat. */
   onOpen?: (row: ChatRow) => void;
   /** Starts or carries on a conversation (the preview's New chat). */
@@ -632,6 +639,18 @@ export function ChatsScreen({
           </Pressable>
         ) : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          {onMore ? (
+            <Pressable
+              testID="more-button"
+              accessibilityRole="button"
+              accessibilityLabel="More"
+              onPress={onMore}
+              hitSlop={8}
+              style={({ pressed }) => ({ minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
+            >
+              <ThemedText variant="body">More</ThemedText>
+            </Pressable>
+          ) : null}
           {onSettings ? (
             <Pressable
               testID="settings-button"
@@ -808,7 +827,7 @@ export function ChatsScreen({
   if (!list.loaded && !list.error) empty = <Skeleton />;
   else if (!list.loaded && list.error)
     empty = online ? (
-      <Note testID="chats-error" title="Couldn’t load your chats" body={list.error} action={{ title: 'Try again', onPress: () => void refresh() }} />
+      <Note testID="chats-error" title="Couldn’t load your chats" body={plainError(list.error)} action={{ title: 'Try again', onPress: () => void refresh() }} />
     ) : (
       <Note testID="chats-waiting" title="Waiting for your computer" body="Your chats show up here as soon as this phone reaches it." />
     );
@@ -838,7 +857,7 @@ export function ChatsScreen({
         ItemSeparatorComponent={({ leadingItem }: { leadingItem?: Item }) =>
           leadingItem && leadingItem.kind !== 'header' ? <View style={{ height: layout.hairline, backgroundColor: color.line, marginLeft: layout.screenInset + AVATAR + space.md }} /> : null
         }
-        contentContainerStyle={{ paddingBottom: insets.bottom + space.xl + (android && onNewChat ? 72 : 0) }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + space.xl + bottomExtra + (android && onNewChat ? 72 : 0) }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}

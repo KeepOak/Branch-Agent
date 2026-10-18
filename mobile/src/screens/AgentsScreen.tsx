@@ -6,6 +6,7 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { OfflineBanner } from '../ui/OfflineBanner';
+import { plainError } from '../ui/plainError';
 
 function statusTone(status: AgentStatus): 'ok' | 'ink3' {
   return status === 'running' ? 'ok' : 'ink3';
@@ -41,15 +42,35 @@ function Note({ title, body, testID, action }: { title: string; body: string; te
   );
 }
 
-function AgentCard({ row }: { row: AgentRow }) {
+function AgentCard({ row, onOpen }: { row: AgentRow; onOpen?: (row: AgentRow) => void }) {
   const { color, space, radius, layout } = useTheme();
   const status = STATUS_LABEL[row.status];
   const fill = row.status === 'running' ? color.okTint : color.fill;
+  const card = { backgroundColor: color.raise, borderRadius: radius.lg, padding: layout.cardInset, marginTop: space.md, gap: space.sm } as const;
+  if (onOpen) {
+    return (
+      <Pressable
+        testID={`agent-${row.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={`${row.name}, ${status}. Open profile`}
+        onPress={() => onOpen(row)}
+        style={({ pressed }) => ({ ...card, opacity: pressed ? 0.7 : 1 })}
+      >
+        <AgentCardBody row={row} status={status} fill={fill} onOpen />
+      </Pressable>
+    );
+  }
   return (
-    <View
-      testID={`agent-${row.id}`}
-      style={{ backgroundColor: color.raise, borderRadius: radius.lg, padding: layout.cardInset, marginTop: space.md, gap: space.sm }}
-    >
+    <View testID={`agent-${row.id}`} style={card}>
+      <AgentCardBody row={row} status={status} fill={fill} />
+    </View>
+  );
+}
+
+function AgentCardBody({ row, status, fill, onOpen }: { row: AgentRow; status: string; fill: string; onOpen?: boolean }) {
+  const { space, radius } = useTheme();
+  return (
+    <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
         <Avatar row={row} />
         <View style={{ flex: 1, minWidth: 0, gap: space.xxs }}>
@@ -67,7 +88,12 @@ function AgentCard({ row }: { row: AgentRow }) {
           </View>
         </View>
       </View>
-    </View>
+      {onOpen ? (
+        <ThemedText variant="footnote" tone="ink2">
+          Its computer, what it may do, and what it remembers
+        </ThemedText>
+      ) : null}
+    </>
   );
 }
 
@@ -77,11 +103,16 @@ export function AgentsScreen({
   online,
   onRefresh,
   onBack,
+  onOpen,
+  backTo = 'Chats',
 }: {
   list: AgentListSnapshot;
   online: boolean;
   onRefresh: () => Promise<void>;
   onBack: () => void;
+  /** Opens a Trunk’s profile. */
+  onOpen?: (row: AgentRow) => void;
+  backTo?: 'Chats' | 'More';
 }) {
   const { color, space, radius, layout } = useTheme();
   const insets = useSafeAreaInsets();
@@ -100,29 +131,31 @@ export function AgentsScreen({
   if (!list.loaded && !list.error) body = <Note testID="agents-loading" title="Checking with your computer…" body="The Trunks on your computer show up here." />;
   else if (!list.loaded)
     body = online ? (
-      <Note testID="agents-error" title="Couldn’t load your agents" body={list.error || 'Your computer didn’t send its agents. Try again in a moment.'} action={{ title: 'Try again', onPress: () => void refresh() }} />
+      <Note testID="agents-error" title="Couldn’t load your agents" body={list.error ? plainError(list.error) : 'Your computer didn’t send its agents. Try again in a moment.'} action={{ title: 'Try again', onPress: () => void refresh() }} />
     ) : (
       <Note testID="agents-waiting" title="Waiting for your computer" body="Your agents show up here as soon as this phone reaches it." />
     );
   else if (list.rows.length === 0) body = <Note testID="agents-empty" title="No agents yet" body="Trunks you add on your computer show up here." />;
-  else body = list.rows.map((row) => <AgentCard key={row.id} row={row} />);
+  else body = list.rows.map((row) => <AgentCard key={row.id} row={row} onOpen={onOpen} />);
 
   return (
     <View testID="agents-screen" style={{ flex: 1, backgroundColor: color.grouped }}>
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={color.ink3} colors={[color.accent]} />}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
       >
         <Pressable
           testID="agents-back"
           accessibilityRole="button"
-          accessibilityLabel="Back to Chats"
+          accessibilityLabel={`Back to ${backTo}`}
           onPress={onBack}
           hitSlop={8}
           style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
         >
           <ThemedText variant="body" tone="accentInk">
-            ‹ Chats
+            {`‹ ${backTo}`}
           </ThemedText>
         </Pressable>
         <ThemedText variant="largeTitle" accessibilityRole="header">
@@ -133,9 +166,9 @@ export function AgentsScreen({
         </ThemedText>
         {online ? null : <OfflineBanner testID="agents-offline" message="Reconnecting to your computer… These agents may be out of date." />}
         {list.loaded && list.error && online ? (
-          <View testID="agents-error" style={{ marginTop: space.md, backgroundColor: color.badTint, borderRadius: radius.md, padding: space.md, gap: space.sm }}>
-            <ThemedText variant="footnote" tone="bad">
-              {list.error}
+          <View testID="agents-error" style={{ marginTop: space.md, backgroundColor: color.fill, borderColor: color.line, borderWidth: layout.hairline, borderRadius: radius.md, padding: space.md, gap: space.sm }}>
+            <ThemedText variant="footnote" tone="ink">
+              {plainError(list.error)}
             </ThemedText>
             <Button title="Try again" kind="secondary" onPress={() => void refresh()} testID="agents-error-action" />
           </View>

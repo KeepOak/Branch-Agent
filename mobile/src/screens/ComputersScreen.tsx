@@ -7,6 +7,7 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Screen';
+import { plainError } from '../ui/plainError';
 import { useNow } from '../ui/useNow';
 
 /** Status words plus the OS, and "Offline since Sunday" when the engine last saw it. */
@@ -90,6 +91,7 @@ export function ComputersScreen({
   onThisPhone,
   onOpenComputer,
   now: fixedNow,
+  backTo = 'Chats',
 }: {
   list: ComputerListSnapshot;
   online: boolean;
@@ -100,6 +102,7 @@ export function ComputersScreen({
   /** Opens take-control for that computer. */
   onOpenComputer?: (row: ComputerRow) => void;
   now?: number;
+  backTo?: 'Chats' | 'More' | 'Profile';
 }) {
   const { color, space, radius, layout } = useTheme();
   useNow(30_000);
@@ -120,7 +123,7 @@ export function ComputersScreen({
   if (!list.loaded && !list.error) body = <Note testID="computers-loading" title="Checking with your computer…" body="The computers Branch can use show up here." />;
   else if (!list.loaded)
     body = online ? (
-      <Note testID="computers-error" title="Couldn’t load your computers" body={list.error ?? ''} action={{ title: 'Try again', onPress: () => void refresh() }} />
+      <Note testID="computers-error" title="Couldn’t load your computers" body={plainError(list.error)} action={{ title: 'Try again', onPress: () => void refresh() }} />
     ) : (
       <Note testID="computers-waiting" title="Waiting for your computer" body="Your computers show up here as soon as this phone reaches it." />
     );
@@ -146,13 +149,13 @@ export function ComputersScreen({
         <Pressable
           testID="computers-back"
           accessibilityRole="button"
-          accessibilityLabel="Back to Chats"
+          accessibilityLabel={`Back to ${backTo}`}
           onPress={onBack}
           hitSlop={8}
           style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
         >
           <ThemedText variant="body" tone="accentInk">
-            ‹ Chats
+            {`‹ ${backTo}`}
           </ThemedText>
         </Pressable>
         <ThemedText variant="largeTitle" accessibilityRole="header">

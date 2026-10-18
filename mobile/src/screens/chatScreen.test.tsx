@@ -14,7 +14,7 @@ import { ThemeProvider } from '../theme/ThemeProvider';
 import { ChatScreen, takeControlCopy, takeControlDetail, threadApprovals, workedFor } from './ChatScreen';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 3000 });
-// pairedApp compiles the full App (welcome through chats). Jest's 5s default is too tight
+// pairedApp compiles the full App (pairing through chats). Jest's 5s default is too tight
 // on a cold CI worker — same budget as pairingScreens.test.tsx and settingsScreen.test.tsx.
 jest.setTimeout(20_000);
 const KEY = 'agent:main:main';

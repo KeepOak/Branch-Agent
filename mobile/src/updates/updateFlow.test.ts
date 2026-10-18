@@ -1,4 +1,5 @@
-import { CERT_MISMATCH_MESSAGE, CHECKSUM_MISMATCH_MESSAGE } from './verify';
+import { CANT_REACH_BRANCH } from '../ui/plainError';
+import { CERT_MISMATCH_MESSAGE, CERT_UNREADABLE_MESSAGE, CHECKSUM_MISMATCH_MESSAGE } from './verify';
 import { createUpdateFlow, type UpdateFlowDeps } from './updateFlow';
 import type { ApkOffer } from './githubRelease';
 
@@ -91,6 +92,19 @@ describe('update flow', () => {
     expect(wired.installApk).not.toHaveBeenCalled();
   });
 
+  it('refuses to install when the update signing certificate cannot be read', async () => {
+    const wired = deps({
+      apkSigningCerts: async () => {
+        throw new Error(CERT_UNREADABLE_MESSAGE);
+      },
+    });
+    const flow = createUpdateFlow(wired);
+    await flow.check();
+    await flow.startUpdate();
+    expect(flow.getState()).toEqual({ status: 'error', message: CERT_UNREADABLE_MESSAGE, offer });
+    expect(wired.installApk).not.toHaveBeenCalled();
+  });
+
   it('explains the install-unknown-apps permission, opens Settings, and resumes when the user comes back', async () => {
     let allowed = false;
     const installApk = jest.fn(async () => undefined);
@@ -118,5 +132,21 @@ describe('update flow', () => {
     await flow.onAppActive();
     await done;
     expect(installApk).toHaveBeenCalledTimes(1);
+  });
+
+  it('never puts a raw exception on the error state when the check cannot reach the network', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const wired = deps({
+        fetchReleases: async () => {
+          throw new Error('fetch failed: java.net.UnknownHostException: Unable to resolve host "api.github.com"');
+        },
+      });
+      const flow = createUpdateFlow(wired);
+      await flow.check();
+      expect(flow.getState()).toEqual({ status: 'error', message: CANT_REACH_BRANCH });
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

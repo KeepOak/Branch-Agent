@@ -4,6 +4,7 @@
 // started in them and their rooms. System and helper conversations never show; archived, snoozed and
 // automation chats wait behind their own filter, as in the preview's phone Chats.
 import type { EngineLink } from '../pairing/pairingSession';
+import { plainError } from '../ui/plainError';
 
 export type ChatRow = {
   key: string;
@@ -332,5 +333,5 @@ export class ChatList {
 }
 
 function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return plainError(error);
 }
