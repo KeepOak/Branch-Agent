@@ -150,6 +150,10 @@ jobs:
             done
             combined=$(jq '{check_runs: [.[].check_runs[]]}' <<<"$pages")
             runs=$(jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted")]' <<<"$combined")
+            # Cancelled or skipped `recheck` jobs cannot change the gate. Drop them before the per-id
+            # path lookup so a burst of cancelled rechecks does not spend one API call each.
+            # In-progress and failed `recheck` checks still need a path: only merge-gate-recheck.yml is ignored.
+            runs=$(jq 'map(select(.name != "recheck" or .status != "completed" or (.conclusion != "cancelled" and .conclusion != "skipped")))' <<<"$runs")
             # Skip the recheck workflow's own `recheck` check only when its run proves merge-gate-recheck.yml.
             # A failing or running `recheck` from any other workflow is still waited on.
             recheck_paths='{}'

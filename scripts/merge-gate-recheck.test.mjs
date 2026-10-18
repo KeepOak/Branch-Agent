@@ -6,10 +6,12 @@ import {
   RECHECK_RATE_LIMIT_BUDGET_SECONDS,
   isSupersededSha,
   listRunRequestPath,
+  parsePullsJson,
   recheckPlan,
   runGh,
   runRecheck,
   summarizeRuns,
+  triggerSkipReason,
   workflowRunsFromPayload,
 } from './merge-gate-recheck.mjs';
 
@@ -152,13 +154,17 @@ test('the recheck workflow reacts to completed runs of its listed workflows, and
   assert.match(yaml, /^\s+workflows:\n/m);
   assert.match(yaml, /types: \[completed\]/);
   assert.match(yaml, /node scripts\/merge-gate-recheck\.mjs/);
-  assert.match(yaml, /group: merge-gate-recheck-\$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
+  assert.match(yaml, /pull_requests\[0\]\.number \|\| github\.event\.workflow_run\.head_sha/);
+  assert.match(yaml, /&& 'run' \|\| 'skip'/);
   assert.match(yaml, /cancel-in-progress: true/);
   assert.match(yaml, /timeout-minutes: 15/);
   assert.match(yaml, /MERGE_GATE_API_WAIT_SECONDS: '600'/);
   assert.match(yaml, /workflow_run\.name != 'Merge gate recheck'/);
   assert.match(yaml, /TRIGGER_KIND: content|TRIGGER_KIND: \$\{\{/);
+  assert.match(yaml, /PULLS_JSON:/);
+  assert.match(yaml, /toJSON\(github\.event\.workflow_run\.pull_requests\)/);
   assert.doesNotMatch(yaml, /gh run rerun "\$id"/);
+  assert.doesNotMatch(yaml, /actions\/setup-node/);
   const source = readFileSync(new URL('./merge-gate-recheck.mjs', import.meta.url), 'utf8');
   assert.match(source, /from '\.\/merge-gate-rate-limit\.mjs'/);
   assert.match(source, /withRateLimitRetry/);
@@ -170,6 +176,7 @@ test('the recheck workflow reacts to completed runs of its listed workflows, and
   assert.doesNotMatch(source, /run', 'list'/);
   assert.doesNotMatch(source, /--limit', '200'/);
   assert.doesNotMatch(source, /exclude_pull_requests/);
+  assert.doesNotMatch(source, /commits\/\$\{.*\}\/pulls/);
 });
 
 // Dedupe: a burst of completions must reach the listing once. Skip-only triggers never start the job (so they cannot
@@ -179,11 +186,13 @@ test('the recheck job skips content failures before it starts and settles before
   const condition = /^\s+if: (.+)$/m.exec(yaml.slice(yaml.indexOf('  recheck:')))?.[1] ?? '';
   assert.match(condition, /workflow_run\.conclusion == 'success'/);
   assert.match(condition, /workflow_run\.name == 'Merge gate trusted'/);
+  assert.match(condition, /run_attempt < 2/);
   const settle = yaml.indexOf('run: sleep 30');
   const checkout = yaml.indexOf('actions/checkout@');
   const list = yaml.indexOf('run: node scripts/merge-gate-recheck.mjs');
   assert.ok(settle > 0 && settle < checkout, 'the settle sleep must run before checkout so cancelled jobs spend no API');
   assert.ok(checkout > 0 && checkout < list, 'checkout must run after the settle and before the listing script');
+  assert.ok(yaml.indexOf('\nconcurrency:') < yaml.indexOf('\njobs:'), 'workflow-level concurrency so queued runs never start a runner');
   assert.ok(yaml.indexOf('cancel-in-progress: true') < settle);
 });
 
@@ -353,6 +362,8 @@ test('an open pull request whose head has moved on is superseded and does not li
   assert.equal(isSupersededSha([], 'abc'), false, 'an empty list is not proof the head moved');
   assert.equal(isSupersededSha([{ state: 'open', head: { sha: 'abc' } }], 'abc'), false);
   assert.equal(isSupersededSha([{ state: 'open', head: { sha: 'def' } }], 'abc'), true);
+  assert.equal(isSupersededSha([{ head: { sha: 'def' } }], 'abc'), true, 'workflow_run payloads omit state');
+  assert.equal(isSupersededSha([{ head: { sha: 'abc' } }], 'abc'), false);
   assert.equal(isSupersededSha([
     { state: 'closed', head: { sha: 'def' } },
     { state: 'open', head: { sha: 'abc' } },
@@ -386,6 +397,54 @@ test('a current open pull request head still lists runs after the superseded che
   });
   assert.equal(code, 0);
   assert.equal(listCalls, 1);
+});
+
+test('a Merge gate attempt that was itself a rerun and did not succeed lists nothing', () => {
+  assert.equal(
+    triggerSkipReason({ kind: 'gate', name: 'Merge gate', attempt: 2, conclusion: 'failure' }),
+    'a rerun of Merge gate is not rerun again',
+  );
+  const listed = [];
+  const reruns = [];
+  const code = runRecheck({
+    repo: 'o/r', sha: 'abc',
+    trigger: { kind: 'gate', name: 'Merge gate', attempt: 2, conclusion: 'failure' },
+    currentRunId: 1, list: (...args) => { listed.push(args); return []; },
+    rerun: (...args) => reruns.push(args), log: () => {}, error: () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(listed.length, 0);
+  assert.equal(reruns.length, 0);
+});
+
+test('a Merge gate attempt 2 that succeeded still lists, so the trusted gate can rerun', () => {
+  let listCalls = 0;
+  const reruns = [];
+  const code = runRecheck({
+    repo: 'o/r', sha: 'abc',
+    trigger: { kind: 'gate', name: 'Merge gate', attempt: 2, conclusion: 'success' },
+    currentRunId: 1,
+    list: () => {
+      listCalls += 1;
+      return [gate('success', 'completed', 51), trusted('failure'), content('success')];
+    },
+    rerun: (_repo, id) => reruns.push(id), log: () => {}, error: () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(listCalls, 1);
+  assert.deepEqual(reruns, [60]);
+});
+
+test('parsePullsJson reads the workflow_run payload and treats junk as an empty list', () => {
+  assert.deepEqual(parsePullsJson(''), []);
+  assert.deepEqual(parsePullsJson('[{"number":1,"head":{"sha":"abc"}}]'), [{ number: 1, head: { sha: 'abc' } }]);
+  assert.deepEqual(parsePullsJson('{"not":"an array"}'), []);
+  assert.deepEqual(parsePullsJson('not-json'), []);
+});
+
+test('the ordinary merge gate drops cancelled recheck checks before the per-id path lookup', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /name != "recheck" or \.status != "completed" or \(\.conclusion != "cancelled" and \.conclusion != "skipped"\)/);
 });
 
 test('workflow run pages map REST fields and paginate only until the listing is complete', () => {

@@ -87,6 +87,9 @@ export function recheckPlan({ trigger, runs }) {
   if (trigger.kind === 'content') {
     if (trigger.conclusion !== 'success') return skipAll('the triggering check did not succeed');
   } else if (trigger.kind === 'gate') {
+    if (trigger.name === ORDINARY_GATE && trigger.attempt >= 2 && trigger.conclusion !== 'success') {
+      return skipAll('a rerun of Merge gate is not rerun again');
+    }
     if (!trigger.name && trigger.attempt >= 2) return skipAll('a rerun of a gate is not rerun again');
   } else {
     return skipAll('unknown trigger');
@@ -113,16 +116,28 @@ export function recheckPlan({ trigger, runs }) {
 // Decided from the trigger alone, so no listing is needed. Same outcome recheckPlan gives for these cases.
 export function triggerSkipReason(trigger) {
   if (trigger.kind === 'content') return trigger.conclusion !== 'success' ? 'the triggering check did not succeed' : null;
-  if (trigger.kind === 'gate') return !trigger.name && trigger.attempt >= 2 ? 'a rerun of a gate is not rerun again' : null;
+  if (trigger.kind === 'gate') {
+    if (trigger.name === ORDINARY_GATE && trigger.attempt >= 2 && trigger.conclusion !== 'success') {
+      return 'a rerun of Merge gate is not rerun again';
+    }
+    return !trigger.name && trigger.attempt >= 2 ? 'a rerun of a gate is not rerun again' : null;
+  }
   return 'unknown trigger';
 }
 
-// An open PR whose head has moved on does not need a listing: GitHub only requires checks on the current head.
-// Unknown / empty pull lists are not skipped, so a delayed association still lists.
+// An associated PR whose head has moved on does not need a listing: GitHub only requires checks on the current head.
+// Unknown / empty pull lists are not skipped, so a delayed association still lists. workflow_run payloads omit
+// `state`; missing state is treated as associated (the payload only includes PRs for that run).
 export function isSupersededSha(pulls, sha) {
-  const open = (pulls ?? []).filter((pr) => pr?.state === 'open');
-  if (!open.length) return false;
-  return open.every((pr) => typeof pr.head?.sha === 'string' && pr.head.sha.length > 0 && pr.head.sha !== sha);
+  const associated = (pulls ?? []).filter((pr) => pr && pr.state !== 'closed' && pr.state !== 'merged');
+  if (!associated.length) return false;
+  return associated.every((pr) => typeof pr.head?.sha === 'string' && pr.head.sha.length > 0 && pr.head.sha !== sha);
+}
+
+export function parsePullsJson(raw) {
+  if (raw == null || raw === '') return [];
+  const parsed = parseJson(raw, []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function workflowRunsFromPayload(payload) {
@@ -145,12 +160,6 @@ function parseJson(text, fallback) {
   } catch {
     return fallback;
   }
-}
-
-function pullsForCommit(repo, sha) {
-  const raw = runGh(['api', `repos/${repo}/commits/${sha}/pulls`], process.env, { log: console.log });
-  const parsed = parseJson(raw, []);
-  return Array.isArray(parsed) ? parsed : [];
 }
 
 function listRuns(repo, sha) {
@@ -223,6 +232,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     name: process.env.TRIGGER_NAME,
   };
   process.exitCode = runRecheck({
-    repo, sha, trigger, currentRunId: process.env.GITHUB_RUN_ID, pulls: pullsForCommit,
+    repo, sha, trigger, currentRunId: process.env.GITHUB_RUN_ID,
+    pulls: () => parsePullsJson(process.env.PULLS_JSON),
   });
 }
