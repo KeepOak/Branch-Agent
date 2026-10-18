@@ -130,7 +130,8 @@ export function TrunksTab(props: Props) {
     <div className="tk-toolbar">
       <button type="button" className="btn pri" disabled={busy || !roster || !write} title={write ? undefined : WRITE_WHY} onClick={() => setAdding(true)}><Icon name="plus" small />{busy ? "Making…" : "A new Trunk"}</button>
       <button type="button" className="btn" onClick={() => openNewGroupChat()}><Icon name="users" small />New group chat</button>
-      <Coming engine={engine} need={TRY_EXAMPLES_METHOD} reason={EXAMPLES_REASON} where="Try it with examples">
+      {/* Coming (the engine lacks the call) shows only at Technical, as every Coming control does (Private #1093 item 7b). */}
+      <Coming engine={engine} need={TRY_EXAMPLES_METHOD} reason={EXAMPLES_REASON} where="Try it with examples" hidden={!shows(level, "technical")}>
         <button type="button" className="btn" disabled={examples.status === "busy"} onClick={() => startTryExamples((method, params) => engine.request(method, params))}><Icon name="spark" small />{examples.status === "busy" ? "Loading examples…" : "Try it with examples"}</button>
       </Coming>
     </div>

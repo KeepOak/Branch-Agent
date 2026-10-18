@@ -5,6 +5,8 @@ import type { Server } from "node:http";
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { leaveAppWorkingFolder, userHome } from "./app-working-folder";
+import { nodeOutsideSwappedFolder } from "./install-folder-holders";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopEnginePid, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
 import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
@@ -22,6 +24,7 @@ import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, 
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
 import { plainDialogText, STOP_FAILED_PLAIN, UPDATE_FAILED_PLAIN } from "./plain-dialog";
 import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
+import { askFirstLaunchInWindow, FIRST_LAUNCH_DOWNLOAD, FIRST_LAUNCH_RETRY, FIRST_LAUNCH_WATCH_CANCEL, firstLaunchAllowsWindow, firstLaunchNeedComponentsScript, firstLaunchProgressScript, needsFirstLaunchComponents, runFirstLaunchInstall } from "./first-launch-install";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
@@ -48,6 +51,7 @@ import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
 import { MacComputerDriver, describeDriverError, macScreenControlEnabled } from "./mac-computer-driver";
+import { externalUrlAllowed } from "./external-url";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 /** Scratch test copies: never grouped with, or mistaken for, the owner's app (they also start hidden). */
@@ -105,6 +109,8 @@ function standbyWarmTimeoutMs(): number {
 const STANDBY_ATTEMPTS = 2;
 /** Free memory a candidate check needs (6 GB, or a quarter of RAM); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
 const cfg: DesktopConfig = loadConfig();
+// The bundled node locks the version folder. Later launches, including the PATH shim, use the copy in the data folder.
+cfg.nodePath = nodeOutsideSwappedFolder(cfg.nodePath, cfg.dataDir);
 /** The packaged app this process runs from; development runs (`electron .`) never update themselves. */
 const install: DesktopInstall | undefined = app.isPackaged ? {
   appDir: process.platform === "darwin" ? resolve(process.resourcesPath, "..", "..") : dirname(process.execPath),
@@ -719,7 +725,8 @@ async function handOffToStandby(label: string, prior: ChildProcess, selected: Pr
     resumeSupervision();
     throw new Error(`the running engine could not step down (${stepped}) and is not serving; Branch restarts it`);
   }
-  standby = undefined;
+  // Stay in `standby` until bootEngine records this child as the live gateway. Quit in between
+  // must still stop it: clearing the pointer here left the process running until the fixture deadline.
   log(`update ${label}: old engine ${prior.pid} stepped down; telling standby ${selected.child.pid} to take over on port ${selected.port}`);
   const tookOver = await takeOverStandby(selected.child, TAKE_OVER_TIMEOUT_MS);
   if (quitting) throw new Error("Branch Agent is quitting");
@@ -1192,7 +1199,7 @@ function lockDown(w: BrowserWindow): void {
     if (new URL(url).origin !== origin) e.preventDefault();
   });
   w.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("https://")) void shell.openExternal(url);
+    if (externalUrlAllowed(url)) void shell.openExternal(url);
     return { action: "deny" };
   });
   session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
@@ -1215,6 +1222,13 @@ async function handOffDesktop(): Promise<boolean> {
 }
 
 async function start(): Promise<void> {
+  // After app.whenReady, before the helper or gateway: an old shortcut's Start in folder holds the app on Windows (#1777).
+  leaveAppWorkingFolder({
+    cwd: process.cwd(),
+    appDir: install?.appDir ?? dirname(process.execPath),
+    home: userHome(app, homedir),
+    chdir: (dir) => { process.chdir(dir); },
+  });
   // A desktop update staged during the last run applies before anything starts.
   if (await handOffDesktop()) { app.exit(0); return; }
   token = readToken(cfg);
@@ -1401,9 +1415,35 @@ async function start(): Promise<void> {
   await refuseOrphanedEngine();
   adoptGatewayPort(cfg.gatewayPort);
   await recoverComponentUpdate(cfg);
-  if (!existsSync(join(cfg.windowDir, "index.html")) || !existsSync(join(cfg.dataDir, "engine-current.txt")) && !existsSync(join(cfg.engineDir, "branch.mjs"))) {
-    log("Installing verified GitHub components for first launch");
-    await refreshComponentUpdate(cfg, fetch, { desktop: install, underSwapGuard, log });
+  if (needsFirstLaunchComponents(cfg)) {
+    log("First launch needs verified GitHub components");
+    const starting = win;
+    const ac = new AbortController();
+    const outcome = await runFirstLaunchInstall(cfg, fetch, {
+      desktop: install, underSwapGuard, log, signal: ac.signal,
+      onProgress: update => {
+        const pct = update.total ? Math.round((update.bytes / update.total) * 100) : 0;
+        const line = `Downloading ${update.name}… ${pct}%`;
+        log(line);
+        if (starting && !starting.isDestroyed()) void starting.webContents.executeJavaScript(firstLaunchProgressScript(line)).catch(() => undefined);
+      },
+      watchCancel: async () => {
+        if (!starting || starting.isDestroyed()) return;
+        await starting.webContents.executeJavaScript(FIRST_LAUNCH_WATCH_CANCEL).catch(() => undefined);
+      },
+      ask: async prompt => {
+        if (!starting || starting.isDestroyed()) return false;
+        return askFirstLaunchInWindow(starting, prompt.message, prompt.kind === "retry" ? FIRST_LAUNCH_RETRY : FIRST_LAUNCH_DOWNLOAD)
+          .then(ok => { if (!ok) ac.abort(); return ok; });
+      },
+    });
+    log(`first-launch components: ${outcome}`);
+    if (!firstLaunchAllowsWindow(outcome)) {
+      if (starting && !starting.isDestroyed()) {
+        await starting.webContents.executeJavaScript(firstLaunchNeedComponentsScript()).catch(() => undefined);
+      }
+      return;
+    }
   }
   servedWindowDir = cfg.windowDir;
   server = await serveWindow(() => servedWindowDir, cfg.windowPort);
@@ -1605,6 +1645,8 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
     sendStandbyTakeOver(prepared.child);
   }
   gateway = child;
+  // Promoted: quit stops it through `gateway`. Until this line, quit stops it through `standby`.
+  if (standby?.child === child) standby = undefined;
   const observed = gatewaySupervisor.observe(child);
   log(`gateway started from ${engineDir}, pid ${child.pid}, port ${port}`);
   // publish-engine.sh never removes the folder named here.

@@ -6,6 +6,7 @@ import { Fragment, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { Dialog } from "../../shell/Dialog";
+import { plainError } from "../../shell/plain-error";
 import { ConnectModelNotice } from "../../composer/ConnectModelNotice";
 import { CONNECT_MODEL_ANSWERS, inferenceProblem } from "../../composer/connect-model";
 import { canWrite, WRITE_WHY } from "./data";
@@ -77,7 +78,7 @@ export function TrunkStudio({ engine, onClose, onMade, openTrunk }: TrunkStudioP
     try {
       const reply = readReply(await engine.request("branch.chat", { sessionId: session.current, welcomeVariant: "new-agent", message: text }));
       setTurns((t) => [...t, { who: "branch", text: reply.text }]); setLast(reply); onMade?.();
-    } catch (e) { setError(inferenceProblem(e) ?? "Couldn’t make a Trunk just now. Try again."); }
+    } catch (e) { setError(inferenceProblem(e) ?? (plainError(e) || "Couldn’t make a Trunk just now. Try again.")); }
     finally { setBusy(false); }
   };
   const first = !turns.length;
@@ -98,7 +99,7 @@ export function TrunkStudio({ engine, onClose, onMade, openTrunk }: TrunkStudioP
         <label className="tk-field"><span className="tk-h">{first ? "What should it take on?" : "Your answer"}</span>
           <textarea className="inp" rows={3} value={what} placeholder={first ? "Watch my subscriptions and tell me before anything renews." : ""} onChange={(e) => setWhat(e.target.value)} /></label>
         {first && <p className="tk-hint tk-studio-hint">Branch proposes a name, a face, the tools it needs, a computer and a schedule. Nothing is made until you say so.</p>}
-        {error === CONNECT_MODEL_ANSWERS ? <ConnectModelNotice /> : error ? <p className="tk-error" role="alert">{error}</p> : null}
+        {error === CONNECT_MODEL_ANSWERS ? <ConnectModelNotice /> : error ? <p className="tk-error" role="alert">{plainError(error)}</p> : null}
       </div>
     </Dialog></Layer>
   );

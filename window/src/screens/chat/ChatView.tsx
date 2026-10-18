@@ -36,6 +36,7 @@ import { useApprovalDetails, useHelpers, useReactions } from "../../thread/useEn
 import { useMessageActions, type MessageChanges, type ReplyTarget } from "../../thread/useMessageActions";
 import { Icon } from "../../shell/icons";
 import { shows, useLevel } from "../../places-nav/level";
+import { CODEX_CANCEL_METHOD, CODEX_DOWNLOAD_METHOD } from "../../places/settings/set1/codex-get";
 import { answerBelowWorkingLine, blockTime, dividerPositions, entriesOf, useWorkMode, type Entry, type WorkMode } from "./chat-logic";
 import { HoverBar } from "./HoverBar";
 import { NoticeLine, TimeDivider, WorkingLine } from "./lines";
@@ -281,6 +282,7 @@ export function ChatView(props: ChatViewProps) {
 
   const view: View = { all, name, running, live, actionsFor, changes, reactions, apply, asks: askCards, grouped, answerAsk, lockdown: Boolean(props.lockdown), times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast, room: props.room, continueKey, onContinue };
   const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status"), history.length)) : [];
+  const codexProgress = live.some((b) => b.kind === "notice" && (b.codex?.state === "downloading" || b.codex?.state === "confirm"));
   // The run's token count (the engine's usage block), as Classic's live-run header shows it; once something visible arrives.
   const usage = running ? live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage") : undefined;
   // Regular: one quiet working line. It is the steps disclosure when the run has steps, and it stays above the answer.
@@ -308,9 +310,9 @@ export function ChatView(props: ChatViewProps) {
         {props.room ? <RoomLine history={history} room={props.room} ownName={name} /> : null}
         {pendingUser ? <UserBubble block={{ kind: "user", key: "pending", text: pendingUser }} /> : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="delivered" />
-        {running && quiet && !waitingHere && !inlineSteps ? <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><WorkingLine label={workText} /></div></div> : null}
+        {running && quiet && !waitingHere && !inlineSteps && !codexProgress ? <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><WorkingLine label={workText} /></div></div> : null}
         {running ? shownLive.map((entry, i) => <EntryView key={entry.type === "item" ? entry.item.block.key : entry.key} entry={entry} view={view} live working={inlineSteps && i === lastSteps ? workText : undefined} />) : null}
-        {running && !quiet && !waitingHere ? <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><WorkingLine label={workText} /></div></div> : null}
+        {running && !quiet && !waitingHere && !codexProgress ? <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><WorkingLine label={workText} /></div></div> : null}
         {running && liveShows && usage?.total ? <NoticeLine text={usage.total.toLocaleString() + " tokens so far"} testid="live-usage" /> : null}
         {running ? (props.steered ?? []).map((note) => <NoticeLine key={note.runId} text={"You steered " + name + ": “" + note.text + "”. It takes this at its next step."} testid="steered-note" />) : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
@@ -393,6 +395,26 @@ function ApprovalBlock({ block, view }: { block: Extract<Block, { kind: "approva
   return <div className="r1c-row r1c-b" data-block-key={block.key}><div className="r1c-gut" /><div className="r1c-body">{card}</div></div>;
 }
 
+function CodexTurnNotice({ block, engine }: { block: Extract<Block, { kind: "notice" }>; engine?: WindowEngine }) {
+  const codex = block.codex;
+  const [retryAsk, setRetryAsk] = useState(false);
+  if (!codex) return <NoticeLine text={block.text} />;
+  if (codex.state === "downloading") return <NoticeLine text={block.text} testid="codex-download" />;
+  if (codex.state === "cancelled") return <NoticeLine text="Cancelled" testid="codex-cancelled" />;
+  const asking = codex.state === "confirm" || (codex.state === "failed" && retryAsk);
+  if (asking) {
+    const message = codex.state === "confirm" ? block.text : (codex.ask || block.text);
+    return <NoticeLine text={message} testid="codex-download-prompt" links={[
+      { label: "Yes", onClick: () => { setRetryAsk(false); void engine?.request(CODEX_DOWNLOAD_METHOD, { confirmed: true }); }, need: CODEX_DOWNLOAD_METHOD, reason: "This engine can’t download Codex." },
+      { label: "Cancel", onClick: () => { setRetryAsk(false); void engine?.request(CODEX_CANCEL_METHOD, {}); } },
+    ]} />;
+  }
+  if (codex.state === "failed") {
+    return <NoticeLine tone="bad" text={block.text} testid="codex-failed" links={[{ label: "Try again", onClick: () => setRetryAsk(true), need: CODEX_DOWNLOAD_METHOD, reason: "This engine can’t download Codex." }]} />;
+  }
+  return <NoticeLine text={block.text} />;
+}
+
 function EntryView({ entry, view, live, working }: { entry: Entry; view: View; live: boolean; working?: string }) {
   if (entry.type === "thought") return <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><LoneThought thought={entry.thought} mode={view.mode} /></div></div>;
   if (entry.type === "steps") {
@@ -446,6 +468,7 @@ function EntryView({ entry, view, live, working }: { entry: Entry; view: View; l
         ? wrap(<ConnectModelNotice />)
         : <RunError name={view.name} message={block.message} toast={view.toast} />;
     case "notice":
+      if (block.codex) return <CodexTurnNotice block={block} engine={view.engine} />;
       return <NoticeLine text={block.text} links={block.topicKey && view.onOpenSession ? [{ label: "Open", onClick: () => view.onOpenSession?.(block.topicKey!) }] : []} />;
     case "steer":
       return <NoticeLine text={"You steered " + view.name + ": “" + block.text + "”."} testid="steered-note" />;

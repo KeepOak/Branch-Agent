@@ -2,7 +2,8 @@
 // this conversation first (chat.history), then every conversation's transcript search (sessions.search) once you
 // type. The highlighted ask is previewed in the box; Enter keeps it, Escape puts your draft back.
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { errorText, list, rec, str, type WindowEngine } from "./engine";
+import { list, rec, str, type WindowEngine } from "./engine";
+import { plainError } from "../shell/plain-error";
 import { INPUT_HISTORY_LIMIT, userTexts } from "./drafts";
 import { Icon } from "./icons";
 import { Popover } from "./Popover";
@@ -51,7 +52,7 @@ export function HistorySearch({ anchor, engine, sent, draft, onPreview, onDone }
     let live = true;
     engine.request("chat.history", { sessionKey: engine.sessionKey, limit: INPUT_HISTORY_LIMIT }).then(
       (h) => live && setOwn((cur) => [...cur, ...userTexts(list(rec(h).messages))]),
-      (e: unknown) => live && setError(errorText(e)),
+      (e: unknown) => live && setError(plainError(e)),
     );
     return () => {
       live = false;
@@ -68,7 +69,7 @@ export function HistorySearch({ anchor, engine, sent, draft, onPreview, onDone }
     const t = setTimeout(() => {
       engine.request("sessions.search", { scope: {}, query: q, limit: 25 }).then(
         (r) => live && setFound(list(rec(r).results).filter((x) => x.role === "user").map((x) => snippetText(str(x.snippet)))),
-        (e: unknown) => live && setError(errorText(e)),
+        (e: unknown) => live && setError(plainError(e)),
       );
     }, 200);
     return () => {

@@ -18,7 +18,7 @@
 @media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) { --r1c-p-fill: var(--raise); } }
 
 /* One frosted pill: the fill, the blur and a 1 px outline drawn inside; softer inks firm up to the pill's own ink. */
-.r1c-pill, .r1c-note, .r1c-quiet, .r1c-flag, .r1c-tile, .r1c-mi, .r1c-chip,
+.r1c-pill, .r1c-note, .r1c-quiet, .r1c-flag, .r1c-tile, .r1c-mi, .r1c-chip, .r1c-free,
 .r1c-menu :is(.c-pt, .c-pp, .c-grp, .c-mi, .c-row, .c-search, .c-seg, .r1c-runs, .r1c-line, .r1c-ctx, .r1c-more .bars, .mi, .pt, .ph, .acctT5, .sp-note),
 .r1c-plugpop :is(.c-plug-h, .c-search, .c-ph, .c-tool, .c-librow, .c-plug-changed, .c-manage, .c-pp) {
   background: var(--r1c-p-fill); backdrop-filter: var(--r1c-p-blur); -webkit-backdrop-filter: var(--r1c-p-blur);
@@ -47,6 +47,9 @@
 @container (max-width: 760px) { .r1c { margin-bottom: -4px; } }
 .r1c-note { width: fit-content; margin: 0 auto 6px; padding: 3px 12px; border-radius: 14px; max-width: min(100%, 680px); color: var(--ink-3); font-size: var(--fs-12-5); text-align: center; overflow: visible; white-space: normal; }
 .r1c-note.bad { color: var(--bad); }
+.r1c-free { display: grid; gap: 8px; width: fit-content; margin: 0 auto 8px; padding: 10px 14px; border-radius: 16px; max-width: min(100%, 520px); color: var(--ink-2); font-size: var(--fs-13); text-align: left; }
+.r1c-free p { margin: 0; white-space: pre-wrap; }
+.r1c-free-acts { display: flex; gap: 8px; flex-wrap: wrap; }
 .r1c .r1c-connect { display: grid; justify-items: center; gap: 8px; margin: 0 auto 8px; }
 .r1c .r1c-connect p { margin: 0; font-size: var(--fs-13); color: var(--ink-2); }
 .r1c .connect-model-acts, .c-nomodel .connect-model-acts { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; }

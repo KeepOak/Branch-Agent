@@ -213,6 +213,7 @@ export const DevicePairSetupCodeResultSchema = closedObject({
   ),
   accessDowngraded: Type.Optional(Type.Boolean()),
   expiresAtMs: Type.Optional(Type.Integer({ minimum: 0 })),
+  confirmCode: Type.Optional(Type.String({ minLength: 6, maxLength: 6 })),
 });
 
 // Wire types derive directly from local schema consts so public d.ts graphs never
