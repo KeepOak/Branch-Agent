@@ -11,6 +11,10 @@
 .set-col .s2-danger .rows { background: none; box-shadow: none; padding: 0; }
 .set-col .s2-danger .prow b { font-weight: 500; }
 .set-col .btn.s2-dz:not(:disabled) { background: var(--bad); border-color: var(--bad); color: #fff; }
+/* Where your data lives: a long folder path must not squeeze the title and its description into a narrow strip
+   (Private #1093). The control column is capped, and Move… wraps under the path. */
+.set-col .ctl[data-row="Where your data lives"] > .right { flex-wrap: wrap; max-width: min(18rem, 42vw); }
+.set-col .ctl[data-row="Where your data lives"] code.s2-code { max-width: 100%; }
 .set-col code.s2-code, .dlg code.s2-code { padding: 3px 8px; border-radius: 8px; background: var(--fill); font: 12px var(--mono); color: var(--ink-2); max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s2-kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; margin: 0 0 8px; padding: 10px 12px; border-radius: 10px; background: var(--fill); font-size: 13px; }
 .s2-kv > div { display: contents; }

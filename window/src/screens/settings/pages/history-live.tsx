@@ -248,10 +248,15 @@ export function changeLines(e: RecordValue, technical: boolean): { title: string
   return { title: [SOURCE[str(e.source)], plain].filter(Boolean).join(": "), sub: when(e.at) };
 }
 
+/** Why Roll back is greyed: one visible line for the whole list, named by every Roll back (Private #1093). */
+const ROLLBACK_WHY = "Rolling back a change comes in a later update. Until then, Import a saved settings file to go back.";
+
 export function EveryChange({ engine, row }: SlotControlProps) {
   const [level] = useLevel(engine);
+  const whyId = useId();
   const changes = useLive<RecordValue>(engine, "branch.changes.list", { limit: 50 }, ["config"]);
   const entries = list(record(changes.data).entries);
+  const canRollBack = entries.some((e) => e.kind === "config-write");
   return (
     <Needs engine={engine} need={["branch.changes.list"]} where={row.label ?? ""}>
       <div className="r1s-own-ctl">
@@ -264,11 +269,12 @@ export function EveryChange({ engine, row }: SlotControlProps) {
                 <span className="r1s-change-t">{line.title}</span>
                 <time className="r1s-change-when" dateTime={typeof e.at === "number" ? new Date(e.at).toISOString() : undefined}>{line.sub}</time>
                 {e.kind === "config-write" ? <div className="r1s-change-acts"><Coming engine={engine} need="engine: rolling back a settings change" unwired reason="Rolling back a change comes in a later update." where="Roll back">
-                  <button type="button" className="r1s-link" disabled>Roll back</button></Coming></div> : null}
+                  <button type="button" className="r1s-link" disabled aria-describedby={whyId}>Roll back</button></Coming></div> : null}
               </li>
             ); })}
           </ul>
         ) : null}
+        {canRollBack ? <Line id={whyId}>{ROLLBACK_WHY}</Line> : null}
       </div>
     </Needs>
   );
@@ -293,12 +299,23 @@ export function ImportSettings({ engine, row }: SlotControlProps) {
 }
 
 /** Where your data lives: the folder the engine reports; moving it needs the Branch app. */
+const MOVE_WHY = "Moving your data folder comes in a later update.";
+/** The control column of this row is capped, so a long folder path never squeezes the label and its description into a
+ *  narrow strip (Private #1093). The path is cut with an ellipsis and its full text is the tooltip. */
+const FOLDER_COL = { maxWidth: "min(18rem, 42vw)", justifyContent: "flex-end" } as const;
+const PATH_CAP = { display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "middle" } as const;
+
+/** Where your data lives: the folder the engine reports. Moving it isn't built yet: Move… is greyed and one visible line,
+ *  named by Move…, says so. */
 export function DataFolder({ engine, row }: SlotControlProps) {
   const sys = record(useLive<RecordValue>(engine, "system.info", {}, []).data);
-  return <span className="r1s-own-ctl">
-    {str(sys.diskPath) ? <code className="r1s-val">{str(sys.diskPath)}</code> : null}
-    <Coming engine={engine} need="desktop: moving Branch's data" unwired reason="Moving your data needs the Branch app." where={row.label}>
-      <button type="button" className="r1s-btn" disabled>Move…</button>
+  const path = str(sys.diskPath);
+  const whyId = useId();
+  return <span className="r1s-own-ctl" data-folder="" style={FOLDER_COL}>
+    {path ? <code className="r1s-val" title={path} style={PATH_CAP}>{path}</code> : null}
+    <Coming engine={engine} need="desktop: moving Branch's data" unwired reason={MOVE_WHY} where={row.label}>
+      <button type="button" className="r1s-btn" disabled aria-describedby={whyId}>Move…</button>
     </Coming>
+    <Line id={whyId}>{MOVE_WHY}</Line>
   </span>;
 }
