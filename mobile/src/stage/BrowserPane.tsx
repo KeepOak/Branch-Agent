@@ -67,8 +67,8 @@ export function BrowserPane({ link, sessionKey, control, onControl, onPhase, ove
       if (gone) return;
       setTabs(next);
       present("connected");
-    })().catch((e: unknown) => {
-      if (!gone) present("error", e instanceof Error ? e.message : String(e));
+    })().catch(() => {
+      if (!gone) present("error", "Can't reach Branch. Check your connection.");
     });
     return () => {
       gone = true;
@@ -78,7 +78,7 @@ export function BrowserPane({ link, sessionKey, control, onControl, onPhase, ove
   const call = (method: "GET" | "POST" | "DELETE", path: string, options: Parameters<typeof browserCall>[4] = {}) =>
     browserCall(link, route, method, path, { ...options, sessionKey: sessionKey ?? undefined });
 
-  const fail = (e: unknown) => setNote(e instanceof Error ? e.message : "The browser input couldn't be sent. Check the connection and try again.");
+  const fail = () => setNote("The browser input couldn't be sent. Check the connection and try again.");
 
   const go = (raw: string) => {
     const input = resolveBrowserInput(raw);

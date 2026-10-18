@@ -151,7 +151,7 @@ describe('chat list from the computer', () => {
     list.attach();
     session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
     engine.approve();
-    expect(await until(list, (s) => s.error !== null)).toMatchObject({ loaded: false, error: 'sessions unavailable', rows: [] });
+    expect(await until(list, (s) => s.error !== null)).toMatchObject({ loaded: false, error: "Can't reach Branch. Check your connection.", rows: [] });
     await list.refresh();
     expect(list.getSnapshot()).toMatchObject({ loaded: true, error: null });
     expect(filterRows(list.getSnapshot().rows, 'all', FIXTURE_NOW)).toHaveLength(6);

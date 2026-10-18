@@ -26,6 +26,8 @@ describe('mobile feature map', () => {
       'voice',
       'approvals',
       'settings',
+      'more',
+      'profile',
     ]);
   });
 

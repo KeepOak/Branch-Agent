@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import App from '../../App';
 import { NO_ATTACH_METHOD_NOTE, type PickedFile } from '../chat/attachments';
 import { Conversation } from '../chat/conversation';
-import type { AttachmentPickers } from '../chat/pickAttachment';
+import { AttachProblem, CAMERA_OFF_MESSAGE, type AttachmentPickers } from '../chat/pickAttachment';
 import { chatRows, readAgents } from '../chats/chatList';
 import { createFakeEngine } from '../connect/fakeEngine';
 import { fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
@@ -136,7 +136,7 @@ describe('chat screen', () => {
 
   it('says why a chat couldn’t load, with Try again', async () => {
     const { conversation, session, engine } = await renderChat(true, (e) => e.failMethod('chat.history', 'history unavailable'));
-    await eventually(() => expect(screen.getByTestId('chat-error')).toHaveTextContent(/history unavailable/));
+    await eventually(() => expect(screen.getByTestId('chat-error')).toHaveTextContent(/Can't reach Branch/));
     engine.failMethod('chat.history', null);
     engine.setHistory(KEY, history);
     await fireEvent.press(screen.getByTestId('chat-error-action'));
@@ -151,7 +151,7 @@ describe('chat screen', () => {
     engine.failMethod('chat.send', 'The engine is busy');
     await fireEvent.changeText(screen.getByTestId('composer'), 'Pay the rent');
     await fireEvent.press(screen.getByTestId('send'));
-    await eventually(() => expect(screen.getByTestId('retry-run-1')).toHaveTextContent('Not sent: The engine is busy. Tap to try again.'));
+    await eventually(() => expect(screen.getByTestId('retry-run-1')).toHaveTextContent("Not sent: Can't reach Branch. Check your connection. Tap to try again."));
     engine.failMethod('chat.send', null);
     await fireEvent.press(screen.getByTestId('retry-run-1'));
     await eventually(() => expect(screen.queryByTestId('retry-run-1')).toBeNull());
@@ -236,7 +236,7 @@ describe('chat attachments', () => {
       {
         engine: createFakeEngine({ attachmentPolicy: { maxBytes: 100, maxImageBytes: 2 } }),
         pickers: pickersOf(() => {
-          if (fail) throw new Error('Turn on the camera for Branch in Settings to take a photo.');
+          if (fail) throw new AttachProblem(CAMERA_OFF_MESSAGE);
           return photo;
         }),
       },
@@ -249,7 +249,7 @@ describe('chat attachments', () => {
     fail = true;
     await fireEvent.press(screen.getByTestId('attach'));
     await fireEvent.press(screen.getByTestId('attach-photo'));
-    await eventually(() => expect(screen.getByTestId('attach-error')).toHaveTextContent('Turn on the camera for Branch in Settings to take a photo.'));
+    await eventually(() => expect(screen.getByTestId('attach-error')).toHaveTextContent(CAMERA_OFF_MESSAGE));
     conversation.dispose();
     session.dispose();
   });

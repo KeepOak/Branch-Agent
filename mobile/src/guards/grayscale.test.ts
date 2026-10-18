@@ -1,6 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { DESKTOP_THEMES, paletteSliceFor } from '../theme/desktopThemes';
 import { palettes, toGrayscale } from '../theme/tokens';
-import { colorLiterals, formatHits, isGrayscaleColor, readMobileFile, uiSourceFiles } from './sourceScan';
+import { colorLiterals, formatHits, isGrayscaleColor, KEEP_COLOR_ASSETS, mobileRoot, readMobileFile, srcPaintFiles } from './sourceScan';
 
 const TOKEN_FILE = 'src/theme/tokens.ts';
 
@@ -24,8 +26,13 @@ describe('grayscale theme tokens', () => {
     expect(colorLiterals(sample).map((hit) => hit.value).sort()).toEqual(['#ff0000', "'black'", 'hsl(200, 80%, 50%)', 'rgb(0, 128, 0)'].sort());
   });
 
-  it('fails on any colour literal in mobile screens outside the token file, or on a non-grayscale token value', () => {
-    const literalHits = uiSourceFiles().flatMap((file) => {
+  it('fails on any colour literal in mobile/src outside the token file, or on a non-grayscale token value', () => {
+    expect(KEEP_COLOR_ASSETS).toEqual(['assets/icon.png', 'assets/adaptive-icon.png', 'assets/splash-icon.png']);
+    for (const asset of KEEP_COLOR_ASSETS) {
+      expect(fs.existsSync(path.join(mobileRoot, asset))).toBe(true);
+    }
+    expect(srcPaintFiles()).not.toContain(TOKEN_FILE);
+    const literalHits = srcPaintFiles().flatMap((file) => {
       const values = colorLiterals(readMobileFile(file)).map((hit) => hit.value);
       return values.length ? [formatHits(file, values)] : [];
     });

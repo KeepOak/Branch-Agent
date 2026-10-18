@@ -11,7 +11,6 @@ import { voice, voiceRadius, voiceSans, voiceType, type VoiceTypeName } from '..
 import { later, shows, type Level } from '../voice/level';
 import { spokenAnswer } from '../voice/spokenAnswer';
 import {
-  CALL_UNAVAILABLE,
   NOT_CONNECTED,
   OFFLINE_VOICE,
   VoiceCall,
@@ -215,7 +214,7 @@ export function VoiceScreen({
     next.start().catch((e: unknown) => {
       if (!live || call.current !== next) return;
       setState('error');
-      setMessage(voiceError(e) === 'Your computer isn’t connected right now.' ? OFFLINE_VOICE : CALL_UNAVAILABLE);
+      setMessage(link.hello ? voiceError(e) : OFFLINE_VOICE);
     });
     return () => {
       live = false;

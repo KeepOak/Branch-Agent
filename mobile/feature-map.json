@@ -97,6 +97,20 @@
       "file": "src/screens/SettingsScreen.tsx",
       "marker": "export function SettingsScreen",
       "route": "<SettingsScreen"
+    },
+    {
+      "id": "more",
+      "title": "More",
+      "file": "src/screens/MoreScreen.tsx",
+      "marker": "export function MoreScreen",
+      "route": "<MoreScreen"
+    },
+    {
+      "id": "profile",
+      "title": "Profile",
+      "file": "src/screens/ProfileScreen.tsx",
+      "marker": "export function ProfileScreen",
+      "route": "<ProfileScreen"
     }
   ],
   "features": [
@@ -142,6 +156,8 @@
     { "id": "this-phone", "title": "This phone from Computers", "file": "src/screens/ComputersScreen.tsx", "marker": "testID=\"this-phone\"" },
     { "id": "take-over", "title": "Take over a computer", "file": "src/screens/TakeControlScreen.tsx", "marker": "testID=\"take-over\"" },
     { "id": "hand-back", "title": "Hand back the computer", "file": "src/screens/TakeControlScreen.tsx", "marker": "testID=\"hand-back\"" },
+    { "id": "more-screen", "title": "More", "file": "src/screens/MoreScreen.tsx", "marker": "testID=\"more-screen\"" },
+    { "id": "profile-screen", "title": "Profile", "file": "src/screens/ProfileScreen.tsx", "marker": "testID=\"profile-screen\"" },
     { "id": "settings-appearance", "title": "Appearance (system, light, dark)", "file": "src/screens/SettingsScreen.tsx", "marker": "testID=\"theme-picker\"" },
     { "id": "settings-notifications", "title": "Notification settings", "file": "src/screens/SettingsScreen.tsx", "marker": "testID=\"settings-notifications\"" },
     { "id": "settings-about", "title": "About this app", "file": "src/screens/SettingsScreen.tsx", "marker": "testID=\"about-card\"" },

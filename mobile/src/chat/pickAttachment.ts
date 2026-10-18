@@ -16,6 +16,25 @@ export type AttachmentPickers = {
   pickFile(policy?: AttachmentPolicy): Promise<PickedFile | null>;
 };
 
+/** A pick failed for a reason we already have in plain words. Chat shows `userText`, never Error.message. */
+export class AttachProblem extends Error {
+  constructor(readonly userText: string) {
+    super(userText);
+    this.name = 'AttachProblem';
+  }
+}
+
+export const CAMERA_OFF_MESSAGE = 'Turn on the camera for Branch in Settings to take a photo.';
+export const PHOTOS_OFF_MESSAGE = 'Turn on Photos for Branch in Settings to attach a picture.';
+export const CANT_READ_FILE_MESSAGE = 'Couldn’t read the file.';
+export const CANT_ATTACH_MESSAGE = "Can't attach that. Try another file.";
+
+export function attachFailure(error: unknown): string {
+  if (error instanceof OversizeReadError) return 'Too large to send';
+  if (error instanceof AttachProblem) return error.userText;
+  return CANT_ATTACH_MESSAGE;
+}
+
 function imageMeta(asset: ImagePicker.ImagePickerAsset): PickMeta {
   const mimeType = asset.mimeType || 'image/jpeg';
   return {
@@ -27,18 +46,18 @@ function imageMeta(asset: ImagePicker.ImagePickerAsset): PickMeta {
 
 async function requireCamera(): Promise<void> {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
-  if (!permission.granted) throw new Error('Turn on the camera for Branch in Settings to take a photo.');
+  if (!permission.granted) throw new AttachProblem(CAMERA_OFF_MESSAGE);
 }
 
 async function requireLibrary(): Promise<void> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) throw new Error('Turn on Photos for Branch in Settings to attach a picture.');
+  if (!permission.granted) throw new AttachProblem(PHOTOS_OFF_MESSAGE);
 }
 
 /** Reads at most `maxBytes`. Uses Content-Length when present, then the body, and stops past the ceiling. */
 export async function readUriCapped(uri: string, maxBytes: number): Promise<Uint8Array> {
   const response = await fetch(uri);
-  if (!response.ok) throw new Error('Couldn’t read the file.');
+  if (!response.ok) throw new AttachProblem(CANT_READ_FILE_MESSAGE);
   const declared = Number(response.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > maxBytes) throw new OversizeReadError(declared);
   const body = response.body;

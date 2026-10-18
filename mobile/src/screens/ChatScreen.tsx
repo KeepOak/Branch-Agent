@@ -14,7 +14,7 @@ import {
   type PickedFile,
 } from '../chat/attachments';
 import { phaseLabel, type ChatItem, type Conversation, type ConversationSnapshot, type LiveReply, type OwnSend } from '../chat/conversation';
-import { expoPickers, type AttachmentPickers } from '../chat/pickAttachment';
+import { attachFailure, expoPickers, type AttachmentPickers } from '../chat/pickAttachment';
 import type { ChatRow } from '../chats/chatList';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
@@ -289,7 +289,7 @@ export function ChatScreen({
       const picked = kind === 'photo' ? await pickers.takePhoto(policy) : kind === 'library' ? await pickers.pickPhoto(policy) : await pickers.pickFile(policy);
       addPicked(picked);
     } catch (error) {
-      setPickError(error instanceof Error ? error.message : String(error));
+      setPickError(attachFailure(error));
     } finally {
       setPreparing((n) => n - 1);
     }

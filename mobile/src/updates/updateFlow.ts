@@ -1,7 +1,7 @@
 import type { ApkOffer } from './githubRelease';
 import { fetchReleases, findNewerApk } from './githubRelease';
 import { filePath } from './native';
-import { assertCertsMatch, assertChecksum, parseSha256Asset } from './verify';
+import { assertCertsMatch, assertChecksum, parseSha256Asset, VerifyError } from './verify';
 
 export const NEEDS_PERMISSION_MESSAGE =
   'Android asks once before Branch can install an update. Allow it for Branch, then this screen comes back and the update continues.';
@@ -37,7 +37,8 @@ function apkDest(cacheDir: string): string {
 }
 
 function asError(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+  if (error instanceof VerifyError) return error.userText;
+  return fallback;
 }
 
 export function createUpdateFlow(deps: UpdateFlowDeps) {

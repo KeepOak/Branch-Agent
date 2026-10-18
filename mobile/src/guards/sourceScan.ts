@@ -170,11 +170,31 @@ function walkFiles(absDir: string, exclude: (rel: string) => boolean, out: strin
   }
 }
 
+const TOKEN_FILE = 'src/theme/tokens.ts';
+
+/** Real Branch logo and launcher icons keep their colours; they are not scanned as UI source. */
+export const KEEP_COLOR_ASSETS = ['assets/icon.png', 'assets/adaptive-icon.png', 'assets/splash-icon.png'] as const;
+
 /** App shell, screens, and shared UI. Tests are skipped; they are not what a person sees. */
 export function uiSourceFiles(): string[] {
   const files = ['App.tsx'];
   walkFiles(path.join(mobileRoot, 'src/screens'), (rel) => /\.test\.(ts|tsx)$/.test(rel), files);
   walkFiles(path.join(mobileRoot, 'src/ui'), (rel) => /\.test\.(ts|tsx)$/.test(rel), files);
+  return files.sort();
+}
+
+/**
+ * Every TS/TSX file under mobile/src plus App.tsx, except tests, .d.ts, and the token file.
+ * Colour literals belong in tokens.ts; logo/launcher PNGs are assets, not this list.
+ */
+export function srcPaintFiles(): string[] {
+  const files = ['App.tsx'];
+  walkFiles(path.join(mobileRoot, 'src'), (rel) => {
+    if (rel === TOKEN_FILE) return true;
+    if (rel.startsWith('src/guards/')) return true;
+    if (/\.test\.(ts|tsx)$/.test(rel) || /\.d\.ts$/.test(rel)) return true;
+    return false;
+  }, files);
   return files.sort();
 }
 
@@ -305,4 +325,37 @@ export function isGrayscaleColor(value: string): boolean {
 
 export function formatHits(file: string, values: string[]): string {
   return `${file}: ${values.join(', ')}`;
+}
+
+const RAW_EXCEPTION = [
+  /\berror\??\.message\b/g,
+  /\berr\??\.message\b/g,
+  /\be\??\.message\b/g,
+  /String\(\s*err(?:or)?\s*\)/g,
+  /String\(\s*e\s*\)/g,
+  /\b(?:error|err|e)\??\.stack\b/g,
+  /\bjava\.[a-zA-Z.]+\b/g,
+];
+
+/** A line that names an allowed pairing/first-run hit, so Parity Builder can keep working there. */
+export const PLAIN_ERROR_ALLOW_MARK = 'plain-error-allow';
+
+/**
+ * Raw exception text headed for the user: error.message, String(err), java.* types, stack text.
+ * Comments (including a `plain-error-allow` mark on that line) are stripped first, except the mark
+ * is read from the raw line so a narrow pairing allowlist can keep one hit.
+ */
+export function rawExceptionHits(source: string): string[] {
+  const lines = source.split('\n');
+  const hits: string[] = [];
+  for (const line of lines) {
+    if (line.includes(PLAIN_ERROR_ALLOW_MARK)) continue;
+    const text = stripComments(line);
+    for (const re of RAW_EXCEPTION) {
+      re.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = re.exec(text))) hits.push(match[0]);
+    }
+  }
+  return hits;
 }
