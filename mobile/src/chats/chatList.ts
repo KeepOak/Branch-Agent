@@ -109,6 +109,12 @@ export function unreadCount(rows: ChatRow[], now: number): number {
   return filterRows(rows, 'unread', now).length;
 }
 
+/** New chat from Home, Chats or the home-screen widget: the main conversation, else the first non-room chat. */
+export function chatForNew(rows: ChatRow[], now = Date.now()): ChatRow | undefined {
+  const shown = filterRows(rows, 'all', now);
+  return shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
+}
+
 export type ChatListSnapshot = {
   rows: ChatRow[];
   /** A read has landed, on this connection or an earlier one. */

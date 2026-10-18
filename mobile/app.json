@@ -77,6 +77,7 @@
         }
       ],
       "./plugins/withApkInstaller.js",
+      "./plugins/withHomeWidget.js",
       "./plugins/withReleaseSigning.js",
       "expo-updates"
     ]

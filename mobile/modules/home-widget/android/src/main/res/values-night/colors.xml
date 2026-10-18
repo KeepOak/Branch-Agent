@@ -1,0 +1,8 @@
+<resources>
+  <color name="branch_home_widget_bg">#1c1c1c</color>
+  <color name="branch_home_widget_ink">#ebebeb</color>
+  <color name="branch_home_widget_ink2">#b8b8b8</color>
+  <color name="branch_home_widget_ink3">#909090</color>
+  <color name="branch_home_widget_button">#ebebeb</color>
+  <color name="branch_home_widget_on_button">#1c1c1c</color>
+</resources>
