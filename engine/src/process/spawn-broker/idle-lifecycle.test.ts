@@ -24,6 +24,7 @@ afterEach(async () => {
   try {
     await Promise.all(hosts.splice(0).map((host) => host.close()));
   } finally {
+    native.spawn.mockReset();
     vi.restoreAllMocks();
   }
 });
@@ -96,44 +97,48 @@ describe("spawn broker baseline workers", () => {
   });
 
   it("tears the worker down after the idle timeout and starts again on next use", async () => {
-    const { worker: first } = mockBrokerChild(51002);
-    native.spawn.mockReturnValueOnce(first);
+    const pids = [51002, 51003];
+    native.spawn.mockReset();
+    native.spawn.mockImplementation(() => {
+      const pid = pids.shift();
+      if (pid === undefined) {
+        throw new Error("unexpected extra broker spawn");
+      }
+      const { worker } = mockBrokerChild(pid);
+      queueMicrotask(() => {
+        worker.emit("message", { type: "ready", pid });
+      });
+      return worker;
+    });
     const host = attachHost(createSpawnBrokerHost({ idleTimeoutMs: 20 }));
-    first.emit("message", { type: "ready", pid: 51002 });
     await host.ready();
     expect(host.activeWorkerCount).toBe(1);
+    expect(host.pid).toBe(51002);
 
     await delay(40);
     expect(host.pid).toBeUndefined();
     expect(host.activeWorkerCount).toBe(0);
 
-    const { worker: second } = mockBrokerChild(51003);
-    native.spawn.mockReturnValueOnce(second);
-    const ready = host.ready();
-    second.emit("message", { type: "ready", pid: 51003 });
-    await ready;
+    await host.ready();
     expect(host.pid).toBe(51003);
+    expect(host.activeWorkerCount).toBe(1);
     expect(native.spawn).toHaveBeenCalledTimes(2);
   });
 
   it("holds the concurrency cap so load cannot admit extra in-flight spawns", async () => {
     const { worker } = mockBrokerChild(51004);
     native.spawn.mockReturnValueOnce(worker);
-    const host = attachHost(
-      createSpawnBrokerHost({ idleTimeoutMs: 0, maxConcurrent: 1 }),
-    );
+    const host = attachHost(createSpawnBrokerHost({ idleTimeoutMs: 0, maxConcurrent: 1 }));
     worker.emit("message", { type: "ready", pid: 51004 });
     await host.ready();
 
     const first = host.spawn(process.execPath, ["-e", "process.exit(0)"], { stdio: "ignore" });
     const second = host.spawn(process.execPath, ["-e", "process.exit(0)"], { stdio: "ignore" });
-    const refused = second.waitForClose().catch((error: unknown) => error);
-    await expect.poll(() => second.notStarted).toBe(true);
-    const error = await refused;
-    expect(error).toMatchObject({
+    await expect(second.ready()).rejects.toMatchObject({
       name: "SpawnBrokerError",
       message: "Spawn broker request capacity exceeded",
     });
+    expect(second.notStarted).toBe(true);
     expect(first.notStarted).toBe(false);
     expect(SPAWN_BROKER_MAX_CONCURRENT).toBe(8);
   });

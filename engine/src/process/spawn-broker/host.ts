@@ -227,6 +227,8 @@ export class SpawnBrokerHost {
   }
 
   onParked(): void {
+    clearTimeout(this.restartTimer);
+    this.restartTimer = undefined;
     this.process = undefined;
     this.sendMessage = undefined;
     this.hasBeenReady = false;
@@ -389,7 +391,7 @@ export class SpawnBrokerHost {
       receiver.clear();
       this.available = false;
       this.sendMessage = undefined;
-      if (this.parking) {
+      if (this.parking || this.parked) {
         return;
       }
       const error = new SpawnBrokerError(

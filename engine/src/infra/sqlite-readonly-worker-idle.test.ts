@@ -70,12 +70,15 @@ afterEach(async () => {
 describe("SQLite read-only worker baseline", () => {
   it("closes a scoped worker after the idle timeout", async () => {
     const child = new MockChild();
-    mock.spawn.mockReturnValueOnce(child);
+    mock.spawn.mockReturnValue(child);
     const scope = createSqliteReadOnlyWorkerScope({ idleTimeoutMs: 20 });
     try {
       const result = scope.run(() =>
         runSqliteReadOnlyWorker("/fixture/source.sqlite", { mode: "sync" }),
       );
+      await vi.waitFor(() => {
+        expect(child.send.mock.calls.length).toBeGreaterThan(0);
+      });
       child.emit("message", {
         id: requestId(child),
         result: { ok: true, location: "/fixture/staged" },
