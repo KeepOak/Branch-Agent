@@ -274,7 +274,7 @@ describe("Codex on demand", () => {
     });
   });
 
-  it("downloads the pinned Codex on first use, verifies it, stores it per user and reuses it", async () => {
+  it("downloads the pinned Codex on first use, and a later start finds that copy without downloading again", async () => {
     const tarball = codexFixture();
     const asset = fixtureAsset(tarball);
     const fetch = okFetch(tarball);
@@ -361,6 +361,25 @@ describe("Codex on demand", () => {
     );
     await expect(nextEngine.ensureLauncher()).resolves.toBe(resolved.command);
     expect(fetch).toHaveBeenCalledTimes(1);
+    // The next start is a new downloader with no yes yet. The verified copy is
+    // already in the managed folder, so the engine lookup uses it and fetches nothing.
+    const laterFetch = vi.fn();
+    const later = createCodexOnDemand(
+      deps({ asset, fetch: laterFetch as unknown as typeof globalThis.fetch }),
+    );
+    const lookup = {
+      platform: "darwin" as const,
+      pluginRoot,
+      onDemand: later,
+      pathExists: noDesktopApps,
+    };
+    await expect(resolveManagedCodexAppServerStartOptions(startOptions(), lookup)).resolves.toMatchObject({
+      command: resolved.command,
+      commandSource: "resolved-managed",
+    });
+    expect(laterFetch).not.toHaveBeenCalled();
+    await expect(isManagedCodexDownloadPending(startOptions(), lookup)).resolves.toBe(false);
+    await expect(later.status()).resolves.toMatchObject({ state: "ready", source: "downloaded" });
     expect((await readdir(path.join(stateDir, "tools", "codex"))).toSorted()).toEqual([
       "0.160.0-darwin-arm64",
       "current.json",
