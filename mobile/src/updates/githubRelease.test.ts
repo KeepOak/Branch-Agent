@@ -95,14 +95,14 @@ describe('published Android APK assets', () => {
       sha256Name: 'branch-android-0.4.4-build-abc.apk.sha256',
       versioncodeName: 'branch-android-0.4.4-build-abc.apk.versioncode.13',
     });
-    expect(workflow).toContain('gh release upload');
-    expect(workflow).toMatch(/gh release upload[\s\S]*APK_NAME[\s\S]*SHA256_NAME[\s\S]*VERSIONCODE_NAME/);
+    expect(workflow).toContain('--attach-release');
+    expect(workflow).toMatch(/APK_NAME[\s\S]*SHA256_NAME[\s\S]*VERSIONCODE_NAME[\s\S]*--attach-release/);
     expect(workflow).toContain('versioncode_name');
     expect(workflow).toContain('ANDROID_VERSION_CODE');
     expect(workflow).toMatch(/SIGNED" == "true"[\s\S]*--sha256/);
-    expect(workflow).toMatch(/Verify APK signature[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
-    expect(workflow).not.toMatch(/-unsigned\.apk[\s\S]*gh release upload/);
-    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
+    expect(workflow).toMatch(/Verify APK signature[\s\S]*VERSIONCODE_PATH[\s\S]*--attach-release/);
+    expect(workflow).not.toMatch(/-unsigned\.apk[\s\S]*--attach-release/);
+    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*VERSIONCODE_PATH[\s\S]*--attach-release/);
 
     const release: GithubRelease = {
       draft: false,
