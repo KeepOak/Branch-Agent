@@ -163,7 +163,7 @@ export async function settleFailedComponentUpdate(cfg: DesktopConfig, serving: s
 const runProcessList = promisify(execFile);
 
 /** Adopt only old, fully published release layouts whose build identity matches the folder. */
-async function backfillLegacyReleaseMarker(folder: string, name: string): Promise<boolean> {
+async function legacyReleaseIsComplete(folder: string, name: string): Promise<boolean> {
   const match = /^release-(.+-build-([a-f0-9]{12}))-[A-Za-z0-9]{6}$/.exec(name);
   if (!match) return false;
   const folderInfo = await stat(folder);
@@ -177,14 +177,19 @@ async function backfillLegacyReleaseMarker(folder: string, name: string): Promis
     for (const file of ["engine/branch.mjs", "engine/package.json", "engine/dist/build-info.json"]) {
       if (!(await stat(join(folder, file))).isFile()) return false;
     }
-    // Existing folders predate the marker. The manifest's source hash and complete
-    // engine layout distinguish them from incomplete downloads before adoption.
-    await writeFile(join(folder, ".release-complete"), "");
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) return false;
     throw error;
   }
+}
+
+async function backfillLegacyReleaseMarker(folder: string, name: string): Promise<boolean> {
+  if (!await legacyReleaseIsComplete(folder, name)) return false;
+  // Existing folders predate the marker. The manifest's source hash and complete
+  // engine layout distinguish them from incomplete downloads before adoption.
+  await writeFile(join(folder, ".release-complete"), "");
+  return true;
 }
 
 /** If inspection fails, keep releases: deleting an active engine is worse than retaining an old one. */
@@ -243,7 +248,7 @@ async function holdsValidCopy(folder: string, name: string): Promise<boolean> {
       throw error;
     }
   }
-  return backfillLegacyReleaseMarker(folder, name);
+  return legacyReleaseIsComplete(folder, name);
 }
 
 /** One cleanup at a time: a download that lands mid-prune is collected by the queued run, never by overlapping work. */
@@ -304,6 +309,8 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
     for (const engine of [pending.engineNext, pending.enginePrevious, pending.engineReplaced]) {
       await retainEngine(engine, true);
     }
+    // The running build's window lives beside a superseded engine; never delete that folder.
+    await retainOwnedPath(pending.windowPrevious, true);
   }
   const desktop = await readDesktopJournal(cfg);
   const desktopReceipt = await readOrEmpty(join(cfg.dataDir, "desktop-update-retained.json"));
@@ -436,7 +443,7 @@ async function pruneStartupUpdatesWork(cfg: DesktopConfig, log: (line: string) =
       const undo = await readOrEmpty(undoFile(cfg));
       if (undo) previous = (JSON.parse(undo) as UndoReceipt).enginePrevious;
     }
-    if (!previous && existsSync(join(cfg.dataDir, "updates"))) {
+    if (!previous && !await publication(cfg) && existsSync(join(cfg.dataDir, "updates"))) {
       // Pre-retention installs have no receipt: keep the newest older engine.
       const currentFolder = existsSync(dirname(current)) ? await realpath(dirname(current)) : dirname(current);
       const currentTime = existsSync(currentFolder) ? (await stat(currentFolder)).mtimeMs : Infinity;
@@ -762,7 +769,7 @@ export interface UpdateCleanupWatchOptions {
 /** Hourly cleanup while the app runs. The timer is unref'd so it never blocks quit. */
 export function watchUpdateCleanup(cfg: DesktopConfig, log: (line: string) => void, options: UpdateCleanupWatchOptions = {}): () => void {
   const timer = (options.interval ?? setInterval)(
-    () => { void pruneStartupUpdates(cfg, log); },
+    () => pruneStartupUpdates(cfg, log),
     options.intervalMs ?? UPDATE_CLEANUP_MS,
   ) as NodeJS.Timeout;
   timer.unref?.();

@@ -942,12 +942,11 @@ test("startup uses the confirmed predecessor instead of a newer incomplete downl
   const updates = join(cfg.dataDir, "updates");
   const previous = join(updates, "release-previous-111aaa");
   const stale = join(updates, "release-stale-222bbb");
-  for (const folder of [previous, stale]) {
-    await mkdir(join(folder, "engine"), { recursive: true });
-    await writeFile(join(folder, ".release-complete"), "");
-  }
+  await completeEngine(previous);
+  await completeEngine(stale);
   await writeFile(join(cfg.dataDir, "engine-current.txt"), join(previous, "engine"));
   await source.refreshComponentUpdate(cfg, request);
+  assert.equal(await exists(stale), false, "a successful stage prunes older complete copies");
   await source.confirmComponentUpdate(cfg, undefined, true);
   const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
   const download = join(updates, "release-download-333ccc");
@@ -960,7 +959,7 @@ test("startup uses the confirmed predecessor instead of a newer incomplete downl
   assert.equal(await exists(download), true);
   assert.equal(await exists(stale), false);
   assert.ok(logs.some(line => line.startsWith("keeping ")));
-  assert.equal(logs.at(-1), "removed 1 old updates, freed 0.00 GB");
+  assert.equal(logs.at(-1), "removed 0 old updates, freed 0.00 GB");
 }));
 
 test("deferred cleanup retains a newly selected engine and both sides of an in-progress publication", async () => fixture(async ({ cfg, request }) => {
@@ -1184,13 +1183,18 @@ test("periodic run prunes copies downloaded after startup", async () => fixture(
   const updates = join(cfg.dataDir, "updates");
   const current = join(updates, "release-current-111aaa");
   const previous = join(updates, "release-previous-222bbb");
+  const desktopCurrent = join(updates, "desktop-current-111aaa");
+  const desktopPrevious = join(updates, "desktop-previous-222bbb");
   await completeEngine(current);
   await completeEngine(previous);
+  await completeDesktop(desktopCurrent);
+  await completeDesktop(desktopPrevious);
   await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
   await writeFile(join(cfg.dataDir, "component-update-previous.txt"), join(previous, "engine") + "\n");
   await writeFile(join(cfg.dataDir, "component-update-probation.json"), JSON.stringify({
     previous: join(previous, "engine"), confirmedAt: Date.now(),
   }));
+  await writeFile(join(cfg.dataDir, "desktop-update-retained.json"), JSON.stringify([desktopCurrent, desktopPrevious]));
   await source.pruneStartupUpdates(cfg, () => {});
   const downloaded = join(updates, "release-nightly-333ccc");
   const desktopDownloaded = join(updates, "desktop-nightly-444ddd");
@@ -1217,6 +1221,8 @@ test("periodic run prunes copies downloaded after startup", async () => fixture(
   assert.equal(await exists(desktopDownloaded), false);
   assert.equal(await exists(current), true);
   assert.equal(await exists(previous), true);
+  assert.equal(await exists(desktopCurrent), true);
+  assert.equal(await exists(desktopPrevious), true);
 }));
 
 test("empty folders are excluded from the keep list", async () => fixture(async ({ cfg }) => {
@@ -1282,7 +1288,13 @@ test("live and staged copies are never deleted", async () => fixture(async ({ cf
   await completeDesktop(desktopKeepB);
   await completeDesktop(desktopStale);
   const oldest = new Date(Date.now() - 72 * 60 * 60 * 1000);
+  const older = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const newer = new Date(Date.now() - 12 * 60 * 60 * 1000);
+  await utimes(live, older, older);
+  await utimes(current, older, older);
+  await utimes(stale, newer, newer);
   await utimes(desktopStaged, oldest, oldest);
+  await utimes(desktopStale, newer, newer);
   await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
   await writeFile(join(cfg.dataDir, "engine-running.txt"), join(live, "engine") + "\n");
   await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({
