@@ -1,12 +1,13 @@
 // The item dialog (preview mkItemP17, preview.html:44528-44534): clicking a name shows what the item is before adding it:
 // its summary, "By … · Official · Checked", its seed, then Version, What changed, Works on and Safety, with Close and
 // "Add <name>" (or "Added ✓"). Facts the engine doesn't return are left out rather than guessed (#1049).
+import type { ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import type { Entry } from "./catalog";
 import { Sheet, useDetail } from "./InstallSheet";
 import { AddPill, Badges, ItemIcon, SeedIcons } from "./parts";
 
-type Props = { entry: Entry; engine: WindowEngine; onClose: () => void; onAdd: (entry: Entry) => void; onNotice: (text: string) => void };
+type Props = { entry: Entry; engine: WindowEngine; onClose: () => void; onAdd: (entry: Entry) => void; onNotice: (text: ReactNode) => void };
 
 export function ItemDetail({ entry, engine, onClose, onAdd, onNotice }: Props) {
   const detail = useDetail(engine, entry);

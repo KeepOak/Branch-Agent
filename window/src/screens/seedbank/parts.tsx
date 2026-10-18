@@ -1,12 +1,14 @@
 // Seedbank's pieces (preview item 28: .mkRowP17, .mkCardP17, .mkAddP17, .mkSeedP17, and item 45 Adapters tiles).
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
 import { AppLogo } from "../../places/customize/app-logos";
 import { Glyph } from "../../places/customize/glyphs";
 import { useLevel } from "../../places-nav/level";
+import { writeClipboard } from "../../shell/clipboard";
 import { Icon } from "../../shell/icons";
+import { plainError } from "../../shell/plain-error";
 import { kindOf, shortCount, type Entry } from "./catalog";
 import { ItemDetail } from "./ItemDetail";
 import { seedLink, seedText } from "./seed";
@@ -68,23 +70,51 @@ function download(name: string, text: string) {
   a.click(); setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 export const SEED_COMING = "Sharing this kind as a seed comes in a later update.";
+/** Copy failed after the window clipboard and the Branch app clipboard: one plain sentence and a next step. */
+export const SEED_NOT_COPIED = "The seed couldn’t be copied. Select it and copy it yourself.";
+type Notice = (text: ReactNode) => void;
+/** The seed selected, plus Try again, after Copy fails. */
+function SeedCopyFailed({ link, name, onRetry }: { link: string; name: string; onRetry: () => void }) {
+  const field = useRef<HTMLInputElement>(null);
+  useLayoutEffect(() => {
+    const input = field.current;
+    if (!input) return;
+    input.focus();
+    input.select();
+  }, [link]);
+  return <>
+    {plainError(SEED_NOT_COPIED)}{" "}
+    <input ref={field} className="sb-seed-link g-frost" readOnly data-local="" value={link} aria-label={name + "’s seed"} onFocus={(e) => e.currentTarget.select()} />
+    {" "}
+    <button type="button" data-local="" onClick={onRetry}>Try again</button>
+  </>;
+}
 /** Copy seed (a short link) and Download (.seed) on every card (preview seedIcons). A kind with no seed yet shows both
- *  as Coming at Technical, and none at Regular and Advanced. */
-export function SeedIcons({ entry, onNotice }: { entry: Entry; onNotice: (text: string) => void }) {
+ *  as Coming at Technical, and none at Regular and Advanced. The window clipboard is tried first; when it is refused
+ *  the Branch app clipboard is used. If both fail, the notice shows the seed selected with Try again. */
+export function SeedIcons({ entry, onNotice }: { entry: Entry; onNotice: Notice }) {
   const technical = useTechnical();
   const text = seedText(entry), link = seedLink(entry);
   if (!text || !link) return !technical ? null : <span className="sb-seed">
     <Soon className="sb-icon" need="seedbank.seed" reason={SEED_COMING} label={"Copy " + entry.name + "’s seed"}><Icon name="copy" size={13} /></Soon>
     <Soon className="sb-icon" need="seedbank.seed" reason={SEED_COMING} label={"Download " + entry.name + "’s seed"}><Icon name="download" size={13} /></Soon>
   </span>;
-  const copy = () => { void navigator.clipboard?.writeText(link).then(() => onNotice("Copied " + entry.name + "’s seed. Paste it anywhere in Branch."), () => onNotice("The seed couldn’t be copied.")); };
+  const copy = () => {
+    void writeClipboard(link).then((ok) => {
+      if (ok) {
+        onNotice("Copied " + entry.name + "’s seed. Paste it anywhere in Branch.");
+        return;
+      }
+      onNotice(<SeedCopyFailed link={link} name={entry.name} onRetry={copy} />);
+    });
+  };
   return <span className="sb-seed" data-local="">
     <button type="button" className="sb-icon" aria-label={"Copy " + entry.name + "’s seed"} title="Copy seed" onClick={copy}><Icon name="copy" size={13} /></button>
     <button type="button" className="sb-icon" aria-label={"Download " + entry.name + "’s seed"} title="Download .seed" onClick={() => download(entry.name, text)}><Icon name="download" size={13} /></button>
   </span>;
 }
 
-type RowProps = { entry: Entry; engine: WindowEngine; onOpen: (entry: Entry) => void; onAdd: (entry: Entry) => void; onNotice: (text: string) => void };
+type RowProps = { entry: Entry; engine: WindowEngine; onOpen: (entry: Entry) => void; onAdd: (entry: Entry) => void; onNotice: Notice };
 /** The item dialog for a card or row whose name was clicked. */
 function useItemDialog(p: RowProps) {
   const [open, setOpen] = useState(false);
