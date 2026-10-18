@@ -76,6 +76,8 @@ export type FakeEngine = {
    * plugin.approval.request has nowhere else to show and the engine expires it at once (no-approval-route).
    */
   setWindowOpen: (open: boolean) => void;
+  /** The mentions.list items the engine reports from now on. */
+  setMentions: (rows: unknown[]) => void;
 };
 
 /** One pending approval as the engine lists it (approval-record-lookup.ts listVisiblePendingApprovalRequests). */
@@ -106,6 +108,7 @@ export const FAKE_ENGINE_METHODS = [
   'talk.session.close',
   'users.self',
   'users.setDisplayName',
+  'mentions.list',
 ] as const;
 
 /** 1×1 PNG; tests and screenshots use the snapshot payload's width and height as the picture size. */
@@ -166,6 +169,7 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   const failures = new Map<string, { message: string; details?: unknown; code?: string }>();
   const histories = new Map<string, { messages: unknown[]; inFlightRun?: unknown }>();
   const approvals = { exec: [...(options.approvals?.exec ?? [])], plugin: [...(options.approvals?.plugin ?? [])] };
+  let mentions: unknown[] = [];
   /** The first decision recorded for each answered approval, so a later answer gets the engine's reply to a repeat. */
   const decided = new Map<string, string>();
   const settle = (kind: 'exec' | 'plugin', id: string, decision: string, resolvedBy: string | null): boolean => {
@@ -321,6 +325,8 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
       }
       case 'talk.session.close':
         return { ok: true, payload: { ok: true } };
+      case 'mentions.list':
+        return { ok: true, payload: { items: mentions } };
       case 'users.self':
         return { ok: true, payload: selfPayload() };
       case 'users.setDisplayName': {
@@ -414,6 +420,9 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
     pendingApprovals: (kind) => [...approvals[kind]],
     setWindowOpen: (open) => {
       windowOpen = open;
+    },
+    setMentions: (rows) => {
+      mentions = rows;
     },
     failMethod: (method, message, details, code) => {
       if (message === null) failures.delete(method);

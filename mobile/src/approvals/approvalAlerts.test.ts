@@ -4,6 +4,7 @@ import { createFakeSession } from '../testing/fakeSession';
 import { FIXTURE_NOW, fixtureAgents } from '../testing/chatFixtures';
 import { fixtureApprovals } from '../testing/approvalFixtures';
 import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier';
+import { PHONE_PREFS_DEFAULT } from '../settings/phonePrefs';
 import { ApprovalAlerts } from './approvalAlerts';
 import { ApprovalInbox } from './approvals';
 
@@ -42,13 +43,44 @@ describe('approval notifications', () => {
     expect(fake.shown.size).toBe(0);
     engine.requestApproval('exec', later);
     await eventually(() => expect(fake.shown.get('approval:exec-2')).toBeDefined());
-    expect(fake.shown.get('approval:exec-2')).toEqual({ key: 'approval:exec-2', title: 'Oak needs a yes', body: 'Run: rm -rf build && pnpm build', category: 'approval', approvalId: 'exec-2' });
+    expect(fake.shown.get('approval:exec-2')).toEqual({
+      key: 'approval:exec-2',
+      title: 'Oak needs a yes',
+      body: 'Run: rm -rf build && pnpm build',
+      category: 'approval',
+      approvalId: 'exec-2',
+      channel: 'approvals',
+      route: { screen: 'approvals', approvalId: 'exec-2' },
+    });
     expect(fake.prepared).toBe(1);
     engine.requestApproval('plugin', email);
     await eventually(() => expect(fake.shown.get('approval:plugin:mail-2')).toMatchObject({ title: 'Branch Agent needs a yes', body: 'Send a reply to Sam?\nTo: Sam', category: 'approval-send' }));
     expect(fake.badges.at(-1)).toBe(4);
     expect(fake.prepared).toBe(1);
     done();
+  });
+
+  it('does not post when Tell me is off', async () => {
+    const engine = createFakeEngine({ agents: fixtureAgents, approvals: fixtureApprovals });
+    const { session } = createFakeSession(engine);
+    await session.restore();
+    await session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
+    engine.approve();
+    await eventually(() => expect(session.hello).not.toBeNull());
+    const inbox = new ApprovalInbox(session, { now: () => FIXTURE_NOW });
+    inbox.attach();
+    await eventually(() => expect(inbox.getSnapshot().loaded).toBe(true));
+    const fake = createFakeNotifier();
+    const alerts = new ApprovalAlerts(inbox, fake.notifier, createFakeAppState('background').source, () => undefined, {
+      prefs: () => ({ ...PHONE_PREFS_DEFAULT, tellMe: 'off' }),
+    });
+    alerts.attach();
+    engine.requestApproval('exec', later);
+    await eventually(() => expect(fake.badges.at(-1)).toBe(3));
+    expect(fake.shown.size).toBe(0);
+    alerts.dispose();
+    inbox.dispose();
+    session.dispose();
   });
 
   it('stays quiet while Branch is open, but keeps the badge right', async () => {
@@ -89,6 +121,28 @@ describe('approval notifications', () => {
     await eventually(() => expect(fake.dismissed).toEqual(['approval:exec-2']));
     expect(fake.badges.at(-1)).toBe(2);
     done();
+  });
+
+  it('forwards a tap that is not an approval to onRoute', async () => {
+    const engine = createFakeEngine({ agents: fixtureAgents, approvals: fixtureApprovals });
+    const { session } = createFakeSession(engine);
+    const inbox = new ApprovalInbox(session);
+    const fake = createFakeNotifier();
+    const opened: string[] = [];
+    const routes: unknown[] = [];
+    const alerts = new ApprovalAlerts(inbox, fake.notifier, createFakeAppState('active').source, (id) => opened.push(id), {
+      onRoute: (route) => routes.push(route),
+    });
+    alerts.attach();
+    fake.respond({ action: 'open', route: { screen: 'chat', sessionKey: 'agent:oak:main' } });
+    fake.respond({ action: 'open', route: { screen: 'settings' } });
+    expect(opened).toEqual([]);
+    expect(routes).toEqual([
+      { screen: 'chat', sessionKey: 'agent:oak:main' },
+      { screen: 'settings' },
+    ]);
+    alerts.dispose();
+    session.dispose();
   });
 
   it('a tap on the notification opens Needs you at that approval, also when it launched the app', async () => {

@@ -1,9 +1,11 @@
 import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler, Linking, Platform } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { EventAlerts } from './src/alerts/eventAlerts';
+import { chatRowForAlert, type AlertRoute } from './src/alerts/route';
 import { ApprovalAlerts, type AppStateSource, type Notifier, type NotificationPermission } from './src/approvals/approvalAlerts';
 import { ApprovalInbox, trunkOf, type Approval, type ApprovalDecision } from './src/approvals/approvals';
 import { headline } from './src/approvals/approvalWords';
@@ -39,6 +41,7 @@ import { useSelf } from './src/people/useSelf';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import type { SettingsLevel } from './src/screens/settingsExtras';
 import { VoiceScreen } from './src/screens/VoiceScreen';
+import { PHONE_PREFS_DEFAULT, readPhonePrefs } from './src/settings/phonePrefs';
 import { parseShowLevel, readShowLevel, settingsLevelOf, showLevelOf, writeShowLevel, type ShowLevel } from './src/settings/showLevel';
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
 import { PairingTheme, ThemeProvider, useTheme } from './src/theme/ThemeProvider';
@@ -239,20 +242,44 @@ function Shell({
     };
   }, [chats, agents, computers]);
 
-  // Approvals are followed for the whole session, on every screen, so a notification can go out while
-  // Branch is in the background and its buttons can answer.
+  // Approvals and the other engine events are followed for the whole session, on every screen, so a
+  // notification can go out while Branch is in the background and a tap can open the right place.
   const [inbox] = useState(() => new ApprovalInbox(session));
   const approvals = useSyncExternalStore(inbox.subscribe, inbox.getSnapshot);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
+  const eventsRef = useRef<EventAlerts | null>(null);
+  const prefs = () => (store ? readPhonePrefs(store) : PHONE_PREFS_DEFAULT);
+  const openAlert = (route: AlertRoute) => {
+    if (route.screen === 'chat') {
+      setPairedRoute({ name: 'chat', row: chatRowForAlert(route.sessionKey, chats.getSnapshot().rows) });
+      return;
+    }
+    if (route.screen === 'settings') {
+      setPairedRoute({ name: 'settings' });
+      return;
+    }
+    setPairedRoute({ name: 'approvals', focus: route.screen === 'approvals' ? route.approvalId : undefined });
+  };
   useEffect(() => {
     inbox.attach();
-    const alerts = new ApprovalAlerts(inbox, notifier, appState, (focus) => setPairedRoute({ name: 'approvals', focus }));
+    const alerts = new ApprovalAlerts(inbox, notifier, appState, (focus) => setPairedRoute({ name: 'approvals', focus }), {
+      prefs,
+      onRoute: openAlert,
+    });
+    const events = new EventAlerts(session, notifier, appState, prefs);
+    eventsRef.current = events;
     alerts.attach();
+    events.attach();
     return () => {
+      eventsRef.current = null;
       alerts.dispose();
+      events.dispose();
       inbox.dispose();
     };
-  }, [inbox, notifier, appState]);
+  }, [inbox, notifier, appState, session, store, chats]);
+  useEffect(() => {
+    void eventsRef.current?.notifyUpdate(update.state);
+  }, [update.state]);
   useEffect(() => {
     if (state.step !== 'paired') return;
     let live = true;

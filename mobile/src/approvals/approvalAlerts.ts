@@ -3,21 +3,34 @@
 // Allow and Deny buttons ("Send it" and "Don’t send" for a request that sends). A button answers it on
 // the computer without opening the app; tapping the notification opens Needs you at that approval.
 // When the approval is answered anywhere, its notification goes away and the app badge counts down.
+// Taps on other kinds (a finished reply, a mention, a routine, an update) reuse this same notifier
+// and are forwarded through onRoute.
+import { shouldPostAlert } from '../alerts/kinds';
+import type { AlertRoute } from '../alerts/route';
+import type { PhonePrefs } from '../settings/phonePrefs';
 import { notificationText, actionWords } from './approvalWords';
-import { trunkOf, type ApprovalDecision, type ApprovalInbox, type Approval } from './approvals';
+import { trunkOf, type ApprovalDecision, type ApprovalInbox, type Approval, type Trunk } from './approvals';
 
 export type NotificationPermission = 'granted' | 'denied' | 'undetermined' | 'unavailable';
 /** Two sets of buttons: Allow and Deny, or Send it and Don’t send. */
 export type AlertCategory = 'approval' | 'approval-send';
-export type AlertResponse = { approvalId: string; action: 'allow' | 'deny' | 'open' };
+export type AlertResponse = { action: 'allow' | 'deny' | 'open'; approvalId?: string; route?: AlertRoute };
 
 /** The phone's notification system, as the alerts use it. expoNotifier.ts is the real one. */
 export type Notifier = {
-  /** Registers the button sets (and Android's channel). Safe to call more than once. */
+  /** Registers the button sets (and Android's channels). Safe to call more than once. */
   prepare(): Promise<void>;
   permission(): Promise<NotificationPermission>;
   requestPermission(): Promise<NotificationPermission>;
-  show(alert: { key: string; title: string; body: string; category?: AlertCategory; approvalId?: string }): Promise<void>;
+  show(alert: {
+    key: string;
+    title: string;
+    body: string;
+    category?: AlertCategory;
+    approvalId?: string;
+    channel?: string;
+    route?: AlertRoute;
+  }): Promise<void>;
   dismiss(key: string): Promise<void>;
   setBadge(count: number): Promise<void>;
   /** A button or a tap on one of Branch's notifications. */
@@ -49,6 +62,10 @@ export class ApprovalAlerts {
     private readonly notifier: Notifier,
     private readonly appState: AppStateSource,
     private readonly onOpen: (approvalId: string) => void,
+    private readonly extras: {
+      prefs?: () => PhonePrefs | Promise<PhonePrefs>;
+      onRoute?: (route: AlertRoute) => void;
+    } = {},
   ) {}
 
   attach(): void {
@@ -84,8 +101,7 @@ export class ApprovalAlerts {
       if (this.shown.has(approval.id)) continue;
       this.shown.add(approval.id);
       if (!away) continue;
-      const { title, body } = notificationText(approval, trunkOf(approval, trunks).name);
-      work.push(this.prepare().then(() => this.notifier.show({ key: alertKey(approval.id), title, body, category: categoryFor(approval), approvalId: approval.id })));
+      work.push(this.postApproval(approval, trunks));
     }
     for (const id of [...this.shown]) {
       if (ids.has(id)) continue;
@@ -99,11 +115,29 @@ export class ApprovalAlerts {
     await Promise.all(work.map((p) => p.catch(() => undefined)));
   }
 
-  private async respond({ approvalId, action }: AlertResponse): Promise<void> {
+  private async postApproval(approval: Approval, trunks: Record<string, Trunk>): Promise<void> {
+    const prefs = this.extras.prefs ? await Promise.resolve(this.extras.prefs()).catch(() => undefined) : undefined;
+    if (!shouldPostAlert(prefs, 'approval', this.appState.current())) return;
+    const { title, body } = notificationText(approval, trunkOf(approval, trunks).name);
+    await this.prepare();
+    await this.notifier.show({
+      key: alertKey(approval.id),
+      title,
+      body,
+      category: categoryFor(approval),
+      approvalId: approval.id,
+      channel: 'approvals',
+      route: { screen: 'approvals', approvalId: approval.id },
+    });
+  }
+
+  private async respond({ approvalId, action, route }: AlertResponse): Promise<void> {
     if (action === 'open') {
-      this.onOpen(approvalId);
+      if (approvalId) this.onOpen(approvalId);
+      else if (route) this.extras.onRoute?.(route);
       return;
     }
+    if (!approvalId) return;
     const decision: ApprovalDecision = action === 'allow' ? 'allow-once' : 'deny';
     const ok = await this.inbox.answer(approvalId, decision);
     if (ok || !this.inbox.getSnapshot().failed[approvalId]) return;

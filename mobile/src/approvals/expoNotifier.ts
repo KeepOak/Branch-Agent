@@ -1,6 +1,7 @@
 // The real notifications, through expo-notifications: two button sets registered as notification
-// categories, one Android channel for approvals, local notifications posted while Branch is in the
-// background, and the buttons' answers handed back to ApprovalAlerts.
+// categories, Android channels (approvals plus replies, questions, mentions, routines and updates),
+// local notifications posted while Branch is in the background, and the buttons' answers handed back
+// to ApprovalAlerts. Non-approval taps carry a route in the notification data.
 //
 // Allow asks the phone to be unlocked first (iOS isAuthenticationRequired), as the preview's lock
 // screen promises: "Face ID may ask first". Neither button brings the app forward; iOS and Android
@@ -9,6 +10,8 @@
 import type * as NotificationsModule from 'expo-notifications';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
+import { ANDROID_CHANNELS } from '../alerts/kinds';
+import { alertData, parseAlertRoute } from '../alerts/route';
 import type { AlertResponse, Notifier, NotificationPermission } from './approvalAlerts';
 
 const CHANNEL = 'approvals';
@@ -65,10 +68,13 @@ function permissionOf(n: Notifications, status: NotificationsModule.Notification
 }
 
 function responseOf(response: NotificationsModule.NotificationResponse): AlertResponse | null {
-  const approvalId = response.notification.request.content.data?.approvalId;
-  if (typeof approvalId !== 'string' || !approvalId) return null;
+  const data = response.notification.request.content.data;
+  const approvalId = typeof data?.approvalId === 'string' && data.approvalId ? data.approvalId : undefined;
+  const route = parseAlertRoute(data);
   const action = response.actionIdentifier === 'allow' ? 'allow' : response.actionIdentifier === 'deny' ? 'deny' : 'open';
-  return { approvalId, action };
+  if (approvalId) return { approvalId, action, ...(route ? { route } : {}) };
+  if (action === 'open' && route) return { action: 'open', route };
+  return null;
 }
 
 function buttons(yes: string, no: string): NotificationsModule.NotificationAction[] {
@@ -88,11 +94,15 @@ export function createExpoNotifier(load: () => Notifications | null = loadNotifi
         handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: true }),
       });
       if (Platform.OS === 'android') {
-        await n.setNotificationChannelAsync(CHANNEL, {
-          name: 'Approvals',
-          description: 'A Trunk needs your yes before it goes on.',
-          importance: n.AndroidImportance.HIGH,
-        });
+        for (const channel of ANDROID_CHANNELS) {
+          await n.setNotificationChannelAsync(channel.id, {
+            name: channel.name,
+            description: channel.description,
+            importance: channel.id === 'approvals' || channel.id === 'questions' || channel.id === 'mentions' || channel.id === 'automations'
+              ? n.AndroidImportance.HIGH
+              : n.AndroidImportance.DEFAULT,
+          });
+        }
       }
       await n.setNotificationCategoryAsync('approval', buttons('Allow', 'Deny'));
       await n.setNotificationCategoryAsync('approval-send', buttons('Send it', 'Don’t send'));
@@ -103,7 +113,11 @@ export function createExpoNotifier(load: () => Notifications | null = loadNotifi
     async requestPermission() {
       return permissionOf(n, await n.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: true, allowSound: true } }));
     },
-    async show({ key, title, body, category, approvalId }) {
+    async show({ key, title, body, category, approvalId, channel, route }) {
+      const data = {
+        ...(approvalId ? { approvalId } : {}),
+        ...(route ? alertData(route, approvalId) : {}),
+      };
       await n.scheduleNotificationAsync({
         identifier: key,
         content: {
@@ -111,9 +125,9 @@ export function createExpoNotifier(load: () => Notifications | null = loadNotifi
           body,
           sound: 'default',
           ...(category ? { categoryIdentifier: category } : {}),
-          ...(approvalId ? { data: { approvalId } } : {}),
+          ...(Object.keys(data).length ? { data } : {}),
         },
-        trigger: Platform.OS === 'android' ? { channelId: CHANNEL } : null,
+        trigger: Platform.OS === 'android' ? { channelId: channel ?? CHANNEL } : null,
       });
     },
     async dismiss(key) {
