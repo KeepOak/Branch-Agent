@@ -73,6 +73,35 @@ describe("projectRun", () => {
     expect(blocks[2]).toMatchObject({ durationMs: 3000 });
   });
 
+  it("asks with the size question before the first-use Codex download", () => {
+    seq = 0;
+    const asked = projectRun([
+      ev("run_status", { phase: "codex_download", state: "confirm", message: "Download Codex 0.160.0 (134 MB)?", ask: "Download Codex 0.160.0 (134 MB)?" }),
+    ], new Map());
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatchObject({
+      kind: "notice",
+      text: "Download Codex 0.160.0 (134 MB)?",
+      codex: { state: "confirm", ask: "Download Codex 0.160.0 (134 MB)?" },
+    });
+    expect(asked[0]?.kind === "notice" ? asked[0].text : "").not.toMatch(/isn['’]t needed/iu);
+  });
+
+  it("shows the first-use Codex download as one progress line and drops the turn error when it fails", () => {
+    seq = 0;
+    const first = ev("run_status", { phase: "codex_download", state: "downloading", message: "Getting Codex ready (134 MB)… 10%", percent: 10 });
+    const next = ev("run_status", { phase: "codex_download", state: "downloading", message: "Getting Codex ready (134 MB)… 29%", percent: 29 });
+    const progress = projectRun([first, next], new Map());
+    expect(progress).toHaveLength(1);
+    expect(progress[0]).toMatchObject({ kind: "notice", text: "Getting Codex ready (134 MB)… 29%", codex: { state: "downloading", percent: 29 } });
+    const failed = projectRun([
+      ev("run_status", { phase: "codex_download", state: "failed", message: "Codex couldn’t be downloaded. Try again.", reason: "offline" }),
+      ev("lifecycle", { phase: "error", error: "Codex couldn’t be downloaded. Try again.", startedAt: 1000, endedAt: 2000 }),
+    ], new Map());
+    expect(failed.map((b) => b.kind)).toEqual(["notice", "done"]);
+    expect(failed[0]).toMatchObject({ codex: { state: "failed", reason: "offline" } });
+  });
+
   it("draws the approval card where the run waits", () => {
     seq = 0;
     const approval = readApproval({

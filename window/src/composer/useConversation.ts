@@ -5,6 +5,7 @@ import { agentOf, errorText, list, rec, str, type Rec, type WindowEngine } from 
 import { readModels, type ModelChoice } from "./model";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { trunkDisplayName } from "../connect/trunk-name";
+import { retryNoKeyDefault } from "./no-key-default";
 
 export type Trunk = { id: string; name: string; defaultMode: string; theme: string; model: string };
 
@@ -20,6 +21,10 @@ export type Conversation = {
   modelsLoading: boolean;
   modelsError: string | null;
   error: string | null;
+  /** Plain words when a free local model could not be set up. Null unless a silent retry failed. */
+  noKeyError: string | null;
+  /** True unless a silent free-model retry is in flight. Setup itself is the interactive wizard. */
+  noKeySettled: boolean;
 };
 
 const EMPTY: Conversation = {
@@ -33,6 +38,8 @@ const EMPTY: Conversation = {
   modelsLoading: false,
   modelsError: null,
   error: null,
+  noKeyError: null,
+  noKeySettled: true,
 };
 
 /** No model set up: the engine names no default model, or none it names is connected (models.list has none usable). */
@@ -128,6 +135,19 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
     return () => clearTimeout(retry);
   }, [load, state.error, state.modelsError, retryGeneration, draftAgentId, engine?.agentId]);
 
+  const retryNoKey = useCallback(async () => {
+    if (!engine || !key) return;
+    setState((s) => ({ ...s, noKeyError: null, noKeySettled: false }));
+    const result = await retryNoKeyDefault(engine);
+    if (live.current !== key) return;
+    if (result.ok) {
+      setState((s) => ({ ...s, noKeyError: null, noKeySettled: true }));
+      await readModelList();
+    } else {
+      setState((s) => ({ ...s, noKeyError: result.error, noKeySettled: true }));
+    }
+  }, [engine, key, readModelList]);
+
   useEffect(() => {
     if (!engine || !key) return;
     return engine.onEvent(({ event, payload }) => {
@@ -166,5 +186,5 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
 
   const trunkId = draftAgentId ?? engine?.agentId ?? agentOf(key) ?? state.defaultTrunkId;
   const trunk = state.trunks.find((t) => t.id === trunkId);
-  return { ...state, key, trunk, trunkId, patch, reload: load, readModelList };
+  return { ...state, key, trunk, trunkId, patch, reload: load, readModelList, retryNoKey };
 }

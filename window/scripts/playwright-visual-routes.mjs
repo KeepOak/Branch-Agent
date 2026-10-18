@@ -9,6 +9,9 @@
 //   stage-preview  the side panel's Preview tab with the Ledger app portal
 //   team-approval-before  the group room, no team card (the before shot for the team card)
 //   team-approval  the team proposal card, asking state
+//   computer-screen-before  the computer pane when its capture fails (main's JSON-RPC error)
+//   computer-permission  the computer pane when the capture is all black (the Screen Recording ask)
+//   settings-nav-end  R1 Settings (Technical) under a 48 px bar, the nav scrolled to its end; fails if the last row is cut off
 // The fixture (visual-harness.tsx) supplies the group "Design group" and the portal "Ledger app".
 // Writes <outDir>/<route>-<label>.png (label defaults to "current"); pass "before" or "after" for a PR.
 // Add a route by adding a name in visual-routes.mjs and a step below.
@@ -29,7 +32,22 @@ async function openGroup(page) {
   await page.getByRole("button", { name: /^Design group/ }).first().click();
 }
 
+// The computer pane: turn on screen access with a real click, then wait for the pane's note.
+async function openComputer(page, state) {
+  await page.goto(`${base}/scripts/visual-harness.html?computer=${state}`);
+  await page.getByRole("button", { name: "See the screen and use the mouse" }).click();
+  await page.locator(".pane-note[data-pane-state]").filter({ hasText: /screen/ }).first().waitFor();
+  await page.waitForTimeout(300);
+  return page.getByTestId("computer-preview");
+}
+
 const steps = {
+  "computer-screen-before": async (page) => openComputer(page, "snapshot-error"),
+  "computer-permission": async (page) => {
+    const pane = await openComputer(page, "blank");
+    await page.getByRole("button", { name: "Open System Settings" }).waitFor();
+    return pane;
+  },
   "team-approval-before": async (page) => {
     await openGroup(page);
     return page.locator("#root");
@@ -51,6 +69,27 @@ const steps = {
     await page.getByRole("region", { name: "Ledger app preview" }).waitFor();
     return page.getByRole("complementary", { name: "Side panel" });
   },
+  "settings-nav-end": async (page) => {
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await page.goto(`${base}/scripts/visual-harness.html?settings=technical`);
+    const side = page.locator(".r1s-side");
+    await side.locator(".r1s-nav").last().waitFor();
+    await page.waitForTimeout(500);
+    await side.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await page.waitForTimeout(200);
+    return page.locator("#root");
+  },
+  "steps-overflow": async (page) => {
+    await page.goto(`${base}/scripts/visual-harness.html?overflow=steps`);
+    return page.getByTestId("overflow-panel");
+  },
+  "pair-overflow": async (page) => {
+    await page.setViewportSize({ width: 420, height: 900 });
+    await page.goto(`${base}/scripts/visual-harness.html?overflow=pair`);
+    await page.getByRole("button", { name: "Make the code" }).click();
+    await page.getByText("Check that both screens show").waitFor();
+    return page.getByRole("dialog", { name: "Pair a phone" });
+  },
   "side-panel-tabs": async (page) => {
     await openGroup(page);
     await page.getByTestId("conversation-menu-button").click();
@@ -60,8 +99,44 @@ const steps = {
   },
 };
 
+// Every element inside the box (the panel or the dialog) stays inside it, and the box and its scrolling body never
+// scroll sideways. A long code or path that ran past the edge fails here.
+const staysInside = (page, selector) => page.evaluate((selector) => {
+  const box = document.querySelector(selector);
+  if (!box) return [`${selector} isn't on the page`];
+  const edge = box.getBoundingClientRect();
+  const problems = [];
+  for (const el of [box, ...box.querySelectorAll(".dlg-b, .r1c-steps-list, .r1c-step-detail")]) {
+    if (el.scrollWidth > el.clientWidth + 1) problems.push(`${el.className || el.tagName} scrolls sideways: ${el.scrollWidth}px in ${el.clientWidth}px`);
+  }
+  for (const el of box.querySelectorAll("*")) {
+    const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) continue;
+    if (r.right > edge.right + 1 || r.left < edge.left - 1) {
+      problems.push(`<${el.tagName.toLowerCase()} class="${el.className}"> runs past the edge: ${Math.round(r.left)}..${Math.round(r.right)} in ${Math.round(edge.left)}..${Math.round(edge.right)}`);
+    }
+  }
+  return problems;
+}, selector);
+
 // Checks run after the screenshot, so a failing capture still leaves its picture. Each returns a list of problems.
 const checks = {
+  "settings-nav-end": (page) => page.evaluate(() => {
+    const frame = document.querySelector('[data-testid="settings-frame"]').getBoundingClientRect();
+    const side = document.querySelector(".r1s-side");
+    const rows = side.querySelectorAll(".r1s-nav");
+    const last = rows[rows.length - 1];
+    const problems = [];
+    if (rows.length < 20) problems.push(`only ${rows.length} nav rows; the check needs a nav longer than the frame`);
+    if (side.scrollHeight <= side.clientHeight) problems.push(`the nav does not scroll: ${side.scrollHeight}px of rows in ${side.clientHeight}px`);
+    const sideBottom = side.getBoundingClientRect().bottom;
+    if (sideBottom > frame.bottom + 1) problems.push(`the nav column ends at ${Math.round(sideBottom)}px, past the frame's ${Math.round(frame.bottom)}px bottom`);
+    const lastBottom = last.getBoundingClientRect().bottom;
+    if (lastBottom > frame.bottom + 1) problems.push(`the last nav row "${last.textContent.trim()}" ends at ${Math.round(lastBottom)}px, past the frame's ${Math.round(frame.bottom)}px bottom`);
+    return problems;
+  }),
+  "steps-overflow": (page) => staysInside(page, '[data-testid="overflow-panel"]'),
+  "pair-overflow": (page) => staysInside(page, '[role=dialog][aria-label="Pair a phone"]'),
   "side-panel-tabs": (page) => page.evaluate(() => {
     const row = document.querySelector('[role=tablist][aria-label="Side panel views"]');
     const rowBox = row.getBoundingClientRect();

@@ -8,7 +8,9 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Coming } from "../../../glass/coming";
 import { useResource as usePlaceResource, type Trunks } from "../../../places/library/data";
-import { ToolsTab, type Kind } from "../../../places/customize/tools";
+import { CustomizeLevelContext } from "../../../places/customize/common";
+import { requestCustomize } from "../../../places/customize/r1-request";
+import { ToolsTab, type CommunityKind, type Kind } from "../../../places/customize/tools";
 import { configStore, pathKeys, type ConfigPath } from "../../../places/settings/config-store";
 import { list, record, text, visible, type RecordValue } from "../../../places/settings/adapter";
 import { useResource } from "../../../places/settings/hooks";
@@ -23,6 +25,7 @@ import { Toggle } from "../RowView";
 import { useLevel } from "../SettingsFrame";
 import type { PageSlot, SlotControlProps, SlotPageProps } from "../slots";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { copyAndSay } from "../../../shell/clipboard";
 import "../../../places/library/places.css";
 import "../../../places/customize/customize.css";
 
@@ -31,7 +34,7 @@ const LEVEL_WORD = ["regular", "advanced", "technical"] as const;
 const QUIET = { saving: () => undefined, saved: () => undefined, failed: () => undefined };
 
 /** The window's config (config.get), saved with config.patch, shared with every Settings row. */
-function useConfigSnap(engine: WindowEngine) {
+export function useConfigSnap(engine: WindowEngine) {
   const store = configStore(engine);
   const subscribe = useCallback((fn: () => void) => store.subscribe(fn), [store]);
   const snap = useSyncExternalStore(subscribe, () => store.snap, () => store.snap);
@@ -65,20 +68,29 @@ function AgentsLine({ engine }: { engine: WindowEngine }) {
   );
 }
 
-/** The kinds hub: whose tools, each kind with its count, and the chosen kind's list, as the Customize place draws it. */
+/** "＋ Get more … in Community →" and a kind's "＋ Add": Customize opens in Community on that kind (preview czMoreP17k). */
+function toCommunity(kind?: CommunityKind) {
+  requestCustomize({ mode: "community", community: kind ?? "all" });
+  window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "customize" } }));
+}
+
+/** The kinds hub: the preview draws the Customize place's own component here (PAGES.czP17, S.czHtmlP17(true)). The
+ *  "For:" faces choose whose tools the kinds show, and a kind chip opens that kind's list, with its head, count and
+ *  "＋ Add", as the place draws it (czKindP17), not a line naming the kind (Private #1095, walkthrough B-069). */
 export function CustomizeHub({ engine }: SlotPageProps) {
   const [level] = useLevel(engine);
   const trunks = usePlaceResource<Trunks>(engine, "agents.list");
   const [kind, setKind] = useState<Kind>("Skills");
-  const [getting, setGetting] = useState(false);
   return (
     <div className="r1s-hub" data-testid="customize-hub">
       <AgentsLine engine={engine} />
-      <div className="cz">
-        {/* The hub's panes never open a conversation (ToolsTab only passes it along). */}
-        <ToolsTab engine={engine} level={LEVEL_WORD[level]} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} getting={getting} setGetting={setGetting}
-          openConversation={() => undefined} kinds={HUB_KINDS} names={HUB_NAMES} whoseLabel="For:" everyLabel="All" summary />
-      </div>
+      <CustomizeLevelContext.Provider value={LEVEL_WORD[level]}>
+        <div className="cz">
+          {/* The hub's panes never open a conversation (ToolsTab only passes it along). */}
+          <ToolsTab engine={engine} level={LEVEL_WORD[level]} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} getting={false} setGetting={() => undefined}
+            openConversation={() => undefined} variant="r1" toCommunity={toCommunity} kinds={HUB_KINDS} names={HUB_NAMES} />
+        </div>
+      </CustomizeLevelContext.Provider>
     </div>
   );
 }
@@ -232,7 +244,7 @@ export const CONNECT_ROWS: Row[] = CONNECT_LINES.map(([title], i) => ({
 function ConnectLine({ row }: SlotControlProps) {
   const line = CONNECT_LINES.find(([title]) => title === row.label)?.[1] ?? "";
   const [copied, setCopied] = useState(false);
-  const copy = () => void navigator.clipboard?.writeText(line).then(() => setCopied(true), () => setCopied(false));
+  const copy = () => void copyAndSay(line).then(setCopied);
   return (
     <span className="r1s-own-ctl r1s-codeline" data-local="">
       <code className="r1s-code">{line}</code>

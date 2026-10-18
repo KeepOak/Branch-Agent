@@ -149,7 +149,7 @@ export function ModelsBody(p: ModelsProps) {
       </div>
       {p.detected && !rows.length ? (
         <p className="hint">
-          Nothing found on this computer yet. Add an account, or{" "}
+          Nothing found on this computer yet. Connect a model to get answers. Connecting an account makes answers smarter and faster. Or{" "}
           <button type="button" className="link" onClick={p.onLocal}>
             install a model on this computer
           </button>

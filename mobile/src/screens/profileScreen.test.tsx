@@ -18,7 +18,7 @@ async function renderProfile(extra: Partial<Parameters<typeof ProfileScreen>[0]>
   const mocks = { onComputer: jest.fn(), onBack: jest.fn() };
   await render(
     <ThemeProvider scheme="light">
-      <ProfileScreen row={oak} level="regular" computer="computer.local:19031" {...mocks} {...extra} />
+      <ProfileScreen row={oak} level="regular" computer="This computer" {...mocks} {...extra} />
     </ThemeProvider>,
   );
   return { mocks };
@@ -45,12 +45,12 @@ async function pairedApp(extra: Parameters<typeof App>[0] = {}) {
 
 describe('profile rows', () => {
   it('keeps Its computer at Regular, and hides unfinished rows', () => {
-    const groups = profileRows({ level: 'regular', row: oak, computer: 'computer.local:19031' });
+    const groups = profileRows({ level: 'regular', row: oak, computer: 'This computer' });
     expect(groups.flatMap((group) => group.rows.map((row) => row.id))).toEqual(['computer']);
   });
 
   it('adds every preview Profile row at Advanced, with a later-update line on unfinished ones', () => {
-    const rows = profileRows({ level: 'advanced', row: oak, computer: 'computer.local:19031' }).flatMap((group) => group.rows);
+    const rows = profileRows({ level: 'advanced', row: oak, computer: 'This computer' }).flatMap((group) => group.rows);
     expect(rows.map((row) => row.id)).toEqual(['computer', 'model', 'may', 'library', 'default', 'pause']);
     expect(rows.find((row) => row.id === 'model')?.detail).toBe(laterUpdate('Model'));
     expect(rows.find((row) => row.id === 'computer')?.detail).toBe('Open the computer pane');
@@ -81,7 +81,7 @@ describe('profile in the app', () => {
     expect(screen.getByTestId('profile-screen')).toBeOnTheScreen();
     expect(screen.getByText('Oak')).toBeOnTheScreen();
     expect(screen.getByTestId('profile-status')).toHaveTextContent('Running');
-    expect(screen.getByTestId('profile-computer')).toHaveTextContent(/computer\.local:19031/);
+    expect(screen.getByTestId('profile-computer')).toHaveTextContent(/This computer/);
     expect(screen.queryByTestId('profile-model')).toBeNull();
 
     await fireEvent.press(screen.getByTestId('profile-computer'));

@@ -21,6 +21,8 @@ export type RowMenuContext = {
   archiveRoom: (contact: Contact) => void;
   unarchiveRoom: (contact: Contact) => void;
   rename: (row: SideRow) => void;
+  /** A Trunk row's Rename: a name box over the list, never a trip to People (walkthrough B-093, B-094). */
+  renameTrunk: (agentId: string, row: SideRow) => void;
   moveToProject: (key: string, projectId: string) => void;
   moveToGroup: (key: string, name: string) => void;
   newConversation: (agentId: string) => void;
@@ -63,6 +65,7 @@ export const NEED = {
   /** The group catalog to pick from, then the conversation's category (a new name joins the catalog). */
   groupMove: ["sessions.groups.list", "sessions.patch"],
   pause: "agents.update",
+  renameTrunk: "agents.update",
   removeTrunk: "agents.delete",
   ask: "chat.send",
   tidy: "sessions.compact",
@@ -122,7 +125,9 @@ export function rowMenu(row: SideRow, c: RowMenuContext): { tiles: MenuEntry[]; 
     ? { label: "Move to project", icon: icon("folder"), submenu: c.projects.map(project => ({ label: project.name, need: NEED.patch, onSelect: () => c.moveToProject(key, project.id) })) }
     : { label: "Move to project", icon: icon("folder"), off: NO_PROJECTS };
   const archive = archiveRow(row, thread, c);
-  const done: MenuEntry | null = row.kind === "group" ? null : { label: "Mark done", icon: icon("check"), off: later("Mark done"), need: NEED.patch };
+  const done: MenuEntry | null = row.kind === "group" ? null : thread
+    ? { label: thread.done ? "Mark not done" : "Mark done", icon: icon("check"), need: NEED.patch, onSelect: () => void c.actions.setDone(thread, !thread.done) }
+    : { label: "Mark done", icon: icon("check"), off: FIRST_MESSAGE };
   const primary = grouped([
     snoozeRow(row, thread, c),
     archive ? done : null,
@@ -158,7 +163,7 @@ export function rowMenu(row: SideRow, c: RowMenuContext): { tiles: MenuEntry[]; 
     row.kind === "group" ? null : thread
       ? { label: "Move to group…", icon: icon("users"), need: NEED.groupMove, onSelect: () => c.moveToGroup(key, row.name) }
       : { label: "Move to group…", icon: icon("users"), off: FIRST_MESSAGE },
-    trunk && agentId ? { label: "Rename", letter: "r", icon: icon("edit"), local: true, onSelect: () => c.editTrunk(agentId) } : { label: "Rename", letter: "r", icon: icon("edit"), need: NEED.patch, onSelect: () => c.rename(row) },
+    trunk && agentId ? { label: "Rename", letter: "r", icon: icon("edit"), need: NEED.renameTrunk, onSelect: () => c.renameTrunk(agentId, row) } : { label: "Rename", letter: "r", icon: icon("edit"), need: NEED.patch, onSelect: () => c.rename(row) },
     c.ownWindowOff
       ? { label: "Open in its own window", icon: icon("panel"), off: c.ownWindowOff }
       : { label: "Open in its own window", icon: icon("panel"), local: true, onSelect: () => c.ownWindow(key) },

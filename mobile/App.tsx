@@ -13,12 +13,12 @@ import { createExpoNotifier, noNotifier } from './src/approvals/expoNotifier';
 import { AgentList, type AgentRow } from './src/agents/agentList';
 import { appIdentity, type AppIdentity } from './src/build/appIdentity';
 import { Conversation } from './src/chat/conversation';
-import { ChatList, type ChatRow } from './src/chats/chatList';
-import { ComputerList } from './src/computers/computerList';
+import { ChatList, filterRows, type ChatRow } from './src/chats/chatList';
+import { ComputerList, computerName, type ComputerRow } from './src/computers/computerList';
 import { messageSearcher } from './src/chats/messageSearch';
 import { createDeviceSession } from './src/pairing/createDeviceSession';
 import type { PairingSession } from './src/pairing/pairingSession';
-import { gatewayHost, type SetupPayload } from './src/pairing/setupCode';
+import type { SetupPayload } from './src/pairing/setupCode';
 import { usePairingState } from './src/pairing/usePairingState';
 import { AgentsScreen } from './src/screens/AgentsScreen';
 import { ApprovalScreen } from './src/screens/ApprovalScreen';
@@ -26,6 +26,7 @@ import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { ChatsScreen } from './src/screens/ChatsScreen';
 import { ComputersScreen } from './src/screens/ComputersScreen';
+import { TakeControlScreen } from './src/screens/TakeControlScreen';
 import { EnterCodeScreen } from './src/screens/EnterCodeScreen';
 import { PairedScreen } from './src/screens/PairedScreen';
 import { RefusedScreen } from './src/screens/RefusedScreen';
@@ -33,10 +34,12 @@ import { ScanScreen } from './src/screens/ScanScreen';
 import { MoreScreen } from './src/screens/MoreScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import type { SettingsLevel } from './src/screens/settingsExtras';
+import { VoiceScreen } from './src/screens/VoiceScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
-import { parseShowLevel, readShowLevel, writeShowLevel, type ShowLevel } from './src/settings/showLevel';
+import { parseShowLevel, readShowLevel, settingsLevelOf, showLevelOf, writeShowLevel, type ShowLevel } from './src/settings/showLevel';
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
-import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
+import { PairingTheme, ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import type { ColorScheme } from './src/theme/tokens';
 import { applyQuietJsUpdate } from './src/updates/ota';
 import { SettingsUpdateCard, UpdateBanner } from './src/updates/UpdateBanner';
@@ -46,12 +49,19 @@ import { useApkUpdate } from './src/updates/useApkUpdate';
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 type Route = 'welcome' | 'scan' | 'code';
+type ComputerOrigin = {
+  from?: 'more' | 'profile';
+  profileRow?: AgentRow;
+  profileFrom?: 'agents' | 'more';
+};
 type PairedRoute =
   | { name: 'chats' }
-  | { name: 'computers'; from?: 'more' | 'profile'; profileRow?: AgentRow; profileFrom?: 'agents' | 'more' }
+  | ({ name: 'computers' } & ComputerOrigin)
+  | ({ name: 'take-control'; computer: ComputerRow } & ComputerOrigin)
   | { name: 'computer'; from?: 'settings' | 'more'; settingsFrom?: 'more' }
   | { name: 'agents'; from?: 'more' }
   | { name: 'chat'; row: ChatRow }
+  | { name: 'voice'; row: ChatRow }
   | { name: 'approvals'; focus?: string }
   | { name: 'settings'; from?: 'more' }
   | { name: 'more' }
@@ -68,7 +78,7 @@ const deviceAppState: AppStateSource = {
 };
 
 /** One open chat. Keyed by the chat, so opening another one starts fresh. */
-function OpenChat({ session, row, online, onBack }: { session: PairingSession; row: ChatRow; online: boolean; onBack: () => void }) {
+function OpenChat({ session, row, online, onBack, onTalk }: { session: PairingSession; row: ChatRow; online: boolean; onBack: () => void; onTalk: () => void }) {
   const [conversation] = useState(() => new Conversation(row.key, session, () => session.newId()));
   useEffect(() => {
     conversation.attach();
@@ -79,10 +89,14 @@ function OpenChat({ session, row, online, onBack }: { session: PairingSession; r
   useEffect(() => {
     void conversation.markRead(opened);
   }, [conversation, opened]);
-  return <ChatScreen row={row} conversation={conversation} online={online} onBack={onBack} hello={session.hello} />;
+  return <ChatScreen row={row} conversation={conversation} online={online} onBack={onBack} onTalk={onTalk} hello={session.hello} />;
 }
 
 function pairedBack(route: PairedRoute): PairedRoute {
+  if (route.name === 'take-control') {
+    return { name: 'computers', from: route.from, profileRow: route.profileRow, profileFrom: route.profileFrom };
+  }
+  if (route.name === 'voice') return { name: 'chat', row: route.row };
   if (route.name === 'computer' && route.from === 'settings') return { name: 'settings', from: route.settingsFrom };
   if (route.name === 'computer' && route.from === 'more') return { name: 'more' };
   if (route.name === 'settings' && route.from === 'more') return { name: 'more' };
@@ -100,6 +114,7 @@ function Shell({
   notifier,
   appState,
   identity,
+  store,
   showLevel,
   onShowLevel,
 }: {
@@ -107,6 +122,7 @@ function Shell({
   notifier: Notifier;
   appState: AppStateSource;
   identity: AppIdentity;
+  store?: KeyValueStore;
   showLevel: ShowLevel;
   onShowLevel: (next: ShowLevel) => void;
 }) {
@@ -205,7 +221,7 @@ function Shell({
     setRoute('welcome');
   }, [state.step, chats, agents, computers, inbox]);
 
-  // Android's back gesture leaves Computers, Agents, Your computer, Settings, More, Profile, a chat or Approvals, like the on-screen back button.
+  // Android's back gesture leaves take-control for Computers, Voice for its chat, and Computers, Agents, Your computer, Settings, More, Profile, a chat or Approvals, like the on-screen back button.
   useEffect(() => {
     if (state.step !== 'paired' || pairedRoute.name === 'chats') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -231,6 +247,12 @@ function Shell({
     void session.unpair();
   };
 
+  const computerOrigin = (route: Extract<PairedRoute, { name: 'computers' | 'take-control' }>): ComputerOrigin => ({
+    from: route.from,
+    profileRow: route.profileRow,
+    profileFrom: route.profileFrom,
+  });
+
   let screen = null;
   switch (state.step) {
     case 'loading':
@@ -238,20 +260,31 @@ function Shell({
     case 'unpaired':
       screen =
         route === 'scan' ? (
-          <ScanScreen onCode={begin} onEnterCode={() => setRoute('code')} onCancel={toWelcome} />
+          <PairingTheme>
+            <ScanScreen onCode={begin} onEnterCode={() => setRoute('code')} onCancel={toWelcome} />
+          </PairingTheme>
         ) : route === 'code' ? (
-          <EnterCodeScreen onCode={begin} onScan={() => setRoute('scan')} onCancel={toWelcome} />
+          <PairingTheme>
+            <EnterCodeScreen onCode={begin} onScan={() => setRoute('scan')} onCancel={toWelcome} />
+          </PairingTheme>
         ) : (
-          <WelcomeScreen onPair={() => setRoute('scan')} updateBanner={updateBanner} />
+          <PairingTheme>
+            <WelcomeScreen onPair={() => setRoute('scan')} updateBanner={updateBanner} />
+          </PairingTheme>
         );
       break;
     case 'connecting':
     case 'approval':
     case 'failed':
-      screen = <ApprovalScreen state={state} onCancel={toWelcome} onScanAgain={scanAgain} />;
+      screen = (
+        <PairingTheme>
+          <ApprovalScreen state={state} onCancel={toWelcome} onScanAgain={scanAgain} />
+        </PairingTheme>
+      );
       break;
     case 'paired':
       if (pairedRoute.name === 'computers') {
+        const origin = computerOrigin(pairedRoute);
         screen = (
           <ComputersScreen
             list={computerList}
@@ -259,7 +292,18 @@ function Shell({
             onRefresh={() => computers.refresh()}
             onBack={() => setPairedRoute(pairedBack(pairedRoute))}
             onThisPhone={() => setPairedRoute({ name: 'computer', from: pairedRoute.from === 'more' ? 'more' : undefined })}
+            onOpenComputer={(computer) => setPairedRoute({ name: 'take-control', computer, ...origin })}
             backTo={pairedRoute.from === 'profile' ? 'Profile' : pairedRoute.from === 'more' ? 'More' : 'Chats'}
+          />
+        );
+      } else if (pairedRoute.name === 'take-control') {
+        screen = (
+          <TakeControlScreen
+            computer={pairedRoute.computer}
+            link={session}
+            newId={() => session.newId()}
+            store={store}
+            onBack={() => setPairedRoute(pairedBack(pairedRoute))}
           />
         );
       } else if (pairedRoute.name === 'computer') {
@@ -297,13 +341,15 @@ function Shell({
           />
         );
       } else if (pairedRoute.name === 'profile') {
+        const row = agentList.rows.find((item) => item.id === pairedRoute.row.id) ?? pairedRoute.row;
+        const host = computerList.rows.find((item) => item.id === 'gateway');
         screen = (
           <ProfileScreen
-            row={pairedRoute.row}
+            row={row}
             level={showLevel}
-            computer={gatewayHost(state.url)}
+            computer={host ? computerName(host) : 'This computer'}
             onComputer={() =>
-              setPairedRoute({ name: 'computers', from: 'profile', profileRow: pairedRoute.row, profileFrom: pairedRoute.from })
+              setPairedRoute({ name: 'computers', from: 'profile', profileRow: row, profileFrom: pairedRoute.from })
             }
             onBack={() => setPairedRoute(pairedBack(pairedRoute))}
             backTo={pairedRoute.from === 'more' ? 'More' : 'Agents'}
@@ -315,19 +361,44 @@ function Shell({
             state={state}
             permission={permission}
             identity={identity}
-            showLevel={showLevel}
-            onShowLevel={onShowLevel}
             onThisPhone={() => setPairedRoute({ name: 'computer', from: 'settings', settingsFrom: pairedRoute.from })}
             onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
             onTurnOnNotifications={turnOnNotifications}
             onBack={() => setPairedRoute(pairedBack(pairedRoute))}
+            onLevel={(next: SettingsLevel) => onShowLevel(showLevelOf(next))}
+            updateCard={updateCard}
+            level={settingsLevelOf(showLevel)}
             backTo={pairedRoute.from === 'more' ? 'More' : 'Chats'}
+          />
+        );
+      } else if (pairedRoute.name === 'voice') {
+        const row = chatList.rows.find((r) => r.key === pairedRoute.row.key) ?? pairedRoute.row;
+        const toChat = () => setPairedRoute({ name: 'chat', row });
+        screen = (
+          <VoiceScreen
+            row={row}
+            online={state.online}
+            link={session}
+            pending={approvals.pending}
+            onAnswer={(id, decision) => void inbox.answer(id, decision)}
+            onClose={toChat}
+            onEnd={toChat}
+            onKeyboard={toChat}
           />
         );
       } else if (pairedRoute.name === 'chat') {
         // The header follows the list live (a rename, the working dot); the row it was opened from fills in until then.
         const row = chatList.rows.find((r) => r.key === pairedRoute.row.key) ?? pairedRoute.row;
-        screen = <OpenChat key={row.key} session={session} row={row} online={state.online} onBack={() => setPairedRoute(CHATS)} />;
+        screen = (
+          <OpenChat
+            key={row.key}
+            session={session}
+            row={row}
+            online={state.online}
+            onBack={() => setPairedRoute(CHATS)}
+            onTalk={() => setPairedRoute({ name: 'voice', row })}
+          />
+        );
       } else if (pairedRoute.name === 'approvals') {
         const chatFor = (key: string) => chatList.rows.find((r) => r.key === key);
         screen = (
@@ -363,15 +434,25 @@ function Shell({
             onSettings={() => setPairedRoute({ name: 'settings' })}
             onMore={() => setPairedRoute({ name: 'more' })}
             onOpen={(row) => setPairedRoute({ name: 'chat', row })}
+            onNewChat={() => {
+              const shown = filterRows(chatList.rows, 'all', Date.now());
+              const main = shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
+              if (main) setPairedRoute({ name: 'chat', row: main });
+            }}
             needsYou={first ? { count: approvals.pending.length, line: `${trunkOf(first, approvals.trunks).name} · ${headline(first)}${more > 0 ? ` and ${more} more` : ''}` } : null}
             onNeedsYou={() => setPairedRoute({ name: 'approvals' })}
             updateBanner={updateBanner}
+            level={showLevel}
           />
         );
       }
       break;
     case 'refused':
-      screen = <RefusedScreen state={state} onPairAgain={pairAgain} onRetry={() => session.retry()} onForget={() => void session.unpair()} />;
+      screen = (
+        <PairingTheme>
+          <RefusedScreen state={state} onPairAgain={pairAgain} onRetry={() => session.retry()} onForget={() => void session.unpair()} />
+        </PairingTheme>
+      );
   }
 
   return (
@@ -402,7 +483,8 @@ export default function App({
   const [session] = useState(() => given ?? createDeviceSession());
   const [notifier] = useState(() => givenNotifier ?? (Platform.OS === 'web' ? noNotifier : createExpoNotifier()));
   const [identity] = useState(() => givenIdentity ?? appIdentity());
-  const store = themeStore ?? (given ? undefined : deviceStore());
+  // Keep one store for the life of this App so a render cannot mint a new device store and reload the saved level.
+  const [store] = useState(() => themeStore ?? (given ? undefined : deviceStore()));
   const [showLevel, setShowLevel] = useState<ShowLevel>(() => parseShowLevel(givenLevel));
   useEffect(() => {
     if (givenLevel !== undefined) {
@@ -438,6 +520,7 @@ export default function App({
           notifier={notifier}
           appState={appState}
           identity={identity}
+          store={store}
           showLevel={showLevel}
           onShowLevel={onShowLevel}
         />

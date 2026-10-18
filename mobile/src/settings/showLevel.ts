@@ -5,6 +5,14 @@ import type { KeyValueStore } from '../storage/keyValueStore';
 
 export type ShowLevel = 'regular' | 'advanced' | 'technical';
 
+export function settingsLevelOf(level: ShowLevel): 0 | 1 | 2 {
+  return level === 'technical' ? 2 : level === 'advanced' ? 1 : 0;
+}
+
+export function showLevelOf(level: 0 | 1 | 2): ShowLevel {
+  return level === 2 ? 'technical' : level === 1 ? 'advanced' : 'regular';
+}
+
 export const SHOW_LEVEL_KEY = 'branch.showLevel';
 
 export const SHOW_LEVEL_OPTIONS: { value: ShowLevel; label: string; hint: string }[] = [

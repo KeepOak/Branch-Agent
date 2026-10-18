@@ -64,7 +64,7 @@ export function AskCard({ state, name, onAnswer, lockdown, scopes }: CardProps) 
             <Answer ask={ask} kind="ghost" off={busy} onClick={() => onAnswer(ask.id, "deny")}>{ask.words.no}</Answer>
           </div>
         )}
-      {state.error ? <p className="r1-ask-error" role="alert">That didn’t go through: {state.error} Try again.</p> : null}
+      {state.error ? <p className="r1-ask-error" role="alert">{/\btry again\b/i.test(state.error) ? `That didn’t go through. ${state.error}` : `That didn’t go through: ${state.error} Try again.`}</p> : null}
     </div>
   );
 }

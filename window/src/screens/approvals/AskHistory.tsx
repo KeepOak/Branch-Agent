@@ -9,10 +9,12 @@ import { LOCKDOWN_WHY } from "./AskCard";
 import { RESOLVE_OF, type Reply } from "./model";
 import type { AskState } from "./useAsks";
 import { groupable } from "./AskGroup";
+import { plainError } from "../../shell/plain-error";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const errorText = (e: unknown): string => plainError(e);
 
 export type HistoryRow = { id: string; what: string; outcome: string; tone: "ok" | "bad" | "idle"; at: number };
 export type GrantRow = { grantId: string; command: string; job: string; uses: number };

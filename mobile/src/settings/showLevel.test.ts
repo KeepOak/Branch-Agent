@@ -1,5 +1,5 @@
 import { memoryStore } from '../storage/keyValueStore';
-import { laterUpdate, parseShowLevel, readShowLevel, SHOW_LEVEL_KEY, showsLaterUpdates, writeShowLevel } from './showLevel';
+import { laterUpdate, parseShowLevel, readShowLevel, settingsLevelOf, showLevelOf, SHOW_LEVEL_KEY, showsLaterUpdates, writeShowLevel } from './showLevel';
 
 describe('show level', () => {
   it('treats anything but Advanced or Technical as Regular', () => {
@@ -8,6 +8,15 @@ describe('show level', () => {
     expect(parseShowLevel('technical')).toBe('technical');
     expect(parseShowLevel(null)).toBe('regular');
     expect(parseShowLevel('other')).toBe('regular');
+  });
+
+  it('maps Regular, Advanced and Technical to the Settings ranks', () => {
+    expect(settingsLevelOf('regular')).toBe(0);
+    expect(settingsLevelOf('advanced')).toBe(1);
+    expect(settingsLevelOf('technical')).toBe(2);
+    expect(showLevelOf(0)).toBe('regular');
+    expect(showLevelOf(1)).toBe('advanced');
+    expect(showLevelOf(2)).toBe('technical');
   });
 
   it('shows unfinished rows only at Advanced and above', () => {

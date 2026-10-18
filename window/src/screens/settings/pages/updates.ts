@@ -12,7 +12,8 @@ export const UPDATES_ROWS: Row[] = [
   block("updates.devices.block", "Branch on your other devices", "Already have the app?", 0, []),
   block("updates.before.block", "Before you install", "See the plan", 0, []),
   block("updates.reports.block", "Reports", "Send crash and update reports to KeepOak", 0, []),
-  block("updates.editors.block", "In your editors and notes", "VS Code", 1, []),
+  // Every add-on in this card waits for a later update, so the card shows with the other Coming rows, at Technical.
+  block("updates.editors.block", "In your editors and notes", "VS Code", 2, []),
   { id: "updates.achievements.popup", page: "updates", card: "Achievements", label: "Achievements", level: 0, control: "toggle",
     help: "A pop-up when you unlock one. Off out of the box; they still unlock quietly and are listed under Settings › Achievements.",
     source: { kind: "coming", need: "engine: a record of achievements", reason: "Achievements comes in a later update." } },

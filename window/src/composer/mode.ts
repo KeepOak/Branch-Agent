@@ -13,6 +13,10 @@ export type ModeRow = {
   gap?: string;
 };
 
+/** Shown wherever Plan first is off. The engine has no such mode, so this is Coming,
+ *  not something an update of Branch turns on (#1811). */
+export const PLAN_FIRST_REASON = "Plan first comes in a later update.";
+
 export const MODE_ROWS: readonly ModeRow[] = [
   {
     engine: "workspace",
@@ -31,7 +35,7 @@ export const MODE_ROWS: readonly ModeRow[] = [
     name: "Plan first",
     icon: "plan",
     line: "Writes a plan and waits for your OK before doing anything.",
-    gap: "Plan first isn't available with this version of Branch.",
+    gap: PLAN_FIRST_REASON,
   },
   {
     engine: "read-only",

@@ -164,3 +164,11 @@ test('coverage includes actual slice, priority, Harvest and desktop CI targets',
   assert.deepEqual(uncoveredTests(['engine/src/agents/agent-scope.test.ts'], covered),
     ['engine/src/agents/agent-scope.test.ts']);
 });
+
+test('a changed test that no CI job runs is still a coverage failure', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/desktop-checks.yml', import.meta.url), 'utf8');
+  const covered = coverageTargets(workflow);
+  const missing = 'window/src/not-in-ci.test.tsx';
+  assert.equal(covered.has(missing), false);
+  assert.deepEqual(uncoveredTests([missing], covered), [missing]);
+});
