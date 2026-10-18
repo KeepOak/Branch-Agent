@@ -50,7 +50,6 @@ import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
 import { MacComputerDriver, describeDriverError, macScreenControlEnabled } from "./mac-computer-driver";
-import { externalUrlAllowed } from "./external-url";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 /** Scratch test copies: never grouped with, or mistaken for, the owner's app (they also start hidden). */
@@ -1197,7 +1196,7 @@ function lockDown(w: BrowserWindow): void {
     if (new URL(url).origin !== origin) e.preventDefault();
   });
   w.webContents.setWindowOpenHandler(({ url }) => {
-    if (externalUrlAllowed(url)) void shell.openExternal(url);
+    if (url.startsWith("https://")) void shell.openExternal(url);
     return { action: "deny" };
   });
   session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));

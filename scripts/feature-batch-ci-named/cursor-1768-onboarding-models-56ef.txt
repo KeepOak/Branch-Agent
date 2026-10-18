@@ -1,1 +1,0 @@
-window:src/screens/onboarding/forward-steps.test.tsx

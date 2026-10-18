@@ -11,7 +11,7 @@ import { Coming } from "../../glass/coming";
 import { saveOnboardingAccess } from "./access";
 import { Models } from "./Models";
 import { ModeStep } from "./ModeStep";
-import { advanceFrom, failedStep, freshState, helloOk, LAST_STEP, MODES, mainSessionOf, picked, primary, STEPS, togglePick, WAITS_FOR, type OnboardingState } from "./model";
+import { clampStep, failedStep, freshState, helloOk, LAST_STEP, MODES, mainSessionOf, picked, primary, STEPS, togglePick, WAITS_FOR, type OnboardingState } from "./model";
 import { Welcome, WhereSheet } from "./Welcome";
 import "./onboarding.css";
 
@@ -111,11 +111,8 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
   const next = async () => {
     if (!p.ok || saving) return;
     if (s.step < 2) {
-      const from = s.step;
       if (!(await keepName())) return;
-      // Advance only from the step this click started on, so a second Get started
-      // (double-click, or two handlers in one turn) cannot skip Your models.
-      setS((cur) => ({ ...cur, step: advanceFrom(cur.step, from) }));
+      set({ step: clampStep(s.step + 1) });
       return;
     }
     if (s.step === LAST_STEP) { await meet(); return; }
@@ -132,11 +129,9 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
     }
   };
   const leave = async () => {
-    // A refused name stays on this computer (saveDisplayName writes it before the profile call) and must not
-    // trap the person on Welcome. Fresh profile: accept recommended Ask first (or the pick already made) so the
-    // composer never starts on Full access. An access already in the profile stays put. A failed write must not
-    // block leaving.
-    await keepName();
+    if (!(await keepName())) return;
+    // Fresh profile: accept recommended Ask first (or the pick already made) so the composer never starts on Full
+    // access. An access already in the profile stays put. A failed write must not block leaving.
     await saveOnboardingAccess(engine, s.mode, { onlyIfUnset: !pickedMode }).catch(() => undefined);
     onLater(s);
   };
@@ -155,7 +150,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
   // Meet them creates Trunks from templates; Start with <default> only records setup and sends the first message.
   const need = s.step === LAST_STEP ? [...(picked(s).length ? ["trunks.template.create"] : []), "config.get", "config.patch", "chat.send"] : "config.patch";
   const primaryButton = (
-    <button type="button" key={s.step} ref={go} className="r1-ob-btn r1-ob-pri r1-ob-go" aria-disabled={!p.ok || saving ? true : undefined} title={p.why} onClick={(e) => { if (e.detail > 1) return; void next(); }} {...(s.step < 2 ? { "data-local": true } : {})}>
+    <button type="button" ref={go} className="r1-ob-btn r1-ob-pri r1-ob-go" aria-disabled={!p.ok || saving ? true : undefined} title={p.why} onClick={() => void next()} {...(s.step < 2 ? { "data-local": true } : {})}>
       {saving ? "Saving…" : p.label}
     </button>
   );

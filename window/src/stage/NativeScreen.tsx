@@ -1,9 +1,6 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
-import { shows, useLevel } from "../places-nav/level";
-import { frameIsBlank } from "./blank-frame";
-import { type ComputerStatus, computerStatusProblem, screenPermissionProblem, type StatusProblem } from "./computer-status-problem";
-import { BLANK_CAPTURE, isScreenPermissionError, onMac, openScreenRecordingSettings, PERMISSION_POLL_MS } from "./screen-permission";
+import { type ComputerStatus, computerStatusProblem, type StatusProblem } from "./computer-status-problem";
 import { DriveSurface, type RemoteAction } from "./DriveSurface";
 import { computerActions, type ComputerFrame } from "./computer-drive";
 
@@ -14,23 +11,12 @@ const SNAPSHOT_FAILED: StatusProblem = {
   retry: true,
 };
 
-/** A failed capture in plain words; the raw error goes behind Technical details. */
-function snapshotProblem(error: unknown): StatusProblem {
-  const technical = (error instanceof Error ? error.message : String(error)).trim() || undefined;
-  // Screen Recording is a Mac permission: elsewhere the same words get the plain failure line, never a System Settings button.
-  if (onMac() && isScreenPermissionError(technical)) return screenPermissionProblem(technical);
-  return technical ? { ...SNAPSHOT_FAILED, technical } : SNAPSHOT_FAILED;
-}
-
-/** One centered line with at most one action, in the pane's own box. The raw detail shows only at Technical.
- * While macOS holds the screen back, the action opens System Settings and the pane keeps trying by itself. */
+/** One centered line with at most one action, in the pane's own box. Technical detail sits behind a disclosure. */
 function PaneNote({ state, problem, onRetry }: { state: string; problem: StatusProblem | null; onRetry: () => void }) {
-  const technical = shows(useLevel(), "technical");
-  return <div className="stage-empty pane-note" data-pane-state={state} data-permission={problem?.permission || undefined}>
+  return <div className="stage-empty pane-note" data-pane-state={state}>
     <p>{problem ? problem.line : "Connecting…"}</p>
-    {problem?.permission ? <button type="button" className="btn" onClick={() => openScreenRecordingSettings()}>Open System Settings</button>
-      : problem?.retry ? <button type="button" className="btn" onClick={onRetry}>Try again</button> : null}
-    {technical && problem?.technical ? <details className="pane-technical"><summary>Technical details</summary><code>{problem.technical}</code></details> : null}
+    {problem?.retry ? <button type="button" className="btn" onClick={onRetry}>Try again</button> : null}
+    {problem?.technical ? <details className="pane-technical"><summary>Technical details</summary><code>{problem.technical}</code></details> : null}
   </div>;
 }
 
@@ -81,8 +67,6 @@ export function NativeScreen({ engine, retry, onLive, onRetry, control = false, 
     onLive(false);
     const capture = async () => {
       busy = true;
-      // While macOS holds the screen back, try again every few seconds; the screen shows by itself once it's allowed.
-      let waitMs = controlRef.current ? 500 : 1000;
       let generation: string | undefined;
       if (controlRef.current && !shared.current) shared.current = { id: crypto.randomUUID() };
       const held = controlRef.current ? shared.current : null;
@@ -95,31 +79,20 @@ export function NativeScreen({ engine, retry, onLive, onRetry, control = false, 
           setImage("");
           setProblem(stopped);
           onLive(false);
-          if (stopped.permission) waitMs = PERMISSION_POLL_MS;
           return;
         }
         setProblem(null);
         generation = status.computerUse?.provider.generation;
         if (!status.available || !generation) throw new Error("Screen unavailable");
         const snap = generation;
-        // The shared execution's generation is kept before the capture returns anything, so handing back always releases
-        // it, whether the frame is real, all black or the capture fails.
-        if (held && shared.current === held) held.generation = generation;
         const result = await enqueue(() => engine.request<{ payload: Frame }>("computer.invoke", {
           command: "screen.snapshot", generation: snap, idempotencyKey: crypto.randomUUID(),
           params: { executionId },
         }));
         const frame = result.payload;
         if (!frame.base64 || (frame.format !== "jpeg" && frame.format !== "png")) throw new Error("No screen image");
-        // An all-black capture on a Mac is macOS refusing it: say so, and keep trying until a real frame comes.
-        if (onMac() && await frameIsBlank(frame.format, frame.base64)) {
-          // Input never aims at a black frame.
-          if (held && shared.current === held) held.frame = undefined;
-          if (live) { setImage(""); setProblem(screenPermissionProblem(BLANK_CAPTURE)); onLive(false); }
-          waitMs = PERMISSION_POLL_MS;
-          return;
-        }
         if (held && shared.current === held) {
+          held.generation = generation;
           held.frame = frame.displayFrameId && frame.width && frame.height ? { id: frame.displayFrameId, width: frame.width, height: frame.height } : undefined;
         }
         if (live) {
@@ -127,10 +100,8 @@ export function NativeScreen({ engine, retry, onLive, onRetry, control = false, 
           setProblem(null);
           onLive(true);
         }
-      } catch (error) {
-        const problem = snapshotProblem(error);
-        if (problem.permission) waitMs = PERMISSION_POLL_MS;
-        if (live) { if (problem.permission) setImage(""); setProblem(problem); onLive(false); }
+      } catch {
+        if (live) { setProblem(SNAPSHOT_FAILED); onLive(false); }
       } finally {
         // A capture's own execution is released at once; so is a shared one you handed back while it was in flight.
         if (generation && (!held || shared.current !== held)) {
@@ -143,7 +114,7 @@ export function NativeScreen({ engine, retry, onLive, onRetry, control = false, 
         if (live && again) {
           again = false;
           void capture();
-        } else if (live) timer = setTimeout(() => void capture(), waitMs);
+        } else if (live) timer = setTimeout(() => void capture(), controlRef.current ? 500 : 1000);
       }
     };
     captureNow.current = () => {

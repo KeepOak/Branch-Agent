@@ -13,9 +13,8 @@ export type ModeRow = {
   gap?: string;
 };
 
-/** Shown wherever Plan first is off. The engine has no such mode, so this is Coming,
- *  not something an update of Branch turns on (#1811). */
-export const PLAN_FIRST_REASON = "Plan first comes in a later update.";
+/** Shown wherever Plan first is off: the one thing that turns it on. */
+export const PLAN_FIRST_REASON = "Update Branch to use Plan first.";
 
 export const MODE_ROWS: readonly ModeRow[] = [
   {

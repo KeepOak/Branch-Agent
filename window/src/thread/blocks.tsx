@@ -417,11 +417,9 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
         </details>
       ) : null}
       <div className="row-buttons">
-        {shows(level, "technical") ? (
-          <button type="button" className="btn sm ghost" onClick={() => void copyText(block.message, toast)}>
-            Copy error
-          </button>
-        ) : null}
+        <button type="button" className="btn sm ghost" onClick={() => void copyText(block.message, toast)}>
+          Copy error
+        </button>
         {screenSwitch ? (
           <button type="button" className="btn sm" data-testid="open-screen-control" onClick={openScreenControlSwitch}>
             Open that switch

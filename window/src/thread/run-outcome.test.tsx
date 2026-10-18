@@ -17,7 +17,7 @@ import { Thread } from "./Thread";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }) });
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
+afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
 
 const KEY = "agent:main:main";
 const engine: WindowEngine = {
@@ -139,7 +139,6 @@ describe("done cheer", () => {
 
 describe("Couldn't finish", () => {
   it("has Details, Copy error, Check status (opens the Gateway popover) and Dismiss", async () => {
-    localStorage.setItem("branch.level", "technical");
     const history: Block[] = [{ kind: "user", key: "u", text: "x" }, { kind: "error", key: "e", message: "the provider timed out" }];
     const container = await mount(<Thread name="Juniper" history={history} live={[]} pendingUser={null} running={false} engine={engine} onAnswer={() => {}} />);
     const strip = container.querySelector('[data-testid="run-error"]')!;
@@ -178,7 +177,7 @@ describe("Couldn't finish", () => {
     const history: Block[] = [{ kind: "user", key: "u", text: "x" }, { kind: "error", key: "e", message }];
     const container = await mount(<Thread name="Juniper" history={history} live={[]} pendingUser={null} running={false} engine={engine} onAnswer={() => {}} />);
     const strip = container.querySelector('[data-testid="run-error"]')!;
-    expect([...strip.querySelectorAll("button")].map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual(["Dismiss", "Open that switch", "Check status"]);
+    expect([...strip.querySelectorAll("button")].map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual(["Dismiss", "Copy error", "Open that switch", "Check status"]);
     let page = "";
     const listen = (event: Event) => {
       page = (event as CustomEvent<{ page?: string }>).detail?.page ?? "";

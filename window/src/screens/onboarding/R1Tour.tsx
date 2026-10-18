@@ -7,17 +7,11 @@ import { tourCards, Walkthrough, type Card } from "../../shell/Walkthrough";
 
 export type R1TourKind = "intro" | "full";
 
-/**
- * The three cards: Your Trunks; Customize & Seedbank; Settings, Guide & help.
- * Sidebar spotlights stay off: a hole there dims the rest of the list. Each card points at a part of the
- * conversation the new user can see right after setup, or sits centred when that part is only in the sidebar.
- * Your Trunks marks the Trunk’s name in the header. Customize and Seedbank, and Settings, search and the Guide,
- * are not on the conversation, so those cards have no spotlight.
- */
+/** The three cards: Your Trunks; Customize & Seedbank; Settings, Guide & help. */
 export const INTRO_CARDS: Card[] = [
-  { title: "Your Trunks", target: ".r1-header .g-pill", text: "Chat with each Trunk like a teammate. Topics keep a job’s threads apart, and the line under a reply shows the agents’ work." },
-  { title: "Customize & Seedbank", target: null, text: "Customize is what your Trunks can do: their tools, skills and connections. Seedbank is where you get more." },
-  { title: "Settings, Guide & help", target: null, text: "Everything has a home in Settings, and search finds anything. The Guide, in the menu on your name, takes you on the full tour any time." },
+  { title: "Your Trunks", target: '.r1sb-sec[data-section="trunks"]', text: "Chat with each Trunk like a teammate. Topics keep a job’s threads apart, and the line under a reply shows the agents’ work." },
+  { title: "Customize & Seedbank", target: ".r1sb-seed", text: "Customize is what your Trunks can do: their tools, skills and connections. Seedbank is where you get more." },
+  { title: "Settings, Guide & help", target: ".r1sb-me", text: "Everything has a home in Settings, and search finds anything. The Guide in this menu takes you on the full tour any time." },
 ];
 
 /** A card can show when it needs no part of the window, opens its own part first, or its part is in the window now. */

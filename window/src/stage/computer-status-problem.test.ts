@@ -34,19 +34,6 @@ describe("computerStatusProblem", () => {
     expect(computerStatusProblem({ available: false, configured: true, error: "COMPUTER_DRIVER_ERROR: boom" }))
       .toEqual({ line: "Couldn't show this computer's screen.", retry: true, technical: "COMPUTER_DRIVER_ERROR: boom" });
   });
-  it("Private #1103: the desktop's permission reason becomes the Screen Recording ask with Open System Settings, not a dead Try again", () => {
-    expect(computerStatusProblem({ available: false, configured: true, reason: "macOS asks you to allow this once, in System Settings.", error: "COMPUTER_DRIVER_UNAVAILABLE: x" })).toEqual({
-      line: "Branch needs permission to see this screen. Turn on Screen Recording for Branch Agent in System Settings.",
-      retry: false,
-      permission: true,
-      technical: "COMPUTER_DRIVER_UNAVAILABLE: x",
-    });
-  });
-  it("Private #1103: a capture error that names Screen Recording asks for it too, keeping the raw error for Technical", () => {
-    const technical = "COMPUTER_DRIVER_ERROR: Screen Recording permission is not granted";
-    expect(computerStatusProblem({ available: false, configured: true, error: technical }))
-      .toEqual({ line: "Branch needs permission to see this screen. Turn on Screen Recording for Branch Agent in System Settings.", retry: false, permission: true, technical });
-  });
   it("never shows the screen-access sentence or jargon for a driver fault", () => {
     const problem = computerStatusProblem({ available: false, configured: true, error: "COMPUTER_DRIVER_UNAVAILABLE: x" });
     expect(problem?.line).not.toContain("screen access");

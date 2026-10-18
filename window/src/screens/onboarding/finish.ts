@@ -73,7 +73,7 @@ export function profileIdOf(value: unknown): string {
 }
 
 /** Saves the name where Settings › People keeps it (users.setDisplayName). No profile means nothing to write
- *  on the engine; the name is still kept on this computer so greetings survive a restart. */
+ *  on the engine; the name is still remembered in this window for greetings. */
 export async function saveDisplayName(engine: WindowEngine, name: string): Promise<void> {
   const displayName = name.trim();
   if (!displayName) return;

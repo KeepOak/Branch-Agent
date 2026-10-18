@@ -1,23 +1,22 @@
-// The name from Welcome, kept on this computer so greetings can use it after Branch
-// restarts even when the connection has no profile yet (users.setDisplayName has
-// nothing to write). sessionStorage dies with the window; localStorage does not.
+// The name from Welcome, kept for this window so greetings can use it even when
+// the connection has no profile yet (users.setDisplayName has nothing to write).
 const KEY = "branch.sessionDisplayName";
 
 /** Remember the name typed during setup. Empty clears it. Never throws. */
 export function rememberSessionName(name: string): void {
   const who = name.trim();
   try {
-    if (who) localStorage.setItem(KEY, who);
-    else localStorage.removeItem(KEY);
+    if (who) sessionStorage.setItem(KEY, who);
+    else sessionStorage.removeItem(KEY);
   } catch {
-    // greetings still work; they ask what to call you
+    // current window only
   }
 }
 
-/** The name remembered on this computer, or "". */
+/** The name remembered this session, or "". */
 export function recalledSessionName(): string {
   try {
-    return localStorage.getItem(KEY)?.trim() ?? "";
+    return sessionStorage.getItem(KEY)?.trim() ?? "";
   } catch {
     return "";
   }
