@@ -29,6 +29,16 @@ export const EMPTY_SELF: SelfProfile = {
   hasAvatar: false,
 };
 
+/** users.self failed: empty name, never "Owner". The You screen shows Couldn’t load. */
+export const FAILED_SELF: SelfProfile = {
+  id: null,
+  name: '',
+  emails: [],
+  role: '',
+  owner: false,
+  hasAvatar: false,
+};
+
 /** users.self → the person this connection is. A missing profile is "Owner", as the window's PersonMenu. */
 export function readSelf(result: unknown): SelfProfile {
   const profile = rec(rec(result).profile);

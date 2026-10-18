@@ -19,6 +19,8 @@ export function YouScreen({
   onComputer,
   onBack,
   onRename,
+  onRetry,
+  loadFailed = false,
   backTo = 'More',
 }: {
   self: SelfProfile;
@@ -29,6 +31,8 @@ export function YouScreen({
   onComputer: () => void;
   onBack: () => void;
   onRename?: (name: string) => Promise<void>;
+  onRetry?: () => void;
+  loadFailed?: boolean;
   backTo?: 'More' | 'Home';
 }) {
   const { color, space, radius, layout } = useTheme();
@@ -99,7 +103,20 @@ export function YouScreen({
             {initials(self.name)}
           </ThemedText>
         </View>
-        {edit === null ? (
+        {loadFailed ? (
+          <>
+            <ThemedText testID="you-name" variant="title2" accessibilityRole="header">
+              {self.name}
+            </ThemedText>
+            <ThemedText testID="you-load-error" variant="title3">
+              Couldn’t load
+            </ThemedText>
+            <ThemedText variant="footnote" tone="ink3">
+              Your profile didn’t load. Try again.
+            </ThemedText>
+            {onRetry ? <Button title="Try again" kind="plain" onPress={onRetry} testID="you-load-retry" /> : null}
+          </>
+        ) : edit === null ? (
           <>
             <ThemedText testID="you-name" variant="title2" accessibilityRole="header">
               {self.name}
