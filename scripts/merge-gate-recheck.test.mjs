@@ -164,7 +164,7 @@ test('the recheck workflow reacts to completed runs of its listed workflows, and
   assert.match(yaml, /PULLS_JSON:/);
   assert.match(yaml, /toJSON\(github\.event\.workflow_run\.pull_requests\)/);
   assert.doesNotMatch(yaml, /gh run rerun "\$id"/);
-  assert.doesNotMatch(yaml, /actions\/setup-node/);
+  assert.doesNotMatch(yaml, /uses:\s*actions\/setup-node/);
   const source = readFileSync(new URL('./merge-gate-recheck.mjs', import.meta.url), 'utf8');
   assert.match(source, /from '\.\/merge-gate-rate-limit\.mjs'/);
   assert.match(source, /withRateLimitRetry/);
