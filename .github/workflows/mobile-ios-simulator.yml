@@ -1,0 +1,142 @@
+name: Mobile iOS Simulator
+
+# Unsigned iOS Simulator build and launch for the phone app. Path-filtered so desktop
+# and window PRs do not start it. merge-gate treats a skipped or missing run as a pass
+# when these paths did not change (MUST_RUN_WORKFLOWS does not include this file).
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ios-simulator.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ios-simulator.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-ios-simulator-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ios-simulator:
+    name: iOS Simulator
+    runs-on: macos-15
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      IOS_DERIVED_DATA: ${{ runner.temp }}/ios-derived
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check the simulator contract
+        run: node --test mobile/scripts/ios-simulator-check.test.mjs
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+          xcodebuild -version
+          xcrun simctl list > /dev/null
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+          package-manager-cache: false
+
+      - name: Restore CocoaPods cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ${{ env.HOME }}/Library/Caches/CocoaPods
+          key: cocoapods-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json') }}
+          restore-keys: |
+            cocoapods-${{ runner.os }}-
+
+      - name: Restore Xcode derived data
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ${{ env.IOS_DERIVED_DATA }}
+          key: ios-derived-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json') }}
+          restore-keys: |
+            ios-derived-${{ runner.os }}-
+
+      - name: Install the phone app
+        working-directory: mobile
+        run: npm ci --no-audit --no-fund
+
+      - name: Prebuild, build, install and launch on the simulator
+        id: ios
+        working-directory: mobile
+        run: node scripts/ios-simulator-check.mjs --ci
+
+      - name: Save CocoaPods cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ${{ env.HOME }}/Library/Caches/CocoaPods
+          key: cocoapods-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json') }}
+
+      - name: Save Xcode derived data
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ${{ env.IOS_DERIVED_DATA }}
+          key: ios-derived-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json') }}
+
+      - name: Upload the simulator screenshot
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ios-simulator-screenshot
+          path: ${{ runner.temp }}/ios-simulator-artifacts/ios-simulator-launch.png
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload the simulator .app zip
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ios-simulator-app
+          path: ${{ runner.temp }}/ios-simulator-artifacts/BranchAgent.app.zip
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Summary
+        if: always()
+        env:
+          APP_PATH: ${{ steps.ios.outputs.app_path }}
+          SHOT: ${{ steps.ios.outputs.screenshot_name }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## iOS Simulator"
+            echo
+            echo "- Unsigned Debug build for \`generic/platform=iOS Simulator\` (\`CODE_SIGNING_ALLOWED=NO\`)."
+            echo "- Screenshot artifact: \`ios-simulator-screenshot\` (\`${SHOT:-ios-simulator-launch.png}\`)."
+            echo "- App artifact: \`ios-simulator-app\` (\`BranchAgent.app.zip\`)."
+            if [[ -n "${APP_PATH}" ]]; then
+              echo "- Built app: \`${APP_PATH}\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

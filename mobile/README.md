@@ -18,7 +18,10 @@ npx tsc --noEmit
 Pull requests that change `mobile/` or the engine packages this app compiles
 (`gateway-client`, `gateway-protocol`, `normalization-core`, `retry`) run
 `.github/workflows/mobile-checks.yml`: `tsc --noEmit`, Jest, and `expo export`
-(web). Other pull requests skip that job; merge-gate treats the skip as a pass.
+(web). Pull requests that change `mobile/` also run
+`.github/workflows/mobile-ios-simulator.yml`: an unsigned iOS Simulator
+`xcodebuild`, then install and launch on a booted simulator. Other pull
+requests skip those jobs; merge-gate treats the skip as a pass.
 
 Expo Go is fine for the screens, but it can't stand in for the real app everywhere: on Android it no
 longer delivers push notifications (Expo SDK 53 removed them from Expo Go). For that, build the app
@@ -75,6 +78,27 @@ adb install -r android/app/build/outputs/apk/release/app-release.apk
 Or copy the APK to the phone and open it there, allowing installs from that app when Android asks.
 `npx expo run:android --variant release` is the same build installed straight onto a connected
 phone or emulator in one step.
+
+## Build the iPhone app for the iOS Simulator (no Apple account)
+
+This is the check GitHub Actions runs on `macos-15`. It does **not** sign, provision, or
+talk to EAS. `expo prebuild --platform ios --clean` generates `ios/` (git-ignored), CocoaPods
+installs, then `xcodebuild` builds for `generic/platform=iOS Simulator` with
+`CODE_SIGNING_ALLOWED=NO`. CI then installs the `.app` on a booted iPhone simulator and
+fails if the process exits within 30 seconds.
+
+**You need a Mac with Xcode.** The Actions image uses Xcode 16.4.
+
+```bash
+cd mobile
+npm ci
+npm run build:ios            # prebuild --clean, pod install, unsigned simulator xcodebuild
+npm run build:ios -- --ci    # also boot a simulator, install, launch, screenshot
+```
+
+The first build compiles React Native; later ones reuse CocoaPods and Xcode derived data.
+CI uploads `ios-simulator-screenshot` (`ios-simulator-launch.png`) and `ios-simulator-app`
+(`BranchAgent.app.zip`).
 
 ## Install a release APK (sideload)
 

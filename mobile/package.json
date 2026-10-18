@@ -9,6 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "build:android": "node scripts/build-android.mjs",
+    "build:ios": "node scripts/ios-simulator-check.mjs",
     "test": "jest",
     "typecheck": "tsc --noEmit"
   },
