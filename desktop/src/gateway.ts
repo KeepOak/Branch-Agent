@@ -72,9 +72,9 @@ function closeServer(probe: Server): Promise<boolean> {
       resolve(closed);
     };
     // The callback is next tick when nothing is connected. If it still does not run,
-    // skip this port instead of waiting out the fixture deadline.
+    // drop the OS socket. unref() alone leaves the port reserved.
     timer = setTimeout(() => {
-      try { probe.unref(); } catch { /* already closed */ }
+      abortLoopbackServer(probe);
       finish(false);
     }, CLOSE_BACKSTOP_MS);
     try { probe.close(() => finish(true)); }
@@ -709,19 +709,11 @@ export async function waitForReady(cfg: DesktopConfig, child: ChildProcess, ms: 
   throw new GatewayReadinessTimeoutError();
 }
 
-/** Stops one engine process group by pid. Windows ends the process, then its tree; other platforms signal the group. */
+/** Stops one engine process group by pid. Windows taskkill is immediate; other platforms signal the group. */
 export function stopEnginePid(pid: number, signal: "SIGTERM" | "SIGKILL" = "SIGTERM"): void {
   try {
-    if (process.platform === "win32") {
-      // TerminateProcess returns immediately, but the engine directory stays locked until the
-      // tree is gone. Wait for taskkill, capped so a stuck killer cannot stall this thread for 10s.
-      try { process.kill(pid, signal); } catch { /* already gone */ }
-      try {
-        execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 2_000 });
-      } catch { /* already gone, or the cap elapsed */ }
-      return;
-    }
-    process.kill(-pid, signal);
+    if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10_000 });
+    else process.kill(-pid, signal);
   } catch {
     // already gone
   }
