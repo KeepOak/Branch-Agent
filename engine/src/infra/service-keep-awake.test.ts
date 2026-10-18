@@ -181,7 +181,7 @@ describe("service keep awake", () => {
     const timers: { id: number; at: number; fn: () => void }[] = [];
     let nextId = 1;
     const fireDue = () => {
-      const due = timers.filter((timer) => timer.at <= now).sort((a, b) => a.at - b.at);
+      const due = timers.filter((timer) => timer.at <= now);
       for (const timer of due) {
         const index = timers.indexOf(timer);
         if (index >= 0) {

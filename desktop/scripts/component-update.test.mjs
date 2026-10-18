@@ -1272,6 +1272,7 @@ test("a lease-overrun stop still schedules the next update check", async () => f
   });
   try {
     await Promise.resolve();
+    await Promise.resolve();
     assert.equal(checks, 1, "first check started");
     assert.ok(clock.pending() >= 1, "the next check is armed while the first still runs");
     stop.notifyStopped();
@@ -1280,6 +1281,7 @@ test("a lease-overrun stop still schedules the next update check", async () => f
     assert.ok(logs.some(line => line.includes("still running") && line.includes("next check in")), logs.join("\n"));
     releaseFirst();
     await first;
+    await Promise.resolve();
     await Promise.resolve();
     await clock.advance(20);
     assert.ok(checks >= 2, `next check after the lease-overrun stop, got ${checks}`);
@@ -1303,6 +1305,7 @@ test("a staged update awaiting Restart still schedules the next GitHub check", a
     clearTimeout: clock.clearTimeout,
   });
   try {
+    await Promise.resolve();
     await Promise.resolve();
     assert.equal(checks, 1, "first check ran in the awaiting-Restart state");
     assert.ok(clock.pending() >= 1, "the next check is armed while a staged update awaits Restart");
