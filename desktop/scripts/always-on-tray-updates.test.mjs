@@ -58,6 +58,7 @@ function electronFixture(work) {
         reload() {}, send: (channel, ...args) => {
           this.sent.push(channel);
           if (channel !== 'branch-desktop:auto-apply:probe') return;
+          if (typeof work !== 'function') return;
           setImmediate(() => ipcMain.emit('branch-desktop:auto-apply:result', { sender: wc, senderFrame: wc.mainFrame }, args[0], work()));
         } });
     }
@@ -118,6 +119,13 @@ async function serviceApp(t, work, run, env = {}, setup = () => undefined) {
       res.write('working');
       setTimeout(() => { if (runs() === 'engine') res.end(' done'); else res.destroy(); }, 600);
       return;
+    }
+    if (req.url === '/health') {
+      try {
+        res.setHeader('content-type', 'application/json');
+        res.end(readFileSync(join(root, 'engine-health.json')));
+        return;
+      } catch { /* no engine-health.json: fall through */ }
     }
     res.statusCode = req.url === '/readyz' && runs() !== 'engine-broken' ? 200 : 503; res.end();
   });
@@ -371,6 +379,35 @@ test('a busy engine refuses the service update before the standby and before any
   assert.deepEqual(state.calls, ['standby']);
   assert.deepEqual(state.restarts, []);
   assert.equal(state.serviceRuns, old);
+});
+
+test('Apply now in service mode: a silent window plus an active run refuses the update', async t => {
+  await serviceApp(t, null, async ({ gatewayPort, clickUpdate, publish, cliCalls, standbys, serviceRuns, dialogs, desktopLog }) => {
+    const run = originalFetch(`http://127.0.0.1:${gatewayPort}/run`).then(r => r.text());
+    publish('engine-v2', 'v2');
+    clickUpdate();
+    await eventually(() => desktopLog().includes(`update failed: ${TRUNKS_STILL_WORKING}`), 15000);
+    assert.match(desktopLog(), /service update: waiting for 1 active runs, 0 approvals; the engine service was not touched/);
+    assert.deepEqual(cliCalls(), [], 'no gateway restart (or any service) CLI call');
+    assert.deepEqual(standbys(), [], 'not even a standby');
+    assert.equal(serviceRuns(), 'engine');
+    assert.deepEqual(dialogs.filter(d => d[0] === 'error').map(d => d[2]), [TRUNKS_STILL_WORKING]);
+    assert.equal(await run, 'working done', 'the fake Trunk run finished on the engine it started on');
+  }, updateEnv, root => writeFileSync(join(root, 'engine-health.json'), JSON.stringify({ ok: true, status: 'live', activeRuns: 1 })));
+});
+
+test('Apply now in service mode: a silent window without engine activity refuses with a reason', async t => {
+  await serviceApp(t, null, async ({ clickUpdate, publish, cliCalls, standbys, serviceRuns, dialogs, desktopLog }) => {
+    publish('engine-v2', 'v2');
+    clickUpdate();
+    await eventually(() => desktopLog().includes('update failed: The window did not report activity and the engine\'s own activity is unavailable'), 15000);
+    assert.deepEqual(cliCalls(), [], 'no gateway restart (or any service) CLI call');
+    assert.deepEqual(standbys(), [], 'not even a standby');
+    assert.equal(serviceRuns(), 'engine');
+    assert.deepEqual(dialogs.filter(d => d[0] === 'error').map(d => d[2]), [
+      'The window did not report activity and the engine\'s own activity is unavailable',
+    ]);
+  }, updateEnv);
 });
 
 test('a running Trunk run survives an Update click in service mode: refused, no gateway CLI call, the run still answers', async t => {

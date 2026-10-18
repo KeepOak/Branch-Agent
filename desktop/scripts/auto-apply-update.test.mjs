@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
 const { createAutoApplyUpdate, readUpdateHealth, updateHealthRefusal, AUTO_APPLY_POLL_MS, AUTO_APPLY_GAP_MS, AUTO_APPLY_RETRY_MS,
-  TRUNK_UPDATE_MIN_INTERVAL_MS, TRUNK_WORK_SAMPLE_MS, AUTO_APPLY_PENDING_CAP_MS } = await import(
+  TRUNK_UPDATE_MIN_INTERVAL_MS, TRUNK_WORK_SAMPLE_MS, AUTO_APPLY_PENDING_CAP_MS, AUTO_APPLY_HANDOFF_FAIL_DRAIN_MS } = await import(
   pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "auto-apply-update.js"))
 );
 const { COMPONENT_UPDATE_CHECK_MS } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js")));
@@ -107,6 +107,26 @@ test("failed flagged handoff falls back after idle and notifies once per version
   now += AUTO_APPLY_GAP_MS; await controller.tick();
   assert.deepEqual(attempts, [true, false, true, false]);
   assert.deepEqual(failures, ["next", "later"]);
+});
+
+test("failed flagged handoff drains after 30 minutes even with active runs", async () => {
+  let now = 0; const attempts = []; const drains = [];
+  const controller = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true,
+    seamlessHandoff: () => true, trunkWork: () => false,
+    activity: async () => ({ activeRuns: 1, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    restart: async (_version, handoffOnly, drain) => {
+      attempts.push(handoffOnly);
+      if (drain) drains.push("next");
+      if (handoffOnly) throw new Error("standby failed");
+    },
+    log: () => {}, now: () => now });
+  await controller.tick();
+  assert.deepEqual(attempts, [true]);
+  now += AUTO_APPLY_GAP_MS; await controller.tick();
+  assert.deepEqual(attempts, [true], "the idle wait still holds at the gap");
+  now += AUTO_APPLY_HANDOFF_FAIL_DRAIN_MS; await controller.tick();
+  assert.deepEqual(attempts, [true, false]);
+  assert.deepEqual(drains, ["next"]);
 });
 
 test("failed flagged handoff falls back after idle without notifying or waiting the retry back-off", async () => {
