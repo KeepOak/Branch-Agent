@@ -85,6 +85,7 @@ describe('home screen', () => {
     expect(title.fontSize).toBe(type.largeTitle.fontSize);
     expect(screen.getByTestId('phone-large-title')).toBeOnTheScreen();
     expect(screen.getByTestId('phone-status-band')).toBeOnTheScreen();
+    expect(StyleSheet.flatten(screen.getByTestId('phone-status-band').props.style).height).toBeGreaterThanOrEqual(50);
     const bar = StyleSheet.flatten(screen.getByTestId('places-bar').props.style);
     expect(bar.position).toBe('absolute');
     expect(bar.borderRadius).toBe(32);

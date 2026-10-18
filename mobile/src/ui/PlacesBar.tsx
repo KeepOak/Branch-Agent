@@ -121,6 +121,12 @@ export function PlacesBar({
               shadowRadius: 16,
               shadowOffset: { width: 0, height: 8 },
               elevation: 6,
+              ...(Platform.OS === 'web'
+                ? {
+                    backdropFilter: 'blur(20px) saturate(1.6)',
+                    WebkitBackdropFilter: 'blur(20px) saturate(1.6)',
+                  }
+                : null),
             }
           : {
               flexDirection: 'row',

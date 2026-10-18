@@ -144,6 +144,8 @@ export function HomeScreen({
   const [later, setLater] = useState<string | null>(null);
   const ios = look === 'ios';
   const tabPad = placesBarHeight(look, insets.bottom);
+  // Preview .p-status is 50pt on iPhone; the device draws the clock in that band.
+  const statusH = ios ? Math.max(insets.top, 50) : insets.top;
 
   const showLater = (label: LaterHomeAction) => {
     if (!advanced) return;
@@ -157,7 +159,7 @@ export function HomeScreen({
 
   return (
     <View testID="home-screen" style={{ flex: 1, backgroundColor: color.bg }}>
-      <View testID="phone-status-band" style={{ height: insets.top, backgroundColor: color.bg }} />
+      <View testID="phone-status-band" style={{ height: statusH, backgroundColor: color.bg }} />
       <ScrollView
         testID="home-scroll"
         style={{ flex: 1 }}
