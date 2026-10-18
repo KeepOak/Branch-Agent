@@ -43,6 +43,7 @@ describe('places bar', () => {
     expect(bar.borderRadius).toBe(32);
     expect(bar.bottom).toBeGreaterThanOrEqual(24);
     expect(bar.backgroundColor).toBe(palettes.light.glass);
+    expect(bar.shadowColor).toBe(palettes.light.camera);
     expect(screen.getByTestId('place-chats')).toHaveTextContent('Chats');
     expect(placesBarHeight('ios', 0)).toBe(88);
     expect(placesBarHeight('ios', 34)).toBe(64 + 42);

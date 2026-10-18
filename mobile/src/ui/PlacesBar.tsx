@@ -124,7 +124,7 @@ export function PlacesBar({
               borderWidth: layout.hairline,
               borderColor: color.line,
               zIndex: 4,
-              shadowColor: '#000000',
+              shadowColor: color.camera,
               shadowOpacity: 0.18,
               shadowRadius: 16,
               shadowOffset: { width: 0, height: 8 },
