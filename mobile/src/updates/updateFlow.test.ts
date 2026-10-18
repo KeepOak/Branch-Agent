@@ -1,5 +1,5 @@
 import { CANT_REACH_BRANCH } from '../ui/plainError';
-import { CERT_MISMATCH_MESSAGE, CHECKSUM_MISMATCH_MESSAGE } from './verify';
+import { CERT_MISMATCH_MESSAGE, CERT_UNREADABLE_MESSAGE, CHECKSUM_MISMATCH_MESSAGE } from './verify';
 import { createUpdateFlow, type UpdateFlowDeps } from './updateFlow';
 import type { ApkOffer } from './githubRelease';
 
@@ -89,6 +89,19 @@ describe('update flow', () => {
     await flow.check();
     await flow.startUpdate();
     expect(flow.getState()).toEqual({ status: 'error', message: CERT_MISMATCH_MESSAGE, offer });
+    expect(wired.installApk).not.toHaveBeenCalled();
+  });
+
+  it('refuses to install when the update signing certificate cannot be read', async () => {
+    const wired = deps({
+      apkSigningCerts: async () => {
+        throw new Error(CERT_UNREADABLE_MESSAGE);
+      },
+    });
+    const flow = createUpdateFlow(wired);
+    await flow.check();
+    await flow.startUpdate();
+    expect(flow.getState()).toEqual({ status: 'error', message: CERT_UNREADABLE_MESSAGE, offer });
     expect(wired.installApk).not.toHaveBeenCalled();
   });
 
