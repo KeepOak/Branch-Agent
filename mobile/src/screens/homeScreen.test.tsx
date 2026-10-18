@@ -64,8 +64,9 @@ describe('home screen', () => {
     expect(screen.getByTestId('home-allow-plugin:mail-1')).toHaveTextContent('Send it');
     expect(screen.getByTestId('home-deny-plugin:mail-1')).toHaveTextContent('Don’t send');
     expect(screen.getByTestId('home-work-agent:oak:main')).toBeOnTheScreen();
-    expect(screen.getByTestId('home-still-agent:oak:main')).toHaveProp('accessibilityLabel', 'Oak: Live');
-    expect(screen.getByTestId('home-meter-agent:oak:main')).toBeOnTheScreen();
+    expect(screen.getByTestId('home-steps-agent:oak:main')).toBeOnTheScreen();
+    expect(screen.queryByTestId('home-still-agent:oak:main')).toBeNull();
+    expect(screen.queryByTestId('home-meter-agent:oak:main')).toBeNull();
     expect(screen.getByTestId('home-quick-new-chat')).toBeOnTheScreen();
     expect(screen.getByTestId('home-quick-computer')).toBeOnTheScreen();
     expect(screen.queryByTestId('home-quick-talk')).toBeNull();
@@ -86,6 +87,41 @@ describe('home screen', () => {
     expect(screen.getByTestId('home-needs-empty')).toHaveTextContent('Nothing needs you.');
     expect(screen.getByTestId('home-working-empty')).toHaveTextContent('Nothing is running.');
     expect(screen.queryByTestId('home-finished')).toBeNull();
+  });
+
+  it('shows the exact command, folder and warnings before Allow can run it', async () => {
+    await renderHome();
+    const card = within(screen.getByTestId('home-need-exec-1'));
+    expect(screen.getByTestId('home-command-exec-1')).toHaveTextContent('pnpm install --frozen-lockfile');
+    expect(screen.getByTestId('home-folder-exec-1')).toHaveTextContent('Folder: ~/Code/branch/window');
+    expect(screen.getByTestId('home-computer-exec-1')).toHaveTextContent('Computer: This computer');
+    expect(screen.getByTestId('home-warning-exec-1')).toHaveTextContent('Noticed: Downloads packages from the internet');
+    expect(card.getByTestId('home-allow-exec-1')).toBeOnTheScreen();
+  });
+
+  it('hides Allow when a command-run has no command to show', async () => {
+    const blank = readApproval({ id: 'exec-9', request: { command: '', agentId: 'oak' } }, 'exec')!;
+    await renderHome({
+      approvals: { pending: [blank], answered: [], trunks, loaded: true, error: null, sending: {}, failed: {} },
+    });
+    expect(screen.queryByTestId('home-command-exec-9')).toBeNull();
+    expect(screen.queryByTestId('home-allow-exec-9')).toBeNull();
+    expect(screen.getByTestId('home-no-command-exec-9')).toHaveTextContent(
+      'The command is not on this card. Look first to see what it would run.',
+    );
+    expect(screen.getByTestId('home-look-exec-9')).toBeOnTheScreen();
+  });
+
+  it('says why Allow or Deny failed', async () => {
+    await renderHome({
+      approvals: {
+        ...approvals,
+        failed: { 'exec-1': 'Your computer isn’t connected right now. Try again when it’s back.' },
+      },
+    });
+    expect(screen.getByTestId('home-failed-exec-1')).toHaveTextContent(
+      'Your computer isn’t connected right now. Try again when it’s back.',
+    );
   });
 
   it('answers Allow or Deny and opens Look first', async () => {
@@ -159,11 +195,12 @@ describe('home in the app', () => {
     unmount();
   });
 
-  it('New chat goes to Chats and Computer opens Computers, Inbox opens Approvals, More opens Settings', async () => {
+  it('New chat opens a conversation and Computer opens Computers, Inbox opens Approvals, More opens More', async () => {
     const { session, unmount } = await pairedApp();
     await fireEvent.press(screen.getByTestId('place-home'));
     await fireEvent.press(screen.getByTestId('home-quick-new-chat'));
-    expect(screen.getByTestId('chats-screen')).toBeOnTheScreen();
+    expect(screen.getByTestId('chat-screen')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('chat-back'));
     await fireEvent.press(screen.getByTestId('place-home'));
     await fireEvent.press(screen.getByTestId('home-quick-computer'));
     expect(screen.getByTestId('computers-screen')).toBeOnTheScreen();
@@ -174,7 +211,7 @@ describe('home in the app', () => {
     await fireEvent.press(screen.getByTestId('approvals-back'));
     await fireEvent.press(screen.getByTestId('place-home'));
     await fireEvent.press(screen.getByTestId('place-more'));
-    expect(screen.getByTestId('settings-screen')).toBeOnTheScreen();
+    expect(screen.getByTestId('more-screen')).toBeOnTheScreen();
     session.dispose();
     unmount();
   });

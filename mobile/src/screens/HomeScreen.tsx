@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ApprovalDecision, ApprovalsSnapshot } from '../approvals/approvals';
 import type { ChatListSnapshot, ChatRow } from '../chats/chatList';
 import { chatTime } from '../chats/chatTime';
 import {
+  canAllowNeed,
   finishedNow,
   gatewayWord,
   greet,
@@ -22,6 +23,8 @@ import { useTheme } from '../theme/ThemeProvider';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { PlacesBar, type Place } from '../ui/PlacesBar';
 import { Avatar } from './ChatsScreen';
+
+const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 
 const QUICK_WORKING = [
   ['new-chat', 'New chat'],
@@ -101,8 +104,9 @@ function Chip({ title, onPress, kind = 'quiet', testID, disabled }: { title: str
 
 /**
  * The paired Home from preview r50: greeting, one-line summary, Needs you (Allow or Send, Deny,
- * Look first), Working now with a step bar and a live still, What’s left, quick actions, Finished,
- * and Branch on your computer. Unfinished destinations stay off Regular; at Advanced they say
+ * Look first — and the exact command, folder and warnings before Allow on a command-run), Working
+ * now with the last real line as the current step, What’s left, quick actions, Finished, and Branch
+ * on your computer. Unfinished destinations stay off Regular; at Advanced they say
  * "<label> comes in a later update."
  */
 export function HomeScreen({
@@ -202,8 +206,47 @@ export function HomeScreen({
                       {`${k}: ${v}`}
                     </ThemedText>
                   ))}
+                  {need.command ? (
+                    <View testID={`home-command-${need.id}`} style={{ marginTop: space.xs, backgroundColor: color.raise, borderRadius: 12, padding: space.sm }}>
+                      <ThemedText variant="caption1" selectable style={{ fontFamily: MONO }}>
+                        {need.command}
+                      </ThemedText>
+                    </View>
+                  ) : null}
+                  {need.folder ? (
+                    <ThemedText testID={`home-folder-${need.id}`} variant="caption1" tone="ink3">
+                      {`Folder: ${need.folder}`}
+                    </ThemedText>
+                  ) : null}
+                  {need.computer ? (
+                    <ThemedText testID={`home-computer-${need.id}`} variant="caption1" tone="ink3">
+                      {`Computer: ${need.computer}`}
+                    </ThemedText>
+                  ) : null}
+                  {need.warnings.map((warning) => (
+                    <ThemedText key={warning} testID={`home-warning-${need.id}`} variant="caption1" tone="warn">
+                      {`Noticed: ${warning}`}
+                    </ThemedText>
+                  ))}
+                  {need.mixed ? (
+                    <ThemedText testID={`home-mixed-${need.id}`} variant="caption1" tone="warn">
+                      This command mixes letters from different alphabets that can look the same. Read it carefully.
+                    </ThemedText>
+                  ) : null}
+                  {approvals.failed[need.id] ? (
+                    <ThemedText testID={`home-failed-${need.id}`} variant="caption1" tone="bad">
+                      {approvals.failed[need.id]}
+                    </ThemedText>
+                  ) : null}
+                  {!canAllowNeed(need) ? (
+                    <ThemedText testID={`home-no-command-${need.id}`} variant="caption1" tone="ink3">
+                      The command is not on this card. Look first to see what it would run.
+                    </ThemedText>
+                  ) : null}
                   <View style={{ flexDirection: 'row', flexWrap: 'nowrap', gap: space.sm, marginTop: space.sm }}>
-                    <Chip title={need.yes} kind="ink" testID={`home-allow-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => onAnswer(need.id, 'allow-once')} />
+                    {canAllowNeed(need) ? (
+                      <Chip title={need.yes} kind="ink" testID={`home-allow-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => onAnswer(need.id, 'allow-once')} />
+                    ) : null}
                     <Chip title={need.no} testID={`home-deny-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => onAnswer(need.id, 'deny')} />
                     <Chip title="Look first" testID={`home-look-${need.id}`} onPress={() => onLookFirst(need.id, need.sessionKey)} />
                   </View>
@@ -237,25 +280,6 @@ export function HomeScreen({
                     </View>
                   </View>
                 </Pressable>
-                <View
-                  testID={`home-still-${row.key}`}
-                  accessibilityLabel={`${row.title}: Live`}
-                  style={{ marginTop: space.sm, height: 120, borderRadius: 12, backgroundColor: color.fill, justifyContent: 'flex-end', padding: space.sm }}
-                >
-                  <View style={{ alignSelf: 'flex-start', backgroundColor: color.ink, borderRadius: 999, paddingHorizontal: space.sm, paddingVertical: 2 }}>
-                    <ThemedText variant="caption2" style={{ color: color.bg, fontWeight: '600' }}>
-                      Live
-                    </ThemedText>
-                  </View>
-                </View>
-                <View
-                  testID={`home-meter-${row.key}`}
-                  accessibilityRole="progressbar"
-                  accessibilityLabel={`${row.title}: working`}
-                  style={{ marginTop: space.xs, height: 4, borderRadius: 2, backgroundColor: color.line, overflow: 'hidden' }}
-                >
-                  <View style={{ width: '50%', height: 4, backgroundColor: color.ink }} />
-                </View>
                 <View testID={`home-steps-${row.key}`} style={{ flexDirection: 'row', gap: 4, marginTop: space.sm }}>
                   {step.steps.map((s, i) => (
                     <View key={`${row.key}-st-${i}`} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: s === 'todo' ? color.line : color.ink }} />

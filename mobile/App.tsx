@@ -415,7 +415,12 @@ function Shell({
             approvals={approvals}
             online={state.online}
             accessLevel={showLevel}
-            onNewChat={() => setPairedRoute(CHATS)}
+            onNewChat={() => {
+              const shown = filterRows(chatList.rows, 'all', Date.now());
+              const main = shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
+              if (main) setPairedRoute({ name: 'chat', row: main });
+              else setPairedRoute(CHATS);
+            }}
             onComputer={() => setPairedRoute({ name: 'computers' })}
             onAnswer={(id, decision) => void inbox.answer(id, decision)}
             onLookFirst={(_id, sessionKey) => {
