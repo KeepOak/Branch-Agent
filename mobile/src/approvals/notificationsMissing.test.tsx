@@ -46,6 +46,7 @@ describe('when the phone has no expo-notifications', () => {
     await eventually(() => expect(screen.getByTestId('notifications-unavailable')).toHaveTextContent('Notifications need the installed Branch app. Approvals still show up here.'));
     expect(screen.queryByTestId('notifications-card')).toBeNull();
     await fireEvent.press(screen.getByTestId('allow-exec-1'));
+    await fireEvent.press(screen.getByTestId('inbox-tab-finished'));
     await eventually(() => expect(within(screen.getByTestId('answered-exec-1')).getByText('Allowed on this phone')).toBeOnTheScreen());
     expect(engine.requests).toContainEqual({ method: 'exec.approval.resolve', params: { id: 'exec-1', decision: 'allow-once' } });
     session.dispose();
