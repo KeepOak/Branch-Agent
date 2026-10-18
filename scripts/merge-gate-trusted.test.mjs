@@ -33,8 +33,11 @@ import {
   parseNamedTestList,
   formatGateChangeSummary,
   formatGateChangeReviewSummary,
+  formatReviewVerdictFailure,
+  formatReviewVerdictSummary,
   changedFilesFromPrFiles,
   evaluateGateChangeReview,
+  evaluateReviewVerdict,
   gateChangeMarkerCarriesForward,
   BUTTON_CRAWL_BASELINE,
   buttonCrawlBaselineGrew,
@@ -2466,6 +2469,60 @@ test('a gate-change-reviewed marker for an older SHA fails', () => {
   assert.equal(padded.ok, false);
 });
 
+test('a review-verdict with no marker fails', () => {
+  const result = evaluateReviewVerdict({ body: 'Reviewed offline.\n', headSha: REVIEW_HEAD });
+  assert.equal(result.ok, false);
+  assert.equal(result.message, formatReviewVerdictFailure('missing', REVIEW_HEAD));
+  assert.match(result.message, /no review-verdict: MERGE marker/);
+  assert.match(formatReviewVerdictSummary(result), /Marker matched: no/);
+  const fixOnly = evaluateReviewVerdict({
+    body: `review-verdict: FIX ${REVIEW_HEAD}\n`,
+    headSha: REVIEW_HEAD,
+  });
+  assert.equal(fixOnly.ok, false);
+  assert.equal(fixOnly.message, formatReviewVerdictFailure('missing', REVIEW_HEAD));
+});
+
+test('a review-verdict marker for a stale sha fails', () => {
+  const result = evaluateReviewVerdict({
+    body: `review-verdict: MERGE ${REVIEW_OLD}\n`,
+    headSha: REVIEW_HEAD,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.message, formatReviewVerdictFailure('stale', REVIEW_HEAD));
+  assert.match(result.message, /stale sha/);
+  assert.match(result.message, new RegExp(`current head ${REVIEW_HEAD}`));
+  const padded = evaluateReviewVerdict({
+    body: `review-verdict: MERGE ${REVIEW_HEAD} \n`,
+    headSha: REVIEW_HEAD,
+  });
+  assert.equal(padded.ok, false);
+  assert.equal(padded.message, formatReviewVerdictFailure('missing', REVIEW_HEAD));
+});
+
+test('a review-verdict FIX after MERGE for the same head fails', () => {
+  const body = [
+    `review-verdict: MERGE ${REVIEW_HEAD}`,
+    `review-verdict: FIX ${REVIEW_HEAD}`,
+  ].join('\n');
+  const result = evaluateReviewVerdict({ body, headSha: REVIEW_HEAD });
+  assert.equal(result.ok, false);
+  assert.equal(result.message, formatReviewVerdictFailure('fix', REVIEW_HEAD));
+  assert.match(result.message, /FIX that came after the MERGE/);
+});
+
+test('a review-verdict MERGE for the current head SHA passes', () => {
+  const body = [
+    `review-verdict: FIX ${REVIEW_OLD}`,
+    `review-verdict: MERGE ${REVIEW_OLD}`,
+    `review-verdict: MERGE ${REVIEW_HEAD}`,
+  ].join('\n');
+  const result = evaluateReviewVerdict({ body, headSha: REVIEW_HEAD });
+  assert.equal(result.ok, true);
+  assert.equal(result.message, '');
+  assert.match(formatReviewVerdictSummary(result), /Marker matched: yes/);
+});
+
 test('a gate-change-reviewed marker for the current head SHA passes', () => {
   const body = [
     'Workflow and gate files reviewed on this head.',
@@ -3339,6 +3396,9 @@ test('merge-gate-trusted still reruns when the pull request body is edited', () 
   assert.match(source, /evaluateGateChangeReview\(\{\s*changedFiles, body, headSha: sha, baselineGrew, files, baseRef, prNumber, request,/);
   assert.match(source, /writeSummary\(formatGateChangeReviewSummary\(review\)\)/);
   assert.match(source, /if \(!review\.ok\)/);
+  assert.match(source, /evaluateReviewVerdict\(\{\s*body, headSha: sha\s*\}\)/);
+  assert.match(source, /writeSummary\(formatReviewVerdictSummary\(verdict\)\)/);
+  assert.match(source, /if \(!verdict\.ok\)/);
 });
 
 // Attribution from one head runs listing: one API call per evaluation instead of one per check run.

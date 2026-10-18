@@ -525,6 +525,7 @@ export const GATE_CHANGE_REVIEW_REQUIRED =
   'The gate change needs a separate review before the marker can be added for this head.';
 export const BUTTON_CRAWL_BASELINE = 'scripts/button-crawl/baseline.json';
 const GATE_CHANGE_REVIEWED_LINE = /^gate-change-reviewed: ([0-9a-f]{40})$/;
+const REVIEW_VERDICT_LINE = /^review-verdict: (MERGE|FIX) ([0-9a-f]{40})$/;
 
 /** Problem entries in the button-crawl baseline. Unparseable text is not a usable set. */
 export function buttonCrawlBaselineEntries(text) {
@@ -651,6 +652,49 @@ export function gateChangeReviewedShas(body) {
 
 export function gateChangeMarkerMatches(body, headSha) {
   return typeof headSha === 'string' && gateChangeReviewedShas(body).includes(headSha);
+}
+
+export function reviewVerdicts(body) {
+  const verdicts = [];
+  for (const line of String(body ?? '').split(/\r?\n/)) {
+    const match = REVIEW_VERDICT_LINE.exec(line);
+    if (match) verdicts.push({ verdict: match[1], sha: match[2] });
+  }
+  return verdicts;
+}
+
+export function formatReviewVerdictFailure(kind, headSha) {
+  if (kind === 'missing') {
+    return 'The pull request body has no review-verdict: MERGE marker for this head.';
+  }
+  if (kind === 'stale') {
+    return `The review-verdict: MERGE marker is a stale sha and does not match the current head ${headSha}.`;
+  }
+  return 'The pull request body has a review-verdict: FIX that came after the MERGE for this head.';
+}
+
+export function evaluateReviewVerdict({ body, headSha } = {}) {
+  const verdicts = reviewVerdicts(body);
+  const forHead = typeof headSha === 'string' ? verdicts.filter((item) => item.sha === headSha) : [];
+  const lastForHead = forHead.at(-1);
+  if (!forHead.some((item) => item.verdict === 'MERGE')) {
+    const kind = verdicts.some((item) => item.verdict === 'MERGE') ? 'stale' : 'missing';
+    return { ok: false, message: formatReviewVerdictFailure(kind, headSha) };
+  }
+  if (lastForHead.verdict === 'FIX') {
+    return { ok: false, message: formatReviewVerdictFailure('fix', headSha) };
+  }
+  return { ok: true, message: '' };
+}
+
+export function formatReviewVerdictSummary(result) {
+  const lines = [
+    '## Review verdict',
+    '',
+    `Marker matched: ${result.ok ? 'yes' : 'no'}`,
+  ];
+  if (result.message) lines.push(result.message);
+  return lines.join('\n');
 }
 
 const FULL_SHA = /^[0-9a-f]{40}$/i;
@@ -1865,6 +1909,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   writeSummary(formatGateChangeReviewSummary(review));
   if (!review.ok) {
     console.error(review.message);
+    process.exit(1);
+  }
+  const verdict = evaluateReviewVerdict({ body, headSha: sha });
+  writeSummary(formatReviewVerdictSummary(verdict));
+  if (!verdict.ok) {
+    console.error(verdict.message);
     process.exit(1);
   }
 
