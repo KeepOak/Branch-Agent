@@ -10,8 +10,9 @@ import { useLockdown } from "../../../shell/use-lockdown";
 import { notify } from "../../../shell/notify";
 import { MODE_ROWS, blockedReason, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { platformName } from "../../../setup/steps-later";
+import { useOsPermissions, type OsPermission, type OsPermissionStatus } from "../../../connect/os-permissions";
 import { record, text, visible, type RecordValue } from "../adapter";
-import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg } from "../kit";
+import { Btn, Ctl, Empty, Hint, Pick, Pill, Plist, Prow, Sec, Seg } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
 
 /** Wording and the open-settings label for This computer, from the real platform. Linux has no one settings app. */
@@ -57,18 +58,57 @@ export const THIS_PC_ROWS: [string, ReactNode, string, boolean][] = [
   ["Installing tools", TOOL, "Windows asks for an administrator yes each time. Branch asks you first.", false],
 ];
 
+/** What each system answer reads as on its row (preview pill16: Granted / Turned off / Not yet). "unknown" shows no
+ *  pill: the app can't read it, so it doesn't guess. */
+export const STATUS_PILL: Record<Exclude<OsPermissionStatus, "unknown">, { label: string; tone: "ok" | "bad" | "idle" }> = {
+  allowed: { label: "Granted", tone: "ok" },
+  denied: { label: "Turned off", tone: "bad" },
+  "not-asked": { label: "Not yet", tone: "idle" },
+};
+
+/** The right side of one permission row: its status, then one action (Allow when the system can still ask, else open settings). */
+function PermissionState({ name, status, openLabel, busy, onAllow, onOpen }: {
+  name: OsPermission; status: OsPermissionStatus; openLabel: string | null; busy: boolean; onAllow: () => void; onOpen: () => void;
+}) {
+  const pill = status === "unknown" ? null : STATUS_PILL[status];
+  // Only macOS shows an app's own prompt, and only before it has asked once.
+  const canAsk = status === "not-asked" && (name === "microphone" || name === "camera") && platformName() === "macOS";
+  return (
+    <>
+      {pill ? <Pill tone={pill.tone}>{pill.label}</Pill> : null}
+      {canAsk ? <Btn sm disabled={busy} onClick={onAllow}>Allow…</Btn>
+        : status !== "allowed" && openLabel ? <Btn sm onClick={onOpen}>{openLabel}</Btn>
+        : null}
+    </>
+  );
+}
+
+/** A failed read, Allow or open: one plain line, the system's own words folded away (preview "What went wrong"). */
+function WentWrong({ error }: { error: string }) {
+  return <div className="hint" role="status"><p>Something went wrong while loading it.</p><details><summary>What went wrong</summary><p>{error}</p></details></div>;
+}
+
+const OS_NAME: Record<string, OsPermission> = { Microphone: "microphone", Camera: "camera", Location: "location", Notifications: "notifications" };
+
 export function ThisPc() {
   const copy = thisPcCopy();
+  const perms = useOsPermissions();
   return (
     <Sec title="This computer" hint={copy.hint}>
       <Plist>
-        {THIS_PC_ROWS.map(([t, icon, sub, open]) => (
-          <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={t === "Installing tools" ? copy.install : t === "Location" ? copy.locationHelp : sub}>
-            {open && copy.open ? <Btn sm disabled title={copy.why}>{copy.open}</Btn> : null}
-          </Prow>
-        ))}
+        {THIS_PC_ROWS.map(([t, icon, sub, open]) => {
+          const name = OS_NAME[t];
+          const status = name && perms.state ? perms.state[name] : undefined;
+          return (
+            <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={t === "Installing tools" ? copy.install : t === "Location" ? copy.locationHelp : sub}>
+              {name && status ? (
+                <PermissionState name={name} status={status} openLabel={copy.open} busy={perms.busy === name} onAllow={() => void perms.request(name)} onOpen={() => void perms.open(name)} />
+              ) : open && copy.open ? <Btn sm disabled title={copy.why}>{copy.open}</Btn> : null}
+            </Prow>
+          );
+        })}
       </Plist>
-      <Hint>{copy.why}</Hint>
+      {perms.error ? <WentWrong error={perms.error} /> : perms.state ? null : <Hint>{copy.why}</Hint>}
     </Sec>
   );
 }
