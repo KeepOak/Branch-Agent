@@ -12,7 +12,7 @@ import { DockRow, type Goal } from "../../composer/DockRow";
 import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "../../composer/engine";
 import { Icon, StopMark } from "../../composer/icons";
 import { ConnectModelNotice } from "../../composer/ConnectModelNotice";
-import { friendlyModelError, isNoUsableModelError } from "../../composer/connect-model";
+import { CONNECT_MODEL_ANSWERS, friendlyModelError, isNoUsableModelError } from "../../composer/connect-model";
 import { HistorySearch } from "../../composer/HistorySearch";
 import { replaceToken } from "../../composer/mention";
 import { isEngineMode, modeName, nextMode, type EngineMode } from "../../composer/mode";
@@ -169,7 +169,7 @@ export function Composer(props: Props) {
   const thinking = currentThinking(row, conv.defaults);
   const noModel = hasNoModel(conv, currentRef);
   const waitingForFreeModel = noModel && !conv.noKeySettled && !conv.noKeyError;
-  const freeModelBlocked = waitingForFreeModel || Boolean(conv.noKeyError);
+  const freeModelBlocked = noModel;
   const admin = isAdmin(engine.scopes ?? []);
   const mode: EngineMode | null = isEngineMode(row.permissionMode) ? row.permissionMode : null;
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;
@@ -381,7 +381,7 @@ export function Composer(props: Props) {
   const context = contextUse(props.row?.totalTokens, props.row?.contextTokens);
   const runningCount = props.running.length;
   const summary = ringSummary(usage, runningCount, context);
-  const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : conv.noKeyError ? conv.noKeyError : waitingForFreeModel ? FREE_MODEL_READY : working && hasDraft ? sendTooltip(queueMode) : undefined;
+  const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : waitingForFreeModel ? FREE_MODEL_READY : noModel ? (conv.noKeyError ?? CONNECT_MODEL_ANSWERS) : working && hasDraft ? sendTooltip(queueMode) : undefined;
   const placeholder = waitingForFreeModel ? FREE_MODEL_READY : noModel ? "Connect a model to start" : props.placeholder ?? `Message ${name}`;
   const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n) && !(props.startupShown && (isPreparationPending(n) || isPreparationStalled(n))));
 

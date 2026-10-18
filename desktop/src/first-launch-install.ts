@@ -7,6 +7,17 @@ import type { ComponentRelease } from "./component-update-manifest";
 export const FIRST_LAUNCH_DOWNLOAD = "Download";
 export const FIRST_LAUNCH_CANCEL = "Cancel";
 export const FIRST_LAUNCH_RETRY = "Retry";
+export const FIRST_LAUNCH_NEED_COMPONENTS = "Branch needs these components to open.";
+
+/** Daylight tokens from window/src/theme/tokens.css, inlined because this page paints before the window CSS loads. */
+const THEME = {
+  bg: "#f6f8f9",
+  ink: "#141d24",
+  line: "#cad3d9",
+  raise: "#ffffff",
+  accent: "#484ce5",
+  onBtn: "#f8fafb",
+} as const;
 
 export type FirstLaunchAskKind = "confirm" | "retry";
 export type FirstLaunchAsk = (prompt: {
@@ -52,13 +63,16 @@ export function isAbortError(error: unknown): boolean {
     || (typeof error === "object" && error !== null && (error as { name?: string }).name === "AbortError");
 }
 
-function page(message: string, primary: string): string {
-  const css = "font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f8;color:#333";
+function page(message: string, primary: string | null): string {
+  const css = `font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:${THEME.bg};color:${THEME.ink}`;
   const card = "max-width:28rem;padding:1.25rem 1.5rem;text-align:center;line-height:1.45";
   const row = "display:flex;gap:.75rem;justify-content:center;margin-top:1rem";
-  const btn = "font:inherit;padding:.4rem .9rem;border-radius:999px;border:1px solid #ccc;background:#fff;cursor:pointer";
-  const pri = `${btn};background:#1f6feb;color:#fff;border-color:#1f6feb`;
-  return `<div style="${css}"><div style="${card}"><p id="branch-first-launch-msg">${escapeHtml(message)}</p><div style="${row}"><button type="button" id="branch-first-launch-yes" style="${pri}">${escapeHtml(primary)}</button><button type="button" id="branch-first-launch-cancel" style="${btn}">${FIRST_LAUNCH_CANCEL}</button></div></div></div>`;
+  const btn = `font:inherit;padding:.4rem .9rem;border-radius:999px;border:1px solid ${THEME.line};background:${THEME.raise};cursor:pointer`;
+  const pri = `${btn};background:${THEME.accent};color:${THEME.onBtn};border-color:${THEME.accent}`;
+  const actions = primary
+    ? `<div style="${row}"><button type="button" id="branch-first-launch-yes" style="${pri}">${escapeHtml(primary)}</button><button type="button" id="branch-first-launch-cancel" style="${btn}">${FIRST_LAUNCH_CANCEL}</button></div>`
+    : "";
+  return `<div style="${css}"><div style="${card}"><p id="branch-first-launch-msg">${escapeHtml(message)}</p>${actions}</div></div>`;
 }
 
 function escapeHtml(value: string): string {
@@ -96,6 +110,18 @@ export const FIRST_LAUNCH_WATCH_CANCEL = `new Promise((resolve) => {
   if (!cancel) { resolve(); return; }
   cancel.addEventListener("click", () => resolve());
 })`;
+
+/** Installed or already present: the window can load. Cancel/fail must not. */
+export function firstLaunchAllowsWindow(outcome: FirstLaunchOutcome): boolean {
+  return outcome === "installed" || outcome === "skipped";
+}
+
+export function firstLaunchNeedComponentsScript(): string {
+  return `(function () {
+    document.body.style.cssText = "-webkit-app-region:no-drag";
+    document.body.innerHTML = ${JSON.stringify(page(FIRST_LAUNCH_NEED_COMPONENTS, null))};
+  })()`;
+}
 
 /** Ask with size and Cancel; download only after yes. Cancel before or during leaves nothing published. */
 export async function runFirstLaunchInstall(

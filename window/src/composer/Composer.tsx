@@ -154,7 +154,7 @@ export function Composer(props: Props) {
   // No model set up: the engine names a default model but none is connected (models.list has none usable), or none at all.
   const noModel = hasNoModel(conv, currentRef);
   const waitingForFreeModel = noModel && !conv.noKeySettled && !conv.noKeyError;
-  const freeModelBlocked = waitingForFreeModel || Boolean(conv.noKeyError);
+  const freeModelBlocked = noModel;
   const admin = isAdmin(engine?.scopes ?? []);
   const mode: EngineMode | null = isEngineMode(row.permissionMode) ? row.permissionMode : null;
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;

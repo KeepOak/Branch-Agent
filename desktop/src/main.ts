@@ -22,7 +22,7 @@ import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, 
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
 import { plainDialogText, STOP_FAILED_PLAIN, UPDATE_FAILED_PLAIN } from "./plain-dialog";
 import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
-import { askFirstLaunchInWindow, FIRST_LAUNCH_DOWNLOAD, FIRST_LAUNCH_RETRY, FIRST_LAUNCH_WATCH_CANCEL, firstLaunchProgressScript, needsFirstLaunchComponents, runFirstLaunchInstall } from "./first-launch-install";
+import { askFirstLaunchInWindow, FIRST_LAUNCH_DOWNLOAD, FIRST_LAUNCH_RETRY, FIRST_LAUNCH_WATCH_CANCEL, firstLaunchAllowsWindow, firstLaunchNeedComponentsScript, firstLaunchProgressScript, needsFirstLaunchComponents, runFirstLaunchInstall } from "./first-launch-install";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
@@ -1426,6 +1426,12 @@ async function start(): Promise<void> {
       },
     });
     log(`first-launch components: ${outcome}`);
+    if (!firstLaunchAllowsWindow(outcome)) {
+      if (starting && !starting.isDestroyed()) {
+        await starting.webContents.executeJavaScript(firstLaunchNeedComponentsScript()).catch(() => undefined);
+      }
+      return;
+    }
   }
   servedWindowDir = cfg.windowDir;
   server = await serveWindow(() => servedWindowDir, cfg.windowPort);

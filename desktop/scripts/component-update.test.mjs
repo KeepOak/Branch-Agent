@@ -1171,8 +1171,21 @@ test("first-launch prompt names the size and Cancel", () => {
   const message = launch.firstLaunchAskMessage("695 MB");
   assert.match(message, /695 MB/);
   assert.equal(launch.FIRST_LAUNCH_CANCEL, "Cancel");
-  assert.match(launch.firstLaunchAskScript(message, launch.FIRST_LAUNCH_DOWNLOAD), /Cancel/);
+  const html = launch.firstLaunchAskScript(message, launch.FIRST_LAUNCH_DOWNLOAD);
+  assert.match(html, /Cancel/);
+  assert.match(html, /#484ce5/);
+  assert.doesNotMatch(html, /#1f6feb/);
   assert.equal(launch.formatDownloadSize(695 * 1024 * 1024), "695 MB");
+});
+
+test("first-launch cancel keeps a need-these-components page and does not load the window", () => {
+  assert.equal(launch.firstLaunchAllowsWindow("installed"), true);
+  assert.equal(launch.firstLaunchAllowsWindow("skipped"), true);
+  assert.equal(launch.firstLaunchAllowsWindow("cancelled"), false);
+  assert.equal(launch.firstLaunchAllowsWindow("failed"), false);
+  const html = launch.firstLaunchNeedComponentsScript();
+  assert.match(html, /Branch needs these components to open/);
+  assert.doesNotMatch(html, /#1f6feb/);
 });
 
 test("first launch does not download archives until the owner agrees", async () => fixture(async ({ cfg, request, requests }) => {
