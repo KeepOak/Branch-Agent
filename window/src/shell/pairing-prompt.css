@@ -1,4 +1,4 @@
-.pair-check { display: grid; gap: 6px; margin: 12px 0; padding: 14px 16px; border-radius: 12px; background: var(--fill, rgba(0,0,0,.04)); }
+.pair-check { display: grid; gap: 6px; margin: 12px 0; padding: 14px 16px; border-radius: 12px; background: var(--fill); }
 .pair-check-label { margin: 0; color: var(--ink-3); font-size: 12.5px; }
 .pair-check-value { margin: 0; font: 600 32px/1.1 var(--mono, ui-monospace, monospace); letter-spacing: 0.22em; color: var(--ink); }
 .pair-check-hint { margin: 0; color: var(--ink-3); font-size: 12.5px; line-height: 1.45; }
