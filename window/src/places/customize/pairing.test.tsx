@@ -44,30 +44,29 @@ const click = async (text: string) => {
 };
 
 describe("Pair a phone", () => {
-  it("shows a six-character confirm code instead of the raw setup code", async () => {
+  it("shows the pairing code the phone can type", async () => {
+    const setupCode = "eyJ1cmwiOiJ3c3M6Ly9leGFtcGxlIiwiYm9vdHN0cmFwVG9rZW4iOiJ4In0";
     await open({
       "device.pair.setupCode": {
         setupId: "setup-123",
-        setupCode: "eyJ1cmwiOiJ3c3M6Ly9leGFtcGxlIiwiYm9vdHN0cmFwVG9rZW4iOiJ4In0",
+        setupCode,
         confirmCode: "F2S4KP",
         qrDataUrl: "data:image/png;base64,AA==",
       },
     });
     await click("Make the code");
-    expect(host.querySelector("[data-testid=pair-code] .copy-token-text")?.textContent).toBe("F2S4KP");
-    expect(host.textContent).not.toContain("eyJ1cmwiOiJ3c3M6Ly9leGFtcGxl");
-    expect(host.textContent).toContain("Check that both screens show this code");
+    expect(host.querySelector("[data-testid=pair-setup-code] .copy-token-text")?.textContent).toBe(setupCode);
+    expect(host.textContent).toContain("Or type this pairing code on your phone");
+    expect(host.textContent).toContain("this computer shows a short check code");
   });
 
-  it("derives the confirm code from setupId when the engine omits it", async () => {
+  it("still keeps a confirm code for the engine even when it only sends setupId", async () => {
     await open({
       "device.pair.setupCode": { setupId: "setup-123", setupCode: "RAW-SETUP-CODE", qrDataUrl: "" },
     });
     await click("Make the code");
-    expect(host.querySelector("[data-testid=pair-code] .copy-token-text")?.textContent).toBe(
-      pairingConfirmCode("setup-123"),
-    );
-    expect(host.textContent).not.toContain("RAW-SETUP-CODE");
+    expect(host.querySelector("[data-testid=pair-setup-code] .copy-token-text")?.textContent).toBe("RAW-SETUP-CODE");
+    expect(pairingConfirmCode("setup-123")).toBe("F2S4KP");
   });
 
   it("never shows a loopback or restart error", async () => {

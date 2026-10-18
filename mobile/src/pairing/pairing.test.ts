@@ -149,9 +149,16 @@ describe('pairing code', () => {
     for (const damaged of [`${text}x`, `${text.slice(0, 30)}k${text.slice(30)}`, `${text.slice(0, 30)}${text.slice(31)}`, `${text.slice(0, 30)}.${text.slice(30)}`, `oc-pair://${text}!`, `x${text}`]) {
       expect(() => decodeSetupCode(damaged, 1_000)).toThrow(new SetupCodeError('damaged'));
     }
-    for (const other of ['hello world', 'https://example.com/pair', '1234']) {
+    for (const other of ['hello world', 'https://example.com/pair', '12']) {
       expect(() => decodeSetupCode(other, 1_000)).toThrow(new SetupCodeError('invalid'));
     }
+  });
+
+  it('turns away the short check or confirm code with a matching-only reason', () => {
+    for (const short of ['F2S4KP', 'EST1', '4E5F', 'oc-pair://F2S4KP']) {
+      expect(() => decodeSetupCode(short, 1_000)).toThrow(new SetupCodeError('check-only'));
+    }
+    expect(() => decodeSetupCode(encode(payload), 1_000)).toEqual(payload);
   });
 
   it('says when a code has expired', () => {
