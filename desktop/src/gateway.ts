@@ -166,8 +166,15 @@ export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): v
       settled = true;
       if (timer) clearTimeout(timer);
       timer = undefined;
-      pendingClose = undefined;
       if (onBound) child.off("message", onBound);
+      // Windows keeps this process's copy until the child exits. Closing it once the
+      // child reports listening can drop the duplicated socket, so the engine never answers.
+      if (process.platform === "win32") {
+        holder.removeAllListeners("connection");
+        try { holder.unref(); } catch { /* already closed */ }
+        return;
+      }
+      pendingClose = undefined;
       child.off("exit", onExit);
       try { holder.close(); } catch { /* the child owns the listening socket */ }
     };
