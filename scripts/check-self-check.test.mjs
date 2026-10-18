@@ -711,7 +711,7 @@ test('the merge gate fetches enough history to see merges of main after Final he
   const job = yaml.slice(yaml.indexOf('  changed-test-coverage:'), yaml.indexOf('  merge-gate:'));
   assert.match(job, /fetch-depth:\s*2000\b/);
   const trusted = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
-  const emails = trusted.slice(trusted.indexOf('  commit-emails:'), trusted.indexOf('  merge-gate-trusted:'));
+  const emails = trusted.slice(trusted.indexOf('  commit-emails-run:'), trusted.indexOf('  merge-gate-trusted:'));
   assert.match(emails, /fetch-depth:\s*2000\b/);
   assert.match(emails, /--depth=2000\b/);
   assert.match(emails, /refs\/pull\/\$\{PR_NUMBER\}\/head/);

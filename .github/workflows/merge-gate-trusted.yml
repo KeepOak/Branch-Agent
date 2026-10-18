@@ -22,12 +22,16 @@ concurrency:
 
 jobs:
   # Own job, so its rate-limit waits never share the 35-minute trusted job (AGENTS.md rule 13: 15-minute cap).
-  commit-emails:
+  # Exit 2 from the checker is "not checked" (rate limited after retries). The named commit-emails job
+  # is skipped in that case so the check is neither success nor failure (Actions has no job-level neutral).
+  commit-emails-run:
     permissions:
       contents: read
       pull-requests: read
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      exit_code: ${{ steps.emails.outputs.exit_code }}
     steps:
       - name: Check out the default branch only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -44,13 +48,23 @@ jobs:
       - name: Test the commit email checker
         run: node --test scripts/check-commit-emails.test.mjs
       - name: Check pull request commit emails
+        id: emails
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           MERGE_GATE_WAIT_SECONDS: '600'
-        run: node scripts/check-commit-emails.mjs
+        run: |
+          set +e
+          node scripts/check-commit-emails.mjs
+          code=$?
+          echo "exit_code=${code}" >> "$GITHUB_OUTPUT"
+          if [ "$code" -eq 2 ]; then
+            echo "not checked"
+            exit 0
+          fi
+          exit "$code"
 
       - name: Fetch pull request history for the Final head check
         env:
@@ -73,6 +87,21 @@ jobs:
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
           PREFLIGHT_WAIT_SECONDS: '120'
         run: node scripts/pr-preflight.mjs --ci
+  # Named check merge-gate sees. Skipped when the checker could not read commits (exit 2):
+  # skipped is neither success nor failure. Bad emails and other errors still fail this job.
+  commit-emails:
+    needs: commit-emails-run
+    if: always() && needs.commit-emails-run.result != 'cancelled' && needs.commit-emails-run.outputs.exit_code != '2'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Reflect the commit-email verdict
+        run: |
+          set -euo pipefail
+          test "${{ needs.commit-emails-run.result }}" = "success"
+          test "${{ needs.commit-emails-run.outputs.exit_code }}" = "0"
   merge-gate-trusted:
     permissions:
       contents: read

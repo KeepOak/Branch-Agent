@@ -2014,7 +2014,10 @@ test('trusted gate runs the commit email checker on pull request commits', () =>
   assert.match(yaml, /^\s+run:\s*node --test scripts\/merge-gate-trusted\.test\.mjs\s*$/m);
   assert.match(yaml, /node --test scripts\/merge-gate-rate-limit\.test\.mjs scripts\/check-gate-files-fresh\.test\.mjs/);
   assert.match(yaml, /^\s+run:\s*node --test scripts\/check-commit-emails\.test\.mjs\s*$/m);
-  assert.match(yaml, /^\s+run:\s*node scripts\/check-commit-emails\.mjs\s*$/m);
+  assert.match(yaml, /node scripts\/check-commit-emails\.mjs/);
+  assert.match(yaml, /commit-emails-run:/);
+  assert.match(yaml, /needs: commit-emails-run/);
+  assert.match(yaml, /needs\.commit-emails-run\.outputs\.exit_code != '2'/);
   assert.match(yaml, /PR_NUMBER:\s*\$\{\{\s*github\.event\.pull_request\.number\s*\}\}/);
   assert.doesNotMatch(yaml, /ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.(?:sha|ref)/);
 });
