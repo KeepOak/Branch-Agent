@@ -6,6 +6,16 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  MAX_RATE_LIMIT_SLEEP_SECONDS,
+  attachGhApiError,
+  isRateLimitError,
+  parseGhApiIncludeOutput,
+  withIncludeFlag,
+  withRateLimitRetry,
+} from '../../scripts/merge-gate-rate-limit.mjs';
+
+export { isRateLimitError, MAX_RATE_LIMIT_SLEEP_SECONDS };
 
 export const SIGNING_SECRET_NAMES = [
   'ANDROID_KEYSTORE_B64',
@@ -81,6 +91,10 @@ export const RELEASE_LOOKUP_WAIT = {
   maxAttempts: 5,
   backoff: 2,
 };
+// Same wait-for-reset pattern as commit-emails and changed-test-coverage (`withRateLimitRetry`).
+// 10 minutes leaves room in the 35-minute APK job after Gradle.
+export const ATTACH_RATE_LIMIT_BUDGET_SECONDS = 600;
+export const ATTACH_RATE_LIMIT_BUFFER_SECONDS = 15;
 // workflow_dispatch run 38919220548 shipped versionCode 5. Later builds must be newer.
 export const LAST_SHIPPED_VERSION_CODE = 5;
 
@@ -184,6 +198,69 @@ export function githubReleaseLookupMiss(error) {
   return /release not found/i.test(text)
     || /HTTP 404/.test(text)
     || /Not Found \(HTTP 404\)/i.test(text);
+}
+
+export function apkWorkflowArtifactName(apkName) {
+  return String(apkName ?? '').replace(/\.apk$/i, '');
+}
+
+export function attachRateLimitGaveUpError({
+  apkName = '',
+  artifactName = '',
+  runId = '',
+  budgetSeconds = ATTACH_RATE_LIMIT_BUDGET_SECONDS,
+} = {}) {
+  const artifact = String(artifactName || apkWorkflowArtifactName(apkName) || 'the signed APK').trim();
+  const run = String(runId ?? '').trim() || 'this workflow run';
+  return `Could not attach APK artifact ${artifact} from run ${run} after GitHub rate-limited the attach step for ${budgetSeconds}s. Download that workflow artifact and attach it to the release by hand.`;
+}
+
+function defaultRateLimitSleep(seconds) {
+  execFileSync('sleep', [String(seconds)], { windowsHide: true });
+}
+
+export function runGithubApi(file, args, {
+  exec = (bin, argv) => execFileSync(bin, argv, { encoding: 'utf8', windowsHide: true }),
+} = {}) {
+  if (file !== 'gh' || !Array.isArray(args) || args[0] !== 'api') {
+    return exec(file, args);
+  }
+  const prepared = withIncludeFlag(args);
+  try {
+    const raw = exec(file, prepared.args);
+    if (!prepared.includeHeaders) return raw ?? '';
+    return parseGhApiIncludeOutput(raw).body ?? '';
+  } catch (error) {
+    attachGhApiError(error, error?.stdout);
+    throw error;
+  }
+}
+
+export function wrapGithubRunWithRateLimit(run, {
+  sleep,
+  now = Date.now,
+  startedAt,
+  budgetSeconds = ATTACH_RATE_LIMIT_BUDGET_SECONDS,
+  maxSleep = MAX_RATE_LIMIT_SLEEP_SECONDS,
+  bufferSeconds = ATTACH_RATE_LIMIT_BUFFER_SECONDS,
+  fetchRateLimit,
+  random,
+  log = console.error,
+} = {}) {
+  const start = startedAt ?? now();
+  const nap = typeof sleep === 'function' ? sleep : defaultRateLimitSleep;
+  return (file, args) => withRateLimitRetry(() => run(file, args), {
+    sleep: nap,
+    now,
+    startedAt: start,
+    budgetSeconds,
+    maxSleep,
+    bufferSeconds,
+    fetchRateLimit,
+    random,
+    log,
+    retryTransient: false,
+  });
 }
 
 export function flattenReleasePages(parsed) {
@@ -331,10 +408,21 @@ export async function attachSignedApkAssets({
   sha256Name,
   versioncodePath,
   versioncodeName,
+  artifactName,
+  runId,
   repository = process.env.GITHUB_REPOSITORY,
-  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+  run = runGithubApi,
   sleep,
   wait = RELEASE_LOOKUP_WAIT,
+  now = Date.now,
+  rateLimitSleep,
+  budgetSeconds = ATTACH_RATE_LIMIT_BUDGET_SECONDS,
+  maxSleep = MAX_RATE_LIMIT_SLEEP_SECONDS,
+  bufferSeconds = ATTACH_RATE_LIMIT_BUFFER_SECONDS,
+  startedAt,
+  fetchRateLimit,
+  random,
+  log,
 } = {}) {
   const files = [
     { path: apkPath, name: apkName },
@@ -344,33 +432,53 @@ export async function attachSignedApkAssets({
   if (files.some((file) => !String(file.path ?? '').trim() || !String(file.name ?? '').trim())) {
     throw new Error('attachSignedApkAssets needs APK, checksum and versionCode files');
   }
-  const release = await findGithubRelease({ tag, repository, run, sleep, wait });
-  let assets = [...(release.assets ?? [])];
-  for (const file of files) {
-    const existing = existingReleaseAsset({ ...release, assets }, file.name);
-    if (existing?.id != null) {
-      deleteGithubReleaseAsset({ repository, assetId: existing.id, run });
-      assets = assets.filter((asset) => asset.id !== existing.id);
+  const limitedRun = wrapGithubRunWithRateLimit(run, {
+    sleep: rateLimitSleep,
+    now,
+    startedAt,
+    budgetSeconds,
+    maxSleep,
+    bufferSeconds,
+    fetchRateLimit,
+    random,
+    log,
+  });
+  try {
+    const release = await findGithubRelease({ tag, repository, run: limitedRun, sleep, wait });
+    let assets = [...(release.assets ?? [])];
+    for (const file of files) {
+      const existing = existingReleaseAsset({ ...release, assets }, file.name);
+      if (existing?.id != null) {
+        deleteGithubReleaseAsset({ repository, assetId: existing.id, run: limitedRun });
+        assets = assets.filter((asset) => asset.id !== existing.id);
+      }
+      uploadGithubReleaseAsset({
+        uploadUrl: releaseAssetUploadUrl(release, file.name),
+        filePath: file.path,
+        run: limitedRun,
+      });
+      assets.push({ name: file.name });
     }
-    uploadGithubReleaseAsset({
-      uploadUrl: releaseAssetUploadUrl(release, file.name),
-      filePath: file.path,
-      run,
-    });
-    assets.push({ name: file.name });
+    const stale = staleVersionCodeAssetNames(
+      assets.map((asset) => asset.name),
+      apkName,
+      versioncodeName,
+    );
+    for (const name of stale) {
+      const asset = existingReleaseAsset({ ...release, assets }, name);
+      if (asset?.id == null) continue;
+      deleteGithubReleaseAsset({ repository, assetId: asset.id, run: limitedRun });
+      assets = assets.filter((item) => item.id !== asset.id);
+    }
+    return { tag: release.tag_name || tag, uploaded: files.map((file) => file.name), stale };
+  } catch (error) {
+    if (isRateLimitError(error)) {
+      throw new Error(attachRateLimitGaveUpError({
+        apkName, artifactName, runId, budgetSeconds,
+      }), { cause: error });
+    }
+    throw error;
   }
-  const stale = staleVersionCodeAssetNames(
-    assets.map((asset) => asset.name),
-    apkName,
-    versioncodeName,
-  );
-  for (const name of stale) {
-    const asset = existingReleaseAsset({ ...release, assets }, name);
-    if (asset?.id == null) continue;
-    deleteGithubReleaseAsset({ repository, assetId: asset.id, run });
-    assets = assets.filter((item) => item.id !== asset.id);
-  }
-  return { tag: release.tag_name || tag, uploaded: files.map((file) => file.name), stale };
 }
 
 export function releaseAlreadyExists(error) {
@@ -492,6 +600,8 @@ async function attachReleaseMain() {
     sha256Name: env.SHA256_NAME,
     versioncodePath: env.VERSIONCODE_PATH,
     versioncodeName: env.VERSIONCODE_NAME,
+    artifactName: env.ARTIFACT_NAME || apkWorkflowArtifactName(env.APK_NAME),
+    runId: env.GITHUB_RUN_ID,
   });
   for (const name of result.uploaded) process.stdout.write(`uploaded ${name}\n`);
 }
