@@ -19,6 +19,7 @@ export class EventAlerts {
   private mentionIds = new Set<string>();
   private mentionsReady = false;
   private mentionWork: Promise<void> = Promise.resolve();
+  private lastUpdate: Pick<UpdateFlowState, 'status'> & { offer?: { version: string } } | null = null;
 
   constructor(
     private readonly link: EngineLink,
@@ -31,6 +32,9 @@ export class EventAlerts {
     this.offs.push(
       this.link.onEvent((event, payload) => void this.onEvent(event, payload)),
       this.link.onConnected(() => void this.queueMentions(() => this.primeMentions())),
+      this.appState.onChange((state) => {
+        if (state !== 'active' && this.lastUpdate) void this.notifyUpdate(this.lastUpdate);
+      }),
     );
     if (this.link.hello) void this.queueMentions(() => this.primeMentions());
   }
@@ -46,6 +50,7 @@ export class EventAlerts {
 
   /** Sideloaded Android APK: post once when an update becomes ready while the app is away. */
   async notifyUpdate(state: Pick<UpdateFlowState, 'status'> & { offer?: { version: string } }): Promise<void> {
+    this.lastUpdate = state;
     if (state.status !== 'available' || !state.offer) {
       if (this.shown.has('update:apk')) {
         this.shown.delete('update:apk');

@@ -5,6 +5,7 @@ export function expoNotificationsMock() {
   return {
     DEFAULT_ACTION_IDENTIFIER: 'expo.modules.notifications.actions.DEFAULT',
     AndroidImportance: { DEFAULT: 3, HIGH: 4, MAX: 5 },
+    AndroidNotificationVisibility: { UNKNOWN: 0, PUBLIC: 1, PRIVATE: 2, SECRET: 3 },
     IosAuthorizationStatus: { NOT_DETERMINED: 0, DENIED: 1, AUTHORIZED: 2, PROVISIONAL: 3, EPHEMERAL: 4 },
     setNotificationHandler: jest.fn(),
     setNotificationChannelAsync: jest.fn(async () => null),

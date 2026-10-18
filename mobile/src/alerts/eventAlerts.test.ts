@@ -58,14 +58,20 @@ describe('event notifications', () => {
   it('posts a question, a failed routine, and a mention, each on its own channel', async () => {
     const { engine, fake, done } = await setup();
     engine.emit('question.requested', { id: 'q1', sessionKey: 'agent:oak:chat-1', questions: [{ question: 'Which folder?' }] });
-    engine.emit('cron', { action: 'finished', status: 'error', jobId: 'nightly', job: { name: 'Nightly filing' } });
+    engine.emit('cron', {
+      action: 'finished',
+      status: 'error',
+      jobId: 'nightly',
+      runAtMs: 1_700_000_000_000,
+      job: { name: 'Nightly filing' },
+    });
     await eventually(() => expect(fake.shown.get('question:q1')).toBeDefined());
-    await eventually(() => expect(fake.shown.get('cron:nightly:error')).toBeDefined());
+    await eventually(() => expect(fake.shown.get('cron:nightly:cron:nightly:1700000000000:error')).toBeDefined());
     expect(fake.shown.get('question:q1')?.channel).toBe('questions');
-    expect(fake.shown.get('cron:nightly:error')).toMatchObject({
+    expect(fake.shown.get('cron:nightly:cron:nightly:1700000000000:error')).toMatchObject({
       channel: 'automations',
       title: 'A routine couldn’t finish',
-      route: { screen: 'inbox' },
+      route: { screen: 'approvals' },
     });
 
     engine.setMentions([
@@ -78,6 +84,28 @@ describe('event notifications', () => {
       title: 'Dana mentioned you',
       route: { screen: 'chat', sessionKey: 'agent:oak:room:launch' },
     });
+    done();
+  });
+
+  it('posts a second finished event for the same routine as its own notification', async () => {
+    const { engine, fake, done } = await setup();
+    engine.emit('cron', {
+      action: 'finished',
+      status: 'ok',
+      jobId: 'nightly',
+      runId: 'cron:nightly:1000',
+      job: { name: 'Nightly filing' },
+    });
+    engine.emit('cron', {
+      action: 'finished',
+      status: 'ok',
+      jobId: 'nightly',
+      runAtMs: 2000,
+      job: { name: 'Nightly filing' },
+    });
+    await eventually(() => expect(fake.shown.get('cron:nightly:cron:nightly:1000:ok')).toBeDefined());
+    await eventually(() => expect(fake.shown.get('cron:nightly:cron:nightly:2000:ok')).toBeDefined());
+    expect(fake.posted.filter((alert) => alert.key.startsWith('cron:nightly:'))).toHaveLength(2);
     done();
   });
 
@@ -94,6 +122,15 @@ describe('event notifications', () => {
       title: 'Update available',
       route: { screen: 'settings' },
     });
+    done();
+  });
+
+  it('posts an update that became ready while the app was open, once it goes to the background', async () => {
+    const { fake, state, alerts, done } = await setup('active');
+    await alerts.notifyUpdate({ status: 'available', offer: { version: '0.2.0' } });
+    expect(fake.shown.has('update:apk')).toBe(false);
+    state.set('background');
+    await eventually(() => expect(fake.shown.get('update:apk')).toMatchObject({ title: 'Update available' }));
     done();
   });
 });

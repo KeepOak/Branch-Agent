@@ -5,7 +5,6 @@ import type { ChatRow } from '../chats/chatList';
 export type AlertRoute =
   | { screen: 'approvals'; approvalId?: string }
   | { screen: 'chat'; sessionKey: string }
-  | { screen: 'inbox' }
   | { screen: 'settings' };
 
 export type AlertData = {
@@ -17,10 +16,14 @@ export type AlertData = {
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
+/** Gateway session keys the phone can open as a chat. Anything else is ignored on tap. */
+export function isAgentSessionKey(key: string): boolean {
+  return key.startsWith('agent:');
+}
+
 export function alertData(route: AlertRoute, approvalId?: string): AlertData {
   if (route.screen === 'chat') return { screen: 'chat', sessionKey: route.sessionKey };
   if (route.screen === 'settings') return { screen: 'settings' };
-  if (route.screen === 'inbox') return { screen: 'inbox' };
   return { screen: 'approvals', ...(approvalId || route.approvalId ? { approvalId: approvalId ?? route.approvalId } : {}) };
 }
 
@@ -29,10 +32,15 @@ export function parseAlertRoute(data: unknown): AlertRoute | null {
   const screen = str(d.screen);
   const sessionKey = str(d.sessionKey);
   const approvalId = str(d.approvalId);
-  if (screen === 'chat' && sessionKey) return { screen: 'chat', sessionKey };
+  if (screen === 'chat') {
+    if (!isAgentSessionKey(sessionKey)) return null;
+    return { screen: 'chat', sessionKey };
+  }
   if (screen === 'settings') return { screen: 'settings' };
-  if (screen === 'inbox') return { screen: 'inbox' };
-  if (screen === 'approvals' || approvalId) return { screen: 'approvals', ...(approvalId ? { approvalId } : {}) };
+  // Inbox on the phone is the Approvals screen. Older payloads used screen: inbox.
+  if (screen === 'approvals' || screen === 'inbox' || approvalId) {
+    return { screen: 'approvals', ...(approvalId ? { approvalId } : {}) };
+  }
   return null;
 }
 

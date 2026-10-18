@@ -33,7 +33,7 @@ export const CHANNEL_FOR_KIND: Record<AlertKind, AndroidChannelId> = {
  *
  * 0 A Trunk needs your yes
  * 1 A task finished
- * 2 Someone on your team needs you (mentions, questions, new Inbox items)
+ * 2 Someone on your team needs you (mentions, questions, routines)
  */
 const KIND_SWITCH: Record<AlertKind, number | null> = {
   approval: 0,

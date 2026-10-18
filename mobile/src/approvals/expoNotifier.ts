@@ -101,6 +101,9 @@ export function createExpoNotifier(load: () => Notifications | null = loadNotifi
             importance: channel.id === 'approvals' || channel.id === 'questions' || channel.id === 'mentions' || channel.id === 'automations'
               ? n.AndroidImportance.HIGH
               : n.AndroidImportance.DEFAULT,
+            ...(channel.id === 'questions' || channel.id === 'mentions'
+              ? { lockscreenVisibility: n.AndroidNotificationVisibility.PRIVATE }
+              : {}),
           });
         }
       }

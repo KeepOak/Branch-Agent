@@ -1,4 +1,4 @@
-import { alertFromEvent, alertFromMention, alertFromUpdate, isTranscriptOnly } from './fromEvent';
+import { alertFromEvent, alertFromMention, alertFromUpdate, cronRunIdentity, isTranscriptOnly } from './fromEvent';
 
 describe('gateway events to notification copy and route', () => {
   it('opens the chat when a reply finishes, and skips yielded or injected transcript rows', () => {
@@ -20,47 +20,61 @@ describe('gateway events to notification copy and route', () => {
       }),
     ).toBeNull();
     expect(isTranscriptOnly({ role: 'assistant', provider: 'branch', model: 'delivery-mirror' })).toBe(true);
+    expect(alertFromEvent('chat', { state: 'final', sessionKey: 'agent:oak:main' })).toBeNull();
   });
 
-  it('opens Inbox for a question with no chat, and the chat when the engine named one', () => {
+  it('opens Approvals for a question with no chat, and the chat when the engine named an agent session', () => {
     expect(alertFromEvent('question.requested', { id: 'q1', questions: [{ question: 'Which folder?' }] })).toEqual({
       key: 'question:q1',
       kind: 'question',
       title: 'A Trunk needs an answer',
       body: 'Which folder?',
-      route: { screen: 'inbox' },
+      route: { screen: 'approvals' },
     });
     expect(alertFromEvent('question.requested', { id: 'q2', sessionKey: 'agent:oak:chat-1' })).toMatchObject({
       route: { screen: 'chat', sessionKey: 'agent:oak:chat-1' },
     });
+    expect(alertFromEvent('question.requested', { id: 'q3', sessionKey: 'main' })).toMatchObject({
+      route: { screen: 'approvals' },
+    });
     expect(alertFromEvent('question.resolved', { id: 'q1' })).toEqual({ dismiss: 'question:q1' });
+    expect(alertFromEvent('question.requested', { questions: [{ question: 'Which folder?' }] })).toBeNull();
   });
 
-  it('posts a routine finished and a routine failed, and deep-links the session when present', () => {
+  it('posts a routine finished and a routine failed with a unique key per run, and deep-links the session when present', () => {
     expect(
-      alertFromEvent('cron', { action: 'finished', status: 'ok', jobId: 'nightly', job: { name: 'Nightly filing' } }),
+      alertFromEvent('cron', {
+        action: 'finished',
+        status: 'ok',
+        jobId: 'nightly',
+        runAtMs: 1000,
+        job: { name: 'Nightly filing' },
+      }),
     ).toEqual({
-      key: 'cron:nightly:ok',
+      key: 'cron:nightly:cron:nightly:1000:ok',
       kind: 'finished',
       title: 'A routine finished',
       body: 'Nightly filing finished.',
-      route: { screen: 'inbox' },
+      route: { screen: 'approvals' },
     });
     expect(
       alertFromEvent('cron', {
         action: 'finished',
         status: 'error',
         jobId: 'nightly',
+        runId: 'cron:nightly:2000',
         sessionKey: 'agent:main:cron:daily',
         job: { name: 'Nightly filing' },
       }),
     ).toMatchObject({
-      key: 'cron:nightly:error',
+      key: 'cron:nightly:cron:nightly:2000:error',
       kind: 'automation',
       title: 'A routine couldn’t finish',
       body: 'Nightly filing needs attention.',
       route: { screen: 'chat', sessionKey: 'agent:main:cron:daily' },
     });
+    expect(alertFromEvent('cron', { action: 'finished', status: 'ok', jobId: 'nightly', job: { name: 'Nightly filing' } })).toBeNull();
+    expect(cronRunIdentity({ ts: 9 }, 'nightly')).toBe('9');
   });
 
   it('opens the mentioned chat, and Settings for an update that is ready', () => {

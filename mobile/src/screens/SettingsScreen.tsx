@@ -701,7 +701,7 @@ export function SettingsScreen({
         </ThemedText>
         <View testID="settings-notifications">
           <ThemedText variant="subhead" tone="ink2" style={{ marginTop: space.md }}>
-            Approvals, finished replies, mentions and updates can reach you on the lock screen when they are on.
+            Approvals, finished replies, questions, mentions, routines and updates can reach you on the lock screen when they are on. A tap that is not a chat opens Approvals.
           </ThemedText>
           <Group>
             <Row label="Status" value={status} testID="settings-notifications-status" last={permission === 'unavailable'} />

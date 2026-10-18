@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler, Linking, Platform } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventAlerts } from './src/alerts/eventAlerts';
-import { chatRowForAlert, type AlertRoute } from './src/alerts/route';
+import { chatRowForAlert, isAgentSessionKey, type AlertRoute } from './src/alerts/route';
 import { ApprovalAlerts, type AppStateSource, type Notifier, type NotificationPermission } from './src/approvals/approvalAlerts';
 import { ApprovalInbox, trunkOf, type Approval, type ApprovalDecision } from './src/approvals/approvals';
 import { headline } from './src/approvals/approvalWords';
@@ -248,17 +248,22 @@ function Shell({
   const approvals = useSyncExternalStore(inbox.subscribe, inbox.getSnapshot);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
   const eventsRef = useRef<EventAlerts | null>(null);
-  const prefs = () => (store ? readPhonePrefs(store) : PHONE_PREFS_DEFAULT);
+  const chatsRef = useRef(chats);
+  chatsRef.current = chats;
+  const storeRef = useRef(store);
+  storeRef.current = store;
+  const prefs = () => (storeRef.current ? readPhonePrefs(storeRef.current) : PHONE_PREFS_DEFAULT);
   const openAlert = (route: AlertRoute) => {
     if (route.screen === 'chat') {
-      setPairedRoute({ name: 'chat', row: chatRowForAlert(route.sessionKey, chats.getSnapshot().rows) });
+      if (!isAgentSessionKey(route.sessionKey)) return;
+      setPairedRoute({ name: 'chat', row: chatRowForAlert(route.sessionKey, chatsRef.current.getSnapshot().rows) });
       return;
     }
     if (route.screen === 'settings') {
       setPairedRoute({ name: 'settings' });
       return;
     }
-    setPairedRoute({ name: 'approvals', focus: route.screen === 'approvals' ? route.approvalId : undefined });
+    setPairedRoute({ name: 'approvals', focus: route.approvalId });
   };
   useEffect(() => {
     inbox.attach();
@@ -276,7 +281,7 @@ function Shell({
       events.dispose();
       inbox.dispose();
     };
-  }, [inbox, notifier, appState, session, store, chats]);
+  }, [inbox, notifier, appState, session]);
   useEffect(() => {
     void eventsRef.current?.notifyUpdate(update.state);
   }, [update.state]);

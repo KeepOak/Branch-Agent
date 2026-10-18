@@ -70,6 +70,7 @@ describe('the phone’s own notifications', () => {
     listener(response(Notifications.DEFAULT_ACTION_IDENTIFIER, { approvalId: 'exec-2' }));
     listener(response('allow', undefined));
     listener(response(Notifications.DEFAULT_ACTION_IDENTIFIER, { screen: 'chat', sessionKey: 'agent:oak:main' }));
+    listener(response(Notifications.DEFAULT_ACTION_IDENTIFIER, { screen: 'chat', sessionKey: 'main' }));
     listener(response(Notifications.DEFAULT_ACTION_IDENTIFIER, { screen: 'settings' }));
     expect(seen).toEqual([
       { approvalId: 'exec-1', action: 'allow', route: { screen: 'approvals', approvalId: 'exec-1' } },
@@ -108,6 +109,11 @@ describe('the phone’s own notifications', () => {
         name: 'Approvals',
         description: 'A Trunk needs your yes before it goes on.',
       });
+      expect(mocked.setNotificationChannelAsync.mock.calls[0][1].lockscreenVisibility).toBeUndefined();
+      const questions = mocked.setNotificationChannelAsync.mock.calls.find((call) => call[0] === 'questions');
+      const mentions = mocked.setNotificationChannelAsync.mock.calls.find((call) => call[0] === 'mentions');
+      expect(questions?.[1]).toMatchObject({ lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE });
+      expect(mentions?.[1]).toMatchObject({ lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE });
     } finally {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: previous });
     }

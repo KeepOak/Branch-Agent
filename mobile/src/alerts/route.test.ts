@@ -10,7 +10,8 @@ describe('notification tap routing', () => {
       screen: 'approvals',
       approvalId: 'exec-1',
     });
-    expect(parseAlertRoute(alertData({ screen: 'inbox' }))).toEqual({ screen: 'inbox' });
+    expect(parseAlertRoute(alertData({ screen: 'approvals' }))).toEqual({ screen: 'approvals' });
+    expect(parseAlertRoute({ screen: 'inbox' })).toEqual({ screen: 'approvals' });
     expect(parseAlertRoute(alertData({ screen: 'settings' }))).toEqual({ screen: 'settings' });
   });
 
@@ -18,9 +19,12 @@ describe('notification tap routing', () => {
     expect(parseAlertRoute({ approvalId: 'plugin:mail-1' })).toEqual({ screen: 'approvals', approvalId: 'plugin:mail-1' });
   });
 
-  it('ignores a tap with no screen and no approval', () => {
+  it('ignores a tap with no screen and no approval, and a chat whose sessionKey is not an agent session', () => {
     expect(parseAlertRoute({})).toBeNull();
     expect(parseAlertRoute(undefined)).toBeNull();
+    expect(parseAlertRoute({ screen: 'chat', sessionKey: 'main' })).toBeNull();
+    expect(parseAlertRoute({ screen: 'chat', sessionKey: 'session:oak' })).toBeNull();
+    expect(parseAlertRoute({ screen: 'chat' })).toBeNull();
   });
 
   it('reuses a Chats row when the session is known, else a stub the chat can still load', () => {
