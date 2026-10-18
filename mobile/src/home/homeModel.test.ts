@@ -3,6 +3,7 @@ import { chatRows, readAgents } from '../chats/chatList';
 import { fixtureApprovals } from '../testing/approvalFixtures';
 import { FIXTURE_NOW, fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import {
+  canAllowNeed,
   finishedNow,
   gatewayWord,
   greet,
@@ -60,7 +61,18 @@ describe('home model', () => {
   it('builds Needs you cards with Allow or Send, Deny, and two field rows', () => {
     const needs = homeNeeds([exec, plugin], trunks);
     expect(needs).toHaveLength(2);
-    expect(needs[0]).toMatchObject({ id: 'exec-1', title: 'Run a command', yes: 'Allow', no: 'Deny', trunk: { name: 'Oak' } });
+    expect(needs[0]).toMatchObject({
+      id: 'exec-1',
+      title: 'Run a command',
+      yes: 'Allow',
+      no: 'Deny',
+      trunk: { name: 'Oak' },
+      command: 'pnpm install --frozen-lockfile',
+      folder: '~/Code/branch/window',
+      computer: 'This computer',
+      warnings: ['Downloads packages from the internet'],
+    });
+    expect(canAllowNeed(needs[0])).toBe(true);
     expect(needs[1]).toMatchObject({
       id: 'plugin:mail-1',
       title: 'Send an email to Dana?',
@@ -71,6 +83,14 @@ describe('home model', () => {
         ['Subject', 'September expenses'],
       ],
     });
+    expect(canAllowNeed(needs[1])).toBe(true);
+  });
+
+  it('does not allow a command-run until the exact command is on the card', () => {
+    const blank = readApproval({ id: 'exec-9', request: { command: '', agentId: 'oak' } }, 'exec')!;
+    const [need] = homeNeeds([blank], trunks);
+    expect(need.command).toBeUndefined();
+    expect(canAllowNeed(need)).toBe(false);
   });
 
   it('says the gateway is on or off from the live connection, never a machine name', () => {

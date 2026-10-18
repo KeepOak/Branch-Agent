@@ -5,6 +5,7 @@ import type { ApprovalDecision, ApprovalsSnapshot } from '../approvals/approvals
 import type { ChatListSnapshot, ChatRow } from '../chats/chatList';
 import { chatTime } from '../chats/chatTime';
 import {
+  canAllowNeed,
   finishedNow,
   gatewayWord,
   greet,
@@ -22,6 +23,8 @@ import { useTheme } from '../theme/ThemeProvider';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { PlacesBar, placesBarHeight, statusBandHeight, type PhoneLook, type Place } from '../ui/PlacesBar';
 import { Avatar } from './ChatsScreen';
+
+const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 
 const QUICK_WORKING = [
   ['new-chat', 'New chat'],
@@ -55,9 +58,9 @@ function Section({ title, count, action }: { title: string; count?: number; acti
 }
 
 function HomeCard({ children, testID }: { children: ReactNode; testID?: string }) {
-  const { color, space, radius } = useTheme();
+  const { color, space } = useTheme();
   return (
-    <View testID={testID} style={{ backgroundColor: color.fill, borderRadius: radius.lg + 8, padding: space.md, marginBottom: space.sm }}>
+    <View testID={testID} style={{ backgroundColor: color.fill, borderRadius: 24, padding: space.md, marginBottom: space.sm }}>
       {children}
     </View>
   );
@@ -100,9 +103,12 @@ function Chip({ title, onPress, kind = 'quiet', testID, disabled }: { title: str
 }
 
 /**
- * The paired Home from preview r50, in the iPhone large-title chrome (p-large8) or the
- * Android app bar. Unfinished destinations stay off Regular; at Advanced they say
- * "<label> comes in a later update."
+ * The paired Home from preview r50: greeting, one-line summary, Needs you (Allow or Send, Deny,
+ * Look first — and the exact command, folder and warnings before Allow on a command-run), Working
+ * now with the last real line as the current step, What’s left, quick actions, Finished, and Branch
+ * on your computer. Unfinished destinations stay off Regular; at Advanced they say
+ * "<label> comes in a later update." iPhone chrome is the large title and status band; Android
+ * keeps the app-bar title. One implementation for both looks.
  */
 export function HomeScreen({
   chats,
@@ -199,24 +205,7 @@ export function HomeScreen({
           needs.map((need) => (
             <HomeCard key={need.id} testID={`home-need-${need.id}`}>
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.md }}>
-                <Avatar
-                  row={{
-                    key: need.id,
-                    title: need.trunk.name,
-                    avatar: need.trunk.avatar,
-                    preview: '',
-                    updatedAt: 0,
-                    working: false,
-                    unread: false,
-                    pinned: false,
-                    needsYou: false,
-                    room: false,
-                    archived: false,
-                    snoozedUntil: null,
-                    automation: false,
-                  }}
-                  size={34}
-                />
+                <Avatar row={{ key: need.id, title: need.trunk.name, avatar: need.trunk.avatar, preview: '', updatedAt: 0, working: false, unread: false, pinned: false, needsYou: false, room: false, archived: false, snoozedUntil: null, automation: false }} size={34} />
                 <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                   <ThemedText variant="headline">{need.trunk.name}</ThemedText>
                   <ThemedText variant="subhead" tone="ink2">
@@ -227,8 +216,47 @@ export function HomeScreen({
                       {`${k}: ${v}`}
                     </ThemedText>
                   ))}
+                  {need.command ? (
+                    <View testID={`home-command-${need.id}`} style={{ marginTop: space.xs, backgroundColor: color.raise, borderRadius: 12, padding: space.sm }}>
+                      <ThemedText variant="caption1" selectable style={{ fontFamily: MONO }}>
+                        {need.command}
+                      </ThemedText>
+                    </View>
+                  ) : null}
+                  {need.folder ? (
+                    <ThemedText testID={`home-folder-${need.id}`} variant="caption1" tone="ink3">
+                      {`Folder: ${need.folder}`}
+                    </ThemedText>
+                  ) : null}
+                  {need.computer ? (
+                    <ThemedText testID={`home-computer-${need.id}`} variant="caption1" tone="ink3">
+                      {`Computer: ${need.computer}`}
+                    </ThemedText>
+                  ) : null}
+                  {need.warnings.map((warning) => (
+                    <ThemedText key={warning} testID={`home-warning-${need.id}`} variant="caption1" tone="warn">
+                      {`Noticed: ${warning}`}
+                    </ThemedText>
+                  ))}
+                  {need.mixed ? (
+                    <ThemedText testID={`home-mixed-${need.id}`} variant="caption1" tone="warn">
+                      This command mixes letters from different alphabets that can look the same. Read it carefully.
+                    </ThemedText>
+                  ) : null}
+                  {approvals.failed[need.id] ? (
+                    <ThemedText testID={`home-failed-${need.id}`} variant="caption1" tone="bad">
+                      {approvals.failed[need.id]}
+                    </ThemedText>
+                  ) : null}
+                  {!canAllowNeed(need) ? (
+                    <ThemedText testID={`home-no-command-${need.id}`} variant="caption1" tone="ink3">
+                      The command is not on this card. Look first to see what it would run.
+                    </ThemedText>
+                  ) : null}
                   <View style={{ flexDirection: 'row', flexWrap: 'nowrap', gap: space.sm, marginTop: space.sm }}>
-                    <Chip title={need.yes} kind="ink" testID={`home-allow-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => onAnswer(need.id, 'allow-once')} />
+                    {canAllowNeed(need) ? (
+                      <Chip title={need.yes} kind="ink" testID={`home-allow-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => onAnswer(need.id, 'allow-once')} />
+                    ) : null}
                     <Chip title={need.no} testID={`home-deny-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => onAnswer(need.id, 'deny')} />
                     <Chip title="Look first" testID={`home-look-${need.id}`} onPress={() => onLookFirst(need.id, need.sessionKey)} />
                   </View>
@@ -236,9 +264,9 @@ export function HomeScreen({
               </View>
             </HomeCard>
           ))
-        ) : (
+        ) : approvals.loaded ? (
           <Calm testID="home-needs-empty" text="Nothing needs you." />
-        )}
+        ) : null}
 
         <Section title="Working now" />
         {working.length ? (
@@ -262,25 +290,6 @@ export function HomeScreen({
                     </View>
                   </View>
                 </Pressable>
-                <View
-                  testID={`home-still-${row.key}`}
-                  accessibilityLabel={`${row.title}: Live`}
-                  style={{ marginTop: space.sm, height: 120, borderRadius: 12, backgroundColor: color.fill, justifyContent: 'flex-end', padding: space.sm }}
-                >
-                  <View style={{ alignSelf: 'flex-start', backgroundColor: color.ink, borderRadius: 999, paddingHorizontal: space.sm, paddingVertical: 2 }}>
-                    <ThemedText variant="caption2" style={{ color: color.bg, fontWeight: '600' }}>
-                      Live
-                    </ThemedText>
-                  </View>
-                </View>
-                <View
-                  testID={`home-meter-${row.key}`}
-                  accessibilityRole="progressbar"
-                  accessibilityLabel={`${row.title}: working`}
-                  style={{ marginTop: space.xs, height: 4, borderRadius: 2, backgroundColor: color.line, overflow: 'hidden' }}
-                >
-                  <View style={{ width: '50%', height: 4, backgroundColor: color.ink }} />
-                </View>
                 <View testID={`home-steps-${row.key}`} style={{ flexDirection: 'row', gap: 4, marginTop: space.sm }}>
                   {step.steps.map((s, i) => (
                     <View key={`${row.key}-st-${i}`} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: s === 'todo' ? color.line : color.ink }} />

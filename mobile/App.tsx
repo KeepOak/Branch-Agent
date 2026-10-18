@@ -3,8 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler, Linking, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
+import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApprovalAlerts, type AppStateSource, type Notifier, type NotificationPermission } from './src/approvals/approvalAlerts';
 import { ApprovalInbox, trunkOf } from './src/approvals/approvals';
 import { headline } from './src/approvals/approvalWords';
@@ -22,12 +21,12 @@ import type { PairingSession } from './src/pairing/pairingSession';
 import type { SetupPayload } from './src/pairing/setupCode';
 import { usePairingState } from './src/pairing/usePairingState';
 import { AgentsScreen } from './src/screens/AgentsScreen';
-import { HomeScreen } from './src/screens/HomeScreen';
 import { ApprovalScreen } from './src/screens/ApprovalScreen';
 import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { ChatsScreen } from './src/screens/ChatsScreen';
 import { ComputersScreen } from './src/screens/ComputersScreen';
+import { HomeScreen } from './src/screens/HomeScreen';
 import { TakeControlScreen } from './src/screens/TakeControlScreen';
 import { EnterCodeScreen } from './src/screens/EnterCodeScreen';
 import { PairedScreen } from './src/screens/PairedScreen';
@@ -38,7 +37,6 @@ import { ProfileScreen } from './src/screens/ProfileScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import type { SettingsLevel } from './src/screens/settingsExtras';
 import { VoiceScreen } from './src/screens/VoiceScreen';
-import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { parseShowLevel, readShowLevel, settingsLevelOf, showLevelOf, writeShowLevel, type ShowLevel } from './src/settings/showLevel';
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
 import { PairingTheme, ThemeProvider, useTheme } from './src/theme/ThemeProvider';
@@ -52,7 +50,7 @@ import { useApkUpdate } from './src/updates/useApkUpdate';
 // The splash stays up until the saved pairing has been read, so the first frame is the right screen.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
-type Route = 'welcome' | 'scan' | 'code';
+type Route = 'scan' | 'code';
 type ComputerOrigin = {
   from?: 'more' | 'profile';
   profileRow?: AgentRow;
@@ -152,7 +150,7 @@ function Shell({
       apkUpdates={Platform.OS === 'android'}
     />
   );
-  const [route, setRoute] = useState<Route>('welcome');
+  const [route, setRoute] = useState<Route>('scan');
   const [pairedRoute, setPairedRoute] = useState<PairedRoute>(CHATS);
   // One list for the whole session, so going to Computers, Agents or Your computer and back doesn't reload it.
   const [chats] = useState(() => new ChatList(session));
@@ -223,10 +221,10 @@ function Shell({
       setPairedRoute(CHATS);
       return;
     }
-    setRoute('welcome');
+    setRoute('scan');
   }, [state.step, chats, agents, computers, inbox]);
 
-  // Android's back gesture leaves take-control for Computers, Voice for its chat, and Computers, Agents, Your computer, Settings, More, Profile, a chat or Approvals for Chats, like the on-screen back button. Home is a root, like Chats.
+  // Android's back gesture leaves take-control for Computers, Voice for its chat, and Computers, Agents, Your computer, Settings, More, Profile, a chat or Approvals, like the on-screen back button. Home is a root, like Chats.
   useEffect(() => {
     if (state.step !== 'paired' || pairedRoute.name === 'chats' || pairedRoute.name === 'home') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -247,9 +245,9 @@ function Shell({
   };
 
   const begin = (setup: SetupPayload) => session.begin(setup);
-  const toWelcome = () => {
+  const toPair = () => {
     session.cancel();
-    setRoute('welcome');
+    setRoute('scan');
   };
   const scanAgain = () => {
     session.cancel();
@@ -274,17 +272,13 @@ function Shell({
       break;
     case 'unpaired':
       screen =
-        route === 'scan' ? (
+        route === 'code' ? (
           <PairingTheme>
-            <ScanScreen onCode={begin} onEnterCode={() => setRoute('code')} onCancel={toWelcome} />
-          </PairingTheme>
-        ) : route === 'code' ? (
-          <PairingTheme>
-            <EnterCodeScreen onCode={begin} onScan={() => setRoute('scan')} onCancel={toWelcome} />
+            <EnterCodeScreen onCode={begin} onScan={() => setRoute('scan')} onCancel={toPair} />
           </PairingTheme>
         ) : (
           <PairingTheme>
-            <WelcomeScreen onPair={() => setRoute('scan')} updateBanner={updateBanner} />
+            <ScanScreen onCode={begin} onEnterCode={() => setRoute('code')} updateBanner={updateBanner} />
           </PairingTheme>
         );
       break;
@@ -293,7 +287,7 @@ function Shell({
     case 'failed':
       screen = (
         <PairingTheme>
-          <ApprovalScreen state={state} onCancel={toWelcome} onScanAgain={scanAgain} />
+          <ApprovalScreen state={state} onCancel={toPair} onScanAgain={scanAgain} />
         </PairingTheme>
       );
       break;
@@ -350,8 +344,14 @@ function Shell({
             chats={chatList}
             approvals={approvals}
             online={state.online}
+            accessLevel={showLevel}
             look={look}
-            onNewChat={() => setPairedRoute(CHATS)}
+            onNewChat={() => {
+              const shown = filterRows(chatList.rows, 'all', Date.now());
+              const main = shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
+              if (main) setPairedRoute({ name: 'chat', row: main });
+              else setPairedRoute(CHATS);
+            }}
             onComputer={() => setPairedRoute({ name: 'computers' })}
             onAnswer={(id, decision) => void inbox.answer(id, decision)}
             onLookFirst={(_id, sessionKey) => {
@@ -467,6 +467,12 @@ function Shell({
       } else {
         const first = approvals.pending[0];
         const more = approvals.pending.length - 1;
+        const goPlace = (place: Place) => {
+          if (place === 'chats') return;
+          if (place === 'home') setPairedRoute({ name: 'home' });
+          else if (place === 'inbox') setPairedRoute({ name: 'approvals' });
+          else setPairedRoute({ name: 'more' });
+        };
         screen = (
           <PhoneShell current="chats" inboxCount={approvals.pending.length} onPlace={goPlace} look={look}>
             <ChatsScreen
@@ -505,7 +511,7 @@ function Shell({
 
   return (
     <>
-      <StatusBar style={route === 'scan' && state.step === 'unpaired' ? 'light' : theme.scheme === 'dark' ? 'light' : 'dark'} />
+      <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
       {screen}
     </>
   );

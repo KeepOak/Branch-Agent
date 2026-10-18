@@ -38,7 +38,7 @@ describe('when the phone has no expo-notifications', () => {
     const { session } = createFakeSession(engine);
     // No notifier given: the app makes its own from the (missing) module, as on a phone.
     await render(<App scheme="light" session={session} appState={createFakeAppState('background').source} />);
-    await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
     await act(() => session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' }));
     engine.approve();
     await eventually(() => expect(screen.getByTestId('needs-you-banner')).toBeOnTheScreen());

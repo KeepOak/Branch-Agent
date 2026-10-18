@@ -3,7 +3,7 @@
 // Unfinished destinations are named here so the screen can show "<label> comes in a later update."
 // only at Advanced and above (owner rule). Nothing here invents usage, spend, or a computer still.
 
-import { actionFields, actionWords, headline } from '../approvals/approvalWords';
+import { actionFields, actionWords, computerName, headline, maskCommand, mixedAlphabets, shortFolder } from '../approvals/approvalWords';
 import { trunkOf, type Approval, type Trunk } from '../approvals/approvals';
 import { filterRows, type ChatRow } from '../chats/chatList';
 
@@ -53,27 +53,50 @@ export function finishedNow(rows: ChatRow[], now: number): ChatRow[] {
 
 export type HomeNeed = {
   id: string;
+  kind: Approval['kind'];
   sessionKey?: string;
   trunk: Trunk;
   title: string;
   yes: string;
   no: string;
   fields: [string, string][];
+  /** Exec only: the exact command, secrets dotted out the way Approvals masks them. */
+  command?: string;
+  folder?: string;
+  computer?: string;
+  warnings: string[];
+  mixed?: boolean;
 };
+
+/** Allow is only for a request the card can actually show (the command, or a plugin's own words). */
+export function canAllowNeed(need: HomeNeed): boolean {
+  return need.kind !== 'exec' || Boolean(need.command?.trim());
+}
 
 /** Pending approvals as Home "Needs you" cards: oldest first, at most three (p50sHome). */
 export function homeNeeds(pending: Approval[], trunks: Record<string, Trunk>): HomeNeed[] {
   return pending.slice(0, 3).map((approval) => {
     const verbs = actionWords(approval);
     const { fields } = actionFields(approval.description ?? '');
+    const exec = approval.kind === 'exec';
     return {
       id: approval.id,
+      kind: approval.kind,
       ...(approval.sessionKey ? { sessionKey: approval.sessionKey } : {}),
       trunk: trunkOf(approval, trunks),
       title: headline(approval),
       yes: verbs.yes,
       no: verbs.no,
       fields: fields.slice(0, 2),
+      ...(exec
+        ? {
+            command: maskCommand(approval.command).replace(/\s+/g, ' ').trim() || undefined,
+            folder: approval.cwd ? shortFolder(approval.cwd) : 'Its workspace',
+            computer: computerName(approval.host),
+            mixed: mixedAlphabets(approval.command),
+          }
+        : {}),
+      warnings: approval.warnings,
     };
   });
 }

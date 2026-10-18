@@ -8,8 +8,8 @@ import { PairingCodeField } from './pairingFields';
 import { setupCodeProblem } from './ScanScreen';
 
 /**
- * For when the camera can't help: paste the pairing code the computer shows under its QR code. Pair stays
- * above the keyboard, and the keyboard's own done key pairs too.
+ * For when the camera can't help: paste the pairing code the computer shows under its QR code. Connect stays
+ * above the keyboard, and the keyboard's own done key connects too.
  */
 export function EnterCodeScreen({ onCode, onScan, onCancel }: { onCode: (setup: SetupPayload) => void; onScan: () => void; onCancel: () => void }) {
   const { space } = useTheme();
@@ -30,7 +30,7 @@ export function EnterCodeScreen({ onCode, onScan, onCancel }: { onCode: (setup: 
       avoidKeyboard
       footer={
         <>
-          <Button title="Pair" onPress={submit} disabled={!text.trim()} testID="submit-code" />
+          <Button title="Connect" onPress={submit} disabled={!text.trim()} testID="submit-code" />
           <Button title="Scan instead" kind="secondary" onPress={onScan} />
           <Button title="Cancel" kind="plain" onPress={onCancel} />
         </>

@@ -26,6 +26,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { statusBandHeight } from '../ui/PlacesBar';
+import { plainError } from '../ui/plainError';
 import { useNow } from '../ui/useNow';
 
 const AVATAR = 52;
@@ -486,7 +487,7 @@ function RadioRow({ label, selected, onPress, testID }: { label: string; selecte
   );
 }
 
-/** The paired home: every chat with your Trunks, newest first, live from the computer. */
+/** The paired chats list: every chat with your Trunks, newest first, live from the computer. */
 export function ChatsScreen({
   list,
   online,
@@ -502,6 +503,7 @@ export function ChatsScreen({
   onNeedsYou,
   now: fixedNow,
   updateBanner,
+  bottomExtra = 0,
   level = 'regular',
   look = Platform.OS === 'ios' ? 'ios' : 'android',
   bottomExtra = 0,
@@ -515,6 +517,8 @@ export function ChatsScreen({
   onAgents?: () => void;
   /** Opens Settings. */
   onSettings?: () => void;
+  /** Extra space above a places bar so the last row is not hidden. */
+  bottomExtra?: number;
   /** Opens More. */
   onMore?: () => void;
   /** Opens a chat. */
@@ -827,7 +831,7 @@ export function ChatsScreen({
   if (!list.loaded && !list.error) empty = <Skeleton />;
   else if (!list.loaded && list.error)
     empty = online ? (
-      <Note testID="chats-error" title="Couldn’t load your chats" body={list.error} action={{ title: 'Try again', onPress: () => void refresh() }} />
+      <Note testID="chats-error" title="Couldn’t load your chats" body={plainError(list.error)} action={{ title: 'Try again', onPress: () => void refresh() }} />
     ) : (
       <Note testID="chats-waiting" title="Waiting for your computer" body="Your chats show up here as soon as this phone reaches it." />
     );
@@ -857,7 +861,7 @@ export function ChatsScreen({
         ItemSeparatorComponent={({ leadingItem }: { leadingItem?: Item }) =>
           leadingItem && leadingItem.kind !== 'header' ? <View style={{ height: layout.hairline, backgroundColor: color.line, marginLeft: layout.screenInset + AVATAR + space.md }} /> : null
         }
-        contentContainerStyle={{ paddingBottom: insets.bottom + space.xl + (android && onNewChat ? 72 : 0) + bottomExtra }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + space.xl + bottomExtra + (android && onNewChat ? 72 : 0) }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
