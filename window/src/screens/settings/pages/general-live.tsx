@@ -122,11 +122,9 @@ export function SummaryModel({ engine, row }: SlotControlProps) {
 function comingButton(button: string, keys?: () => string): SlotControl {
   return function ComingButton({ engine, row }: SlotControlProps) {
     const src = row.source.kind === "slot" ? row.source : null;
-    const [level] = useLevel(engine);
-    // Coming: drawn greyed only at Technical, as every not-built-yet control (Private #1093 item 4).
     return <span className="r1s-own-ctl">
       {keys ? <span className="r1s-val g-label">{keys()}</span> : null}
-      <Coming engine={engine} need={src?.calls ?? []} unwired hidden={level < COMING_FROM} reason={src?.reason} where={row.label ?? button}>
+      <Coming engine={engine} need={src?.calls ?? []} unwired reason={src?.reason} where={row.label ?? button}>
         <button type="button" className="r1s-btn">{button}</button>
       </Coming>
     </span>;

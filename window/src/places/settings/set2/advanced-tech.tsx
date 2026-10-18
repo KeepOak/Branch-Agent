@@ -133,10 +133,9 @@ export function ConvDialog({ engine, lv, onClose }: { engine: WindowEngine; lv: 
       </div>
       <div className="s2advanced-ctfoot">
         <label>Rows per page <select className="inp" value={per} onChange={(e) => reset(() => setPer(Number(e.target.value)))}>{[10, 25, 50, 100].map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
-        {/* Where the list is: a greyed Previous or Next names it, so it says why there is nowhere to go (Private #1093). */}
-        <span id="s2-conv-at">{rows.length ? `${page * per + 1}–${page * per + rows.length} of ${total}` : "0 of 0"}</span>
-        <Btn sm ghost disabled={!page} aria-describedby={!page ? "s2-conv-at" : undefined} onClick={() => setPage((p) => p - 1)}>Previous</Btn>
-        <Btn sm ghost disabled={!more} aria-describedby={!more ? "s2-conv-at" : undefined} onClick={() => setPage((p) => p + 1)}>Next</Btn>
+        <span>{rows.length ? `${page * per + 1}–${page * per + rows.length} of ${total}` : "0 of 0"}</span>
+        <Btn sm ghost disabled={!page} onClick={() => setPage((p) => p - 1)}>Previous</Btn>
+        <Btn sm ghost disabled={!more} onClick={() => setPage((p) => p + 1)}>Next</Btn>
       </div>
     </Dialog>
   );

@@ -92,7 +92,7 @@ function Part({ ctx, id, row }: { ctx: Ctx; id: string; row: ClassicRow }): Reac
     case "watch": {
       const on = apps.length > 0 && apps.every((a) => cfg.get("channels." + a.id + ".healthMonitor.enabled") !== false);
       const sub = "If no update arrives for a while, Branch reconnects it and tells you if that fails.";
-      return <Line label={row.t} help={on ? sub + " On because a chat app is connected." : sub} why={!apps.length ? "Turns on with your first chat app." : !cfg.ready ? "Reading this setting…" : undefined} ctlNeed="config.patch">
+      return <Line label={row.t} help={!apps.length ? sub + " Turns on with your first chat app." : on ? sub + " On because a chat app is connected." : sub} ctlNeed="config.patch">
         <Toggle label={row.t} on={on} disabled={!apps.length || !cfg.ready} onChange={(v) => { for (const a of apps) void cfg.set("channels." + a.id + ".healthMonitor.enabled", v ? null : false); }} />
       </Line>;
     }

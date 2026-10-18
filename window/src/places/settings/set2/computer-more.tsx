@@ -277,8 +277,7 @@ function CfgRow({ s, c }: { s: Spec; c: Ctx }) {
   else if (s.k === "pick") control = <Pick label={s.t} value={at === "-1" ? str(cur) : at} options={opts} disabled={cfg.loading} onChange={pickOpt} />;
   else if (s.k === "num") control = <Num label={s.t} value={typeof raw === "number" ? raw : undefined} placeholder={s.ph ?? (s.def === undefined ? undefined : String(s.def))} unit={s.unit} min={s.min} max={s.max} disabled={cfg.loading} onCommit={save} />;
   else if (s.k === "text") control = <TextCtl s={s} raw={raw} save={save} />;
-  // A row with a choice that isn't offered ("When needed") says why in its sub-line: that line is the reason.
-  return <Ctl title={s.t} sub={subOf(s)} help={s.help} subWhy={(s.opts ?? []).some((o) => o.off)}>{control}</Ctl>;
+  return <Ctl title={s.t} sub={subOf(s)} help={s.help}>{control}</Ctl>;
 }
 
 function TextCtl({ s, raw, save }: { s: Spec; raw: unknown; save: (v: unknown) => void }) {
@@ -661,10 +660,8 @@ function SparesMax({ c }: { c: Ctx }) {
   const ok = n === null || (Number.isInteger(n) && n >= 0);
   const unchanged = n === (typeof v === "number" ? v : null);
   const save = () => { if (!ok || unchanged) return; void cfg.set("cloudWorkers.preparedPool.maxTotal", n); setDraft(null); };
-  // Save is greyed until there is a new whole number to save; the line says so (Private #1093).
-  const saveWhy = cfg.loading ? "Reading this setting…" : !ok ? "Use a whole number, 0 or more." : unchanged ? "Type a new number, then Save." : "";
   return (
-    <Ctl title="Most spares at once" sub="Across every repository and cloud computer." after={saveWhy ? <small className="why-k" data-why="">{saveWhy}</small> : null} help="Across every repository and cloud computer. Empty means 4; 0 stops spares and lets the unused ones go.">
+    <Ctl title="Most spares at once" sub="Across every repository and cloud computer." help="Across every repository and cloud computer. Empty means 4; 0 stops spares and lets the unused ones go.">
       <input className="inp s2cm-num" inputMode="numeric" aria-label="Most spares at once" placeholder="4" value={shown} disabled={cfg.loading} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") save(); }} />
       <Btn sm disabled={cfg.loading || !ok || unchanged} onClick={save}>Save</Btn>
     </Ctl>

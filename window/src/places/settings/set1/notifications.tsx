@@ -129,8 +129,7 @@ function QuietSec({ prefs }: { prefs: Prefs }) {
   const setQ = (patch: Partial<Quiet>) => void prefs.change((cur) => ({ ...cur, quietHours: { ...cur.quietHours, ...patch } }));
   return (
     <Sec title="Quiet">
-      <Ctl title="Quiet hours" sub="Approvals still wait in the Inbox; nothing pings you in these hours." off={off}
-        after={!off && !q.enabled ? <small className="why-k">Turn on quiet hours to set its hours.</small> : null}>
+      <Ctl title="Quiet hours" sub="Approvals still wait in the Inbox; nothing pings you in these hours." off={off}>
         <span className="nt-quiet">
           <label className="nt-tsel"><span>From</span><Pick label="Quiet hours from" value={String(q.startMinute)} options={hourOpts(q.startMinute)} disabled={Boolean(off) || !q.enabled} onChange={(v) => setQ({ startMinute: Number(v) })} /></label>
           <label className="nt-tsel"><span>To</span><Pick label="Quiet hours to" value={String(q.endMinute)} options={hourOpts(q.endMinute)} disabled={Boolean(off) || !q.enabled} onChange={(v) => setQ({ endMinute: Number(v) })} /></label>

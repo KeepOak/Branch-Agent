@@ -204,39 +204,25 @@ export function Ctl({ coming, ...props }: CtlProps) {
   return (coming || isComingWhy(props.off)) && level < 2 ? null : <CtlRow {...props} />;
 }
 
-/** What a greyed row says when its only reason is a developer note, which is never shown (shell/shown-why.ts): one plain
- *  line with nothing about how Branch works inside, so no greyed row is left without a reason (Private #1093: the
- *  planning and hard-problems model choices were greyed with nothing beside them). */
-export const CANT_YET = "Branch can’t change this here yet.";
-
 /** One settings row: title, sub-line and the control on the right. `off` greys the control and says why on its own line.
  *  Every row with a plain title has a pin, except General's Pinned list itself (noPin). */
-function CtlRow({ title, sub: subIn, help, children, off, keep, icon, stack, id, after, noPin, subWhy }: {
+function CtlRow({ title, sub, help, children, off, keep, icon, stack, id, after, noPin }: {
   title: ReactNode; sub?: ReactNode; help?: string; children?: ReactNode; off?: string; keep?: Keep; icon?: ReactNode; stack?: boolean; id?: string; after?: ReactNode; noPin?: boolean;
-  /** The sub-line says why a control in the row is greyed ("Turns on with your first chat app."): it is marked as the
-   *  reason, and the greyed controls name it (Private #1093). */
-  subWhy?: boolean;
 }) {
   const level = useLevel();
-  // An empty sub-line is no sub-line: it must not take the place of the reason a greyed row shows (Private #1093).
-  const sub = subIn === "" ? undefined : subIn;
   const helpKey = useId();
   const locked = useContext(LockContext);
   const why = off ?? (locked ? NOSETUP : undefined);
   const name = typeof title === "string" ? title : id;
   // A row greyed by a real condition ("Turn on … first", "needs a backup folder") says what to do in one visible line
-  // (Private #1093 item 7). A developer note stays out of sight: the row says CANT_YET in its place.
-  const shown = shownWhy(why) ?? (why ? CANT_YET : undefined);
+  // (Private #1093 item 7). A developer note stays out of sight: that row is Coming, and Coming shows only at Technical.
+  const shown = shownWhy(why);
   const whyId = useId();
-  const subIsWhy = Boolean(subWhy && sub && !shown);
   const right = useRef<HTMLSpanElement>(null);
   // The greyed controls inside name that line with aria-describedby, so a screen reader says why too.
   useEffect(() => {
     const controls = right.current ? [...right.current.querySelectorAll<HTMLElement>("button, input, select, textarea, [role=switch]")] : [];
-    for (const el of controls) {
-      const greyed = (el as HTMLButtonElement).disabled || el.getAttribute("aria-disabled") === "true";
-      if (shown || (subIsWhy && greyed)) el.setAttribute("aria-describedby", whyId); else if (el.getAttribute("aria-describedby") === whyId) el.removeAttribute("aria-describedby");
-    }
+    for (const el of controls) { if (shown) el.setAttribute("aria-describedby", whyId); else if (el.getAttribute("aria-describedby") === whyId) el.removeAttribute("aria-describedby"); }
   });
   const raw = sub ?? shown;
   const line = typeof raw === "string" ? plainCopy(raw, level) : raw;
@@ -246,7 +232,7 @@ function CtlRow({ title, sub: subIn, help, children, off, keep, icon, stack, id,
     <div className={`ctl${why ? " off-k" : ""}${stack ? " stack-k" : ""}`} data-row={name} aria-disabled={why ? true : undefined}>
       <b>{icon}{title}{typeof title === "string" && !noPin ? <PinBtn title={title} /> : null}</b>
       {children ? <span className="right" ref={right} inert={why ? true : undefined}>{children}</span> : null}
-      {line || kept ? <small id={(shown && !sub) || subIsWhy ? whyId : undefined} data-why={subIsWhy ? "" : undefined}>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
+      {line || kept ? <small id={shown && !sub ? whyId : undefined}>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
       {shown && sub ? <small className="why-k" id={whyId}>{shown}</small> : null}
       {after}
     </div>
@@ -366,14 +352,13 @@ export function Status({ tone = "ok", title: rawTitle, help, children: rawChildr
 export function Plist({ children }: { children: ReactNode }) {
   return <div className="rows">{children}</div>;
 }
-/** A list row. `why` says why its greyed control is greyed, on its own line (`whyId`, named by that control). */
-export function Prow({ icon, title, sub, help, why, whyId, children }: { icon?: ReactNode; title: ReactNode; sub?: ReactNode; help?: string; why?: string; whyId?: string; children?: ReactNode }) {
+export function Prow({ icon, title, sub, help, children }: { icon?: ReactNode; title: ReactNode; sub?: ReactNode; help?: string; children?: ReactNode }) {
   const helpKey = useId();
   useHelpEntry(helpKey, typeof title === "string" ? title : "Row", help);
   return (
     <div className="prow" data-row={typeof title === "string" ? title : undefined}>
       {icon}
-      <span className="grow"><b>{title}</b>{sub ? <small>{sub}</small> : null}{why ? <small className="why-k" id={whyId}>{why}</small> : null}</span>
+      <span className="grow"><b>{title}</b>{sub ? <small>{sub}</small> : null}</span>
       {children}
     </div>
   );

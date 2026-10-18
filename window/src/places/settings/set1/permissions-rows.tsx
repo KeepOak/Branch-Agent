@@ -48,16 +48,12 @@ export const WHY = {
 };
 
 const valueOf = (c: Cfg, path: string): unknown => c.get(path);
-/** Why a row's control is greyed while the settings are still being read (Private #1093: the standing-permission expiry
- *  field was greyed with nothing beside it). Ctl shows it on its own line and the control names it. */
-export const READING = "Reading this setting…";
-const reading = (c: Cfg) => (c.loading ? READING : undefined);
 
 function SwRow({ r, c }: { r: Extract<Row, { k: "sw" }>; c: Cfg }) {
   const raw = valueOf(c, r.path);
   const on = r.read ? r.read(c) : typeof raw === "boolean" ? raw : r.def;
   const save = (v: boolean) => void (r.save ? r.save(c, v) : c.set(r.path, v));
-  return <Ctl title={r.t} sub={!on && r.subOff ? r.subOff : r.sub} off={reading(c)}><Switch checked={on} label={r.t} disabled={c.loading} onChange={save} /></Ctl>;
+  return <Ctl title={r.t} sub={!on && r.subOff ? r.subOff : r.sub}><Switch checked={on} label={r.t} disabled={c.loading} onChange={save} /></Ctl>;
 }
 
 function ChoiceRow({ r, c }: { r: Extract<Row, { k: "seg" | "pick" }>; c: Cfg }) {
@@ -65,7 +61,7 @@ function ChoiceRow({ r, c }: { r: Extract<Row, { k: "seg" | "pick" }>; c: Cfg })
   const v = r.read ? r.read(c) : typeof raw === "string" ? raw : r.def;
   const save = (id: string) => void (r.save ? r.save(c, id) : c.set(r.path, id));
   const Control = r.k === "seg" ? Seg : Pick;
-  return <Ctl title={r.t} sub={r.subOf ? r.subOf(v) || undefined : r.sub} off={reading(c)}><Control label={r.t} value={v} options={r.opts} disabled={c.loading} onChange={save} /></Ctl>;
+  return <Ctl title={r.t} sub={r.subOf ? r.subOf(v) || undefined : r.sub}><Control label={r.t} value={v} options={r.opts} disabled={c.loading} onChange={save} /></Ctl>;
 }
 
 function NumRow({ r, c }: { r: Extract<Row, { k: "num" }>; c: Cfg }) {
@@ -82,7 +78,7 @@ function NumRow({ r, c }: { r: Extract<Row, { k: "num" }>; c: Cfg }) {
     }
     put(n * scale);
   };
-  return <Ctl title={r.t} sub={r.sub} off={reading(c)}><Field label={r.t} type="number" value={shown} placeholder={r.ph} disabled={c.loading} onCommit={commit} />{r.unit ? <small className="pm-unit">{r.unit}</small> : null}</Ctl>;
+  return <Ctl title={r.t} sub={r.sub}><Field label={r.t} type="number" value={shown} placeholder={r.ph} disabled={c.loading} onCommit={commit} />{r.unit ? <small className="pm-unit">{r.unit}</small> : null}</Ctl>;
 }
 
 const NOOP = () => undefined;

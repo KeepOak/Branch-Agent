@@ -130,10 +130,8 @@ export function ShortcutsDialog({ onClose, defaultName = "Sapling" }: { onClose:
       <div className="k-anyPF18">
         <div className="ctl">
           <b>Keys that work from any app</b>
-          <button type="button" role="switch" aria-checked={false} aria-label="Keys that work from any app" className="switch" disabled aria-describedby="k-any-why" />
+          <button type="button" role="switch" aria-checked={false} aria-label="Keys that work from any app" className="switch" disabled title={DESKTOP_ANY} />
           <small>Talk live and Settings from any app, without switching to Branch.</small>
-          {/* Greyed, so it says why on its own line, not only in a tooltip (Private #1093). */}
-          <small className="why-k" id="k-any-why">{DESKTOP_ANY}</small>
         </div>
       </div>
       <div className="keys15" data-listening={listening ?? undefined}>

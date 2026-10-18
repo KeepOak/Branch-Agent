@@ -9,7 +9,7 @@ import { bytes, span, str, useLive, when } from "../../../places/settings/set2/c
 import { AUTH, COLORS, DEFAULT_PORT, ago, channelNames, localAddress, pct, risky, usePing } from "../../../places/settings/set2/gateway";
 import { Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
-import { Failed, Needs, useFailure, Why } from "./appearance-live";
+import { Failed, Needs, useFailure } from "./appearance-live";
 import { copyAndSay } from "../../../shell/clipboard";
 import { plainError, PLAIN_FAILURE } from "../../../shell/plain-error";
 import { SCRIPT_CODE } from "./remote";
@@ -43,7 +43,6 @@ export function LabelComputer({ engine, row }: SlotControlProps) {
         </span>
       </span>
     </Needs>
-    {!label && !config.loading ? <Why>Type a label first, then pick its colour.</Why> : null}
     <Failed text={failed} />
   </>;
 }

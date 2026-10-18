@@ -27,7 +27,7 @@ function Watch({ apps, cfg }: Ctx) {
   const set = (v: boolean) => { for (const a of apps) void cfg.set(`channels.${a.id}.healthMonitor.enabled`, v ? null : false); };
   const sub = "If no update arrives for a while, Branch reconnects it and tells you if that fails.";
   return (
-    <Ctl title="Watch for a chat app that stops receiving" subWhy={!apps.length} sub={!apps.length ? `${sub} Turns on with your first chat app.` : on ? `${sub} On because a chat app is connected.` : sub}>
+    <Ctl title="Watch for a chat app that stops receiving" sub={!apps.length ? `${sub} Turns on with your first chat app.` : on ? `${sub} On because a chat app is connected.` : sub}>
       <Switch checked={on} label="Watch for a chat app that stops receiving" disabled={!apps.length || cfg.loading} onChange={set} />
     </Ctl>
   );

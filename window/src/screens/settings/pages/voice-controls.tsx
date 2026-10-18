@@ -16,7 +16,7 @@ import { Dialog } from "../../../shell/Dialog";
 import { Segmented, Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
 import { useRead } from "./accounts-live";
-import { Failed, Needs, useFailure, Why } from "./appearance-live";
+import { Failed, Needs, useFailure } from "./appearance-live";
 import { copyAndSay } from "../../../shell/clipboard";
 import { VOICE_CODE } from "./voice";
 
@@ -186,9 +186,7 @@ export function NamedVoices({ engine, row }: SlotControlProps) {
   const [open, setOpen] = useState(false);
   const personas = list(tts.data?.personas);
   return <>
-    {/* No voices is a fact to read, not a greyed button. */}
-    {personas.length ? <Needs engine={engine} need={["tts.status"]} where={row.label ?? ""}><Btn onClick={() => setOpen(true)}>{`See ${personas.length}`}</Btn></Needs>
-      : <span className="r1s-val g-label" data-lines>{tts.loading ? "Reading…" : "None yet"}</span>}
+    <Needs engine={engine} need={["tts.status"]} where={row.label ?? ""}><Btn disabled={!personas.length} onClick={() => setOpen(true)}>{personas.length ? `See ${personas.length}` : "None yet"}</Btn></Needs>
     {open ? <Dialog title="Named voices" onClose={() => setOpen(false)}><ul className="r1s-items">{personas.map((p) => <li key={text(p.id)} className="r1s-item">
       <span className="r1s-item-t g-label">{visible(p.label ?? p.id)}</span><small className="g-label">{[p.description, p.provider].filter(Boolean).map(visible).join(" · ")}</small></li>)}</ul></Dialog> : null}
   </>;
@@ -244,7 +242,7 @@ export function LiveGateway({ engine, row }: SlotControlProps) {
       <span className="r1s-own-ctl"><Toggle label="Live voice through the Gateway" on={cfg.get("talk.realtime.transport") === "gateway-relay"} disabled={!can || cfg.loading}
         onChange={(v) => void run(() => cfg.set("talk.realtime.transport", v ? "gateway-relay" : null))} /></span>
     </Needs>
-    {!can ? <Why>Needs a live-voice service, the Gateway connection and the Trunk doing the thinking (Technical).</Why> : null}
+    {!can ? <Line>Needs a live-voice service, the Gateway connection and the Trunk doing the thinking (Technical).</Line> : null}
     <Failed text={failed} />
   </>;
 }
@@ -287,7 +285,7 @@ export function TestCall({ engine, row }: SlotControlProps) {
   const on = cfg.get("plugins.entries.voice-call.enabled") === true;
   return <>
     <Needs engine={engine} need={["voicecall.initiate"]} where={row.label ?? ""}><Btn disabled={!on} onClick={() => void run(async () => { await engine.request("voicecall.initiate", { message: "This is a test call from Branch.", mode: "notify" }); })}>Call me</Btn></Needs>
-    {!on ? <Why>Turn on Phone calls first.</Why> : null}
+    {!on ? <Line>Turn on Phone calls first.</Line> : null}
     <Failed text={failed} />
   </>;
 }

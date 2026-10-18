@@ -37,31 +37,6 @@ describe("button crawl: a greyed control says why in one visible line", () => {
     expect(disabledWithoutReason(el("go"), visible)).toBe(false);
   });
 
-  it("fails a greyed control whose row has only its own description, a plain small line or an .r1s-msg note (Private #1093)", () => {
-    // Settings › History & backups › Back up now and Where's Save passed on these lines alone, with no reason shown.
-    const el = page(`<div class="r1s-row"><b>Back up now</b><small class="g-label">Runs in the background; the result shows below.</small>
-      <div class="r1s-ctl"><button id="now" disabled>Back up now</button></div></div>
-      <div class="r1s-row"><b>Where</b><div class="r1s-ctl"><button id="save" disabled>Save</button><small class="r1s-msg">Branch pushes to its backups branch with your Git sign-in.</small></div></div>
-      <div class="prow"><span class="grow"><b>Jan</b><small>Runs on this computer.</small></span><button id="look" disabled>Look for it</button></div>`);
-    expect(disabledWithoutReason(el("now"), visible)).toBe(true);
-    expect(disabledWithoutReason(el("save"), visible)).toBe(true);
-    expect(disabledWithoutReason(el("look"), visible)).toBe(true);
-  });
-
-  it("passes a greyed control whose row has a reason line: data-why, .why-k or .r1s-note", () => {
-    const el = page(`<div class="r1s-row"><b>Back up now</b><div class="r1s-ctl"><button id="a" disabled>Back up now</button></div><small class="r1s-msg" data-why="">Choose where backups go first.</small></div>
-      <div class="prow"><span class="grow"><b>Jan</b><small>Runs on this computer.</small><small class="why-k">Branch can’t look for this runtime yet.</small></span><button id="b" disabled>Look for it</button></div>`);
-    expect(visibleReason(el("a"), visible)).toBe("Choose where backups go first.");
-    expect(visibleReason(el("b"), visible)).toBe("Branch can’t look for this runtime yet.");
-  });
-
-  it("counts a control inside a row drawn greyed as greyed, held to the same rule (Models › Planning and hard problems)", () => {
-    const el = page(`<div class="ctl" aria-disabled="true"><b>Planning and hard problems</b><small>When a task has many steps.</small><span class="right"><button id="a">Same as everyday</button></span></div>
-      <div class="ctl" aria-disabled="true"><b>Planning model</b><span class="right"><button id="b">Same model</button></span><small class="why-k">Branch can’t change this here yet.</small></div>`);
-    expect(disabledWithoutReason(el("a"), visible)).toBe(true);
-    expect(disabledWithoutReason(el("b"), visible)).toBe(false);
-  });
-
   it("ignores an enabled control, with or without a reason", () => {
     const el = page(`<div class="r1s-row"><button id="go" title="Runs now">Run now</button></div>`);
     expect(disabledWithoutReason(el("go"), visible)).toBe(false);

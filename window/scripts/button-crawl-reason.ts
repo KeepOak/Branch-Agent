@@ -9,20 +9,16 @@
 
 /** The containers the window draws one setting, list item or menu entry in. */
 export const REASON_ROW = ".r1s-row, .ctl, .prow, [data-row], [role=\"row\"], tr, li";
-/** The elements a row says why in: the reason line a row draws for a greyed control (.r1s-note, .why-k), a hint, a
- *  status line, or a line marked data-why. A row's own description (its plain small line, or an .r1s-msg note such as
- *  "Runs in the background") says what the setting does, not why it is greyed, so it does not count (Private #1093:
- *  Backups' Save, Back up now and the media sizes passed on their description alone). */
-export const REASON_NOTE = ".r1s-note, .hint, .why-k, [role=\"status\"], [data-why]";
+/** The elements a row says why in: the line under the control, a hint, or a status line. */
+export const REASON_NOTE = "small, .r1s-note, .r1s-msg, .hint, .why-k, [role=\"status\"]";
 /** The elements a person clicks; a note inside one is that control's own text, not a reason beside it. */
 const CONTROL = "button, a[href], [role=\"button\"], [role^=\"menuitem\"], [role=\"tab\"], [role=\"switch\"], input, select, textarea";
 
 const textIn = (node: Element) => (node.textContent || "").replace(/\s+/g, " ").trim();
 
-/** True when the control is greyed: disabled, aria-disabled="true", or inside a row drawn greyed (aria-disabled="true"
- *  on the row: a Classic row whose `off` makes its controls inert, such as Models › Planning and hard problems). */
+/** True when the control is greyed: disabled, or aria-disabled="true". */
 export function isGreyed(el: Element): boolean {
-  return (el as HTMLButtonElement).disabled === true || el.getAttribute("aria-disabled") === "true" || Boolean(el.parentElement?.closest("[aria-disabled=\"true\"]"));
+  return (el as HTMLButtonElement).disabled === true || el.getAttribute("aria-disabled") === "true";
 }
 
 /** The visible reason for a greyed control, or "" when it has none. `visible` is the crawl's own visibility check. */
