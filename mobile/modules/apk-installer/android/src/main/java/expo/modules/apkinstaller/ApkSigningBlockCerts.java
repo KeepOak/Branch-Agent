@@ -8,18 +8,17 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
 
 /**
- * Reads X.509 signing certificates from an APK Signing Block (scheme v2 / v3 / v3.1).
+ * Reads the current X.509 signing certificate from an APK Signing Block (scheme v2 / v3 / v3.1).
  *
  * {@code PackageManager.getPackageArchiveInfo} on older Android (including API 28) does not
  * return signatures for v2-only archives, so the in-app updater cannot rely on it.
  * This parser uses only the JDK so the same class can run on a host and on minSdk 24.
+ *
+ * A present block that is truncated, empty, or malformed is unreadable: never a partial
+ * cert list, and never a v1 / {@code GET_SIGNATURES} fallback. v1 is only for archives
+ * with no APK Signing Block at all.
  */
 public final class ApkSigningBlockCerts {
   static final int EOCD_SIG = 0x06054b50;
@@ -39,15 +38,52 @@ public final class ApkSigningBlockCerts {
 
   private ApkSigningBlockCerts() {}
 
-  /** SHA-256 fingerprints (lowercase hex) of every v2/v3/v3.1 certificate, first-seen order. */
-  public static List<String> sha256Hexes(File apk) {
+  public static final class Read {
+    public static final int OK = 0;
+    public static final int ABSENT = 1;
+    public static final int UNREADABLE = 2;
+
+    public final int status;
+    public final String hex;
+
+    private Read(int status, String hex) {
+      this.status = status;
+      this.hex = hex;
+    }
+
+    public static Read ok(String hex) {
+      return new Read(OK, hex);
+    }
+
+    public static Read absent() {
+      return new Read(ABSENT, null);
+    }
+
+    public static Read unreadable() {
+      return new Read(UNREADABLE, null);
+    }
+
+    public boolean isOk() {
+      return status == OK;
+    }
+
+    public boolean isAbsent() {
+      return status == ABSENT;
+    }
+
+    public boolean isUnreadable() {
+      return status == UNREADABLE;
+    }
+  }
+
+  public static Read read(File apk) {
     if (apk == null || !apk.isFile()) {
-      return Collections.emptyList();
+      return Read.unreadable();
     }
     try (RandomAccessFile raf = new RandomAccessFile(apk, "r")) {
-      return sha256Hexes(raf);
+      return read(raf);
     } catch (IOException e) {
-      return Collections.emptyList();
+      return Read.unreadable();
     }
   }
 
@@ -69,83 +105,117 @@ public final class ApkSigningBlockCerts {
     return new String(out);
   }
 
-  static List<String> sha256Hexes(RandomAccessFile raf) throws IOException {
+  static Read read(RandomAccessFile raf) throws IOException {
     long cdOffset = centralDirectoryOffset(raf);
     if (cdOffset < 0) {
-      return Collections.emptyList();
+      return Read.unreadable();
     }
-    ByteBuffer pairs = signingBlockPairs(raf, cdOffset);
-    if (pairs == null) {
-      return Collections.emptyList();
+    if (cdOffset < 24) {
+      return Read.absent();
     }
-    Set<String> unique = new LinkedHashSet<String>();
-    while (pairs.remaining() >= 8) {
+    byte[] footer = new byte[24];
+    raf.seek(cdOffset - 24);
+    raf.readFully(footer);
+    if (!hasMagic(footer)) {
+      return Read.absent();
+    }
+    try {
+      ByteBuffer pairs = signingBlockPairs(raf, cdOffset, footer);
+      return certFromPairs(pairs);
+    } catch (IOException e) {
+      return Read.unreadable();
+    }
+  }
+
+  private static boolean hasMagic(byte[] footer) {
+    if (footer.length < 24) {
+      return false;
+    }
+    for (int i = 0; i < SIG_BLOCK_MAGIC.length; i++) {
+      if (footer[8 + i] != SIG_BLOCK_MAGIC[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static Read certFromPairs(ByteBuffer pairs) throws IOException {
+    String hex = null;
+    while (pairs.hasRemaining()) {
+      if (pairs.remaining() < 8) {
+        throw new IOException("truncated pair");
+      }
       long pairLen = pairs.getLong();
       if (pairLen < 4 || pairLen > pairs.remaining()) {
-        break;
+        throw new IOException("invalid pair length");
       }
       int id = pairs.getInt();
       int valueLen = (int) (pairLen - 4);
       byte[] value = new byte[valueLen];
       pairs.get(value);
       if (id == V2_BLOCK_ID || id == V3_BLOCK_ID || id == V31_BLOCK_ID) {
-        addSchemeCerts(value, unique);
-      }
-    }
-    return new ArrayList<String>(unique);
-  }
-
-  private static void addSchemeCerts(byte[] schemeBlock, Set<String> unique) {
-    try {
-      ByteBuffer block = ByteBuffer.wrap(schemeBlock).order(ByteOrder.LITTLE_ENDIAN);
-      ByteBuffer signers = lengthPrefixed(block);
-      while (signers.hasRemaining()) {
-        ByteBuffer signer = lengthPrefixed(signers);
-        ByteBuffer signedData = lengthPrefixed(signer);
-        lengthPrefixed(signedData); // digests
-        ByteBuffer certificates = lengthPrefixed(signedData);
-        while (certificates.hasRemaining()) {
-          byte[] encoded = lengthPrefixedBytes(certificates);
-          if (encoded.length > 0) {
-            unique.add(sha256Hex(encoded));
-          }
+        String next = firstCertOfSingleSigner(value);
+        if (hex == null) {
+          hex = next;
+        } else if (!hex.equals(next)) {
+          throw new IOException("conflicting signing schemes");
         }
       }
-    } catch (IOException ignored) {
-      // One malformed scheme must not hide certificates in another scheme.
     }
+    if (hex == null) {
+      throw new IOException("signing block has no v2/v3 signer");
+    }
+    return Read.ok(hex);
   }
 
-  private static ByteBuffer signingBlockPairs(RandomAccessFile raf, long cdOffset)
+  private static String firstCertOfSingleSigner(byte[] schemeBlock) throws IOException {
+    ByteBuffer block = ByteBuffer.wrap(schemeBlock).order(ByteOrder.LITTLE_ENDIAN);
+    ByteBuffer signers = lengthPrefixed(block);
+    if (block.hasRemaining()) {
+      throw new IOException("extra bytes after signers");
+    }
+    if (!signers.hasRemaining()) {
+      throw new IOException("no signers");
+    }
+    ByteBuffer signer = lengthPrefixed(signers);
+    if (signers.hasRemaining()) {
+      throw new IOException("second signer");
+    }
+    ByteBuffer signedData = lengthPrefixed(signer);
+    lengthPrefixed(signedData); // digests
+    ByteBuffer certificates = lengthPrefixed(signedData);
+    if (!certificates.hasRemaining()) {
+      throw new IOException("no certificates");
+    }
+    byte[] first = lengthPrefixedBytes(certificates);
+    if (first.length == 0) {
+      throw new IOException("empty certificate");
+    }
+    while (certificates.hasRemaining()) {
+      lengthPrefixedBytes(certificates);
+    }
+    return sha256Hex(first);
+  }
+
+  private static ByteBuffer signingBlockPairs(RandomAccessFile raf, long cdOffset, byte[] footer)
       throws IOException {
-    if (cdOffset < 24) {
-      return null;
-    }
-    byte[] footer = new byte[24];
-    raf.seek(cdOffset - 24);
-    raf.readFully(footer);
-    for (int i = 0; i < SIG_BLOCK_MAGIC.length; i++) {
-      if (footer[8 + i] != SIG_BLOCK_MAGIC[i]) {
-        return null;
-      }
-    }
     long size = u64(footer, 0);
     if (size < 24 || size > cdOffset - 8) {
-      return null;
+      throw new IOException("invalid signing block size");
     }
     long blockStart = cdOffset - size - 8;
     if (blockStart < 0) {
-      return null;
+      throw new IOException("signing block underflow");
     }
     byte[] headerSize = new byte[8];
     raf.seek(blockStart);
     raf.readFully(headerSize);
     if (u64(headerSize, 0) != size) {
-      return null;
+      throw new IOException("signing block size mismatch");
     }
     long pairsLen = size - 24;
     if (pairsLen < 0 || pairsLen > Integer.MAX_VALUE) {
-      return null;
+      throw new IOException("invalid pairs length");
     }
     byte[] pairs = new byte[(int) pairsLen];
     raf.seek(blockStart + 8);
@@ -247,13 +317,12 @@ public final class ApkSigningBlockCerts {
       System.err.println("usage: ApkSigningBlockCerts <apk>");
       System.exit(2);
     }
-    List<String> certs = sha256Hexes(new File(args[0]));
-    if (certs.isEmpty()) {
-      System.err.println("unreadable");
-      System.exit(1);
+    Read result = read(new File(args[0]));
+    if (result.isOk()) {
+      System.out.println(result.hex);
+      return;
     }
-    for (int i = 0; i < certs.size(); i++) {
-      System.out.println(certs.get(i));
-    }
+    System.err.println(result.isAbsent() ? "absent" : "unreadable");
+    System.exit(1);
   }
 }

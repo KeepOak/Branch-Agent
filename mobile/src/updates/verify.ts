@@ -23,10 +23,12 @@ export function assertChecksum(actual: string, expected: string): void {
   if (!checksumMatches(actual, expected)) throw new Error(CHECKSUM_MISMATCH_MESSAGE);
 }
 
-/** True when the APK is signed by a certificate this install already trusts. */
+/** True when both sides are exactly one cert and those fingerprints are the same. */
 export function certsMatch(installed: string[], apk: string[]): boolean {
-  const trusted = new Set(installed.map((value) => value.trim().toLowerCase()).filter(Boolean));
-  return apk.some((value) => trusted.has(value.trim().toLowerCase()));
+  if (installed.length !== 1 || apk.length !== 1) return false;
+  const current = installed[0].trim().toLowerCase();
+  const update = apk[0].trim().toLowerCase();
+  return Boolean(current) && current === update;
 }
 
 export function assertCertsMatch(installed: string[], apk: string[]): void {
