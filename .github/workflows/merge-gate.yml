@@ -23,7 +23,8 @@ jobs:
       contents: read
       pull-requests: read
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Leave room for coverage checks after the bounded 10-minute rate-limit wait.
+    timeout-minutes: 15
     steps:
       - name: Check out the PR merge commit and its base
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

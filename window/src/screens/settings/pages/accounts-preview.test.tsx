@@ -53,7 +53,8 @@ it("draws the preview's cards at each level, Usage by account and Linked account
   expect(cards()).toEqual(["Usage by account", "Linked accounts", "Order Branch uses them in", "When one runs out", "Your own accounts", "Coding apps on this computer"]);
   await remount();
   await mount(engine, "advanced");
-  expect(cards()).toEqual(["Usage by account", "Linked accounts", "Order Branch uses them in", "When one runs out", "Your own accounts", "Coding apps on this computer", "Terms"]);
+  // Terms waits for a later update: it shows with every Coming row, at Technical (Private #1093 item 4).
+  expect(cards()).toEqual(["Usage by account", "Linked accounts", "Order Branch uses them in", "When one runs out", "Your own accounts", "Coding apps on this computer"]);
   await remount();
   await mount(engine, "technical");
   expect(cards()).toEqual(CARDS);
@@ -68,15 +69,19 @@ it("draws Usage by account here: what Branch spent, each account, and the previe
   const usageRows = ROWS.filter((r) => r.page === "accounts" && r.card === "Usage by account" && !r.bare).map((r) => r.label);
   expect(usageRows).toEqual(["The ring bottom right", "Offer to save progress at 95%", "Asking a service what is left", "Show usage in the tray"]);
   expect(labels("Usage by account")).toEqual(["The ring bottom right", "Offer to save progress at 95%", "Show usage in the tray"]);
-  expect(labels("Linked accounts")).toEqual(["GitHub", "Gmail", "Google Calendar", "Google Drive"]);
+  // Gmail, Google Calendar, Google Drive and keepoak.com wait for a later update (their Link and Connect buttons are
+  // Coming): Regular and Advanced show only GitHub, which works (Private #1093).
+  expect(labels("Linked accounts")).toEqual(["GitHub"]);
   // The GitHub access expiry is a value on the GitHub row, as the preview shows it, not a row of its own.
   expect(host.querySelector('[data-row="accounts.github.expires"]')).toBeNull();
-  expect(labels("Your own accounts")).toContain("Your keepoak.com account");
+  expect(labels("Your own accounts")).not.toContain("Your keepoak.com account");
 });
 
 it("puts the finer account rows in Your own accounts at Advanced and the sign-in rows at Technical", async () => {
   await mount(engineOf().engine, "technical");
   expect(labels("Usage by account")).toContain("Asking a service what is left");
+  expect(labels("Linked accounts")).toEqual(expect.arrayContaining(["GitHub", "Gmail", "Google Calendar", "Google Drive"]));
+  expect(labels("Your own accounts")).toContain("Your keepoak.com account");
   const own = labels("Your own accounts");
   for (const label of ["Which account each Trunk uses", "Helpers keep their account", "Pick by what the task needs", "Fallback keys", "Resting now", "Which sign-in each request used", "Organisation", "A customer’s ChatGPT plan on a KeepOak computer"]) expect(own).toContain(label);
   const sources = labels("Where each sign-in comes from");

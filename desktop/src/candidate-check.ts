@@ -6,7 +6,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { DesktopConfig } from "./config";
-import { freeLoopbackPort, setEnginePriority, stopGateway, waitForReady } from "./gateway";
+import { releaseHeldLoopbackPort, releaseHeldPortWhenBinding, reserveLoopbackPort, setEnginePriority, stopGateway, waitForReady } from "./gateway";
 import { recordEngine } from "./engine-records";
 
 export type CandidateResult = "ready" | "exited" | "slow";
@@ -30,8 +30,15 @@ function startCandidate(cfg: DesktopConfig, engineDir: string, token: string, po
 
 /** Starts the candidate on a spare port, waits for its readiness, then stops it. The running engine is untouched. */
 export async function checkCandidateBeside(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number): Promise<CandidateResult> {
-  const port = await freeLoopbackPort();
-  const child = startCandidate(cfg, engineDir, token, port);
+  const port = await reserveLoopbackPort();
+  let child: ChildProcess;
+  try {
+    child = startCandidate(cfg, engineDir, token, port);
+  } catch (error) {
+    releaseHeldLoopbackPort(port);
+    throw error;
+  }
+  releaseHeldPortWhenBinding(child, port);
   recordEngine(cfg.dataDir, child, port, "candidate", cfg.nodePath);
   setEnginePriority(child, true);
   running = child;

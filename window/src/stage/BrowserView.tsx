@@ -476,20 +476,6 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const showChrome = Boolean(engine.sessionKey);
   return (
     <div className="browser-st">
-      {tab ? (
-        <div className="bar-br" role="toolbar" aria-label="Browser tools">
-          <button type="button" className="btn ghost sm tb-br" aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); pageMenu({ x: r.left, y: r.bottom + 6 }); }}>
-            <SIcon name="doc" small />
-            <span>Page</span>
-            <SIcon name="down" small />
-          </button>
-          <span className="tb-grow" />
-          <button type="button" className="btn ghost sm tb-br" aria-pressed={drawer} onClick={() => setDrawer((v) => !v)}>
-            <SIcon name="tools" small />
-            <span>Tools</span>
-          </button>
-        </div>
-      ) : null}
       {working && currentView.phase === "connected" ? (
         <div className="bn-br" role="note">
           <i className="dot-br" />
@@ -515,34 +501,20 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
         <div className="br-left-st">
           <div className="st7-wrap">
             <div className={control ? "st7-screen br-screen-st ctl-st" : "st7-screen br-screen-st"}>
+              {/* #1103: one Chrome-like toolbar: back, forward and reload, a full-height rounded address bar, the tabs, then
+                  the page's menu and Tools, all in one row (it was four thin bars stacked). */}
               {showChrome ? (
-                <div className="br-chrome-st">
-                  <div className="br-tabs-st" role="tablist" aria-label="Tabs">
-                    {tabs.map((t) => (
-                      <span key={t.targetId} className={t.targetId === tab?.targetId ? "br-tab-st on" : "br-tab-st"} title={mine.has(t.targetId) ? "Your tab" : `${name}'s tab`}>
-                        <button type="button" role="tab" aria-selected={t.targetId === tab?.targetId} onClick={() => setPicked(t.targetId)}>
-                          {mine.has(t.targetId) ? null : <i className="br-dot-st" />}
-                          {t.title || "New tab"}
-                        </button>
-                        <button type="button" className="br-x-st" aria-label="Close tab" onClick={() => closeTab(t.targetId)}>
-                          <SIcon name="x" small />
-                        </button>
-                      </span>
-                    ))}
-                    <button type="button" className="br-new-st" aria-label="New tab" title={opening ? "Opening a tab…" : "New tab"} disabled={opening} onClick={newTab}>
-                      +
-                    </button>
-                  </div>
+                <div className="br-chrome-st" role="toolbar" aria-label="Browser tools">
+                  <button type="button" className="br-nav-st" aria-label="Back" title="Back" disabled={!tab} onClick={() => history("back")}>
+                    <SIcon name="back" small />
+                  </button>
+                  <button type="button" className="br-nav-st" aria-label="Forward" title="Forward" disabled={!tab} onClick={() => history("forward")}>
+                    <SIcon name="forward" small />
+                  </button>
+                  <button type="button" className="br-nav-st" aria-label="Reload" title="Reload" disabled={!tab} onClick={reload}>
+                    <SIcon name="reload" small />
+                  </button>
                   <form className="br-url-st" onSubmit={(e) => { e.preventDefault(); go(shownAddress); }}>
-                    {tab ? <><button type="button" className="br-nav-st" aria-label="Back" title="Back" onClick={() => history("back")}>
-                      <SIcon name="back" small />
-                    </button>
-                    <button type="button" className="br-nav-st" aria-label="Forward" title="Forward" onClick={() => history("forward")}>
-                      <SIcon name="forward" small />
-                    </button>
-                    <button type="button" className="br-nav-st" aria-label="Reload" title="Reload" disabled={!tab} onClick={reload}>
-                      <SIcon name="reload" small />
-                    </button></> : null}
                     <SIcon name="lock" small />
                     <input
                       ref={addressInput}
@@ -571,6 +543,35 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                     />
                     <button type="submit" className="btn sm" disabled={opening || !shownAddress.trim()} title={opening ? "Opening a page…" : !shownAddress.trim() ? "Enter a website address first" : "Open this address"}>Open</button>
                   </form>
+                  <div className="br-tabs-st" role="tablist" aria-label="Tabs">
+                    {tabs.map((t) => (
+                      <span key={t.targetId} className={t.targetId === tab?.targetId ? "br-tab-st on" : "br-tab-st"} title={mine.has(t.targetId) ? "Your tab" : `${name}'s tab`}>
+                        <button type="button" role="tab" aria-selected={t.targetId === tab?.targetId} onClick={() => setPicked(t.targetId)}>
+                          {mine.has(t.targetId) ? null : <i className="br-dot-st" />}
+                          {t.title || "New tab"}
+                        </button>
+                        <button type="button" className="br-x-st" aria-label="Close tab" onClick={() => closeTab(t.targetId)}>
+                          <SIcon name="x" small />
+                        </button>
+                      </span>
+                    ))}
+                    <button type="button" className="br-new-st" aria-label="New tab" title={opening ? "Opening a tab…" : "New tab"} disabled={opening} onClick={newTab}>
+                      +
+                    </button>
+                  </div>
+                  {tab ? (
+                    <>
+                      <button type="button" className="btn ghost sm tb-br" aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); pageMenu({ x: r.left, y: r.bottom + 6 }); }}>
+                        <SIcon name="doc" small />
+                        <span>Page</span>
+                        <SIcon name="down" small />
+                      </button>
+                      <button type="button" className="btn ghost sm tb-br" aria-pressed={drawer} onClick={() => setDrawer((v) => !v)}>
+                        <SIcon name="tools" small />
+                        <span>Tools</span>
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
               {page}

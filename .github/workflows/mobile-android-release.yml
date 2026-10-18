@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
-      contents: read
+      contents: write
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
       should_attach: ${{ steps.resolve.outputs.should_attach }}
@@ -117,6 +117,48 @@ jobs:
             "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0"
+
+      # Same package Gradle ndkVersion asks for (React Native 0.86 / Expo 57: 27.1.12297006).
+      # Install it here so a flaky Google download is retried without restarting the Gradle build.
+      - name: Cache Android NDK
+        id: ndk-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.1.12297006
+          key: android-ndk-27.1.12297006
+
+      - name: Install Android NDK
+        env:
+          NDK_PACKAGE: ndk;27.1.12297006
+        run: |
+          set -euo pipefail
+          ndk_dir="${ANDROID_SDK_ROOT}/ndk/27.1.12297006"
+          if [[ -f "${ndk_dir}/source.properties" ]]; then
+            echo "${NDK_PACKAGE} already present"
+            exit 0
+          fi
+          yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --licenses >/dev/null || [[ "${PIPESTATUS[1]}" -eq 0 ]]
+          attempt=1
+          max_attempts=3
+          delay=15
+          while (( attempt <= max_attempts )); do
+            echo "Installing ${NDK_PACKAGE} (attempt ${attempt}/${max_attempts})"
+            if sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --install "${NDK_PACKAGE}" \
+              && [[ -f "${ndk_dir}/source.properties" ]]; then
+              echo "Installed ${NDK_PACKAGE}"
+              exit 0
+            fi
+            if (( attempt == max_attempts )); then
+              echo "Failed to install ${NDK_PACKAGE} after ${max_attempts} attempts" >&2
+              exit 1
+            fi
+            echo "NDK download failed; retrying in ${delay}s" >&2
+            rm -rf "${ndk_dir}"
+            sleep "${delay}"
+            delay=$((delay * 2))
+            attempt=$((attempt + 1))
+          done
 
       - name: Install the phone app
         working-directory: mobile
@@ -257,7 +299,17 @@ jobs:
             "${APK_PATH}#${APK_NAME}" \
             "${SHA256_PATH}#${SHA256_NAME}" \
             "${VERSIONCODE_PATH}#${VERSIONCODE_NAME}" \
+            --clobber \
             --repo "${GITHUB_REPOSITORY}"
+          stale="$(
+            gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name' \
+              | node mobile/scripts/android-release.mjs --stale-versioncode-assets "$APK_NAME" "$VERSIONCODE_NAME" \
+              || true
+          )"
+          while IFS= read -r name; do
+            [[ -z "$name" ]] && continue
+            gh release delete-asset "$TAG" "$name" --repo "${GITHUB_REPOSITORY}" --yes
+          done <<< "$stale"
 
       - name: Remove the keystore
         if: always()

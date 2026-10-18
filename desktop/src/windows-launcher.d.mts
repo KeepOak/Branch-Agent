@@ -12,8 +12,10 @@ export interface WindowsLauncherFs {
 }
 export declare function windowsLauncherScript(): string;
 export declare function windowsLaunchTarget(root: string, fs: WindowsLauncherFs): string | undefined;
+export declare function windowsUserWorkingDirectory(env?: NodeJS.ProcessEnv): string;
 export declare function runWindowsLauncher(options: { root: string; args?: string[]; fs: WindowsLauncherFs;
-  spawn: (command: string, args: string[], options: { cwd: string; detached: boolean; stdio: "ignore"; windowsHide: boolean }) => unknown }): string | undefined;
+  spawn: (command: string, args: string[], options: { cwd: string; detached: boolean; stdio: "ignore"; windowsHide: boolean }) => unknown;
+  env?: NodeJS.ProcessEnv }): string | undefined;
 export declare function windowsShortcutNeedsLauncher(target: string | undefined, root: string | undefined): boolean;
 export declare function windowsLauncherSource(): string;
 export declare function windowsLauncherCompiler(env: NodeJS.ProcessEnv, exists: (file: string) => boolean): string;

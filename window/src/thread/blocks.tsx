@@ -28,6 +28,9 @@ import { computerStepDetail, isComputerToolName, isScreenToolName } from "./comp
 import { fullOutput, type Attachment, type Block, type FileChange } from "./model";
 import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
 import { withMentions } from "../rooms/RoomMessage";
+import { ConnectModelNotice } from "../composer/ConnectModelNotice";
+import { isNoUsableModelError } from "../composer/connect-model";
+import { friendlyError } from "../connect/friendly-error";
 
 type Of<K extends Block["kind"]> = Extract<Block, { kind: K }>;
 
@@ -79,13 +82,14 @@ export function SteeredNote({ name, text, attachments }: { name: string; text: s
 /** Your message that didn't go (§4.2.2 Parity adds "Not sent"): it stays, with a red pill, the reason, Try again
  *  and Discard. */
 export function NotSent({ text, reason, onRetry, onDiscard }: { text: string; reason: string; onRetry: () => void; onDiscard: () => void }) {
-  const why = shortReason(reason.replace(/^\s*Error:\s*/i, ""));
+  // Visible copy goes through the issue 1700 helper so a stranger never sees a stack, Error: prefix, JSON, status, id or method name.
+  const why = friendlyError(reason);
   return (
     <div className="queued-msg not-sent" data-testid="not-sent">
       <UserMessage block={{ kind: "user", key: "not-sent", text }} />
       <div className="send-status mine">
         <span className="pill bad"><i />Not sent</span>
-        {why ? <span className="send-why" title={reason}>{why}</span> : null}
+        {why ? <span className="send-why" title={why}>{why}</span> : null}
         <button type="button" className="btn ghost sm" onClick={onRetry}>Try again</button>
         <button type="button" className="btn ghost sm" title="Removes this copy." onClick={onDiscard}>Discard</button>
       </div>
@@ -215,7 +219,7 @@ function FileChangeRow({ change }: { change: FileChange }) {
     }
     void engine.request<{ file?: { content?: string } }>("sessions.files.get", { sessionKey, path: change.path }).then(
       (result) => setOpened(typeof result.file?.content === "string" ? result.file.content : change.diff ?? ""),
-      (error: unknown) => toast(error instanceof Error ? error.message : String(error)),
+      (error: unknown) => toast(friendlyError(error)),
     );
   };
   return (
@@ -377,15 +381,8 @@ export function isScreenControlSetupError(message: string): boolean {
   return message.includes(SCREEN_CONTROL_SWITCH);
 }
 
-/** A run that had no usable model account: the engine's missing-auth errors and a provider's 401 for a request sent without one. */
-const NO_MODEL_ACCOUNT = /No API key (?:found|resolved) for provider|Missing bearer or basic authentication|no usable model account/i;
-
 export function isModelAccountMissingError(message: string): boolean {
-  return NO_MODEL_ACCOUNT.test(message);
-}
-
-function openAccounts(): void {
-  window.dispatchEvent(new CustomEvent("branch:navigate-settings", { detail: { page: "accounts" } }));
+  return isNoUsableModelError(message);
 }
 
 function openScreenControlSwitch(): void {
@@ -398,12 +395,13 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
   const screenSwitch = isScreenControlSetupError(block.message);
   const noAccount = isModelAccountMissingError(block.message);
   const level = useLevel();
+  if (noAccount) return <ConnectModelNotice />;
   return (
     <div className="strip indent" data-testid="run-error" role="alert">
       <div className="strip-line">
         <Icon d={ICONS.warn} />
         <span>
-          {name} couldn’t finish: {noAccount ? "no model account is signed in for this Trunk." : shortReason(block.message)}
+          {name} couldn’t finish: {shortReason(block.message)}
         </span>
         <button type="button" className="icon-sm" aria-label="Dismiss" title="Dismiss" onClick={onDismiss}>
           <Icon d={ICONS.x} />
@@ -419,17 +417,14 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
         </details>
       ) : null}
       <div className="row-buttons">
-        <button type="button" className="btn sm ghost" onClick={() => void copyText(block.message, toast)}>
-          Copy error
-        </button>
+        {shows(level, "technical") ? (
+          <button type="button" className="btn sm ghost" onClick={() => void copyText(block.message, toast)}>
+            Copy error
+          </button>
+        ) : null}
         {screenSwitch ? (
           <button type="button" className="btn sm" data-testid="open-screen-control" onClick={openScreenControlSwitch}>
             Open that switch
-          </button>
-        ) : null}
-        {noAccount ? (
-          <button type="button" className="btn sm" data-testid="open-accounts" onClick={openAccounts}>
-            Sign in an account
           </button>
         ) : null}
         <button type="button" className="btn sm ghost" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); window.dispatchEvent(new CustomEvent(CHECK_STATUS_EVENT, { detail: { left: r.left, right: r.right, top: r.top } })); }}>

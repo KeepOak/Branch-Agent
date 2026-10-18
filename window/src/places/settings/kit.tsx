@@ -8,9 +8,10 @@ import { errorText, record, type RecordValue } from "./adapter";
 import { configStore, pathKeys, type ConfigPath } from "./config-store";
 import { Icon } from "../../shell/icons";
 import { PIN_MAX, type Pins } from "./pins";
-import { isDevNote, shownWhy } from "../../shell/shown-why";
+import { isComingWhy, isDevNote, shownWhy } from "../../shell/shown-why";
 import { plainCopy } from "./internals";
 import "./kit.css";
+import { plainError, plainText } from "../../shell/plain-error";
 
 /** 0 = Regular, 1 = Advanced, 2 = Technical. */
 export type Lv = 0 | 1 | 2;
@@ -192,9 +193,20 @@ function PinBtn({ title }: { title: string }) {
   );
 }
 
+/** `coming`: the row waits for a later update (its `off` names what the engine still lacks). */
+type CtlProps = Parameters<typeof CtlRow>[0] & { coming?: boolean };
+
+/** One settings row (CtlRow). A Coming row (`coming`, or an `off` that says it "comes in a later update") shows only at
+ *  Technical, like every Coming row (Private #1093 item 4, screens/settings/rows.ts COMING_FROM). A row greyed for a
+ *  real condition shows at every level with its reason. */
+export function Ctl({ coming, ...props }: CtlProps) {
+  const level = useLevel();
+  return (coming || isComingWhy(props.off)) && level < 2 ? null : <CtlRow {...props} />;
+}
+
 /** One settings row: title, sub-line and the control on the right. `off` greys the control and says why on its own line.
  *  Every row with a plain title has a pin, except General's Pinned list itself (noPin). */
-export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, after, noPin }: {
+function CtlRow({ title, sub, help, children, off, keep, icon, stack, id, after, noPin }: {
   title: ReactNode; sub?: ReactNode; help?: string; children?: ReactNode; off?: string; keep?: Keep; icon?: ReactNode; stack?: boolean; id?: string; after?: ReactNode; noPin?: boolean;
 }) {
   const level = useLevel();
@@ -202,7 +214,16 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   const locked = useContext(LockContext);
   const why = off ?? (locked ? NOSETUP : undefined);
   const name = typeof title === "string" ? title : id;
+  // A row greyed by a real condition ("Turn on … first", "needs a backup folder") says what to do in one visible line
+  // (Private #1093 item 7). A developer note stays out of sight: that row is Coming, and Coming shows only at Technical.
   const shown = shownWhy(why);
+  const whyId = useId();
+  const right = useRef<HTMLSpanElement>(null);
+  // The greyed controls inside name that line with aria-describedby, so a screen reader says why too.
+  useEffect(() => {
+    const controls = right.current ? [...right.current.querySelectorAll<HTMLElement>("button, input, select, textarea, [role=switch]")] : [];
+    for (const el of controls) { if (shown) el.setAttribute("aria-describedby", whyId); else if (el.getAttribute("aria-describedby") === whyId) el.removeAttribute("aria-describedby"); }
+  });
   const raw = sub ?? shown;
   const line = typeof raw === "string" ? plainCopy(raw, level) : raw;
   useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", help ? plainCopy(help, level) : help);
@@ -210,9 +231,9 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   return (
     <div className={`ctl${why ? " off-k" : ""}${stack ? " stack-k" : ""}`} data-row={name} aria-disabled={why ? true : undefined}>
       <b>{icon}{title}{typeof title === "string" && !noPin ? <PinBtn title={title} /> : null}</b>
-      {children ? <span className="right" inert={why ? true : undefined}>{children}</span> : null}
-      {line || kept ? <small>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
-      {shown && sub ? <small className="why-k">{shown}</small> : null}
+      {children ? <span className="right" ref={right} inert={why ? true : undefined}>{children}</span> : null}
+      {line || kept ? <small id={shown && !sub ? whyId : undefined}>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
+      {shown && sub ? <small className="why-k" id={whyId}>{shown}</small> : null}
       {after}
     </div>
   );
@@ -302,8 +323,17 @@ export function Tabs({ tabs, value, onChange, label }: { tabs: Opt[]; value: str
 }
 
 export type Tone = "ok" | "warn" | "bad" | "idle";
+/** A bad status's words: a whole string through plainError(); a line built from parts ("Branch ", a version, " keeps
+ *  running.") part by part through plainText(), so a plain part like a version number stays as it is. */
+function plainNode(node: ReactNode): ReactNode {
+  if (typeof node === "string") return plainError(node);
+  return Array.isArray(node) ? node.map((part) => (typeof part === "string" ? plainText(part) : part)) : node;
+}
 /** The status box at the top of a page: a dot, a bold line and what it means. */
-export function Status({ tone = "ok", title, help, children, action }: { tone?: Tone; title: ReactNode; help?: string; children?: ReactNode; action?: ReactNode }) {
+export function Status({ tone = "ok", title: rawTitle, help, children: rawChildren, action }: { tone?: Tone; title: ReactNode; help?: string; children?: ReactNode; action?: ReactNode }) {
+  // A failure's words reach a person plain at Regular (Private #1089): no engine sentence, code, stack or path.
+  const title = tone === "bad" ? plainNode(rawTitle) : rawTitle;
+  const children = tone === "bad" ? plainNode(rawChildren) : rawChildren;
   const helpKey = useId();
   useHelpEntry(helpKey, typeof title === "string" ? title : "Status", help);
   return (

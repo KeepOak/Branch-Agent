@@ -1,0 +1,2 @@
+window:src/screens/find/FindAnything.test.tsx
+window:src/screens/settings/pages/trunks-live.test.tsx

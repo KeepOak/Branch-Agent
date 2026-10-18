@@ -1,6 +1,7 @@
 // Automations › Scheduled (§4.6.3.1; preview 41-placesap p30-sched, p35-prop): describe-and-Add, the proposal
 // card, the schedule rows with their menu and sheet, then Ideas and the sections below. All on cron.* methods.
 import { useEffect, useState } from "react";
+import { plainError } from "../../shell/plain-error";
 import type { WindowEngine } from "../../connect/engine";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { shows, type Level } from "../../places-nav/level";
@@ -98,7 +99,7 @@ export function ScheduledTab({ engine, level, openConversation }: Props) {
     }} />}
     {engine.connected === false ? <div className="au-error" role="alert">Gateway is not connected. Automations will retry when it reconnects. <button type="button" className="btn sm" disabled={!engine.reconnect} title={engine.reconnect ? undefined : "This connection cannot be retried from this window."} onClick={() => engine.reconnect?.()}>Retry</button></div> : <>
       {state.loading && !data && <p className="au-hint" role="status">Reading automations…</p>}
-      {state.error && <div className="au-error" role="alert">{state.error} <button type="button" className="btn sm" disabled={state.loading} onClick={() => void state.refresh()}>Retry</button></div>}
+      {state.error && <div className="au-error" role="alert">{plainError(state.error)} <button type="button" className="btn sm" disabled={state.loading} onClick={() => void state.refresh()}>Retry</button></div>}
     </>}
     {adv && sum && sum.count > 0 && <p className="au-hint au-summary">{sum.count} automation{sum.count === 1 ? "" : "s"} · <span className={sum.failing ? "au-warn" : ""}>{sum.failing} failing</span>{sum.next ? ` · next run ${sum.next}` : ""}</p>}
     {adv && data && data.jobs.some(j => !isTrigger(j)) && <FindBar find={find} set={setFind} />}

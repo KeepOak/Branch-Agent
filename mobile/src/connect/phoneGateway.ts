@@ -23,6 +23,17 @@ import {
   type GatewayProtocolSocketHandlers,
   type HelloOk,
 } from '@branch/gateway-client/browser';
+import { utf8ToBytes } from './base64url';
+import {
+  coerceRelayBytes,
+  decryptPairingFrame,
+  encryptPairingFrame,
+  pairingRelayKey,
+  setPairingRandomBytes,
+  utf8FromRelayBytes,
+  type PairingRandomBytes,
+} from '../pairing/relayFrames';
+import { isRelayPairingUrl } from '../pairing/setupCode';
 
 export const OPERATOR_ROLE = 'operator';
 /**
@@ -59,6 +70,10 @@ export type PhoneGatewayOptions = {
   appVersion: string;
   /** From the pairing code; only sent until the engine has issued this phone a device token. */
   bootstrapToken?: string;
+  /** Setup-code session key; when present, every gateway frame is AES-256-GCM on the relay hop. */
+  relayKey?: string;
+  /** Platform RNG for relay nonces. The app passes expo-crypto `getRandomBytes`. */
+  randomBytes?: PairingRandomBytes;
   loadIdentity: () => Promise<GatewayBrowserDeviceIdentity>;
   tokenStore: GatewayBrowserDeviceTokenStore;
   createRequestId: () => string;
@@ -85,14 +100,41 @@ export function phoneClient(platform: Platform, appVersion: string): ConnectPara
 
 function webSocketFor(url: string, handlers: GatewayProtocolSocketHandlers): GatewayProtocolSocket {
   const socket = new WebSocket(url);
+  socket.binaryType = 'arraybuffer';
   socket.onopen = () => handlers.open();
-  socket.onmessage = (event) => handlers.message(String(event.data ?? ''));
+  socket.onmessage = (event) => handlers.message(event.data as string);
   socket.onclose = (event) => handlers.close(event.code, event.reason);
   socket.onerror = () => handlers.error(new Error('websocket error'));
   return {
     isOpen: () => socket.readyState === WebSocket.OPEN,
     send: (data) => socket.send(data),
     close: (code, reason) => socket.close(code, reason),
+  };
+}
+
+function encryptingSocket(raw: GatewayProtocolSocket, key: Uint8Array): GatewayProtocolSocket {
+  return {
+    isOpen: () => raw.isOpen(),
+    send: (data) => {
+      const envelope = encryptPairingFrame(key, utf8ToBytes(String(data)));
+      (raw.send as (payload: string | Uint8Array) => void)(envelope);
+    },
+    close: (code, reason) => raw.close(code, reason),
+  };
+}
+
+function decryptingHandlers(key: Uint8Array, handlers: GatewayProtocolSocketHandlers): GatewayProtocolSocketHandlers {
+  return {
+    open: () => handlers.open(),
+    close: (code, reason) => handlers.close(code, reason),
+    error: (error) => handlers.error(error),
+    message: (data) => {
+      try {
+        handlers.message(utf8FromRelayBytes(decryptPairingFrame(key, coerceRelayBytes(data))));
+      } catch (error) {
+        handlers.error(error instanceof Error ? error : new Error('Pairing relay frame is too short.'));
+      }
+    },
   };
 }
 
@@ -122,14 +164,26 @@ export class PhoneGateway {
   constructor(private readonly opts: PhoneGatewayOptions) {
     this.client = phoneClient(opts.platform, opts.appVersion);
     this.bootstrapToken = opts.bootstrapToken;
+    if (opts.randomBytes) setPairingRandomBytes(opts.randomBytes);
     this.auth = new GatewayBrowserDeviceAuthLifecycle({ loadIdentity: opts.loadIdentity, tokenStore: opts.tokenStore });
     const pairingRetryMs = opts.pairingRetryMs ?? PAIRING_RETRY_MS;
     const createSocket = opts.createSocket ?? webSocketFor;
+    const relayKey = pairingRelayKey(opts.relayKey);
     this.protocol = new GatewayProtocolClient<GatewayBrowserDeviceAuthPlan>({
       createSocket: (handlers) => {
         // The texts belong to the connection that carried them.
         this.chatStream.clear();
-        return createSocket(opts.url, handlers);
+        if (isRelayPairingUrl(opts.url) && !relayKey) {
+          throw new Error('Pairing relay key is invalid.');
+        }
+        if (!relayKey) {
+          return createSocket(opts.url, {
+            ...handlers,
+            message: (data) =>
+              handlers.message(typeof data === 'string' ? data : utf8FromRelayBytes(coerceRelayBytes(data))),
+          });
+        }
+        return encryptingSocket(createSocket(opts.url, decryptingHandlers(relayKey, handlers)), relayKey);
       },
       createRequestId: opts.createRequestId,
       buildConnectPlan: ({ nonce, challengeTs }) =>
@@ -182,6 +236,10 @@ export class PhoneGateway {
   }
 
   start(): void {
+    if (isRelayPairingUrl(this.opts.url) && !pairingRelayKey(this.opts.relayKey)) {
+      this.opts.onStatus({ phase: 'failed', message: 'Pairing relay key is invalid.' });
+      return;
+    }
     this.opts.onStatus({ phase: 'connecting' });
     this.protocol.start();
   }

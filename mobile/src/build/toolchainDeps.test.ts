@@ -25,6 +25,10 @@ it("reads a YAML coverage config with js-yaml 4, and sprintf-js is gone", async 
   expect(() => require.resolve("sprintf-js")).toThrow();
   const dir = mkdtempSync(join(tmpdir(), "nycrc-"));
   try {
+    // loadNycConfig rebinds cwd to the nearest parent package.json before it
+    // searches for .nycrc.yaml. A fixture without its own package.json is
+    // skipped whenever tmpdir sits inside another project, and reporter stays unset.
+    writeFileSync(join(dir, "package.json"), "{}\n");
     writeFileSync(join(dir, ".nycrc.yaml"), "reporter:\n  - text\nall: true\n");
     const { loadNycConfig } = require("@istanbuljs/load-nyc-config");
     const config = await loadNycConfig({ cwd: dir });

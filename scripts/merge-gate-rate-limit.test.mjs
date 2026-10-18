@@ -94,6 +94,120 @@ test('isRateLimitError matches installation, 403/429, and secondary limits', () 
   assert.equal(isRateLimitError({ message: 'Failed checks: build: failure' }), false);
 });
 
+test('rateLimitSleepSeconds adds a reset buffer only when asked, and still prefers retry-after', () => {
+  assert.equal(rateLimitSleepSeconds({
+    error: 'x-ratelimit-reset: 1100',
+    nowSeconds: 1_000,
+    bufferSeconds: 15,
+  }), 115);
+  assert.equal(rateLimitSleepSeconds({
+    error: 'Retry-After: 17\nHTTP 403',
+    nowSeconds: 1_000,
+    bufferSeconds: 15,
+  }), 17);
+  assert.equal(rateLimitSleepSeconds({
+    error: 'gh: API rate limit exceeded for installation (HTTP 403)',
+    nowSeconds: 1_000,
+    rateLimit: { resources: { core: { remaining: 0, reset: 1_040 } } },
+    bufferSeconds: 15,
+    maxSleep: 3600,
+  }), 55);
+  assert.equal(rateLimitSleepSeconds({
+    error: 'x-ratelimit-reset: 10000',
+    nowSeconds: 1_000,
+    bufferSeconds: 15,
+    maxSleep: 60,
+  }), 60);
+});
+
+test('withRateLimitRetry waits out a rate-limit 403 then returns, and fails other statuses immediately', () => {
+  const start = 1_700_000_000_000;
+  let now = start;
+  const sleeps = [];
+  let calls = 0;
+  const value = withRateLimitRetry(() => {
+    calls += 1;
+    if (calls === 1) {
+      throw Object.assign(new Error('gh: API rate limit exceeded for installation (HTTP 403)'), {
+        httpStatus: 403,
+        headers: { 'x-ratelimit-reset': String(start / 1000 + 40), 'x-ratelimit-remaining': '0' },
+        body: '{"message":"API rate limit exceeded"}',
+      });
+    }
+    return 'ok';
+  }, {
+    sleep: (seconds) => { sleeps.push(seconds); now += seconds * 1000; },
+    now: () => now,
+    startedAt: start,
+    budgetSeconds: 3600,
+    maxSleep: 3600,
+    bufferSeconds: 15,
+    fetchRateLimit: () => ({ resources: { core: { remaining: 0, reset: start / 1000 + 90 } } }),
+    retryTransient: false,
+    log: () => {},
+  });
+  assert.equal(value, 'ok');
+  assert.deepEqual(sleeps, [55]);
+
+  for (const status of [403, 404, 500]) {
+    const immediate = [];
+    const body = status === 403 ? '{"message":"Resource not accessible by integration"}' : '';
+    assert.throws(() => withRateLimitRetry(() => {
+      throw Object.assign(new Error(`HTTP ${status}`), {
+        httpStatus: status,
+        headers: status === 403 ? { 'x-ratelimit-remaining': '12' } : {},
+        body,
+      });
+    }, {
+      sleep: (seconds) => immediate.push(seconds),
+      now: () => 0,
+      startedAt: 0,
+      budgetSeconds: 3600,
+      maxSleep: 3600,
+      retryTransient: false,
+    }), new RegExp(String(status)));
+    assert.deepEqual(immediate, []);
+  }
+});
+
+test('withRateLimitRetry fails when a rate limit outlasts the wait budget', () => {
+  const start = 1_700_000_000_000;
+  let now = start;
+  const sleeps = [];
+  assert.throws(() => withRateLimitRetry(() => {
+    throw Object.assign(new Error('gh: API rate limit exceeded for installation (HTTP 403)'), { httpStatus: 403 });
+  }, {
+    sleep: (seconds) => { sleeps.push(seconds); now += seconds * 1000; },
+    now: () => now,
+    startedAt: start,
+    budgetSeconds: 100,
+    maxSleep: 100,
+    bufferSeconds: 15,
+    fetchRateLimit: () => ({ resources: { core: { remaining: 0, reset: start / 1000 + 10_000 } } }),
+    retryTransient: false,
+    log: () => {},
+  }), /rate limit exceeded/);
+  const waited = sleeps.reduce((sum, seconds) => sum + seconds, 0);
+  assert.ok(waited <= 100, `waited ${waited}s, over the 100s cap`);
+  assert.ok(sleeps.length >= 1);
+});
+
+test('a coverage miss is not a rate limit and is not retried', () => {
+  const message = 'Uncovered changed test: window/src/missing.test.tsx';
+  assert.equal(isRateLimitError(new Error(message)), false);
+  const sleeps = [];
+  assert.throws(() => withRateLimitRetry(() => {
+    throw new Error(message);
+  }, {
+    sleep: (seconds) => sleeps.push(seconds),
+    now: () => 0,
+    startedAt: 0,
+    budgetSeconds: 3600,
+    retryTransient: false,
+  }), /Uncovered changed test/);
+  assert.deepEqual(sleeps, []);
+});
+
 test('rateLimitSleepSeconds prefers retry-after, then reset, then jittered backoff', () => {
   assert.equal(rateLimitSleepSeconds({
     error: 'Retry-After: 17\nHTTP 403',
