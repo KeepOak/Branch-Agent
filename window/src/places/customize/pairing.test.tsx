@@ -43,9 +43,11 @@ const click = async (text: string) => {
   });
 };
 
+const button = (text: string, scope: ParentNode = host) => [...scope.querySelectorAll("button")].find((el) => el.textContent?.trim() === text);
+
 describe("Pair a phone", () => {
   it("shows a six-character confirm code instead of the raw setup code", async () => {
-    await open({
+    const request = await open({
       "device.pair.setupCode": {
         setupId: "setup-123",
         setupCode: "eyJ1cmwiOiJ3c3M6Ly9leGFtcGxlIiwiYm9vdHN0cmFwVG9rZW4iOiJ4In0",
@@ -54,9 +56,31 @@ describe("Pair a phone", () => {
       },
     });
     await click("Make the code");
+    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { includeQr: true });
     expect(host.querySelector("[data-testid=pair-code] .copy-token-text")?.textContent).toBe("F2S4KP");
     expect(host.textContent).not.toContain("eyJ1cmwiOiJ3c3M6Ly9leGFtcGxl");
     expect(host.textContent).toContain("Check that both screens show this code");
+  });
+
+  it("Private #1103: a very long setup code and link each sit on one truncating line with their own Copy button", async () => {
+    const code = "eyJ1cmwiOiJ3c3M6Ly9" + "Q".repeat(300);
+    const link = "branch://join?code=" + code;
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const request = await open({
+      "device.pair.setupCode": { setupId: "s1", setupCode: code, qrDataUrl: "", joinUrl: link },
+    });
+    await click("Make the code");
+    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { includeQr: true });
+    const shown = host.querySelector<HTMLElement>("[data-testid=pair-code] .copy-token-text")!;
+    expect(shown.textContent).toBe("9M36D8");
+    expect(shown.title).toBe("9M36D8");
+    expect(host.querySelector<HTMLElement>("[data-testid=pair-link] .copy-token-text")!.title).toBe(link);
+    await click("Copy code");
+    expect(writeText).toHaveBeenCalledWith("9M36D8");
+    expect(button("Copied")).toBeTruthy();
+    await click("Copy link");
+    expect(writeText).toHaveBeenLastCalledWith(link);
   });
 
   it("derives the confirm code from setupId when the engine omits it", async () => {
