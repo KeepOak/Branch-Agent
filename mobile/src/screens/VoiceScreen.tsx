@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, Text, View, type TextProps } from 'react-native';
+import { Image, Pressable, Text, View, type TextProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Approval, ApprovalDecision } from '../approvals/approvals';
 import { actionWords } from '../approvals/approvalWords';
@@ -8,8 +8,16 @@ import type { EngineLink } from '../pairing/pairingSession';
 import { useTheme } from '../theme/ThemeProvider';
 import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { voice, voiceRadius, voiceSans, voiceType, type VoiceTypeName } from '../voice/chrome';
-import { later, shows, type Level } from '../voice/level';
+import { shows, type Level } from '../voice/level';
 import { spokenAnswer } from '../voice/spokenAnswer';
+import {
+  PREVIEW_VOICES,
+  VOICE_EVERYWHERE,
+  selectedVoiceId,
+  speaksEverywhere,
+  voicesFromStatus,
+  type VoiceChoice,
+} from '../voice/voices';
 import {
   NOT_CONNECTED,
   OFFLINE_VOICE,
@@ -29,7 +37,23 @@ function VoiceText({
   return <Text {...rest} style={[voiceType[size], { color, fontFamily: voiceSans, fontWeight: weight ?? voiceType[size].fontWeight }, style]} />;
 }
 
+/** Branch Agent uses the real oak-leaf logo; other Trunks keep their letter or emoji. */
+function isBranchAgent(row: ChatRow): boolean {
+  return row.agentId === 'main' || row.title === 'Branch Agent';
+}
+
 function VoiceAvatar({ row, size }: { row: ChatRow; size: number }) {
+  if (isBranchAgent(row)) {
+    return (
+      <Image
+        testID="voice-avatar"
+        accessibilityLabel="Branch Agent"
+        source={require('../../assets/icon.png')}
+        accessibilityIgnoresInvertColors
+        style={{ width: size, height: size, borderRadius: size / 2 }}
+      />
+    );
+  }
   return (
     <View
       testID="voice-avatar"
@@ -133,8 +157,9 @@ function sayWord(ask: Approval): string {
 
 /**
  * Android Voice: full-screen talk with this Trunk. States Listening, Thinking, Speaking, Muted,
- * Not connected; the transcript; mute, speaker, end and keyboard. Black and white with the
- * desktop's type, glass and radii. Unfinished features use later() and only show at Advanced+.
+ * Not connected; the transcript; mute, speaker, end and keyboard. At Advanced the ⋯ menu is the
+ * r50 Oak/Birch voice picker (tts.setPersona). Black and white with the desktop's type, glass
+ * and radii, and the real Branch logo for Branch Agent.
  */
 export function VoiceScreen({
   row,
@@ -168,6 +193,9 @@ export function VoiceScreen({
   const [muted, setMuted] = useState(false);
   const [speakerOff, setSpeakerOff] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [voices, setVoices] = useState<VoiceChoice[]>(PREVIEW_VOICES);
+  const [chosen, setChosen] = useState('oak');
+  const [said, setSaid] = useState<string | null>(null);
   const call = useRef<VoiceCall | null>(null);
   const ask = waitingAsk(pending, row.key, now);
   const askRef = useRef(ask);
@@ -222,6 +250,34 @@ export function VoiceScreen({
       if (call.current === next) call.current = null;
     };
   }, [link, row.key, online]);
+
+  useEffect(() => {
+    if (!extra || !online) return;
+    let live = true;
+    void link
+      .request('tts.status', {})
+      .then((data) => {
+        if (!live) return;
+        const next = voicesFromStatus(data);
+        setVoices(next);
+        setChosen(selectedVoiceId(data, next));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [extra, online, link]);
+
+  const pickVoice = async (next: VoiceChoice) => {
+    try {
+      await link.request('tts.setPersona', { persona: next.id });
+      setChosen(next.id);
+      setSaid(speaksEverywhere(next.label));
+      setMenuOpen(false);
+    } catch {
+      // Keep the sheet open when the computer refused the change.
+    }
+  };
 
   const broken = !online || state === 'error';
   const word = broken ? NOT_CONNECTED : voiceWord(state, muted);
@@ -306,6 +362,11 @@ export function VoiceScreen({
         {note ? (
           <VoiceText testID="voice-note" size="fs13" color={voice.ink3} style={{ marginTop: space.sm, textAlign: 'center' }}>
             {note}
+          </VoiceText>
+        ) : null}
+        {said && !broken ? (
+          <VoiceText testID="voice-said" size="fs13" color={voice.ink3} style={{ marginTop: space.sm, textAlign: 'center' }}>
+            {said}
           </VoiceText>
         ) : null}
 
@@ -413,8 +474,40 @@ export function VoiceScreen({
             <VoiceText size="fs17" weight="600" style={{ marginBottom: space.sm }}>
               Voice
             </VoiceText>
-            <VoiceText testID="voice-later" size="fs15" color={voice.ink3}>
-              {later('Voice')}
+            <View testID="voice-choices" accessibilityRole="radiogroup" accessibilityLabel="Voice">
+              {voices.map((item) => {
+                const on = chosen === item.id;
+                return (
+                  <Pressable
+                    key={item.id}
+                    testID={`voice-choice-${item.label}`}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on, checked: on }}
+                    accessibilityLabel={item.label}
+                    onPress={() => pickVoice(item)}
+                    style={({ pressed }) => ({
+                      minHeight: layout.rowMinHeight,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingVertical: space.sm,
+                      opacity: pressed ? 0.7 : 1,
+                    })}
+                  >
+                    <VoiceText size="fs17" weight="600">
+                      {item.label}
+                    </VoiceText>
+                    {on ? (
+                      <VoiceText testID={`voice-choice-on-${item.label}`} size="fs17">
+                        ✓
+                      </VoiceText>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+            <VoiceText testID="voice-everywhere" size="fs13" color={voice.ink3} style={{ marginTop: space.sm }}>
+              {VOICE_EVERYWHERE}
             </VoiceText>
           </View>
         </View>
