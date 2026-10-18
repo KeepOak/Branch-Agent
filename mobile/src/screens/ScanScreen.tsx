@@ -1,10 +1,10 @@
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { StatusBar } from 'expo-status-bar';
 import type { ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Image, Linking, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { listNearbyBranches, NEARBY_LOOKING, NEARBY_NONE } from '../pairing/nearbyBranches';
+import { listNearbyBranches, NEARBY_NONE } from '../pairing/nearbyBranches';
 import { decodeSetupCode, SetupCodeError, type SetupPayload } from '../pairing/setupCode';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
@@ -14,6 +14,7 @@ import { KEEPOAK_SIGN_IN, laterUpdate } from './settingsExtras';
 import { PairingCodeField } from './pairingFields';
 
 export const KEEPOAK_SIGN_IN_LATER = laterUpdate(KEEPOAK_SIGN_IN);
+export const LOOK_AGAIN_LATER = laterUpdate('Look again');
 
 const TRUST =
   'A Trunk on the Branch you connect to can use what you allow on this phone: camera, microphone, photos, contacts, calendar and location. Connect only to a Branch you trust.';
@@ -25,7 +26,29 @@ export function setupCodeProblem(error: unknown): string {
   return 'That isn’t a Branch pairing code. Use the code from Pair a phone in Branch on your computer.';
 }
 
-function NearbyCard({ looking, onLook }: { looking: boolean; onLook: () => void }) {
+type CameraPermission = { granted: boolean; canAskAgain: boolean } | null | undefined;
+
+/** Card copy for the three camera states: blocked, granted, or not asked yet. */
+export function cameraCardCopy(permission: CameraPermission): { heading: string; body: string } {
+  if (permission != null && !permission.granted && !permission.canAskAgain) {
+    return {
+      heading: 'The camera is off for Branch',
+      body: 'Turn on the camera for Branch in Settings, or type the code your computer shows.',
+    };
+  }
+  if (permission?.granted) {
+    return {
+      heading: 'The camera is on for Branch',
+      body: 'Point it at the square code on your computer. Nothing is recorded or kept.',
+    };
+  }
+  return {
+    heading: 'Branch needs the camera',
+    body: 'It reads the pairing code on your computer’s screen. Nothing is recorded or kept.',
+  };
+}
+
+function NearbyCard() {
   const { space } = useTheme();
   const found = listNearbyBranches();
   return (
@@ -39,11 +62,14 @@ function NearbyCard({ looking, onLook }: { looking: boolean; onLook: () => void 
         ))
       ) : (
         <ThemedText testID="nearby-status" variant="subhead" tone="ink2" style={{ marginTop: space.sm }}>
-          {looking ? NEARBY_LOOKING : NEARBY_NONE}
+          {NEARBY_NONE}
         </ThemedText>
       )}
       <View style={{ marginTop: space.md }}>
-        <Button title="Look again" kind="secondary" onPress={onLook} busy={looking} testID="look-again" />
+        <Button title="Look again" kind="secondary" disabled onPress={() => undefined} testID="look-again" />
+        <ThemedText testID="look-again-reason" variant="footnote" tone="ink3" style={{ marginTop: space.xs, textAlign: 'center' }}>
+          {LOOK_AGAIN_LATER}
+        </ThemedText>
       </View>
     </Card>
   );
@@ -67,14 +93,7 @@ export function ScanScreen({
   const [scanning, setScanning] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [text, setText] = useState('');
-  const [looking, setLooking] = useState(false);
   const lastScan = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!looking) return;
-    const timer = setTimeout(() => setLooking(false), 400);
-    return () => clearTimeout(timer);
-  }, [looking]);
 
   const read = (raw: string) => {
     try {
@@ -146,6 +165,7 @@ export function ScanScreen({
   }
 
   const blocked = permission != null && !permission.granted && !permission.canAskAgain;
+  const camera = cameraCardCopy(permission);
   return (
     <Screen
       testID="camera-permission"
@@ -179,12 +199,10 @@ export function ScanScreen({
           {KEEPOAK_SIGN_IN_LATER}
         </ThemedText>
       </Card>
-      <Card>
-        <ThemedText variant="headline">{blocked ? 'The camera is off for Branch' : 'Branch needs the camera'}</ThemedText>
+      <Card testID="camera-card">
+        <ThemedText variant="headline">{camera.heading}</ThemedText>
         <ThemedText variant="subhead" tone="ink2" style={{ marginTop: space.xs }}>
-          {blocked
-            ? 'Turn on the camera for Branch in Settings, or type the code your computer shows.'
-            : 'It reads the pairing code on your computer’s screen. Nothing is recorded or kept.'}
+          {camera.body}
         </ThemedText>
       </Card>
       <Card testID="connect-code">
@@ -198,7 +216,7 @@ export function ScanScreen({
           onSubmit={submitCode}
         />
       </Card>
-      <NearbyCard looking={looking} onLook={() => setLooking(true)} />
+      <NearbyCard />
       <Card testID="pairing-trust">
         <ThemedText variant="subhead" tone="ink2">
           {TRUST}

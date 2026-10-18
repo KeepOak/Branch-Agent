@@ -8,7 +8,8 @@ import { pairingTheme, themeFor } from '../theme/tokens';
 import { contrastRatio } from '../theme/contrast';
 import { Button } from '../ui/Button';
 import { Screen } from '../ui/Screen';
-import { KEEPOAK_SIGN_IN_LATER, WelcomeScreen } from './WelcomeScreen';
+import { cameraCardCopy, KEEPOAK_SIGN_IN_LATER, LOOK_AGAIN_LATER } from './ScanScreen';
+import { WelcomeScreen } from './WelcomeScreen';
 
 jest.mock('expo-camera', () => ({
   CameraView: () => null,
@@ -109,10 +110,25 @@ describe('pairing chrome', () => {
     expect(screen.getByTestId('pairing-nearby')).toBeOnTheScreen();
     expect(screen.getByTestId('nearby-status')).toHaveTextContent(/None found/);
     expect(screen.getByRole('button', { name: 'Connect' })).toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Look again' })).toBeOnTheScreen();
-    await fireEvent.press(screen.getByTestId('look-again'));
-    expect(screen.getByTestId('nearby-status')).toHaveTextContent(/Looking for your Branch|None found/);
-    await eventually(() => expect(screen.getByTestId('nearby-status')).toHaveTextContent(/None found/));
+    expect(screen.getByRole('button', { name: 'Look again' })).toBeDisabled();
+    expect(screen.getByTestId('look-again-reason')).toHaveTextContent(LOOK_AGAIN_LATER);
+    expect(screen.getByText('Branch needs the camera')).toBeOnTheScreen();
+  });
+
+  it('matches camera card copy to the permission, including granted', () => {
+    expect(cameraCardCopy({ granted: false, canAskAgain: true })).toEqual({
+      heading: 'Branch needs the camera',
+      body: 'It reads the pairing code on your computer’s screen. Nothing is recorded or kept.',
+    });
+    expect(cameraCardCopy({ granted: false, canAskAgain: false })).toEqual({
+      heading: 'The camera is off for Branch',
+      body: 'Turn on the camera for Branch in Settings, or type the code your computer shows.',
+    });
+    expect(cameraCardCopy({ granted: true, canAskAgain: true })).toEqual({
+      heading: 'The camera is on for Branch',
+      body: 'Point it at the square code on your computer. Nothing is recorded or kept.',
+    });
+    expect(cameraCardCopy(null)).toEqual(cameraCardCopy({ granted: false, canAskAgain: true }));
   });
 
   it('pairs from the connect screen’s code field without leaving the camera step', async () => {
