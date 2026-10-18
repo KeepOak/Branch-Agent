@@ -54,7 +54,8 @@ describe('pairing chrome', () => {
         </PairingTheme>
       </ThemeProvider>,
     );
-    expect(screen.getByRole('header')).toHaveTextContent('Branch');
+    expect(screen.getByRole('header')).toHaveTextContent('Branch Agent');
+    expect(screen.getByRole('header')).not.toHaveTextContent(/^Branch$/);
     expect(screen.getByText('Your Trunks, in your pocket.')).toBeOnTheScreen();
     expect(screen.getByText('Your Trunks run on your own computer.')).toBeOnTheScreen();
     expect(screen.getByText('Connect this phone by scanning a code.')).toBeOnTheScreen();

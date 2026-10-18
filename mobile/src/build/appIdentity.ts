@@ -1,6 +1,10 @@
-// The version the stores show, and the native build number when the OS has one.
-// Pairing already sends expoConfig.version as the client version; Settings reads the same source.
+// Settings, pairing and APK updates read the installed binary first (PackageManager /
+// Info.plist via expo-application). The Expo config is only a fallback: release builds
+// inject versionName/versionCode through gradle, while the JS bundle can still hold the
+// app.json template (0.1.0 / Build 1).
+import * as Application from 'expo-application';
 import Constants from 'expo-constants';
+import { installedVersion } from '../updates/versionCompare';
 
 export type AppIdentitySource = {
   expoConfig?: {
@@ -30,9 +34,20 @@ function code(value: number | null | undefined): string | null {
   return value == null ? null : String(value);
 }
 
-/** App version and build number from Expo's config and the native binary. */
-export function appIdentity(source: AppIdentitySource = Constants): AppIdentity {
-  const version = source.expoConfig?.version ?? source.nativeAppVersion ?? '0.0.0';
+/** Installed APK / IPA first, then Expo Constants. */
+export function identitySource(): AppIdentitySource {
+  const constants = Constants as AppIdentitySource;
+  return {
+    expoConfig: Constants.expoConfig,
+    platform: Constants.platform,
+    nativeAppVersion: nonempty(Application.nativeApplicationVersion) ?? nonempty(constants.nativeAppVersion),
+    nativeBuildVersion: nonempty(Application.nativeBuildVersion) ?? nonempty(constants.nativeBuildVersion),
+  };
+}
+
+/** App version and build number from the installed binary, then Expo's config. */
+export function appIdentity(source: AppIdentitySource = identitySource()): AppIdentity {
+  const version = nonempty(source.nativeAppVersion) ?? nonempty(source.expoConfig?.version) ?? '0.0.0';
   const build =
     nonempty(source.nativeBuildVersion) ??
     nonempty(source.expoConfig?.ios?.buildNumber) ??
@@ -44,4 +59,14 @@ export function appIdentity(source: AppIdentitySource = Constants): AppIdentity 
 
 export function versionLine(identity: AppIdentity): string {
   return identity.build ? `${identity.version} (${identity.build})` : identity.version;
+}
+
+/** Same versionName / versionCode Settings and the APK updater show. */
+export function installedAppVersion(source: AppIdentitySource = identitySource()): { version: string; versionCode: number } {
+  return installedVersion({
+    nativeVersion: source.nativeAppVersion,
+    nativeBuild: source.nativeBuildVersion,
+    expoVersion: source.expoConfig?.version,
+    expoVersionCode: source.expoConfig?.android?.versionCode ?? source.platform?.android?.versionCode,
+  });
 }

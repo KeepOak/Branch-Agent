@@ -46,7 +46,7 @@ export function WelcomeScreen({
       <View style={{ alignItems: 'center' }}>
         <Image source={require('../../assets/icon.png')} accessibilityIgnoresInvertColors style={{ width: 72, height: 72, borderRadius: radius.lg }} />
         <ThemedText variant="largeTitle" accessibilityRole="header" style={{ marginTop: space.md, textAlign: 'center' }}>
-          Branch
+          Branch Agent
         </ThemedText>
         <ThemedText variant="body" tone="ink2" style={{ marginTop: space.xs, textAlign: 'center' }}>
           Your Trunks, in your pocket.

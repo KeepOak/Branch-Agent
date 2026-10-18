@@ -1,4 +1,3 @@
-import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState, useSyncExternalStore } from 'react';
@@ -11,7 +10,7 @@ import { testApprovalsOn } from './src/approvals/testApproval';
 import { useTestApproval } from './src/approvals/useTestApproval';
 import { createExpoNotifier, noNotifier } from './src/approvals/expoNotifier';
 import { AgentList, type AgentRow } from './src/agents/agentList';
-import { appIdentity, type AppIdentity } from './src/build/appIdentity';
+import { appIdentity, installedAppVersion, type AppIdentity } from './src/build/appIdentity';
 import { Conversation } from './src/chat/conversation';
 import { ChatList, filterRows, type ChatRow } from './src/chats/chatList';
 import { ComputerList, computerName, type ComputerRow } from './src/computers/computerList';
@@ -190,10 +189,7 @@ function Shell({
   const theme = useTheme();
   const state = usePairingState(session);
   const update = useApkUpdate();
-  const installed = {
-    version: Constants.expoConfig?.version ?? '0.1.0',
-    versionCode: Constants.expoConfig?.android?.versionCode ?? 1,
-  };
+  const installed = installedAppVersion();
   const updateBanner = (
     <UpdateBanner state={update.state} onUpdate={update.startUpdate} onAllowInstalls={() => update.allowInstalls()} />
   );

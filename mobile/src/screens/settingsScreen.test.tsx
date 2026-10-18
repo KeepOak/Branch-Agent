@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { Linking, StyleSheet } from 'react-native';
 import App from '../../App';
+import { appIdentity } from '../build/appIdentity';
 import { createFakeEngine } from '../connect/fakeEngine';
 import { fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier';
@@ -102,6 +103,24 @@ describe('settings screen', () => {
     expect(within(screen.getByTestId('about-card')).getByText('0.1.0 (14)')).toBeOnTheScreen();
     expect(within(screen.getByTestId('about-card')).getByText('KeepOak')).toBeOnTheScreen();
     expect(within(screen.getByTestId('about-card')).getByText('2026.10.8')).toBeOnTheScreen();
+  });
+
+  it('shows the installed APK version, not the hardcoded 0.1.0 / Build 1 template', async () => {
+    const identity = appIdentity({
+      expoConfig: { version: '0.1.0', android: { versionCode: 1 }, ios: { buildNumber: '1' } },
+      nativeAppVersion: '0.4.4-build-e5d86fab32b5',
+      nativeBuildVersion: '12',
+    });
+    expect(identity).toEqual({ version: '0.4.4-build-e5d86fab32b5', build: '12' });
+    expect(identity).not.toEqual({ version: '0.1.0', build: '1' });
+    await renderSettings({ identity });
+    expect(screen.getByTestId('settings-about')).toHaveTextContent('0.4.4-build-e5d86fab32b5');
+    expect(screen.getByTestId('settings-about')).not.toHaveTextContent('0.1.0');
+    await fireEvent.press(screen.getByTestId('settings-about'));
+    expect(within(screen.getByTestId('app-card')).getByText('0.4.4-build-e5d86fab32b5')).toBeOnTheScreen();
+    expect(within(screen.getByTestId('app-card')).getByText('12')).toBeOnTheScreen();
+    expect(within(screen.getByTestId('app-card')).queryByText('0.1.0')).toBeNull();
+    expect(within(screen.getByTestId('about-card')).getByText('0.4.4-build-e5d86fab32b5 (12)')).toBeOnTheScreen();
   });
 
   it('opens This phone from This Branch and offers system Settings on Notifications', async () => {
