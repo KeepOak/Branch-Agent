@@ -12,7 +12,10 @@ import { saveExecApprovals } from "../infra/exec-approvals-store.test-support.js
 import type { ExecApprovalsSnapshot } from "../infra/exec-approvals.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
-import { closeBranchStateDatabaseForTest } from "../state/branch-state-db.js";
+import {
+  closeBranchStateDatabaseAsync,
+  closeBranchStateDatabaseForTest,
+} from "../state/branch-state-db.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
 import * as nodeRunCommand from "./invoke-run-command.js";
@@ -21,8 +24,12 @@ import { handleInvoke } from "./invoke.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
-afterEach(() => {
+afterEach(async () => {
   resetPluginRuntimeStateForTest();
+  // Worker retirement continues after the sync close; Windows temp-dir rm
+  // otherwise hits EPERM on the still-mapped SQLite files.
+  await closeBranchStateDatabaseAsync();
+  closeBranchStateDatabaseForTest();
 });
 
 const approvalResolutionFailure = vi.hoisted(() => ({ error: null as Error | null }));

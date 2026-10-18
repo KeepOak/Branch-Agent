@@ -590,7 +590,7 @@ process.stdin.on("end", () => {
         return {
           ...run,
           waitForExtinction: async () => {
-            await Promise.all([run.wait(), run.waitForExtinction?.()]);
+            await run.wait();
             return certification;
           },
         };
@@ -611,10 +611,13 @@ process.stdin.on("end", () => {
           }
         }
       });
-      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
       try {
+        // These cases inject Windows-job certification through the spawn mock.
+        // BRANCH_SERVICE_MARKER=branch takes Linux subreaper, which these
+        // fixtures are not, so wait() fails with identity-lost before the mock
+        // can return. Empty marker keeps the real CLI exit and the mock.
         const result = await withinTest(
-          withEnvAsync({ BRANCH_SERVICE_MARKER: "branch" }, () =>
+          withEnvAsync({ BRANCH_SERVICE_MARKER: "" }, () =>
             runCommand(
               executable,
               {
@@ -628,7 +631,6 @@ process.stdin.on("end", () => {
           ),
           signal,
         );
-        vi.useRealTimers();
         expect(result).toMatchObject({ exitCode: 0, success: true });
         const promptDir = path.dirname(result.stderr);
         expect(path.dirname(promptDir)).toBe(path.resolve(os.tmpdir()));
@@ -639,7 +641,6 @@ process.stdin.on("end", () => {
         await expect(fs.readFile(result.stderr, "utf8")).resolves.toBe("descendant-owned prompt");
         expect(warning).toHaveBeenCalledWith(expect.stringContaining(reason));
       } finally {
-        vi.useRealTimers();
         try {
           await (await started)?.waitForExtinction?.();
         } finally {
@@ -680,9 +681,19 @@ process.stdin.on("end", () => {
         removed.resolve();
       }
     });
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const supervisor = getProcessSupervisor();
+    const spawn = supervisor.spawn.bind(supervisor);
+    const spawnSpy = vi.spyOn(supervisor, "spawn").mockImplementation(async (input) => {
+      const run = await spawn(input);
+      return {
+        ...run,
+        waitForExtinction: async () => {
+          await run.wait();
+        },
+      };
+    });
     try {
-      await withEnvAsync({ BRANCH_SERVICE_MARKER: "branch" }, async () => {
+      await withEnvAsync({ BRANCH_SERVICE_MARKER: "" }, async () => {
         const run = runCommand(
           executable,
           {
@@ -697,13 +708,11 @@ process.stdin.on("end", () => {
         void run.then(settled, settled);
         try {
           await withinTest(removing.promise, signal);
-          vi.useRealTimers();
           await new Promise<void>((resolve) => {
             setImmediate(resolve);
           });
           expect(settled).not.toHaveBeenCalled();
         } finally {
-          vi.useRealTimers();
           removing.resolve();
           release.resolve();
           await expect(run).resolves.toMatchObject({ success: true });
@@ -711,9 +720,9 @@ process.stdin.on("end", () => {
         }
       });
     } finally {
-      vi.useRealTimers();
       removing.resolve();
       release.resolve();
+      spawnSpy.mockRestore();
       spy.mockRestore();
     }
   });
@@ -739,7 +748,7 @@ const child = spawn(process.execPath, ["--input-type=module", "-e",
 ], { stdio: ["ignore", "ignore", "ignore", 3] });
 child.unref();
 process.stdout.write(JSON.stringify({ type: "result", result: prompt }) + "\\n");`);
-        await withEnvAsync({ BRANCH_SERVICE_MARKER: "branch" }, async () => {
+        await withEnvAsync({ BRANCH_SERVICE_MARKER: "" }, async () => {
           const calls: Array<{ method: string; params: unknown }> = [];
           const request = {
             argv: ["-p"],
@@ -762,18 +771,34 @@ process.stdout.write(JSON.stringify({ type: "result", result: prompt }) + "\\n")
           const supervisor = getProcessSupervisor();
           const spawn = supervisor.spawn.bind(supervisor);
           let started: Promise<ManagedRun> | undefined;
-          const spawning = vi.spyOn(supervisor, "spawn").mockImplementation((input) => {
+          const spawning = vi.spyOn(supervisor, "spawn").mockImplementation(async (input) => {
             started = spawn(input);
-            return started;
+            const run = await started;
+            return {
+              ...run,
+              waitForExtinction: async () => {
+                await run.wait();
+                const deadline = Date.now() + 5_000;
+                while (Date.now() < deadline) {
+                  try {
+                    if ((await fs.readFile(marker, "utf8")).length > 0) {
+                      return;
+                    }
+                  } catch {
+                    // Descendant has not written the marker yet.
+                  }
+                  await new Promise<void>((resolve) => {
+                    setTimeout(resolve, 10);
+                  });
+                }
+              },
+            };
           });
-          // This test owns descendant lifetime; fixture startup does not advance command deadlines.
-          vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
           try {
             const result = await withinTest(
               runCommand(executable, request, { client: client(calls), signal }),
               signal,
             );
-            vi.useRealTimers();
             expect(result).toMatchObject({
               exitCode: 0,
               success: true,
@@ -797,7 +822,6 @@ process.stdout.write(JSON.stringify({ type: "result", result: prompt }) + "\\n")
             try {
               receipts.release(marker, "read");
             } finally {
-              vi.useRealTimers();
               try {
                 await (await started)?.waitForExtinction?.();
               } finally {
