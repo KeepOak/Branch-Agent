@@ -162,8 +162,21 @@ function sendToChild(child: ChildProcess, message: { type: string }): void {
  */
 export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): void {
   if (!heldLoopback().has(port)) {
-    // The configured port is not held. The engine binds it itself.
-    sendToChild(child, { type: "branch-desktop:bind-yourself" });
+    // The configured/recovery port is not held. Wait for the child's binding
+    // handshake: an eager IPC send can arrive before an ESM child's listener is
+    // installed. In that race it stays alive but never starts listening.
+    // Real engines bind themselves and do not use this fixture handshake.
+    const stop = () => {
+      child.off("message", onMessage);
+      child.off("exit", stop);
+    };
+    const onMessage = (value: unknown) => {
+      const message = value as { type?: unknown };
+      if (message?.type === "branch-desktop:binding") sendToChild(child, { type: "branch-desktop:bind-yourself" });
+      else if (message?.type === "branch-desktop:bound") stop();
+    };
+    child.on("message", onMessage);
+    child.once("exit", stop);
     return;
   }
   let timer: ReturnType<typeof setTimeout> | undefined;
