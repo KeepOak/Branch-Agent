@@ -654,7 +654,8 @@ export function gateChangeMarkerMatches(body, headSha) {
 }
 
 const FULL_SHA = /^[0-9a-f]{40}$/i;
-const PR_COMMITS_CAP = 250;
+// GitHub's "List commits on a pull request" API returns at most 250 commits.
+export const PR_COMMITS_CAP = 250;
 
 function isGateFullSha(value) {
   return typeof value === 'string' && FULL_SHA.test(value);

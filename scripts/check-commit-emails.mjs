@@ -14,7 +14,7 @@ import {
   isTransientGitHubError,
   withRateLimitRetry,
 } from './merge-gate-rate-limit.mjs';
-import { ghApi } from './merge-gate-trusted.mjs';
+import { PR_COMMITS_CAP, ghApi } from './merge-gate-trusted.mjs';
 
 export const CUTOFF_ISO = '2026-10-08T04:05:00Z';
 export const CUTOFF_MS = Date.parse(CUTOFF_ISO);
@@ -26,6 +26,12 @@ export const FIX_LINES = [
 ];
 export const COMMIT_EMAIL_WAIT_SECONDS = 600;
 export const NOT_CHECKED = 'not checked';
+export const RATE_LIMIT_RERUN_LINE = `${NOT_CHECKED}: rate limited, re-run`;
+export { PR_COMMITS_CAP };
+
+export function commitCapLine(count, cap = PR_COMMITS_CAP) {
+  return `GitHub only lists the first ${cap} pull request commits; this PR has ${count} or more, so commit emails cannot be checked.`;
+}
 
 export function parseTrailers(message) {
   const emails = [];
@@ -98,7 +104,18 @@ export function defaultCommitRequest(repo, token, requestPath, options = {}) {
   const parsed = execGhApi(ghApiArgs(`repos/${repo}/${requestPath}`, {
     paginate,
     includeHeaders: !paginate,
-  }), { token, includeHeaders: !paginate, maxBuffer: GH_API_MAX_BUFFER });
+  }), {
+    token,
+    includeHeaders: !paginate,
+    maxBuffer: GH_API_MAX_BUFFER,
+    exec: options.exec,
+  });
+  if (!Array.isArray(parsed.json)) {
+    throw Object.assign(new Error('GitHub API returned unreadable pull request commits'), {
+      httpStatus: parsed.status,
+      body: parsed.body,
+    });
+  }
   return parsed.json;
 }
 
@@ -110,7 +127,11 @@ export function fetchPrCommitsWithApi({
   perPage = 100,
 } = {}) {
   const payload = api(repo, token, `pulls/${prNumber}/commits?per_page=${perPage}`, { paginate: true });
-  return commitsFromGhPages(payload);
+  const commits = commitsFromGhPages(payload);
+  if (commits.length >= PR_COMMITS_CAP) {
+    throw Object.assign(new Error(commitCapLine(commits.length)), { commitCapExceeded: true });
+  }
+  return commits;
 }
 
 function sleepSeconds(seconds) {
@@ -150,21 +171,22 @@ export function createEmailCheckApi({
 }
 
 export function classifyFetchError(error) {
+  if (error?.commitCapExceeded) {
+    return { exitCode: 1, conclusion: 'failure' };
+  }
   if (error?.budgetExhausted || isRateLimitError(error)) {
-    return { exitCode: 2, conclusion: 'neutral' };
+    return { exitCode: 2, conclusion: 'failure' };
   }
   return { exitCode: 1, conclusion: 'failure' };
 }
 
 export function apiFailureLine(error, prNumber) {
-  if (error?.budgetExhausted) {
-    return `${NOT_CHECKED}: GitHub API rate-limit wait ran out of its ${COMMIT_EMAIL_WAIT_SECONDS}s job budget while reading commits for PR #${prNumber}. Not a commit-email failure; re-run the check.`;
+  if (error?.commitCapExceeded) return error.message;
+  if (error?.budgetExhausted || isRateLimitError(error)) {
+    return RATE_LIMIT_RERUN_LINE;
   }
   const status = httpStatusOf(error);
   const label = status ? `HTTP ${status}` : 'error (no HTTP status)';
-  if (isRateLimitError(error)) {
-    return `${NOT_CHECKED}: GitHub API ${label} while reading commits for PR #${prNumber}; waited out the rate limit within the step budget, then gave up. Not a commit-email failure; re-run the check.`;
-  }
   let why = 'not retried (not a rate limit or a transient error)';
   if (isTransientGitHubError(error)) why = 'retried with backoff, then gave up';
   return `GitHub API ${label} while reading commits for PR #${prNumber}; ${why}.`;

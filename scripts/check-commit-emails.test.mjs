@@ -6,15 +6,20 @@ import {
   CUTOFF_ISO,
   COMMIT_EMAIL_WAIT_SECONDS,
   NOT_CHECKED,
+  PR_COMMITS_CAP,
+  RATE_LIMIT_RERUN_LINE,
   apiFailureLine,
   classifyFetchError,
+  commitCapLine,
+  commitsFromGhPages,
   createEmailCheckApi,
+  defaultCommitRequest,
   evaluateCommits,
   fetchPrCommitsWithApi,
   formatReport,
   runCommitEmailCheck,
 } from './check-commit-emails.mjs';
-import { isRateLimitError } from './merge-gate-rate-limit.mjs';
+import { execGhApi, isRateLimitError } from './merge-gate-rate-limit.mjs';
 
 const AFTER = CUTOFF_ISO;
 const BEFORE = '2026-10-08T04:04:59Z';
@@ -215,7 +220,7 @@ test('a rate limit then a successful fetch passes the email check', () => {
   assert.match(result.lines[0], /Checked 1 commit\(s\)/);
 });
 
-test('a persistent rate limit reports not checked, never success or a red email failure', () => {
+test('a persistent rate limit fails commit-emails as not checked, to be re-run', () => {
   const start = 1_790_000_000_000;
   let now = start;
   const api = createEmailCheckApi({
@@ -228,11 +233,11 @@ test('a persistent rate limit reports not checked, never success or a red email 
   });
   const result = runCommitEmailCheck({ repo: 'o/r', prNumber: '1', token: 't', api });
   assert.equal(result.exitCode, 2);
-  assert.equal(result.conclusion, 'neutral');
-  assert.match(result.lines[0], new RegExp(NOT_CHECKED));
+  assert.equal(result.conclusion, 'failure');
+  assert.equal(result.lines[0], RATE_LIMIT_RERUN_LINE);
   assert.doesNotMatch(result.lines.join('\n'), /author|committer|co-author/);
   assert.equal(classifyFetchError(rateLimitError()).exitCode, 2);
-  assert.equal(classifyFetchError(rateLimitError()).conclusion, 'neutral');
+  assert.equal(classifyFetchError(rateLimitError()).conclusion, 'failure');
 });
 
 test('a generic 401 or 403 fails closed', () => {
@@ -307,12 +312,52 @@ test('the email check shares one job budget: a lasting rate limit cannot start a
   const total = sleeps.reduce((sum, seconds) => sum + seconds, 0);
   assert.ok(total <= COMMIT_EMAIL_WAIT_SECONDS, `waited ${total}s, over the ${COMMIT_EMAIL_WAIT_SECONDS}s job budget`);
   assert.equal(secondError.budgetExhausted, true);
-  assert.match(apiFailureLine(secondError, '1'), new RegExp(NOT_CHECKED));
-  assert.match(apiFailureLine(secondError, '1'), /job budget/);
-  assert.match(apiFailureLine(secondError, '1'), /Not a commit-email failure/);
+  assert.equal(apiFailureLine(secondError, '1'), RATE_LIMIT_RERUN_LINE);
 });
 
-test('the trusted workflow retries through the helper and skips commit-emails on exit 2', () => {
+test('250 or more pull request commits fail closed because GitHub truncates the list', () => {
+  const commits = Array.from({ length: PR_COMMITS_CAP }, (_, index) => githubCommit({
+    sha: String(index + 1).padStart(40, 'a'),
+  }));
+  const result = runCommitEmailCheck({
+    repo: 'o/r', prNumber: '1', token: 't',
+    api: () => commits,
+  });
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.conclusion, 'failure');
+  assert.equal(result.lines[0], commitCapLine(PR_COMMITS_CAP));
+  assert.match(result.lines[0], /first 250/);
+  assert.doesNotMatch(result.lines.join('\n'), /author|committer|co-author/);
+});
+
+test('concatenated paginated gh output through execGhApi parses as one commit list', () => {
+  const page1 = [githubCommit({ sha: '1111111111111111111111111111111111111111' })];
+  const page2 = [githubCommit({ sha: '2222222222222222222222222222222222222222' })];
+  const concatenated = `${JSON.stringify(page1)}${JSON.stringify(page2)}`;
+  assert.match(concatenated, /\]\[/);
+  assert.throws(() => JSON.parse(concatenated));
+
+  const parsed = execGhApi(['api', '--paginate', 'repos/o/r/pulls/1/commits?per_page=100'], {
+    exec: (_cmd, args) => {
+      assert.ok(args.includes('--paginate'));
+      return concatenated;
+    },
+  });
+  assert.equal(Array.isArray(parsed.json), true);
+  assert.equal(parsed.json.length, 2);
+
+  const payload = defaultCommitRequest('o/r', 't', 'pulls/1/commits?per_page=100', {
+    paginate: true,
+    exec: () => concatenated,
+  });
+  const commits = commitsFromGhPages(payload);
+  assert.deepEqual(commits.map((commit) => commit.sha), [
+    '1111111111111111111111111111111111111111',
+    '2222222222222222222222222222222222222222',
+  ]);
+});
+
+test('the trusted workflow retries through the helper and fails commit-emails on exit 2', () => {
   const yaml = readFileSync(TRUSTED_WORKFLOW, 'utf8');
   const source = readFileSync(new URL('./check-commit-emails.mjs', import.meta.url), 'utf8');
   assert.match(source, /from '\.\/merge-gate-rate-limit\.mjs'/);
@@ -320,10 +365,12 @@ test('the trusted workflow retries through the helper and skips commit-emails on
   assert.match(source, /paginate: true/);
   assert.match(yaml, /commit-emails-run:/);
   assert.match(yaml, /^\s+commit-emails:\n\s+needs: commit-emails-run/m);
-  assert.match(yaml, /needs\.commit-emails-run\.outputs\.exit_code != '2'/);
+  assert.match(yaml, /if: always\(\) && needs\.commit-emails-run\.result != 'cancelled'\s*$/m);
+  assert.doesNotMatch(yaml, /exit_code != '2'/);
+  assert.match(yaml, /test "\$\{\{ needs\.commit-emails-run\.result \}\}" = "success"/);
+  assert.match(yaml, /not checked: rate limited, re-run/);
   assert.match(yaml, /node scripts\/check-commit-emails\.mjs/);
   assert.match(yaml, /echo "exit_code=\$\{code\}"/);
-  assert.match(yaml, /not checked/);
   const emailsJob = yaml.slice(yaml.indexOf('  commit-emails:'), yaml.indexOf('  merge-gate-trusted:'));
   assert.doesNotMatch(emailsJob, /continue-on-error:\s*true/);
 });

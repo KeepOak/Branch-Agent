@@ -347,6 +347,21 @@ export function attachGhApiError(error, stdout) {
   return error;
 }
 
+// gh api --paginate concatenates JSON array pages as `][`, which JSON.parse rejects.
+export function parseGhPaginatedJson(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    try {
+      return JSON.parse(text.replace(/\]\s*\[/g, ','));
+    } catch {
+      return null;
+    }
+  }
+}
+
 export function execGhApi(args, {
   token = process.env.GH_TOKEN,
   exec = execFileSync,
@@ -362,12 +377,7 @@ export function execGhApi(args, {
       maxBuffer,
     });
     if (!includeHeaders) {
-      let json = null;
-      try {
-        json = raw?.trim() ? JSON.parse(raw) : null;
-      } catch {
-        json = null;
-      }
+      const json = parseGhPaginatedJson(raw);
       return { status: 200, headers: {}, body: raw ?? '', json, raw };
     }
     const parsed = parseGhApiIncludeOutput(raw);

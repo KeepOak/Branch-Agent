@@ -2009,6 +2009,28 @@ test('old-base PR still runs the trusted check from the default branch', () => {
   assert.match(trustedSource, /runUiProofFromPr\(/);
 });
 
+test('a non-success commit-emails check blocks the trusted gate', () => {
+  const emails = {
+    id: 190,
+    app: { id: 15368 },
+    name: 'commit-emails',
+    status: 'completed',
+    conclusion: 'failure',
+    check_suite: { id: 203 },
+    details_url: 'https://github.com/example/repo/actions/runs/303/job/190',
+  };
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, emails],
+    workflowsByCheckId: { ...passWorkflows, 190: trustedWorkflow },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.failed.map((check) => check.name), ['commit-emails']);
+  assert.match(result.errors.join('\n'), /Failed checks: commit-emails: failure/);
+});
+
 test('trusted gate runs the commit email checker on pull request commits', () => {
   const yaml = readFileSync(new URL(`../${TRUSTED_WORKFLOW_PATH}`, import.meta.url), 'utf8');
   assert.match(yaml, /^\s+run:\s*node --test scripts\/merge-gate-trusted\.test\.mjs\s*$/m);
@@ -2017,7 +2039,10 @@ test('trusted gate runs the commit email checker on pull request commits', () =>
   assert.match(yaml, /node scripts\/check-commit-emails\.mjs/);
   assert.match(yaml, /commit-emails-run:/);
   assert.match(yaml, /needs: commit-emails-run/);
-  assert.match(yaml, /needs\.commit-emails-run\.outputs\.exit_code != '2'/);
+  assert.match(yaml, /if: always\(\) && needs\.commit-emails-run\.result != 'cancelled'\s*$/m);
+  assert.doesNotMatch(yaml, /exit_code != '2'/);
+  assert.match(yaml, /test "\$\{\{ needs\.commit-emails-run\.result \}\}" = "success"/);
+  assert.match(yaml, /not checked: rate limited, re-run/);
   assert.match(yaml, /PR_NUMBER:\s*\$\{\{\s*github\.event\.pull_request\.number\s*\}\}/);
   assert.doesNotMatch(yaml, /ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.(?:sha|ref)/);
 });
