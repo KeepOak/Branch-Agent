@@ -1,6 +1,4 @@
-// Desktop handoff rollback: reclaim the Gateway lock without stealing it from a live
-// successor, then retry once if the first grab finds the state database busy.
-import { formatErrorMessage } from "../../infra/errors.js";
+// Desktop handoff rollback: reclaim the Gateway lock without stealing it from a live successor.
 import {
   acquireGatewayLock,
   GatewayLockError,
@@ -8,10 +6,11 @@ import {
   type GatewayLockOptions,
 } from "../../infra/gateway-lock.js";
 
-/** Wait this long on the second grab after timeoutMs: 0 finds the lock held. */
-export const DESKTOP_HANDOFF_LOCK_RETRY_MS = 3_000;
+export type AcquireDesktopHandoffLock = (
+  opts: GatewayLockOptions,
+) => Promise<GatewayLockHandle | null>;
 
-export function isDesktopHandoffLockBusy(error: unknown): boolean {
+function isDesktopHandoffLockBusy(error: unknown): boolean {
   if (error instanceof GatewayLockError) {
     return true;
   }
@@ -21,31 +20,13 @@ export function isDesktopHandoffLockBusy(error: unknown): boolean {
   );
 }
 
-export function desktopHandoffRecoveryFailure(error: unknown): string {
-  return `desktop handoff recovery failed: ${formatErrorMessage(error)}`;
-}
-
-export type AcquireDesktopHandoffLock = (
-  opts: GatewayLockOptions,
-) => Promise<GatewayLockHandle | null>;
-
-/** First grab is timeoutMs: 0 so a live successor keeps the lock. A busy lock retries once. */
+/** One grab at timeoutMs: 0 so a live successor keeps the lock. Busy returns null. */
 export async function reacquireDesktopHandoffLock(
   opts: Omit<GatewayLockOptions, "timeoutMs">,
   acquire: AcquireDesktopHandoffLock = acquireGatewayLock,
 ): Promise<GatewayLockHandle | null> {
   try {
-    const first = await acquire({ ...opts, timeoutMs: 0 });
-    if (first) {
-      return first;
-    }
-  } catch (error) {
-    if (!isDesktopHandoffLockBusy(error)) {
-      throw error;
-    }
-  }
-  try {
-    return await acquire({ ...opts, timeoutMs: DESKTOP_HANDOFF_LOCK_RETRY_MS });
+    return await acquire({ ...opts, timeoutMs: 0 });
   } catch (error) {
     if (isDesktopHandoffLockBusy(error)) {
       return null;

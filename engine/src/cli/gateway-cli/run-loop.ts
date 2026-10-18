@@ -14,10 +14,7 @@ import type { GatewayInstallationReplacement } from "../../gateway/stale-install
 import { formatErrorMessage } from "../../infra/errors.js";
 import type { GatewayBootLifecycleCompletion } from "../../infra/gateway-boot-lifecycle.js";
 import { acquireGatewayLock, readActiveGatewayLockIdentity } from "../../infra/gateway-lock.js";
-import {
-  desktopHandoffRecoveryFailure,
-  reacquireDesktopHandoffLock,
-} from "./desktop-handoff-recovery.js";
+import { reacquireDesktopHandoffLock } from "./desktop-handoff-recovery.js";
 import { consumeGatewaySuspendHandoff } from "../../infra/gateway-suspend-coordinator.js";
 import type { GatewayRestartIntent } from "../../infra/restart-intent.js";
 import { isGatewayHandoffFatalError } from "../../gateway/server-handoff-error.js";
@@ -1158,7 +1155,7 @@ export async function runGatewayLoop(params: {
           return;
         }
       } catch (error) {
-        gatewayLog.error(desktopHandoffRecoveryFailure(error));
+        gatewayLog.error(`desktop handoff recovery failed: ${String(error)}`);
       }
       // Only a successor holding the lock can make the predecessor exit. A
       // rollback already reclaiming that lock must never inherit this timer.
