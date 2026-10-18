@@ -1,0 +1,2 @@
+window:src/screens/settings/always-on-rows.test.tsx
+window:src/screens/settings/level-switch-app-data.test.tsx

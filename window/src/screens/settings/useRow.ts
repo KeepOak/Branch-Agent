@@ -8,6 +8,7 @@ import { configStore, pathKeys } from "../../places/settings/config-store";
 import { isDeviceKey, lookHolder, lookStore } from "../../places/settings/set1/appearance-store";
 import { has } from "../../places/inbox/data";
 import { DESKTOP_CONTROLS_CHANGED, NEEDS_NEWER_APP, desktopControls, type DesktopControlName, type DesktopControlsBridge, type DesktopControlsState } from "../../connect/desktop-controls";
+import { readOwnDesktopState, writeOwnDesktopState } from "./desktop-own-state";
 import type { Level } from "./nav";
 import { hintFor, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
 
@@ -149,11 +150,23 @@ class DesktopStore extends Emitter {
   start() {
     if (this.started) return;
     this.started = true;
-    window.addEventListener(DESKTOP_CONTROLS_CHANGED, (e) => { this.snap = { state: (e as CustomEvent<DesktopControlsState>).detail }; this.emit(); });
-    void this.load();
+    window.addEventListener(DESKTOP_CONTROLS_CHANGED, (e) => {
+      const state = (e as CustomEvent<DesktopControlsState>).detail;
+      writeOwnDesktopState(state);
+      this.snap = { state };
+      this.emit();
+    });
+    // Do not call bridge.get(): on macOS that reads other apps' login items (Sequoia App Data).
+    // Use Branch's own last snapshot, or each row's fallback until the person changes a switch.
+    this.snap = { state: readOwnDesktopState() ?? ({} as DesktopControlsState) };
+    this.emit();
   }
   async load(): Promise<void> {
-    try { this.snap = { state: await this.bridge.get() }; } catch (e) { this.snap = { state: null, error: errorText(e) }; } finally { this.emit(); }
+    try {
+      const state = await this.bridge.get();
+      writeOwnDesktopState(state);
+      this.snap = { state };
+    } catch (e) { this.snap = { state: null, error: errorText(e) }; } finally { this.emit(); }
   }
   private queue: Promise<unknown> = Promise.resolve();
   /** Shows the change at once, so a quick second click reads it and sends the opposite, and sends changes one at a time

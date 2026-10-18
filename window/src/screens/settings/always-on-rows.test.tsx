@@ -51,25 +51,28 @@ describe("the desktop switches behind them", () => {
     await act(async () => root.render(<Probe engine={engine} row={row} />));
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   };
-  beforeEach(() => { host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
+  beforeEach(() => { host = document.body.appendChild(document.createElement("div")); root = createRoot(host); localStorage.clear(); });
   afterEach(async () => {
     await act(async () => root.unmount());
     document.body.innerHTML = "";
     delete (window as { branchDesktop?: unknown }).branchDesktop;
+    localStorage.clear();
   });
 
   it("change keepWorking, keepAwake and linger, and show the one-time line under Keep working", async () => {
     let state: DesktopControlsState = { keepWorking: true, keepAwake: true, keepAwakeOnBattery: false, trayUsage: false, autoApplyUpdates: true, startWithWindows: true, branchOnPath: false,
       keepWorkingSignedOut: false, notes: { keepWorking: "Branch runs inside the app on this computer because its background service couldn't be installed (denied). Quitting Branch stops your Trunks." } };
     const set = vi.fn(async (name: string, on: boolean) => { state = { ...state, [name]: on }; return state; });
-    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get: vi.fn(async () => state), set } as unknown as DesktopControlsBridge };
+    const get = vi.fn(async () => state);
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get, set } as unknown as DesktopControlsBridge };
     const rows = startingUpRows("Linux");
 
     await mount(at(rows, "general.start.keep-working")!);
     expect(view).toMatchObject({ value: true, state: "ready" });
-    expect(view.help).toMatch(/^Branch runs inside the app on this computer/);
+    expect(get).not.toHaveBeenCalled();
     await act(async () => { await view.set(false); });
     expect(set).toHaveBeenLastCalledWith("keepWorking", false);
+    expect(view.help).toMatch(/^Branch runs inside the app on this computer/);
 
     await mount(at(rows, "general.start.keep-awake")!);
     expect(view.help).toMatch(/only when plugged in/);
