@@ -4,6 +4,8 @@ import test from 'node:test';
 import {
   LIST_RUNS_PAGE_SIZE,
   RECHECK_RATE_LIMIT_BUDGET_SECONDS,
+  RECHECK_WORKFLOW_PATH,
+  ignoreRecheckOncePathProven,
   isSupersededSha,
   listRunRequestPath,
   parsePullsJson,
@@ -12,6 +14,7 @@ import {
   runRecheck,
   summarizeRuns,
   triggerSkipReason,
+  workflowRunPullHeadSha,
   workflowRunsFromPayload,
 } from './merge-gate-recheck.mjs';
 
@@ -154,7 +157,7 @@ test('the recheck workflow reacts to completed runs of its listed workflows, and
   assert.match(yaml, /^\s+workflows:\n/m);
   assert.match(yaml, /types: \[completed\]/);
   assert.match(yaml, /node scripts\/merge-gate-recheck\.mjs/);
-  assert.match(yaml, /pull_requests\[0\]\.number \|\| github\.event\.workflow_run\.head_sha/);
+  assert.match(yaml, /merge-gate-recheck-\$\{\{ github\.event\.workflow_run\.head_sha \}\}-/);
   assert.match(yaml, /&& 'run' \|\| 'skip'/);
   assert.match(yaml, /cancel-in-progress: true/);
   assert.match(yaml, /timeout-minutes: 15/);
@@ -165,6 +168,8 @@ test('the recheck workflow reacts to completed runs of its listed workflows, and
   assert.match(yaml, /toJSON\(github\.event\.workflow_run\.pull_requests\)/);
   assert.doesNotMatch(yaml, /gh run rerun "\$id"/);
   assert.doesNotMatch(yaml, /uses:\s*actions\/setup-node/);
+  assert.match(yaml, /\/opt\/hostedtoolcache\/node\/24\.19\.0\/x64/);
+  assert.match(yaml, /hostedtoolcache\/node\/24\.\*\/x64/);
   const source = readFileSync(new URL('./merge-gate-recheck.mjs', import.meta.url), 'utf8');
   assert.match(source, /from '\.\/merge-gate-rate-limit\.mjs'/);
   assert.match(source, /withRateLimitRetry/);
@@ -442,9 +447,59 @@ test('parsePullsJson reads the workflow_run payload and treats junk as an empty 
   assert.deepEqual(parsePullsJson('not-json'), []);
 });
 
-test('the ordinary merge gate drops cancelled recheck checks before the per-id path lookup', () => {
+test('a late old-head completion cannot share the new head concurrency group', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
+  const group = /^\s+group: (.+)$/m.exec(yaml)?.[1] ?? '';
+  assert.match(group, /github\.event\.workflow_run\.head_sha/);
+  assert.match(group, /&& 'run' \|\| 'skip'/);
+  // A PR-number group with cancel-in-progress lets a late older SHA cancel the current head.
+  assert.doesNotMatch(group, /pull_requests\[0\]\.number \|\| github\.event\.workflow_run\.head_sha/);
+  assert.doesNotMatch(group, /pull_requests\[0\]\.number \}\}-/);
+});
+
+test('workflow_run.pull_requests head.sha is the associated run snapshot, not a live PR head', () => {
+  // When GitHub includes the association, head.sha names the commit that run was linked to.
+  // It equals the triggering workflow_run.head_sha and is not refreshed if the PR later moves.
+  assert.equal(workflowRunPullHeadSha({ number: 12, head: { sha: 'trigger-sha' } }), 'trigger-sha');
+  assert.equal(workflowRunPullHeadSha({ number: 12, head: { sha: 'trigger-sha', ref: 'cursor/example' } }), 'trigger-sha');
+
+  // Missing association (delayed or omitted): not proof the head moved; list the trigger SHA.
+  assert.equal(workflowRunPullHeadSha({ number: 12 }), null);
+  assert.equal(workflowRunPullHeadSha({ head: {} }), null);
+  assert.equal(workflowRunPullHeadSha({ head: { sha: '' } }), null);
+  assert.equal(workflowRunPullHeadSha(null), null);
+  assert.equal(isSupersededSha([], 'trigger-sha'), false);
+  assert.equal(isSupersededSha(undefined, 'trigger-sha'), false);
+  assert.equal(isSupersededSha([{ number: 12 }], 'trigger-sha'), false, 'missing head.sha is not superseded');
+  assert.equal(isSupersededSha([{ head: { sha: '' } }], 'trigger-sha'), false);
+  assert.equal(isSupersededSha([{ head: { sha: 'trigger-sha' } }], 'trigger-sha'), false, 'snapshot matching the trigger still lists');
+});
+
+test('the ordinary merge gate drops a recheck check only after its workflow path is proven', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
-  assert.match(yaml, /name != "recheck" or \.status != "completed" or \(\.conclusion != "cancelled" and \.conclusion != "skipped"\)/);
+  assert.doesNotMatch(
+    yaml,
+    /name != "recheck" or \.status != "completed" or \(\.conclusion != "cancelled" and \.conclusion != "skipped"\)/,
+  );
+  assert.match(yaml, /\.name != "recheck" or \(\(\$paths\[\.id \| tostring\] \/\/ ""\) != \$recheck\)/);
+  assert.match(yaml, /actions\/runs\?head_sha=\$SHA&per_page=100/);
+  const lookup = yaml.slice(yaml.indexOf('run_paths='), yaml.indexOf('comment_paths='));
+  assert.match(lookup, /select\(\.name == "recheck"\)/);
+  assert.doesNotMatch(lookup, /conclusion != "cancelled"/);
+  assert.doesNotMatch(lookup, /conclusion != "skipped"/);
+
+  assert.equal(ignoreRecheckOncePathProven({ name: 'recheck', conclusion: 'cancelled' }, ''), false);
+  assert.equal(ignoreRecheckOncePathProven({ name: 'recheck', conclusion: 'skipped' }, ''), false);
+  assert.equal(ignoreRecheckOncePathProven({
+    name: 'recheck', conclusion: 'cancelled',
+  }, RECHECK_WORKFLOW_PATH), true);
+  assert.equal(ignoreRecheckOncePathProven({
+    name: 'recheck', conclusion: 'skipped',
+  }, RECHECK_WORKFLOW_PATH), true);
+  assert.equal(ignoreRecheckOncePathProven({
+    name: 'recheck', conclusion: 'cancelled',
+  }, '.github/workflows/feature-batch-checks.yml'), false);
+  assert.equal(ignoreRecheckOncePathProven({ name: 'build', conclusion: 'cancelled' }, RECHECK_WORKFLOW_PATH), false);
 });
 
 test('workflow run pages map REST fields and paginate only until the listing is complete', () => {

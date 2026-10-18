@@ -15,6 +15,7 @@ const ORDINARY_GATE = 'Merge gate';
 const TRUSTED_GATE = 'Merge gate trusted';
 // The recheck workflow's own runs are not content: an in-progress recheck must never hold a gate back.
 export const RECHECK_NAME = 'Merge gate recheck';
+export const RECHECK_WORKFLOW_PATH = '.github/workflows/merge-gate-recheck.yml';
 const PASS = new Set(['success', 'skipped', 'neutral']);
 // Shared by every gh call in this process. Fits inside the 15-minute job after the 30s settle.
 export const RECHECK_RATE_LIMIT_BUDGET_SECONDS = 600;
@@ -128,10 +129,29 @@ export function triggerSkipReason(trigger) {
 // An associated PR whose head has moved on does not need a listing: GitHub only requires checks on the current head.
 // Unknown / empty pull lists are not skipped, so a delayed association still lists. workflow_run payloads omit
 // `state`; missing state is treated as associated (the payload only includes PRs for that run).
+//
+// `workflow_run.pull_requests[].head.sha` is the head GitHub associated with THAT triggering run
+// (typically the run's own `head_sha`). It is a snapshot, not a live read of the pull's current
+// head, and is not refreshed if the pull later moves. The array is omitted or empty when
+// association is delayed; that is not proof the head moved, so the trigger SHA is still listed.
+export function workflowRunPullHeadSha(pull) {
+  const sha = pull?.head?.sha;
+  return typeof sha === 'string' && sha.length > 0 ? sha : null;
+}
+
 export function isSupersededSha(pulls, sha) {
   const associated = (pulls ?? []).filter((pr) => pr && pr.state !== 'closed' && pr.state !== 'merged');
   if (!associated.length) return false;
-  return associated.every((pr) => typeof pr.head?.sha === 'string' && pr.head.sha.length > 0 && pr.head.sha !== sha);
+  return associated.every((pr) => {
+    const head = workflowRunPullHeadSha(pr);
+    return head != null && head !== sha;
+  });
+}
+
+// Ordinary merge-gate may ignore a `recheck` check only after attribution proves merge-gate-recheck.yml.
+// A cancelled or skipped `recheck` from any other workflow, or with no proven path, stays in the set.
+export function ignoreRecheckOncePathProven(check, provenPath) {
+  return check?.name === 'recheck' && provenPath === RECHECK_WORKFLOW_PATH;
 }
 
 export function parsePullsJson(raw) {
