@@ -13,6 +13,8 @@ You (the person using the phone) files:
 - preview-android-home-you.png and preview-android-more-you.png (Android Home initials and More)
 - app-android-you-{regular-light,advanced-light,regular-dark}.png and app-android-more-you-regular-light.png
 - side-by-side-you-{regular,advanced}-light.png, side-by-side-you-more-regular-light.png, side-by-side-home-you-regular-light.png
+- app-android-you-load-failed.png (users.self failed: empty name, Couldn’t load)
+- app-android-you-rename-failed.png (plain save failure, never engine text)
 
 App Voice: 393×852 Voice chrome with the real oak-leaf logo, Branch Agent name, and the Advanced Oak/Birch sheet.
 preview-android-voice.png and preview-android-voice-menu.png are the r50 Android Voice screen and its Advanced picker.
