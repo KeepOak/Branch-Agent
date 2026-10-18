@@ -24,6 +24,7 @@ import { DesktopCtl } from "../desktop-ctl";
 import { formatMoney } from "../../../format/money";
 import { forgetDeletedConversationWindow } from "../../../shell/own-window";
 import { trunkDisplayName } from "../../../connect/trunk-name";
+import { plainError } from "../../../shell/plain-error";
 
 /* ---------- figures ---------- */
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -181,13 +182,19 @@ function Billing({ b }: { b: RecordValue }) {
   return <div className="s2usage-limw"><span>{label}</span><span>{amount(b.amount)}{str(b.period) ? ` · ${str(b.period)}` : ""}</span></div>;
 }
 
-function Provider({ p, limit, updatedAt, openSettings }: { p: RecordValue; limit: LimitRow; updatedAt: unknown; openSettings?: (page: string) => void }) {
+/** A usage-check error that means this account's sign-in is gone. */
+const SIGN_IN_ERROR = /token expired|\b401\b|\b403\b|unauthori[sz]ed|forbidden/i;
+function checkNeedsSignIn(limit: LimitRow, error: unknown): boolean {
+  return limit.signInNeeded === true || SIGN_IN_ERROR.test(str(error));
+}
+
+function Provider({ p, limit, updatedAt, openSettings, onCheck }: { p: RecordValue; limit: LimitRow; updatedAt: unknown; openSettings?: (page: string) => void; onCheck?: () => void }) {
   // The account is named by its email; the plan is in words. The raw HTTP error never reaches the page.
   const name = limit.email || limit.name;
   const windows = limit.windows.map((window) => ({ label: window.name, left: window.left, words: window.reset }));
   const billing = list(p.billing);
   const told = windows.length > 0 || billing.some(billingMeasured);
-  const signIn = limit.signInNeeded === true;
+  const signIn = checkNeedsSignIn(limit, p.error);
   const failed = signIn || Boolean(p.error);
   const sub = [limit.email ? limit.name : "", limit.plan].filter(Boolean).join(" · ");
   return (
@@ -201,9 +208,10 @@ function Provider({ p, limit, updatedAt, openSettings }: { p: RecordValue; limit
         </div>
         {windows.map((w, i) => <LimWindow key={i} {...w} />)}
         {billing.map((b, i) => <Billing key={`b${i}`} b={b} />)}
-        {failed ? <small className="s2-err">{limit.line}</small>
+        {failed ? <small className="s2-err">{plainError(limit.line || p.error)}</small>
           : told ? <small>{`as of ${ago(updatedAt)}, asked ${name}`}</small>
           : <small>{str(p.summary) || "This service does not say what it allows."}</small>}
+        {failed && onCheck ? <Btn onClick={onCheck}>Check again</Btn> : null}
         {signIn && openSettings ? <Btn onClick={() => { sessionStorage.setItem("branch.openAddAccount", str(p.provider)); openSettings("accounts"); }}>Sign in again</Btn> : null}
       </div>
     </div>
@@ -219,10 +227,10 @@ function Allowances({ engine, openSettings }: { engine: WindowEngine; openSettin
   const limits = withAccountEmails(readLimits(res.data), accountEmails(auth.data));
   return (
     <Sec title="Account allowances" hint="What each account has left. Every figure comes from its service.">
-      {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
+      {res.error ? <p className="hint s2-err" role="alert">{plainError(res.error)}</p> : null}
       {res.loading && !res.data ? <Hint>Checking accounts…</Hint> : null}
       {res.data && !providers.length ? <Empty>No account reports an allowance yet.</Empty> : null}
-      {providers.length ? <div className="s2usage-lims">{providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} openSettings={openSettings} />)}</div> : null}
+      {providers.length ? <div className="s2usage-lims">{providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} openSettings={openSettings} onCheck={() => void res.reload()} />)}</div> : null}
       {data.refreshing === true ? <Hint>Checking accounts again…</Hint> : null}
       <AllowanceRows engine={engine} />
     </Sec>
@@ -252,8 +260,8 @@ export function AccountAllowanceList({ engine, openSettings }: { engine: WindowE
   const limits = withAccountEmails(readLimits(res.data), accountEmails(auth.data));
   return (
     <div className="s2usage-lims" data-need="usage.status">
-      {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
-      {providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} openSettings={openSettings} />)}
+      {res.error ? <p className="hint s2-err" role="alert">{plainError(res.error)}</p> : null}
+      {providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} openSettings={openSettings} onCheck={() => void res.reload()} />)}
     </div>
   );
 }
