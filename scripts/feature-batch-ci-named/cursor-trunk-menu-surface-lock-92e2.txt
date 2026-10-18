@@ -1,4 +1,3 @@
-engine:src/cli/gateway-cli/desktop-handoff-recovery.test.ts
 window:src/glass/smart-glass.test.ts
 window:src/screens/chat/raw-errors-1089.test.tsx
 window:src/screens/sidebar/Sidebar.test.tsx
