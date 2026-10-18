@@ -12,7 +12,6 @@ import { getCliProcessTestTimeout } from "../cli/cli-process-child.test-helpers.
 import { resolveGatewayLockDir } from "../config/paths.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { cronOwnerHardeningEntrypoints } from "../cron/owner-hardening-runtime.test-support.js";
-import { loadCronJobsStoreWithConfigJobsReadOnly, loadCronQuarantinedJobs } from "../cron/store.js";
 import { resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
 import { hasActiveStartupMigrationLease } from "../infra/startup-migration-checkpoint.js";
 import { getFileLockProcessStartTime } from "../shared/pid-alive.js";
@@ -22,13 +21,18 @@ import {
 } from "../state/branch-agent-db.js";
 import { resolveTestNodeExecPath } from "../test-utils/node-process.js";
 import {
+  assertDoctorCronBackup,
+  assertRepairedCronStore,
   createDoctorCliRuntime,
   createSourceRuntime,
   doctorCliEntrypoint,
+  readCanonicalPluginState,
+  repairCronStoreInProcess,
   runDoctorCli,
   runIsolatedModuleScript,
   runSourceRuntime,
   seedPluginStateSidecar,
+  seedRetiredCronJobs,
   seedV17AdditiveRepairDatabase,
 } from "./doctor-config-preflight.process.test-support.js";
 import { doctorConfigRuntimeEntrypoints } from "./doctor-config-runtime.test-support.js";
@@ -400,16 +404,47 @@ describe("Doctor repair followed by gateway readiness", () => {
   it(
     "serves canonical state after Doctor repairs cron and preserves retired plugin sidecars",
     async () => {
-    const nodeExecutable = resolveTestNodeExecPath();
     const runtime = createDoctorCliRuntime(
       tempDirs.createTempDir("branch-cron-upgrade-runtime-"),
     );
+    if (runtime.source) {
+      const root = fs.realpathSync(tempDirs.createTempDir("branch-cron-upgrade-source-"));
+      const stateDir = path.join(root, "state");
+      const configPath = path.join(stateDir, "branch.json");
+      const storePath = path.join(stateDir, "cron", "jobs.json");
+      const databasePath = path.join(stateDir, "state", "branch.sqlite");
+      const env = createDoctorEnv(root, stateDir, configPath);
+      fs.mkdirSync(stateDir, { recursive: true });
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify({
+          agents: { entries: { main: {} } },
+          gateway: { mode: "local", auth: { mode: "none" } },
+        }),
+      );
+      seedPluginStateSidecar(stateDir, 2_000);
+      const sidecarPath = path.join(stateDir, "plugin-state", "state.sqlite");
+      const preservedSidecar = fs.readFileSync(sidecarPath);
+      seedRetiredCronJobs(databasePath, storePath);
+      const { withEnvAsync } = await import("../test-utils/env.js");
+      await withEnvAsync(env, () => repairCronStoreInProcess(configPath));
+      expect(fs.readFileSync(sidecarPath)).toEqual(preservedSidecar);
+      expect(readCanonicalPluginState(stateDir)).toEqual({
+        value_json: '{"ok":false}',
+        created_at: 2_000,
+      });
+      assertDoctorCronBackup(databasePath);
+      await assertRepairedCronStore(storePath, env);
+      return;
+    }
+
+    const nodeExecutable = resolveTestNodeExecPath();
     const instance = await createBranchTestInstance({
       name: "cron-upgrade-ready",
       cwd: runtime.root,
       gatewayCommandPrefix: [nodeExecutable],
       entrypoint: doctorCliEntrypoint(runtime),
-      startTimeoutMs: runtime.source ? 90_000 : 30_000,
+      startTimeoutMs: 30_000,
       stopTimeoutMs: 1_500,
       env: {
         NODE_ENV: undefined,
@@ -444,62 +479,7 @@ describe("Doctor repair followed by gateway readiness", () => {
       seedPluginStateSidecar(stateDir, 2_000);
       const sidecarPath = path.join(stateDir, "plugin-state", "state.sqlite");
       const preservedSidecar = fs.readFileSync(sidecarPath);
-      const readCanonicalPluginState = () => {
-        const database = new DatabaseSync(path.join(stateDir, "state", "branch.sqlite"), {
-          readOnly: true,
-        });
-        try {
-          return database
-            .prepare(
-              "SELECT value_json, created_at FROM plugin_state_entries WHERE plugin_id = 'discord' AND namespace = 'components' AND entry_key = 'interaction:1'",
-            )
-            .get();
-        } finally {
-          database.close();
-        }
-      };
-      const job = {
-        name: "SQLite automation",
-        enabled: true,
-        createdAtMs: 1,
-        updatedAtMs: 1,
-        schedule: { kind: "cron", expr: "0 9 * * *" },
-        sessionTarget: "main",
-        wakeMode: "now",
-        payload: { kind: "systemEvent", text: "tick" },
-        state: {},
-      };
-      const jobs = [
-        { ...job, id: "valid-job" },
-        { ...job, id: "invalid-state-job", state: { nextRunAtMs: -1 } },
-        { ...job, id: "invalid-trigger-job", trigger: { script: [] } },
-      ];
-      const database = new DatabaseSync(databasePath);
-      try {
-        // Raw rows preserve corruption that the current store writer rejects.
-        const insert = database.prepare(`
-          INSERT INTO cron_jobs (
-            store_key, job_id, name, enabled, payload_kind, job_json, state_json,
-            runtime_updated_at_ms, sort_order, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (const [index, { state, updatedAtMs, ...definition }] of jobs.entries()) {
-          insert.run(
-            storePath,
-            definition.id,
-            definition.name,
-            1,
-            definition.payload.kind,
-            JSON.stringify({ ...definition, state: {} }),
-            JSON.stringify(state),
-            updatedAtMs,
-            index,
-            updatedAtMs,
-          );
-        }
-      } finally {
-        database.close();
-      }
+      seedRetiredCronJobs(databasePath, storePath);
 
       const doctor = await instance.cli(
         ["doctor", "--fix", "--non-interactive", "--no-workspace-suggestions"],
@@ -510,26 +490,11 @@ describe("Doctor repair followed by gateway readiness", () => {
       expect(doctorOutput).not.toContain("Building Control UI assets");
       expect(doctorOutput).not.toContain("Left plugin-state sidecar in place");
       expect(fs.readFileSync(sidecarPath)).toEqual(preservedSidecar);
-      expect(readCanonicalPluginState()).toEqual({ value_json: '{"ok":false}', created_at: 2_000 });
-      const backupNames = fs
-        .readdirSync(path.dirname(databasePath))
-        .filter((name) => name.startsWith("branch.sqlite.doctor-cron-") && name.endsWith(".bak"));
-      expect(backupNames.length).toBeGreaterThan(0);
-      const backup = new DatabaseSync(
-        path.join(path.dirname(databasePath), backupNames.toSorted()[0]!),
-        {
-          readOnly: true,
-        },
-      );
-      try {
-        expect(backup.prepare("SELECT job_id FROM cron_jobs ORDER BY sort_order").all()).toEqual([
-          { job_id: "valid-job" },
-          { job_id: "invalid-state-job" },
-          { job_id: "invalid-trigger-job" },
-        ]);
-      } finally {
-        backup.close();
-      }
+      expect(readCanonicalPluginState(stateDir)).toEqual({
+        value_json: '{"ok":false}',
+        created_at: 2_000,
+      });
+      assertDoctorCronBackup(databasePath);
 
       try {
         await instance.startGateway();
@@ -547,22 +512,11 @@ describe("Doctor repair followed by gateway readiness", () => {
       } finally {
         await instance.stopGateway();
       }
-      expect(readCanonicalPluginState()).toEqual({ value_json: '{"ok":false}', created_at: 2_000 });
-
-      const loaded = await loadCronJobsStoreWithConfigJobsReadOnly(storePath, env);
-      expect(loaded.store.jobs.map((entry) => entry.id)).toContain("valid-job");
-      // SQLite config decoding quarantines the trigger before Doctor validates runtime state.
-      expect(
-        (await loadCronQuarantinedJobs(storePath, env)).map((entry) => ({
-          sourceIndex: entry.sourceIndex,
-          reason: entry.reason,
-          id: entry.job?.id,
-        })),
-      ).toEqual([
-        { sourceIndex: 2, reason: "invalid-trigger", id: "invalid-trigger-job" },
-        { sourceIndex: 1, reason: "invalid-state", id: "invalid-state-job" },
-      ]);
-      expect(fs.existsSync(storePath)).toBe(false);
+      expect(readCanonicalPluginState(stateDir)).toEqual({
+        value_json: '{"ok":false}',
+        created_at: 2_000,
+      });
+      await assertRepairedCronStore(storePath, env);
     } finally {
       await instance.cleanup();
     }

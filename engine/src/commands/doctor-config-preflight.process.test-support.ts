@@ -4,7 +4,9 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { expect } from "vitest";
 import { runCliProcessChild } from "../cli/cli-process-child.test-helpers.js";
+import { loadCronJobsStoreWithConfigJobsReadOnly, loadCronQuarantinedJobs } from "../cron/store.js";
 import { resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
 import { removeCanonicalValidationFromHistoricalAgentFixture } from "../state/branch-agent-db.test-support.js";
 import { seedBranchAgentSchemaV21 } from "../state/branch-agent-schema-v21.test-support.js";
@@ -265,6 +267,124 @@ export function seedPluginStateSidecar(stateDir: string, canonicalCreatedAt: num
   } finally {
     sidecar.close();
   }
+}
+
+export async function repairCronStoreInProcess(configPath: string) {
+  const { prepareDoctorContext, withDoctorConfigMaintenance } = await import(
+    "./doctor-config-flow.test-support.js"
+  );
+  const { runInitialConfigWriteHealth } = await import(
+    "../flows/doctor-health-contribution-runners.config.js"
+  );
+  const { runLegacyCronHealth } = await import(
+    "../flows/doctor-health-contribution-runners.state.js"
+  );
+  try {
+    await withDoctorConfigMaintenance(async () => {
+      const ctx = await prepareDoctorContext(configPath);
+      await runInitialConfigWriteHealth(ctx);
+      await runLegacyCronHealth(ctx);
+    });
+  } finally {
+    closeBranchStateDatabaseForTest();
+  }
+}
+
+export function seedRetiredCronJobs(databasePath: string, storePath: string) {
+  const job = {
+    name: "SQLite automation",
+    enabled: true,
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    schedule: { kind: "cron", expr: "0 9 * * *" },
+    sessionTarget: "main",
+    wakeMode: "now",
+    payload: { kind: "systemEvent", text: "tick" },
+    state: {},
+  };
+  const jobs = [
+    { ...job, id: "valid-job" },
+    { ...job, id: "invalid-state-job", state: { nextRunAtMs: -1 } },
+    { ...job, id: "invalid-trigger-job", trigger: { script: [] } },
+  ];
+  const database = new DatabaseSync(databasePath);
+  try {
+    // Raw rows preserve corruption that the current store writer rejects.
+    const insert = database.prepare(`
+      INSERT INTO cron_jobs (
+        store_key, job_id, name, enabled, payload_kind, job_json, state_json,
+        runtime_updated_at_ms, sort_order, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const [index, { state, updatedAtMs, ...definition }] of jobs.entries()) {
+      insert.run(
+        storePath,
+        definition.id,
+        definition.name,
+        1,
+        definition.payload.kind,
+        JSON.stringify({ ...definition, state: {} }),
+        JSON.stringify(state),
+        updatedAtMs,
+        index,
+        updatedAtMs,
+      );
+    }
+  } finally {
+    database.close();
+  }
+}
+
+export function readCanonicalPluginState(stateDir: string) {
+  const database = new DatabaseSync(path.join(stateDir, "state", "branch.sqlite"), {
+    readOnly: true,
+  });
+  try {
+    return database
+      .prepare(
+        "SELECT value_json, created_at FROM plugin_state_entries WHERE plugin_id = 'discord' AND namespace = 'components' AND entry_key = 'interaction:1'",
+      )
+      .get();
+  } finally {
+    database.close();
+  }
+}
+
+export function assertDoctorCronBackup(databasePath: string) {
+  const backupNames = fs
+    .readdirSync(path.dirname(databasePath))
+    .filter((name) => name.startsWith("branch.sqlite.doctor-cron-") && name.endsWith(".bak"));
+  expect(backupNames.length).toBeGreaterThan(0);
+  const backup = new DatabaseSync(
+    path.join(path.dirname(databasePath), backupNames.toSorted()[0]!),
+    { readOnly: true },
+  );
+  try {
+    expect(backup.prepare("SELECT job_id FROM cron_jobs ORDER BY sort_order").all()).toEqual([
+      { job_id: "valid-job" },
+      { job_id: "invalid-state-job" },
+      { job_id: "invalid-trigger-job" },
+    ]);
+  } finally {
+    backup.close();
+  }
+}
+
+export async function assertRepairedCronStore(storePath: string, env: NodeJS.ProcessEnv) {
+  const loaded = await loadCronJobsStoreWithConfigJobsReadOnly(storePath, env);
+  expect(loaded.store.jobs.map((entry) => entry.id)).toContain("valid-job");
+  // SQLite config decoding quarantines the trigger before Doctor validates runtime state.
+  expect(
+    (await loadCronQuarantinedJobs(storePath, env)).map((entry) => ({
+      sourceIndex: entry.sourceIndex,
+      reason: entry.reason,
+      id: entry.job?.id,
+    })),
+  ).toEqual([
+    { sourceIndex: 2, reason: "invalid-trigger", id: "invalid-trigger-job" },
+    { sourceIndex: 1, reason: "invalid-state", id: "invalid-state-job" },
+  ]);
+  expect(fs.existsSync(storePath)).toBe(false);
 }
 
 export function seedV17AdditiveRepairDatabase(
