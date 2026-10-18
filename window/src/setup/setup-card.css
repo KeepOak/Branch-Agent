@@ -92,7 +92,7 @@
   place-items: center;
   overflow: hidden;
   background: var(--raise);
-  box-shadow: 0 14px 36px rgba(21, 58, 40, 0.28), inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+  box-shadow: 0 14px 36px color-mix(in srgb, var(--leaf) 45%, transparent), inset 0 0 0 0.5px var(--gw-edge);
 }
 .ob-mark-colour {
   width: 64px;
@@ -188,7 +188,7 @@
 }
 .ob-mode[aria-checked="true"] {
   background: var(--gw-chip-on);
-  box-shadow: inset 0 0 0 1.5px var(--ink), inset 0 1px 0 var(--gw-hi), 0 6px 18px rgba(0, 0, 0, 0.08);
+  box-shadow: inset 0 0 0 1.5px var(--ink), inset 0 1px 0 var(--gw-hi), 0 6px 18px color-mix(in srgb, var(--mask-opaque) 8%, transparent);
 }
 .ob-mode[aria-checked="true"] > svg {
   color: var(--ink);
