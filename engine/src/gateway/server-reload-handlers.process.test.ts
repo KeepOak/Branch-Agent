@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildWindowsCmdExeCommandLine } from "../process/windows-command.js";
 import { resolveExitWatchShell } from "./cron-exit-watch-shell.js";
-import { buildSupervisedExitWatcherCommand } from "./server-reload-handlers.process.test-support.js";
+import {
+  buildSupervisedExitWatcherCommand,
+  buildSupervisedExitWatcherScript,
+} from "./server-reload-handlers.process.test-support.js";
 
 describe("supervised cron exit watcher command", () => {
   const execPath = "C:\\hostedtoolcache\\node.exe";
@@ -28,6 +31,19 @@ describe("supervised cron exit watcher command", () => {
     expect(() =>
       buildSupervisedExitWatcherCommand(execPath, ['C:\\Temp\\"quoted"\\watcher.cjs'], "win32"),
     ).toThrow(/Unsafe Windows cmd.exe argument/);
+  });
+
+  it("bakes marker and release paths so cmd.exe argv cannot hide the release file", () => {
+    const markerPath = "C:\\Temp\\branch-cron-exit-reload-x\\watcher-runs.txt";
+    const releasePath = "C:\\Temp\\branch-cron-exit-reload-x\\release-watcher";
+    const script = buildSupervisedExitWatcherScript(markerPath, releasePath);
+    expect(script).toContain(`const marker=${JSON.stringify(markerPath)}`);
+    expect(script).toContain(`const release=${JSON.stringify(releasePath)}`);
+    expect(script).not.toContain("process.argv[2]");
+    expect(script).not.toContain("process.argv[3]");
+    expect(script.indexOf("setInterval")).toBeLessThan(script.indexOf("watcher-ready"));
+    expect(script).toContain("fs.appendFileSync(marker,'run\\n')");
+    expect(script).toContain("process.stdout.write('watcher-ready\\n')");
   });
 
   it("JSON-quotes argv for bash -lc on POSIX", () => {

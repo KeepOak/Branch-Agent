@@ -1806,6 +1806,9 @@ describe("gateway hot reload model state", () => {
         expect(spawn).toHaveBeenCalledOnce();
 
         await writeFile(releasePath, "release");
+        await waitForFast(() => expect(run.activity.resultSettled).toBe(true), {
+          timeout: 10_000,
+        });
         await waitForFast(() => expect(state?.cronState.cron.getJob(job.id)?.enabled).toBe(false), {
           timeout: 10_000,
         });

@@ -45,16 +45,27 @@ function watcherHasStarted(stdout: string, markerPath: string): boolean {
   }
 }
 
+/** Bake marker/release paths into the child so `cmd.exe /d /s /c` argv splitting
+ * cannot point the poll at a different file than the test writes. Start the
+ * release poll before stdout so a blocked pipe cannot prevent exit. */
+export function buildSupervisedExitWatcherScript(markerPath: string, releasePath: string): string {
+  return (
+    "const fs=require('node:fs');" +
+    `const marker=${JSON.stringify(markerPath)};` +
+    `const release=${JSON.stringify(releasePath)};` +
+    "fs.appendFileSync(marker,'run\\n');" +
+    "const timer=setInterval(()=>{if(fs.existsSync(release)){clearInterval(timer);process.exit(0)}},10);" +
+    "process.stdout.write('watcher-ready\\n');"
+  );
+}
+
 export async function createSupervisedExitWatcherFixture(fixtureDir: string) {
   const childScriptPath = path.join(fixtureDir, "watcher.cjs");
   const markerPath = path.join(fixtureDir, "watcher-runs.txt");
   const releasePath = path.join(fixtureDir, "release-watcher");
   await writeFile(
     childScriptPath,
-    "const fs=require('node:fs');" +
-      "fs.appendFileSync(process.argv[2],'run\\n');" +
-      "process.stdout.write('watcher-ready\\n');" +
-      "const timer=setInterval(()=>{if(fs.existsSync(process.argv[3])){clearInterval(timer);process.exit(0)}},10)",
+    buildSupervisedExitWatcherScript(markerPath, releasePath),
     "utf8",
   );
   const childArgs = [childScriptPath, markerPath, releasePath];

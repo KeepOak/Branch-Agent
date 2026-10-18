@@ -3,7 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveNativeFixtureShortPath } from "../scripts/native-boundary-fixture.js";
-import { cleanupTempDirs, makeTempDir, useAutoCleanupTempDirTracker } from "./temp-dir.js";
+import {
+  cleanupTempDirs,
+  createTempDirTracker,
+  makeTempDir,
+  useAutoCleanupTempDirTracker,
+} from "./temp-dir.js";
 
 const tempDirs = new Set<string>();
 
@@ -73,6 +78,47 @@ describe("temp-dir test helpers", () => {
     } finally {
       remove.mockRestore();
       cleanupTempDirs(dirs);
+    }
+  });
+
+  it("retries directory removal longer on Windows than on POSIX", () => {
+    const dirs = new Set<string>();
+    const dir = makeTempDir(dirs, "branch-temp-dir-retry-");
+    tempDirs.add(dir);
+    const rmSync = fs.rmSync.bind(fs);
+    const remove = vi.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+      rmSync(target, options);
+    });
+    try {
+      cleanupTempDirs(dirs);
+      expect(remove).toHaveBeenCalledWith(
+        dir,
+        expect.objectContaining({
+          recursive: true,
+          force: true,
+          maxRetries: process.platform === "win32" ? 30 : 5,
+          retryDelay: process.platform === "win32" ? 100 : 20,
+        }),
+      );
+    } finally {
+      remove.mockRestore();
+    }
+  });
+
+  it("abandons leftover tracker dirs after a cleanup throw so later afterEach hooks cannot cascade", () => {
+    const tracker = createTempDirTracker();
+    const failed = tracker.make("branch-temp-dir-cascade-");
+    tempDirs.add(failed);
+    const failure = Object.assign(new Error("EPERM, Permission denied"), { code: "EPERM" });
+    const remove = vi.spyOn(fs, "rmSync").mockImplementation(() => {
+      throw failure;
+    });
+    try {
+      expect(() => tracker.cleanup()).toThrow(failure);
+      expect([...tracker.dirs]).toEqual([]);
+      expect(() => tracker.cleanup()).not.toThrow();
+    } finally {
+      remove.mockRestore();
     }
   });
 
