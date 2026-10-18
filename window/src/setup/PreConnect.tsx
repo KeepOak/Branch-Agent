@@ -81,6 +81,8 @@ export function PreConnect({ local, address, state, busy, startAtWhere, onConnec
   const remote = where === "remote" || where === "keepoak";
   const url = remote ? (address && address !== local ? address : "") : local;
   const connect = (to: string, key: string) => (remember({}), onConnect(to, key));
+  /** App set a local address but startKey found no preload or stored token — ask for the key on this card. */
+  const askKey = !remote && state.kind === "key";
   const later = () => {
     remember({ where: "this" });
     markLater();
@@ -133,7 +135,7 @@ export function PreConnect({ local, address, state, busy, startAtWhere, onConnec
           </>
         }
         footer={
-          remote ? (
+          remote || askKey ? (
             <>
               <span />
               <button type="submit" form="setup-remote" className="btn pri ob-go" data-testid="setup-next" disabled={busy}>
@@ -153,6 +155,7 @@ export function PreConnect({ local, address, state, busy, startAtWhere, onConnec
         <WelcomeBody where={where} onChangeWhere={() => setChoosing(true)} />
         {state.kind === "pairing" ? <Pairing host={host} address={target} onRetry={onRetry} /> : null}
         {state.kind === "failed" ? <Failed host={host} address={target} code={state.code} message={state.message} /> : null}
+        {askKey ? <RemoteForm formId="setup-remote" hideSubmit hideAddress address={local} busy={busy} problem={null} onConnect={connect} /> : null}
         {remote && state.kind !== "pairing" ? <RemoteForm key={where} formId="setup-remote" hideSubmit address={url} busy={busy} problem={null} onConnect={connect} /> : null}
     </SetupShell>
   );

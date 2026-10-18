@@ -102,6 +102,20 @@ describe("pre-connect Welcome", () => {
     expect(host.textContent).not.toContain("VITE_GATEWAY_URL");
   });
 
+  it("asks for this computer's gateway key when the App has an address but no token", async () => {
+    const connect = vi.fn();
+    const host = await show(<PreConnect local="ws://127.0.0.1:18789" address="ws://127.0.0.1:18789" state={{ kind: "key" }} busy={false} onConnect={connect} onRetry={() => {}} />);
+    expect(host.querySelector('[data-testid="setup-address"]')).toBeNull();
+    const key = host.querySelector('[data-testid="setup-key"]') as HTMLInputElement;
+    expect(key).not.toBeNull();
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(key, "local-secret");
+      key.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => tid(host, "setup-next").click());
+    expect(connect).toHaveBeenCalledWith("ws://127.0.0.1:18789", "local-secret");
+  });
+
   it("Get started on this computer connects locally, and Set up later toasts and connects", async () => {
     const connect = vi.fn();
     const host = await show(<PreConnect local="ws://127.0.0.1:18789" address={null} state={{ kind: "address" }} busy={false} onConnect={connect} onRetry={() => {}} />);
