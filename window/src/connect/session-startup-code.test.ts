@@ -66,7 +66,7 @@ describe("startup refusal by code", () => {
   it("keeps a real failure an error, with no startup wait", async () => {
     fake.historyError = refusal("agent-database-inspection-failed", "Agent database inspection failed.");
     session = await connect();
-    expect(session.getSnapshot().error).toBe("Agent database inspection failed.");
+    expect(session.getSnapshot().error).toBe("Couldn't load this conversation: Agent database inspection failed.");
     expect(session.getSnapshot().startup).toBeNull();
   });
 

@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { FRIENDLY_ERROR } from "../connect/friendly-error";
 import type { WindowEngine } from "../connect/engine";
-import { NotSent, resetStepsFoldChoice, StepsFold } from "./blocks";
+import { Notice, NotSent, resetStepsFoldChoice, StepsFold } from "./blocks";
 import { ThreadContext } from "./context";
 import type { Block } from "./model";
 
@@ -74,6 +74,26 @@ describe("NotSent visible reason", () => {
     const why = host.querySelector(".send-why") as HTMLElement;
     expect(why.textContent).toBe("Couldn't send this message.");
     expect(why.getAttribute("title")).toBe("Couldn't send this message.");
+  });
+});
+
+describe("engine Notice text", () => {
+  it("shows a plain sentence for a raw connect failure", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    host.className = "thread";
+    root = createRoot(host);
+    await act(async () => root!.render(<Notice block={{ kind: "notice", key: "n", text: "connect ECONNREFUSED 127.0.0.1:19031" }} />));
+    const line = host.querySelector("[data-testid='notice']")?.textContent ?? "";
+    expect(line).toBe("Branch can’t reach its engine right now. It keeps trying, so try again in a moment.");
+    expect(line).not.toMatch(/ECONNREFUSED|127\.0\.0\.1|19031/);
+  });
+
+  it("keeps already-plain copy unchanged", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    host.className = "thread";
+    root = createRoot(host);
+    await act(async () => root!.render(<Notice block={{ kind: "notice", key: "n", text: "The Gateway restarted." }} />));
+    expect(host.querySelector("[data-testid='notice']")?.textContent).toBe("The Gateway restarted.");
   });
 });
 

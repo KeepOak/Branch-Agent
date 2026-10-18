@@ -104,8 +104,8 @@ describe("a failing turn's error receipt reaches the thread after it is persiste
     const session = new SaplingSession("ws://fake", undefined);
     session.start();
     fake.options?.onStatus({ phase: "connected", hello } as unknown as GatewayStatus);
-    await vi.waitFor(() => expect(session.getSnapshot().error).toContain("PluginInstanceUnavailableError"));
-    expect(session.getSnapshot().error).toContain("reloaded or disabled");
+    await vi.waitFor(() => expect(session.getSnapshot().error).toMatch(/^Couldn't load this conversation/));
+    expect(session.getSnapshot().error).not.toContain("PluginInstanceUnavailableError");
     expect(session.getSnapshot().error).not.toContain("starting up");
     expect(fake.historyReads).toBe(1);
     session.stop();

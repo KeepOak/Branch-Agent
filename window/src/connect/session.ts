@@ -12,6 +12,7 @@ import { projectRun, settleRunBlocks, type Approval, type Block } from "../threa
 import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/history";
 import { sanitizeBlocks } from "../thread/tool-output-display";
 import { friendlyError } from "./friendly-error";
+import { plainError } from "../shell/plain-error";
 import { HISTORY_STARTING_LABEL, HISTORY_UNAVAILABLE_LABEL, HISTORY_RETRY_TIMEOUT_MS, isHistoryTemporarilyUnavailable, isPreparationPending, isPreparationStalled, isStartupUnavailable, PreparationRetry, preparationTimeoutLabel, type StartupWait } from "./preparation-status";
 import { readStartupPreparation } from "./startup-preparation";
 import { addNotSent, healNotSent } from "../composer/queue";
@@ -103,12 +104,14 @@ const STARTUP_POLL_MS = 3_000;
  *  given up after this long and read again, so a hung request cannot leave the window connecting. */
 const BOOTSTRAP_REQUEST: GatewayProtocolRequestOptions = { timeoutMs: 15_000 };
 const BOOTSTRAP_RETRY_MAX_MS = 10_000;
-/** A failed read as the snapshot keeps it: a startup wait by code, a retrying history UNAVAILABLE in plain words, else the engine's words. The one-minute history cap is applied in `set()`. */
+/** A failed read as the snapshot keeps it: a startup wait by code, a retrying history UNAVAILABLE in plain words, else a plain load-conversation sentence. The one-minute history cap is applied in `set()`. */
 const failure = (error: unknown): Pick<SessionSnapshot, "error" | "startup"> => {
   const message = error instanceof Error ? error.message : String(error);
   if (isStartupUnavailable(error)) return { error: message, startup: { detail: message, stalled: false } };
   if (isHistoryTemporarilyUnavailable(error)) return { error: HISTORY_STARTING_LABEL, startup: null };
-  return { error: message, startup: null };
+  // Startup wording stays exact so the retry watch can still see a pending preparation.
+  if (isPreparationPending(error)) return { error: message, startup: null };
+  return { error: plainError(`Couldn't load this conversation: ${message}`), startup: null };
 };
 /** The code the gateway client gives a request it gave up on (GatewayProtocolRequestTimeoutError). */
 const isRequestTimeout = (error: unknown): boolean => (error as { code?: unknown } | null)?.code === "CLIENT_TIMEOUT";
