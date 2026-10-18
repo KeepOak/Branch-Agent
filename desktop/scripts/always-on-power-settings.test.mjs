@@ -15,7 +15,7 @@ import test from 'node:test';
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error('Compile the exact desktop source before testing');
 const require = createRequire(import.meta.url);
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
-const { createRunKeepAwake, sleepBlockerCommand, writePowerState, POWER_STATE_FILE, claimServiceKeepAwake, handOffKeepAwake, appHoldsSleepBlock, KEEP_AWAKE_OWNER_FILE, DESKTOP_KEEP_AWAKE_FRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, KEEP_AWAKE_LEASE_MS } = require(join(dist, 'keep-awake.js'));
+const { createRunKeepAwake, sleepBlockerCommand, writePowerState, POWER_STATE_FILE, claimServiceKeepAwake, handOffKeepAwake, appHoldsSleepBlock, KEEP_AWAKE_OWNER_FILE, DESKTOP_KEEP_AWAKE_FRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, KEEP_AWAKE_LEASE_MS, TRAY_STATUS_WORKING_MS, TRAY_STATUS_MS } = require(join(dist, 'keep-awake.js'));
 const { createClosedWindowNotifier, readEngineLiveState, trayLabel, workNotices } = require(join(dist, 'tray-status.js'));
 const { engineLingerArgs, parseLingerAnswer, readEngineHealth } = require(join(dist, 'engine-service.js'));
 const { createDesktopControls } = require(join(dist, 'desktop-controls.js'));
@@ -239,6 +239,23 @@ test('a stale keep-awake hold with no live run expires, and an active run keeps 
   assert.equal(keepAwake.held(), false, 'no renewing run: the hold expires');
   assert.equal(fake.held().length, 0);
   assert.ok(lines.some(line => line.includes('released (no live Trunk run)')), lines.join('\n'));
+  keepAwake.dispose();
+});
+
+test('the tray refreshes the keep-awake hold faster than the lease while a Trunk works', () => {
+  assert.ok(TRAY_STATUS_WORKING_MS < KEEP_AWAKE_LEASE_MS, 'working tray cadence must renew before the 30s lease');
+  assert.ok(TRAY_STATUS_MS < KEEP_AWAKE_LEASE_MS);
+  const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+  const watch = main.slice(main.indexOf('function watchTrayStatus'));
+  assert.match(watch, /keepAwake\.update\(/, 'tray status refresh renews the hold');
+  assert.match(watch, /working \? TRAY_STATUS_WORKING_MS : TRAY_STATUS_MS/);
+  const { keepAwake, clock } = keepAwakeFixture();
+  keepAwake.update(true);
+  for (let elapsed = 0; elapsed < KEEP_AWAKE_LEASE_MS * 2; elapsed += TRAY_STATUS_WORKING_MS) {
+    clock.advance(TRAY_STATUS_WORKING_MS);
+    keepAwake.update(true);
+  }
+  assert.equal(keepAwake.held(), true, 'a working tray refresh every 3s cannot drop the 30s lease mid-run');
   keepAwake.dispose();
 });
 

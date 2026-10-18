@@ -71,6 +71,10 @@ export interface RunKeepAwake {
 
 /** A hold must be renewed by a live run within this window or it is dropped. */
 export const KEEP_AWAKE_LEASE_MS = 30_000;
+/** Tray status (and with it the hold) is refreshed this often while a Trunk works. Must stay below the lease. */
+export const TRAY_STATUS_WORKING_MS = 3_000;
+/** Tray status when no Trunk is working. Also below the lease. */
+export const TRAY_STATUS_MS = 10_000;
 
 /** Holds the sleep blocker exactly while a run is active (and the setting and power source allow it). */
 export function createRunKeepAwake(deps: KeepAwakeDeps): RunKeepAwake {

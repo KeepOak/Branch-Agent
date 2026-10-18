@@ -14,6 +14,7 @@ import {
   KEEP_AWAKE_OWNER_FILE,
   readPlatformOnBatterySync,
   resolveServiceKeepAwakePaths,
+  SERVICE_KEEP_AWAKE_POLL_MS,
   serviceRunIsActive,
   type ServiceKeepAwake,
 } from "./service-keep-awake.js";
@@ -166,6 +167,58 @@ describe("service keep awake", () => {
     expect(keep.held()).toBe(false);
     expect(fake.held()).toHaveLength(0);
     expect(lines.some((line) => line.includes("released (no live Trunk run)"))).toBe(true);
+    keep.dispose();
+  });
+
+  it("renews the hold on each service poll during a long run, faster than the lease", () => {
+    expect(SERVICE_KEEP_AWAKE_POLL_MS).toBeLessThan(KEEP_AWAKE_LEASE_MS);
+    const source = fs.readFileSync(new URL("./service-keep-awake.ts", import.meta.url), "utf8");
+    expect(source).toMatch(/setInterval\(poll, deps\.pollMs \?\? SERVICE_KEEP_AWAKE_POLL_MS\)/);
+    expect(source).toMatch(/keep\.update\(ownership\.sleep === "engine" && deps\.runsActive\(\)\)/);
+    const fake = fakeSpawn();
+    const lines: string[] = [];
+    let now = 1_000;
+    const timers: { id: number; at: number; fn: () => void }[] = [];
+    let nextId = 1;
+    const fireDue = () => {
+      const due = timers.filter((timer) => timer.at <= now).sort((a, b) => a.at - b.at);
+      for (const timer of due) {
+        const index = timers.indexOf(timer);
+        if (index >= 0) {
+          timers.splice(index, 1);
+        }
+        timer.fn();
+      }
+    };
+    const keep = createRunKeepAwake({
+      platform: "darwin",
+      appPid: 9,
+      spawn: fake.spawn,
+      enabled: () => true,
+      onBatteryToo: () => false,
+      onBattery: () => false,
+      log: (line) => lines.push(line),
+      now: () => now,
+      setTimeout: (fn, ms) => {
+        const id = nextId++;
+        timers.push({ id, at: now + ms, fn });
+        return id;
+      },
+      clearTimeout: (id) => {
+        const index = timers.findIndex((timer) => timer.id === id);
+        if (index >= 0) {
+          timers.splice(index, 1);
+        }
+      },
+    });
+    keep.update(true);
+    for (let elapsed = 0; elapsed < KEEP_AWAKE_LEASE_MS * 2; elapsed += SERVICE_KEEP_AWAKE_POLL_MS) {
+      now += SERVICE_KEEP_AWAKE_POLL_MS;
+      fireDue();
+      keep.update(true);
+    }
+    expect(keep.held()).toBe(true);
+    expect(fake.held()).toHaveLength(1);
     keep.dispose();
   });
 

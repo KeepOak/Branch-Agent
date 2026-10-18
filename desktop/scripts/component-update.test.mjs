@@ -1311,6 +1311,34 @@ test("a staged update awaiting Restart still schedules the next GitHub check", a
   } finally { stop(); }
 }));
 
+test("a hung update check times out and the next scheduled check still runs", async () => fixture(async ({ cfg }) => {
+  let checks = 0;
+  const logs = [];
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, line => logs.push(line), {
+    checkMs: 20,
+    timeoutMs: 30,
+    refresh: async () => {
+      checks++;
+      if (checks === 1) return new Promise(() => {});
+      return false;
+    },
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    assert.equal(checks, 1, "first check started and never resolved");
+    await clock.advance(20);
+    assert.equal(checks, 1, "busy hang does not start a second overlapping check");
+    assert.ok(logs.some(line => line.includes("still running") && line.includes("next check in")), logs.join("\n"));
+    await clock.advance(10);
+    assert.ok(logs.some(line => line.includes("timed out") && line.includes("next check in")), logs.join("\n"));
+    await clock.advance(20);
+    assert.ok(checks >= 2, `later scheduled check ran after the hang timed out, got ${checks}`);
+  } finally { stop(); }
+}));
+
 test("an update-check error still leaves a pending retry", async () => fixture(async ({ cfg }) => {
   let checks = 0;
   const logs = [];

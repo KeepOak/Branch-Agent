@@ -17,7 +17,8 @@ import {
 export const KEEP_AWAKE_OWNER_FILE = "keep-awake-owner.json";
 /** The app rewrites the file every few seconds. Older than this, the engine takes sleep and power. */
 export const DESKTOP_KEEP_AWAKE_FRESH_MS = 20_000;
-const SERVICE_KEEP_AWAKE_POLL_MS = 2_000;
+/** Service tick while a run is active; must stay below KEEP_AWAKE_LEASE_MS so a long run cannot drop the hold. */
+export const SERVICE_KEEP_AWAKE_POLL_MS = 2_000;
 const BATTERY_PROBE_MS = 30_000;
 
 export type KeepAwakeDuty = "desktop" | "engine";

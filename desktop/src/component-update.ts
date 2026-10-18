@@ -26,6 +26,8 @@ export interface RefreshOptions {
   log?: (line: string) => void;
   /** Clear an offered version as soon as the manifest withdraws it, before Windows folder moves retry. */
   onWithdrawal?: (version: string) => void;
+  /** Caps a hung refresh; tests shorten it. Production uses COMPONENT_UPDATE_CHECK_TIMEOUT_MS. */
+  timeoutMs?: number;
 }
 
 interface ReleaseIdentity { version: string; engineSha256: string; windowSha256: string }
@@ -667,11 +669,31 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
 
 const refreshes = new WeakMap<DesktopConfig, Promise<boolean>>();
 export const COMPONENT_UPDATE_CHECK_MS = 10 * 60 * 1000;
+/**
+ * A hung GitHub fetch (or a swap that never returns) must not occupy the checker forever. Two 5-minute archive
+ * downloads plus extract still fit; a fetch left open after the engine is killed does not.
+ */
+export const COMPONENT_UPDATE_CHECK_TIMEOUT_MS = 15 * 60 * 1000;
 /** Startup, periodic and manual staging share one publication owner. */
 export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch = fetch, options: RefreshOptions = {}): Promise<boolean> {
   const active = refreshes.get(cfg);
   if (active) return active;
-  const next = refresh(cfg, request, options).finally(() => refreshes.delete(cfg));
+  const timeoutMs = options.timeoutMs ?? COMPONENT_UPDATE_CHECK_TIMEOUT_MS;
+  const ac = new AbortController();
+  const signal = options.signal ? AbortSignal.any([options.signal, ac.signal]) : ac.signal;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const next = new Promise<boolean>((resolve, reject) => {
+    timer = setTimeout(() => {
+      timer = undefined;
+      ac.abort();
+      reject(new Error("Component update check timed out"));
+    }, timeoutMs);
+    timer.unref?.();
+    void refresh(cfg, request, { ...options, signal }).then(resolve, reject);
+  }).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+    refreshes.delete(cfg);
+  });
   refreshes.set(cfg, next);
   return next;
 }
@@ -715,7 +737,9 @@ export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) =>
   let stopped = false;
   let first = true;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let hangTimer: ReturnType<typeof setTimeout> | undefined;
   const waitMs = options.checkMs ?? COMPONENT_UPDATE_CHECK_MS;
+  const hangMs = options.timeoutMs ?? COMPONENT_UPDATE_CHECK_TIMEOUT_MS;
   const schedule = options.setTimeout ?? setTimeout;
   const cancel = options.clearTimeout ?? clearTimeout;
   const runRefresh = options.refresh ?? refreshComponentUpdate;
@@ -740,18 +764,34 @@ export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) =>
       return;
     }
     busy = true;
+    const ac = new AbortController();
+    const signal = options.signal ? AbortSignal.any([options.signal, ac.signal]) : ac.signal;
     try {
-      if (await runRefresh(cfg, fetch, options)) {
+      const staged = await new Promise<boolean>((resolve, reject) => {
+        hangTimer = schedule(() => {
+          hangTimer = undefined;
+          ac.abort();
+          reject(new Error("timed out"));
+        }, hangMs);
+        void runRefresh(cfg, fetch, { ...options, signal, timeoutMs: hangMs }).then(resolve, reject);
+      });
+      if (staged) {
         log("Verified GitHub component update staged");
         options.onStaged?.();
       }
     } catch (error) {
-      retryLine(`Component update check: ${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      retryLine(/timed out/i.test(message) ? "Component update check timed out" : `Component update check: ${message}`);
     } finally {
-      // Startup already pruned: later checks remove a previous engine whose probation has ended since.
-      if (!first && !stopped) await pruneEndedProbation(cfg, log);
-      first = false;
-      busy = false;
+      if (hangTimer !== undefined) cancel(hangTimer);
+      hangTimer = undefined;
+      try {
+        // Startup already pruned: later checks remove a previous engine whose probation has ended since.
+        if (!first && !stopped) await pruneEndedProbation(cfg, log);
+      } finally {
+        first = false;
+        busy = false;
+      }
     }
   };
   const notifyStopped = (): void => {
@@ -763,7 +803,9 @@ export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) =>
   const stop = (): void => {
     stopped = true;
     if (timer !== undefined) cancel(timer);
+    if (hangTimer !== undefined) cancel(hangTimer);
     timer = undefined;
+    hangTimer = undefined;
   };
   return Object.assign(stop, { notifyStopped });
 }
