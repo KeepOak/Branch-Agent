@@ -373,6 +373,8 @@ export function gradleSigningArgs({ keystorePath } = {}) {
   return [
     `-Pandroid.injected.signing.store.file=${keystorePath}`,
     '-Pandroid.injected.signing.store.type=PKCS12',
+    '-Pandroid.injected.signing.v1-enabled=true',
+    '-Pandroid.injected.signing.v2-enabled=true',
   ];
 }
 
