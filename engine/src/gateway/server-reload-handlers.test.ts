@@ -1849,17 +1849,14 @@ describe("gateway hot reload model state", () => {
             timeout: 10_000,
           });
           await waitForFast(() => expect(runOnExit).toHaveBeenCalled(), { timeout: 10_000 });
+          const admitted = await withinTest(
+            Promise.resolve(runOnExit.mock.results.at(-1)?.value),
+            signal,
+          );
+          expect(admitted).toEqual(expect.objectContaining({ ok: true, ran: true }));
+          expect(spawn).toHaveBeenCalledOnce();
           await waitForFast(
-            () => {
-              const latest = state?.cronState.cron.getJob(job.id);
-              expect({
-                enabled: latest?.enabled,
-                lastError: latest?.state.lastError ?? null,
-                spawnCount: spawn.mock.calls.length,
-                runOnExitCalls: runOnExit.mock.calls.length,
-                runOnExitStatus: runOnExit.mock.results.at(-1)?.type ?? null,
-              }).toMatchObject({ enabled: false, spawnCount: 1 });
-            },
+            () => expect(state?.cronState.cron.getJob(job.id)?.enabled).toBe(false),
             { timeout: 10_000 },
           );
           if (run.waitForExtinction) {
