@@ -1,6 +1,15 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { SessionEntrySummary } from "../../config/sessions/session-accessor.js";
-import { contactIdForSession, projectContacts } from "./project.js";
+import { contactIdForSession, isOpenableContactTopic, projectContacts } from "./project.js";
+import {
+  classifyContactTopicKind,
+  CONTACT_TOPIC_KIND_SAMPLES,
+  CONTACT_TOPIC_SESSION_KINDS,
+  type ContactTopicSessionKind,
+} from "./topic-kinds.js";
 
 function row(
   sessionKey: string,
@@ -269,6 +278,82 @@ describe("contact projection", () => {
       "agent:tk:dashboard:4f1c",
       "agent:tk:window:lisbon",
     ]);
+  });
+
+  it("classifies every engine-created session kind as openable or deliberately hidden", () => {
+    const kinds = Object.keys(CONTACT_TOPIC_SESSION_KINDS).toSorted() as ContactTopicSessionKind[];
+    expect(Object.keys(CONTACT_TOPIC_KIND_SAMPLES).toSorted()).toEqual(kinds);
+    for (const kind of kinds) {
+      expect(classifyContactTopicKind(CONTACT_TOPIC_KIND_SAMPLES[kind])).toEqual({
+        kind,
+        visibility: CONTACT_TOPIC_SESSION_KINDS[kind],
+      });
+    }
+  });
+
+  it("hides routine, subagent and hook sessions that are not children of the contact thread", () => {
+    const threadKey = "agent:tk:main";
+    expect(isOpenableContactTopic(row("agent:tk:cron:nightly:run:one"), threadKey)).toBe(false);
+    expect(isOpenableContactTopic(row("agent:tk:subagent:reader"), threadKey)).toBe(false);
+    expect(isOpenableContactTopic(row("agent:tk:hook:gmail:thread-1"), threadKey)).toBe(false);
+    expect(
+      isOpenableContactTopic(
+        row("agent:tk:hook:gmail:thread-1", { parentSessionKey: threadKey }),
+        threadKey,
+      ),
+    ).toBe(true);
+    const projected = projectContacts({
+      agents: [{ id: "tk", name: "TK" }],
+      defaultAgentId: "tk",
+      sessions: [
+        row(threadKey, { lastReadAt: 200, lastActivityAt: 100 }),
+        row("agent:tk:cron:nightly:run:one", { lastReadAt: 50, lastActivityAt: 180 }),
+        row("agent:tk:subagent:reader", { lastReadAt: 50, lastActivityAt: 170 }),
+        row("agent:tk:hook:gmail:thread-1", { lastReadAt: 50, lastActivityAt: 160 }),
+        row("agent:tk:ios-7f3a9c2b1d0e", { lastReadAt: 50, lastActivityAt: 150, label: "Phone" }),
+      ],
+    });
+    expect(projected.contacts[0]).toMatchObject({ unreadTopics: 1, topicCount: 1 });
+    expect(projected.topics.map((topic) => topic.key)).toEqual(["agent:tk:ios-7f3a9c2b1d0e"]);
+  });
+
+  it("fails when an unclassified session kind appears in production builders", () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
+    const files: string[] = [];
+    const skipDir = new Set(["test", "test-helpers", "fixtures", "node_modules", "dist"]);
+    const visit = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        if (skipDir.has(name)) {
+          continue;
+        }
+        const path = join(dir, name);
+        if (statSync(path).isDirectory()) {
+          visit(path);
+          continue;
+        }
+        if (!name.endsWith(".ts") || name.endsWith(".d.ts") || name.includes(".test.")) {
+          continue;
+        }
+        files.push(path);
+      }
+    };
+    visit(root);
+    const unclassified: string[] = [];
+    const agentTemplate = /`agent:\$\{[^}]+\}:([^`$]+)`/g;
+    for (const path of files) {
+      const source = readFileSync(path, "utf8");
+      for (const match of source.matchAll(agentTemplate)) {
+        const filled = match[1]!.replace(/\$\{[^}]+\}/g, "x");
+        if (/^x(?::x)*$/.test(filled)) {
+          continue;
+        }
+        const sample = `agent:scout:${filled}`;
+        if (classifyContactTopicKind(sample).kind === "leftover") {
+          unclassified.push(`${path.slice(root.length + 1)}: ${match[0]}`);
+        }
+      }
+    }
+    expect(unclassified).toEqual([]);
   });
 
   it("does not mark a conversation unread when restart recovery only touched it", () => {

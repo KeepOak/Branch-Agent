@@ -87,6 +87,24 @@ describe("Gateway contact projection", () => {
     expect(await markContactRead(projectContact([raw("oak")], [])[0], request)).toBe(false);
   });
 
+  it("coalesces overlapping markRead calls for the same contact into one request", async () => {
+    const [contact] = projectContact([raw("oak", { unreadTopics: 2 })], []);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const request = vi.fn(async () => {
+      await gate;
+      return { updated: 2 };
+    });
+    const first = markContactRead(contact, request);
+    const second = markContactRead(contact, request);
+    release();
+    expect(await first).toBe(true);
+    expect(await second).toBe(true);
+    expect(request).toHaveBeenCalledExactlyOnceWith("contacts.markRead", { contactId: "trunk:oak" });
+  });
+
   it("reads every topic page for contact actions", async () => {
     const request = vi.fn(async (_method: string, params: unknown) => ({ topics: [{ key: (params as { cursor?: string }).cursor ?? "first" }], ...(!(params as { cursor?: string }).cursor ? { nextCursor: "second" } : {}) }));
     expect((await listContactTopics("trunk:oak", request)).map((topic) => topic.key)).toEqual(["first", "second"]);

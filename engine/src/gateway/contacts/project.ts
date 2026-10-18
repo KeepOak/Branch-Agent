@@ -2,7 +2,8 @@ import type { Contact, Topic } from "../../../packages/gateway-protocol/src/sche
 import { resolveCanonicalMainSessionKey } from "../../config/sessions/main-session-key.js";
 import type { SessionEntrySummary } from "../../config/sessions/session-accessor.js";
 import type { SessionScope } from "../../config/sessions/types.js";
-import { parseAgentSessionKey, parseSessionDeliveryRoute } from "../../routing/session-key.js";
+import { parseAgentSessionKey } from "../../routing/session-key.js";
+import { classifyContactTopicKind } from "./topic-kinds.js";
 
 export type ContactAgent = { id: string; name: string; iconUrl?: string };
 export type OutsidePeer = {
@@ -64,23 +65,16 @@ export function contactIdForSession(row: SessionEntrySummary): string | undefine
 }
 
 /**
- * A topic the window can open from this contact row: a child of the main thread,
- * a window/dashboard/background key, or a chat-app DM. Leftover script-made
- * sessions stay on disk; they are not listed or counted as unread.
+ * A topic the window can open from this contact row. Parent and contact-anchor
+ * children stay openable even when the rest prefix is a hidden kind. Other keys
+ * follow CONTACT_TOPIC_SESSION_KINDS; leftover script-made rest stays on disk
+ * and is not listed or counted as unread.
  */
 export function isOpenableContactTopic(row: SessionEntrySummary, threadKey: string): boolean {
   if (row.entry.parentSessionKey === threadKey || row.entry.contactAnchor?.threadKey === threadKey) {
     return true;
   }
-  const parsed = parseAgentSessionKey(row.sessionKey);
-  if (!parsed) {
-    return false;
-  }
-  const rest = parsed.rest;
-  if (rest.startsWith("window:") || rest.startsWith("background:") || rest.startsWith("dashboard:")) {
-    return true;
-  }
-  return parseSessionDeliveryRoute(row.sessionKey) !== null;
+  return classifyContactTopicKind(row.sessionKey).visibility === "openable";
 }
 
 function topicTitle(row: SessionEntrySummary, preview: string, derivedTitle?: string): string {

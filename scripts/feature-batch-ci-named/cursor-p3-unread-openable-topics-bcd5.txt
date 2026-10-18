@@ -1,2 +1,4 @@
 engine:src/gateway/contacts/project.test.ts
 window:src/screens/sidebar/Sidebar.test.tsx
+window:src/shell/WindowShell.topics.test.tsx
+window:src/shell/contacts-model.test.ts

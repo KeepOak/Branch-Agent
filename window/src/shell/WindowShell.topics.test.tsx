@@ -200,6 +200,53 @@ describe("All topics across sessions.list refreshes", () => {
   });
 });
 
+describe("opening a contact row", () => {
+  it("fires one contacts.markRead when the sidebar and shell both handle the click", async () => {
+    const unread: Contact = { ...oak, unreadTopics: 2, topicCount: 2 };
+    stubChrome(false);
+    const request = vi.fn(async (method: string, params?: unknown) => {
+      const key = (params as { sessionKey?: string } | undefined)?.sessionKey;
+      if (method === "config.get") return { hash: "h", config: { wizard: { lastRunAt: "2026-10-06T00:00:00Z" } } };
+      if (method === "agents.list") return { defaultId: "oak", agents: [{ id: "oak", kind: "agent", name: "Oak" }] };
+      if (method === "contacts.list") return { contacts: [unread] };
+      if (method === "contacts.topics") return { topics: [trip] };
+      if (method === "contacts.markRead") return { updated: 2 };
+      if (method === "sessions.subscribe") return { list: { sessions } };
+      if (method === "sessions.list") return { sessions };
+      if (method === "chat.history") {
+        if (key === "agent:oak:main") return { messages: [{ role: "assistant", content: [{ type: "text", text: "General last line" }] }] };
+        return { messages: [] };
+      }
+      if (method === "rooms.list") return { rooms: [] };
+      if (method === "peers.list" || method === "a2a.peers.list") return { peers: [] };
+      if (method === "channels.status") return { channelOrder: [] };
+      if (method === "exec.approval.list" || method === "plugin.approval.list" || method === "branch.approval.list") return { items: [] };
+      return {};
+    });
+    const snapshot = {
+      status: { phase: "connected" }, sessionKey: "agent:oak:main", mainKey: "agent:oak:main", name: "Oak",
+      history: [], live: [], pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null,
+      doneAt: null, lastActivityAt: 10, error: null, steered: [], ended: null,
+    };
+    const client = {
+      request, engine: { request, onEvent: () => () => {}, scopes: ["operator.admin"], agentId: "oak" },
+      gatewayUrl: "ws://127.0.0.1:19661", getSnapshot: () => snapshot, subscribe: () => () => {},
+      onGatewayEvent: () => () => {}, open: vi.fn(async () => {}), reload: vi.fn(),
+    } as unknown as SaplingSession;
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(<WindowShell session={client} url="ws://127.0.0.1:19661" />));
+    const row = await vi.waitFor(() => {
+      const button = host.querySelector<HTMLButtonElement>('[data-testid=conversation-row][data-key="agent:oak:main"] .row-open');
+      expect(button).toBeTruthy();
+      return button!;
+    });
+    await act(async () => row.click());
+    const markReads = request.mock.calls.filter(([method]) => method === "contacts.markRead");
+    expect(markReads).toEqual([["contacts.markRead", { contactId: "trunk:oak" }]]);
+  });
+});
+
 describe("Settings sidebar rail", () => {
   it("uses the icon rail on desktop and restores the saved full width after leaving Settings", async () => {
     localStorage.setItem("branch.layout", JSON.stringify({ sideW: 340, rail: false, hidden: false }));
