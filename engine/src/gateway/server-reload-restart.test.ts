@@ -228,7 +228,7 @@ describe("gateway restart readiness preflight", () => {
     }
   });
 
-  it("keeps the timed-out deferral cancellable so a later request can supersede it", async () => {
+  it("keeps a live-run deferral cancellable so a later request can supersede it", async () => {
     const cancel = vi.fn();
     const deferSpy = vi.spyOn(restartModule, "deferGatewayRestartUntilIdle");
     let capturedHooks: Parameters<typeof restartModule.deferGatewayRestartUntilIdle>[0]["hooks"];
@@ -253,6 +253,8 @@ describe("gateway restart readiness preflight", () => {
         prepareRuntimeConfig: async () => ({}) as BranchConfig,
       });
       expect(deferSpy).toHaveBeenCalledOnce();
+      expect(deferSpy.mock.calls[0]?.[0].maxWaitMs).toBeUndefined();
+      expect(deferSpy.mock.calls[0]?.[0].timeoutIntent).toBeUndefined();
 
       capturedHooks?.onTimeout?.(1, 300_000);
 
@@ -266,7 +268,66 @@ describe("gateway restart readiness preflight", () => {
       coordinator.stopRestartRetries();
     }
   });
-  it("forces the restart at the deadline when production timeout diagnostics cannot inspect work", async () => {
+
+  it("does not abort a live run after the old five-minute deferral cap", async () => {
+    vi.useFakeTimers();
+    const requestRecoveryRestart = vi.fn(() => ({ status: "emitted" as const }));
+    const logReload = { info: vi.fn(), warn: vi.fn() };
+    const coordinator = createCoordinator(
+      { logReload, requestRecoveryRestart },
+      {
+        getActiveCounts: () => ({ ...zeroActiveCounts, totalActive: 1, agentRuns: 1 }),
+        formatActiveDetails: () => ["1 admitted agent run(s)"],
+        formatDeferredWorkStatus: () => "1 admitted agent run(s) active",
+      },
+    );
+    try {
+      expect(coordinator.requestGatewayRestart(restartPlan, {} as BranchConfig).status).toBe(
+        "accepted",
+      );
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(requestRecoveryRestart).not.toHaveBeenCalled();
+      expect(logReload.warn).toHaveBeenCalledWith(
+        "config change requires gateway restart (gateway.port) — deferring until 1 admitted agent run(s) complete",
+      );
+      expect(logReload.warn.mock.calls.flat()).not.toEqual(
+        expect.arrayContaining([expect.stringContaining("forcing restart")]),
+      );
+    } finally {
+      coordinator.stopRestartRetries();
+    }
+  });
+
+  it("restarts once a live run drains after the old five-minute deferral cap", async () => {
+    vi.useFakeTimers();
+    const requestRecoveryRestart = vi.fn(() => ({ status: "emitted" as const }));
+    let totalActive = 1;
+    const coordinator = createCoordinator(
+      { requestRecoveryRestart },
+      {
+        getActiveCounts: () => ({ ...zeroActiveCounts, totalActive, agentRuns: totalActive }),
+        formatActiveDetails: () => ["1 admitted agent run(s)"],
+        formatDeferredWorkStatus: () => "1 admitted agent run(s) active",
+      },
+    );
+    try {
+      expect(coordinator.requestGatewayRestart(restartPlan, {} as BranchConfig).status).toBe(
+        "accepted",
+      );
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(requestRecoveryRestart).not.toHaveBeenCalled();
+      totalActive = 0;
+      await vi.advanceTimersByTimeAsync(500);
+      expect(requestRecoveryRestart).toHaveBeenCalledExactlyOnceWith(
+        "config reload: gateway.port",
+        undefined,
+      );
+    } finally {
+      coordinator.stopRestartRetries();
+    }
+  });
+
+  it("does not force a restart when production diagnostics cannot inspect work", async () => {
     vi.useFakeTimers();
     const queueSize = getTotalQueueSize.mockReturnValue(1);
     const requestRecoveryRestart = vi.fn(() => ({ status: "emitted" as const }));
@@ -284,19 +345,13 @@ describe("gateway restart readiness preflight", () => {
       queueSize.mockImplementation(() => {
         throw new Error("pending-work store unavailable");
       });
-      await vi.advanceTimersByTimeAsync(299_500);
+      await vi.advanceTimersByTimeAsync(300_000);
       expect(requestRecoveryRestart).not.toHaveBeenCalled();
-
-      await vi.advanceTimersByTimeAsync(500);
-
-      expect(requestRecoveryRestart).toHaveBeenCalledExactlyOnceWith(
-        "config reload: gateway.port",
-        { force: true, waitMs: 300_000, reason: "config reload forced restart" },
+      expect(logReload.warn.mock.calls.flat()).not.toEqual(
+        expect.arrayContaining([expect.stringContaining("forcing restart")]),
       );
       expect(logReload.warn).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "pending work unknown (Error: pending-work store unavailable); forcing restart",
-        ),
+        expect.stringContaining("pending work is unknown, deferring and retrying"),
       );
     } finally {
       coordinator.stopRestartRetries();
@@ -304,7 +359,7 @@ describe("gateway restart readiness preflight", () => {
     }
   });
 
-  it.each(["check error", "timeout"])(
+  it.each(["check error", "live run"])(
     "cancels live retries after %s when the coordinator stops",
     async (failure) => {
       vi.useFakeTimers();
@@ -330,11 +385,7 @@ describe("gateway restart readiness preflight", () => {
         coordinator.requestGatewayRestart(restartPlan, {} as BranchConfig);
         failedProbe = failure === "check error";
         await vi.advanceTimersByTimeAsync(failedProbe ? 500 : 300_000);
-        if (failedProbe) {
-          expect(requestRecoveryRestart).not.toHaveBeenCalled();
-        } else {
-          expect(requestRecoveryRestart).toHaveBeenCalledOnce();
-        }
+        expect(requestRecoveryRestart).not.toHaveBeenCalled();
         coordinator.stopRestartRetries();
         const reads = getActiveCounts.mock.calls.length;
         const emissions = requestRecoveryRestart.mock.calls.length;

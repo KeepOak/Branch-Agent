@@ -5,7 +5,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler, Linking, Platform } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApprovalAlerts, type AppStateSource, type Notifier, type NotificationPermission } from './src/approvals/approvalAlerts';
-import { ApprovalInbox, trunkOf } from './src/approvals/approvals';
+import { ApprovalInbox, trunkOf, type Approval, type ApprovalDecision } from './src/approvals/approvals';
 import { headline } from './src/approvals/approvalWords';
 import { testApprovalsOn } from './src/approvals/testApproval';
 import { useTestApproval } from './src/approvals/useTestApproval';
@@ -81,7 +81,31 @@ const deviceAppState: AppStateSource = {
 };
 
 /** One open chat. Keyed by the chat, so opening another one starts fresh. */
-function OpenChat({ session, row, online, onBack, onTalk }: { session: PairingSession; row: ChatRow; online: boolean; onBack: () => void; onTalk: () => void }) {
+function OpenChat({
+  session,
+  row,
+  online,
+  onBack,
+  onTalk,
+  onTakeControl,
+  computerName,
+  pending,
+  sending,
+  failed,
+  onAnswer,
+}: {
+  session: PairingSession;
+  row: ChatRow;
+  online: boolean;
+  onBack: () => void;
+  onTalk: () => void;
+  onTakeControl: () => void;
+  computerName: string;
+  pending: readonly Approval[];
+  sending: Record<string, ApprovalDecision>;
+  failed: Record<string, string>;
+  onAnswer: (id: string, decision: ApprovalDecision) => void;
+}) {
   const [conversation] = useState(() => new Conversation(row.key, session, () => session.newId()));
   useEffect(() => {
     conversation.attach();
@@ -92,7 +116,22 @@ function OpenChat({ session, row, online, onBack, onTalk }: { session: PairingSe
   useEffect(() => {
     void conversation.markRead(opened);
   }, [conversation, opened]);
-  return <ChatScreen row={row} conversation={conversation} online={online} onBack={onBack} onTalk={onTalk} hello={session.hello} />;
+  return (
+    <ChatScreen
+      row={row}
+      conversation={conversation}
+      online={online}
+      onBack={onBack}
+      onTalk={onTalk}
+      hello={session.hello}
+      onTakeControl={onTakeControl}
+      computerName={computerName}
+      pending={pending}
+      sending={sending}
+      failed={failed}
+      onAnswer={onAnswer}
+    />
+  );
 }
 
 function pairedBack(route: PairedRoute): PairedRoute {
@@ -440,6 +479,12 @@ function Shell({
             online={state.online}
             onBack={() => setPairedRoute(CHATS)}
             onTalk={() => setPairedRoute({ name: 'voice', row })}
+            onTakeControl={() => setPairedRoute({ name: 'computers' })}
+            computerName="This computer"
+            pending={approvals.pending}
+            sending={approvals.sending}
+            failed={approvals.failed}
+            onAnswer={(id, decision) => void inbox.answer(id, decision)}
           />
         );
       } else if (pairedRoute.name === 'approvals') {
