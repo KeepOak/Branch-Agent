@@ -230,9 +230,7 @@ test("Git Bash shim reads the same files, drops CR and passes arguments through"
 });
 
 async function cliFixture(run) {
-  const parent = join(tmpdir(), "Codex-session-files");
-  await mkdir(parent, { recursive: true });
-  const root = await mkdtemp(join(parent, "branch-cli-"));
+  const root = await mkdtemp(join(tmpdir(), "branch-cli-"));
   const dataDir = join(root, "data"), engineDir = join(root, "bundled engine");
   await mkdir(dataDir); await mkdir(engineDir);
   const engine = async name => {
