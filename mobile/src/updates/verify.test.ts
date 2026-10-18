@@ -38,5 +38,6 @@ describe('cert-mismatch rejection', () => {
     expect(certsMatch(['aa'], ['bb'])).toBe(false);
     expect(() => assertCertsMatch(['aa'], ['bb'])).toThrow(CERT_MISMATCH_MESSAGE);
     expect(() => assertCertsMatch([], ['aa'])).toThrow(CERT_MISMATCH_MESSAGE);
+    expect(() => assertCertsMatch(['aa'], [])).toThrow(CERT_MISMATCH_MESSAGE);
   });
 });

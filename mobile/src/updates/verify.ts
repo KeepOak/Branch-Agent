@@ -5,6 +5,8 @@ export const CHECKSUM_MISMATCH_MESSAGE =
 export const CHECKSUM_MISSING_MESSAGE = 'The checksum file from this release isn’t a SHA-256 digest.';
 export const CERT_MISMATCH_MESSAGE =
   'This update isn’t signed the same way as the app on this phone. Branch won’t install it.';
+export const CERT_UNREADABLE_MESSAGE =
+  'Branch couldn’t read the update’s signing certificate.';
 
 /** First 64-char hex in a `.sha256` sidecar (`<hex>  filename`, `SHA256 (…) = <hex>`, or the hex alone). */
 export function parseSha256Asset(text: string): string {

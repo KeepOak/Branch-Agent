@@ -43,14 +43,26 @@ class ApkInstallerModule : Module() {
       val context = ctx()
       val info = packageInfo(context.packageManager, context.packageName)
         ?: throw IllegalStateException("Branch couldn’t read this phone’s signing certificate.")
-      signerHexes(info)
+      val certs = signerHexes(info)
+      if (certs.isEmpty()) {
+        throw IllegalStateException("Branch couldn’t read this phone’s signing certificate.")
+      }
+      certs
     }
 
     AsyncFunction("apkSigningCerts") { path: String ->
+      val fromBlock = ApkSigningBlockCerts.sha256Hexes(File(path))
+      if (fromBlock.isNotEmpty()) {
+        return@AsyncFunction fromBlock
+      }
       val context = ctx()
       val info = archiveInfo(context.packageManager, path)
         ?: throw IllegalStateException("Branch couldn’t read the update’s signing certificate.")
-      signerHexes(info)
+      val fromArchive = signerHexes(info)
+      if (fromArchive.isEmpty()) {
+        throw IllegalStateException("Branch couldn’t read the update’s signing certificate.")
+      }
+      fromArchive
     }
 
     AsyncFunction("installApk") { path: String ->
@@ -106,10 +118,10 @@ class ApkInstallerModule : Module() {
       val certs =
         if (signing.hasMultipleSigners()) signing.apkContentsSigners
         else signing.signingCertificateHistory
-      return (certs ?: emptyArray()).map { hex(it.toByteArray()) }
+      return (certs ?: emptyArray()).map { ApkSigningBlockCerts.sha256Hex(it.toByteArray()) }
     }
     @Suppress("DEPRECATION")
-    return (info.signatures ?: emptyArray()).map { hex(it.toByteArray()) }
+    return (info.signatures ?: emptyArray()).map { ApkSigningBlockCerts.sha256Hex(it.toByteArray()) }
   }
 
   private fun signingFlags(): Int =
