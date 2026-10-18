@@ -59,8 +59,8 @@ it("keeps a terminal visible if closing it fails so the user can retry", async (
   const container = await mount(engineWith(request), error);
   await click(container, "Open a terminal for me");
   await click(container, "Close my terminal");
-  // At Regular the engine's one-word answer reads as a plain sentence (Private #1089, as #1700's friendlyError reads it).
-  expect(error).toHaveBeenCalledWith("That didn’t work. Try again.");
+  // A short state word such as Disconnected is already plain (issue 1814).
+  expect(error).toHaveBeenCalledWith("Disconnected");
   expect(container.querySelector('[aria-label="Type a command"]')).not.toBeNull();
 });
 

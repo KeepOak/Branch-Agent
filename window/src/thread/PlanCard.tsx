@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "./plan.css";
 import type { WindowEngine } from "../connect/engine";
+import { plainError } from "../shell/plain-error";
 // Mirrors engine/packages/gateway-protocol/src/schema/progress-card.ts. The
 // generated protocol declaration currently loses its TypeBox namespace types.
 export type ProgressCard = {
@@ -66,7 +67,7 @@ export function useProgressCard(engine: WindowEngine) {
           setState({
             owner: engine,
             card: null,
-            error: e instanceof Error ? e.message : String(e),
+            error: plainError(e),
           });
       }
     };
