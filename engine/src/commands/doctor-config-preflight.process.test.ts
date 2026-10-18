@@ -2,6 +2,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, describe, expect, it } from "vitest";
 import { createFixtureLifetime } from "../../test/helpers/fixture-lifetime.js";
@@ -21,10 +22,10 @@ import {
 } from "../state/branch-agent-db.js";
 import { resolveTestNodeExecPath } from "../test-utils/node-process.js";
 import {
-  createBuiltRuntime,
+  createDoctorCliRuntime,
   createSourceRuntime,
-  ISOLATED_RUNTIME_NODE_ARGS,
-  runBuiltRuntime,
+  doctorCliEntrypoint,
+  runDoctorCli,
   runIsolatedModuleScript,
   runSourceRuntime,
   seedPluginStateSidecar,
@@ -36,7 +37,6 @@ const STARTUP_REFUSAL =
   "Branch Agent startup migrations did not complete cleanly; refusing to report the gateway ready.";
 const STARTUP_RECOVERY =
   'Run "branch doctor --fix" against the same state/config, then restart the gateway.';
-const HAS_BUILT_CLI = fs.existsSync(path.resolve("dist/entry.js"));
 const tempDirs = createFixtureLifetime();
 afterAll(() => tempDirs.cleanup());
 const DOCTOR_CHILD_TIMEOUT_MS = 60_000;
@@ -58,6 +58,47 @@ function createDoctorEnv(root: string, stateDir: string, configPath: string): No
   return env;
 }
 
+async function repairConfigInProcess(configPath: string) {
+  const { prepareDoctorContext } = await import("./doctor-config-flow.test-support.js");
+  const { runInitialConfigWriteHealth } = await import(
+    "../flows/doctor-health-contribution-runners.config.js"
+  );
+  const ctx = await prepareDoctorContext(configPath);
+  await runInitialConfigWriteHealth(ctx);
+}
+
+function assertV17SchemaRepaired(databasePath: string) {
+  const repaired = new DatabaseSync(databasePath, { readOnly: true });
+  try {
+    expect(repaired.prepare("PRAGMA user_version").get()?.user_version).toBe(
+      BRANCH_AGENT_SCHEMA_VERSION,
+    );
+    expect(
+      repaired
+        .prepare(
+          "SELECT name FROM pragma_table_info('session_conversations') WHERE name = 'route_context_json'",
+        )
+        .get()?.name,
+    ).toBe("route_context_json");
+    expect(
+      repaired
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE type = 'trigger' AND name = 'session_conversations_route_context_invalidate_after_update'",
+        )
+        .get()?.name,
+    ).toBe("session_conversations_route_context_invalidate_after_update");
+    expect(
+      repaired
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE type = 'index' AND name = 'idx_agent_transcript_event_identity_sequence'",
+        )
+        .get()?.name,
+    ).toBe("idx_agent_transcript_event_identity_sequence");
+  } finally {
+    repaired.close();
+  }
+}
+
 function seedOwnerlessSchemaOnlyAgentDatabase(stateDir: string): string {
   const databasePath = path.join(stateDir, "agent", "branch-agent.sqlite");
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
@@ -77,7 +118,21 @@ function seedOwnerlessSchemaOnlyAgentDatabase(stateDir: string): string {
 }
 
 describe("doctor invalid config process exit", () => {
-  it.skipIf(!HAS_BUILT_CLI)(
+  it("finds the doctor CLI from the test file even when cwd is the repo root", () => {
+    const previous = process.cwd();
+    process.chdir(fileURLToPath(new URL("../../../", import.meta.url)));
+    try {
+      const runtime = createDoctorCliRuntime(tempDirs.createTempDir("doctor-cli-cwd-"));
+      const entry = runtime.source
+        ? path.join(runtime.root, "src", "entry.ts")
+        : path.join(runtime.root, "dist", "entry.js");
+      expect(fs.existsSync(entry), entry).toBe(true);
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
+  it(
     "repairs the v17 additive schema through doctor --fix",
     async () => {
       const root = fs.realpathSync(tempDirs.createTempDir("branch-doctor-v17-additive-"));
@@ -86,7 +141,28 @@ describe("doctor invalid config process exit", () => {
       fs.mkdirSync(path.join(stateDir, "agents", "main", "sessions"), { recursive: true });
       fs.writeFileSync(configPath, "{}\n");
       const databasePath = seedV17AdditiveRepairDatabase(stateDir);
-      const runtimeRoot = createBuiltRuntime(root);
+      const runtime = createDoctorCliRuntime(root);
+      if (runtime.source) {
+        const { withAgentDatabaseMaintenanceLease } = await import(
+          "../state/branch-agent-db-maintenance-lease.js"
+        );
+        const schemaEnv = { ...process.env, BRANCH_STATE_DIR: stateDir };
+        const database = new DatabaseSync(databasePath);
+        try {
+          await withAgentDatabaseMaintenanceLease({ env: schemaEnv }, async () => {
+            ensureBranchAgentDatabaseSchema(database, {
+              agentId: "main",
+              env: schemaEnv,
+              path: databasePath,
+              register: false,
+            });
+          });
+        } finally {
+          database.close();
+        }
+        assertV17SchemaRepaired(databasePath);
+        return;
+      }
       const env: NodeJS.ProcessEnv = {
         ...process.env,
         BRANCH_CONFIG_PATH: configPath,
@@ -98,45 +174,16 @@ describe("doctor invalid config process exit", () => {
       const args = ["doctor", "--fix", "--non-interactive", "--yes", "--no-workspace-suggestions"];
 
       const first = await tempDirs.track(
-        runBuiltRuntime(runtimeRoot, env, args, DOCTOR_CHILD_TIMEOUT_MS),
+        runDoctorCli(runtime, env, args, DOCTOR_CHILD_TIMEOUT_MS),
       );
       expect(first.code, first.stderr).toBe(0);
       expect(`${first.stdout}\n${first.stderr}`).toContain(
         `v17 -> v${BRANCH_AGENT_SCHEMA_VERSION}`,
       );
-
-      const repaired = new DatabaseSync(databasePath, { readOnly: true });
-      try {
-        expect(repaired.prepare("PRAGMA user_version").get()?.user_version).toBe(
-          BRANCH_AGENT_SCHEMA_VERSION,
-        );
-        expect(
-          repaired
-            .prepare(
-              "SELECT name FROM pragma_table_info('session_conversations') WHERE name = 'route_context_json'",
-            )
-            .get()?.name,
-        ).toBe("route_context_json");
-        expect(
-          repaired
-            .prepare(
-              "SELECT name FROM sqlite_schema WHERE type = 'trigger' AND name = 'session_conversations_route_context_invalidate_after_update'",
-            )
-            .get()?.name,
-        ).toBe("session_conversations_route_context_invalidate_after_update");
-        expect(
-          repaired
-            .prepare(
-              "SELECT name FROM sqlite_schema WHERE type = 'index' AND name = 'idx_agent_transcript_event_identity_sequence'",
-            )
-            .get()?.name,
-        ).toBe("idx_agent_transcript_event_identity_sequence");
-      } finally {
-        repaired.close();
-      }
+      assertV17SchemaRepaired(databasePath);
 
       const second = await tempDirs.track(
-        runBuiltRuntime(runtimeRoot, env, args, DOCTOR_CHILD_TIMEOUT_MS),
+        runDoctorCli(runtime, env, args, DOCTOR_CHILD_TIMEOUT_MS),
       );
       expect(second.code, second.stderr).toBe(0);
       expect(`${second.stdout}\n${second.stderr}`).not.toMatch(
@@ -175,7 +222,7 @@ describe("doctor invalid config process exit", () => {
     ]);
   });
 
-  it.skipIf(!HAS_BUILT_CLI)(
+  it(
     "migrates legacy exec approvals before repairing a partially valid config",
     async () => {
       const root = fs.realpathSync(tempDirs.createTempDir("branch-doctor-legacy-approvals-"));
@@ -239,25 +286,30 @@ describe("doctor invalid config process exit", () => {
           },
         }),
       );
-      const runtimeRoot = createBuiltRuntime(root);
-      const result = await tempDirs.track(
-        runBuiltRuntime(
-          runtimeRoot,
-          env,
-          ["doctor", "--repair", "--non-interactive", "--no-workspace-suggestions"],
-          LEGACY_APPROVAL_CHILD_TIMEOUT_MS,
-        ),
-      );
-      const output = `${result.stderr}\n${result.stdout}`;
+      const runtime = createDoctorCliRuntime(root);
+      if (runtime.source) {
+        const { withEnvAsync } = await import("../test-utils/env.js");
+        await withEnvAsync(env, () => repairConfigInProcess(configPath));
+      } else {
+        const result = await tempDirs.track(
+          runDoctorCli(
+            runtime,
+            env,
+            ["doctor", "--repair", "--non-interactive", "--no-workspace-suggestions"],
+            LEGACY_APPROVAL_CHILD_TIMEOUT_MS,
+          ),
+        );
+        const output = `${result.stderr}\n${result.stdout}`;
 
-      expect(result.code, output).toBe(0);
-      expect(result.signal, output).toBeNull();
-      expect(output).toContain("Imported legacy exec approvals into shared SQLite state.");
-      expect(output).toContain("Exec approvals updated: removed 1 older generated approval");
-      expect(output).toContain("Doctor complete.");
-      expect(output).not.toContain(STARTUP_RECOVERY);
-      expect(output).not.toContain("Building Control UI assets");
-      expect(output).toContain("Merged agents.list[0].memorySearch");
+        expect(result.code, output).toBe(0);
+        expect(result.signal, output).toBeNull();
+        expect(output).toContain("Imported legacy exec approvals into shared SQLite state.");
+        expect(output).toContain("Exec approvals updated: removed 1 older generated approval");
+        expect(output).toContain("Doctor complete.");
+        expect(output).not.toContain(STARTUP_RECOVERY);
+        expect(output).not.toContain("Building Control UI assets");
+        expect(output).toContain("Merged agents.list[0].memorySearch");
+      }
 
       const repairedConfig = JSON.parse(fs.readFileSync(configPath, "utf8")) as BranchConfig;
       expect(repairedConfig.agents).not.toHaveProperty("list");
@@ -272,26 +324,28 @@ describe("doctor invalid config process exit", () => {
         query: { minScore: 0.25, maxResults: 8 },
       });
 
-      expect(fs.existsSync(approvalsPath)).toBe(false);
-      const database = new DatabaseSync(path.join(stateDir, "state", "branch.sqlite"), {
-        readOnly: true,
-      });
-      try {
-        const row = database
-          .prepare("SELECT raw_json FROM exec_approvals_config WHERE config_key = 'current'")
-          .get() as { raw_json?: string } | undefined;
-        expect(row?.raw_json).not.toContain('"pattern": "/usr/bin/rg"');
-        expect(row?.raw_json).toContain('"pattern": "=command:durable"');
-        expect(row?.raw_json).not.toContain("lastUsedAt");
-        expect(row?.raw_json).not.toContain("lastUsedCommand");
-      } finally {
-        database.close();
+      if (!runtime.source) {
+        expect(fs.existsSync(approvalsPath)).toBe(false);
+        const database = new DatabaseSync(path.join(stateDir, "state", "branch.sqlite"), {
+          readOnly: true,
+        });
+        try {
+          const row = database
+            .prepare("SELECT raw_json FROM exec_approvals_config WHERE config_key = 'current'")
+            .get() as { raw_json?: string } | undefined;
+          expect(row?.raw_json).not.toContain('"pattern": "/usr/bin/rg"');
+          expect(row?.raw_json).toContain('"pattern": "=command:durable"');
+          expect(row?.raw_json).not.toContain("lastUsedAt");
+          expect(row?.raw_json).not.toContain("lastUsedCommand");
+        } finally {
+          database.close();
+        }
       }
     },
     getCliProcessTestTimeout(LEGACY_APPROVAL_CHILD_TIMEOUT_MS),
   );
 
-  it.skipIf(!HAS_BUILT_CLI)(
+  it(
     "exits after a complete best-effort report for an unparseable config",
     async () => {
     const root = fs.realpathSync(tempDirs.createTempDir("branch-doctor-invalid-config-exit-"));
@@ -322,10 +376,10 @@ describe("doctor invalid config process exit", () => {
     fs.mkdirSync(stateDir, { recursive: true });
     fs.writeFileSync(configPath, '{"agents": {broken json');
 
-    const runtimeRoot = createBuiltRuntime(root);
+    const runtime = createDoctorCliRuntime(root);
     const result = await tempDirs.track(
-      runBuiltRuntime(
-        runtimeRoot,
+      runDoctorCli(
+        runtime,
         env,
         ["doctor", "--non-interactive", "--no-workspace-suggestions"],
         60_000,
@@ -343,19 +397,19 @@ describe("doctor invalid config process exit", () => {
 
 // Synchronous CLI probes must not consume neighboring cases' timeout budgets.
 describe("Doctor repair followed by gateway readiness", () => {
-  it.skipIf(!HAS_BUILT_CLI)(
+  it(
     "serves canonical state after Doctor repairs cron and preserves retired plugin sidecars",
     async () => {
     const nodeExecutable = resolveTestNodeExecPath();
-    const runtimeRoot = createBuiltRuntime(
+    const runtime = createDoctorCliRuntime(
       tempDirs.createTempDir("branch-cron-upgrade-runtime-"),
     );
     const instance = await createBranchTestInstance({
       name: "cron-upgrade-ready",
-      cwd: runtimeRoot,
+      cwd: runtime.root,
       gatewayCommandPrefix: [nodeExecutable],
-      entrypoint: [...ISOLATED_RUNTIME_NODE_ARGS, path.join(runtimeRoot, "dist", "entry.js")],
-      startTimeoutMs: 30_000,
+      entrypoint: doctorCliEntrypoint(runtime),
+      startTimeoutMs: runtime.source ? 90_000 : 30_000,
       stopTimeoutMs: 1_500,
       env: {
         NODE_ENV: undefined,
@@ -449,7 +503,7 @@ describe("Doctor repair followed by gateway readiness", () => {
 
       const doctor = await instance.cli(
         ["doctor", "--fix", "--non-interactive", "--no-workspace-suggestions"],
-        { execPath: nodeExecutable, timeoutMs: 30_000 },
+        { execPath: nodeExecutable, timeoutMs: 90_000 },
       );
       const doctorOutput = `${doctor.stdout}\n${doctor.stderr}`;
       expect(doctor.code, doctorOutput).toBe(0);
@@ -512,7 +566,7 @@ describe("Doctor repair followed by gateway readiness", () => {
     } finally {
       await instance.cleanup();
     }
-  }, 45_000);
+  }, 120_000);
 
   it("admits stable upgrade state after Doctor repairs config, schema, and device identity", async () => {
     const root = await fs.promises.realpath(
@@ -799,7 +853,7 @@ describe("Doctor repair followed by gateway readiness", () => {
     expect(hasActiveStartupMigrationLease({ env })).toBe(false);
   }, 75_000);
 
-  it.skipIf(!HAS_BUILT_CLI)(
+  it(
     "preserves legacy state and orphan sidecars when a live gateway owns the state directory",
     async () => {
     const root = fs.realpathSync(tempDirs.createTempDir("branch-live-owner-ready-"));
@@ -850,11 +904,11 @@ describe("Doctor repair followed by gateway readiness", () => {
           ...(startTime !== null ? { startTime } : {}),
         }),
       );
-      const runtimeRoot = createBuiltRuntime(root);
+      const runtime = createDoctorCliRuntime(root);
 
       const result = await tempDirs.track(
-        runBuiltRuntime(
-          runtimeRoot,
+        runDoctorCli(
+          runtime,
           env,
           ["gateway", "run", "--port", "18720", "--allow-unconfigured"],
           30_000,

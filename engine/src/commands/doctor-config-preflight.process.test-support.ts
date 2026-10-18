@@ -2,8 +2,10 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { runCliProcessChild } from "../cli/cli-process-child.test-helpers.js";
+import { resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
 import { removeCanonicalValidationFromHistoricalAgentFixture } from "../state/branch-agent-db.test-support.js";
 import { seedBranchAgentSchemaV21 } from "../state/branch-agent-schema-v21.test-support.js";
 import {
@@ -14,6 +16,7 @@ import { resolveTestNodeExecPath } from "../test-utils/node-process.js";
 
 const execFileAsync = promisify(execFile);
 const isolatedRuntimeNodeExecPath = resolveTestNodeExecPath();
+const ENGINE_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 // The fixture owns its package assets; resolving linked source back to the checkout
 // makes Doctor repair that checkout instead, including building its Control UI.
 // Dependency realpaths still own their transitive packages under isolated installs.
@@ -107,7 +110,7 @@ export function createSourceRuntime(root: string): string {
   fs.mkdirSync(path.join(runtimeRoot, "dist"), { recursive: true });
   for (const dirname of ["node_modules", "packages", "scripts", "src"]) {
     fs.symlinkSync(
-      path.resolve(dirname),
+      path.join(ENGINE_ROOT, dirname),
       path.join(runtimeRoot, dirname),
       process.platform === "win32" ? "junction" : "dir",
     );
@@ -126,7 +129,7 @@ export function createSourceRuntime(root: string): string {
     "package.json",
     "tsconfig.json",
   ]) {
-    fs.copyFileSync(path.resolve(filename), path.join(runtimeRoot, filename));
+    fs.copyFileSync(path.join(ENGINE_ROOT, filename), path.join(runtimeRoot, filename));
   }
   fs.writeFileSync(
     path.join(runtimeRoot, "dist", "build-info.json"),
@@ -138,9 +141,53 @@ export function createSourceRuntime(root: string): string {
   return runtimeRoot;
 }
 
+export function createDoctorCliRuntime(root: string): { source: boolean; root: string } {
+  const resolvedEntry = fileURLToPath(
+    resolveRuntimeWorkerUrl({
+      currentModuleUrl: import.meta.url,
+      sourceWorkerName: "../entry",
+      distWorkerPath: "entry.js",
+    }),
+  );
+  const distEntry = fileURLToPath(new URL("../../dist/entry.js", import.meta.url));
+  const builtEntry =
+    resolvedEntry.endsWith(".js") && fs.existsSync(resolvedEntry)
+      ? resolvedEntry
+      : fs.existsSync(distEntry)
+        ? distEntry
+        : undefined;
+  return builtEntry
+    ? { source: false, root: createBuiltRuntime(root, path.dirname(builtEntry)) }
+    : { source: true, root: createSourceRuntime(root) };
+}
+
+export function runDoctorCli(
+  runtime: { source: boolean; root: string },
+  env: NodeJS.ProcessEnv,
+  args: string[],
+  timeout: number,
+  options: Pick<Parameters<typeof runCliProcessChild>[0], "maxBuffer" | "onTestFinished"> = {},
+) {
+  return runtime.source
+    ? runSourceRuntime(
+        runtime.root,
+        env,
+        [path.join(runtime.root, "src", "entry.ts"), ...args],
+        timeout,
+        options.maxBuffer,
+      )
+    : runBuiltRuntime(runtime.root, env, args, timeout, options);
+}
+
+export function doctorCliEntrypoint(runtime: { source: boolean; root: string }): string[] {
+  return runtime.source
+    ? [...ISOLATED_RUNTIME_NODE_ARGS, "--import", "tsx", path.join(runtime.root, "src", "entry.ts")]
+    : [...ISOLATED_RUNTIME_NODE_ARGS, path.join(runtime.root, "dist", "entry.js")];
+}
+
 export function createBuiltRuntime(
   root: string,
-  sourceDist = path.resolve("dist"),
+  sourceDist = path.join(ENGINE_ROOT, "dist"),
   options: { copyDirectories?: boolean; emptyExtensions?: boolean } = {},
 ): string {
   const runtimeRoot = createSourceRuntime(root);

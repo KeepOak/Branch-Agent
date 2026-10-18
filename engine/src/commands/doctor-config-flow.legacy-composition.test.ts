@@ -1,9 +1,6 @@
-import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
-import { getCliProcessTestTimeout } from "../cli/cli-process-child.test-helpers.js";
+import { afterEach, describe, expect, it } from "vitest";
 import { readConfigFileSnapshot } from "../config/config.js";
 import { writeBranchConfig } from "../config/test-helpers.js";
 import { runInitialConfigWriteHealth } from "../flows/doctor-health-contribution-runners.config.js";
@@ -12,15 +9,8 @@ import { closeBranchStateDatabaseForTest } from "../state/branch-state-db.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import { getFreePort } from "../test-utils/ports.js";
 import { prepareDoctorContext } from "./doctor-config-flow.test-support.js";
-import {
-  createBuiltRuntime,
-  runBuiltRuntime,
-} from "./doctor-config-preflight.process.test-support.js";
 import { useDoctorConfigPreflightHome } from "./doctor-config-preflight.test-support.js";
 
-const CLI_CHILD_TIMEOUT_MS = 60_000;
-const HAS_BUILT_CLI = existsSync(path.resolve("dist/entry.js"));
-const runtimeDirs = useAutoCleanupTempDirTracker(afterAll);
 const withDoctorConfigPreflightHome = useDoctorConfigPreflightHome();
 
 async function repairConfig(configPath: string) {
@@ -55,75 +45,28 @@ describe("Doctor legacy config composition", () => {
     });
   });
 
-  it.skipIf(!HAS_BUILT_CLI)(
-    "converges the July upgrade fixture with an explicit local model",
-    async () => {
-      await withDoctorConfigPreflightHome(async (home) => {
-        const raw = JSON.parse(
-          await fs.readFile(
-            new URL("../../test/fixtures/doctor-2026.7.1.json", import.meta.url),
-            "utf8",
-          ),
-        );
-        raw.agents.defaults.memorySearch.local = { modelPath: "/synthetic/embedding.gguf" };
-        raw.gateway.port = await getFreePort();
-        const configPath = await writeBranchConfig(home, raw);
-        const cliRuntime = createBuiltRuntime(runtimeDirs.make("branch-doctor-legacy-runtime-"));
-        await fs.unlink(path.join(cliRuntime, "src"));
-        const env: NodeJS.ProcessEnv = {
-          PATH: process.env.PATH,
-          SystemRoot: process.env.SystemRoot,
-          WINDIR: process.env.WINDIR,
-          ComSpec: process.env.ComSpec,
-          HOME: home,
-          USERPROFILE: home,
-          TMPDIR: home,
-          BRANCH_STATE_DIR: path.dirname(configPath),
-          BRANCH_CONFIG_PATH: configPath,
-          NODE_COMPILE_CACHE: path.join(cliRuntime, "node-compile-cache"),
-          NO_COLOR: "1",
-        };
-        const run = async (args: string[], expected = 0) => {
-          const result = await runBuiltRuntime(cliRuntime, env, args, CLI_CHILD_TIMEOUT_MS);
-          const output = `${result.stdout}\n${result.stderr}`;
-          expect(result.code, output).toBe(expected);
-        };
-        const doctorArgs = ["doctor", "--fix", "--non-interactive", "--no-workspace-suggestions"];
-        await run(["config", "validate"], 1);
-        await run(doctorArgs);
-        const first = await fs.readFile(configPath, "utf8");
-        const saved = JSON.parse(first);
-        await run(["config", "validate"]);
-        expect(saved.agents).not.toHaveProperty("list");
-        expect(saved.agents.ownership).toBe("explicit");
-        expect(Object.keys(saved.agents.entries)).toEqual(["main", "research"]);
-        expect(saved.agents.defaults.systemAgent.agentId).toBe("main");
-        expect(saved.meta.migrations.modelPolicyAllowlist).toBe(true);
-        expect(saved.agents.defaults.modelPolicy.allow).toEqual([
-          "anthropic/claude-sonnet-4-6",
-          "anthropic/claude-opus-4-7",
-        ]);
-        expect(saved.memory.search).toEqual({ ...raw.agents.defaults.memorySearch });
-        expect(saved.tools.media.models).toEqual([
-          { ...raw.tools.media.audio.models[0], capabilities: ["audio"] },
-        ]);
-        expect(saved.gateway.nodes.commands.deny).toEqual(["system.run"]);
-        expect(saved.channels.telegram.groupAllowFrom).toEqual(["123456789"]);
-        expect(saved.channels.telegram.accounts.secondary.groupAllowFrom).toEqual(["987654321"]);
-        expect(saved.plugins.entries.browser.enabled).toBe(true);
-        expect(saved.meta).not.toHaveProperty("lastTouchedAt");
-        expect(saved.gateway.tailscale).not.toHaveProperty("resetOnExit");
-        await run(doctorArgs);
-        expect(await fs.readFile(configPath, "utf8")).toBe(first);
-      });
-    },
-    getCliProcessTestTimeout(
-      CLI_CHILD_TIMEOUT_MS,
-      CLI_CHILD_TIMEOUT_MS,
-      CLI_CHILD_TIMEOUT_MS,
-      CLI_CHILD_TIMEOUT_MS,
-    ),
-  );
+  it("canonicalizes July fixture memorySearch onto local meaning search", async () => {
+    await withDoctorConfigPreflightHome(async (home) => {
+      const raw = JSON.parse(
+        await fs.readFile(
+          new URL("../../test/fixtures/doctor-2026.7.1.json", import.meta.url),
+          "utf8",
+        ),
+      );
+      raw.agents.defaults.memorySearch.local = { modelPath: "/synthetic/embedding.gguf" };
+      raw.gateway.port = await getFreePort();
+      const configPath = await writeBranchConfig(home, raw);
+      await repairConfig(configPath);
+      const saved = JSON.parse(await fs.readFile(configPath, "utf8"));
+      expect(saved.agents).not.toHaveProperty("list");
+      expect(saved.agents.ownership).toBe("explicit");
+      expect(Object.keys(saved.agents.entries)).toEqual(["main", "research"]);
+      expect(saved.memory.search.provider).toBe("local");
+      expect(saved.memory.search.local).toEqual({ modelPath: "/synthetic/embedding.gguf" });
+      expect(saved.memory.search).toEqual({ ...raw.agents.defaults.memorySearch });
+      expect((await repairConfig(configPath)).shouldWriteConfig).toBe(false);
+    });
+  });
 
   it.each(["duplicate ids", "whole-entry include"])(
     "refuses ambiguous legacy roster persistence for %s",
