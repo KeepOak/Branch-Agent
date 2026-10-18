@@ -1723,7 +1723,12 @@ describe("gateway hot reload model state", () => {
       let watchedRun: Awaited<typeof spawning> | undefined;
       const config = {
         // This fixture runs cron without a heartbeat wake handler.
-        agents: { defaults: { heartbeat: { every: "0m" } } },
+        agents: {
+          defaults: {
+            heartbeat: { every: "0m" },
+            systemAgent: { agentId: "main" },
+          },
+        },
         session: { mainKey: "main", store: path.join(fixtureDir, "sessions.json") },
         cron: { enabled: true, store: path.join(fixtureDir, "jobs.json") },
       } as BranchConfig;
@@ -1761,6 +1766,7 @@ describe("gateway hot reload model state", () => {
         const job = await initialCronState.cron.add({
           name: "preserve the real watched child",
           enabled: true,
+          agentId: "main",
           schedule: { kind: "on-exit", command },
           sessionTarget: "main",
           wakeMode: "next-heartbeat",
@@ -1798,38 +1804,51 @@ describe("gateway hot reload model state", () => {
 
         await withGatewayRestartSignal(async () => {
           await handlers.applyHotReload(createCronRestartPlan(), config);
-        });
 
-        expect(hoisted.buildGatewayCronService).toHaveBeenCalledWith(
-          expect.objectContaining({ resolveGatewayContext }),
-        );
-        expect(run.activity.resultSettled).toBe(false);
-        expect(await readFile(markerPath, "utf8")).toBe("run\n");
-        expect(spawn).toHaveBeenCalledOnce();
+          expect(hoisted.buildGatewayCronService).toHaveBeenCalledWith(
+            expect.objectContaining({ resolveGatewayContext }),
+          );
+          expect(run.activity.resultSettled).toBe(false);
+          expect(await readFile(markerPath, "utf8")).toBe("run\n");
+          expect(spawn).toHaveBeenCalledOnce();
 
-        // applyHotReload starts the replacement scheduler without awaiting it.
-        // fireOnExit will not admit the watched exit until that start, afterStart
-        // reconcile, and reconciliation.complete() finish.
-        await waitForFast(() => expect(cronReconciliation.arm).toHaveBeenCalled(), {
-          timeout: 10_000,
+          // applyHotReload starts the replacement scheduler without awaiting it.
+          // fireOnExit will not admit the watched exit until that start, afterStart
+          // reconcile, and reconciliation.complete() finish. Keep this work inside
+          // withGatewayRestartSignal so resetGatewayWorkAdmission cannot abort the
+          // in-flight cron-start root before the watched exit is consumed.
+          await waitForFast(() => expect(cronReconciliation.arm).toHaveBeenCalled(), {
+            timeout: 10_000,
+          });
+          const replacementStart = cronReconciliation.arm.mock.results.at(-1)?.value;
+          assert(
+            replacementStart && typeof replacementStart.complete === "function",
+            "expected cron reload to arm reconciliation",
+          );
+          await waitForFast(() => expect(replacementStart.complete).toHaveBeenCalled(), {
+            timeout: 10_000,
+          });
+          await waitForFast(
+            () => expect(getActiveGatewayRootWorkHolders()).not.toContain("runtime:cron-start"),
+            { timeout: 10_000 },
+          );
+          expect(run.activity.resultSettled).toBe(false);
+          expect(spawn).toHaveBeenCalledOnce();
+          expect(state?.cronState.cron.getJob(job.id)?.enabled).toBe(true);
+          await writeFile(releasePath, "release");
+          await waitForFast(() => expect(run.activity.resultSettled).toBe(true), {
+            timeout: 10_000,
+          });
+          if (run.waitForExtinction) {
+            await withinTest(run.waitForExtinction(), signal);
+          }
+          await waitForFast(
+            () => expect(state?.cronState.cron.getJob(job.id)?.enabled).toBe(false),
+            { timeout: 10_000 },
+          );
+          expect(await readFile(markerPath, "utf8")).toBe("run\n");
+          expect(spawn).toHaveBeenCalledOnce();
         });
-        const replacementStart = cronReconciliation.arm.mock.results.at(-1)?.value;
-        assert(
-          replacementStart && typeof replacementStart.complete === "function",
-          "expected cron reload to arm reconciliation",
-        );
-        await waitForFast(() => expect(replacementStart.complete).toHaveBeenCalled(), {
-          timeout: 10_000,
-        });
-        await writeFile(releasePath, "release");
-        await waitForFast(() => expect(run.activity.resultSettled).toBe(true), {
-          timeout: 10_000,
-        });
-        await waitForFast(() => expect(state?.cronState.cron.getJob(job.id)?.enabled).toBe(false), {
-          timeout: 10_000,
-        });
-        expect(await readFile(markerPath, "utf8")).toBe("run\n");
-        expect(spawn).toHaveBeenCalledOnce();
       } finally {
         await fixtureLifetime.verifyCleanup(async () => {
           hoisted.buildGatewayCronService.mockImplementation(previousCronFactory);
