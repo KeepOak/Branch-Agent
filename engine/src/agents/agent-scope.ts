@@ -63,6 +63,7 @@ export {
   tryResolveAmbientOwnerAgentId,
   tryResolveLegacyCompatibilityAgentId,
   tryResolveContactDefaultAgentId,
+  tryResolveDisplayedDefaultAgentId,
   tryResolveSoleAgentId,
   tryResolveDefaultAgentId,
   AgentSelectionRequiredError,

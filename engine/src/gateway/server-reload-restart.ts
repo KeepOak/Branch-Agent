@@ -4,7 +4,6 @@ import { getConfigValueAtPath } from "../config/config-paths.js";
 import { setRuntimeConfigAppliedHash } from "../config/config.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import type { GatewayScheduledJob } from "../infra/gateway-scheduler.js";
-import { resolveGatewayRestartDeferralTimeoutMs } from "../infra/restart-budget.js";
 import type { GatewayRestartIntent } from "../infra/restart-intent.js";
 import {
   deferGatewayRestartUntilIdle,
@@ -431,11 +430,11 @@ class GatewayRestartTransaction {
       }
 
       let failedEmission: { reason: string; intent?: GatewayRestartIntent } | undefined;
-      // Timeout and failed checks leave a live deferral owned by this request.
+      // Wait for real idle. A settings change must not kill a job someone is
+      // waiting on, so this path never arms the old five-minute force timeout.
+      // Failed checks leave a live deferral owned by this request.
       this.restartDeferral = deferGatewayRestartUntilIdle({
         getPendingCount: () => this.options.getActiveCounts().totalActive,
-        maxWaitMs: resolveGatewayRestartDeferralTimeoutMs(undefined),
-        timeoutIntent: { force: true, reason: "config reload forced restart" },
         reason: restartReason,
         emitHooks: {
           beforeEmit: async () => {

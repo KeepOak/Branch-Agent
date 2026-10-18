@@ -1,3 +1,4 @@
+import { VerifyError } from './verify';
 import { compareVersions, isNewerApk, parseRemoteVersion, type RemoteVersion } from './versionCompare';
 
 export const GITHUB_RELEASES_URL = 'https://api.github.com/repos/KeepOak/Branch-Agent/releases';
@@ -145,6 +146,6 @@ async function defaultLoad(url: string): Promise<unknown> {
       'X-GitHub-Api-Version': '2022-11-28',
     },
   });
-  if (!response.ok) throw new Error('Couldn’t check GitHub for an update.');
+  if (!response.ok) throw new VerifyError('Couldn’t check GitHub for an update.');
   return response.json();
 }

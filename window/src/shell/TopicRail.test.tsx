@@ -19,7 +19,7 @@ const render = async (onPatch = vi.fn(async (_topic: Topic, _change: Record<stri
   const onOpen = vi.fn();
   const updateTopic = async (item: Topic) => act(async () => root!.render(<TopicRail contactId="trunk:oak" contactName="Oak" contactKey="agent:oak:main" generalPreview="Reply" generalUpdatedAt={Date.now()} currentKey="agent:oak:main" items={[{ topic: item, preview: "Flights found", updatedAt: Date.now() }]} onOpen={onOpen} onAll={() => {}} onPatch={onPatch}/>));
   await updateTopic(topic);
-  const click = async (label: string) => { const button = [...host.querySelectorAll("button")].find((x) => x.getAttribute("aria-label") === label || x.textContent?.trim() === label); expect(button, label).toBeTruthy(); await act(async () => button!.click()); };
+  const click = async (label: string) => { const button = [...document.querySelectorAll("button")].find((x) => x.getAttribute("aria-label") === label || x.textContent?.trim() === label); expect(button, label).toBeTruthy(); await act(async () => button!.click()); };
   return { host, click, onOpen, onPatch, updateTopic };
 };
 

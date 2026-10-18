@@ -2,6 +2,7 @@ import { View } from 'react-native';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { plainError } from '../ui/plainError';
 import { NEEDS_PERMISSION_MESSAGE } from './updateFlow';
 import type { UpdateFlowState } from './updateFlow';
 
@@ -24,7 +25,7 @@ function copy(state: UpdateFlowState): { title: string; body: string; action?: '
     case 'error':
       return {
         title: 'Couldn’t update',
-        body: state.message,
+        body: plainError(state.message),
         action: state.offer ? 'update' : undefined,
       };
     default:
@@ -52,17 +53,20 @@ export function UpdateBanner({
   onUpdate: () => void;
   onAllowInstalls: () => void;
 }) {
-  const { color, space, radius } = useTheme();
+  const { color, space, radius, layout } = useTheme();
   const shown = copy(state);
   if (!shown) return null;
   const progress = progressOf(state);
   const busy = state.status === 'downloading' || state.status === 'verifying' || state.status === 'installing';
+  const failed = state.status === 'error';
   return (
     <View
       testID="update-banner"
       style={{
         marginTop: space.sm,
-        backgroundColor: state.status === 'error' ? color.badTint : color.accentTint,
+        backgroundColor: failed ? color.fill : color.accentTint,
+        borderColor: failed ? color.line : 'transparent',
+        borderWidth: failed ? layout.hairline : 0,
         borderRadius: radius.md,
         padding: space.md,
         gap: space.sm,

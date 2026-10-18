@@ -8,7 +8,8 @@ import { pairingTheme, themeFor } from '../theme/tokens';
 import { contrastRatio } from '../theme/contrast';
 import { Button } from '../ui/Button';
 import { Screen } from '../ui/Screen';
-import { KEEPOAK_SIGN_IN_LATER, WelcomeScreen } from './WelcomeScreen';
+import { cameraCardCopy, KEEPOAK_SIGN_IN_LATER, LOOK_AGAIN_LATER } from './ScanScreen';
+import { WelcomeScreen } from './WelcomeScreen';
 
 jest.mock('expo-camera', () => ({
   CameraView: () => null,
@@ -95,12 +96,45 @@ describe('pairing chrome', () => {
     expect(screen.queryByRole('button', { name: /Sign in with KeepOak/i })).toBeNull();
   });
 
+  it('opens first-run on pairing, not the three-step intro', async () => {
+    const { session } = createFakeSession();
+    await render(<App scheme="light" session={session} />);
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
+    expect(screen.queryByTestId('welcome-screen')).toBeNull();
+    expect(screen.queryByTestId('pairing-steps')).toBeNull();
+    expect(screen.queryByText('How pairing works')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pair with your computer' })).toBeNull();
+    expect(screen.getByText('Connect to your Branch')).toBeOnTheScreen();
+    expect(screen.getByText(KEEPOAK_SIGN_IN_LATER)).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: /Sign in with KeepOak/i })).toBeNull();
+    expect(screen.getByTestId('pairing-nearby')).toBeOnTheScreen();
+    expect(screen.getByTestId('nearby-status')).toHaveTextContent(/None found/);
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Look again' })).toBeDisabled();
+    expect(screen.getByTestId('look-again-reason')).toHaveTextContent(LOOK_AGAIN_LATER);
+    expect(screen.getByText('Branch needs the camera')).toBeOnTheScreen();
+  });
+
+  it('matches camera card copy to the permission, including granted', () => {
+    expect(cameraCardCopy({ granted: false, canAskAgain: true })).toEqual({
+      heading: 'Branch needs the camera',
+      body: 'It reads the pairing code on your computer’s screen. Nothing is recorded or kept.',
+    });
+    expect(cameraCardCopy({ granted: false, canAskAgain: false })).toEqual({
+      heading: 'The camera is off for Branch',
+      body: 'Turn on the camera for Branch in Settings, or type the code your computer shows.',
+    });
+    expect(cameraCardCopy({ granted: true, canAskAgain: true })).toEqual({
+      heading: 'The camera is on for Branch',
+      body: 'Point it at the square code on your computer. Nothing is recorded or kept.',
+    });
+    expect(cameraCardCopy(null)).toEqual(cameraCardCopy({ granted: false, canAskAgain: true }));
+  });
+
   it('pairs from the connect screen’s code field without leaving the camera step', async () => {
     const { session, engine } = createFakeSession();
     await render(<App scheme="light" session={session} />);
-    await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
-    await fireEvent.press(screen.getByTestId('pair-button'));
-    expect(screen.getByTestId('camera-permission')).toBeOnTheScreen();
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
     expect(screen.getByText('Connect to your Branch')).toBeOnTheScreen();
     expect(screen.getByText('Scan the square code on the computer, or type the code.')).toBeOnTheScreen();
     expect(screen.getByTestId('connect-code')).toBeOnTheScreen();

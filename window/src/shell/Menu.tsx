@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { shownWhy } from "./shown-why";
 import "./menu.css";
 
@@ -46,6 +46,7 @@ function moveFocus(el: HTMLElement | null, step: number) {
 }
 
 export function Menu({ at, items, onClose, label, testid, upward }: Props) {
+  const idBase = useId();
   const ref = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<{ index: number; at: MenuAnchor } | null>(null);
   const pos = useFitInWindow(ref, at, upward);
@@ -106,7 +107,7 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
   return (
     <>
       <div ref={ref} className="pop menu in17" role="menu" aria-label={label} data-testid={testid} style={{ left: pos.x, top: pos.y }} onKeyDown={onKey}>
-        {items.map((it, i) => renderItem(it, i, onClose, openSub, sub?.index === i))}
+        {items.map((it, i) => renderItem(it, i, onClose, openSub, sub?.index === i, idBase))}
       </div>
       {sub ? <SubMenu parent={items[sub.index]} at={sub.at} onClose={() => setSub(null)} onDone={onClose} /> : null}
     </>
@@ -121,7 +122,24 @@ function SubMenu({ parent, at, onClose, onDone }: { parent: MenuItem; at: MenuAn
   return <Menu at={at} items={wrap} onClose={onClose} label={parent.label} />;
 }
 
-function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: number, el: HTMLElement) => void, subOpen: boolean): ReactNode {
+const LATER = /\bin a later update\b/i;
+
+/** The visible line under a greyed item (Private #1093 item 7): only a real condition, said as what to do ("Oak is your
+ *  default Trunk."). A developer note or a "comes in a later update" stub marks a Coming item, which gets no line: Coming
+ *  waits for Technical. */
+export function menuWhy(disabled: string | undefined): string | undefined {
+  const why = shownWhy(disabled);
+  return why && !LATER.test(why) ? why : undefined;
+}
+
+/** True when two visible lines are the same words, ignoring case and extra spaces. */
+function sameLine(a: string | undefined, b: string | undefined): boolean {
+  const left = a?.replace(/\s+/g, " ").trim().toLowerCase() ?? "";
+  const right = b?.replace(/\s+/g, " ").trim().toLowerCase() ?? "";
+  return Boolean(left) && left === right;
+}
+
+function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: number, el: HTMLElement) => void, subOpen: boolean, idBase = "mi"): ReactNode {
   if (it.kind === "sep") {
     return <hr key={i} className="msep" />;
   }
@@ -158,18 +176,23 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
       </button>
     );
   }
+  const why = menuWhy(it.disabled);
+  const duplicate = sameLine(why, it.sub);
+  const showWhy = Boolean(why) && !duplicate;
+  const whyId = why ? `${idBase}-why-${i}` : undefined;
   return (
-    <button key={i} type="button" role={it.checked !== undefined ? it.radio ? "menuitemradio" : "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={shownWhy(it.disabled)}
+    <button key={i} type="button" role={it.checked !== undefined ? it.radio ? "menuitemradio" : "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={shownWhy(it.disabled)} aria-describedby={whyId}
       onClick={() => {
         onClose();
         it.run();
       }}>
       {it.icon ? <i className="mi-ico" aria-hidden="true">{it.icon}</i> : null}
       {it.checked !== undefined ? <span className="mi-tick" aria-hidden="true">{it.checked ? "✓" : ""}</span> : null}
-      {it.sub ? (
+      {it.sub || why ? (
         <span className="mi-text">
           <span>{it.label}</span>
-          <small className="mi-s">{it.sub}</small>
+          {it.sub ? <small className="mi-s" id={duplicate ? whyId : undefined}>{it.sub}</small> : null}
+          {showWhy ? <small className="mi-s mi-why" id={whyId}>{why}</small> : null}
         </span>
       ) : (
         <span>{it.label}</span>

@@ -71,9 +71,9 @@ it("draws the preview's Customize cards in order at each level", async () => {
 it("draws the kinds hub in the preview's order and words, with For:", async () => {
   await mount(engineOf().engine, "regular");
   const hub = host.querySelector<HTMLElement>("[data-testid=customize-hub]")!;
-  expect(hub.querySelector(".cz-lh")?.textContent).toBe("For:");
-  expect([...hub.querySelectorAll(".cz-whose .cz-chip")].map((b) => b.textContent)).toEqual(["All", "Sapling"]);
-  expect([...hub.querySelectorAll(".t9-kind b")].map((b) => b.textContent)).toEqual(["Toolsets", "Connectors", "Skills", "Plugins", "Command-line tools", "Agents & specialists"]);
+  expect(hub.querySelector(".cz-for-l")?.textContent).toBe("For:");
+  expect([...hub.querySelectorAll(".cz-for .cz-face")].map((b) => b.textContent)).toEqual(["All", "Sapling"]);
+  expect([...hub.querySelectorAll(".t9-kind > span")].map((b) => b.textContent)).toEqual(["Toolsets", "Connectors", "Skills", "Plugins", "Command-line tools", "Agents & specialists"]);
   expect(hub.textContent).toContain("2 agents connected · 1 online");
 });
 
@@ -95,6 +95,23 @@ it("uses the preview's row words in each card", async () => {
   expect(labels("Allow")).toEqual(["Let agents connect", "Let agents use this window"]);
   expect(labels("Connect an agent")[0]).toBe("Type branch in any terminal");
   expect(labels("Another Branch")).toEqual(["Pair with Branch on another computer"]);
+});
+
+it("hides Coming Copy seed, Download and Share at Regular and Advanced", async () => {
+  const { engine } = engineOf();
+  const SEED = ["Copy seed", "Download", "Share"];
+  for (const level of ["regular", "advanced"] as const) {
+    await mount(engine, level);
+    const agents = [...host.querySelectorAll<HTMLElement>("[data-testid=connected-agent]")];
+    expect(agents.length, level).toBeGreaterThan(0);
+    for (const agent of agents) {
+      const labels = [...agent.querySelectorAll("button")].map((b) => b.textContent);
+      for (const name of SEED) expect(labels, `${level} ${name}`).not.toContain(name);
+      expect(labels).toEqual(expect.arrayContaining(["Permissions", "Revoke"]));
+      expect(agent.textContent).not.toMatch(/later update|coming/i);
+    }
+    await act(async () => root.unmount()); root = createRoot(host); forgetLookStore();
+  }
 });
 
 it("keeps every working Classic Connected agents control: the switch, each agent's rights and Revoke", async () => {
@@ -130,26 +147,24 @@ const typeInto = async (input: HTMLInputElement, value: string) => {
   });
 };
 
-it("keeps All chosen in the For group and shows the open kind in the summary", async () => {
+it("keeps All chosen in the For group and opens the chosen kind's own list", async () => {
   await mount(engineOf().engine, "regular");
   const hub = host.querySelector<HTMLElement>("[data-testid=customize-hub]")!;
-  const group = hub.querySelector<HTMLElement>('[role="group"][aria-label="For:"]')!;
+  const group = hub.querySelector<HTMLElement>('.cz-for [role="group"]')!;
   const chip = (name: string) => [...group.querySelectorAll("button")].find((b) => b.textContent === name)!;
   expect(chip("All").getAttribute("aria-pressed")).toBe("true");
-  const summary = () => hub.querySelector("[data-testid=hub-summary]")!.textContent ?? "";
-  expect(summary()).toContain("Skills");
-  expect(summary()).toContain("All");
+  expect(hub.querySelector("[data-kind-list=Skills]")).not.toBeNull();
+  expect(hub.querySelector("[data-testid=hub-summary]")).toBeNull();
   expect(hub.querySelector(".t9-addbtn")).toBeNull();
   await act(async () => { chip("Sapling").click(); });
   expect(chip("Sapling").getAttribute("aria-pressed")).toBe("true");
   expect(chip("All").getAttribute("aria-pressed")).toBe("false");
-  expect(summary()).toContain("Sapling");
   const connectors = hub.querySelector<HTMLButtonElement>('[data-kind="Connectors"]')!;
   expect(connectors.getAttribute("aria-pressed")).toBe("false");
   await act(async () => { connectors.click(); });
   expect(connectors.getAttribute("aria-pressed")).toBe("true");
-  expect(summary()).toContain("Connectors");
-  expect(summary()).toContain("Sapling");
+  expect(hub.querySelector("[data-kind-list=Connectors]")).not.toBeNull();
+  expect(hub.querySelector("[data-kind-list=Skills]")).toBeNull();
 });
 
 it("adds a folder once a name is typed, and leaves an empty Add off", async () => {

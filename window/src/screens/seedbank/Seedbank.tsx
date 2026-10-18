@@ -4,9 +4,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Icon } from "../../shell/icons";
-import { featured, KINDS, kindOf, matches, SORTS, sortEntries, type Entry, type KindId, type Sort } from "./catalog";
+import { featured, KINDS, kindOf, matches, SEED_WHAT, SORTS, sortEntries, type Entry, type KindId, type Sort } from "./catalog";
 import { InstallSheet, PasteSheet } from "./InstallSheet";
-import { Adapters, Card, Row, Soon } from "./parts";
+import { Adapters, Card, ComingShown, Row, Soon } from "./parts";
+import { useLevelNow } from "../settings/level-now";
+import { COMING_FROM } from "../settings/rows";
 import { parseSeed, type Seed } from "./seed";
 import { looksLikeTeam, parseTeamMarkdown, type TeamFile } from "./team-markdown";
 import { TeamReview } from "./TeamReview";
@@ -30,15 +32,17 @@ export function entryForSeed(seed: Seed, entries: readonly Entry[]): Entry | nul
   return null;
 }
 
-type Props = { engine: WindowEngine; variant?: "place" | "settings" };
+type Props = { engine: WindowEngine; variant?: "place" | "settings"; /** The kind chip Seedbank opens on (Customize asks for one kind). */ initialKind?: KindId | "all" };
 
-export function Seedbank({ engine, variant = "place" }: Props) {
-  const [kind, setKind] = useState<KindId | "all">("all");
+export function Seedbank({ engine, variant = "place", initialKind = "all" }: Props) {
+  const [kind, setKind] = useState<KindId | "all">(initialKind);
   const [query, setQuery] = useState(""), [sort, setSort] = useState<Sort>("popular"), [cat, setCat] = useState("All");
   const [open, setOpen] = useState<Entry | null>(null), [paste, setPaste] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamFile | null>(null);
-  const [notice, setNotice] = useState<string | null>(null), [dropping, setDropping] = useState(false);
+  const [notice, setNotice] = useState<ReactNode>(null), [dropping, setDropping] = useState(false);
   const data = useSeedbank(engine, query);
+  // Coming controls (Open on keepoak.com, Most stars, an Add that waits on the engine) show only at Technical.
+  const comingShown = useLevelNow(engine) >= COMING_FROM;
   const shown = useMemo(() => sortEntries(data.entries.filter(e => (kind === "all" || e.kind === kind) && matches(e, query)), sort), [data.entries, kind, query, sort]);
 
   const openTeam = (text: string, seedReason: string): string | null => {
@@ -92,7 +96,7 @@ export function Seedbank({ engine, variant = "place" }: Props) {
     const k = kindOf(id);
     return <div className="sb-sec-list" key={id} data-coming-kind={id}>
       <div className="sb-sec-h"><b className="g-label">{k.label}</b><small className="g-label">Coming</small>{brief && id === "adapters" && <button type="button" className="sb-all" data-local="" onClick={() => setKind(id)}>View all</button>}</div>
-      {id === "adapters" ? <Adapters brief={brief} /> : <p className="sb-hint g-label" data-lines>{k.coming}</p>}
+      {id === "adapters" ? <Adapters brief={brief} /> : <p className="sb-hint g-label" data-lines>{k.what ? k.what + " " : ""}{k.coming}</p>}
     </div>;
   };
 
@@ -131,14 +135,14 @@ export function Seedbank({ engine, variant = "place" }: Props) {
     </>;
   }
 
-  return <div className="sb g-clear" data-variant={variant} data-dropping={dropping || undefined}>
+  return <ComingShown.Provider value={comingShown}><div className="sb g-clear" data-variant={variant} data-dropping={dropping || undefined}>
     <div className="sb-top">
       <div>{variant === "place" && <h2 className="sb-title g-label">Seedbank</h2>}<p className="sb-hint g-label" data-lines>{LEDE}</p></div>
       <Soon className="sb-web" need="seedbank.web" reason={KEEPOAK_COMING} label="Open on keepoak.com (coming)">Open on keepoak.com ↗</Soon>
     </div>
-    <div className="sb-paste"><button type="button" className="sb-btn" data-local="" onClick={() => setPaste("")}>＋ Paste a seed</button><small className="g-label">Or ⌘V on this page, or drop a .seed file on the window.</small></div>
+    <div className="sb-paste"><button type="button" className="sb-btn" data-local="" onClick={() => setPaste("")}>＋ Paste a seed</button><small className="g-label" data-lines>{SEED_WHAT} Paste one here, press ⌘V on this page, or drop a .seed file on the window.</small></div>
     <div className="sb-chips" role="tablist" aria-label="Kinds" data-local="">
-      {[{ id: "all" as const, label: "All" }, ...KINDS].map(k => <button key={k.id} type="button" role="tab" className="sb-chip" aria-selected={kind === k.id} onClick={() => { setKind(k.id); setCat("All"); }}>{k.label}</button>)}
+      {[{ id: "all" as const, label: "All" }, ...KINDS].map(k => <button key={k.id} type="button" role="tab" className="sb-chip" aria-selected={kind === k.id} title={"what" in k ? k.what : undefined} onClick={() => { setKind(k.id); setCat("All"); }}>{k.label}</button>)}
     </div>
     <label className="sb-search g-frost"><Icon name="search" size={16} /><input type="search" placeholder="Search by name or creator" aria-label="Search Seedbank by name or creator" autoComplete="off" data-local="" value={query} onChange={e => setQuery(e.target.value)} /></label>
     <div className="sb-sort" role="group" aria-label="Sort">
@@ -151,30 +155,32 @@ export function Seedbank({ engine, variant = "place" }: Props) {
     {open && <InstallSheet entry={open} engine={engine} trunks={data.trunks} onClose={() => setOpen(null)} onDone={result => { setOpen(null); setNotice(result.notice); data.reload(); }} />}
     {team && <TeamReview team={team} engine={engine} onClose={() => setTeam(null)} onDone={result => { setTeam(null); setNotice(result.notice); data.reload(); }} />}
     {paste !== null && <PasteSheet initial={paste} onClose={() => setPaste(null)} onSeed={openSeed} />}
-  </div>;
+  </div></ComingShown.Provider>;
 }
 
 /** Customize with its Personal | Community switch. `initial` is the mode the mount was asked for; later requests (requestCustomize) switch it. */
-export function CustomizeWithCommunity({ engine, personal, initial = "personal" }: { engine: WindowEngine; personal: ReactNode; initial?: CustomizeMode }) {
+export function CustomizeWithCommunity({ engine, personal, initial = "personal", initialKind }: { engine: WindowEngine; personal: ReactNode; initial?: CustomizeMode; initialKind?: string }) {
   const [mode, setMode] = useState<CustomizeMode>(initial);
+  const [community, setCommunity] = useState<{ kind: string; n: number } | undefined>(initialKind ? { kind: initialKind, n: 0 } : undefined);
   useEffect(() => {
     const onRequest = (event: Event) => {
       takeCustomizeRequest();
-      const next = (event as CustomEvent<CustomizeRequest>).detail?.mode;
-      if (next) setMode(next);
+      const request = (event as CustomEvent<CustomizeRequest>).detail;
+      if (request?.mode) setMode(request.mode);
+      if (request?.community) setCommunity({ kind: request.community, n: Date.now() });
     };
     addEventListener(CUSTOMIZE_REQUEST_EVENT, onRequest);
     return () => removeEventListener(CUSTOMIZE_REQUEST_EVENT, onRequest);
   }, []);
-  return <CustomizeModes engine={engine} mode={mode} onMode={setMode} personal={personal} />;
+  return <CustomizeModes engine={engine} mode={mode} onMode={setMode} personal={personal} community={community} />;
 }
 
 /** Customize's switch (item 28): Personal is today's Customize, Community is Seedbank. */
-export function CustomizeModes({ engine, mode, onMode, personal }: { engine: WindowEngine; mode: CustomizeMode; onMode: (mode: CustomizeMode) => void; personal: ReactNode }) {
+export function CustomizeModes({ engine, mode, onMode, personal, community }: { engine: WindowEngine; mode: CustomizeMode; onMode: (mode: CustomizeMode) => void; personal: ReactNode; community?: { kind: string; n: number } }) {
   return <div className="sb-place">
     <div className="sb-modes"><span className="g-frost sb-modes-seg" role="tablist" aria-label="Customize" data-local="">
       {(["personal", "community"] as const).map(m => <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => onMode(m)}>{m === "personal" ? "Personal" : "Community"}</button>)}
     </span></div>
-    {mode === "community" ? <><h1 className="sb-sr">Customize · Community</h1><Seedbank engine={engine} /></> : personal}
+    {mode === "community" ? <><h1 className="sb-sr">Customize · Community</h1><Seedbank key={community?.n ?? 0} engine={engine} initialKind={(community?.kind ?? "all") as KindId | "all"} /></> : personal}
   </div>;
 }

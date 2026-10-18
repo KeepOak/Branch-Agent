@@ -6,7 +6,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { makeComponentRelease } from "./make-component-release.mjs";
 import { fileDigest, writeReleaseInventory } from "./release-inventory.mjs";
-import { PUBLIC_LATEST_BUDGET_MS, publicLatestDelayMs, publishRelease } from "./publish-component-release.mjs";
+import { PUBLIC_LATEST_BUDGET_MS, alreadyPublishedMessage, publicLatestDelayMs, publishRelease } from "./publish-component-release.mjs";
+import { DOWNLOAD_PLATFORMS, UPDATE_ONLY_LABEL, downloadAssetName, formatReleaseNotes } from "./release-notes.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const commit = "a".repeat(40);
@@ -54,7 +55,7 @@ function compare(base, head) {
   return delta === 0 ? "identical" : delta > 0 ? "ahead" : "behind";
 }
 
-function githubMock(assets, { staleReads = 0, corrupt = false, previous = true, rollbackFails = false, moveLatestAfterReads = 0 } = {}) {
+function githubMock(assets, { staleReads = 0, corrupt = false, previous = true, rollbackFails = false, moveLatestAfterReads = 0, existing = null } = {}) {
   const calls = [];
   const publicReads = [];
   const sleeps = [];
@@ -70,7 +71,11 @@ function githubMock(assets, { staleReads = 0, corrupt = false, previous = true, 
       const [base, head] = args[1].split("/compare/")[1].split("...");
       return compare(base, head);
     }
-    if (args[0] === "api" && args[1].endsWith("/releases")) return JSON.stringify([latestTag ? [{ tag_name: latestTag }] : []]);
+    if (args[0] === "api" && args[1].endsWith("/releases")) {
+      const listed = latestTag ? [{ tag_name: latestTag, target_commitish: latestTag === tag ? commit : older }] : [];
+      if (existing) listed.push(existing);
+      return JSON.stringify([listed]);
+    }
     if (args[0] === "api" && args[1].endsWith("/releases/latest")) {
       if (!latestTag) throw notFound();
       const ours = latestTag === tag;
@@ -229,7 +234,43 @@ test("a failed rollback leaves this release Latest and still fails", () => fixtu
 test("desktop checks run the publication order test by name", async () => {
   const workflow = await readFile(join(here, "../../.github/workflows/desktop-checks.yml"), "utf8");
   assert.match(workflow, /^\s+run: node --test scripts\/publish-component-release\.test\.mjs\s*$/m);
+  const source = await readFile(new URL("./publish-component-release.mjs", import.meta.url), "utf8");
+  assert.match(source, /formatReleaseNotes\(\{ commit, version, names \}\)/);
 });
+
+test("an existing release for this version skips with success and does not create assets", () => fixture(async assets => {
+  const remote = githubMock(assets, { existing: { tag_name: tag, target_commitish: commit } });
+  const result = await publishRelease(assets, commit, version, remote.request, remote.download, {
+    sleep: remote.sleep, now: remote.now,
+  });
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, alreadyPublishedMessage(tag));
+  assert.equal(alreadyPublishedMessage(tag), `Release ${tag} already exists; skipping publish`);
+  assert(!remote.calls.some(args => args[1] === "create" || args[1] === "edit"));
+  assert.equal(remote.latest(), previousTag);
+  assertReleaseKept(remote.calls);
+}));
+
+test("a leftover draft for this version is not treated as already published", () => fixture(async assets => {
+  const remote = githubMock(assets, { existing: { tag_name: tag, target_commitish: commit, draft: true } });
+  const result = await publishRelease(assets, commit, version, remote.request, remote.download, {
+    sleep: remote.sleep, now: remote.now,
+  });
+  assert.equal(result.skipped, undefined);
+  assert.ok(remote.calls.some(args => args[1] === "create"));
+  assert.equal(remote.latest(), tag);
+  assertReleaseKept(remote.calls);
+}));
+
+test("an existing release whose tag points at another commit still fails", () => fixture(async assets => {
+  const remote = githubMock(assets, {
+    existing: { tag_name: tag, target_commitish: older },
+  });
+  await assert.rejects(publishRelease(assets, commit, version, remote.request, remote.download), /different source/);
+  assert(!remote.calls.some(args => args[1] === "create" || args[1] === "edit"));
+  assert.equal(remote.latest(), previousTag);
+  assertReleaseKept(remote.calls);
+}));
 
 const installerNames = { "win32-x64": `Branch-Agent-Setup-${version}-win32-x64.exe`, "darwin-arm64": `Branch-Agent-${version}-darwin-arm64.dmg`,
   "linux-x64": `Branch-Agent-${version}-linux-x64.AppImage` };
@@ -244,6 +285,94 @@ async function listInstaller(assets, target, { place = true, listed } = {}) {
   await writeFile(proofFile, JSON.stringify(proof, null, 2) + "\n");
 }
 
+test("generated release notes start with one download per platform and label every other file", () => {
+  const names = [
+    `Branch-Agent-${version}-darwin-arm64.dmg`,
+    `Branch-Agent-${version}-linux-x64.AppImage`,
+    `Branch-Agent-Setup-${version}-win32-x64.exe`,
+    `branch-desktop-${version}-darwin-arm64.tar.gz`,
+    `branch-desktop-${version}-linux-x64.tar.gz`,
+    `branch-desktop-${version}-win32-x64.tar.gz`,
+    `branch-desktop-app-${version}-darwin-arm64.tar.gz`,
+    `branch-desktop-app-${version}-linux-x64.tar.gz`,
+    `branch-desktop-app-${version}-win32-x64.tar.gz`,
+    `branch-engine-${version}-darwin-arm64.tar.gz`,
+    `branch-engine-${version}-linux-x64.tar.gz`,
+    `branch-engine-${version}-win32-x64.tar.gz`,
+    "branch-release-darwin-arm64.json",
+    "branch-release-linux-x64.json",
+    "branch-release-win32-x64.json",
+    `branch-window-${version}.tar.gz`,
+    "install.ps1",
+    "install.sh",
+    "release-proof-darwin-arm64.json",
+    "release-proof-linux-x64.json",
+    "release-proof-win32-x64.json",
+    "SHA256SUMS",
+  ];
+  const notes = formatReleaseNotes({ commit, version, names });
+  const base = `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}`;
+  assert.equal(notes, [
+    "Download this",
+    "",
+    `- macOS: [Branch-Agent-${version}-darwin-arm64.dmg](${base}/Branch-Agent-${version}-darwin-arm64.dmg)`,
+    `- Windows: [Branch-Agent-Setup-${version}-win32-x64.exe](${base}/Branch-Agent-Setup-${version}-win32-x64.exe)`,
+    `- Linux: [Branch-Agent-${version}-linux-x64.AppImage](${base}/Branch-Agent-${version}-linux-x64.AppImage)`,
+    "",
+    "Other files",
+    "",
+    `- SHA256SUMS: ${UPDATE_ONLY_LABEL}`,
+    `- branch-desktop-${version}-darwin-arm64.tar.gz: ${UPDATE_ONLY_LABEL}`,
+    `- branch-desktop-${version}-linux-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
+    `- branch-desktop-${version}-win32-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
+    `- branch-desktop-app-${version}-darwin-arm64.tar.gz: ${UPDATE_ONLY_LABEL}`,
+    `- branch-desktop-app-${version}-linux-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
+    `- branch-desktop-app-${version}-win32-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
+    `- branch-engine-${version}-darwin-arm64.tar.gz: ${UPDATE_ONLY_LABEL}`,
+    `- branch-engine-${version}-linux-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
+    `- branch-engine-${version}-win32-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
+    `- branch-release-darwin-arm64.json: ${UPDATE_ONLY_LABEL}`,
+    `- branch-release-linux-x64.json: ${UPDATE_ONLY_LABEL}`,
+    `- branch-release-win32-x64.json: ${UPDATE_ONLY_LABEL}`,
+    `- branch-window-${version}.tar.gz: ${UPDATE_ONLY_LABEL}`,
+    `- install.ps1: ${UPDATE_ONLY_LABEL}`,
+    `- install.sh: ${UPDATE_ONLY_LABEL}`,
+    `- release-proof-darwin-arm64.json: ${UPDATE_ONLY_LABEL}`,
+    `- release-proof-linux-x64.json: ${UPDATE_ONLY_LABEL}`,
+    `- release-proof-win32-x64.json: ${UPDATE_ONLY_LABEL}`,
+    "",
+    `Branch Agent built from ${commit}.`,
+    "",
+    "Native Windows x64, macOS arm64 and Linux x64 packages; verified engine, renderer and desktop app update components. Existing data and credentials are retained. Installed desktop apps take the new desktop app on their next start.",
+    "",
+  ].join("\n"));
+  assert.match(notes, /^Download this\n/);
+  assert.match(notes, /^Other files$/m);
+  assert.equal(UPDATE_ONLY_LABEL, "used by automatic updates, you don't need this");
+  for (const [label, target] of DOWNLOAD_PLATFORMS) {
+    const name = downloadAssetName(version, target);
+    assert.equal(name, installerNames[target]);
+    assert.ok(notes.includes(`- ${label}: [${name}](${base}/${name})`));
+    assert.equal(notes.includes(`- ${name}: ${UPDATE_ONLY_LABEL}`), false);
+  }
+  for (const name of names.filter((item) => !Object.values(installerNames).includes(item))) {
+    assert.ok(notes.includes(`- ${name}: ${UPDATE_ONLY_LABEL}`), `${name} is not labeled update-only`);
+  }
+});
+
+test("release notes omit a platform whose installer is not on the release", () => {
+  const names = [`Branch-Agent-${version}-linux-x64.AppImage`, "SHA256SUMS", `branch-desktop-${version}-linux-x64.tar.gz`];
+  const notes = formatReleaseNotes({ commit, version, names });
+  assert.match(notes, /^Download this\n/);
+  assert.match(notes, /^Other files$/m);
+  assert.match(notes, /^- Linux: /m);
+  assert.doesNotMatch(notes, /^- macOS: /m);
+  assert.doesNotMatch(notes, /^- Windows: /m);
+  assert.match(notes, new RegExp(`^- SHA256SUMS: ${UPDATE_ONLY_LABEL}$`, "m"));
+  assert.match(notes, new RegExp(`^- branch-desktop-${version}-linux-x64\\.tar\\.gz: ${UPDATE_ONLY_LABEL}$`, "m"));
+  assert.doesNotMatch(notes, new RegExp(`AppImage: ${UPDATE_ONLY_LABEL}`));
+});
+
 test("listed installers, the Linux AppImage included, are uploaded as release assets and listed in SHA256SUMS", () => fixture(async assets => {
   await listInstaller(assets, "win32-x64"); await listInstaller(assets, "darwin-arm64"); await listInstaller(assets, "linux-x64");
   const remote = githubMock(assets);
@@ -251,6 +380,8 @@ test("listed installers, the Linux AppImage included, are uploaded as release as
   const created = remote.calls.find(args => args[1] === "create");
   const uploaded = created.slice(3, created.indexOf("--repo")).map(file => basename(file));
   for (const name of Object.values(installerNames)) assert(uploaded.includes(name), `${name} was not uploaded`);
+  assert.equal(await readFile(join(assets, "release-notes.txt"), "utf8"), formatReleaseNotes({ commit, version, names: uploaded }));
+  assert.match(await readFile(join(assets, "release-notes.txt"), "utf8"), /^Download this\n/);
   assert(!uploaded.some(name => /linux-x64\.deb$/.test(name)));
   const sums = await readFile(join(assets, "SHA256SUMS"), "utf8");
   for (const name of Object.values(installerNames)) assert.match(sums, new RegExp(`^${(await fileDigest(join(assets, name))).sha256}  ${name.replace(/\./g, "\\.")}$`, "m"));
