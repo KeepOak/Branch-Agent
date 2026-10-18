@@ -7,7 +7,13 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { checkSelfCheck, findSelfCheckBlock, formatSelfCheckSummary, inputFromEvent, isTrunkBranch, resolveSelfCheckInput, SELF_CHECK_DOC } from './check-self-check.mjs';
 import { runPreflight } from './pr-preflight.mjs';
-import { LIVE_READ_ATTEMPTS, liveContext, readLivePullRequest } from './live-pull-request.mjs';
+import {
+  COVERAGE_RATE_LIMIT_BUFFER_SECONDS,
+  COVERAGE_RATE_LIMIT_BUDGET_SECONDS,
+  LIVE_READ_ATTEMPTS,
+  liveContext,
+  readLivePullRequest,
+} from './live-pull-request.mjs';
 
 const filled = 'SELF-CHECK\nFiles: 3 (all expected: yes)\nTests: node --test example.test.mjs -> 5 passed, 0 failed';
 const check = (body) => checkSelfCheck({ headRef: 'trunk/x', body });
@@ -215,7 +221,7 @@ test('readLivePullRequest retries transient failures with a delay, then returns 
   const pr = readLivePullRequest(LIVE_CTX, {
     request: () => {
       calls += 1;
-      if (calls < 3) throw new Error('gh: API rate limit exceeded (HTTP 403)');
+      if (calls < 3) throw new Error('gh: Server Error (HTTP 502)');
       return { body: 'live', head: { ref: 'trunk/live-body', sha: HEAD } };
     },
     sleep: (seconds) => sleeps.push(seconds),
@@ -223,6 +229,231 @@ test('readLivePullRequest retries transient failures with a delay, then returns 
   assert.deepEqual(pr, { body: 'live', headRef: 'trunk/live-body', headSha: HEAD });
   assert.equal(calls, 3);
   assert.deepEqual(sleeps, [5, 10]);
+});
+
+function rateLimitError(message, extra = {}) {
+  return Object.assign(new Error(message), extra);
+}
+
+test('the live gh read waits on x-ratelimit-reset from gh api --include', () => {
+  const start = 1_700_000_000_000;
+  let now = start;
+  let calls = 0;
+  const sleeps = [];
+  const denied = [
+    'HTTP/2.0 403 Forbidden',
+    'X-RateLimit-Remaining: 0',
+    `X-RateLimit-Reset: ${start / 1000 + 30}`,
+    '',
+    '{"message":"API rate limit exceeded for installation"}',
+  ].join('\n');
+  const ok = [
+    'HTTP/2.0 200 OK',
+    'X-RateLimit-Remaining: 4999',
+    '',
+    JSON.stringify({ body: 'from-api', head: { ref: 'trunk/live-body', sha: HEAD } }),
+  ].join('\n');
+  const pr = readLivePullRequest(LIVE_CTX, {
+    exec: () => {
+      calls += 1;
+      if (calls === 1) {
+        const error = new Error('Command failed: gh api repos/o/r/pulls/7');
+        error.stdout = denied;
+        error.stderr = 'gh: API rate limit exceeded for installation (HTTP 403)';
+        throw error;
+      }
+      return ok;
+    },
+    sleep: (seconds) => {
+      sleeps.push(seconds);
+      now += seconds * 1000;
+    },
+    now: () => now,
+    fetchRateLimit: () => { throw new Error('headers are enough'); },
+    log: () => {},
+  });
+  assert.equal(pr.body, 'from-api');
+  assert.equal(pr.headRef, 'trunk/live-body');
+  assert.equal(pr.headSha, HEAD);
+  assert.deepEqual(sleeps, [30 + COVERAGE_RATE_LIMIT_BUFFER_SECONDS]);
+});
+
+test('readLivePullRequest waits out a rate-limit 403 until reset plus a buffer, then succeeds', () => {
+  const start = 1_700_000_000_000;
+  let now = start;
+  const sleeps = [];
+  let calls = 0;
+  const pr = readLivePullRequest(LIVE_CTX, {
+    request: () => {
+      calls += 1;
+      if (calls === 1) {
+        throw rateLimitError('gh: API rate limit exceeded for installation (HTTP 403)', {
+          httpStatus: 403,
+          headers: { 'x-ratelimit-reset': String(start / 1000 + 40), 'x-ratelimit-remaining': '0' },
+          body: '{"message":"API rate limit exceeded for installation"}',
+        });
+      }
+      return { body: 'live', head: { ref: 'trunk/live-body', sha: HEAD } };
+    },
+    sleep: (seconds) => {
+      sleeps.push(seconds);
+      now += seconds * 1000;
+    },
+    now: () => now,
+    fetchRateLimit: () => ({ resources: { core: { remaining: 0, reset: start / 1000 + 90 } } }),
+    log: () => {},
+  });
+  assert.deepEqual(pr, { body: 'live', headRef: 'trunk/live-body', headSha: HEAD });
+  assert.equal(calls, 2);
+  assert.deepEqual(sleeps, [40 + COVERAGE_RATE_LIMIT_BUFFER_SECONDS]);
+});
+
+test('readLivePullRequest waits out a secondary rate limit from gh api rate_limit when the error has no reset header', () => {
+  const start = 1_700_000_000_000;
+  let now = start;
+  const sleeps = [];
+  let calls = 0;
+  const pr = readLivePullRequest(LIVE_CTX, {
+    request: () => {
+      calls += 1;
+      if (calls === 1) throw rateLimitError('gh: You have exceeded a secondary rate limit (HTTP 403)', { httpStatus: 403 });
+      return { body: 'live', head: { ref: 'trunk/live-body', sha: HEAD } };
+    },
+    sleep: (seconds) => {
+      sleeps.push(seconds);
+      now += seconds * 1000;
+    },
+    now: () => now,
+    fetchRateLimit: () => ({ resources: { core: { remaining: 0, reset: start / 1000 + 25 } } }),
+    log: () => {},
+  });
+  assert.equal(calls, 2);
+  assert.deepEqual(sleeps, [25 + COVERAGE_RATE_LIMIT_BUFFER_SECONDS]);
+  assert.equal(pr.body, 'live');
+});
+
+test('readLivePullRequest waits exactly retry-after for a 429 without a reset buffer', () => {
+  let now = 1_700_000_000_000;
+  let calls = 0;
+  const sleeps = [];
+  const pr = readLivePullRequest(LIVE_CTX, {
+    request: () => {
+      if (++calls === 1) {
+        throw rateLimitError('Too many requests', {
+          httpStatus: 429,
+          headers: { 'retry-after': '20' },
+        });
+      }
+      return { body: 'live', head: { ref: 'trunk/live-body', sha: HEAD } };
+    },
+    sleep: (seconds) => {
+      sleeps.push(seconds);
+      now += seconds * 1000;
+    },
+    now: () => now,
+    fetchRateLimit: () => null,
+    log: () => {},
+  });
+  assert.equal(calls, 2);
+  assert.deepEqual(sleeps, [20]);
+  assert.deepEqual(pr, { body: 'live', headRef: 'trunk/live-body', headSha: HEAD });
+});
+
+test('the live pull request CLI fails without writing a snapshot when rate limiting persists', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'live-pr-rate-limit-'));
+  const out = path.join(dir, 'snapshot.json');
+  try {
+    const entry = new URL('./live-pull-request.mjs', import.meta.url).href;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import { main } from ${JSON.stringify(entry)};
+      let now = 1_700_000_000_000;
+      process.exitCode = main([${JSON.stringify(out)}], {
+        env: { REPO: 'o/r', PR_NUMBER: '7', GH_TOKEN: 'fake-token' },
+        request: () => {
+          throw Object.assign(new Error('API rate limit exceeded'), {
+            httpStatus: 403,
+            headers: { 'retry-after': '20' },
+          });
+        },
+        sleep: (seconds) => { now += seconds * 1000; },
+        now: () => now,
+        budgetSeconds: 30,
+        fetchRateLimit: () => null,
+        log: () => {},
+      });
+    `], { encoding: 'utf8', windowsHide: true, timeout: 10_000 });
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /^checks-unavailable: GitHub API rate limit outlasted the 30s wait/);
+    assert.equal(existsSync(out), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a non-rate-limit 403, 404, or 500 fails without waiting for a rate-limit reset', () => {
+  for (const status of [403, 404, 500]) {
+    const sleeps = [];
+    let calls = 0;
+    const message = status === 403
+      ? 'gh: Resource not accessible by integration (HTTP 403)'
+      : `gh: HTTP ${status}`;
+    assert.throws(() => readLivePullRequest(LIVE_CTX, {
+      request: () => {
+        calls += 1;
+        throw rateLimitError(message, {
+          httpStatus: status,
+          headers: { 'x-ratelimit-remaining': '12' },
+          body: status === 403 ? '{"message":"Resource not accessible by integration"}' : '',
+        });
+      },
+      sleep: (seconds) => sleeps.push(seconds),
+      fetchRateLimit: () => { throw new Error('rate_limit must not be read'); },
+      log: () => {},
+    }), new RegExp(`HTTP ${status}.*after ${LIVE_READ_ATTEMPTS} attempts`));
+    assert.equal(calls, LIVE_READ_ATTEMPTS);
+    assert.deepEqual(sleeps, [5, 10, 20]);
+  }
+});
+
+test('a rate limit that outlasts the wait budget fails and is not reported as missing coverage', () => {
+  const start = 1_700_000_000_000;
+  let now = start;
+  const sleeps = [];
+  assert.throws(() => readLivePullRequest(LIVE_CTX, {
+    request: () => {
+      throw rateLimitError('gh: API rate limit exceeded for installation (HTTP 403)', { httpStatus: 403 });
+    },
+    sleep: (seconds) => {
+      sleeps.push(seconds);
+      now += seconds * 1000;
+    },
+    now: () => now,
+    budgetSeconds: 100,
+    bufferSeconds: COVERAGE_RATE_LIMIT_BUFFER_SECONDS,
+    fetchRateLimit: () => ({ resources: { core: { remaining: 0, reset: start / 1000 + 10_000 } } }),
+    log: () => {},
+  }), (error) => {
+    assert.match(error.message, /^checks-unavailable: GitHub API rate limit outlasted the 100s wait/);
+    assert.match(error.message, /Not a coverage failure; re-run the check/);
+    return true;
+  });
+  const waited = sleeps.reduce((sum, seconds) => sum + seconds, 0);
+  assert.ok(waited <= 100, `waited ${waited}s, over the 100s cap`);
+  assert.ok(waited >= 100 - COVERAGE_RATE_LIMIT_BUFFER_SECONDS);
+});
+
+test('the changed-test-coverage job timeout outlasts the rate-limit wait budget', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  const job = yaml.slice(yaml.indexOf('  changed-test-coverage:'), yaml.indexOf('  merge-gate:'));
+  const timeoutMinutes = Number(/timeout-minutes:\s*(\d+)/.exec(job)?.[1]);
+  assert.equal(timeoutMinutes, 15);
+  assert.ok(timeoutMinutes <= 15);
+  assert.equal(COVERAGE_RATE_LIMIT_BUDGET_SECONDS, 600);
+  assert.ok(
+    timeoutMinutes * 60 >= COVERAGE_RATE_LIMIT_BUDGET_SECONDS + 3 * 60,
+    `timeout ${timeoutMinutes}m must leave 3 minutes after the ${COVERAGE_RATE_LIMIT_BUDGET_SECONDS}s wait`,
+  );
 });
 
 test('readLivePullRequest gives up after its attempts with a clear message', () => {
