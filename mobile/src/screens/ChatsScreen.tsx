@@ -502,6 +502,7 @@ export function ChatsScreen({
   updateBanner,
   level = 'regular',
   look = Platform.OS === 'ios' ? 'ios' : 'android',
+  bottomExtra = 0,
 }: {
   list: ChatListSnapshot;
   online: boolean;
@@ -530,6 +531,8 @@ export function ChatsScreen({
   level?: ExperienceLevel;
   /** Android uses the preview's app bar, chips and New chat FAB. */
   look?: 'ios' | 'android';
+  /** Extra list padding above a floating Places bar. */
+  bottomExtra?: number;
 }) {
   const { color, space, radius, layout, type } = useTheme();
   // The list can stay open for hours: a render every half minute moves rows from "Now" to a time, and from
@@ -838,7 +841,7 @@ export function ChatsScreen({
         ItemSeparatorComponent={({ leadingItem }: { leadingItem?: Item }) =>
           leadingItem && leadingItem.kind !== 'header' ? <View style={{ height: layout.hairline, backgroundColor: color.line, marginLeft: layout.screenInset + AVATAR + space.md }} /> : null
         }
-        contentContainerStyle={{ paddingBottom: insets.bottom + space.xl + (android && onNewChat ? 72 : 0) }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + space.xl + (android && onNewChat ? 72 : 0) + bottomExtra }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}

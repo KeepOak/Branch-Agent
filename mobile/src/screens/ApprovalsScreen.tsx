@@ -371,6 +371,7 @@ export function ApprovalsScreen({
   focusId,
   test,
   now: fixedNow,
+  bottomExtra = 0,
 }: {
   snapshot: ApprovalsSnapshot;
   online: boolean;
@@ -388,6 +389,8 @@ export function ApprovalsScreen({
   /** The test approval tools, in builds that have them (testApproval.ts testApprovalsOn). */
   test?: { state: TestApprovalState; onSend: (delayMs: number) => void; onCancel: () => void };
   now?: number;
+  /** Extra padding above a floating Places bar. */
+  bottomExtra?: number;
 }) {
   const { color, space, radius, layout } = useTheme();
   const insets = useSafeAreaInsets();
@@ -422,7 +425,11 @@ export function ApprovalsScreen({
 
   return (
     <View testID="approvals-screen" style={{ flex: 1, backgroundColor: color.grouped }}>
-      <ScrollView contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl + bottomExtra }}
+      >
         <Pressable
           testID="approvals-back"
           accessibilityRole="button"

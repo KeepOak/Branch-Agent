@@ -248,6 +248,7 @@ export function SettingsScreen({
   onBack,
   updateCard,
   level: pinnedLevel,
+  bottomExtra = 0,
 }: {
   state: Extract<PairingState, { step: 'paired' }>;
   permission: NotificationPermission | null;
@@ -258,6 +259,8 @@ export function SettingsScreen({
   onBack: () => void;
   updateCard?: ReactNode;
   level?: SettingsLevel;
+  /** Extra padding above a floating Places bar. */
+  bottomExtra?: number;
 }) {
   const { color, space, radius, layout } = useTheme();
   const { preference, setPreference, lookId, setLookId } = useThemePreference();
@@ -284,7 +287,7 @@ export function SettingsScreen({
 
   if (page === 'language') {
     return (
-      <Screen testID="settings-screen">
+      <Screen testID="settings-screen" bottomExtra={bottomExtra}>
         <BackRow label="Settings" onPress={() => setPage('main')} testID="settings-language-back" />
         <ThemedText variant="settingsTitle" accessibilityRole="header">
           Language
@@ -328,7 +331,7 @@ export function SettingsScreen({
 
   if (page === 'themes') {
     return (
-      <Screen testID="settings-screen">
+      <Screen testID="settings-screen" bottomExtra={bottomExtra}>
         <BackRow label="Settings" onPress={() => setPage('main')} testID="settings-themes-back" />
         <ThemedText variant="settingsTitle" accessibilityRole="header">
           Theme
@@ -374,7 +377,7 @@ export function SettingsScreen({
   if (page === 'help' || helpPage) {
     const topic = helpPage;
     return (
-      <Screen testID="settings-screen">
+      <Screen testID="settings-screen" bottomExtra={bottomExtra}>
         <BackRow
           label={topic ? 'Help' : 'Settings'}
           onPress={() => setPage(topic ? 'help' : 'main')}
@@ -415,7 +418,7 @@ export function SettingsScreen({
   const appearanceLater = laterRowsAt(level, 'Appearance');
 
   return (
-    <Screen testID="settings-screen">
+    <Screen testID="settings-screen" bottomExtra={bottomExtra}>
       <BackRow label="Chats" onPress={onBack} testID="settings-back" />
       <ThemedText variant="settingsTitle" accessibilityRole="header">
         Settings
