@@ -1,4 +1,5 @@
 // Register service command tests cover daemon service subcommand registration.
+import { Readable } from "node:stream";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isVerbose, setVerbose } from "../../globals.js";
@@ -96,6 +97,21 @@ function setRestartRouteEnv(env: Record<string, string | undefined>) {
       deleteTestEnvValue(key);
     } else {
       setTestEnvValue(key, value);
+    }
+  }
+}
+
+async function withEndedStdin<T>(run: () => Promise<T>): Promise<T> {
+  const previousStdin = Object.getOwnPropertyDescriptor(process, "stdin");
+  Object.defineProperty(process, "stdin", {
+    configurable: true,
+    value: Readable.from([]),
+  });
+  try {
+    return await run();
+  } finally {
+    if (previousStdin) {
+      Object.defineProperty(process, "stdin", previousStdin);
     }
   }
 }
@@ -236,10 +252,12 @@ describe("addGatewayServiceCommands", () => {
       process.argv = ["node", "branch", parent, action, "--update-executor", "check"];
       const output = vi.spyOn(process.stdout, "write").mockReturnValue(true);
       try {
-        await withConsoleLogsRoutedToStderrForJson(
-          process.argv,
-          () => program.parseAsync(process.argv),
-          { restoreChanges: true },
+        await withEndedStdin(() =>
+          withConsoleLogsRoutedToStderrForJson(
+            process.argv,
+            () => program.parseAsync(process.argv),
+            { restoreChanges: true },
+          ),
         );
       } finally {
         process.argv = previousArgv;
