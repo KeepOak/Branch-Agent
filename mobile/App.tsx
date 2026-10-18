@@ -226,7 +226,7 @@ function Shell({
   const [computers] = useState(() => new ComputerList(session));
   const computerList = useSyncExternalStore(computers.subscribe, computers.getSnapshot);
   const [searchMessages] = useState(() => messageSearcher((method, params) => session.request(method, params)));
-  const { self, reload: reloadSelf } = useSelf(session, state.step === 'paired' && state.online);
+  const { self, loadFailed, reload: reloadSelf } = useSelf(session, state.step === 'paired' && state.online);
 
   useEffect(() => {
     chats.attach();
@@ -488,8 +488,10 @@ function Shell({
             scopes={session.hello?.auth.scopes ?? []}
             computer={host ? computerName(host) : 'This computer'}
             computerStatus={state.online ? 'Connected to your computer' : 'Reconnecting to your computer…'}
+            loadFailed={loadFailed}
             onComputer={() => setPairedRoute({ name: 'computers', from: 'you', youFrom: pairedRoute.from })}
             onBack={() => setPairedRoute(pairedBack(pairedRoute))}
+            onRetry={() => void reloadSelf()}
             onRename={
               self.id
                 ? async (name) => {
