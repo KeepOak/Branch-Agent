@@ -497,7 +497,12 @@ export function namedTestFiles(lane, only) {
       if (!line || line.startsWith('#')) continue;
       const match = /^(engine|window):(.+)$/.exec(line);
       if (!match) throw new Error(`scripts/feature-batch-ci-named/${name}: expected engine:<file> or window:<file>, got "${line}"`);
-      if (match[1] === lane) files.push(match[2].trim());
+      if (match[1] !== lane) continue;
+      const file = match[2].trim();
+      // Feature-batch vitest excludes **/*.e2e.test.ts. The real-engine handoff file is
+      // covered by engine-handoff-checks; listing it here is only for preflight.
+      if (/\.e2e\.test\.(?:ts|tsx)$/.test(file)) continue;
+      files.push(file);
     }
   }
   return files;
