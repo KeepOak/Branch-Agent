@@ -1,10 +1,9 @@
 /**
- * A Codex turn that has to wait for the first-use download says so in its
- * conversation: "Getting Codex ready (134 MB)… 42%", updated as it goes, then
- * "Codex is ready." The download is not a question (the person already chose
- * Codex). Cancel (codex.runtime.cancel) ends the turn with "Cancelled"; a
- * failure (offline, a refused download) ends it with the reason, and the window
- * offers Try again (codex.runtime.download).
+ * A Codex turn that needs the first-use download asks before any byte is
+ * fetched, with the same size question the Settings row and the model menu
+ * use. Yes (`codex.runtime.download` with confirmed) starts it; Cancel does
+ * not. Then the conversation shows "Getting Codex ready (134 MB)… 42%",
+ * updated as it goes, then "Codex is ready."
  *
  * Every line is a `run_status` event with phase "codex_download" on the
  * waiting run, so the window draws it where the turn is waiting.
@@ -24,7 +23,7 @@ import {
 
 export const CODEX_DOWNLOAD_PHASE = "codex_download";
 
-export type CodexTurnDownloadState = "downloading" | "ready" | "failed" | "cancelled";
+export type CodexTurnDownloadState = "confirm" | "downloading" | "ready" | "failed" | "cancelled";
 
 export type CodexTurnDownloadEvent = {
   stream: "run_status";
@@ -32,6 +31,8 @@ export type CodexTurnDownloadEvent = {
     phase: typeof CODEX_DOWNLOAD_PHASE;
     state: CodexTurnDownloadState;
     message: string;
+    /** The size question, kept on a failure so Try again asks again. */
+    ask?: string;
     received?: number;
     bytes?: number;
     percent?: number;
@@ -75,6 +76,24 @@ export async function prepareCodexForTurn(params: PrepareCodexForTurnParams): Pr
       // The chat line is a courtesy; the download goes on without it.
     }
   };
+  if (!onDemand.downloadAllowed()) {
+    const question = onDemand.askMessage() ?? "Download Codex?";
+    const preview = await readStatus(onDemand);
+    emit({
+      state: "confirm",
+      message: question,
+      ask: question,
+      ...(preview ? { bytes: preview.bytes, received: 0, percent: 0 } : {}),
+    });
+    try {
+      await onDemand.waitForDownloadConsent(params.signal);
+    } catch (error) {
+      if (error instanceof CodexRuntimeUnavailableError && error.reason === "cancelled") {
+        emit({ state: "cancelled", message: CODEX_DOWNLOAD_CANCELLED });
+      }
+      throw error;
+    }
+  }
   let shownPercent = -1;
   let last: CodexDownloadProgress | undefined;
   const onProgress = (progress: CodexDownloadProgress) => {
@@ -104,9 +123,11 @@ export async function prepareCodexForTurn(params: PrepareCodexForTurnParams): Pr
       throw error;
     }
     const message = error instanceof Error ? error.message : String(error);
+    const question = onDemand.askMessage();
     emit({
       state: "failed",
       message,
+      ...(question ? { ask: question } : {}),
       ...(error instanceof CodexRuntimeUnavailableError ? { reason: error.reason } : {}),
       ...(last ? { bytes: last.bytes } : {}),
     });

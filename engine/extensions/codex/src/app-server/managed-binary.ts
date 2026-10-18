@@ -38,7 +38,13 @@ const registeredCodexInstalled = resolveGlobalSingleton<{ provider?: ManagedCode
  */
 export type ManagedCodexOnDemand = Pick<
   CodexOnDemand,
-  "findPathCommand" | "installedLauncher" | "ensureLauncher" | "status"
+  | "findPathCommand"
+  | "installedLauncher"
+  | "ensureLauncher"
+  | "status"
+  | "downloadAllowed"
+  | "askMessage"
+  | "waitForDownloadConsent"
 >;
 
 const registeredCodexOnDemand = resolveGlobalSingleton<{ provider?: ManagedCodexOnDemand }>(
@@ -380,13 +386,15 @@ async function resolveOnDemandCommandCandidates(params: {
       : await onDemand.installedLauncher();
   const desktopFirst = managedCommandOrder === "desktop-first" && installedDesktop.length > 0;
   if (!pinned && !onPath && !desktopFirst) {
-    if (!params.download && installedDesktop.length === 0) {
+    const agreed = params.download && onDemand.downloadAllowed();
+    if (!agreed && installedDesktop.length === 0) {
       throw new CodexRuntimeUnavailableError(
         "not-downloaded",
-        "Codex is not downloaded yet. Branch Agent downloads it the first time Codex is used.",
+        onDemand.askMessage() ??
+          "Codex is not downloaded yet. Branch Agent downloads it the first time Codex is used.",
       );
     }
-    if (params.download) {
+    if (agreed) {
       try {
         pinned = await onDemand.ensureLauncher();
       } catch (error) {

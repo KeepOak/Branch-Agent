@@ -28,6 +28,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { createDownloadConsent } from "./on-demand-consent.js";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
@@ -49,7 +50,15 @@ export type CodexRuntimeUnavailableReason =
 
 export type CodexRuntimeStatus =
   | { state: "ready"; source: CodexRuntimeSource; command: string; version?: string }
-  | { state: "download"; reason: "not-downloaded"; version: string; bytes: number; message: string }
+  | {
+      state: "download";
+      reason: "not-downloaded";
+      version: string;
+      bytes: number;
+      message: string;
+      /** The ask shown before any byte is fetched. Same question as `message`. */
+      ask: string;
+    }
   | { state: "downloading"; version: string; bytes: number; received: number; message: string }
   | {
       state: "unavailable";
@@ -57,6 +66,8 @@ export type CodexRuntimeStatus =
       version?: string;
       bytes?: number;
       message: string;
+      /** Asked again before a retry. Declining does not fetch. */
+      ask?: string;
     };
 
 /** Codex cannot start yet; the message is written for the person using Branch Agent. */
@@ -115,6 +126,16 @@ export type CodexOnDemand = {
   status(): Promise<CodexRuntimeStatus>;
   /** Folder the verified download lives in. */
   storeDir(): string | undefined;
+  /** Question shown before the first-use download, including its size. */
+  askMessage(): string | undefined;
+  /** True after the owner agrees, until this attempt finishes, fails or is declined. */
+  downloadAllowed(): boolean;
+  /** The owner agreed. Waiting turns may fetch. Does not fetch by itself. */
+  allowDownload(): void;
+  /** The owner declined. Waiting turns end with Cancelled. Does not fetch. */
+  declineDownload(): void;
+  /** Resolves when the owner agrees. Rejects with Cancelled on decline or abort. */
+  waitForDownloadConsent(signal?: AbortSignal): Promise<void>;
 };
 
 const PATH_CACHE_MS = 60_000;
@@ -165,6 +186,11 @@ function cancelledError(): CodexRuntimeUnavailableError {
   return new CodexRuntimeUnavailableError("cancelled", CODEX_DOWNLOAD_CANCELLED);
 }
 
+/** The ask before any Codex byte is fetched. Names the version and the size. */
+export function codexDownloadAskMessage(version: string, bytes: number): string {
+  return `Download Codex ${version} (${formatMegabytes(bytes)})?`;
+}
+
 /** "Getting Codex ready (134 MB)… 42%": the real size of the download, in plain words. */
 export function codexDownloadProgress(
   asset: Pick<CodexDownloadAsset, "bytes">,
@@ -195,6 +221,7 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
     | undefined;
   let inFlight: InFlight | undefined;
   let lastFailure: CodexRuntimeUnavailableError | undefined;
+  const consent = createDownloadConsent(cancelledError);
 
   const storeDir = () =>
     asset
@@ -279,9 +306,11 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
       }).then(
         (launcher) => {
           lastFailure = undefined;
+          consent.clear();
           return launcher;
         },
         (error: unknown) => {
+          consent.clear();
           if (controller.signal.aborted) {
             // Cancelled: nothing was kept and Codex is simply not downloaded, not failed.
             lastFailure = undefined;
@@ -367,11 +396,18 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
     });
   }
 
+  function askMessage(): string | undefined {
+    return asset ? codexDownloadAskMessage(asset.version, asset.bytes) : undefined;
+  }
+
   async function cancel(): Promise<boolean> {
     const current = inFlight;
     if (!current) {
-      return false;
+      const waiting = consent.waiting();
+      consent.decline();
+      return waiting;
     }
+    consent.clear();
     current.controller.abort();
     // Resolve only once the fetch stopped and the partial file is gone.
     await current.promise.catch(() => undefined);
@@ -424,18 +460,33 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
         version: asset.version,
         bytes: asset.bytes,
         message: lastFailure.message,
+        ask: codexDownloadAskMessage(asset.version, asset.bytes),
       };
     }
+    const ask = codexDownloadAskMessage(asset.version, asset.bytes);
     return {
       state: "download",
       reason: "not-downloaded",
       version: asset.version,
       bytes: asset.bytes,
-      message: `Codex ${asset.version} downloads the first time you use it (${formatMegabytes(asset.bytes)}). Or install Codex ${MIN_SUPPORTED_CODEX_APP_SERVER_VERSION} or newer on your PATH.`,
+      message: ask,
+      ask,
     };
   }
 
-  return { findPathCommand, installedLauncher, ensureLauncher, cancel, status, storeDir };
+  return {
+    findPathCommand,
+    installedLauncher,
+    ensureLauncher,
+    cancel,
+    status,
+    storeDir,
+    askMessage,
+    downloadAllowed: () => consent.allowed(),
+    allowDownload: () => consent.allow(),
+    declineDownload: () => consent.decline(),
+    waitForDownloadConsent: (signal) => consent.wait(signal),
+  };
 }
 
 /** Path of the copied launcher inside a store folder. */

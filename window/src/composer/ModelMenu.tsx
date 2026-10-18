@@ -90,9 +90,12 @@ export function ModelMenu(p: Props) {
   const allAccounts = useModelAccounts(p.engine, p.trunkId ?? "", false);
   const plan = useCodexPlan(p.engine, p.trunkId, p.models.some(runsOnCodex));
   const codex = useCodexDownload(p.engine, codexDownloadOffered(p.engine) && p.models.some(runsOnCodex));
+  const needsCodex = (m: ModelChoice | undefined) => Boolean(m && runsOnCodex(m) && !codex.view?.ready);
+  // A progress or Try again line already explains the download. Picking the model again leaves that line up.
+  const offerCodex = (m: ModelChoice | undefined) => needsCodex(m) && codex.view?.line === undefined;
   const pickModel = (m: ModelChoice) => {
     void p.patch({ model: m.ref, thinkingLevel: null }).then(() => {
-      if (runsOnCodex(m)) void codex.start();
+      if (offerCodex(m)) codex.requestPrompt();
     });
   };
   const accounts = accountsFor(allAccounts, p.current?.provider);
@@ -133,7 +136,8 @@ export function ModelMenu(p: Props) {
           )
         ) : null}
         {p.models.length > 0 && groups.length === 0 ? <p className="c-pp">No models match.</p> : null}
-        {codex.view?.line ? <p className="c-pp" data-testid="codex-progress">{codex.view.line}{codex.view.action === "Try again" ? <> <Coming need={CODEX_DOWNLOAD_METHOD} where="Try again"><button type="button" className="c-link" onClick={() => void codex.start()}>Try again</button></Coming></> : null}</p> : null}
+        {codex.prompt ? <p className="c-pp" data-testid="codex-download-prompt">{codex.prompt} <Coming need={CODEX_DOWNLOAD_METHOD} where="Download Codex"><button type="button" className="c-link" onClick={() => void codex.accept()}>Yes</button></Coming> <button type="button" className="c-link" onClick={() => void codex.decline()}>Cancel</button></p> : null}
+        {codex.view?.line && !codex.prompt ? <p className="c-pp" data-testid="codex-progress">{codex.view.line}{codex.view.action === "Try again" ? <> <Coming need={CODEX_DOWNLOAD_METHOD} where="Try again"><button type="button" className="c-link" onClick={() => codex.requestPrompt()}>Try again</button></Coming></> : null}</p> : null}
         <div className="c-scroll">
           {groups.map((g) => (
             <div key={g.service} role="group" aria-label={g.service}>
@@ -163,7 +167,7 @@ export function ModelMenu(p: Props) {
               label={`Use ${p.current.name} for ${p.trunkName} from now on`}
               disabled={!p.isAdmin}
               reason={p.isAdmin ? undefined : "This needs admin access on this computer."}
-              onClick={() => void p.onKeepForTrunk(p.current as ModelChoice).then(() => { if (p.current && runsOnCodex(p.current)) void codex.start(); })}
+              onClick={() => void p.onKeepForTrunk(p.current as ModelChoice).then(() => { if (needsCodex(p.current)) codex.requestPrompt(); })}
             />
             <LinkRow icon="gear" label={`Use ${p.current.name} everywhere from now on…`} target="settings/models" onOpen={p.onOpen} open={open} />
           </>

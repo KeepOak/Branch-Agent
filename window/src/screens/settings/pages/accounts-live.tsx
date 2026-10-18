@@ -487,7 +487,7 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
   const word = detect.error ? "Couldn’t check" : detect.loading ? "Looking…" : PILL[f.state][1];
   const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
   const pluginOn = app.plugin ? record(record(record(config.plugins).entries)[app.plugin]).enabled === true : f.state === "ready";
-  const sub = getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
+  const sub = codex.prompt ? codex.prompt : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
   return <>
     <div className="r1s-item">
       <Logo id={app.brand} size={22} />
@@ -496,9 +496,16 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
         <small>{detect.error ? visible(detect.error) : sub}</small>
         {detect.error ? <button type="button" className="r1s-btn" onClick={() => void detect.reload()}>Try again</button> : null}
       </span>
-      {getting?.action ? (
+      {codex.prompt ? (
+        <span data-testid="codex-download-prompt">
+          <Needs engine={engine} need={[CODEX_DOWNLOAD_METHOD]} where="Download Codex">
+            <button type="button" className="r1s-btn" disabled={Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void run(codex.accept)}>Yes</button>
+          </Needs>
+          <button type="button" className="r1s-btn" onClick={() => void run(codex.decline)}>Cancel</button>
+        </span>
+      ) : getting?.action ? (
         <Needs engine={engine} need={[CODEX_DOWNLOAD_METHOD]} where={getting.action}>
-          <button type="button" className="r1s-btn" disabled={Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void run(codex.start)}>{getting.action}</button>
+          <button type="button" className="r1s-btn" disabled={Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => codex.requestPrompt()}>{getting.action}</button>
         </Needs>
       ) : null}
       {app.plugin ? (

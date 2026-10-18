@@ -31,6 +31,7 @@ import {
 } from "./on-demand-assets.js";
 import {
   CodexRuntimeUnavailableError,
+  codexDownloadAskMessage,
   codexDownloadProgress,
   createCodexOnDemand,
   extractPackageTarball,
@@ -140,7 +141,10 @@ function gatedFetch(bytes: Buffer, cut: number) {
   return { fetch, release: () => release(), signals };
 }
 
-type Handler = (opts: { respond: (ok: boolean, payload?: unknown) => void }) => Promise<void>;
+type Handler = (opts: {
+  params?: Record<string, unknown>;
+  respond: (ok: boolean, payload?: unknown) => void;
+}) => Promise<void>;
 
 /** The plugin's codex.runtime gateway methods, as the window calls them. */
 function gatewayMethods(overrides: Partial<CodexOnDemandDeps>) {
@@ -154,9 +158,9 @@ function gatewayMethods(overrides: Partial<CodexOnDemandDeps>) {
     },
     overrides,
   );
-  const call = async (method: string) => {
+  const call = async (method: string, params?: Record<string, unknown>) => {
     let answer: unknown;
-    await methods.get(method)!.handler({ respond: (_ok, payload) => (answer = payload) });
+    await methods.get(method)!.handler({ params, respond: (_ok, payload) => (answer = payload) });
     return answer as Record<string, unknown>;
   };
   return { onDemand, methods, call };
@@ -285,11 +289,25 @@ describe("Codex on demand", () => {
         },
       }),
     );
-    await expect(onDemand.status()).resolves.toMatchObject({
+    const asked = await onDemand.status();
+    expect(asked).toMatchObject({
       state: "download",
       reason: "not-downloaded",
       bytes: tarball.length,
+      message: codexDownloadAskMessage(asset.version, tarball.length),
     });
+    expect(asked.state === "download" ? asked.message : "").not.toMatch(/isn['’]t needed/iu);
+
+    await expect(
+      resolveManagedCodexAppServerStartOptions(startOptions(), {
+        platform: "darwin",
+        pluginRoot,
+        onDemand,
+        pathExists: noDesktopApps,
+      }),
+    ).rejects.toMatchObject({ reason: "not-downloaded" });
+    expect(fetch).not.toHaveBeenCalled();
+    onDemand.allowDownload();
 
     const resolved = await resolveManagedCodexAppServerStartOptions(startOptions(), {
       platform: "darwin",
@@ -367,6 +385,7 @@ describe("Codex on demand", () => {
       }),
     );
 
+    onDemand.allowDownload();
     const attempt = resolveManagedCodexAppServerStartOptions(startOptions(), {
       platform: "darwin",
       pluginRoot,
@@ -400,6 +419,7 @@ describe("Codex on demand", () => {
       deps({ asset, fetch: fetch as unknown as typeof globalThis.fetch }),
     );
 
+    onDemand.allowDownload();
     await expect(
       resolveManagedCodexAppServerStartOptions(startOptions(), {
         platform: "darwin",
@@ -518,6 +538,29 @@ describe("Codex on demand", () => {
       return { events, done };
     }
 
+    it("asks before the download, and Cancel fetches nothing", async () => {
+      const tarball = codexFixture();
+      const asset = fixtureAsset(tarball);
+      const fetch = vi.fn();
+      const { onDemand, call } = gatewayMethods(
+        deps({ asset, fetch: fetch as unknown as typeof globalThis.fetch }),
+      );
+      const { events, done } = turn(onDemand);
+      const ended = done.then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      await vi.waitFor(() => expect(events[0]?.state).toBe("confirm"));
+      expect(events[0]?.message).toBe(codexDownloadAskMessage(asset.version, asset.bytes));
+      expect(events[0]?.message).not.toMatch(/isn['’]t needed/iu);
+      await call("codex.runtime.download");
+      expect(fetch).not.toHaveBeenCalled();
+      await call("codex.runtime.cancel");
+      await expect(ended).resolves.toMatchObject({ reason: "cancelled", message: "Cancelled" });
+      expect(fetch).not.toHaveBeenCalled();
+      expect(events.at(-1)).toMatchObject({ state: "cancelled", message: "Cancelled" });
+    });
+
     it("shows the download in the conversation in plain words, with its real size, updating as it goes", async () => {
       // The words the chat shows, with the pinned size of the real download (not the unpacked size).
       const pinned = CODEX_DOWNLOAD_ASSETS["darwin-arm64"];
@@ -532,8 +575,13 @@ describe("Codex on demand", () => {
       );
 
       const { events, done } = turn(onDemand);
+      await vi.waitFor(() => expect(events[0]?.state).toBe("confirm"));
+      expect(events[0]?.message).toBe(codexDownloadAskMessage(asset.version, asset.bytes));
+      expect(events[0]?.message).not.toMatch(/isn['’]t needed/iu);
+      expect(gated.fetch).not.toHaveBeenCalled();
+      onDemand.allowDownload();
       await vi.waitFor(() => expect(events.at(-1)?.percent ?? 0).toBeGreaterThan(0));
-      expect(events[0]).toMatchObject({
+      expect(events.find((event) => event.state === "downloading")).toMatchObject({
         phase: "codex_download",
         state: "downloading",
         percent: 0,
@@ -575,6 +623,9 @@ describe("Codex on demand", () => {
         () => undefined,
         (error: unknown) => error,
       );
+      await vi.waitFor(() => expect(events[0]?.state).toBe("confirm"));
+      expect(gated.fetch).not.toHaveBeenCalled();
+      onDemand.allowDownload();
       await vi.waitFor(() => expect(events.at(-1)?.percent ?? 0).toBeGreaterThan(0));
       const partial = (await readdir(path.join(stateDir, "tools", "codex"))).filter((entry) =>
         entry.startsWith(".download-"),
@@ -615,6 +666,8 @@ describe("Codex on demand", () => {
       );
       const run = new AbortController();
       const { events, done } = turn(onDemand, run.signal);
+      await vi.waitFor(() => expect(events[0]?.state).toBe("confirm"));
+      onDemand.allowDownload();
       await vi.waitFor(() => expect(gated.signals).toHaveLength(1));
       run.abort();
       await expect(done).rejects.toMatchObject({ reason: "cancelled" });
@@ -645,6 +698,9 @@ describe("Codex on demand", () => {
       );
 
       const { events, done } = turn(onDemand);
+      await vi.waitFor(() => expect(events[0]?.state).toBe("confirm"));
+      expect(fetch).not.toHaveBeenCalled();
+      onDemand.allowDownload();
       await expect(done).rejects.toMatchObject({ reason: "offline" });
       expect(events.at(-1)).toMatchObject({ state: "failed", reason: "offline" });
       expect(events.at(-1)?.message).toMatch(
@@ -656,7 +712,10 @@ describe("Codex on demand", () => {
       });
 
       online = true;
+      const fetched = fetch.mock.calls.length;
       await call("codex.runtime.download");
+      expect(fetch.mock.calls.length).toBe(fetched);
+      await call("codex.runtime.download", { confirmed: true });
       await vi.waitFor(async () =>
         expect(await call("codex.runtime")).toMatchObject({ state: "ready", source: "downloaded" }),
       );

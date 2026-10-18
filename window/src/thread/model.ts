@@ -372,19 +372,20 @@ const NOTICE_PHASES = new Set(["account_switched", "account_limited"]);
 
 /** The engine's first-use Codex download as the waiting turn reports it (`run_status` phase "codex_download"). */
 export const CODEX_DOWNLOAD_PHASE = "codex_download";
-export type CodexDownloadLine = { state: "downloading" | "ready" | "failed" | "cancelled"; runId: string; percent?: number; reason?: string };
+export type CodexDownloadLine = { state: "confirm" | "downloading" | "ready" | "failed" | "cancelled"; runId: string; percent?: number; reason?: string; ask?: string };
 
 function codexLine(event: RunEvent): Extract<Block, { kind: "notice" }> | null {
   const state = str(event.data.state);
-  if (state !== "downloading" && state !== "ready" && state !== "failed" && state !== "cancelled") return null;
+  if (state !== "confirm" && state !== "downloading" && state !== "ready" && state !== "failed" && state !== "cancelled") return null;
   const percent = typeof event.data.percent === "number" ? event.data.percent : undefined;
   const reason = str(event.data.reason);
+  const ask = str(event.data.ask);
   return {
     kind: "notice",
     // One line per run, updated in place as the download goes on.
     key: `${event.runId}:${CODEX_DOWNLOAD_PHASE}`,
-    text: str(event.data.message) || (state === "cancelled" ? "Cancelled" : state === "failed" ? "Codex couldn’t be downloaded. Try again." : "Getting Codex ready…"),
-    codex: { state, runId: event.runId, ...(percent !== undefined ? { percent } : {}), ...(reason ? { reason } : {}) },
+    text: str(event.data.message) || (state === "cancelled" ? "Cancelled" : state === "confirm" ? "Download Codex?" : state === "failed" ? "Codex couldn’t be downloaded. Try again." : "Getting Codex ready…"),
+    codex: { state, runId: event.runId, ...(percent !== undefined ? { percent } : {}), ...(reason ? { reason } : {}), ...(ask ? { ask } : {}) },
     ...recordedAt(event.ts),
   };
 }

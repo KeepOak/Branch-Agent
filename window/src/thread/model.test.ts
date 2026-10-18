@@ -73,6 +73,20 @@ describe("projectRun", () => {
     expect(blocks[2]).toMatchObject({ durationMs: 3000 });
   });
 
+  it("asks with the size question before the first-use Codex download", () => {
+    seq = 0;
+    const asked = projectRun([
+      ev("run_status", { phase: "codex_download", state: "confirm", message: "Download Codex 0.160.0 (134 MB)?", ask: "Download Codex 0.160.0 (134 MB)?" }),
+    ], new Map());
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatchObject({
+      kind: "notice",
+      text: "Download Codex 0.160.0 (134 MB)?",
+      codex: { state: "confirm", ask: "Download Codex 0.160.0 (134 MB)?" },
+    });
+    expect(asked[0]?.kind === "notice" ? asked[0].text : "").not.toMatch(/isn['’]t needed/iu);
+  });
+
   it("shows the first-use Codex download as one progress line and drops the turn error when it fails", () => {
     seq = 0;
     const first = ev("run_status", { phase: "codex_download", state: "downloading", message: "Getting Codex ready (134 MB)… 10%", percent: 10 });

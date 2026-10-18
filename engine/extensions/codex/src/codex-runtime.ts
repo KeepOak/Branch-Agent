@@ -40,8 +40,14 @@ export function registerCodexRuntime(
   );
   api.registerGatewayMethod(
     "codex.runtime.download",
-    async ({ respond }) => {
+    async ({ params, respond }) => {
       const before = await onDemand.status();
+      // The window asks first. Without the owner's yes, this reports the question and fetches nothing.
+      if (params?.confirmed !== true) {
+        respond(true, before);
+        return;
+      }
+      onDemand.allowDownload();
       if (before.state === "download" || before.state === "unavailable") {
         // The download continues after this reply; codex.runtime reports its progress or reason.
         void onDemand.ensureLauncher().catch(() => undefined);

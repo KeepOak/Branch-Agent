@@ -208,13 +208,13 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     expect(calls(request, "branch.setup.detect").length).toBeGreaterThan(before);
   });
 
-  it("Get Codex starts the download and shows its progress while Use Codex stays off", async () => {
+  it("Get Codex asks before the download, and Cancel does not download", async () => {
     const env = engineOf();
     const answer = env.request.getMockImplementation()!;
     env.request.mockImplementation((async (method: string, params?: unknown) => {
       if (method === "config.get") return { hash: "h1", valid: true, config: { agents: { defaults: { model: { fallbacks: [] } } }, plugins: { entries: { codex: { enabled: true } } } } };
       if (method === "branch.setup.detect") return { candidates: [], unavailableCandidates: [{ id: "codex-cli", reason: "codex: command not found" }] };
-      if (method === "codex.runtime") return { state: "download", reason: "not-downloaded", version: "0.160.0", bytes: 134_311_083, message: "Codex 0.160.0 downloads the first time you use it (134 MB)." };
+      if (method === "codex.runtime") return { state: "download", reason: "not-downloaded", version: "0.160.0", bytes: 134_311_083, ask: "Download Codex 0.160.0 (134 MB)?", message: "Download Codex 0.160.0 (134 MB)?" };
       if (method === "codex.runtime.download") return { state: "downloading", received: 40_000_000, bytes: 134_311_083, message: "Getting Codex ready (134 MB)… 29%" };
       return answer(method, params);
     }) as typeof answer);
@@ -224,12 +224,20 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     // Preview §4.7.8 keeps the Not found pill and its line. The preview has no download control on this row, so the action is Get Codex.
     expect(codex().querySelector(".r1s-item-t b")!.textContent).toBe("Not found");
     expect(codex().querySelector(".r1s-item-t small")!.textContent).toBe("Install and sign in to Codex on this computer, then check again.");
+    expect(codex().textContent).not.toMatch(/isn['’]t needed/iu);
     const use = () => codex().querySelector<HTMLButtonElement>('[role="switch"][aria-label="Use Codex"]')!;
     expect(use().getAttribute("aria-checked")).toBe("false");
     expect(use().disabled).toBe(true);
     expect(calls(request, "codex.runtime.download")).toHaveLength(0);
     await click(button(codex(), "Get Codex"));
-    expect(calls(request, "codex.runtime.download")).toHaveLength(1);
+    expect(calls(request, "codex.runtime.download")).toHaveLength(0);
+    expect(codex().textContent).toContain("Download Codex 0.160.0 (134 MB)?");
+    expect(codex().textContent).not.toMatch(/isn['’]t needed/iu);
+    await click(button(codex(), "Cancel"));
+    expect(calls(request, "codex.runtime.download")).toHaveLength(0);
+    await click(button(codex(), "Get Codex"));
+    await click(button(codex(), "Yes"));
+    expect(calls(request, "codex.runtime.download")).toEqual([{ confirmed: true }]);
     expect(codex().textContent).toContain("Getting Codex ready (134 MB)… 29%");
     expect(use().disabled).toBe(true);
   });
@@ -250,17 +258,27 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     const codex = () => row("accounts.apps.codex")!;
     const use = () => codex().querySelector<HTMLButtonElement>('[role="switch"][aria-label="Use Codex"]')!;
     await click(button(codex(), "Get Codex"));
-    expect(calls(request, "codex.runtime.download")).toHaveLength(1);
+    expect(calls(request, "codex.runtime.download")).toHaveLength(0);
+    await click(button(codex(), "Yes"));
+    expect(calls(request, "codex.runtime.download")).toEqual([{ confirmed: true }]);
     expect(use().disabled).toBe(false);
     expect(use().getAttribute("aria-checked")).toBe("true");
-    download = { state: "unavailable", reason: "offline", message: "Codex isn’t downloaded yet and this computer looks offline. Try again." };
+    download = { state: "unavailable", reason: "offline", bytes: 134_311_083, version: "0.160.0", ask: "Download Codex 0.160.0 (134 MB)?", message: "Codex isn’t downloaded yet and this computer looks offline. Try again." };
     await act(async () => root.render(<></>));
     await mount(vi.fn(), env);
     await click(button(row("accounts.apps.codex"), "Get Codex"));
+    await click(button(row("accounts.apps.codex"), "Yes"));
     expect(row("accounts.apps.codex")!.textContent).toContain("Try again.");
+    expect(row("accounts.apps.codex")!.textContent).not.toMatch(/isn['’]t needed/iu);
     expect(button(row("accounts.apps.codex"), "Try again")).toBeTruthy();
     const before = calls(request, "codex.runtime.download").length;
     await click(button(row("accounts.apps.codex"), "Try again"));
+    expect(calls(request, "codex.runtime.download").length).toBe(before);
+    expect(row("accounts.apps.codex")!.textContent).toContain("Download Codex 0.160.0 (134 MB)?");
+    await click(button(row("accounts.apps.codex"), "Cancel"));
+    expect(calls(request, "codex.runtime.download").length).toBe(before);
+    await click(button(row("accounts.apps.codex"), "Try again"));
+    await click(button(row("accounts.apps.codex"), "Yes"));
     expect(calls(request, "codex.runtime.download").length).toBeGreaterThan(before);
   });
 

@@ -91,23 +91,38 @@ describe("Codex installed on this computer", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("starts the registered first-use download when nothing is installed", async () => {
+  it("does not download until the owner agrees, then uses the registered downloader", async () => {
     const downloaded = path.join(root, "downloaded", "codex.js");
     await writeExecutable(downloaded);
     const ensureLauncher = vi.fn(async () => downloaded);
-    setManagedCodexOnDemand({
+    const source = {
       findPathCommand: async () => undefined,
       installedLauncher: async () => undefined,
       ensureLauncher,
+      downloadAllowed: () => false,
+      askMessage: () => "Download Codex 0.160.0 (134 MB)?",
+      waitForDownloadConsent: async () => undefined,
       status: async () => ({
-        state: "download",
-        reason: "not-downloaded",
+        state: "download" as const,
+        reason: "not-downloaded" as const,
         version: "0.160.0",
-        bytes: 1,
-        message: "Codex downloads the first time you use it.",
+        bytes: 134_311_083,
+        message: "Download Codex 0.160.0 (134 MB)?",
+        ask: "Download Codex 0.160.0 (134 MB)?",
       }),
-    });
+    };
+    setManagedCodexOnDemand(source);
     setManagedCodexInstalled(createInstalledCodex({ platform: "linux", env: { PATH: emptyBin } }));
+    const declined = await resolveManagedCodexAppServerStartOptions(startOptions(), {
+      platform: "linux",
+      pluginRoot,
+      bundledReady: () => false,
+    }).catch((error: unknown) => error);
+    expect(declined).toMatchObject({ reason: "not-downloaded" });
+    expect((declined as Error).message).toBe("Download Codex 0.160.0 (134 MB)?");
+    expect((declined as Error).message).not.toMatch(/isn['’]t needed/iu);
+    expect(ensureLauncher).not.toHaveBeenCalled();
+    setManagedCodexOnDemand({ ...source, downloadAllowed: () => true });
     await expect(
       resolveManagedCodexAppServerStartOptions(startOptions(), {
         platform: "linux",

@@ -106,19 +106,46 @@ it("puts a run error in a thin notice with its details, never in the reply's pro
   expect(host.querySelector('[data-role="assistant"]')).toBeNull();
 });
 
-it("shows the Codex download as a plain line instead of Working, and Try again starts it again", async () => {
-  const request = vi.fn(async () => ({}));
-  const engine = { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", scopes: ["operator.admin"], features: { methods: ["codex.runtime.download"], events: [] } } as WindowEngine;
+it("asks before a Codex download, and Cancel does not start it", async () => {
+  const request = vi.fn(async (_method: string, _params?: unknown) => ({}));
+  const engine = { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", scopes: ["operator.admin"], features: { methods: ["codex.runtime.download", "codex.runtime.cancel"], events: [] } } as WindowEngine;
+  const confirm: Block = { kind: "notice", key: "r2:codex_download", text: "Download Codex 0.160.0 (134 MB)?", codex: { state: "confirm", runId: "r2", ask: "Download Codex 0.160.0 (134 MB)?" } };
   const progress: Block = { kind: "notice", key: "r2:codex_download", text: "Getting Codex ready (134 MB)… 29%", codex: { state: "downloading", runId: "r2", percent: 29 } };
+  const failed: Block = { kind: "notice", key: "r2:codex_download", text: "Codex isn’t downloaded yet and this computer looks offline. Try again.", codex: { state: "failed", runId: "r2", reason: "offline", ask: "Download Codex 0.160.0 (134 MB)?" } };
   const view = (live: Block[]) => <ChatView name="Scout" history={history.slice(0, 1)} live={live} pendingUser={null} running onAnswer={() => undefined} engine={engine} sessionKey={engine.sessionKey} />;
+  const press = async (label: string, rootEl: ParentNode = host) => {
+    const found = [...rootEl.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === label);
+    await act(async () => { found!.click(); });
+  };
+  const downloads = () => request.mock.calls.filter(([method]) => method === "codex.runtime.download");
+  await act(async () => root.render(<CapabilityProvider engine={engine}>{view([confirm])}</CapabilityProvider>));
+  const prompt = () => host.querySelector('[data-testid="codex-download-prompt"]');
+  expect(prompt()!.textContent).toContain("Download Codex 0.160.0 (134 MB)?");
+  expect(prompt()!.textContent).not.toMatch(/isn['’]t needed/iu);
+  expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
+  expect(downloads()).toHaveLength(0);
+  await press("Cancel", prompt()!);
+  expect(downloads()).toHaveLength(0);
+  expect(request).toHaveBeenCalledWith("codex.runtime.cancel", {});
+  await act(async () => root.render(<CapabilityProvider engine={engine}>{view([confirm])}</CapabilityProvider>));
+  await press("Yes", prompt()!);
+  expect(downloads()).toEqual([["codex.runtime.download", { confirmed: true }]]);
   await act(async () => root.render(<CapabilityProvider engine={engine}>{view([progress])}</CapabilityProvider>));
   expect(host.querySelector('[data-testid="codex-download"]')!.textContent).toContain("Getting Codex ready (134 MB)… 29%");
   expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
-  const failed: Block = { kind: "notice", key: "r2:codex_download", text: "Codex isn’t downloaded yet and this computer looks offline. Try again.", codex: { state: "failed", runId: "r2", reason: "offline" } };
   await act(async () => root.render(<CapabilityProvider engine={engine}>{view([failed])}</CapabilityProvider>));
-  const again = [...host.querySelectorAll<HTMLButtonElement>('[data-testid="codex-failed"] button')].find((b) => b.textContent === "Try again");
-  await act(async () => again!.click());
-  expect(request).toHaveBeenCalledWith("codex.runtime.download", {});
+  await press("Try again");
+  expect(downloads()).toHaveLength(1);
+  expect(prompt()!.textContent).toContain("Download Codex 0.160.0 (134 MB)?");
+  expect(prompt()!.textContent).not.toMatch(/isn['’]t needed/iu);
+  await press("Cancel", prompt()!);
+  expect(downloads()).toHaveLength(1);
+  await press("Try again");
+  await press("Yes", prompt()!);
+  expect(downloads()).toEqual([
+    ["codex.runtime.download", { confirmed: true }],
+    ["codex.runtime.download", { confirmed: true }],
+  ]);
 });
 
 it("says when the conversation couldn't load and reads it again on Try again", async () => {
