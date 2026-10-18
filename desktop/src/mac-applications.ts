@@ -351,13 +351,32 @@ export async function installMacApp(source: string, options: InstallMacAppOption
 }
 
 /** Publishes the running macOS bundle into Applications. Tests and non-mac launches skip it. */
-export async function ensureMacApplicationsInstall(appDir: string, logFile: string): Promise<void> {
-  if (process.platform !== "darwin" || process.env.BRANCH_DESKTOP_TEST_DIST || !appDir.endsWith(".app")) return;
+export function shouldEnsureMacApplicationsInstall(
+  appDir: string,
+  options: ApplicationsDirectoryOptions & { platform?: NodeJS.Platform; testDist?: string | false | undefined } = {},
+): boolean {
+  if ((options.platform ?? process.platform) !== "darwin" || options.testDist || !appDir.endsWith(".app")) return false;
+  // A running legacy installation cannot be retired. Copying it on every launch would only leave the old bundle live again.
+  return basename(appDir) !== MAC_LEGACY_BUNDLE_FOLDER || !macAppIsInApplicationsFolder(appDir, options);
+}
+
+export async function ensureMacApplicationsInstall(
+  appDir: string,
+  logFile: string,
+  options: ApplicationsDirectoryOptions & {
+    platform?: NodeJS.Platform;
+    testDist?: string | false | undefined;
+    install?: typeof installMacApp;
+    appendLog?: typeof appendCappedLog;
+  } = {},
+): Promise<void> {
+  if (!shouldEnsureMacApplicationsInstall(appDir, { ...options, testDist: options.testDist === undefined ? process.env.BRANCH_DESKTOP_TEST_DIST : options.testDist })) return;
   try {
-    await installMacApp(appDir, { runningAppDir: appDir });
+    const destination = await (options.install ?? installMacApp)(appDir, { ...options, runningAppDir: appDir });
+    (options.appendLog ?? appendCappedLog)(logFile, `${new Date().toISOString()} macOS Applications install succeeded: ${destination}\n`, BRANCH_LOG_LIMITS);
   } catch (error) {
     try {
-      appendCappedLog(logFile, `${new Date().toISOString()} macOS Applications install failed: ${String(error)}\n`, BRANCH_LOG_LIMITS);
+      (options.appendLog ?? appendCappedLog)(logFile, `${new Date().toISOString()} macOS Applications install failed: ${String(error)}\n`, BRANCH_LOG_LIMITS);
     } catch { /* a log failure must not block launch */ }
   }
 }

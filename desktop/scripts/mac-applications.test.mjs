@@ -464,6 +464,31 @@ test("a launch from Applications registers Branch.app and does not copy or delet
   } finally { await done(); }
 });
 
+test("a running legacy Applications bundle is not recopied and successful installs are logged", async () => {
+  const { root, done } = await tempTree();
+  try {
+    const apps = join(root, "Applications");
+    const legacy = join(apps, "Branch Agent.app");
+    const staged = join(root, "Downloads", "Branch Agent.app");
+    const applications = { platform: "darwin", systemApplications: apps };
+    assert.equal(mac.shouldEnsureMacApplicationsInstall(legacy, applications), false);
+    assert.equal(mac.shouldEnsureMacApplicationsInstall(staged, applications), true);
+    const messages = [];
+    const installs = [];
+    await mac.ensureMacApplicationsInstall(staged, join(root, "desktop.log"), {
+      platform: "darwin",
+      testDist: false,
+      install: async (source, options) => {
+        installs.push({ source, running: options.runningAppDir });
+        return join(apps, "Branch.app");
+      },
+      appendLog: (_file, message) => { messages.push(message); },
+    });
+    assert.deepEqual(installs, [{ source: staged, running: staged }]);
+    assert.match(messages[0], /macOS Applications install succeeded: .*Branch\.app/);
+  } finally { await done(); }
+});
+
 test("a staged or postponed desktop update does not republish the running app", async () => {
   const updater = await text("src/desktop-update.ts");
   const handoff = updater.slice(updater.indexOf("export async function handOffDesktopUpdate"));
