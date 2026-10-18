@@ -97,7 +97,7 @@ describe("Trunk pages never show a raw engine error at Regular", () => {
     expect(alertText()).not.toMatch(RAW);
   });
 
-  it("names a failed remove in a short specific sentence", async () => {
+  it("names a failed remove in a plain sentence", async () => {
     const request = vi.fn(async (method: string) => {
       if (method === "agents.list") return { defaultId: "oak", agents: [{ id: "birch", identity: { name: "Birch" } }] };
       if (method === "agents.delete") throw new Error(ENGINE);
@@ -105,7 +105,7 @@ describe("Trunk pages never show a raw engine error at Regular", () => {
     });
     await act(async () => root.render(<RemoveTrunkDialog engine={engineOf(request)} agentId="birch" name="Birch" onClose={() => undefined} />));
     await click("Remove");
-    expect(alertText()).toBe("Couldn’t remove that Trunk. Try again.");
+    expect(alertText()).toBe(REACH);
     expect(alertText()).not.toMatch(RAW);
   });
 
@@ -239,6 +239,14 @@ describe("Trunk pages never show a raw engine error at Regular", () => {
     const share = vi.fn(async () => { throw new Error(ENGINE); });
     await act(async () => root.render(<ShareTrunkDialog engine={engineOf(share)} agentId="night" name="Night Shift" onClose={() => undefined} />));
     await settle();
+    expect(alertText()).toBe(ENGINE);
+    const remove = vi.fn(async (method: string) => {
+      if (method === "agents.list") return { defaultId: "oak", agents: [{ id: "birch", identity: { name: "Birch" } }] };
+      if (method === "agents.delete") throw new Error(ENGINE);
+      return {};
+    });
+    await act(async () => root.render(<RemoveTrunkDialog engine={engineOf(remove)} agentId="birch" name="Birch" onClose={() => undefined} />));
+    await click("Remove");
     expect(alertText()).toBe(ENGINE);
   });
 });
