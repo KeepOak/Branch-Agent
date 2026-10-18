@@ -1,4 +1,4 @@
-import { accessLine, EMPTY_SELF, initials, readPersonName, readSelf, youRows } from './self';
+import { accessLine, EMPTY_SELF, FAILED_SELF, initials, readPersonName, readSelf, youRows } from './self';
 import { laterUpdate } from '../settings/showLevel';
 
 describe('readSelf', () => {
@@ -10,6 +10,8 @@ describe('readSelf', () => {
     expect(readSelf({ profile: { id: 'gateway-owner' } }).name).toBe('Owner');
     expect(readSelf({ profile: { id: 'gateway-owner' } }).owner).toBe(true);
     expect(readSelf({ profile: { id: 'gateway-owner' } }).role).toBe('Owner');
+    expect(FAILED_SELF.name).toBe('');
+    expect(FAILED_SELF.name).not.toBe('Owner');
   });
 
   it('matches PersonMenu: name, email, Owner', () => {
