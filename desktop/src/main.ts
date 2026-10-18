@@ -5,6 +5,8 @@ import type { Server } from "node:http";
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { leaveAppWorkingFolder, userHome } from "./app-working-folder";
+import { nodeOutsideSwappedFolder } from "./install-folder-holders";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopEnginePid, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
 import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
@@ -107,6 +109,8 @@ function standbyWarmTimeoutMs(): number {
 const STANDBY_ATTEMPTS = 2;
 /** Free memory a candidate check needs (6 GB, or a quarter of RAM); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
 const cfg: DesktopConfig = loadConfig();
+// The bundled node locks the version folder. Later launches, including the PATH shim, use the copy in the data folder.
+cfg.nodePath = nodeOutsideSwappedFolder(cfg.nodePath, cfg.dataDir);
 /** The packaged app this process runs from; development runs (`electron .`) never update themselves. */
 const install: DesktopInstall | undefined = app.isPackaged ? {
   appDir: process.platform === "darwin" ? resolve(process.resourcesPath, "..", "..") : dirname(process.execPath),
@@ -1217,6 +1221,13 @@ async function handOffDesktop(): Promise<boolean> {
 }
 
 async function start(): Promise<void> {
+  // After app.whenReady, before the helper or gateway: an old shortcut's Start in folder holds the app on Windows (#1777).
+  leaveAppWorkingFolder({
+    cwd: process.cwd(),
+    appDir: install?.appDir ?? dirname(process.execPath),
+    home: userHome(app, homedir),
+    chdir: (dir) => { process.chdir(dir); },
+  });
   // A desktop update staged during the last run applies before anything starts.
   if (await handOffDesktop()) { app.exit(0); return; }
   token = readToken(cfg);
