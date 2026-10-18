@@ -19,6 +19,7 @@ import {
   type CyclePos,
   type PhonePrefs,
 } from '../settings/phonePrefs';
+import { tapHaptic } from '../settings/phoneEffects';
 import type { KeyValueStore } from '../storage/keyValueStore';
 import { DESKTOP_THEMES, desktopThemeName } from '../theme/desktopThemes';
 import { ThemedText } from '../theme/ThemedText';
@@ -33,14 +34,16 @@ import {
   HELP_PAGES,
   KEEPOAK_SIGN_IN,
   KEEPOAK_SIGN_IN_REASON,
+  LOCK_REASON,
   LANGUAGE_OPTIONS,
   MODELS_HELP,
   SKILLS_HELP,
+  PUSH_REASON,
   RUN_ON_PHONE,
   RUN_ON_PHONE_REASON,
   SETTINGS_GROUPS,
   SETTINGS_LEVELS,
-  WAKE_WORDS_DEFAULT,
+  WAKE_REASON,
   showsAt,
   type SettingsGroup,
   type SettingsLevel,
@@ -275,7 +278,10 @@ function SwitchRow({
         accessibilityRole="switch"
         accessibilityState={{ checked: on }}
         accessibilityLabel={title}
-        onPress={onPress}
+        onPress={() => {
+          tapHaptic();
+          onPress();
+        }}
         style={({ pressed }) => ({
           flexDirection: 'row',
           alignItems: 'center',
@@ -321,6 +327,43 @@ function SwitchRow({
           />
         </View>
       </Pressable>
+      <Hairline last={last} />
+    </View>
+  );
+}
+
+function DisabledRow({
+  title,
+  reason,
+  testID,
+  last = false,
+}: {
+  title: string;
+  reason: string;
+  testID: string;
+  last?: boolean;
+}) {
+  const { layout, space } = useTheme();
+  return (
+    <View>
+      <View
+        testID={testID}
+        accessibilityRole="text"
+        accessibilityState={{ disabled: true }}
+        accessibilityLabel={`${title}. ${reason}`}
+        style={{
+          minHeight: layout.rowMinHeight,
+          paddingHorizontal: 14,
+          paddingVertical: space.sm,
+          justifyContent: 'center',
+          opacity: 0.45,
+        }}
+      >
+        <ThemedText variant="settingsBody">{title}</ThemedText>
+        <ThemedText variant="footnote" tone="ink3" testID={`${testID}-reason`}>
+          {reason}
+        </ThemedText>
+      </View>
       <Hairline last={last} />
     </View>
   );
@@ -406,6 +449,7 @@ export function SettingsScreen({
   onTurnOnNotifications,
   onConnectAnother,
   onForget,
+  onReset,
   onSetupTalk,
   onAskHelp,
   onBack,
@@ -426,6 +470,7 @@ export function SettingsScreen({
   onTurnOnNotifications?: () => void;
   onConnectAnother?: () => void;
   onForget?: () => void;
+  onReset?: () => void;
   onSetupTalk?: () => void;
   onAskHelp?: () => void;
   onBack: () => void;
@@ -999,17 +1044,7 @@ export function SettingsScreen({
       </ThemedText>
 
       <Group testID="keepoak-card">
-        <View
-          testID="later-keepoak"
-          accessibilityRole="text"
-          accessibilityLabel={`${KEEPOAK_SIGN_IN}. ${KEEPOAK_SIGN_IN_REASON}`}
-          style={{ minHeight: layout.rowMinHeight, paddingHorizontal: 14, paddingVertical: space.sm, justifyContent: 'center', opacity: 0.45 }}
-        >
-          <ThemedText variant="settingsBody">{KEEPOAK_SIGN_IN}</ThemedText>
-          <ThemedText variant="footnote" tone="ink3" testID="later-keepoak-reason">
-            {KEEPOAK_SIGN_IN_REASON}
-          </ThemedText>
-        </View>
+        <DisabledRow title={KEEPOAK_SIGN_IN} reason={KEEPOAK_SIGN_IN_REASON} testID="later-keepoak" last />
       </Group>
 
       <Group title="This Branch" testID="this-branch">
@@ -1186,13 +1221,7 @@ export function SettingsScreen({
       </Group>
 
       <Group title="On this phone" testID="on-phone-card">
-        <CycleRow
-          title="Lock with fingerprint"
-          detail="Ask before showing Branch Agent. When needed: only after five minutes away."
-          value={prefs.lock}
-          onPress={() => setPref({ ...prefs, lock: nextCycle(prefs.lock) })}
-          testID="settings-lock"
-        />
+        <DisabledRow title="Lock with fingerprint" reason={LOCK_REASON} testID="settings-lock" />
         <CycleRow
           title="Tell me when a task needs me"
           detail="Checks your Branch Agent for questions."
@@ -1207,13 +1236,7 @@ export function SettingsScreen({
           onPress={() => setPref({ ...prefs, share: nextCycle(prefs.share) })}
           testID="settings-share"
         />
-        <CycleRow
-          title="Alerts while the app is closed"
-          detail="Needs a store account first."
-          value={prefs.push}
-          onPress={() => setPref({ ...prefs, push: nextCycle(prefs.push) })}
-          testID="settings-push"
-        />
+        <DisabledRow title="Alerts while the app is closed" reason={PUSH_REASON} testID="settings-push" />
         <SwitchRow
           title="Keep the screen awake"
           detail="Keeps the screen on while Branch Agent is open and a Trunk is working."
@@ -1250,23 +1273,7 @@ export function SettingsScreen({
           onPress={() => setPref({ ...prefs, haptics: !prefs.haptics })}
           testID="settings-haptics"
         />
-        <View
-          testID="settings-run-on-phone"
-          accessibilityRole="text"
-          accessibilityLabel={`${RUN_ON_PHONE}. ${RUN_ON_PHONE_REASON}`}
-          style={{
-            minHeight: layout.rowMinHeight,
-            paddingHorizontal: 14,
-            paddingVertical: space.sm,
-            justifyContent: 'center',
-            opacity: 0.45,
-          }}
-        >
-          <ThemedText variant="settingsBody">{RUN_ON_PHONE}</ThemedText>
-          <ThemedText variant="footnote" tone="ink3" testID="settings-run-on-phone-reason">
-            {RUN_ON_PHONE_REASON}
-          </ThemedText>
-        </View>
+        <DisabledRow title={RUN_ON_PHONE} reason={RUN_ON_PHONE_REASON} testID="settings-run-on-phone" last />
       </Group>
 
       <Group title="Voice" testID="voice-card">
@@ -1277,15 +1284,7 @@ export function SettingsScreen({
           onPress={() => setPref({ ...prefs, talk: nextCycle(prefs.talk) })}
           testID="settings-talk"
         />
-        <SwitchRow
-          title="Listen for the wake word"
-          detail="Heard on this phone, only while Branch Agent is open."
-          extra={prefs.wake ? 'Listening' : undefined}
-          on={prefs.wake}
-          onPress={() => setPref({ ...prefs, wake: !prefs.wake })}
-          testID="settings-wake"
-        />
-        {prefs.wake ? <Row label="Wake words" value={WAKE_WORDS_DEFAULT} /> : null}
+        <DisabledRow title="Listen for the wake word" reason={WAKE_REASON} testID="settings-wake" />
         {advanced ? (
           <SwitchRow
             title="Keep talking in the background"
@@ -1379,9 +1378,8 @@ export function SettingsScreen({
             body="This disconnects, removes every saved Branch Agent, key, offline chat and waiting message from this phone, and opens setup again. Nothing is deleted on your computers."
             confirm="Reset"
             onConfirm={() => {
-              setPref({ ...PHONE_PREFS_DEFAULT, notifKinds: [...PHONE_PREFS_DEFAULT.notifKinds], lend: { ...PHONE_PREFS_DEFAULT.lend } });
               setResetAsk(false);
-              onForget?.();
+              onReset?.();
             }}
             onCancel={() => setResetAsk(false)}
             testID="reset-ask"

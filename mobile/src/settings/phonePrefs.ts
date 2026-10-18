@@ -131,11 +131,47 @@ export function parsePhonePrefs(raw: string | null | undefined): PhonePrefs {
   }
 }
 
+export function clonePhonePrefs(prefs: PhonePrefs): PhonePrefs {
+  return { ...prefs, notifKinds: [...prefs.notifKinds], lend: { ...prefs.lend } };
+}
+
+let livePrefs = clonePhonePrefs(PHONE_PREFS_DEFAULT);
+const liveListeners = new Set<() => void>();
+
+function emitLive(): void {
+  for (const listener of [...liveListeners]) listener();
+}
+
+/** The prefs the rest of the app reads. Settings writes here so toggles take effect at once. */
+export function getLivePhonePrefs(): PhonePrefs {
+  return livePrefs;
+}
+
+export function setLivePhonePrefs(prefs: PhonePrefs): void {
+  livePrefs = clonePhonePrefs(prefs);
+  emitLive();
+}
+
+export function subscribeLivePhonePrefs(listener: () => void): () => void {
+  liveListeners.add(listener);
+  return () => {
+    liveListeners.delete(listener);
+  };
+}
+
+export function resetLivePhonePrefs(): void {
+  livePrefs = clonePhonePrefs(PHONE_PREFS_DEFAULT);
+  liveListeners.clear();
+}
+
 export async function readPhonePrefs(store: KeyValueStore): Promise<PhonePrefs> {
-  return parsePhonePrefs(await store.get(PHONE_PREFS_KEY));
+  const prefs = parsePhonePrefs(await store.get(PHONE_PREFS_KEY));
+  setLivePhonePrefs(prefs);
+  return prefs;
 }
 
 export async function writePhonePrefs(store: KeyValueStore, prefs: PhonePrefs): Promise<void> {
+  setLivePhonePrefs(prefs);
   await store.set(PHONE_PREFS_KEY, JSON.stringify(prefs));
 }
 
