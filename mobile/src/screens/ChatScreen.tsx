@@ -134,7 +134,7 @@ function SendLine({ send, onRetry }: { send: OwnSend; onRetry: (id: string) => v
       {send.state === 'failed' ? (
         <Pressable testID={`retry-${send.id}`} accessibilityRole="button" onPress={() => onRetry(send.id)} hitSlop={8} style={({ pressed }) => ({ minHeight: 32, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
           <ThemedText variant="footnote" tone="bad">
-            Not sent: {send.error ?? 'your computer didn’t answer'}. Tap to try again.
+            Not sent: {send.error ?? 'your computer didn’t answer.'} Tap to try again.
           </ThemedText>
         </Pressable>
       ) : send.state === 'sending' ? (

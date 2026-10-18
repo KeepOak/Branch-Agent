@@ -159,7 +159,9 @@ const NAMED_COLORS = new Set([
 
 const HEX_RE = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b/g;
 const FUNC_RE = /\b(?:rgba?|hsla?)\s*\([^)]*\)/gi;
-const QUOTED_WORD_RE = /(['"`])([a-z]+)\1/gi;
+/** Quoted CSS names only in paint position, so a look named Lavender is not a colour literal. */
+const NAMED_PAINT_RE =
+  /\b(?:backgroundColor|borderColor|shadowColor|textShadowColor|overlayColor|tintColor|color|background|bg|fill|stroke|ink)\s*[:=]\s*(['"`])([a-z]+)\1/gi;
 
 function walkFiles(absDir: string, exclude: (rel: string) => boolean, out: string[]): void {
   for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
@@ -293,10 +295,10 @@ export function colorLiterals(source: string): ColorHit[] {
   while ((match = HEX_RE.exec(text))) hits.push({ kind: 'hex', value: match[0] });
   FUNC_RE.lastIndex = 0;
   while ((match = FUNC_RE.exec(text))) hits.push({ kind: 'func', value: match[0] });
-  QUOTED_WORD_RE.lastIndex = 0;
-  while ((match = QUOTED_WORD_RE.exec(text))) {
+  NAMED_PAINT_RE.lastIndex = 0;
+  while ((match = NAMED_PAINT_RE.exec(text))) {
     const word = match[2].toLowerCase();
-    if (NAMED_COLORS.has(word)) hits.push({ kind: 'named', value: match[0] });
+    if (NAMED_COLORS.has(word)) hits.push({ kind: 'named', value: `${match[1]}${match[2]}${match[1]}` });
   }
   return hits;
 }

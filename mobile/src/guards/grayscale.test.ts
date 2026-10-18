@@ -24,6 +24,8 @@ describe('grayscale theme tokens', () => {
       const ok = { empty: 'transparent', token: color.ink };
     `;
     expect(colorLiterals(sample).map((hit) => hit.value).sort()).toEqual(['#ff0000', "'black'", 'hsl(200, 80%, 50%)', 'rgb(0, 128, 0)'].sort());
+    expect(colorLiterals("{ id: 'lavender', name: 'Lavender' }")).toEqual([]);
+    expect(colorLiterals("const styles = { color: 'lavender' }").map((hit) => hit.value)).toEqual(["'lavender'"]);
   });
 
   it('fails on any colour literal in mobile/src outside the token file, or on a non-grayscale token value', () => {

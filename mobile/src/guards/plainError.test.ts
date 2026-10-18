@@ -8,7 +8,7 @@ describe('plain user-facing errors', () => {
       'String(error)',
     ]);
     expect(rawExceptionHits('setNote(e instanceof Error ? e.message : String(e));')).toEqual(['e.message', 'String(e)']);
-    expect(rawExceptionHits('text = err.stack ?? String(err);')).toEqual(['err.stack', 'String(err)']);
+    expect(rawExceptionHits('text = err.stack ?? String(err);')).toEqual(['String(err)', 'err.stack']);
     expect(rawExceptionHits('show(error.stack);')).toEqual(['error.stack']);
     expect(rawExceptionHits('throw new java.lang.IllegalStateException("boom");')).toEqual(['java.lang.IllegalStateException']);
     expect(rawExceptionHits('return fallback;')).toEqual([]);
