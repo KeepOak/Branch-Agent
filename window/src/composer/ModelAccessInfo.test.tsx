@@ -2,6 +2,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CapabilityProvider } from "../connect/capabilities";
+import type { WindowEngine } from "../connect/engine";
 import { ModelAccessInfo } from "./ModelAccessInfo";
 import { ModelMenu } from "./ModelMenu";
 import { readModel } from "./model";
@@ -94,6 +96,70 @@ describe("read-only model runtime information", () => {
     expect(option?.textContent).toContain(expected);
     expect(option?.textContent).not.toContain("not signed in");
     expect(patch).not.toHaveBeenCalled();
+    anchor.current.remove();
+  });
+
+  it("picking or keeping a Codex model asks before the download, and Cancel does not download", async () => {
+    const model = readModel({ id: "gpt-5.4", provider: "openai", name: "GPT", available: true, agentRuntime: { id: "codex", source: "session" } });
+    if (!model) throw new Error("Model fixture must be valid");
+    let download: Record<string, unknown> = { state: "downloading", message: "Getting Codex ready (134 MB)… 29%" };
+    let runtime: Record<string, unknown> = { state: "download", reason: "not-downloaded", version: "0.160.0", bytes: 134_311_083, ask: "Download Codex 0.160.0 (134 MB)?" };
+    const request = vi.fn(async (method: string) => {
+      if (method === "codex.runtime") return runtime;
+      if (method === "codex.runtime.download") return download;
+      return {};
+    });
+    const engine = { request, onEvent: () => () => undefined, features: { methods: ["codex.runtime", "codex.runtime.download"], events: [] } } as unknown as WindowEngine;
+    const patch = vi.fn(async () => undefined);
+    const keep = vi.fn(async () => undefined);
+    const anchor = { current: document.body.appendChild(document.createElement("button")) };
+    const downloads = () => request.mock.calls.filter(([method]) => method === "codex.runtime.download");
+    const prompt = () => host.querySelector('[data-testid="codex-download-prompt"]');
+    const press = async (label: string, rootEl: ParentNode = host) => {
+      const found = [...rootEl.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === label);
+      await act(async () => { found!.click(); });
+      await act(async () => { await Promise.resolve(); });
+    };
+    localStorage.setItem("branch.level", "advanced");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const menu = <CapabilityProvider engine={engine}><ModelMenu anchor={anchor} onClose={() => undefined} models={[model]}
+      loading={false} error={null} current={model} currentRef={model.ref} row={{}} thinking=""
+      trunkName="Test trunk" isAdmin patch={patch} onKeepForTrunk={keep} onRetry={() => undefined} engine={engine} /></CapabilityProvider>;
+    await act(async () => root.render(menu));
+    await act(async () => { await Promise.resolve(); });
+    expect(host.textContent).not.toMatch(/isn['’]t needed/iu);
+    expect(downloads()).toHaveLength(0);
+    await press("GPT");
+    expect(patch).toHaveBeenCalledWith({ model: "openai/gpt-5.4", thinkingLevel: null });
+    expect(downloads()).toHaveLength(0);
+    expect(prompt()?.textContent).toContain("Download Codex 0.160.0 (134 MB)?");
+    expect(prompt()?.textContent).not.toMatch(/isn['’]t needed/iu);
+    await press("Cancel", prompt()!);
+    expect(downloads()).toHaveLength(0);
+    expect(prompt()).toBeNull();
+    await press("GPT");
+    await press("Yes", prompt()!);
+    expect(downloads()).toEqual([["codex.runtime.download", { confirmed: true }]]);
+    expect(host.querySelector('[data-testid="codex-progress"]')!.textContent).toContain("Getting Codex ready (134 MB)… 29%");
+    runtime = { state: "unavailable", reason: "offline", bytes: 134_311_083, version: "0.160.0", ask: "Download Codex 0.160.0 (134 MB)?", message: "Codex isn’t downloaded yet and this computer looks offline. Try again." };
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(host.querySelector('[data-testid="codex-progress"]')!.textContent).toContain("Try again.");
+    await press("GPT");
+    expect(prompt()).toBeNull();
+    expect(host.querySelector('[data-testid="codex-progress"]')!.textContent).toContain("Try again.");
+    const before = downloads().length;
+    await press("Try again");
+    expect(downloads().length).toBe(before);
+    expect(prompt()?.textContent).toContain("134 MB");
+    await press("Cancel", prompt()!);
+    expect(downloads().length).toBe(before);
+    await press(`Use GPT for Test trunk from now on`);
+    expect(keep).toHaveBeenCalled();
+    expect(downloads().length).toBe(before);
+    expect(prompt()?.textContent).toContain("Download Codex 0.160.0 (134 MB)?");
+    await press("Cancel", prompt()!);
+    expect(downloads().length).toBe(before);
+    vi.useRealTimers();
     anchor.current.remove();
   });
 });

@@ -5,7 +5,7 @@ import { useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
-import { optStr, rec, useOperation, useResource } from "./data";
+import { optStr, plainFailure, rec, useOperation, useResource } from "./data";
 import type { MemoryStatus } from "./memory-more";
 import { Grey, IcoTile, when } from "./parts";
 
@@ -61,9 +61,9 @@ function Diary({ engine, level, agentId, onClose }: { engine: WindowEngine; leve
   </>;
   return <Dialog title="What overnight cleanup changed" wide onClose={onClose} footer={footer} testid="rings-diary">
     {diary.loading && <p className="lib-hint" role="status">Loading…</p>}
-    {diary.error && <p className="lib-bad" role="alert">{diary.error}</p>}
+    {diary.error && <p className="lib-bad" role="alert">{plainFailure(diary.error)}</p>}
     {diary.data && (diary.data.found && diary.data.content ? <pre className="lib-pre">{diary.data.content}</pre> : <p className="lib-hint">Nothing yet. It writes down what it changed after its first night.</p>)}
     {done && <p role="status" className="lib-hint">{done}</p>}
-    {op.error && <p className="lib-bad" role="alert">{op.error}</p>}
+    {op.error && <p className="lib-bad" role="alert">{plainFailure(op.error)}</p>}
   </Dialog>;
 }

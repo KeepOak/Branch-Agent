@@ -184,7 +184,7 @@ describe("Private #1093: every greyed History & backups control says why next to
     await mountEmpty("Advanced");
     const save = button(row("history.backups.where"), "Save");
     expect(save?.disabled).toBe(true);
-    expect(reasonOf(save)).toBe("Type the repository address, then Save.");
+    expect(reasonOf(save)).toBe("Type a folder or repository address first.");
     const now = button(row("history.backups.now"), "Back up now");
     expect(now?.disabled).toBe(true);
     expect(reasonOf(now)).toBe("Choose where backups go first.");
@@ -206,7 +206,7 @@ describe("Private #1093: every greyed History & backups control says why next to
     await settle();
     const save = button(row("history.backups.where"), "Save");
     expect(save?.disabled).toBe(true);
-    expect(reasonOf(save)).toBe("Saved. Type another address to change it.");
+    expect(reasonOf(save)).toBe("Already saved. Change the address to save a new one.");
     expect(reasonOf(button(row("history.backups.now"), "Back up now"))).toBe("");
   });
 

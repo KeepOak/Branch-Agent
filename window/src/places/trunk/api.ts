@@ -2,8 +2,9 @@
 // The order and params follow engine/src/gateway/server-methods/agents.ts and the config.patch merge patch.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../connect/engine";
+import { errorWords } from "../../shell/plain-error";
 import { mayChanges, type May } from "./may";
-import { avatarFor, errorText, patchConfig, readConfig, readRoster, rec, str, type ConfigSnapshot, type Roster } from "./model";
+import { avatarFor, patchConfig, readConfig, readRoster, rec, str, type ConfigSnapshot, type Roster } from "./model";
 
 export type Draft = { name: string; theme: string; look: string; emoji: string; colour: string; shape: string; eyes: string; model: string; may: May };
 
@@ -58,7 +59,7 @@ export async function waitForTrunk(engine: WindowEngine, id: string, current: ()
 
 /** When agents.create refused because that Trunk already exists, its id; otherwise null. */
 export async function existingTrunkId(engine: WindowEngine, name: string, error: unknown): Promise<string | null> {
-  const message = errorText(error);
+  const message = errorWords(error);
   if (!/already exists/i.test(message)) return null;
   const quoted = /agent "([^"]+)" already exists/i.exec(message)?.[1];
   let agents: { id: string; name: string }[] = [];

@@ -6,6 +6,7 @@ import { Dialog } from "./Dialog";
 import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import { menuIcon } from "./menu-icons";
 import { notify } from "./notify";
+import { plainError } from "./plain-error";
 import { emojiList, emojiScores, emojisForTopics } from "./topic-emoji-logic";
 import { distinctNames, isRawSessionKey, plainTopicTitle, readableTitle, sessionKeyName, splitKeyTag } from "./topic-name";
 import { readTopicSettings, saveTopicSettings, setContactTopicLayout, setDefaultTopicLayout, topicLayoutDefaults as defaults, topicLayoutNames as names, TOPIC_LAYOUT_KEY as key, r1TopicLayoutNames, type R1TopicLayout, type TopicLayout as Layout } from "./topic-layout";
@@ -118,7 +119,7 @@ export function TopicRail(p: TopicRailProps) {
   const changeEmoji = (topic: Topic, anchor?: HTMLElement) => { const button = anchor ?? [...(railRef.current?.querySelectorAll<HTMLElement>(".tpEmoBtnT5") ?? [])].find((node) => node.dataset.topicKey === topic.key); const rect = button?.getBoundingClientRect(); setPickerAt({ x: rect?.left ?? 8, y: (rect?.bottom ?? 60) + 4 }); setPicking(topic); setEmojiQuery(""); setMenu(null); };
   const chooseEmoji = (topic: Topic, chosen: string) => { const value = { ...stored<Record<string, string>>(emojiKey, {}), [topic.key]: chosen }; localStorage.setItem(emojiKey, JSON.stringify(value)); setEmoji(value); setPicking(null); notify(`${chosen} ${displayTitle(topic)}`); };
   const toggleMute = (topic: Topic) => { const current = stored<Record<string, boolean>>(muteKey, {}); const value = { ...current, [topic.key]: !current[topic.key] }; localStorage.setItem(muteKey, JSON.stringify(value)); setMuted(value); setMenu(null); notify(value[topic.key] ? "Muted. It won’t mark itself unread." : "Unmuted."); };
-  const update = async (topic: Topic, change: Record<string, unknown>): Promise<boolean> => { setBusy(true); setError(""); try { await p.onPatch(topic, change); setMenu(null); return true; } catch (e) { setError(e instanceof Error ? e.message : String(e)); return false; } finally { setBusy(false); } };
+  const update = async (topic: Topic, change: Record<string, unknown>): Promise<boolean> => { setBusy(true); setError(""); try { await p.onPatch(topic, change); setMenu(null); return true; } catch (e) { setError(plainError(e)); return false; } finally { setBusy(false); } };
   const openMenu = (name: string, anchor: HTMLElement) => { const rect = anchor.getBoundingClientRect(); setMenuAt({ x: rect.left, y: rect.bottom + 4 }); setMenu(menu === name ? null : name); };
   const menuTopic = p.items.find(({ topic }) => topic.key === menu)?.topic;
   const r1Layouts: MenuItem[] | null = p.r1 ? [

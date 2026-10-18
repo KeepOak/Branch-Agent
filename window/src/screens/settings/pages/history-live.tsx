@@ -99,8 +99,8 @@ export function BackupWhere({ engine, row }: SlotControlProps) {
   const label = kind === "git" ? "Repository address" : "Folder";
   const whyId = useId();
   // Save is greyed until there is something new to save; the line says what to do.
-  const saveWhy = busy ? "Saving…" : value.trim() === "" ? (kind === "git" ? "Type the repository address, then Save." : "Type the folder, then Save.")
-    : !changed ? (kind === "git" ? "Saved. Type another address to change it." : "Saved. Type another folder to change it.") : "";
+  const saveWhy = busy ? "Saving…" : value.trim() === "" ? "Type a folder or repository address first."
+    : !changed ? "Already saved. Change the address to save a new one." : "";
   return <>
     <Needs engine={engine} need={[...BACKUP_NEED, "backup.schedule.clear"]} where={row.label ?? ""}>
       <div className="r1s-own-ctl">
