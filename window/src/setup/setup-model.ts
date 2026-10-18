@@ -41,6 +41,16 @@ export function railTicked(current: number, i: number): boolean {
 export type Where = "this" | "remote" | "keepoak" | "later";
 export type Look = "system" | "light" | "dark";
 
+/** Where Branch runs (preview Change sheet): three places. "later" is kept for saved pre-connect state. */
+export const WHERE_PLACES = [
+  { id: "this" as const, icon: "monitor" as const, name: "This computer", line: "Recommended. Everything stays here." },
+  { id: "remote" as const, icon: "globe" as const, name: "Another computer", line: "Your Mac mini, a server or a NAS. Set up in Settings › Devices." },
+  { id: "keepoak" as const, icon: "spark" as const, name: "A KeepOak computer", line: "Always on, in the cloud. Set up in Settings › Devices." },
+];
+export const whereWord = (w: Where) => (w === "remote" ? "another computer" : w === "keepoak" ? "a KeepOak computer" : "this computer");
+export const SETUP_LATER_TOAST = "Set up later: the steps are in “Finish setting up” on Overview and in the Guide.";
+export const SETUP_LATER_KEY = "branch.setupLater";
+
 /** The six starting jobs (§4.8.1.5, the job list in §4.6.6). Colours live on the shared job tiles. */
 export const JOBS = STARTING_JOBS.map((job) => ({ name: job.name, line: job.description, colour: job.color }));
 

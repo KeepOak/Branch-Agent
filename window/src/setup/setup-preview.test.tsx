@@ -62,6 +62,7 @@ describe("setup preview rail", () => {
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(host.querySelector("h2")?.textContent).toBe("Hi, I’m Branch.");
     expect(host.textContent).toContain("It asks before it sends, deletes, spends or installs anything.");
+    expect(host.textContent).toContain("Agents that work on your computer: Trunks that each take one job off your plate.");
     expect(host.textContent).not.toContain("You choose how much Branch asks before it acts.");
     const names = rail(host);
     expect(names.map((r) => r.name)).toEqual([...STEPS]);
@@ -72,12 +73,12 @@ describe("setup preview rail", () => {
 
   it("ticks a step only after the person has passed it", async () => {
     const host = await show(<SetupFlow engine={engine({})} version="1" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
-    await act(async () => (host.querySelector('[data-testid="setup-promise"]') as HTMLInputElement).click());
     await act(async () => (host.querySelector('[data-testid="setup-next"]') as HTMLButtonElement).click());
     const names = rail(host);
-    expect(host.querySelector("h2")?.textContent).toBe("Where should Branch run?");
+    expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
     expect(names.find((r) => r.name === "Welcome")?.cls).toBe("done");
-    expect(names.find((r) => r.name === "Where Branch runs")?.cls).toBe("now");
+    expect(names.find((r) => r.name === "Where Branch runs")?.cls).toBe("done");
+    expect(names.find((r) => r.name === "Models")?.cls).toBe("now");
     expect(names.find((r) => r.name === "Your first Trunks")?.cls).toBe("");
   });
 

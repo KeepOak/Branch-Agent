@@ -227,8 +227,6 @@ describe("setup flow", () => {
     const host = await show(<WindowShell session={session} url="ws://127.0.0.1:19661" />);
     await act(async () => new Promise((r) => setTimeout(r, 750)));
     expect(host.querySelector("h2")?.textContent).toBe("Hi, I’m Branch.");
-    await act(async () => tid(host, "setup-promise").click());
-    await act(async () => tid(host, "setup-next").click());
     await act(async () => tid(host, "setup-next").click());
     await act(async () => byText(host, "install a model on this computer").click());
     expect(host.textContent).toContain("Models that run here, free and private.");
@@ -327,15 +325,13 @@ describe("setup flow", () => {
     expect(host.textContent).toContain("Full access");
     expect(host.textContent).toContain("Seeing the screen and using the mouse is a separate switch in Settings › Computer & browser");
   });
-  it("Welcome holds Start until the promise is ticked and has no Skip", async () => {
+  it("Welcome Get started is enabled with no promise checkbox, and skips the Where screen", async () => {
     const { engine: e } = engine({});
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
-    expect(tid(host, "setup-next").disabled).toBe(true);
-    expect(tid(host, "setup-skip")).toBeNull();
-    await act(async () => tid(host, "setup-promise").click());
     expect(tid(host, "setup-next").disabled).toBe(false);
-    await act(async () => tid(host, "setup-next").click());
-    expect(host.querySelector("h2")?.textContent).toBe("Where should Branch run?");
+    expect(tid(host, "setup-next").textContent).toBe("Get started");
+    expect(tid(host, "setup-skip")?.textContent).toBe("Set up later");
+    expect(host.querySelector('input[type="checkbox"]')).toBeNull();
     await act(async () => tid(host, "setup-next").click());
     expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
   });
@@ -343,8 +339,7 @@ describe("setup flow", () => {
     const { engine: e, request } = engine({ "config.get": { hash: "h", config: {} }, "config.patch": { ok: true }, "agents.create": { ok: true, agentId: "branch-agent" }, "agents.list": { agents: [{ id: "branch-agent", name: "Branch Agent" }] } });
     const closed = vi.fn();
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={[]} defaultAgentId="bootstrap" defaultName="Branch" onClose={closed} onLocalModel={() => {}} />);
-    await act(async () => tid(host, "setup-promise").click());
-    for (const heading of ["Where should Branch run?", "Which models should answer?", "Make it yours", "Create your first Trunk"]) {
+    for (const heading of ["Which models should answer?", "Make it yours", "Create your first Trunk"]) {
       await act(async () => tid(host, "setup-next").click());
       expect(host.querySelector("h2")?.textContent).toBe(heading);
     }
@@ -726,16 +721,20 @@ describe("pre-connect screens", () => {
     expect(host.textContent).not.toContain("VITE_GATEWAY_URL");
     expect(host.querySelector("details")?.textContent).toContain("token missing");
   });
-  it("Connect hands over the address and key", async () => {
-    sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
+  it("Connect hands over the address and key after Change to another computer", async () => {
     const connect = vi.fn();
     const host = await show(<PreConnect local="ws://127.0.0.1:18789" address={null} state={{ kind: "address" }} busy={false} onConnect={connect} onRetry={() => {}} />);
+    await act(async () => (host.querySelector('[data-testid="setup-where-change"]') as HTMLButtonElement).click());
+    await act(async () => (host.querySelector('[data-testid="setup-pick-remote"]') as HTMLButtonElement).click());
+    const address = host.querySelector('[data-testid="setup-address"]') as HTMLInputElement;
     const key = host.querySelector('[data-testid="setup-key"]') as HTMLInputElement;
     await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(address, "wss://desk.example.test");
+      address.dispatchEvent(new Event("input", { bubbles: true }));
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(key, "secret");
       key.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await act(async () => byText(host, "Connect").click());
-    expect(connect).toHaveBeenCalledWith("ws://127.0.0.1:18789", "secret");
+    await act(async () => (host.querySelector('[data-testid="setup-next"]') as HTMLButtonElement).click());
+    expect(connect).toHaveBeenCalledWith("wss://desk.example.test", "secret");
   });
 });

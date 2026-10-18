@@ -1,0 +1,4 @@
+window:src/setup/pre-connect-rail.test.tsx
+window:src/setup/setup-preview.test.tsx
+window:src/setup/setup.test.tsx
+window:src/setup/welcome.test.tsx
