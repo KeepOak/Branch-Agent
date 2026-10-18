@@ -223,7 +223,6 @@ export class AppChildGatewaySupervisor {
 
   markReady(): void {
     this.starting = false;
-    this.healthySince = this.now();
     this.writeLiveRecord();
   }
 
@@ -381,7 +380,7 @@ export class AppChildGatewaySupervisor {
         this.params.waitUntilHealthy(),
         this.waitForExitOrError().then(() => false),
       ]);
-      return healthy === true && !this.exitedDuringStart;
+      return Boolean(healthy) && !this.exitedDuringStart;
     }
     const { DEFAULT_RESTART_HEALTH_ATTEMPTS, DEFAULT_RESTART_HEALTH_DELAY_MS, waitForGatewayHealthyListener } =
       await import("./restart-health.js");
@@ -393,7 +392,7 @@ export class AppChildGatewaySupervisor {
       }).then((result) => result.healthy),
       this.waitForExitOrError().then(() => false),
     ]);
-    return healthy === true && !this.exitedDuringStart;
+    return Boolean(healthy) && !this.exitedDuringStart;
   }
 
   private startOwnerWatch(): void {
@@ -493,6 +492,7 @@ export class AppChildGatewaySupervisor {
       writeFailedAppChildRecord(this.params.port, this.spawnError.message, env);
       return false;
     }
+    this.healthySince = this.now();
     this.writeLiveRecord();
     child.on("error", (error) => {
       this.spawnError = error;

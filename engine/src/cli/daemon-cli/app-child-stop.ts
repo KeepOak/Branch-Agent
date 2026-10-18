@@ -17,6 +17,7 @@ import {
   canEscalateRecordedPid,
   clearAppChildRecord,
   defaultReadStartTime,
+  isSameRecordedProcess,
   markAppChildStopRequested,
   readAppChildRecord,
   writeFailedAppChildRecord,
@@ -44,6 +45,9 @@ async function stopRecordedPid(params: {
 }): Promise<{ gone: boolean; escalated: boolean }> {
   const { pid, startedAt } = params;
   if (!pid || !params.isAlive(pid)) {
+    return { gone: true, escalated: false };
+  }
+  if (!isSameRecordedProcess(pid, startedAt, params.readStartTime, params.isAlive)) {
     return { gone: true, escalated: false };
   }
   params.signal?.(pid);
