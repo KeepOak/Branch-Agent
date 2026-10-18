@@ -225,7 +225,7 @@ test("Git Bash shim reads the same files, drops CR and passes arguments through"
   assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('read_engine "$data/engine-running.txt"'));
   // An empty read (never expected: the desktop renames the file into place) keeps the configured port.
   assert.ok(shim.includes(`if [ -f "$data/gateway-port" ]; then live=$(head -n 1 "$data/gateway-port" | tr -d '\\r'); if [ -n "$live" ]; then BRANCH_GATEWAY_PORT=$live; fi; fi`));
-  assert.ok(shim.indexOf("BRANCH_GATEWAY_PORT=19031") < shim.indexOf("$data/gateway-port"));
+  assert.ok(shim.indexOf("BRANCH_GATEWAY_PORT=19031") < shim.indexOf("BRANCH_GATEWAY_PORT=$live"));
   // As the cmd shim: a long-running `branch mcp serve` finds the desktop's gateway-port again after an update.
   assert.ok(shim.includes("BRANCH_DATA='C:\\Data'\\''s'"));
   assert.match(shim, /export BRANCH_DATA /);
