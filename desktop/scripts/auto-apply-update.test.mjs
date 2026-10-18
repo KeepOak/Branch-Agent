@@ -62,6 +62,32 @@ test("setting off preserves manual Restart and rejected releases are not retried
   assert.deepEqual(f.restarts, []);
 });
 
+test("awaiting Restart still schedules the next check", async () => {
+  const logs = [];
+  let polls = 0;
+  let tickFn;
+  const controller = createAutoApplyUpdate({
+    pendingVersion: async () => { polls++; return "0.4.5"; },
+    enabled: () => false,
+    activity: async () => ({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    restart: async () => {},
+    log: line => logs.push(line),
+    interval: fn => { tickFn = fn; return 1; },
+    clear: () => {},
+  });
+  controller.start();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.ok(logs.some(line => line.includes("off; awaiting Restart") && line.includes("retrying in 30s")), logs.join("\n"));
+  assert.equal(typeof tickFn, "function", "the next check is scheduled while awaiting Restart");
+  const before = polls;
+  tickFn();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.ok(polls > before, `the scheduled check ran while awaiting Restart, got ${polls}`);
+  controller.stop();
+});
+
 test("staged idle is rechecked every 30 seconds and releases every ten minutes", () => {
   let scheduled;
   const controller = createAutoApplyUpdate({ pendingVersion: async () => null, enabled: () => true,

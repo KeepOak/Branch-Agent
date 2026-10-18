@@ -1286,6 +1286,31 @@ test("a lease-overrun stop still schedules the next update check", async () => f
   } finally { stop(); }
 }));
 
+test("a staged update awaiting Restart still schedules the next GitHub check", async () => fixture(async ({ cfg }) => {
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({
+    phase: "staged", version: "0.4.5", kind: "asar", staged: join(cfg.dataDir, "x", "app.asar"), target: "app.asar",
+  }));
+  assert.equal((await source.readComponentUpdateStatus(cfg)).pendingVersion, "0.4.5");
+  let checks = 0;
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, () => {}, {
+    checkMs: 20,
+    refresh: async () => {
+      checks++;
+      return false;
+    },
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    assert.equal(checks, 1, "first check ran in the awaiting-Restart state");
+    assert.ok(clock.pending() >= 1, "the next check is armed while a staged update awaits Restart");
+    await clock.advance(20);
+    assert.ok(checks >= 2, `checker kept its schedule while awaiting Restart, got ${checks}`);
+  } finally { stop(); }
+}));
+
 test("an update-check error still leaves a pending retry", async () => fixture(async ({ cfg }) => {
   let checks = 0;
   const logs = [];

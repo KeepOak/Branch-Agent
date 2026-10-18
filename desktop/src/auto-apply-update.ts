@@ -152,7 +152,8 @@ export function createAutoApplyUpdate(options: {
       }
       if (!version || !options.enabled() || appliedVersion === version) {
         idleSince = undefined;
-        if (version) decision("off; awaiting Restart");
+        // A staged update waiting for Restart still polls: the GitHub checker is separate and must keep its schedule.
+        if (version) defer("off; awaiting Restart");
         // Nothing to apply: still notice Trunk work now and then, so the next update knows how to land.
         if (!options.trunkWork && options.activeRuns && (lastSampleAt === undefined || now() - lastSampleAt >= TRUNK_WORK_SAMPLE_MS)) {
           await noteRuns().catch(() => undefined);
