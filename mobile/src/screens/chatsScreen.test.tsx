@@ -127,8 +127,8 @@ describe('chats screen', () => {
     await renderList({ rows: [], loaded: true, error: null });
     expect(screen.getByTestId('chats-empty')).toBeOnTheScreen();
     const onRefresh = jest.fn(async () => undefined);
-    await renderList({ rows: [], loaded: false, error: 'sessions unavailable' }, true, { onRefresh });
-    expect(screen.getByTestId('chats-error')).toHaveTextContent(/sessions unavailable/);
+    await renderList({ rows: [], loaded: false, error: "Can't reach Branch. Check your connection." }, true, { onRefresh });
+    expect(screen.getByTestId('chats-error')).toHaveTextContent(/Can't reach Branch/);
     await fireEvent.press(screen.getByTestId('chats-error-action'));
     expect(onRefresh).toHaveBeenCalledTimes(1);
     await renderList({ rows: [], loaded: false, error: 'not connected' }, false);
