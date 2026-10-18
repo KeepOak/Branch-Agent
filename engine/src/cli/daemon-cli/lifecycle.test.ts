@@ -1028,7 +1028,7 @@ describe("runDaemonRestart health checks", () => {
         mode: "rpc",
         pid: 4200,
       });
-      expectListenerHealth(process.platform === "win32" ? 960 : 720, lockIdentity);
+      expectListenerHealth(720, lockIdentity);
     });
 
     it("keeps safe restarts on the exact local lock owner", async () => {
