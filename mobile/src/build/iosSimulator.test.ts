@@ -46,8 +46,16 @@ describe('the iOS Simulator CI build', () => {
     expect(yaml).not.toMatch(/contents:\s*write/);
     expect(yaml).not.toMatch(/secrets\./);
     expect(yaml).not.toMatch(/appleTeamId|provisioning|EXPO_TOKEN/);
+    expect(yaml).not.toMatch(/\$\{\{\s*env\.HOME\s*\}\}/);
+    expect(yaml).toMatch(/path:\s*~\/Library\/Caches\/CocoaPods/);
+    expect(yaml).toMatch(/cocoapods-v2-/);
+    expect(yaml).toMatch(/ios-derived-v2-/);
     for (const action of yaml.matchAll(/uses:\s+\S+@([0-9a-f]+)/g)) {
       expect(action[1]).toMatch(/^[0-9a-f]{40}$/);
     }
+    const script = readFileSync(path.join(root, 'scripts/ios-simulator-check.mjs'), 'utf8');
+    expect(script).toContain('xcodebuild "$@" | xcbeautify');
+    expect(script).toContain("-o', 'pipefail'");
+    expect(script).not.toMatch(/spawnSync\(\s*['"]xcodebuild['"][\s\S]{0,400}?encoding:\s*['"]utf8['"]/);
   });
 });

@@ -19,6 +19,8 @@ import {
   pickIphoneSimulator,
   workflowContract,
   xcodebuildArgs,
+  xcodebuildLaunch,
+  xcodebuildOutputIsBuffered,
 } from './ios-simulator-check.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -41,6 +43,35 @@ describe('iOS simulator CI contract', () => {
     assert.match(yaml, new RegExp(SCREENSHOT_ARTIFACT));
     assert.match(yaml, new RegExp(APP_ARTIFACT));
     assert.match(yaml, /ios-simulator-check\.mjs --ci/);
+    assert.doesNotMatch(yaml, /\$\{\{\s*env\.HOME\s*\}\}/);
+    assert.match(yaml, /path:\s*~\/Library\/Caches\/CocoaPods/);
+    assert.match(yaml, /cocoapods-v2-/);
+    assert.match(yaml, /ios-derived-v2-/);
+    assert.ok(workflowContract(yaml.replaceAll('~/Library/Caches/CocoaPods', '${{ env.HOME }}/Library/Caches/CocoaPods')).includes('env.HOME'));
+  });
+
+  it('never buffers xcodebuild output', () => {
+    const args = xcodebuildArgs({
+      workspace: 'ios/BranchAgent.xcworkspace',
+      scheme: 'BranchAgent',
+      derivedData: '/tmp/ios-derived',
+    });
+    const piped = xcodebuildLaunch(args, { xcbeautify: true });
+    assert.equal(piped.command, 'bash');
+    assert.deepEqual(piped.args.slice(0, 4), ['-o', 'pipefail', '-c', 'xcodebuild "$@" | xcbeautify']);
+    assert.equal(piped.stdio, 'inherit');
+    assert.equal(piped.encoding, undefined);
+    const fallback = xcodebuildLaunch(args, { xcbeautify: false });
+    assert.equal(fallback.command, 'xcodebuild');
+    assert.equal(fallback.args, args);
+    assert.equal(fallback.stdio, 'inherit');
+    assert.equal(fallback.encoding, undefined);
+    const source = readFileSync(path.join(mobile, 'scripts/ios-simulator-check.mjs'), 'utf8');
+    assert.equal(xcodebuildOutputIsBuffered(source), false);
+    assert.equal(
+      xcodebuildOutputIsBuffered("spawnSync('xcodebuild', args, { encoding: 'utf8' })"),
+      true,
+    );
   });
 
   it('the app still uses that bundle id and Keychain storage, not cache', () => {

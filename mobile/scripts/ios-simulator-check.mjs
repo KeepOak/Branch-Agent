@@ -59,10 +59,33 @@ export function workflowContract(yaml) {
   if (!/ios-simulator-check\.mjs/.test(text)) problems.push('uses ios-simulator-check.mjs');
   if (!new RegExp(SCREENSHOT_ARTIFACT).test(text)) problems.push('screenshot artifact');
   if (!new RegExp(APP_ARTIFACT).test(text)) problems.push('app zip artifact');
+  if (/\$\{\{\s*env\.HOME\s*\}\}/.test(text)) problems.push('env.HOME');
+  if (!/path:\s*~\/Library\/Caches\/CocoaPods/.test(text)) problems.push('CocoaPods cache ~ path');
+  if (!/cocoapods-v2-/.test(text)) problems.push('cocoapods-v2- cache prefix');
+  if (!/ios-derived-v2-/.test(text)) problems.push('ios-derived-v2- cache prefix');
+  if (!/restore-keys:[\s|]*cocoapods-v2-/.test(text)) problems.push('cocoapods-v2- restore-keys');
+  if (!/restore-keys:[\s|]*ios-derived-v2-/.test(text)) problems.push('ios-derived-v2- restore-keys');
   for (const action of text.matchAll(/uses:\s+\S+@([0-9a-f]+)/g)) {
     if (!PINNED_SHA.test(action[1])) problems.push(`unpinned action ${action[1]}`);
   }
   return problems;
+}
+
+// xcodebuild logs overflow spawnSync's 1 MiB default maxBuffer when encoding is utf8.
+// Always inherit stdio; pipe through xcbeautify with pipefail so xcodebuild's status wins.
+export function xcodebuildLaunch(args, { xcbeautify = false } = {}) {
+  if (xcbeautify) {
+    return {
+      command: 'bash',
+      args: ['-o', 'pipefail', '-c', 'xcodebuild "$@" | xcbeautify', 'xcodebuild', ...args],
+      stdio: 'inherit',
+    };
+  }
+  return { command: 'xcodebuild', args, stdio: 'inherit' };
+}
+
+export function xcodebuildOutputIsBuffered(source) {
+  return /spawnSync\(\s*['"]xcodebuild['"][\s\S]{0,400}?encoding:\s*['"]utf8['"]/.test(String(source ?? ''));
 }
 
 export function xcodebuildArgs({ workspace, scheme, derivedData }) {
@@ -236,19 +259,12 @@ function build(project) {
     FORCE_BUNDLING: '1',
   };
   const beautify = spawnSync('xcbeautify', ['--version'], { encoding: 'utf8', windowsHide: true });
-  if (beautify.status === 0) {
-    const xcode = spawnSync('xcodebuild', args, {
-      cwd: path.join(mobile, 'ios'),
-      encoding: 'utf8',
-      windowsHide: true,
-      env,
-    });
-    const log = `${xcode.stdout ?? ''}${xcode.stderr ?? ''}`;
-    spawnSync('xcbeautify', [], { input: log, stdio: ['pipe', 'inherit', 'inherit'], windowsHide: true });
-    if (xcode.status !== 0) throw new Error(`xcodebuild failed (exit ${xcode.status ?? xcode.signal})`);
-  } else {
-    run('xcodebuild', args, { cwd: path.join(mobile, 'ios'), stdio: 'inherit', env });
-  }
+  const launch = xcodebuildLaunch(args, { xcbeautify: beautify.status === 0 });
+  run(launch.command, launch.args, {
+    cwd: path.join(mobile, 'ios'),
+    stdio: launch.stdio,
+    env,
+  });
   return findBuiltApp(derivedData, project.scheme);
 }
 

@@ -66,19 +66,19 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         continue-on-error: true
         with:
-          path: ${{ env.HOME }}/Library/Caches/CocoaPods
-          key: cocoapods-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json') }}
+          path: ~/Library/Caches/CocoaPods
+          key: cocoapods-v2-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json') }}
           restore-keys: |
-            cocoapods-${{ runner.os }}-
+            cocoapods-v2-${{ runner.os }}-
 
       - name: Restore Xcode derived data
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         continue-on-error: true
         with:
           path: ${{ env.IOS_DERIVED_DATA }}
-          key: ios-derived-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json') }}
+          key: ios-derived-v2-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json') }}
           restore-keys: |
-            ios-derived-${{ runner.os }}-
+            ios-derived-v2-${{ runner.os }}-
 
       - name: Install the phone app
         working-directory: mobile
@@ -94,8 +94,8 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         continue-on-error: true
         with:
-          path: ${{ env.HOME }}/Library/Caches/CocoaPods
-          key: cocoapods-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json') }}
+          path: ~/Library/Caches/CocoaPods
+          key: cocoapods-v2-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json') }}
 
       - name: Save Xcode derived data
         if: success()
@@ -103,7 +103,7 @@ jobs:
         continue-on-error: true
         with:
           path: ${{ env.IOS_DERIVED_DATA }}
-          key: ios-derived-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json') }}
+          key: ios-derived-v2-${{ runner.os }}-${{ hashFiles('mobile/package-lock.json') }}
 
       - name: Upload the simulator screenshot
         if: always()
