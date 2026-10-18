@@ -14,7 +14,6 @@ import type { GatewayInstallationReplacement } from "../../gateway/stale-install
 import { formatErrorMessage } from "../../infra/errors.js";
 import type { GatewayBootLifecycleCompletion } from "../../infra/gateway-boot-lifecycle.js";
 import { acquireGatewayLock, readActiveGatewayLockIdentity } from "../../infra/gateway-lock.js";
-import { reacquireDesktopHandoffLock } from "./desktop-handoff-recovery.js";
 import { consumeGatewaySuspendHandoff } from "../../infra/gateway-suspend-coordinator.js";
 import type { GatewayRestartIntent } from "../../infra/restart-intent.js";
 import { isGatewayHandoffFatalError } from "../../gateway/server-handoff-error.js";
@@ -1124,8 +1123,9 @@ export async function runGatewayLoop(params: {
     handoffHardExitTimer = undefined;
     // Keep session leases until this process owns state again. If a successor
     // owns the lock, only that engine may continue writing.
-    const reacquired = await reacquireDesktopHandoffLock({
+    const reacquired = await acquireGatewayLock({
       port: params.lockPort,
+      timeoutMs: 0,
       listenerMode: supervisorMode ? "supervised" : "foreground",
       supervisor,
     });
