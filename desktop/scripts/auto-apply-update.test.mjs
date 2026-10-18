@@ -107,20 +107,21 @@ test("after applying a build, awaiting Restart still schedules the next check", 
     interval: fn => { tickFn = fn; return 1; },
     clear: () => {},
   });
+  await controller.tick();
+  now += AUTO_APPLY_GAP_MS - 1;
+  await controller.tick();
+  assert.deepEqual(restarts, []);
+  now += 1;
+  await controller.tick();
+  assert.deepEqual(restarts, ["0.4.5"], "the build applied in place");
   controller.start();
   await flushAutoApply();
-  assert.deepEqual(restarts, []);
-  assert.equal(typeof tickFn, "function", "the checker is scheduled before the build applies");
-  now += AUTO_APPLY_GAP_MS;
-  tickFn();
-  await flushAutoApply();
-  assert.deepEqual(restarts, ["0.4.5"], "the build applied in place");
+  assert.ok(logs.some(line => line.includes("off; awaiting Restart") && line.includes("retrying in 30s")), logs.join("\n"));
+  assert.equal(typeof tickFn, "function", "the next check is scheduled in the awaiting-Restart state");
   const before = polls;
   tickFn();
   await flushAutoApply();
-  assert.ok(logs.some(line => line.includes("off; awaiting Restart") && line.includes("retrying in 30s")), logs.join("\n"));
   assert.ok(polls > before, `the next check ran after applying, in the awaiting-Restart state, got ${polls}`);
-  assert.equal(typeof tickFn, "function", "the next check stays scheduled after applying a build");
   controller.stop();
 });
 
