@@ -210,8 +210,8 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     catch (error) { if (error.code === "ENOENT" || error instanceof SyntaxError) return []; throw error; }
   };
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
-  // A healthy host unless a test says otherwise: auto-apply never starts an update on low disk or RAM (Private #951).
-  process.env.BRANCH_DESKTOP_UPDATE_FREE_DISK = "0.5";
+  // A healthy host unless a test says otherwise: 87 GB free exceeds the update size plus about 5 GB (Private #951).
+  process.env.BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES = "87000000000";
   process.env.BRANCH_DESKTOP_UPDATE_FREE_MEMORY = "0.5";
   await prepare?.(root);
   let onStaged, onWithdrawal, swapGuard, pendingVersion, engineWatchTick, stopWatching, stopEngineWatch, stopWindowWatch, stopAutoApply, windowServer;
@@ -366,7 +366,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     delete process.env.BRANCH_DESKTOP_RETIRE_KILL_AFTER_MS;
     delete process.env.BRANCH_DESKTOP_RETIRE_RECHECK_MS;
     delete process.env.BRANCH_DESKTOP_ADMISSION_ROLLBACK_MS;
-    delete process.env.BRANCH_DESKTOP_UPDATE_FREE_DISK;
+    delete process.env.BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES;
     delete process.env.BRANCH_DESKTOP_UPDATE_FREE_MEMORY;
     try { await rm(root, { recursive: true, force: true }); } catch { /* locked or already gone */ }
   }
@@ -1359,7 +1359,7 @@ test("an automatic update that arrives mid-run hands off at the next gap, with t
   await eventually(() => !alive(old));
 }, false, false, false, true, false, defaultHandoff));
 
-for (const [name, env, reason] of [["low-disk", { BRANCH_DESKTOP_UPDATE_FREE_DISK: "0.05" }, "low disk: 5% free, under 10%"],
+for (const [name, env, reason] of [["low-disk", { BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES: "3200000000" }, "low disk: 3.2 GB free, the update needs about 6.0 GB"],
   ["low-RAM", { BRANCH_DESKTOP_UPDATE_FREE_MEMORY: "0.1" }, "low memory: 10% free, under 20%"]]) {
   test(`a ${name} host refuses to start an automatic update (Private #951)`, () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
     const sent = idleWindow(runtime), old = (await starts())[0];

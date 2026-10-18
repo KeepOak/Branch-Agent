@@ -389,7 +389,7 @@ test('a running Trunk run survives an Update click in service mode: refused, no 
 });
 
 const pending = root => writeFileSync(join(root, 'component-update-pending.json'), JSON.stringify({ phase: 'pending', version: '9.9.9' }));
-const autoEnv = { ...updateEnv, BRANCH_DESKTOP_UPDATE_FREE_DISK: '0.9', BRANCH_DESKTOP_UPDATE_FREE_MEMORY: '0.9' };
+const autoEnv = { ...updateEnv, BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES: '87000000000', BRANCH_DESKTOP_UPDATE_FREE_MEMORY: '0.9' };
 
 test('auto-apply in service mode reads the run count from the engine: the tick waits on the runs, no "activity check failed", no restart', async t => {
   await serviceApp(t, () => ({ pendingApprovals: 0, streaming: false, unsavedDraftFiles: false, workingTrunks: 2 }), async ({ cliCalls, standbys, serviceRuns, desktopLog }) => {

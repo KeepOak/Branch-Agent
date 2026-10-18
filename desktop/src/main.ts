@@ -893,7 +893,7 @@ const autoApply = createAutoApplyUpdate({
   },
   enabled: () => controls.settings().autoApplyUpdates && !updateLock.held,
   seamlessHandoff,
-  // Private #951: no automatic update starts under 10% free disk or 20% free RAM.
+  // Private #951: skip automatic updates when free disk is less than the update size plus about 5 GB, or under 20% free RAM.
   health: async () => readUpdateHealth(cfg.dataDir, (await measureAvailableMemory({ maxAgeMs: HEALTH_MEMORY_MAX_AGE_MS })).bytes, totalmem()),
   // Runs in flight mark a machine running Trunk work, whose updates are batched (hourly at most, only when idle).
   activeRuns: async () => {
