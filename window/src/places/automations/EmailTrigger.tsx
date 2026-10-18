@@ -1,5 +1,6 @@
 // Automations › When an email arrives. The mailbox is one already connected through the credential store.
 // Saving writes the IMAP plugin's folder, filter and Trunk. It never sends a password.
+import { Failure } from "./Failure";
 import { useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { useAct } from "./act";
@@ -53,7 +54,7 @@ export function EmailTrigger({ engine, trunks, canWrite }: { engine: WindowEngin
     void run(() => patchConfig(engine, imapTriggerPatch(trigger)), "Email trigger saved.");
   };
   return <Section title="Email" hint="When an email arrives in a mailbox you already connected, a Trunk starts with that email as its context.">
-    {state.error && <p className="au-error" role="alert">{state.error}</p>}
+    {state.error && <div className="au-error" role="alert"><Failure error={state.error} /></div>}
     {!state.loading && !mailboxes.length && !state.error && <ToolRow icon="mail" title="When an email arrives in..." sub="A Trunk starts with that email as its context." button="Turn on" reason="Connect a mailbox first." />}
     {mailboxes.length > 0 && <section className="au-prop" aria-label="When an email arrives">
       <div className="au-prop-h"><Glyph name="mail" /><b>When an email arrives in...</b></div>
@@ -76,7 +77,7 @@ export function EmailTrigger({ engine, trunks, canWrite }: { engine: WindowEngin
         </select>
       </Field>
       {selected && selected.allowedSenders === 0 && <p className="au-hint">This mailbox has no allowed senders yet, so new mail does not start a Trunk.</p>}
-      {error && <p className="au-error" role="alert">{error}</p>}
+      {error && <div className="au-error" role="alert"><Failure error={error} /></div>}
       <div className="au-actions">
         <button type="button" className="btn pri sm" disabled={!canWrite || busy} title={canWrite ? undefined : "Needs an owner"} onClick={save}>Save trigger</button>
       </div>

@@ -1,5 +1,7 @@
 // Inbox › Needs you (DESIGN-SPEC §4.6.2.1; preview renderInbox + 41-placesap p20-inbox): status cards above the
 // approvals card, the approvals and requests, the questions, then Mentions.
+import { Failure } from "../automations/Failure";
+import { plainError } from "../../shell/plain-error";
 import { useEffect, useRef, useState } from "react";
 import type { ScopeUpgradeOutcome, WindowEngine } from "../../connect/engine";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
@@ -10,7 +12,7 @@ import { Icon } from "../../shell/icons";
 import { Dialog } from "../../shell/Dialog";
 import { notify } from "../../shell/notify";
 import { agentName } from "../overview/engine";
-import { canApprove, errorText, has, isSignInFailure, num, rec, resolveApproval, rows, signInRecovered, str, type Needs, type Row } from "./data";
+import { canApprove, has, isSignInFailure, num, rec, resolveApproval, rows, signInRecovered, str, type Needs, type Row } from "./data";
 import { ChatRequest, DeviceRequest, NodeRequest } from "./Requests";
 import { InboxRow, StatusCard, Tile, minutesAgo, minutesLeft } from "./Rows";
 import { whenWord } from "../overview/format";
@@ -25,9 +27,7 @@ type LimitedOutcome = "pending" | ScopeUpgradeOutcome["status"];
 
 /** A line the person can read: no method names, no stack. */
 function plainUpgradeError(error: unknown): string {
-  const raw = errorText(error).split("\n")[0] ?? "";
-  const cleaned = raw.replace(/\bdevice\.scopes\.(?:requestUpgrade|waitUpgrade)\b/g, "").replace(/\s{2,}/g, " ").replace(/^[:.\s-]+|[:.\s-]+$/g, "").trim();
-  return cleaned || "Couldn't ask for full access. Try again.";
+  return plainError(error, true);
 }
 
 function limitedLine(state: LimitedState): string {
@@ -102,7 +102,7 @@ export function needsCount(data: Needs | null): number {
 }
 export const approvalTitle = (item: Row) => { const r = rec(item.request); return str(r.title) || str(r.commandPreview) || str(r.command) || str(r.description) || "A Trunk needs your answer"; };
 
-function Cards({ data, engine, busy, act, openConversation, openPlace, openSettings }: NeedsProps) {
+function Cards({ data, engine, busy, act, openConversation, openPlace, openSettings, level }: NeedsProps) {
   const [gone, setGone] = useState<string[]>(savedDismissals);
   const dismiss = (keys: string[]) => setGone(previous => {
     const next = [...new Set([...previous, ...keys])];
@@ -118,7 +118,7 @@ function Cards({ data, engine, busy, act, openConversation, openPlace, openSetti
   const expiredAt = data.expired.flatMap(p => num(rec(p.expiry).expiresAt) ?? [])[0];
   return <div className="ib-cards">
     {data.modelUpgradeNotice ? <StatusCard icon="check" title="Model update" sub={data.modelUpgradeNotice} /> : null}
-    {data.channels.map(({ channel, label, account }) => <StatusCard key={`${channel}:${str(account.accountId)}`} tone="bad" icon="chat" lead={<ChatLogo id={channel} name={label} size={34} />} title={`${label} stopped: ${str(account.lastError)}`} sub={`Messages sent to ${str(account.name) || label}${num(account.lastStopAt) !== undefined ? ` since ${whenWord(num(account.lastStopAt)!)}` : ""} haven’t reached Branch.`}>
+    {data.channels.map(({ channel, label, account }) => <StatusCard key={`${channel}:${str(account.accountId)}`} tone="bad" icon="chat" lead={<ChatLogo id={channel} name={label} size={34} />} title={`${label} stopped`} sub={`Messages sent to ${str(account.name) || label}${num(account.lastStopAt) !== undefined ? ` since ${whenWord(num(account.lastStopAt)!)}` : ""} haven’t reached Branch.`} extra={<Failure error={str(account.lastError)} level={level} />}>
       <button type="button" className="btn ghost sm" disabled={busy || !has(engine, "operator.admin")} onClick={() => void act(() => engine.request("channels.stop", { channel, accountId: str(account.accountId) }), `${label} is off.`)}>Turn {label} off</button>
       <button type="button" className="btn pri sm" onClick={() => openPlace("customize")}>Set it up again</button>
     </StatusCard>)}
@@ -129,8 +129,8 @@ function Cards({ data, engine, busy, act, openConversation, openPlace, openSetti
         <button type="button" className="ib-x" aria-label={`Dismiss ${name} failure`} title="Dismiss" onClick={() => dismiss([`session:${s.key}:${s.lastRunId || s.lastRunError}`])}><Icon name="x" /></button>
       </StatusCard>;
     })}
-    {one ? <StatusCard tone="warn" icon="clock" title={failed.length > 1 ? `${failed.length} automations need a look` : `${str(one.name) || "An automation"} failed`} sub={failed.length > 1 ? failed.map(j => str(j.name)).join(" · ") : ["Failed", num(oneState.lastRunAtMs) !== undefined ? whenWord(num(oneState.lastRunAtMs)!) : "", str(oneState.lastError)].filter(Boolean).join(" · ")}>
-      {askBtn(`These automations failed: ${failed.map(j => `${str(j.name)} (${str(rec(j.state).lastError) || "no error recorded"})`).join("; ")}. Explain why and how to fix them.`)}<button type="button" className="btn sm" onClick={() => openPlace("automations")}>Open</button>
+    {one ? <StatusCard tone="warn" icon="clock" title={failed.length > 1 ? `${failed.length} automations need a look` : `${str(one.name) || "An automation"} failed`} sub={failed.length > 1 ? failed.map(j => str(j.name)).join(" · ") : ["Failed", num(oneState.lastRunAtMs) !== undefined ? whenWord(num(oneState.lastRunAtMs)!) : ""].filter(Boolean).join(" · ")} extra={<Failure error={str(oneState.lastError)} level={level} />}>
+      {askBtn(`These automations failed: ${failed.map(j => `${str(j.name)} (${plainError(str(rec(j.state).lastError), true) || "no error recorded"})`).join("; ")}. Explain why and how to fix them.`)}<button type="button" className="btn sm" onClick={() => openPlace("automations")}>Open</button>
       <button type="button" className="ib-x" aria-label="Dismiss" title="Dismiss" onClick={() => dismiss(failed.map(j => `${str(j.id)}:${num(rec(j.state).lastRunAtMs) ?? ""}`))}><Icon name="x" /></button>
     </StatusCard> : null}
     {names.length ? <StatusCard tone="warn" icon="key" title={names.length > 1 ? `Sign-ins expired: ${names.join(", ")}` : `Your ${names[0]} sign-in expired`} sub={`${expiredAt !== undefined ? `Expired ${minutesAgo(expiredAt)}. ` : ""}Trunks that use it stop until you sign in again.`}>

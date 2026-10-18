@@ -1,0 +1,2 @@
+window:src/places/automations/plain-errors.test.tsx
+window:src/places/inbox/plain-errors.test.tsx

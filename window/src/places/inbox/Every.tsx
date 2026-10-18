@@ -1,5 +1,6 @@
 // Inbox › History › [A] "Every conversation" (preview 41-placesap everyPD18): every stored conversation as a
 // table with filters, or the working copies; [T] adds Branch-wide and unmatched conversations.
+import { Failure } from "../automations/Failure";
 import { useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Face } from "../../face/Face";
@@ -33,7 +34,7 @@ function WorkingCopies({ engine, open }: { engine: WindowEngine; open: (key: str
     engine.request("worktrees.list", {}).then(r => { if (live) setState({ list: rows(rec(r).worktrees) }); }, e => { if (live) setState({ error: errorText(e) }); });
     return () => { live = false; };
   }, [engine]);
-  if (state.error) return <p className="ib-err" role="alert">{state.error}</p>;
+  if (state.error) return <div className="ib-err" role="alert"><Failure error={state.error} /></div>;
   if (!state.list) return <p className="ib-hint" role="status">Reading working copies…</p>;
   const live = state.list.filter(w => !w.removedAt);
   return live.length ? <div className="ib-list">{live.map(w => <div className="ib-row" key={str(w.id)}><span className="ib-grow"><b>{str(w.name)} · <code>{str(w.branch)}</code></b><small>{str(w.path)}</small></span>{w.ownerKind === "session" && str(w.ownerId) ? <span className="ib-acts"><button type="button" className="btn sm" onClick={() => open(str(w.ownerId))}>Open</button></span> : null}</div>)}</div> : <p className="ib-empty">No working copies.</p>;
@@ -64,7 +65,7 @@ export function Every({ engine, data, level, open }: { engine: WindowEngine; dat
         {shows(level, "technical") ? <><label className="check"><input type="checkbox" checked={f.glob} onChange={e => setF({ ...f, glob: e.target.checked })} /> Include Branch-wide conversations</label><label className="check"><input type="checkbox" checked={f.unk} onChange={e => setF({ ...f, unk: e.target.checked })} /> Include unmatched conversations</label></> : null}
         {set ? <button type="button" className="btn ghost sm" onClick={() => setF(START)}>Clear</button> : null}
       </div>
-      {busy ? <p className="ib-err" role="alert">{busy}</p> : null}
+      {busy ? <div className="ib-err" role="alert"><Failure error={busy} /></div> : null}
       <div className="ib-evwrap"><table className="ib-evt"><thead><tr><th>Title</th><th>Trunk</th><th>Kind</th><th>Last activity</th><th>Context left</th><th>Archived</th><th><span className="ib-sr">More</span></th></tr></thead>
         <tbody>{list.length ? list.map(s => <tr key={s.key}>
           <td><button type="button" className="ib-title-btn" onClick={() => open(s.key)}>{s.title}</button></td><td><Face size={20} label={names(s.agentId)} /></td><td>{kindWord(s)}</td><td>{when(s.updatedAt)}</td>

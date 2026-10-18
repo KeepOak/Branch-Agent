@@ -183,6 +183,7 @@ export function usePlaceData<T>(engine: WindowEngine, load: ((engine: WindowEngi
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [noticeIsError, setNoticeIsError] = useState(false);
   const mounted = useRef(false), gate = useRef(new ActionGate()), currentEngine = useRef(engine);
   const read = useRef<(() => Promise<void>) | null>(null);
   currentEngine.current = engine;
@@ -197,7 +198,7 @@ export function usePlaceData<T>(engine: WindowEngine, load: ((engine: WindowEngi
       finally { if (live) setLoading(false); }
     });
     read.current = refreshData;
-    mounted.current = true; gate.current = new ActionGate(); setBusy(false); setNotice(""); void refreshData();
+    mounted.current = true; gate.current = new ActionGate(); setBusy(false); setNotice(""); setNoticeIsError(false); void refreshData();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const dispose = engine.onEvent(({ event }) => { if (refreshesInbox(event)) { clearTimeout(timer); timer = setTimeout(() => { void refreshData(); }, 150); } });
     return () => { live = false; mounted.current = false; read.current = null; clearTimeout(timer); dispose(); };
@@ -207,7 +208,7 @@ export function usePlaceData<T>(engine: WindowEngine, load: ((engine: WindowEngi
     const current = () => mounted.current && sourceEngine === currentEngine.current;
     try {
       const outcome = await gate.current.run(async () => {
-        setBusy(true); setNotice("");
+        setBusy(true); setNotice(""); setNoticeIsError(false);
         try {
           const result = rec(await operation());
           if (result.ok === false || result.removed === false) throw new Error(str(result.reason) || "The engine did not apply this action.");
@@ -215,9 +216,9 @@ export function usePlaceData<T>(engine: WindowEngine, load: ((engine: WindowEngi
         } finally { if (current()) setBusy(false); }
       });
       if (outcome.accepted && current()) { setNotice(message); await refresh(); return true; }
-    } catch (e) { if (current()) setNotice(errorText(e)); }
+    } catch (e) { if (current()) { setNotice(errorText(e)); setNoticeIsError(true); } }
     return false;
   };
-  return { data, loading, error, busy, notice, refresh, act };
+  return { data, loading, error, busy, notice, noticeIsError, refresh, act };
 }
 export type PlaceData<T> = ReturnType<typeof usePlaceData<T>>;

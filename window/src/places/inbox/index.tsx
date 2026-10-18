@@ -1,5 +1,6 @@
 // Inbox (DESIGN-SPEC §4.6.2; preview renderInbox + 40-places + 41-placesap p20-inbox / p25-history): Needs you,
 // Finished, History and Later, with the recommendation bar above and Messages below.
+import { Failure } from "../automations/Failure";
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { NoticesBell } from "./Bell";
 import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
@@ -76,15 +77,15 @@ export function InboxPlace({ engine, level, openConversation, openPlace, openSet
   return <PlaceFrame title="Inbox" lede="Everything a Trunk is waiting on you for, what finished, and a record of what ran." before={<RecBar engine={engine} />}>
     <TabRow tab={tab} set={setTab} counts={{ needs: needsCount(data) }} markAll={canMark ? markAll : undefined} bell={<NoticesBell data={data} openConversation={openConversation} openSettings={openSettings} />} />
     {needs.loading && !data ? <p role="status" className="ib-hint">Reading the Inbox…</p> : null}
-    {needs.error ? <p role="alert" className="ib-err">{needs.error}</p> : null}
-    {tab === "needs" ? data?.errors.map(error => <p className="ib-err" role="alert" key={error}>{error}</p>) : null}
-    {needs.notice ? <p role="status" className="ib-notice">{needs.notice}</p> : null}
+    {needs.error ? <div role="alert" className="ib-err"><Failure error={needs.error} level={level} /></div> : null}
+    {tab === "needs" ? data?.errors.map(error => <div className="ib-err" role="alert" key={error}><Failure error={error} level={level} /></div>) : null}
+    {needs.notice ? <div role="status" className="ib-notice"><Failure error={needs.notice} notice={!needs.noticeIsError} level={level} /></div> : null}
     {tab === "needs" && data ? <NeedsYou engine={engine} data={data} busy={needs.busy} act={needs.act} level={level} loading={needs.loading} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} /> : null}
     {tab === "finished" && data ? <Finished list={data.sessions} agents={data.agents.list} loading={needs.loading} open={openConversation} /> : null}
     {tab === "history" ? <>
       {history.loading && !history.data ? <p role="status" className="ib-hint">Reading what ran…</p> : null}
-      {history.error ? <p role="alert" className="ib-err">{history.error}</p> : null}
-      {history.data?.errors.map(error => <p className="ib-err" role="alert" key={error}>{error}</p>)}
+      {history.error ? <div role="alert" className="ib-err"><Failure error={history.error} level={level} /></div> : null}
+      {history.data?.errors.map(error => <div className="ib-err" role="alert" key={error}><Failure error={error} level={level} /></div>)}
       {history.data ? <History engine={engine} data={history.data} level={level} people={handoff?.people} open={openConversation} /> : null}
     </> : null}
     {tab === "later" ? <Later /> : null}

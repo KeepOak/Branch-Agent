@@ -1,5 +1,6 @@
 // Schedule rows (§4.6.3.1, preview p30-sched): the Trunk's face, the name (opens its sheet), "Turned itself off",
 // the schedule words, the health readout from cron.runs, the switch, and the row menu on right-click / Shift+F10.
+import { Failure } from "./Failure";
 import { useMemo, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { Face } from "../../face/Face";
 import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
@@ -41,7 +42,7 @@ export function JobRow({ job, trunk, runs, total, level, canWrite, busy, actions
     <span className="au-grow">
       <b><button type="button" className="au-name" aria-haspopup="dialog" onClick={() => actions.open(job)}>{name}</button>{auto && <span className="au-pill warn" title="It stopped trying so it wouldn’t keep failing. Fix the cause, then switch it back on." tabIndex={0}><i />{auto}</span>}</b>
       <small>{scheduleWords(rec(job.schedule))} · {trunk}{shows(level, "advanced") && model ? ` · ${model}` : ""}</small>
-      {failure && <small className="au-bad">Failing since {when(failure.since)}{failure.error ? ` · ${failure.error}` : ""} · <button type="button" className="au-name" onClick={() => actions.open(job)}>See why</button></small>}
+      {failure && <div className="au-bad">Failing since {when(failure.since)}{failure.error ? <> · <Failure error={failure.error} level={level} /></> : null} · <button type="button" className="au-name" onClick={() => actions.open(job)}>See why</button></div>}
     </span>
     <Readout job={job} runs={runs} total={total} trigger={trigger} />
     <button type="button" role="switch" className="switch" aria-checked={job.enabled === true} aria-label={`${name} on or off`} title={canWrite ? undefined : "Needs an owner"} disabled={!canWrite || busy} onClick={() => actions.toggle(job)} />

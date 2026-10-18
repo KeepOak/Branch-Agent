@@ -1,5 +1,6 @@
 // An automation's sheet (§4.6.3.1 "Its runs", preview p30-sched sheetPD18): tabs Runs · Settings. Runs reads
 // cron.runs for this one job with the engine's own filters; "See what it did" reads cron.history for that run.
+import { Failure } from "./Failure";
 import { useCallback, useEffect, useState } from "react";
 import { Dialog } from "../../shell/Dialog";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
@@ -39,8 +40,8 @@ function RunRow({ run, open }: { run: Row; open: (r: Row) => void }) {
   return <div className="au-run">
     <div className="au-grow">
       <span className="au-pills"><span className={`au-pill ${status === "error" ? "bad" : status === "ok" ? "ok" : ""}`}><i />{RUN_WORDS[status] ?? "Not recorded"}</span>{sent && <span className="au-pill"><i />{SEND_WORDS[sent] ?? sent}</span>}</span>
-      <small>{str(run.summary) || "No summary."}</small>
-      {run.error ? <small className={status === "skipped" ? undefined : "au-bad"}>{str(run.error)}</small> : null}
+      <div>{status === "error" && run.summary ? <Failure error={str(run.summary)} /> : str(run.summary) || "No summary."}</div>
+      {run.error ? <div className={status === "skipped" ? undefined : "au-bad"}><Failure error={str(run.error)} /></div> : null}
     </div>
     <time className="au-time">{when(run.runAtMs ?? run.ts)}</time>
     <button type="button" className="btn ghost sm" onClick={() => open(run)}>See what it did</button>
@@ -62,7 +63,7 @@ function RunsTab({ engine, job, openRun }: { engine: WindowEngine; job: Row; ope
       {filtered && <button type="button" className="btn ghost sm" onClick={() => setF({ query: "", status: "all", delivery: "all", dir: "desc" })}>Clear</button>}
     </div>
     {running && <div className="au-run"><span className="au-pill"><i />Running</span><small>Started {when(rec(job.state).runningAtMs)}</small></div>}
-    {runs.error && <p className="au-error" role="alert">{runs.error}</p>}
+    {runs.error && <div className="au-error" role="alert"><Failure error={runs.error} /></div>}
     {runs.items.map((r, i) => <RunRow key={`${str(r.runId)}-${i}`} run={r} open={openRun} />)}
     {!runs.loading && !runs.error && !runs.items.length && <EmptyLine icon={<Glyph name="clock" size={22} />}>{filtered ? "No runs match." : "No runs yet. Runs show here once it starts."}</EmptyLine>}
     {runs.more && <button type="button" className="btn ghost sm" disabled={runs.loading} onClick={runs.more_}>Show more runs</button>}
@@ -84,9 +85,9 @@ function RunRecord({ engine, job, run, onClose, openConversation }: { engine: Wi
   }, [engine, job, run]);
   const key = str(run.sessionKey);
   return <Dialog wide title={`${jobName(job)} · ${when(run.runAtMs ?? run.ts)}`} onClose={onClose} footer={<>{key && <button type="button" className="btn sm" onClick={() => { onClose(); openConversation(key); }}>Open the conversation</button>}</>}>
-    {state.error && <p className="au-error" role="alert">{state.error}</p>}
+    {state.error && <div className="au-error" role="alert"><Failure error={state.error} /></div>}
     {!state.loading && !state.error && !state.messages.length && <p className="au-hint">Nothing in this run yet.</p>}
-    <div className="au-record">{state.messages.map((m, i) => { const t = textOf(m); return t ? <div key={i} className={`au-msg ${str(m.role)}`}><small>{m.role === "user" ? "Asked" : m.role === "assistant" ? "Answered" : "Step"}</small><p>{t}</p></div> : null; })}</div>
+    <div className="au-record">{state.messages.map((m, i) => { const t = textOf(m); return t ? <div key={i} className={`au-msg ${str(m.role)}`}><small>{m.role === "user" ? "Asked" : m.role === "assistant" ? "Answered" : "Step"}</small><div>{m.isError === true || m.stopReason === "error" ? <Failure error={t} /> : t}</div></div> : null; })}</div>
   </Dialog>;
 }
 
