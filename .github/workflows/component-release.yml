@@ -84,7 +84,7 @@ jobs:
           }
           decide_scheduled() {
             git fetch origin main
-            local main_commit latest_release latest_commit failed_checks latest_meta published_at force_release
+            local main_commit latest_release latest_commit failed_checks latest_identity latest_skip published_at force_release
             force_release=false
             if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "${FORCE_RELEASE:-}" == "true" ]]; then
               force_release=true
@@ -92,24 +92,28 @@ jobs:
             main_commit="$(git rev-parse origin/main)"
             latest_release=""
             published_at=""
-            latest_meta=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/releases/latest --jq '[.tag_name,.published_at] | @tsv' 2>/dev/null || echo "")
-            if [[ -n "$latest_meta" ]]; then
-              latest_release="${latest_meta%%$'\t'*}"
-              published_at="${latest_meta#*$'\t'}"
+            latest_commit=""
+            latest_identity="$(node desktop/scripts/component-release-readiness.mjs load-latest-release --repo KeepOak/Branch-Agent)"
+            latest_skip="$(node -p 'JSON.parse(process.argv[1]).skip === true ? "true" : "false"' "$latest_identity")"
+            if [[ "$latest_skip" == "true" ]]; then
+              note "Could not load the latest release at $main_commit (checks-unavailable); skipping release"
+              printf '%s %s %s\n' false "$main_commit" checks-unavailable
+              return
             fi
+            latest_release="$(node -p 'JSON.parse(process.argv[1]).latestRelease || ""' "$latest_identity")"
+            published_at="$(node -p 'JSON.parse(process.argv[1]).publishedAt || ""' "$latest_identity")"
+            latest_commit="$(node -p 'JSON.parse(process.argv[1]).latestCommit || ""' "$latest_identity")"
             if [[ -z "$latest_release" ]]; then
               note "No previous release found; proceeding with release"
               printf '%s %s %s\n' true "$main_commit" ok
               return
             fi
-            # Resolves lightweight and annotated tags to the commit they point at.
-            latest_commit=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
             if [[ "$main_commit" == "$latest_commit" ]]; then
               note "Main has not changed since $latest_release ($latest_commit); skipping release"
               printf '%s %s %s\n' false "$main_commit" already-released
               return
             fi
-            # Cooldown skips stay on the two calls above. Check runs are only for a release we may publish.
+            # Cooldown skips stay on the latest-release identity above. Check runs are only for a release we may publish.
             if [[ "$GITHUB_EVENT_NAME" == "push" || "$GITHUB_EVENT_NAME" == "schedule" ]]; then
               if ! node desktop/scripts/component-release-readiness.mjs "$published_at"; then
                 note "Latest release $latest_release was published at $published_at; waiting until it is more than 25 minutes old"

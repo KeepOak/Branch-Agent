@@ -25,6 +25,7 @@ import {
   getWorkflowRun,
   listCatchUpLatchRuns,
   listCommitCheckRuns,
+  loadLatestReleaseIdentity,
   pushBackupShouldRelease,
   rerunFailedWorkflowJobs,
   resolveFailedReleaseChecks,
@@ -80,11 +81,15 @@ test("component-release workflow keeps the schedule and uses push as a 25-minute
   const windowAt = readiness.indexOf("more than 25 minutes old");
   const checksAt = readiness.indexOf("resolve-failed-checks");
   assert.ok(windowAt !== -1 && checksAt !== -1 && windowAt < checksAt);
+  assert.match(readiness, /load-latest-release --repo/);
+  assert.match(readiness, /Could not load the latest release at \$main_commit \(checks-unavailable\)/);
   assert.match(readiness, /resolve-failed-checks --sha/);
   assert.match(readiness, /\$decision_skip" == "true" && "\$failed_checks" == "0"/);
   assert.match(readiness, /Could not confirm checks at \$main_commit/);
   assert.match(readiness, /cooldown\|failed-checks\|checks-unavailable\|checks-over-cap/);
   assert.match(readiness, /decision_reason" == "checks-over-cap"/);
+  const decide = workflow.slice(workflow.indexOf("decide_scheduled()"), workflow.indexOf("\n          should_release="));
+  assert.doesNotMatch(decide, /merge-gate-rate-limit/);
 });
 
 test("failed publish catches up only while that commit is still Latest", () => {
@@ -1018,4 +1023,115 @@ test("a failed check listing skips the release and is not retried", () => {
   assert.equal(decision.reason, "checks-unavailable");
   assert.deepEqual(decision.reran, []);
   assert.match(logs.join("\n"), /Could not list checks/);
+});
+
+function writeFakeGh(dir, source) {
+  const fakeGh = join(dir, "fake-gh.mjs");
+  writeFileSync(fakeGh, source);
+  return fakeGh;
+}
+
+function latestReleaseInvoke(dir, extraEnv = {}) {
+  const counter = join(dir, "attempts.txt");
+  writeFileSync(counter, "0");
+  return {
+    command: process.execPath,
+    argsPrefix: [writeFakeGh(dir, [
+      "import { readFileSync, writeFileSync } from \"node:fs\";",
+      "const file = process.env.RELEASE_GH_ATTEMPT_FILE;",
+      "const n = Number(readFileSync(file, \"utf8\") || \"0\") + 1;",
+      "writeFileSync(file, String(n));",
+      "const failUntil = Number(process.env.RELEASE_GH_FAIL_ATTEMPTS || \"0\");",
+      "if (n <= failUntil) {",
+      "  process.stderr.write(process.env.RELEASE_GH_ERROR || \"gh: API rate limit exceeded for installation (HTTP 403)\\n\");",
+      "  process.exit(1);",
+      "}",
+      "const args = process.argv.slice(2);",
+      "if (args.some((arg) => String(arg).includes(\"/releases/latest\"))) {",
+      "  process.stdout.write(\"v1.2.3\\t2026-10-08T08:35:00Z\\n\");",
+      "  process.exit(0);",
+      "}",
+      "if (args.some((arg) => /\\/commits\\//.test(arg))) {",
+      "  process.stdout.write(\"34f90ad9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n\");",
+      "  process.exit(0);",
+      "}",
+      "process.exit(2);",
+      "",
+    ].join("\n"))],
+    env: {
+      ...process.env,
+      RELEASE_GH_ATTEMPT_FILE: counter,
+      ...extraEnv,
+    },
+    sleep: () => {},
+    maxRetries: 2,
+    budgetSeconds: 60,
+    maxSleep: 1,
+    log: () => {},
+  };
+}
+
+function attemptCount(dir) {
+  return Number(readFileSync(join(dir, "attempts.txt"), "utf8") || "0");
+}
+
+test("rate-limited latest-release lookups past retries skip so catch-up can retry", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-latest-rate-limit-"));
+  try {
+    const logs = [];
+    const decision = loadLatestReleaseIdentity("KeepOak/Branch-Agent", {
+      ...latestReleaseInvoke(dir, { RELEASE_GH_FAIL_ATTEMPTS: "99" }),
+      log: message => logs.push(message),
+    });
+    assert.equal(decision.skip, true);
+    assert.equal(decision.reason, "checks-unavailable");
+    assert.equal(decision.latestCommit, "");
+    assert.ok(attemptCount(dir) >= 3);
+    assert.match(logs.join("\n"), /still rate limited after retries/);
+    const latch = decideSkipReasonCatchUp({
+      skipReason: decision.reason,
+      mainCommit: "34f90ad9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      workflowRuns: [],
+    });
+    assert.equal(latch.dispatch, true);
+    assert.match(latch.reason, /dispatching once/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a non-rate-limit latest-release gh error still fails closed", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-latest-other-error-"));
+  try {
+    assert.throws(
+      () => loadLatestReleaseIdentity("KeepOak/Branch-Agent", latestReleaseInvoke(dir, {
+        RELEASE_GH_FAIL_ATTEMPTS: "99",
+        RELEASE_GH_ERROR: "gh: Bad credentials (HTTP 401)\n",
+      })),
+      error => {
+        assert.match(String(error?.stderr ?? error?.message ?? error), /Bad credentials/);
+        return true;
+      },
+    );
+    assert.equal(attemptCount(dir), 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a latest-release lookup proceeds after one rate-limited retry", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-latest-retry-ok-"));
+  try {
+    const decision = loadLatestReleaseIdentity("KeepOak/Branch-Agent", latestReleaseInvoke(dir, {
+      RELEASE_GH_FAIL_ATTEMPTS: "1",
+    }));
+    assert.equal(decision.skip, false);
+    assert.equal(decision.reason, "ok");
+    assert.equal(decision.latestRelease, "v1.2.3");
+    assert.equal(decision.latestCommit, "34f90ad9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    assert.equal(decision.publishedAt, "2026-10-08T08:35:00Z");
+    assert.equal(attemptCount(dir), 3);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
