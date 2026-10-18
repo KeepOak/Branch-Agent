@@ -82,6 +82,20 @@ describe("FreeModelSetup", () => {
     expect(plainFreeModelQuestion({ message: messages[1] })).toBe("Download a free model (Example Model 12B, 8.4 GB) so Branch can answer without an account?");
   });
 
+  it.each([
+    "Download Qwen3.5 9B (5.7 GB)?",
+    "Download Qwen3.5 9B (5.7 GB) and the verified runtime, then use this model?",
+  ])("keeps the size from the earlier wizard question: %s", (message) => {
+    expect(plainFreeModelQuestion({ message })).toBe("Download a free model (Qwen3.5 9B, 5.7 GB) so Branch can answer without an account?");
+  });
+
+  it("keeps the established free model failure wording", async () => {
+    const error = "A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster.";
+    const { host } = await mount({ next: [{ done: true, status: "error", error }] });
+    expect(host.querySelector('[data-testid="no-key-failed"]')?.textContent).toBe(error);
+    expect(button("Try again")).toBeTruthy();
+  });
+
   it.each(messages.slice(2, 4))("asks to use the cached model without inventing a size: %s", (message) => {
     expect(plainFreeModelQuestion({ message })).toBe("Use the free model Example Model 12B that is already on this computer so Branch can answer without an account?");
   });
