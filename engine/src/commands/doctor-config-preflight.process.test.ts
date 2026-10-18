@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { createFixtureLifetime } from "../../test/helpers/fixture-lifetime.js";
 import { createBranchTestInstance } from "../../test/helpers/branch-test-instance.js";
 import { stopChildProcess } from "../../test/helpers/stop-child-process.js";
@@ -19,7 +19,10 @@ import {
   ensureBranchAgentDatabaseSchema,
   BRANCH_AGENT_SCHEMA_VERSION,
 } from "../state/branch-agent-db.js";
+import { closeBranchStateDatabaseForTest } from "../state/branch-state-db.js";
+import { createPathResolutionEnv, withEnvAsync } from "../test-utils/env.js";
 import { resolveTestNodeExecPath } from "../test-utils/node-process.js";
+import { getFreePort } from "../test-utils/ports.js";
 import {
   assertDoctorCronBackup,
   assertRepairedCronStore,
@@ -45,6 +48,8 @@ const tempDirs = createFixtureLifetime();
 afterAll(() => tempDirs.cleanup());
 const DOCTOR_CHILD_TIMEOUT_MS = 60_000;
 const LEGACY_APPROVAL_CHILD_TIMEOUT_MS = 45_000;
+const windowsTouched =
+  process.platform === "win32" && process.env.FEATURE_SCOPE === "touched";
 function createDoctorEnv(root: string, stateDir: string, configPath: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -362,6 +367,7 @@ describe("doctor invalid config process exit", () => {
       BRANCH_CONFIG_PATH: configPath,
       BRANCH_DISABLE_BUNDLED_PLUGINS: "1",
       BRANCH_NO_RESPAWN: "1",
+      BRANCH_GATEWAY_PORT: String(await getFreePort()),
       BRANCH_SKIP_CHANNELS: "1",
       BRANCH_STATE_DIR: stateDir,
       BRANCH_TEST_FAST: "1",
@@ -381,6 +387,50 @@ describe("doctor invalid config process exit", () => {
     fs.writeFileSync(configPath, '{"agents": {broken json');
 
     const runtime = createDoctorCliRuntime(root);
+    const assertReport = (output: string) => {
+      expect(output).toContain("Config invalid; doctor will run with best-effort config.");
+      expect(output).toContain("Doctor complete.");
+      expect(output).not.toContain("Building Control UI assets");
+    };
+    if (runtime.source) {
+      // Source CLI startup reloads the module graph in a child on Windows. Keep
+      // the report regression here; built runs below also verify process exit.
+      await withEnvAsync(
+        createPathResolutionEnv(root, {
+          ...env,
+          BRANCH_HOME: undefined,
+          BRANCH_GATEWAY_PASSWORD: undefined,
+          BRANCH_GATEWAY_TOKEN: undefined,
+          BRANCH_GATEWAY_URL: undefined,
+          BRANCH_SUPPRESS_NOTES: "0",
+        }),
+        async () => {
+          const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+          const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+          const log = vi.fn();
+          const exit = vi.fn();
+          try {
+            const { runDoctorHealthFlow } = await import("../flows/doctor-health.js");
+            await runDoctorHealthFlow(
+              { log, error: log, exit },
+              { nonInteractive: true, workspaceSuggestions: false },
+            );
+            assertReport(
+              [...stdout.mock.calls, ...stderr.mock.calls, ...log.mock.calls]
+                .map((args) => args.join(" "))
+                .join("\n"),
+            );
+            expect(exit).not.toHaveBeenCalled();
+            expect(fs.readFileSync(configPath, "utf8")).toBe('{"agents": {broken json');
+          } finally {
+            stdout.mockRestore();
+            stderr.mockRestore();
+            closeBranchStateDatabaseForTest();
+          }
+        },
+      );
+      return;
+    }
     const result = await tempDirs.track(
       runDoctorCli(
         runtime,
@@ -393,14 +443,13 @@ describe("doctor invalid config process exit", () => {
 
     expect(result.code, output).toBe(0);
     expect(result.signal, output).toBeNull();
-    expect(output).toContain("Config invalid; doctor will run with best-effort config.");
-    expect(output).toContain("Doctor complete.");
-    expect(output).not.toContain("Building Control UI assets");
+    assertReport(output);
   }, 75_000);
 });
 
 // Synchronous CLI probes must not consume neighboring cases' timeout budgets.
-describe("Doctor repair followed by gateway readiness", () => {
+// Ubuntu named jobs retain these process-heavy scenarios; Windows touched has a 15-minute cap.
+describe.skipIf(windowsTouched)("Doctor repair followed by gateway readiness", () => {
   it(
     "serves canonical state after Doctor repairs cron and preserves retired plugin sidecars",
     async () => {
