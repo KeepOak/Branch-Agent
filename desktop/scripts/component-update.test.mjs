@@ -1342,6 +1342,67 @@ test("a hung update check times out and the next scheduled check still runs", as
   } finally { stop(); }
 }));
 
+test("a timed-out check that ignores abort cannot overwrite a later staged update", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const newer = await newerRelease(context);
+  let releaseHold = () => {};
+  const hold = new Promise(resolve => { releaseHold = resolve; });
+  let signalHeld = () => {};
+  const held = new Promise(resolve => { signalHeld = resolve; });
+  const first = source.refreshComponentUpdate(cfg, request, {
+    timeoutMs: 1000,
+    underSwapGuard: freeGuard,
+    onProgress: async ({ name, bytes, total }) => {
+      if (name === "window" && bytes === total) {
+        signalHeld();
+        await hold;
+      }
+    },
+  });
+  const reached = await Promise.race([
+    held.then(() => "held"),
+    first.then(() => "resolved", () => "rejected"),
+  ]);
+  assert.equal(reached, "held", "first check must finish the last archive before the timeout");
+  await assert.rejects(first, /timed out/);
+  const second = source.refreshComponentUpdate(cfg, newer.request, { timeoutMs: 15_000, underSwapGuard: freeGuard });
+  // Without the in-flight gate, 400ms is enough for check 2 to stage 0.4.4 on loopback while check 1 is still held.
+  await new Promise(resolve => setTimeout(resolve, 400));
+  releaseHold();
+  assert.equal(await second, true);
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.4");
+}));
+
+test("a hung probation prune times out and the next update check still runs", async () => fixture(async ({ cfg }) => {
+  let checks = 0;
+  const logs = [];
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, line => logs.push(line), {
+    checkMs: 20,
+    pruneTimeoutMs: 15,
+    refresh: async () => {
+      checks++;
+      return false;
+    },
+    prune: async () => new Promise(() => {}),
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(checks, 1);
+    await clock.advance(20);
+    assert.equal(checks, 2, "second check runs prune after the first");
+    await clock.advance(15);
+    assert.ok(logs.some(line => line.includes("Update cleanup") && /timed out/i.test(line)), logs.join("\n"));
+    await clock.advance(20);
+    assert.ok(checks >= 3, `next check after prune timed out, got ${checks}`);
+  } finally { stop(); }
+}));
+
 test("an update-check error still leaves a pending retry", async () => fixture(async ({ cfg }) => {
   let checks = 0;
   const logs = [];

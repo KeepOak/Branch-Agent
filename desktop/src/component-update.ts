@@ -14,7 +14,7 @@ export interface RefreshOptions {
   /** Stops a download the owner cancelled. */
   signal?: AbortSignal;
   /** Byte progress of the engine/window archives, for first-launch consent UI. */
-  onProgress?: (update: { name: string; bytes: number; total: number }) => void;
+  onProgress?: (update: { name: string; bytes: number; total: number }) => void | Promise<void>;
   /** The packaged desktop app to update as well; absent in development runs. */
   desktop?: DesktopInstall;
   /**
@@ -491,8 +491,12 @@ export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> 
   if ((await publication(cfg))?.phase === "prepared") await rollbackComponentUpdate(cfg);
 }
 
-export async function readComponentManifest(request: typeof fetch = fetch): Promise<ComponentRelease> {
-  const response = await request(RELEASE_MANIFEST_URL, { signal: AbortSignal.timeout(30_000), cache: "no-store" });
+export async function readComponentManifest(request: typeof fetch = fetch, signal?: AbortSignal): Promise<ComponentRelease> {
+  const timeout = AbortSignal.timeout(30_000);
+  const response = await request(RELEASE_MANIFEST_URL, {
+    signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
+    cache: "no-store",
+  });
   trustedDownloadResponse(response);
   let body = "";
   for await (const chunk of response.body!) {
@@ -652,7 +656,7 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
   await recoverComponentUpdate(cfg);
   const held = await publication(cfg);
   if (held && (!options.underSwapGuard || !await replaceable(cfg, held))) return false;
-  const release = await readComponentManifest(request);
+  const release = await readComponentManifest(request, options.signal);
   if (held) {
     const result = await replaceStaged(cfg, held, release, request, options);
     if (!result) return false;
@@ -667,35 +671,59 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
   return await stageDesktopUpdate(cfg, release, request, options.desktop) || staged;
 }
 
-const refreshes = new WeakMap<DesktopConfig, Promise<boolean>>();
+/**
+ * One in-flight inner `refresh()` per config. The outer promise may reject on timeout while `inner` is still
+ * running (extract/swap do not always honor abort). Later callers wait for `inner` to settle, then start their own
+ * check, so a late result cannot overwrite a newer staged update.
+ */
+interface InFlightRefresh {
+  inner: Promise<unknown>;
+  outer: Promise<boolean>;
+  timedOut: boolean;
+}
+const refreshes = new WeakMap<DesktopConfig, InFlightRefresh>();
 export const COMPONENT_UPDATE_CHECK_MS = 10 * 60 * 1000;
 /**
  * A hung GitHub fetch (or a swap that never returns) must not occupy the checker forever. Two 5-minute archive
  * downloads plus extract still fit; a fetch left open after the engine is killed does not.
  */
 export const COMPONENT_UPDATE_CHECK_TIMEOUT_MS = 15 * 60 * 1000;
+/** Caps probation cleanup after each periodic check so a stuck folder delete cannot occupy `busy`. */
+export const PRUNE_ENDED_PROBATION_TIMEOUT_MS = 60 * 1000;
 /** Startup, periodic and manual staging share one publication owner. */
 export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch = fetch, options: RefreshOptions = {}): Promise<boolean> {
   const active = refreshes.get(cfg);
-  if (active) return active;
+  if (active) {
+    if (!active.timedOut) return active.outer;
+    return active.inner.then(
+      () => refreshComponentUpdate(cfg, request, options),
+      () => refreshComponentUpdate(cfg, request, options),
+    );
+  }
   const timeoutMs = options.timeoutMs ?? COMPONENT_UPDATE_CHECK_TIMEOUT_MS;
   const ac = new AbortController();
   const signal = options.signal ? AbortSignal.any([options.signal, ac.signal]) : ac.signal;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const next = new Promise<boolean>((resolve, reject) => {
+  const work = refresh(cfg, request, { ...options, signal });
+  const entry: InFlightRefresh = { inner: work, outer: Promise.resolve(false), timedOut: false };
+  const outer = new Promise<boolean>((resolve, reject) => {
     timer = setTimeout(() => {
       timer = undefined;
+      entry.timedOut = true;
       ac.abort();
       reject(new Error("Component update check timed out"));
     }, timeoutMs);
     timer.unref?.();
-    void refresh(cfg, request, { ...options, signal }).then(resolve, reject);
+    void work.then(resolve, reject);
   }).finally(() => {
     if (timer !== undefined) clearTimeout(timer);
-    refreshes.delete(cfg);
   });
-  refreshes.set(cfg, next);
-  return next;
+  entry.outer = outer;
+  refreshes.set(cfg, entry);
+  void work.finally(() => {
+    if (refreshes.get(cfg) === entry) refreshes.delete(cfg);
+  });
+  return outer;
 }
 
 export type StopComponentWatch = (() => void) & { notifyStopped(): void };
@@ -705,8 +733,12 @@ export interface WatchComponentUpdatesOptions extends RefreshOptions {
   setTimeout?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
   clearTimeout?: (id: ReturnType<typeof setTimeout>) => void;
   checkMs?: number;
+  /** Caps `pruneEndedProbation` after each check. Production uses PRUNE_ENDED_PROBATION_TIMEOUT_MS. */
+  pruneTimeoutMs?: number;
   /** Tests replace the GitHub refresh. Production always uses refreshComponentUpdate. */
   refresh?: (cfg: DesktopConfig, request: typeof fetch, options: RefreshOptions) => Promise<boolean>;
+  /** Tests replace probation cleanup. Production always uses pruneEndedProbation. */
+  prune?: (cfg: DesktopConfig, log: (line: string) => void) => Promise<boolean>;
 }
 
 export interface ComponentUpdateState {
@@ -787,7 +819,21 @@ export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) =>
       hangTimer = undefined;
       try {
         // Startup already pruned: later checks remove a previous engine whose probation has ended since.
-        if (!first && !stopped) await pruneEndedProbation(cfg, log);
+        if (!first && !stopped) {
+          const pruneMs = options.pruneTimeoutMs ?? PRUNE_ENDED_PROBATION_TIMEOUT_MS;
+          const runPrune = options.prune ?? pruneEndedProbation;
+          let pruneTimer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await new Promise<void>((resolve, reject) => {
+              pruneTimer = schedule(() => reject(new Error("timed out")), pruneMs);
+              void runPrune(cfg, log).then(() => resolve(), reject);
+            });
+          } catch (error) {
+            log(`Update cleanup: ${error instanceof Error ? error.message : String(error)}`);
+          } finally {
+            if (pruneTimer !== undefined) cancel(pruneTimer);
+          }
+        }
       } finally {
         first = false;
         busy = false;

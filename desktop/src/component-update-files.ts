@@ -23,7 +23,7 @@ export async function move(source: string, target: string): Promise<void> {
 
 export type DownloadComponentOptions = {
   signal?: AbortSignal;
-  onProgress?: (bytes: number, total: number) => void;
+  onProgress?: (bytes: number, total: number) => void | Promise<void>;
 };
 
 function downloadSignal(user?: AbortSignal): AbortSignal {
@@ -45,7 +45,7 @@ export async function downloadComponent(asset: ComponentAsset, file: string, req
       if (bytes > asset.bytes) throw new Error("Downloaded component size mismatch");
       hash.update(chunk);
       await handle.writeFile(chunk);
-      options.onProgress?.(bytes, asset.bytes);
+      await options.onProgress?.(bytes, asset.bytes);
     }
     await handle.sync();
   } finally { await handle.close(); }
