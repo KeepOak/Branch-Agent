@@ -9,6 +9,7 @@ import type { WindowEngine } from "../../../connect/engine";
 import { undeclaredControls } from "../../../glass/coming-registry";
 import { PAGES } from "../nav";
 import { SettingsFrame } from "../SettingsFrame";
+import { NOTIFICATIONS_ROWS } from "./notifications";
 import { R1_PAGES } from "./plugged";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -30,6 +31,8 @@ const REGULAR: Record<string, string[]> = {
   "Send events to a web address": ["Address", "Events"],
   "Web Push": ["Push to your phone", "Push to this browser"],
 };
+const comingLabels = new Set(NOTIFICATIONS_ROWS.filter((r) => r.source.kind === "coming").map((r) => r.label));
+const regularCards = Object.entries(REGULAR).map(([title, rows]) => [title, rows.filter((l) => !comingLabels.has(l))] as const).filter(([, rows]) => rows.length);
 const METHODS = ["config.get", "config.schema", "users.prefs.get", "users.prefs.set", "agents.list", "push.web.test", "push.web.preferences.get", "push.web.preferences.set",
   "push.web.vapidPublicKey", "push.web.subscribe", "push.web.unsubscribe"];
 function engineOf() {
@@ -68,13 +71,15 @@ describe("R1 Settings › Notifications is a native R1 page with the preview's c
     expect(host.querySelector(".r1s-custom, .r1s-classic, [data-classic]")).toBeNull();
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Notifications");
     expect(host.querySelector(".r1s-lede")?.textContent).toContain(PAGES.notifications.lede);
-    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(Object.keys(REGULAR));
+    // Regular shows only what works today: Coming rows wait for Technical (rows.ts COMING_FROM). The device switch
+    // has no preview label, so it is drawn without a heading.
+    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(regularCards.map(([title]) => title));
     expect(row("notifications.tell.here")).not.toBeNull();
     expect(row("notifications.tell.here")!.querySelector(":scope > b")).toBeNull();
     expect(row("notifications.tell.here")!.querySelector("[role=switch]")).not.toBeNull();
-    for (const [t, rows] of Object.entries(REGULAR)) expect(labels(card(t)), t).toEqual(rows);
+    for (const [t, rows] of regularCards) expect(labels(card(t)), t).toEqual(rows);
     await click([...host.querySelectorAll("button")].find((b) => b.textContent === "Learn more"));
-    expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(Object.keys(REGULAR));
+    expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(regularCards.map(([title]) => title));
   });
 
   it("draws all nine preview cards at Technical in order", async () => {
