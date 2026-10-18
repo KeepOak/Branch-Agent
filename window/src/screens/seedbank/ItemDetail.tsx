@@ -1,15 +1,16 @@
 // The item dialog (preview mkItemP17, preview.html:44528-44534): clicking a name shows what the item is before adding it:
 // its summary, "By … · Official · Checked", its seed, then Version, What changed, Works on and Safety, with Close and
 // "Add <name>" (or "Added ✓"). Facts the engine doesn't return are left out rather than guessed (#1049).
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import type { Entry } from "./catalog";
 import { Sheet, useDetail } from "./InstallSheet";
 import { AddPill, Badges, ItemIcon, SeedIcons } from "./parts";
 
-type Props = { entry: Entry; engine: WindowEngine; onClose: () => void; onAdd: (entry: Entry) => void; onNotice: (text: ReactNode) => void };
+type Props = { entry: Entry; engine: WindowEngine; onClose: () => void; onAdd: (entry: Entry) => void };
 
-export function ItemDetail({ entry, engine, onClose, onAdd, onNotice }: Props) {
+export function ItemDetail({ entry, engine, onClose, onAdd }: Props) {
+  const [notice, setNotice] = useState<ReactNode>(null);
   const detail = useDetail(engine, entry);
   const branch = entry.source.type === "template" || entry.by === "Branch";
   const version = detail.version ?? (branch ? "Comes with Branch" : undefined);
@@ -28,7 +29,8 @@ export function ItemDetail({ entry, engine, onClose, onAdd, onNotice }: Props) {
         <p className="sb-hint g-label">By {entry.by} · <Badges entry={entry} /></p>
       </div>
     </div>
-    <div className="sb-item-seed"><SeedIcons entry={entry} onNotice={onNotice} /></div>
+    <div className="sb-item-seed"><SeedIcons entry={entry} onNotice={setNotice} /></div>
+    {notice && <p className="sb-notice g-label" data-lines role="status">{notice} <button type="button" className="sb-x" data-local="" aria-label="Dismiss" onClick={() => setNotice(null)}>×</button></p>}
     <dl className="sb-kv g-frost">
       {version && <><dt>Version</dt><dd>{version}</dd></>}
       {changed && <><dt>What changed</dt><dd>{changed}</dd></>}

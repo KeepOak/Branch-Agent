@@ -118,7 +118,7 @@ type RowProps = { entry: Entry; engine: WindowEngine; onOpen: (entry: Entry) => 
 /** The item dialog for a card or row whose name was clicked. */
 function useItemDialog(p: RowProps) {
   const [open, setOpen] = useState(false);
-  return { show: () => setOpen(true), dialog: open ? <ItemDetail entry={p.entry} engine={p.engine} onClose={() => setOpen(false)} onAdd={p.onAdd} onNotice={p.onNotice} /> : null };
+  return { show: () => setOpen(true), dialog: open ? <ItemDetail entry={p.entry} engine={p.engine} onClose={() => setOpen(false)} onAdd={p.onAdd} /> : null };
 }
 export function Row(props: RowProps) {
   const { entry, engine, onAdd, onNotice } = props;

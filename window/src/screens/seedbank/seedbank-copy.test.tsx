@@ -4,9 +4,12 @@
 import { act, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CapabilityProvider } from "../../connect/capabilities";
+import type { WindowEngine } from "../../connect/engine";
 import type { Entry } from "./catalog";
 import { SEED_NOT_COPIED, SeedIcons } from "./parts";
 import { seedLink } from "./seed";
+import { Seedbank } from "./Seedbank";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -66,6 +69,50 @@ async function clickCopy() {
 }
 
 describe("Seedbank Copy", () => {
+  it("keeps failed Copy recovery inside the open detail dialog and copies with Try again", async () => {
+    const browserWrite = vi.fn<(text: string) => Promise<void>>().mockRejectedValue(new DOMException("Write permission denied", "NotAllowedError"));
+    const desktopWrite = vi.fn<(text: string) => Promise<void>>().mockRejectedValue(new Error("no clipboard"));
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: browserWrite } });
+    desktopWindow.branchDesktop = { clipboard: { writeText: desktopWrite } };
+    const engine = {
+      features: { methods: ["plugins.catalog.browse", "plugins.catalog.get"], events: [] },
+      request: vi.fn(async (method: string) => method === "plugins.catalog.browse" ? { items: [
+        { id: "github", catalog: { name: "GitHub", author: "Ada", summary: "Repos", packageName: "@ada/github", categories: ["integrations"] }, local: { installed: false } },
+      ] } : {}),
+      onEvent: () => () => {}, send: async () => {}, sessionKey: "agent:main:main", agentId: "main", scopes: ["operator.admin"],
+    } as unknown as WindowEngine;
+    await act(async () => { root!.render(<CapabilityProvider engine={engine}><Seedbank engine={engine} /></CapabilityProvider>); });
+    for (let i = 0; i < 6; i++) await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const opener = host.querySelector<HTMLButtonElement>("[data-id='mcp:github'] .sb-name");
+    expect(opener).toBeTruthy();
+    await act(async () => { opener!.click(); });
+    const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='GitHub']")!;
+    expect(dialog).toBeTruthy();
+    await act(async () => { dialog.querySelector<HTMLButtonElement>("[aria-label='Copy GitHub’s seed']")!.click(); });
+    expect(browserWrite).toHaveBeenCalledWith(LINK);
+    expect(desktopWrite).toHaveBeenCalledWith(LINK);
+    const notice = dialog.querySelector(".sb-notice[role='status']");
+    expect(notice?.textContent).toContain(SEED_NOT_COPIED);
+    expect(host.querySelector(".sb-notice")).toBeNull();
+    expect(dialog.textContent).not.toMatch(RAW);
+    const field = notice?.querySelector<HTMLInputElement>("input[aria-label='GitHub’s seed']");
+    expect(field?.value).toBe(LINK);
+    expect(document.activeElement).toBe(field);
+    expect(field?.selectionStart).toBe(0);
+    expect(field?.selectionEnd).toBe(LINK.length);
+    const retry = [...notice!.querySelectorAll("button")].find(b => b.textContent === "Try again")!;
+    expect(retry).toBeTruthy();
+    browserWrite.mockResolvedValue(undefined);
+    await act(async () => { retry.click(); });
+    expect(browserWrite).toHaveBeenCalledTimes(2);
+    expect(browserWrite).toHaveBeenLastCalledWith(LINK);
+    expect(desktopWrite).toHaveBeenCalledTimes(1);
+    expect(dialog.querySelector("[role='status']")?.textContent).toContain("Copied GitHub’s seed. Paste it anywhere in Branch.");
+    expect(dialog.querySelector("input[aria-label='GitHub’s seed']")).toBeNull();
+    expect(document.querySelector("[role='dialog']")).toBe(dialog);
+    expect(host.querySelector(".sb-notice")).toBeNull();
+  });
+
   it("writes the seed link to the clipboard", async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
