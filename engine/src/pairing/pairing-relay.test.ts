@@ -135,7 +135,8 @@ describe("pairing relay", () => {
     phone.close();
   });
 
-  const hopSkip = nobleCiphersUnavailableReason();
+  // CI must fail when @noble/ciphers is missing. Local runs outside CI may skip.
+  const hopSkip = process.env.CI ? undefined : nobleCiphersUnavailableReason();
   (hopSkip ? it.skip : it)(
     hopSkip
       ? `does not put a phone bootstrap token on the relay hop (skipped: ${hopSkip})`
