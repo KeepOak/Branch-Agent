@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { friendlyError } from "../../connect/friendly-error";
 import { componentDesktop, ENGINE_UPDATE_EVENT, useDesktopComponentStatus, type EngineUpdateEvent } from "../../connect/desktop-component-updates";
-import { desktopUpdateView, engineUpdateView, type UpdateView } from "./model";
+import { desktopUpdateView, engineUpdateView, plainUpdateError, type UpdateView } from "./model";
 
 /** How long "Updated to X" stays before the button leaves. */
 export const DONE_MS = 4000;
@@ -29,7 +29,12 @@ export function useUpdateFlow(engine: Pick<WindowEngine, "request" | "onEvent" |
 
   useEffect(() => {
     if (!desktop) return;
-    const onState = (event: Event) => { const detail = (event as CustomEvent<EngineUpdateEvent>).detail; setBar(detail); if (detail?.state !== "preparing" && detail?.state !== "updating" && detail?.state !== "restarting") setRestartRequested(false); };
+    // The desktop's words for a failed run can be an engine dump (an Error: line, a path, a code): keep only plain words.
+    const onState = (event: Event) => {
+      const detail = (event as CustomEvent<EngineUpdateEvent>).detail;
+      setBar(detail?.message ? { ...detail, message: plainUpdateError(detail.message) } : detail);
+      if (detail?.state !== "preparing" && detail?.state !== "updating" && detail?.state !== "restarting") setRestartRequested(false);
+    };
     window.addEventListener(ENGINE_UPDATE_EVENT, onState);
     return () => window.removeEventListener(ENGINE_UPDATE_EVENT, onState);
   }, [desktop]);
