@@ -4,6 +4,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
+import { plainError } from "../../../shell/plain-error";
 import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Footer, WizardBody } from "../AccountLogin";
@@ -231,7 +232,7 @@ function PickService({ services, detect, waiting, engine, agent, onPick, onUsed 
   return (
     <>
       <p className={g.label("aa-lede")} data-lines={g.clear ? "" : undefined}>Which service is the new account with? {services.length} {services.length === 1 ? "service" : "services"}, and you can have several accounts with each.</p>
-      {detect.error ? <p className={g.label("hint")} role="status">{detect.error}</p> : null}
+      {detect.error ? <p className={g.label("hint")} role="status">{plainError(detect.error)}</p> : null}
       <Found detect={detect} services={services} onUse={setUsing} />
       <label className="aa-search"><input className="inp" type="search" placeholder="Search services" aria-label="Search services" value={q} onChange={(e) => setQ(e.target.value)} /></label>
       <div className="tabs" role="tablist" aria-label="Kinds of service">
@@ -388,7 +389,7 @@ function KeyEntry({ engine, svc, agent, onSaved }: { engine: WindowEngine; svc: 
     <>
       <p className={g.label("aa-lede")} data-lines={g.clear ? "" : undefined}>Paste the key from {svc.name}. Branch keeps it in its own key store and shows only where it came from after this.</p>
       <label className="fld"><span className={g.label()}>Key</span><input className="inp" type="password" autoComplete="off" aria-label="Key" value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === "Enter" && key.trim() && void save()} /></label>
-      {error ? <p className={g.label("bs-error")} role="alert">{visible(error)}</p> : null}
+      {error ? <p className={g.label("bs-error")} role="alert">{plainError(error)}</p> : null}
       <div className="acts"><button type="button" className="btn pri" {...g.solid} disabled={!key.trim() || busy} onClick={() => void save()}>{busy ? "Adding…" : "Add key"}</button></div>
     </>
   );

@@ -6,10 +6,7 @@ import { readDatabasePathIdentitySync } from "../../infra/sqlite-worker-identity
 import { resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 import { registerBranchAgentDatabaseReadCandidateResource } from "../../state/branch-agent-db-resources.js";
 import type { BranchAgentDatabaseExecution } from "../../state/branch-agent-execution-contract.js";
-import {
-  captureBranchAgentDatabaseExecution,
-  supportsBranchAgentDatabaseExecution,
-} from "../../state/branch-agent-execution.js";
+import { supportsBranchAgentDatabaseExecution } from "../../state/branch-agent-execution.js";
 import { captureBranchStateWorkerContext } from "../../state/branch-state-worker-context.js";
 import { loadSessionEntry, patchSessionEntryCore } from "./session-accessor.entry.js";
 import { createSessionEntryWithTranscriptInScope } from "./session-accessor.sqlite-creation.js";
@@ -33,6 +30,7 @@ import type {
   SessionEntryCreateWithTranscriptPrepareResult,
   SessionEntryCreateWithTranscriptOptions,
 } from "./session-accessor.types.js";
+import { captureSessionStoreAgentDatabaseExecution } from "./session-store-creation-witness.js";
 import { resolveSessionStorePathForScope } from "./session-store-path.js";
 import {
   assertSessionStoreReadCandidate,
@@ -91,14 +89,21 @@ function captureSessionEntryDatabasePreparation(
     for (const candidate of candidates) {
       const isCreating = candidate.path === creatingPath || candidate.physicalPath === creatingPath;
       const isPrepared = candidate.path === preparedPath || candidate.physicalPath === preparedPath;
+      const current = readDatabasePathIdentitySync(candidate.path);
+      const expected = isPrepared ? preparedIdentity : candidate.identity;
+      // A concurrent first-open (warm-up or greeting) may create this still-absent
+      // store while operator authority is settling. Same canonical path is that race.
+      const concurrentFirstOpen =
+        !isPrepared &&
+        candidate.identity.key.startsWith("path:") &&
+        current.key.startsWith("file:") &&
+        current.canonicalPath === candidate.identity.canonicalPath;
       if (
         captureSessionStoreReadCandidate(candidate.path, candidate.scope).physicalPath !==
           candidate.physicalPath ||
         (!(isCreating && candidate.identity.key.startsWith("path:")) &&
-          !isDeepStrictEqual(
-            readDatabasePathIdentitySync(candidate.path),
-            isPrepared ? preparedIdentity : candidate.identity,
-          ))
+          !concurrentFirstOpen &&
+          !isDeepStrictEqual(current, expected))
       ) {
         throw new Error("Session creation database changed during preparation");
       }
@@ -294,20 +299,12 @@ export function prepareSessionEntryMutationDatabases(
             }
           };
           assertCurrent();
-          const identity = target.identity;
-          const execution = captureBranchAgentDatabaseExecution(
-            target.options,
-            identity.key.startsWith("file:")
-              ? {
-                  expectedIdentity: {
-                    kind: "file",
-                    physicalIdentity: identity.key.slice("file:".length),
-                    nativeLocation: identity.canonicalPath,
-                    birthtime: identity.birthtime,
-                  },
-                }
-              : { expectedCreationIdentity: identity },
-          );
+          // prepareSqliteScope can finish while a cold first-open still has no file.
+          // A missing-file snapshot is not a lost target; recapture from a fresh identity.
+          const identity = readDatabasePathIdentitySync(target.options.path);
+          const execution = await captureSessionStoreAgentDatabaseExecution(target.options, {
+            observed: identity.key.startsWith("file:") ? identity : undefined,
+          });
           // The physical cohort keeps one native lease; each caller retains its original alias.
           for (const member of members) {
             member.capture.begin(member.target.options.path, execution);
