@@ -325,16 +325,20 @@ describe("AppChildGatewaySupervisor", () => {
       supervisorStartedAt: 10,
     });
     let supervisorAlive = true;
+    let supervisorStop: Promise<void> | undefined;
     const outcome = await stopAppChildGateway({
       port: 18_789,
       signalSupervisor: (pid) => {
         expect(pid).toBe(9_001);
-        supervisorAlive = false;
-        void supervisor.handleParentSignal("SIGTERM");
+        supervisorStop = supervisor.handleParentSignal("SIGTERM").then(() => {
+          supervisorAlive = false;
+        });
       },
       signalPid: vi.fn() as never,
       stopWaitMs: 20,
-      sleep: async () => {},
+      sleep: async () => {
+        await supervisorStop;
+      },
       forceKillPid: vi.fn(),
       isAlive: (pid) => (pid === 9_001 ? supervisorAlive : pid === 4242 && Boolean(supervisor.process)),
       readStartTime: (pid) => (pid === 9_001 ? 10 : pid === 4242 ? 11 : null),
