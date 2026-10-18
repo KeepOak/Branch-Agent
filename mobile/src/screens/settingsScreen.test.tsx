@@ -6,6 +6,7 @@ import { fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier';
 import { createFakeSession } from '../testing/fakeSession';
 import { memoryStore } from '../storage/keyValueStore';
+import { SHOW_LEVEL_KEY } from '../settings/showLevel';
 import { DESKTOP_THEMES } from '../theme/desktopThemes';
 import { THEME_LOOK_KEY, THEME_PREFERENCE_KEY } from '../theme/preference';
 import { ThemeProvider } from '../theme/ThemeProvider';
@@ -175,6 +176,24 @@ describe('settings in the app', () => {
     expect(screen.getByTestId('theme-dark')).toHaveProp('accessibilityState', { selected: true });
     await fireEvent.press(screen.getByTestId('theme-system'));
     expect(store.dump()[THEME_PREFERENCE_KEY]).toBeUndefined();
+    second.session.dispose();
+  });
+
+  it('keeps Advanced after a change, and More still shows unfinished rows on the next open', async () => {
+    const store = memoryStore();
+    const first = await pairedApp({ themeStore: store });
+    await fireEvent.press(screen.getByTestId('settings-button'));
+    await fireEvent.press(screen.getByTestId('settings-level-advanced'));
+    expect(store.dump()[SHOW_LEVEL_KEY]).toBe('advanced');
+    expect(screen.getByTestId('settings-level-advanced')).toHaveProp('accessibilityState', { selected: true });
+    await eventually(() => expect(screen.getByTestId('later-keepoak')).toBeOnTheScreen());
+    first.session.dispose();
+    await first.unmount();
+
+    const second = await pairedApp({ themeStore: store });
+    await fireEvent.press(screen.getByTestId('more-button'));
+    await eventually(() => expect(screen.getByTestId('more-canopy')).toBeOnTheScreen());
+    expect(screen.getByTestId('more-canopy')).toHaveTextContent(/Canopy comes in a later update/);
     second.session.dispose();
   });
 });
