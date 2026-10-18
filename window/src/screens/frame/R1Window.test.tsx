@@ -234,6 +234,16 @@ it("opens the place a re-hosted Classic page asks for (branch:navigate-place), a
   expect(window.history.state.r1Route).toEqual({ kind: "place", place: "people" });
   expect(host.textContent).toContain("Place content");
 });
+it("opens Settings › Chat apps when asked for Customize's old Chat apps tab", async () => {
+  const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "models" }));
+  await act(async () => root.render(<R1Window session={session} />));
+  await act(async () => { window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "customize", tab: "Chat apps" } })); });
+  expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
+  expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
+  expect(host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!.dataset.page).toBe("chatapps");
+});
 
 it("the conversation menu's View › \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {
   const snapshot = { status: { phase: "connected" }, name: "Scout", sessionKey: "agent:scout:main", mainKey: "agent:scout:main", history: [], live: [], queued: [] };
