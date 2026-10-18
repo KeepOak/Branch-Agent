@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockLeft, dayStamp, formatDuration, modelName, parseDiffLines, rawDiffText, shortReason, stepExitCode, stepInputLines, stepKind, stepLabel, stepOutputFilename, stepOutputTail, stepsSummary } from "./format";
+import { clockLeft, dayStamp, formatDuration, modelName, parseDiffLines, rawDiffText, scrubLocalPaths, shortReason, stepExitCode, stepInputLines, stepKind, stepLabel, stepOutputFilename, stepOutputTail, stepsSummary } from "./format";
 import type { Block } from "./model";
 
 const step = (tool: string, status: "running" | "ok" = "ok"): Extract<Block, { kind: "step" }> => ({
@@ -16,11 +16,13 @@ describe("thread words", () => {
     expect(stepsSummary([step("exec")])).toBe("Ran a command");
     expect(stepsSummary([step("exec"), step("exec"), step("read")])).toBe("Ran 2 commands and read a file · 3 steps");
     expect(stepsSummary([step("read"), step("read"), step("web_search")])).toBe("Read 2 files and searched the web · 3 steps");
-    expect(stepsSummary([{ ...step("exec"), at: 1_000 }, { ...step("read"), at: 42_000 }])).toBe("Ran a command and read a file · 2 steps · 41s");
+    expect(stepsSummary([{ ...step("exec"), at: 1_000 }, { ...step("read"), at: 42_000 }])).toBe("Ran a command and read a file · 2 steps");
     expect(stepsSummary([step("exec"), step("read", "running")])).toBe("Reading a file");
-    expect(stepsSummary([step("exec")], { title: "text", durationMs: 59_000 })).toBe("Ran a command");
+    expect(stepsSummary([step("exec")], { title: "text" })).toBe("Ran a command");
+    expect(stepsSummary([step("exec"), step("read")], { title: "Done" })).toBe("Done · 2 steps");
     expect(stepLabel({ ...step("computer"), title: "list_windows" })).toBe("Listed open windows");
     expect(stepLabel({ ...step("computer"), title: "frob_widget" })).toBe("Used the computer");
+    expect(stepLabel({ ...step("sessions_yield"), status: "ok" })).toBe("Waited for its helpers");
     expect(stepLabel({ ...step("computer"), title: "list_windows" })).not.toContain("list_windows");
     expect(stepLabel({ ...step("screen"), title: "desktop_show" })).toBe("Showed the desktop");
     expect(stepLabel({ ...step("screen"), title: "browser_show" })).toBe("Showed the browser");
@@ -51,7 +53,8 @@ describe("thread words", () => {
 
   it("shortens an engine error to its first sentence without the lead-in", () => {
     const raw = "Your request couldn't be completed: ⚠️ Authentication failed (provider returned HTTP 401). Your provider token may have expired.";
-    expect(shortReason(raw)).toBe("Authentication failed (provider returned HTTP 401).");
+    // At Regular a provider's HTTP status reads as a plain sentence (Private #1089, as #1700's friendlyError reads it).
+    expect(shortReason(raw)).toBe("Branch isn’t signed in for that. Sign in again, then try again.");
     expect(shortReason("Failed to observe plugin state entry. | PLUGIN_STATE_READ_FAILED | 42")).not.toContain("PLUGIN_STATE_READ_FAILED");
   });
 });
@@ -95,4 +98,21 @@ describe("preview step kinds and cards", () => {
     expect(lines).toEqual([{ mark: "-", text: "old" }, { mark: "+", text: "new" }]);
     expect(rawDiffText(lines)).toBe("new");
   });
+});
+
+describe("plain error copy", () => {
+  it("never shows a local file path in the plain sentence", () => {
+    expect(shortReason("ENOENT: no such file '/Users/someone/Library/Caches/run/out.json' was found.")).not.toMatch(/\/Users\//);
+    expect(shortReason("Could not write C:\\Users\\someone\\notes.md. Try again.")).not.toMatch(/Users|C:\\/);
+    expect(shortReason("Failed in /tmp/rv1305/verdict.md, see log.")).toBe("Failed in a local file, see log.");
+    // An HTTP status reads plain at Regular (Private #1089).
+    expect(shortReason("Authentication failed (provider returned HTTP 401).")).toBe("Branch isn’t signed in for that. Sign in again, then try again.");
+  });
+});
+
+it("hides a whole local path, even one with a space in a folder name", () => {
+  expect(scrubLocalPaths("1 step failed: bash — /Volumes/512GB SSD/BranchAgent/data/home/.branch/workspace/notes"))
+    .toBe("1 step failed: bash — a local file");
+  expect(scrubLocalPaths("Saved /Users/someone/notes.md and moved on")).toBe("Saved a local file and moved on");
+  expect(scrubLocalPaths("Config: C:\\Users\\someone\\branch.json")).toBe("Config: a local file");
 });

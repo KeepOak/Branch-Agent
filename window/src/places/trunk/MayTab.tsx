@@ -1,32 +1,33 @@
 // Trunk editor › What it may do (preview 30-trunks mayHTMLC18, 31-trunksp mayMorePC18 at Advanced).
 // Each row writes the Trunk's own config entry; rows the engine has no setting for are drawn greyed with the reason.
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useState, type ReactNode } from "react";
-import { shownWhy } from "../../shell/shown-why";
-import type { ModelChoice } from "../../composer/model";
+// The greyed reasons in this file say what is still missing, shown in plain words under each row.
+import { useEffect, useState, type ReactNode } from "react";
+import { useResource } from "../settings/hooks";
+import { usableModelName, type ModelChoice } from "../../composer/model";
 import type { WindowEngine } from "../../connect/engine";
-import { GitHubSettings } from "../settings/GitHubSettings";
 import { Menu, type MenuAnchor } from "../../shell/Menu";
 import { Segmented, Switch } from "../../shell/Popover";
 import { Icon } from "../../shell/icons";
-import { useResource } from "../settings/hooks";
 import { shows, type Level } from "../../places-nav/level";
 import type { Draft } from "./api";
+import { GitHubChoice } from "./GitHubChoice";
 import type { May } from "./may";
 
-const SEND_WHY = "Needs the engine’s per-Trunk setting for asking before it sends.";
-const NOTES_WHY = "Each Trunk keeps its notes in its own folder; the engine has no setting to share them.";
 
 function Row({ title, hint, children, off }: { title: string; hint: string; children: ReactNode; off?: string }) {
-  return <div className={off ? "tk-ctl off" : "tk-ctl"} title={shownWhy(off)}><b>{title}</b><span className="tk-right">{children}</span><small>{shownWhy(off) || hint}</small></div>;
+  return <div className={off ? "tk-ctl off" : "tk-ctl"}><b>{title}</b><span className="tk-right">{children}</span><small>{hint}</small>{off ? <small className="tk-why">{off}</small> : null}</div>;
 }
 
-const modelName = (models: ModelChoice[], ref: string) => models.find((m) => m.ref === ref)?.name || ref.split("/").pop() || ref;
+const modelName = (models: ModelChoice[], ref: string) => usableModelName(ref, models);
 
 function ModelPick({ draft, models, setModel, openSettings }: { draft: Draft; models: ModelChoice[]; setModel: (ref: string) => void; openSettings?: (page: string) => void }) {
-  if (!models.length) return <Row title="Which model" hint="No model is set up yet."><button type="button" className="btn sm" onClick={() => openSettings?.("models")} disabled={!openSettings}>Set up a model</button></Row>;
-  const options = models.some((m) => m.ref === draft.model) || !draft.model ? models : [{ ref: draft.model, name: modelName(models, draft.model) } as ModelChoice, ...models];
-  const value = draft.model || options[0].ref;
+  const options = models;
+  const value = models.find((m) => m.ref === draft.model)?.ref ?? models[0]?.ref;
+  // The control can only show a usable option. Write that into the draft so Save persists Gemma, not the leftover astra ref.
+  useEffect(() => {
+    if (value && value !== draft.model) setModel(value);
+  }, [value, draft.model, setModel]);
+  if (!models.length || !value) return <Row title="Which model" hint="No model is set up yet."><button type="button" className="btn sm" onClick={() => openSettings?.("models")} disabled={!openSettings}>Set up a model</button></Row>;
   return (
     <Row title="Which model" hint="Where this Trunk thinks.">
       {options.length <= 3 && <span className="tk-wide"><Segmented label="Which model" value={value} options={options.map((m) => ({ id: m.ref, name: m.name }))} onChange={setModel} /></span>}
@@ -56,76 +57,44 @@ function Fallbacks({ draft, models, setMay }: { draft: Draft; models: ModelChoic
 }
 
 function Advanced({ engine, agentId, name, draft, models, setMay }: { engine: WindowEngine; agentId: string; name: string; draft: Draft; models: ModelChoice[]; setMay: (m: Partial<May>) => void }) {
+  const decide = ["same", "none"].includes(draft.may.decide) || models.some((m) => m.ref === draft.may.decide) ? draft.may.decide : "same";
+  useEffect(() => {
+    if (decide !== draft.may.decide) setMay({ decide });
+  }, [decide, draft.may.decide, setMay]);
   return (
     <>
       <Row title="Model for decisions" hint={`Small yes-or-no, pick-one and score calls inside ${name}’s work. None means it makes no such calls; its main model is never used for them.`}>
-        <select className="inp" aria-label="Model for decisions" value={draft.may.decide} onChange={(e) => setMay({ decide: e.target.value })}>
+        <select className="inp" aria-label="Model for decisions" value={decide} onChange={(e) => setMay({ decide: e.target.value })}>
           <option value="same">Same as everywhere</option>
           {models.map((m) => <option key={m.ref} value={m.ref}>{m.name}</option>)}
-          {!["same", "none"].includes(draft.may.decide) && !models.some((m) => m.ref === draft.may.decide) && <option value={draft.may.decide}>{draft.may.decide}</option>}
           <option value="none">None for {name}</option>
         </select>
       </Row>
       <Fallbacks draft={draft} models={models} setMay={setMay} />
-      <div className="kit-page">
-        <p className="tk-hint">GitHub connection changes save immediately for {name}, even if you cancel this editor. Other changes use Save below.</p>
-        <GitHubSettings engine={engine} agentId={agentId} />
-      </div>
+      <GitHubChoice engine={engine} agentId={agentId} />
     </>
   );
 }
 
-type ToolsetRow = { id: string; label: string; description: string; offered?: boolean };
-
 const NOT_OFFERED = "Its own tool list leaves these tools out, so this switch has no effect.";
-/** Until tools.catalog answers, or when it doesn't, the browser switch stays available on its own. */
-const BROWSER_ONLY: ToolsetRow[] = [
-  { id: "browser", label: "Browser", description: "Open pages, click, type and read them in the built-in browser." },
-];
-
-/** One switch per toolset the engine offers (tools.catalog). Each switch shows the state the Trunk's own tool list allows. */
-function ToolsSection({ engine, agentId, may, setMay }: { engine: WindowEngine; agentId: string; may: May; setMay: (m: Partial<May>) => void }) {
-  const catalog = useResource<{ toolsets?: ToolsetRow[] }>(engine, "tools.catalog", { agentId });
-  const toolsets = catalog.data?.toolsets?.length ? catalog.data.toolsets : BROWSER_ONLY;
-  const rowFor = (t: ToolsetRow) => {
-    const browser = t.id === "browser";
-    const lock = (browser ? may.browseLock : "") || (t.offered === false ? NOT_OFFERED : "");
-    const label = browser ? "Use the browser" : `Use ${t.label}`;
-    const on = browser ? may.browse : may.toolsets[t.id] !== false;
-    const onChange = (next: boolean) => (browser ? setMay({ browse: next }) : setMay({ toolsets: { ...may.toolsets, [t.id]: next } }));
-    return (
-      <Row key={t.id} title={t.label} hint={t.description} off={lock || undefined}>
-        {lock
-          ? <button type="button" role="switch" aria-checked={false} aria-label={label} className="switch" disabled />
-          : <Switch label={label} on={on} onChange={onChange} />}
-      </Row>
-    );
-  };
-  return (
-    <section className="tk-tools" aria-label="Tools">
-      <h4 className="tk-tools-title">Tools</h4>
-      <p className="tk-hint">Switch off what this Trunk should never reach. The reply tool, its questions and its status stay on.</p>
-      {toolsets.map(rowFor)}
-    </section>
-  );
-}
 
 type Props = { engine: WindowEngine; agentId: string; name: string; draft: Draft; models: ModelChoice[]; level: Level; set: (d: Partial<Draft>) => void; openSettings?: (page: string) => void };
 export function MayTab({ engine, agentId, name, draft, models, level, set, openSettings }: Props) {
   const may = draft.may, setMay = (m: Partial<May>) => set({ may: { ...may, ...m } });
+  // The browser switch is greyed when the Trunk's own tool list leaves the browser out (tools.catalog).
+  const catalog = useResource<{ toolsets?: { id: string; offered?: boolean }[] }>(engine, "tools.catalog", { agentId });
+  const browserLock = may.browseLock || (catalog.data?.toolsets?.find(t => t.id === "browser")?.offered === false ? NOT_OFFERED : "");
   return (
     <div className="tk-may">
       <Row title="Read files in Documents and Downloads" hint="Reading never changes a file."><Switch label="Read files in Documents and Downloads" on={may.read} onChange={(read) => setMay({ read })} /></Row>
-      <ToolsSection engine={engine} agentId={agentId} may={may} setMay={setMay} />
-      <Row title="Send email and messages" hint="Overrides the mode for this Trunk only." off={SEND_WHY}>
-        <span className="tk-seg">{["Ask first", "Allowed"].map((l) => <button key={l} type="button" disabled>{l}</button>)}</span>
+      <Row title="Use the browser" hint="With your saved sign-ins." off={browserLock || undefined}>
+        {browserLock
+          ? <button type="button" role="switch" aria-checked={false} aria-label="Use the browser" className="switch" disabled />
+          : <Switch label="Use the browser" on={may.browse} onChange={next => setMay({ browse: next })} />}
       </Row>
       <Row title="Spend money" hint="Never, whatever mode Branch is in."><span className="tk-fixed">Never</span></Row>
       <ModelPick draft={draft} models={models} setModel={(model) => set({ model })} openSettings={openSettings} />
       {shows(level, "advanced") && <Advanced engine={engine} agentId={agentId} name={name} draft={draft} models={models} setMay={setMay} />}
-      <Row title="Keep its own notes" hint="Separate from other Trunks’ memory." off={NOTES_WHY}>
-        <button type="button" role="switch" aria-checked={true} aria-label="Keep its own notes" className="switch" disabled />
-      </Row>
     </div>
   );
 }

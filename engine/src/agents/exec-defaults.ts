@@ -4,6 +4,8 @@
 import type { SessionEntry } from "../config/sessions.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import {
+  DEFAULT_REQUESTED_ASK,
+  DEFAULT_REQUESTED_SECURITY,
   loadExecApprovals,
   type ExecAsk,
   type ExecApprovalsFile,
@@ -166,7 +168,12 @@ export function prepareExecDefaults(
     sandboxAvailable,
     sandboxRequired,
   });
-  const defaultSecurity = resolved.effectiveHost === "sandbox" ? "deny" : "full";
+  const sandboxHost = resolved.effectiveHost === "sandbox";
+  // Sandbox stays deny-by-default. Gateway/node with nothing saved start on Ask first.
+  // Host-floor fallback stays full/off so an explicit Full access is not clamped by an empty approvals file.
+  const requestedSecurity = sandboxHost ? "deny" : DEFAULT_REQUESTED_SECURITY;
+  const requestedAsk = sandboxHost ? "off" : DEFAULT_REQUESTED_ASK;
+  const hostFloorSecurity: ExecSecurity = sandboxHost ? "deny" : "full";
   const sessionPermissionPolicy = params.sessionEntry?.permissionMode
     ? resolveSessionPermissionExecPolicy(
         { mode: params.sessionEntry.permissionMode },
@@ -186,8 +193,8 @@ export function prepareExecDefaults(
         applyExecPolicyLayer(
           applyExecPolicyLayer(
             {
-              security: approvalDefaults?.security ?? defaultSecurity,
-              ask: approvalDefaults?.ask ?? "off",
+              security: requestedSecurity,
+              ask: requestedAsk,
             },
             globalExec,
           ),
@@ -238,7 +245,7 @@ export function prepareExecDefaults(
         resolveExecApprovalsFromFile({
           file,
           agentId: resolvedAgentId,
-          overrides: { security: defaultSecurity, ask: "off" },
+          overrides: { security: hostFloorSecurity, ask: "off" },
         }).agent,
       ),
   };

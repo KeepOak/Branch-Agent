@@ -1,7 +1,8 @@
 // R1 onboarding (HANDOFF R1-07, preview item 37): four questions, then the first conversation. This file holds the
 // step list, the four modes and the rules the card follows; the engine calls live in the step components.
-import { MODE_ROWS } from "../../composer/mode";
+import { MODE_ROWS, PLAN_FIRST_REASON } from "../../composer/mode";
 import type { Detected, TestResult } from "../../setup/setup-model";
+import { errorWords, plainError, PLAIN_FAILURE } from "../../shell/plain-error";
 import { DAY_ONE_TEMPLATES, listedTemplate, type DayOneTemplate, type ListedTemplate } from "../seedbank/templates";
 
 export const STEPS = [
@@ -11,6 +12,15 @@ export const STEPS = [
   { id: "trunk", name: "Your first Trunk" },
 ] as const;
 export const LAST_STEP = STEPS.length - 1;
+
+/** A failed step as a person reads it (Private #1089): the step's own lead, then what plainError() makes of the engine's
+ *  words. At Regular that is one plain sentence with a next step, never the raw text; Advanced and Technical keep the exact
+ *  words. A leading "Error:" goes first, so plainError() never keeps it as a lead of its own, and when nothing more specific
+ *  fits, the line is the lead and Try again. */
+export function failedStep(lead: string, error: unknown): string {
+  const said = plainError(`${lead}: ${errorWords(error).replace(/^\s*(?:Uncaught\s+)?Error:\s*/, "")}`);
+  return said === `${lead}. ${PLAIN_FAILURE}` ? `${lead}. Try again.` : said;
+}
 
 /** The four choices of step 3, in the preview's order. Full access is never offered here (owner decision 1). */
 export type ModeId = "ask" | "auto" | "plan" | "read";
@@ -22,7 +32,8 @@ export const MODES: readonly Mode[] = (["ask", "auto", "plan", "read"] as const)
   const row = MODE_ROWS.find((r) => r.name === ROW_OF[id]);
   return { id, name: ROW_OF[id], line: row?.line ?? "", icon: (row?.icon ?? "shield") as Mode["icon"], recommended: id === "ask", exec: EXEC_OF[id] };
 });
-export const PLAN_FIRST_REASON = "Plan first comes in a later update.";
+/** Shown on the disabled Plan first row: the same words as the composer mode menu. */
+export { PLAN_FIRST_REASON };
 
 /** Where Branch runs (preview obWhereP37): three choices. Picking Another computer or A KeepOak computer records the
  *  choice and says where to finish it, as the preview does: pairing (device.pair.setupCode) and a cloud computer
@@ -70,20 +81,24 @@ export type Hello = TestResult | "busy" | null;
 /** The card's own state; nothing here is saved until the step that owns it calls the engine. */
 export type OnboardingState = {
   step: number; where: Where; off: string[]; hello: Hello; mode: ModeId;
+  /** Welcome: the name Branch should use, saved on the profile with users.setDisplayName. */
+  name: string;
   /** Step 4: what the person typed, the suggested Trunks they picked, and the template chips they picked (template ids). */
   text: string; pick: string[]; tpl: string[];
   /** Step 2: the person chose Try it with examples, which lets Continue go on without a hello. */
   examples: boolean;
 };
 export const clampStep = (step: number) => Math.max(0, Math.min(LAST_STEP, Math.trunc(step) || 0));
-export const freshState = (step = 0): OnboardingState => ({ step: clampStep(step), where: "here", off: [], hello: null, mode: "ask", text: "", pick: [], tpl: [], examples: false });
+/** One click moves one step. A second click that still thinks it is on `from` stays put. */
+export const advanceFrom = (current: number, from: number): number => (current === from ? clampStep(from + 1) : current);
+export const freshState = (step = 0): OnboardingState => ({ step: clampStep(step), where: "here", off: [], hello: null, mode: "ask", name: "", text: "", pick: [], tpl: [], examples: false });
 
 export const helloOk = (hello: Hello): boolean => typeof hello === "object" && hello !== null && hello.ok;
 
 /** The primary button: its words, and whether it may be pressed (preview `primary()`). */
 export function primary(s: OnboardingState, defaultName = ""): { label: string; ok: boolean; why?: string } {
   if (s.step === 0) return { label: "Get started", ok: true };
-  if (s.step === 1) return helloOk(s.hello) || s.examples ? { label: "Continue", ok: true } : { label: "Continue", ok: false, why: "Say hello first." };
+  if (s.step === 1) return { label: "Continue", ok: true };
   if (s.step === LAST_STEP) return picked(s).length ? { label: "Meet them", ok: true } : { label: `Start with ${defaultName || "your default Trunk"}`, ok: true };
   return { label: "Continue", ok: true };
 }
@@ -155,5 +170,12 @@ export function ownerTimeZone(): string | undefined {
 /** A Trunk's main conversation key, as agents.list names it (`agent:<id>:<mainKey>`). */
 export const mainSessionOf = (agentId: string, mainKey = "main") => `agent:${agentId}:${mainKey || "main"}`;
 
-/** The first message in the new Trunk's main conversation (HANDOFF R1-07 First greeting: chat.send). */
+/** The first message when setup has no name yet (HANDOFF R1-07 First greeting: chat.send). */
 export const GREETING = "Hi! I just set you up. Say hello in a sentence, then ask what to call me and what I’m working on right now.";
+
+/** The first message. A name from setup is used; without one, the Trunk still asks what to call you. */
+export function greeting(name: string): string {
+  const who = name.trim();
+  if (!who) return GREETING;
+  return `Hi ${who}! I just set you up. Say hello in a sentence, then ask what you’re working on right now.`;
+}

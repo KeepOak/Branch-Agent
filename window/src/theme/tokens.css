@@ -3,6 +3,52 @@
    data-theme="dark" forces dark. Every other area uses these names. */
 
 :root {
+  /* App logo tiles in the connector grid: each app's own brand colour, the same in light and dark (app-logos.tsx). */
+  --app-github: #181717;
+  --app-gmail: #EA4335;
+  --app-googledrive: #1FA463;
+  --app-outlook: #0F6CBD;
+  --app-slack: #4A154B;
+  --app-discord: #5865F2;
+  --app-telegram: #2AABEE;
+  --app-whatsapp: #25D366;
+  --app-airtable: #18BFFF;
+  --app-asana: #F06A6A;
+  --app-box: #0061D5;
+  --app-brave: #FB542B;
+  --app-clickup: #7B68EE;
+  --app-cloudflare: #F38020;
+  --app-confluence: #172B4D;
+  --app-docker: #2496ED;
+  --app-dropbox: #0061FF;
+  --app-figma: #F24E1E;
+  --app-gitlab: #FC6D26;
+  --app-googlecalendar: #4285F4;
+  --app-homeassistant: #18BCF2;
+  --app-hubspot: #FF7A59;
+  --app-huggingface: #FFD21E;
+  --app-jira: #0052CC;
+  --app-kubernetes: #326CE5;
+  --app-linear: #5E6AD2;
+  --app-notion: #000000;
+  --app-obsidian: #7C3AED;
+  --app-postgresql: #4169E1;
+  --app-protonmail: #6D4AFF;
+  --app-quickbooks: #2CA01C;
+  --app-sentry: #362D59;
+  --app-shopify: #7AB55C;
+  --app-spotify: #1ED760;
+  --app-sqlite: #003B57;
+  --app-stripe: #635BFF;
+  --app-supabase: #3FCF8E;
+  --app-todoist: #E44332;
+  --app-trello: #0052CC;
+  --app-vercel: #000000;
+  --app-youtube: #FF0000;
+  --app-zapier: #FF4F00;
+  --app-zendesk: #03363D;
+  --app-mark: #fff;
+  --app-mark-dark: #1B1A18;
   /* §2.1 colour, Daylight */
   --bg: #f6f8f9;
   --side: #edf1f3;
@@ -266,6 +312,8 @@
   --fade: .15s ease;
   /* layout */
   --hdr: 52px; --topics-w: 300px;
+  /* the conversation's thread row (the topic bar), when it shows: its pill height */
+  --r1-topic-row: 42px;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --line: #1D262C; --line-2: #2B363E; --mute17c: #95A2AB;
@@ -302,6 +350,19 @@
 
 }
 
+/* Window glass (preview v17, .obCardP37 and .scrim > .dlg): setup and the dialogs are tinted liquid glass, not clear. The card
+   and the dialog take the window's --bg at 74% with a blur; their inset edge and top highlight are --gw-edge and --gw-hi. The
+   controls on a card keep a faint chip (--gw-chip), its lit state (--gw-chip-on) and the switch track (--gw-track). Text on a
+   card or dialog has no pill. Reduce transparency makes the card and the layer solid --bg. */
+:root {
+  --gw-edge: rgba(0,0,0,.07); --gw-hi: rgba(255,255,255,.95); --gw-chip: rgba(255,255,255,.55); --gw-chip-on: rgba(255,255,255,.92);
+  --gw-track: rgba(118,118,128,.12);
+  --gw-dlg-sh: 0 30px 80px rgba(0,0,0,.24);
+  --ov-pop-sh: 0 8px 24px rgba(0, 0, 0, .12);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --gw-edge: rgba(255,255,255,.09); --gw-hi: rgba(255,255,255,.10); --gw-chip: rgba(255,255,255,.055); --gw-chip-on: rgba(255,255,255,.13); --gw-track: rgba(118,118,128,.24); } }
+:root[data-theme="dark"] { --gw-edge: rgba(255,255,255,.09); --gw-hi: rgba(255,255,255,.10); --gw-chip: rgba(255,255,255,.055); --gw-chip-on: rgba(255,255,255,.13); --gw-track: rgba(118,118,128,.24); }
+
 /* Item 48, the glass model (owner, final; docs/design/r1 README 48, preview p17.css "item 48"): the left sidebar is the only
    tinted, frosted surface. Everything else is clear, and the text and controls on it sit on small frosted pills with a 1px
    low-alpha outline. Pill fills are chosen so the pill's ink passes 4.5:1 composited over pure white and pure black, so
@@ -320,3 +381,6 @@
 @media (prefers-reduced-transparency: reduce) {
   :root:not([data-transparency]):not([data-transparency-x]):not([data-transparency-y]) { --gp-fill: var(--raise); --gp-on: color-mix(in srgb, var(--ink) 8%, var(--raise)); --gp-ink-2: var(--ink-2); --gp-blur: none; }
 }
+
+/* Lift under the chat's frosted pills (who line, fold line, close). */
+:root { --r1x-lift-xs: 0 4px 12px rgba(0,0,0,.08); --r1x-lift-sm: 0 6px 18px rgba(0,0,0,.12); --r1x-lift: 0 6px 18px rgba(0,0,0,.14); }

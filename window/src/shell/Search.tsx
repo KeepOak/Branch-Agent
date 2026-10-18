@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Conversation } from "../connect/conversations";
 import { agentIdOf } from "../connect/session";
 import { Pebble } from "../face/Pebble";
+import type { WindowEngine } from "../connect/engine";
+import { Coming } from "../glass/coming";
+import { FIND_ANYTHING_EVENT } from "../screens/find/find-event";
 import { Icon } from "./icons";
 import { rowTime } from "./list-model";
 import {
@@ -60,15 +63,19 @@ export function useSearch(request: Request, rows: Conversation[], trunkName: (id
   return { query, setQuery: change, chip, setChip, results };
 }
 
-type BoxProps = { query: string; onQuery: (q: string) => void; rail?: boolean };
+type BoxProps = { query: string; onQuery: (q: string) => void; rail?: boolean; engine?: Pick<WindowEngine, "features"> | null };
 
 /** The search field (§4.1.2 Field, Shortcut hint, Clear). Escape empties it and brings the list back. */
-export function SearchBox({ query, onQuery }: BoxProps) {
+export function SearchBox({ query, onQuery, engine }: BoxProps) {
   const ref = useRef<HTMLInputElement>(null);
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   return (
     <label className="search" data-testid="search" title="Search chats, Trunks, messages and past sessions">
-      <Icon name="search" small />
+      <Coming engine={engine} need="sessions.search" where="Find anything">
+        <button type="button" className="search-mag" aria-label="Find anything" title="Find anything" onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)); }}>
+          <Icon name="search" small />
+        </button>
+      </Coming>
       <input
         ref={ref}
         placeholder="Search"

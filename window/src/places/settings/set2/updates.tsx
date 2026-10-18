@@ -2,9 +2,10 @@
 // running tasks, or stopping them first), the update schedule in config `update.*`, history from update.runs.*,
 // failure reports through update.report, and the parts that only the Branch app can do, greyed with why.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useEffect, useState } from "react";
+import { CheckedAt, useCheckedAt } from "../checked-at";
+import { useEffect, useId, useState } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, useHeadless, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { CallLine, CodeRow, Kv, Tile, day, lvOf, openPlace, rec, str, useCall, useLive, when, type RecordValue } from "./common";
@@ -14,6 +15,11 @@ import { DesktopUpdatesPage } from "./desktop-updates";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { KeeperMark } from "../../../brand/KeeperMark";
 import { WhatsNewRow } from "./whats-new-row";
+import { showsInternals, versionLabel } from "../internals";
+import { LaterRows } from "../../../glass/LaterRows";
+import { clientOs } from "../../../connect/client-os";
+import { desktopControls, NEEDS_NEWER_APP, type AppRemovalPlan } from "../../../connect/desktop-controls";
+import { latestVersionLine, useMinuteClock } from "./version-line";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -21,6 +27,8 @@ const OS: Record<string, string> = { win32: "Windows", darwin: "macOS", linux: "
 const APP_ONLY = "Runs in the Branch app on your computer.";
 const STORE_WHY = "Opens the store in your browser, from the Branch app.";
 const APK_WHY = "Downloads run in the Branch app on your computer.";
+/** The one visible line the greyed store links and downloads name with aria-describedby (Private #1093 item 7). */
+const STORES_LINE = "Get the apps from the Branch app on your computer: it opens the stores and downloads.";
 const NO_SKIP = "Skipping a version needs the engine to keep a skip list.";
 const NO_UNDO = "Undoing an update needs the engine's roll back.";
 const NO_DEADLINE = "The engine’s wait is fixed at 15 minutes; changing it needs an engine setting.";
@@ -36,7 +44,7 @@ export const ROWS: RowEntry[] = [
   ["Install updates", "Updating", 0], ["Check for updates", "Updating", 0], ["Which updates", "Updating", 0],
   ["If tasks are still running after", "Updating", 1], ["Undo the last update", "Updating", 0],
   ["Already have the app?", "Branch on your other devices", 0], ["Add more to Branch", "Branch on your other devices", 0], ["Open-source licences", "About", 0],
-  ["Keep my conversations and settings", "Remove Branch", 0], ["Type Branch to confirm", "Remove Branch", 0],
+  ["Remove the app, keep my data", "Remove Branch", 0], ["Keep my conversations and settings", "Remove Branch", 0], ["Type Branch to confirm", "Remove Branch", 0],
   ["Send crash and update reports to KeepOak", "Reports", 0], ["What was sent", "Reports", 0],
   ["See the plan", "Before you install", 0], ["Window fixes without reinstalling", "Before you install", 0], ["Window changes", "Before you install", 0],
   ["Update work stays out of the way", "Before you install", 0], ["Privacy notice", "Privacy", 0],
@@ -47,10 +55,42 @@ export const ROWS: RowEntry[] = [
   ["Update status for scripts", "Help and updates, more", 2],
 ].map(([title, sec, lv]) => ({ page: "updates", title: String(title), sec: String(sec), group: ({ "In your editors and notes": "Branch on your other devices", "Help and updates, more": "Updating", Technical: "Updating" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
-type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => void };
+/** checkedAt: when this page's Check now (update.status refreshCheckout) last finished; the engine keeps no check time. */
+type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => Promise<boolean>; checkedAt: number | null; setCheckedAt: (at: number) => void };
 
 export function UpdatesPage(props: SettingsPageProps) {
   return componentDesktop(props.engine.gatewayUrl) ? <DesktopUpdatesPage {...props} /> : <GatewayUpdatesPage {...props} />;
+}
+
+/** One card's worth of the page, for the R1 Updates & about page (screens/settings/pages/updates.ts). In the Branch app
+ *  the Updating card is the app's own updater. */
+export function UpdatesBlock(props: SettingsPageProps & { part: "updating" | "devices" | "before" | "reports" | "editors" | "about" | "privacy" | "remove" }) {
+  const { part } = props;
+  if (part === "devices") return <Devices lv={lvOf(props.level)} />;
+  if (part === "before") return <BeforeInstall />;
+  if (part === "reports") return <Reports />;
+  if (part === "editors") return <Editors gatewayUrl={props.engine.gatewayUrl} technical={showsInternals(props.level)} />;
+  if (part === "about") return <About />;
+  if (part === "privacy") return <Privacy openSettings={props.openSettings} />;
+  if (part === "remove") return <RemoveBranch />;
+  return componentDesktop(props.engine.gatewayUrl) ? <DesktopUpdatesPage {...props} /> : <GatewayUpdating {...props} />;
+}
+
+function GatewayUpdating(props: SettingsPageProps) {
+  const status = useLive<RecordValue>(props.engine, "update.status", {}, UPDATE_EVENTS);
+  const info = useLive<RecordValue>(props.engine, "status", {}, []);
+  const sys = useLive<RecordValue>(props.engine, "system.info", {}, []);
+  const version = useBranchVersion(props.engine.gatewayUrl);
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
+  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => status.reload(), checkedAt, setCheckedAt };
+  return <>
+    {status.error ? <Status tone="bad" title={`Couldn’t read: ${status.error}`} /> : null}
+    {status.loading && !status.data ? <Hint>Checking…</Hint> : null}
+    {status.data ? <Waiting {...props} data={data} version={version} /> : null}
+    {status.data ? <Updating {...props} data={data} /> : null}
+    {lvOf(props.level) >= 1 ? <HelpMore {...props} data={data} version={version} /> : null}
+    {lvOf(props.level) >= 2 ? <Technical data={data} version={version} /> : null}
+  </>;
 }
 
 function GatewayUpdatesPage(props: SettingsPageProps) {
@@ -60,11 +100,12 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
   const version = useBranchVersion(props.engine.gatewayUrl);
   const os = OS[str(rec(sys.data).platform)] ?? str(rec(sys.data).osLabel);
   const lede = version ? `Branch ${versionParts(version).short}${os ? ` on ${os}` : ""}.` : props.title;
-  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => void status.reload() };
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
+  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => status.reload(), checkedAt, setCheckedAt };
   return (
     <Page title={props.title} lede={lede}>
-      {status.error ? <Status tone="bad" title="Branch couldn’t read its update status">{status.error}</Status> : null}
-      {status.loading && !status.data ? <Hint>Checking for updates…</Hint> : null}
+      {status.error ? <Status tone="bad" title={`Couldn’t read: ${status.error}`} /> : null}
+      {status.loading && !status.data ? <Hint>Checking…</Hint> : null}
       {status.data ? <Waiting {...props} data={data} version={version} /> : null}
       {status.data ? <Updating {...props} data={data} /> : null}
       <Devices lv={lvOf(props.level)} />
@@ -72,7 +113,8 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
       <RemoveBranch />
       <Reports />
       <BeforeInstall />
-      {lvOf(props.level) >= 1 ? <Editors gatewayUrl={props.engine.gatewayUrl} /> : null}
+      {/* Every add-on here waits for a later update: like every Coming row, Technical only (Private #1093 item 4). */}
+      {lvOf(props.level) >= 2 ? <Editors gatewayUrl={props.engine.gatewayUrl} technical={showsInternals(props.level)} /> : null}
       <Privacy openSettings={props.openSettings} />
       {lvOf(props.level) >= 1 ? <HelpMore {...props} data={data} version={version} /> : null}
       {lvOf(props.level) >= 2 ? <Technical data={data} version={version} /> : null}
@@ -101,7 +143,7 @@ function useNow(on: boolean): number {
   return now;
 }
 
-function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; version: string }) {
+function Waiting({ engine, data, version, level }: SettingsPageProps & { data: Data; version: string }) {
   const [dialog, setDialog] = useState<"" | "notes" | "report">("");
   const call = useCall();
   const hold = useCall();
@@ -110,6 +152,7 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
   const campaign = rec(schedule.campaign);
   const started = Boolean(str(campaign.id));
   const now = useNow(started);
+  const clock = useMinuteClock();
   const latest = str(available.latestVersion) || str(rec(schedule.target).version);
   const holdIt = () => void hold.run(() => engine.request<RecordValue>("update.hold", {}), (r) => {
     data.reload();
@@ -142,7 +185,7 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
       ) : latest ? (
         <Status title="A Branch update is ready">It waits for running tasks, up to the update deadline, and keeps a safety copy first.</Status>
       ) : (
-        <Status title="Branch is up to date.">{version ? `You have Branch ${versionParts(version).detail}.` : "You have the newest version."}</Status>
+        <Status title={latestVersionLine(data.checkedAt, clock)}>{version ? `You have Branch ${versionLabel(version, level)}.` : "You have the newest version."}</Status>
       )}
       {latest && !str(active.runId) ? (
         <Acts>
@@ -165,7 +208,7 @@ function NotesDialog({ available, version, onClose, onInstall }: { available: Re
   const behind = typeof available.commitsBehind === "number" ? available.commitsBehind : undefined;
   return (
     <Dialog title="What’s new" wide onClose={onClose} footer={<><Btn ghost disabled title={NO_SKIP}>Skip this version</Btn><Btn pri onClick={onInstall}>Install update</Btn></>}>
-      <p className="hint">{version ? `What this update changes from Branch ${versionParts(version).detail}.` : "What this Branch update changes."}</p>
+      <p className="hint">{version ? `What this update changes from Branch ${versionParts(version).short}.` : "What this Branch update changes."}</p>
       {commits.length ? (
         <div className="rows">{commits.map((c) => <Prow key={str(c.sha)} title={str(c.subject)} sub={str(c.sha).slice(0, 7)} />)}</div>
       ) : <p className="hint">The engine has no release notes for this version yet.</p>}
@@ -198,7 +241,6 @@ function ReportDialog({ engine, run, onClose }: Pick<SettingsPageProps, "engine"
 function Updating({ engine, level, data }: SettingsPageProps & { data: Data }) {
   const config = useConfig(engine);
   const schedule = rec(data.status.schedule);
-  const [checked, setChecked] = useState<number | null>(null);
   const call = useCall();
   const autoSaved = config.get("update.auto.enabled");
   const auto = typeof autoSaved === "boolean" ? autoSaved : schedule.autoEnabled === true;
@@ -211,7 +253,9 @@ function Updating({ engine, level, data }: SettingsPageProps & { data: Data }) {
   })();
   const channelSaved = str(config.get("update.channel")) || str(data.status.effectiveChannel) || str(schedule.channel);
   const channel = channelSaved === "beta" || channelSaved === "dev" ? "beta" : "stable";
-  const check = () => void call.run(async () => { await engine.request("update.status", { refreshCheckout: true }); setChecked(Date.now()); data.reload(); });
+  const check = () => void call.run(async () => { await engine.request("update.status", { refreshCheckout: true }); data.setCheckedAt(Date.now()); data.reload(); });
+  // Up to date, the headline above carries the check's time; with an update waiting, the time stays beside the button.
+  const waiting = Boolean(str(rec(data.status.updateAvailable).latestVersion) || str(rec(schedule.target).version));
   const lastRun = rec(data.status.lastRun);
   return (
     <Sec title="Updating">
@@ -219,7 +263,7 @@ function Updating({ engine, level, data }: SettingsPageProps & { data: Data }) {
         <Seg label="Install updates" value={install} disabled={config.loading} onChange={setInstall} options={[{ id: "automatic", label: "Automatically" }, { id: "ask", label: "Ask me first" }, { id: "never", label: "Never" }]} />
       </Ctl>
       <Ctl title="Check for updates" sub={call.error}>
-        {checked ? <span className="val-k">Last checked {when(checked)}</span> : null}
+        {data.checkedAt && waiting ? <span className="val-k">Last checked {when(data.checkedAt)}</span> : null}
         <Btn sm disabled={call.busy} onClick={check}>{call.busy ? "Checking…" : "Check now"}</Btn>
       </Ctl>
       <Ctl title="Which updates" sub="Stable is tested longer." help="Stable is tested longer. Beta gets new things first and may have rough edges.">
@@ -246,8 +290,9 @@ const DEVICES: [string, string, string, string][] = [
   ["globe", "Browser extension", "Send pages to a Trunk.", "Chrome Web Store"],
 ];
 
-/** One device row. At Advanced the Android row adds the APK line, greyed until the Branch app can download it. */
-function DeviceRow({ icon, title, sub, store, apk }: { icon: string; title: string; sub: string; store: string; apk: boolean }) {
+/** One device row. At Advanced the Android row adds the APK line, greyed until the Branch app can download it. `whyId`
+ *  is the line under the list that says why its store links and downloads are greyed. */
+function DeviceRow({ icon, title, sub, store, apk, whyId }: { icon: string; title: string; sub: string; store: string; apk: boolean; whyId: string }) {
   return (
     <div className="prow" data-row={title}>
       <Tile><Ico name={icon} s /></Tile>
@@ -256,21 +301,23 @@ function DeviceRow({ icon, title, sub, store, apk }: { icon: string; title: stri
         {sub ? <small>{sub}</small> : null}
         {apk ? (
           <small className="up-apk">
-            <button type="button" className="link-k" disabled title={APK_WHY}>Download the APK</button> · <button type="button" className="link-k" disabled title={APK_WHY}>Checksum</button> · Not every release includes the APK. Check the checksum before installing.
+            <button type="button" className="link-k" disabled title={APK_WHY} aria-describedby={whyId}>Download the APK</button> · <button type="button" className="link-k" disabled title={APK_WHY} aria-describedby={whyId}>Checksum</button> · Not every release includes the APK. Check the checksum before installing.
           </small>
         ) : null}
       </span>
-      {store ? <Btn sm ghost disabled title={store === "Download" ? APP_ONLY : STORE_WHY}>{store}</Btn> : null}
+      {store ? <Btn sm ghost disabled title={store === "Download" ? APP_ONLY : STORE_WHY} aria-describedby={whyId}>{store}</Btn> : null}
     </div>
   );
 }
 
 function Devices({ lv }: { lv: number }) {
+  const whyId = useId();
   return (
     <Sec title="Branch on your other devices">
       <Plist>
-        {DEVICES.map(([icon, title, sub, store]) => <DeviceRow key={title} icon={icon} title={title} sub={sub} store={store} apk={title === "Android" && lv >= 1} />)}
+        {DEVICES.map(([icon, title, sub, store]) => <DeviceRow key={title} icon={icon} title={title} sub={sub} store={store} apk={title === "Android" && lv >= 1} whyId={whyId} />)}
       </Plist>
+      <p className="hint" id={whyId}>{STORES_LINE}</p>
       <Ctl title="Already have the app?" off="Pairing a phone needs the Branch phone app."><Btn sm>Pair your phone</Btn></Ctl>
       <Ctl title="Add more to Branch"><Btn sm onClick={() => openPlace("customize", "Plugins")}>Open Plugins</Btn><Btn sm ghost onClick={() => openPlace("customize", "Skills")}>Browse the skill library</Btn></Ctl>
     </Sec>
@@ -290,7 +337,7 @@ export function About() {
 
 const NOT_PUBLISHED = "The Branch add-on for it isn’t published yet.";
 /** In your editors and notes (Advanced): add-ons that aren't published yet, greyed with why. */
-function Editors({ gatewayUrl }: { gatewayUrl?: string }) {
+function Editors({ gatewayUrl, technical }: { gatewayUrl?: string; technical?: boolean }) {
   const origin = gatewayUrl ? gatewayUrl.replace(/^ws/, "http").replace(/\/+$/, "") : "";
   const rows: [string, string, string][] = [
     ["VS Code", "Marketplace", "Send the selection or files to a Trunk; Quick edit with Ctrl Shift I."],
@@ -298,21 +345,28 @@ function Editors({ gatewayUrl }: { gatewayUrl?: string }) {
     ["Emacs", "MELPA", "branch.el starts a local server; search, chat and find similar."],
     ["Obsidian", "Community plugins", "Chat beside a note; search by meaning; similar notes."],
   ];
+  // Every add-on here waits for a later update, so the card is one quiet line that opens them.
   return (
     <Sec title="In your editors and notes" group="Branch on your other devices">
+      <LaterRows count={rows.length + 3}>
       {rows.map(([title, store, sub]) => <Ctl key={title} title={title} sub={sub} off={NOT_PUBLISHED}><Btn sm disabled>{store}</Btn></Ctl>)}
       <Ctl title="Folders to keep in sync" sub="Obsidian folders the Trunks read, refreshed as they change." off="Needs the Obsidian add-on."><input className="inp" aria-label="Folders to keep in sync" disabled /></Ctl>
-      <Ctl title="Search with Branch from your browser" sub="Add it as a search engine; what you type opens a new conversation." off="Opening a conversation from a browser search needs the Branch app."><code className="s2-code">{`${origin}/?q=%s`}</code></Ctl>
+      <Ctl title="Search with Branch from your browser" sub="Add it as a search engine; what you type opens a new conversation." off="Opening a conversation from a browser search needs the Branch app.">{technical ? <code className="s2-code">{`${origin}/?q=%s`}</code> : null}</Ctl>
       <Ctl title="Install from a terminal" off="The Branch installer isn’t published yet." />
+      </LaterRows>
     </Sec>
   );
 }
 
 function RemoveBranch() {
-  const parts: [string, string][] = [["The app", ""], ["Programs it downloaded to run models", ""], ["Models on this computer", ""], ["The Gateway’s Linux system (WSL)", "Its WSL system, disk image and start-up entry."]];
+  const headless = useHeadless();
+  // WSL is Windows-only: on Linux or a Mac the panel never names it (B-053).
+  const parts: [string, string][] = [["The app", ""], ["Programs it downloaded to run models", ""], ["Models on this computer", ""],
+    ...(clientOs() === "windows" ? [["Branch’s Linux system (WSL)", "Its WSL system, disk image and start-up entry."] as [string, string]] : [])];
   return (
-    <div className="sec s2-danger" data-sec="Remove Branch">
-      <h2>Remove Branch</h2>
+    <div className={headless ? "s2-danger" : "sec s2-danger"} data-sec="Remove Branch">
+      {headless ? null : <h2>Remove Branch</h2>}
+      <RemoveAppKeepData />
       <div className="rows">
         {parts.map(([t, s]) => <Prow key={t} title={t} sub={s || undefined}><span className="s2-meta">Removed</span></Prow>)}
         <Ctl title="Keep my conversations and settings" sub="Branch finds them again if you install it later." off="The uninstaller asks."><Switch label="Keep my conversations and settings" checked onChange={() => undefined} /></Ctl>
@@ -321,6 +375,43 @@ function RemoveBranch() {
       <Acts><Btn className="s2-dz" disabled title="Removing Branch runs in the Branch app’s uninstaller.">Remove Branch and everything it installed</Btn></Acts>
     </div>
   );
+}
+
+/** Remove the app, keep my data (Private #1102, after Hermes A-159): the Branch app's own uninstall, behind a confirm
+ *  sheet that lists what goes and what stays. The desktop removes only what the installer put down. */
+export function RemoveAppKeepData() {
+  const [found] = useState(desktopControls);
+  const bridge = "bridge" in found ? found.bridge : undefined;
+  const [plan, setPlan] = useState<AppRemovalPlan | null>(null);
+  const [open, setOpen] = useState(false);
+  const call = useCall();
+  useEffect(() => {
+    if (!bridge?.removalPlan) return;
+    let live = true;
+    bridge.removalPlan().then((next) => { if (live) setPlan(next); }, () => { if (live) setPlan(null); });
+    return () => { live = false; };
+  }, [bridge]);
+  const why = "off" in found ? found.off : !bridge?.removalPlan || !bridge.removeApp ? NEEDS_NEWER_APP : plan && !plan.supported ? plan.reason : undefined;
+  const remove = () => void call.run(async () => { await bridge?.removeApp?.(); }, () => "Branch is closing to finish removing the app.");
+  return <>
+    <Ctl title="Remove the app, keep my data" sub="Your conversations, Trunks and settings stay. Install Branch again and it picks up where you left off." off={why}>
+      <Btn sm className="s2-dz" data-local="" disabled={!plan?.supported} onClick={() => setOpen(true)}>Remove the app…</Btn>
+    </Ctl>
+    {open && plan?.supported ? (
+      <Dialog title="Remove the Branch app?" onClose={() => { if (!call.busy) setOpen(false); }} footer={<>
+        <Btn ghost data-local="" disabled={call.busy} onClick={() => setOpen(false)}>Cancel</Btn>
+        <Btn className="s2-dz" data-local="" disabled={call.busy || Boolean(call.note)} onClick={remove}>{call.busy ? "Removing…" : "Remove the app"}</Btn>
+      </>}>
+        <p>Branch closes to finish. Nothing in your data is deleted.</p>
+        <h3 className="s2-h3">Removed</h3>
+        <ul className="s2-ul" data-testid="removal-removes">{plan.removes.map((line) => <li key={line}>{line}</li>)}</ul>
+        <h3 className="s2-h3">Kept on this computer</h3>
+        <ul className="s2-ul" data-testid="removal-keeps">{plan.keeps.map((line) => <li key={line}>{line}</li>)}</ul>
+        <p className="hint">Install Branch again and it finds them.</p>
+        <CallLine call={call} />
+      </Dialog>
+    ) : null}
+  </>;
 }
 
 function Reports() {
@@ -382,6 +473,7 @@ function Privacy({ openSettings }: Pick<SettingsPageProps, "openSettings">) {
 
 /** Help and updates, more (Advanced): the last attempt, every update (update.runs.list) and the engine's version. */
 function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: Data; version: string }) {
+  const [checked, stamp] = useCheckedAt();
   const [history, setHistory] = useState(false);
   const last = rec(data.status.lastRun);
   const kind = str(rec(rec(data.status.schedule).install).kind);
@@ -399,10 +491,11 @@ function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: 
         ]} />
       ) : <Empty>No update has been tried yet.</Empty>}
       <Ctl title="Update history" sub="Every update, who started it and how it went."><Btn sm onClick={() => setHistory(true)}>See all</Btn></Ctl>
-      <Ctl title="The engine" sub={version ? "The engine is installed and answering." : undefined}>
+      {/* Repair is greyed here, so the row says where it runs (Private #1093 item 7). */}
+      <Ctl title="The engine" sub={`${version ? "The engine is installed and answering. " : ""}Repair it from the Branch app on your computer.`}>
         <span className="val-k">{version ? `Installed ${version}` : ""}</span>
         <Btn sm disabled title={APP_ONLY}>Repair</Btn>
-        <Btn sm ghost onClick={data.reload}>Check again</Btn>
+        <Btn sm ghost onClick={() => void data.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</Btn><CheckedAt at={checked} />
       </Ctl>
       {lvOf(level) >= 2 ? <CodeRow title="Update status for scripts" code="branch update status --json" /> : null}
       {history ? <HistoryDialog engine={engine} onClose={() => setHistory(false)} /> : null}

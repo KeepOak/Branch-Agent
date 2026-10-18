@@ -2,7 +2,7 @@
 // `window.branchDesktop` is for window code that reads it; until the window does, this also fills the window's
 // token form (test ids gateway-token / connect, as in window/scripts/step2-flow.mjs). On loopback the engine
 // pairs the window silently, so nothing needs approving.
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webFrame } from "electron";
 
 interface DesktopInfo {
   gatewayUrl: string;
@@ -58,6 +58,16 @@ if (info) {
   contextBridge.exposeInMainWorld("branchDesktop", {
     gatewayUrl: info.gatewayUrl, getGatewayUrl: () => gatewayUrl, gatewayToken: info.gatewayToken,
     openConversation: (key: string) => ipcRenderer.invoke("branch-desktop:open-conversation", key),
+    browserGuest: {
+      // A sandboxed preload cannot import modules, so the loopback test is repeated here (see browser-guest-policy.ts).
+      local: isLoopbackUrl(info.gatewayUrl),
+      openPopout: (url: string) => ipcRenderer.invoke("branch-desktop:browser-popout", url),
+      onOpenTab: (listener: (url: string) => void) => {
+        const handler = (_event: unknown, url: unknown) => { if (typeof url === "string") listener(url); };
+        ipcRenderer.on("branch-desktop:browser-open-tab", handler);
+        return () => { ipcRenderer.off("branch-desktop:browser-open-tab", handler); };
+      },
+    },
     diagnostics: {
       uiEvent: (event: unknown): void => ipcRenderer.send("branch-desktop:ui-event", event),
       reportProblem: (minutes: number): Promise<{ saved: boolean; bytes?: number }> => ipcRenderer.invoke("branch-desktop:report-problem", minutes),
@@ -82,6 +92,8 @@ if (info) {
       return () => ipcRenderer.removeListener("branch-desktop:open-main-route", handler);
     },
     clipboard: { writeText: (text: string) => ipcRenderer.invoke("branch-desktop:clipboard:write-text", text) },
+    /** Settings › Appearance › Interface scale (Private #1100): the page's own zoom, so menus stay where they belong. */
+    zoom: { set: (factor: number) => { if (Number.isFinite(factor) && factor >= 0.5 && factor <= 2) webFrame.setZoomFactor(factor); } },
     componentUpdates: {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
       check: () => ipcRenderer.invoke("branch-desktop:component-update:check"),
@@ -129,11 +141,20 @@ if (info) {
       set: (name: string, on: boolean) => ipcRenderer.invoke("branch-desktop:controls:set", name, on),
       openDownload: (id: string) => ipcRenderer.invoke("branch-desktop:controls:open-download", id),
       setTrayUsage: (left: number | null) => ipcRenderer.send("branch-desktop:controls:tray-usage", left),
+      // Settings › Remove Branch: what removing the app takes and keeps, then removing it (the app quits).
+      removalPlan: () => ipcRenderer.invoke("branch-desktop:controls:removal-plan"),
+      removeApp: () => ipcRenderer.invoke("branch-desktop:controls:remove-app"),
       onOpenUsage: (listener: () => void) => {
         const handler = (): void => listener();
         ipcRenderer.on("branch-desktop:open-usage", handler);
         return () => { ipcRenderer.removeListener("branch-desktop:open-usage", handler); };
       },
+    },
+    // This computer's microphone, camera, location and notification permissions (os-permissions.ts).
+    permissions: {
+      get: () => ipcRenderer.invoke("branch-desktop:permissions:get"),
+      request: (name: string) => ipcRenderer.invoke("branch-desktop:permissions:request", name),
+      open: (name: string) => ipcRenderer.invoke("branch-desktop:permissions:open", name),
     },
   });
   window.addEventListener("DOMContentLoaded", () => {
@@ -298,4 +319,13 @@ function fillTokenForm(info: DesktopInfo): void {
   setTimeout(() => {
     document.querySelector<HTMLButtonElement>('[data-testid="connect"]')?.click();
   }, 50);
+}
+
+function isLoopbackUrl(raw: string): boolean {
+  try {
+    const host = new URL(raw).hostname;
+    return host === "127.0.0.1" || host === "localhost" || host === "[::1]";
+  } catch {
+    return false;
+  }
 }

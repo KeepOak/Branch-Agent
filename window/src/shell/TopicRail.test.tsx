@@ -19,7 +19,7 @@ const render = async (onPatch = vi.fn(async (_topic: Topic, _change: Record<stri
   const onOpen = vi.fn();
   const updateTopic = async (item: Topic) => act(async () => root!.render(<TopicRail contactId="trunk:oak" contactName="Oak" contactKey="agent:oak:main" generalPreview="Reply" generalUpdatedAt={Date.now()} currentKey="agent:oak:main" items={[{ topic: item, preview: "Flights found", updatedAt: Date.now() }]} onOpen={onOpen} onAll={() => {}} onPatch={onPatch}/>));
   await updateTopic(topic);
-  const click = async (label: string) => { const button = [...host.querySelectorAll("button")].find((x) => x.getAttribute("aria-label") === label || x.textContent?.trim() === label); expect(button, label).toBeTruthy(); await act(async () => button!.click()); };
+  const click = async (label: string) => { const button = [...document.querySelectorAll("button")].find((x) => x.getAttribute("aria-label") === label || x.textContent?.trim() === label); expect(button, label).toBeTruthy(); await act(async () => button!.click()); };
   return { host, click, onOpen, onPatch, updateTopic };
 };
 
@@ -50,6 +50,14 @@ describe("preview thread row", () => {
     await t.click("How threads show: Column");
     await t.click("Tabs above the chat");
     expect(JSON.parse(localStorage.getItem("branch-topics-t5")!)).toEqual({ layout: "tabs", width: 0, per: {} });
+  });
+
+  it("checks the thread layout in use among How threads show's choices", async () => {
+    const t = await render();
+    await t.click("How threads show: Column");
+    const choice = (label: string) => [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find((el) => el.textContent?.includes(label));
+    expect(choice("Column")?.getAttribute("aria-checked")).toBe("true");
+    expect(choice("Tabs above the chat")?.getAttribute("aria-checked")).toBe("false");
   });
 
   it("mutes unread badges as the preview does and remembers the choice", async () => {

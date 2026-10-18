@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import type { GatewayStatus } from "./connect/gateway";
 
 type Options = { url: string; onStatus: (status: GatewayStatus) => void };
@@ -30,6 +30,16 @@ const otherUrl = "ws://127.0.0.1:2";
 const marker = "branch.window.residentUrl";
 const hello = { snapshot: { sessionDefaults: { mainSessionKey: "agent:main:main" } }, auth: { scopes: [] }, policy: {} };
 let root: Root | undefined;
+// The first mount used to pay the cold transform of App and its whole import graph, which put the first test near
+// the 5 s per-test limit on slower runners (macOS shards timed out there, and the rest of the file cascaded). Load
+// App once here so the transform cost lands in this hook, then reset modules so every test still gets a fresh App.
+beforeAll(async () => {
+  await import("./App");
+  vi.resetModules();
+}, 60_000);
+afterAll(() => {
+  vi.resetModules();
+});
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   sessionStorage.clear();

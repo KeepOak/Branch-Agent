@@ -67,7 +67,7 @@ export function Manage({ engine, app, onClose, onSetup }: { engine: WindowEngine
   return <div className="r1-cw"><Dialog title={"Manage " + app.name} onClose={onClose} clear>
     <p role="status" className="g-label" data-lines>{live.loading ? "Checking connection…" : state.sub}</p>
     {state.accounts.length > 1 && <label><span className="g-label">Account</span><select aria-label="Account" value={account?.accountId ?? ""} onChange={e => { setAccountId(e.target.value); setConfirm(false); }} data-local="account">{state.accounts.map(a => <option key={a.accountId} value={a.accountId}>{a.name ?? a.accountId}</option>)}</select></label>}
-    <Access engine={engine} app={app} />
+    <Access engine={engine} app={app} inManage />
     {policy === "pairing" || policy === "allowlist" ? <Approved app={app} state={state} cfg={cfg} base={base} /> : null}
     {policy === "pairing" && pairing ? <Pairing engine={engine} snapshot={pairing} reload={live.reload} level={level} /> : null}
     {ch === "telegram" && <><h3 className="g-label">Behaviour</h3><ChatAppRow engine={engine} row={TELEGRAM_ADAPTER} />
@@ -81,7 +81,9 @@ export function Manage({ engine, app, onClose, onSetup }: { engine: WindowEngine
       <Line key={t} label={t} help={s} coming={NO_KEY}><Toggle label={t} on={!t.startsWith("Online")} disabled onChange={() => undefined} /></Line>
     ))}
     <Line label="Formatting" coming="Each app’s own formatting is always used."><Segmented label="Formatting" value="own" options={[{ v: "own", label: NATIVE[ch] ?? "Its own styles" }, { v: "plain", label: "Plain text" }]} disabled onChange={() => undefined} /></Line>
-    <div className="r1-cw-actions"><button type="button" disabled={busy || !canRun || !cfg.ready} data-need={method + " config.patch"} title={!canRun ? "Changing connection state comes in a later update." : !cfg.ready ? cfg.error || "Reading settings…" : undefined} onClick={pause}>{canRun ? running ? "Pause" : "Start" : "Coming"}</button><button type="button" disabled={busy} data-local="setup" onClick={onSetup}>{state.tone === "bad" && !state.paused ? "Set it up again" : "Set up again"}</button><button type="button" disabled={busy || !account || !canAll(engine, ["channels.logout"])} data-need="channels.logout" onClick={() => setConfirm(true)}>{canAll(engine, ["channels.logout"]) ? "Unlink" : "Coming"}</button></div>
+    <div className="r1-cw-actions"><button type="button" disabled={busy || !canRun || !cfg.ready} data-need={method + " config.patch"} title={!cfg.ready && cfg.error ? cfg.error : undefined} onClick={pause}>{canRun ? running ? "Pause" : "Start" : "Coming"}</button>{/* preview Manage: Unlink only for a linked account (WhatsApp, Signal: "Linked as …"); Set up again lives under
+        Health at Advanced (More.tsx AppMore), and Disconnect below ends the connection for every app (#1049). */}
+      {isLinked(state) ? <button type="button" disabled={busy || !account || !canAll(engine, ["channels.logout"])} data-need="channels.logout" onClick={() => setConfirm(true)}>{canAll(engine, ["channels.logout"]) ? "Unlink" : "Coming"}</button> : null}</div>
     {confirm && <section aria-label="Confirm unlink"><p className="g-label" data-lines>Unlink {account?.name ?? app.name}? You’ll need to connect this account again to receive messages.</p><button type="button" disabled={busy} data-local="cancel" onClick={() => setConfirm(false)}>Cancel</button><button type="button" disabled={busy} data-need="channels.logout" onClick={unlink}>Unlink account</button></section>}
     {level >= 1 ? <AppMore engine={engine} app={app} state={state} cfg={cfg} level={level} reload={live.reload} onSetup={onSetup} /> : null}
     <Disconnect engine={engine} app={app} state={state} cfg={cfg} base={base} busy={busy} act={act} eachAccount={eachAccount} onClose={onClose} />

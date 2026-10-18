@@ -1,26 +1,32 @@
 // Overview (DESIGN-SPEC §4.6.1; preview renderOverview + 40-places + 41-placesap p10-overview).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { plainError } from "../../shell/plain-error";
 import { activityLabel } from "../../shell/activity-label";
 import { shownWhy } from "../../shell/shown-why";
 import { useLockdown } from "../../shell/use-lockdown";
-import { LOCKDOWN_EXPLANATION } from "../../shell/ConfirmLockdown";
 import { notify } from "../../shell/notify";
-import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
+import { PlaceScroll, type PlaceProps } from "../../places-nav/PlaceFrame";
 import { Face } from "../../face/Face";
 import { isEngineMode, modeName } from "../../composer/mode";
 import { OverviewData, agentName, agents, number, people, personFrom, record, records, runMs, runs, sessions, sharedConnections, text, type Agent, type Resource, type Run, type Session } from "./engine";
 import { money, runLength, whenWord } from "./format";
 import { PersonRow, type PersonLine } from "./People";
 import { FinishSetup } from "./Setup";
-import { NewTeammates } from "./NewTeammates";
+import { ComingBody, OverviewBar, OverviewHero, UnlinkedBody, WIDGET_NAMES, WidgetCard, WidgetMark, useWidgetLayout, type WidgetId } from "./Dashboard";
+import { useConnectorLinks } from "./links";
+import { useFirstName } from "../../screens/chat/examples-greeting";
+import { useConversation } from "../../composer/useConversation";
+import { RecBar } from "../../places-nav/RecBar";
+import { capitalize, composerChipLabel, currentModelRef, currentThinking } from "../../composer/model";
 import "./overview.css";
 
-export const PAUSE_ALL_GAP = "Needs the engine's pause-all method.";
-const MILESTONES_GAP = "Needs the engine's milestones method.";
+export const PAUSE_ALL_GAP = "Pause all Trunks comes in a later update.";
+const MILESTONES_GAP = "Milestones comes in a later update.";
 
 function ResourceStatus({ resource, label, retry }: { resource: Resource; label: string; retry: () => void }) {
-  if (resource.error) return <div className="ov-error" role="alert"><p>Couldn't load {label}. {resource.error}</p><button type="button" className="btn sm" onClick={retry}>Try again</button></div>;
+  // No engine sentence, code, stack or path at Regular (Private #1089).
+  if (resource.error) return <div className="ov-error" role="alert"><p>Couldn't load {label}. {plainError(resource.error)}</p><button type="button" className="btn sm" onClick={retry}>Try again</button></div>;
   return resource.loading && resource.value === undefined ? <p className="ov-hint" role="status">Loading…</p> : null;
 }
 function Tile({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
@@ -44,7 +50,7 @@ function updateRow(value: unknown): { value: string; dot?: "good" | "warn" | "ba
   if (value === undefined) return null;
   const v = record(value), available = record(v.updateAvailable), active = record(v.activeRun), last = record(v.lastRun);
   if (Object.keys(active).length) return { value: "Updating", dot: "next" };
-  if (text(available.latestVersion)) return { value: "Branch update ready", dot: "next" };
+  if (text(available.latestVersion)) return { value: `${text(available.latestVersion)} ready`, dot: "next" };
   if (last.status === "failed" || last.status === "error") return { value: "Last update failed", dot: "bad" };
   return { value: "No update waiting", dot: "good" };
 }
@@ -97,15 +103,51 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   const rows = sessions(tiles.sessions.value), running = rows.filter(row => row.working && !row.helper);
   const trunks = agents(tiles.agents.value), runList = runs(tiles.runs.value);
   const def = trunks.list.find(a => a.id === trunks.defaultId) ?? trunks.list[0];
+  const defaultName = def?.name ?? "Sapling";
   const mode = def && isEngineMode(def.mode) ? modeName(def.mode) : "";
   const lines: PersonLine[] = people(tiles.people.value, tiles.presence.value);
   const shared = sharedConnections(tiles.presence.value);
   if (shared.length) lines.push({ ...personFrom("shared", "Shared owner", "", shared), shared: true });
   const status = (key: keyof typeof tiles, label: string) => <ResourceStatus resource={tiles[key]} label={label} retry={() => void data.refresh([key])} />;
   const recent = recentActivity(rows, runList);
-  return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />} before={<button type="button" className="btn sm" onClick={() => openPlace("office")}>Grove</button>}>
+  const me = useFirstName(engine, true);
+  const links = useConnectorLinks(engine, trunks.defaultId);
+  // The hero's chip names the default Trunk's real model and effort (composer/model), as the composer does.
+  const conv = useConversation(engine, trunks.defaultId);
+  const currentRef = currentModelRef(conv.row, conv.defaults, conv.trunk?.model);
+  const currentModel = conv.models.find(m => m.ref === currentRef || m.id === currentRef);
+  const effort = currentThinking(conv.row, conv.defaults);
+  const chip = currentModel?.available ? `${currentModel.name}${effort ? ` · ${capitalize(effort)}` : ""}` : composerChipLabel(undefined, "", conv.modelsLoaded);
+  const layout = useWidgetLayout();
+  const [range, setRange] = useState("week");
+  const [source, setSource] = useState("all");
+  const linked: Record<WidgetId, boolean> = { github: links.github?.linked === true, gmail: links.gmail === true, branch: true, calendar: links.calendar === true, drive: links.drive === true };
+  const visible = layout.order.filter(id => !layout.hidden.includes(id) && (source === "all" || source === id));
+  const allPaused = trunks.list.length > 0 && trunks.list.every(a => a.paused);
+  // The hero's message goes to the default Trunk's main conversation, which opens with it (preview ovSendP34 → toDefault).
+  const sendToDefault = async (message: string): Promise<boolean> => {
+    const key = `agent:${trunks.defaultId}:${trunks.mainKey}`;
+    try {
+      const result = record(await engine.request("chat.send", { sessionKey: key, message, idempotencyKey: crypto.randomUUID() }));
+      if (result.status === "error") throw new Error(text(result.error));
+      openConversation(key);
+      return true;
+    } catch (error) {
+      // The engine's words only; an empty refusal leaves the text in the box, unsent.
+      const words = error instanceof Error ? error.message : String(error);
+      if (words) notify(words, { tone: "bad" });
+      return false;
+    }
+  };
+  const toggleWidget = (id: WidgetId) => {
+    if (layout.hidden.includes(id)) { layout.show(id); return; }
+    layout.hide(id);
+    notify(`Hidden. ＋ Add a widget brings ${WIDGET_NAMES[id]} back.`);
+  };
+  const linkAccounts = () => openSettings?.("accounts");
+  // The old Overview tiles, kept whole inside the Branch card.
+  const oldTiles = <>
     <div className="ov-grid">
-      <NewTeammates engine={engine} mainKey={trunks.mainKey} openConversation={openConversation} />
       <Tile title="Now" action={<button type="button" className="ov-link" onClick={() => openPlace("canopy")}>Open Canopy</button>}>
         {status("sessions", "running conversations")}
         {running.map(row => <button key={row.key} type="button" className="ov-now" onClick={() => openConversation(row.key)}><Face size={34} state="work" label={agentName(trunks.list, row.agentId)} /><span className="ov-grow"><b>{agentName(trunks.list, row.agentId)}</b><small>{row.preview || row.title}</small></span></button>)}
@@ -122,8 +164,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
       </Tile>
       <Tile title="Controls">
         <p>Mode: <b>{lockdown.on ? "Lockdown" : mode || "As each Trunk is set"}</b> · <button type="button" className="ov-link ov-inline" disabled={!openSettings || lockdown.on} onClick={() => openSettings?.("permissions")}>change</button></p>
-        <div className="ov-acts"><button type="button" className="btn sm" aria-describedby="overview-lockdown-help" disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Lockdown"}</button><button type="button" className="btn sm" disabled title={shownWhy(PAUSE_ALL_GAP)}>Pause all Trunks</button></div>
-        <p className="ov-hint" id="overview-lockdown-help">{LOCKDOWN_EXPLANATION}.</p>
+        <div className="ov-acts"><button type="button" className="btn sm" disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "Lockdown comes in a later update."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Lockdown"}</button><button type="button" className="btn sm" disabled title={shownWhy(PAUSE_ALL_GAP)}>{allPaused ? "Resume all Trunks" : "Pause all Trunks"}</button></div>
       </Tile>
       <Tile title="Who is using Branch">
         {status("people", "people")}{status("presence", "live presence")}
@@ -131,8 +172,31 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
         {tiles.people.value !== undefined && !lines.length ? <p>No one has signed in yet.</p> : null}
         <div className="ov-acts"><button type="button" className="btn sm" onClick={() => openPlace("people")}>Invite someone</button></div>
       </Tile>
-      <Tile title="Milestones"><div className="ov-badges" data-reason={MILESTONES_GAP} />{shownWhy(MILESTONES_GAP) && <p className="ov-hint">{shownWhy(MILESTONES_GAP)}</p>}</Tile>
+      <Tile title="Milestones"><div className="ov-badges" /><span className="pill idle" title={shownWhy(MILESTONES_GAP)}>Coming</span></Tile>
+    </div>
+  </>;
+  const card = (id: WidgetId, index: number, head: ReactNode, body: ReactNode) => (
+    <WidgetCard key={id} id={id} index={index} count={visible.length} head={head} onMove={layout.move} onHide={toggleWidget}>{body}</WidgetCard>
+  );
+  const gmailLinked = links.gmail === true;
+  return <PlaceScroll>
+    <div className="place wide-overview p34-place">
+      <RecBar engine={engine} />
+      <OverviewHero name={defaultName} me={me} chip={chip} onSend={sendToDefault} />
+      <FinishSetup engine={engine} openSettings={openSettings} />
+      <OverviewBar range={range} onRange={setRange} source={source} onSource={setSource} layout={layout} linked={linked} onAdd={toggleWidget} onLink={linkAccounts} />
+      <div className="p34-grid">
+        {visible.map((id, index) => {
+          if (id === "github") return card(id, index, <><WidgetMark id="github" /><b>GitHub</b>{linked.github && links.github?.login ? <small>@{links.github.login}</small> : null}</>,
+            linked.github ? <ComingBody linked /> : <UnlinkedBody id="github" onLink={linkAccounts} />);
+          if (id === "gmail") return card(id, index, <><WidgetMark id="gmail" /><b>Gmail</b></>,
+            gmailLinked ? <ComingBody linked /> : <UnlinkedBody id="gmail" onLink={linkAccounts} />);
+          if (id === "branch") return card(id, index, <><WidgetMark id="branch" leaf={<Face size={26} label={defaultName} />} /><b>Branch</b><small>Your Trunks</small><button type="button" className="link p34-link" onClick={linkAccounts}>Accounts &amp; usage</button></>,
+            <div className="p34-old">{oldTiles}</div>);
+          return card(id, index, <><WidgetMark id={id} /><b>{WIDGET_NAMES[id]}</b></>, <ComingBody linked={linked[id]} />);
+        })}
+      </div>
     </div>
     {lockdown.confirmation}
-  </PlaceFrame>;
+  </PlaceScroll>;
 }

@@ -19,10 +19,9 @@ cd ..
 node scripts/measure-worker.mjs run worker-measure.json
 ```
 
-The local run refuses to start unless free memory is above 6 GiB. The
-`Local worker measurement` PR workflow runs this on Windows, macOS and Linux
-runners and saves one JSON report per OS. Each job has the existing 15-minute
-limit. Build configurations run sequentially.
+The local run refuses to start unless free memory is above 6 GiB. Build
+configurations run sequentially. Repeat the `run` step on each OS you need
+numbers for, and save one JSON report per OS.
 
 ## What the numbers mean
 
@@ -56,6 +55,6 @@ budget or a realistic long-turn workload estimate. Measure those separately
 when implementing memory-aware admission. No artificial model-history load,
 forced garbage collection, worker heap cap or compile-cache prewarm is applied.
 
-Use the three CI reports in the PR body, including OS, architecture and runtime
+Use the reports in the PR body, including OS, architecture and runtime
 version. Apply the card's recommendation conservatively across all three OSes:
 per-turn children only if every measured idle RSS is below 400 MB.

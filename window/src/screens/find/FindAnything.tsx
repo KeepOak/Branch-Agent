@@ -2,13 +2,14 @@
 // clear glass dialog (README item 48). Only its props are adapted here: the rows open R1 routes, and the commands R1 has
 // no home for yet say Coming instead of doing nothing.
 import { useMemo } from "react";
+import { availability } from "../../connect/capabilities";
 import type { Conversation, ConversationList } from "../../connect/conversations";
 import type { SaplingSession } from "../../connect/session";
+import { EXAMPLES_REASON, startTryExamples, TRY_EXAMPLES_METHOD } from "../onboarding/try-examples";
 import type { PlaceId } from "../../places-nav/routes";
-import { createReadyTrunk } from "../../places/trunk/api";
+import { openNewTrunkSheet } from "../../places/trunk/new-trunk-sheet";
 import { conversationActions } from "../../shell/conversation-actions";
 import { useTrunks } from "../../shell/engine-data";
-import { nextTrunkName } from "../../shell/NewTrunkFlow";
 import { notify } from "../../shell/notify";
 import { Palette } from "../../shell/Palette";
 import type { PaletteRow } from "../../shell/palette-model";
@@ -20,7 +21,6 @@ import "./find.css";
 /** Commands with no R1 home yet: the row stays listed, says Coming, and runs nothing but its reason. */
 export const FIND_COMING: Readonly<Record<string, string>> = {
   "a:focus": "Focus mode comes in a later update.",
-  "a:tour": "The walkthrough returns with the new setup.",
   "a:ask": "Quick ask comes in a later update.",
 };
 
@@ -69,18 +69,26 @@ export function FindAnything(p: FindAnythingProps) {
     trunkName,
     openRow: p.current,
     newConversation: () => { const id = trunks.defaultId ?? trunks.list[0]?.id; if (id) start(id); else notify("Make a Trunk first.", { tone: "bad" }); },
-    newTrunk: () => void createReadyTrunk(session.engine, nextTrunkName(trunks.list.map(trunk => trunk.name))).then(start, (error: unknown) => notify(`Couldn't make the Trunk: ${reason(error)}`, { tone: "bad" })),
+    newTrunk: () => { p.onClose(); openNewTrunkSheet(); },
     toggleTheme: () => void setThemeChoice(toggleTheme(readThemeChoice())),
     focusMode: () => undefined,
     shortcuts: p.onShortcuts,
     setup: p.onSetup,
-    tour: () => undefined,
+    tour: () => window.dispatchEvent(new CustomEvent("branch:welcome-tour")),
     quickAsk: () => undefined,
     openConversation: p.onOpenConversation,
     openPlace: p.onPlace,
     openSettings: p.onSettings,
     toggleLockdown: p.onToggleLockdown,
     lockdownOn: p.lockdownOn,
+    tryExamples: () => {
+      if (availability(session.engine, TRY_EXAMPLES_METHOD) === "no") {
+        notify(`Coming · ${EXAMPLES_REASON}`);
+        return;
+      }
+      startTryExamples((method, params) => session.request(method, params));
+      p.onSettings("trunks");
+    },
   }), p.onPlace);
   return <div className="r1-find">
     <Palette rows={rows} request={request} rowName={rowName} onClose={p.onClose}

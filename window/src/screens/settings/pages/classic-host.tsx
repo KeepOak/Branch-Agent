@@ -12,7 +12,7 @@ import { usePins, type Pin } from "../../../places/settings/pins";
 import { HIDDEN_PAGES, SETUP_PAGES, pageName } from "../../../places-nav/settings-nav";
 import { Icon } from "../../../shell/icons";
 import { PAGES, pageFor, sectionNeed, type PageId } from "../nav";
-import type { Row } from "../rows";
+import { COMING_FROM, type Row } from "../rows";
 import { SECTION_COMING, useLevel } from "../SettingsFrame";
 import type { PageSlot } from "../slots";
 import "./classic-host.css";
@@ -62,8 +62,10 @@ export function ClassicHost({ engine, page, classic, coming, onPage }: { engine:
   return (
     <div className="settings r1s-classic" data-classic={list.join(" ")}>
       <div className="set-col">
-        <p className={`set-save r1s-classic-save g-label${save?.kind === "failed" ? " bad" : ""}`} role="status" aria-live="polite" hidden={!save}>
-          {save?.kind === "saved" ? <><Icon name="check" small />Saved</> : save?.kind === "saving" ? "Saving…" : save?.kind === "failed" ? `Not saved: ${visible(save.message)}` : null}
+        {/* Out of flow (classic-host.css): "Saved" floats over the page's top corner and never pushes a row under the
+            pointer. It is drawn from the first frame, empty, so the live region is in place before it speaks. */}
+        <p className={`set-save r1s-classic-save g-label${save?.kind === "failed" ? " bad" : ""}`} role="status" aria-live="polite">
+          {save ? <span className="r1s-classic-save-pill">{save.kind === "saved" ? <><Icon name="check" small />Saved</> : save.kind === "saving" ? "Saving…" : `Not saved: ${visible(save.message)}`}</span> : null}
         </p>
         <KitProvider level={level} report={report} scope={null} pins={pins}>
           {list.map((id, i) => {
@@ -81,7 +83,8 @@ export function ClassicHost({ engine, page, classic, coming, onPage }: { engine:
             );
           })}
         </KitProvider>
-        {coming?.map((card) => (
+        {/* Cards that are all Coming: Regular shows only what works today (rows.ts COMING_FROM). */}
+        {level < COMING_FROM ? null : coming?.map((card) => (
           <section key={card} className="sec r1s-classic-coming" aria-label={card}>
             <h2>{card}</h2>
             <Coming engine={engine} need={sectionNeed(page, card)} unwired reason={SECTION_COMING(card)} where={`${PAGES[page].title} › ${card}`}>

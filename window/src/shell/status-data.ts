@@ -60,7 +60,7 @@ export function ageWords(at: number, now: number): string {
 
 export type LimitWindow = { name: string; left: number; reset: string; low: boolean };
 export type LimitPill = "Measured" | "Not published";
-export type LimitRow = { id: string; name: string; provider?: string; email?: string; profileId?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean; stale?: boolean; signInNeeded?: boolean };
+export type LimitRow = { id: string; name: string; provider?: string; email?: string; profileId?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean; stale?: boolean; signInNeeded?: boolean; rateLimitedUntil?: number; ready?: boolean };
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
 
 /** Limits carried on branch:usage-checked when the status-bar poll got a result. */
@@ -82,9 +82,30 @@ export function usageStatusWords(error: unknown, provider: string): string {
 /** A token without the usage scope: only a fresh sign-in with the account reads its usage. Never the raw HTTP error. */
 export const SIGN_IN_AGAIN_WORDS = "Sign in again to show usage.";
 
-/** A reading the engine kept because the latest check was rate limited or timed out: say how old it is and why. */
+/** A usage-check 429 is not the account's limit; keep the last reading without calling the account rate-limited. */
 export function staleReadingWords(reason: unknown, age: string): string {
-  return /\b429\b|rate.?limit/i.test(str(reason)) ? `Rate limited · last reading ${age}. Branch checks again in 5 min.` : `No answer · last reading ${age}. Branch will try again.`;
+  return /\b429\b|rate.?limit/i.test(str(reason)) ? `Usage unavailable · last reading ${age}. Branch checks again in 5 min.` : `No answer · last reading ${age}. Branch will try again.`;
+}
+
+/** Same clock and weekday words reset times use, without the "resets" prefix. */
+export function untilClockWords(at: number, now: number): string {
+  const date = new Date(at);
+  const today = new Date(now);
+  if (date.toDateString() === today.toDateString()) {
+    return clockWords(date);
+  }
+  if (at - now < 6 * 86_400_000) {
+    return `${clockWords(date)} ${DAYS[date.getDay()].slice(0, 3)}`;
+  }
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** Provider/model limit, with the reset time when the provider sent one. */
+export function rateLimitedWords(until: number | undefined, now: number): string {
+  if (!until || until <= now) {
+    return "Rate limited, try later";
+  }
+  return `Rate limited until ${untilClockWords(until, now)}`;
 }
 
 const OPENAI_PLANS: Record<string, string> = {
@@ -148,8 +169,12 @@ function limitRow(p: Record<string, unknown>, updatedAt: number, now: number, ac
   // The "no reading" note names the provider, so each provider can say it once.
   const word = provider === "anthropic" ? "Claude" : provider === "openai-codex" ? "ChatGPT" : name.replace(/\s*·\s*Account \d+$/, "");
   const signInNeeded = p.signInNeeded === true;
-  const line = stale ? staleReadingWords(p.staleReason, ageWords(readingAt, now)) : signInNeeded ? SIGN_IN_AGAIN_WORDS : p.error === "Usage not reported" ? "Usage not reported" : p.error ? usageStatusWords(p.error, word) : measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, word);
-  return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, provider: str(p.provider), email: str(p.accountEmail) || undefined, profileId: str(p.authProfileId) || undefined, plan: planWords(provider, str(p.plan)), account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true, ...(stale ? { stale } : {}), ...(signInNeeded ? { signInNeeded } : {}) };
+  const rateLimitedUntil = num(p.rateLimitedUntil) || undefined;
+  const rateLimited = Boolean(rateLimitedUntil && rateLimitedUntil > now);
+  const ready = p.ready === true && !signInNeeded && !rateLimited;
+  const asOf = `as of ${ageWords(readingAt || updatedAt, now)}`;
+  const line = signInNeeded ? SIGN_IN_AGAIN_WORDS : rateLimited ? rateLimitedWords(rateLimitedUntil, now) : ready ? (measured ? asOf : "Ready") : stale ? staleReadingWords(p.staleReason, ageWords(readingAt, now)) : p.error === "Usage not reported" ? "Usage not reported" : p.error ? usageStatusWords(p.error, word) : measured ? asOf : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, word);
+  return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, provider: str(p.provider), email: str(p.accountEmail) || undefined, profileId: str(p.authProfileId) || undefined, plan: planWords(provider, str(p.plan)), account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true, ...(stale ? { stale } : {}), ...(signInNeeded ? { signInNeeded } : {}), ...(rateLimited ? { rateLimitedUntil } : {}), ...(ready ? { ready } : {}) };
 }
 
 /** usage.status: one row per connection and account, never added together (§4.9.4 rule 1). */
@@ -305,7 +330,8 @@ export function comingUp(jobs: unknown[], now = Date.now(), trunkName?: (id?: st
     .map((j) => ({ name: plainJobName(j, trunkName), when: dueWords(num(rec(j.state).nextRunAtMs), now) }));
 }
 
-export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null; statusMessage?: string };
+/** `ready`: the update is downloaded and checked, and applies by itself (`waiting` says when). It never spins. */
+export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null; ready?: boolean; statusMessage?: string };
 
 /** "3 days, 4 hours" (§4.9.3 "Up <uptime>"). */
 export function uptimeWords(ms: number): string {

@@ -70,6 +70,11 @@ export function createAutoApplyUpdate(options: {
   seamlessHandoff?(): boolean;
   /** Free disk and RAM now; an unhealthy host never starts an update (Private #951). */
   health?(): UpdateHealth | Promise<UpdateHealth>;
+  /**
+   * Applying this version quits and relaunches the app (a staged desktop shell, Private #1054 M5). It has no standby
+   * and no drain: it waits for a gap with no run in flight, even past the pending cap, and keeps the Trunk-work batch.
+   */
+  relaunchesApp?(version: string): boolean | Promise<boolean>;
   /** A security fix skips the Trunk-work batching, never the health rule. */
   securityFix?(version: string): boolean | Promise<boolean>;
   /** Pins whether this machine runs Trunk work; by default it is any engine run seen in TRUNK_WORK_WINDOW_MS. */
@@ -136,7 +141,12 @@ export function createAutoApplyUpdate(options: {
       const version = await options.pendingVersion();
       if (version !== heldVersion) {
         idleSince = undefined; retryAfter = 0; failedVersion = undefined; notifiedVersion = undefined;
-        appliedVersion = undefined; heldVersion = version ?? undefined; pendingSince = version ? now() : undefined;
+        appliedVersion = undefined;
+        // A newer release that replaces a pending one keeps the wait: the cap counts from when an update first became
+        // pending, so releases that keep coming every few hours cannot postpone the update forever.
+        if (!version) pendingSince = undefined;
+        else if (heldVersion === undefined) pendingSince = now();
+        heldVersion = version ?? undefined;
       }
       if (!version || !options.enabled() || appliedVersion === version) {
         idleSince = undefined;
@@ -170,7 +180,8 @@ export function createAutoApplyUpdate(options: {
         decision(`batching ${version} with Trunk work; the last update applied under an hour ago`);
         return;
       }
-      const handoff = Boolean(options.seamlessHandoff?.()) && failedVersion !== version;
+      const relaunch = await options.relaunchesApp?.(version) ?? false;
+      const handoff = !relaunch && Boolean(options.seamlessHandoff?.()) && failedVersion !== version;
       if (handoff && !batched) {
         restarting = true;
         decision(`prepared handoff for ${version}${security ? " (security fix)" : ""}`);
@@ -186,8 +197,10 @@ export function createAutoApplyUpdate(options: {
           decision(`handoff unavailable; falling back to idle drain for ${version}`);
         }
       }
+      // A relaunch stops every run the app owns: any run in flight holds it off and resets the gap.
+      const busy = (activity: UpdateActivity) => turnWaiting(activity) || (relaunch && activity.activeRuns > 0);
       const activity = await readActivity();
-      if (turnWaiting(activity)) {
+      if (busy(activity)) {
         idleSince = undefined;
         decision(`waiting for ${activity.activeRuns} active runs, ${activity.pendingApprovals} approvals${activity.streaming ? ", streaming reply" : ""}${activity.unsavedDraftFiles ? ", unsaved draft files" : ""}${batched ? `; deferring ${version} until a gap in Trunk work` : ""}`);
         return;
@@ -199,7 +212,7 @@ export function createAutoApplyUpdate(options: {
       }
       // A fresh gateway snapshot closes the gap after the hold timer and before relaunch.
       const final = await readActivity();
-      if (turnWaiting(final) || !options.enabled()) {
+      if (busy(final) || !options.enabled()) {
         idleSince = undefined;
         decision(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals`);
         return;

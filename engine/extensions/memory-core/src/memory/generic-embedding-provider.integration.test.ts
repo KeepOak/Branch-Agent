@@ -10,6 +10,7 @@ import {
 } from "branch/plugin-sdk/plugin-test-runtime";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createEmbeddingProvider } from "./embeddings.js";
+import { LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE } from "./local-embedding-provider.js";
 import type { IndexedMemoryChunk } from "./manager-chunk-writer.js";
 import { MemoryIndexDatabase } from "./manager-database-context.js";
 import { MemoryManagerEmbeddingOps } from "./manager-embedding-ops.js";
@@ -240,7 +241,7 @@ describe("memory-core generic embedding provider contract", () => {
           baseUrl: server.baseUrl,
         }),
       ),
-    ).rejects.toThrow("Unknown memory embedding provider: openai");
+    ).rejects.toThrow(LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE);
     expect(server.requests).toHaveLength(0);
   });
 });

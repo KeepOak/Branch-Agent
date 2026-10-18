@@ -16,25 +16,34 @@ function docOf(r: unknown): Doc {
   return { content: typeof v.content === "string" ? v.content : "", hash: typeof v.hash === "string" ? v.hash : null, missing: v.missing === true };
 }
 
+const NO_NOTE: Doc = { content: "", hash: null, missing: true };
+
 export function JustAboutYou({ engine, agentId }: { engine: WindowEngine; agentId: string }) {
   const file = useResource<RecordValue>(engine, "users.personalFile.get", { agentId });
   const last = useRef<Doc | null>(null);
   const [open, setOpen] = useState(false);
   if (file.data) last.current = docOf(file.data);
-  if (file.error || !last.current) return null;
   const doc = last.current;
-  const n = lineCount(doc.content);
+  const n = doc ? lineCount(doc.content) : 0;
+  // A read the engine refused (a one-person Branch) gets a plain reason and no Write, since the engine won't save it.
+  const refused = Boolean(file.error) && !doc;
   return (
     <Sec title="Just about you">
       <Plist>
         <div className="prow if-row" data-row="Just about you">
-          <code className="if-name">USER.md</code>
-          <span className="grow"><b>Just about you</b><small>Yours: what this Trunk should know about you. Only you and it read it.{n ? ` · ${linesText(n)}` : ""}</small></span>
-          <Btn sm onClick={() => setOpen(true)}>{n ? "Edit" : "Write"}</Btn>
+          {refused ? <span className="grow"><b>Not kept on this Branch</b><small>Branch keeps this note for people who share it. Nothing is written here.</small></span>
+            : n ? <>
+              <code className="if-name">USER.md</code>
+              <span className="grow"><b>Just about you</b><small>Yours: what this Trunk should know about you. Only you and it read it. · {linesText(n)}</small></span>
+              <Btn sm onClick={() => setOpen(true)}>Edit</Btn>
+            </> : <>
+              <span className="grow"><b>Nothing here yet</b><small>Tell Branch your name, what you do and how you like replies. Only you and it read it.</small></span>
+              <Btn sm onClick={() => setOpen(true)}>Write</Btn>
+            </>}
         </div>
       </Plist>
       <Hint>The shared USER.md above stays the household’s.</Hint>
-      {open ? <YouEditor engine={engine} agentId={agentId} start={doc} onClose={(saved) => { setOpen(false); if (saved) void file.reload(); }} /> : null}
+      {open ? <YouEditor engine={engine} agentId={agentId} start={doc ?? NO_NOTE} onClose={(saved) => { setOpen(false); if (saved) void file.reload(); }} /> : null}
     </Sec>
   );
 }

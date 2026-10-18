@@ -57,9 +57,11 @@ describe("R1 Settings › Devices is a native R1 page with the preview's cards",
     expect(host.querySelector(".r1s-custom, .r1s-classic, [data-classic]")).toBeNull();
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Devices");
     expect(host.querySelector(".r1s-lede")?.textContent).toContain(PAGES.devices.lede);
-    expect(sections()).toEqual(PREVIEW_REGULAR);
+    // "Let Trunks use this computer" waits for a later update at Regular, so it shows from Advanced.
+    const regular = PREVIEW_REGULAR.filter((c) => c !== "Let Trunks use this computer");
+    expect(sections()).toEqual(regular);
     await click([...host.querySelectorAll("button")].find((b) => b.textContent === "Learn more"));
-    expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(PREVIEW_REGULAR);
+    expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(regular);
   });
 
   it("draws all eleven preview cards at Technical in order, and no heading but the cards' own", async () => {
