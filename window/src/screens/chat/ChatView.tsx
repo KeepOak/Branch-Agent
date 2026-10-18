@@ -228,12 +228,14 @@ export function ChatView(props: ChatViewProps) {
   }, [details, engine, props, toast]);
   // What waits in this conversation: two or more approvals group into one card at the foot (preview ask2); the rest get
   // their own card at the foot too, unless their approval block already draws it. A question with no session of its own
-  // is answered here, not as a drop (Classic docks it on the open conversation).
+  // is answered here, not as a drop (Classic docks it on the open conversation). Answered asks with no history block
+  // stay as the decided pill, the way the preview's choiceCard stays after a pick.
   const here = asks.filter((s) => s.status !== "settled" && askIsHere(s.ask, props.sessionKey));
   const members = useAskGroup(props.sessionKey ?? null, here);
   const grouped = new Set(members);
   const blockIds = new Set(all.flatMap((b) => (b.kind === "approval" ? [b.approval.id] : [])));
   const loose = here.filter((s) => !blockIds.has(s.ask.id) && !grouped.has(s.ask.id));
+  const decided = asks.filter((s) => s.status === "settled" && askIsHere(s.ask, props.sessionKey) && !blockIds.has(s.ask.id) && !grouped.has(s.ask.id));
   const waitingHere = here.length > 0 || all.some((b) => b.kind === "approval" && b.approval.state === "pending");
   const answerAsk = (id: string, reply: Reply) => {
     if (askCards.has(id)) { props.onAsk?.(id, reply); return; }
@@ -323,6 +325,7 @@ export function ChatView(props: ChatViewProps) {
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
         {members.length ? <AskGroup members={members.flatMap((id) => askCards.get(id) ?? [])} name={name} lockdown={props.lockdown} onAnswer={answerAsk} /> : null}
         {loose.map((s) => <AskCard key={s.ask.id} state={s} name={name} onAnswer={answerAsk} lockdown={props.lockdown} scopes={engine?.scopes} />)}
+        {decided.map((s) => <AskCard key={s.ask.id} state={s} name={name} onAnswer={answerAsk} lockdown={props.lockdown} scopes={engine?.scopes} />)}
         {helperChip}
         {suggestions.length ? <div className="r1c-chips r1c-suggest" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
           {suggestions.map((text) => <Coming key={text} need="chat.send"><button type="button" className="r1c-chip" title={"Send “" + text + "” as your reply"} onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}>{"“" + text + "”"}</button></Coming>)}
