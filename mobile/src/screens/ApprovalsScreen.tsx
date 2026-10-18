@@ -460,6 +460,7 @@ export function ApprovalsScreen({
   focusId,
   test,
   now: fixedNow,
+  initialTab = 'needs',
 }: {
   snapshot: ApprovalsSnapshot;
   online: boolean;
@@ -477,11 +478,13 @@ export function ApprovalsScreen({
   /** The test approval tools, in builds that have them (testApproval.ts testApprovalsOn). */
   test?: { state: TestApprovalState; onSend: (delayMs: number) => void; onCancel: () => void };
   now?: number;
+  /** Starts on this tab (screenshots and tests). Taps still switch. */
+  initialTab?: InboxTab;
 }) {
   const { color, space, radius, layout } = useTheme();
   const insets = useSafeAreaInsets();
   const now = useNow(fixedNow, snapshot.pending.some((a) => a.expiresAtMs));
-  const [tab, setTab] = useState<InboxTab>('needs');
+  const [tab, setTab] = useState<InboxTab>(initialTab);
   const pending = focusId ? [...snapshot.pending].sort((a, b) => Number(b.id === focusId) - Number(a.id === focusId)) : snapshot.pending;
   const waiting = snapshot.pending.filter((a) => !isExpired(a, now)).length;
   const groups = groupByTrunk(pending, snapshot.trunks, focusId);
