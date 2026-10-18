@@ -117,6 +117,8 @@ describe('Android release version and signing plan', () => {
     expect(args).toContain('-Pandroid.injected.version.code=4');
     expect(args).toContain('-Pandroid.injected.signing.store.type=PKCS12');
     expect(args).toContain('-Pandroid.injected.signing.store.file=/tmp/android-release.p12');
+    expect(args).toContain('-Pandroid.injected.signing.v1-enabled=true');
+    expect(args).toContain('-Pandroid.injected.signing.v2-enabled=true');
     const signingEnv = call('gradleSigningEnv', env);
     expect(signingEnv[call('GRADLE_SIGNING_STORE_PASSWORD_ENV')]).toBe('store-secret');
     expect(signingEnv[call('GRADLE_SIGNING_KEY_PASSWORD_ENV')]).toBe('key-secret');
@@ -135,6 +137,8 @@ describe('Android release version and signing plan', () => {
     const args: string[] = call('gradleAssembleArgs', env);
     expect(args).toContain('-Pandroid.injected.signing.store.file=/tmp/android-release.p12');
     expect(args).toContain('-Pandroid.injected.signing.store.type=PKCS12');
+    expect(args).toContain('-Pandroid.injected.signing.v1-enabled=true');
+    expect(args).toContain('-Pandroid.injected.signing.v2-enabled=true');
     expect(call('gradleSigningEnv', env)[call('GRADLE_SIGNING_STORE_PASSWORD_ENV')]).toBe('store-secret');
     expect(call('signingReady', env)).toBe(false);
     expect(call('gradleSigningReady', env)).toBe(true);
