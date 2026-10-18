@@ -33,6 +33,14 @@ export type SqliteReadOnlyWorkerLaunch = {
   transport: { kind: "native" } | { kind: "broker"; owner: SpawnBrokerHost };
 };
 
+/** Live session children a process will keep; extras fail closed. */
+export const SQLITE_READONLY_MAX_LIVE_SESSIONS = 8;
+const liveSessions = new Set<object>();
+
+export function countLiveSqliteReadOnlyWorkerSessions(): number {
+  return liveSessions.size;
+}
+
 export function isSameSqliteReadOnlyWorkerLaunch(
   captured: SqliteReadOnlyWorkerLaunch,
   requested: SqliteReadOnlyWorkerLaunch,
@@ -83,6 +91,9 @@ export function createSqliteReadOnlyWorkerSession(
       ? { kind: "broker", owner: host.transport.owner }
       : { kind: "native" };
   const capturedLaunch = { env, cwd, transport, runtimeGeneration: host.runtimeGeneration };
+  if (liveSessions.size >= SQLITE_READONLY_MAX_LIVE_SESSIONS) {
+    throw new Error("SQLite read-only worker concurrency limit reached");
+  }
   const argv = [...host.argv];
   const spawnOptions: SpawnOptions = hiddenWindowsOptions({
     env,
@@ -95,6 +106,10 @@ export function createSqliteReadOnlyWorkerSession(
       ? transport.owner.spawn(executable, argv, spawnOptions)
       : spawn(executable, argv, spawnOptions);
   recordChildProcessSpawn(executable, child);
+  liveSessions.add(child);
+  child.once("close", () => {
+    liveSessions.delete(child);
+  });
   let retired = false;
   let sequence = 0;
   let pendingOperation: Promise<SqliteReadOnlyWorkerValue> | undefined;

@@ -5,12 +5,16 @@ import type {
   SqliteReadOnlyWorkerLaunch,
 } from "./sqlite-readonly-worker-session.js";
 
+export const SQLITE_READONLY_WORKER_IDLE_TIMEOUT_MS = 30_000;
+
 export type SqliteReadOnlyWorkerScope = {
   active: boolean;
   busy: boolean;
   controller: AbortController;
   pending: Set<Promise<unknown>>;
   deadlineOwnedByCaller: boolean;
+  idleTimeoutMs: number;
+  idleTimer?: NodeJS.Timeout;
   worker?: ReturnType<typeof createSqliteReadOnlyWorkerSession>;
   readWorker?: {
     source: SqliteAuthProfileReadOptions["source"];

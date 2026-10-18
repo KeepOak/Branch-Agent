@@ -21,6 +21,7 @@ import { tryProcessCwd } from "./safe-cwd.js";
 import { retainSnapshotWork } from "./sqlite-readonly-location-cleanup.js";
 import type { SqliteReadOnlyOperations } from "./sqlite-readonly-operation-registry.js";
 import {
+  SQLITE_READONLY_WORKER_IDLE_TIMEOUT_MS,
   readOnlyWorkerScope,
   type SqliteReadOnlyWorkerScope,
 } from "./sqlite-readonly-worker-context.js";
@@ -36,10 +37,15 @@ import {
   type SqliteAuthProfileRows,
 } from "./sqlite-readonly-worker-protocol.js";
 import {
+  SQLITE_READONLY_MAX_LIVE_SESSIONS,
+  countLiveSqliteReadOnlyWorkerSessions,
   createSqliteReadOnlyWorkerSession,
   isSameSqliteReadOnlyWorkerLaunch,
   type SqliteReadOnlyWorkerLaunch,
 } from "./sqlite-readonly-worker-session.js";
+
+export { SQLITE_READONLY_WORKER_IDLE_TIMEOUT_MS };
+export { SQLITE_READONLY_MAX_LIVE_SESSIONS, countLiveSqliteReadOnlyWorkerSessions };
 
 const SLOW_HARDWARE_HEADROOM = 10;
 const SQLITE_INSPECTION_TIMEOUT_MS = 30_000 * SLOW_HARDWARE_HEADROOM;
@@ -132,8 +138,9 @@ export function sqliteInspectionTimeoutError(
 
 /** Reuse child imports until the lifecycle owner closes; reads reacquire source admission. */
 export function createSqliteReadOnlyWorkerScope(options?: {
-  signal: AbortSignal;
-  deadlineOwnedByCaller: boolean;
+  signal?: AbortSignal;
+  deadlineOwnedByCaller?: boolean;
+  idleTimeoutMs?: number;
 }) {
   const scope: SqliteReadOnlyWorkerScope = {
     active: true,
@@ -141,11 +148,12 @@ export function createSqliteReadOnlyWorkerScope(options?: {
     controller: new AbortController(),
     pending: new Set(),
     deadlineOwnedByCaller: options?.deadlineOwnedByCaller ?? false,
+    idleTimeoutMs: options?.idleTimeoutMs ?? SQLITE_READONLY_WORKER_IDLE_TIMEOUT_MS,
     readTail: Promise.resolve(),
   };
-  const abort = () => scope.controller.abort(options?.signal.reason);
-  options?.signal.addEventListener("abort", abort, { once: true });
-  if (options?.signal.aborted) {
+  const abort = () => scope.controller.abort(options?.signal?.reason);
+  options?.signal?.addEventListener("abort", abort, { once: true });
+  if (options?.signal?.aborted) {
     abort();
   }
   let closing: Promise<void> | undefined;
@@ -155,7 +163,8 @@ export function createSqliteReadOnlyWorkerScope(options?: {
     },
     close(): Promise<void> {
       closing ??= (async () => {
-        options?.signal.removeEventListener("abort", abort);
+        options?.signal?.removeEventListener("abort", abort);
+        clearSqliteReadOnlyWorkerScopeIdle(scope);
         scope.active = false;
         scope.controller.abort(new Error("SQLite read-only worker scope closed"));
         await Promise.allSettled(scope.pending);
@@ -163,6 +172,8 @@ export function createSqliteReadOnlyWorkerScope(options?: {
           scope.worker?.close(),
           scope.readWorker?.session.close(),
         ]);
+        scope.worker = undefined;
+        scope.readWorker = undefined;
         const failures = closed.flatMap((result) =>
           result.status === "rejected" ? [result.reason] : [],
         );
@@ -173,6 +184,35 @@ export function createSqliteReadOnlyWorkerScope(options?: {
       return closing;
     },
   };
+}
+
+function clearSqliteReadOnlyWorkerScopeIdle(scope: SqliteReadOnlyWorkerScope): void {
+  if (scope.idleTimer) {
+    clearTimeout(scope.idleTimer);
+    scope.idleTimer = undefined;
+  }
+}
+
+function scheduleSqliteReadOnlyWorkerScopeIdle(scope: SqliteReadOnlyWorkerScope): void {
+  clearSqliteReadOnlyWorkerScopeIdle(scope);
+  if (!scope.active || scope.pending.size > 0 || scope.busy || scope.idleTimeoutMs <= 0) {
+    return;
+  }
+  if (!scope.worker && !scope.readWorker) {
+    return;
+  }
+  scope.idleTimer = setTimeout(() => {
+    scope.idleTimer = undefined;
+    if (!scope.active || scope.pending.size > 0 || scope.busy) {
+      return;
+    }
+    const worker = scope.worker;
+    const readWorker = scope.readWorker;
+    scope.worker = undefined;
+    scope.readWorker = undefined;
+    void Promise.allSettled([worker?.close(), readWorker?.session.close()]);
+  }, scope.idleTimeoutMs);
+  scope.idleTimer.unref();
 }
 
 export async function withSqliteReadOnlyWorkerScope<T>(
@@ -220,11 +260,7 @@ export function runScopedSqliteInspection<T>(
     ? AbortSignal.any([signal, scope.controller.signal])
     : scope.controller.signal;
   const operation = inspect(scopedSignal);
-  scope.pending.add(operation);
-  void operation.then(
-    () => scope.pending.delete(operation),
-    () => scope.pending.delete(operation),
-  );
+  trackSqliteReadOnlyWorkerScopeOperation(scope, operation);
   return operation;
 }
 
@@ -402,12 +438,26 @@ export function runSqliteReadOnlyWorker(
       ),
     );
   }
+  trackSqliteReadOnlyWorkerScopeOperation(scope, operation);
+  return operation;
+}
+
+function trackSqliteReadOnlyWorkerScopeOperation(
+  scope: SqliteReadOnlyWorkerScope,
+  operation: Promise<unknown>,
+): void {
+  clearSqliteReadOnlyWorkerScopeIdle(scope);
   scope.pending.add(operation);
   void operation.then(
-    () => scope.pending.delete(operation),
-    () => scope.pending.delete(operation),
+    () => {
+      scope.pending.delete(operation);
+      scheduleSqliteReadOnlyWorkerScopeIdle(scope);
+    },
+    () => {
+      scope.pending.delete(operation);
+      scheduleSqliteReadOnlyWorkerScopeIdle(scope);
+    },
   );
-  return operation;
 }
 
 async function runSqliteScopedReadWorker(
