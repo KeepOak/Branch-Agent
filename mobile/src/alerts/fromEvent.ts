@@ -1,6 +1,7 @@
 // Map a gateway event the paired phone already hears onto one local notification.
-// Mirrors engine/src/gateway/event-web-push.ts resolveEventWebPushNotification (question,
-// chat final, cron failed) plus cron success, mentions.list items, and the Android APK update.
+// Mirrors engine/src/gateway/event-web-push.ts resolveEventWebPushNotification
+// (chat final, cron failed) plus cron success, mentions.list items, and the Android APK update.
+// question.requested is not posted until the phone can answer (question.resolve).
 // A missing id/runId/runAtMs/ts means we do not post: there is nothing unique to dedupe on.
 import type { AlertKind } from './kinds';
 import { isAgentSessionKey, type AlertRoute } from './route';
@@ -49,34 +50,14 @@ function chatRoute(sessionKey: string | undefined): AlertRoute {
   return sessionKey && isAgentSessionKey(sessionKey) ? { screen: 'chat', sessionKey } : { screen: 'approvals' };
 }
 
-function questionPrompt(payload: Record<string, unknown>): string {
-  const questions = Array.isArray(payload.questions) ? payload.questions : [];
-  for (const item of questions) {
-    const prompt = str(rec(item).question);
-    if (prompt) return prompt;
-  }
-  return '';
-}
-
 /** One notification for a live gateway event, or null when that event is not something we post. */
 export function alertFromEvent(event: string, payload: unknown): PlannedAlert | { refresh: 'mentions' } | { dismiss: string } | null {
   const value = rec(payload);
   if (event === 'mentions.changed') return { refresh: 'mentions' };
-  if (event === 'question.resolved') {
-    const id = str(value.id);
-    return id ? { dismiss: `question:${id}` } : null;
-  }
-  if (event === 'question.requested') {
-    const id = str(value.id);
-    if (!id) return null;
-    const prompt = questionPrompt(value);
-    return {
-      key: `question:${id}`,
-      kind: 'question',
-      title: 'A Trunk needs an answer',
-      body: clip(prompt || 'Open Branch to answer.'),
-      route: chatRoute(str(value.sessionKey) || undefined),
-    };
+  if (event === 'question.requested' || event === 'question.resolved') {
+    // The phone has no question.list / question.resolve surface yet, so it does not
+    // post an "answer this" notification that can only open Chat or Approvals.
+    return null;
   }
   if (event === 'chat' && str(value.state) === 'final' && value.yielded !== true && !isTranscriptOnly(value.message)) {
     const runId = str(value.runId);
@@ -90,12 +71,14 @@ export function alertFromEvent(event: string, payload: unknown): PlannedAlert | 
     };
   }
   if (event === 'cron' && str(value.action) === 'finished') {
+    const status = str(value.status);
+    if (status !== 'ok' && status !== 'error') return null;
     const job = rec(value.job);
     const jobId = str(value.jobId) || str(job.id);
     const run = cronRunIdentity(value, jobId);
     if (!jobId || !run) return null;
     const jobName = str(job.name);
-    const failed = str(value.status) === 'error';
+    const failed = status === 'error';
     return {
       key: `cron:${jobId}:${run}:${failed ? 'error' : 'ok'}`,
       kind: failed ? 'automation' : 'finished',

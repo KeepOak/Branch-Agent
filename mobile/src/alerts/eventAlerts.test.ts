@@ -55,9 +55,8 @@ describe('event notifications', () => {
     muted.done();
   });
 
-  it('posts a question, a failed routine, and a mention, each on its own channel', async () => {
+  it('posts a failed routine and a mention, each on its own channel', async () => {
     const { engine, fake, done } = await setup();
-    engine.emit('question.requested', { id: 'q1', sessionKey: 'agent:oak:chat-1', questions: [{ question: 'Which folder?' }] });
     engine.emit('cron', {
       action: 'finished',
       status: 'error',
@@ -65,9 +64,7 @@ describe('event notifications', () => {
       runAtMs: 1_700_000_000_000,
       job: { name: 'Nightly filing' },
     });
-    await eventually(() => expect(fake.shown.get('question:q1')).toBeDefined());
     await eventually(() => expect(fake.shown.get('cron:nightly:cron:nightly:1700000000000:error')).toBeDefined());
-    expect(fake.shown.get('question:q1')?.channel).toBe('questions');
     expect(fake.shown.get('cron:nightly:cron:nightly:1700000000000:error')).toMatchObject({
       channel: 'automations',
       title: 'A routine couldn’t finish',
@@ -109,13 +106,24 @@ describe('event notifications', () => {
     done();
   });
 
-  it('clears a question notification when it is answered, and posts an update that is ready', async () => {
-    const { engine, fake, alerts, done } = await setup();
-    engine.emit('question.requested', { id: 'q1' });
-    await eventually(() => expect(fake.shown.has('question:q1')).toBe(true));
-    engine.emit('question.resolved', { id: 'q1' });
-    await eventually(() => expect(fake.dismissed).toContain('question:q1'));
+  it('posts a mention that arrived while the socket was down, once it reconnects', async () => {
+    const { engine, fake, done } = await setup();
+    engine.emit('mentions.changed', { revision: 0 });
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    engine.setMentions([
+      { id: 'm-missed', senderLabel: 'Dana', sessionKey: 'agent:oak:room:launch', excerpt: 'ping' },
+    ]);
+    engine.drop();
+    await eventually(() => expect(fake.shown.get('mention:m-missed')).toMatchObject({
+      channel: 'mentions',
+      title: 'Dana mentioned you',
+      route: { screen: 'chat', sessionKey: 'agent:oak:room:launch' },
+    }));
+    done();
+  });
 
+  it('posts an update that is ready', async () => {
+    const { fake, alerts, done } = await setup();
     await alerts.notifyUpdate({ status: 'available', offer: { version: '0.2.0' } });
     expect(fake.shown.get('update:apk')).toMatchObject({
       channel: 'updates',

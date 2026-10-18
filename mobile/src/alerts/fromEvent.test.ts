@@ -23,22 +23,15 @@ describe('gateway events to notification copy and route', () => {
     expect(alertFromEvent('chat', { state: 'final', sessionKey: 'agent:oak:main' })).toBeNull();
   });
 
-  it('opens Approvals for a question with no chat, and the chat when the engine named an agent session', () => {
-    expect(alertFromEvent('question.requested', { id: 'q1', questions: [{ question: 'Which folder?' }] })).toEqual({
-      key: 'question:q1',
-      kind: 'question',
-      title: 'A Trunk needs an answer',
-      body: 'Which folder?',
-      route: { screen: 'approvals' },
-    });
-    expect(alertFromEvent('question.requested', { id: 'q2', sessionKey: 'agent:oak:chat-1' })).toMatchObject({
-      route: { screen: 'chat', sessionKey: 'agent:oak:chat-1' },
-    });
-    expect(alertFromEvent('question.requested', { id: 'q3', sessionKey: 'main' })).toMatchObject({
-      route: { screen: 'approvals' },
-    });
-    expect(alertFromEvent('question.resolved', { id: 'q1' })).toEqual({ dismiss: 'question:q1' });
-    expect(alertFromEvent('question.requested', { questions: [{ question: 'Which folder?' }] })).toBeNull();
+  it('does not post a question until the phone can answer one', () => {
+    expect(
+      alertFromEvent('question.requested', {
+        id: 'q1',
+        sessionKey: 'agent:oak:chat-1',
+        questions: [{ question: 'Which folder?' }],
+      }),
+    ).toBeNull();
+    expect(alertFromEvent('question.resolved', { id: 'q1' })).toBeNull();
   });
 
   it('posts a routine finished and a routine failed with a unique key per run, and deep-links the session when present', () => {
@@ -74,6 +67,15 @@ describe('gateway events to notification copy and route', () => {
       route: { screen: 'chat', sessionKey: 'agent:main:cron:daily' },
     });
     expect(alertFromEvent('cron', { action: 'finished', status: 'ok', jobId: 'nightly', job: { name: 'Nightly filing' } })).toBeNull();
+    expect(
+      alertFromEvent('cron', {
+        action: 'finished',
+        status: 'skipped',
+        jobId: 'nightly',
+        runAtMs: 3000,
+        job: { name: 'Nightly filing' },
+      }),
+    ).toBeNull();
     expect(cronRunIdentity({ ts: 9 }, 'nightly')).toBe('9');
   });
 

@@ -31,7 +31,9 @@ export class EventAlerts {
   attach(): void {
     this.offs.push(
       this.link.onEvent((event, payload) => void this.onEvent(event, payload)),
-      this.link.onConnected(() => void this.queueMentions(() => this.primeMentions())),
+      this.link.onConnected(() =>
+        void this.queueMentions(() => (this.mentionsReady ? this.refreshMentions() : this.primeMentions())),
+      ),
       this.appState.onChange((state) => {
         if (state !== 'active' && this.lastUpdate) void this.notifyUpdate(this.lastUpdate);
       }),
