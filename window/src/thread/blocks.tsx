@@ -31,6 +31,7 @@ import { withMentions } from "../rooms/RoomMessage";
 import { ConnectModelNotice } from "../composer/ConnectModelNotice";
 import { isNoUsableModelError } from "../composer/connect-model";
 import { friendlyError } from "../connect/friendly-error";
+import { plainError } from "../shell/plain-error";
 
 type Of<K extends Block["kind"]> = Extract<Block, { kind: K }>;
 
@@ -439,7 +440,7 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
 export function Notice({ block }: { block: Of<"notice"> }) {
   return (
     <div className="pass-line" data-testid="notice">
-      {shortReason(block.text)}
+      {plainError(block.text)}
     </div>
   );
 }

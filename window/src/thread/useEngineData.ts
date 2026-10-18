@@ -5,11 +5,11 @@ import type { WindowEngine } from "../connect/engine";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { listReactions, readReactions, toChips, type Reaction } from "./actions";
 import type { ApprovalDecision } from "./model";
-import { plainError } from "../shell/plain-error";
+import { errorWords } from "../shell/plain-error";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
-const errorText = (e: unknown): string => plainError(e);
+const errorText = (e: unknown): string => errorWords(e);
 
 /** What `exec.approval.requested` says about one approval beyond the command (engine/ui/src/app/exec-approval.ts). */
 export type ApprovalDetails = {
@@ -156,7 +156,7 @@ function readHelper(row: unknown): Helper {
     status: str(r.status),
     ...(str(r.model) ? { model: str(r.model) } : {}),
     ...(str(r.subject) || str(r.lastMessagePreview) ? { task: str(r.subject) || str(r.lastMessagePreview) } : {}),
-    ...(str(r.lastRunError) ? { error: plainError(str(r.lastRunError)) } : {}),
+    ...(str(r.lastRunError) ? { error: str(r.lastRunError) } : {}),
     ...(typeof r.updatedAt === "number" && Number.isFinite(r.updatedAt) ? { updatedAt: r.updatedAt } : {}),
     ...(typeof r.createdAt === "number" && Number.isFinite(r.createdAt) ? { createdAt: r.createdAt } : {}),
     parent: str(r.spawnedBy) || str(r.parentSessionKey),

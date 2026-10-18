@@ -3,6 +3,7 @@ import type { Block } from "./model";
 import { displayModelName } from "../composer/model-display";
 import { computerStepWords, isComputerToolName, isScreenToolName, screenStepWords } from "./computer-action-label";
 import { looksRawError, plainError } from "../shell/plain-error";
+import { readLevel } from "../places-nav/SettingsFrame";
 
 export function formatDuration(ms?: number): string {
   if (!ms || ms < 0) {
@@ -323,6 +324,7 @@ export function scrubLocalPaths(text: string): string {
 
 /** The first sentence of an engine error, without the engine's own lead-in and warning sign. */
 export function shortReason(message: string): string {
+  if (readLevel() !== "regular") return message;
   if (/PLUGIN_STATE_READ_FAILED|Session maintenance protection changed|PluginInstanceUnavailableError|^\s*\{|\"telemetry\"/.test(message)) {
     return "Something went wrong. Try again, or open Diagnostics for details.";
   }

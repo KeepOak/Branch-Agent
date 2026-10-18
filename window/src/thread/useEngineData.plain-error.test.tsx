@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-// Helper last-run errors and hook failures are stored as plain sentences at Regular.
+// Raw errors survive reads and level changes; only the rendering converts them.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { useApprovalDetails, useHelpers, useReactions } from "./useEngineData";
+import { plainError } from "../shell/plain-error";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -37,15 +38,15 @@ function Probe({ engine }: { engine: WindowEngine }) {
   const reactions = useReactions(engine);
   return (
     <div>
-      <p data-testid="helper-run">{helpers.helpers[0]?.error ?? ""}</p>
-      <p data-testid="helpers-error">{helpers.error ?? ""}</p>
-      <p data-testid="approvals-error">{approvals.error ?? ""}</p>
-      <p data-testid="reactions-error">{reactions.error ?? ""}</p>
+      <p data-testid="helper-run">{plainError(helpers.helpers[0]?.error ?? "")}</p>
+      <p data-testid="helpers-error">{plainError(helpers.error ?? "")}</p>
+      <p data-testid="approvals-error">{plainError(approvals.error ?? "")}</p>
+      <p data-testid="reactions-error">{plainError(reactions.error ?? "")}</p>
     </div>
   );
 }
 
-describe("engine helper data never stores a raw error at Regular", () => {
+describe("engine helper data formats errors at draw time", () => {
   it("wraps lastRunError on a helper row", async () => {
     const request = vi.fn(async (method: string, params?: unknown) => {
       const spawnedBy = (params && typeof params === "object" ? (params as { spawnedBy?: unknown }).spawnedBy : undefined);
@@ -57,22 +58,36 @@ describe("engine helper data never stores a raw error at Regular", () => {
       if (method === "session.reactions.list") return { reactions: {} };
       return {};
     });
-    await act(async () => root.render(<Probe engine={engineOf(request)} />));
+    const engine = engineOf(request);
+    await act(async () => root.render(<Probe engine={engine} />));
     await settle();
     const line = host.querySelector("[data-testid='helper-run']")?.textContent ?? "";
     expect(line).toBe(REACH);
     expect(line).not.toMatch(RAW);
+    const reads = request.mock.calls.length;
+    localStorage.setItem("branch.level", "advanced");
+    await act(async () => root.render(<Probe engine={engine} />));
+    expect(host.querySelector("[data-testid='helper-run']")?.textContent).toBe(ENGINE);
+    expect(request.mock.calls.length).toBe(reads);
   });
 
   it("wraps a refused helpers, approvals and reactions read", async () => {
     const request = vi.fn(async () => { throw new Error(ENGINE); });
-    await act(async () => root.render(<Probe engine={engineOf(request)} />));
+    const engine = engineOf(request);
+    await act(async () => root.render(<Probe engine={engine} />));
     await settle();
     for (const id of ["helpers-error", "approvals-error", "reactions-error"]) {
       const line = host.querySelector(`[data-testid='${id}']`)?.textContent ?? "";
       expect(line).toBe(REACH);
       expect(line).not.toMatch(RAW);
     }
+    const reads = request.mock.calls.length;
+    localStorage.setItem("branch.level", "advanced");
+    await act(async () => root.render(<Probe engine={engine} />));
+    for (const id of ["helpers-error", "approvals-error", "reactions-error"]) {
+      expect(host.querySelector(`[data-testid='${id}']`)?.textContent).toBe(ENGINE);
+    }
+    expect(request.mock.calls.length).toBe(reads);
   });
 
   it("keeps the exact lastRunError at Advanced", async () => {
