@@ -27,7 +27,7 @@ type LimitedOutcome = "pending" | ScopeUpgradeOutcome["status"];
 
 /** A line the person can read: no method names, no stack. */
 function plainUpgradeError(error: unknown): string {
-  return plainError(error, true);
+  return plainError(error, true) || "Couldn’t ask for full access. Try again.";
 }
 
 function limitedLine(state: LimitedState): string {

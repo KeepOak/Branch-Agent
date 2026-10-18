@@ -44,6 +44,12 @@ describe.each(["regular", "advanced"] as Level[])("plain inbox failures at %s", 
     await mount(<NeedsYou data={await loadNeeds(e)} engine={e} level={level} busy={false} act={async () => true} loading={false} openConversation={noop} openPlace={noop} />);
     await click("Ask for full access"); expect(getToasts().at(-1)?.text).toBe(PLAIN);
   });
+  it("NeedsYou.tsx: empty full access failure still offers a next step", async () => {
+    localStorage.setItem("branch.level", level);
+    const e = { ...engine(), scopes: ["operator.read"], requestScopeUpgrade: vi.fn(async () => { throw new Error(""); }) };
+    await mount(<NeedsYou data={await loadNeeds(e)} engine={e} level={level} busy={false} act={async () => true} loading={false} openConversation={noop} openPlace={noop} />);
+    await click("Ask for full access"); expect(getToasts().at(-1)?.text).toBe("Couldn’t ask for full access. Try again.");
+  });
   it("Rows.tsx: keeps failure feedback with the card text", async () => { localStorage.setItem("branch.level", level); await mount(<StatusCard icon="clock" title="Failed" sub="Morning brief" extra={<Failure error={RAW} level={level} />} />); safe(); expect(document.querySelector(".ib-grow")?.textContent).toContain(PLAIN); });
   it("data.ts: distinguishes failed actions from successful notices", async () => {
     localStorage.setItem("branch.level", level);
