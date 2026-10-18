@@ -26,6 +26,7 @@ import { commitTreeMatchesCleanMerge } from './final-head-history.mjs';
 import {
   DEFAULT_WAIT_BUDGET_SECONDS,
   GH_API_MAX_BUFFER,
+  RATE_LIMIT_WAKE_SPREAD_SECONDS,
   execGhApi,
   fetchGitHubRateLimit,
   ghApiArgs,
@@ -71,6 +72,7 @@ export const GATE_SCRIPTS = [
   'scripts/merge-gate-rate-limit.mjs',
   'scripts/merge-gate-rate-limit.test.mjs',
   'scripts/merge-gate-recheck.mjs',
+  'scripts/merge-gate-recheck.test.mjs',
 ];
 // Workflows whose jobs must actually run on a PR they apply to. A skipped job is missing here, not a pass.
 export const MUST_RUN_WORKFLOWS = new Set(['.github/workflows/feature-batch-checks.yml']);
@@ -1280,6 +1282,7 @@ export function ghApiWithRetry(repo, token, requestPath, {
     startedAt,
     budgetSeconds: budgetSeconds ?? Number(process.env.MERGE_GATE_WAIT_SECONDS ?? DEFAULT_WAIT_BUDGET_SECONDS),
     maxRetries: retries,
+    spreadSeconds: RATE_LIMIT_WAKE_SPREAD_SECONDS,
     random,
     log,
   });
@@ -1444,14 +1447,25 @@ export function attributeFromRunList(checkRun, runsById) {
   return workflowFromActionsRun(run);
 }
 
-// One call per evaluation, not one per check run. More than 100 runs on a head falls back to per-check lookups.
+// Paginated listing, not one call per check run. An incomplete listing is discarded so
+// every check falls back to its own lookup instead of a partial map.
+export const HEAD_RUNS_PAGE_SIZE = 100;
+export const HEAD_RUNS_MAX_PAGES = 10;
+
 export function fetchRunsByIdForHead(repo, token, sha, { api = ghApi } = {}) {
   if (!sha) return new Map();
-  const payload = api(repo, token, `actions/runs?head_sha=${sha}&per_page=100`);
-  if (!payload || !Array.isArray(payload.workflow_runs) || payload.total_count > payload.workflow_runs.length) {
-    return new Map();
+  const runs = [];
+  let total = null;
+  for (let page = 1; page <= HEAD_RUNS_MAX_PAGES; page += 1) {
+    const payload = api(repo, token, `actions/runs?head_sha=${sha}&per_page=${HEAD_RUNS_PAGE_SIZE}&page=${page}`);
+    if (!payload || !Array.isArray(payload.workflow_runs)) return new Map();
+    runs.push(...payload.workflow_runs);
+    if (Number.isInteger(payload.total_count)) total = payload.total_count;
+    if (payload.workflow_runs.length < HEAD_RUNS_PAGE_SIZE) break;
+    if (total != null && runs.length >= total) break;
   }
-  return new Map(payload.workflow_runs.map((run) => [String(run.id), run]));
+  if (total != null && runs.length < total) return new Map();
+  return new Map(runs.map((run) => [String(run.id), run]));
 }
 
 export function resolveWorkflowsForCheckRuns(repo, token, checkRuns, {
@@ -1520,6 +1534,7 @@ function graphqlRequest(token, query, variables) {
     fetchRateLimit: () => fetchGitHubRateLimit(token),
     startedAt: gateApiBudget.startedAt,
     budgetSeconds: gateApiBudget.budgetSeconds ?? Number(process.env.MERGE_GATE_WAIT_SECONDS ?? DEFAULT_WAIT_BUDGET_SECONDS),
+    spreadSeconds: RATE_LIMIT_WAKE_SPREAD_SECONDS,
   });
 }
 

@@ -2004,6 +2004,8 @@ test('old-base PR still runs the trusted check from the default branch', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-recheck.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-recheck.test.mjs'));
   const trustedSource = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
   assert.match(trustedSource, /from '\.\/check-ui-proof\.mjs'/);
   assert.match(trustedSource, /runUiProofFromPr\(/);
@@ -3367,10 +3369,33 @@ test('one listing attributes every check it covers, and only the rest use a per-
 });
 
 test('an incomplete head listing is not trusted: every check falls back to its own lookup', () => {
-  const api = () => ({ total_count: 250, workflow_runs: [attrRun] });
+  const api = (_repo, _token, path) => {
+    if (String(path).includes('page=2')) return { total_count: 250, workflow_runs: [] };
+    return { total_count: 250, workflow_runs: [attrRun] };
+  };
   assert.equal(gate.fetchRunsByIdForHead('o/r', 't', 'abc', { api }).size, 0);
   const complete = () => ({ total_count: 1, workflow_runs: [attrRun] });
   assert.equal(gate.fetchRunsByIdForHead('o/r', 't', 'abc', { api: complete }).get('555').id, 555);
+});
+
+test('fetchRunsByIdForHead paginates a head with more than 100 runs instead of falling back', () => {
+  const calls = [];
+  const page1 = {
+    total_count: 101,
+    workflow_runs: Array.from({ length: 100 }, (_, index) => ({ id: index + 1 })),
+  };
+  const page2 = { total_count: 101, workflow_runs: [{ id: 101 }] };
+  const api = (_repo, _token, path) => {
+    calls.push(path);
+    return String(path).includes('page=2') ? page2 : page1;
+  };
+  const map = gate.fetchRunsByIdForHead('o/r', 't', 'abc', { api });
+  assert.equal(map.size, 101);
+  assert.equal(map.get('101').id, 101);
+  assert.deepEqual(calls, [
+    'actions/runs?head_sha=abc&per_page=100&page=1',
+    'actions/runs?head_sha=abc&per_page=100&page=2',
+  ]);
 });
 
 test('regression: a thrown attribution lookup is never reported as a forged trusted check', () => {

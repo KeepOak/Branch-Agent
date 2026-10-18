@@ -24,6 +24,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { PlacesBar, placesBarHeight, statusBandHeight, type PhoneLook, type Place } from '../ui/PlacesBar';
+import { initials } from '../people/self';
 import { Avatar } from './ChatsScreen';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
@@ -124,6 +125,8 @@ export function HomeScreen({
   onLookFirst,
   onPlace,
   onOpenChat,
+  onYou,
+  youName = 'Owner',
   now: fixedNow,
   updateBanner,
   look = Platform.OS === 'ios' ? 'ios' : 'android',
@@ -140,6 +143,9 @@ export function HomeScreen({
   onLookFirst: (id: string, sessionKey?: string) => void;
   onPlace: (place: Place) => void;
   onOpenChat?: (row: ChatRow) => void;
+  /** Preview meG18: the person's initial opens their profile. */
+  onYou?: () => void;
+  youName?: string;
   now?: number;
   updateBanner?: ReactNode;
   look?: PhoneLook;
@@ -182,16 +188,26 @@ export function HomeScreen({
           <ThemedText testID="home-greeting" variant={ios ? 'largeTitle' : 'title2'} accessibilityRole="header">
             {greet(now)}
           </ThemedText>
-          <View
+          <Pressable
             testID="home-you"
-            accessibilityRole="image"
-            accessibilityLabel="You"
-            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: color.fill, alignItems: 'center', justifyContent: 'center' }}
+            accessibilityRole="button"
+            accessibilityLabel={`${youName}’s profile`}
+            onPress={onYou}
+            disabled={!onYou}
+            style={({ pressed }) => ({
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: color.fill,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.7 : 1,
+            })}
           >
             <ThemedText variant="footnote" style={{ color: color.ink, fontWeight: '600' }}>
-              You
+              {initials(youName, 1)}
             </ThemedText>
-          </View>
+          </Pressable>
         </View>
 
         {updateBanner}
