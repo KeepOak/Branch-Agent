@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { APPIMAGE_DESKTOP_ENTRY, APPIMAGE_TOOLS, appImageToolArgs, appImageToolEnv, assembleAppDir, dmgArgs, fetchPinned, innoCompiler, innoSetupScript,
   installerName, layoutWindowsInstallRoot, main, numericVersion, parseArgs, WINDOWS_APP_ID, windowsInstallerFolderName, windowsLauncherScript } from "./release-installers.mjs";
+import { publicDownloadName } from "./release-inventory.mjs";
 import * as launcher from "./windows-launcher.mjs";
 
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -120,8 +121,11 @@ test("the release workflow builds a darwin-x64 package beside darwin-arm64", () 
   const workflow = readFileSync(new URL("../../.github/workflows/component-release.yml", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const native = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
   assert.match(native, /target: darwin-arm64/);
-  assert.match(native, /target: darwin-x64/);
+  assert.match(native, /os: macos-15-intel\n\s+target: darwin-x64/);
+  assert.match(native, /target: darwin-x64\n\s+node_arch: x64/);
   assert.match(native, /node_arch: x64/);
+  assert.equal(publicDownloadName("darwin-x64"), "Branch-macOS-Intel.dmg");
+  assert.match(readFileSync(new URL("./release-installers.mjs", import.meta.url), "utf8"), /copyFileSync\(file, alias\)/);
   assert.match(native, /architecture: \$\{\{ matrix\.node_arch \}\}/);
   assert.match(native, /component-release-pnpm-\$\{\{ matrix\.target \}\}/);
   assert.match(native, /component-release-electron-\$\{\{ matrix\.target \}\}/);

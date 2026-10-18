@@ -39,7 +39,7 @@ async function fixture(body) {
       const output = join(root, `${platform}-${arch}`); await mkdir(output);
       const desktop = { app: asar, electronVersion: "44.5.1", runtime: app };
       const manifest = await makeComponentRelease({ version, sourceCommit: commit, tag, engine, window, desktop, output, platform, arch });
-      const identity = { commit, version, platform, arch, electronVersion: "44.5.1", ...(platform === "darwin" ? { signing: "identity" } : {}), runtime: {
+      const identity = { commit, version, platform, arch, electronVersion: "44.5.1", ...(platform === "darwin" ? { signing: arch === "x64" ? "adhoc" : "identity" } : {}), runtime: {
         electronVersion: "44.5.1", electron: { sha256: "b".repeat(64), bytes: 1 },
         node: { version: "v24.19.0", platform, arch, sha256: "c".repeat(64) } }, smoke: { commit, ready: true, authenticatedHealth: true, exited: true, elapsedMs: 10, runtime: { version: "v24.19.0", platform, arch }, source: "verified-component-archive", archiveSha256: manifest.components.engine.sha256, archiveBytes: manifest.components.engine.bytes, expandedBytes: manifest.components.engine.expandedBytes } };
       await writeReleaseInventory(output, identity); await cp(output, assets, { recursive: true });
@@ -289,6 +289,7 @@ test("generated release notes start with one download per platform and label eve
   const names = [
     `Branch-Agent-${version}-darwin-arm64.dmg`,
     `Branch-Agent-${version}-darwin-x64.dmg`,
+    "Branch-macOS-Intel.dmg",
     `Branch-Agent-${version}-linux-x64.AppImage`,
     `Branch-Agent-Setup-${version}-win32-x64.exe`,
     `branch-desktop-${version}-darwin-arm64.tar.gz`,
@@ -322,12 +323,13 @@ test("generated release notes start with one download per platform and label eve
     "Download this",
     "",
     `- macOS: [Branch-Agent-${version}-darwin-arm64.dmg](${base}/Branch-Agent-${version}-darwin-arm64.dmg)`,
-    `- macOS Intel: [Branch-Agent-${version}-darwin-x64.dmg](${base}/Branch-Agent-${version}-darwin-x64.dmg)`,
+    `- macOS Intel: [Branch-macOS-Intel.dmg](${base}/Branch-macOS-Intel.dmg)`,
     `- Windows: [Branch-Agent-Setup-${version}-win32-x64.exe](${base}/Branch-Agent-Setup-${version}-win32-x64.exe)`,
     `- Linux: [Branch-Agent-${version}-linux-x64.AppImage](${base}/Branch-Agent-${version}-linux-x64.AppImage)`,
     "",
     "Other files",
     "",
+    `- Branch-Agent-${version}-darwin-x64.dmg: ${UPDATE_ONLY_LABEL}`,
     `- SHA256SUMS: ${UPDATE_ONLY_LABEL}`,
     `- branch-desktop-${version}-darwin-arm64.tar.gz: ${UPDATE_ONLY_LABEL}`,
     `- branch-desktop-${version}-darwin-x64.tar.gz: ${UPDATE_ONLY_LABEL}`,
@@ -362,12 +364,13 @@ test("generated release notes start with one download per platform and label eve
   assert.match(notes, /^Other files$/m);
   assert.equal(UPDATE_ONLY_LABEL, "used by automatic updates, you don't need this");
   for (const [label, target] of DOWNLOAD_PLATFORMS) {
-    const name = downloadAssetName(version, target);
-    assert.equal(name, installerNames[target]);
+    const name = downloadAssetName(version, target, names);
+    assert.equal(name, target === "darwin-x64" ? "Branch-macOS-Intel.dmg" : installerNames[target]);
     assert.ok(notes.includes(`- ${label}: [${name}](${base}/${name})`));
     assert.equal(notes.includes(`- ${name}: ${UPDATE_ONLY_LABEL}`), false);
   }
-  for (const name of names.filter((item) => !Object.values(installerNames).includes(item))) {
+  const downloadNames = DOWNLOAD_PLATFORMS.map(([, target]) => downloadAssetName(version, target, names));
+  for (const name of names.filter((item) => !downloadNames.includes(item))) {
     assert.ok(notes.includes(`- ${name}: ${UPDATE_ONLY_LABEL}`), `${name} is not labeled update-only`);
   }
 });

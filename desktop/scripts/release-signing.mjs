@@ -6,7 +6,8 @@
 // Some set: the line names exactly what is missing, nothing is signed (never half-signed), exit 0 unless --strict.
 // All set: release-installers.mjs signs through createSigner below.
 //   win32-x64: Azure Artifact Signing through SignTool and its dlib. Branch Agent.exe before packaging, the setup .exe after.
-//   darwin-arm64 and darwin-x64: Developer ID codesign with the hardened runtime, then notarytool submit --wait and stapler staple.
+//   darwin-arm64: Developer ID codesign with the hardened runtime, then notarytool submit --wait and stapler staple.
+//   darwin-x64: always ad-hoc. Apple secrets stay on the arm64 job.
 // Command lines are built by pure functions so tests can check them without running anything. Secret values travel
 // in the environment or in files, and any that reach a printed command line are replaced with ***.
 import { spawnSync } from "node:child_process";
@@ -28,7 +29,7 @@ export const MAC_SECRETS = ["APPLE_DEVELOPER_ID_P12", "APPLE_DEVELOPER_ID_PASSWO
 export const REQUIRED = {
   "win32-x64": [...WINDOWS_SECRETS, ...WINDOWS_VARIABLES],
   "darwin-arm64": MAC_SECRETS,
-  "darwin-x64": MAC_SECRETS,
+  "darwin-x64": [],
   "linux-x64": [],
 };
 /** Values never printed, even inside a command line. */
@@ -38,12 +39,10 @@ const LABEL = { "win32-x64": "Windows", "darwin-arm64": "macOS", "darwin-x64": "
 const NOT_CONFIGURED = {
   "win32-x64": "set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and the three AZURE_SIGNING_* variables",
   "darwin-arm64": "set APPLE_DEVELOPER_ID_P12, APPLE_DEVELOPER_ID_PASSWORD, APPLE_NOTARY_KEY_ID, APPLE_NOTARY_ISSUER_ID and APPLE_NOTARY_KEY",
-  "darwin-x64": "set APPLE_DEVELOPER_ID_P12, APPLE_DEVELOPER_ID_PASSWORD, APPLE_NOTARY_KEY_ID, APPLE_NOTARY_ISSUER_ID and APPLE_NOTARY_KEY",
 };
 const UNSIGNED = {
   "win32-x64": "Shipping unsigned.",
   "darwin-arm64": "Shipping the self-signed app, not notarized.",
-  "darwin-x64": "Shipping the self-signed app, not notarized.",
 };
 
 /** Azure's recommended timestamp authority. Its certificates last three days, so every signature is timestamped. */
@@ -122,6 +121,7 @@ export function signingStatus(target, env = process.env) {
 
 /** The one plain line a release log shows per target. Names only, never values. */
 export function statusLine(status) {
+  if (status.target === "darwin-x64") return "macOS x64 signing: ad-hoc only (Apple secrets stay on arm64).";
   const label = LABEL[status.target];
   if (status.state === "n/a") return `${label} signing: nothing to sign (no ${label} installer yet).`;
   if (status.state === "none") return `${label} signing: not configured (${NOT_CONFIGURED[status.target]}). ${UNSIGNED[status.target]}`;

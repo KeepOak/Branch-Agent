@@ -12,7 +12,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSy
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { installerAssetName, recordInstaller } from "./release-inventory.mjs";
+import { installerAssetName, publicDownloadName, recordInstaller } from "./release-inventory.mjs";
 import { createSigner, statusLine } from "./release-signing.mjs";
 import { WINDOWS_APP_USER_MODEL_ID, WINDOWS_LAUNCHER, WINDOWS_LAUNCHER_EXE, WINDOWS_LAUNCHER_RESOURCE, WINDOWS_LAUNCHER_REVISION,
   WINDOWS_LAUNCHER_REVISION_FILE, WINDOWS_POINTER, windowsLauncherScript } from "./windows-launcher.mjs";
@@ -217,6 +217,7 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
     mkdirSync(payload);
     run(process.platform === "win32" ? join(process.env.SYSTEMROOT ?? "C:\\Windows", "System32", "tar.exe") : "tar", ["-xzf", archive, "-C", payload]);
     const file = resolve(out, installerName(version, target));
+    const files = [file];
     if (target === "win32-x64") {
       if (!existsSync(join(payload, "Branch Agent.exe"))) throw new Error("The Windows package has no Branch Agent.exe at its root");
       signer.signApp(join(payload, "Branch Agent.exe"));
@@ -240,7 +241,14 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
     if (!existsSync(file)) throw new Error(`The installer was not written: ${file}`);
     const signed = signer.signInstaller(file);
     console.log(`${signed ? "signed" : "unsigned"} installer: ${file}`);
-    return file;
+    const download = publicDownloadName(target);
+    if (download) {
+      const alias = resolve(out, download);
+      copyFileSync(file, alias);
+      files.push(alias);
+      console.log(`download: ${alias}`);
+    }
+    return files;
   } finally {
     signer.dispose();
     rmSync(work, { recursive: true, force: true });
@@ -249,8 +257,11 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const file = await main();
-    // The target's release proof lists the installer, so publish attaches it and checks its bytes.
-    if (file) { const { assets, target } = parseArgs(process.argv.slice(2)); await recordInstaller(assets, target, file); }
+    const files = await main();
+    // The target's release proof lists each installer, so publish attaches them and checks their bytes.
+    if (files?.length) {
+      const { assets, target } = parseArgs(process.argv.slice(2));
+      for (const file of files) await recordInstaller(assets, target, file);
+    }
   } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exit(1); }
 }

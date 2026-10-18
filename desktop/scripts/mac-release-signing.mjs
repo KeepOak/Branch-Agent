@@ -7,8 +7,10 @@ export const MAC_SIGNING_SETTINGS = ["BRANCH_MACOS_SIGNING_P12_FILE", "BRANCH_MA
 export const MAC_SIGNING_KINDS = ["identity", "adhoc"];
 export const MAC_ADHOC_NOTICE = "macOS signing: no signing identity configured. Building ad-hoc signed; Gatekeeper will warn on a downloaded copy, script installs are unaffected.";
 
-/** Reads the signing settings. Throws, naming what is missing, when only some are set. */
-export function macSigningPlan(env = process.env) {
+/** Reads the signing settings. Throws, naming what is missing, when only some are set.
+ *  darwin-x64 is always ad-hoc: the pinned self-signed identity stays on darwin-arm64. */
+export function macSigningPlan(env = process.env, identity = {}) {
+  if (identity.arch === "x64") return { signing: "adhoc" };
   const missing = MAC_SIGNING_SETTINGS.filter(name => !env[name]);
   if (missing.length === 0) {
     return { signing: "identity", p12: env.BRANCH_MACOS_SIGNING_P12_FILE, password: env.BRANCH_MACOS_SIGNING_PASSWORD_FILE, rcodesign: env.BRANCH_MACOS_RCODESIGN };

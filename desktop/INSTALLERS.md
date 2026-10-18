@@ -55,7 +55,7 @@ Signing goes through `desktop/scripts/release-signing.mjs`. Until the owner adds
 |---|---|---|
 | win32-x64 | `Branch-Agent-Setup-<version>-win32-x64.exe` (Inno Setup 6, per user, no admin prompt) | Not until the Azure names below are set. Then `Branch Agent.exe` is signed before packaging and the setup .exe after. |
 | darwin-arm64 | `Branch-Agent-<version>-darwin-arm64.dmg` (the app plus an Applications link) | Until the Apple names below are set, the app inside carries the release's stable self-signed identity and the image isn't notarized. Then the app is re-signed with Developer ID and the hardened runtime, and the image is signed, notarized and stapled. |
-| darwin-x64 | `Branch-Agent-<version>-darwin-x64.dmg` (the app plus an Applications link) | Built unsigned / ad-hoc. The Apple Developer ID secrets stay on the arm64 job only; this target does not sign or notarize. |
+| darwin-x64 | `Branch-Agent-<version>-darwin-x64.dmg` plus the stable `Branch-macOS-Intel.dmg` alias (the app plus an Applications link) | Always ad-hoc. The Apple Developer ID secrets stay on the arm64 job; this target never stamps the self-signed release identity. |
 | linux-x64 | `Branch-Agent-<version>-linux-x64.AppImage` (per user; `install.sh` puts it at `~/.local/bin/branch-agent`) | No. Built with appimagetool 1.9.1 and the type2 runtime 20251108, both pinned by size and SHA-256 in `APPIMAGE_TOOLS` (`release-installers.mjs`) and checked before either runs. |
 
 ## Why per-user and where

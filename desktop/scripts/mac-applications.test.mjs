@@ -311,7 +311,7 @@ test("packaging, updates, and CI keep the Applications install and the pinned si
   const bundleCheck = await text("scripts/check-mac-bundle.mjs");
   assert.match(release, /darwinPackagerOptions\(macIcon\)/);
   assert.match(release, /assets\/branch\.icns/);
-  assert.match(release, /macSigningPlan\(\)/);
+  assert.match(release, /macSigningPlan\(process\.env, identity\)/);
   assert.match(release, /signing: macSigning\.signing/);
   const stampAt = release.indexOf("await stampMacBundle");
   assert.ok(stampAt !== -1 && release.indexOf("macSignCommand(macSigning, join(app, MAC_ARCHIVE_BUNDLE_FOLDER))", stampAt) > stampAt);

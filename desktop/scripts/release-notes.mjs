@@ -1,4 +1,4 @@
-import { installerAssetName } from "./release-inventory.mjs";
+import { installerAssetName, publicDownloadName } from "./release-inventory.mjs";
 
 const repository = "KeepOak/Branch-Agent";
 export const UPDATE_ONLY_LABEL = "used by automatic updates, you don't need this";
@@ -15,9 +15,13 @@ function assetUrl(version, name) {
   return `https://github.com/${repository}/releases/download/v${version}/${name}`;
 }
 
-/** The installer a person should grab for this target, or null when that target has none. */
-export function downloadAssetName(version, target) {
-  return installerAssetName(version, target);
+/**
+ * The installer a person should grab for this target from the uploaded names, or null when it has none.
+ * The stable Intel name (Branch-macOS-Intel.dmg) wins over the versioned disk image when both are present.
+ */
+export function downloadAssetName(version, target, names) {
+  const uploaded = names ?? [];
+  return [publicDownloadName(target), installerAssetName(version, target)].find((name) => name && uploaded.includes(name)) ?? null;
 }
 
 /**
@@ -29,8 +33,8 @@ export function formatReleaseNotes({ commit, version, names }) {
   const downloads = [];
   const downloadNames = new Set();
   for (const [label, target] of DOWNLOAD_PLATFORMS) {
-    const name = downloadAssetName(version, target);
-    if (!name || !uploaded.includes(name)) continue;
+    const name = downloadAssetName(version, target, uploaded);
+    if (!name) continue;
     downloadNames.add(name);
     downloads.push(`- ${label}: [${name}](${assetUrl(version, name)})`);
   }

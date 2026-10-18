@@ -35,7 +35,7 @@ async function fixture(body) {
       const desktop = { app: asar, electronVersion: "44.5.1", runtime: app };
       const manifest = await makeComponentRelease({ version, sourceCommit: commit, tag: `v${version}`, engine, window, desktop, output, platform, arch });
       const name = `branch-desktop-${version}-${platform}-${arch}.tar.gz`;
-      const identity = { commit, version, platform, arch, electronVersion: "44.5.1", ...(platform === "darwin" ? { signing: "identity" } : {}), runtime: {
+      const identity = { commit, version, platform, arch, electronVersion: "44.5.1", ...(platform === "darwin" ? { signing: arch === "x64" ? "adhoc" : "identity" } : {}), runtime: {
         electronVersion: "44.5.1", electron: { sha256: "b".repeat(64), bytes: 1 },
         node: { version: "v24.19.0", platform, arch, sha256: "c".repeat(64) } }, smoke: { commit, ready: true, authenticatedHealth: true, exited: true, elapsedMs: 10, runtime: { version: "v24.19.0", platform, arch }, source: "verified-component-archive", archiveSha256: manifest.components.engine.sha256, archiveBytes: manifest.components.engine.bytes, expandedBytes: manifest.components.engine.expandedBytes } };
       await writeReleaseInventory(output, identity); await cp(output, assets, { recursive: true });
@@ -112,6 +112,9 @@ test("macOS proofs declare identity or ad-hoc signing; other targets declare non
   await alterProof(assets, proof => { proof.signing = "self"; }, "darwin-arm64");
   await assert.rejects(verifyReleaseDirectory(assets, commit, version), /must declare signing/);
   await alterProof(assets, proof => { proof.signing = "identity"; }, "darwin-arm64");
+  await alterProof(assets, proof => { proof.signing = "identity"; }, "darwin-x64");
+  await assert.rejects(verifyReleaseDirectory(assets, commit, version), /darwin-x64 release proof must declare signing: adhoc/);
+  await alterProof(assets, proof => { proof.signing = "adhoc"; }, "darwin-x64");
   await alterProof(assets, proof => { proof.signing = "adhoc"; }, "linux-x64");
   await assert.rejects(verifyReleaseDirectory(assets, commit, version), /Only macOS release proofs declare signing/);
 }));
@@ -199,10 +202,21 @@ test("shared renderer archive bytes do not depend on the native build host", () 
   assert(gunzipSync(archive).length > 0);
 }));
 
-test("installer names and required targets include both Mac architectures", () => {
+test("installer names and required targets include both Mac architectures", () => fixture(async ({ assets, root }) => {
   assert.equal(inventoryModule.installerAssetName(version, "darwin-x64"), `Branch-Agent-${version}-darwin-x64.dmg`);
+  assert.equal(inventoryModule.publicDownloadName("darwin-x64"), "Branch-macOS-Intel.dmg");
+  assert.equal(inventoryModule.publicDownloadName("darwin-arm64"), null);
+  assert.deepEqual(inventoryModule.allowedInstallerNames(version, "darwin-x64"), [`Branch-Agent-${version}-darwin-x64.dmg`, "Branch-macOS-Intel.dmg"]);
   assert.deepEqual(inventoryModule.NATIVE_RELEASE_TARGETS, ["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64"]);
-});
+  const built = join(root, "intel-public");
+  await mkdir(built);
+  const alias = join(built, "Branch-macOS-Intel.dmg");
+  await writeFile(alias, "intel public download");
+  await inventoryModule.recordInstaller(assets, "darwin-x64", alias);
+  const proof = JSON.parse(await readFile(join(assets, "release-proof-darwin-x64.json"), "utf8"));
+  assert.equal(proof.signing, "adhoc");
+  assert.deepEqual(proof.installers["Branch-macOS-Intel.dmg"], await fileDigest(alias));
+}));
 
 test("identity rejects abbreviated commits and non-semver source versions", () => {
   const valid = { commit, version, platform: "win32", arch: "x64" };

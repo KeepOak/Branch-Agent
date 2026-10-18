@@ -25,6 +25,22 @@ export function installerAssetName(version, target) {
 }
 
 /**
+ * Stable download names for the README and the release notes. Same bytes as the versioned installer.
+ * darwin-x64 is Branch-macOS-Intel.dmg so it sits next to #1842's Branch-macOS.dmg (arm64).
+ */
+export const PUBLIC_DOWNLOAD_NAMES = Object.freeze({
+  "darwin-x64": "Branch-macOS-Intel.dmg",
+});
+
+export function publicDownloadName(target) {
+  return PUBLIC_DOWNLOAD_NAMES[target] ?? null;
+}
+
+export function allowedInstallerNames(version, target) {
+  return [installerAssetName(version, target), publicDownloadName(target)].filter(Boolean);
+}
+
+/**
  * Lists a built installer in its target's release proof (name, bytes, sha256). The installer travels in its own
  * workflow artifact; publish puts it beside the release assets and refuses it if it is missing or differs.
  */
@@ -34,7 +50,7 @@ export async function recordInstaller(directory, target, file) {
   validateReleaseIdentity(proof);
   assert.equal(`${proof.platform}-${proof.arch}`, target, "Installer target differs from the release proof");
   const name = basename(file);
-  assert.equal(name, installerAssetName(proof.version, target), "Unexpected installer for this target");
+  assert(allowedInstallerNames(proof.version, target).includes(name), "Unexpected installer for this target");
   assert(!Object.hasOwn(proof.assets ?? {}, name), "Installer name collides with a release asset");
   proof.installers = { ...proof.installers, [name]: await fileDigest(file) };
   await writeFile(proofFile, JSON.stringify(proof, null, 2) + "\n");
@@ -132,7 +148,7 @@ async function verifyInstallers(directory, proof, inventory) {
   assert(installers && typeof installers === "object" && !Array.isArray(installers), "Invalid installer inventory");
   const target = `${proof.platform}-${proof.arch}`;
   for (const [name, expected] of Object.entries(installers)) {
-    assert.equal(name, installerAssetName(proof.version, target), "Unexpected installer for this target");
+    assert(allowedInstallerNames(proof.version, target).includes(name), "Unexpected installer for this target");
     assert(!Object.hasOwn(proof.assets, name) && !inventory.has(name), "Installer name collides with a release asset");
     let actual;
     try { actual = await fileDigest(join(directory, name)); }
@@ -144,8 +160,11 @@ async function verifyInstallers(directory, proof, inventory) {
 
 /** macOS proofs say how the app is signed (mac-release-signing.mjs); other targets carry no signing field. */
 function verifySigning(proof) {
-  if (proof.platform === "darwin") assert(MAC_SIGNING_KINDS.includes(proof.signing), "macOS release proof must declare signing: identity or adhoc");
-  else assert.equal(proof.signing, undefined, "Only macOS release proofs declare signing");
+  if (proof.platform === "darwin" && proof.arch === "x64") {
+    assert.equal(proof.signing, "adhoc", "darwin-x64 release proof must declare signing: adhoc");
+  } else if (proof.platform === "darwin") {
+    assert(MAC_SIGNING_KINDS.includes(proof.signing), "macOS release proof must declare signing: identity or adhoc");
+  } else assert.equal(proof.signing, undefined, "Only macOS release proofs declare signing");
 }
 
 function verifyRuntime(proof) {

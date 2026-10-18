@@ -43,7 +43,7 @@ test("nothing configured: one plain line per target, exit 0, nothing runs", () =
   assert.deepEqual(lines, [
     "Windows signing: not configured (set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and the three AZURE_SIGNING_* variables). Shipping unsigned.",
     "macOS signing: not configured (set APPLE_DEVELOPER_ID_P12, APPLE_DEVELOPER_ID_PASSWORD, APPLE_NOTARY_KEY_ID, APPLE_NOTARY_ISSUER_ID and APPLE_NOTARY_KEY). Shipping the self-signed app, not notarized.",
-    "macOS x64 signing: not configured (set APPLE_DEVELOPER_ID_P12, APPLE_DEVELOPER_ID_PASSWORD, APPLE_NOTARY_KEY_ID, APPLE_NOTARY_ISSUER_ID and APPLE_NOTARY_KEY). Shipping the self-signed app, not notarized.",
+    "macOS x64 signing: ad-hoc only (Apple secrets stay on arm64).",
     "Linux signing: nothing to sign (no Linux installer yet).",
   ]);
   assert.deepEqual(capture((log) => main(["status", "--target", "win32-x64"], { AZURE_TENANT_ID: "  " }, log)), { code: 0, lines: [lines[0]] }, "blank counts as unset");
@@ -83,8 +83,21 @@ test("partly configured: names exactly what is missing, signs nothing, fails onl
 test("fully configured: the status line says what will be signed", () => {
   assert.equal(statusLine(signingStatus("win32-x64", WINDOWS_ENV)), "Windows signing: configured. Signing Branch Agent.exe and the setup .exe with Azure Artifact Signing.");
   assert.equal(statusLine(signingStatus("darwin-arm64", MAC_ENV)), "macOS signing: configured. Signing with the Developer ID certificate, then notarizing and stapling the disk image.");
+  assert.equal(statusLine(signingStatus("darwin-x64", MAC_ENV)), "macOS x64 signing: ad-hoc only (Apple secrets stay on arm64).");
   assert.deepEqual(signingStatus("win32-x64", WINDOWS_ENV).required, [...WINDOWS_SECRETS, ...WINDOWS_VARIABLES]);
   assert.deepEqual(signingStatus("darwin-arm64", MAC_ENV).required, MAC_SECRETS);
+  assert.deepEqual(signingStatus("darwin-x64", MAC_ENV).required, []);
+});
+
+test("createSigner for darwin-x64 stays off even with every APPLE_* value set", () => {
+  const calls = [];
+  const signer = createSigner({ target: "darwin-x64", env: MAC_ENV, run: (...args) => calls.push(args), log: () => {} });
+  assert.equal(signer.enabled, false);
+  assert.equal(signer.status.state, "n/a");
+  assert.equal(signer.signApp("Branch Agent.app"), false);
+  assert.equal(signer.signInstaller("Branch-macOS-Intel.dmg"), false);
+  signer.dispose();
+  assert.deepEqual(calls, []);
 });
 
 test("Windows: SignTool with the Artifact Signing dlib, the app before packaging and the setup after", () => {
