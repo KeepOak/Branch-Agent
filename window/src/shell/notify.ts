@@ -2,6 +2,7 @@
 // the old, except outcomes that must not be lost (`keep`), which wait their turn. A toast stays 6 s, pauses
 // while the pointer or keyboard focus is on it, and its × closes it. It is never the only effect of a control.
 import { clearBanner } from "./Banner";
+import { onHostnames } from "./plain-address";
 import { plainError, plainText } from "./plain-error";
 export type ToastAction = { label: string; run: () => void };
 export type ToastTone = "plain" | "bad";
@@ -43,6 +44,11 @@ export function waitingNotice(who: string): { title: string; body: string } {
   return { title: who.trim() || "A Trunk", body: "is waiting for you" };
 }
 
+/** An OS notice's title and body with no hostname, address or URL at Regular (walkthrough B-026). */
+export function osNotice(title: string, body: string): { title: string; body: string } {
+  return { title: plainText(title), body: plainText(body) };
+}
+
 const waitingNotices = new Map<string, { close: () => void }>();
 
 export function resetWaitingNotices(): void {
@@ -66,7 +72,8 @@ export function syncWaitingNotices(
   const make = env.notify ?? ((title, opts) => new Notification(title, opts));
   for (const item of items) {
     if (waitingNotices.has(item.id)) continue;
-    const { title, body } = waitingNotice(item.who);
+    const notice = waitingNotice(item.who);
+    const { title, body } = osNotice(notice.title, notice.body);
     waitingNotices.set(item.id, make(title, { body, tag: item.id }));
   }
 }
@@ -80,6 +87,21 @@ function emit(): void {
     listener();
   }
 }
+
+function refilterToasts(): void {
+  let changed = false;
+  toasts = toasts.map((toast) => {
+    const plain = toast.tone === "bad" ? plainError : plainText;
+    const text = plain(toast.text);
+    const line = toast.line === undefined ? undefined : plain(toast.line);
+    if (text === toast.text && line === toast.line) return toast;
+    changed = true;
+    return { ...toast, text, line };
+  });
+  if (changed) emit();
+}
+
+onHostnames(refilterToasts);
 
 /** Shows a toast and returns its id. `line` is the smaller second line; `action` is its one button (for example Undo). */
 export function notify(text: string, options: NotifyOptions = {}): number {

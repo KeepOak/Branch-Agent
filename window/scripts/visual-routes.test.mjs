@@ -4,7 +4,7 @@ import { ROUTES } from "./visual-routes.mjs";
 
 describe("the visual harness routes", () => {
   it("names the two screens the simplification PRs need, each with a description", () => {
-    expect(Object.keys(ROUTES)).toEqual(["room-menu", "stage-preview", "side-panel-tabs", "steps-overflow", "pair-overflow", "team-approval-before", "team-approval"]);
+    expect(Object.keys(ROUTES)).toEqual(["room-menu", "stage-preview", "side-panel-tabs", "steps-overflow", "pair-overflow", "team-approval-before", "team-approval", "computer-screen-before", "computer-permission", "settings-nav-end"]);
     for (const description of Object.values(ROUTES)) expect(description.length).toBeGreaterThan(10);
   });
 

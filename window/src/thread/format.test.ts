@@ -53,7 +53,8 @@ describe("thread words", () => {
 
   it("shortens an engine error to its first sentence without the lead-in", () => {
     const raw = "Your request couldn't be completed: ⚠️ Authentication failed (provider returned HTTP 401). Your provider token may have expired.";
-    expect(shortReason(raw)).toBe("Authentication failed (provider returned HTTP 401).");
+    // At Regular a provider's HTTP status reads as a plain sentence (Private #1089, as #1700's friendlyError reads it).
+    expect(shortReason(raw)).toBe("Branch isn’t signed in for that. Sign in again, then try again.");
     expect(shortReason("Failed to observe plugin state entry. | PLUGIN_STATE_READ_FAILED | 42")).not.toContain("PLUGIN_STATE_READ_FAILED");
   });
 });
@@ -104,7 +105,8 @@ describe("plain error copy", () => {
     expect(shortReason("ENOENT: no such file '/Users/someone/Library/Caches/run/out.json' was found.")).not.toMatch(/\/Users\//);
     expect(shortReason("Could not write C:\\Users\\someone\\notes.md. Try again.")).not.toMatch(/Users|C:\\/);
     expect(shortReason("Failed in /tmp/rv1305/verdict.md, see log.")).toBe("Failed in a local file, see log.");
-    expect(shortReason("Authentication failed (provider returned HTTP 401).")).toBe("Authentication failed (provider returned HTTP 401).");
+    // An HTTP status reads plain at Regular (Private #1089).
+    expect(shortReason("Authentication failed (provider returned HTTP 401).")).toBe("Branch isn’t signed in for that. Sign in again, then try again.");
   });
 });
 

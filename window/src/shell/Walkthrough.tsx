@@ -4,7 +4,7 @@
 // the count stays the same (owner Q93). Toasts and banners are held while it runs and show when it ends (rule 2). No
 // mascot on the card (rule 5). R1 re-hosts it with its own cards and clear glass (screens/onboarding/R1Tour.tsx).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { coachCardPlace, type Box } from "./walkthrough-place";
+import { coachCardPlace, overlaps, type Box } from "./walkthrough-place";
 import "./walkthrough.css";
 
 export type Card = { title: string; text: string; target: string | null; prep?: () => void; side?: boolean };
@@ -104,18 +104,21 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
   const cards = useMemo(() => given ?? tourCards(defaultName), [given, defaultName]);
   const pill = (base?: string) => (clear ? [base, "g-label"].filter(Boolean).join(" ") : base);
   const [i, setI] = useState(0);
+  const [ended, setEnded] = useState(false);
   const [box, setBox] = useState<Box | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number; maxWidth?: number }>({ top: 0, left: 0 });
   const card = useRef<HTMLDivElement>(null);
   const last = i === cards.length - 1;
   const place = useCallback(() => {
-    const b = boxOf(cards[i].target);
-    setBox(b);
+    const target = boxOf(cards[i].target);
+    const side = sidebarBox();
+    // A hole in the sidebar would dim and cover the rest of it. The card still sits beside the control.
+    setBox(target && side && overlaps(target, side) ? null : target);
     setPos(coachCardPlace(
-      b,
+      target,
       { width: card.current?.offsetWidth || 340, height: card.current?.offsetHeight || 200 },
       { width: innerWidth, height: innerHeight },
-      sidebarBox(),
+      side,
     ));
   }, [cards, i]);
   useLayoutEffect(() => {
@@ -148,6 +151,13 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
     if (innerWidth <= NARROW) slideList(false);
   }, []);
   const go = (step: number) => setI((n) => Math.max(0, Math.min(cards.length - 1, n + step)));
+  const end = () => {
+    document.documentElement.classList.remove("touring");
+    if (innerWidth <= NARROW) slideList(false);
+    setEnded(true);
+    onClose();
+  };
+  if (ended) return null;
   return (
     <div
       className="tour-layer"
@@ -157,7 +167,7 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
         else if (e.key === "ArrowLeft") go(-1);
         else if (e.key === "Escape") {
           e.stopPropagation();
-          onClose();
+          end();
         }
       }}
     >
@@ -180,7 +190,7 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
             </button>
           ) : null}
           <span className="grow" />
-          <button type="button" className="btn ghost sm" data-testid="tour-end" onClick={onClose}>
+          <button type="button" className="btn ghost sm" data-testid="tour-end" onClick={end}>
             {last ? "Close" : "Skip the walkthrough"}
           </button>
           {last ? null : (

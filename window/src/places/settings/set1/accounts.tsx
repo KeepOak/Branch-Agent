@@ -147,6 +147,7 @@ export function AccountsPage(props: SettingsPageProps) {
   }, []);
   const providers = providersOf(status.data?.providers);
   const caps = list(status.data?.providerCapabilities);
+  const capsReady = status.data !== undefined || Boolean(status.error && !status.loading);
   const all = accountsOf(providers);
   return (
     <Page title={props.title} lede="Manage model accounts and the order Branch uses them." help="Your model accounts, the order Branch uses them in, which Trunks use each, and your keepoak.com account.">
@@ -163,7 +164,7 @@ export function AccountsPage(props: SettingsPageProps) {
       <GitHubSettings engine={props.engine} />
       <KeepOak />
       <AccountsMore engine={props.engine} providers={providers} all={all} reload={status.reload} agent={agent} openSettings={props.openSettings} />
-      {add ? <AddAccountDialog engine={props.engine} start={add} caps={caps} providers={providers} agent={agent} onClose={(added) => { setAdd(null); if (added) void status.reload(); }} /> : null}
+      {add ? <AddAccountDialog engine={props.engine} start={add} caps={caps} providers={providers} agent={agent} onClose={(added) => { setAdd(null); if (added) void status.reload(); }} capsReady={capsReady} /> : null}
     </Page>
   );
 }

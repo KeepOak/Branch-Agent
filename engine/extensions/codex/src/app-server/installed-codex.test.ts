@@ -201,4 +201,62 @@ describe("Codex installed on this computer", () => {
     expect(parseCodexVersion("0.161.0-alpha.2")).toBe("0.161.0-alpha.2");
     expect(parseCodexVersion("")).toBeUndefined();
   });
+
+  it("finds the official Linux install when PATH is a stripped desktop PATH", async () => {
+    // Linux desktop / AppImage / service PATH is often /usr/bin:/bin, with no ~/.local/bin.
+    // Official installer: ~/.local/bin/codex. Same lookup starts the main-agent chat and a Trunk.
+    const home = "/home/testuser";
+    const command = "/home/testuser/.local/bin/codex";
+    const installed = createInstalledCodex({
+      platform: "linux",
+      env: { HOME: home, BRANCH_HOME: "/srv/branch-home", PATH: "/usr/bin:/bin" },
+      isExecutable: async (file) => file === command,
+      readVersion: async () => "codex-cli 0.160.0",
+    });
+    await expect(installed.findPathCommand()).resolves.toEqual({
+      command,
+      version: "0.160.0",
+    });
+    await expect(
+      resolveManagedCodexAppServerStartOptions(startOptions(), {
+        platform: "linux",
+        pluginRoot,
+        installed,
+        pathExists: async (candidate) => candidate === command,
+      }),
+    ).resolves.toMatchObject({ command, commandSource: "resolved-managed" });
+  });
+
+  it("finds Codex next to the saved ChatGPT sign-in under ~/.codex when ~/.local/bin is missing", async () => {
+    const command = "/home/testuser/.codex/packages/standalone/current/bin/codex";
+    const installed = createInstalledCodex({
+      platform: "linux",
+      env: { HOME: "/home/testuser", PATH: "/usr/bin:/bin" },
+      isExecutable: async (file) => file === command,
+      readVersion: async () => "codex-cli 0.161.2",
+    });
+    await expect(installed.findPathCommand()).resolves.toEqual({
+      command,
+      version: "0.161.2",
+    });
+  });
+
+  it("expands a tilde PATH entry using the OS home, not BRANCH_HOME", async () => {
+    const command = "/home/testuser/.local/bin/codex";
+    const decoy = "/srv/branch-home/.local/bin/codex";
+    const installed = createInstalledCodex({
+      platform: "linux",
+      env: {
+        HOME: "/home/testuser",
+        BRANCH_HOME: "/srv/branch-home",
+        PATH: "~/.local/bin:/usr/bin",
+      },
+      isExecutable: async (file) => file === command || file === decoy,
+      readVersion: async (file) => (file === command ? "codex-cli 0.160.0" : "codex-cli 0.120.0"),
+    });
+    await expect(installed.findPathCommand()).resolves.toEqual({
+      command,
+      version: "0.160.0",
+    });
+  });
 });
