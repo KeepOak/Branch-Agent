@@ -20,7 +20,7 @@ import {
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { OfflineBanner } from '../ui/OfflineBanner';
-import { PlacesBar, placesBarHeight, type PhoneLook, type Place } from '../ui/PlacesBar';
+import { PlacesBar, placesBarHeight, statusBandHeight, type PhoneLook, type Place } from '../ui/PlacesBar';
 import { Avatar } from './ChatsScreen';
 
 const QUICK_WORKING = [
@@ -144,8 +144,7 @@ export function HomeScreen({
   const [later, setLater] = useState<string | null>(null);
   const ios = look === 'ios';
   const tabPad = placesBarHeight(look, insets.bottom);
-  // Preview .p-status is 50pt on iPhone; the device draws the clock in that band.
-  const statusH = ios ? Math.max(insets.top, 50) : insets.top;
+  const statusH = statusBandHeight(look, insets.top);
 
   const showLater = (label: LaterHomeAction) => {
     if (!advanced) return;

@@ -17,11 +17,19 @@ export type PhoneLook = 'ios' | 'android';
 const BAR = 64;
 const IOS_BOTTOM = 24;
 const IOS_SIDE = 14;
+/** Preview .p-status height on iPhone. The device draws the clock in that band. */
+export const IOS_STATUS = 50;
 
 /** Preview .p-tabs: iOS is a 64pt floating pill; Android is a flush Material bar. */
 export function placesBarHeight(look: PhoneLook, bottomInset: number): number {
   if (look === 'ios') return BAR + Math.max(IOS_BOTTOM, bottomInset + 8);
   return BAR + bottomInset;
+}
+
+/** Preview .p-status: 50pt on iPhone, otherwise the device inset. */
+export function statusBandHeight(look: PhoneLook, topInset: number): number {
+  if (look === 'ios') return Math.max(topInset, IOS_STATUS);
+  return topInset;
 }
 
 function PlaceMark({ id, on, color }: { id: Place; on: boolean; color: string }) {

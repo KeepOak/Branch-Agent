@@ -25,6 +25,7 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { OfflineBanner } from '../ui/OfflineBanner';
+import { statusBandHeight } from '../ui/PlacesBar';
 import { useNow } from '../ui/useNow';
 
 const AVATAR = 52;
@@ -613,7 +614,7 @@ export function ChatsScreen({
   );
 
   const header = (
-    <View style={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
+    <View style={{ paddingTop: statusBandHeight(look, insets.top) + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
       <View style={{ flexDirection: 'row', justifyContent: onNeedsYou ? 'space-between' : 'flex-end', alignItems: 'center' }}>
         {onNeedsYou ? (
           <Pressable

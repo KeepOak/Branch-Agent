@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { palettes } from '../theme/tokens';
-import { PlacesBar, placesBarHeight } from './PlacesBar';
+import { PlacesBar, placesBarHeight, statusBandHeight } from './PlacesBar';
 
 async function renderBar(look: 'ios' | 'android', extra: Partial<Parameters<typeof PlacesBar>[0]> = {}) {
   const onPlace = jest.fn();
@@ -46,6 +46,9 @@ describe('places bar', () => {
     expect(screen.getByTestId('place-chats')).toHaveTextContent('Chats');
     expect(placesBarHeight('ios', 0)).toBe(88);
     expect(placesBarHeight('ios', 34)).toBe(64 + 42);
+    expect(statusBandHeight('ios', 0)).toBe(50);
+    expect(statusBandHeight('ios', 59)).toBe(59);
+    expect(statusBandHeight('android', 0)).toBe(0);
   });
 
   it('draws the Android flush bar, not a floating pill', async () => {
