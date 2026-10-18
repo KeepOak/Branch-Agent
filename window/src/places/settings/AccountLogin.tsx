@@ -45,14 +45,14 @@ export function Footer({ view, value, busy, onAnswer, onCancel, clear }: { view:
 }
 
 /** The live steps of a wizard session: the question, its sign-in link or code, and the waiting line. */
-export function WizardBody({ wizard: w, doneText, clear }: { wizard: ReturnType<typeof useWizard>; doneText: string; clear?: boolean }) {
+export function WizardBody({ wizard: w, doneText, clear, errorText }: { wizard: Omit<ReturnType<typeof useWizard>, "notes"> & { notes?: string[] }; doneText: string; clear?: boolean; errorText?: string }) {
   return (
     <div className="account-login" aria-live="polite">
       {w.view.phase === "starting" ? <p className={pill(clear)}>Starting sign-in…</p> : null}
       {w.view.phase === "step" ? <StepBody step={w.view.step} value={w.value} onValue={w.setValue} onAnswer={w.answer} busy={w.busy || w.view.waiting} clear={clear} /> : null}
       {w.view.phase === "step" && w.view.waiting ? <p className={pill(clear, "login-wait")}>Waiting for the sign-in to finish in your browser…</p> : null}
       {w.view.phase === "done" ? <p className={pill(clear)}>{doneText}</p> : null}
-      {w.view.phase === "error" ? <p className={pill(clear, "bs-error")} role="alert">{w.view.message}</p> : null}
+      {w.view.phase === "error" ? <p className={pill(clear, "bs-error")} role="alert">{errorText ?? w.view.message}</p> : null}
     </div>
   );
 }

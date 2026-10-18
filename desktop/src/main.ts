@@ -1,5 +1,5 @@
 // Branch Agent desktop app: starts the engine gateway, serves the built window on 127.0.0.1 and shows it.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, powerMonitor, screen, session, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, powerMonitor, screen, session, shell, systemPreferences } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
@@ -29,6 +29,7 @@ import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
+import { createOsPermissions, registerOsPermissionsIpc } from "./os-permissions";
 import { createShellRelaunch } from "./shell-relaunch";
 import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
@@ -1382,6 +1383,12 @@ async function start(): Promise<void> {
   });
   registerComponentUpdateIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), componentUpdates);
   registerDesktopControlsIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), controls);
+  registerOsPermissionsIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), createOsPermissions({
+    platform: process.platform,
+    mediaStatus: kind => systemPreferences.getMediaAccessStatus(kind),
+    askMedia: kind => systemPreferences.askForMediaAccess(kind),
+    openExternal: url => shell.openExternal(url),
+  }));
   registerTitleBarIpc(ipcMain, () => win?.webContents, windowUrl(), (overlay) => win?.setTitleBarOverlay(overlay));
   ipcMain.on("branch-desktop:title-bar", (event, value) => {
     const owner = BrowserWindow.fromWebContents(event.sender);
