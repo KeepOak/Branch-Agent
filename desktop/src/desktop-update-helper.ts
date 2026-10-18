@@ -35,8 +35,11 @@ interface Journal {
   /** Previous version folder name, or empty when the live app is the legacy root itself. */
   previousFolder?: string;
 }
-/** After a swap that found the app in use, starts leave the update staged this long (Restart retries at once). */
-const RETRY_AFTER_MS = 60 * 60 * 1000;
+/**
+ * After a swap that found the app in use, the helper's immediate relaunch leaves the update staged this long so it
+ * does not loop. A later launch applies it before loading (Restart retries at once).
+ */
+const RETRY_AFTER_MS = 30_000;
 /** Pointer the launcher, shortcut and stub read; switched by an atomic rename. */
 export const WINDOWS_POINTER = "current.txt";
 /** Previous version folder name, so prune can keep one rollback copy. */

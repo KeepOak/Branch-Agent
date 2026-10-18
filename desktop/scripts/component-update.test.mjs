@@ -1223,3 +1223,89 @@ test("first launch is skipped when the window is already installed", async () =>
   assert.equal(await launch.runFirstLaunchInstall(cfg, request, { ask: async () => true }), "skipped");
   assert.equal(requests.length, 0);
 }));
+
+function fakeCheckTimers() {
+  const timers = [];
+  let nextId = 1;
+  let now = 0;
+  return {
+    setTimeout: (fn, ms) => {
+      const id = nextId++;
+      timers.push({ id, at: now + ms, fn });
+      return id;
+    },
+    clearTimeout: (id) => {
+      const index = timers.findIndex(timer => timer.id === id);
+      if (index >= 0) timers.splice(index, 1);
+    },
+    pending: () => timers.length,
+    async advance(ms) {
+      now += ms;
+      const due = timers.filter(timer => timer.at <= now).sort((a, b) => a.at - b.at);
+      for (const timer of due) {
+        const index = timers.indexOf(timer);
+        if (index < 0) continue;
+        timers.splice(index, 1);
+        timer.fn();
+      }
+      await Promise.resolve();
+      await Promise.resolve();
+    },
+  };
+}
+
+test("a lease-overrun stop still schedules the next update check", async () => fixture(async ({ cfg }) => {
+  let checks = 0;
+  let releaseFirst;
+  const first = new Promise(resolve => { releaseFirst = resolve; });
+  const logs = [];
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, line => logs.push(line), {
+    checkMs: 20,
+    refresh: async () => {
+      checks++;
+      if (checks === 1) await first;
+      return false;
+    },
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    assert.equal(checks, 1, "first check started");
+    assert.ok(clock.pending() >= 1, "the next check is armed while the first still runs");
+    stop.notifyStopped();
+    assert.ok(logs.some(line => line.includes("engine stopped past its lease") && line.includes("next check in")), logs.join("\n"));
+    await clock.advance(20);
+    assert.ok(logs.some(line => line.includes("still running") && line.includes("next check in")), logs.join("\n"));
+    releaseFirst();
+    await first;
+    await Promise.resolve();
+    await clock.advance(20);
+    assert.ok(checks >= 2, `next check after the lease-overrun stop, got ${checks}`);
+  } finally { stop(); }
+}));
+
+test("an update-check error still leaves a pending retry", async () => fixture(async ({ cfg }) => {
+  let checks = 0;
+  const logs = [];
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, line => logs.push(line), {
+    checkMs: 15,
+    refresh: async () => {
+      checks++;
+      if (checks === 1) throw new Error("manifest unreachable");
+      return false;
+    },
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(checks, 1);
+    assert.ok(logs.some(line => line.includes("manifest unreachable") && line.includes("next check in")), logs.join("\n"));
+    await clock.advance(15);
+    assert.ok(checks >= 2, `retry after the error, got ${checks}`);
+  } finally { stop(); }
+}));

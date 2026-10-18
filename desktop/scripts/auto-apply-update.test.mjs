@@ -44,7 +44,7 @@ test("active runs, approvals, streams, and file drafts reset the idle hold", asy
   await f.controller.tick();
   f.setActivity({ activeRuns: 2 }); f.advance(AUTO_APPLY_GAP_MS); await f.controller.tick();
   assert.deepEqual(f.restarts, []);
-  assert.ok(f.logs.some(line => line.includes("waiting for 2 active runs")));
+  assert.ok(f.logs.some(line => line.includes("waiting for 2 active runs") && line.includes("retrying in 30s")));
   f.setActivity({ activeRuns: 0, pendingApprovals: 1 }); await f.controller.tick();
   f.setActivity({ pendingApprovals: 0, streaming: true }); await f.controller.tick();
   f.setActivity({ streaming: false, unsavedDraftFiles: true }); await f.controller.tick();

@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createRunKeepAwake, type BlockerProcess } from "./keep-awake.js";
+import { createRunKeepAwake, KEEP_AWAKE_LEASE_MS, type BlockerProcess } from "./keep-awake.js";
 import { POWER_STATE_FILE, readOnBattery, startBatteryPoliteness } from "./power-state.js";
 import {
   createServiceKeepAwake,
@@ -107,12 +107,66 @@ describe("service keep awake", () => {
     engine.tick();
     expect(fake.held()).toHaveLength(0);
     expect(engine.held()).toBe(false);
-    expect(serviceRunIsActive({ embeddedRuns: 1, agentRuns: 0, chatRuns: 0, acpRuns: 0, totalActive: 1 })).toBe(
+    expect(serviceRunIsActive({ embeddedRuns: 1, agentRuns: 0, chatRuns: 0, acpRuns: 0 })).toBe(true);
+    expect(serviceRunIsActive({ embeddedRuns: 0, agentRuns: 0, chatRuns: 0, acpRuns: 0 })).toBe(false);
+    expect(serviceRunIsActive({ embeddedRuns: 0, agentRuns: 0, chatRuns: 0, acpRuns: 0, subagentRuns: 1 })).toBe(
       true,
     );
-    expect(serviceRunIsActive({ embeddedRuns: 0, agentRuns: 0, chatRuns: 0, acpRuns: 0, totalActive: 0 })).toBe(
-      false,
-    );
+    // Leftover queue / terminal counts are not a live run; they must not keep the machine awake.
+    const leftover = { embeddedRuns: 0, agentRuns: 0, chatRuns: 0, acpRuns: 0, totalActive: 12 };
+    expect(serviceRunIsActive(leftover)).toBe(false);
+  });
+
+  it("drops a keep-awake hold when no live run renews the lease, and keeps it while a run is active", () => {
+    let now = 1_000;
+    const timers: Array<{ id: number; at: number; fn: () => void }> = [];
+    let nextId = 1;
+    const fake = fakeSpawn();
+    const lines: string[] = [];
+    const fireDue = (): void => {
+      const due = timers.filter((timer) => timer.at <= now);
+      for (const timer of due) {
+        const index = timers.indexOf(timer);
+        if (index >= 0) {
+          timers.splice(index, 1);
+        }
+        timer.fn();
+      }
+    };
+    const keep = createRunKeepAwake({
+      platform: "darwin",
+      appPid: 9,
+      spawn: fake.spawn,
+      enabled: () => true,
+      onBatteryToo: () => false,
+      onBattery: () => false,
+      log: (line) => lines.push(line),
+      now: () => now,
+      setTimeout: (fn, ms) => {
+        const id = nextId++;
+        timers.push({ id, at: now + ms, fn });
+        return id;
+      },
+      clearTimeout: (id) => {
+        const index = timers.findIndex((timer) => timer.id === id);
+        if (index >= 0) {
+          timers.splice(index, 1);
+        }
+      },
+    });
+    keep.update(true);
+    expect(keep.held()).toBe(true);
+    now += KEEP_AWAKE_LEASE_MS - 1;
+    keep.update(true);
+    now += KEEP_AWAKE_LEASE_MS - 1;
+    fireDue();
+    expect(keep.held()).toBe(true);
+    now += KEEP_AWAKE_LEASE_MS;
+    fireDue();
+    expect(keep.held()).toBe(false);
+    expect(fake.held()).toHaveLength(0);
+    expect(lines.some((line) => line.includes("released (no live Trunk run)"))).toBe(true);
+    keep.dispose();
   });
 
   it("refreshes power state so battery backoff still applies after the app's file would have gone stale", () => {

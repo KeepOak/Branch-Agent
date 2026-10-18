@@ -1,7 +1,8 @@
 // Always on (Private #454 D): keep this computer awake only while a Trunk works, and be polite on battery. The sleep
 // blocker is the OS's own (caffeinate on macOS, systemd-inhibit on Linux, SetThreadExecutionState on Windows), held by
 // one child process that also waits on the app's process, so it can never outlive the app. It is taken when a run
-// starts and released the moment the last run ends. By default it is not taken on battery. Nothing here imports
+// starts and released the moment the last run ends, fails, is cancelled or its process dies. A hold that is not
+// renewed by a live run expires on its own. By default it is not taken on battery. Nothing here imports
 // Electron: main.ts gives it the run state, the power state and the spawn call, so the tests use fakes.
 // With the per-user engine service, the engine holds that blocker itself (engine/src/infra/service-keep-awake.ts).
 // This app then does not hold a second one. It keeps writing the power source until quit, then hands that to the engine.
@@ -53,6 +54,9 @@ export interface KeepAwakeDeps {
   onBatteryToo(): boolean;
   onBattery(): boolean;
   log(line: string): void;
+  now?: () => number;
+  setTimeout?: (fn: () => void, ms: number) => unknown;
+  clearTimeout?: (timer: unknown) => void;
 }
 
 export interface RunKeepAwake {
@@ -65,11 +69,24 @@ export interface RunKeepAwake {
   dispose(): void;
 }
 
+/** A hold must be renewed by a live run within this window or it is dropped. */
+export const KEEP_AWAKE_LEASE_MS = 30_000;
+
 /** Holds the sleep blocker exactly while a run is active (and the setting and power source allow it). */
 export function createRunKeepAwake(deps: KeepAwakeDeps): RunKeepAwake {
   let blocker: BlockerProcess | undefined;
   let working = false;
   let disposed = false;
+  let stale = false;
+  let confirmedAt = 0;
+  let leaseTimer: unknown;
+  const now = deps.now ?? Date.now;
+  const schedule = deps.setTimeout ?? ((fn: () => void, ms: number) => {
+    const timer = setTimeout(fn, ms);
+    timer.unref?.();
+    return timer;
+  });
+  const cancel = deps.clearTimeout ?? ((timer: unknown) => { clearTimeout(timer as NodeJS.Timeout); });
   const wanted = (): boolean => !disposed && working && deps.enabled() && (!deps.onBattery() || deps.onBatteryToo());
   const apply = (): void => {
     if (wanted() && !blocker) {
@@ -91,14 +108,47 @@ export function createRunKeepAwake(deps: KeepAwakeDeps): RunKeepAwake {
       const child = blocker;
       blocker = undefined;
       child.kill();
-      deps.log("keep awake: released");
+      deps.log(stale ? "keep awake: released (no live Trunk run)" : "keep awake: released");
+      stale = false;
     }
   };
+  const clearLease = (): void => {
+    if (leaseTimer === undefined) return;
+    cancel(leaseTimer);
+    leaseTimer = undefined;
+  };
+  const armLease = (): void => {
+    clearLease();
+    if (disposed || !working) return;
+    const wait = Math.max(1, KEEP_AWAKE_LEASE_MS - (now() - confirmedAt));
+    leaseTimer = schedule(() => {
+      leaseTimer = undefined;
+      if (disposed || !working) return;
+      if (now() - confirmedAt < KEEP_AWAKE_LEASE_MS) {
+        armLease();
+        return;
+      }
+      stale = true;
+      working = false;
+      apply();
+    }, wait);
+  };
   return {
-    update: (next) => { working = next; apply(); },
+    update: (next) => {
+      working = next;
+      if (next) {
+        confirmedAt = now();
+        stale = false;
+        apply();
+        armLease();
+        return;
+      }
+      clearLease();
+      apply();
+    },
     refresh: apply,
     held: () => blocker !== undefined,
-    dispose: () => { disposed = true; apply(); },
+    dispose: () => { disposed = true; clearLease(); apply(); },
   };
 }
 

@@ -15,7 +15,7 @@ import test from 'node:test';
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error('Compile the exact desktop source before testing');
 const require = createRequire(import.meta.url);
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
-const { createRunKeepAwake, sleepBlockerCommand, writePowerState, POWER_STATE_FILE, claimServiceKeepAwake, handOffKeepAwake, appHoldsSleepBlock, KEEP_AWAKE_OWNER_FILE, DESKTOP_KEEP_AWAKE_FRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS } = require(join(dist, 'keep-awake.js'));
+const { createRunKeepAwake, sleepBlockerCommand, writePowerState, POWER_STATE_FILE, claimServiceKeepAwake, handOffKeepAwake, appHoldsSleepBlock, KEEP_AWAKE_OWNER_FILE, DESKTOP_KEEP_AWAKE_FRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, KEEP_AWAKE_LEASE_MS } = require(join(dist, 'keep-awake.js'));
 const { createClosedWindowNotifier, readEngineLiveState, trayLabel, workNotices } = require(join(dist, 'tray-status.js'));
 const { engineLingerArgs, parseLingerAnswer, readEngineHealth } = require(join(dist, 'engine-service.js'));
 const { createDesktopControls } = require(join(dist, 'desktop-controls.js'));
@@ -39,16 +39,48 @@ function fakeSpawn() {
   return { spawn, started, held: () => started.filter(entry => !entry.killed) };
 }
 
+function fakeClock(start = 1_000) {
+  let now = start;
+  const timers = [];
+  let nextId = 1;
+  return {
+    now: () => now,
+    setTimeout: (fn, ms) => {
+      const id = nextId++;
+      timers.push({ id, at: now + ms, fn });
+      return id;
+    },
+    clearTimeout: (id) => {
+      const index = timers.findIndex(timer => timer.id === id);
+      if (index >= 0) timers.splice(index, 1);
+    },
+    advance(ms) {
+      now += ms;
+      for (;;) {
+        const due = timers.filter(timer => timer.at <= now).sort((a, b) => a.at - b.at);
+        if (!due.length) return;
+        for (const timer of due) {
+          const index = timers.indexOf(timer);
+          if (index < 0) continue;
+          timers.splice(index, 1);
+          timer.fn();
+        }
+      }
+    },
+  };
+}
+
 function keepAwakeFixture(over = {}) {
   const power = { onBattery: false, enabled: true, onBatteryToo: false, ...over };
   const fake = fakeSpawn();
   const lines = [];
+  const clock = over.clock ?? fakeClock();
   const keepAwake = createRunKeepAwake({
     platform: 'darwin', appPid: 4242, spawn: fake.spawn,
     enabled: () => power.enabled, onBatteryToo: () => power.onBatteryToo, onBattery: () => power.onBattery,
-    log: line => lines.push(line),
+    log: line => lines.push(line), now: clock.now, setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
   });
-  return { keepAwake, power, fake, lines };
+  return { keepAwake, power, fake, lines, clock };
 }
 
 test('the sleep blocker is held only while a fake run is active and released the moment it ends', () => {
@@ -192,6 +224,22 @@ test('the power source reaches the engine, for its battery politeness', t => {
   assert.deepEqual(JSON.parse(readFileSync(join(dir, POWER_STATE_FILE), 'utf8')), { onBattery: true, at: 1234 });
   writePowerState(dir, false, 5678);
   assert.deepEqual(JSON.parse(readFileSync(join(dir, POWER_STATE_FILE), 'utf8')), { onBattery: false, at: 5678 });
+});
+
+test('a stale keep-awake hold with no live run expires, and an active run keeps the machine awake', () => {
+  const { keepAwake, fake, lines, clock } = keepAwakeFixture();
+  keepAwake.update(true);
+  assert.equal(keepAwake.held(), true);
+  clock.advance(KEEP_AWAKE_LEASE_MS - 1);
+  keepAwake.update(true);
+  clock.advance(KEEP_AWAKE_LEASE_MS - 1);
+  assert.equal(keepAwake.held(), true, 'a live run renews the hold');
+  assert.equal(fake.held().length, 1);
+  clock.advance(KEEP_AWAKE_LEASE_MS);
+  assert.equal(keepAwake.held(), false, 'no renewing run: the hold expires');
+  assert.equal(fake.held().length, 0);
+  assert.ok(lines.some(line => line.includes('released (no live Trunk run)')), lines.join('\n'));
+  keepAwake.dispose();
 });
 
 test('the open app does not hold a second blocker, and quit hands sleep and power to the service engine', t => {

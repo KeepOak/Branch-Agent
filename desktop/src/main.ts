@@ -23,7 +23,7 @@ import { keepWindowResident, showTrayStatus } from "./resident-window";
 import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
 import { plainDialogText, STOP_FAILED_PLAIN, UPDATE_FAILED_PLAIN } from "./plain-dialog";
-import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
+import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates, type StopComponentWatch } from "./component-update";
 import { askFirstLaunchInWindow, FIRST_LAUNCH_DOWNLOAD, FIRST_LAUNCH_RETRY, FIRST_LAUNCH_WATCH_CANCEL, firstLaunchAllowsWindow, firstLaunchNeedComponentsScript, firstLaunchProgressScript, needsFirstLaunchComponents, runFirstLaunchInstall } from "./first-launch-install";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
@@ -218,7 +218,7 @@ function savedConversationKeys(): string[] {
 let token = "";
 let engineUpdateReady = false;
 let stopEngineWatch: (() => void) | undefined;
-let stopComponentWatch: (() => void) | undefined;
+let stopComponentWatch: StopComponentWatch | undefined;
 let stopWindowWatch: (() => void) | undefined;
 let componentsReady = false;
 let pendingReleasePrune: (() => Promise<void>) | undefined;
@@ -658,6 +658,7 @@ function keepRetiring(label: string, child: ChildProcess): void {
     }
     log(`update ${label}: old engine ${child.pid} is still alive past its lease deadline; stopping it`);
     stopGateway(child, "SIGKILL");
+    stopComponentWatch?.notifyStopped();
   };
   const arm = (ms: number) => {
     const timer = setTimeout(() => void expire(), ms);
@@ -1894,9 +1895,12 @@ function watchTrayStatus(): void {
     void liveEngineState().then(state => {
       working = state.running && state.workingTrunks > 0;
       showTrayStatus(tray, state);
-      keepAwake.update(appHoldsSleepBlock(serviceEngine) && working);
       notifier.observe(state);
-    }).finally(() => { reading = false; schedule(working); });
+    }).catch(() => { working = false; }).finally(() => {
+      keepAwake.update(appHoldsSleepBlock(serviceEngine) && working);
+      reading = false;
+      schedule(working);
+    });
   };
   refresh();
   app.once("will-quit", () => { if (timer) clearTimeout(timer); });

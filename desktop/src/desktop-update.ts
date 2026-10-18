@@ -391,6 +391,18 @@ export async function stagedDesktopVersion(cfg: DesktopConfig): Promise<string |
 }
 
 /**
+ * Why a staged desktop update is not handed off now, or undefined when startup may apply it before loading.
+ * A hold after a swap that found the app in use only covers the helper's immediate relaunch; the next launch applies.
+ */
+export function desktopUpdateHandOffBlock(journal: DesktopJournal | undefined, explicit: boolean, now = Date.now()): string | undefined {
+  if (journal?.phase !== "staged") return undefined;
+  if (!explicit && (journal.heldUntil ?? 0) > now) {
+    return `desktop update ${journal.version} deferred: the last swap found the app still in use; retrying at the next launch after ${new Date(journal.heldUntil!).toISOString()}`;
+  }
+  return undefined;
+}
+
+/**
  * Starts the helper detached. Resolves to undefined once it runs, or to the failure text when it cannot start. The
  * error listener is required: an unhandled 'error' event would stop the app before startup continues.
  */
@@ -424,10 +436,13 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
 async function handOffJournal(cfg: DesktopConfig, install: DesktopInstall, helperSource: string, args: string[], explicit: boolean,
   journal: DesktopJournal | undefined): Promise<boolean> {
   const updateWaiting = journal?.phase === "staged";
-  if (!updateWaiting || !explicit && (journal?.heldUntil ?? 0) > Date.now()) {
-    if (!updateWaiting) await ensureMacApplicationsInstall(install.appDir, join(cfg.dataDir, "desktop.log"));
+  if (!updateWaiting) await ensureMacApplicationsInstall(install.appDir, join(cfg.dataDir, "desktop.log"));
+  const blocked = desktopUpdateHandOffBlock(journal, explicit);
+  if (blocked) {
+    try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} ${blocked}\n`, BRANCH_LOG_LIMITS); } catch { /* ignore */ }
     return false;
   }
+  if (!updateWaiting) return false;
   const work = journal.work ?? dirname(journal.kind === "asar" ? dirname(journal.staged) : journal.staged);
   const defect = await stagedDefect(journal, install) ?? (await helperMissing(helperSource) ? "the update helper is missing" : undefined);
   if (defect) {

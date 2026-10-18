@@ -676,6 +676,17 @@ export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch
   return next;
 }
 
+export type StopComponentWatch = (() => void) & { notifyStopped(): void };
+
+export interface WatchComponentUpdatesOptions extends RefreshOptions {
+  onStaged?: () => void;
+  setTimeout?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
+  clearTimeout?: (id: ReturnType<typeof setTimeout>) => void;
+  checkMs?: number;
+  /** Tests replace the GitHub refresh. Production always uses refreshComponentUpdate. */
+  refresh?: (cfg: DesktopConfig, request: typeof fetch, options: RefreshOptions) => Promise<boolean>;
+}
+
 export interface ComponentUpdateState {
   currentVersion: string | null;
   /** Any staged update, including a desktop app that waits for the next launch. */
@@ -699,28 +710,60 @@ export async function readComponentUpdateStatus(cfg: DesktopConfig): Promise<Com
     publicationInProgress: Boolean(pending), previousWindowDir };
 }
 
-export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void, options: RefreshOptions & { onStaged?: () => void } = {}): () => void {
+export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void, options: WatchComponentUpdatesOptions = {}): StopComponentWatch {
   let busy = false;
   let stopped = false;
   let first = true;
-  const tick = async (): Promise<void> => {
-    if (busy || stopped) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const waitMs = options.checkMs ?? COMPONENT_UPDATE_CHECK_MS;
+  const schedule = options.setTimeout ?? setTimeout;
+  const cancel = options.clearTimeout ?? clearTimeout;
+  const runRefresh = options.refresh ?? refreshComponentUpdate;
+  const retryLine = (why: string): void => {
+    const secs = Math.max(1, Math.round(waitMs / 1000));
+    log(`${why}; next check in ${secs}s`);
+  };
+  const arm = (delayMs: number): void => {
+    if (stopped) return;
+    if (timer !== undefined) cancel(timer);
+    timer = schedule(() => {
+      timer = undefined;
+      void run();
+    }, delayMs);
+  };
+  const run = async (): Promise<void> => {
+    if (stopped) return;
+    // Arm the next pass before this one starts, so a hung check, error or lease-overrun stop never leaves the loop silent.
+    arm(waitMs);
+    if (busy) {
+      retryLine("Component update check still running");
+      return;
+    }
     busy = true;
     try {
-      if (await refreshComponentUpdate(cfg, fetch, options)) {
+      if (await runRefresh(cfg, fetch, options)) {
         log("Verified GitHub component update staged");
         options.onStaged?.();
       }
-    }
-    catch (error) { log(`Component update check: ${error instanceof Error ? error.message : String(error)}`); }
-    finally {
+    } catch (error) {
+      retryLine(`Component update check: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
       // Startup already pruned: later checks remove a previous engine whose probation has ended since.
       if (!first && !stopped) await pruneEndedProbation(cfg, log);
       first = false;
       busy = false;
     }
   };
-  void tick();
-  const timer = setInterval(() => void tick(), COMPONENT_UPDATE_CHECK_MS);
-  return () => { stopped = true; clearInterval(timer); };
+  const notifyStopped = (): void => {
+    if (stopped) return;
+    retryLine("Component update check: engine stopped past its lease");
+    arm(waitMs);
+  };
+  void run();
+  const stop = (): void => {
+    stopped = true;
+    if (timer !== undefined) cancel(timer);
+    timer = undefined;
+  };
+  return Object.assign(stop, { notifyStopped });
 }

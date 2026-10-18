@@ -52,13 +52,13 @@ export function readKeepAwakeOwnership(stateDir: string, now = Date.now()): Keep
   }
 }
 
-/** The same run count the desktop app uses for a child engine (active runs, or any other live work). */
+/** True only while a Trunk (or its helper) has a live run, never leftover queue or terminal counts. */
 export function serviceRunIsActive(counts: {
   embeddedRuns: number;
   agentRuns: number;
   chatRuns: number;
   acpRuns: number;
-  totalActive: number;
+  subagentRuns?: number;
 }): boolean {
   return (
     Math.max(
@@ -67,7 +67,7 @@ export function serviceRunIsActive(counts: {
       counts.agentRuns,
       counts.chatRuns,
       counts.acpRuns,
-      counts.totalActive,
+      counts.subagentRuns ?? 0,
     ) > 0
   );
 }

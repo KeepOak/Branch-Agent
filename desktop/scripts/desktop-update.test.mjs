@@ -286,7 +286,29 @@ test("a swap that cannot move the running copy stays staged without a relaunch l
   const journal = await desktopUpdate.readDesktopJournal(cfg);
   assert.equal(journal.phase, "staged"); assert.ok(journal.heldUntil > Date.now());
   const helper = join(dist, "desktop-update-helper.js");
-  assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, install, helper, [], false), false, "a normal start does not hand off again");
+  assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, install, helper, [], false), false, "the helper's immediate relaunch does not loop");
+  assert.match(desktopUpdate.desktopUpdateHandOffBlock(journal, false, journal.heldUntil - 1), /retrying at the next launch after/);
+  assert.equal(desktopUpdate.desktopUpdateHandOffBlock(journal, false, journal.heldUntil + 1), undefined, "the next launch after the cooldown applies");
+}));
+
+test("a staged app-bundle is applied on the next launch, before the window loads", () => fixture(async ({ cfg, request, install }) => {
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  const journal = await desktopUpdate.readDesktopJournal(cfg);
+  assert.equal(journal.phase, "staged");
+  assert.equal(journal.heldUntil, undefined);
+  assert.equal(await desktopUpdate.stagedDesktopVersion(cfg), "0.4.5");
+  assert.equal(desktopUpdate.desktopUpdateHandOffBlock(journal, false), undefined,
+    "the next launch applies the staged app-bundle; it does not wait for a full restart");
+  assert.match(desktopUpdate.desktopUpdateHandOffBlock({ ...journal, heldUntil: 1_000 }, false, 999), /retrying at the next launch after/);
+  assert.equal(desktopUpdate.desktopUpdateHandOffBlock({ ...journal, heldUntil: 1_000 }, false, 1_001), undefined);
+  assert.equal(desktopUpdate.desktopUpdateHandOffBlock({ ...journal, heldUntil: 1_000 }, true, 999), undefined, "Restart applies at once");
+  const main = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8");
+  const start = main.slice(main.indexOf("async function start(): Promise<void>"));
+  const handOffAt = start.indexOf("if (await handOffDesktop())");
+  const exitAt = start.indexOf("app.exit(0)");
+  assert.ok(handOffAt >= 0 && exitAt > handOffAt, "startup applies a staged desktop update before loading");
+  assert.doesNotMatch(start.slice(0, handOffAt), /loadURL|serveWindow/);
+  assert.ok(start.indexOf("loadURL") > handOffAt || start.indexOf("serveWindow") > handOffAt);
 }));
 
 test("desktop confirmation retains exactly the current and previous update folders", () => fixture(async ({ cfg }) => {
