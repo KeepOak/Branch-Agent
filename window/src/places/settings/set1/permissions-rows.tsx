@@ -78,7 +78,7 @@ function NumRow({ r, c }: { r: Extract<Row, { k: "num" }>; c: Cfg }) {
     }
     put(n * scale);
   };
-  return <Ctl title={r.t} sub={r.sub}><Field label={r.t} type="number" value={shown} placeholder={r.ph} disabled={c.loading} onCommit={commit} />{r.unit ? <small className="pm-unit">{r.unit}</small> : null}</Ctl>;
+  return <Ctl title={r.t} sub={r.sub} off={c.loading ? "Loading your settings…" : undefined}><Field label={r.t} type="number" value={shown} placeholder={r.ph} disabled={c.loading} onCommit={commit} />{r.unit ? <small className="pm-unit">{r.unit}</small> : null}</Ctl>;
 }
 
 const NOOP = () => undefined;
