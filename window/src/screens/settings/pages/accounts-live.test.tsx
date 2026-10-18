@@ -208,54 +208,78 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     expect(calls(request, "branch.setup.detect").length).toBeGreaterThan(before);
   });
 
-  it("Codex not installed: the row reads Not found with the preview's line and Check again, and offers no download", async () => {
+  it("Get Codex asks before the download, and Cancel does not download", async () => {
     const env = engineOf();
     const answer = env.request.getMockImplementation()!;
-    let detect: Record<string, unknown> = { candidates: [], unavailableCandidates: [{ id: "codex-cli", reason: "codex: command not found" }] };
     env.request.mockImplementation((async (method: string, params?: unknown) => {
       if (method === "config.get") return { hash: "h1", valid: true, config: { agents: { defaults: { model: { fallbacks: [] } } }, plugins: { entries: { codex: { enabled: true } } } } };
-      if (method === "branch.setup.detect") return detect;
-      // An engine from the first-use download design still answers these; the row must not use them.
-      if (method === "codex.runtime") return { state: "download", reason: "not-downloaded", version: "0.160.0", bytes: 134_311_083, message: "Codex 0.160.0 downloads the first time you use it (134 MB)." };
-      if (method === "codex.runtime.download") return { state: "downloading", received: 0, bytes: 134_311_083, message: "Downloading Codex 0.160.0 (134 MB): 0%." };
+      if (method === "branch.setup.detect") return { candidates: [], unavailableCandidates: [{ id: "codex-cli", reason: "codex: command not found" }] };
+      if (method === "codex.runtime") return { state: "download", reason: "not-downloaded", version: "0.160.0", bytes: 134_311_083, ask: "Download Codex 0.160.0 (134 MB)?", message: "Download Codex 0.160.0 (134 MB)?" };
+      if (method === "codex.runtime.download") return { state: "downloading", received: 40_000_000, bytes: 134_311_083, message: "Getting Codex ready (134 MB)… 29%" };
       return answer(method, params);
     }) as typeof answer);
     (env.engine as unknown as { features: { methods: string[] } }).features.methods = [...METHODS, "codex.runtime", "codex.runtime.download"];
     const { request } = await mount(vi.fn(), env);
-    const codex = row("accounts.apps.codex")!;
-    // Preview §4.7.8: CODE_PILL_PE18.none = Not found; "Install and sign in to ${c.name} on ${comp}, then check again."
-    expect(codex.querySelector(".r1s-item-t b")!.textContent).toBe("Not found");
-    expect(codex.querySelector(".r1s-item-t small")!.textContent).toBe("Install and sign in to Codex on this computer, then check again.");
-    // Preview: a coding app that isn't ready shows its switch off and greyed (`${c.st === 'ready' ? '' : 'disabled'}`).
-    const use = codex.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Use Codex"]')!;
-    expect(use.getAttribute("aria-checked")).toBe("false");
-    expect(use.disabled).toBe(true);
-    expect(codex.textContent).not.toMatch(/download/i);
-    for (const gone of ["Download now", "Try again", "Cancel"]) expect(button(codex, gone)).toBeUndefined();
-    expect(calls(request, "codex.runtime")).toHaveLength(0);
+    const codex = () => row("accounts.apps.codex")!;
+    // Preview §4.7.8 keeps the Not found pill and its line. The preview has no download control on this row, so the action is Get Codex.
+    expect(codex().querySelector(".r1s-item-t b")!.textContent).toBe("Not found");
+    expect(codex().querySelector(".r1s-item-t small")!.textContent).toBe("Install and sign in to Codex on this computer, then check again.");
+    expect(codex().textContent).not.toMatch(/isn['’]t needed/iu);
+    const use = () => codex().querySelector<HTMLButtonElement>('[role="switch"][aria-label="Use Codex"]')!;
+    expect(use().getAttribute("aria-checked")).toBe("false");
+    expect(use().disabled).toBe(true);
     expect(calls(request, "codex.runtime.download")).toHaveLength(0);
-    // Check again looks again; once Codex is installed and signed in, the row is ready.
-    detect = { candidates: [{ kind: "codex-cli", credentials: true }], unavailableCandidates: [] };
-    await click(button(row("accounts.apps.check"), "Check again"));
-    expect(row("accounts.apps.codex")!.querySelector(".r1s-item-t b")!.textContent).toBe("Models ready");
-    const ready = row("accounts.apps.codex")!.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Use Codex"]')!;
-    expect(ready.getAttribute("aria-checked")).toBe("true");
-    expect(ready.disabled).toBe(false);
+    await click(button(codex(), "Get Codex"));
+    expect(calls(request, "codex.runtime.download")).toHaveLength(0);
+    expect(codex().textContent).toContain("Download Codex 0.160.0 (134 MB)?");
+    expect(codex().textContent).not.toMatch(/isn['’]t needed/iu);
+    await click(button(codex(), "Cancel"));
+    expect(calls(request, "codex.runtime.download")).toHaveLength(0);
+    await click(button(codex(), "Get Codex"));
+    await click(button(codex(), "Yes"));
+    expect(calls(request, "codex.runtime.download")).toEqual([{ confirmed: true }]);
+    expect(codex().textContent).toContain("Getting Codex ready (134 MB)… 29%");
+    expect(use().disabled).toBe(true);
   });
 
-  it("has no Codex download in the window: no download line, no download calls", async () => {
-    const { readFileSync, readdirSync, statSync } = await import("node:fs");
-    const { join, resolve } = await import("node:path");
-    const src = resolve(__dirname, "../../..");
-    const walk = (dir: string): string[] => readdirSync(dir).flatMap((name) => { const full = join(dir, name); return statSync(full).isDirectory() ? walk(full) : /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [full] : []; });
-    const files = walk(src);
-    expect(files.some((file) => file.endsWith("codex-line.tsx"))).toBe(false);
-    for (const file of files) {
-      const text = readFileSync(file, "utf8");
-      for (const banned of ["codex.runtime", "codex_download", "Getting Codex ready"]) {
-        expect(text.includes(banned), file + " mentions " + banned).toBe(false);
-      }
-    }
+  it("a finished download enables Use Codex, and a failure offers Try again", async () => {
+    const env = engineOf();
+    const answer = env.request.getMockImplementation()!;
+    let download: Record<string, unknown> = { state: "ready", source: "downloaded", command: "codex", version: "0.160.0" };
+    env.request.mockImplementation((async (method: string, params?: unknown) => {
+      if (method === "config.get") return { hash: "h1", valid: true, config: { agents: { defaults: { model: { fallbacks: [] } } }, plugins: { entries: { codex: { enabled: true } } } } };
+      if (method === "branch.setup.detect") return { candidates: [], unavailableCandidates: [{ id: "codex-cli", reason: "codex: command not found" }] };
+      if (method === "codex.runtime") return { state: "download", reason: "not-downloaded", version: "0.160.0", bytes: 134_311_083, message: "Codex downloads the first time you use it." };
+      if (method === "codex.runtime.download") return download;
+      return answer(method, params);
+    }) as typeof answer);
+    (env.engine as unknown as { features: { methods: string[] } }).features.methods = [...METHODS, "codex.runtime", "codex.runtime.download"];
+    const { request } = await mount(vi.fn(), env);
+    const codex = () => row("accounts.apps.codex")!;
+    const use = () => codex().querySelector<HTMLButtonElement>('[role="switch"][aria-label="Use Codex"]')!;
+    await click(button(codex(), "Get Codex"));
+    expect(calls(request, "codex.runtime.download")).toHaveLength(0);
+    await click(button(codex(), "Yes"));
+    expect(calls(request, "codex.runtime.download")).toEqual([{ confirmed: true }]);
+    expect(use().disabled).toBe(false);
+    expect(use().getAttribute("aria-checked")).toBe("true");
+    download = { state: "unavailable", reason: "offline", bytes: 134_311_083, version: "0.160.0", ask: "Download Codex 0.160.0 (134 MB)?", message: "Codex isn’t downloaded yet and this computer looks offline. Try again." };
+    await act(async () => root.render(<></>));
+    await mount(vi.fn(), env);
+    await click(button(row("accounts.apps.codex"), "Get Codex"));
+    await click(button(row("accounts.apps.codex"), "Yes"));
+    expect(row("accounts.apps.codex")!.textContent).toContain("Try again.");
+    expect(row("accounts.apps.codex")!.textContent).not.toMatch(/isn['’]t needed/iu);
+    expect(button(row("accounts.apps.codex"), "Try again")).toBeTruthy();
+    const before = calls(request, "codex.runtime.download").length;
+    await click(button(row("accounts.apps.codex"), "Try again"));
+    expect(calls(request, "codex.runtime.download").length).toBe(before);
+    expect(row("accounts.apps.codex")!.textContent).toContain("Download Codex 0.160.0 (134 MB)?");
+    await click(button(row("accounts.apps.codex"), "Cancel"));
+    expect(calls(request, "codex.runtime.download").length).toBe(before);
+    await click(button(row("accounts.apps.codex"), "Try again"));
+    await click(button(row("accounts.apps.codex"), "Yes"));
+    expect(calls(request, "codex.runtime.download").length).toBeGreaterThan(before);
   });
 
   it("connects GitHub (tools.github.authorize.start) and refreshes it (tools.github.status)", async () => {
