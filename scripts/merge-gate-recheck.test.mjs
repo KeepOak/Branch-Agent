@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 import {
+  LIST_RUNS_PAGE_SIZE,
   RECHECK_RATE_LIMIT_BUDGET_SECONDS,
+  isSupersededSha,
+  listRunRequestPath,
   recheckPlan,
   runGh,
   runRecheck,
   summarizeRuns,
+  workflowRunsFromPayload,
 } from './merge-gate-recheck.mjs';
 
 const run = (workflowName, status, conclusion, id = 1, createdAt = '2026-10-10T02:00:00Z') => ({ id, workflowName, status, conclusion, createdAt });
@@ -158,8 +162,14 @@ test('the recheck workflow reacts to completed runs of its listed workflows, and
   const source = readFileSync(new URL('./merge-gate-recheck.mjs', import.meta.url), 'utf8');
   assert.match(source, /from '\.\/merge-gate-rate-limit\.mjs'/);
   assert.match(source, /withRateLimitRetry/);
-  assert.match(source, /runGh\(\['run', 'list'/);
+  assert.match(source, /RATE_LIMIT_WAKE_SPREAD_SECONDS/);
+  assert.match(source, /fetchGitHubRateLimit/);
+  assert.match(source, /listRunRequestPath/);
+  assert.match(source, /runGh\(\['api'/);
   assert.match(source, /runGh\(\['run', 'rerun'/);
+  assert.doesNotMatch(source, /run', 'list'/);
+  assert.doesNotMatch(source, /--limit', '200'/);
+  assert.doesNotMatch(source, /exclude_pull_requests/);
 });
 
 // Dedupe: a burst of completions must reach the listing once. Skip-only triggers never start the job (so they cannot
@@ -170,8 +180,10 @@ test('the recheck job skips content failures before it starts and settles before
   assert.match(condition, /workflow_run\.conclusion == 'success'/);
   assert.match(condition, /workflow_run\.name == 'Merge gate trusted'/);
   const settle = yaml.indexOf('run: sleep 30');
+  const checkout = yaml.indexOf('actions/checkout@');
   const list = yaml.indexOf('run: node scripts/merge-gate-recheck.mjs');
-  assert.ok(settle > 0 && settle < list, 'the settle sleep must run before the listing script');
+  assert.ok(settle > 0 && settle < checkout, 'the settle sleep must run before checkout so cancelled jobs spend no API');
+  assert.ok(checkout > 0 && checkout < list, 'checkout must run after the settle and before the listing script');
   assert.ok(yaml.indexOf('cancel-in-progress: true') < settle);
 });
 
@@ -218,7 +230,7 @@ test('runGh waits out a rate-limit 403/429 then returns, and fails other statuse
   ]) {
     let calls = 0;
     const waits = [];
-    const out = runGh(['run', 'list'], {}, {
+    const out = runGh(['api', 'repos/o/r/actions/runs'], {}, {
       exec: () => {
         calls += 1;
         if (calls === 1) {
@@ -228,6 +240,8 @@ test('runGh waits out a rate-limit 403/429 then returns, and fails other statuse
       },
       sleep: (seconds) => waits.push(seconds),
       budget: { startedAt: null },
+      fetchRateLimit: () => null,
+      spreadSeconds: 0,
     });
     assert.equal(out, '[]');
     assert.equal(calls, 2);
@@ -239,10 +253,11 @@ test('runGh waits out a rate-limit 403/429 then returns, and fails other statuse
     headers: { 'x-ratelimit-remaining': '12' },
     stderr: 'HTTP 403 Forbidden',
   });
-  assert.throws(() => runGh(['run', 'list'], {}, {
+  assert.throws(() => runGh(['api', 'repos/o/r/actions/runs'], {}, {
     exec: () => { throw forbidden; },
     sleep: () => { throw new Error('must not wait on a generic 403'); },
     budget: { startedAt: null },
+    fetchRateLimit: () => null,
   }), /HTTP 403/);
 });
 
@@ -260,8 +275,8 @@ test('rate-limit waits share one job deadline across listing and rerun', () => {
       stderr: 'gh: API rate limit exceeded for installation (HTTP 403)',
     });
   };
-  const options = { exec: limited, sleep, now, budget };
-  assert.throws(() => runGh(['run', 'list'], {}, options), /rate limit/);
+  const options = { exec: limited, sleep, now, budget, fetchRateLimit: () => null, spreadSeconds: 0 };
+  assert.throws(() => runGh(['api', 'repos/o/r/actions/runs'], {}, options), /rate limit/);
   const afterFirst = waits.reduce((total, seconds) => total + seconds, 0);
   assert.throws(() => runGh(['run', 'rerun', '50'], {}, options), /rate limit/);
   const total = waits.reduce((sum, seconds) => sum + seconds, 0);
@@ -332,4 +347,56 @@ test('a successful content check lists the runs once, then reruns only what the 
   assert.equal(code, 0);
   assert.equal(listCalls, 1);
   assert.deepEqual(reruns, [50]);
+});
+
+test('an open pull request whose head has moved on is superseded and does not list runs', () => {
+  assert.equal(isSupersededSha([], 'abc'), false, 'an empty list is not proof the head moved');
+  assert.equal(isSupersededSha([{ state: 'open', head: { sha: 'abc' } }], 'abc'), false);
+  assert.equal(isSupersededSha([{ state: 'open', head: { sha: 'def' } }], 'abc'), true);
+  assert.equal(isSupersededSha([
+    { state: 'closed', head: { sha: 'def' } },
+    { state: 'open', head: { sha: 'abc' } },
+  ], 'abc'), false);
+
+  const listed = [];
+  const reruns = [];
+  const logged = [];
+  const code = runRecheck({
+    repo: 'o/r', sha: 'oldsha', trigger: { kind: 'content', conclusion: 'success', name: 'Desktop checks' },
+    currentRunId: 1,
+    pulls: () => [{ state: 'open', head: { sha: 'newsha' } }],
+    list: (...args) => { listed.push(args); return [gate('cancelled')]; },
+    rerun: (...args) => reruns.push(args),
+    log: (line) => logged.push(line), error: () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(listed.length, 0);
+  assert.equal(reruns.length, 0);
+  assert.match(logged.join('\n'), /no longer the open pull request head/);
+});
+
+test('a current open pull request head still lists runs after the superseded check', () => {
+  let listCalls = 0;
+  const code = runRecheck({
+    repo: 'o/r', sha: 'abc', trigger: { kind: 'content', conclusion: 'success', name: 'Desktop checks' },
+    currentRunId: 1,
+    pulls: () => [{ state: 'open', head: { sha: 'abc' } }],
+    list: () => { listCalls += 1; return [gate('cancelled'), content('success')]; },
+    rerun: () => {}, log: () => {}, error: () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(listCalls, 1);
+});
+
+test('workflow run pages map REST fields and paginate only until the listing is complete', () => {
+  assert.equal(LIST_RUNS_PAGE_SIZE, 100);
+  assert.equal(listRunRequestPath('abc', 2), 'actions/runs?head_sha=abc&per_page=100&page=2');
+  assert.deepEqual(workflowRunsFromPayload({
+    total_count: 1,
+    workflow_runs: [{
+      id: 9, name: 'Merge gate', status: 'completed', conclusion: 'failure', created_at: '2026-10-18T00:00:00Z',
+    }],
+  }), [{
+    id: 9, workflowName: 'Merge gate', status: 'completed', conclusion: 'failure', createdAt: '2026-10-18T00:00:00Z',
+  }]);
 });

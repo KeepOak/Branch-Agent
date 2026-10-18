@@ -4,7 +4,11 @@
 // so the last event to land always decides. A gate attempt that was itself a rerun is never rerun again.
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { withRateLimitRetry } from './merge-gate-rate-limit.mjs';
+import {
+  fetchGitHubRateLimit,
+  RATE_LIMIT_WAKE_SPREAD_SECONDS,
+  withRateLimitRetry,
+} from './merge-gate-rate-limit.mjs';
 
 export const GATE_NAMES = ['Merge gate', 'Merge gate trusted'];
 const ORDINARY_GATE = 'Merge gate';
@@ -14,6 +18,8 @@ export const RECHECK_NAME = 'Merge gate recheck';
 const PASS = new Set(['success', 'skipped', 'neutral']);
 // Shared by every gh call in this process. Fits inside the 15-minute job after the 30s settle.
 export const RECHECK_RATE_LIMIT_BUDGET_SECONDS = 600;
+export const LIST_RUNS_PAGE_SIZE = 100;
+export const LIST_RUNS_MAX_PAGES = 10;
 
 const jobBudget = { startedAt: null };
 
@@ -28,6 +34,9 @@ export function runGh(args, env = process.env, {
   now = Date.now,
   budget = jobBudget,
   budgetSeconds = Number(env.MERGE_GATE_API_WAIT_SECONDS) || RECHECK_RATE_LIMIT_BUDGET_SECONDS,
+  fetchRateLimit,
+  spreadSeconds = RATE_LIMIT_WAKE_SPREAD_SECONDS,
+  random = Math.random,
   log,
 } = {}) {
   budget.startedAt ??= now();
@@ -40,6 +49,9 @@ export function runGh(args, env = process.env, {
     now,
     startedAt: budget.startedAt,
     budgetSeconds,
+    fetchRateLimit: fetchRateLimit ?? (() => fetchGitHubRateLimit(env.GH_TOKEN, { exec })),
+    spreadSeconds,
+    random,
     log,
   });
 }
@@ -105,22 +117,81 @@ export function triggerSkipReason(trigger) {
   return 'unknown trigger';
 }
 
-function listRuns(repo, sha) {
-  const out = runGh(['run', 'list', '-R', repo, '--commit', sha, '--limit', '200',
-    '--json', 'databaseId,workflowName,status,conclusion,createdAt'], process.env, { log: console.log });
-  return JSON.parse(out || '[]').map((run) => ({
-    id: run.databaseId, workflowName: run.workflowName, status: run.status, conclusion: run.conclusion, createdAt: run.createdAt,
+// An open PR whose head has moved on does not need a listing: GitHub only requires checks on the current head.
+// Unknown / empty pull lists are not skipped, so a delayed association still lists.
+export function isSupersededSha(pulls, sha) {
+  const open = (pulls ?? []).filter((pr) => pr?.state === 'open');
+  if (!open.length) return false;
+  return open.every((pr) => typeof pr.head?.sha === 'string' && pr.head.sha.length > 0 && pr.head.sha !== sha);
+}
+
+export function workflowRunsFromPayload(payload) {
+  return (payload?.workflow_runs ?? []).map((run) => ({
+    id: run.id,
+    workflowName: run.name,
+    status: run.status,
+    conclusion: run.conclusion,
+    createdAt: run.created_at,
   }));
+}
+
+export function listRunRequestPath(sha, page) {
+  return `actions/runs?head_sha=${sha}&per_page=${LIST_RUNS_PAGE_SIZE}&page=${page}`;
+}
+
+function parseJson(text, fallback) {
+  try {
+    return JSON.parse(text || '');
+  } catch {
+    return fallback;
+  }
+}
+
+function pullsForCommit(repo, sha) {
+  const raw = runGh(['api', `repos/${repo}/commits/${sha}/pulls`], process.env, { log: console.log });
+  const parsed = parseJson(raw, []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+function listRuns(repo, sha) {
+  const runs = [];
+  let total = null;
+  let pages = 0;
+  for (let page = 1; page <= LIST_RUNS_MAX_PAGES; page += 1) {
+    const raw = runGh(['api', `repos/${repo}/${listRunRequestPath(sha, page)}`], process.env, { log: console.log });
+    const payload = parseJson(raw, {});
+    const batch = workflowRunsFromPayload(payload);
+    pages += 1;
+    runs.push(...batch);
+    if (Number.isInteger(payload?.total_count)) total = payload.total_count;
+    if (batch.length < LIST_RUNS_PAGE_SIZE) break;
+    if (total != null && runs.length >= total) break;
+  }
+  console.log(`listed ${runs.length} workflow run(s) in ${pages} page(s)`);
+  return runs;
 }
 
 // Returns the exit code. A failed run listing reports "Attribution lookup failed" instead of crashing.
 export function runRecheck({
-  repo, sha, trigger, currentRunId, list = listRuns, rerun = rerunGate, log = console.log, error = console.error,
+  repo, sha, trigger, currentRunId, list = listRuns, rerun = rerunGate, pulls, log = console.log, error = console.error,
 }) {
   const skipReason = triggerSkipReason(trigger);
   if (skipReason) {
     for (const gate of GATE_NAMES) log(`${gate}: skip (${skipReason})`);
     return 0;
+  }
+  if (typeof pulls === 'function') {
+    let associated;
+    try {
+      associated = pulls(repo, sha);
+    } catch (err) {
+      error(`Attribution lookup failed: could not list the pull requests for ${sha}: ${String(err?.message ?? err).split('\n')[0]}`);
+      return 1;
+    }
+    if (isSupersededSha(associated, sha)) {
+      for (const gate of GATE_NAMES) log(`${gate}: skip (head is no longer the open pull request head)`);
+      return 0;
+    }
   }
   let plan;
   try {
@@ -151,5 +222,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     attempt: Number(process.env.TRIGGER_ATTEMPT ?? 1),
     name: process.env.TRIGGER_NAME,
   };
-  process.exitCode = runRecheck({ repo, sha, trigger, currentRunId: process.env.GITHUB_RUN_ID });
+  process.exitCode = runRecheck({
+    repo, sha, trigger, currentRunId: process.env.GITHUB_RUN_ID, pulls: pullsForCommit,
+  });
 }

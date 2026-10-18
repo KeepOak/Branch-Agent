@@ -29,12 +29,12 @@ export function hourLabel(minute: number): string {
   const h = Math.floor(minute / 60), m = minute % 60, h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "AM" : "PM"}`;
 }
-const hourOpts = (current: number): Opt[] => {
+export const hourOpts = (current: number): Opt[] => {
   const opts = HOURS.map((h) => ({ id: String(toMinute(h)), label: h }));
   return opts.some((o) => o.id === String(current)) ? opts : [{ id: String(current), label: hourLabel(current) }, ...opts];
 };
 const ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "Europe/London", "Europe/Paris", "Europe/Berlin", "Africa/Lagos", "Asia/Kolkata", "Asia/Tokyo", "Australia/Sydney"];
-function zoneOpts(current: string): Opt[] {
+export function zoneOpts(current: string): Opt[] {
   let local = "UTC";
   try { local = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { local = "UTC"; }
   const ids = ["UTC", local, ...ZONES.filter((z) => z !== local), ...(current === "UTC" || current === local || ZONES.includes(current) ? [] : [current])];

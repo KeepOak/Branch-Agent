@@ -21,11 +21,12 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 const flush = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); };
 
-const METHODS = ["exec.approval.list", "exec.approval.resolve", "plugin.approval.list", "question.list"];
-/** The engine lists one pending exec approval for this conversation. `resolve` decides what an answer does. */
-function engineWith(resolve: (method: string) => Promise<unknown> | unknown, items: unknown[] = [pending]) {
+const METHODS = ["exec.approval.list", "exec.approval.resolve", "plugin.approval.list", "question.list", "question.resolve"];
+/** The engine lists pending exec approvals (and questions) for this conversation. `resolve` decides what an answer does. */
+function engineWith(resolve: (method: string) => Promise<unknown> | unknown, items: unknown[] = [pending], questions: unknown[] = []) {
   const request = vi.fn(async (method: string) => {
     if (method === "exec.approval.list") return { approvals: items };
+    if (method === "question.list") return { questions };
     return resolve(method);
   });
   return { request, engine: { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", scopes: ["operator.admin"], features: { methods: METHODS, events: [] } } as unknown as WindowEngine };
@@ -39,20 +40,22 @@ const history: Block[] = [
   { kind: "approval", key: "approval:ap1", approval: { id: "ap1", command: "npm test", state: "pending" } },
 ];
 
-function Harness({ engine, lockdown, blocks }: { engine: WindowEngine; lockdown: boolean; blocks: Block[] }) {
+function Harness({ engine, lockdown, blocks, onAnswer }: { engine: WindowEngine; lockdown: boolean; blocks: Block[]; onAnswer?: (id: string, decision: "allow-once" | "deny") => void }) {
   const approvals = useAsks(engine, lockdown);
   return <CapabilityProvider engine={engine}>
-    <ChatView name="Scout" history={blocks} live={[]} pendingUser={null} running={false} onAnswer={() => undefined} engine={engine} sessionKey={engine.sessionKey}
+    <ChatView name="Scout" history={blocks} live={[]} pendingUser={null} running={false} onAnswer={onAnswer ?? (() => undefined)} engine={engine} sessionKey={engine.sessionKey}
       asks={approvals.asks} onAsk={(id, reply) => void approvals.answer(id, reply)} lockdown={lockdown} />
   </CapabilityProvider>;
 }
-async function show(engine: WindowEngine, lockdown = false, blocks = history) {
-  await act(async () => root.render(<Harness engine={engine} lockdown={lockdown} blocks={blocks} />));
+async function show(engine: WindowEngine, lockdown = false, blocks = history, onAnswer?: (id: string, decision: "allow-once" | "deny") => void) {
+  await act(async () => root.render(<Harness engine={engine} lockdown={lockdown} blocks={blocks} onAnswer={onAnswer} />));
   await flush();
 }
 /** The approval's card: the live card, or its decided line once answered (the only r1-ask in these tests). */
 const card = () => host.querySelector<HTMLElement>('[data-testid="r1-ask"]');
 const button = (label: string) => [...host.querySelectorAll<HTMLButtonElement>(".r1-ask-btn")].find(b => b.textContent === label) ?? null;
+const option = (label: string) => [...host.querySelectorAll<HTMLButtonElement>(".r1-ask-option")].find(b => b.querySelector("b")?.textContent === label) ?? null;
+const classic = () => host.querySelector(".card.ask, .card.choice, .card-buttons, [data-testid='approval-card'], [data-testid='question-card'], [data-testid='dock-question']");
 
 it("draws the R1 approval card in the conversation, with its question, facts and answers and no Classic extras", async () => {
   const { engine } = engineWith(() => ({}));
@@ -64,7 +67,7 @@ it("draws the R1 approval card in the conversation, with its question, facts and
   expect(button("Always allow for Scout")).not.toBeNull();
   expect(button("Deny")).not.toBeNull();
   expect(host.textContent).not.toContain("Show command");
-  expect(host.querySelector(".card.ask, .card-buttons, .g-acts")).toBeNull();
+  expect(classic()).toBeNull();
 });
 
 it("Allow sends exec.approval.resolve allow-once and collapses the card to its decided line", async () => {
@@ -159,6 +162,46 @@ it("Yes to both sends an allow-once for each waiting approval", async () => {
   await flush();
   expect(request).toHaveBeenCalledWith("exec.approval.resolve", expect.objectContaining({ id: "ap1", decision: "allow-once" }));
   expect(request).toHaveBeenCalledWith("exec.approval.resolve", expect.objectContaining({ id: "ap2", decision: "allow-once" }));
+});
+
+it("a pending approval block still draws the R1 card when useAsks has not listed it, and Allow uses the conversation's answer", async () => {
+  const onAnswer = vi.fn();
+  const { engine } = engineWith(() => ({}), []);
+  await act(async () => root.render(<CapabilityProvider engine={engine}>
+    <ChatView name="Scout" history={history} live={[]} pendingUser={null} running={false} onAnswer={onAnswer} engine={engine} sessionKey={engine.sessionKey} asks={[]} lockdown={false} />
+  </CapabilityProvider>));
+  await flush();
+  expect(card()?.getAttribute("data-state")).toBe("waiting");
+  expect(card()?.getAttribute("data-note")).toBe("ask");
+  expect(classic()).toBeNull();
+  await act(async () => button("Allow")!.click());
+  expect(onAnswer).toHaveBeenCalledWith("ap1", "allow-once");
+});
+
+const flight = {
+  id: "q1", status: "pending", sessionKey: "agent:scout:main", createdAtMs: 1, expiresAtMs: Date.now() + 60_000,
+  questions: [{ questionId: "when", header: "Flight", question: "Which flight?", options: [{ label: "Morning", description: "Cheaper" }, { label: "Evening" }] }],
+};
+
+it("draws the R1 question card in the conversation, with A–D keys, and no Classic question card", async () => {
+  const { engine, request } = engineWith(() => ({}), [], [flight]);
+  await show(engine, false, [{ kind: "user", key: "u1", text: "Book a flight." }]);
+  expect(card()?.getAttribute("data-kind")).toBe("question");
+  expect(card()?.getAttribute("data-note")).toBe("choice");
+  expect(option("Morning")?.querySelector("kbd")?.textContent).toBe("A");
+  expect(option("Morning")?.querySelector("small")?.textContent).toBe("Cheaper");
+  expect(classic()).toBeNull();
+  await act(async () => option("Evening")!.click());
+  await flush();
+  expect(request).toHaveBeenCalledWith("question.resolve", { id: "q1", answers: { answers: { when: ["Evening"] } } });
+  expect(card()!.textContent).toContain("✓ Answered");
+});
+
+it("a question with no session still draws in the open conversation, not as Classic", async () => {
+  const { engine } = engineWith(() => ({}), [], [{ ...flight, sessionKey: undefined }]);
+  await show(engine, false, [{ kind: "user", key: "u1", text: "Book a flight." }]);
+  expect(card()?.getAttribute("data-kind")).toBe("question");
+  expect(classic()).toBeNull();
 });
 
 it("under Lockdown the group's Yes buttons are disabled and No still works", async () => {

@@ -5,7 +5,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { DetailRow } from '../ui/DetailRow';
 import { Card, Screen } from '../ui/Screen';
 
-export type MoreAction = 'settings' | 'trunks';
+export type MoreAction = 'settings' | 'trunks' | 'you';
 
 type RowSpec = {
   id: string;
@@ -20,12 +20,25 @@ export function moreRows({
   level,
   trunkCount,
   workingCount,
+  youName,
+  youRole,
 }: {
   level: ShowLevel;
   trunkCount: number;
   workingCount: number;
+  youName: string;
+  youRole?: string;
 }): { id: string; title: string; rows: RowSpec[] }[] {
   const later = showsLaterUpdates(level);
+  const you: RowSpec[] = [
+    {
+      id: 'you',
+      label: youName,
+      detail: 'Your name, picture and what this phone may do',
+      value: youRole || undefined,
+      action: 'you',
+    },
+  ];
   const keepoak: RowSpec[] = later
     ? [{ id: 'signin', label: 'Sign in with KeepOak', detail: laterUpdate('Sign in with KeepOak'), value: 'Your computers and your team, everywhere' }]
     : [];
@@ -60,6 +73,7 @@ export function moreRows({
     });
   }
   return [
+    { id: 'person', title: 'You', rows: you },
     { id: 'keepoak', title: 'KeepOak', rows: keepoak },
     { id: 'work', title: 'Work', rows: work },
     { id: 'setup', title: 'Setup', rows: setup },
@@ -71,6 +85,9 @@ export function MoreScreen({
   level,
   trunkCount,
   workingCount,
+  youName,
+  youRole,
+  onYou,
   onSettings,
   onTrunks,
   onBack,
@@ -79,6 +96,9 @@ export function MoreScreen({
   level: ShowLevel;
   trunkCount: number;
   workingCount: number;
+  youName: string;
+  youRole?: string;
+  onYou: () => void;
   onSettings: () => void;
   onTrunks: () => void;
   onBack: () => void;
@@ -86,8 +106,9 @@ export function MoreScreen({
   bottomExtra?: number;
 }) {
   const { space, layout } = useTheme();
-  const groups = moreRows({ level, trunkCount, workingCount });
+  const groups = moreRows({ level, trunkCount, workingCount, youName, youRole });
   const go = (action?: MoreAction) => {
+    if (action === 'you') onYou();
     if (action === 'settings') onSettings();
     if (action === 'trunks') onTrunks();
   };

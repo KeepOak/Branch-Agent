@@ -103,7 +103,7 @@ export function ComputersScreen({
   /** Opens take-control for that computer. */
   onOpenComputer?: (row: ComputerRow) => void;
   now?: number;
-  backTo?: 'Chats' | 'More' | 'Profile';
+  backTo?: 'Chats' | 'More' | 'Profile' | 'You';
 }) {
   const { color, space, radius, layout } = useTheme();
   useNow(30_000);
