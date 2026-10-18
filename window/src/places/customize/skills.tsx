@@ -13,6 +13,7 @@ import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
 import { Switch } from "../../shell/Popover";
 import { useOperation, useResource } from "../library/data";
+import { plainError } from "../../shell/plain-error";
 import { Status } from "../library/ui";
 import { ago, Grey, list, Pill, rec, Sec, Seg, str, type Rec } from "./common";
 import { Glyph } from "./glyphs";
@@ -129,12 +130,12 @@ function SkillList({ ctx, tabs, count, rows }: { ctx: ToolsCtx; tabs: ReactNode;
 
 function Gardener({ ctx }: { ctx: ToolsCtx }) {
   const g = useResource<unknown>(ctx.engine, "skills.gardener.status");
-  if (!g.data) return g.error ? <p className="cz-hint">{g.error}</p> : null;
+  if (!g.data) return g.error ? <p className="cz-hint">{plainError(g.error)}</p> : null;
   const d = rec(g.data), c = rec(d.counts);
   const kept = list(d.skills).filter(s => s.pinned === true).length;
   const looked = typeof d.lastSuccessAtMs === "number" ? `Gardener · looked ${ago(d.lastSuccessAtMs)}` : "Gardener · hasn’t looked yet";
   return <div className="cz-card cz-garden"><span className="cz-tile"><Glyph name="sparkle" size={16} /></span>
-    <span className="grow"><b>{looked}</b><small>{Number(c.active ?? 0)} in use · {Number(c.stale ?? 0)} resting · {Number(c.archived ?? 0)} set aside · {kept} kept in use</small>{str(d.lastError) && <small className="cz-error">{str(d.lastError)}</small>}</span>
+    <span className="grow"><b>{looked}</b><small>{Number(c.active ?? 0)} in use · {Number(c.stale ?? 0)} resting · {Number(c.archived ?? 0)} set aside · {kept} kept in use</small>{str(d.lastError) && <small className="cz-error">{plainError(str(d.lastError))}</small>}</span>
     <Grey reason="Running the Gardener by hand comes in a later update.">Look now</Grey></div>;
 }
 
@@ -144,7 +145,7 @@ function Suggested({ ctx, p, reload }: { ctx: ToolsCtx; p: Proposal; reload: () 
   const base = { ...scopeOf(ctx), proposalId: p.id, expectedRevisionHash: p.revisionHash };
   const reason = p.revisionHash ? undefined : "The engine did not supply a revision for a safe change.";
   return <div className="cz-card" data-testid="suggested"><div className="cz-card-h"><b>{p.kind === "update" ? `A better version of “${p.skillName}”` : p.title || `A new skill: “${p.skillName}”`}</b><Pill tone="work">Suggested</Pill></div>
-    <p>{p.description}</p>{op.error && <p role="alert" className="cz-error">{op.error}</p>}
+    <p>{p.description}</p>{op.error && <p role="alert" className="cz-error">{plainError(op.error)}</p>}
     <div className="cz-acts"><button type="button" className="btn sm" disabled={op.busy || !!reason} title={shownWhy(reason)} onClick={() => void op.run("skills.proposals.evaluate", base, () => { setTried(true); reload(); })}>{tried ? "Try again" : "Practice run on recent tasks"}</button>
       <button type="button" className="btn pri sm" disabled={op.busy || !!reason} title={shownWhy(reason)} onClick={() => void op.run("skills.proposals.apply", base, reload)}>Keep it</button>
       <button type="button" className="btn ghost sm" disabled={op.busy || !!reason} title={shownWhy(reason)} onClick={() => void op.run("skills.proposals.reject", base, reload)}>Throw it away</button></div>
@@ -156,7 +157,7 @@ function SkillDetail({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
   return <div className="t9-detail" data-testid="skill-detail">
     <div className="t9-dh"><span className="cz-tile big"><Glyph name="bolt" /></span><span className="grow"><b>{skill.name}</b><small>{skill.source}{skill.description ? " · " + skill.description : ""}</small></span>
       <Switch label={`${skill.name} on or off`} on={!skill.disabled} onChange={on => void op.run("skills.update", { skillKey: skill.key, enabled: on }, ctx.skills.reload)} /></div>
-    {op.error && <p role="alert" className="cz-error">{op.error}</p>}
+    {op.error && <p role="alert" className="cz-error">{plainError(op.error)}</p>}
     {stOf(skill) === "setup" && <div className="cz-card warn"><b>Needs setting up</b><small>It needs {skill.missing.join(", ") || "something this computer lacks"}.</small>
       {skill.installs.length > 0 && <div className="cz-acts">{skill.installs.map(i => <button key={i.id} type="button" className="btn sm" disabled={op.busy} onClick={() => void op.run("skills.install", skillInstallParams(scopeOf(ctx), skill, i.id), ctx.skills.reload)}>{i.label}</button>)}</div>}</div>}
     {skill.raw.blockedByAgentFilter === true && <p className="cz-hint">This Trunk’s skill list leaves it out.</p>}
@@ -224,7 +225,7 @@ function DraftDetail({ ctx, p, reload }: { ctx: ToolsCtx; p: Proposal; reload: (
   const off = op.busy || !hash || p.status !== "pending";
   return <div className="t9-detail" data-testid="draft-detail">
     <div className="t9-dh"><span className="cz-tile big"><Glyph name="bolt" /></span><span className="grow"><b>{p.skillName || p.title}</b><small>{p.title}</small></span></div>
-    {op.error && <p role="alert" className="cz-error">{op.error}</p>}
+    {op.error && <p role="alert" className="cz-error">{plainError(op.error)}</p>}
     <div className="cz-acts"><button type="button" className="btn sm" disabled={off} onClick={() => void op.run("skills.proposals.evaluate", base, reload)}>Check it</button>
       <button type="button" className="btn pri sm" disabled={off} onClick={() => void op.run("skills.proposals.apply", base, reload)}>Add it</button>
       <button type="button" className="btn ghost sm" disabled={off} onClick={() => void op.run("skills.proposals.reject", base, reload)}>Turn it down</button></div>
@@ -253,7 +254,7 @@ function SkillSearch({ ctx, back, close }: { ctx: ToolsCtx; back: () => void; cl
   const rows = list(rec(results.data).results);
   return <Dialog wide title="The skill library" onClose={close} footer={<button type="button" className="btn ghost" onClick={back}>Back</button>}>
     <label className="cz-search"><Icon name="search" small /><input type="search" aria-label="Search skills" placeholder="Search skills" value={query} onChange={e => setQuery(e.target.value)} /></label>
-    <Status {...results} />{op.error && <p role="alert" className="cz-error">{op.error}</p>}
+    <Status {...results} />{op.error && <p role="alert" className="cz-error">{plainError(op.error)}</p>}
     {results.data != null && !rows.length && <EmptyLine icon={<Icon name="search" />}>No skills found.</EmptyLine>}
     <div className="cz-provs">{rows.map(r => { const slug = str(r.installRef) || str(r.slug); return <div key={slug} className="cz-prov">
       <b>{str(r.displayName) || slug}</b><small>{str(r.summary)}</small>
