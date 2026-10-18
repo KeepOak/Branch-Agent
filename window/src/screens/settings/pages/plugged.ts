@@ -15,6 +15,8 @@ import { CARD_PAGE } from "./card-live";
 import { permissionsSlot } from "./permissions-approvals";
 import { privacySlot } from "./privacy-town";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { NOTIFICATIONS_ROWS } from "./notifications";
+import * as Notify from "./notifications-live";
 import { WHO_ROWS } from "./who";
 import { Everyone, PeopleButtons, SignedRecords } from "./who-live";
 import { INSTRUCTIONS_ROWS } from "./instructions";
@@ -43,7 +45,6 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
-  notifications: "notifications",
   models: "models",
   permissions: "permissions",
   privacy: "usage",
@@ -67,6 +68,25 @@ export const R1_PAGES: PageSlots = {
   privacy: privacySlot,
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Notifications: native R1 cards in the preview's order; Classic Notifications' calls behind its rows (notifications-live.tsx).
+  notifications: {
+    rows: NOTIFICATIONS_ROWS,
+    controls: {
+      "notifications.tell.here": Notify.NoticesHere,
+      ...Object.fromEntries(["approvalRequested", "agentQuestion", "agentFinished", "scheduledTaskFailed", "humanMentioned"].flatMap((k) => [
+        [`notifications.tell.${k}`, Notify.Category], [`notifications.pc.${k}`, Notify.DeviceCategory]])),
+      "notifications.tell.trunks": Notify.OnlyTrunks,
+      "notifications.tell.locked": Notify.LockedScreen,
+      "notifications.tell.test": Notify.SendTest,
+      "notifications.quiet.hours": Notify.QuietHours,
+      "notifications.quiet.zone": Notify.QuietZone,
+      "notifications.pc.name": Notify.DeviceName,
+      "notifications.pc.locked": Notify.DeviceLocked,
+      "notifications.pc.quiet": Notify.DeviceQuiet,
+      "notifications.pc.trunks": Notify.DeviceTrunks,
+      "notifications.push.browser": Notify.PushBrowser,
+    },
+  },
   // Who uses Branch: the preview's three cards, with Classic's list of everyone at the top of People.
   who: { rows: WHO_ROWS, controls: { "who.people.everyone": Everyone, "who.people.open": PeopleButtons, "who.records.signed": SignedRecords } },
   // Customize is a row page: the kinds hub, Saved prompts and Connected agents are its own cards (customize-live.tsx).
