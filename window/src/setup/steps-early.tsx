@@ -98,20 +98,22 @@ export function WhereBody({ where, onWhere, remote }: { where: Where; onWhere: (
 }
 
 /** "Another computer: how to reach it" (§4.8.1.2 parity adds): its address and gateway key, then Connect. */
-export function RemoteForm({ address, onConnect, busy, problem, formId, hideSubmit }: { address: string; onConnect: (url: string, key: string) => void; busy: boolean; problem: string | null; formId?: string; hideSubmit?: boolean }) {
+export function RemoteForm({ address, onConnect, busy, problem, formId, hideSubmit, hideAddress }: { address: string; onConnect: (url: string, key: string) => void; busy: boolean; problem: string | null; formId?: string; hideSubmit?: boolean; hideAddress?: boolean }) {
   const [url, setUrl] = useState(address);
   const [key, setKey] = useState("");
   const valid = /^wss?:\/\/\S+$/.test(url.trim());
   return (
-    <form id={formId} className="ob-remote" onSubmit={(e) => (e.preventDefault(), valid && onConnect(url.trim(), key))}>
-      <label className="fld">
-        <span>Its address</span>
-        <input className="inp" data-testid="setup-address" value={url} placeholder="wss://desk-pc.tailnet.ts.net" onChange={(e) => setUrl(e.target.value)} />
-        <small className="hint">Use wss:// when it sits behind HTTPS or Tailscale Serve.</small>
-      </label>
+    <form id={formId} className="ob-remote" onSubmit={(e) => (e.preventDefault(), valid && (!hideAddress || key.trim()) && onConnect(url.trim(), key))}>
+      {hideAddress ? null : (
+        <label className="fld">
+          <span>Its address</span>
+          <input className="inp" data-testid="setup-address" value={url} placeholder="wss://desk-pc.tailnet.ts.net" onChange={(e) => setUrl(e.target.value)} />
+          <small className="hint">Use wss:// when it sits behind HTTPS or Tailscale Serve.</small>
+        </label>
+      )}
       <label className="fld">
         <span>Its gateway key</span>
-        <input className="inp" type="password" autoComplete="off" data-testid="setup-key" value={key} onChange={(e) => setKey(e.target.value)} />
+        <input className="inp" type="password" autoComplete="off" data-testid="setup-key" value={key} required={hideAddress} onChange={(e) => setKey(e.target.value)} />
       </label>
       {problem ? <p className="ob-problem" role="alert">{problem}</p> : null}
       {hideSubmit ? null : (
