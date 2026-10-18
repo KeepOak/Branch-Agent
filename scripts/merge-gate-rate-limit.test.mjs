@@ -714,8 +714,14 @@ test('runGhWithRetry retries rate limits then returns stdout', () => {
 test('release readiness and gate-files-fresh use the shared gh retry helper', () => {
   const release = readFileSync(new URL('../.github/workflows/component-release.yml', import.meta.url), 'utf8');
   const readiness = release.slice(release.indexOf('Check if a release is needed'), release.indexOf('identity:'));
-  assert.match(readiness, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
+  assert.match(readiness, /load-latest-release --repo/);
   assert.doesNotMatch(readiness, /^\s+gh api /m);
+  const helper = readFileSync(new URL('../desktop/scripts/component-release-readiness.mjs', import.meta.url), 'utf8');
+  const loadAt = helper.indexOf('export function loadLatestReleaseIdentity');
+  const retryAt = helper.indexOf('function invokeGhWithRetry');
+  assert.ok(loadAt !== -1 && retryAt !== -1 && retryAt < loadAt);
+  assert.match(helper.slice(retryAt, loadAt), /withRateLimitRetry/);
+  assert.match(helper.slice(loadAt), /invokeGhWithRetry/);
   const fresh = readFileSync(new URL('../.github/workflows/gate-files-fresh.yml', import.meta.url), 'utf8');
   assert.match(fresh, /types:\s*\[opened, synchronize, reopened\]/);
   assert.match(fresh, /timeout-minutes:\s*5/);

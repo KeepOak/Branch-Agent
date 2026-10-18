@@ -1119,6 +1119,24 @@ test("a non-rate-limit latest-release gh error still fails closed", () => {
   }
 });
 
+test("a 404 latest-release lookup proceeds as no previous release", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-latest-not-found-"));
+  try {
+    const decision = loadLatestReleaseIdentity("KeepOak/Branch-Agent", latestReleaseInvoke(dir, {
+      RELEASE_GH_FAIL_ATTEMPTS: "99",
+      RELEASE_GH_ERROR: "gh: Not Found (HTTP 404)\n",
+    }));
+    assert.equal(decision.skip, false);
+    assert.equal(decision.reason, "no-previous-release");
+    assert.equal(decision.latestRelease, "");
+    assert.equal(decision.latestCommit, "");
+    assert.equal(decision.publishedAt, "");
+    assert.equal(attemptCount(dir), 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a latest-release lookup proceeds after one rate-limited retry", () => {
   const dir = mkdtempSync(join(tmpdir(), "release-latest-retry-ok-"));
   try {
