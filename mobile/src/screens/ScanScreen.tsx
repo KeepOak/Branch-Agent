@@ -179,7 +179,7 @@ export function ScanScreen({
             <Button title={permission.granted ? 'Scan the code' : 'Allow camera'} onPress={startScan} testID="allow-camera" />
           )}
           <Button title="Enter the code instead" kind="secondary" onPress={onEnterCode} testID="enter-code" />
-          {onCancel ? <Button title="Cancel" kind="plain" onPress={onCancel} /> : null}
+          {onCancel ? <Button title="Back" kind="plain" onPress={onCancel} testID="scan-back" /> : null}
         </>
       }
     >

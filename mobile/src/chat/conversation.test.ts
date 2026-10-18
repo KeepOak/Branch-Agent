@@ -1,5 +1,5 @@
 import { waitFor } from '@testing-library/react-native';
-import { Conversation, historyItems, phaseLabel, stepTitle } from './conversation';
+import { Conversation, historyItems, isComputerTool, phaseLabel, stepTitle } from './conversation';
 import { createFakeEngine, type FakeEngine } from '../connect/fakeEngine';
 import { createFakeSession } from '../testing/fakeSession';
 import type { PairingSession } from '../pairing/pairingSession';
@@ -57,6 +57,33 @@ describe('chat history as the phone shows it', () => {
     expect(stepTitle('github_pr_view')).toBe('Used github pr view');
     expect(phaseLabel('starting_model')).toBe('Starting the model…');
     expect(phaseLabel(null)).toBe('Thinking…');
+    expect(isComputerTool('computer')).toBe(true);
+    expect(isComputerTool('browser')).toBe(true);
+    expect(isComputerTool('read')).toBe(false);
+  });
+
+  it('lifts computer and browser steps into their own message, and keeps other tools on the work line', () => {
+    const { items } = historyItems([
+      user('Search Outlook', 1_000),
+      {
+        role: 'assistant',
+        content: [
+          { type: 'toolCall', id: 't1', name: 'read', arguments: {} },
+          { type: 'toolCall', id: 't2', name: 'computer', arguments: {} },
+          { type: 'toolCall', id: 't3', name: 'browser', arguments: {} },
+        ],
+        timestamp: 2_000,
+        stopReason: 'toolUse',
+      },
+      reply('Found it.', 13_000),
+    ]);
+    expect(items.map((i) => [i.kind, 'text' in i ? i.text : i.steps.join(' / ')])).toEqual([
+      ['user', 'Search Outlook'],
+      ['work', 'Read a file'],
+      ['computer', 'Used the computer / Used the browser'],
+      ['assistant', 'Found it.'],
+    ]);
+    expect(items[2]).toMatchObject({ kind: 'computer', title: 'Used the browser', durationMs: 12_000 });
   });
 });
 

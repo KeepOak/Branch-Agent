@@ -36,6 +36,12 @@ function registerBaseMemoryEmbeddingProviders(options?: { includeGemini?: boolea
   // Register provider contracts locally so config tests do not depend on the
   // plugin loader or live embedding backends.
   registerEmbeddingProvider({
+    id: "local",
+    defaultModel: "embeddinggemma-300m-qat-q8_0",
+    transport: "local",
+    create: async () => ({ provider: null }),
+  });
+  registerEmbeddingProvider({
     id: "openai",
     defaultModel: "text-embedding-3-small",
     transport: "remote",
@@ -312,7 +318,7 @@ describe("memory search config", () => {
     expect(resolved?.sources).toEqual(["memory"]);
   });
 
-  it("defaults provider to openai when unspecified", () => {
+  it("defaults provider to local when unspecified", () => {
     const cfg = asConfig({
       memory: {
         search: {
@@ -321,17 +327,47 @@ describe("memory search config", () => {
       },
     });
     const resolved = resolveMemorySearchConfig(cfg, "main");
-    expect(resolved?.provider).toBe("openai");
-    expect(resolved?.model).toBe("text-embedding-3-small");
+    expect(resolved?.provider).toBe("local");
+    expect(resolved?.model).toBe("embeddinggemma-300m-qat-q8_0");
     expect(resolved?.fallback).toBe("none");
+    expect(resolved?.remote).toBeUndefined();
     expect(resolved?.store.databasePath).toBe(resolveBranchAgentSqlitePath({ agentId: "main" }));
   });
 
-  it("normalizes legacy auto provider config to openai", () => {
+  it("normalizes legacy auto provider config to local", () => {
     const resolved = resolveMemorySearchConfig(configWithDefaultProvider("auto"), "main");
 
-    expect(resolved?.provider).toBe("openai");
-    expect(resolved?.model).toBe("text-embedding-3-small");
+    expect(resolved?.provider).toBe("local");
+    expect(resolved?.model).toBe("embeddinggemma-300m-qat-q8_0");
+    expect(resolved?.remote).toBeUndefined();
+  });
+
+  it("does not use a paid OpenAI fallback when a ChatGPT login is present but not chosen", () => {
+    const cfg = asConfig({
+      memory: {
+        search: {
+          enabled: true,
+          fallback: "openai",
+        },
+      },
+      models: {
+        providers: {
+          openai: {
+            apiKey: "sk-test-not-for-memory",
+            models: [],
+          },
+        },
+      },
+      auth: {
+        profiles: {
+          "openai:codex": { provider: "openai", mode: "oauth" },
+        },
+      },
+    });
+    const resolved = resolveMemorySearchConfig(cfg, "main");
+    expect(resolved?.provider).toBe("local");
+    expect(resolved?.fallback).toBe("none");
+    expect(resolved?.remote).toBeUndefined();
   });
 
   it("resolves providers from the generic embedding provider registry", () => {
