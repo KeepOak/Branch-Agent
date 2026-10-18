@@ -466,9 +466,7 @@ test("loopback component archives advertise their exact byte count", async () =>
 
 test("a component download that ends before the manifest size is refused", async () => {
   const files = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-files.js")));
-  const parent = join(tmpdir(), "Codex-session-files", "resume-desktop-updater-20261003");
-  await mkdir(parent, { recursive: true });
-  const root = await mkdtemp(join(parent, "truncated-"));
+  const root = await mkdtemp(join(tmpdir(), "branch-truncated-"));
   const server = createServer((_request, response) => { response.end("partial"); });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port;
