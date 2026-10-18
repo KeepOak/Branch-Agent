@@ -317,7 +317,7 @@ describe('thread parity', () => {
     expect(takeControlCopy({ room: false, working: false, live: false, online: true })).toEqual({ state: 'Computer ready', liveOn: false });
     expect(takeControlCopy({ room: false, working: false, live: false, online: false })).toEqual({ state: 'Computer idle', liveOn: false });
     expect(takeControlCopy({ room: false, working: false, live: false, online: true, yours: true })).toEqual({ state: 'You have the computer', liveOn: false });
-    expect(takeControlDetail([{ kind: 'work', key: 'w', steps: ['Read a file', 'Ran a command'], durationMs: 12_000 }], true)).toBe(' · step 2 of 2');
+    expect(takeControlDetail([{ kind: 'work', key: 'w', steps: ['Read a file', 'Ran a command'], durationMs: 12_000 }], true)).toBe('');
     expect(threadApprovals([readApproval(fixtureApprovals.plugin[0], 'plugin')!], KEY, 1)).toHaveLength(1);
     expect(threadApprovals([readApproval(fixtureApprovals.plugin[0], 'plugin')!], 'agent:oak:chat-1', 1)).toHaveLength(0);
   });
@@ -386,10 +386,71 @@ describe('thread parity', () => {
     await eventually(() => expect(screen.getByTestId('approval-plugin:mail-1')).toBeOnTheScreen());
     expect(screen.getByText('Send an email to Dana?')).toBeOnTheScreen();
     expect(screen.getByText('Dana Whitfield')).toBeOnTheScreen();
+    expect(screen.getByTestId('ask-body-plugin:mail-1')).toHaveTextContent('Hi Dana, the September expenses are filed. The report is attached.');
     expect(screen.getByText('Send it')).toBeOnTheScreen();
     expect(screen.getByText('Don’t send')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('allow-plugin:mail-1'));
     expect(onAnswer).toHaveBeenCalledWith('plugin:mail-1', 'allow-once');
+    conversation.dispose();
+    session.dispose();
+  });
+
+  it('shows a plugin prose body and keeps Allow off until that body is on the card', async () => {
+    const plugin = readApproval(
+      {
+        id: 'plugin:prose-1',
+        createdAtMs: 1,
+        expiresAtMs: 60_000,
+        request: {
+          title: 'Post a note to the board?',
+          description: 'This will post the September summary to the shared board for the team.',
+          sessionKey: KEY,
+          allowedDecisions: ['allow-once', 'deny'],
+        },
+      },
+      'plugin',
+    )!;
+    const blank = { ...plugin, id: 'plugin:blank-1', description: '', title: 'Do something on your computer' };
+    const { conversation, session, onAnswer } = await renderChat(true, (engine) => engine.setHistory(KEY, history), true, {
+      pending: [plugin, blank],
+      now: 1,
+    });
+    await eventually(() => expect(screen.getByTestId('approval-plugin:prose-1')).toBeOnTheScreen());
+    expect(screen.getByTestId('ask-body-plugin:prose-1')).toHaveTextContent('This will post the September summary to the shared board for the team.');
+    expect(screen.getByTestId('allow-plugin:prose-1')).toBeEnabled();
+    await fireEvent.press(screen.getByTestId('allow-plugin:prose-1'));
+    expect(onAnswer).toHaveBeenCalledWith('plugin:prose-1', 'allow-once');
+    expect(screen.queryByTestId('ask-body-plugin:blank-1')).toBeNull();
+    expect(screen.getByTestId('allow-plugin:blank-1')).toBeDisabled();
+    await fireEvent.press(screen.getByTestId('allow-plugin:blank-1'));
+    expect(onAnswer).not.toHaveBeenCalledWith('plugin:blank-1', 'allow-once');
+    conversation.dispose();
+    session.dispose();
+  });
+
+  it('expands a long exec command and keeps Allow off when the command is empty', async () => {
+    const exec = readApproval(fixtureApprovals.exec[0], 'exec')!;
+    const long = {
+      ...exec,
+      id: 'exec-long',
+      sessionKey: KEY,
+      command: `${'pnpm install --frozen-lockfile && '.repeat(8)}echo done`,
+    };
+    const empty = { ...exec, id: 'exec-empty', sessionKey: KEY, command: '' };
+    const { conversation, session, onAnswer } = await renderChat(true, (engine) => engine.setHistory(KEY, history), true, {
+      pending: [long, empty],
+      now: 1,
+    });
+    await eventually(() => expect(screen.getByTestId('approval-exec-long')).toBeOnTheScreen());
+    expect(screen.getByTestId('command-more-exec-long')).toHaveTextContent('Show the whole command');
+    expect(screen.getByTestId('allow-exec-long')).toBeEnabled();
+    await fireEvent.press(screen.getByTestId('command-more-exec-long'));
+    expect(screen.getByTestId('command-more-exec-long')).toHaveTextContent('Show less');
+    await fireEvent.press(screen.getByTestId('allow-exec-long'));
+    expect(onAnswer).toHaveBeenCalledWith('exec-long', 'allow-once');
+    expect(screen.getByTestId('allow-exec-empty')).toBeDisabled();
+    await fireEvent.press(screen.getByTestId('allow-exec-empty'));
+    expect(onAnswer).not.toHaveBeenCalledWith('exec-empty', 'allow-once');
     conversation.dispose();
     session.dispose();
   });

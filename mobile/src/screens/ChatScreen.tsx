@@ -40,6 +40,8 @@ export function workedFor(ms: number): string {
 }
 
 const COMPUTER_STEPS_SHOWN = 5;
+/** Same cut as Inbox (`ApprovalsScreen` LONG_COMMAND): a command this long gets an expand control. */
+const LONG_COMMAND = 160;
 
 /** Status words on the Take control strip (preview p50sStrip). Rooms have no strip. */
 export function takeControlCopy(input: { room: boolean; working: boolean; live: boolean; online: boolean; yours?: boolean }): { state: string; liveOn: boolean } | null {
@@ -50,12 +52,9 @@ export function takeControlCopy(input: { room: boolean; working: boolean; live: 
   return { state: 'Computer ready', liveOn: false };
 }
 
-/** " · step 2 of 4" while a Trunk is working and this chat already has steps. */
-export function takeControlDetail(items: readonly ChatItem[], working: boolean): string {
-  if (!working) return '';
-  const last = [...items].reverse().find((item) => item.kind === 'work' || item.kind === 'computer');
-  if (!last || (last.kind !== 'work' && last.kind !== 'computer') || last.steps.length === 0) return '';
-  return ` · step ${last.steps.length} of ${last.steps.length}`;
+/** The strip does not guess a step total; the engine does not send one. */
+export function takeControlDetail(_items: readonly ChatItem[], _working: boolean): string {
+  return '';
 }
 
 /** Pending approvals that belong in this chat, still waiting. */
@@ -325,7 +324,7 @@ function ComputerMessage({
   );
 }
 
-/** An approval waiting in this chat: the question, a few fields, Allow or Deny. */
+/** An approval waiting in this chat: the question, the full ask, Allow or Deny. */
 function ThreadApprovalCard({
   approval,
   sending,
@@ -338,9 +337,15 @@ function ThreadApprovalCard({
   onAnswer: (id: string, decision: ApprovalDecision) => void;
 }) {
   const { color, space, radius } = useTheme();
+  const [all, setAll] = useState(false);
   const verbs = actionWords(approval);
-  const fields = approval.kind === 'plugin' ? actionFields(approval.description ?? '').fields.slice(0, 4) : [];
+  const parsed = approval.kind === 'plugin' ? actionFields(approval.description ?? '') : { fields: [] as [string, string][], body: '' };
+  const command = approval.kind === 'exec' ? maskCommand(approval.command) : '';
+  const long = command.length > LONG_COMMAND;
   const busy = Boolean(sending);
+  // Allow waits until the ask is on the card: a plugin body (or its field rows), or a non-empty command.
+  const canAllow = approval.kind === 'plugin' ? Boolean(parsed.body || parsed.fields.length) : command.trim().length > 0;
+  const allowDisabled = busy || !canAllow;
   return (
     <View
       testID={`approval-${approval.id}`}
@@ -350,7 +355,7 @@ function ThreadApprovalCard({
       <ThemedText variant="footnote" style={{ fontWeight: '600' }}>
         {headline(approval)}
       </ThemedText>
-      {fields.map(([k, v]) => (
+      {parsed.fields.map(([k, v]) => (
         <View key={k} style={{ flexDirection: 'row', gap: space.sm }}>
           <ThemedText variant="footnote" tone="ink3" style={{ minWidth: 56 }}>
             {k}
@@ -360,10 +365,30 @@ function ThreadApprovalCard({
           </ThemedText>
         </View>
       ))}
-      {approval.kind === 'exec' ? (
-        <ThemedText variant="footnote" tone="ink2" numberOfLines={4}>
-          {maskCommand(approval.command)}
+      {parsed.body ? (
+        <ThemedText testID={`ask-body-${approval.id}`} variant="footnote" tone="ink2">
+          {parsed.body}
         </ThemedText>
+      ) : null}
+      {approval.kind === 'exec' ? (
+        <>
+          <ThemedText testID={`command-${approval.id}`} variant="footnote" tone="ink2" numberOfLines={all || !long ? undefined : 4}>
+            {command}
+          </ThemedText>
+          {long ? (
+            <Pressable
+              testID={`command-more-${approval.id}`}
+              accessibilityRole="button"
+              onPress={() => setAll((v) => !v)}
+              hitSlop={8}
+              style={{ alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' }}
+            >
+              <ThemedText variant="footnote" tone="accentInk">
+                {all ? 'Show less' : 'Show the whole command'}
+              </ThemedText>
+            </Pressable>
+          ) : null}
+        </>
       ) : null}
       {failed ? (
         <ThemedText testID={`failed-${approval.id}`} variant="footnote" tone="bad">
@@ -398,9 +423,12 @@ function ThreadApprovalCard({
           testID={`allow-${approval.id}`}
           accessibilityRole="button"
           accessibilityLabel={verbs.yes}
-          accessibilityState={{ disabled: busy, busy: sending === 'allow-once' }}
-          disabled={busy}
-          onPress={() => onAnswer(approval.id, 'allow-once')}
+          accessibilityState={{ disabled: allowDisabled, busy: sending === 'allow-once' }}
+          disabled={allowDisabled}
+          onPress={() => {
+            if (!canAllow) return;
+            onAnswer(approval.id, 'allow-once');
+          }}
           style={({ pressed }) => ({
             flex: 1,
             minHeight: 40,
@@ -410,7 +438,7 @@ function ThreadApprovalCard({
             paddingVertical: space.xs + 2,
             borderRadius: radius.pill,
             backgroundColor: color.ink,
-            opacity: busy ? 0.45 : pressed ? 0.7 : 1,
+            opacity: allowDisabled ? 0.45 : pressed ? 0.7 : 1,
           })}
         >
           <ThemedText variant="footnote" style={{ fontWeight: '600', color: color.bg }}>
