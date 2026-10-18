@@ -2,12 +2,15 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import App from '../../App';
 import { readApproval, type ApprovalsSnapshot } from '../approvals/approvals';
 import { chatRows, readAgents, type ChatListSnapshot } from '../chats/chatList';
+import { bytesToBase64Url, utf8ToBytes } from '../connect/base64url';
 import { createFakeEngine } from '../connect/fakeEngine';
 import { fixtureApprovals } from '../testing/approvalFixtures';
 import { FIXTURE_NOW, fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { createFakeSession } from '../testing/fakeSession';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { HomeScreen } from './HomeScreen';
+
+const pairingCode = (value: unknown) => bytesToBase64Url(utf8ToBytes(JSON.stringify(value)));
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 4000 });
 jest.setTimeout(20_000);
@@ -26,7 +29,9 @@ afterEach(() => {
 async function renderHome(extra: Partial<Parameters<typeof HomeScreen>[0]> = {}) {
   const mocks = {
     onNewChat: jest.fn(),
+    onTalk: jest.fn(),
     onComputer: jest.fn(),
+    onScan: jest.fn(),
     onAnswer: jest.fn(),
     onLookFirst: jest.fn(),
     onPlace: jest.fn(),
@@ -68,8 +73,11 @@ describe('home screen', () => {
     expect(screen.queryByTestId('home-still-agent:oak:main')).toBeNull();
     expect(screen.queryByTestId('home-meter-agent:oak:main')).toBeNull();
     expect(screen.getByTestId('home-quick-new-chat')).toBeOnTheScreen();
+    expect(screen.getByTestId('home-quick-talk')).toBeOnTheScreen();
     expect(screen.getByTestId('home-quick-computer')).toBeOnTheScreen();
-    expect(screen.queryByTestId('home-quick-talk')).toBeNull();
+    expect(screen.getByTestId('home-quick-scan')).toBeOnTheScreen();
+    expect(screen.queryByTestId('home-quick-new-trunk')).toBeNull();
+    expect(screen.queryByTestId('home-quick-automations')).toBeNull();
     expect(screen.queryByTestId('home-usage')).toBeNull();
     expect(screen.getByTestId('home-finished-agent:main:main')).toBeOnTheScreen();
     expect(screen.getByTestId('home-branch')).toHaveTextContent(/Branch on your computer/);
@@ -136,28 +144,38 @@ describe('home screen', () => {
     expect(mocks.onLookFirst).toHaveBeenCalledWith('exec-1', 'agent:oak:chat-1');
   });
 
-  it('opens New chat and Computer, and hides unfinished actions on Regular', async () => {
+  it('opens New chat, Talk, Computer and Scan, and hides unfinished actions on Regular', async () => {
     const mocks = await renderHome();
     await fireEvent.press(screen.getByTestId('home-quick-new-chat'));
+    await fireEvent.press(screen.getByTestId('home-quick-talk'));
     await fireEvent.press(screen.getByTestId('home-quick-computer'));
+    await fireEvent.press(screen.getByTestId('home-quick-scan'));
     expect(mocks.onNewChat).toHaveBeenCalled();
+    expect(mocks.onTalk).toHaveBeenCalled();
     expect(mocks.onComputer).toHaveBeenCalled();
-    expect(screen.queryByTestId('home-quick-talk')).toBeNull();
-    expect(screen.queryByTestId('home-quick-scan')).toBeNull();
+    expect(mocks.onScan).toHaveBeenCalled();
+    expect(screen.queryByTestId('home-quick-new-trunk')).toBeNull();
+    expect(screen.queryByTestId('home-quick-automations')).toBeNull();
     expect(screen.queryByText(/comes in a later update/)).toBeNull();
   });
 
   it('at Advanced, unfinished actions say they come in a later update', async () => {
-    await renderHome({ accessLevel: 'advanced' });
+    const mocks = await renderHome({ accessLevel: 'advanced' });
     expect(screen.getByTestId('home-quick-talk')).toBeOnTheScreen();
     expect(screen.getByTestId('home-quick-new-trunk')).toBeOnTheScreen();
     expect(screen.getByTestId('home-quick-scan')).toBeOnTheScreen();
     expect(screen.getByTestId('home-quick-automations')).toBeOnTheScreen();
     expect(screen.getByTestId('home-usage')).toHaveTextContent('What’s left comes in a later update.');
-    await fireEvent.press(screen.getByTestId('home-quick-talk'));
-    expect(screen.getByTestId('home-later')).toHaveTextContent('Talk comes in a later update.');
+    await fireEvent.press(screen.getByTestId('home-quick-new-trunk'));
+    expect(screen.getByTestId('home-later')).toHaveTextContent('New Trunk comes in a later update.');
+    await fireEvent.press(screen.getByTestId('home-quick-automations'));
+    expect(screen.getByTestId('home-later')).toHaveTextContent('Automations comes in a later update.');
     await fireEvent.press(screen.getByTestId('home-all-accounts'));
     expect(screen.getByTestId('home-later')).toHaveTextContent('What’s left comes in a later update.');
+    await fireEvent.press(screen.getByTestId('home-quick-talk'));
+    await fireEvent.press(screen.getByTestId('home-quick-scan'));
+    expect(mocks.onTalk).toHaveBeenCalled();
+    expect(mocks.onScan).toHaveBeenCalled();
   });
 
   it('does not draw a visible vertical scrollbar', async () => {
@@ -191,6 +209,69 @@ describe('home in the app', () => {
     await eventually(() => expect(engine.requests.some((r) => r.method === 'exec.approval.resolve' && r.params && (r.params as { id?: string }).id === 'exec-1')).toBe(true));
     await fireEvent.press(screen.getByTestId('home-look-plugin:mail-1'));
     await eventually(() => expect(screen.getByTestId('chat-screen')).toBeOnTheScreen());
+    session.dispose();
+    unmount();
+  });
+
+  it('Talk opens Voice on the most recent chat; Close, End and Keyboard return to that chat', async () => {
+    const { session, unmount } = await pairedApp();
+    await fireEvent.press(screen.getByTestId('place-home'));
+    expect(screen.getByTestId('home-quick-talk')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('home-quick-talk'));
+    expect(screen.getByTestId('voice-screen')).toBeOnTheScreen();
+    expect(screen.getByTestId('voice-title')).toHaveTextContent('Oak · voice');
+    await fireEvent.press(screen.getByTestId('voice-keyboard'));
+    expect(screen.getByTestId('chat-screen')).toBeOnTheScreen();
+    expect(screen.getByRole('header')).toHaveTextContent('Oak');
+    await fireEvent.press(screen.getByTestId('chat-back'));
+    await fireEvent.press(screen.getByTestId('place-home'));
+    await fireEvent.press(screen.getByTestId('home-quick-talk'));
+    expect(screen.getByTestId('voice-screen')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('voice-end'));
+    expect(screen.getByTestId('chat-screen')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('chat-talk'));
+    expect(screen.getByTestId('voice-screen')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByLabelText('Close'));
+    expect(screen.getByTestId('chat-screen')).toBeOnTheScreen();
+    session.dispose();
+    unmount();
+  });
+
+  it('Scan opens pairing and Back returns to Home without unpairing', async () => {
+    const { session, unmount } = await pairedApp();
+    await fireEvent.press(screen.getByTestId('place-home'));
+    expect(session.getState().step).toBe('paired');
+    await fireEvent.press(screen.getByTestId('home-quick-scan'));
+    expect(screen.getByTestId('camera-permission')).toBeOnTheScreen();
+    expect(session.getState().step).toBe('paired');
+    await fireEvent.press(screen.getByTestId('enter-code'));
+    expect(screen.getByTestId('enter-code-screen')).toBeOnTheScreen();
+    expect(session.getState().step).toBe('paired');
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByTestId('home-screen')).toBeOnTheScreen();
+    expect(session.getState().step).toBe('paired');
+    await fireEvent.press(screen.getByTestId('home-quick-scan'));
+    expect(screen.getByTestId('camera-permission')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('scan-back'));
+    expect(screen.getByTestId('home-screen')).toBeOnTheScreen();
+    expect(session.getState().step).toBe('paired');
+    expect(screen.getByTestId('home-need-exec-1')).toBeOnTheScreen();
+    session.dispose();
+    unmount();
+  });
+
+  it('Scan Connect with a pairing code starts a new pairing', async () => {
+    const { session, unmount } = await pairedApp();
+    await fireEvent.press(screen.getByTestId('place-home'));
+    await fireEvent.press(screen.getByTestId('home-quick-scan'));
+    expect(session.getState().step).toBe('paired');
+    await fireEvent.changeText(
+      screen.getByTestId('code-input'),
+      pairingCode({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-2' }),
+    );
+    await fireEvent.press(screen.getByTestId('submit-code'));
+    await eventually(() => expect(screen.getByTestId('pairing-approval')).toBeOnTheScreen());
+    expect(session.getState().step).toBe('approval');
     session.dispose();
     unmount();
   });

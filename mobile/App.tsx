@@ -64,12 +64,30 @@ type PairedRoute =
   | { name: 'agents'; from?: 'more' }
   | { name: 'chat'; row: ChatRow }
   | { name: 'voice'; row: ChatRow }
+  | { name: 'scan' }
+  | { name: 'code' }
   | { name: 'approvals'; focus?: string }
   | { name: 'settings'; from?: 'more' }
   | { name: 'more' }
   | { name: 'profile'; row: AgentRow; from?: 'agents' | 'more' };
 
 const CHATS: PairedRoute = { name: 'chats' };
+const HOME: PairedRoute = { name: 'home' };
+const SCAN: PairedRoute = { name: 'scan' };
+const CODE: PairedRoute = { name: 'code' };
+
+/** New chat from Home or Chats: the main conversation, else the first non-room chat. */
+function chatForNew(rows: ChatRow[]): ChatRow | undefined {
+  const shown = filterRows(rows, 'all', Date.now());
+  return shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
+}
+
+/** Talk from Home: the most recent chat, else the same pick New chat uses. */
+function chatForTalk(rows: ChatRow[]): ChatRow | undefined {
+  const shown = filterRows(rows, 'all', Date.now());
+  const recent = [...shown].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  return recent ?? chatForNew(rows);
+}
 
 const deviceAppState: AppStateSource = {
   current: () => AppState.currentState,
@@ -99,6 +117,7 @@ function pairedBack(route: PairedRoute): PairedRoute {
     return { name: 'computers', from: route.from, profileRow: route.profileRow, profileFrom: route.profileFrom };
   }
   if (route.name === 'voice') return { name: 'chat', row: route.row };
+  if (route.name === 'scan' || route.name === 'code') return HOME;
   if (route.name === 'computer' && route.from === 'settings') return { name: 'settings', from: route.settingsFrom };
   if (route.name === 'computer' && route.from === 'more') return { name: 'more' };
   if (route.name === 'settings' && route.from === 'more') return { name: 'more' };
@@ -223,7 +242,7 @@ function Shell({
     setRoute('scan');
   }, [state.step, chats, agents, computers, inbox]);
 
-  // Android's back gesture leaves take-control for Computers, Voice for its chat, and Computers, Agents, Your computer, Settings, More, Profile, a chat or Approvals, like the on-screen back button. Home is a root, like Chats.
+  // Android's back gesture leaves take-control for Computers, Voice for its chat, Scan or Enter code for Home, and Computers, Agents, Your computer, Settings, More, Profile, a chat or Approvals, like the on-screen back button. Home is a root, like Chats.
   useEffect(() => {
     if (state.step !== 'paired' || pairedRoute.name === 'chats' || pairedRoute.name === 'home') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -234,6 +253,11 @@ function Shell({
   }, [state.step, pairedRoute]);
 
   const begin = (setup: SetupPayload) => session.begin(setup);
+  // A new pairing from Home replaces this computer only once a code is submitted (that is the confirm).
+  const beginNewPair = (setup: SetupPayload) => {
+    setPairedRoute(CHATS);
+    session.begin(setup);
+  };
   const toPair = () => {
     session.cancel();
     setRoute('scan');
@@ -369,6 +393,23 @@ function Shell({
             backTo={pairedRoute.from === 'more' ? 'More' : 'Chats'}
           />
         );
+      } else if (pairedRoute.name === 'scan') {
+        screen = (
+          <PairingTheme>
+            <ScanScreen
+              onCode={beginNewPair}
+              onEnterCode={() => setPairedRoute(CODE)}
+              onCancel={() => setPairedRoute(HOME)}
+              updateBanner={updateBanner}
+            />
+          </PairingTheme>
+        );
+      } else if (pairedRoute.name === 'code') {
+        screen = (
+          <PairingTheme>
+            <EnterCodeScreen onCode={beginNewPair} onScan={() => setPairedRoute(SCAN)} onCancel={() => setPairedRoute(HOME)} />
+          </PairingTheme>
+        );
       } else if (pairedRoute.name === 'voice') {
         const row = chatList.rows.find((r) => r.key === pairedRoute.row.key) ?? pairedRoute.row;
         const toChat = () => setPairedRoute({ name: 'chat', row });
@@ -411,12 +452,17 @@ function Shell({
             online={state.online}
             accessLevel={showLevel}
             onNewChat={() => {
-              const shown = filterRows(chatList.rows, 'all', Date.now());
-              const main = shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
-              if (main) setPairedRoute({ name: 'chat', row: main });
+              const row = chatForNew(chatList.rows);
+              if (row) setPairedRoute({ name: 'chat', row });
+              else setPairedRoute(CHATS);
+            }}
+            onTalk={() => {
+              const row = chatForTalk(chatList.rows);
+              if (row) setPairedRoute({ name: 'voice', row });
               else setPairedRoute(CHATS);
             }}
             onComputer={() => setPairedRoute({ name: 'computers' })}
+            onScan={() => setPairedRoute(SCAN)}
             onAnswer={(id, decision) => void inbox.answer(id, decision)}
             onLookFirst={(_id, sessionKey) => {
               const found = sessionKey ? chatList.rows.find((r) => r.key === sessionKey) : undefined;
@@ -471,9 +517,8 @@ function Shell({
               onMore={() => setPairedRoute({ name: 'more' })}
               onOpen={(row) => setPairedRoute({ name: 'chat', row })}
               onNewChat={() => {
-                const shown = filterRows(chatList.rows, 'all', Date.now());
-                const main = shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
-                if (main) setPairedRoute({ name: 'chat', row: main });
+                const row = chatForNew(chatList.rows);
+                if (row) setPairedRoute({ name: 'chat', row });
               }}
               needsYou={first ? { count: approvals.pending.length, line: `${trunkOf(first, approvals.trunks).name} · ${headline(first)}${more > 0 ? ` and ${more} more` : ''}` } : null}
               onNeedsYou={() => setPairedRoute({ name: 'approvals' })}

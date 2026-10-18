@@ -27,16 +27,14 @@ import { Avatar } from './ChatsScreen';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 
-const QUICK_WORKING = [
-  ['new-chat', 'New chat'],
-  ['computer', 'Computer'],
-] as const;
-
-const QUICK_LATER: Array<[string, LaterHomeAction]> = [
-  ['talk', 'Talk'],
-  ['new-trunk', 'New Trunk'],
-  ['scan', 'Scan'],
-  ['automations', 'Automations'],
+/** Preview r50 Home chips, in that order. Later chips stay off Regular. */
+const QUICK: Array<{ id: string; label: string; later?: LaterHomeAction }> = [
+  { id: 'new-chat', label: 'New chat' },
+  { id: 'talk', label: 'Talk' },
+  { id: 'computer', label: 'Computer' },
+  { id: 'new-trunk', label: 'New Trunk', later: 'New Trunk' },
+  { id: 'scan', label: 'Scan' },
+  { id: 'automations', label: 'Automations', later: 'Automations' },
 ];
 
 function Section({ title, count, action }: { title: string; count?: number; action?: ReactNode }) {
@@ -106,9 +104,9 @@ function Chip({ title, onPress, kind = 'quiet', testID, disabled }: { title: str
 /**
  * The paired Home from preview r50: greeting, one-line summary, Needs you (Allow or Send, Deny,
  * Look first — and the exact command, folder and warnings before Allow on a command-run), Working
- * now with the last real line as the current step, What’s left, quick actions, Finished, and Branch
- * on your computer. Unfinished destinations stay off Regular; at Advanced they say
- * "<label> comes in a later update."
+ * now with the last real line as the current step, What’s left, quick actions (New chat, Talk,
+ * Computer, Scan; New Trunk and Automations at Advanced+), Finished, and Branch on your computer.
+ * Unfinished destinations stay off Regular; at Advanced they say "<label> comes in a later update."
  */
 export function HomeScreen({
   chats,
@@ -116,7 +114,9 @@ export function HomeScreen({
   online,
   accessLevel = 'regular',
   onNewChat,
+  onTalk,
   onComputer,
+  onScan,
   onAnswer,
   onLookFirst,
   onPlace,
@@ -129,7 +129,9 @@ export function HomeScreen({
   online: boolean;
   accessLevel?: AccessLevel;
   onNewChat: () => void;
+  onTalk: () => void;
   onComputer: () => void;
+  onScan: () => void;
   onAnswer: (id: string, decision: ApprovalDecision) => void;
   onLookFirst: (id: string, sessionKey?: string) => void;
   onPlace: (place: Place) => void;
@@ -152,10 +154,7 @@ export function HomeScreen({
     setLater(laterUpdate(label));
   };
 
-  const quick = [
-    ...QUICK_WORKING.map(([id, label]) => ({ id, label, later: false as const })),
-    ...(advanced ? QUICK_LATER.map(([id, label]) => ({ id, label, later: true as const })) : []),
-  ];
+  const quick = QUICK.filter((item) => !item.later || advanced);
 
   return (
     <View testID="home-screen" style={{ flex: 1, backgroundColor: color.bg }}>
@@ -322,8 +321,10 @@ export function HomeScreen({
               accessibilityLabel={item.label}
               onPress={() => {
                 if (item.id === 'new-chat') onNewChat();
+                else if (item.id === 'talk') onTalk();
                 else if (item.id === 'computer') onComputer();
-                else showLater(item.label as LaterHomeAction);
+                else if (item.id === 'scan') onScan();
+                else if (item.later) showLater(item.later);
               }}
               style={({ pressed }) => ({
                 width: '31%',
