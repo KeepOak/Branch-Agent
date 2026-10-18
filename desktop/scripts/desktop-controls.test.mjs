@@ -238,10 +238,14 @@ test("Git Bash shim reads the same files, drops CR and passes arguments through"
   assert.ok(shim.includes("BRANCH_SHIM_FORCE_PS"), "tests can skip /proc and exercise the ps parser");
   assert.ok(shim.includes("*[!0-9]*"), "pid and port must be digits before they are interpolated");
   assert.ok(shim.includes('rest=${rest#* }'), "a spaced node path is stripped one word at a time");
+  assert.ok(shim.includes("parse_live_cmdline()"), "macOS /bin/sh (bash 3.2) cannot parse case/;; inside $(...)");
   assert.match(shim, /--port\\ "\$expect"/, "the port glob quotes expect so a non-digit value cannot widen the match");
   assert.match(shim, /powershell\.exe[^\n]*-Command '/, "PowerShell is single-quoted so [\\\\/] keeps its backslash");
   assert.ok(shim.includes("[\\\\/]"), "the PowerShell path class still matches a backslash after sh quoting");
   assert.doesNotMatch(shim, /\r/);
+  const sh = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
+  const syntax = spawnSync(sh, ["-n", "-c", shim], { windowsHide: true, encoding: "utf8" });
+  assert.equal(syntax.status, 0, syntax.stderr);
 });
 
 async function spacedNodeBinary(root) {
@@ -269,6 +273,31 @@ function stopPid(pid) {
   } catch { /* already gone */ }
 }
 
+async function waitPidGone(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  const end = Date.now() + 5_000;
+  while (Date.now() < end) {
+    try { process.kill(pid, 0); } catch (error) {
+      if (error.code !== "EPERM") return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+}
+
+/** Windows locks a copied node.exe until that process has fully exited. */
+async function removeTree(dir) {
+  const end = Date.now() + 5_000;
+  for (;;) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (!["EPERM", "EBUSY", "EACCES", "ENOTEMPTY"].includes(error.code) || Date.now() > end) throw error;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  }
+}
+
 async function cliFixture(run) {
   const root = await mkdtemp(join(tmpdir(), "branch-cli-"));
   const dataDir = join(root, "data"), engineDir = join(root, "bundled engine");
@@ -287,7 +316,7 @@ async function cliFixture(run) {
     return spawnSync(shell, cmd ? ["/d", "/c", file, "status", "quoted arg"] : [file, "status", "quoted arg"],
       { windowsHide: true, encoding: "utf8", env: extraEnv ? { ...process.env, ...extraEnv } : undefined });
   };
-  try { await run({ root, dataDir, engineDir, engine, execute }); } finally { await rm(root, { recursive: true, force: true }); }
+  try { await run({ root, dataDir, engineDir, engine, execute }); } finally { await removeTree(root); }
 }
 
 for (const kind of process.platform === "win32" ? ["cmd", "sh"] : ["sh"]) {
@@ -428,7 +457,10 @@ for (const kind of process.platform === "win32" ? ["cmd", "sh"] : ["sh"]) {
         const result = await f.execute("sh", { BRANCH_SHIM_FORCE_PS: "1" });
         assert.equal(result.status, 0, result.stderr);
         assert.equal(JSON.parse(result.stdout).engine, "live engine");
-      } finally { stopPid(child.pid); }
+      } finally {
+        stopPid(child.pid);
+        await waitPidGone(child.pid);
+      }
     }));
   }
 }
