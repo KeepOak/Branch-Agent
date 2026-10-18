@@ -44,7 +44,7 @@ export function AppearancePage(props: SettingsPageProps) {
       <ReadingSec look={look} />
       <PetSec look={look} />
       <ShownSec look={look} />
-      <LanguageSec />
+      <LanguageSec look={look} />
       <TraySec />
       <WindowSec look={look} />
       <AppearanceMore engine={props.engine} look={look} trunk={trunk} openSettings={props.openSettings} />

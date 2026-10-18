@@ -171,9 +171,6 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [talking]);
   const doneChecks = checks.filter((c) => c.state !== "checking").length;
-  const modelNeedsConnection = checks.some((c) => c.name === "The model" && c.state === "bad")
-    && !known?.model
-    && !(models.detected && firstOn(models.detected, choices.modelsOff));
   const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, boot: boot ?? (known?.promise ? null : true), setBoot, checks, setStep });
   const [title, lede] = STEPS[step] === "Reach it anywhere" ? [TITLES[step][0], reachLede(apps)] : TITLES[step];
   const footer = (
@@ -190,8 +187,8 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
         </button>
       ) : null}
       {step === LAST ? (
-        <button type="button" className="btn pri" data-testid="setup-finish" disabled={busy || doneChecks < checks.length} onClick={() => modelNeedsConnection ? (setStep(2), setLogin({ agentId: p.defaultAgentId ?? p.engine.agentId ?? "", provider: "", choiceId: "", method: SECRET })) : void close(true)}>
-          {modelNeedsConnection ? "Connect a model" : doneChecks < checks.length ? `Checking… ${doneChecks} of ${checks.length}` : "Open Branch and take the walkthrough"}
+        <button type="button" className="btn pri" data-testid="setup-finish" disabled={busy || doneChecks < checks.length} onClick={() => void close(true)}>
+          {doneChecks < checks.length ? `Checking… ${doneChecks} of ${checks.length}` : "Open Branch and take the walkthrough"}
         </button>
       ) : (
         <button type="button" className="btn pri" data-testid="setup-next" disabled={step === 0 && !choices.promise} onClick={() => setStep(step + 1)}>
@@ -259,7 +256,8 @@ const SECRET = "secret";
 /** clear: the R1 window's item 48 glass (README 48), passed on to the Add an account dialog. */
 export function SetupAddAccountDialog({ engine, agentId, onClose, clear }: { engine: WindowEngine; agentId: string; onClose: (added: boolean) => void; clear?: boolean }) {
   const status = useResource<RecordValue>(engine, "models.authStatus", { agentId });
-  return <AddAccountDialog engine={engine} start={{}} caps={list(status.data?.providerCapabilities)} providers={providersOf(status.data?.providers)} agent={{ agentId }} onClose={onClose} clear={clear} />;
+  const capsReady = status.data !== undefined || Boolean(status.error && !status.loading);
+  return <AddAccountDialog engine={engine} start={{}} caps={list(status.data?.providerCapabilities)} providers={providersOf(status.data?.providers)} agent={{ agentId }} onClose={onClose} clear={clear} capsReady={capsReady} />;
 }
 
 function AddAccount({ c }: { c: Ctx }) {

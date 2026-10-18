@@ -10,6 +10,7 @@ export type SetupPayload = {
   bootstrapToken: string;
   expiresAtMs?: number;
   tlsFingerprint?: string;
+  relayKey?: string;
 };
 
 /**
@@ -39,7 +40,7 @@ const MAX_URLS = 8;
 
 /**
  * The engine's own address normalisation (parseNormalizedGatewayUrl in engine/src/pairing/setup-code.ts):
- * ws or wss, a host, no user name or password, the path kept, no query or fragment. The engine's decoder
+ * ws or wss, a host, no user name or password, the path and query kept, no fragment. The engine's decoder
  * only accepts an address that is already in this form, so this one does too. Expo installs a WHATWG
  * URL on native, so the parse matches the engine's Node URL.
  */
@@ -57,12 +58,26 @@ function canonicalGatewayUrl(raw: string): string | null {
   if (!parsed.hostname) return null;
   const port = parsed.port ? `:${parsed.port}` : '';
   const path = parsed.pathname === '/' ? '' : parsed.pathname;
-  return `${protocol}//${parsed.hostname}${port}${path}`;
+  return `${protocol}//${parsed.hostname}${port}${path}${parsed.search}`;
 }
 
 /** A gateway address exactly as the engine writes one into a pairing code. */
 export function isGatewayUrl(candidate: unknown): candidate is string {
   return typeof candidate === 'string' && canonicalGatewayUrl(candidate) === candidate;
+}
+
+/**
+ * A pairing-relay join URL (`role=peer` or `role=host`). Those hops must carry a 32-byte
+ * `relayKey`; the phone refuses to connect without one so the bootstrap token is never sent
+ * in the clear.
+ */
+export function isRelayPairingUrl(url: string): boolean {
+  try {
+    const role = new URL(url).searchParams.get('role');
+    return role === 'peer' || role === 'host';
+  } catch {
+    return false;
+  }
 }
 
 function nonEmpty(value: unknown): string | undefined {
@@ -121,12 +136,17 @@ export function decodeSetupCode(input: string, nowMs: number = Date.now()): Setu
   const tlsFingerprint = record.tlsFingerprint === undefined ? undefined : nonEmpty(record.tlsFingerprint);
   if (record.tlsFingerprint !== undefined && !tlsFingerprint) throw new SetupCodeError('invalid');
 
+  const relayKey =
+    typeof record.relayKey === 'string' && /^[A-Za-z0-9_-]+$/.test(record.relayKey) ? record.relayKey : undefined;
+  if (record.relayKey !== undefined && !relayKey) throw new SetupCodeError('invalid');
+
   return {
     url,
     ...(urls ? { urls } : {}),
     bootstrapToken,
     ...(expiresAtMs !== undefined ? { expiresAtMs } : {}),
     ...(tlsFingerprint ? { tlsFingerprint } : {}),
+    ...(relayKey ? { relayKey } : {}),
   };
 }
 
