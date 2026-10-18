@@ -1,0 +1,1 @@
+window:src/shell/palette-unique-keys.test.tsx

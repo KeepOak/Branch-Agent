@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { Topic } from "@branch/gateway-protocol";
 import { Face } from "../face/Face";
 import { Dialog } from "./Dialog";
 import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import { menuIcon } from "./menu-icons";
 import { notify } from "./notify";
+import { plainError } from "./plain-error";
 import { emojiList, emojiScores, emojisForTopics } from "./topic-emoji-logic";
-import { distinctNames, isRawSessionKey, readableTitle, sessionKeyName, splitKeyTag } from "./topic-name";
+import { distinctNames, isRawSessionKey, plainTopicTitle, readableTitle, sessionKeyName, splitKeyTag } from "./topic-name";
 import { readTopicSettings, saveTopicSettings, setContactTopicLayout, setDefaultTopicLayout, topicLayoutDefaults as defaults, topicLayoutNames as names, TOPIC_LAYOUT_KEY as key, r1TopicLayoutNames, type R1TopicLayout, type TopicLayout as Layout } from "./topic-layout";
 import { DeleteTopicDialog, NewTopicSheet } from "./TopicDialogs";
 import { r1TopicMenuItems } from "./topic-menu";
@@ -16,7 +18,10 @@ import "./topic-rail.css";
 const emojiKey = "branch-topic-emoji-t5";
 const muteKey = "branch-topic-mute-t5";
 function stored<T>(name: string, fallback: T): T { try { return JSON.parse(localStorage.getItem(name) || "null") ?? fallback; } catch { return fallback; } }
-const displayTitle = (topic: Topic) => topic.labelled ? readableTitle(topic.title) : shortTopicTitle(topic.title);
+/** A menu at a point draws over the whole window: inside the glass rail its fixed position would be measured from the rail. */
+const atWindow = (node: ReactNode) => typeof document === "undefined" ? node : createPortal(node, document.body);
+/** A thread the engine has no title for yet (it falls back to the thread's own key, and that key has no readable name) is a new, empty conversation. */
+const displayTitle = (topic: Topic) => !topic.labelled && topic.title === topic.key && sessionKeyName(topic.key) === "Thread" ? "New conversation" : topic.labelled ? readableTitle(topic.title) : shortTopicTitle(topic.title);
 const tabLabel = (label: string) => { const { name, tag } = splitKeyTag(label); return <><span className="tpTabNameT5">{name}</span>{tag ? <span className="tpTabTagT5"> · {tag}</span> : null}</>; };
 /** Right-click, or a 500 ms press on touch, opens a topic tab's menu at that point. The click that ends a long press does nothing. */
 function menuGestures(open: (at: MenuAnchor) => void) {
@@ -36,11 +41,11 @@ const clock = (at: number) => at ? new Date(at).toLocaleTimeString([], { hour: "
 export function shortTopicTitle(name: string): string {
   const verb = /^(fix|watch|save|match|tidy|refactor|add|test|find|check|make|book|read|write|plan|send|put|sort|clean|update|review|build|run)\s+(?:the|a|an|my|every|all)?\s*/i;
   if (isRawSessionKey(name)) return sessionKeyName(name.trim());
-  const start = String(name || "").split(" · ")[0]!.trim();
+  const start = plainTopicTitle(name).split(" · ")[0]!.trim();
   const action = start.match(verb)?.[1] ?? "";
   let title = start.replace(verb, "").replace(/\s+(through|on|for|to|since|from|with|before|after|in|into)\s+.*$/i, "").trim();
   if (action && title.split(" ").length === 1 && /^(test|check|review)$/i.test(action)) title += ` ${action.toLowerCase()}`;
-  return (title || name || "Thread").replace(/^./, (x) => x.toUpperCase());
+  return (title || plainTopicTitle(name) || "Thread").replace(/^./, (x) => x.toUpperCase());
 }
 /** R1 hosts pass this; Classic passes nothing and keeps its own layout menu, rows and resizer. */
 export type R1RailHost = {
@@ -114,7 +119,7 @@ export function TopicRail(p: TopicRailProps) {
   const changeEmoji = (topic: Topic, anchor?: HTMLElement) => { const button = anchor ?? [...(railRef.current?.querySelectorAll<HTMLElement>(".tpEmoBtnT5") ?? [])].find((node) => node.dataset.topicKey === topic.key); const rect = button?.getBoundingClientRect(); setPickerAt({ x: rect?.left ?? 8, y: (rect?.bottom ?? 60) + 4 }); setPicking(topic); setEmojiQuery(""); setMenu(null); };
   const chooseEmoji = (topic: Topic, chosen: string) => { const value = { ...stored<Record<string, string>>(emojiKey, {}), [topic.key]: chosen }; localStorage.setItem(emojiKey, JSON.stringify(value)); setEmoji(value); setPicking(null); notify(`${chosen} ${displayTitle(topic)}`); };
   const toggleMute = (topic: Topic) => { const current = stored<Record<string, boolean>>(muteKey, {}); const value = { ...current, [topic.key]: !current[topic.key] }; localStorage.setItem(muteKey, JSON.stringify(value)); setMuted(value); setMenu(null); notify(value[topic.key] ? "Muted. It won’t mark itself unread." : "Unmuted."); };
-  const update = async (topic: Topic, change: Record<string, unknown>): Promise<boolean> => { setBusy(true); setError(""); try { await p.onPatch(topic, change); setMenu(null); return true; } catch (e) { setError(e instanceof Error ? e.message : String(e)); return false; } finally { setBusy(false); } };
+  const update = async (topic: Topic, change: Record<string, unknown>): Promise<boolean> => { setBusy(true); setError(""); try { await p.onPatch(topic, change); setMenu(null); return true; } catch (e) { setError(plainError(e)); return false; } finally { setBusy(false); } };
   const openMenu = (name: string, anchor: HTMLElement) => { const rect = anchor.getBoundingClientRect(); setMenuAt({ x: rect.left, y: rect.bottom + 4 }); setMenu(menu === name ? null : name); };
   const menuTopic = p.items.find(({ topic }) => topic.key === menu)?.topic;
   const r1Layouts: MenuItem[] | null = p.r1 ? [
@@ -162,7 +167,7 @@ export function TopicRail(p: TopicRailProps) {
   const general = displayedLayout === "column" ? <div className={`tpRowT5 ${p.currentKey === p.contactKey ? "curT5" : ""}`} role="listitem"><span className="tpAvT5"><Face size={34} label={p.contactName}/></span><button className="tpGoT5" type="button" aria-label="General" aria-current={p.currentKey === p.contactKey} data-tip={`General · ${p.generalWho ? `${p.generalWho}: ` : ""}${p.generalPreview}`} onClick={() => p.onOpen(p.contactKey)}><span className="tpL1T5"><b>General</b><time>{clock(p.generalUpdatedAt)}</time></span><span className="tpL2T5">{p.generalWho && p.generalPreview ? <i className="tpWhoT5">{p.generalWho}:</i> : null}<span>{p.generalPreview}</span></span></button></div> : button(p.contactKey, "General", "💬");
   return <nav ref={railRef} className={`topicsT5 lay-${displayedLayout}${p.phoneList && innerWidth <= 640 ? " listT5" : ""}`} aria-label="Threads" style={{ "--topw": `${displayedLayout === "rail" ? 64 : setting.width}px` } as CSSProperties} onPointerDown={(event) => { if (layout !== "rail" || event.button !== 0 || (event.target as Element).closest(".pop")) return; const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX >= rect.right - 6) { railDrag.current = event.clientX; event.currentTarget.setPointerCapture(event.pointerId); } }} onPointerUp={(event) => { if (railDrag.current === null) return; const width = 64 + event.clientX - railDrag.current; railDrag.current = null; if (width >= 200) changeLayout("column", Math.min(640, width), Boolean(setting.per[p.contactId])); }}>
     {displayedLayout === "column" ? <div className="tpHeadT5"><button className="tpLayT5 icon-btn" type="button" aria-haspopup="menu" aria-label={`How threads show: ${layoutLabel}`} data-tip="How threads show" onClick={(event) => openMenu("layout", event.currentTarget)}>{menuIcon("panel")}</button><b>{p.contactName}</b><small>{threadCount} thread{threadCount === 1 ? "" : "s"}</small>{host ? <button type="button" className="tpAddP17" aria-label="New topic" data-tip="New topic" onClick={() => setCreating(true)}>{menuIcon("plus")}</button> : null}</div> : <button className="tpLayT5 icon-btn" type="button" aria-haspopup="menu" aria-label={`How threads show: ${layoutLabel}`} data-tip="How threads show" onClick={(event) => openMenu("layout", event.currentTarget)}>{menuIcon("panel")}</button>}
-    {menu ? <Menu at={menuAt} items={menuItems} label={menu === "layout" ? "Threads show as" : "Thread options"} onClose={() => setMenu(null)} /> : null}
+    {menu ? atWindow(<Menu at={menuAt} items={menuItems} label={menu === "layout" ? "Threads show as" : "Thread options"} onClose={() => setMenu(null)} />) : null}
     <div className={displayedLayout === "column" ? "tpListT5" : "tpTabsT5"} role={displayedLayout === "tabs" ? "tablist" : "list"} aria-label={`Threads with ${p.contactName}`}>
       {host && displayedLayout === "tabs" ? <button type="button" className="tpAddP17" aria-label="New topic" data-tip="New topic" onClick={() => setCreating(true)}>{menuIcon("plus")}</button> : null}
       {displayedLayout === "tabs" || displayedLayout === "side" ? button(`all-${p.contactId}`, "All", "💬") : null}{general}{active.map(row)}
@@ -171,7 +176,7 @@ export function TopicRail(p: TopicRailProps) {
     </div>
     {(layout === "column" || layout === "side") && !p.r1 ? <div className="tpResT5" role="separator" aria-orientation="vertical" aria-label="Resize the threads. Arrow keys resize, double-click resets." aria-valuenow={setting.width} tabIndex={0} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onDoubleClick={() => saveWidth(defaults[layout])} onKeyDown={(event) => { if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return; event.preventDefault(); const width = setting.width + (event.key === "ArrowRight" ? 1 : -1) * (event.shiftKey ? 48 : 16); if (layout === "column" && width < 200) changeLayout("rail", defaults.column, Boolean(setting.per[p.contactId])); else saveWidth(width); }}/>: null}
     {renaming ? <Dialog title="Rename thread" clear={p.clear} onClose={() => setRenaming(null)} footer={<><button className="btn ghost" type="button" onClick={() => setRenaming(null)}>Cancel</button><button className="btn pri" type="submit" form="topic-rename-form" disabled={busy || !title.trim()}>Rename</button></>}><form id="topic-rename-form" onSubmit={(e) => { e.preventDefault(); const value = title.trim(); if (!value) return; void update(renaming, { label: value }).then((saved) => { if (saved) setRenaming(null); }); }}><label className="fld"><span>Title</span><input className="inp" autoFocus onFocus={(event) => event.currentTarget.select()} maxLength={60} value={title} onChange={(e) => setTitle(e.target.value)}/></label></form></Dialog> : null}
-    {picking ? <Menu at={pickerAt} label={`Change the emoji for ${displayTitle(picking)}`} onClose={() => setPicking(null)} items={[{ kind: "custom", node: <div className="emoPickT5"><input className="inp" autoFocus value={emojiQuery} onChange={(e) => setEmojiQuery(e.target.value)} aria-label="Search emoji" placeholder={`Search ${emojiList.length} emoji`}/><div className="emoGridT5" role="listbox" aria-label="Emoji">{(() => { const words = emojiQuery.toLowerCase().trim().split(/\s+/).filter(Boolean); const ranked = words.length ? [...emojiScores(emojiQuery).map(([icon]) => emojiList.find((item) => item.e === icon)).filter((item) => item !== undefined), ...emojiList.filter((item) => words.every((word) => item.n.includes(word)))] : emojiList; const seen = new Set<string>(); const matches = ranked.filter((item) => !seen.has(item.e) && !!seen.add(item.e)).slice(0, 600); return matches.length ? matches.map((item) => <button type="button" role="option" key={item.e} aria-label={item.n} title={item.n} onClick={() => chooseEmoji(picking, item.e)}>{item.e}</button>) : <p>No emoji match.</p>; })()}</div></div> }]}/> : null}
+    {picking ? atWindow(<Menu at={pickerAt} label={`Change the emoji for ${displayTitle(picking)}`} onClose={() => setPicking(null)} items={[{ kind: "custom", node: <div className="emoPickT5"><input className="inp" autoFocus value={emojiQuery} onChange={(e) => setEmojiQuery(e.target.value)} aria-label="Search emoji" placeholder={`Search ${emojiList.length} emoji`}/><div className="emoGridT5" role="listbox" aria-label="Emoji">{(() => { const words = emojiQuery.toLowerCase().trim().split(/\s+/).filter(Boolean); const ranked = words.length ? [...emojiScores(emojiQuery).map(([icon]) => emojiList.find((item) => item.e === icon)).filter((item) => item !== undefined), ...emojiList.filter((item) => words.every((word) => item.n.includes(word)))] : emojiList; const seen = new Set<string>(); const matches = ranked.filter((item) => !seen.has(item.e) && !!seen.add(item.e)).slice(0, 600); return matches.length ? matches.map((item) => <button type="button" role="option" key={item.e} aria-label={item.n} title={item.n} onClick={() => chooseEmoji(picking, item.e)}>{item.e}</button>) : <p>No emoji match.</p>; })()}</div></div> }]}/>) : null}
     {creating && host ? <NewTopicSheet trunkName={p.contactName} clear={p.clear} onCancel={() => setCreating(false)} onCreate={async (draft) => { await host.onCreate(draft); setCreating(false); }} /> : null}
     {deleting && host ? <DeleteTopicDialog title={displayTitle(deleting)} clear={p.clear} onCancel={() => setDeleting(null)} onDelete={async () => { await host.onDelete(deleting); setDeleting(null); }} /> : null}
     {error ? <p className="tpErrorT5" role="alert">{error}</p> : null}

@@ -13,6 +13,8 @@ import {
   type ExecPolicyScopeSnapshot,
 } from "../infra/exec-approvals-effective.js";
 import {
+  DEFAULT_REQUESTED_ASK,
+  DEFAULT_REQUESTED_SECURITY,
   maxAsk,
   minSecurity,
   normalizeExecAsk,
@@ -165,8 +167,8 @@ function applyConfigExecPolicy(root: BranchConfig, policy: ExecPolicyResolved): 
   if (policy.security !== undefined || policy.ask !== undefined) {
     const currentPolicy = resolveExecModePolicy({
       mode: normalizeExecMode(root.tools.exec.mode),
-      security: root.tools.exec.security ?? "full",
-      ask: root.tools.exec.ask ?? "off",
+      security: root.tools.exec.security ?? DEFAULT_REQUESTED_SECURITY,
+      ask: root.tools.exec.ask ?? DEFAULT_REQUESTED_ASK,
     });
     const security = policy.security ?? currentPolicy.security;
     const ask = policy.ask ?? currentPolicy.ask;

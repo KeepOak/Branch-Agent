@@ -30,7 +30,7 @@ export function ModelsPage({ tab = "defaults", ...props }: SettingsPageProps & {
         </p>
       ) : null}
       {tab === "defaults" ? <DefaultsTab m={m} /> : null}
-      {tab === "second" ? <SecondTab /> : null}
+      {tab === "second" ? <SecondTab m={m} /> : null}
       {tab === "media" ? <MediaTab m={m} /> : null}
       {lv >= 1 ? <ModelsSections m={m} tab={tab} openSettings={props.openSettings} /> : null}
     </Page>

@@ -17,17 +17,23 @@ jest.mock('expo-camera', () => ({
 const code = (value: unknown) => bytesToBase64Url(utf8ToBytes(JSON.stringify(value)));
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 3000 });
+// The first test pays for compiling the app and the engine's client, then walks
+// pairing → code → approval → chats → unpair. Jest's 5s default is too tight on
+// a cold CI worker (same budget as testApproval.test.tsx).
+jest.setTimeout(20_000);
 
 describe('pairing screens', () => {
-  it('walks from welcome through approval to paired, and back out with unpair', async () => {
+  it('walks from pairing through approval to paired, and back out with unpair', async () => {
     const { session, engine } = createFakeSession();
     await render(<App scheme="light" session={session} />);
-    await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
-    expect(screen.getAllByRole('button').map((b) => b.props.testID)).toEqual(['pair-button']);
-
-    await fireEvent.press(screen.getByTestId('pair-button'));
-    expect(screen.getByTestId('camera-permission')).toBeOnTheScreen();
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
+    expect(screen.queryByTestId('welcome-screen')).toBeNull();
+    expect(screen.queryByTestId('pairing-steps')).toBeNull();
     expect(screen.getByText('Allow camera')).toBeOnTheScreen();
+    expect(screen.getByText('Connect to your Branch')).toBeOnTheScreen();
+    expect(screen.getByTestId('connect-code')).toBeOnTheScreen();
+    expect(screen.getByTestId('pairing-nearby')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByTestId('enter-code'));
     expect(screen.getByTestId('enter-code-screen')).toBeOnTheScreen();
@@ -45,13 +51,15 @@ describe('pairing screens', () => {
     engine.approve();
     await eventually(() => expect(screen.getByTestId('chats-screen')).toBeOnTheScreen());
     await fireEvent.press(screen.getByTestId('computer-button'));
+    expect(screen.getByTestId('computers-screen')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('this-phone'));
     expect(screen.getByText('Connected to your computer')).toBeOnTheScreen();
     expect(screen.getByText('computer.local:19031')).toBeOnTheScreen();
     expect(screen.getByText('2026.10.8')).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByTestId('unpair'));
     await fireEvent.press(screen.getByTestId('confirm-unpair'));
-    await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
   });
 
   it('keeps Pair above the keyboard, pairs from the keyboard’s done key, and calls a mangled code damaged', async () => {
@@ -88,7 +96,7 @@ describe('pairing screens', () => {
   it('shows the computer’s check code and the time left on the code while waiting for Allow', async () => {
     const { session } = createFakeSession();
     await render(<App scheme="light" session={session} />);
-    await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
     await act(() => session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 4 * 60_000 + 30_000 }));
     await eventually(() => expect(screen.getByTestId('pairing-approval')).toBeOnTheScreen());
     // The fake engine's request is "request-1"; the window shows pairingCheckCode of it: EST1.
@@ -121,7 +129,7 @@ describe('pairing screens', () => {
   it('after Deny on the computer, says so and offers only a new code', async () => {
     const { session, engine } = createFakeSession();
     await render(<App scheme="light" session={session} />);
-    await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
     await act(() => session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 300_000 }));
     await eventually(() => expect(screen.getByTestId('pairing-approval')).toBeOnTheScreen());
     engine.reject();
@@ -136,8 +144,7 @@ describe('pairing screens', () => {
   it('turns away a typed code whose address carries a user name or password, and never shows them', async () => {
     const { session, engine } = createFakeSession();
     await render(<App scheme="light" session={session} />);
-    await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
-    await fireEvent.press(screen.getByTestId('pair-button'));
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
     await fireEvent.press(screen.getByTestId('enter-code'));
     await fireEvent.changeText(screen.getByTestId('code-input'), code({ url: 'ws://user:secret@computer.local:19031', bootstrapToken: 'boot-1' }));
     await fireEvent.press(screen.getByTestId('submit-code'));
@@ -171,20 +178,20 @@ describe('pairing screens', () => {
     expect(Object.keys(store.dump()).some((key) => key.startsWith('branch.device-token.v1.'))).toBe(false);
   });
 
-  it('cancelling while the computer decides goes back to the welcome', async () => {
+  it('cancelling while the computer decides goes back to pairing', async () => {
     const { session } = createFakeSession();
     await render(<App scheme="dark" session={session} />);
-    await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
     await act(() => session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' }));
     await eventually(() => expect(screen.getByTestId('pairing-approval')).toBeOnTheScreen());
     await fireEvent.press(screen.getByText('Cancel'));
-    expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen();
+    expect(screen.getByTestId('camera-permission')).toBeOnTheScreen();
   });
 
   it('shows why pairing stopped and offers a fresh scan', async () => {
     const { session } = createFakeSession();
     await render(<App scheme="light" session={session} />);
-    await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
+    await eventually(() => expect(screen.getByTestId('camera-permission')).toBeOnTheScreen());
     await act(() => session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'old-code' }));
     await eventually(() => expect(screen.getByTestId('pairing-failed')).toBeOnTheScreen());
     expect(screen.getByText('This code no longer works. Make a new one on your computer.')).toBeOnTheScreen();

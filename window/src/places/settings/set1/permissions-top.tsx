@@ -1,6 +1,6 @@
 // Permissions, the custom rows: This PC (the computer's own permissions, which only the desktop app can read), the
 // mode box and "Mode everywhere" (tools.exec.mode, the same engine key behind the composer's modes), Work style,
-// Lockdown, Pinned settings, who may run commands outside the sandbox (tools.elevated.allowFrom) and connectors.
+// Lockdown, who may run commands outside the sandbox (tools.elevated.allowFrom) and connectors.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
@@ -84,7 +84,7 @@ function defaultMode(agents: RecordValue | undefined): EngineMode | null {
 }
 
 /** The exec mode in force: the configured tools.exec.mode, or what the engine resolves without one. */
-function execMode(cfg: Cfg, agents: RecordValue | undefined): string {
+export function execMode(cfg: Cfg, agents: RecordValue | undefined): string {
   const set = cfg.get("tools.exec.mode");
   if (typeof set === "string") return set;
   const m = defaultMode(agents);
@@ -92,12 +92,14 @@ function execMode(cfg: Cfg, agents: RecordValue | undefined): string {
 }
 
 /** Saves tools.exec.mode; the engine refuses mode beside the older security/ask keys, so those go. */
-async function saveMode(cfg: Cfg, mode: string, after: () => Promise<void>) {
+async function saveMode(cfg: Cfg, mode: string, after: () => Promise<unknown>) {
   if (await cfg.set("tools.exec", { mode, security: null, ask: null })) await after();
 }
 
-const MODE_OPTS = MODE_ROWS.map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
-export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<void> }) {
+const MODE_OPTS = MODE_ROWS.filter((r) => !r.gap).map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
+/** The Access choice's name for an exec mode ("ask" is Ask first), or "" for a mode Access doesn't offer. */
+export const accessName = (mode: string): string => MODE_OPTS.find((o) => o.id === mode)?.label ?? "";
+export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<unknown> }) {
   const selected = execMode(cfg, agents);
   const lockdown = cfg.get("security.lockdown") === true;
   return (
@@ -134,15 +136,6 @@ export function Lockdown({ engine }: { engine: WindowEngine }) {
   );
 }
 
-export function Pinned() {
-  return (
-    <>
-      <Empty>Nothing is pinned.</Empty>
-      <div className="acts" data-row="Pin a setting"><Btn sm disabled><Icon name="plus" small />Pin a setting</Btn><Hint>The engine can’t pin a setting yet.</Hint></div>
-    </>
-  );
-}
-
 export function ApprovalsRow({ x }: { x: Ctx }) {
   return <Ctl title="Approvals" sub="Shows recent requests and standing automation permissions." help="Every yes and no from the last 30 days, and the standing permissions automations hold."><Btn sm onClick={x.openApprovals}>Open</Btn></Ctl>;
 }
@@ -172,7 +165,7 @@ function WhoDialog({ cfg, onClose }: { cfg: Cfg; onClose: () => void }) {
   const add = async () => { if (app && id.trim() && await put(app, [...(all[app] ?? []), id.trim()])) setId(""); };
   const rows = Object.entries(all).flatMap(([p, ids]) => ids.map((s) => ({ p, s })));
   return (
-    <Dialog title="Who may run commands outside the sealed box" onClose={onClose} footer={<button type="button" className="btn pri" onClick={onClose}>Done</button>}>
+    <Dialog title="Who may run commands outside the safe box" onClose={onClose} footer={<button type="button" className="btn pri" onClick={onClose}>Done</button>}>
       {rows.length ? <div className="rows">{rows.map(({ p, s }) => <Prow key={`${p}/${s}`} title={visible(s)} sub={visible(p)}><Btn sm ghost onClick={() => void put(p, all[p].filter((v) => v !== s))}>Remove</Btn></Prow>)}</div> : <p className="hint">No one yet.</p>}
       {apps.length ? (
         <div className="prow pm-add">

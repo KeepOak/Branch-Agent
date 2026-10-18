@@ -8,6 +8,7 @@ import { Coming } from "../../glass/coming";
 import { errorText, visible } from "../../places/settings/adapter";
 import { ago } from "../../places/settings/set1/chatapps-data";
 import type { Pairing as Snapshot, PairRequest } from "../../places/settings/set1/chatapps-asking";
+import { COMING_FROM } from "../settings/rows";
 
 const APPROVE_LATER = "Approving requests here comes in a later update.";
 const DISMISS_LATER = "Dismissing requests here comes in a later update.";
@@ -65,11 +66,12 @@ export function Pairing({ engine, snapshot, reload, apps = [], level = 0, trunkF
       <button type="button" data-local="cancel" disabled={busy} onClick={() => setPending(undefined)}>Cancel</button>
       <button type="button" disabled={busy} data-need={dismiss ? "channels.pairing.dismiss" : "channels.pairing.approve"} onClick={() => void run({ channel: pending.channel, accountId: pending.accountId, requestId: pending.requestId, ...(!dismiss && tell ? { notify: true } : {}), ...(!dismiss && owner ? { bootstrapCommandOwner: true } : {}) }, dismiss ? "channels.pairing.dismiss" : "channels.pairing.approve")}>{dismiss ? "Dismiss request" : "Approve request"}</button>
     </div>}
-    <div className="r1-ca-code" data-coming="Approval by code needs a window-safe engine flow.">
+    {/* Approval by code is Coming: Regular shows only what works today (settings rows.ts COMING_FROM). */}
+    {level >= COMING_FROM ? <div className="r1-ca-code" data-coming="Approval by code needs a window-safe engine flow.">
       <label><span className="g-label">Approve by code</span><Coming need="channels.pairing.approve" unwired reason={CODE_LATER} where="Pairing code"><input aria-label="Pairing code" placeholder="Code from the app" disabled /></Coming></label>
       <Coming need="channels.pairing.approve" unwired reason={CODE_LATER} where="Approve by code"><button type="button" disabled>Coming</button></Coming>
       <small className="g-label" data-lines>Approve a request above. Approval by code comes in a later update.</small>
-    </div>
+    </div> : null}
     {snapshot?.limits && <p className="r1-ca-hint g-label" data-lines>Requests expire after {Math.round(snapshot.limits.ttlMs / 60000)} minutes. Each account holds up to {snapshot.limits.pendingPerAccount} waiting.</p>}
     {error && <p role="alert" className="g-label" data-lines>{error}</p>}
   </section>;

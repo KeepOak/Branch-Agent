@@ -135,7 +135,6 @@ describe("setup flow", () => {
     await act(async () => new Promise((r) => setTimeout(r, 750)));
     await act(async () => tid(host, "new").click());
     await act(async () => tid(host, "new-trunk").click());
-    await act(async () => tid(document.body, "new-trunk-blank").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     const make = byText(document.body, "Create Trunk");
     expect(make).toBeTruthy();
@@ -186,7 +185,6 @@ describe("setup flow", () => {
     await act(async () => new Promise((r) => setTimeout(r, 750)));
     await act(async () => tid(host, "new").click());
     await act(async () => tid(host, "new-trunk").click());
-    await act(async () => tid(document.body, "new-trunk-blank").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     const input = document.querySelector<HTMLInputElement>('[data-testid="new-trunk-preview"] input')!;
     expect(input).toBeTruthy();
@@ -446,17 +444,26 @@ describe("setup flow", () => {
     await act(async () => host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")[6].click());
     expect(host.textContent).toContain("No command-line tools found yet");
   });
-  it("routes a failed model check to the shared Add account dialog", async () => {
-    const { engine: e } = engine({ "branch.setup.verify": { ok: false, error: "No agent model is configured. Run 'branch onboard' first." }, health: { ok: true }, "system.info": { diskAvailableBytes: 2 * 1024 ** 3 } });
-    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={10} onClose={() => {}} onLocalModel={() => {}} />);
+  it("lets setup finish when the model check fails, without requiring an account", async () => {
+    const closed = vi.fn();
+    const { engine: e } = engine({
+      "branch.setup.verify": { ok: false, error: "No agent model is configured. Run 'branch onboard' first." },
+      health: { ok: true },
+      "system.info": { diskAvailableBytes: 2 * 1024 ** 3 },
+      "config.get": { hash: "h", config: {} },
+      "config.patch": { ok: true },
+    });
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={10} onClose={closed} onLocalModel={() => {}} />);
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(host.textContent).toContain("No model connected yet");
-    expect(host.textContent).toContain("Trunks can’t answer until a model is connected.");
+    expect(host.textContent).toContain("Connecting an account makes answers smarter and faster.");
     expect(host.textContent).not.toContain("branch onboard");
-    expect(tid(host, "setup-finish").textContent).toBe("Connect a model");
+    expect(tid(host, "setup-finish").textContent).toBe("Open Branch and take the walkthrough");
+    expect(tid(host, "setup-finish").disabled).toBe(false);
     await act(async () => tid(host, "setup-finish").click());
-    expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
-    expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(closed).toHaveBeenCalledWith(true);
+    expect(document.querySelector('[data-testid="add-account"]')).toBeNull();
   });
   it("finishes when a detected signed-in account is switched on despite a failed initial model check", async () => {
     const { engine: e, request } = engine({
@@ -633,7 +640,7 @@ describe("setup's Reach step", () => {
     await act(async () => byText(document.body, "Make the code").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(params(request, "device.pair.setupCode")).toHaveLength(1);
-    expect(document.body.textContent).toContain("ABCD-2345");
+    expect(document.body.textContent).toContain("THWBEN");
   });
 });
 

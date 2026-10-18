@@ -20,8 +20,19 @@ async function render(status = {}, available = methods, scopes = ["operator.admi
   await act(async () => root.render(<ChatApps engine={engine} onSetup={setup} onManage={manage} renderAccess={renderAccess} />));
   return { host, request, setup, manage };
 }
-it("keeps all 74 real catalogue entries visible and only wires the R1 four", async () => {
+it("shows only the R1 four at Regular and Advanced, and all 74 real catalogue entries at Technical (Private #1093 item 4)", async () => {
+  for (const level of ["regular", "advanced"]) {
+    localStorage.setItem("branch.level", level);
+    const shown = await render();
+    // WhatsApp (your number) is Coming on this engine (its channel isn't listed), and Coming waits for Technical (item 7).
+    expect([...shown.host.querySelectorAll(".r1-ca-card")].map(c => c.querySelector("b")?.textContent), level).toEqual(["Telegram", "Discord", "Slack"]);
+    expect(shown.host.querySelector("[data-later-rows]"), level).toBeNull();
+    expect(shown.host.querySelector<HTMLInputElement>('input[aria-label="Search chat apps"]')!.placeholder).toBe("Search chat apps");
+    await act(async () => root.unmount()); shown.host.remove();
+  }
+  localStorage.setItem("branch.level", "technical");
   const { host, setup } = await render();
+  localStorage.removeItem("branch.level");
   expect(new Set(CHAT_APPS.map(a => a.id)).size).toBe(74);
   expect(host.querySelectorAll(".r1-ca-card")).toHaveLength(74);
   expect(host.querySelectorAll('.r1-ca-card[aria-disabled="true"]')).toHaveLength(71);
@@ -35,7 +46,15 @@ it("keeps all 74 real catalogue entries visible and only wires the R1 four", asy
   expect(host.textContent).not.toContain("Sapling answers");
 });
 it("does not advertise setup when the gateway lacks the methods", async () => {
+  const regular = await render({}, ["channels.status"]);
+  // Every card is Coming on this engine: below Technical none is drawn, and neither is the empty Every chat app list.
+  expect(regular.host.querySelectorAll(".r1-ca-card")).toHaveLength(0);
+  expect(regular.host.querySelector("#r1-ca-all")).toBeNull();
+  expect(regular.host.querySelector('[aria-label="Your phone"]')).toBeNull();
+  await act(async () => root.unmount()); regular.host.remove();
+  localStorage.setItem("branch.level", "technical");
   const { host, setup } = await render({}, ["channels.status"]);
+  localStorage.removeItem("branch.level");
   expect(host.querySelectorAll('.r1-ca-card[aria-disabled="true"]')).toHaveLength(74);
   await act(async () => host.querySelector<HTMLButtonElement>(".r1-ca-card")!.click());
   expect(setup).not.toHaveBeenCalled();
@@ -49,15 +68,27 @@ it("uses live account health and opens Manage for a configured app", async () =>
   expect(manage).toHaveBeenCalledWith(expect.objectContaining({ id: "telegram" }));
 });
 
-it("keeps code approval Coming because its engine protocol requires a local-state owner", async () => {
+it("keeps code approval Coming because its engine protocol requires a local-state owner, shown at Technical", async () => {
+  // Regular and Advanced show only what works today: the Coming code box waits for Technical (Private #1093 item 4).
+  for (const level of ["regular", "advanced"]) {
+    localStorage.setItem("branch.level", level);
+    const shown = await render();
+    expect(shown.host.querySelector('input[aria-label="Pairing code"]'), level).toBeNull();
+    expect(shown.host.textContent, level).not.toContain("Approval by code comes in a later update.");
+    await act(async () => root.unmount()); shown.host.remove();
+  }
+  localStorage.setItem("branch.level", "technical");
   const {host,request} = await render();
   expect(host.querySelector<HTMLInputElement>('input[aria-label="Pairing code"]')!.disabled).toBe(true);
   expect(host.textContent).toContain("Approval by code comes in a later update.");
   expect(request.mock.calls.some(([method]) => method === "channels.pairing.approve")).toBe(false);
+  localStorage.removeItem("branch.level");
 });
 
 it("offers WhatsApp (your number) once the engine lists the WhatsApp channel, though web.login is never advertised", async () => {
+  localStorage.setItem("branch.level", "technical");
   const { host, setup } = await render({ channelOrder: ["telegram", "whatsapp"] });
+  localStorage.removeItem("branch.level");
   expect(host.querySelectorAll('.r1-ca-card[aria-disabled="true"]')).toHaveLength(70);
   const whatsapp = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find(b => b.textContent?.includes("WhatsApp (your number)"))!;
   expect(whatsapp.getAttribute("aria-disabled")).toBe("false");
@@ -65,7 +96,9 @@ it("offers WhatsApp (your number) once the engine lists the WhatsApp channel, th
   expect(setup).toHaveBeenCalledWith(expect.objectContaining({ id: "whatsappweb" }));
 });
 it("does not offer setup on a connection without full access", async () => {
+  localStorage.setItem("branch.level", "technical");
   const { host, setup } = await render({ channelOrder: ["whatsapp"] }, methods, ["operator.read", "operator.write"]);
+  localStorage.removeItem("branch.level");
   const telegram = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find(b => b.textContent?.includes("Telegram"))!;
   expect(telegram.getAttribute("aria-disabled")).toBe("true");
   expect(telegram.textContent).toContain("Needs full access");
@@ -96,6 +129,7 @@ it("gives the pairing buttons a Coming reason when the engine can't approve or d
   expect(host.querySelector(".r1-ca-pairing")!.textContent).toContain("Approving requests here comes in a later update.");
 });
 it("R1-10: against an engine with no methods, every card and the code approval are Coming through <Coming>, naming their calls", async () => {
+  localStorage.setItem("branch.level", "technical"); // the code approval and the catalogue show at Technical
   const { host, setup } = await render({}, []);
   expect(undeclaredControls(host).map(el => el.getAttribute("aria-label") || el.textContent?.trim())).toEqual([]);
   const telegram = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find(b => b.textContent?.includes("Telegram"))!;
@@ -108,6 +142,7 @@ it("R1-10: against an engine with no methods, every card and the code approval a
   expect(where("WhatsApp (your number)")).toEqual(["web.login.start", "web.login.wait"]);
   expect(where("Pairing code")).toEqual(["channels.pairing.approve"]);
   expect(where("Approve by code")).toEqual(["channels.pairing.approve"]);
+  localStorage.removeItem("branch.level");
 });
 it("explains Who answers instead of leaving an empty card when no app is connected", async () => {
   const access = vi.fn((app: { id: string }) => <p>Access for {app.id}</p>);

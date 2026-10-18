@@ -1,10 +1,10 @@
 // Settings search: one box at the top of the nav. The index is the row table itself (label, help, card and page) plus
 // the pages, Trunks and features the frame passes in. Results are grouped Settings · Go to · Trunks · Features.
 import { NAV, PAGES, TOP_PAGES, pageShown, type Level, type PageId } from "./nav";
-import { ROWS, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
+import { COMING_FROM, ROWS, comingRow, rowHelp, rowLabel, shownLevel, type Row, type UiHints } from "./rows";
 
 export const NOTHING_MATCHES = "Nothing matches. Try another word.";
-export const SEARCH_PLACEHOLDER = "Search settings, places, Trunks, features";
+export const SEARCH_PLACEHOLDER = "Search settings";
 const MAX = { pages: 6, rows: 14, trunks: 5, features: 6 } as const;
 
 export type SearchHit =
@@ -51,8 +51,9 @@ export function searchSettings(query: string, input: SearchInput): SearchGroups 
   const pageScore = (id: PageId) => score(q, PAGES[id].title, `${PAGES[id].lede} ${PAGES[id].cards.join(" ")}`);
   const rowScore = (r: Row) => score(q, rowLabel(r, hints), `${rowHelp(r, hints) ?? ""} ${r.card} ${PAGES[r.page].title}`);
   const pages = best(ids, pageScore, MAX.pages).map((id) => ({ s: pageScore(id), hit: { kind: "page", id, label: PAGES[id].title, sub: PAGES[id].lede } as SearchHit }));
-  const rows = best((input.rows ?? ROWS).filter((r) => pageShown(r.page, level)), rowScore, MAX.rows).map((r) => ({ s: rowScore(r), hit: {
-    kind: "row", id: r.id, label: rowLabel(r, hints), sub: `${PAGES[r.page].title}${r.card ? ` › ${r.card}` : ""}`, page: r.page, card: r.card, level: rowLevel(r, hints),
+  // Regular never finds a row that waits for a later update: opening it would only switch the level to show it.
+  const rows = best((input.rows ?? ROWS).filter((r) => pageShown(r.page, level) && (level >= COMING_FROM || !comingRow(r))), rowScore, MAX.rows).map((r) => ({ s: rowScore(r), hit: {
+    kind: "row", id: r.id, label: rowLabel(r, hints), sub: `${PAGES[r.page].title}${r.card ? ` › ${r.card}` : ""}`, page: r.page, card: r.card, level: shownLevel(r, hints),
   } as SearchHit }));
   // Pages and rows rank together, so Enter opens the closest match; a page wins a tie.
   out.settings = [...pages, ...rows].map((x, i) => ({ ...x, i })).sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.hit);
@@ -60,7 +61,8 @@ export function searchSettings(query: string, input: SearchInput): SearchGroups 
   const trunks = best(input.trunks ?? [], (t) => score(q, t.name, "trunk"), MAX.trunks);
   out.trunks = trunks.map((t): SearchHit => ({ kind: "trunk", id: t.id, label: t.name, actions: t.isDefault ? ["open"] : ["open", "makeDefault"] }));
   if (score(q, "New Trunk", "make create start add") > 0 && input.trunks) out.trunks.push({ kind: "newTrunk", id: "new-trunk", label: "New Trunk" });
-  out.features = best(input.features ?? [], (f) => score(q, f.name, `${f.description ?? ""} ${f.id}`), MAX.features).map((f) => ({ kind: "feature", id: f.id, label: f.name, sub: f.description }));
+  // The feature atlas is mostly what Branch plans, so it is searched only at Technical, with the All features page.
+  out.features = level < COMING_FROM ? [] : best(input.features ?? [], (f) => score(q, f.name, `${f.description ?? ""} ${f.id}`), MAX.features).map((f) => ({ kind: "feature", id: f.id, label: f.name, sub: f.description }));
   return out;
 }
 

@@ -5,6 +5,7 @@ import { agentOf, errorText, list, rec, str, type Rec, type WindowEngine } from 
 import { readModels, type ModelChoice } from "./model";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { trunkDisplayName } from "../connect/trunk-name";
+import { retryNoKeyDefault } from "./no-key-default";
 
 export type Trunk = { id: string; name: string; defaultMode: string; theme: string; model: string };
 
@@ -20,6 +21,10 @@ export type Conversation = {
   modelsLoading: boolean;
   modelsError: string | null;
   error: string | null;
+  /** Plain words when a free local model could not be set up. Null unless a silent retry failed. */
+  noKeyError: string | null;
+  /** True unless a silent free-model retry is in flight. Setup itself is the interactive wizard. */
+  noKeySettled: boolean;
 };
 
 const EMPTY: Conversation = {
@@ -33,6 +38,8 @@ const EMPTY: Conversation = {
   modelsLoading: false,
   modelsError: null,
   error: null,
+  noKeyError: null,
+  noKeySettled: true,
 };
 
 /** No model set up: the engine names no default model, or none it names is connected (models.list has none usable). */
@@ -89,19 +96,24 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
     }
   }, [engine, key]);
 
+  /** agents.list: the Trunks, their defaults (the permission chip's "as set" mode) and the default Trunk. */
+  const readTrunkList = useCallback(async () => {
+    if (!engine || !key) return;
+    const { trunks, defaultId } = readTrunks(await engine.request("agents.list", {}));
+    if (live.current === key) setState((s) => ({ ...s, trunks, defaultTrunkId: defaultId }));
+  }, [engine, key]);
+
   const load = useCallback(async () => {
     if (!engine || !key) return;
     try {
-      const agents = await engine.request("agents.list", {});
-      const { trunks, defaultId } = readTrunks(agents);
-      if (live.current === key) setState((s) => ({ ...s, trunks, defaultTrunkId: defaultId }));
+      await readTrunkList();
       await Promise.all([readRow(), readModelList()]);
     } catch (error) {
       if (live.current === key) setState((s) => ({ ...s, loaded: true, error: errorText(error) }));
     } finally {
       if (live.current === key) setRetryGeneration((n) => n + 1);
     }
-  }, [engine, key, readRow, readModelList]);
+  }, [engine, key, readTrunkList, readRow, readModelList]);
 
   useEffect(() => {
     setState(EMPTY);
@@ -123,14 +135,30 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
     return () => clearTimeout(retry);
   }, [load, state.error, state.modelsError, retryGeneration, draftAgentId, engine?.agentId]);
 
+  const retryNoKey = useCallback(async () => {
+    if (!engine || !key) return;
+    setState((s) => ({ ...s, noKeyError: null, noKeySettled: false }));
+    const result = await retryNoKeyDefault(engine);
+    if (live.current !== key) return;
+    if (result.ok) {
+      setState((s) => ({ ...s, noKeyError: null, noKeySettled: true }));
+      await readModelList();
+    } else {
+      setState((s) => ({ ...s, noKeyError: result.error, noKeySettled: true }));
+    }
+  }, [engine, key, readModelList]);
+
   useEffect(() => {
     if (!engine || !key) return;
     return engine.onEvent(({ event, payload }) => {
       if ((event === "sessions.changed" && touches(payload, key)) || (event === "chat" && str(rec(payload).state) === "final")) {
         readRow().catch((error: unknown) => setState((s) => ({ ...s, error: errorText(error) })));
       }
+      // A saved config (setup's "How much it may do", Settings › Permissions) changes what each Trunk's default mode resolves
+      // to. The engine announces every committed write as config.changed; the chip reads the Trunk list, so it re-reads it here.
+      if (event === "config.changed" || event === "agents.changed") readTrunkList().catch(() => undefined);
     });
-  }, [engine, key, readRow]);
+  }, [engine, key, readRow, readTrunkList]);
 
   /** sessions.patch on this conversation, then the row read back. Returns the engine's error words, or null. */
   const patch = useCallback(
@@ -158,5 +186,5 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
 
   const trunkId = draftAgentId ?? engine?.agentId ?? agentOf(key) ?? state.defaultTrunkId;
   const trunk = state.trunks.find((t) => t.id === trunkId);
-  return { ...state, key, trunk, trunkId, patch, reload: load, readModelList };
+  return { ...state, key, trunk, trunkId, patch, reload: load, readModelList, retryNoKey };
 }

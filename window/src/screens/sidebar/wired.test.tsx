@@ -47,7 +47,7 @@ async function render(methods: string[]) {
   const engine = { request, scopes: ["operator.admin"], features: { methods, events: [] } };
   const session = { request, onGatewayEvent: () => () => undefined, engine, gatewayUrl: "ws://127.0.0.1:1", open: vi.fn(async () => undefined), send: vi.fn() } as unknown as SaplingSession;
   const props: SidebarProps = {
-    session, ready: true, list: { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [] }) } as unknown as ConversationList,
+    onNewTrunk: vi.fn(), session, ready: true, list: { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [] }) } as unknown as ConversationList,
     sessions: [ledger] as unknown as SidebarProps["sessions"], mainKey: "main", currentKey: null, waiting: new Map(), searchRef: { current: null },
     onOpen: vi.fn(), onSettings: vi.fn(), onPlace: vi.fn(),
   };
@@ -112,8 +112,7 @@ describe("R1 sidebar, the wired-now entries (#977)", () => {
   it("moves a conversation into a group with sessions.patch's category, offering the groups from sessions.groups.list", async () => {
     const { request } = await render(WIRED);
     await click(host.querySelector('[aria-label="More for Ledger"]'));
-    await click(row("Move to"));
-    const entry = row("Group…");
+    const entry = row("Move to group…");
     expect(entry.getAttribute("aria-disabled")).toBeNull();
     expect(entry.dataset.need).toBe("sessions.groups.list sessions.patch");
     await click(entry);
@@ -124,8 +123,7 @@ describe("R1 sidebar, the wired-now entries (#977)", () => {
     expect(request).toHaveBeenCalledWith("sessions.patch", { key: "agent:ledger:main", category: "Finance" });
     request.mockClear();
     await click(host.querySelector('[aria-label="More for Ledger"]'));
-    await click(row("Move to"));
-    await click(row("Group…"));
+    await click(row("Move to group…"));
     await type(document.querySelector('[aria-label="Group name"]'), "Taxes 2026");
     await click(button("Move"));
     expect(request).toHaveBeenCalledWith("sessions.patch", { key: "agent:ledger:main", category: "Taxes 2026" });
@@ -155,11 +153,10 @@ describe("R1 sidebar, the wired-now entries (#977)", () => {
     await closeMenus();
 
     await click(host.querySelector('[aria-label="More for Ledger"]'));
-    await click(row("Move to"));
     expect(undeclared()).toEqual([]);
-    expect(row("Group…").getAttribute("aria-disabled")).toBe("true");
-    expect(coming("Group…")?.need).toEqual(["sessions.groups.list", "sessions.patch"]);
-    await click(row("Group…"));
+    expect(row("Move to group…").getAttribute("aria-disabled")).toBe("true");
+    expect(coming("Move to group…")?.need).toEqual(["sessions.groups.list", "sessions.patch"]);
+    await click(row("Move to group…"));
     expect(document.querySelector('[data-testid="move-group"]')).toBeNull();
     await closeMenus();
 

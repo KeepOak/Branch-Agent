@@ -1,12 +1,19 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { checkSelfCheck, findSelfCheckBlock, formatSelfCheckSummary, inputFromEvent, isTrunkBranch, resolveSelfCheckInput, SELF_CHECK_DOC } from './check-self-check.mjs';
-import { LIVE_READ_ATTEMPTS, liveContext, readLivePullRequest } from './live-pull-request.mjs';
+import { runPreflight } from './pr-preflight.mjs';
+import {
+  COVERAGE_RATE_LIMIT_BUFFER_SECONDS,
+  COVERAGE_RATE_LIMIT_BUDGET_SECONDS,
+  LIVE_READ_ATTEMPTS,
+  liveContext,
+  readLivePullRequest,
+} from './live-pull-request.mjs';
 
 const filled = 'SELF-CHECK\nFiles: 3 (all expected: yes)\nTests: node --test example.test.mjs -> 5 passed, 0 failed';
 const check = (body) => checkSelfCheck({ headRef: 'trunk/x', body });
@@ -214,7 +221,7 @@ test('readLivePullRequest retries transient failures with a delay, then returns 
   const pr = readLivePullRequest(LIVE_CTX, {
     request: () => {
       calls += 1;
-      if (calls < 3) throw new Error('gh: API rate limit exceeded (HTTP 403)');
+      if (calls < 3) throw new Error('gh: Server Error (HTTP 502)');
       return { body: 'live', head: { ref: 'trunk/live-body', sha: HEAD } };
     },
     sleep: (seconds) => sleeps.push(seconds),
@@ -222,6 +229,231 @@ test('readLivePullRequest retries transient failures with a delay, then returns 
   assert.deepEqual(pr, { body: 'live', headRef: 'trunk/live-body', headSha: HEAD });
   assert.equal(calls, 3);
   assert.deepEqual(sleeps, [5, 10]);
+});
+
+function rateLimitError(message, extra = {}) {
+  return Object.assign(new Error(message), extra);
+}
+
+test('the live gh read waits on x-ratelimit-reset from gh api --include', () => {
+  const start = 1_700_000_000_000;
+  let now = start;
+  let calls = 0;
+  const sleeps = [];
+  const denied = [
+    'HTTP/2.0 403 Forbidden',
+    'X-RateLimit-Remaining: 0',
+    `X-RateLimit-Reset: ${start / 1000 + 30}`,
+    '',
+    '{"message":"API rate limit exceeded for installation"}',
+  ].join('\n');
+  const ok = [
+    'HTTP/2.0 200 OK',
+    'X-RateLimit-Remaining: 4999',
+    '',
+    JSON.stringify({ body: 'from-api', head: { ref: 'trunk/live-body', sha: HEAD } }),
+  ].join('\n');
+  const pr = readLivePullRequest(LIVE_CTX, {
+    exec: () => {
+      calls += 1;
+      if (calls === 1) {
+        const error = new Error('Command failed: gh api repos/o/r/pulls/7');
+        error.stdout = denied;
+        error.stderr = 'gh: API rate limit exceeded for installation (HTTP 403)';
+        throw error;
+      }
+      return ok;
+    },
+    sleep: (seconds) => {
+      sleeps.push(seconds);
+      now += seconds * 1000;
+    },
+    now: () => now,
+    fetchRateLimit: () => { throw new Error('headers are enough'); },
+    log: () => {},
+  });
+  assert.equal(pr.body, 'from-api');
+  assert.equal(pr.headRef, 'trunk/live-body');
+  assert.equal(pr.headSha, HEAD);
+  assert.deepEqual(sleeps, [30 + COVERAGE_RATE_LIMIT_BUFFER_SECONDS]);
+});
+
+test('readLivePullRequest waits out a rate-limit 403 until reset plus a buffer, then succeeds', () => {
+  const start = 1_700_000_000_000;
+  let now = start;
+  const sleeps = [];
+  let calls = 0;
+  const pr = readLivePullRequest(LIVE_CTX, {
+    request: () => {
+      calls += 1;
+      if (calls === 1) {
+        throw rateLimitError('gh: API rate limit exceeded for installation (HTTP 403)', {
+          httpStatus: 403,
+          headers: { 'x-ratelimit-reset': String(start / 1000 + 40), 'x-ratelimit-remaining': '0' },
+          body: '{"message":"API rate limit exceeded for installation"}',
+        });
+      }
+      return { body: 'live', head: { ref: 'trunk/live-body', sha: HEAD } };
+    },
+    sleep: (seconds) => {
+      sleeps.push(seconds);
+      now += seconds * 1000;
+    },
+    now: () => now,
+    fetchRateLimit: () => ({ resources: { core: { remaining: 0, reset: start / 1000 + 90 } } }),
+    log: () => {},
+  });
+  assert.deepEqual(pr, { body: 'live', headRef: 'trunk/live-body', headSha: HEAD });
+  assert.equal(calls, 2);
+  assert.deepEqual(sleeps, [40 + COVERAGE_RATE_LIMIT_BUFFER_SECONDS]);
+});
+
+test('readLivePullRequest waits out a secondary rate limit from gh api rate_limit when the error has no reset header', () => {
+  const start = 1_700_000_000_000;
+  let now = start;
+  const sleeps = [];
+  let calls = 0;
+  const pr = readLivePullRequest(LIVE_CTX, {
+    request: () => {
+      calls += 1;
+      if (calls === 1) throw rateLimitError('gh: You have exceeded a secondary rate limit (HTTP 403)', { httpStatus: 403 });
+      return { body: 'live', head: { ref: 'trunk/live-body', sha: HEAD } };
+    },
+    sleep: (seconds) => {
+      sleeps.push(seconds);
+      now += seconds * 1000;
+    },
+    now: () => now,
+    fetchRateLimit: () => ({ resources: { core: { remaining: 0, reset: start / 1000 + 25 } } }),
+    log: () => {},
+  });
+  assert.equal(calls, 2);
+  assert.deepEqual(sleeps, [25 + COVERAGE_RATE_LIMIT_BUFFER_SECONDS]);
+  assert.equal(pr.body, 'live');
+});
+
+test('readLivePullRequest waits exactly retry-after for a 429 without a reset buffer', () => {
+  let now = 1_700_000_000_000;
+  let calls = 0;
+  const sleeps = [];
+  const pr = readLivePullRequest(LIVE_CTX, {
+    request: () => {
+      if (++calls === 1) {
+        throw rateLimitError('Too many requests', {
+          httpStatus: 429,
+          headers: { 'retry-after': '20' },
+        });
+      }
+      return { body: 'live', head: { ref: 'trunk/live-body', sha: HEAD } };
+    },
+    sleep: (seconds) => {
+      sleeps.push(seconds);
+      now += seconds * 1000;
+    },
+    now: () => now,
+    fetchRateLimit: () => null,
+    log: () => {},
+  });
+  assert.equal(calls, 2);
+  assert.deepEqual(sleeps, [20]);
+  assert.deepEqual(pr, { body: 'live', headRef: 'trunk/live-body', headSha: HEAD });
+});
+
+test('the live pull request CLI fails without writing a snapshot when rate limiting persists', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'live-pr-rate-limit-'));
+  const out = path.join(dir, 'snapshot.json');
+  try {
+    const entry = new URL('./live-pull-request.mjs', import.meta.url).href;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import { main } from ${JSON.stringify(entry)};
+      let now = 1_700_000_000_000;
+      process.exitCode = main([${JSON.stringify(out)}], {
+        env: { REPO: 'o/r', PR_NUMBER: '7', GH_TOKEN: 'fake-token' },
+        request: () => {
+          throw Object.assign(new Error('API rate limit exceeded'), {
+            httpStatus: 403,
+            headers: { 'retry-after': '20' },
+          });
+        },
+        sleep: (seconds) => { now += seconds * 1000; },
+        now: () => now,
+        budgetSeconds: 30,
+        fetchRateLimit: () => null,
+        log: () => {},
+      });
+    `], { encoding: 'utf8', windowsHide: true, timeout: 10_000 });
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /^checks-unavailable: GitHub API rate limit outlasted the 30s wait/);
+    assert.equal(existsSync(out), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a non-rate-limit 403, 404, or 500 fails without waiting for a rate-limit reset', () => {
+  for (const status of [403, 404, 500]) {
+    const sleeps = [];
+    let calls = 0;
+    const message = status === 403
+      ? 'gh: Resource not accessible by integration (HTTP 403)'
+      : `gh: HTTP ${status}`;
+    assert.throws(() => readLivePullRequest(LIVE_CTX, {
+      request: () => {
+        calls += 1;
+        throw rateLimitError(message, {
+          httpStatus: status,
+          headers: { 'x-ratelimit-remaining': '12' },
+          body: status === 403 ? '{"message":"Resource not accessible by integration"}' : '',
+        });
+      },
+      sleep: (seconds) => sleeps.push(seconds),
+      fetchRateLimit: () => { throw new Error('rate_limit must not be read'); },
+      log: () => {},
+    }), new RegExp(`HTTP ${status}.*after ${LIVE_READ_ATTEMPTS} attempts`));
+    assert.equal(calls, LIVE_READ_ATTEMPTS);
+    assert.deepEqual(sleeps, [5, 10, 20]);
+  }
+});
+
+test('a rate limit that outlasts the wait budget fails and is not reported as missing coverage', () => {
+  const start = 1_700_000_000_000;
+  let now = start;
+  const sleeps = [];
+  assert.throws(() => readLivePullRequest(LIVE_CTX, {
+    request: () => {
+      throw rateLimitError('gh: API rate limit exceeded for installation (HTTP 403)', { httpStatus: 403 });
+    },
+    sleep: (seconds) => {
+      sleeps.push(seconds);
+      now += seconds * 1000;
+    },
+    now: () => now,
+    budgetSeconds: 100,
+    bufferSeconds: COVERAGE_RATE_LIMIT_BUFFER_SECONDS,
+    fetchRateLimit: () => ({ resources: { core: { remaining: 0, reset: start / 1000 + 10_000 } } }),
+    log: () => {},
+  }), (error) => {
+    assert.match(error.message, /^checks-unavailable: GitHub API rate limit outlasted the 100s wait/);
+    assert.match(error.message, /Not a coverage failure; re-run the check/);
+    return true;
+  });
+  const waited = sleeps.reduce((sum, seconds) => sum + seconds, 0);
+  assert.ok(waited <= 100, `waited ${waited}s, over the 100s cap`);
+  assert.ok(waited >= 100 - COVERAGE_RATE_LIMIT_BUFFER_SECONDS);
+});
+
+test('the changed-test-coverage job timeout outlasts the rate-limit wait budget', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  const job = yaml.slice(yaml.indexOf('  changed-test-coverage:'), yaml.indexOf('  merge-gate:'));
+  const timeoutMinutes = Number(/timeout-minutes:\s*(\d+)/.exec(job)?.[1]);
+  assert.equal(timeoutMinutes, 15);
+  assert.ok(timeoutMinutes <= 15);
+  assert.equal(COVERAGE_RATE_LIMIT_BUDGET_SECONDS, 600);
+  assert.ok(
+    timeoutMinutes * 60 >= COVERAGE_RATE_LIMIT_BUDGET_SECONDS + 3 * 60,
+    `timeout ${timeoutMinutes}m must leave 3 minutes after the ${COVERAGE_RATE_LIMIT_BUDGET_SECONDS}s wait`,
+  );
 });
 
 test('readLivePullRequest gives up after its attempts with a clear message', () => {
@@ -299,4 +531,188 @@ test('a missing PR snapshot fails closed: no fallback to the payload or the API'
     env: { PR_SNAPSHOT_FILE: '/nonexistent/pr-snapshot.json', REPO: 'o/r', PR_NUMBER: '1', GH_TOKEN: 'x', GITHUB_ACTIONS: 'true' },
     read: () => { throw new Error('must not be called'); },
   }), /ENOENT/);
+});
+
+const HISTORY_EMAIL = '12345+person@users.noreply.github.com';
+
+function historyGit(dir) {
+  return (args) => execFileSync('git', [
+    '-C', dir,
+    '-c', 'user.name=Final Head',
+    '-c', `user.email=${HISTORY_EMAIL}`,
+    '-c', 'commit.gpgsign=false',
+    ...args,
+  ], { encoding: 'utf8', windowsHide: true });
+}
+
+function initFeatureRepo() {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'final-head-'));
+  const git = historyGit(dir);
+  git(['init', '-q', '-b', 'main']);
+  writeFileSync(path.join(dir, 'base.txt'), 'base\n');
+  git(['add', 'base.txt']);
+  git(['commit', '-q', '-m', 'base']);
+  git(['checkout', '-q', '-b', 'feature']);
+  writeFileSync(path.join(dir, 'base.txt'), 'feature\n');
+  git(['add', 'base.txt']);
+  git(['commit', '-q', '-m', 'feature']);
+  const named = git(['rev-parse', 'HEAD']).trim();
+  git(['checkout', '-q', 'main']);
+  writeFileSync(path.join(dir, 'main-1.txt'), 'main 1\n');
+  git(['add', 'main-1.txt']);
+  git(['commit', '-q', '-m', 'main 1']);
+  git(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+  git(['checkout', '-q', 'feature']);
+  return { dir, git, named };
+}
+
+function mergeMain(git) {
+  git(['merge', '-q', '--no-ff', 'main', '-m', 'merge main']);
+  return git(['rev-parse', 'HEAD']).trim();
+}
+
+function expectHistory(dir, named, head, pattern) {
+  const checked = checkSelfCheck({
+    headRef: 'trunk/live-body',
+    body: selfCheckBody(named),
+    headSha: head,
+    repoDir: dir,
+  });
+  const problems = runPreflight({
+    branch: 'trunk/live-body',
+    headSha: head,
+    body: selfCheckBody(named),
+    dirtyCount: 0,
+    commits: [],
+    changedFiles: [],
+    addedLines: [],
+    listText: null,
+    listPath: 'scripts/feature-batch-ci-named/trunk-live-body.txt',
+    repoDir: dir,
+    protectedPaths: new Set(),
+  });
+  if (pattern == null) {
+    assert.equal(checked.ok, true, checked.problems.join('\n'));
+    assert.deepEqual(problems, []);
+    return;
+  }
+  assert.equal(checked.ok, false);
+  assert.match(checked.problems.join('\n'), pattern);
+  assert.equal(problems.length, 1, problems.map((item) => item.message).join('\n'));
+  assert.equal(problems[0].check, 'self-check');
+  assert.match(problems[0].message, pattern);
+}
+
+test('Final head passes when it is the current head', () => {
+  const { dir, named } = initFeatureRepo();
+  try {
+    expectHistory(dir, named, named, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Final head passes when the only later commit merges main', () => {
+  const { dir, git, named } = initFeatureRepo();
+  try {
+    expectHistory(dir, named, mergeMain(git), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Final head passes when two later commits each merge main', () => {
+  const { dir, git, named } = initFeatureRepo();
+  try {
+    mergeMain(git);
+    git(['checkout', '-q', 'main']);
+    writeFileSync(path.join(dir, 'main-2.txt'), 'main 2\n');
+    git(['add', 'main-2.txt']);
+    git(['commit', '-q', '-m', 'main 2']);
+    git(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+    git(['checkout', '-q', 'feature']);
+    expectHistory(dir, named, mergeMain(git), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Final head fails when a regular commit follows the named sha', () => {
+  const { dir, git, named } = initFeatureRepo();
+  try {
+    writeFileSync(path.join(dir, 'base.txt'), 'more\n');
+    git(['add', 'base.txt']);
+    git(['commit', '-q', '-m', 'regular']);
+    const head = git(['rev-parse', 'HEAD']).trim();
+    expectHistory(dir, named, head, /not a merge commit/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Final head fails when a later commit merges a branch other than main', () => {
+  const { dir, git, named } = initFeatureRepo();
+  try {
+    git(['checkout', '-q', 'main']);
+    git(['checkout', '-q', '-b', 'side']);
+    writeFileSync(path.join(dir, 'side.txt'), 'side\n');
+    git(['add', 'side.txt']);
+    git(['commit', '-q', '-m', 'side']);
+    git(['checkout', '-q', 'feature']);
+    git(['merge', '-q', '--no-ff', 'side', '-m', 'merge side']);
+    const head = git(['rev-parse', 'HEAD']).trim();
+    expectHistory(dir, named, head, /merges something other than main/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Final head fails when the named sha is not an ancestor of the head', () => {
+  const { dir, git, named } = initFeatureRepo();
+  try {
+    const mainTip = git(['rev-parse', 'origin/main']).trim();
+    expectHistory(dir, mainTip, named, /not an ancestor/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Final head fails when a merge of main also changes files', () => {
+  const { dir, git, named } = initFeatureRepo();
+  try {
+    mergeMain(git);
+    writeFileSync(path.join(dir, 'base.txt'), 'sneaky\n');
+    git(['add', 'base.txt']);
+    git(['commit', '-q', '--amend', '--no-edit']);
+    const head = git(['rev-parse', 'HEAD']).trim();
+    expectHistory(dir, named, head, /changes files beyond the merge of main/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Final head passes a merge of main when the checkout is GitHub\'s merge and main has no ref', () => {
+  const { dir, git, named } = initFeatureRepo();
+  try {
+    const head = mergeMain(git);
+    git(['checkout', '-q', '--detach', 'origin/main']);
+    git(['merge', '-q', '--no-ff', 'feature', '-m', 'github merge']);
+    git(['branch', '-D', 'main']);
+    git(['branch', '-D', 'feature']);
+    git(['update-ref', '-d', 'refs/remotes/origin/main']);
+    expectHistory(dir, named, head, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the merge gate fetches enough history to see merges of main after Final head', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  const job = yaml.slice(yaml.indexOf('  changed-test-coverage:'), yaml.indexOf('  merge-gate:'));
+  assert.match(job, /fetch-depth:\s*2000\b/);
+  const trusted = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
+  const emails = trusted.slice(trusted.indexOf('  commit-emails:'), trusted.indexOf('  merge-gate-trusted:'));
+  assert.match(emails, /fetch-depth:\s*2000\b/);
+  assert.match(emails, /--depth=2000\b/);
+  assert.match(emails, /refs\/pull\/\$\{PR_NUMBER\}\/head/);
 });

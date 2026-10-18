@@ -53,6 +53,7 @@ function frostedClasses(scope: Element) { return FROSTED.flatMap(c => [...scope.
 describe("Chat apps follow the item 48 glass model", () => {
   it("draws the page and its panel as clear glass, with every card, heading and line of text on a frosted pill", async () => {
     const engine = engineOf(["channels.status", "channels.pairing.list", "channels.pairing.approve", "channels.pairing.dismiss", "wizard.start", "wizard.next", "wizard.cancel", "config.get", "config.patch"]);
+    localStorage.setItem("branch.level", "technical"); // every catalogue card shows at Technical (Private #1093 item 4)
     const host = await mount(<ChatApps engine={engine} onSetup={() => {}} onManage={() => {}} renderAccess={() => <p className="g-label">Access</p>} />);
     expect(host.querySelector(".r1-chatapps")!.classList).toContain("g-clear");
     expect(host.querySelector(".r1-ca-surface")!.classList).toContain("g-clear");
@@ -91,8 +92,9 @@ describe("Chat apps follow the item 48 glass model", () => {
     const engine = engineOf(["channels.status", "channels.start", "channels.stop", "channels.logout", "config.get", "config.patch", "agents.list"]);
     const host = await mount(<Manage engine={engine} app={telegram} onClose={() => {}} onSetup={() => {}} />);
     expect(host.querySelector(".dlg")!.classList).toContain("g-clear");
-    await act(async () => [...host.querySelectorAll("button")].find(b => b.textContent === "Unlink")!.click());
-    expect(host.querySelector('[aria-label="Confirm unlink"]')).not.toBeNull();
+    // Telegram is not a linked account, so the row has no Unlink (#1049); Disconnect asks first.
+    await act(async () => [...host.querySelectorAll("button")].find(b => b.textContent === "Disconnect")!.click());
+    expect(host.querySelector('[aria-label="Confirm disconnect"]')).not.toBeNull();
     expect(frostedClasses(host)).toEqual([]);
     expect(bareText(host)).toEqual([]);
   });

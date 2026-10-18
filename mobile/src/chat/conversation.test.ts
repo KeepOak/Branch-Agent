@@ -126,13 +126,47 @@ describe('one chat, live', () => {
     await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
     engine.failMethod('chat.send', 'The engine is busy');
     await chat.send('Book the table');
-    expect(chat.getSnapshot().sends).toMatchObject([{ id: 'run-1', state: 'failed', error: 'The engine is busy' }]);
+    expect(chat.getSnapshot().sends).toMatchObject([{ id: 'run-1', state: 'failed', error: "Can't reach Branch. Check your connection." }]);
     expect(chat.getSnapshot().live).toBeNull();
     engine.failMethod('chat.send', null);
     await chat.retry('run-1');
     const sends = engine.requests.filter((r) => r.method === 'chat.send').map((r) => (r.params as { idempotencyKey: string }).idempotencyKey);
     expect(sends).toEqual(['run-1', 'run-1']);
     expect(chat.getSnapshot().sends).toMatchObject([{ id: 'run-1', state: 'sent' }]);
+    chat.dispose();
+    session.dispose();
+  });
+
+  it('sends ready chips on chat.send and retries them under the same key', async () => {
+    const { session, engine } = await paired();
+    const chat = open(session);
+    await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
+    const file = {
+      id: '1',
+      kind: 'file' as const,
+      fileName: 'shot.png',
+      mimeType: 'image/png',
+      sizeBytes: 3,
+      content: 'AAA',
+      origin: 'file' as const,
+    };
+    await chat.send('Look', [file]);
+    expect(engine.requests.find((r) => r.method === 'chat.send')?.params).toEqual({
+      sessionKey: KEY,
+      message: 'Look',
+      idempotencyKey: 'run-1',
+      attachments: [{ type: 'image', mimeType: 'image/png', fileName: 'shot.png', origin: 'file', content: 'AAA' }],
+    });
+    engine.failMethod('chat.send', 'The engine is busy');
+    await chat.send('', [file]);
+    expect(chat.getSnapshot().sends).toMatchObject([
+      { id: 'run-1', text: 'Look', state: 'sent' },
+      { id: 'run-2', text: 'shot.png', message: '', state: 'failed' },
+    ]);
+    engine.failMethod('chat.send', null);
+    await chat.retry('run-2');
+    const last = engine.requests.filter((r) => r.method === 'chat.send').at(-1)?.params;
+    expect(last).toMatchObject({ message: '', idempotencyKey: 'run-2', attachments: [{ fileName: 'shot.png', content: 'AAA' }] });
     chat.dispose();
     session.dispose();
   });
@@ -323,7 +357,7 @@ describe('one chat, around the reply', () => {
     const { session, engine } = await paired();
     engine.failMethod('chat.history', 'history unavailable');
     const chat = open(session);
-    await eventually(() => expect(chat.getSnapshot().error).toBe('history unavailable'));
+    await eventually(() => expect(chat.getSnapshot().error).toBe("Can't reach Branch. Check your connection."));
     expect(chat.getSnapshot().loaded).toBe(false);
     engine.failMethod('chat.history', null);
     await chat.load();

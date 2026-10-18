@@ -4,27 +4,38 @@
 // GitHubSettings.tsx): the accounts in order with Move up and the ⋯ menu, Select accounts, Add an account, falling back
 // to this computer, which account goes next, where each sign-in comes from, your own accounts, coding apps, GitHub and
 // the rows that show what the engine reports. The rows of one list share one read, so a change in one row shows in all.
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { canAll } from "../../../connect/capabilities";
 import { configStore } from "../../../places/settings/config-store";
 import { errorText, list, record, text, visible, type RecordValue } from "../../../places/settings/adapter";
 import { GitHubConnection, type GitHubView } from "../../../places/settings/github-connection";
 import { KitProvider } from "../../../places/settings/kit";
+import { CheckedAt, CheckButton, useCheckedAt } from "../../../places/settings/checked-at";
 import {
   accountName, accountsOf, accountSub, anotherOffers, answerFirstWhy, firstOrder, isLimited, limitedLabel, movedUp, providersOf, saveOrder,
   signInOffers, signOut, signOutWhy, takeAddRequest, testAccount, type Account, type Provider,
 } from "../../../places/settings/set1/accounts";
 import { nextModeOf, nextSub, restingOf, setNextMode, setTrunkAccount, shortId, sourceLine, trunkChoices } from "../../../places/settings/set1/accounts-more";
-import { key, moveToTop, PAUSE_OFF, signOutAll } from "../../../places/settings/set1/accounts-select";
+import { key, moveToTop, PAUSE_OFF, RENAME_LATER, signOutAll } from "../../../places/settings/set1/accounts-select";
 import { AddAccountDialog, type AddStart } from "../../../places/settings/set1/add-account";
 import { APPS, appSub, foundState, PILL, type App } from "../../../places/settings/set1/coding-apps";
+import { CODEX_DOWNLOAD_METHOD, codexDownloadOffered, useCodexDownload } from "../../../places/settings/set1/codex-get";
 import { PickOwn } from "../../../places/settings/set1/own-accounts";
 import { Logo, serviceName } from "../../../places/settings/set1/service";
 import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
+import { menuAtLevel } from "../../../shell/menu-level";
 import { Segmented, Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { Coming } from "../../../glass/coming";
+import { AccountAllowanceList, AccountSpend } from "../../../places/settings/set2/usage";
+import { lookStore, useLook } from "../../../places/settings/set1/appearance-store";
+import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
+import { pageFor } from "../nav";
+import { useLevel } from "../SettingsFrame";
+import { COMING_FROM } from "../rows";
+import { STALL_TEXT, stallAfter } from "../../../places/settings/stall";
 
 // One engine read shared by every row that shows it (the accounts list, Select accounts, Which goes next…): a change
 // made in one row reloads it once, and every row redraws. It reads again when a row first shows after none did.
@@ -42,13 +53,17 @@ class SharedRead {
     this.subs.add(fn);
     return () => void this.subs.delete(fn);
   }
-  async reload(): Promise<void> {
+  /** Resolves true when the read succeeded; a failure is kept as the read's error and resolves false. */
+  async reload(): Promise<boolean> {
     const gen = ++this.gen;
     if (!this.snap.loading) this.set({ ...this.snap, loading: true });
+    const stop = stallAfter(() => { if (gen === this.gen && this.snap.data === undefined) this.set({ loading: false, error: STALL_TEXT }); });
     try {
       const data = record(await this.engine.request(this.method, this.params));
+      stop();
       if (gen === this.gen) this.set({ data, loading: false });
-    } catch (e) { if (gen === this.gen) this.set({ loading: false, error: errorText(e) }); }
+      return true;
+    } catch (e) { stop(); if (gen === this.gen) this.set({ loading: false, error: errorText(e) }); return false; }
   }
   private set(next: Read) { this.snap = next; for (const fn of [...this.subs]) fn(); }
 }
@@ -125,6 +140,7 @@ const accountLine = (acc: Account): string => [accountSub(acc), acc.ordered && a
  *  Which Trunks use it, Sign out), as Classic's Order Branch uses them in. */
 export function AccountList({ engine }: SlotControlProps) {
   const { status, agent, all } = useAccounts(engine);
+  const [level] = useLevel(engine);
   const [failed, run] = useFailure();
   const [open, setMenu] = useState<{ at: MenuAnchor; key: string } | null>(null);
   // The menu's account, by key, from the list as it is now (a reload makes new account objects).
@@ -137,7 +153,7 @@ export function AccountList({ engine }: SlotControlProps) {
   const items = (acc: Account): MenuItem[] => [
     { label: "Test it", disabled: can("models.probe"), run: () => void run(() => testAccount(engine, acc, agent)) },
     { label: "Answer first", disabled: can("models.authOrderSet") ?? answerFirstWhy(acc), run: () => reorder(acc, firstOrder(acc, all)) },
-    { label: "Rename", disabled: "Branch can’t rename an account yet.", run: () => undefined },
+    { label: "Rename", disabled: RENAME_LATER, run: () => undefined },
     { label: "Which Trunks use it", disabled: "Every Trunk uses this account, in this order.", run: () => undefined },
     { kind: "sep" },
     { label: "Sign out", danger: true, disabled: can("models.authLogout") ?? signOutWhy(acc.a), run: () => void run(async () => { await signOut(engine, acc, agent); await status.reload(); }) },
@@ -169,7 +185,7 @@ export function AccountList({ engine }: SlotControlProps) {
     {all.some((x) => !x.first) ? <Line>When one account runs low, Branch moves to the next.</Line> : null}
     {admin && all.length ? <Line>{admin}</Line> : null}
     <Failed text={failed} />
-    {menu ? <div data-need={MENU_CALLS.join(" ")}><Menu at={menu.at} items={items(menu.acc)} onClose={() => setMenu(null)} label={accountName(menu.acc)} /></div> : null}
+    {menu ? <div data-need={MENU_CALLS.join(" ")}><Menu at={menu.at} items={menuAtLevel(items(menu.acc), level >= 2)} onClose={() => setMenu(null)} label={accountName(menu.acc)} /></div> : null}
   </>;
 }
 
@@ -254,6 +270,7 @@ export function AddAccount({ engine }: SlotControlProps) {
 /** Select accounts (Advanced): tick accounts, then move them to the top or sign out of them, as Classic's bulk bar. */
 export function SelectAccounts({ engine }: SlotControlProps) {
   const { status, agent, all } = useAccounts(engine);
+  const [level] = useLevel(engine);
   const [failed, run] = useFailure();
   const [picked, setPicked] = useState<string[] | null>(null);
   const chosen = all.filter((acc) => picked?.includes(key(acc)));
@@ -281,7 +298,7 @@ export function SelectAccounts({ engine }: SlotControlProps) {
         <Needs engine={engine} need={["models.authOrderSet"]} where="Move to the top">
           <button type="button" className="r1s-btn" disabled={Boolean(admin) || !chosen.length || locked} title={admin ?? (locked ? "The order is set in the settings file." : undefined)} onClick={() => act(() => moveToTop(engine, all, chosen, agent))}>Move to the top</button>
         </Needs>
-        <button type="button" className="r1s-btn" disabled title={PAUSE_OFF}>Pause</button>
+        {level >= 2 ? <button type="button" className="r1s-btn" disabled title={PAUSE_OFF}>Pause</button> : null}
         <Needs engine={engine} need={["models.authLogout"]} where="Sign out of the selected accounts">
           <button type="button" className="r1s-btn" disabled={Boolean(admin) || !leaving.length} title={admin ?? (chosen.length && !leaving.length ? "These sign-ins can’t be removed from here." : undefined)} onClick={() => act(() => signOutAll(engine, chosen, agent))}>Sign out</button>
         </Needs>
@@ -415,7 +432,7 @@ export function OwnAccountList({ engine }: SlotControlProps) {
   const mine = list(own.data?.accounts).filter((a) => a.selected === true);
   const stop = (a: RecordValue) => void run(async () => { await engine.request("users.unlinkAuthProfile", { profileId: own.data?.profileId, authProfileId: a.authProfileId }); await own.reload(); });
   return <>
-    {own.error ? <Line bad>{visible(own.error)}</Line> : null}
+    {own.error ? <span className="r1s-own-ctl"><Line bad>{visible(own.error)}</Line><button type="button" className="r1s-btn" onClick={() => void own.reload()}>Try again</button></span> : null}
     {mine.length ? (
       <div className="r1s-items">
         {mine.map((a) => (
@@ -436,13 +453,19 @@ export function OwnAccountList({ engine }: SlotControlProps) {
 /** Add your own account: Classic's picker of the accounts this person can use first (users.selectModelAccount). */
 export function AddOwnAccount({ engine }: SlotControlProps) {
   const own = useRead(engine, "users.listModelAccounts");
+  const [level] = useLevel(engine);
   const [failed, , report] = useFailure();
   const [adding, setAdding] = useState(false);
+  const whyId = useId();
   const accounts = list(own.data?.accounts);
+  // A real condition says what to do in one visible line (Private #1093 item 7); an engine without the calls makes it
+  // Coming, which shows only at Technical.
+  const why = writeWhy(engine) ?? (!own.loading && !own.error && !accounts.length ? "Add an account above first." : undefined);
   return <Kit report={report}>
-    <Needs engine={engine} need={["users.listModelAccounts", "users.selectModelAccount"]} where="Add your own account">
-      <button type="button" className="r1s-btn" disabled={Boolean(writeWhy(engine)) || own.loading || Boolean(own.error) || !accounts.length} title={writeWhy(engine) ?? (!own.loading && !accounts.length ? "Add an account above first." : undefined)} onClick={() => setAdding(true)}>Add your own account</button>
+    <Needs engine={engine} need={["users.listModelAccounts", "users.selectModelAccount"]} where="Add your own account" hidden={level < COMING_FROM}>
+      <button type="button" className="r1s-btn" disabled={Boolean(why) || own.loading || Boolean(own.error)} title={why} aria-describedby={why ? whyId : undefined} onClick={() => setAdding(true)}>Add your own account</button>
     </Needs>
+    {why && canAll(engine, ["users.listModelAccounts", "users.selectModelAccount"]) ? <small id={whyId} className="r1s-note g-label" data-lines>{why}</small> : null}
     <Failed text={failed} />
     {adding ? <PickOwn engine={engine} accounts={accounts.filter((a) => a.selected !== true)} onClose={(picked) => { setAdding(false); if (picked) void own.reload(); }} /> : null}
   </Kit>;
@@ -457,20 +480,37 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
   const { store, snap, config } = useConfigSnap(engine);
   const [failed, run] = useFailure();
   const f = foundState(app, detect.data);
-  const word = detect.loading ? "Looking…" : PILL[f.state][1];
+  const offer = app.plugin === "codex" && !detect.loading && !detect.error && f.state !== "ready" && codexDownloadOffered(engine);
+  const codex = useCodexDownload(engine, offer);
+  const getting = offer ? codex.view : undefined;
+  const usable = f.state === "ready" || getting?.ready === true;
+  const word = detect.error ? "Couldn’t check" : detect.loading ? "Looking…" : PILL[f.state][1];
   const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
   const pluginOn = app.plugin ? record(record(record(config.plugins).entries)[app.plugin]).enabled === true : f.state === "ready";
-  const sub = detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
+  const sub = codex.prompt ? codex.prompt : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
   return <>
     <div className="r1s-item">
       <Logo id={app.brand} size={22} />
       <span className="r1s-item-t g-label" data-lines>
         <b>{word}{app.kind === "claude-cli" && claude?.accountEmail ? " · " + text(claude.accountEmail) : ""}</b>
         <small>{detect.error ? visible(detect.error) : sub}</small>
+        {detect.error ? <button type="button" className="r1s-btn" onClick={() => void detect.reload()}>Try again</button> : null}
       </span>
+      {codex.prompt ? (
+        <span data-testid="codex-download-prompt">
+          <Needs engine={engine} need={[CODEX_DOWNLOAD_METHOD]} where="Download Codex">
+            <button type="button" className="r1s-btn" disabled={Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void run(codex.accept)}>Yes</button>
+          </Needs>
+          <button type="button" className="r1s-btn" onClick={() => void run(codex.decline)}>Cancel</button>
+        </span>
+      ) : getting?.action ? (
+        <Needs engine={engine} need={[CODEX_DOWNLOAD_METHOD]} where={getting.action}>
+          <button type="button" className="r1s-btn" disabled={Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => codex.requestPrompt()}>{getting.action}</button>
+        </Needs>
+      ) : null}
       {app.plugin ? (
         <Needs engine={engine} need={["config.patch"]} where={"Use " + app.name}>
-          <span className="r1s-own-ctl" title={adminWhy(engine)}><Toggle label={"Use " + app.name} on={f.state === "ready" && pluginOn} disabled={Boolean(adminWhy(engine)) || !snap || f.state !== "ready"} onChange={(v) => void run(() => store.set("plugins.entries." + app.plugin + ".enabled", v))} /></span>
+          <span className="r1s-own-ctl" title={adminWhy(engine)}><Toggle label={"Use " + app.name} on={usable && pluginOn} disabled={Boolean(adminWhy(engine)) || !snap || !usable} onChange={(v) => void run(() => store.set("plugins.entries." + app.plugin + ".enabled", v))} /></span>
         </Needs>
       ) : (
         <span className="r1s-own-ctl" title={"Follows " + app.name + "’s own sign-in on this computer."}><Toggle label={"Use " + app.name} on={pluginOn} disabled onChange={() => undefined} /></span>
@@ -487,8 +527,12 @@ export const GeminiCli = (p: SlotControlProps) => <CodingApp {...p} app={appOf("
 /** Check again: looks for the coding apps on this computer again (branch.setup.detect). */
 export function CheckApps({ engine }: SlotControlProps) {
   const detect = useRead(engine, "branch.setup.detect");
+  const [checked, stamp] = useCheckedAt();
   return <Needs engine={engine} need={["branch.setup.detect"]} where="Check again">
-    <button type="button" className="r1s-btn" disabled={detect.loading || Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void detect.reload()}>Check again</button>
+    <span className="r1s-own-ctl">
+      <button type="button" className="r1s-btn" disabled={detect.loading || Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void detect.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</button>
+      <CheckedAt at={checked} />
+    </span>
   </Needs>;
 }
 
@@ -535,11 +579,13 @@ export function GitHubRow({ engine }: SlotControlProps) {
   const loading = !view || view.phase === "loading";
   const sub = identity ? (identity.source === "agent-override" ? "This Trunk’s account" : identity.source === "system-configured" ? "Shared account" : "This computer’s account") + " · " + (identity.credentialKind === "managed-oauth" ? "GitHub sign-in" : identity.credentialKind === "managed-pat" ? "Managed token" : "Native sign-in") : loading ? "Reading connection…" : "Connect GitHub or refresh to try again.";
   const state = identity ? identity.credentialState.replaceAll("_", " ") : loading ? "Checking" : "Not connected";
+  // The access expiry is a value on this row, as the preview shows one ("Expires in 12 days"), not a row of its own.
+  const expires = identity && identity.accessExpiresAtMs !== null ? `Expires ${new Date(identity.accessExpiresAtMs).toLocaleString()}` : "";
   const adminWhy = admin ? undefined : "Only someone who may change Branch’s setup can connect or remove a shared account.";
   return <>
     <div className="r1s-item">
       <Logo id="github-copilot" size={22} />
-      <span className="r1s-item-t g-label" data-lines><b>{(identity?.account ? "@" + identity.account.login : "GitHub") + " · " + state}</b><small>{sub}</small></span>
+      <span className="r1s-item-t g-label" data-lines><b>{(identity?.account ? "@" + identity.account.login : "GitHub") + " · " + state}</b><small>{[sub, expires].filter(Boolean).join(" · ")}</small></span>
       <span className="r1s-acts">
         {view?.busy ? (
           <Needs engine={engine} need={["tools.github.authorize.cancel"]} where="Cancel sign-in">
@@ -556,7 +602,7 @@ export function GitHubRow({ engine }: SlotControlProps) {
           </Needs>
         ) : null}
         <Needs engine={engine} need={["tools.github.status"]} where="Refresh GitHub">
-          <button type="button" className="r1s-btn" disabled={!connection || Boolean(view?.busy) || loading} onClick={() => void connection?.refresh()}>Refresh</button>
+          <CheckButton run={() => connection?.refresh() ?? Promise.resolve(false)} disabled={!connection || Boolean(view?.busy) || loading}>Refresh</CheckButton>
         </Needs>
       </span>
     </div>
@@ -580,14 +626,6 @@ export function GitHubPermissions({ engine }: SlotControlProps) {
   return <span className="r1s-item-t g-label" data-lines><b>{identity.oauthScopes.length ? identity.oauthScopes.join(", ") : "No scopes reported"}</b><small>Repository access is not reported</small></span>;
 }
 
-/** Access expires: when the GitHub connection's access ends, and its refresh state. */
-export function GitHubExpires({ engine }: SlotControlProps) {
-  const { view } = useGitHub(engine);
-  const identity = view?.status?.selected.identity;
-  if (!identity) return <Val>{!view || view.phase === "loading" ? "Reading…" : "Not connected"}</Val>;
-  return <span className="r1s-item-t g-label" data-lines><b>{identity.accessExpiresAtMs === null ? "Not reported" : new Date(identity.accessExpiresAtMs).toLocaleString()}</b><small>Refresh: {identity.refreshState.replaceAll("_", " ")}</small></span>;
-}
-
 /** This Branch's identity (Technical): the engine's device id, shortened; the whole id is in the tooltip. */
 export function BranchIdentity({ engine }: SlotControlProps) {
   const ident = useRead(engine, "gateway.identity.get");
@@ -600,3 +638,52 @@ export const HubCommand = () => <Val><code>branch --model owner/package</code></
 
 /** Each account keeps its own folder (Technical): always on, as Classic shows it. */
 export const OwnFolder = () => <Val>Always on</Val>;
+
+/* ---------- Usage by account (preview PG accounts) and the rows the preview draws as buttons ---------- */
+
+const QUIET_REPORT = { saving: () => undefined, saved: () => undefined, failed: () => undefined };
+
+/** What Branch spent in the last 7, 30 or 90 days, and Open the report: Classic Data & usage's spend card. */
+export function UsageSpend({ engine }: SlotControlProps) {
+  const [level] = useLevel(engine);
+  // The period buttons and Open the report all read sessions.usage.
+  // Classic's usage styles are scoped to its page column (.set-col), as classic-host draws them.
+  return <div className="set-col r1s-usage" data-need="sessions.usage"><KitProvider level={level} report={QUIET_REPORT} scope={null}><AccountSpend engine={engine} level={level} /></KitProvider></div>;
+}
+
+/** What each account has left: Classic's allowance list, one row per connection and account. */
+export function UsageList({ engine, onPage }: SlotControlProps) {
+  return <div className="set-col r1s-usage"><KitProvider level={0} report={QUIET_REPORT} scope={null}><AccountAllowanceList engine={engine} openSettings={onPage ? (page) => onPage(pageFor(page)) : undefined} /></KitProvider></div>;
+}
+
+/** The ring bottom right: the status bar's ring, described; nothing to set. */
+export function UsageRing(_: SlotControlProps) {
+  return null;
+}
+
+/** Offer to save progress at 95%: the person's look key Classic saves (usage.ckpt), and Show me. */
+export function SaveProgressOffer({ engine, row }: SlotControlProps) {
+  const on = useCkptOn(engine);
+  const look = useLook(engine);
+  const [failed, run] = useFailure();
+  const label = row.label ?? "Offer to save progress at 95%";
+  return <>
+    <span className="r1s-own-ctl">
+      <button type="button" className="r1s-link" data-local="" onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button>
+      <Needs engine={engine} need={look.snap.where === "device" ? [] : ["users.prefs.set"]} where={label}>
+        <span className="r1s-own-ctl"><Toggle label={label} on={on} onChange={(v) => void run(() => lookStore(engine).set(CKPT_PREF, v))} /></span>
+      </Needs>
+    </span>
+    <Failed text={failed} />
+  </>;
+}
+
+/** A preview button with nothing behind it yet, Coming with its row's own reason. */
+function comingButton(button: string): (props: SlotControlProps) => ReactNode {
+  return function ComingButton({ engine, row }: SlotControlProps) {
+    const src = row.source.kind === "slot" ? row.source : null;
+    return <Coming engine={engine} need={src?.calls ?? []} unwired reason={src?.reason} where={row.label ?? button}><button type="button" className="r1s-btn">{button}</button></Coming>;
+  };
+}
+export const LinkButton = comingButton("Link");
+export const KeepOakConnect = comingButton("Connect your keepoak.com account");

@@ -11,6 +11,10 @@ import { readDesktopJournal, stageDesktopUpdate, stagedDesktopVersion, type Desk
 
 export interface RefreshOptions {
   retryRejected?: boolean;
+  /** Stops a download the owner cancelled. */
+  signal?: AbortSignal;
+  /** Byte progress of the engine/window archives, for first-launch consent UI. */
+  onProgress?: (update: { name: string; bytes: number; total: number }) => void;
   /** The packaged desktop app to update as well; absent in development runs. */
   desktop?: DesktopInstall;
   /**
@@ -496,7 +500,7 @@ export async function readComponentManifest(request: typeof fetch = fetch): Prom
   return parseComponentRelease(JSON.parse(body));
 }
 
-async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch): Promise<{ engine: string; window: string }> {
+async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, options: RefreshOptions = {}): Promise<{ engine: string; window: string }> {
   const updates = join(cfg.dataDir, "updates");
   await mkdir(updates, { recursive: true });
   const directory = await mkdtemp(join(updates, `release-${release.version}-`));
@@ -505,7 +509,12 @@ async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typ
     for (const name of ["engine", "window"] as const) {
       const archive = join(directory, `${name}.tar.gz`);
       const destination = join(directory, name);
-      await downloadComponent(release.components[name], archive, request);
+      await downloadComponent(release.components[name], archive, request, {
+        signal: options.signal,
+        onProgress: options.onProgress
+          ? (bytes, total) => options.onProgress?.({ name, bytes, total })
+          : undefined,
+      });
       await mkdir(destination);
       await extractComponentArchive(archive, destination, release.components[name].expandedBytes);
       await rm(archive);
@@ -612,7 +621,7 @@ async function replaceStaged(cfg: DesktopConfig, held: Publication, release: Com
     return withdrawn === true ? "withdrawn" : false;
   }
   if (!options.retryRejected && await componentReleaseRejected(cfg, release)) return false;
-  const next = await stage(cfg, release, request);
+  const next = await stage(cfg, release, request, options);
   let superseded: string[] = [];
   try {
     const replaced = await options.underSwapGuard(async () => {
@@ -649,7 +658,7 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
   }
   let staged = false;
   if (await readOrEmpty(versionFile(cfg)) !== release.version && (options.retryRejected || !await componentReleaseRejected(cfg, release))) {
-    const next = await stage(cfg, release, request);
+    const next = await stage(cfg, release, request, options);
     await publish(cfg, release, next);
     staged = true;
   }

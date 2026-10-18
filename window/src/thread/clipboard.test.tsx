@@ -12,6 +12,7 @@ afterEach(async () => {
   if (root) await act(async () => root!.unmount());
   root = undefined;
   document.body.innerHTML = "";
+  localStorage.clear();
   delete (window as { branchDesktop?: unknown }).branchDesktop;
   if (originalClipboard) Object.defineProperty(navigator, "clipboard", originalClipboard);
   else Reflect.deleteProperty(navigator, "clipboard");
@@ -25,6 +26,7 @@ it("copies a failed run's full error through the desktop bridge when browser cli
   const toast = vi.fn();
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: browserWrite } });
   (window as unknown as { branchDesktop?: unknown }).branchDesktop = { clipboard: { writeText: desktopWrite } };
+  localStorage.setItem("branch.level", "technical");
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root!.render(

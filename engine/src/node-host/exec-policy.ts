@@ -1,8 +1,9 @@
 /** Evaluates node-host exec policy from security, approval, and allowlist context. */
 import { resolveAgentConfig } from "../agents/agent-scope-config.js";
 import type { BranchConfig } from "../config/types.branch.js";
-import { DEFAULT_ASK, DEFAULT_SECURITY } from "../infra/exec-approvals-config.js";
 import {
+  DEFAULT_REQUESTED_ASK,
+  DEFAULT_REQUESTED_SECURITY,
   requiresExecApproval,
   resolveExecModePolicy,
   type ExecAsk,
@@ -20,7 +21,10 @@ export function resolveNodeExecConfigPolicy(params: {
     : undefined;
   const globalExec = params.cfg.tools?.exec;
   const layered = applyExecPolicyLayer(
-    applyExecPolicyLayer({ security: DEFAULT_SECURITY, ask: DEFAULT_ASK }, globalExec),
+    applyExecPolicyLayer(
+      { security: DEFAULT_REQUESTED_SECURITY, ask: DEFAULT_REQUESTED_ASK },
+      globalExec,
+    ),
     agentExec,
   );
   return { agentExec, globalExec, ...resolveExecModePolicy(layered) };

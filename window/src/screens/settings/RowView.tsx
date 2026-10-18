@@ -3,7 +3,9 @@
 // reason, and is listed by data-coming with the call it waits for (R1-10). Rules lines never separate rows. The control
 // goes through <Coming> with the calls the row makes (useRow callsOf), so an engine without config.patch or
 // users.prefs.set shows Coming instead of a live control; a row that stays on this computer says data-local.
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type KeyboardEvent } from "react";
+import { lookStore } from "../../places/settings/set1/appearance-store";
+import { plainCopy } from "../../places/settings/internals";
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import type { Level } from "./nav";
@@ -57,8 +59,8 @@ export function Segmented({ label, value, options, disabled, onChange }: { label
   );
 }
 
-export function Toggle({ label, on, disabled, onChange }: { label: string; on: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
-  return <button type="button" className="r1s-sw" role="switch" aria-label={label} aria-checked={on} disabled={disabled} onClick={() => onChange(!on)} />;
+export function Toggle({ label, on, disabled, onChange, ...rest }: { label: string; on: boolean; disabled?: boolean; onChange: (v: boolean) => void } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onChange">) {
+  return <button type="button" className="r1s-sw" role="switch" aria-label={label} aria-checked={on} disabled={disabled} onClick={() => onChange(!on)} {...rest} />;
 }
 
 /** A field that saves when it is left or Enter is pressed, and only when the text changed. */
@@ -84,6 +86,9 @@ function Field({ label, value, kind, unit, disabled, placeholder, onSave }: { la
 
 export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
   const r = useRow(engine, row);
+  // The level the person chose for the whole page (not the row's own level): below Technical, copy says "engine".
+  const look = useSyncExternalStore((fn) => lookStore(engine).subscribe(fn), () => lookStore(engine).snap, () => lookStore(engine).snap);
+  const chosen = (look.look.level ?? "regular") as "regular";
   const coming = r.state === "coming";
   // Disabled while there is nothing to change: Coming, still loading, a change this connection or the settings file
   // can't take, or the settings (or the person) didn't load.
@@ -101,6 +106,8 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
       );
       case "number": case "text": return <Field label={r.label} value={r.value} kind={row.control} unit={row.unit} disabled={off} onSave={save} />;
       case "secret": return <Field label={r.label} value={r.sensitive ? "" : r.value} kind="secret" disabled={off} placeholder={r.value ? "Saved" : undefined} onSave={save} />;
+      // Only Coming rows are buttons in the table: a button that does something is its page's own control (slots.ts).
+      case "button": return <button type="button" className="r1s-btn" disabled={off}>{row.button ?? r.label}</button>;
       default: return null;
     }
   })();
@@ -110,7 +117,7 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
     <div id={`row-${row.id}`} className={`r1s-row${stack ? " r1s-stack" : ""}`} data-row={row.id} data-lv={tag} aria-disabled={coming || undefined}
       aria-busy={r.state === "saving" || undefined} data-coming={coming ? r.need : undefined} title={coming ? r.reason : undefined}>
       <b className="g-label" data-lv={tag}>{r.label}</b>
-      {r.help ? <small className="g-label" data-lines>{r.help}</small> : null}
+      {r.help ? <small className="g-label" data-lines>{plainCopy(r.help, chosen)}</small> : null}
       {coming || r.calls.length
         ? <Coming engine={engine} need={r.calls} unwired={coming} reason={coming ? r.reason : undefined} where={r.label}><div className="r1s-ctl">{control}</div></Coming>
         : <div className="r1s-ctl" data-local="">{control}</div>}

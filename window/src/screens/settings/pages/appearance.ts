@@ -10,6 +10,7 @@ import { ACCENTS } from "../../../places/settings/set1/appearance-editor";
 import { DEFAULT_PET, PETS } from "../../../places/settings/set1/appearance-pet";
 import { rowOf, type RowSpec } from "../../../places/settings/set1/appearance-rows";
 import { FONTS, SCENES } from "../../../places/settings/set1/appearance-sections";
+import { LANGUAGES } from "../../../i18n/language";
 import type { Level } from "../nav";
 import type { Codec, Control, Row, RowOption } from "../rows";
 
@@ -68,7 +69,8 @@ export const APPEARANCE_ROWS: Row[] = [
   fromClassic("appearance.reading.messages", "Reading", "msgLook"),
   fromClassic("appearance.reading.direction", "Reading", "dir"),
   fromClassic("appearance.reading.math", "Reading", "math"),
-  fromClassic("appearance.reading.scroll", "Reading", "scroll"),
+  // No Scroll bars row: the window hides scroll bars everywhere, so "Always" did nothing and "While scrolling" was the only
+  // choice left. A saved "scroll" choice stays in the person's look untouched.
   fromClassic("appearance.reading.code", "Reading", "codeCol"),
   coming("appearance.reading.editor-theme", "Reading", rowOf("edTheme").title, "editor: the VS Code and JetBrains panels passing their theme to the window", rowOf("edTheme").off ?? "", { help: rowOf("edTheme").sub, control: "toggle" }),
   { id: "appearance.reading.font-ui", page: "appearance", card: "Reading", label: "Interface font", level: 1, control: "select", options: FONTS.map((f) => ({ v: f.id, label: f.label })),
@@ -118,8 +120,9 @@ export const APPEARANCE_ROWS: Row[] = [
   coming("appearance.tray.menu", "Tray", "Tray menu", DESKTOP_NEED, "What Branch puts in the tray needs the Branch desktop app.", { help: "What Branch puts in the tray: its icon and menu." }),
 
   // Language
-  coming("appearance.language.pick", "Language", "Language", "engine: a language setting and translated words (English only today)", "Other languages come with the Branch app.", { help: "Dates and numbers follow it too.", control: "select",
-    options: [{ v: "en", label: "English" }] }),
+  // Private #1100: the window's words that have a translation follow it; the rest stay in English for now.
+  { id: "appearance.language.pick", page: "appearance", card: "Language", label: "Language", help: "Settings’ titles follow it where there is a translation; everything else stays in English for now.", level: 0, control: "select",
+    options: LANGUAGES.map((l) => ({ v: l.id, label: l.name })), source: { kind: "look", key: "lang" }, codec: orDefault("en") },
 
   // Make it yours: Classic's Make your own theme.
   coming("appearance.yours.make-theme", "Make it yours", "Make your own theme", "window: the theme editor opened from a row (themes.import)", "Making your own theme from here comes in a later update."),
