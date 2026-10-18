@@ -219,11 +219,23 @@ button.r1sb-person-chip i { background: var(--fill); color: var(--ink-2); }
 @media (prefers-reduced-motion: reduce) { .r1sb-caps, .r1sb-caps > *, .r1sb-chip, .r1sb-search, .r1sb-fold, .r1sb-upd { transition-duration: .01s !important; animation: none !important; } }
 :root[data-transparency="reduce"] :is(.r1sb-head, .r1sb-seed, .r1sb-fold[data-open]) { background: var(--raise, var(--bg)); }
 
-/* ===== Item 48, the glass model (owner, final): the sidebar itself stays the one tinted, frosted surface (the frame's
-   .r1-sidebar), but the menus it opens float over the clear conversation, so they are clear too. Each row, tile and line of
-   text in them sits on its own frosted pill with a 1px outline (--gp-* tokens, 4.5:1 ink); Reduce transparency makes them
-   solid. ===== */
-.g-popover:has(> .r1sb-pop) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+/* spec-v23 `.pop`: solid --raise, 1px edge + shadow (`--pop`). Smart glass painted these as 68% --bg with blur; Linux
+   (and Electron) skip backdrop-filter, so the Trunk ••• menu was see-through over the composer (#1874). The #sg/#g48
+   ladder matches glass.css so this sheet wins. Rows stay plain on that sheet. */
+:root:not(#sg#sg#sg#sg) .g-popover:has(> .r1sb-pop):not(#g48#g48#g48) {
+  background: var(--raise);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 0;
+  border-radius: var(--r-menu);
+  box-shadow: var(--pop);
+  padding: 6px;
+}
+:root[data-transparency="reduce"]:not(#sg#sg#sg#sg) .g-popover:has(> .r1sb-pop):not(#g48#g48#g48) { background: var(--raise); }
+@media (prefers-reduced-transparency: reduce) {
+  :root:not([data-transparency]):not(#sg#sg#sg#sg) .g-popover:has(> .r1sb-pop):not(#g48#g48#g48) { background: var(--raise); }
+}
+.g-popover:has(> .r1sb-pop) { background: var(--raise); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: var(--pop); }
 .r1sb-pop .g-menu { gap: 4px; }
 .r1sb-pop .g-menu-tiles { padding: 0 0 4px; margin-bottom: 0; }
 .r1sb-pop :is(.g-menu-row, .g-menu-tile, .r1sb-ph, .r1sb-people, .r1sb-look) {

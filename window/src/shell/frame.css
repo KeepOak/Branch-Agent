@@ -692,7 +692,7 @@
   }
 }
 
-/* §5.4 menus */
+/* §5.4 menus — spec-v23 `.pop`: solid --raise, padding 6, `--pop` edge and shadow (not 90% glass; Linux has no blur). */
 .pop {
   position: fixed;
   z-index: var(--z-pop);
@@ -701,10 +701,8 @@
   max-height: min(460px, calc(100vh - 16px));
   overflow-y: auto;
   padding: 6px;
-  border-radius: var(--r3-17);
-  background: var(--glass17);
-  backdrop-filter: var(--glass-blur17);
-  -webkit-backdrop-filter: var(--glass-blur17);
+  border-radius: var(--r-menu);
+  background: var(--raise);
   box-shadow: var(--pop);
   color: var(--ink);
 }

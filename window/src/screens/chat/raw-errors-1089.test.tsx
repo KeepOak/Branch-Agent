@@ -80,4 +80,13 @@ describe("a failed run never shows the engine's raw words at Regular (Private #1
     localStorage.setItem("branch.level", "advanced");
     expect(await runError("unknown method: logbook.status")).toBe("Researcher couldn’t finish: unknown method: logbook.status");
   });
+
+  it.each(["", "advanced", "technical"])("never names GatewayLockError on a failed run at %j", async (level) => {
+    if (level) localStorage.setItem("branch.level", level);
+    const raw = "GatewayLockError: failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
+    const line = await runError(raw);
+    expect(line).toBe("Researcher couldn’t finish: Branch is busy right now. Try again in a moment.");
+    expect(line).not.toMatch(/GatewayLockError/);
+    expect(host.textContent ?? "").not.toMatch(/GatewayLockError/);
+  });
 });

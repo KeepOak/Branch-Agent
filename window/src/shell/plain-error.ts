@@ -25,8 +25,20 @@ function atRegular(): boolean {
 /** The sentence for a failure nothing more specific matches. */
 export const PLAIN_FAILURE = "That didn’t work. Try again.";
 
+/** The engine's Gateway lock is held (handoff, a busy state database). Never the class name, even at Advanced. */
+export const LOCK_BUSY = "Branch is busy right now. Try again in a moment.";
+
+const LOCK_BUSY_RE =
+  /\bGatewayLockError\b|\bGatewayStateOwnerContentionError\b|\bstate database is busy\b|\bfailed to acquire gateway state ownership\b/i;
+
+/** True when the words are the engine's Gateway lock, not a person-facing failure. */
+export function isLockBusyMessage(text: string): boolean {
+  return LOCK_BUSY_RE.test(text);
+}
+
 /** Error classes, codes and engine sentences, each with the plain sentence a person reads instead. First match wins. */
 const SAYS: [RegExp, string][] = [
+  [LOCK_BUSY_RE, LOCK_BUSY],
   [/\bunknown method\b|\bmethod not found\b/i, "This part of Branch isn’t ready on this computer yet. Update Branch, then try again."],
   [/\bunknown agent id\b|\bagent not found\b|\bno such agent\b/i, "That Trunk isn’t on this computer. Choose another Trunk."],
   [/\bNo API key found\b|\bno (?:model|provider) (?:is )?(?:connected|configured|set)\b|\bmodel_not_found\b|\bno auth profile\b|\bMissing(?:ApiKey|Credentials)\b/i, "No model is connected. Connect one in Settings, Models, then try again."],
@@ -109,17 +121,21 @@ function plainWords(text: string, raw: (words: string) => boolean): string {
 const ERROR_LEAD = /^\s*error:\s*/i;
 
 /** A failure as a person reads it: at Regular one plain sentence and a next step, at Advanced and Technical the exact
- *  words. `always` skips the level check (tests, and callers that know). */
+ *  words. A Gateway lock is always LOCK_BUSY (never the class name). `always` skips the level check (tests, and
+ *  callers that know). */
 export function plainError(error: unknown, always = false): string {
   const exact = errorWords(error);
   const words = exact.replace(ERROR_LEAD, "") || exact;
+  if (isLockBusyMessage(words)) return LOCK_BUSY;
   if (!words || (!always && !atRegular())) return words;
   return plainWords(words, looksRawError);
 }
 
 /** Words that may or may not be a failure (a toast, a banner, the line above the page): at Regular only words with a
- *  strong raw marker are replaced, so "Copied." or "Restarting…" stay as they are. */
+ *  strong raw marker are replaced, so "Copied." or "Restarting…" stay as they are. A Gateway lock is always LOCK_BUSY. */
 export function plainText(text: string, always = false): string {
-  if (!text || (!always && !atRegular())) return text;
+  if (!text) return text;
+  if (isLockBusyMessage(text)) return LOCK_BUSY;
+  if (!always && !atRegular()) return text;
   return plainWords(text, looksRaw);
 }

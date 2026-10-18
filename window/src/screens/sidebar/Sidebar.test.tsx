@@ -220,7 +220,8 @@ describe("R1 sidebar", () => {
     await click(host.querySelector(".r1sb-me"));
     expect(document.querySelector(".g-popover > .r1sb-pop.r1sb-person")).not.toBeNull();
     const css = readFileSync("src/screens/sidebar/sidebar.css", "utf8").replace(/\s+/g, " ");
-    expect(css).toContain(".g-popover:has(> .r1sb-pop) { background: transparent; backdrop-filter: none;");
+    expect(css).toMatch(/\.g-popover:has\(> \.r1sb-pop\)[^{]*\{ background: var\(--raise\); backdrop-filter: none;/);
+    expect(css).toMatch(/\.g-popover:has\(> \.r1sb-pop\):not\(#g48#g48#g48\) \{[^}]*box-shadow: var\(--pop\)/);
     expect(css).toMatch(/\.r1sb-pop :is\(\.g-menu-row, \.g-menu-tile[^{]*\{ background: var\(--gp-fill\); backdrop-filter: var\(--gp-blur\);[^}]*box-shadow: inset 0 0 0 1px var\(--gp-edge\);/);
     expect(readFileSync("src/theme/tokens.css", "utf8")).toContain("--gp-fill: rgba(255,255,255,.76); --gp-edge: rgba(0,0,0,.11);");
   });
