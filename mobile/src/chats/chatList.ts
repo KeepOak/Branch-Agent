@@ -3,6 +3,7 @@
 // does. The phone shows the conversations a person would open: the Trunks' own chats, the ones
 // started in them and their rooms. System and helper conversations never show; archived, snoozed and
 // automation chats wait behind their own filter, as in the preview's phone Chats.
+import { loadFailure } from '../connect/plainError';
 import type { EngineLink } from '../pairing/pairingSession';
 
 export type ChatRow = {
@@ -275,7 +276,7 @@ export class ChatList {
       if (agents) ({ agents: this.agents, mainKey: this.mainKey } = readAgents(agents));
       this.apply(rec(subscribed).list);
     } catch (error) {
-      this.set({ error: messageOf(error) });
+      this.set({ error: loadFailure(error) });
     }
   }
 
@@ -309,7 +310,7 @@ export class ChatList {
           try {
             this.apply(await this.link.request('sessions.list', LIST_PARAMS));
           } catch (error) {
-            this.set({ error: messageOf(error) });
+            this.set({ error: loadFailure(error) });
           }
         } while (this.again && !this.disposed);
       } finally {
@@ -331,6 +332,3 @@ export class ChatList {
   }
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}

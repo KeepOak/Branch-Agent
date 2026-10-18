@@ -2,7 +2,7 @@
 // engine through push.web.vapidPublicKey / push.web.subscribe / push.web.unsubscribe, its device overrides through
 // push.web.preferences.get / .set (scope "device") and a test through push.web.test. Copied from the engine's own
 // Control UI (ui/src/app/web-push.runtime.ts, pages/config/notifications-section.ts).
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { errorText, list, record, visible } from "../adapter";
 import { Btn, Ctl, Field, Hint, Pick, Sec, Switch, useSaveRunner, type Opt } from "../kit";
@@ -13,15 +13,15 @@ import { stalledRead } from "../stall";
 
 export type DevicePrefs = { enabled: boolean; label: string; categories?: Partial<Record<CategoryKey, boolean>>; detailLevel?: Detail; quietHours?: Quiet; agentIds?: string[] };
 type Perm = NotificationPermission | "unsupported";
-type PushState = { supported: boolean; permission: Perm; reg: ServiceWorkerRegistration | null; sub: PushSubscription | null; device: DevicePrefs | null; loading: boolean; error?: string };
+export type PushState = { supported: boolean; permission: Perm; reg: ServiceWorkerRegistration | null; sub: PushSubscription | null; device: DevicePrefs | null; loading: boolean; error?: string };
 
-function facts(): Pick<PushState, "supported" | "permission"> {
+export function facts(): Pick<PushState, "supported" | "permission"> {
   const hasN = typeof window !== "undefined" && "Notification" in window;
   const sw = typeof navigator !== "undefined" && "serviceWorker" in navigator;
   return { supported: hasN && sw && "PushManager" in window, permission: hasN ? Notification.permission : "unsupported" };
 }
 
-async function current(): Promise<{ reg: ServiceWorkerRegistration | null; sub: PushSubscription | null }> {
+export async function current(): Promise<{ reg: ServiceWorkerRegistration | null; sub: PushSubscription | null }> {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return { reg: null, sub: null };
   const reg = (await navigator.serviceWorker.getRegistration()) ?? null;
   const sub = reg?.pushManager ? await reg.pushManager.getSubscription() : null;
@@ -56,7 +56,7 @@ export function deviceOff(p: PushState): string | undefined {
   return undefined;
 }
 
-async function subscribe(engine: WindowEngine, reg: ServiceWorkerRegistration) {
+export async function subscribe(engine: WindowEngine, reg: ServiceWorkerRegistration) {
   const permission = await Notification.requestPermission();
   if (permission !== "granted") throw new Error("Notifications weren’t allowed for Branch.");
   const { vapidPublicKey } = record(await engine.request("push.web.vapidPublicKey", {}));
@@ -123,6 +123,12 @@ export function useTestSend(engine: WindowEngine) {
   return { ...line, send };
 }
 
+/** A test send's answer ("Sent."), in a line the row keeps from its first frame: the answer fills it in place, so the
+ *  row never grows under the pointer (#1093 item 1), and the live region is there before it speaks. */
+export function TestLine({ text }: { text?: string }) {
+  return <span className="test-line" role="status" aria-live="polite">{text || "\u00a0"}</span>;
+}
+
 /** The desktop app has no push subscription: its own windows show this computer's notices directly. */
 export function isDesktopApp(): boolean {
   return typeof window !== "undefined" && (window as unknown as { branchDesktop?: unknown }).branchDesktop !== undefined;
@@ -186,7 +192,7 @@ export function DesktopNotices() {
       <Ctl title="Notifications on this computer" sub="Off keeps this computer quiet." off={off}>
         <Switch checked={live} disabled={Boolean(off)} label="Notifications on this computer" onChange={(v) => void flip(v)} />
       </Ctl>
-      <Ctl title="Send a test notification" sub={line || undefined} off={live ? undefined : "Turn on notifications here first."}>
+      <Ctl title="Send a test notification" sub={live ? <TestLine text={line} /> : undefined} off={live ? undefined : "Turn on notifications here first."}>
         <Btn sm disabled={!live} onClick={test}>Send test</Btn>
       </Ctl>
     </>
@@ -202,6 +208,14 @@ export function ThisBrowser({ engine, push }: { engine: WindowEngine; push: WebP
   const why = push.loading ? "Checking this computer…" : !push.supported ? "This computer can’t show notifications." : push.permission === "denied" ? "Notifications are blocked for this page." : !push.reg ? "This computer isn’t set up for notifications yet." : undefined;
   const hint = !push.supported ? "This computer can’t show notifications." : ios ? "Use Share › Add to Home Screen, then open Branch from there." : push.permission === "denied" ? "Open your browser’s permissions for this page, allow notifications, then reload Branch." : "";
   const on = Boolean(push.device);
+  // Each greyed button says why in one visible line it names with aria-describedby (Private #1093 item 7).
+  const lineId = useId();
+  const onWhy = shownWhy(why) ?? (on ? "Notifications are already on here." : undefined);
+  const OFF_HERE = "Turn on notifications on this computer first.";
+  const offWhy = push.sub ? undefined : OFF_HERE;
+  const testWhy = on ? undefined : OFF_HERE;
+  const lines = [...new Set([onWhy, offWhy, testWhy].filter((t): t is string => Boolean(t) && t !== hint))];
+  const idOf = (t: string | undefined) => (!t ? undefined : t === hint ? `${lineId}-hint` : `${lineId}-${lines.indexOf(t)}`);
   return (
     <Sec title={ios ? "This device" : "This computer"}>
       <dl className="kv nt-kv">
@@ -210,12 +224,12 @@ export function ThisBrowser({ engine, push }: { engine: WindowEngine; push: WebP
         <dt>Status</dt><dd>{push.loading ? "Checking…" : on ? "On" : "Off"}</dd>
       </dl>
       <div className="acts nt-acts">
-        <Btn sm disabled={Boolean(why) || on} title={shownWhy(why)} onClick={() => void push.turnOn()}>Turn on notifications</Btn>
-        <Btn sm ghost disabled={!push.sub} title={push.sub ? undefined : "This computer isn’t set up for notifications yet."} onClick={() => void push.turnOff()}>Turn off here</Btn>
-        <Btn sm ghost disabled={!on || test.busy} title={on ? undefined : "Turn on notifications on this computer first."} onClick={() => void test.send()}>Send test</Btn>
+        <Btn sm disabled={Boolean(why) || on} title={onWhy} aria-describedby={idOf(onWhy)} onClick={() => void push.turnOn()}>Turn on notifications</Btn>
+        <Btn sm ghost disabled={!push.sub} title={offWhy} aria-describedby={idOf(offWhy)} onClick={() => void push.turnOff()}>Turn off here</Btn>
+        <Btn sm ghost disabled={!on || test.busy} title={testWhy} aria-describedby={idOf(testWhy)} onClick={() => void test.send()}>Send test</Btn>
       </div>
-      {why && why !== hint ? <Hint>{why}</Hint> : null}
-      {hint ? <Hint>{hint}</Hint> : null}
+      {lines.map((t, i) => <p key={t} className="hint" id={`${lineId}-${i}`}>{t}</p>)}
+      {hint ? <p className="hint" id={`${lineId}-hint`}>{hint}</p> : null}
       {push.error ? <Hint>{push.error}</Hint> : null}
       {test.text ? <Hint>{test.text}</Hint> : null}
       <p className="hint nt-tight">Branch asks for permission before showing notifications.</p>

@@ -100,14 +100,18 @@ reply.
 | Key        | Type      | Default          | Description                                                                                                                                                                                                                                                                                 |
 | ---------- | --------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `enabled`  | `boolean` | `true`           | Enable or disable memory search                                                                                                                                                                                                                                                             |
-| `provider` | `string`  | `"openai"`       | Embedding adapter ID such as `bedrock`, `deepinfra`, `gemini`, `github-copilot`, `local`, `mistral`, `ollama`, `openai`, `openai-compatible`, or `voyage`; may also be a configured `models.providers.<id>` whose `api` points at a memory embedding adapter or OpenAI-compatible model API |
+| `provider` | `string`  | `"local"`        | Embedding adapter ID such as `local`, `openai`, `bedrock`, `deepinfra`, `gemini`, `github-copilot`, `mistral`, `ollama`, `openai-compatible`, or `voyage`; may also be a configured `models.providers.<id>` whose `api` points at a memory embedding adapter or OpenAI-compatible model API |
 | `model`    | `string`  | provider default | Embedding model name                                                                                                                                                                                                                                                                        |
-| `fallback` | `string`  | `"none"`         | Fallback adapter ID when the primary fails                                                                                                                                                                                                                                                  |
+| `fallback` | `string`  | `"none"`         | Fallback adapter ID when the primary fails. A paid backup is used only when you also set `provider` yourself; auto and unset ignore it                                                                                                                                                      |
 
-When `provider` is not set, Branch Agent uses OpenAI embeddings. Set `provider`
-explicitly to use Bedrock, DeepInfra, Gemini, GitHub Copilot, Mistral, Ollama,
-Voyage, a local GGUF model, or an OpenAI-compatible `/v1/embeddings` endpoint.
-Legacy configs that still say `provider: "auto"` resolve to `openai`.
+When `provider` is not set, Branch Agent uses on-device local embeddings (managed
+llama.cpp, no API key). A ChatGPT or OAuth login is not used for memory
+embeddings. Set `provider` explicitly to use OpenAI, Bedrock, DeepInfra, Gemini,
+GitHub Copilot, Mistral, Ollama, Voyage, or an OpenAI-compatible `/v1/embeddings`
+endpoint. Legacy configs that still say `provider: "auto"` resolve to `local`.
+If this computer cannot run local embeddings, meaning search stays off and the
+app says `Search by meaning is off until this computer has the small model
+that powers it. Branch still finds memories by matching words.`
 
 <Warning>
 Changing the embedding provider, model, provider settings, sources, scope,
@@ -118,12 +122,14 @@ automatically re-embedding everything. Rebuild when you are ready with
 `branch memory index --force --agent <id>`.
 </Warning>
 
-If an outage activates a fallback that cannot read the existing index, later
-searches retry the configured primary, with a 30-second cooldown between recovery
-attempts. Once the primary responds and matches the stored provider, model, and
-provider settings, search resumes without restarting the Gateway or rebuilding
-the index. An index already built with the fallback stays on that compatible
-provider; recovery never silently replaces its embeddings.
+A paid `fallback` is used only when you also set `provider` yourself. Unset and
+`auto` ignore a paid backup, including a ChatGPT or OAuth login. If an outage
+activates a fallback that cannot read the existing index, later searches retry
+the configured primary, with a 30-second cooldown between recovery attempts.
+Once the primary responds and matches the stored provider, model, and provider
+settings, search resumes without restarting the Gateway or rebuilding the index.
+An index already built with the fallback stays on that compatible provider;
+recovery never silently replaces its embeddings.
 
 When `provider` is unset, legacy `provider: "auto"` is present, or
 `provider: "none"` intentionally selects FTS-only mode, memory recall can still

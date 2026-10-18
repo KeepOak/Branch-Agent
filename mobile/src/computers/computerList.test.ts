@@ -98,7 +98,7 @@ describe('computer list from the computer', () => {
     list.attach();
     session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
     engine.approve();
-    expect(await until(list, (s) => s.error !== null)).toMatchObject({ loaded: false, error: 'environments unavailable', rows: [] });
+    expect(await until(list, (s) => s.error !== null)).toMatchObject({ loaded: false, error: "Can't reach Branch. Check your connection.", rows: [] });
     engine.failMethod('environments.list', null);
     await list.refresh();
     expect(list.getSnapshot()).toMatchObject({ loaded: true, error: null });

@@ -9,12 +9,14 @@ import { Dialog } from "../../shell/Dialog";
 import { shownWhy } from "../../shell/shown-why";
 import { Switch } from "../../shell/Popover";
 import { trunkName, useResource } from "../library/data";
+import { plainError } from "../../shell/plain-error";
 import { Status } from "../library/ui";
 import { denyList, denyPatch, Grey, list, PermRow, rec, Sec, Seg, str, WhoChips, withItem, type Rec } from "./common";
 import { CatalogDialog } from "./catalog";
 import { KindHead, TechnicalOnly } from "./kind-chrome";
 import { TechRows } from "./tech-rows";
 import { Glyph } from "./glyphs";
+import { AppLogo, markKey } from "./app-logos";
 import type { ToolsCtx } from "./tools";
 
 type Server = { name: string; enabled: boolean; local: boolean; line: string; exclude: string[]; parallel: boolean; sslVerify: boolean };
@@ -36,20 +38,10 @@ export function readServers(live: Rec, file: Rec): Server[] {
     };
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
-/** Brand marks for well-known connectors (the preview's LOGO table); any other server keeps its line-icon tile. */
-const BRANDS: [RegExp, string, string][] = [
-  [/^github/i, "#181717", '<path d="M12 4a8 8 0 0 0-2.5 15.6c.4 0 .5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.2 1.9.9 2.3.7.1-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-3.9 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.6 7.6 0 0 1 4 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.7-3.6 3.9.3.3.5.8.5 1.5v2.2c0 .2.1.5.6.4A8 8 0 0 0 12 4z" fill="#fff"/>'],
-  [/^outlook/i, "#0F6CBD", "O"],
-  [/^(google-?)?drive|^gdrive/i, "#1FA463", '<path d="M9 4.5h6l6 10.2-3 4.8H6l-3-4.8z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/>'],
-  [/^brave/i, "#FB542B", "B"],
-];
+/** A connector named for a known app shows that app's logo (app-logos.tsx); any other server keeps its line-icon tile. */
 function Mark({ server, size }: { server: Server; size: number }) {
-  const brand = BRANDS.find(([re]) => re.test(server.name));
-  if (!brand) return <span className={size > 32 ? "cz-tile big" : "cz-tile"}><Glyph name={server.local ? "terminal" : "globe"} size={size > 32 ? undefined : 16} /></span>;
-  const [, bg, inner] = brand, glyph = Math.round(size * 0.66);
-  return <span className="logo cz-brand" style={{ width: size, height: size, background: bg }} aria-hidden="true">
-    {inner.startsWith("<") ? <svg viewBox="0 0 24 24" width={glyph} height={glyph} dangerouslySetInnerHTML={{ __html: inner }} /> : <b style={{ font: `700 ${Math.round(size * 0.38)}px var(--sans)`, color: "#fff" }}>{inner}</b>}
-  </span>;
+  if (markKey(server.name)) return <AppLogo name={server.name} size={size} />;
+  return <span className={size > 32 ? "cz-tile big" : "cz-tile"}><Glyph name={server.local ? "terminal" : "globe"} size={size > 32 ? undefined : 16} /></span>;
 }
 const wildcard = (server: string) => `${server}__*`;
 function mayUse(ctx: ToolsCtx, server: string, agentId: string) {
@@ -125,7 +117,7 @@ function ConnectorDetail({ ctx, server }: { ctx: ToolsCtx; server: Server }) {
       <span className="grow"><b>{server.name}</b><small>{server.line}</small></span>
       <Switch label={`${server.name} on or off`} on={server.enabled} onChange={on => setServer({ enabled: on })} />
     </div>
-    {config.writeError && <p role="alert" className="cz-error">{config.writeError}</p>}
+    {config.writeError && <p role="alert" className="cz-error">{plainError(config.writeError)}</p>}
     {scoped ? <div className="cz-line"><span>{scoped.identity?.name || scoped.name || scoped.id} may use it</span><Switch label={`${scoped.id} may use ${server.name}`} on={mayUse(ctx, server.name, scoped.id)} onChange={on => setWho(scoped.id, on)} /></div>
       : <Sec title="Who may use it"><WhoChips trunks={trunks} may={id => mayUse(ctx, server.name, id)} toggle={config.busy ? undefined : setWho} reason="Saving…" /></Sec>}
     <ConnectorTools ctx={ctx} server={server} />
@@ -166,7 +158,7 @@ function ConnectorDetail({ ctx, server }: { ctx: ToolsCtx; server: Server }) {
       <span className="cz-grow" /><button type="button" className="btn ghost sm" onClick={() => setRemoving(true)}>Remove</button>
     </div></Sec>
     {removing && <Dialog title={`Remove ${server.name}?`} onClose={() => setRemoving(false)} footer={<><button type="button" className="btn ghost" onClick={() => setRemoving(false)}>Cancel</button><button type="button" className="btn bad" disabled={config.busy} onClick={() => { void config.patch({ mcp: { servers: { [server.name]: null } } }).then(ok => ok && setRemoving(false)); }}>Remove</button></>}>
-      <p className="dlg-p">Trunks stop using it. Its settings are taken out of Branch’s settings file.</p>{config.writeError && <p role="alert" className="cz-error">{config.writeError}</p>}
+      <p className="dlg-p">Trunks stop using it. Its settings are taken out of Branch’s settings file.</p>{config.writeError && <p role="alert" className="cz-error">{plainError(config.writeError)}</p>}
     </Dialog>}
   </div>;
 }
@@ -209,6 +201,6 @@ function OwnServer({ ctx, back, close }: { ctx: ToolsCtx; back: () => void; clos
     <label className="cz-field"><span>Name</span><input className="inp" value={name} onChange={e => setName(e.target.value)} placeholder="files" /></label>
     {taken && <p className="cz-error">A connector with that name already exists.</p>}
     <label className="cz-field"><span>{how === "local" ? "Command" : "Address"}</span><input className="inp" value={target} onChange={e => setTarget(e.target.value)} placeholder={how === "local" ? "npx -y @modelcontextprotocol/server-filesystem ~/Documents" : "https://"} /></label>
-    {ctx.config.writeError && <p role="alert" className="cz-error">{ctx.config.writeError}</p>}
+    {ctx.config.writeError && <p role="alert" className="cz-error">{plainError(ctx.config.writeError)}</p>}
   </Dialog>;
 }

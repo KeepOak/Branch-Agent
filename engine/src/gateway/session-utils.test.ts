@@ -2372,6 +2372,16 @@ describe("gateway session utils", () => {
     });
   });
 
+  test("listAgentsForGateway labels unset access as guarded (Ask first)", async () => {
+    await withAgentPermissionState(async () => {
+      const agent = (await listAgentsForGateway({})).agents.find((entry) => entry.id === "main");
+      expect(agent).toHaveProperty("defaultPermissionMode", "guarded");
+      const resolved = resolveExecDefaults({ cfg: {}, agentId: "main" });
+      expect(resolved.mode).toBe("ask");
+      expect(agent?.defaultPermissionMode).toBe(SESSION_PERMISSION_BY_EXEC_MODE[resolved.mode]);
+    });
+  });
+
   test.each([
     [{ mode: "full" }, { mode: "ask" }, "guarded"],
     [{ security: "full", ask: "on-miss" }, undefined, undefined],

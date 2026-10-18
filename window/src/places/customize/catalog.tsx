@@ -7,10 +7,12 @@ import type { WindowEngine } from "../../connect/engine";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
-import { errorText, useResource } from "../library/data";
+import { useResource } from "../library/data";
+import { plainError } from "../../shell/plain-error";
 import { Status } from "../library/ui";
 import { Grey, list, Logo, rec, str, type Rec } from "./common";
 import { shownWhy } from "../../shell/shown-why";
+import { AppLogo, plainLine, uniqueApps } from "./app-logos";
 
 export type Item = { id: string; name: string; summary: string; author: string; categories: string[]; action: string; enabled: boolean; installed: boolean; install: Rec | null };
 export function readItems(result: unknown): Item[] {
@@ -34,8 +36,8 @@ export function usePluginAction(engine: WindowEngine) {
       setConsent(null); done();
     } catch (e) {
       const details = rec(rec(e).details);
-      if (str(details.capabilityConsentCode) && str(details.reviewToken)) setConsent({ method, params, token: str(details.reviewToken), message: errorText(e) });
-      else setError(errorText(e));
+      if (str(details.capabilityConsentCode) && str(details.reviewToken)) setConsent({ method, params, token: str(details.reviewToken), message: plainError(e) });
+      else setError(plainError(e));
     } finally { setBusy(null); }
   }
   return { busy, error, consent, run, dismiss: () => setConsent(null) };
@@ -46,7 +48,7 @@ export function ConsentDialog({ action, done }: { action: PluginAction; done: ()
   const c = action.consent;
   if (!c) return null;
   return <Dialog title="Let it do more?" onClose={action.dismiss} footer={<><button type="button" className="btn ghost" onClick={action.dismiss}>Not now</button><button type="button" className="btn pri" disabled={!!action.busy} onClick={() => void action.run("consent", c.method, { ...c.params, acknowledgeCapabilities: { reviewToken: c.token } }, done)}>Allow</button></>}>
-    <p className="dlg-p">{c.message}</p>
+    <p className="dlg-p">{plainError(c.message)}</p>
   </Dialog>;
 }
 
@@ -59,7 +61,9 @@ export function CatalogDialog({ mode, engine, close, ownServer, done }: { mode: 
   const cats = list(rec(categories.data).categories).map(c => ({ id: str(c.slug), name: str(c.label) })).filter(c => c.id);
   const isIntent = INTENTS.some(i => i.id === filter);
   const browse = useResource<unknown>(engine, "plugins.catalog.browse", { ...(query.trim() ? { query: query.trim() } : {}), ...(isIntent ? { intent: filter } : { category: filter }), pageSize: 60 });
-  const items = readItems(browse.data);
+  const all = readItems(browse.data);
+  // A-141: one card per app, with the one on this computer, then the official one, kept.
+  const items = mode === "connector" ? uniqueApps(all, i => i.name, i => (i.installed ? 4 : 0) + (i.author.toLowerCase() === "branch" ? 2 : 0) + (i.install ? 1 : 0)) : all;
   const action = usePluginAction(engine);
   const remote = str(rec(browse.data).remoteError);
   const install = (i: Item) => { if (i.install) void action.run(i.id, "plugins.install", { ...i.install, enable: true }, () => { browse.reload(); done(); }); };
@@ -70,11 +74,11 @@ export function CatalogDialog({ mode, engine, close, ownServer, done }: { mode: 
     <div className="cz-top"><label className="cz-search"><Icon name="search" small /><input type="search" aria-label={mode === "connector" ? "Search connectors" : "Search plugins"} placeholder={mode === "connector" ? "Search connectors" : "Search plugins"} value={query} onChange={e => setQuery(e.target.value)} /></label>
       {mode === "connector" && <><Grey reason="Searching the public registry comes in a later update.">Public registry</Grey><Grey reason="Bringing connectors in from other apps comes in a later update.">Bring in from other apps</Grey></>}</div>
     <div className="cz-tabs" role="tablist" aria-label="Groups">{tabs.map(t => <button key={t.id} type="button" role="tab" aria-selected={filter === t.id} onClick={() => setFilter(t.id)}>{t.name}</button>)}</div>
-    <Status {...browse} />{remote && <p className="cz-hint">{remote}</p>}
-    {action.error && <p role="alert" className="cz-error">{action.error}</p>}
+    <Status {...browse} />{remote && <p className="cz-hint">{plainError(remote)}</p>}
+    {action.error && <p role="alert" className="cz-error">{plainError(action.error)}</p>}
     {browse.data != null && !items.length && <EmptyLine icon={<Icon name="search" />}>{mode === "connector" ? "Nothing matches. Add your own server below." : "No plugins found. Try another search or filter."}</EmptyLine>}
     {groupItems(items, filter === "all" ? cats : []).map(g => <section key={g.id} className="cz-grp-sec">{g.name && <h3 className="cz-grp">{g.name} <span>{g.items.length}</span></h3>}
-      <div className="cz-provs">{g.items.map(i => <CatalogCard key={i.id} item={i} busy={action.busy === i.id} install={() => install(i)} />)}</div></section>)}
+      <div className="cz-provs">{g.items.map(i => <CatalogCard key={i.id} item={i} app={mode === "connector"} busy={action.busy === i.id} install={() => install(i)} />)}</div></section>)}
     <ConsentDialog action={action} done={() => { browse.reload(); done(); }} />
   </Dialog>;
 }
@@ -87,12 +91,13 @@ function groupItems(items: Item[], cats: { id: string; name: string }[]): { id: 
   return [...groups, { id: "other", name: "Other", items: rest }].filter(g => g.items.length);
 }
 
-function CatalogCard({ item, busy, install }: { item: Item; busy: boolean; install: () => void }) {
+const ONE_LINE = { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } as const;
+function CatalogCard({ item, app, busy, install }: { item: Item; app: boolean; busy: boolean; install: () => void }) {
   const state = item.installed ? (item.enabled ? "On" : "Off") : null;
   const reason = item.action === "unavailable" ? "This one can't be installed on this computer." : !item.install ? "The catalogue gives no way to install it." : undefined;
   return <div className="cz-prov">
-    <div className="cz-prov-h"><Logo name={item.name} /><span className="grow"><b>{item.name}</b>{item.author && <small>@{item.author}</small>}</span></div>
-    <small>{item.summary}</small>
+    <div className="cz-prov-h">{app ? <AppLogo name={item.name} /> : <Logo name={item.name} />}<span className="grow"><b>{item.name}</b>{item.author && <small>@{item.author}</small>}</span></div>
+    {app ? <small className="cz-one" title={item.summary} style={ONE_LINE}>{plainLine(item.summary)}</small> : <small>{item.summary}</small>}
     {state ? <span className="cz-state">{state}</span>
       : <button type="button" className="btn sm" disabled={busy || !!reason} title={shownWhy(reason)} onClick={install}>{busy ? "Installing" : "Install"}</button>}
   </div>;

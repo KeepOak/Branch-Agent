@@ -45,6 +45,13 @@ import {
   appendGatewayLifecycleAudit,
   createGatewayLifecycleMutationAudit,
 } from "./lifecycle-audit.js";
+import { createDaemonStartAppChildHooks } from "./lifecycle-app-child.js";
+import { stopAppChildGateway } from "./app-child-supervisor.js";
+import {
+  applyGatewayChildFallbackOnce,
+  createGatewayChildFallbackOnce,
+  noteReadyChildFallback,
+} from "./service-start-fallback.js";
 import { resolveGatewayConfigPorts, resolveGatewayLifecycleContext } from "./lifecycle-context.js";
 import {
   runServiceRestart,
@@ -69,7 +76,6 @@ import {
   waitForGatewayHealthyRestart,
 } from "./restart-health.js";
 import { renderGatewayServiceStartHints } from "./shared.js";
-import { verifyGatewayStartReadiness } from "./start-health.js";
 import { repairLoadedGatewayServiceForStart } from "./start-repair.js";
 import type { DaemonLifecycleOptions } from "./types.js";
 
@@ -129,7 +135,14 @@ async function stopGatewayWithoutServiceManager(
   // lock already names the verified owner of this port, so signal it instead of
   // reporting the gateway as not running while it keeps serving.
   const pids = listenerPids.length > 0 ? listenerPids : lockOwnerPid ? [lockOwnerPid] : [];
+  const stoppedAppChild = await stopAppChildGateway({ port });
   if (pids.length === 0) {
+    if (stoppedAppChild.stopped) {
+      return {
+        result: "stopped" as const,
+        message: stoppedAppChild.message,
+      };
+    }
     const probeHosts = await resolveGatewayServiceProbeHosts(serviceContext ?? {});
     const portUsage = await probePortUsage(port, probeHosts);
     if (portUsage !== "free") {
@@ -264,24 +277,12 @@ export async function runDaemonStart(opts: DaemonLifecycleOptions = {}) {
   assertGatewayServiceMutationAllowed("start the gateway");
   const service = resolveGatewayService();
   const expectedPort = (await resolveGatewayConfigPorts()).explicit;
+  const child = createDaemonStartAppChildHooks({ service, expectedPort });
   return await runServiceStart({
     serviceNoun: "Gateway",
     service,
     renderStartHints: renderGatewayServiceStartHints,
-    onNotLoaded:
-      process.platform === "darwin"
-        ? async () => {
-            const recovered = await recoverInstalledLaunchAgent({ result: "started" });
-            if (recovered) {
-              appendGatewayLifecycleAudit({
-                action: "start",
-                source: "cli",
-                mode: "launchd-bootstrap",
-              });
-            }
-            return recovered;
-          }
-        : undefined,
+    onNotLoaded: child.onNotLoaded,
     repairLoadedService: async ({ json, stdout, warn, state, issues }) =>
       await repairLoadedGatewayServiceForStart({
         service,
@@ -291,14 +292,8 @@ export async function runDaemonStart(opts: DaemonLifecycleOptions = {}) {
         state,
         issues,
       }),
-    postStartCheck: ({ fail, warnings }) =>
-      verifyGatewayStartReadiness({
-        service,
-        expectedPort,
-        resolveContext: () => resolveGatewayLifecycleContext(service),
-        fail,
-        warnings,
-      }),
+    postStartCheck: child.postStartCheck,
+    onStartFailed: child.onStartFailed,
     expectedPort,
     opts,
   });
@@ -407,6 +402,7 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
   const restartWaitMs = restartHealthAttempts * DEFAULT_RESTART_HEALTH_DELAY_MS;
   const restartWaitSeconds = Math.round(restartWaitMs / 1000);
   let unmanagedRestartWait: ReturnType<typeof resolveRestartListenerHealthWait> | undefined;
+  const recoverOnce = createGatewayChildFallbackOnce();
 
   return await runServiceRestart({
     serviceNoun: "Gateway",
@@ -509,16 +505,38 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
       if (mutationError) {
         throw mutationError;
       }
-      return null;
+      return await recoverOnce.run({
+        result: "restarted",
+        service,
+        port: unmanagedPort,
+        knownLoadState: { status: "not-loaded" },
+      });
     },
     postRestartCheck: async ({
       warnings,
-      fail,
+      fail: reportFail,
       stdout,
       warn,
       activationAccepted: accepted,
       preserveDefinition: preserved,
     }) => {
+      if (noteReadyChildFallback(recoverOnce, warnings)) {
+        return;
+      }
+      let failed: string | undefined;
+      let failedHints: string[] | undefined;
+      let failedCode: "restart-health-failed" | "still-starting" | undefined;
+      const fail = (
+        message: string,
+        hints?: string[],
+        code?: "restart-health-failed" | "still-starting",
+      ) => {
+        failed = message;
+        failedHints = hints;
+        failedCode = code;
+        throw new Error(message);
+      };
+      try {
       if (preserved) {
         preserveDefinition = true;
         managedRestartPort = managedRestartContext.port;
@@ -648,6 +666,36 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
             : undefined,
       );
       throw new Error("unreachable after gateway restart failure");
+      } catch (err) {
+        if (!failed) {
+          throw err;
+        }
+        if (
+          await applyGatewayChildFallbackOnce({
+            recoverOnce,
+            recover: async () =>
+              recoverOnce.run({
+                result: "restarted",
+                service,
+                port: managedRestartPort,
+              }),
+            failed,
+            fail: reportFail,
+            hints: failedHints,
+            code: failedCode,
+            warnings,
+          })
+        ) {
+          return;
+        }
+        throw new Error("unreachable after gateway restart failure", { cause: err });
+      }
     },
+    onRestartFailed: async () =>
+      await recoverOnce.run({
+        result: "restarted",
+        service,
+        port: managedRestartPort,
+      }),
   });
 }

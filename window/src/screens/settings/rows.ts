@@ -6,6 +6,7 @@ import type { DesktopControlName } from "../../connect/desktop-controls";
 import type { Level, PageId } from "./nav";
 import { ACCOUNTS_ROWS } from "./pages/accounts";
 import { APPEARANCE_ROWS } from "./pages/appearance";
+import { AUTOS_ROWS } from "./pages/autos";
 import { CUSTOMIZE_ROWS } from "./pages/customize";
 import { GENERAL_ROWS } from "./pages/general";
 
@@ -98,10 +99,14 @@ export function rowLevel(row: Row, hints: UiHints): Level {
  *  (Private #1093 item 4); Technical shows everything, Coming included. */
 export const COMING_FROM: Level = 2;
 
-/** A row that waits for a later update: Coming by its source, or (when the page's controls are given) a slot row its
- *  page has no control for, which RowView draws as Coming. */
+/** A slot row whose every call is one the engine doesn't have yet ("engine: …"): its control is a Coming button. */
+const waitsOnEngine = (calls: string[]): boolean => calls.length > 0 && calls.every((call) => call.startsWith("engine: "));
+
+/** A row that waits for a later update: Coming by its source, a slot row that waits on calls the engine doesn't have
+ *  yet, or (when the page's controls are given) a slot row its page has no control for, which RowView draws as Coming. */
 export function comingRow(row: Row, controls?: Readonly<Record<string, unknown>>): boolean {
-  return row.source.kind === "coming" || (controls !== undefined && row.source.kind === "slot" && !controls[row.id]);
+  if (row.source.kind === "coming") return true;
+  return row.source.kind === "slot" && (waitsOnEngine(row.source.calls) || (controls !== undefined && !controls[row.id]));
 }
 
 /** The level a row first shows at: its own, and at least Technical while it is Coming (Regular and Advanced hide Coming rows). Its
@@ -112,7 +117,7 @@ export function shownLevel(row: Row, hints: UiHints, controls?: Readonly<Record<
 }
 
 /** Every row of the R1 Settings pages. Pages add their list here. */
-export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS];
+export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS, ...AUTOS_ROWS];
 
 /** The rows of one card at this level, in table order. A row above the level is hidden, and so is a Coming row at
  *  Regular. */

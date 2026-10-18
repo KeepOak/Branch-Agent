@@ -11,6 +11,10 @@ import { readDesktopJournal, stageDesktopUpdate, stagedDesktopVersion, type Desk
 
 export interface RefreshOptions {
   retryRejected?: boolean;
+  /** Stops a download the owner cancelled. */
+  signal?: AbortSignal;
+  /** Byte progress of the engine/window archives, for first-launch consent UI. */
+  onProgress?: (update: { name: string; bytes: number; total: number }) => void;
   /** The packaged desktop app to update as well; absent in development runs. */
   desktop?: DesktopInstall;
   /**
@@ -496,7 +500,7 @@ export async function readComponentManifest(request: typeof fetch = fetch): Prom
   return parseComponentRelease(JSON.parse(body));
 }
 
-async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch): Promise<{ engine: string; window: string }> {
+async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, options: RefreshOptions = {}): Promise<{ engine: string; window: string }> {
   const updates = join(cfg.dataDir, "updates");
   await mkdir(updates, { recursive: true });
   const directory = await mkdtemp(join(updates, `release-${release.version}-`));
@@ -505,7 +509,12 @@ async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typ
     for (const name of ["engine", "window"] as const) {
       const archive = join(directory, `${name}.tar.gz`);
       const destination = join(directory, name);
-      await downloadComponent(release.components[name], archive, request);
+      await downloadComponent(release.components[name], archive, request, {
+        signal: options.signal,
+        onProgress: options.onProgress
+          ? (bytes, total) => options.onProgress?.({ name, bytes, total })
+          : undefined,
+      });
       await mkdir(destination);
       await extractComponentArchive(archive, destination, release.components[name].expandedBytes);
       await rm(archive);
@@ -733,7 +742,7 @@ async function replaceStaged(cfg: DesktopConfig, held: Publication, release: Com
     if (kept) await removeStagedFolder(cfg, dirname(kept.engine), options.log);
     return { ok: false };
   }
-  const next = kept ? { engine: kept.engine, window: kept.window } : await stage(cfg, chosen, request);
+  const next = kept ? { engine: kept.engine, window: kept.window } : await stage(cfg, chosen, request, options);
   let superseded: string[] = [];
   let retainDownload = false;
   let published = false;
@@ -796,7 +805,7 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
   if (olderVersion(chosen.version, installed)) logSkippedOlder(options.log, chosen.version, installed);
   if (installed !== chosen.version && !olderVersion(chosen.version, installed)
       && (options.retryRejected || !await componentReleaseRejected(cfg, chosen))) {
-    const next = selected.kept ? { engine: selected.kept.engine, window: selected.kept.window } : await stage(cfg, chosen, request);
+    const next = selected.kept ? { engine: selected.kept.engine, window: selected.kept.window } : await stage(cfg, chosen, request, options);
     await publish(cfg, chosen, next);
     const marker = join(dirname(next.engine), keptMarker);
     try { await retryWindowsLock(() => rm(marker, { force: true })); }

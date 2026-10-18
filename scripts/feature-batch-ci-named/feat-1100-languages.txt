@@ -1,0 +1,2 @@
+window:src/i18n/language.test.tsx
+window:src/screens/settings/rows.test.ts

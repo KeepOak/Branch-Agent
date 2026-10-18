@@ -7,6 +7,7 @@ import { shows } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
 import { Switch } from "../../shell/Popover";
 import { useResource } from "../library/data";
+import { plainError } from "../../shell/plain-error";
 import { Status } from "../library/ui";
 import { Grey, list, Pill, rec, Sec, str, type Rec } from "./common";
 import { KindHead, TechnicalOnly } from "./kind-chrome";
@@ -41,12 +42,12 @@ export function Plugins({ ctx }: { ctx: ToolsCtx }) {
       {shown.map(p => <div key={p.id} className="cz-rowline" role="listitem">
         <button type="button" className="t9-item" aria-current={p.id === plugin?.id} onClick={() => setChosen(p.id)}>
           <span className="cz-tile"><Glyph name="puzzle" size={16} /></span><span className="grow"><b>{p.name}</b><small>{p.description || FROM[p.origin] || p.id}</small></span>
-          {p.state === "error" ? <Pill tone="bad" title={p.error}>Needs a look</Pill> : p.state === "needs-setup" ? <Pill tone="warn">Needs setting up</Pill> : null}
+          {p.state === "error" ? <Pill tone="bad" title={plainError(p.error)}>Needs a look</Pill> : p.state === "needs-setup" ? <Pill tone="warn">Needs setting up</Pill> : null}
         </button>
         <Switch label={`${p.name} on or off`} on={p.enabled} onChange={on => void action.run("toggle", "plugins.setEnabled", { pluginId: p.id, enabled: on }, ctx.plugins.reload)} />
       </div>)}
       <TechRows ctx={ctx} kind="Plugins" />
-      {action.error && <p role="alert" className="cz-error">{action.error}</p>}
+      {action.error && <p role="alert" className="cz-error">{plainError(action.error)}</p>}
       <ConsentDialog action={action} done={ctx.plugins.reload} />
     </KindHead>
     {plugin ? <PluginDetail key={plugin.id} ctx={ctx} plugin={plugin} /> : <div className="t9-detail cz-empty-detail" />}
@@ -65,8 +66,8 @@ function PluginDetail({ ctx, plugin }: { ctx: ToolsCtx; plugin: Plugin }) {
   return <div className="t9-detail" data-testid="plugin-detail">
     <div className="t9-dh"><span className="cz-tile big"><Glyph name="puzzle" /></span><span className="grow"><b>{plugin.name}</b><small>{[str(overview.publisherName), FROM[plugin.origin]].filter(Boolean).join(" · from ")}</small></span>
       <Switch label={`${plugin.name} on or off`} on={plugin.enabled} onChange={on => void action.run("toggle", "plugins.setEnabled", { pluginId: plugin.id, enabled: on }, reload)} /></div>
-    {action.error && <p role="alert" className="cz-error">{action.error}</p>}
-    {plugin.error && <div className="cz-card warn"><b>Needs a look</b><small>{plugin.error}</small></div>}
+    {action.error && <p role="alert" className="cz-error">{plainError(action.error)}</p>}
+    {plugin.error && <div className="cz-card warn"><b>Needs a look</b><small>{plainError(plugin.error)}</small></div>}
     <TechnicalOnly><div className="cz-tabs" role="tablist" aria-label="Plugin"><button type="button" role="tab" aria-selected={tab === "installed"} onClick={() => setTab("installed")}>Installed</button><button type="button" role="tab" aria-selected={tab === "settings"} onClick={() => setTab("settings")}>Plugin settings</button></div></TechnicalOnly>
     {tab === "settings" && shows(ctx.level, "technical") ? <PluginSettings /> : <>
     <Status {...inspect} />
@@ -78,7 +79,7 @@ function PluginDetail({ ctx, plugin }: { ctx: ToolsCtx; plugin: Plugin }) {
       <div className="cz-acts">{plugin.install ? <button type="button" className="btn sm" disabled={!!action.busy} onClick={() => void action.run("update", "plugins.install", { ...plugin.install, mode: "update" }, reload)}>{action.busy === "update" ? "Checking" : "Check for updates"}</button> : <Grey reason="Checking this plugin for updates comes in a later update.">Check for updates</Grey>}</div></Sec>
     <Sec title="Actions"><div className="cz-acts"><Grey reason="Copying a plugin’s seed comes in a later update.">Copy seed</Grey><Grey reason="Downloading a plugin comes in a later update.">Download</Grey><Grey reason="Copying a plugin to another Trunk comes in a later update.">Copy to another Trunk</Grey><Grey reason="Testing a plugin from here comes in a later update.">Test it</Grey><span className="cz-grow" />{plugin.removable && <button type="button" className="btn ghost sm" onClick={() => setRemoving(true)}>Remove</button>}</div></Sec>
     {removing && <Dialog title={`Remove ${plugin.name}?`} onClose={() => setRemoving(false)} footer={<><button type="button" className="btn ghost" onClick={() => setRemoving(false)}>Cancel</button><button type="button" className="btn bad" disabled={!!action.busy} onClick={() => void action.run("remove", "plugins.uninstall", { pluginId: plugin.id }, () => { setRemoving(false); ctx.plugins.reload(); })}>Remove</button></>}>
-      <p className="dlg-p">Everything in it goes: its skills, connectors and tools.</p>{action.error && <p role="alert" className="cz-error">{action.error}</p>}
+      <p className="dlg-p">Everything in it goes: its skills, connectors and tools.</p>{action.error && <p role="alert" className="cz-error">{plainError(action.error)}</p>}
     </Dialog>}
     </>}
     <ConsentDialog action={action} done={reload} />

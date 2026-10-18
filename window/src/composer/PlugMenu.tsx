@@ -10,6 +10,7 @@ import {
   readSkills, readWebSearchBase, setWebSearch, toggle, type Connector, type SkillRow, type ToolOverrides,
 } from "./tools";
 import { Switch } from "./ui";
+import { plainError } from "../shell/plain-error";
 import { shownWhy } from "../shell/shown-why";
 
 type Props = {
@@ -46,7 +47,7 @@ function useCatalog(engine: WindowEngine) {
       ]);
       setCatalog({ connectors: readConnectors(config), skills: readSkills(skills), webBase: readWebSearchBase(config), effective: await effective });
     } catch (e) {
-      setError(errorText(e));
+      setError(plainError(e));
     }
   }, [engine]);
   useEffect(() => {
@@ -65,7 +66,7 @@ export function PlugMenu(p: Props) {
   const reason = p.isAdmin ? undefined : "This needs admin access on this computer.";
   const write = async (next: ToolOverrides) => {
     const problem = await p.patch({ toolOverrides: patchValue(next) });
-    setFailed(problem);
+    setFailed(problem ? plainError(problem) : problem);
     return problem;
   };
   const changed = changedCount(overrides);

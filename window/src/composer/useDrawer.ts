@@ -57,7 +57,8 @@ function useCatalogs(engine: WindowEngine | undefined) {
       (r) => setPeople(list(rec(r).users).map((u) => ({ profileId: str(u.profileId), name: str(u.displayName) }))),
       (e: unknown) => {
         // A conversation with no first message yet has no one in it to tell; it is asked again next time.
-        if (!/not found|unknown session/i.test(errorText(e))) setPeopleError(`Couldn't load People. Try again. (${errorText(e)})`);
+        // The engine's own words go to the log, never into the line (Private #1089).
+        if (!/not found|unknown session/i.test(errorText(e))) { console.warn("users.mentionable failed:", errorText(e)); setPeopleError("Couldn't load People. Try again."); }
       },
     );
   }, [engine, people]);

@@ -4,9 +4,22 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  MAX_RATE_LIMIT_SLEEP_SECONDS,
+  RATE_LIMIT_WAKE_SPREAD_SECONDS,
+  execGhApi,
+  fetchGitHubRateLimit,
+  ghApiArgs,
+  isRateLimitError,
+  withRateLimitRetry,
+} from './merge-gate-rate-limit.mjs';
 
 export const LIVE_READ_ATTEMPTS = 4;
 export const LIVE_READ_DELAYS_SECONDS = [5, 10, 20];
+
+// Match commit-emails' 10-minute budget, leaving room within the 15-minute job cap.
+export const COVERAGE_RATE_LIMIT_BUDGET_SECONDS = 600;
+export const COVERAGE_RATE_LIMIT_BUFFER_SECONDS = 15;
 
 // Live mode when the repo, the PR number and a token are set. Local runs fall back to GITHUB_EVENT_PATH.
 export function liveContext(env = process.env) {
@@ -15,32 +28,78 @@ export function liveContext(env = process.env) {
   return { repo: env.REPO, prNumber: env.PR_NUMBER, token };
 }
 
-function defaultRequest({ repo, prNumber, token }) {
-  const out = execFileSync('gh', ['api', `repos/${repo}/pulls/${prNumber}`], {
-    encoding: 'utf8',
-    windowsHide: true,
-    env: { ...process.env, GH_TOKEN: token },
+function defaultRequest(ctx, exec) {
+  const parsed = execGhApi(ghApiArgs(`repos/${ctx.repo}/pulls/${ctx.prNumber}`), {
+    token: ctx.token,
+    includeHeaders: true,
+    ...(exec ? { exec } : {}),
   });
-  return JSON.parse(out);
+  if (!parsed.json || typeof parsed.json !== 'object') {
+    throw new Error('GitHub API returned a non-object pull request');
+  }
+  return parsed.json;
 }
 
-// Retries a transient read, then throws: a caller must fail closed, never fall back to the payload.
-export function readLivePullRequest(ctx, { request = defaultRequest, sleep = defaultSleep } = {}) {
-  let lastError = null;
-  for (let attempt = 1; attempt <= LIVE_READ_ATTEMPTS; attempt += 1) {
-    try {
-      const pr = request(ctx);
-      return {
-        body: typeof pr?.body === 'string' ? pr.body : '',
-        headRef: pr?.head?.ref ?? '',
-        headSha: pr?.head?.sha ?? '',
-      };
-    } catch (error) {
-      lastError = error;
-      if (attempt < LIVE_READ_ATTEMPTS) sleep(LIVE_READ_DELAYS_SECONDS[attempt - 1]);
+function pullRequestSnapshot(pr) {
+  return {
+    body: typeof pr?.body === 'string' ? pr.body : '',
+    headRef: pr?.head?.ref ?? '',
+    headSha: pr?.head?.sha ?? '',
+  };
+}
+
+// A rate-limit 403/429 waits until reset (x-ratelimit-reset, or `gh api rate_limit`) plus a small buffer,
+// inside one budget for the step. Any other error keeps the short retries and still fails closed.
+export function readLivePullRequest(ctx, {
+  exec,
+  request = (current) => defaultRequest(current, exec),
+  sleep = defaultSleep,
+  now = Date.now,
+  fetchRateLimit,
+  budgetSeconds = COVERAGE_RATE_LIMIT_BUDGET_SECONDS,
+  bufferSeconds = COVERAGE_RATE_LIMIT_BUFFER_SECONDS,
+  maxSleep = MAX_RATE_LIMIT_SLEEP_SECONDS,
+  spreadSeconds = RATE_LIMIT_WAKE_SPREAD_SECONDS,
+  random,
+  log = console.log,
+} = {}) {
+  const startedAt = now();
+  const readWithShortRetries = () => {
+    let lastError = null;
+    for (let attempt = 1; attempt <= LIVE_READ_ATTEMPTS; attempt += 1) {
+      try {
+        return pullRequestSnapshot(request(ctx));
+      } catch (error) {
+        if (isRateLimitError(error)) throw error;
+        lastError = error;
+        if (attempt < LIVE_READ_ATTEMPTS) sleep(LIVE_READ_DELAYS_SECONDS[attempt - 1]);
+      }
     }
+    const detail = String(lastError?.message ?? lastError).split('\n')[0];
+    throw new Error(`${detail} (after ${LIVE_READ_ATTEMPTS} attempts)`);
+  };
+
+  try {
+    return withRateLimitRetry(readWithShortRetries, {
+      sleep,
+      now,
+      fetchRateLimit: fetchRateLimit ?? (() => fetchGitHubRateLimit(ctx.token)),
+      startedAt,
+      budgetSeconds,
+      maxSleep,
+      bufferSeconds,
+      spreadSeconds,
+      retryTransient: false,
+      random,
+      log,
+    });
+  } catch (error) {
+    if (!isRateLimitError(error)) throw error;
+    const detail = String(error?.message ?? error).split('\n')[0];
+    throw new Error(
+      `checks-unavailable: GitHub API rate limit outlasted the ${budgetSeconds}s wait while reading pull request #${ctx.prNumber}. Not a coverage failure; re-run the check. ${detail}`,
+    );
   }
-  throw new Error(`${String(lastError?.message ?? lastError).split('\n')[0]} (after ${LIVE_READ_ATTEMPTS} attempts)`);
 }
 
 function defaultSleep(seconds) {
@@ -60,12 +119,22 @@ export function snapshotFromEnv(env = process.env, { read = readFileSync } = {})
   };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const ctx = liveContext();
-  const outFile = process.argv[2];
+export function main(args = process.argv.slice(2), { env = process.env, ...readOptions } = {}) {
+  const ctx = liveContext(env);
+  const outFile = args[0];
   if (!ctx || !outFile) {
     console.error('Usage: REPO, PR_NUMBER and GH_TOKEN set; node scripts/live-pull-request.mjs <out.json>');
-    process.exit(1);
+    return 1;
   }
-  writeFileSync(outFile, JSON.stringify(readLivePullRequest(ctx)));
+  try {
+    writeFileSync(outFile, JSON.stringify(readLivePullRequest(ctx, readOptions)));
+    return 0;
+  } catch (error) {
+    console.error(error.message);
+    return 1;
+  }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = main();
 }
