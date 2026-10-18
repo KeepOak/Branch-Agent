@@ -3,6 +3,7 @@
 // address (gateway.publicOrigin), saved with config.patch against the read revision.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState } from "react";
+import { plainError } from "../../shell/plain-error";
 import { Dialog } from "../../shell/Dialog";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
@@ -45,7 +46,7 @@ function PairingRules({ engine }: { engine: WindowEngine }) {
   const save = (path: string[], value: unknown) => void op.run("config.patch", { raw: JSON.stringify(patchOf(path, value)), baseHash: str(snap.hash) }, config.reload);
   const ssh = pairing.sshVerify !== false;
   return <>
-    <Status {...config} />
+    <Status {...config} error={config.error ? plainError(config.error) : config.error} />
     <Ctl title="Approve a computer I can reach over SSH" line="When Branch can check a new computer’s key over SSH, it is approved without waiting." off={!admin ? ADMIN_OFF : undefined}><Sw label="Approve a computer I can reach over SSH" on={ssh} off={off} onChange={on => save(["gateway", "nodes", "pairing", "sshVerify"], on)} /></Ctl>
     <TextRow title="Approve computers from these addresses" line="Only for computers that lend their tools, never for people’s browsers or upgrades." placeholder="192.168.1.0/24" value={strs(pairing.autoApproveCidrs).join(", ")} off={off}
       check={v => v.split(/[\s,]+/).filter(Boolean).every(x => CIDR.test(x))} save={v => save(["gateway", "nodes", "pairing", "autoApproveCidrs"], v.split(/[\s,]+/).filter(Boolean))} />
@@ -55,7 +56,7 @@ function PairingRules({ engine }: { engine: WindowEngine }) {
         check={v => !v || ORIGIN.test(v)} save={v => save(["gateway", "publicOrigin"], v || null)} />
       <Ctl title="New people start as" line="Admin is never a good default."><Seg label="New people start as" value={null} options={[{ id: "viewer", name: "Viewer" }, { id: "operator", name: "Operator" }, { id: "admin", name: "Admin" }]} off={str(gateway.publicOrigin) ? DEFAULT_ROLE_OFF : "Set its web address first."} /></Ctl>
     </Section>
-    {op.error && <p role="alert" className="pp-error">{op.error}</p>}
+    {op.error && <p role="alert" className="pp-error">{plainError(op.error)}</p>}
   </>;
 }
 

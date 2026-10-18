@@ -1,6 +1,7 @@
 // People › Signing in › Devices (§4.6.5.9 line 66): devices waiting for approval and paired devices, wired to
 // device.pair.list / approve / reject / rename / remove and, at Technical, device.token.rotate / revoke.
 import { useEffect, useState, type MouseEvent } from "react";
+import { plainError } from "../../shell/plain-error";
 import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
 import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
@@ -39,8 +40,8 @@ export function Devices({ engine, level }: { engine: WindowEngine; level: Level 
     ] satisfies MenuItem[] : []),
   ];
   return <Section title="Devices">
-    <Status {...list} />
-    {pending.length > 0 && <><div className="pp-sub"><b>Waiting for approval ({pending.length})</b><button type="button" className="btn ghost sm" onClick={() => setConfirm({ title: "Clear all waiting?", text: "Every device waiting for approval is turned down.", go: "Clear all", run: () => { void clearAll().catch(e => setNote(String(e))); } })}>Clear all waiting…</button></div>
+    <Status {...list} error={list.error ? plainError(list.error) : list.error} />
+    {pending.length > 0 && <><div className="pp-sub"><b>Waiting for approval ({pending.length})</b><button type="button" className="btn ghost sm" onClick={() => setConfirm({ title: "Clear all waiting?", text: "Every device waiting for approval is turned down.", go: "Clear all", run: () => { void clearAll().catch(e => setNote(plainError(String(e)))); } })}>Clear all waiting…</button></div>
       <div className="pp-rows flat">{pending.map(p => <div key={str(p.requestId)} className="pp-prow"><span className="pp-tile">{glyph(p)}</span>
         <span className="grow"><b>{nameOf(p)}</b><small>{kindOf(p)} · {p.isRepair ? "Wants more" : "Wants"}: {wants(p)}{str(p.remoteIp) && ` · ${str(p.remoteIp)}`}</small></span>
         <button type="button" className="btn ghost sm" disabled={op.busy} onClick={() => setConfirm({ title: `Turn down ${nameOf(p)}?`, text: "It can ask again later.", go: "Don’t allow", run: () => act("device.pair.reject", { requestId: str(p.requestId) }) })}>Don’t allow</button>
@@ -50,7 +51,7 @@ export function Devices({ engine, level }: { engine: WindowEngine; level: Level 
     <div className="pp-rows flat">{paired.map(d => <div key={str(d.deviceId)} className="pp-prow"><span className="pp-tile">{glyph(d)}</span>
       <span className="grow"><b>{nameOf(d)}</b><small>{[kindOf(d), d.connected === true ? "here now" : num(d.lastSeenAtMs) ? `last seen ${ago(num(d.lastSeenAtMs))}` : ""].filter(Boolean).join(" · ")}</small></span>
       <button type="button" className="ib" aria-haspopup="menu" aria-label={`More for ${nameOf(d)}`} onClick={(e: MouseEvent<HTMLButtonElement>) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ at: { x: r.left, y: r.bottom + 4 }, d }); }}><Icon name="more" /></button></div>)}</div>
-    {op.error && <p role="alert" className="pp-error">{op.error}</p>}{note && <p role="status" className="pp-hint">{note}</p>}
+    {op.error && <p role="alert" className="pp-error">{plainError(op.error)}</p>}{note && <p role="status" className="pp-hint">{note}</p>}
     {menu && <Menu at={menu.at} label={`More for ${nameOf(menu.d)}`} items={items(menu.d)} onClose={() => setMenu(null)} />}
     {confirm && <Dialog title={confirm.title} onClose={() => setConfirm(null)} footer={<><button type="button" className="btn ghost" onClick={() => setConfirm(null)}>Cancel</button><button type="button" className="btn pri" onClick={() => { confirm.run(); setConfirm(null); }}>{confirm.go}</button></>}><p style={{ margin: 0 }}>{confirm.text}</p></Dialog>}
     {rename && <RenameDialog device={rename} onClose={() => setRename(null)} save={label => act("device.pair.rename", { deviceId: str(rename.deviceId), label }, () => setRename(null))} busy={op.busy} />}
