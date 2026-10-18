@@ -85,12 +85,27 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
     }
   }, [engine, key, draftAgentId]);
 
-  const readModelList = useCallback(async () => {
+  const readModelList = useCallback(async (opts?: { refresh?: boolean }) => {
     if (!engine || !key) return;
     setState((s) => ({ ...s, modelsLoading: true }));
     try {
-      const result = await engine.request("models.list", { sessionKey: key, includeDetails: true });
-      if (live.current === key) setState((s) => ({ ...s, models: readModels(result), modelsLoaded: true, modelsLoading: false, modelsError: null }));
+      const result = await engine.request("models.list", {
+        sessionKey: key,
+        includeDetails: true,
+        ...(opts?.refresh ? { refresh: true } : {}),
+      });
+      const models = readModels(result);
+      const available = models.some((m) => m.available);
+      if (live.current === key) {
+        setState((s) => ({
+          ...s,
+          models,
+          modelsLoaded: true,
+          modelsLoading: false,
+          modelsError: null,
+          ...(available ? { noKeyError: null, noKeySettled: true } : {}),
+        }));
+      }
     } catch (error) {
       if (live.current === key) setState((s) => ({ ...s, modelsLoading: false, modelsError: errorText(error) }));
     }
@@ -150,15 +165,32 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
 
   useEffect(() => {
     if (!engine || !key) return;
-    return engine.onEvent(({ event, payload }) => {
+    const refreshModels = () => {
+      void readModelList({ refresh: true });
+    };
+    const offEvent = engine.onEvent(({ event, payload }) => {
       if ((event === "sessions.changed" && touches(payload, key)) || (event === "chat" && str(rec(payload).state) === "final")) {
         readRow().catch((error: unknown) => setState((s) => ({ ...s, error: errorText(error) })));
       }
       // A saved config (setup's "How much it may do", Settings › Permissions) changes what each Trunk's default mode resolves
       // to. The engine announces every committed write as config.changed; the chip reads the Trunk list, so it re-reads it here.
       if (event === "config.changed" || event === "agents.changed") readTrunkList().catch(() => undefined);
+      // Same events the engine UI uses to invalidate models.list: a signed-in account or a config reload changes the
+      // catalog. The composer must re-read it so Send is not stuck on the list from when the window opened.
+      if (event === "config.changed" || event === "agents.changed" || event === "chat.metadata.changed") refreshModels();
     });
-  }, [engine, key, readRow, readTrunkList]);
+    const onFocus = () => {
+      if (typeof document !== "undefined" && document.visibilityState && document.visibilityState !== "visible") return;
+      refreshModels();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      offEvent();
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [engine, key, readRow, readTrunkList, readModelList]);
 
   /** sessions.patch on this conversation, then the row read back. Returns the engine's error words, or null. */
   const patch = useCallback(
