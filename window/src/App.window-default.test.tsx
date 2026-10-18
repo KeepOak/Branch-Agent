@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import type { GatewayStatus } from "./connect/gateway";
 
 // Which window a connected install gets. R1 is the default; Classic only behind ?classic or branch.classic (R1-12).
@@ -26,6 +26,15 @@ vi.mock("./screens/frame/R1Window", async (importOriginal) => ({
 const url = "ws://127.0.0.1:1";
 const hello = { snapshot: { sessionDefaults: { mainSessionKey: "agent:main:main" } }, auth: { scopes: [] }, policy: {} };
 let root: Root | undefined;
+// Same warmup as App.window-swap: the first mount used to pay the cold transform of App and sit
+// on the 5 s per-test limit on slower Windows runners. Load App here so that cost is not a test timeout.
+beforeAll(async () => {
+  await import("./App");
+  vi.resetModules();
+}, 60_000);
+afterAll(() => {
+  vi.resetModules();
+});
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   sessionStorage.clear();
@@ -69,14 +78,14 @@ async function windowThroughReload(): Promise<[string | null, string | null]> {
 
 it("opens the R1 window by default, including after a reload", async () => {
   expect(await windowThroughReload()).toEqual(["r1", "r1"]);
-});
+}, 30_000);
 
 it("keeps the Classic override for ?classic, including after a reload", async () => {
   window.history.replaceState(null, "", "/?classic");
   expect(await windowThroughReload()).toEqual(["classic", "classic"]);
-});
+}, 30_000);
 
 it("keeps the Classic override for the branch.classic flag, including after a reload", async () => {
   localStorage.setItem("branch.classic", "1");
   expect(await windowThroughReload()).toEqual(["classic", "classic"]);
-});
+}, 30_000);

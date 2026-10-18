@@ -13,6 +13,42 @@ export const windowRoot = path.join(repoRoot, 'window');
 export const toolingRoot = path.join(repoRoot, 'scripts', 'feature-batch-ci-window-tooling');
 export const sha256 = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const registry = 'https://registry.npmjs.org';
+// Pin-verify downloads: a few retries with backoff so a registry 502 or timeout does not fail the shard.
+// Integrity mismatches, 4xx, and other assertion failures still fail on the first response.
+export const REGISTRY_DOWNLOAD_ATTEMPTS = 4;
+export const REGISTRY_RETRY_BASE_MS = 400;
+
+export function isTransientRegistryError(error) {
+  const text = String(error?.message ?? error ?? '');
+  const status = Number((/Download failed (\d{3}):/.exec(text) ?? [])[1]
+    ?? error?.status ?? error?.httpStatus);
+  if (status === 502 || status === 503 || status === 504) return true;
+  if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return true;
+  return /ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|socket hang up|fetch failed|timed? ?out/i.test(text);
+}
+
+export function registryRetryWaitMs(attempt) {
+  return REGISTRY_RETRY_BASE_MS * (2 ** attempt);
+}
+
+export async function withRegistryRetry(task, {
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  log = console.log,
+} = {}) {
+  let lastError;
+  for (let attempt = 0; attempt < REGISTRY_DOWNLOAD_ATTEMPTS; attempt += 1) {
+    try {
+      return await task();
+    } catch (error) {
+      lastError = error;
+      if (!isTransientRegistryError(error) || attempt === REGISTRY_DOWNLOAD_ATTEMPTS - 1) throw error;
+      const wait = registryRetryWaitMs(attempt);
+      log(`Registry download failed (${String(error?.message ?? error)}); retrying in ${wait}ms (${attempt + 1}/${REGISTRY_DOWNLOAD_ATTEMPTS - 1})`);
+      await sleep(wait);
+    }
+  }
+  throw lastError;
+}
 
 export async function gitHead() {
   const result = await promisify(execFile)('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, windowsHide: true });
@@ -28,9 +64,11 @@ export function run(command, args, cwd = repoRoot, env = process.env) {
 }
 
 async function fetchBytes(url) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });
-  assert(response.ok, `Download failed ${response.status}: ${url}`);
-  return Buffer.from(await response.arrayBuffer());
+  return withRegistryRetry(async () => {
+    const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+    assert(response.ok, `Download failed ${response.status}: ${url}`);
+    return Buffer.from(await response.arrayBuffer());
+  });
 }
 
 export function lockedIntegrity(lock, name, version) {

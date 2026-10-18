@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestFileSecondsFor, harvestMatrix, harvestMaxShards, harvestShardBudgetSeconds, harvestShardFiles, harvestTestFiles, harvestTests, harvestUnlistedFileSeconds, planHarvestShards, mainPushShardCounts, namedTests, planShards, plannedJobSeconds, plannedSlowestSeconds, overBudgetShards, setNamedListDir, pullRequestLinuxShardCount, resolvedShardCounts, runnerSetupSeconds, runnerTestScale, shardBudgetFor, shardBudgetSeconds, shardCountFor, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
+import {
+  REGISTRY_DOWNLOAD_ATTEMPTS, isTransientRegistryError, registryRetryWaitMs, withRegistryRetry,
+} from './feature-batch-ci-runtime.mjs';
 import { featureBatchMatrix, validateFeatureBatchMatrix } from './feature-batch-ci-matrix.mjs';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -298,4 +301,48 @@ test('the plan job uses the default-branch planner when it exists, and only a re
   assert.equal(push.include.filter((row) => row.os === 'windows-latest').length, mainPushShardCounts.windows);
   assert.equal(push.include.filter((row) => row.os === 'macos-latest').length, mainPushShardCounts.macos);
   assert.equal(push.include.filter((row) => row.os === 'ubuntu-latest').length, mainPushShardCounts.ubuntu);
+});
+
+test('registry 502s and timeouts are transient; 4xx and integrity mismatches fail closed', () => {
+  assert.equal(isTransientRegistryError(new Error('Download failed 502: https://registry.npmjs.org/pnpm/12.5.1')), true);
+  assert.equal(isTransientRegistryError(new Error('Download failed 503: https://registry.npmjs.org/pnpm/12.5.1')), true);
+  assert.equal(isTransientRegistryError(new Error('Download failed 504: https://registry.npmjs.org/pnpm/12.5.1')), true);
+  assert.equal(isTransientRegistryError(Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' })), true);
+  assert.equal(isTransientRegistryError(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })), true);
+  assert.equal(isTransientRegistryError(new Error('fetch failed')), true);
+  assert.equal(isTransientRegistryError(new Error('Download failed 404: https://registry.npmjs.org/missing/1.0.0')), false);
+  assert.equal(isTransientRegistryError(new Error('Download failed 401: https://registry.npmjs.org/pnpm/12.5.1')), false);
+  assert.equal(isTransientRegistryError(new Error('Registry/lock mismatch: pnpm@12.5.1')), false);
+  assert.equal(isTransientRegistryError(new Error('Downloaded tarball/lock mismatch: pnpm@12.5.1')), false);
+});
+
+test('registry download retries use backoff, then give up, and never retry a closed failure', async () => {
+  assert.deepEqual(
+    Array.from({ length: REGISTRY_DOWNLOAD_ATTEMPTS - 1 }, (_, attempt) => registryRetryWaitMs(attempt)),
+    [400, 800, 1600],
+  );
+  const waits = [];
+  let flaky = 0;
+  const recovered = await withRegistryRetry(async () => {
+    flaky += 1;
+    if (flaky < 3) throw new Error('Download failed 502: https://registry.npmjs.org/pnpm/12.5.1');
+    return 'ok';
+  }, { sleep: async (ms) => { waits.push(ms); }, log() {} });
+  assert.equal(recovered, 'ok');
+  assert.equal(flaky, 3);
+  assert.deepEqual(waits, [400, 800]);
+
+  let closed = 0;
+  await assert.rejects(withRegistryRetry(async () => {
+    closed += 1;
+    throw new Error('Download failed 404: https://registry.npmjs.org/missing/1.0.0');
+  }, { sleep: async () => { throw new Error('must not sleep on a closed failure'); }, log() {} }), /Download failed 404/);
+  assert.equal(closed, 1);
+
+  let exhausted = 0;
+  await assert.rejects(withRegistryRetry(async () => {
+    exhausted += 1;
+    throw new Error('Download failed 502: https://registry.npmjs.org/pnpm/12.5.1');
+  }, { sleep: async () => {}, log() {} }), /Download failed 502/);
+  assert.equal(exhausted, REGISTRY_DOWNLOAD_ATTEMPTS);
 });
