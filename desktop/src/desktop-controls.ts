@@ -280,6 +280,9 @@ export function ringBitmap(left: number, size = 32): Buffer {
   return out;
 }
 
+/** Reads gateway.pid's command line for a live .../branch.mjs. Pointer files can name a different valid engine. */
+const LIVE_ENGINE_PS = "$ProgressPreference='SilentlyContinue'; $q=[char]34; $p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:LIVEPID.Trim()) -EA SilentlyContinue; if(-not $p){exit 0}; $c=[string]$p.CommandLine; $m=[regex]::Match($c,'(?i)'+$q+'([^'+$q+']+)[\\\\/]branch\\.mjs'+$q); if(-not $m.Success){$m=[regex]::Match($c,'(?i)(?:^|\\s)(\\S+)[\\\\/]branch\\.mjs(?:\\s|$)')}; if($m.Success){$d=$m.Groups[1].Value; if((Test-Path -LiteralPath ($d+'\\branch.mjs') -PathType Leaf) -or (Test-Path -LiteralPath ($d+'/branch.mjs') -PathType Leaf)){Write-Output $d}}";
+
 /** The branch command: a shim that reads the running engine (else the published one), the token and the live port. */
 export function branchShim(o: { dataDir: string; engineDir: string; nodePath: string; gatewayPort: number }): string {
   return [
@@ -292,6 +295,8 @@ export function branchShim(o: { dataDir: string; engineDir: string; nodePath: st
     // The engine actually running wins over a staged one that has not been applied yet.
     `call :read_engine "%BRANCH_DATA%\\engine-running.txt"`,
     "if errorlevel 1 exit /b 1",
+    // A live gateway process wins when the pointer names a different engine that still has branch.mjs.
+    "call :read_live_engine",
     `if not exist "%ENGINE%\\branch.mjs" (echo Branch Agent engine is unavailable. Open Branch Agent to restore its engine, then retry. >&2 & exit /b 1)`,
     `if exist "%ENGINE%\\branch.mjs\\" (echo Branch Agent engine is unavailable. Open Branch Agent to restore its engine, then retry. >&2 & exit /b 1)`,
     `if exist "%BRANCH_DATA%\\gateway-token" set /p BRANCH_GATEWAY_TOKEN=<"%BRANCH_DATA%\\gateway-token"`,
@@ -312,6 +317,15 @@ export function branchShim(o: { dataDir: string; engineDir: string; nodePath: st
     `set /p CANDIDATE=<"%~1"`,
     "if not defined CANDIDATE exit /b 0",
     `if exist "%CANDIDATE%\\branch.mjs" if not exist "%CANDIDATE%\\branch.mjs\\" set "ENGINE=%CANDIDATE%"`,
+    "exit /b 0",
+    ":read_live_engine",
+    `if not exist "%BRANCH_DATA%\\gateway.pid" exit /b 0`,
+    `set "LIVEPID="`,
+    `set /p LIVEPID=<"%BRANCH_DATA%\\gateway.pid"`,
+    "if not defined LIVEPID exit /b 0",
+    `set "LIVEENGINE="`,
+    `for /f "usebackq delims=" %%A in (\`powershell.exe -NoProfile -NonInteractive -Command "${LIVE_ENGINE_PS}"\`) do set "LIVEENGINE=%%A"`,
+    `if defined LIVEENGINE if exist "%LIVEENGINE%\\branch.mjs" if not exist "%LIVEENGINE%\\branch.mjs\\" set "ENGINE=%LIVEENGINE%"`,
     "exit /b 0",
     "",
   ].join("\r\n");
@@ -334,8 +348,31 @@ export function branchShShim(o: { dataDir: string; engineDir: string; nodePath: 
     "  fi",
     "  return 0",
     "}",
+    "read_live_engine() {",
+    `  [ -f "$data/gateway.pid" ] || return 0`,
+    `  pid=$(head -n 1 "$data/gateway.pid" | tr -d '\\r')`,
+    `  [ -n "$pid" ] || return 0`,
+    "  live=",
+    `  if [ -r "/proc/$pid/cmdline" ]; then`,
+    `    live=$(tr '\\0' '\\n' < "/proc/$pid/cmdline" | while IFS= read -r arg; do`,
+    `      case "$arg" in`,
+    "        */branch.mjs)",
+    "          dir=${arg%/branch.mjs}",
+    `          if [ -f "$dir/branch.mjs" ]; then printf '%s\\n' "$dir"; break; fi`,
+    "          ;;",
+    "      esac",
+    "    done)",
+    "  fi",
+    `  if [ -z "$live" ] && command -v powershell.exe >/dev/null 2>&1; then`,
+    `    live=$(LIVEPID=$pid powershell.exe -NoProfile -NonInteractive -Command "${LIVE_ENGINE_PS}")`,
+    "  fi",
+    `  live=$(printf '%s' "$live" | tr -d '\\r' | tr '\\\\' '/')`,
+    `  if [ -n "$live" ] && [ -f "$live/branch.mjs" ]; then engine=$live; fi`,
+    "  return 0",
+    "}",
     `read_engine "$data/engine-current.txt" || exit 1`,
     `read_engine "$data/engine-running.txt" || exit 1`,
+    "read_live_engine || exit 1",
     `if [ ! -f "$engine/branch.mjs" ]; then printf '%s\\n' 'Branch Agent engine is unavailable. Open Branch Agent to restore its engine, then retry.' >&2; exit 1; fi`,
     `if [ -f "$data/gateway-token" ]; then BRANCH_GATEWAY_TOKEN=$(head -n 1 "$data/gateway-token" | tr -d '\\r'); export BRANCH_GATEWAY_TOKEN; fi`,
     `BRANCH_PROFILE=default; BRANCH_HOME=${q(`${o.dataDir}\\home`)}; BRANCH_STATE_DIR=${q(`${o.dataDir}\\home\\.branch`)}; BRANCH_CONFIG_PATH=${q(`${o.dataDir}\\home\\.branch\\branch.json`)}; BRANCH_GATEWAY_PORT=${o.gatewayPort}`,

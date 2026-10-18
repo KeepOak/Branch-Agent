@@ -390,7 +390,7 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   };
   // The Mac driver secret must not leak to any child of the gateway.
   delete env.BRANCH_CUA_DRIVER_ENDPOINT;
-  const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(port)];
+  const args = [join(engineDir, "branch.mjs"), "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(port)];
   // A fallback that outlives quit writes the log itself. A pipe would break when the app that owns it has exited.
   const logFd = surviveQuit ? openSync(logPath, "a") : undefined;
   let child: ChildProcess;

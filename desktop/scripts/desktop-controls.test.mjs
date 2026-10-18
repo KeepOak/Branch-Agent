@@ -1,7 +1,7 @@
 // Desktop controls bridge: every OS call is a fake, so nothing on this computer changes.
 import assert from "node:assert/strict";
 import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -210,6 +210,8 @@ test("branch shim reads the published engine and token at run time", () => {
   // The configured port is the default; the live port an update moved the engine to wins.
   assert.ok(shim.indexOf('set "BRANCH_GATEWAY_PORT=19031"') < shim.indexOf('set /p BRANCH_GATEWAY_PORT=<"%BRANCH_DATA%\\gateway-port"'));
   assert.ok(shim.includes('"C:\\App\\node.exe" "%ENGINE%\\branch.mjs" %*'));
+  assert.ok(shim.includes('"%BRANCH_DATA%\\gateway.pid"'));
+  assert.ok(shim.includes(":read_live_engine"));
   assert.doesNotMatch(shim, /[0-9a-f]{64}/);
 });
 
@@ -226,8 +228,21 @@ test("Git Bash shim reads the same files, drops CR and passes arguments through"
   assert.ok(shim.includes("BRANCH_DATA='C:\\Data'\\''s'"));
   assert.match(shim, /export BRANCH_DATA /);
   assert.ok(shim.includes(`exec 'C:/App/node.exe' "$engine/branch.mjs" "$@"`));
+  assert.ok(shim.includes("$data/gateway.pid"));
+  assert.ok(shim.includes("read_live_engine"));
   assert.doesNotMatch(shim, /\r/);
 });
+
+function stopPid(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  try {
+    if (process.platform === "win32") {
+      execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 5_000 });
+    } else {
+      process.kill(pid, "SIGKILL");
+    }
+  } catch { /* already gone */ }
+}
 
 async function cliFixture(run) {
   const root = await mkdtemp(join(tmpdir(), "branch-cli-"));
@@ -235,7 +250,7 @@ async function cliFixture(run) {
   await mkdir(dataDir); await mkdir(engineDir);
   const engine = async name => {
     const dir = join(root, name); await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, "branch.mjs"), `console.log(JSON.stringify({engine:${JSON.stringify(name)},args:process.argv.slice(2)}));`);
+    await writeFile(join(dir, "branch.mjs"), `if (process.argv.includes("--hold")) setInterval(() => {}, 1000); else console.log(JSON.stringify({engine:${JSON.stringify(name)},args:process.argv.slice(2)}));`);
     return dir;
   };
   await engine("bundled engine");
@@ -294,6 +309,40 @@ for (const kind of process.platform === "win32" ? ["cmd", "sh"] : ["sh"]) {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /Cannot read Branch Agent engine pointer.*check.*permissions/i);
     assert.equal(result.stdout, "");
+  }));
+
+  test(`${kind} branch command uses the live engine process when the pointer names a different valid engine`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    const live = await f.engine("live engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    const child = spawn(process.execPath, [join(live, "branch.mjs"), "--hold"], { windowsHide: true, stdio: "ignore" });
+    try {
+      assert.ok(Number.isInteger(child.pid) && child.pid > 0);
+      await writeFile(join(f.dataDir, "gateway.pid"), String(child.pid) + "\r\n");
+      const result = await f.execute(kind);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).engine, "live engine");
+    } finally { stopPid(child.pid); }
+  }));
+
+  test(`${kind} branch command keeps the pointer engine when gateway.pid is dead`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    const live = await f.engine("live engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    const child = spawn(process.execPath, [join(live, "branch.mjs"), "--hold"], { windowsHide: true, stdio: "ignore" });
+    const pid = child.pid;
+    stopPid(pid);
+    const end = Date.now() + 5_000;
+    while (Date.now() < end) {
+      try { process.kill(pid, 0); } catch { break; }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    await writeFile(join(f.dataDir, "gateway.pid"), String(pid) + "\r\n");
+    const result = await f.execute(kind);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).engine, "pointer engine");
   }));
 }
 
