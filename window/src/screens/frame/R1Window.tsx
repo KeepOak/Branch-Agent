@@ -32,7 +32,8 @@ import { SettingsFrame } from "../settings";
 import { R1_PAGES } from "../settings/pages/plugged";
 import { placePages } from "../settings/pages/places-live";
 import { useSettingsSearch } from "./settings-search";
-import { ROWS } from "../settings/rows";
+import { COMING_FROM, ROWS } from "../settings/rows";
+import { useLevelNow } from "../settings/level-now";
 import { mergeRows, type PageSlots } from "../settings/slots";
 import type { Row } from "../settings/rows";
 import { lookStore } from "../../places/settings/set1/appearance-store";
@@ -46,6 +47,7 @@ import { displayTrunkTitle } from "../../connect/trunk-name";
 import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
 import { helloOk } from "../onboarding/model";
+import { EXAMPLES_READY_EVENT } from "../onboarding/try-examples";
 import { DEFAULT_TRUNK_WHY, TEMPLATE_TRUNK_WHY } from "../chat/examples-greeting";
 import { ThreadExtras } from "./ThreadExtras";
 import { WhatsNewHost } from "../updates/WhatsNewHost";
@@ -137,7 +139,8 @@ function openPlaceTab(route: Route): void {
  */
 export function r1SettingsPage(page: string, pages: PageSlots = R1_PAGES, rows: readonly Row[] = mergeRows(ROWS, pages)): boolean {
   if (KEEP_CLASSIC.has(page)) return false;
-  return Boolean((pages as Record<string, { component?: unknown } | undefined>)[page]?.component) || rows.some(row => row.page === page);
+  const slot = (pages as Record<string, { component?: unknown; cards?: Record<string, unknown> } | undefined>)[page];
+  return Boolean(slot?.component) || Object.keys(slot?.cards ?? {}).length > 0 || rows.some(row => row.page === page);
 }
 
 /**
@@ -283,6 +286,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
     return () => { live = false; off(); };
   }, [graftedKey, ready, session]);
   useEffect(() => { if (ready) void lookStore(engine).load(); }, [ready, engine]);
+  // Coming controls show only at Technical (rows.ts COMING_FROM, Private #1093 item 4): off a conversation the header's
+  // pill and tools have nothing to open yet, so below Technical they are not drawn.
+  const comingShown = useLevelNow(engine) >= COMING_FROM;
   // Re-hosted Classic Settings pages open a place with branch:navigate-place (Classic WindowShell's event): R1 opens it here.
   const navigateTo = useRef(navigate);
   useEffect(() => { navigateTo.current = navigate; });
@@ -320,6 +326,17 @@ export function R1Window({ session }: { session: SaplingSession }) {
     const openTour = () => setTour("full");
     window.addEventListener("branch:welcome-tour", openTour);
     return () => window.removeEventListener("branch:welcome-tour", openTour);
+  }, []);
+  // The Trunks page's "Open the conversation" (the same examples greeting onboarding leaves behind).
+  useEffect(() => {
+    const openExamples = (event: Event) => {
+      const sessionKey = (event as CustomEvent<{ sessionKey?: unknown }>).detail?.sessionKey;
+      if (typeof sessionKey !== "string" || !sessionKey) return;
+      setExamples({ key: sessionKey, why: DEFAULT_TRUNK_WHY });
+      navigateTo.current({ kind: "chat", key: sessionKey });
+    };
+    window.addEventListener(EXAMPLES_READY_EVENT, openExamples);
+    return () => window.removeEventListener(EXAMPLES_READY_EVENT, openExamples);
   }, []);
   // Escape closes the stage unless a menu, dialog, picker or popover is open: those take Escape first.
   const stageShown = Boolean(stage) && route.kind === "chat";
@@ -513,7 +530,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
         { label: "Side panel", icon: <Icon name="panel" />, need: PANE_TAB_NEEDS[DEFAULT_PANE_TAB], coming: "This engine can’t show the side panel.", onClick: tools ? () => { setAgentOpen(false); setPane(open => open ? null : DEFAULT_PANE_TAB); } : undefined },
         // ••• opens this window's conversation menu; each of its rows declares its own call.
         { label: "More", icon: <Icon name="more" />, onClick: tools ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },
-      ] : talk.item ? [talk.item, ...DEFAULT_TOOLS] : undefined,
+      ] : talk.item ? [talk.item, ...(comingShown ? DEFAULT_TOOLS : [])] : comingShown ? undefined : [],
+      hidden: route.kind !== "chat" && !comingShown,
       canBack: history.index > 0, canForward: history.index < history.count - 1, onBack: () => { if (history.index > 0) window.history.back(); }, onForward: () => { if (history.index < history.count - 1) window.history.forward(); },
     }} composer={chat ? <><ThreadExtras session={session} ready={ready} name={speaker} row={current ?? null} history={snapshot.history} ended={snapshot.ended}
       empty={snapshot.historyReady !== false && !snapshot.history.length && !snapshot.pendingUser && !snapshot.liveRunId} onOpen={openConversation} />{newTrunkFlow && newTrunkFlow.sessionKey === snapshot.sessionKey ? <NewTrunkCard engine={engine} flow={newTrunkFlow} onDone={(name) => { setNewTrunkFlow(null); notify(newTrunkReadyLine(name)); }} onChangeLook={() => { navigate({ kind: "place", place: "people" }); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: newTrunkFlow.agentId, view: "edit" } })); }} /> : null}<Composer startupShown={Boolean(startup)} name={speaker} placeholder={room.placeholder} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} working={Boolean(snapshot.liveRunId)} offline={!ready} limits={limits} row={current} topics={topics} running={running} mainKey={snapshot.mainKey?.split(":").slice(2).join(":") || "main"}

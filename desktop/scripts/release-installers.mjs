@@ -126,12 +126,13 @@ export function layoutWindowsInstallRoot({ payload, root, version, signApp = () 
 /**
  * Per-user install under %LOCALAPPDATA%\Programs. Each build lives in a version folder; current.txt is the pointer
  * the launcher reads. Shortcuts open the launcher at the root, which outlives every version folder, and carry the
- * app's AppUserModelID so a pinned window opens it too. The uninstaller lives outside {app} so leftover
- * {app}.previous from older swaps still goes.
+ * app's AppUserModelID so a pinned window opens it too. Start in is the user folder, not {app}: a process
+ * whose working folder is the install directory blocks a later swap (#1777, #787). The uninstaller lives
+ * outside {app} so leftover {app}.previous from older swaps still goes.
  */
 export function innoSetupScript({ version, source, out }) {
   const exe = `{app}\\${WINDOWS_LAUNCHER_EXE}`;
-  const shortcut = `Filename: "${exe}"; WorkingDir: "{app}"; AppUserModelID: "${WINDOWS_APP_USER_MODEL_ID}"`;
+  const shortcut = `Filename: "${exe}"; WorkingDir: "{%USERPROFILE}"; AppUserModelID: "${WINDOWS_APP_USER_MODEL_ID}"`;
   return [
     "[Setup]",
     `AppId=${WINDOWS_APP_ID}`,
@@ -168,7 +169,7 @@ export function innoSetupScript({ version, source, out }) {
     `Name: "{autodesktop}\\Branch Agent"; ${shortcut}; Tasks: desktopicon`,
     "",
     "[Run]",
-    `Filename: "${exe}"; Description: "Open Branch Agent"; Flags: nowait postinstall skipifsilent`,
+    `Filename: "${exe}"; Description: "Open Branch Agent"; WorkingDir: "{%USERPROFILE}"; Flags: nowait postinstall skipifsilent`,
     "",
     "[UninstallDelete]",
     'Type: filesandordirs; Name: "{app}"',

@@ -161,7 +161,7 @@ describe("Tools › Skills", () => {
     expect(request).toHaveBeenCalledWith("skills.install", { source: "clawhub", slug: "@a/notes" });
   });
   it("shows the read error instead of an empty list", async () => {
-    await open("Skills", { "skills.status": new Error("Disconnected") });
+    await open("Skills", { "skills.status": new Error("Disconnected from the skill library.") });
     expect(host.textContent).toContain("Disconnected");
     expect(host.textContent).not.toContain("No skills match.");
   });

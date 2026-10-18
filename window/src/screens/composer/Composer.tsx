@@ -11,6 +11,8 @@ import { safeStorage, saveDraft } from "../../composer/drafts";
 import { DockRow, type Goal } from "../../composer/DockRow";
 import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "../../composer/engine";
 import { Icon, StopMark } from "../../composer/icons";
+import { ConnectModelNotice } from "../../composer/ConnectModelNotice";
+import { CONNECT_MODEL_ANSWERS, friendlyModelError, isNoUsableModelError } from "../../composer/connect-model";
 import { HistorySearch } from "../../composer/HistorySearch";
 import { replaceToken } from "../../composer/mention";
 import { isEngineMode, modeName, nextMode, type EngineMode } from "../../composer/mode";
@@ -21,6 +23,7 @@ import { buildExtras, planSend, sendTooltip, type Reply } from "../../composer/s
 import { newPick, pickText, reconcilePicks, resolveSend, trimMessage, type Message, type SkillPick } from "../../composer/skill-picks";
 import { Drawer } from "../../composer/SlashDrawer";
 import { useBackground } from "../../composer/useBackground";
+import { FreeModelSetup } from "../../composer/FreeModelSetup";
 import { FREE_MODEL_READY } from "../../composer/no-key-default";
 import { hasNoModel, useConversation } from "../../composer/useConversation";
 import { useDraft } from "../../composer/useDraft";
@@ -28,6 +31,7 @@ import { useDrawer, type Pick } from "../../composer/useDrawer";
 import { useHistoryKeys } from "../../composer/useHistoryKeys";
 import { useWaitingLine } from "../../composer/useWaitingLine";
 import { vimKey, type VimMode } from "../../composer/vim";
+import { micSettingsPage } from "../../composer/voice";
 import { DictationStrip, TALK_EVENT, useDictation, useVoiceCatalog, useVoiceNote, VoiceNoteStrip, VoiceScreen } from "../../composer/VoiceParts";
 import { availability } from "../../connect/capabilities";
 import { Coming } from "../../glass/coming";
@@ -164,6 +168,8 @@ export function Composer(props: Props) {
   const current = conv.models.find((m) => m.ref === currentRef || m.id === currentRef);
   const thinking = currentThinking(row, conv.defaults);
   const noModel = hasNoModel(conv, currentRef);
+  const waitingForFreeModel = noModel && !conv.noKeySettled && !conv.noKeyError;
+  const freeModelBlocked = noModel;
   const admin = isAdmin(engine.scopes ?? []);
   const mode: EngineMode | null = isEngineMode(row.permissionMode) ? row.permissionMode : null;
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;
@@ -218,7 +224,7 @@ export function Composer(props: Props) {
       draft.clear();
       toast(`Sent to ${title}.`);
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : String(error));
+      setProblem(friendlyModelError(error instanceof Error ? error.message : String(error)));
     }
   };
 
@@ -231,7 +237,7 @@ export function Composer(props: Props) {
     }
     if (plan.kind === "stop") { onStop(); draft.clear(); return; }
     if (offline) return;
-    if (noModel && plan.kind !== "command") return;
+    if (freeModelBlocked && plan.kind !== "command") return;
     if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") { void runBackground(plan.text); return; }
     if (topic && plan.kind === "send") { void sendToTopic(topic.key, topic.title); return; }
@@ -370,18 +376,26 @@ export function Composer(props: Props) {
   };
   const hasDraft = hasText || draft.files.length > 0;
   const stopMode = working && !hasDraft;
-  const ready = hasDraft && !offline && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && (!noModel || draft.text.trim().startsWith("/"));
+  const ready = hasDraft && !offline && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && !freeModelBlocked;
   const usage = tightest(props.limits);
   const context = contextUse(props.row?.totalTokens, props.row?.contextTokens);
   const runningCount = props.running.length;
   const summary = ringSummary(usage, runningCount, context);
-  const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : noModel ? (conv.noKeyError ?? FREE_MODEL_READY) : working && hasDraft ? sendTooltip(queueMode) : undefined;
-  const placeholder = noModel && !conv.noKeyError ? FREE_MODEL_READY : props.placeholder ?? `Message ${name}`;
+  const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : waitingForFreeModel ? FREE_MODEL_READY : noModel ? (conv.noKeyError ?? CONNECT_MODEL_ANSWERS) : working && hasDraft ? sendTooltip(queueMode) : undefined;
+  const placeholder = waitingForFreeModel ? FREE_MODEL_READY : noModel ? "Connect a model to start" : props.placeholder ?? `Message ${name}`;
   const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n) && !(props.startupShown && (isPreparationPending(n) || isPreparationStalled(n))));
 
   return <div ref={dock} className="r1c" data-tight={tight || undefined} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }} onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)} onDrop={onDrop}>
     {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
-    {notes.map((n, i) => <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"}>{isPreparationPending(n) ? preparationLabel(trunkName) : shortReason(n)}</p>)}
+    {notes.map((n, i) => {
+      if (isNoUsableModelError(n)) return <ConnectModelNotice key={i} onOpen={onOpen} className="r1c-connect" />;
+      const settings = micSettingsPage(n);
+      return <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"} data-testid={settings ? "mic-denied" : undefined}>
+        {isPreparationPending(n) ? preparationLabel(trunkName) : settings ? n : shortReason(n)}
+        {settings ? <>{" "}<button type="button" className="r1c-undo" data-local="" onClick={() => onOpen(settings)}>Open Settings</button></> : null}
+      </p>;
+    })}
+    {noModel ? <FreeModelSetup engine={engine} onReady={() => void conv.reload()} /> : null}
     {conv.noKeyError ? <p className="r1c-note bad" role="alert" data-testid="no-key-failed">{conv.noKeyError} <button type="button" className="r1c-undo" data-local="" onClick={() => void conv.retryNoKey()}>Try again</button></p> : null}
     {draft.note ? <p className="r1c-note">{draft.note}</p> : null}
     {improved && draft.text === improved.after ? <p className="r1c-note" role="status">Improved your draft · <button type="button" className="r1c-undo" data-local="" onClick={() => { draft.setText(improved.before); setImproved(null); box.current?.focus(); }}>Undo</button></p> : null}

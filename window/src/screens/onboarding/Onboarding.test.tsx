@@ -9,12 +9,13 @@ import { readDetected } from "../../setup/setup-model";
 import { readFileSync } from "node:fs";
 import { answeredBy, canSayHello, freshState, greeting, MODES, picked, PLAN_FIRST_REASON, primary, STEPS, suggest, togglePick } from "./model";
 import { Onboarding } from "./Onboarding";
+import { recalledSessionName, rememberSessionName } from "./session-name";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
+afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; rememberSessionName(""); });
 
-const ALL = ["branch.setup.detect", "branch.setup.verify", "branch.setup.activate", "models.authStatus", "config.get", "config.patch", "trunks.template.list", "trunks.template.create", "agents.list", "chat.send"];
+const ALL = ["branch.setup.detect", "branch.setup.verify", "branch.setup.activate", "branch.setup.activate.start", "wizard.next", "wizard.cancel", "models.authStatus", "config.get", "config.patch", "trunks.template.list", "trunks.template.create", "agents.list", "chat.send"];
 type Answers = Record<string, unknown | ((params: unknown) => unknown)>;
 function fakeEngine(answers: Answers, methods = ALL) {
   const request = vi.fn(async (method: string, params?: unknown) => {
@@ -25,6 +26,8 @@ function fakeEngine(answers: Answers, methods = ALL) {
   const engine = { request, onEvent: () => () => {}, sessionKey: null, agentId: "main", scopes: [], features: { methods, events: [] } } as unknown as WindowEngine;
   return { engine, request };
 }
+/** Raw engine text that must never be rendered at Regular (Private #1089): engine sentences, codes, method names, paths, ids. */
+const RAW = /unknown agent id|INVALID_REQUEST|UNAVAILABLE|ENOSPC|no space left on device|config\.patch|config locked|Error:|[A-Za-z]:\\|agent:[\w-]+:|AGENTS\.md|is archived/;
 const calls = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter(([m]) => m === method).map(([, p]) => p);
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 const button = (host: HTMLElement, text: string) => [...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === text) as HTMLButtonElement;
@@ -142,14 +145,31 @@ describe("Onboarding", () => {
   });
 
   it("says when no model is on this computer and offers Add one; examples are Coming", async () => {
-    const { engine, request } = fakeEngine({ "branch.setup.detect": { candidates: [] } });
+    const { engine, request } = fakeEngine({
+      "branch.setup.detect": { candidates: [] },
+      "branch.setup.activate.start": {},
+      "wizard.next": {
+        done: false,
+        step: {
+          id: "download",
+          type: "confirm",
+          message: "Download Qwen3.5 9B (5.7 GB), the local embedding model (about 0.3 GB), and the verified CPU runtime, then use this model?",
+          initialValue: false,
+        },
+      },
+    });
     const { host } = await show(engine, { startAt: 1 });
     await flush();
-    expect(host.textContent).toContain("No models on this computer yet. A free local model will be set up so you can chat without an account.");
+    expect(host.textContent).toContain("No models on this computer yet. Connect a model to get answers.");
+    expect(host.textContent).not.toMatch(/will be set up/i);
+    expect(host.textContent).toContain("5.7 GB");
     expect(button(host, "Add one")).toBeTruthy();
+    expect(button(host, "Cancel")).toBeTruthy();
     expect(button(host, "Say hello")).toBeUndefined();
     expect(button(host, "Try it with examples").getAttribute("aria-disabled")).toBe("true");
-    expect(calls(request, "branch.setup.activate")).toEqual([{ kind: "no-key-default", agentId: "main" }]);
+    expect(calls(request, "branch.setup.activate")).toEqual([]);
+    expect(calls(request, "branch.setup.activate.start")).toEqual([expect.objectContaining({ kind: "no-key-default", agentId: "main" })]);
+    expect(request.mock.calls.filter(([method, params]) => method === "wizard.next" && (params as { answer?: { value?: unknown } })?.answer?.value === true)).toHaveLength(0);
   });
 
   it("saves Ask first as tools.exec.mode and never offers Full access; Plan first is Coming", async () => {
@@ -170,11 +190,13 @@ describe("Onboarding", () => {
   });
 
   it("stays on the step with the engine's words when the mode doesn't save", async () => {
-    const { engine } = fakeEngine({ "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": new Error("config locked") });
+    const { engine } = fakeEngine({ "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": new Error("INVALID_REQUEST: config.patch refused (config locked)") });
     const { host, onAnswered } = await show(engine, { startAt: 2 });
     await act(async () => button(host, "Continue").click());
     await flush();
-    expect(host.querySelector("[role=alert]")?.textContent).toContain("config locked");
+    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t save that. Try again.");
+    expect(host.textContent).not.toMatch(RAW);
+    expect(host.querySelector("details")).toBeNull();
     expect(onAnswered).not.toHaveBeenCalled();
   });
 
@@ -267,6 +289,17 @@ describe("Your first Trunk (step 4)", () => {
     expect(calls(request, "chat.send")).toEqual([expect.objectContaining({ sessionKey: "agent:sapling:main", message: greeting("Ada") })]);
   });
 
+  it("remembers the name for later greetings when this connection has no profile", async () => {
+    const { engine, request } = fakeEngine({ "users.self": {} });
+    const { host } = await show(engine);
+    await typeName(host, "Ada");
+    await act(async () => button(host, "Get started").click());
+    await flush();
+    expect(recalledSessionName()).toBe("Ada");
+    expect(calls(request, "users.setDisplayName")).toEqual([]);
+    expect(host.querySelector("h1")?.textContent).toBe("Your models");
+  });
+
   it("stays on Welcome when the profile refuses the name", async () => {
     const { engine } = fakeEngine({ "users.self": { profile: { id: "owner-1" } }, "users.setDisplayName": new Error("name rejected") });
     const { host, onLater } = await show(engine);
@@ -304,14 +337,16 @@ describe("Your first Trunk (step 4)", () => {
     let fail = true;
     const { engine, request } = fakeEngine({
       ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": {},
-      "trunks.template.create": (params: unknown) => { const id = (params as { templateId: string }).templateId; if (id === "home-desk" && fail) throw new Error("disk full"); return { agentId: id + "-1" }; },
+      "trunks.template.create": (params: unknown) => { const id = (params as { templateId: string }).templateId; if (id === "home-desk" && fail) throw new Error("ENOSPC: no space left on device, write 'C:\\Users\\someone\\.branch\\agents\\home-desk-1\\AGENTS.md'"); return { agentId: id + "-1" }; },
     });
     const { host, onDone } = await toLastStepWithHello(engine);
     await act(async () => button(host, "Spend Saver").click());
     await act(async () => button(host, "Home Desk").click());
     await act(async () => button(host, "Meet them").click());
     await flush();
-    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t make Home Desk. disk full");
+    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t make Home Desk. This computer is out of space. Free some space, then try again.");
+    expect(host.textContent).not.toMatch(RAW);
+    expect(host.querySelector("details")).toBeNull();
     expect(host.querySelector("h1")?.textContent).toBe("Your first Trunk");
     expect(onDone).not.toHaveBeenCalled();
     expect(calls(request, "chat.send")).toEqual([]);
@@ -322,12 +357,29 @@ describe("Your first Trunk (step 4)", () => {
     expect(onDone).toHaveBeenCalledOnce();
   });
 
+  it("never shows the engine's raw words, not even behind a Details click (Private #1089)", async () => {
+    const { engine } = fakeEngine({
+      ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": {},
+      "trunks.template.create": new Error('unknown agent id "main"'),
+    });
+    const { host } = await toLastStepWithHello(engine);
+    await act(async () => button(host, "Home Desk").click());
+    await act(async () => button(host, "Meet them").click());
+    await flush();
+    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t make Home Desk. That Trunk isn’t on this computer. Choose another Trunk.");
+    expect(host.textContent).not.toMatch(/unknown agent id|"main"|Error:/);
+    expect(host.textContent).not.toMatch(RAW);
+    expect(host.querySelector("details")).toBeNull();
+  });
+
   it("stays on step 4 with the engine's words when the first message is refused, and doesn't land in an empty conversation", async () => {
-    const { engine } = fakeEngine({ ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { status: "error", error: "session is archived" } });
+    const { engine } = fakeEngine({ ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { status: "error", error: "Error: UNAVAILABLE: session agent:spend-saver-1:main is archived" } });
     const { host, onDone } = await toLastStepWithHello(engine);
     await act(async () => button(host, "Start with Sapling").click());
     await flush();
-    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t start your first conversation. session is archived");
+    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t start your first conversation. Try again.");
+    expect(host.textContent).not.toMatch(RAW);
+    expect(host.querySelector("details")).toBeNull();
     expect(host.querySelector("h1")?.textContent).toBe("Your first Trunk");
     expect(onDone).not.toHaveBeenCalled();
   });
