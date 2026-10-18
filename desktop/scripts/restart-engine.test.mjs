@@ -410,6 +410,12 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
       pendingVersion: () => pendingVersion(), swapGuard: (work) => swapGuard(work), engineWatchTick: () => engineWatchTick(), clock });
   } catch (error) {
     runError = error;
+    // Preserve the transition that stalled before cleanup removes the isolated fixture.
+    // Do not expose the runner's scratch path in CI diagnostics.
+    for (const name of ["desktop.log", "gateway.log"]) {
+      try { console.error(`Restart fixture ${name}:\n${(await readFile(join(root, name), "utf8")).replaceAll(root, "<fixture>")}`); }
+      catch { /* startup may not have created the log */ }
+    }
   } finally {
     // Cleanup must finish after a failure: a throw here used to skip SIGKILL and leave
     // IPC, the window server, and poll timers holding `node --test` open until CI cancelled.
