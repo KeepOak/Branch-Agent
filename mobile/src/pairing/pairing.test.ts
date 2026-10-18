@@ -158,7 +158,7 @@ describe('pairing code', () => {
     for (const short of ['F2S4KP', 'EST1', '4E5F', 'oc-pair://F2S4KP']) {
       expect(() => decodeSetupCode(short, 1_000)).toThrow(new SetupCodeError('check-only'));
     }
-    expect(() => decodeSetupCode(encode(payload), 1_000)).toEqual(payload);
+    expect(decodeSetupCode(encode(payload), 1_000)).toEqual(payload);
   });
 
   it('says when a code has expired', () => {
