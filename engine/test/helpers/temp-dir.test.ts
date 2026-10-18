@@ -96,7 +96,7 @@ describe("temp-dir test helpers", () => {
         expect.objectContaining({
           recursive: true,
           force: true,
-          maxRetries: process.platform === "win32" ? 30 : 5,
+          maxRetries: process.platform === "win32" ? 60 : 5,
           retryDelay: process.platform === "win32" ? 100 : 20,
         }),
       );

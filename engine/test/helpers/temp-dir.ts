@@ -44,8 +44,9 @@ export function makeTempDir(tempDirs: TempDirCollection, prefix: string, root?: 
   return dir;
 }
 
-const TEMP_DIR_RM_MAX_RETRIES = process.platform === "win32" ? 30 : 5;
+const TEMP_DIR_RM_MAX_RETRIES = process.platform === "win32" ? 60 : 5;
 const TEMP_DIR_RM_RETRY_DELAY_MS = process.platform === "win32" ? 100 : 20;
+const TEMP_DIR_RM_POST_RETRY_PAUSE_MS = process.platform === "win32" ? 250 : 0;
 
 function clearTempDirCollection(tempDirs: TempDirCollection): void {
   if (Array.isArray(tempDirs)) {
@@ -95,7 +96,22 @@ export function createTempDirTracker(): TestTempDirTracker {
     cleanup(this: void): void {
       try {
         cleanupTempDirs(dirs);
-      } catch (error) {
+      } catch (firstError) {
+        let error = firstError;
+        if (TEMP_DIR_RM_POST_RETRY_PAUSE_MS > 0) {
+          Atomics.wait(
+            new Int32Array(new SharedArrayBuffer(4)),
+            0,
+            0,
+            TEMP_DIR_RM_POST_RETRY_PAUSE_MS,
+          );
+          try {
+            cleanupTempDirs(dirs);
+            return;
+          } catch (retryError) {
+            error = retryError;
+          }
+        }
         // afterEach hooks share this tracker. A locked leftover must fail this
         // test, not every later case that retries the same EPERM.
         clearTempDirCollection(dirs);
