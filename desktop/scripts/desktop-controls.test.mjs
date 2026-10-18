@@ -446,7 +446,12 @@ for (const kind of process.platform === "win32" ? ["cmd", "sh"] : ["sh"]) {
   }));
 
   if (kind === "sh") {
-    test("sh branch command finds a live gateway via ps when the node path contains spaces", async () => cliFixture(async f => {
+    // Git Bash ships MSYS `ps`, which has no `-o args=`. Windows already finds the
+    // live gateway through Git Bash `/proc` or PowerShell; this case is the macOS
+    // parser (no /proc) with a spaced node path (`Branch Agent.app`).
+    test("sh branch command finds a live gateway via ps when the node path contains spaces", {
+      skip: process.platform === "win32" && "Git Bash ps has no -o args=; Windows live lookup uses /proc or PowerShell",
+    }, async () => cliFixture(async f => {
       const named = await f.engine("pointer engine");
       const live = await f.engine("live engine");
       await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
