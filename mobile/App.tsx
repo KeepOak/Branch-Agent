@@ -549,26 +549,25 @@ function Shell({
       } else if (pairedRoute.name === 'approvals') {
         const chatFor = (key: string) => chatList.rows.find((r) => r.key === key);
         screen = (
-          <PhoneShell current="inbox" inboxCount={approvals.pending.length} onPlace={goPlace} look={look}>
-            <ApprovalsScreen
-              snapshot={approvals}
-              online={state.online}
-              permission={permission}
-              onTurnOnNotifications={turnOnNotifications}
-              onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
-              onAnswer={(id, decision) => void inbox.answer(id, decision)}
-              onRetry={() => void inbox.refresh()}
-              onBack={() => setPairedRoute(CHATS)}
-              canOpenChat={(key) => Boolean(chatFor(key))}
-              onOpenChat={(key) => {
-                const row = chatFor(key);
-                if (row) setPairedRoute({ name: 'chat', row });
-              }}
-              focusId={pairedRoute.focus}
-              test={testTools ? { state: testApproval.state, onSend: testApproval.send, onCancel: testApproval.cancel } : undefined}
-              bottomExtra={extraPad}
-            />
-          </PhoneShell>
+          <ApprovalsScreen
+            snapshot={approvals}
+            online={state.online}
+            permission={permission}
+            onTurnOnNotifications={turnOnNotifications}
+            onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
+            onAnswer={(id, decision) => void inbox.answer(id, decision)}
+            onRetry={() => void inbox.refresh()}
+            onBack={() => setPairedRoute(CHATS)}
+            canOpenChat={(key) => Boolean(chatFor(key))}
+            onOpenChat={(key) => {
+              const row = chatFor(key);
+              if (row) setPairedRoute({ name: 'chat', row });
+            }}
+            focusId={pairedRoute.focus}
+            test={testTools ? { state: testApproval.state, onSend: testApproval.send, onCancel: testApproval.cancel } : undefined}
+            onPlace={goPlace}
+            look={look}
+          />
         );
       } else {
         const first = approvals.pending[0];

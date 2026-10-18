@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import App from '../../App';
 import { readApproval, type Answered, type ApprovalsSnapshot } from '../approvals/approvals';
 import { readAgents } from '../chats/chatList';
@@ -8,6 +9,7 @@ import { FIXTURE_NOW, fixtureAgents, fixtureSessions } from '../testing/chatFixt
 import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier';
 import { createFakeSession } from '../testing/fakeSession';
 import { ThemeProvider } from '../theme/ThemeProvider';
+import { space } from '../theme/tokens';
 import { ApprovalsScreen } from './ApprovalsScreen';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 4000 });
@@ -165,6 +167,26 @@ describe('needs you screen', () => {
     await fireEvent.press(screen.getByTestId('inbox-tab-history'));
     expect(screen.getByTestId('inbox-history-empty')).toHaveTextContent(/Nothing in History yet/);
   });
+
+  it('renders the Places bar so you can leave Inbox without the back link', async () => {
+    const onPlace = jest.fn();
+    await renderScreen({}, { onPlace, look: 'android' });
+    expect(screen.getByTestId('places-bar')).toBeOnTheScreen();
+    expect(screen.getByTestId('place-home')).toBeOnTheScreen();
+    expect(screen.getByTestId('place-chats')).toBeOnTheScreen();
+    expect(screen.getByTestId('place-inbox')).toHaveProp('accessibilityState', { selected: true });
+    expect(screen.getByTestId('place-more')).toBeOnTheScreen();
+    expect(screen.getByTestId('approvals-back')).toBeOnTheScreen();
+    expect(screen.getByTestId('inbox-scroll')).toHaveProp('showsVerticalScrollIndicator', false);
+    const bar = StyleSheet.flatten(screen.getByTestId('places-bar').props.style);
+    expect(bar.position).not.toBe('absolute');
+    const scroll = StyleSheet.flatten(screen.getByTestId('inbox-scroll').props.contentContainerStyle);
+    expect(scroll.paddingBottom).toBe(space.xl);
+    await fireEvent.press(screen.getByTestId('place-home'));
+    await fireEvent.press(screen.getByTestId('place-chats'));
+    await fireEvent.press(screen.getByTestId('place-more'));
+    expect(onPlace.mock.calls.map((c) => c[0])).toEqual(['home', 'chats', 'more']);
+  });
 });
 
 describe('approvals in the app', () => {
@@ -185,7 +207,9 @@ describe('approvals in the app', () => {
     expect(screen.getByTestId('needs-you-banner')).toHaveProp('accessibilityLabel', '2 approvals need your yes. Oak · Run a command and 1 more');
     await fireEvent.press(screen.getByTestId('needs-you-banner'));
     // Places also labels its Inbox tab; the screen title lives on the approvals tree.
-    expect(within(screen.getByTestId('approvals-screen')).getByText('Inbox')).toBeOnTheScreen();
+    expect(within(screen.getByTestId('approvals-screen')).getByRole('header', { name: 'Inbox' })).toBeOnTheScreen();
+    expect(screen.getByTestId('places-bar')).toBeOnTheScreen();
+    expect(screen.getByTestId('place-inbox')).toHaveProp('accessibilityState', { selected: true });
     await fireEvent.press(screen.getByTestId('allow-exec-1'));
     await eventually(() => expect(screen.queryByTestId('approval-exec-1')).toBeNull());
     expect(engine.requests).toContainEqual({ method: 'exec.approval.resolve', params: { id: 'exec-1', decision: 'allow-once' } });
