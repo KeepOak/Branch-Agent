@@ -190,9 +190,14 @@ export function addGatewayServiceCommands(parent: Command, opts?: { statusDescri
     .command("supervise-app-child", { hidden: true })
     .description("Watch a gateway child started when the background service is missing")
     .requiredOption("--port <port>", "Gateway port")
+    .option("--owner-pid <pid>", "Stop when this Branch process exits")
     .action(async (cmdOpts) => {
       const { runAppChildSupervisor } = await import("./app-child-supervisor.js");
-      await runAppChildSupervisor({ port: Number(cmdOpts.port) });
+      const ownerPid = Number(cmdOpts.ownerPid);
+      await runAppChildSupervisor({
+        port: Number(cmdOpts.port),
+        ...(Number.isSafeInteger(ownerPid) && ownerPid > 1 ? { ownerPid } : {}),
+      });
     });
 
   for (const [name, description, action] of [

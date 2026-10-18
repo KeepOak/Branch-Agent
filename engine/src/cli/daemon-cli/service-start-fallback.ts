@@ -20,13 +20,13 @@ import {
 } from "./restart-health.js";
 
 export const GATEWAY_SERVICE_CHILD_FALLBACK_MESSAGE =
-  "Branch is running the gateway itself because the background service isn't available. To install the background service, choose Install background service.";
+  "Branch is running the engine itself because the background service isn't available. To install the background service, choose Install background service.";
 
 export const GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE =
   "Branch couldn't start its engine. Restart Branch; if it keeps happening, run `branch doctor`.";
 
 export const GATEWAY_PORT_IN_USE_MESSAGE =
-  "Another program is using the gateway port. Close that program or pick a different port, then try again.";
+  "Another program is using the engine's port. Close that program or change the port with `branch config set gateway.port <number>`, then try again.";
 
 export type GatewayChildFallbackKind = "missing" | "blocked-exit";
 
@@ -139,8 +139,8 @@ export function createGatewayChildFallbackOnce() {
       }
       attempted = true;
       try {
-        result = await recoverGatewayAsAppChild(params);
-        return result;
+        result = (await recoverGatewayAsAppChild(params)) as typeof result;
+        return result as AppChildGatewayResult<TResult> | null;
       } catch (error) {
         result = null;
         throw error;
@@ -285,7 +285,10 @@ export async function recoverGatewayAsAppChild<TResult extends "started" | "rest
         })
       ).healthy;
   if (!ready) {
-    await stopAppChildGateway({ port: params.port });
+    await stopAppChildGateway({
+      port: params.port,
+      keepError: GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE,
+    });
     throw new Error(GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE);
   }
   appendGatewayLifecycleAudit({

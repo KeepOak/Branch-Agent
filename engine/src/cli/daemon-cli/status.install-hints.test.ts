@@ -1,8 +1,19 @@
-import "../../test-utils/prepare-compiled-subprocesses.js";
 import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../infra/runtime-process-entrypoints.js", () => ({
+  runtimeProcessEntrypoints: [],
+}));
+vi.mock("../../infra/gateway-state-owner-heartbeat.js", () => ({}));
+vi.mock("../../infra/gateway-state-owner.js", () => ({
+  acquireGatewayStateOwner: vi.fn(),
+  createGatewayStateProjection: vi.fn(),
+  resolveGatewayStateOwnerPath: vi.fn(),
+  tryBorrowGatewayStateOwner: vi.fn(),
+  GatewayStateOwnerContentionError: class extends Error {},
+}));
 import { defaultRuntime } from "../../runtime.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
 import { withEnvAsync } from "../../test-utils/env.js";
@@ -12,6 +23,7 @@ import {
   spyRuntimeJson,
   spyRuntimeLogs,
 } from "../test-runtime-capture.js";
+import { GATEWAY_CHILD_GAVE_UP_MESSAGE, writeAppChildRecord } from "./app-child-record.js";
 import type { DaemonStatus } from "./status.gather.js";
 
 type StatusPrinter = typeof import("./status.print.js").printDaemonStatus;
@@ -254,6 +266,29 @@ it.each(
 );
 
 describe("eligible status recovery", () => {
+  it("shows the gave-up message in human and JSON status", async () => {
+    await withStatusFixture(
+      () => ({}),
+      async (accountHome, print) => {
+        writeAppChildRecord({
+          port: 18_789,
+          error: GATEWAY_CHILD_GAVE_UP_MESSAGE,
+          restartCount: 8,
+        });
+        const status = await createStatus("missing-unit", accountHome);
+        print(status, { json: false });
+        expect(humanOutput()).toContain(GATEWAY_CHILD_GAVE_UP_MESSAGE);
+        expect(humanOutput()).toContain("start Branch's engine when you sign in");
+        print(status, { json: true });
+        expect(defaultRuntime.writeJson).toHaveBeenCalledWith(
+          expect.objectContaining({
+            fallback: { error: GATEWAY_CHILD_GAVE_UP_MESSAGE, restartCount: 8 },
+          }),
+        );
+      },
+    );
+  });
+
   it("directs version-manager runtime findings to Doctor before reinstall", async () => {
     await withStatusFixture(
       () => ({}),

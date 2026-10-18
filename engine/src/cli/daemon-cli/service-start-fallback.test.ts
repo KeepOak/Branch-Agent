@@ -8,6 +8,7 @@ const waitForGatewayHealthyListener = vi.hoisted(() => vi.fn());
 const runDaemonInstall = vi.hoisted(() => vi.fn());
 const inspectExistingGateway = vi.hoisted(() => vi.fn());
 const spawnAppChildSupervisorProcess = vi.hoisted(() => vi.fn(() => ({ pid: 9001 })));
+const stopAppChildGateway = vi.hoisted(() => vi.fn());
 const resolveGatewayServiceMutationError = vi.hoisted(() => vi.fn());
 const assertGatewayServiceFallbackAllowed = vi.hoisted(() => vi.fn());
 
@@ -28,7 +29,7 @@ vi.mock("./install.runtime.js", () => ({
 vi.mock("./app-child-supervisor.js", () => ({
   inspectExistingGateway: (params: unknown) => inspectExistingGateway(params),
   rememberAppChildSupervisor: vi.fn(),
-  stopAppChildGateway: vi.fn(),
+  stopAppChildGateway: (...args: unknown[]) => stopAppChildGateway(...args),
   spawnAppChildSupervisorProcess: (params: unknown) => spawnAppChildSupervisorProcess(params),
   AppChildGatewaySupervisor: class {
     constructor(private readonly params: { spawnImpl?: (cmd: string, args: string[], opts: object) => unknown }) {}
@@ -95,6 +96,11 @@ describe("recoverGatewayAsAppChild", () => {
     runDaemonInstall.mockReset();
     inspectExistingGateway.mockReset().mockResolvedValue({ running: false, portHeld: false });
     spawnAppChildSupervisorProcess.mockReset().mockReturnValue({ pid: 9001 });
+    stopAppChildGateway.mockReset().mockResolvedValue({
+      stopped: true,
+      escalated: false,
+      message: "Stopped Branch's engine.",
+    });
     resolveGatewayServiceMutationError.mockReset().mockReturnValue(null);
     assertGatewayServiceFallbackAllowed.mockReset();
   });
@@ -206,7 +212,7 @@ describe("recoverGatewayAsAppChild", () => {
     expect(recovered?.ready).toBe(true);
   });
 
-  it("says plainly when another program is using the gateway port", async () => {
+  it("says plainly when another program is using the engine's port", async () => {
     inspectExistingGateway.mockResolvedValue({ running: false, portHeld: true });
     await expect(
       recoverGatewayAsAppChild({
@@ -266,6 +272,10 @@ describe("recoverGatewayAsAppChild", () => {
     ).resolves.toBeNull();
     expect(once.attempted()).toBe(true);
     expect(spawnChild).toHaveBeenCalledOnce();
+    expect(stopAppChildGateway).toHaveBeenCalledWith({
+      port: 18_789,
+      keepError: GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE,
+    });
   });
 
   it("does not spawn after stop if the service process is still there", async () => {

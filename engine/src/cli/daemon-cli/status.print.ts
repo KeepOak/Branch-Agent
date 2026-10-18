@@ -34,6 +34,7 @@ import { defaultRuntime } from "../../runtime.js";
 import { shortenHomePath } from "../../utils.js";
 import { formatCliCommand } from "../command-format.js";
 import { quoteCliArg } from "../quote-cli-arg.js";
+import { attachAppChildFallbackStatus, readAppChildRecord } from "./app-child-record.js";
 import {
   attachInstallBackgroundServiceAction,
   resolveInstallBackgroundServiceAction,
@@ -79,13 +80,15 @@ function formatProbeEventLoop(
 export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean; deep?: boolean }) {
   if (opts.json) {
     defaultRuntime.writeJson(
-      attachInstallBackgroundServiceAction({
-        ...status,
-        extraServices: status.extraServices.map(
-          ({ sourcePath: _sourcePath, ...service }) => service,
-        ),
-        service: projectDaemonServiceForJson(status.service, { includeDefinitionPaths: false }),
-      }),
+      attachAppChildFallbackStatus(
+        attachInstallBackgroundServiceAction({
+          ...status,
+          extraServices: status.extraServices.map(
+            ({ sourcePath: _sourcePath, ...service }) => service,
+          ),
+          service: projectDaemonServiceForJson(status.service, { includeDefinitionPaths: false }),
+        }),
+      ),
     );
     return;
   }
@@ -417,7 +420,7 @@ export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean; d
   if (service.runtime?.missingUnit) {
     if (serviceTargetsProbe) {
       printError(
-        "The background service is not installed. Choose Install background service to keep the engine running when Branch is closed.",
+        "The background service is not installed. Choose Install background service to start Branch's engine when you sign in and keep it running when Branch is closed.",
       );
       const action = resolveInstallBackgroundServiceAction();
       const recovery = installBlock ?? `Next: ${action?.command ?? installCommand}`;
@@ -459,6 +462,11 @@ export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean; d
     if (!missingGuiSession) {
       spacer();
     }
+  }
+
+  const fallbackError = readAppChildRecord()?.error;
+  if (fallbackError) {
+    printError(fallbackError);
   }
 
   if (service.runtime?.cachedLabel) {

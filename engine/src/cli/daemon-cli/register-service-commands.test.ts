@@ -97,6 +97,11 @@ describe("addGatewayServiceCommands", () => {
     expect(gateway.helpInformation()).not.toContain("supervise-app-child");
     await gateway.parseAsync(["supervise-app-child", "--port", "18789"], { from: "user" });
     expect(runAppChildSupervisor).toHaveBeenCalledWith({ port: 18789 });
+    await gateway.parseAsync(
+      ["supervise-app-child", "--port", "18789", "--owner-pid", "55"],
+      { from: "user" },
+    );
+    expect(runAppChildSupervisor).toHaveBeenCalledWith({ port: 18789, ownerPid: 55 });
   });
 
   beforeEach(() => {

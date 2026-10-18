@@ -42,7 +42,11 @@ export function createDaemonStartAppChildHooks(params: {
       fail,
       warnings,
     }: {
-      fail: (message: string, hints?: string[], result?: "still-starting") => void;
+      fail: (
+        message: string,
+        hints?: string[],
+        result?: "still-starting" | "restart-health-failed",
+      ) => void;
       warnings: string[];
     }) => {
       if (noteReadyChildFallback(recoverOnce, warnings)) {

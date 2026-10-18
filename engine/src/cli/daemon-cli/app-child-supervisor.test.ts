@@ -7,6 +7,18 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { captureEnv } from "../../test-utils/env.js";
 
+vi.mock("../../infra/runtime-process-entrypoints.js", () => ({
+  runtimeProcessEntrypoints: [],
+}));
+vi.mock("../../infra/gateway-state-owner-heartbeat.js", () => ({}));
+vi.mock("../../infra/gateway-state-owner.js", () => ({
+  acquireGatewayStateOwner: vi.fn(),
+  createGatewayStateProjection: vi.fn(),
+  resolveGatewayStateOwnerPath: vi.fn(),
+  tryBorrowGatewayStateOwner: vi.fn(),
+  GatewayStateOwnerContentionError: class extends Error {},
+}));
+
 const findVerifiedGatewayListenerPidsOnPortSync = vi.hoisted(() => vi.fn(() => [] as number[]));
 const probePortUsage = vi.hoisted(() => vi.fn(async () => "free" as const));
 const readActiveGatewayLockIdentity = vi.hoisted(() => vi.fn(async () => undefined));
@@ -33,9 +45,11 @@ vi.mock("../../config/paths.js", () => ({
 
 const {
   AppChildGatewaySupervisor,
+  attachAppChildFallbackStatus,
   CHILD_RESTART_BACKOFF_MS,
   GATEWAY_CHILD_ESCALATED_STOP_MESSAGE,
   GATEWAY_CHILD_GAVE_UP_MESSAGE,
+  GATEWAY_CHILD_START_FAILED_MESSAGE,
   GATEWAY_CHILD_STOPPED_MESSAGE,
   MAX_CHILD_RESTARTS,
   SUPERVISE_APP_CHILD_COMMAND,
@@ -130,14 +144,35 @@ describe("AppChildGatewaySupervisor", () => {
 
   it("fails fast when the child exits before it is ready", async () => {
     const child = fakeChild(5001);
+    const onGiveUp = vi.fn();
+    const onRespawn = vi.fn();
     const supervisor = new AppChildGatewaySupervisor({
       port: 18_789,
       spawnImpl: vi.fn(() => child) as never,
+      onGiveUp,
+      onRespawn,
     });
     await supervisor.start();
     child.emit("exit", 126, null);
     await expect(supervisor.waitForExitOrError()).resolves.toEqual(expect.any(Error));
-    expect(supervisor.process?.pid).toBe(5001);
+    expect(onGiveUp).toHaveBeenCalledWith(GATEWAY_CHILD_START_FAILED_MESSAGE);
+    expect(onRespawn).not.toHaveBeenCalled();
+    expect(readAppChildRecord()?.error).toBe(GATEWAY_CHILD_START_FAILED_MESSAGE);
+  });
+
+  it("does not mark ready until the child is healthy and then stops the supervisor", async () => {
+    const child = fakeChild(5002);
+    const supervisor = new AppChildGatewaySupervisor({
+      port: 18_789,
+      spawnImpl: vi.fn(() => child) as never,
+      waitUntilHealthy: async () => false,
+      stopWaitMs: 0,
+      sleep: async () => {},
+      isAlive: () => false,
+    });
+    await supervisor.run();
+    expect(supervisor.isStarting).toBe(true);
+    expect(readAppChildRecord()?.error).toBe(GATEWAY_CHILD_START_FAILED_MESSAGE);
   });
 
   it("restarts the child with backoff after it is ready and gives up after the limit", async () => {
@@ -261,6 +296,148 @@ describe("AppChildGatewaySupervisor", () => {
     expect(readAppChildRecord()).toBeNull();
   });
 
+  it("stop from another process signals the supervisor first so the child does not respawn", async () => {
+    const child = fakeChild(4242);
+    child.kill.mockImplementation((signal: string) => {
+      if (signal === "SIGTERM") {
+        child.emit("exit", 0, "SIGTERM");
+      }
+      return true;
+    });
+    const onRespawn = vi.fn();
+    const supervisor = new AppChildGatewaySupervisor({
+      port: 18_789,
+      spawnImpl: vi.fn(() => child) as never,
+      onRespawn,
+      stopWaitMs: 20,
+      sleep: async () => {},
+      raiseSignal: vi.fn(),
+      linkToParent: true,
+      bindSignals: () => () => {},
+    });
+    await supervisor.start();
+    supervisor.markReady();
+    writeAppChildRecord({
+      pid: 4242,
+      port: 18_789,
+      startedAt: 11,
+      supervisorPid: 9_001,
+      supervisorStartedAt: 10,
+    });
+    let supervisorAlive = true;
+    const outcome = await stopAppChildGateway({
+      port: 18_789,
+      signalSupervisor: (pid) => {
+        expect(pid).toBe(9_001);
+        supervisorAlive = false;
+        void supervisor.handleParentSignal("SIGTERM");
+      },
+      signalPid: vi.fn() as never,
+      stopWaitMs: 20,
+      sleep: async () => {},
+      forceKillPid: vi.fn(),
+      isAlive: (pid) => (pid === 9_001 ? supervisorAlive : pid === 4242 && Boolean(supervisor.process)),
+      readStartTime: (pid) => (pid === 9_001 ? 10 : pid === 4242 ? 11 : null),
+    });
+    expect(onRespawn).not.toHaveBeenCalled();
+    expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+    expect(outcome.stopped).toBe(true);
+  });
+
+  it("failed start stop signals the supervisor before a child pid exists", async () => {
+    writeAppChildRecord({ port: 18_789, supervisorPid: 9_001, supervisorStartedAt: 10 });
+    let live = true;
+    const signaled: number[] = [];
+    const outcome = await stopAppChildGateway({
+      port: 18_789,
+      signalSupervisor: (pid) => {
+        signaled.push(pid);
+        live = false;
+      },
+      stopWaitMs: 0,
+      sleep: async () => {},
+      isAlive: (pid) => pid === 9_001 && live,
+      readStartTime: (pid) => (pid === 9_001 ? 10 : null),
+    });
+    expect(signaled).toEqual([9_001]);
+    expect(outcome.stopped).toBe(true);
+    expect(readAppChildRecord()).toBeNull();
+  });
+
+  it("does not escalate a reused pid", async () => {
+    writeAppChildRecord({ pid: 4242, port: 18_789, startedAt: 11 });
+    const force = vi.fn();
+    await stopAppChildGateway({
+      port: 18_789,
+      signalPid: vi.fn() as never,
+      stopWaitMs: 0,
+      sleep: async () => {},
+      forceKillPid: force,
+      isAlive: () => true,
+      readStartTime: () => 99,
+    });
+    expect(force).not.toHaveBeenCalled();
+    expect(readAppChildRecord()?.pid).toBe(4242);
+  });
+
+  it("stops the child when the owner process is gone", async () => {
+    const child = fakeChild(4242);
+    let ownerAlive = true;
+    let childAlive = true;
+    child.kill.mockImplementation((signal: string) => {
+      if (signal === "SIGTERM") {
+        childAlive = false;
+        child.emit("exit", 0, "SIGTERM");
+      }
+      return true;
+    });
+    const supervisor = new AppChildGatewaySupervisor({
+      port: 18_789,
+      spawnImpl: vi.fn(() => child) as never,
+      ownerPid: 55,
+      ownerStartedAt: 7,
+      ownerPollMs: 1,
+      stopWaitMs: 20,
+      sleep: async () => {},
+      isAlive: (pid) => (pid === 55 ? ownerAlive : childAlive),
+      readStartTime: (pid) => (pid === 55 ? 7 : 1),
+    });
+    await supervisor.start();
+    supervisor.markReady();
+    ownerAlive = false;
+    await supervisor.watchUntilDone();
+    expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+    expect(readAppChildRecord()).toBeNull();
+  });
+
+  it("resets the restart count after a stable run", async () => {
+    let now = 1_000;
+    const children = [fakeChild(6_001), fakeChild(6_002), fakeChild(6_003), fakeChild(6_004)];
+    let spawnIndex = 0;
+    const supervisor = new AppChildGatewaySupervisor({
+      port: 18_789,
+      spawnImpl: vi.fn(() => children[spawnIndex++] ?? fakeChild(0)) as never,
+      sleep: async () => {},
+      stableRunMs: 50,
+      now: () => now,
+    });
+    await supervisor.start();
+    supervisor.markReady();
+    children[0]?.emit("exit", 1, null);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(supervisor.restartAttempts).toBe(1);
+    children[1]?.emit("exit", 1, null);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(supervisor.restartAttempts).toBe(2);
+    now = 1_080;
+    children[2]?.emit("exit", 1, null);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(supervisor.restartAttempts).toBe(1);
+  });
+
   it("stopAppChildGateway signals a recorded pid and waits", async () => {
     writeAppChildRecord({ pid: 4242, port: 18_789, startedAt: 11 });
     const signalPid = vi.fn();
@@ -322,6 +499,18 @@ describe("AppChildGatewaySupervisor", () => {
       ["/T", "/F", "/PID", "4242"],
       expect.objectContaining({ windowsHide: true, stdio: "ignore" }),
     );
+  });
+
+  it("exposes the gave-up error on the status payload the app reads", () => {
+    writeAppChildRecord({
+      port: 18_789,
+      error: GATEWAY_CHILD_GAVE_UP_MESSAGE,
+      restartCount: 8,
+    });
+    expect(attachAppChildFallbackStatus({ service: { loaded: false } })).toEqual({
+      service: { loaded: false },
+      fallback: { error: GATEWAY_CHILD_GAVE_UP_MESSAGE, restartCount: 8 },
+    });
   });
 
   it("strips supervisor hints so the child can restart itself", () => {
