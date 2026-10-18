@@ -387,7 +387,7 @@ test('Apply now in service mode: a silent window plus an active run refuses the 
     publish('engine-v2', 'v2');
     clickUpdate();
     await eventually(() => desktopLog().includes(`update failed: ${TRUNKS_STILL_WORKING}`), 15000);
-    assert.match(desktopLog(), /service update: waiting for 1 active runs, 0 approvals; the engine service was not touched/);
+    assert.match(desktopLog(), /service update: waiting for 1 active runs, 0 approvals before the update; the engine service was not touched/);
     assert.deepEqual(cliCalls(), [], 'no gateway restart (or any service) CLI call');
     assert.deepEqual(standbys(), [], 'not even a standby');
     assert.equal(serviceRuns(), 'engine');
