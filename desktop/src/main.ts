@@ -725,7 +725,8 @@ async function handOffToStandby(label: string, prior: ChildProcess, selected: Pr
     resumeSupervision();
     throw new Error(`the running engine could not step down (${stepped}) and is not serving; Branch restarts it`);
   }
-  standby = undefined;
+  // Stay in `standby` until bootEngine records this child as the live gateway. Quit in between
+  // must still stop it: clearing the pointer here left the process running until the fixture deadline.
   log(`update ${label}: old engine ${prior.pid} stepped down; telling standby ${selected.child.pid} to take over on port ${selected.port}`);
   const tookOver = await takeOverStandby(selected.child, TAKE_OVER_TIMEOUT_MS);
   if (quitting) throw new Error("Branch Agent is quitting");
@@ -1644,6 +1645,8 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
     sendStandbyTakeOver(prepared.child);
   }
   gateway = child;
+  // Promoted: quit stops it through `gateway`. Until this line, quit stops it through `standby`.
+  if (standby?.child === child) standby = undefined;
   const observed = gatewaySupervisor.observe(child);
   log(`gateway started from ${engineDir}, pid ${child.pid}, port ${port}`);
   // publish-engine.sh never removes the folder named here.
