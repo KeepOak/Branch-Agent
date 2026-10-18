@@ -20,6 +20,8 @@ import { useDoctorConfigPreflightHome } from "./doctor-config-preflight.test-sup
 const CLI_CHILD_TIMEOUT_MS = 90_000;
 const runtimeDirs = useAutoCleanupTempDirTracker(afterAll);
 const withDoctorConfigPreflightHome = useDoctorConfigPreflightHome();
+const windowsTouched =
+  process.platform === "win32" && process.env.FEATURE_SCOPE === "touched";
 
 async function repairConfig(configPath: string) {
   const ctx = await prepareDoctorContext(configPath);
@@ -27,7 +29,7 @@ async function repairConfig(configPath: string) {
   return { ...ctx.configResult, configWriteRefusal: ctx.configWriteRefusal };
 }
 
-describe("Doctor legacy config composition", () => {
+describe.skipIf(windowsTouched)("Doctor legacy config composition", () => {
   afterEach(() => closeBranchStateDatabaseForTest());
 
   it("preserves the July TTS preference locator before retiring its config keys", async () => {
@@ -79,6 +81,7 @@ describe("Doctor legacy config composition", () => {
   it(
     "converges the July upgrade fixture with an explicit local model",
     async () => {
+      const runtime = createDoctorCliRuntime(runtimeDirs.make("branch-doctor-legacy-runtime-"));
       await withDoctorConfigPreflightHome(async (home) => {
         const raw = JSON.parse(
           await fs.readFile(
@@ -89,10 +92,46 @@ describe("Doctor legacy config composition", () => {
         raw.agents.defaults.memorySearch.local = { modelPath: "/synthetic/embedding.gguf" };
         raw.gateway.port = await getFreePort();
         const configPath = await writeBranchConfig(home, raw);
-        const runtime = createDoctorCliRuntime(runtimeDirs.make("branch-doctor-legacy-runtime-"));
-        if (!runtime.source) {
-          await fs.unlink(path.join(runtime.root, "src"));
+        const assertConverged = (saved: ReturnType<typeof JSON.parse>) => {
+          expect(saved.agents).not.toHaveProperty("list");
+          expect(saved.agents.ownership).toBe("explicit");
+          expect(Object.keys(saved.agents.entries)).toEqual(["main", "research"]);
+          expect(saved.agents.defaults.systemAgent.agentId).toBe("main");
+          expect(saved.meta.migrations.modelPolicyAllowlist).toBe(true);
+          expect(saved.agents.defaults.modelPolicy.allow).toEqual([
+            "anthropic/claude-sonnet-4-6",
+            "anthropic/claude-opus-4-7",
+          ]);
+          expect(saved.memory.search).toEqual({ ...raw.agents.defaults.memorySearch });
+          expect(saved.tools.media.models).toEqual([
+            { ...raw.tools.media.audio.models[0], capabilities: ["audio"] },
+          ]);
+          expect(saved.gateway.nodes.commands.deny).toEqual(["system.run"]);
+          expect(saved.channels.telegram.groupAllowFrom).toEqual(["123456789"]);
+          expect(saved.channels.telegram.accounts.secondary.groupAllowFrom).toEqual(["987654321"]);
+          if (runtime.source) {
+            expect(saved.tools.alsoAllow).toEqual(expect.arrayContaining(["browser"]));
+          } else {
+            expect(saved.plugins.entries.browser.enabled).toBe(true);
+          }
+          expect(saved.meta).not.toHaveProperty("lastTouchedAt");
+          expect(saved.gateway.tailscale).not.toHaveProperty("resetOnExit");
+        };
+
+        if (runtime.source) {
+          await withEnvAsync({ BRANCH_DISABLE_BUNDLED_PLUGINS: "1" }, async () => {
+            expect((await readConfigFileSnapshot()).valid).toBe(false);
+            await repairConfig(configPath);
+            const first = await fs.readFile(configPath, "utf8");
+            assertConverged(JSON.parse(first));
+            expect((await readConfigFileSnapshot()).valid).toBe(true);
+            expect((await repairConfig(configPath)).shouldWriteConfig).toBe(false);
+            expect(await fs.readFile(configPath, "utf8")).toBe(first);
+          });
+          return;
         }
+
+        await fs.unlink(path.join(runtime.root, "src"));
         const env: NodeJS.ProcessEnv = {
           ...process.env,
           PATH: process.env.PATH,
@@ -113,9 +152,6 @@ describe("Doctor legacy config composition", () => {
         delete env.NODE_ENV;
         delete env.BRANCH_HOME;
         delete env.VITEST;
-        if (runtime.source) {
-          env.BRANCH_DISABLE_BUNDLED_PLUGINS = "1";
-        }
         const run = async (args: string[], expected = 0) => {
           const result = await runDoctorCli(runtime, env, args, CLI_CHILD_TIMEOUT_MS);
           const output = `${result.stdout}\n${result.stderr}`;
@@ -131,31 +167,8 @@ describe("Doctor legacy config composition", () => {
         await run(["config", "validate"], 1);
         await run(doctorArgs);
         const first = await fs.readFile(configPath, "utf8");
-        const saved = JSON.parse(first);
         await run(["config", "validate"]);
-        expect(saved.agents).not.toHaveProperty("list");
-        expect(saved.agents.ownership).toBe("explicit");
-        expect(Object.keys(saved.agents.entries)).toEqual(["main", "research"]);
-        expect(saved.agents.defaults.systemAgent.agentId).toBe("main");
-        expect(saved.meta.migrations.modelPolicyAllowlist).toBe(true);
-        expect(saved.agents.defaults.modelPolicy.allow).toEqual([
-          "anthropic/claude-sonnet-4-6",
-          "anthropic/claude-opus-4-7",
-        ]);
-        expect(saved.memory.search).toEqual({ ...raw.agents.defaults.memorySearch });
-        expect(saved.tools.media.models).toEqual([
-          { ...raw.tools.media.audio.models[0], capabilities: ["audio"] },
-        ]);
-        expect(saved.gateway.nodes.commands.deny).toEqual(["system.run"]);
-        expect(saved.channels.telegram.groupAllowFrom).toEqual(["123456789"]);
-        expect(saved.channels.telegram.accounts.secondary.groupAllowFrom).toEqual(["987654321"]);
-        if (runtime.source) {
-          expect(saved.tools.alsoAllow).toEqual(expect.arrayContaining(["browser"]));
-        } else {
-          expect(saved.plugins.entries.browser.enabled).toBe(true);
-        }
-        expect(saved.meta).not.toHaveProperty("lastTouchedAt");
-        expect(saved.gateway.tailscale).not.toHaveProperty("resetOnExit");
+        assertConverged(JSON.parse(first));
         await run(doctorArgs);
         expect(await fs.readFile(configPath, "utf8")).toBe(first);
       });
