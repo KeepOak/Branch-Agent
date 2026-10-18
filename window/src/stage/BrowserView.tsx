@@ -333,16 +333,20 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
   const [note, setNote] = useState("");
   const [opening, setOpening] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const currentEngine = useRef(engine);
+  const startAttempt = useRef(false);
   useEffect(() => {
     currentEngine.current = engine;
     setOpening(false);
+    setStarting(false);
     setClosed(new Set());
     setAddress(null);
     setPicked("");
     setMine(new Set());
     setNote("");
+    startAttempt.current = false;
   }, [engine]);
   const [find, setFind] = useState<string | null>(null);
   const [view, setView] = useState<{ owner: WindowEngine; tabId?: string; url?: string; title?: string; phase: BrowserPhase }>({ owner: engine, phase: "empty" });
@@ -377,6 +381,30 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     return browserCall(engine, route, method, path, options);
   };
   const refresh = () => setTick((t) => t + 1);
+  const startBrowser = () => {
+    if (!route || !engine.sessionKey || starting) return Promise.resolve();
+    startAttempt.current = true;
+    setStarting(true);
+    return Promise.resolve(call("POST", "/start")).then(
+      () => {
+        if (currentEngine.current !== engine) return;
+        setStarting(false);
+        refresh();
+      },
+      (e: unknown) => {
+        if (currentEngine.current !== engine) return;
+        setStarting(false);
+        fail(e);
+      },
+    );
+  };
+  useEffect(() => {
+    // Header Browser opens a usable pane even when no Trunk has started one (P6): start Branch's own browser once.
+    if (browser.phase !== "stopped" || !route || !engine.sessionKey || startAttempt.current) return;
+    void startBrowser();
+    // startBrowser closes over this render's route and engine; the attempt ref stops a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [browser.phase, engine.sessionKey, route]);
   const url = currentView.phase === "connected" && currentView.url ? currentView.url : tab?.url ?? "";
   const shownAddress = address && address.for === (tab?.targetId ?? "") ? address.text : url === "about:blank" ? "" : url;
   const openTab = async (target: string) => {
@@ -384,6 +412,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     setOpening(true);
     onControl?.(true);
     try {
+      if (browser.phase === "stopped") await call("POST", "/start");
       const result = await call("POST", "/tabs/open", { body: { url: target } });
       if (currentEngine.current !== engine) return;
       const id = String((result as { targetId?: unknown } | null)?.targetId ?? "");
@@ -466,8 +495,13 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   let page: ReactNode;
   if (opening) page = <Blank title="Opening your page…" text="Starting the browser and connecting this conversation's tab." />;
   else if (!engine.sessionKey) page = <Blank title="Choose a conversation first" text="Open a conversation to browse pages with its Trunk." />;
+  else if (starting) page = <Blank title="Starting the browser…" text="Opening Branch’s own browser so you can search and browse." />;
   else if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
   else if (browser.phase === "error") page = <Blank title="Couldn't connect to the browser" text={browser.error ?? ""}><button type="button" className="btn sm" onClick={refresh}>Try again</button></Blank>;
+  else if (browser.phase === "stopped") page = <Blank title="The browser isn’t running." text={`${name} hasn’t started its browser in this conversation.`}>
+    <small>Type a website or a search above and press Enter, or start it now.</small>
+    <button type="button" className="btn pri sm" onClick={() => { startAttempt.current = false; void startBrowser(); }}>Start the browser</button>
+  </Blank>;
   else if (!tab || tab.url === "about:blank") page = <Blank title={`${name}’s browser`} text="See the pages your Trunk opens, or open a page yourself in this conversation.">
     <small>Type a website or a search above and press Enter. Then ask {name} to read, compare or work on the page, or click and type yourself.</small>
     <small>Branch's browser is separate from your personal browser.</small>

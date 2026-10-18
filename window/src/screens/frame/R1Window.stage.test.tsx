@@ -35,12 +35,27 @@ const computers = [
   { id: "worker-one", label: "Private computer 1", desktop: true, status: "available" },
   { id: "worker-two", label: "Private computer 2", desktop: true, status: "available" },
 ];
-const METHODS = ["computer.status", "browser.request", "sessions.describe", "environments.list", "environments.status", "environments.create", "desktop.observe", "agent.identity.get"];
-function live() {
+const METHODS = ["computer.status", "browser.request", "sessions.describe", "environments.list", "environments.status", "environments.create", "desktop.observe", "computer.invoke", "config.get", "config.patch", "agent.identity.get"];
+const FRAME = { format: "png" as const, base64: "iVBORw0KGgo=" };
+function live(opts: { placement?: boolean; screen?: boolean } = {}) {
   const snapshot = { status: { phase: "connected" }, name: "Scout", sessionKey: "agent:scout:main", mainKey: "agent:scout:main", history: [], live: [], queued: [] };
-  const request = vi.fn(async (method: string) => method === "sessions.describe" ? { session: { key: "agent:scout:main", placement: { state: "active", environmentId: "worker-one" } } }
-    : method === "environments.list" ? { environments: computers, profiles: [{ id: "cloud", name: "Cloud" }] }
-    : method === "environments.status" ? computers[0] : method === "desktop.observe" ? new Promise(() => {}) : {});
+  let enabled = opts.screen === true;
+  const request = vi.fn(async (method: string, params?: { command?: string; path?: string }) => {
+    if (method === "sessions.describe") {
+      return opts.placement === false
+        ? { session: { key: "agent:scout:main" } }
+        : { session: { key: "agent:scout:main", placement: { state: "active", environmentId: "worker-one" } } };
+    }
+    if (method === "environments.list") return { environments: computers, profiles: [{ id: "cloud", name: "Cloud" }] };
+    if (method === "environments.status") return computers[0];
+    if (method === "desktop.observe") return new Promise(() => {});
+    if (method === "config.get") return { hash: enabled ? "on" : "off", valid: true, config: { plugins: { entries: { "cua-computer": { enabled } } } } };
+    if (method === "config.patch") { enabled = true; return { ok: true }; }
+    if (method === "computer.status") return { available: enabled, computerUse: { provider: { generation: "driver-one" } } };
+    if (method === "computer.invoke") return params?.command === "screen.snapshot" ? { payload: FRAME } : { payload: { ok: true } };
+    if (method === "browser.request") return params?.path === "/" ? { running: false } : params?.path === "/start" ? { running: true } : params?.path === "/tabs" ? { tabs: [] } : {};
+    return {};
+  });
   const engine = { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", scopes: ["operator.admin"], features: { methods: METHODS, events: [] } };
   return { session: { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine, gatewayUrl: "ws://gateway.invalid" } as unknown as SaplingSession, request };
 }
@@ -73,6 +88,32 @@ it("opens the Browser side of the same stage from the header Browser button", as
   expect(host.querySelector(".r1-stage .computer-stage")).not.toBeNull();
 });
 
+it("opens this computer's live screen from the header even when no Trunk has a computer open", async () => {
+  const { session, request } = live({ placement: false, screen: true });
+  await act(async () => root.render(<R1Window session={session} />));
+  expect(host.querySelector(".r1-stage")).toBeNull();
+  await act(async () => header("Computer")!.click());
+  await flush();
+  const stage = host.querySelector(".r1-stage");
+  expect(stage?.getAttribute("data-mode")).toBe("Computer");
+  expect(stage?.hasAttribute("data-owner-screen")).toBe(true);
+  expect(stage?.getAttribute("aria-label")).toBe("This computer");
+  expect(host.querySelector("img.native-screen")?.getAttribute("src")).toBe(`data:image/png;base64,${FRAME.base64}`);
+  expect(request.mock.calls.map(([method]) => method)).not.toContain("desktop.observe");
+  expect(request.mock.calls.some(([method]) => method === "computer.invoke")).toBe(true);
+});
+
+it("opens a browser that can start and take an address from the header, with no Trunk pages open", async () => {
+  const { session, request } = live({ placement: false });
+  await act(async () => root.render(<R1Window session={session} />));
+  await act(async () => header("Browser")!.click());
+  await flush();
+  const stage = host.querySelector(".r1-stage");
+  expect(stage?.getAttribute("data-mode")).toBe("Browser");
+  expect(stage?.querySelector('[aria-label="Search or enter an address"]')).not.toBeNull();
+  expect(request.mock.calls.some(([method, params]) => method === "browser.request" && (params as { path?: string })?.path === "/start")).toBe(true);
+});
+
 it("lists the engine's computers in the picker, and Add a computer opens the add flow", async () => {
   const { session, request } = live();
   await act(async () => root.render(<R1Window session={session} />));
@@ -80,7 +121,7 @@ it("lists the engine's computers in the picker, and Add a computer opens the add
   await flush();
   expect(request.mock.calls.map(call => call[0])).toContain("environments.list");
   const pick = host.querySelector<HTMLButtonElement>(".r1-stage .st7-pick");
-  expect(pick?.textContent).toContain("2 computers");
+  expect(pick?.textContent).toMatch(/This computer \(viewing\)|2 computers/);
   await act(async () => pick!.click());
   await flush();
   const text = document.body.textContent ?? "";
