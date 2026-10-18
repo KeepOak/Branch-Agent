@@ -213,10 +213,31 @@ async function runningProcessCommands(): Promise<string> {
   return (await runProcessList(command, args, { encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024 })).stdout;
 }
 
+const CASEFOLD = process.platform === "win32" || process.platform === "darwin";
+function samePath(a: string, b: string): boolean {
+  return CASEFOLD ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+function foldName(name: string): string {
+  return CASEFOLD ? name.toLowerCase() : name;
+}
+/** First path segment under updates/, even when the live path's case does not match the on-disk folder. */
+function ownedUpdateSegment(updates: string, target: string): string | undefined {
+  const rel = relative(updates, target);
+  const part = rel.split(/[\\/]/)[0];
+  if (part && part !== ".." && !isAbsolute(rel)) return part;
+  if (!CASEFOLD) return;
+  const root = updates.replace(/[\\/]+$/, "");
+  if (target.length <= root.length || !target.toLowerCase().startsWith(root.toLowerCase())) return;
+  const boundary = target[root.length];
+  if (boundary !== "/" && boundary !== "\\") return;
+  return target.slice(root.length + 1).split(/[\\/]/)[0] || undefined;
+}
+
 /** Count the removed tree without following links into another installation. */
 async function updateBytes(folder: string): Promise<number> {
   const info = await lstat(folder);
-  if (!info.isDirectory()) return info.size;
+  // Junctions and symlinks look like directories on Windows; never walk into their targets (#569).
+  if (info.isSymbolicLink() || !info.isDirectory()) return info.size;
   let bytes = 0;
   for (const entry of await readdir(folder)) bytes += await updateBytes(join(folder, entry));
   return bytes;
@@ -227,6 +248,12 @@ async function updateBytes(folder: string): Promise<number> {
  * current/previous slot; live and staged copies are protected separately.
  */
 async function holdsValidCopy(folder: string, name: string): Promise<boolean> {
+  try {
+    const info = await lstat(folder);
+    if (info.isSymbolicLink() || !info.isDirectory()) return false;
+  } catch {
+    return false;
+  }
   let entries: string[];
   try { entries = await readdir(folder); }
   catch (error) {
@@ -278,25 +305,54 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
   let removed = 0, freed = 0;
   const retained = new Set<string>();
   const kept = new Set<string>();
+  const protectedNames = new Set<string>();
+  const protectName = (name: string): void => { if (name) protectedNames.add(foldName(name)); };
+  const nameProtected = (name: string): boolean => protectedNames.has(foldName(name));
+  const pathRetained = (folder: string): boolean => {
+    if (retained.has(folder)) return true;
+    if (!CASEFOLD) return false;
+    const key = folder.toLowerCase();
+    for (const value of retained) if (value.toLowerCase() === key) return true;
+    return false;
+  };
   const retainFolder = async (folder: string, protect: boolean): Promise<void> => {
     const valid = await holdsValidCopy(folder, basename(folder));
     if (valid) kept.add(folder);
-    if (protect || valid) retained.add(folder);
+    if (protect || valid) {
+      retained.add(folder);
+      protectName(basename(folder));
+    }
   };
   const retainEngine = async (engine: string | undefined, protect: boolean): Promise<void> => {
     if (!engine) return;
+    if (protect) protectName(basename(dirname(engine)));
+    const parent = resolve(dirname(engine));
+    if (samePath(dirname(parent), resolve(updates)) || samePath(dirname(parent), updatesReal)) {
+      await retainFolder(parent, protect);
+    }
     try {
       const folder = await realpath(dirname(engine));
-      if (dirname(folder) === updatesReal) await retainFolder(folder, protect);
+      if (samePath(dirname(folder), updatesReal) || samePath(dirname(folder), resolve(updates))) await retainFolder(folder, protect);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (!["ENOENT", "ELOOP", "EINVAL", "ENOTDIR"].includes(code)) throw error;
     }
   };
   const retainOwnedPath = async (path: string | undefined, protect: boolean): Promise<void> => {
     if (!path) return;
-    const part = relative(updates, path).split(/[\\/]/)[0];
-    if (!part || part === ".." || !existsSync(join(updates, part))) return;
-    await retainFolder(await realpath(join(updates, part)), protect);
+    const part = ownedUpdateSegment(updates, path);
+    if (!part || part === "..") return;
+    if (protect) protectName(part);
+    const folder = join(updates, part);
+    try {
+      const info = await lstat(folder);
+      if (info.isSymbolicLink()) return;
+    } catch { return; }
+    try { await retainFolder(await realpath(folder), protect); }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (!["ENOENT", "ELOOP", "EINVAL", "ENOTDIR"].includes(code)) throw error;
+    }
   };
   // Live copies are always protected; they join the keep list only when they hold a valid copy.
   for (const engine of [current, running, cfg.engineDir, await readOrEmpty(join(cfg.dataDir, "engine-current.txt"))]) {
@@ -323,7 +379,8 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
     const legacy: Array<{ folder: string; time: number }> = [];
     for (const entry of await readdir(updates, { withFileTypes: true })) {
       const folder = join(updates, entry.name);
-      if (!entry.isDirectory() || !entry.name.startsWith("desktop-") || existsSync(join(folder, ".update-staging"))
+      if (entry.isSymbolicLink() || !entry.isDirectory() || !entry.name.startsWith("desktop-")
+        || existsSync(join(folder, ".update-staging"))
         || desktop?.staged.startsWith(folder + (process.platform === "win32" ? "\\" : "/"))) continue;
       if (!await holdsValidCopy(folder, entry.name)) continue;
       legacy.push({ folder, time: (await stat(folder)).mtimeMs });
@@ -344,39 +401,50 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
   try { commands = await runningProcessCommands(); }
   catch (error) { reportFailure?.(error); return; }
   for (const entry of await readdir(updates, { withFileTypes: true })) {
-    if (entry.isDirectory() && /^\.trash-(release|desktop)-/.test(entry.name)) {
-      try { const bytes = await updateBytes(join(updates, entry.name)); await rm(join(updates, entry.name), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); removed++; freed += bytes; }
-      catch (error) { reportFailure?.(new Error(`Could not finish pruning ${entry.name}: ${String(error)}`)); }
-      continue;
-    }
-    if (!entry.isDirectory() || !/^(release|desktop)-[\w.-]+-[A-Za-z0-9]{6}$/.test(entry.name)
-      || /(?:^|[-.])(staging|pending)(?:[-.]|$)/i.test(entry.name)) continue;
-    const folder = resolve(updates, entry.name);
-    const folderReal = await realpath(folder);
-    // A download has the same release-* name until staging completes; never select it for pruning.
-    if (existsSync(join(folder, ".update-staging"))) continue;
-    if (entry.name.startsWith("desktop-")) {
-      // Older desktop downloads have no completion marker. Fresh, unjournaled
-      // folders can still be extracting in an older launcher.
-      if (!existsSync(join(folder, ".desktop-complete")) && Date.now() - (await stat(folder)).mtimeMs < 24 * 60 * 60 * 1000) continue;
-    } else if (!existsSync(join(folder, ".release-complete"))) {
-      try { if (!await backfillLegacyReleaseMarker(folder, entry.name)) continue; }
-      catch (error) { reportFailure?.(new Error(`Could not verify ${entry.name}: ${String(error)}`)); continue; }
-    }
-    const separator = process.platform === "win32" ? "\\" : "/";
-    const commandsLower = commands.toLowerCase();
-    if (retained.has(folderReal) || [folder, folderReal].some(path => commandsLower.includes(`${path}${separator}`.toLowerCase()) || commandsLower.split("\n").includes(path.toLowerCase()))) continue;
-    const trash = join(updates, `.trash-${entry.name}-${process.pid}-${Math.random().toString(36).slice(2)}`);
     try {
-      const bytes = await updateBytes(folder);
-      // A deferred prune can overlap a new publication. Stop if any owner changed
-      // while sizing this tree; the next cleanup will finish the remaining work.
-      const latest = await Promise.all(stateFiles.map(file => readOrEmpty(join(cfg.dataDir, file))));
-      if (latest.some((value, index) => value !== snapshot[index])) break;
-      await rename(folder, trash);
-      await rm(trash, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
-      removed++; freed += bytes;
-    } catch (error) { reportFailure?.(new Error(`Could not prune ${entry.name}: ${String(error)}`)); }
+      const folder = resolve(updates, entry.name);
+      // Junctions and dirent-directory symlinks are never followed or walked (#569).
+      if (entry.isSymbolicLink()) continue;
+      let info;
+      try { info = await lstat(folder); }
+      catch { continue; }
+      if (info.isSymbolicLink()) continue;
+      if (info.isDirectory() && /^\.trash-(release|desktop)-/.test(entry.name)) {
+        try { const bytes = await updateBytes(folder); await rm(folder, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); removed++; freed += bytes; }
+        catch (error) { reportFailure?.(new Error(`Could not finish pruning ${entry.name}: ${String(error)}`)); }
+        continue;
+      }
+      if (!info.isDirectory() || !/^(release|desktop)-[\w.-]+-[A-Za-z0-9]{6}$/.test(entry.name)
+        || /(?:^|[-.])(staging|pending)(?:[-.]|$)/i.test(entry.name)) continue;
+      let folderReal: string;
+      try { folderReal = await realpath(folder); }
+      catch { continue; }
+      // A download has the same release-* name until staging completes; never select it for pruning.
+      if (existsSync(join(folder, ".update-staging"))) continue;
+      if (entry.name.startsWith("desktop-")) {
+        // Older desktop downloads have no completion marker. Fresh, unjournaled
+        // folders can still be extracting in an older launcher.
+        if (!existsSync(join(folder, ".desktop-complete")) && Date.now() - (await stat(folder)).mtimeMs < 24 * 60 * 60 * 1000) continue;
+      } else if (!existsSync(join(folder, ".release-complete"))) {
+        try { if (!await backfillLegacyReleaseMarker(folder, entry.name)) continue; }
+        catch (error) { reportFailure?.(new Error(`Could not verify ${entry.name}: ${String(error)}`)); continue; }
+      }
+      const separator = process.platform === "win32" ? "\\" : "/";
+      const commandsLower = commands.toLowerCase();
+      if (pathRetained(folder) || pathRetained(folderReal) || nameProtected(entry.name)
+        || [folder, folderReal].some(path => commandsLower.includes(`${path}${separator}`.toLowerCase()) || commandsLower.split("\n").includes(path.toLowerCase()))) continue;
+      const trash = join(updates, `.trash-${entry.name}-${process.pid}-${Math.random().toString(36).slice(2)}`);
+      try {
+        const bytes = await updateBytes(folder);
+        // A deferred prune can overlap a new publication. Stop if any owner changed
+        // while sizing this tree; the next cleanup will finish the remaining work.
+        const latest = await Promise.all(stateFiles.map(file => readOrEmpty(join(cfg.dataDir, file))));
+        if (latest.some((value, index) => value !== snapshot[index])) break;
+        await rename(folder, trash);
+        await rm(trash, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+        removed++; freed += bytes;
+      } catch (error) { reportFailure?.(new Error(`Could not prune ${entry.name}: ${String(error)}`)); }
+    } catch (error) { reportFailure?.(new Error(`Could not inspect ${entry.name}: ${String(error)}`)); }
   }
   log?.(`removed ${removed} old updates, freed ${(freed / 1_000_000_000).toFixed(2)} GB`);
 }
@@ -445,16 +513,26 @@ async function pruneStartupUpdatesWork(cfg: DesktopConfig, log: (line: string) =
     }
     if (!previous && !await publication(cfg) && existsSync(join(cfg.dataDir, "updates"))) {
       // Pre-retention installs have no receipt: keep the newest older engine.
-      const currentFolder = existsSync(dirname(current)) ? await realpath(dirname(current)) : dirname(current);
+      let currentFolder = dirname(current);
+      try { if (existsSync(dirname(current))) currentFolder = await realpath(dirname(current)); }
+      catch { /* keep dirname(current); a broken live link must not abort cleanup */ }
       const currentTime = existsSync(currentFolder) ? (await stat(currentFolder)).mtimeMs : Infinity;
       const candidates: Array<{ folder: string; time: number }> = [];
       for (const entry of await readdir(join(cfg.dataDir, "updates"), { withFileTypes: true })) {
-        const folder = join(cfg.dataDir, "updates", entry.name);
-        if (!entry.isDirectory() || !entry.name.startsWith("release-") || await realpath(folder) === currentFolder
-          || existsSync(join(folder, ".update-staging")) || !await holdsValidCopy(folder, entry.name)) continue;
-        const time = (await stat(folder)).mtimeMs;
-        if (!existsSync(join(folder, ".release-complete")) && !await backfillLegacyReleaseMarker(folder, entry.name)) continue;
-        if (time <= currentTime) candidates.push({ folder, time });
+        try {
+          if (entry.isSymbolicLink() || !entry.isDirectory() || !entry.name.startsWith("release-")) continue;
+          const folder = join(cfg.dataDir, "updates", entry.name);
+          let info;
+          try { info = await lstat(folder); } catch { continue; }
+          if (info.isSymbolicLink() || !info.isDirectory()) continue;
+          let folderReal: string;
+          try { folderReal = await realpath(folder); } catch { continue; }
+          if (samePath(folderReal, currentFolder) || existsSync(join(folder, ".update-staging"))
+            || !await holdsValidCopy(folder, entry.name)) continue;
+          const time = (await stat(folder)).mtimeMs;
+          if (!existsSync(join(folder, ".release-complete")) && !await backfillLegacyReleaseMarker(folder, entry.name)) continue;
+          if (time <= currentTime) candidates.push({ folder, time });
+        } catch { continue; }
       }
       candidates.sort((a, b) => b.time - a.time || a.folder.localeCompare(b.folder));
       if (candidates[0]) {

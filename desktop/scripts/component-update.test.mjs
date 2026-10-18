@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, readlink, rm, stat, symlink, utimes, writeFile, rename } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, readFile, readdir, readlink, rm, stat, symlink, utimes, writeFile, rename } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createPortProbe } from "node:net";
 import { createRequire } from "node:module";
@@ -1339,6 +1339,68 @@ test("no overlap between update cleanup runs", async () => fixture(async ({ cfg 
   } finally {
     source.setUpdateCleanupHookForTests();
   }
+}));
+
+function dirLink(target, dest) {
+  return symlink(target, dest, process.platform === "win32" ? "junction" : "dir");
+}
+
+test("broken junction is skipped without crashing the prune", async () => fixture(async ({ root, cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const current = join(updates, "release-current-111aaa");
+  const stale = join(updates, "release-stale-222bbb");
+  const dangling = join(updates, "release-broken-333ccc");
+  await completeEngine(current);
+  await completeEngine(stale);
+  const gone = join(root, "gone-engine");
+  await mkdir(gone, { recursive: true });
+  await dirLink(gone, dangling);
+  await rm(gone, { recursive: true, force: true });
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-previous.txt"), join(current, "engine") + "\n");
+  const logs = [];
+  await source.pruneStartupUpdates(cfg, line => logs.push(line));
+  assert.equal(await exists(current), true);
+  assert.equal(await exists(stale), false, "a later real folder is still pruned after the broken link");
+  assert.equal((await lstat(dangling)).isSymbolicLink(), true, "the broken link itself is skipped, not followed");
+  assert.equal(logs.some(line => line.startsWith("Update cleanup:")), false, "the prune must not abort on the broken link");
+}));
+
+test("link target outside the update folder is never deleted", async () => fixture(async ({ root, cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const current = join(updates, "release-current-111aaa");
+  const stale = join(updates, "release-stale-222bbb");
+  const alias = join(updates, "release-alias-333ccc");
+  await completeEngine(current);
+  await completeEngine(stale);
+  const outside = join(root, "precious-engine");
+  await mkdir(outside, { recursive: true });
+  await writeFile(join(outside, "keep-me"), "payload");
+  await dirLink(outside, alias);
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-previous.txt"), join(current, "engine") + "\n");
+  await source.pruneStartupUpdates(cfg, () => {});
+  assert.equal(await exists(current), true);
+  assert.equal(await exists(stale), false);
+  assert.equal(await readFile(join(outside, "keep-me"), "utf8"), "payload");
+  assert.equal(await exists(outside), true, "the link target outside updates/ is never deleted");
+  assert.equal((await lstat(alias)).isSymbolicLink(), true, "the prune skips the link instead of following it");
+}));
+
+test("case-mismatched live path stays protected", {
+  skip: process.platform !== "win32" && process.platform !== "darwin",
+}, async () => fixture(async ({ cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const live = join(updates, "release-live-111aaa");
+  const stale = join(updates, "release-stale-222bbb");
+  await completeEngine(live);
+  await completeEngine(stale);
+  const mismatched = join(updates, "RELEASE-LIVE-111AAA", "engine");
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), mismatched + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-previous.txt"), mismatched + "\n");
+  await source.pruneStartupUpdates(cfg, () => {});
+  assert.equal(await exists(live), true, "a live copy remains when the pointer differs only in case");
+  assert.equal(await exists(stale), false);
 }));
 
 const launch = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "first-launch-install.js")));
