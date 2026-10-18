@@ -58,8 +58,11 @@ describe('iOS app shell', () => {
     expect(screen.getByTestId('place-inbox')).toHaveProp('accessibilityState', { selected: true });
     expect(screen.getByTestId('approvals-back')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('place-more'));
-    expect(screen.getByTestId('settings-screen')).toBeOnTheScreen();
+    expect(screen.getByTestId('more-screen')).toBeOnTheScreen();
     expect(screen.getByTestId('place-more')).toHaveProp('accessibilityState', { selected: true });
+    expect(screen.getByTestId('more-back')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('more-settings'));
+    expect(screen.getByTestId('settings-screen')).toBeOnTheScreen();
     expect(screen.getByTestId('settings-back')).toBeOnTheScreen();
     session.dispose();
   });

@@ -90,6 +90,7 @@ export function ComputersScreen({
   onThisPhone,
   onOpenComputer,
   now: fixedNow,
+  backTo = 'Chats',
 }: {
   list: ComputerListSnapshot;
   online: boolean;
@@ -100,6 +101,7 @@ export function ComputersScreen({
   /** Opens take-control for that computer. */
   onOpenComputer?: (row: ComputerRow) => void;
   now?: number;
+  backTo?: 'Chats' | 'More' | 'Profile';
 }) {
   const { color, space, radius, layout } = useTheme();
   useNow(30_000);
@@ -146,13 +148,13 @@ export function ComputersScreen({
         <Pressable
           testID="computers-back"
           accessibilityRole="button"
-          accessibilityLabel="Back to Chats"
+          accessibilityLabel={`Back to ${backTo}`}
           onPress={onBack}
           hitSlop={8}
           style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
         >
           <ThemedText variant="body" tone="accentInk">
-            ‹ Chats
+            {`‹ ${backTo}`}
           </ThemedText>
         </Pressable>
         <ThemedText variant="largeTitle" accessibilityRole="header">

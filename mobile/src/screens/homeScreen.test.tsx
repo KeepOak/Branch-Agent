@@ -173,7 +173,7 @@ describe('home in the app', () => {
     unmount();
   });
 
-  it('New chat goes to Chats and Computer opens Computers, Inbox opens Approvals, More opens Settings', async () => {
+  it('New chat goes to Chats and Computer opens Computers, Inbox opens Approvals, More opens More', async () => {
     const { session, unmount } = await pairedApp();
     await fireEvent.press(screen.getByTestId('place-home'));
     await fireEvent.press(screen.getByTestId('home-quick-new-chat'));
@@ -188,7 +188,7 @@ describe('home in the app', () => {
     await fireEvent.press(screen.getByTestId('approvals-back'));
     await fireEvent.press(screen.getByTestId('place-home'));
     await fireEvent.press(screen.getByTestId('place-more'));
-    expect(screen.getByTestId('settings-screen')).toBeOnTheScreen();
+    expect(screen.getByTestId('more-screen')).toBeOnTheScreen();
     session.dispose();
     unmount();
   });
