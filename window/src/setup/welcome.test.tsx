@@ -33,7 +33,6 @@ function engine() {
 }
 
 const tid = (host: HTMLElement, id: string) => host.querySelector(`[data-testid="${id}"]`) as HTMLButtonElement;
-const byText = (host: HTMLElement, text: string) => [...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === text) as HTMLButtonElement;
 
 describe("Welcome", () => {
   it("shows the preview Welcome copy, Get started enabled, and no promise checkbox", async () => {
@@ -135,8 +134,14 @@ describe("pre-connect Welcome", () => {
 
 describe("Set up later", () => {
   it("closes setup from Welcome with the preview toast", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "config.get") return { hash: "h", config: {} };
+      if (method === "config.patch") return { ok: true };
+      return {};
+    });
+    const e = { request, onEvent: () => () => {}, sessionKey: "k", scopes: ["operator.admin"], agentId: "main" } as unknown as WindowEngine;
     const closed = vi.fn();
-    const host = await show(<SetupFlow engine={engine()} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={closed} onLocalModel={() => {}} />);
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={closed} onLocalModel={() => {}} />);
     await act(async () => tid(host, "setup-skip").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(closed).toHaveBeenCalledWith(false);
