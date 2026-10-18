@@ -485,7 +485,7 @@ function RadioRow({ label, selected, onPress, testID }: { label: string; selecte
   );
 }
 
-/** The paired home: every chat with your Trunks, newest first, live from the computer. */
+/** The paired chats list: every chat with your Trunks, newest first, live from the computer. */
 export function ChatsScreen({
   list,
   online,
@@ -501,6 +501,7 @@ export function ChatsScreen({
   onNeedsYou,
   now: fixedNow,
   updateBanner,
+  bottomExtra = 0,
   level = 'regular',
   look = Platform.OS === 'ios' ? 'ios' : 'android',
 }: {
@@ -513,6 +514,8 @@ export function ChatsScreen({
   onAgents?: () => void;
   /** Opens Settings. */
   onSettings?: () => void;
+  /** Extra space above a places bar so the last row is not hidden. */
+  bottomExtra?: number;
   /** Opens More. */
   onMore?: () => void;
   /** Opens a chat. */
@@ -853,7 +856,7 @@ export function ChatsScreen({
         ItemSeparatorComponent={({ leadingItem }: { leadingItem?: Item }) =>
           leadingItem && leadingItem.kind !== 'header' ? <View style={{ height: layout.hairline, backgroundColor: color.line, marginLeft: layout.screenInset + AVATAR + space.md }} /> : null
         }
-        contentContainerStyle={{ paddingBottom: insets.bottom + space.xl + (android && onNewChat ? 72 : 0) }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + space.xl + bottomExtra + (android && onNewChat ? 72 : 0) }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
