@@ -9,6 +9,9 @@ import { Btn, Ctl, Sec, Switch, useConfig, useScope } from "../kit";
 import { Coming } from "../../../glass/coming";
 import { CODEX_DOWNLOAD_METHOD, codexDownloadOffered, useCodexDownload } from "./codex-get";
 import { Logo } from "./service";
+import { plainError } from "../../../shell/plain-error";
+
+const SIGN_IN_ERROR = /token expired|\b401\b|\b403\b|unauthori[sz]ed|forbidden/i;
 
 export type App = { kind: string; brand: string; name: string; plugin?: string };
 export const APPS: App[] = [
@@ -53,9 +56,9 @@ export function CodingApps({ engine }: { engine: WindowEngine }) {
         const [tone, word] = detect.error ? ["idle", "Couldn’t check"] : detect.loading ? ["idle", "Looking…"] : PILL[f.state];
         const pluginOn = app.plugin ? cfg.get(`plugins.entries.${app.plugin}.enabled`) === true : f.state === "ready";
         const asking = app.plugin === "codex" ? codex.prompt : undefined;
-        const sub = asking ? asking : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detect.error ? visible(detect.error) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
+        const sub = asking ? asking : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detect.error ? plainError(detect.error) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
         return (
-          <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={sub} after={detect.error ? <Btn sm onClick={() => void detect.reload()}>Try again</Btn> : asking ? <span data-testid="codex-download-prompt"><Coming need={CODEX_DOWNLOAD_METHOD} where="Download Codex"><Btn sm onClick={() => void codex.accept()}>Yes</Btn></Coming><Btn sm onClick={() => void codex.decline()}>Cancel</Btn></span> : getting?.action ? <Coming need={CODEX_DOWNLOAD_METHOD} where={getting.action}><Btn sm onClick={() => codex.requestPrompt()}>{getting.action}</Btn></Coming> : undefined}>
+          <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={sub} after={detect.error ? <Btn sm onClick={() => void detect.reload()}>{SIGN_IN_ERROR.test(detect.error) ? "Sign in again" : "Check again"}</Btn> : asking ? <span data-testid="codex-download-prompt"><Coming need={CODEX_DOWNLOAD_METHOD} where="Download Codex"><Btn sm onClick={() => void codex.accept()}>Yes</Btn></Coming><Btn sm onClick={() => void codex.decline()}>Cancel</Btn></span> : getting?.action ? <Coming need={CODEX_DOWNLOAD_METHOD} where={getting.action}><Btn sm onClick={() => codex.requestPrompt()}>{getting.action}</Btn></Coming> : undefined}>
             {app.plugin
               ? <Switch checked={usable && pluginOn} label={`Use ${app.name}`} disabled={cfg.loading || !usable} onChange={(v) => void cfg.set(`plugins.entries.${app.plugin}.enabled`, v)} />
               : <span title={`Follows ${app.name}’s own sign-in on this computer.`}><Switch checked={pluginOn} label={`Use ${app.name}`} disabled onChange={() => undefined} /></span>}
