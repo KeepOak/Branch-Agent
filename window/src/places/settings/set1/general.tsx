@@ -9,11 +9,10 @@ import { useResource } from "../hooks";
 import { Icon } from "../../../shell/icons";
 import { ShortcutsDialog } from "../../../shell/ShortcutsDialog";
 import { currentKeys, keyActions, onMac, readCustomKeys, shownInline } from "../../../shell/keymap";
-import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Status, Switch, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
+import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Status, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
 import { PinnedSection } from "../pins";
 import { showsInternals } from "../internals";
-import { NEEDS_NEWER_APP, useDesktopControls } from "../../../connect/desktop-controls";
-import { OS, Writing } from "./general-more";
+import { KEEP_SIGNED_OUT, START_AT_SIGN_IN, StartingUp, Writing } from "./general-more";
 import { Conversation } from "./general-conversation";
 import { OlderTurns, SummariesTechnical, WaitingLine } from "./general-summaries";
 import "./general.css";
@@ -33,31 +32,6 @@ export function GeneralPage(props: SettingsPageProps) {
       </Sec></> : null}
       {lv >= 2 ? <WaitingLine engine={props.engine} /> : null}
     </Page>
-  );
-}
-
-/** Said under Start with … when the Branch app on this computer is too old to change it (DA-78): the app's own note is a
- *  developer note that is never shown, so a greyed switch would otherwise sit there with no reason. */
-const START_NEEDS_UPDATE = "Update the Branch app on this computer to change this.";
-
-function StartingUp() {
-  const desk = useDesktopControls();
-  const why = desk.off === NEEDS_NEWER_APP ? START_NEEDS_UPDATE : desk.off;
-  const start = `Start with ${OS()}`;
-  const signedOut = "Keep working when nobody is signed in";
-  return (
-    <Sec title="Starting up">
-      <Ctl title={start} sub="Opens quietly in the tray." off={why}>
-        <Switch checked={desk.state?.startWithWindows ?? false} disabled={desk.busy !== null} label={start} onChange={(on) => void desk.set("startWithWindows", on)} />
-      </Ctl>
-      {/* Always on (Private #454 F), Linux with the engine service only: the app says so by sending the switch. */}
-      {desk.state?.keepWorkingSignedOut !== undefined ? (
-        <Ctl title={signedOut} sub="Your Trunks start after a restart, before anyone signs in." off={why}>
-          <Switch checked={desk.state.keepWorkingSignedOut} disabled={desk.busy !== null} label={signedOut} onChange={(on) => void desk.set("keepWorkingSignedOut", on)} />
-        </Ctl>
-      ) : null}
-      {desk.state && desk.error ? <small className="why-k" role="alert">{visible(desk.error)}</small> : null}
-    </Sec>
   );
 }
 
@@ -127,7 +101,7 @@ function Keyboard() {
 
 const rows = (sec: string, lv: Lv, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "general", title, sec, group: sec, lv }));
 export const GENERAL_ROWS: RowEntry[] = [
-  ...rows("Starting up", 0, [`Start with ${OS()}`]),
+  ...rows("Starting up", 0, [START_AT_SIGN_IN, KEEP_SIGNED_OUT]),
   ...rows("Projects", 0, []),
   ...rows("Keyboard", 0, ["Keyboard shortcuts"]),
   ...rows("Writing", 0, ["Show “Finish setting up”"]),

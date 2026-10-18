@@ -218,6 +218,8 @@ export type PipTarget = { kind: "computer" | "browser"; id: string; name: string
 export function ComputerStage({
   engine, gatewayUrl, name, mode, blocks = [], running = false, card = null, onMode, onClose, onChooseComputer, onPip, initialComputer = null, initialControl = false }: Props) {
   const [control, setControl] = useState(initialControl);
+  // Where the browser's Your | Trunk's browser switch draws: a slot in the header (#1103).
+  const [paneSlot, setPaneSlot] = useState<HTMLElement | null>(null);
   const level = useLevel();
   const [retry, setRetry] = useState(0);
   const [tick, setTick] = useState(0);
@@ -332,6 +334,17 @@ export function ComputerStage({
           <i />
           {pill.text}
         </span>
+        {/* #1103: the Computer | Browser switch and, on the browser, the Your | Trunk's browser switch sit in this header
+            instead of two bars of their own above the page. */}
+        <span className="st7-sw" role="group" aria-label="Show">
+          {(["Computer", "Browser"] as const).map((m) => (
+            <button type="button" key={m} aria-pressed={mode === m} onClick={() => { setControl(false); onMode(m); }}>
+              <SIcon name={m === "Computer" ? "monitor" : "globe"} small />
+              {m}
+            </button>
+          ))}
+        </span>
+        {browser ? <span className="st7-hslot" ref={setPaneSlot} /> : null}
         <span className="tb-grow" />
         {controlling ? (
           <button type="button" className="btn pri sm" onClick={() => setControl(false)}>
@@ -367,16 +380,6 @@ export function ComputerStage({
           <SIcon name="more" />
         </button>
       </div>
-      <div className="st7-mode">
-        <span className="st7-sw" role="group" aria-label="Show">
-          {(["Computer", "Browser"] as const).map((m) => (
-            <button type="button" key={m} aria-pressed={mode === m} onClick={() => { setControl(false); onMode(m); }}>
-              <SIcon name={m === "Computer" ? "monitor" : "globe"} small />
-              {m}
-            </button>
-          ))}
-        </span>
-      </div>
       {stopError ? <p className="stage-error-st" role="alert">{stopError}</p> : null}
       {hold.error ? <p className="stage-error-st" role="alert">{hold.error}</p> : null}
       {!browser && where.error && viewing ? <p className="stage-error-st" role="alert">{COMPUTER_UNAVAILABLE} <button type="button" className="btn sm" onClick={() => setTick((value) => value + 1)}>Try again</button>{shows(level, "technical") ? <small className="stage-detail"> {where.error}</small> : null}</p> : null}
@@ -407,6 +410,7 @@ export function ComputerStage({
           onControl={setControl}
           level={readLevel()}
           onState={onBrowserState}
+          switchSlot={paneSlot}
         />
       ) : (
       <div className="st7-body">

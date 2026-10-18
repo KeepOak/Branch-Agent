@@ -28,7 +28,8 @@ export function ModelsSections({ m, tab }: { m: ModelsCtx; tab: string; openSett
     [tab === "second", <SecondMore key="second" />],
     [t && tab === "media", <MediaMore key="media" />],
     [t && tab === "defaults", <ConnectionsTechnical key="conntech" m={m} />],
-    [tab === "defaults", <HowTrunksWork key="how" />],
+    // Every pattern waits for a setting the engine doesn't have yet (Coming): Technical only (Private #1093 item 4).
+    [t && tab === "defaults", <HowTrunksWork key="how" />],
     [true, <DecisionModels key="decide" m={m} />],
     [t, <DecisionTechnical key="decidet" />],
     [t, <Attachments key="attach" m={m} />],

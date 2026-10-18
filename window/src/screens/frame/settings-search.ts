@@ -12,6 +12,7 @@ import { useTrunks } from "../../shell/engine-data";
 import { HOME, loadAtlas, statusWord, type AtlasRow } from "../features/atlas";
 import { featureRoute } from "../settings/pages/places-live";
 import type { SettingsFrameProps } from "../settings/SettingsFrame";
+import { plainError } from "../../shell/plain-error";
 
 type Deps = {
   session: SaplingSession;
@@ -26,7 +27,8 @@ type Deps = {
   onNotice: (text: string) => void;
 };
 
-const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const why = (e: unknown): string => plainError(e);
 
 export function useSettingsSearch(d: Deps): Pick<SettingsFrameProps, "trunks" | "features" | "onTrunk" | "onOpenFeature"> {
   const roster = useTrunks(d.session, d.ready);

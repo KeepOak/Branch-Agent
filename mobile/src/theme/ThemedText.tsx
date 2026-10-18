@@ -2,8 +2,10 @@ import { Platform, Text, type TextProps } from 'react-native';
 import { useTheme } from './ThemeProvider';
 import type { Palette, TypeName } from './tokens';
 
-// The system font is SF Pro on iPhone and Roboto on Android; the web preview asks for the same stack.
-const family = Platform.select({ web: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif' });
+// Desktop --sans on web; the installed app keeps the platform UI font.
+const family = Platform.select({
+  web: '"Geist", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif',
+});
 
 type InkName = 'ink' | 'ink2' | 'ink3' | 'accentInk' | 'onAccent' | 'ok' | 'warn' | 'bad';
 
