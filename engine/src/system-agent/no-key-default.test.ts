@@ -76,9 +76,16 @@ describe("pickNoKeyLocalCandidate", () => {
 });
 
 describe("createFirstRunNoKeyPrompter", () => {
-  it("confirms llama.cpp download even when the prompt defaults to no", async () => {
+  it("does not start a llama.cpp download when the prompt defaults to no", async () => {
     const prompter = createFirstRunNoKeyPrompter(runtime);
-    await expect(prompter.confirm({ message: "Download a local model?", initialValue: false })).resolves.toBe(
+    await expect(prompter.confirm({ message: "Download a local model (5.7 GB)?", initialValue: false })).resolves.toBe(
+      false,
+    );
+  });
+
+  it("only confirms when the prompt itself defaults to yes", async () => {
+    const prompter = createFirstRunNoKeyPrompter(runtime);
+    await expect(prompter.confirm({ message: "Use the model already on disk?", initialValue: true })).resolves.toBe(
       true,
     );
   });
@@ -137,15 +144,15 @@ describe("ensureNoKeyDefaultModel", () => {
     );
   });
 
-  it("falls back to managed llama.cpp with first-run consent", async () => {
+  it("falls back to managed llama.cpp without auto-yes on the download", async () => {
     const activate = vi.fn(
       async (next: Params): Promise<Result> => {
         expect(next.kind).toBe("provider-auth");
         expect(next.authChoice).toBe(LLAMA_CPP_AUTH_CHOICE);
-        await expect(next.prompter?.confirm({ message: "Download?", initialValue: false })).resolves.toBe(
-          true,
+        await expect(next.prompter?.confirm({ message: "Download Qwen (5.7 GB)?", initialValue: false })).resolves.toBe(
+          false,
         );
-        return { ok: true, modelRef: "llama-cpp/gemma", latencyMs: 800, lines: ["ok"] };
+        return { ok: false, status: "unavailable", error: "Local model setup skipped." };
       },
     );
     const result = await ensureNoKeyDefaultModel(params(), {
@@ -162,7 +169,7 @@ describe("ensureNoKeyDefaultModel", () => {
       }),
       activateSetupInference: activate,
     });
-    expect(result).toMatchObject({ ok: true, modelRef: "llama-cpp/gemma" });
+    expect(result).toEqual({ ok: false, status: "unavailable", error: NO_KEY_UNAVAILABLE });
   });
 
   it("returns plain copy when there is no config yet", async () => {

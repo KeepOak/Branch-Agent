@@ -9,7 +9,8 @@ import type { WindowEngine } from "../../connect/engine";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
-import { errorText, useResource } from "../library/data";
+import { useResource } from "../library/data";
+import { plainError } from "../../shell/plain-error";
 import { Status } from "../library/ui";
 import { list, Pill, rec, str } from "./common";
 import { Glyph } from "./glyphs";
@@ -68,15 +69,15 @@ export function TemplatesTab({ engine, done }: { engine: WindowEngine; done: () 
     try {
       const result = await engine.request("trunks.template.create", params);
       setOutcome(readOutcome(name, result)); setPaste(""); templates.reload(); done();
-    } catch (e) { setError(errorText(e)); } finally { setBusy(null); }
+    } catch (e) { setError(plainError(e)); } finally { setBusy(null); }
   };
   const importText = (text: string, name: string) => {
     let params: Record<string, unknown>;
-    try { params = importParams(text); } catch (e) { setError(errorText(e)); return; }
+    try { params = importParams(text); } catch (e) { setError(plainError(e)); return; }
     const named = str(rec(params.template).name);
     void create("import", named || name, params);
   };
-  const pickFile = (file: File | undefined) => { if (file) void file.text().then(text => importText(text, file.name), (e: unknown) => setError(errorText(e))); };
+  const pickFile = (file: File | undefined) => { if (file) void file.text().then(text => importText(text, file.name), (e: unknown) => setError(plainError(e))); };
 
   return <>
     <div className="tpl-import" data-testid="template-import">
@@ -86,7 +87,7 @@ export function TemplatesTab({ engine, done }: { engine: WindowEngine; done: () 
     </div>
     <p className="cz-hint">Templates carry a Trunk's persona, skills and routines. They never carry secrets, memory or accounts. Routines arrive turned off until you approve them.</p>
     <Status {...templates} />
-    {error && <p role="alert" className="cz-error">{error}</p>}
+    {error && <p role="alert" className="cz-error">{plainError(error)}</p>}
     {templates.data != null && !rows.length && <EmptyLine icon={<Glyph name="sparkle" size={22} />}>No templates yet.</EmptyLine>}
     <div className="get-rows">{rows.map(t => <div className="get-row" data-testid="template-row" data-source={t.source} key={t.id}>
       <span className="cz-tile"><Glyph name="sparkle" size={16} /></span>
@@ -110,6 +111,6 @@ export function TemplateResult({ outcome, close }: { outcome: CreateOutcome; clo
       <p className="dlg-p">It talks on {outcome.needs.join(", ")}, which {outcome.needs.length === 1 ? "is" : "are"} not set up on this computer yet. Connect {outcome.needs.length === 1 ? "it" : "them"} in Customize › Channels.</p>
     </div>}
     {outcome.ready.length > 0 && <p className="dlg-p">Already set up here: {outcome.ready.join(", ")}.</p>}
-    {outcome.warnings.length > 0 && <ul className="cz-hint">{outcome.warnings.map(w => <li key={w}>{w}</li>)}</ul>}
+    {outcome.warnings.length > 0 && <ul className="cz-hint">{outcome.warnings.map(w => <li key={w}>{plainError(w)}</li>)}</ul>}
   </Dialog>;
 }

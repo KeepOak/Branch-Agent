@@ -102,11 +102,11 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
   ```
 
   The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase. Don't force-push to `main`.
-- **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others, and changed-test-coverage allows 70 because it waits out a GitHub API rate limit the same way commit-emails does. A change that makes CI slower than its cap gets split, sharded or cut, never given a longer timeout.
+- **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout.
 
 ## Releases and component updates
 
-`.github/workflows/component-release.yml` publishes a GitHub release on a 30-minute schedule at :07 and :37 past each hour, from a push to main when the latest release is more than 25 minutes old, for a source-version tag, or from a manual run, not on each merge. Scheduled, manual, and push-backup runs skip when main has not moved since the last release, when checks cannot be listed, when a commit has more than 300 check runs, or when a check on main's head failed. A first failure requests one rerun and this release waits for the next schedule. A published release has four components:
+`.github/workflows/component-release.yml` publishes a GitHub release on a 30-minute schedule at :07 and :37 past each hour, from a push to main when the latest release is more than 25 minutes old, for a source-version tag, or from a manual run, not on each merge. Scheduled, manual, and push-backup runs skip when main has not moved since the last release, when checks cannot be listed, when a commit has more than 300 check runs, or when a push-validation check on main's head failed. Recheck jobs from merge-gate-recheck.yml, other `workflow_run` checks that attach to main for other pull-request heads, and a failure whose check output or Actions job log is only GitHub's `API rate limit exceeded` text do not count. A first failure requests one rerun; a skip for failed checks or an unavailable listing schedules one catch-up retry for that main head. More than 300 check runs is `checks-over-cap` and never catch-up. `workflow_dispatch` with `force=true` bypasses the failed-checks and cooldown gates only; identity, window, native, and publish still have to pass. A published release has four components:
 
 | Component | Asset |
 |---|---|

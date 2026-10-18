@@ -1,0 +1,5 @@
+window:src/connect/friendly-error.status.test.ts
+window:src/places/settings/set1/add-account.plain-error.test.tsx
+window:src/stage/pane/MemoryTerminal.test.tsx
+window:src/stage/pane/TimelineTab.plain-error.test.tsx
+window:src/thread/QuestionCard.plain-error.test.tsx
