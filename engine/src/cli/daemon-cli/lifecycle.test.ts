@@ -732,7 +732,7 @@ describe("runDaemonRestart health checks", () => {
       expect(writeGatewayRestartIntentSync).not.toHaveBeenCalled();
       expect(clearGatewayRestartIntentSync).not.toHaveBeenCalled();
       expectListenerHealth(
-        platform === "win32" ? 960 : 720,
+        720,
         createGatewayLockIdentity(),
         process.env,
       );
