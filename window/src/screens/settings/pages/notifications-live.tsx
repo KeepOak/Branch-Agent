@@ -1,8 +1,9 @@
 // Settings › Notifications: the controls the R1 page draws itself (slots.ts controls), on the calls Classic
 // Notifications makes (set1/notifications*.tsx). Your defaults and this computer's push subscription are each one shared
 // store per engine, so every row reads the same state and changes queue one after another instead of racing.
-import { useSyncExternalStore, useEffect, useState } from "react";
+import { useId, useSyncExternalStore, useEffect, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
+import { canAll } from "../../../connect/capabilities";
 import { list, record, visible } from "../../../places/settings/adapter";
 import { current, facts, isDesktopApp, normalizeDevice, subscribe, type DevicePrefs } from "../../../places/settings/set1/notifications-browser";
 import { hourOpts, zoneOpts } from "../../../places/settings/set1/notifications";
@@ -127,22 +128,37 @@ function useTrunks(engine: WindowEngine) {
 export function NoticesHere({ engine, row }: SlotControlProps) {
   const desktop = isDesktopApp();
   const push = usePush(engine);
+  const whyId = useId();
   const [failed, run] = useFailure();
   const [here, setHere] = useState(noticesHereOn);
   const [perm, setPerm] = useState(() => facts().permission);
   if (desktop) {
+    const why = perm === "unsupported" ? "This Branch window can’t show notifications."
+      : perm === "denied" ? "Open your system settings and allow notifications for Branch."
+      : undefined;
     const flip = (next: boolean) => void run(async () => {
       if (next && perm !== "granted") { const a = await Notification.requestPermission(); setPerm(a); if (a !== "granted") return; }
       setNoticesHere(next); setHere(next);
     });
-    return <><span className="r1s-own-ctl" data-local=""><Toggle label={row.label ?? ""} on={here && perm === "granted"} disabled={perm === "unsupported" || perm === "denied"} onChange={flip} /></span><Failed text={failed} /></>;
+    return <>
+      <span className="r1s-own-ctl" data-local="">
+        <Toggle label={row.label ?? ""} on={here && perm === "granted"} disabled={Boolean(why)} aria-describedby={why ? whyId : undefined} onChange={flip} />
+      </span>
+      {why ? <small id={whyId} className="r1s-note g-label" data-lines>{why}</small> : null}
+      <Failed text={failed} />
+    </>;
   }
   const on = Boolean(push.device?.enabled);
+  const why = push.loading ? "Checking this computer…"
+    : !push.supported ? "This computer can’t show notifications."
+    : !push.reg ? "This computer isn’t set up for notifications yet."
+    : undefined;
   const flip = (next: boolean) => void run(() => (!push.device ? (next ? push.store.turnOn() : Promise.resolve()) : push.store.setDevice((d) => ({ ...d, enabled: next }))));
   return <>
     <Needs engine={engine} need={["push.web.preferences.set"]} where={row.label ?? ""}>
-      <span className="r1s-own-ctl"><Toggle label={row.label ?? ""} on={on} disabled={push.loading || !push.supported || !push.reg} onChange={flip} /></span>
+      <span className="r1s-own-ctl"><Toggle label={row.label ?? ""} on={on} disabled={Boolean(why)} aria-describedby={why ? whyId : undefined} onChange={flip} /></span>
     </Needs>
+    {why ? <small id={whyId} className="r1s-note g-label" data-lines>{why}</small> : null}
     <Failed text={failed} />
   </>;
 }
@@ -189,17 +205,29 @@ export function LockedScreen({ engine, row }: SlotControlProps) {
   </>;
 }
 
+/** Preview TELL_PE18 greys Send test with this line (off18) when the window is not the Branch app. */
+const SEND_TEST_APP = "Sends a real notification from the Branch app on your computer.";
+const SEND_TEST_FIRST = "Turn on notifications here first.";
+
 /** Send a test notification: this computer's own notice in the Branch app, or push.web.test. */
 export function SendTest({ engine, row }: SlotControlProps) {
   const [failed, run] = useFailure();
   const [busy, setBusy] = useState(false);
+  const whyId = useId();
   const desktop = isDesktopApp();
+  const canPush = canAll(engine, ["push.web.test"]);
+  const here = noticesHereOn() && facts().permission === "granted";
+  const why = desktop ? (here ? undefined : SEND_TEST_FIRST) : (canPush ? undefined : SEND_TEST_APP);
   const go = () => { setBusy(true); void run(async () => {
     if (desktop) { new Notification("Branch", { body: "Send a test notification" }); return; }
     await engine.request("push.web.test", {});
   }).finally(() => setBusy(false)); };
-  const btn = <button type="button" className="r1s-btn" disabled={busy} onClick={go}>Send test</button>;
-  return <>{desktop ? <span className="r1s-own-ctl" data-local="">{btn}</span> : <Needs engine={engine} need={["push.web.test"]} where={row.label ?? ""}>{btn}</Needs>}<Failed text={failed} /></>;
+  const btn = <button type="button" className="r1s-btn" disabled={busy || Boolean(why)} aria-describedby={why ? whyId : undefined} onClick={go}>Send test</button>;
+  return <>
+    {desktop || !canPush ? <span className="r1s-own-ctl" data-local="">{btn}</span> : <Needs engine={engine} need={["push.web.test"]} where={row.label ?? ""}>{btn}</Needs>}
+    {why ? <small id={whyId} className="r1s-note g-label" data-lines>{why}</small> : null}
+    <Failed text={failed} />
+  </>;
 }
 
 /** Quiet hours: from, to, and on or off. */
