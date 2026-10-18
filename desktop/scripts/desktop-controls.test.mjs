@@ -212,6 +212,8 @@ test("branch shim reads the published engine and token at run time", () => {
   assert.ok(shim.includes('"C:\\App\\node.exe" "%ENGINE%\\branch.mjs" %*'));
   assert.ok(shim.includes('"%BRANCH_DATA%\\gateway.pid"'));
   assert.ok(shim.includes(":read_live_engine"));
+  assert.ok(shim.includes("EXPECTPORT"), "live pid is accepted only on the recorded gateway port");
+  assert.match(shim, /branch\\.mjs[\s\S]*gateway/);
   assert.doesNotMatch(shim, /[0-9a-f]{64}/);
 });
 
@@ -230,6 +232,8 @@ test("Git Bash shim reads the same files, drops CR and passes arguments through"
   assert.ok(shim.includes(`exec 'C:/App/node.exe' "$engine/branch.mjs" "$@"`));
   assert.ok(shim.includes("$data/gateway.pid"));
   assert.ok(shim.includes("read_live_engine"));
+  assert.ok(shim.includes('ps -o args= -p "$pid"'), "macOS reads the live command line from ps when /proc is absent");
+  assert.ok(shim.includes("/branch.mjs gateway"), "live pid must have gateway immediately after branch.mjs");
   assert.doesNotMatch(shim, /\r/);
 });
 
@@ -250,7 +254,7 @@ async function cliFixture(run) {
   await mkdir(dataDir); await mkdir(engineDir);
   const engine = async name => {
     const dir = join(root, name); await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, "branch.mjs"), `if (process.argv.includes("--hold")) setInterval(() => {}, 1000); else console.log(JSON.stringify({engine:${JSON.stringify(name)},args:process.argv.slice(2)}));`);
+    await writeFile(join(dir, "branch.mjs"), `if (process.argv.includes("--hold") || process.argv[2] === "gateway") setInterval(() => {}, 1000); else console.log(JSON.stringify({engine:${JSON.stringify(name)},args:process.argv.slice(2)}));`);
     return dir;
   };
   await engine("bundled engine");
@@ -316,13 +320,46 @@ for (const kind of process.platform === "win32" ? ["cmd", "sh"] : ["sh"]) {
     const live = await f.engine("live engine");
     await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
     await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
-    const child = spawn(process.execPath, [join(live, "branch.mjs"), "--hold"], { windowsHide: true, stdio: "ignore" });
+    await writeFile(join(f.dataDir, "gateway-port"), "19045\r\n");
+    const child = spawn(process.execPath, [join(live, "branch.mjs"), "gateway", "--port", "19045"], { windowsHide: true, stdio: "ignore" });
     try {
       assert.ok(Number.isInteger(child.pid) && child.pid > 0);
       await writeFile(join(f.dataDir, "gateway.pid"), String(child.pid) + "\r\n");
       const result = await f.execute(kind);
       assert.equal(result.status, 0, result.stderr);
       assert.equal(JSON.parse(result.stdout).engine, "live engine");
+    } finally { stopPid(child.pid); }
+  }));
+
+  test(`${kind} branch command keeps the pointer engine when gateway.pid is a non-gateway branch.mjs`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    const other = await f.engine("other engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "gateway-port"), "19045\r\n");
+    const child = spawn(process.execPath, [join(other, "branch.mjs"), "--hold"], { windowsHide: true, stdio: "ignore" });
+    try {
+      assert.ok(Number.isInteger(child.pid) && child.pid > 0);
+      await writeFile(join(f.dataDir, "gateway.pid"), String(child.pid) + "\r\n");
+      const result = await f.execute(kind);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).engine, "pointer engine");
+    } finally { stopPid(child.pid); }
+  }));
+
+  test(`${kind} branch command uses a live gateway whose engine path contains spaces`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    const live = await f.engine("engine dir with spaces");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "gateway-port"), "19045\r\n");
+    const child = spawn(process.execPath, [join(live, "branch.mjs"), "gateway", "--port", "19045"], { windowsHide: true, stdio: "ignore" });
+    try {
+      assert.ok(Number.isInteger(child.pid) && child.pid > 0);
+      await writeFile(join(f.dataDir, "gateway.pid"), String(child.pid) + "\r\n");
+      const result = await f.execute(kind);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).engine, "engine dir with spaces");
     } finally { stopPid(child.pid); }
   }));
 

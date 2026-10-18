@@ -280,8 +280,23 @@ export function ringBitmap(left: number, size = 32): Buffer {
   return out;
 }
 
-/** Reads gateway.pid's command line for a live .../branch.mjs. Pointer files can name a different valid engine. */
-const LIVE_ENGINE_PS = "$ProgressPreference='SilentlyContinue'; $q=[char]34; $p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:LIVEPID.Trim()) -EA SilentlyContinue; if(-not $p){exit 0}; $c=[string]$p.CommandLine; $m=[regex]::Match($c,'(?i)'+$q+'([^'+$q+']+)[\\\\/]branch\\.mjs'+$q); if(-not $m.Success){$m=[regex]::Match($c,'(?i)(?:^|\\s)(\\S+)[\\\\/]branch\\.mjs(?:\\s|$)')}; if($m.Success){$d=$m.Groups[1].Value; if((Test-Path -LiteralPath ($d+'\\branch.mjs') -PathType Leaf) -or (Test-Path -LiteralPath ($d+'/branch.mjs') -PathType Leaf)){Write-Output $d}}";
+/** Live gateway.pid: branch.mjs then gateway, --port matches the port file, path may contain spaces. */
+const LIVE_ENGINE_PS = [
+  "$ProgressPreference='SilentlyContinue'",
+  "$q=[char]34",
+  "$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:LIVEPID.Trim()) -EA SilentlyContinue",
+  "if(-not $p){exit 0}",
+  "$c=[string]$p.CommandLine",
+  "$expect=$env:EXPECTPORT.Trim()",
+  // Drop the node executable (quoted or a single token) so a spaced engine path is the rest.
+  "$rest=[regex]::Replace($c,'^(?:'+$q+'[^'+$q+']+'+$q+'|\\S+)\\s+','')",
+  "$m=[regex]::Match($rest,'(?i)^(?:'+$q+'([^'+$q+']+)[\\\\/]branch\\.mjs'+$q+'|(.+?)[\\\\/]branch\\.mjs)\\s+gateway(?:\\s|$)')",
+  "if(-not $m.Success){exit 0}",
+  "$d=if($m.Groups[1].Value){$m.Groups[1].Value}else{$m.Groups[2].Value}",
+  "$pm=[regex]::Match($c,'(?i)(?:^|\\s)--port(?:=|\\s+)(\\d+)')",
+  "if(-not $pm.Success -or $pm.Groups[1].Value -ne $expect){exit 0}",
+  "if((Test-Path -LiteralPath ($d+'\\branch.mjs') -PathType Leaf) -or (Test-Path -LiteralPath ($d+'/branch.mjs') -PathType Leaf)){Write-Output $d}",
+].join("; ");
 
 /** The branch command: a shim that reads the running engine (else the published one), the token and the live port. */
 export function branchShim(o: { dataDir: string; engineDir: string; nodePath: string; gatewayPort: number }): string {
@@ -323,6 +338,9 @@ export function branchShim(o: { dataDir: string; engineDir: string; nodePath: st
     `set "LIVEPID="`,
     `set /p LIVEPID=<"%BRANCH_DATA%\\gateway.pid"`,
     "if not defined LIVEPID exit /b 0",
+    // Accept the pid only when it is this data folder's gateway on the recorded (else configured) port.
+    `set "EXPECTPORT=${o.gatewayPort}"`,
+    `if exist "%BRANCH_DATA%\\gateway-port" set /p EXPECTPORT=<"%BRANCH_DATA%\\gateway-port"`,
     `set "LIVEENGINE="`,
     `for /f "usebackq delims=" %%A in (\`powershell.exe -NoProfile -NonInteractive -Command "${LIVE_ENGINE_PS}"\`) do set "LIVEENGINE=%%A"`,
     `if defined LIVEENGINE if exist "%LIVEENGINE%\\branch.mjs" if not exist "%LIVEENGINE%\\branch.mjs\\" set "ENGINE=%LIVEENGINE%"`,
@@ -352,19 +370,48 @@ export function branchShShim(o: { dataDir: string; engineDir: string; nodePath: 
     `  [ -f "$data/gateway.pid" ] || return 0`,
     `  pid=$(head -n 1 "$data/gateway.pid" | tr -d '\\r')`,
     `  [ -n "$pid" ] || return 0`,
+    `  expect=${String(o.gatewayPort)}`,
+    `  if [ -f "$data/gateway-port" ]; then recorded=$(head -n 1 "$data/gateway-port" | tr -d '\\r'); if [ -n "$recorded" ]; then expect=$recorded; fi; fi`,
     "  live=",
+    // Linux (and Git Bash): null-separated args. Accept only branch.mjs immediately followed by gateway,
+    // with --port equal to the port file (else the configured port).
     `  if [ -r "/proc/$pid/cmdline" ]; then`,
-    `    live=$(tr '\\0' '\\n' < "/proc/$pid/cmdline" | while IFS= read -r arg; do`,
-    `      case "$arg" in`,
-    "        */branch.mjs)",
-    "          dir=${arg%/branch.mjs}",
-    `          if [ -f "$dir/branch.mjs" ]; then printf '%s\\n' "$dir"; break; fi`,
-    "          ;;",
-    "      esac",
-    "    done)",
+    `    live=$(tr '\\0' '\\n' < "/proc/$pid/cmdline" | {`,
+    "      prev=; dir=; saw=; port=; take_port=",
+    `      while IFS= read -r arg; do`,
+    `        if [ -n "$take_port" ]; then port=$arg; take_port=; fi`,
+    "        case \"$arg\" in",
+    "          --port=*) port=${arg#--port=} ;;",
+    "          --port) take_port=1 ;;",
+    "        esac",
+    "        case \"$prev\" in",
+    "          */branch.mjs)",
+    "            if [ \"$arg\" = \"gateway\" ]; then saw=1; dir=${prev%/branch.mjs}; fi",
+    "            ;;",
+    "        esac",
+    "        prev=$arg",
+    "      done",
+    `      if [ -n "$saw" ] && [ "$port" = "$expect" ] && [ -f "$dir/branch.mjs" ]; then printf '%s\\n' "$dir"; fi`,
+    "    })",
+    "  fi",
+    // macOS has no /proc; parse `ps -o args=` for .../branch.mjs gateway and the matching --port.
+    `  if [ -z "$live" ]; then`,
+    `    args=$(ps -o args= -p "$pid" 2>/dev/null) || true`,
+    "    args=$(printf '%s' \"$args\" | sed 's/^[[:space:]]*//' | tr '\\\\' '/')",
+    "    case \"$args\" in",
+    "      */branch.mjs\\ gateway\\ *|*/branch.mjs\\ gateway)",
+    "        case \"$args\" in",
+    "          *\\ --port\\ $expect\\ *|*\\ --port\\ $expect|*\\ --port=$expect\\ *|*\\ --port=$expect)",
+    "            prefix=${args%%/branch.mjs gateway*}",
+    "            dir=${prefix#* }",
+    `            if [ -n "$dir" ] && [ -f "$dir/branch.mjs" ]; then live=$dir; fi`,
+    "            ;;",
+    "        esac",
+    "        ;;",
+    "    esac",
     "  fi",
     `  if [ -z "$live" ] && command -v powershell.exe >/dev/null 2>&1; then`,
-    `    live=$(LIVEPID=$pid powershell.exe -NoProfile -NonInteractive -Command "${LIVE_ENGINE_PS}")`,
+    `    live=$(LIVEPID=$pid EXPECTPORT=$expect powershell.exe -NoProfile -NonInteractive -Command "${LIVE_ENGINE_PS.replace(/\$/g, "\\$")}")`,
     "  fi",
     `  live=$(printf '%s' "$live" | tr -d '\\r' | tr '\\\\' '/')`,
     `  if [ -n "$live" ] && [ -f "$live/branch.mjs" ]; then engine=$live; fi`,
