@@ -57,3 +57,17 @@ describe.each(["regular", "advanced"] as Level[])("plain automation failures at 
 it("Failure.tsx: only Technical includes original text behind closed Details", async () => { localStorage.setItem("branch.level", "technical"); await mount(<Failure error={RAW} />); const details = document.querySelector("details")!; expect(details.open).toBe(false); expect(details.querySelector("summary")?.textContent).toBe("Details"); expect(details.querySelector("pre")?.textContent).toBe(RAW); });
 it("Failure.tsx: successful notices keep their wording", async () => { await mount(<Failure error="Answered" notice />); expect(document.body.textContent).toBe("Answered"); });
 it("Procedures.tsx: technical commands load failure is disclosed, not the headline", async () => { localStorage.setItem("branch.level", "technical"); await mount(<ProceduresTab engine={engine()} level="technical" />); const alert = document.querySelector('[role="alert"]')!; expect(alert.textContent).toContain(PLAIN); expect(alert.querySelector("details pre")?.textContent).toBe(RAW); });
+
+it("Sheet.tsx: successful run records preserve multiline text and indentation", async () => {
+  const content = "Summary\n  indented detail\n\nNext step";
+  const host = await mount(<Sheet engine={engine({
+    "cron.runs": { entries: [{ runId: "successful-run", status: "ok" }] },
+    "cron.history": { messages: [{ role: "user", content }, { role: "assistant", content }] },
+  })} job={job} level="regular" trunks={[]} models={[]} canWrite busy={false} onClose={noop} save={async () => true} openConversation={noop} />);
+  await act(async () => Array.from(host.querySelectorAll("button")).find(b => b.textContent === "See what it did")!.click());
+  for (const role of ["user", "assistant"]) {
+    // Paragraphs retain the existing .au-msg p pre-wrap and typography rules.
+    expect(host.querySelector(`.au-msg.${role} > p`)?.textContent).toBe(content);
+  }
+  expect(host.querySelector("details")).toBeNull();
+});

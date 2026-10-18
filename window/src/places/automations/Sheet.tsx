@@ -87,7 +87,7 @@ function RunRecord({ engine, job, run, onClose, openConversation }: { engine: Wi
   return <Dialog wide title={`${jobName(job)} · ${when(run.runAtMs ?? run.ts)}`} onClose={onClose} footer={<>{key && <button type="button" className="btn sm" onClick={() => { onClose(); openConversation(key); }}>Open the conversation</button>}</>}>
     {state.error && <div className="au-error" role="alert"><Failure error={state.error} /></div>}
     {!state.loading && !state.error && !state.messages.length && <p className="au-hint">Nothing in this run yet.</p>}
-    <div className="au-record">{state.messages.map((m, i) => { const t = textOf(m); return t ? <div key={i} className={`au-msg ${str(m.role)}`}><small>{m.role === "user" ? "Asked" : m.role === "assistant" ? "Answered" : "Step"}</small><div>{m.isError === true || m.stopReason === "error" ? <Failure error={t} /> : t}</div></div> : null; })}</div>
+    <div className="au-record">{state.messages.map((m, i) => { const t = textOf(m); return t ? <div key={i} className={`au-msg ${str(m.role)}`}><small>{m.role === "user" ? "Asked" : m.role === "assistant" ? "Answered" : "Step"}</small>{m.isError === true || m.stopReason === "error" ? <div><Failure error={t} /></div> : <p>{t}</p>}</div> : null; })}</div>
   </Dialog>;
 }
 
