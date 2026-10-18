@@ -21,6 +21,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { NoScrollbarFlatList as FlatList, NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { OfflineBanner } from '../ui/OfflineBanner';
+import { plainError } from '../ui/plainError';
 import { Avatar } from './ChatsScreen';
 
 /** "12s", "3 min", "1 h 5 min": how long a turn worked. */
@@ -333,7 +334,7 @@ export function ChatScreen({
     body = <Skeleton />;
   } else if (!snapshot.loaded) {
     body = online ? (
-      <Empty testID="chat-error" title="Couldn’t load this chat" body={snapshot.error ?? ''} action={{ title: 'Try again', onPress: () => void conversation.load() }} />
+      <Empty testID="chat-error" title="Couldn’t load this chat" body={plainError(snapshot.error)} action={{ title: 'Try again', onPress: () => void conversation.load() }} />
     ) : (
       <Empty testID="chat-waiting" title="Waiting for your computer" body="This chat shows up as soon as this phone reaches it." />
     );

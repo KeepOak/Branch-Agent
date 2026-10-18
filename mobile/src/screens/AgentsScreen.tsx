@@ -7,6 +7,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { OfflineBanner } from '../ui/OfflineBanner';
+import { plainError } from '../ui/plainError';
 
 function statusTone(status: AgentStatus): 'ok' | 'ink3' {
   return status === 'running' ? 'ok' : 'ink3';
@@ -131,7 +132,7 @@ export function AgentsScreen({
   if (!list.loaded && !list.error) body = <Note testID="agents-loading" title="Checking with your computer…" body="The Trunks on your computer show up here." />;
   else if (!list.loaded)
     body = online ? (
-      <Note testID="agents-error" title="Couldn’t load your agents" body={list.error || 'Your computer didn’t send its agents. Try again in a moment.'} action={{ title: 'Try again', onPress: () => void refresh() }} />
+      <Note testID="agents-error" title="Couldn’t load your agents" body={list.error ? plainError(list.error) : 'Your computer didn’t send its agents. Try again in a moment.'} action={{ title: 'Try again', onPress: () => void refresh() }} />
     ) : (
       <Note testID="agents-waiting" title="Waiting for your computer" body="Your agents show up here as soon as this phone reaches it." />
     );
@@ -166,9 +167,9 @@ export function AgentsScreen({
         </ThemedText>
         {online ? null : <OfflineBanner testID="agents-offline" message="Reconnecting to your computer… These agents may be out of date." />}
         {list.loaded && list.error && online ? (
-          <View testID="agents-error" style={{ marginTop: space.md, backgroundColor: color.badTint, borderRadius: radius.md, padding: space.md, gap: space.sm }}>
-            <ThemedText variant="footnote" tone="bad">
-              {list.error}
+          <View testID="agents-error" style={{ marginTop: space.md, backgroundColor: color.fill, borderColor: color.line, borderWidth: layout.hairline, borderRadius: radius.md, padding: space.md, gap: space.sm }}>
+            <ThemedText variant="footnote" tone="ink">
+              {plainError(list.error)}
             </ThemedText>
             <Button title="Try again" kind="secondary" onPress={() => void refresh()} testID="agents-error-action" />
           </View>

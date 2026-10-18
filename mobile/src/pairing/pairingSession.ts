@@ -136,7 +136,7 @@ export class PairingSession implements EngineLink {
     return () => this.listeners.delete(listener);
   }
 
-  /** On launch: reconnect to the computer this phone paired with, or show the welcome. */
+  /** On launch: reconnect to the computer this phone paired with, or show pairing. */
   async restore(): Promise<void> {
     const record = this.readRecord(await this.deps.store.get(PAIRING_RECORD_KEY));
     this.paired = record;
@@ -169,7 +169,7 @@ export class PairingSession implements EngineLink {
     return expires !== undefined && expires <= this.now();
   }
 
-  /** Stops a pairing that hasn't finished and goes back to the welcome. */
+  /** Stops a pairing that hasn't finished and goes back to pairing. */
   cancel(): void {
     this.stopGateway();
     this.setup = null;

@@ -8,6 +8,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { Card } from '../ui/Screen';
+import { plainError } from '../ui/plainError';
 import { useNow } from '../ui/useNow';
 
 /** Status words plus the OS, and "Offline since Sunday" when the engine last saw it. */
@@ -123,7 +124,7 @@ export function ComputersScreen({
   if (!list.loaded && !list.error) body = <Note testID="computers-loading" title="Checking with your computer…" body="The computers Branch can use show up here." />;
   else if (!list.loaded)
     body = online ? (
-      <Note testID="computers-error" title="Couldn’t load your computers" body={list.error ?? ''} action={{ title: 'Try again', onPress: () => void refresh() }} />
+      <Note testID="computers-error" title="Couldn’t load your computers" body={plainError(list.error)} action={{ title: 'Try again', onPress: () => void refresh() }} />
     ) : (
       <Note testID="computers-waiting" title="Waiting for your computer" body="Your computers show up here as soon as this phone reaches it." />
     );

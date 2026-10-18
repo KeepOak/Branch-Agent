@@ -1,11 +1,11 @@
 {
   "routes": [
     {
-      "id": "welcome",
-      "title": "Welcome",
-      "file": "src/screens/WelcomeScreen.tsx",
-      "marker": "export function WelcomeScreen",
-      "route": "<WelcomeScreen"
+      "id": "home",
+      "title": "Home",
+      "file": "src/screens/HomeScreen.tsx",
+      "marker": "export function HomeScreen",
+      "route": "<HomeScreen"
     },
     {
       "id": "scan",
@@ -114,6 +114,7 @@
     }
   ],
   "features": [
+    { "id": "home-screen", "title": "Home", "file": "src/screens/HomeScreen.tsx", "marker": "testID=\"home-screen\"" },
     { "id": "pair-button", "title": "Pair with your computer", "file": "src/screens/WelcomeScreen.tsx", "marker": "testID=\"pair-button\"" },
     { "id": "scan-camera", "title": "QR camera scan", "file": "src/screens/ScanScreen.tsx", "marker": "testID=\"scan-screen\"" },
     { "id": "enter-code-input", "title": "Paste pairing code", "file": "src/screens/pairingFields.tsx", "marker": "testID=\"code-input\"" },

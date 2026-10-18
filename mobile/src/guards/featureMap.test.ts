@@ -12,7 +12,7 @@ describe('mobile feature map', () => {
   it('lists every current route in feature-map.json', () => {
     const { routes } = loadFeatureMap(readRepo);
     expect(routes.map((entry) => entry.id)).toEqual([
-      'welcome',
+      'home',
       'scan',
       'code',
       'pairing-approval',
