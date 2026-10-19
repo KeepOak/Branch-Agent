@@ -162,14 +162,13 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
   }
   // An R1 page must be the page asked for; a Classic page must be one Classic draws as itself, and General only for General.
   const ownPage = (id: string, kind: string, page: string) => kind === "r1" ? page === id
-    : kind === "place" ? id === "memory"
     : classic.has(page) && pageAtLevel(page, levelFor(page, "regular")) === page && (page !== "general" || id === "general");
   const wrong = ids.filter((id) => !ownPage(id, ...(opened[id].split(":") as [string, string])));
   expect(wrong.map((id) => `${id} → ${opened[id]}`)).toEqual([]);
   expect(opened).toEqual({
     card: "r1:card", goto: "r1:goto",
     general: "r1:general", appearance: "r1:appearance", notifications: "r1:notifications", who: "r1:who",
-    trunks: "classic:advanced", instructions: "r1:instructions", customize: "r1:customize", seedbank: "r1:seedbank", memory: "place:library", autos: "r1:autos",
+    trunks: "classic:advanced", instructions: "r1:instructions", customize: "r1:customize", seedbank: "r1:seedbank", memory: "r1:memory", autos: "r1:autos",
     voice: "r1:voice", chatapps: "r1:chatapps",
     accounts: "r1:accounts", models: "r1:models",
     permissions: "r1:permissions", signins: "r1:signins", privacy: "r1:privacy",
@@ -177,31 +176,24 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
     history: "r1:history", learning: "r1:learning", updates: "r1:updates", features: "r1:features", developer: "r1:developer",
   });
 });
-it("opens Settings › Memory & documents as its place, and Customize and Automations as their R1 pages", async () => {
+it("opens Settings › Memory & documents, Customize and Automations as their R1 pages, never Classic Advanced", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
   expect(resolveRoute({ kind: "settings", page: "customize" })).toEqual({ kind: "settings", page: "customize" });
   expect(resolveRoute({ kind: "settings", page: "autos" })).toEqual({ kind: "settings", page: "autos" });
-  expect(resolveRoute({ kind: "settings", page: "memory" })).toEqual({ kind: "place", place: "library" });
+  expect(resolveRoute({ kind: "settings", page: "memory" })).toEqual({ kind: "settings", page: "memory" });
   // Old ids for Customize still land on the R1 page; every other page stays a Settings page.
   for (const old of ["graftsT5", "czP17"]) expect(resolveRoute({ kind: "settings", page: old })).toEqual({ kind: "settings", page: "customize" });
   expect(resolveRoute({ kind: "settings", page: "voice" })).toEqual({ kind: "settings", page: "voice" });
   for (const page of ["customize", "memory", "autos"]) expect(CLASSIC_PAGE[page], page).toBeUndefined();
-  // From the Settings nav: the frame asks for the page, the window opens the place, and Library is told its Memory tab.
   localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "voice" }));
-  const tabs: unknown[] = [];
-  const onTab = (e: Event) => tabs.push((e as CustomEvent).detail);
-  window.addEventListener("branch:place-tab", onTab);
-  try {
-    await act(async () => root.render(<R1Window session={session} />));
-    const memory = [...host.querySelectorAll("button")].find((b) => b.textContent === "Memory & documents")!;
-    await act(async () => { memory.click(); await new Promise((r) => setTimeout(r, 0)); });
-    expect(host.querySelector('[data-testid="r1-settings"]')).toBeNull();
-    expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
-    expect(host.querySelector<HTMLElement>('[data-testid="place"]')?.dataset.place).toBe("library");
-    expect(tabs).toEqual([{ place: "library", tab: "memory" }]);
-    expect(JSON.parse(localStorage.getItem("branch.route") ?? "null")).toEqual({ kind: "place", place: "library" });
-  } finally { window.removeEventListener("branch:place-tab", onTab); }
+  await act(async () => root.render(<R1Window session={session} />));
+  const memory = [...host.querySelectorAll("button")].find((b) => b.textContent === "Memory & documents")!;
+  await act(async () => { memory.click(); await new Promise((r) => setTimeout(r, 0)); });
+  expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
+  expect(host.querySelector('[data-testid="place"]')).toBeNull();
+  expect(host.querySelector<HTMLElement>('[data-testid="r1-settings"]')?.dataset.page).toBe("memory");
+  expect(JSON.parse(localStorage.getItem("branch.route") ?? "null")).toEqual({ kind: "settings", page: "memory" });
 });
 it("sends a page to R1 Settings only when the row table or a slot covers it and Classic has nothing more", () => {
   expect(r1SettingsPage("general")).toBe(true);

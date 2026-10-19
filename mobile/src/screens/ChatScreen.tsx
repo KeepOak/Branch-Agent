@@ -30,6 +30,7 @@ import { Button } from '../ui/Button';
 import { NoScrollbarFlatList as FlatList, NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { plainError } from '../ui/plainError';
+import { tapHaptic } from '../settings/phoneEffects';
 import { Avatar } from './ChatsScreen';
 
 /** "12s", "3 min", "1 h 5 min": how long a turn worked. */
@@ -404,7 +405,10 @@ function ThreadApprovalCard({
           accessibilityLabel={verbs.no}
           accessibilityState={{ disabled: busy, busy: sending === 'deny' }}
           disabled={busy}
-          onPress={() => onAnswer(approval.id, 'deny')}
+          onPress={() => {
+            tapHaptic();
+            onAnswer(approval.id, 'deny');
+          }}
           style={({ pressed }) => ({
             flex: 1,
             minHeight: 40,
@@ -429,6 +433,7 @@ function ThreadApprovalCard({
           disabled={allowDisabled}
           onPress={() => {
             if (!canAllow) return;
+            tapHaptic();
             onAnswer(approval.id, 'allow-once');
           }}
           style={({ pressed }) => ({
@@ -611,6 +616,7 @@ export function ChatScreen({
 
   const send = () => {
     if (!canSend) return;
+    tapHaptic();
     const text = draft;
     const attached = files;
     setDraft('');
