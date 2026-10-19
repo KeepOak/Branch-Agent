@@ -10,7 +10,10 @@ import {
   fetchPrCommits,
   fetchPrCommitsWithApi,
   formatReport,
+  parseGitLogRecords,
+  readLocalPrCommits,
   runCommitEmailCheck,
+  shouldUseLocalHistory,
 } from './check-commit-emails.mjs';
 import { withRateLimitRetry } from './merge-gate-rate-limit.mjs';
 
@@ -227,6 +230,7 @@ test('a rate limit that outlasts the step budget says it gave up, with the statu
   const result = runCommitEmailCheck({
     repo: 'o/r', prNumber: '929', token: 't',
     api: () => { throw httpError('gh: API rate limit exceeded for installation (HTTP 403)'); },
+    readLocal: () => { throw new Error('no local PR ref'); },
   });
   assert.equal(result.exitCode, 2);
   assert.match(result.lines[0], /HTTP 403/);
@@ -305,4 +309,80 @@ test('the email check shares one job budget across pages: two rate-limited pages
   assert.equal(secondError.budgetExhausted, true);
   assert.match(apiFailureLine(secondError, '1'), /job budget/);
   assert.match(apiFailureLine(secondError, '1'), /Not a commit-email failure/);
+});
+
+const RATE_LIMITED = () => { throw httpError('gh: API rate limit exceeded for installation (HTTP 403)'); };
+
+test('a rate limit past the budget falls back to local PR history and passes clean commits', () => {
+  const result = runCommitEmailCheck({
+    repo: 'o/r', prNumber: '1941', token: 't', api: RATE_LIMITED,
+    readLocal: () => [githubCommit()],
+  });
+  assert.equal(result.exitCode, 0);
+  assert.match(result.lines[0], /local git history/);
+});
+
+test('the local fallback still fails a personal address with exit 1', () => {
+  const result = runCommitEmailCheck({
+    repo: 'o/r', prNumber: '1941', token: 't', api: RATE_LIMITED,
+    readLocal: () => [githubCommit({ authorEmail: PERSONAL })],
+  });
+  assert.equal(result.exitCode, 1);
+  assert.doesNotMatch(result.lines.join('\n'), /person@example\.com/);
+});
+
+test('a spent wait budget also falls back to local history', () => {
+  const result = runCommitEmailCheck({
+    repo: 'o/r', prNumber: '1', token: 't',
+    api: () => { throw Object.assign(new Error('budget used up'), { budgetExhausted: true }); },
+    readLocal: () => [githubCommit()],
+  });
+  assert.equal(result.exitCode, 0);
+});
+
+test('a real 403 that is not a rate limit fails and never reads local history', () => {
+  let read = false;
+  const result = runCommitEmailCheck({
+    repo: 'o/r', prNumber: '1', token: 't',
+    api: () => { throw httpError('gh: Resource not accessible by integration (HTTP 403)'); },
+    readLocal: () => { read = true; return [githubCommit()]; },
+  });
+  assert.equal(result.exitCode, 2);
+  assert.equal(read, false);
+  assert.match(result.lines[0], /HTTP 403/);
+  assert.match(result.lines[0], /not retried/);
+});
+
+test('an empty local history fails closed instead of passing', () => {
+  const result = runCommitEmailCheck({
+    repo: 'o/r', prNumber: '1', token: 't', api: RATE_LIMITED, readLocal: () => [],
+  });
+  assert.equal(result.exitCode, 2);
+  assert.match(result.lines[0], /nothing was checked/);
+});
+
+test('shouldUseLocalHistory accepts rate-limit signs only', () => {
+  assert.equal(shouldUseLocalHistory(httpError('HTTP 429')), true);
+  assert.equal(shouldUseLocalHistory(httpError('forbidden (HTTP 403)', { 'x-ratelimit-remaining': '0' })), true);
+  assert.equal(shouldUseLocalHistory(httpError('forbidden (HTTP 403)', { 'retry-after': '30' })), true);
+  assert.equal(shouldUseLocalHistory(httpError('You have exceeded a secondary rate limit (HTTP 403)')), true);
+  assert.equal(shouldUseLocalHistory(httpError('Must have admin rights (HTTP 403)')), false);
+  assert.equal(shouldUseLocalHistory(httpError('Not Found (HTTP 404)')), false);
+});
+
+test('local git records parse into the API commit shape, with multi-line messages and trailers', () => {
+  const raw = `abc\x1fa@users.noreply.github.com\x1fc@users.noreply.github.com\x1f${AFTER}\x1ffeat: x\n\n${trailer(GMAIL)}\n\x1e\n`
+    + `def\x1fa@users.noreply.github.com\x1fc@users.noreply.github.com\x1f${AFTER}\x1ffix: y\n\x1e\n`;
+  const commits = parseGitLogRecords(raw);
+  assert.equal(commits.length, 2);
+  assert.equal(commits[0].sha, 'abc');
+  assert.equal(commits[0].commit.committer.date, AFTER);
+  assert.deepEqual(evaluateCommits(commits).map((f) => f.field), ['co-author']);
+});
+
+test('readLocalPrCommits asks git only for commits on the PR head and not on the base', () => {
+  let seen;
+  readLocalPrCommits({ exec: (cmd, args) => { seen = [cmd, ...args]; return ''; } });
+  assert.equal(seen[0], 'git');
+  assert.equal(seen.at(-1), 'HEAD..refs/remotes/pr/head');
 });
