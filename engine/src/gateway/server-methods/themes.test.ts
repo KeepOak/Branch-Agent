@@ -26,10 +26,7 @@ import {
 } from "../../state/user-preferences.test-support.js";
 import { linkEmail } from "../../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
-import {
-  createBranchTestState,
-  type BranchTestState,
-} from "../../test-utils/branch-test-state.js";
+import { createBranchTestState, type BranchTestState } from "../../test-utils/branch-test-state.js";
 import type { AgentRuntimeIdentity } from "../agent-runtime-identity-token.js";
 import { themeHandlers } from "./themes.js";
 import { pluginTheme } from "./themes.test-support.js";
@@ -195,7 +192,7 @@ describe("theme RPC", () => {
     expect(await invoke("themes.list")).toMatchObject({
       ok: true,
       payload: {
-        current: { id: "grove", mode: "system", scope: "profile", overrides: {} },
+        current: { id: "grove", mode: "light", scope: "profile", overrides: {} },
         themes: expect.arrayContaining([
           expect.objectContaining({ id: "grove", description: expect.stringMatching(/\S/) }),
           descriptor,
@@ -207,6 +204,36 @@ describe("theme RPC", () => {
       payload: { theme: descriptor, definition, artwork: entry.artwork },
     });
     expect(await invoke("themes.get", { id: "grove" })).not.toHaveProperty("payload.artwork");
+  });
+
+  it("defaults an unsaved mode to light while keeping a saved system mode", async () => {
+    expect(await invoke("themes.get")).toMatchObject({
+      ok: true,
+      payload: { current: { id: "grove", mode: "light", effectiveMode: "light", overrides: {} } },
+    });
+
+    const system = { getRuntimeConfig: () => ({ ui: { prefs: { themeMode: "system" } } }) };
+    const fromConfig = await invoke("themes.get", {}, { context: system });
+    expect(fromConfig).toMatchObject({ ok: true, payload: { current: { mode: "system" } } });
+    expect(fromConfig).not.toHaveProperty("payload.current.effectiveMode");
+
+    expect(setUserPreferences(requesterProfileId, { "ui.themeMode": "system" }).ok).toBe(true);
+    const fromProfile = await invoke("themes.get");
+    expect(fromProfile).toHaveProperty("payload.current.mode", "system");
+    expect(fromProfile).toHaveProperty("payload.current.overrides.mode", "system");
+    expect(fromProfile).not.toHaveProperty("payload.current.effectiveMode");
+  });
+
+  it("clears the mode of a dark-only theme with nothing saved and renders it dark", async () => {
+    pluginThemes.push(pluginTheme());
+    const id = "space-pack/xenovessel";
+    const dark = { ok: true, payload: { current: { id, mode: "light", effectiveMode: "dark" } } };
+    expect(setUserPreferences(requesterProfileId, { "ui.theme": id }).ok).toBe(true);
+    expect(await invoke("themes.set", { mode: null })).toMatchObject(dark);
+    expect(getUserPreferences(requesterProfileId)).toEqual({ "ui.theme": id });
+    const context = { getRuntimeConfig: () => ({ ui: { prefs: { theme: id } } }) };
+    expect(await invoke("themes.set", { id: null, mode: null }, { context })).toMatchObject(dark);
+    expect(getUserPreferences(requesterProfileId)).toEqual({});
   });
 
   it("imports and applies in one durable profile mutation, preserving other preferences and notifying only that profile", async () => {
@@ -420,21 +447,19 @@ describe("theme RPC", () => {
       };
       expect(getUserPreferences(requesterProfileId)).toEqual(saved);
 
-      for (const mode of ["light", null]) {
-        expect(
-          await invoke(
-            "themes.set",
-            { mode },
-            {
-              context: { getRuntimeConfig: () => ({ ui: { prefs: { themeMode: "light" } } }) },
-            },
-          ),
-        ).toMatchObject({
-          ok: false,
-          error: { message: expect.stringContaining("does not provide light mode") },
-        });
-        expect(getUserPreferences(requesterProfileId)).toEqual(saved);
-      }
+      const context = { getRuntimeConfig: () => ({ ui: { prefs: { themeMode: "light" } } }) };
+      expect(await invoke("themes.set", { mode: "light" }, { context })).toMatchObject({
+        ok: false,
+        error: { message: expect.stringContaining("does not provide light mode") },
+      });
+      expect(getUserPreferences(requesterProfileId)).toEqual(saved);
+      // Clearing the saved mode is always allowed; the dark-only theme still renders dark.
+      expect(await invoke("themes.set", { mode: null }, { context })).toMatchObject({
+        ok: true,
+        payload: { current: { id: selectedId, mode: "light", effectiveMode: "dark" } },
+      });
+      const { "ui.themeMode": _cleared, ...withoutMode } = saved;
+      expect(getUserPreferences(requesterProfileId)).toEqual(withoutMode);
     },
   );
 
