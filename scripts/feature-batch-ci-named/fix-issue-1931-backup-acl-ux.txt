@@ -1,0 +1,3 @@
+# PR #1944 named feature tests
+engine:src/commands/backup-failure-presentation.test.ts
+engine:src/snapshot/local-repository.windows-acl-probe.test.ts
