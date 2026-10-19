@@ -730,4 +730,44 @@ describe.runIf(process.platform !== "win32")("CUA MCP proxy transport", () => {
     expect(driver.isAvailable()).toBe(false);
     await driver.dispose();
   });
+
+  describe("proxy exit (#1948)", () => {
+    async function crashingDriver(crashes: number) {
+      const endpoint = await createFakeEndpoint((request, fake) => {
+        if (request.method === "initialize") {
+          fake.respond(request, { protocolVersion: "2025-06-18" });
+        } else if (request.params?.name === "start_session") {
+          fake.respond(request, sessionState("window"));
+        } else if (request.method === "tools/call") {
+          fake.respond(request, toolResult({ windows: [] }));
+        }
+      });
+      const budgetFile = path.join(path.dirname(endpoint.socketPath), "crashes");
+      await fs.writeFile(budgetFile, String(crashes));
+      const driver = createCuaMcpDriver({
+        ...endpoint,
+        binaryPath: fileURLToPath(new URL("../test/fixtures/mcp-proxy-crash.cjs", import.meta.url)),
+        env: { ...process.env, BRANCH_TEST_CRASH_FILE: budgetFile },
+      });
+      onTestFinished(() => driver.dispose().catch(() => undefined));
+      return { endpoint, driver };
+    }
+
+    it("restarts the proxy once after a non-zero exit and retries the call", async () => {
+      const { endpoint, driver } = await crashingDriver(1);
+      const result = await driver.callTool("crash_proxy", {});
+      expect(result.isError).toBe(false);
+      expect(endpoint.requests.filter((request) => request.method === "initialize")).toHaveLength(2);
+      expect(driver.isAvailable()).toBe(true);
+    });
+
+    it("fails with a plain message that keeps the exit code and stderr when the restart also exits", async () => {
+      const { endpoint, driver } = await crashingDriver(2);
+      const failure = driver.callTool("crash_proxy", {});
+      await expect(failure).rejects.toThrow(
+        /^COMPUTER_DRIVER_UNAVAILABLE: Computer control stopped unexpectedly and restarting it didn't help\..*\(CUA MCP proxy exited \(1\): fixture proxy crashed\)$/s,
+      );
+      expect(endpoint.requests.filter((request) => request.method === "initialize")).toHaveLength(2);
+    });
+  });
 });
