@@ -1,3 +1,6 @@
+engine:ui/src/components/community-invite-card.test.ts
+engine:ui/src/components/community-invite-state.test.ts
 engine:ui/src/e2e/about.e2e.test.ts
+engine:ui/src/e2e/community-invite-showing.e2e.test.ts
 engine:ui/src/e2e/plugins-hub-navigation.e2e.test.ts
 engine:ui/src/pages/about/view.test.ts
