@@ -15,7 +15,8 @@ import { lookStore } from "../../places/settings/set1/appearance-store";
 import { pinsOf } from "../../places/settings/pins";
 import { t, useLanguage } from "../../i18n/language";
 import { GOTO_SUB, LEVELS, PAGES, REGULAR_GROUPS, navAt, pageFor, pageShown, regularHub, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
-import { COMING_FROM, ROWS, cardRows, comingRow, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
+import { COMING_FROM, ROWS, cardRows, comingRow, pageFirstLevel, rowHelp, rowLabel, rowLevel, rowsFor, type Row, type UiHints } from "./rows";
+import { Icon } from "../../shell/icons";
 import { LaterRows } from "../../glass/LaterRows";
 import { RowView, Segmented } from "./RowView";
 import { mergeRows, type PageSlots, type SlotControl } from "./slots";
@@ -94,10 +95,22 @@ function useNarrowNav(): boolean {
   return narrow;
 }
 
+/** A page's row, as the preview's s36Nav: the page's icon, its title (and Go to's sub-line and chevron, as s36Go), in a
+ *  boxed row. The Settings nav and a Regular page's "Also in" list draw the same row. */
+function PageRow({ page, sub }: { page: NavPage; sub?: string }) {
+  return (
+    <>
+      {page.icon ? <Icon name={page.icon} small /> : null}
+      <span>{t(page.title)}</span>
+      {sub ? <><small>{sub}</small><Icon name="chev" small /></> : null}
+    </>
+  );
+}
+
 function NavButton({ page, current, onOpen, sub, hub }: { page: NavPage; current: boolean; onOpen: () => void; sub?: string; hub?: string }) {
   return (
     <button type="button" className="r1s-nav" data-local="" aria-current={current ? "page" : undefined} data-page={page.id} data-hub={hub} onClick={onOpen}>
-      <span>{t(page.title)}</span>{sub ? <small>{sub}</small> : null}
+      <PageRow page={page} sub={sub} />
     </button>
   );
 }
@@ -152,7 +165,8 @@ function NavList({ engine, level, narrow, shownPage, onOpen }: { engine: WindowE
 }
 
 /** The other settings pages that belong to the open Regular page, under "Also in <page>" on that page. Not "Advanced":
- *  at Regular that word names a level the person hasn't chosen, so it read as a stray heading (#1093 item 6). */
+ *  at Regular that word names a level the person hasn't chosen, so it read as a stray heading (#1093 item 6). Each is
+ *  the nav's own boxed row with its icon (preview s36Nav). */
 function HubAdvanced({ shownPage, onOpen }: { shownPage: PageId; onOpen: (id: PageId) => void }) {
   const hub = regularHub(shownPage);
   if (!hub) return null;
@@ -164,7 +178,7 @@ function HubAdvanced({ shownPage, onOpen }: { shownPage: PageId; onOpen: (id: Pa
       <div className="r1s-jumps">
         {rest.map((p) => (
           <button key={p.id} type="button" className="r1s-jump" data-page={p.id} aria-current={shownPage === p.id ? "true" : undefined} onClick={() => onOpen(p.id)}>
-            <span>{t(p.title)}</span>{p.id === "goto" ? <small>{GOTO_SUB}</small> : null}
+            <PageRow page={p} sub={p.id === "goto" ? GOTO_SUB : undefined} />
           </button>
         ))}
       </div>
@@ -254,7 +268,8 @@ export function SettingsFrame(props: SettingsFrameProps) {
   useLanguage(); // Settings › Appearance › Language: the titles below follow it (Private #1100)
   const narrow = useNarrowNav();
   const slots = props.pages ?? NO_SLOTS;
-  const rows = useMemo(() => mergeRows(props.rows ?? ROWS, slots), [props.rows, slots]);
+  // A row that exists only while more than one person uses Branch goes on a one-person Branch (rows.ts sharedOnly).
+  const rows = useMemo(() => rowsFor(mergeRows(props.rows ?? ROWS, slots), engine.sharedGateway), [props.rows, slots, engine.sharedGateway]);
   const [level, setLevel] = useLevel(engine);
   const { hints } = useSchemaHints(engine);
   const [page, setPage] = useState<PageId>(() => pageFor(props.page));
@@ -325,6 +340,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
   const invalid = config && typeof config === "object" && config.valid === false ? configIssues(config.issues) : null;
   const levelLine = LEVELS[level].line;
   const Custom = slots[shownPage]?.component;
+  const hubLanding = regularHub(shownPage)?.pages[0]?.id === shownPage;
 
   return (
     <div className="r1set g-clear" data-level={LEVEL_WORD[level]}>
@@ -368,7 +384,9 @@ export function SettingsFrame(props: SettingsFrameProps) {
             </div>
           ) : null}
         </header>
-        {level === 0 ? <HubAdvanced shownPage={shownPage} onOpen={go} /> : null}
+        {/* A Regular page lists its other pages under its title; one of those pages lists them after its own settings, so
+            its settings sit right under its title, as in the preview. */}
+        {level === 0 && hubLanding ? <HubAdvanced shownPage={shownPage} onOpen={go} /> : null}
         {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} onAsk={props.onAsk} /></div> : <>
         <div className="r1s-col">
           {loadFailed ? <div className="r1s-notice g-frost" role="alert">Settings didn’t load · <Coming engine={engine} need="config.get"><button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></Coming></div> : null}
@@ -408,6 +426,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
           )}
         </div>
         </>}
+        {level === 0 && !hubLanding ? <HubAdvanced shownPage={shownPage} onOpen={go} /> : null}
       </div>
       <TrunkHost engine={engine} level={LEVEL_WORD[level]} openSettings={(page) => go(pageFor(page))} openPlace={(place) => props.onOpenPlace?.(place)} />
     </div>
