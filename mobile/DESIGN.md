@@ -63,7 +63,7 @@ All values live in `src/theme/tokens.ts` and screens read them through `useTheme
 
 ## Preview first, then better
 
-Each screen PR starts from that screen's phone version in the Branch App Preview: `design/spec-v23/index.html` (the pass 15d phone part and the pass 18 phone apps in `70-surfaces.js`) and the Oct 8 export. Ours does everything the preview's screen does, then goes further, drawing on Grok Bot's feel, Apple's design rules and Hermes desktop. The fixes listed above still apply. Each screen PR's description has one line per screen: "Preview does X; ours does X plus Y, because Z."
+Each screen PR starts from that screen's phone version in the owner's latest Branch App Preview, kept privately and never committed to this repo. `design/spec-v23/index.html` (the pass 15d phone part and the pass 18 phone apps in `70-surfaces.js`, plus the Oct 8 export) is a superseded historical reference, not the parity target. Parity briefs paste only the slices they need. Ours does everything the preview's screen does, then goes further, drawing on Grok Bot's feel, Apple's design rules and Hermes desktop. The fixes listed above still apply. Each screen PR's description has one line per screen: "Preview does X; ours does X plus Y, because Z."
 
 The preview's phone also has a Home tab (Needs you, Working now, What's left, quick actions, Finished) and an Inbox tab, under a Home / Chats / Inbox / More tab bar. Neither is in the build order below yet. They come after the four screens that make the app usable, once Chats, Chat and Approvals give them something real to show.
 

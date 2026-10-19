@@ -5,8 +5,9 @@
 // When the approval is answered anywhere, its notification goes away and the app badge counts down.
 // Taps on other kinds (a finished reply, a mention, a routine, an update) reuse this same notifier
 // and are forwarded through onRoute.
-import { shouldPostAlert } from '../alerts/kinds';
+import { kindEnabled } from '../alerts/kinds';
 import type { AlertRoute } from '../alerts/route';
+import { shouldPostTaskAlert } from '../settings/phoneEffects';
 import type { PhonePrefs } from '../settings/phonePrefs';
 import { notificationText, actionWords } from './approvalWords';
 import { trunkOf, type ApprovalDecision, type ApprovalInbox, type Approval, type Trunk } from './approvals';
@@ -95,12 +96,10 @@ export class ApprovalAlerts {
   private async sync(): Promise<void> {
     const { pending, trunks } = this.inbox.getSnapshot();
     const ids = new Set(pending.map((a) => a.id));
-    const away = this.appState.current() !== 'active';
     const work: Promise<void>[] = [];
     for (const approval of pending) {
       if (this.shown.has(approval.id)) continue;
       this.shown.add(approval.id);
-      if (!away) continue;
       work.push(this.postApproval(approval, trunks));
     }
     for (const id of [...this.shown]) {
@@ -117,7 +116,10 @@ export class ApprovalAlerts {
 
   private async postApproval(approval: Approval, trunks: Record<string, Trunk>): Promise<void> {
     const prefs = this.extras.prefs ? await Promise.resolve(this.extras.prefs()).catch(() => undefined) : undefined;
-    if (!shouldPostAlert(prefs, 'approval', this.appState.current())) return;
+    // Tell me: Off never, When needed only while Branch is not in front, On always.
+    const away = this.appState.current() !== 'active';
+    if (!shouldPostTaskAlert(prefs?.tellMe ?? 'when-needed', away)) return;
+    if (prefs && !kindEnabled(prefs, 'approval')) return;
     const { title, body } = notificationText(approval, trunkOf(approval, trunks).name);
     await this.prepare();
     await this.notifier.show({
