@@ -1,2 +1,3 @@
+engine:ui/src/app/server-prefs.test.ts
 engine:ui/src/lib/presence-lone-owner.test.ts
 engine:ui/src/pages/agents-home/card-preview.test.ts
