@@ -141,6 +141,17 @@ function sessionState(scope: "window" | "desktop") {
 }
 
 describe.runIf(process.platform !== "win32")("CUA MCP proxy transport", () => {
+  // The fixture is spawned directly, so git must keep mode 100755 on it. Without the bit every case
+  // below fails with spawn EACCES; this names the cause and the fix instead.
+  it("keeps the bundled proxy fixture executable", async () => {
+    const binaryPath = fileURLToPath(new URL("../test/fixtures/mcp-proxy.cjs", import.meta.url));
+    const { mode } = await fs.stat(binaryPath);
+    expect(
+      mode & 0o111,
+      "test/fixtures/mcp-proxy.cjs lost its executable bit: run `git update-index --chmod=+x` on it",
+    ).not.toBe(0);
+  });
+
   it.each([
     {
       outcome: "verified activation",
