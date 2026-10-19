@@ -743,9 +743,13 @@ writeFileSync(${JSON.stringify(marker)}, readFileSync(process.argv[1], "utf8"));
         const executable = await executableScript(`
 const { spawn } = require("node:child_process");
 const prompt = process.argv[process.argv.indexOf("--append-system-prompt-file") + 1];
+// Hand fd 3 down only when the supervisor opened it; without the Linux subreaper
+// (macOS, empty BRANCH_SERVICE_MARKER) fd 3 is closed and inheriting it fails spawn (EBADF).
+let fd3 = "ignore";
+try { require("node:fs").fstatSync(3); fd3 = 3; } catch {}
 const child = spawn(process.execPath, ["--input-type=module", "-e",
   ${JSON.stringify(descendant)}, prompt
-], { stdio: ["ignore", "ignore", "ignore", 3] });
+], { stdio: ["ignore", "ignore", "ignore", fd3] });
 child.unref();
 process.stdout.write(JSON.stringify({ type: "result", result: prompt }) + "\\n");`);
         await withEnvAsync({ BRANCH_SERVICE_MARKER: "" }, async () => {
