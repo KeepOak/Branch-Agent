@@ -131,7 +131,8 @@ function selectionMode(
   inherited: ThemeMode,
 ): ThemeMode | null | undefined {
   const effective = requested === null ? inherited : (requested ?? retained);
-  if (effective === "system" || modes.includes(effective)) {
+  // Clearing is always valid: the saved mode goes away and a single-mode theme renders its own palette.
+  if (requested === null || effective === "system" || modes.includes(effective)) {
     return requested;
   }
   if (requested !== undefined) {
