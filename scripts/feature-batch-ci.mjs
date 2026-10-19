@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { capabilityTests, namedTests, shardOf, shardTests, touchedTests } from './feature-batch-ci-targets.mjs';
+import { capabilityTests, namedE2eTests, namedTests, shardOf, shardTests, touchedTests } from './feature-batch-ci-targets.mjs';
 import { runTargetedStrictChecks } from './feature-batch-ci-typecheck.mjs';
 import {
   assertLocalModules, engineRoot, gitHead, hostedChrome, preparePnpm, publishWindowDependencies, repoRoot, run,
@@ -9,6 +9,7 @@ import {
 } from './feature-batch-ci-runtime.mjs';
 
 export async function validateScope() {
+  await runNamedE2eTests(env, shard);
   for (const lane of ['engine', 'window']) {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     for (const file of namedTests(lane)) await fs.access(path.join(root, file));
@@ -78,6 +79,24 @@ async function prChangedFiles() {
     console.log(`PR changes ${changedFilesCache.length} files`);
   }
   return changedFilesCache;
+}
+
+// Feature-batch vitest excludes **/*.e2e.test.ts, so named engine e2e tests run here through
+// the engine's own e2e configs (control UI e2e under ui/src/e2e, the rest under test/vitest).
+async function runNamedE2eTests(env, shard) {
+  const named = namedE2eTests('engine');
+  const changed = process.env.FEATURE_SCOPE === 'touched' ? await prChangedFiles() : [];
+  const tests = process.env.FEATURE_SCOPE === 'touched'
+    ? named.filter(file => changed.includes(`engine/${file}`))
+    : shardTests(named, shard);
+  const ui = tests.filter(file => file.startsWith('ui/src/e2e/'));
+  const other = tests.filter(file => !ui.includes(file));
+  for (const [config, files] of [['test/vitest/vitest.ui-e2e.config.ts', ui], ['test/vitest/vitest.e2e.config.ts', other]]) {
+    if (!files.length) continue;
+    console.log(`engine e2e: ${files.length} named test files with ${config}`);
+    await run(process.execPath, [path.join(engineRoot, 'scripts/run-vitest.mjs'),
+      'run', '--config', config, ...files], engineRoot, env);
+  }
 }
 
 async function runFeatureTests(scratch) {

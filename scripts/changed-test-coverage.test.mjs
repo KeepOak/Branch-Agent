@@ -77,7 +77,7 @@ test('the post-merge catalog-fallback test counts as covered only through its ex
   const desktop = readFileSync(new URL('../.github/workflows/desktop-checks.yml', import.meta.url), 'utf8');
   const file = 'engine/test/scripts/control-ui-i18n.generated.test.ts';
   // Hermetic: no named list from the repo, so the file is covered only by the post-merge run line.
-  const noNamedLists = { namedFor: () => [] };
+  const noNamedLists = { namedFor: () => [], namedE2eFor: () => [] };
   assert.deepEqual(uncoveredTests([file], coverageTargets(desktop, '', '', '', noNamedLists)), [file]);
   assert.deepEqual(uncoveredTests([file], coverageTargets(desktop, '', '', workflow, noNamedLists)), []);
 });
@@ -171,4 +171,14 @@ test('a changed test that no CI job runs is still a coverage failure', () => {
   const missing = 'window/src/not-in-ci.test.tsx';
   assert.equal(covered.has(missing), false);
   assert.deepEqual(uncoveredTests([missing], covered), [missing]);
+});
+
+test('a changed engine e2e test is covered only when the named e2e list (run by feature-batch-ci) has it', () => {
+  const file = 'engine/ui/src/e2e/about.e2e.test.ts';
+  const none = { namedFor: () => [], namedE2eFor: () => [] };
+  assert.deepEqual(uncoveredTests([file], coverageTargets('', '', '', '', none)), [file]);
+  const e2eListed = { namedFor: () => [], namedE2eFor: (lane) => (lane === 'engine' ? ['ui/src/e2e/about.e2e.test.ts'] : []) };
+  assert.deepEqual(uncoveredTests([file], coverageTargets('', '', '', '', e2eListed)), []);
+  assert.deepEqual(uncoveredTests(['engine/ui/src/e2e/other.e2e.test.ts'], coverageTargets('', '', '', '', e2eListed)),
+    ['engine/ui/src/e2e/other.e2e.test.ts']);
 });
