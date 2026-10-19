@@ -5,6 +5,7 @@ import { presenceUserKey } from "../../../src/shared/presence-user.ts";
 import { t } from "../i18n/index.ts";
 import { renderHoverMarquee } from "../lib/hover-marquee.ts";
 import {
+  isLoneSharedOwner,
   presenceViewerActivity,
   presenceActivityLabel,
   presenceViewerLabel,
@@ -34,7 +35,7 @@ export function renderAppSidebarOnline(host: AppSidebarRenderHost) {
   } else {
     onlineFaces.set(host, onlineUsers);
   }
-  if (onlineUsers.length === 0) {
+  if (onlineUsers.length === 0 || isLoneSharedOwner(onlineUsers)) {
     return nothing;
   }
   const counts = host.sessionData.ownerCounts.counts;
