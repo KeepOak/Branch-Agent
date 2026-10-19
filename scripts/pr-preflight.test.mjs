@@ -942,5 +942,12 @@ test('proofImageProblems flags added proof screenshots only', () => {
   const problems = proofImageProblems([{ filename: 'verifier/1918/a.png', status: 'added' }]);
   assert.equal(problems.length, 1);
   assert.equal(problems[0].check, 'proof-images');
-  assert.match(problems[0].fix, /link them in the body/);
+  assert.match(problems[0].fix, /evidence branch under verifier\/<PR number>\//);
+  assert.match(problems[0].fix, /raw URLs in the body/);
+});
+
+test('proofImageProblems flags an image renamed into a proof folder, as the merge-gate gh path does', () => {
+  const problems = proofImageProblems([{ filename: 'proof/1955/moved.png', status: 'renamed' }]);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0].message, /1 proof screenshot\(s\)/);
 });

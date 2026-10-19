@@ -218,4 +218,7 @@ test('checkCommittedProofImages fails and tells authors to host and link screens
   assert.match(result.message, /proof\/1\/b\.jpg/);
   assert.doesNotMatch(result.message, /App\.tsx/);
   assert.match(result.message, /hosted and linked in the PR body, never committed/);
+  assert.match(result.message, /PR description/);
+  assert.match(result.message, /`evidence` branch under verifier\/<PR number>\//);
+  assert.match(result.message, /raw\.githubusercontent\.com\/KeepOak\/Branch-Agent\/evidence\/verifier\//);
 });

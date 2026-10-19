@@ -122,8 +122,10 @@ export function checkCommittedProofImages(addedFiles) {
       ...images.map((file) => `  - ${file}`),
       '',
       'Proof screenshots are hosted and linked in the PR body, never committed.',
-      'Remove these files, upload the images to the PR (drag them into the description, or use',
-      'a GitHub user-attachments or artifact link), and link them in the PR body.',
+      'Remove these files and host the screenshots instead, linked in the PR body:',
+      '  - attach them to the PR description (GitHub user-attachments), or',
+      '  - bots: push them to the repo\'s `evidence` branch under verifier/<PR number>/ and link the raw URLs,',
+      '    e.g. https://raw.githubusercontent.com/KeepOak/Branch-Agent/evidence/verifier/<PR number>/<name>.png',
     ].join('\n'),
   };
 }

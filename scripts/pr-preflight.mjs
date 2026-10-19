@@ -118,10 +118,10 @@ export function uiProofProblems({ changedFiles, body }) {
 }
 
 export function proofImageProblems(files) {
-  const added = (files ?? []).filter((f) => f.status === 'added').map((f) => f.filename);
+  const added = (files ?? []).filter((f) => f.status === 'added' || f.status === 'renamed').map((f) => f.filename);
   const result = checkCommittedProofImages(added);
   if (result.exitCode === 0) return [];
-  return [problem('proof-images', result.message.split('\n')[0], 'remove the committed screenshots, host them on the PR and link them in the body')];
+  return [problem('proof-images', result.message.split('\n')[0], 'remove the committed screenshots; attach them to the PR description, or (bots) push them to the evidence branch under verifier/<PR number>/, and link the raw URLs in the body')];
 }
 
 export function windowCleanProblems(windowResult) {
