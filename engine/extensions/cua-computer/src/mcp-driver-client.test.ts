@@ -140,9 +140,9 @@ function sessionState(scope: "window" | "desktop") {
   });
 }
 
-describe.runIf(process.platform !== "win32")("CUA MCP proxy transport", () => {
-  // The fixture is spawned directly, so git must keep mode 100755 on it. Without the bit every case
-  // below fails with spawn EACCES; this names the cause and the fix instead.
+describe.runIf(process.platform !== "win32")("CUA MCP proxy fixture", () => {
+  // The fixture is spawned directly, so git must keep mode 100755 on it. Without the bit the
+  // transport cases fail with spawn EACCES; this names the cause and the fix instead.
   it("keeps the bundled proxy fixture executable", async () => {
     const binaryPath = fileURLToPath(new URL("../test/fixtures/mcp-proxy.cjs", import.meta.url));
     const { mode } = await fs.stat(binaryPath);
@@ -151,7 +151,13 @@ describe.runIf(process.platform !== "win32")("CUA MCP proxy transport", () => {
       "test/fixtures/mcp-proxy.cjs lost its executable bit: run `git update-index --chmod=+x` on it",
     ).not.toBe(0);
   });
+});
 
+// The transport cases spawn the proxy through the real owned-stdio supervisor. On Linux that
+// supervisor needs the built native process owner, which a source (Vitest) run cannot load, so
+// every case fails with "native owner closed without kernel descendant extinction". The MCP
+// proxy endpoint is only resolved on macOS hosts, so these run on macOS; the guard runs on Linux.
+describe.runIf(process.platform === "darwin")("CUA MCP proxy transport", () => {
   it.each([
     {
       outcome: "verified activation",
