@@ -1,6 +1,6 @@
 // Starts the Branch engine gateway as a child process (as the early copy's start.sh does) and stops it by PID.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync, openSync, closeSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync, openSync, closeSync, existsSync, readdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer, type Server, type Socket } from "node:net";
 import { constants as osConstants, setPriority } from "node:os";
@@ -363,6 +363,27 @@ export async function runEngineLinger(cfg: DesktopConfig, engineDir: string, tok
   return parseLingerAnswer(await runEngineCli({ file: cfg.nodePath, args: engineLingerArgs(want), cwd: engineDir, env, timeoutMs: 60_000 }));
 }
 
+const CUA_ENDPOINT_FILE = /^cua-endpoint-[0-9a-f]{32}$/;
+let endpointSweepDone = false;
+
+/**
+ * Removes Mac computer-driver endpoint files this app process did not write (#1921). Each names a proxy port and
+ * secret owned by the app process that wrote it, so once that process is gone (quit, crash, or an engine that
+ * outlived it) the file can never be used again. Only a gateway's close removed them, which never runs when the app
+ * exits first, so they piled up in the data folder. Runs once per app process, before its first endpoint is written.
+ * Returns how many were removed.
+ */
+export function sweepStaleEndpointFiles(dataDir: string): number {
+  let names: string[];
+  try { names = readdirSync(dataDir); } catch { return 0; }
+  let removed = 0;
+  for (const name of names) {
+    if (!CUA_ENDPOINT_FILE.test(name)) continue;
+    try { unlinkSync(join(dataDir, name)); removed += 1; } catch { /* already removed */ }
+  }
+  return removed;
+}
+
 /**
  * `port` defaults to the configured one; an update's standby passes its own spare port without changing the config.
  * `surviveQuit`: the service fallback with Keep working on. Detached on every OS, output in gateway.log, hidden on Windows.
@@ -378,6 +399,10 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     else log.write(message + "\n");
   }, join(engineDir, "docs", "reference", "templates"));
   if (profile.note) log.write(profile.note + "\n");
+  if (!endpointSweepDone) {
+    endpointSweepDone = true;
+    sweepStaleEndpointFiles(cfg.dataDir);
+  }
   const endpointFile = macComputerEndpoint ? join(cfg.dataDir, `cua-endpoint-${randomBytes(16).toString("hex")}`) : undefined;
   if (endpointFile && macComputerEndpoint) writeFileSync(endpointFile, macComputerEndpoint, { flag: "wx", mode: 0o600 });
   const env: NodeJS.ProcessEnv = {

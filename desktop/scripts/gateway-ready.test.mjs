@@ -394,3 +394,20 @@ test("the admission watch ends without promoting or rolling back when the engine
     assert.deepEqual(calls, []);
   });
 });
+
+test("stale Mac driver endpoint files from an earlier app run are removed, and nothing else (#1921)", async () => {
+  const { mkdtempSync, writeFileSync, readdirSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { sweepStaleEndpointFiles } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const dir = mkdtempSync(join(tmpdir(), "branch-endpoint-sweep-"));
+  try {
+    for (let i = 0; i < 7; i++) writeFileSync(join(dir, `cua-endpoint-${String(i).repeat(32)}`), "{}");
+    writeFileSync(join(dir, "gateway.log"), "keep");
+    writeFileSync(join(dir, "cua-endpoint-notes.txt"), "keep");
+    assert.equal(sweepStaleEndpointFiles(dir), 7);
+    assert.deepEqual(readdirSync(dir).sort(), ["cua-endpoint-notes.txt", "gateway.log"]);
+    assert.equal(sweepStaleEndpointFiles(join(dir, "missing")), 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
