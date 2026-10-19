@@ -123,6 +123,93 @@ export function layoutWindowsInstallRoot({ payload, root, version, signApp = () 
   return folder;
 }
 
+/** The data folder the app uses on Windows (config.ts defaultDataDirectory) and the old dev copy package.ps1 wrote into it. */
+export const WINDOWS_DATA_DIR = "{localappdata}\\BranchAgent";
+export const WINDOWS_DEV_COPY = `${WINDOWS_DATA_DIR}\\dist`;
+const APP_PROCESS = "Branch Agent.exe";
+
+/**
+ * Pascal [Code] for the installer. InitializeSetup closes a running Branch Agent.exe wherever it runs from (asking
+ * first, then forcing), so an old copy outside {app} cannot keep the data folder busy. CurStepChanged(ssPostInstall)
+ * renames the old dev copy <data>\dist to dist.migrated-<stamp>: the app folder only, never the data folder, and
+ * reversible by renaming it back. engine-current.txt is rewritten first when it points inside dist, and restored if
+ * the rename fails, so startup never follows a pointer into a folder that moved.
+ */
+export function innoMigrationCode() {
+  return [
+    "[Code]",
+    "procedure CloseRunningBranch();",
+    "var",
+    "  ResultCode: Integer;",
+    "begin",
+    `  if Exec(ExpandConstant('{sys}\\taskkill.exe'), '/IM "${APP_PROCESS}" /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then`,
+    "    Sleep(3000);",
+    `  Exec(ExpandConstant('{sys}\\taskkill.exe'), '/F /IM "${APP_PROCESS}" /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);`,
+    "end;",
+    "",
+    "function InitializeSetup(): Boolean;",
+    "begin",
+    "  CloseRunningBranch();",
+    "  Result := True;",
+    "end;",
+    "",
+    "function StartsWithText(const Value, Prefix: String): Boolean;",
+    "begin",
+    "  Result := CompareText(Copy(Value, 1, Length(Prefix)), Prefix) = 0;",
+    "end;",
+    "",
+    "procedure MigrateDevCopy();",
+    "var",
+    "  Dist, Moved, PointerFile, Original, Updated: String;",
+    "  Lines, NewLines: TArrayOfString;",
+    "  Rewrote: Boolean;",
+    "begin",
+    `  Dist := ExpandConstant('${WINDOWS_DEV_COPY}');`,
+    "  if not DirExists(Dist) then Exit;",
+    "  Moved := Dist + '.migrated-' + GetDateTimeString('yyyymmdd-hhnnss', '-', '-');",
+    `  PointerFile := ExpandConstant('${WINDOWS_DATA_DIR}\\engine-current.txt');`,
+    "  Rewrote := False;",
+    "  Original := '';",
+    "  if FileExists(PointerFile) and LoadStringsFromFile(PointerFile, Lines) and (GetArrayLength(Lines) > 0) then",
+    "  begin",
+    "    Original := Trim(Lines[0]);",
+    "    Updated := '';",
+    "    if CompareText(Original, Dist) = 0 then Updated := Moved",
+    "    else if StartsWithText(Original, Dist + '\\') then Updated := Moved + Copy(Original, Length(Dist) + 1, MaxInt);",
+    "    if Updated <> '' then",
+    "    begin",
+    "      SetArrayLength(NewLines, 1);",
+    "      NewLines[0] := Updated;",
+    "      if not SaveStringsToUTF8FileWithoutBOM(PointerFile, NewLines, False) then",
+    "      begin",
+    "        Log('Branch: engine-current.txt points inside the old dev copy and could not be rewritten; leaving it in place');",
+    "        Exit;",
+    "      end;",
+    "      Rewrote := True;",
+    "    end;",
+    "  end;",
+    "  if RenameFile(Dist, Moved) then",
+    "    Log('Branch: moved the old dev copy to ' + Moved)",
+    "  else",
+    "  begin",
+    "    Log('Branch: could not move the old dev copy (a file is in use); leaving it in place');",
+    "    if Rewrote then",
+    "    begin",
+    "      SetArrayLength(NewLines, 1);",
+    "      NewLines[0] := Original;",
+    "      SaveStringsToUTF8FileWithoutBOM(PointerFile, NewLines, False);",
+    "    end;",
+    "  end;",
+    "end;",
+    "",
+    "procedure CurStepChanged(CurStep: TSetupStep);",
+    "begin",
+    "  if CurStep = ssPostInstall then MigrateDevCopy();",
+    "end;",
+    "",
+  ];
+}
+
 /**
  * Per-user install under %LOCALAPPDATA%\Programs. Each build lives in a version folder; current.txt is the pointer
  * the launcher reads. Shortcuts open the launcher at the root, which outlives every version folder, and carry the
@@ -158,6 +245,13 @@ export function innoSetupScript({ version, source, out }) {
     `OutputDir=${out}`,
     `OutputBaseFilename=${installerName(version, "win32-x64").replace(/\.exe$/, "")}`,
     "",
+    "[InstallDelete]",
+    // Shortcuts an old dev copy left behind (scripts/shortcuts.ps1); [Icons] recreates the ones that open {app}.
+    'Type: files; Name: "{autoprograms}\\Branch Agent.lnk"',
+    'Type: files; Name: "{autodesktop}\\Branch Agent.lnk"',
+    'Type: files; Name: "{userprograms}\\Branch Agent.lnk"',
+    'Type: files; Name: "{userdesktop}\\Branch Agent.lnk"',
+    "",
     "[Tasks]",
     'Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked',
     "",
@@ -175,6 +269,7 @@ export function innoSetupScript({ version, source, out }) {
     'Type: filesandordirs; Name: "{app}"',
     'Type: filesandordirs; Name: "{app}.previous"',
     "",
+    ...innoMigrationCode(),
   ].join("\r\n");
 }
 
