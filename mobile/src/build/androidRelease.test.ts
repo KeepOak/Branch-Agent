@@ -248,11 +248,12 @@ describe('Android release version and signing plan', () => {
 });
 
 describe('the mobile Android release workflow', () => {
-  it('builds on a published release, a manual run, or a main push, and never touches the merge gate', () => {
+  it('builds only on a published release or a manual run, has no push trigger, and never touches the merge gate', () => {
     expect(workflow).toMatch(/release:\s*\n\s*types:\s*\[[^\]]*published/);
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toMatch(/workflow_dispatch:[\s\S]*?inputs:[\s\S]*?\btag:/);
-    expect(workflow).toMatch(/push:\s*\n\s*branches:\s*\[main\]/);
+    // #1923 removed the main push trigger so Android no longer pre-creates desktop releases.
+    expect(workflow).not.toMatch(/^\s+push:/m);
     expect(workflow).toContain('npm run build:android');
     expect(workflow).not.toMatch(/merge-gate/);
     expect(workflow).not.toMatch(/^\s+pull_request:/m);
