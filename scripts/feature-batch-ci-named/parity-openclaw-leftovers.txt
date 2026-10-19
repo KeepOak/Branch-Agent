@@ -1,0 +1,3 @@
+engine:ui/src/e2e/about.e2e.test.ts
+engine:ui/src/e2e/plugins-hub-navigation.e2e.test.ts
+engine:ui/src/pages/about/view.test.ts
