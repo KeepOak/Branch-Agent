@@ -43,6 +43,11 @@ describe('pairing screens', () => {
     await fireEvent.press(screen.getByTestId('submit-code'));
     expect(screen.getByTestId('code-problem')).toHaveTextContent(/isn’t a Branch pairing code/);
 
+    await fireEvent.changeText(screen.getByTestId('code-input'), 'F2S4KP');
+    await fireEvent.press(screen.getByTestId('submit-code'));
+    expect(screen.getByTestId('code-problem')).toHaveTextContent(/only for matching the computer/);
+    expect(screen.getByTestId('code-problem')).toHaveTextContent(/pairing code shown under the QR code/);
+
     await fireEvent.changeText(screen.getByTestId('code-input'), code({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' }));
     await fireEvent.press(screen.getByTestId('submit-code'));
     await eventually(() => expect(screen.getByTestId('pairing-approval')).toBeOnTheScreen());

@@ -19,7 +19,7 @@ import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor, createServiceEngineWatch } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
-import { keepWindowResident, showTrayStatus } from "./resident-window";
+import { keepWindowResident, revealResidentWindow, showTrayStatus } from "./resident-window";
 import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
 import { plainDialogText, STOP_FAILED_PLAIN, UPDATE_FAILED_PLAIN } from "./plain-dialog";
@@ -1325,6 +1325,13 @@ async function start(): Promise<void> {
     }
     try { unlinkSync(join(cfg.dataDir, conversationStateFile(key))); } catch { /* no saved bounds */ }
     saveConversationWindows();
+  });
+  ipcMain.handle("branch-desktop:show-window", (e) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
+      throw new Error("Only a Branch window can show itself");
+    }
+    revealResidentWindow(owner, HIDDEN);
   });
   ipcMain.handle("branch-desktop:open-main-route", (e, route: unknown) => {
     const owner = BrowserWindow.fromWebContents(e.sender);

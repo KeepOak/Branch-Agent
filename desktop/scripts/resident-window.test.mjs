@@ -184,6 +184,24 @@ test('usage-off setTrayUsage restores the darwin template and never branch-48.pn
   }
 });
 
+test('revealResidentWindow restores a hidden minimised window and stays quiet when hidden', () => {
+  const { revealResidentWindow } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'resident-window.js'));
+  const window = {
+    hidden: true, minimized: true, focused: false,
+    isDestroyed: () => false,
+    isMinimized() { return this.minimized; },
+    restore() { this.minimized = false; },
+    show() { this.hidden = false; },
+    focus() { this.focused = true; },
+  };
+  assert.equal(revealResidentWindow(window), true);
+  assert.equal(window.hidden, false);
+  assert.equal(window.minimized, false);
+  assert.equal(window.focused, true);
+  assert.equal(revealResidentWindow(window, true), false);
+  assert.equal(revealResidentWindow(null), false);
+});
+
 test('macOS and Linux keep the gateway resident after the window closes', () => {
   const { keepWindowResident } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'resident-window.js'));
   for (const platform of ['darwin', 'linux']) {

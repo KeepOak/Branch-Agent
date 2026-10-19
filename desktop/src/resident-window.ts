@@ -18,6 +18,23 @@ export function showTrayStatus(tray: Tray | undefined, state: EngineLiveState): 
   if (tray) renderers.get(tray)?.(state);
 }
 
+type RevealableWindow = {
+  isDestroyed?: () => boolean;
+  isMinimized: () => boolean;
+  restore: () => void;
+  show: () => void;
+  focus: () => void;
+};
+
+/** Bring a hidden or minimised Branch window forward so a pairing prompt is visible. */
+export function revealResidentWindow(window: RevealableWindow | null | undefined, hidden = false): boolean {
+  if (hidden || !window || window.isDestroyed?.()) return false;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+  return true;
+}
+
 /**
  * Closing the desktop window keeps its existing authenticated engine and drafts alive. Always on (Private #454 C):
  * the window only hides, the engine keeps working, and the tray offers Pause all work and Stop Branch completely.
@@ -33,10 +50,7 @@ export function keepWindowResident(
   if (platform !== "win32" && platform !== "darwin" && platform !== "linux") return;
   let quitting = false;
   const reveal = (): void => {
-    if (options.hidden) return;
-    if (window.isMinimized()) window.restore();
-    window.show();
-    window.focus();
+    revealResidentWindow(window, options.hidden);
   };
   window.on("close", (event) => {
     // "Keep working when the window closes" off: closing ends Branch and its engine.
