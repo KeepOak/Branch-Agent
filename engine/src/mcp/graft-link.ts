@@ -51,6 +51,21 @@ export function isHostRefusal(error: unknown): boolean {
   );
 }
 
+/** Longest pause after the host says it is briefly unavailable (restarting or suspending). */
+export const HOST_BUSY_MAX_BACKOFF_MS = 30_000;
+
+/**
+ * The host answered but can't take work right now (its gateway is restarting or suspending): a retryable
+ * UNAVAILABLE. Retrying on the normal 2-second timer only floods both logs (#1922), so the link waits instead.
+ */
+export function hostBusyRetryAfterMs(error: unknown): number | undefined {
+  const e = error as { code?: unknown; retryable?: unknown; retryAfterMs?: unknown } | undefined;
+  if (!e || e.code !== "UNAVAILABLE" || e.retryable !== true) return undefined;
+  return typeof e.retryAfterMs === "number" && Number.isFinite(e.retryAfterMs) && e.retryAfterMs > 0
+    ? e.retryAfterMs
+    : 1_000;
+}
+
 /** Pre-hello failures repeat every backoff step; one line per window says why the host is unreachable. */
 export const CONNECT_FAILURE_LOG_INTERVAL_MS = 5 * 60_000;
 
@@ -63,6 +78,9 @@ export class GraftLinkRunner {
   private timer: ReturnType<typeof setInterval> | undefined;
   private workTimer: ReturnType<typeof setInterval> | undefined;
   private polling = false;
+  /** While the host is restarting, no work polls or hellos before this time; doubles per refusal up to the max. */
+  private busyUntil = 0;
+  private busyBackoffMs = 0;
 
   constructor(
     private readonly deps: {
@@ -91,6 +109,7 @@ export class GraftLinkRunner {
   private readonly handlers: LinkHandlers = {
     onHello: () => {
       this.state = "connected";
+      this.hostReady();
       this.deps.log(`graft link: connected to ${this.activeUrl()}`);
       void this.sayHello();
       this.clearTimer();
@@ -130,7 +149,7 @@ export class GraftLinkRunner {
   /** This Branch, then each of its Trunks (the host binds the Trunks to the Branch row). */
   async sayHello(): Promise<void> {
     const client = this.client;
-    if (!client || this.state !== "connected") return;
+    if (!client || this.state !== "connected" || this.hostBusy()) return;
     try {
       const branch = graftBranchIdentity(this.deps.link.name);
       await client.request("contacts.outside.hello", { agent: branch });
@@ -141,6 +160,7 @@ export class GraftLinkRunner {
       }
     } catch (error) {
       if (isHostRefusal(error)) this.disconnected(String((error as Error).message));
+      else if (this.markHostBusy(error)) return;
       else this.deps.log(`graft link: hello failed: ${String((error as Error)?.message ?? error)}`);
     }
   }
@@ -179,6 +199,27 @@ export class GraftLinkRunner {
     this.client.start();
   }
 
+  private hostBusy(): boolean {
+    return Date.now() < this.busyUntil;
+  }
+
+  private hostReady(): void {
+    this.busyUntil = 0;
+    this.busyBackoffMs = 0;
+  }
+
+  /** True (and quiet) when the host is briefly unavailable; the next poll waits out a growing pause. */
+  private markHostBusy(error: unknown): boolean {
+    const retryAfterMs = hostBusyRetryAfterMs(error);
+    if (retryAfterMs === undefined) return false;
+    this.busyBackoffMs = Math.min(
+      HOST_BUSY_MAX_BACKOFF_MS,
+      Math.max(retryAfterMs, this.busyBackoffMs * 2),
+    );
+    this.busyUntil = Date.now() + this.busyBackoffMs;
+    return true;
+  }
+
   private clearTimer(): void {
     if (this.timer) clearInterval(this.timer);
     if (this.workTimer) clearInterval(this.workTimer);
@@ -188,10 +229,11 @@ export class GraftLinkRunner {
 
   private async pollWork(): Promise<void> {
     const client = this.client;
-    if (!client || this.polling || this.state !== "connected" || !this.deps.handleWork) return;
+    if (!client || this.polling || this.state !== "connected" || !this.deps.handleWork || this.hostBusy()) return;
     this.polling = true;
     try {
       const response = await client.request("graft.work.poll", {}) as { job?: GraftWorkJob | null };
+      this.hostReady();
       const job = response.job;
       if (!job) return;
       let result: { reply?: string; error?: string };
@@ -202,6 +244,7 @@ export class GraftLinkRunner {
       }
       await client.request("graft.work.complete", { id: job.id, ...result });
     } catch (error) {
+      if (this.markHostBusy(error)) return;
       if (this.state === "connected") this.deps.log(`graft link: work poll failed: ${String((error as Error)?.message ?? error)}`);
     } finally {
       this.polling = false;

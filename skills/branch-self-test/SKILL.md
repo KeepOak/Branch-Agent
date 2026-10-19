@@ -39,6 +39,7 @@ Unit tests are not enough: the owner tests by clicking. Before `gh pr create`, p
    - take a screenshot at each meaningful step.
    Use the **computer** tool only for things that live outside the page (desktop app, OS windows).
 5. Compare with the design artifact.
+   - The parity target is the owner's latest Branch App Preview, kept privately and never committed. `design/spec-v23` is superseded historical reference only. Parity briefs paste only the slices they need.
    - Find the matching screen in `C:/Users/bishi/Code/Branch/docs/design/screens/` or the click-crawl at `C:/Users/bishi/Code/Branch/docs/dogfood/audit/frag/D-artifact-clicks.md` (section 1 has the priority flows with screenshots).
    - Behaviour follows the artifact, except where the owner's punch list (`C:/Users/bishi/Code/Branch/docs/OWNER-PUNCHLIST-20261005.md`) says otherwise; the punch list wins.
 6. Attach the evidence. Save the screenshots outside the worktree (`$env:TEMP\branch-selftest-<you>\shots\`, PNG). `gh gist create` can't take images, so push them into a secret gist with git:

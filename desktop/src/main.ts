@@ -8,8 +8,8 @@ import { dirname, join, resolve } from "node:path";
 import { leaveAppWorkingFolder, userHome } from "./app-working-folder";
 import { nodeOutsideSwappedFolder } from "./install-folder-holders";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopEnginePid, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
-import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
+import { deactivateGateway, drainStopGateway, engineEnvironment, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopEnginePid, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, runEngineCli, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
 import { appHoldsSleepBlock, claimServiceKeepAwake, createRunKeepAwake, handOffKeepAwake, POWER_STATE_REFRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, writePowerState } from "./keep-awake";
 import { applyGuestWebPreferences, BRANCH_BROWSER_PARTITION, guestAttachDecision, guestPermissionDecision, guestUrlDecision, popupDecision, r1WebPreferences } from "./browser-guest-policy";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
@@ -20,6 +20,7 @@ import { createGatewayCrashSupervisor, createServiceEngineWatch } from "./gatewa
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, showTrayStatus } from "./resident-window";
+import { DASHBOARD_HANDOFF_ARGS, openInBrowser } from "./open-in-browser";
 import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
 import { plainDialogText, STOP_FAILED_PLAIN, UPDATE_FAILED_PLAIN } from "./plain-dialog";
@@ -893,7 +894,9 @@ const autoApply = createAutoApplyUpdate({
     const version = (await readComponentUpdateStatus(cfg)).pendingVersion;
     return version === withdrawnUpdateVersion ? null : version;
   },
-  enabled: () => controls.settings().autoApplyUpdates && !updateLock.held,
+  enabled: () => controls.settings().autoApplyUpdates,
+  // Crash recovery or a staged-update replacement only postpones the update; the setting stays on (Private #1054).
+  busy: () => updateLock.purpose,
   seamlessHandoff,
   // Private #951: no automatic update starts under 10% free disk or 20% free RAM.
   health: async () => readUpdateHealth(cfg.dataDir, (await measureAvailableMemory({ maxAgeMs: HEALTH_MEMORY_MAX_AGE_MS })).bytes, totalmem()),
@@ -1140,6 +1143,16 @@ function createWindow(): BrowserWindow {
     keepRunning: () => controls.settings().keepWorking,
     // With the usage ring in the tray, a click opens the same list (Settings › Usage).
     onTrayClick: () => { if (controls.settings().trayUsage) w.webContents.send("branch-desktop:open-usage"); },
+    // A fresh one-time pairing link from the running engine per click; the shared secret never enters a URL.
+    openInBrowser: () => {
+      void openInBrowser({
+        issue: () => runEngineCli({ file: cfg.nodePath, args: [...DASHBOARD_HANDOFF_ARGS], cwd: serviceEngineDir(),
+          env: engineEnvironment(cfg, false, gatewayPort, token), timeoutMs: 30_000 }),
+        port: () => gatewayPort,
+        open: url => shell.openExternal(url),
+        log,
+      });
+    },
     pauseAll: pauseAllWork,
     stopCompletely: () => { void stopCompletely(); },
   });
