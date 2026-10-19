@@ -1,0 +1,3 @@
+# #1932 Open in browser: one-time pairing link (PR #1939)
+engine:src/cli/program/register.maintenance.test.ts
+engine:src/commands/control-ui-handoff.browser-handoff.test.ts
