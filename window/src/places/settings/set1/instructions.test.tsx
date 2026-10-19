@@ -200,4 +200,13 @@ describe("Settings › Instructions & personality", () => {
     await act(async () => button(dlg, "Save").click());
     expect(many.request).toHaveBeenCalledWith("users.personalFile.set", { agentId: "main", content: "Call me T.", expectedHash: null });
   });
+
+  it("does not ask for the personal USER.md when the engine's hello says one person uses this Branch (#1920)", async () => {
+    const one = engineOf();
+    (one.engine as { sharedGateway?: boolean }).sharedGateway = false;
+    await render(one.engine);
+    expect(host.textContent).toContain("Not kept on this Branch");
+    expect(row("Just about you")?.querySelectorAll("button").length).toBe(0);
+    expect(one.request.mock.calls.some(([m]) => m === "users.personalFile.get")).toBe(false);
+  });
 });
