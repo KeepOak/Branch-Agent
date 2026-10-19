@@ -15,6 +15,7 @@ import { createBrokerReceiver } from "./ipc.js";
 import { holdPipeForTransfer, takePipePrefix } from "./pipe.js";
 import {
   serializeBrokerError,
+  SPAWN_BROKER_MAX_CONCURRENT,
   SpawnBrokerError,
   type BrokerRequest,
   type BrokerResponse,
@@ -139,7 +140,10 @@ function disposeFailedChild(child: ChildProcess | undefined): void {
 async function launch(
   message: Extract<BrokerRequest, { type: "spawn" | "prepare-spawn" | "spawn-execa" }>,
 ): Promise<void> {
-  if (stopping || owned.size + starting.size + (resources?.size ?? 0) >= 256) {
+  if (
+    stopping ||
+    owned.size + starting.size + (resources?.size ?? 0) >= SPAWN_BROKER_MAX_CONCURRENT
+  ) {
     const error = new SpawnBrokerError("Spawn broker request capacity exceeded");
     // The ordered failed-admission result proves no native work was started.
     // No command metadata exists because this guard precedes spawn preparation.
