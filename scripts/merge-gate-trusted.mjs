@@ -183,30 +183,57 @@ function keepNewestSuite(runs) {
   return runs;
 }
 
-export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, { sha, prNumber, baseRef } = {}) {
+function identityKey(run, workflow) {
+  return JSON.stringify([run.app.id, workflow.path, workflow.event, run.name]);
+}
+
+// supersedeStale is the trusted gate's opt-in: an older suite of the same app, workflow path, event and job
+// on the same head SHA that is not bound to this PR and base (for example a run from before the PR was
+// retargeted to main, or whose PR list the API no longer reports) is superseded by a newer bound suite that
+// fully succeeded. Such a stale run can never supersede anything itself.
+export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, {
+  sha, prNumber, baseRef, supersedeStale = false,
+} = {}) {
   const drop = new Set();
   const groups = new Map();
+  const stale = [];
   for (const run of checkRuns) {
     const workflow = lookupWorkflow(workflowsByCheckId, run.id);
-    // Same app, workflow path, event, and job can supersede older suites only.
-    const prs = workflow?.pullRequests ?? [];
-    const bound = run.app?.id != null && workflow?.path
+    const sameHead = run.app?.id != null && workflow?.path
       && COLLAPSIBLE_CHECK_EVENTS.includes(workflow.event)
       && sha && workflow.headSha === sha
       && workflow.checkSuiteId != null && run.check_suite?.id != null
-      && Number(run.check_suite.id) === Number(workflow.checkSuiteId)
-      && prNumber && prs.some((pr) => Number(pr.number) === Number(prNumber))
+      && Number(run.check_suite.id) === Number(workflow.checkSuiteId);
+    if (!sameHead) continue;
+    // Same app, workflow path, event, and job can supersede older suites only.
+    const prs = workflow?.pullRequests ?? [];
+    const bound = prNumber && prs.some((pr) => Number(pr.number) === Number(prNumber))
       && baseRef && prs.every((pr) => pr.base === baseRef);
-    if (!bound) continue;
-    const key = JSON.stringify([run.app.id, workflow.path, workflow.event, run.name]);
+    if (!bound) {
+      if (supersedeStale) stale.push([run, identityKey(run, workflow)]);
+      continue;
+    }
+    const key = identityKey(run, workflow);
     const group = groups.get(key);
     if (group) group.push(run);
     else groups.set(key, [run]);
   }
-  for (const runs of groups.values()) {
-    const kept = new Set(keepNewestSuite(runs));
+  for (const [key, runs] of groups) {
+    const kept = keepNewestSuite(runs);
     for (const run of runs) {
-      if (!kept.has(run)) drop.add(run);
+      if (!kept.includes(run)) drop.add(run);
+    }
+    groups.set(key, kept);
+  }
+  // A stale run is dropped only when a bound, newer suite of the same identity fully succeeded.
+  for (const [run, key] of stale) {
+    const kept = groups.get(key);
+    if (!kept?.length) continue;
+    const newestBound = Math.max(...kept.map(suiteNumber));
+    const inNewest = kept.filter((item) => suiteNumber(item) === newestBound);
+    if (newestBound > suiteNumber(run)
+      && inNewest.every((item) => item.status === 'completed' && item.conclusion === 'success')) {
+      drop.add(run);
     }
   }
   return checkRuns.filter((run) => !drop.has(run));
@@ -398,8 +425,9 @@ export function missingCoreWorkflows({
   sha,
   prNumber,
   baseRef,
+  supersedeStale = false,
 }) {
-  checkRuns = newestChecksByIdentity(checkRuns, workflowsByCheckId, { sha, prNumber, baseRef });
+  checkRuns = newestChecksByIdentity(checkRuns, workflowsByCheckId, { sha, prNumber, baseRef, supersedeStale });
   const missing = [];
 
   for (const job of requiredJobs) {
@@ -441,7 +469,8 @@ export function evaluateTrustedGate({
   prNumber,
   baseRef,
 }) {
-  const context = { sha, prNumber, baseRef };
+  // Only the trusted gate opts in; the ordinary jq waiter keeps its own collapse rules.
+  const context = { sha, prNumber, baseRef, supersedeStale: true };
   const { others, pending, failed } = evaluateOtherChecks(checkRuns, workflowsByCheckId, TRUSTED_JOB, context);
   const unresolvedCurrent = checkRuns.filter((run) => run.name === TRUSTED_JOB
     && currentRunId != null && currentRunId !== '' && Number.isFinite(Number(currentRunId))
@@ -1324,7 +1353,7 @@ export function mergeCheckRunPages(payload) {
 export function fetchCheckRuns(repo, sha, token, api = ghApi) {
   const pages = [];
   for (let page = 1; ; page += 1) {
-    const payload = api(repo, token, `commits/${sha}/check-runs?per_page=100&page=${page}`);
+    const payload = api(repo, token, `commits/${sha}/check-runs?filter=latest&per_page=100&page=${page}`);
     pages.push(payload);
     const merged = mergeCheckRunPages(pages);
     if (merged.complete) return merged.checkRuns;
