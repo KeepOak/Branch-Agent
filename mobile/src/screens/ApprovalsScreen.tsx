@@ -27,6 +27,7 @@ import { Button } from '../ui/Button';
 import { FadeScrollView as ScrollView } from '../ui/ScrollFade';
 import { LIST_FADE } from '../ui/scrollEdges';
 import { OfflineBanner } from '../ui/OfflineBanner';
+import { PlacesBar, placesBarHeight, type PhoneLook, type Place } from '../ui/PlacesBar';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const LONG_COMMAND = 160;
@@ -465,6 +466,8 @@ export function ApprovalsScreen({
   now: fixedNow,
   bottomExtra = 0,
   initialTab = 'needs',
+  onPlace,
+  look = Platform.OS === 'ios' ? 'ios' : 'android',
 }: {
   snapshot: ApprovalsSnapshot;
   online: boolean;
@@ -486,9 +489,14 @@ export function ApprovalsScreen({
   bottomExtra?: number;
   /** Starts on this tab (screenshots and tests). Taps still switch. */
   initialTab?: InboxTab;
+  /** Root-place nav, same PlacesBar Home and Chats use. Absent in nested screenshot mounts. */
+  onPlace?: (place: Place) => void;
+  look?: PhoneLook;
 }) {
   const { color, space, radius, layout } = useTheme();
   const insets = useSafeAreaInsets();
+  const ios = look === 'ios';
+  const tabPad = onPlace ? placesBarHeight(look, insets.bottom) : 0;
   const now = useNow(fixedNow, snapshot.pending.some((a) => a.expiresAtMs));
   const [tab, setTab] = useState<InboxTab>(initialTab);
   const pending = focusId ? [...snapshot.pending].sort((a, b) => Number(b.id === focusId) - Number(a.id === focusId)) : snapshot.pending;
@@ -560,9 +568,14 @@ export function ApprovalsScreen({
     <View testID="approvals-screen" style={{ flex: 1, backgroundColor: color.grouped }}>
       <ScrollView
         testID="inbox-scroll"
+        style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl + bottomExtra + LIST_FADE }}
+        contentContainerStyle={{
+          paddingTop: insets.top + space.xs,
+          paddingHorizontal: layout.screenInset,
+          paddingBottom: (onPlace ? (ios ? tabPad : 0) : insets.bottom) + space.xl + (onPlace ? 0 : bottomExtra) + LIST_FADE,
+        }}
       >
         <Pressable
           testID="approvals-back"
@@ -615,6 +628,7 @@ export function ApprovalsScreen({
         {tab === 'finished' ? finishedBody : null}
         {tab === 'history' ? historyBody : null}
       </ScrollView>
+      {onPlace ? <PlacesBar current="inbox" inboxCount={snapshot.pending.length} onPlace={onPlace} look={look} /> : null}
     </View>
   );
 }
