@@ -291,6 +291,10 @@ test("a separate job dispatches the Android APK workflow with the release tag", 
   assert.doesNotMatch(dispatchJob, /contents: write/);
   assert.match(dispatchJob, /needs: \[identity, publish\]/);
   assert.match(dispatchJob, /needs\.publish\.result == 'success'/);
+  // The skipped readiness-rehearsal job upstream makes the implicit success() false.
+  assert.match(dispatchJob, /if: always\(\) && !cancelled\(\) && /);
+  assert.match(dispatchJob, /needs\.identity\.result == 'success'/);
+  assert.match(dispatchJob, /needs\.identity\.outputs\.already_released != 'true'/);
   assert.match(dispatchJob, /github\.event_name != 'pull_request'/);
   assert.match(dispatchJob, /GH_TOKEN: \$\{\{ github\.token \}\}/);
   assert.match(dispatchJob, /gh workflow run mobile-android-release\.yml -f tag=v\$\{\{ needs\.identity\.outputs\.version \}\}/);
