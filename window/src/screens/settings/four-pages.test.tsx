@@ -138,14 +138,16 @@ describe("Settings four pages", () => {
     expect(glass).toMatch(/\.r1s-side\.g-clear :is\(button, a\[href\]\):not\(\.r1s-nav,/);
   });
 
-  it("puts a page's own settings under its title and its Also in list after them, except on the Regular page itself", async () => {
+  it("keeps a page's Also in list under its title, before the page's own settings, on every Regular page", async () => {
+    // The button crawl clicks a Regular page's controls in page order within its per-level cap, and the Also in rows show
+    // only at Regular: after a long page's settings they went unclicked (never-clicked on #1962).
     await mount();
-    const page = () => host.querySelector(".r1s-page")!;
-    const order = () => [...page().children].map((el) => el.className.split(" ")[0]);
+    const order = () => [...host.querySelector(".r1s-page")!.children].map((el) => el.className.split(" ")[0]);
+    expect(order().indexOf("r1s-advanced")).toBeGreaterThan(-1);
     expect(order().indexOf("r1s-advanced")).toBeLessThan(order().indexOf("r1s-col"));
     await click(host.querySelector('.r1s-advanced [data-page="instructions"]')!);
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Instructions & personality");
-    expect(order().indexOf("r1s-advanced")).toBeGreaterThan(order().indexOf("r1s-col"));
+    expect(order().indexOf("r1s-advanced")).toBeLessThan(order().indexOf("r1s-col"));
     expect(host.querySelector('.r1s-advanced [data-page="instructions"]')?.getAttribute("aria-current")).toBe("true");
   });
 });

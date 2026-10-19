@@ -340,7 +340,6 @@ export function SettingsFrame(props: SettingsFrameProps) {
   const invalid = config && typeof config === "object" && config.valid === false ? configIssues(config.issues) : null;
   const levelLine = LEVELS[level].line;
   const Custom = slots[shownPage]?.component;
-  const hubLanding = regularHub(shownPage)?.pages[0]?.id === shownPage;
 
   return (
     <div className="r1set g-clear" data-level={LEVEL_WORD[level]}>
@@ -384,9 +383,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
             </div>
           ) : null}
         </header>
-        {/* A Regular page lists its other pages under its title; one of those pages lists them after its own settings, so
-            its settings sit right under its title, as in the preview. */}
-        {level === 0 && hubLanding ? <HubAdvanced shownPage={shownPage} onOpen={go} /> : null}
+        {level === 0 ? <HubAdvanced shownPage={shownPage} onOpen={go} /> : null}
         {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} onAsk={props.onAsk} /></div> : <>
         <div className="r1s-col">
           {loadFailed ? <div className="r1s-notice g-frost" role="alert">Settings didn’t load · <Coming engine={engine} need="config.get"><button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></Coming></div> : null}
@@ -426,7 +423,6 @@ export function SettingsFrame(props: SettingsFrameProps) {
           )}
         </div>
         </>}
-        {level === 0 && !hubLanding ? <HubAdvanced shownPage={shownPage} onOpen={go} /> : null}
       </div>
       <TrunkHost engine={engine} level={LEVEL_WORD[level]} openSettings={(page) => go(pageFor(page))} openPlace={(place) => props.onOpenPlace?.(place)} />
     </div>
