@@ -148,7 +148,7 @@ export function gateFileProblems({
   return [problem(
     'gate-files',
     `protected gate file(s) changed without a reviewer marker for this head: ${review.protectedFiles.join(', ')}`,
-    'this change needs a non-author review of this exact head; GOD adds the gate-change-reviewed marker after approval. Do not add it yourself',
+    'this change needs a non-author review of this exact head; after approval the reviewer or the merge owner adds the line gate-change-reviewed: <full head sha> to the PR body. The PR author never adds it',
   )];
 }
 
