@@ -95,7 +95,9 @@ export function selfCheckProblems({ branch, headSha, body, repoDir }) {
   return problems;
 }
 
-// Named-test list: every changed engine or window test file must appear in the branch's list, sorted.
+// Named-test list: every changed engine or window test file must appear in the branch's list, in any order.
+// Only one PR edits its own list, so order cannot cause merge conflicts. The shared engineTests and windowTests
+// arrays in feature-batch-ci-targets.mjs stay sorted; namedTests() checks those.
 export function namedListProblems({ changedFiles, listText, listPath }) {
   const wanted = changedFiles.filter((f) => ENGINE_OR_WINDOW_TEST.test(f)).map((f) => f.replace(/^(engine|window)\//, '$1:')).sort();
   if (wanted.length === 0) return [];
@@ -104,11 +106,7 @@ export function namedListProblems({ changedFiles, listText, listPath }) {
   }
   const have = listText.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
   const missing = wanted.filter((w) => !have.includes(w));
-  const problems = missing.map((w) => problem('named-tests', `${listPath} lacks ${w}`, `add the line ${w}`));
-  if (JSON.stringify(have) !== JSON.stringify([...have].sort())) {
-    problems.push(problem('named-tests', `${listPath} is not sorted`, `sort the lines in ${listPath}`));
-  }
-  return problems;
+  return missing.map((w) => problem('named-tests', `${listPath} lacks ${w}`, `add the line ${w}`));
 }
 
 export function uiProofProblems({ changedFiles, body }) {
