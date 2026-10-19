@@ -92,6 +92,7 @@ jobs:
       CI: 'true'
       FEATURE_SHARD: ${{ matrix.shard }}
       FEATURE_SCOPE: ${{ matrix.scope }}
+      BRANCH_GATEWAY_STARTUP_TRACE: ${{ matrix.os == 'macos-latest' && '1' || '' }} # TEMP for #1967 trace; drop before merge
     steps:
       - name: Check out the feature commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
