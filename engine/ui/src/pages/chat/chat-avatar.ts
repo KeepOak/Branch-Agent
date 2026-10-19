@@ -29,7 +29,7 @@ import {
   resolveMessageRole,
 } from "../../lib/chat/message-normalizer.ts";
 import type { SenderIdentity } from "../../lib/chat/sender-label.ts";
-import { formatSenderLabel } from "../../lib/chat/sender-label.ts";
+import { formatSenderLabel, isSharedOwnerSender } from "../../lib/chat/sender-label.ts";
 import { resolveAvatarImageUrl, retainAvatarImageUrl } from "../../lib/identity-avatar-loader.ts";
 import { resolveAvatarInitials } from "../../lib/identity-avatar.ts";
 import {
@@ -52,7 +52,8 @@ export function renderChatAvatar(
   const normalized = normalizeRoleForGrouping(role);
   // Attributed multi-user messages show the author's own avatar (profile
   // upload → gateway Gravatar proxy → initials), not the local viewer's.
-  if (normalized === "user" && sender) {
+  // The owner's key is the local person, so it uses their avatar, not a "G".
+  if (normalized === "user" && sender && !isSharedOwnerSender(sender)) {
     if (sender.identity?.type === "agent") {
       return renderChatAuthorAvatar(sender, "chat-avatar assistant");
     }
