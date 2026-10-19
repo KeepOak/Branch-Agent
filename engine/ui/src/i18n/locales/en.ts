@@ -1815,7 +1815,7 @@ export const en: TranslationMap & {
     usage: "API usage and costs.",
     cron: "Scheduled tasks and recurring agent runs.",
     skills: "Manage your agent skills",
-    plugins: "Extend your Grove with tools",
+    plugins: "Packs of skills, servers and tools",
     skillWorkshop:
       "The skills your agent uses now, suggestions waiting for review, and past decisions.",
     devices: "Paired devices, pairing approvals, and exec bindings.",

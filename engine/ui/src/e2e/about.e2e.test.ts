@@ -281,11 +281,12 @@ suite.define(() => {
       const githubLink = hero.getByRole("link", { name: "GitHub", exact: true });
       await expect
         .poll(() => githubLink.getAttribute("href"))
-        .toBe("https://github.com/openclaw/openclaw");
+        .toBe("https://github.com/KeepOak/Branch-Agent");
       await expect.poll(() => githubLink.getAttribute("target")).toBe("_blank");
       await expect.poll(() => githubLink.getAttribute("rel")).toContain("noopener");
-      const discordLink = hero.getByRole("link", { name: "Discord", exact: true });
-      await expect.poll(() => discordLink.getAttribute("href")).toBe("https://discord.gg/clawd");
+      await expect
+        .poll(() => hero.getByRole("link", { name: "Discord", exact: true }).count())
+        .toBe(0);
       const xLink = hero.getByRole("link", { name: "X (Twitter)", exact: true });
       await expect.poll(() => xLink.getAttribute("href")).toBe("https://x.com/branch");
 
