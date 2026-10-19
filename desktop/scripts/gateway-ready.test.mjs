@@ -394,3 +394,42 @@ test("the admission watch ends without promoting or rolling back when the engine
     assert.deepEqual(calls, []);
   });
 });
+
+test("Mac driver endpoint files are removed only when their writer is gone, and nothing else (#1921)", async () => {
+  const { mkdtempSync, writeFileSync, readdirSync, rmSync, utimesSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { sweepStaleEndpointFiles, endpointFileName, LEGACY_ENDPOINT_MAX_AGE_MS } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const dir = mkdtempSync(join(tmpdir(), "branch-endpoint-sweep-"));
+  const hex = (c) => c.repeat(32);
+  try {
+    const live = `cua-endpoint-4242-${hex("a")}`;
+    const dead = `cua-endpoint-4343-${hex("b")}`;
+    const mine = `cua-endpoint-${process.pid}-${hex("c")}`;
+    const legacyOld = `cua-endpoint-${hex("d")}`;
+    const legacyNew = `cua-endpoint-${hex("e")}`;
+    for (const name of [live, dead, mine, legacyOld, legacyNew]) writeFileSync(join(dir, name), "{}");
+    const now = Date.now();
+    const old = (now - LEGACY_ENDPOINT_MAX_AGE_MS - 60_000) / 1000;
+    utimesSync(join(dir, legacyOld), old, old);
+    writeFileSync(join(dir, "gateway.log"), "keep");
+    writeFileSync(join(dir, "cua-endpoint-notes.txt"), "keep");
+    const asked = [];
+    const alive = (pid) => { asked.push(pid); return pid === 4242; };
+    assert.equal(sweepStaleEndpointFiles(dir, alive, now), 2);
+    assert.deepEqual(readdirSync(dir).sort(), ["cua-endpoint-notes.txt", "gateway.log", live, legacyNew, mine].sort());
+    assert.deepEqual(asked.sort(), [4242, 4343]);
+    assert.equal(sweepStaleEndpointFiles(join(dir, "missing")), 0);
+    assert.match(endpointFileName(), new RegExp(`^cua-endpoint-${process.pid}-[0-9a-f]{32}$`));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("process liveness: EPERM counts as alive, ESRCH as gone (#1921)", async () => {
+  const { processAlive } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const fail = (code) => () => { throw Object.assign(new Error(code), { code }); };
+  assert.equal(processAlive(1, () => {}), true);
+  assert.equal(processAlive(1, fail("EPERM")), true);
+  assert.equal(processAlive(1, fail("ESRCH")), false);
+  assert.equal(processAlive(process.pid), true);
+});
