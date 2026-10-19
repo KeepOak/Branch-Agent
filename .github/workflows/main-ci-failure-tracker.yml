@@ -18,8 +18,10 @@ on:
 permissions: {}
 
 concurrency:
-  # One tracker update at a time, so two failing runs never both create the issue.
-  group: main-ci-failure-tracker
+  # One group per tracked workflow. A single shared group keeps only one pending run, so when the three
+  # nightlies finish together one workflow's result would be dropped. Two workflows racing to create the
+  # issue is handled in the step below (the newer duplicate is closed).
+  group: main-ci-failure-tracker-${{ github.event.workflow_run.workflow_id }}
   cancel-in-progress: false
 
 jobs:
@@ -28,7 +30,7 @@ jobs:
     if: >-
       github.event.workflow_run.head_branch == 'main' &&
       contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event.workflow_run.event) &&
-      contains(fromJSON('["failure","success"]'), github.event.workflow_run.conclusion)
+      contains(fromJSON('["failure","timed_out","success"]'), github.event.workflow_run.conclusion)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -71,4 +73,11 @@ jobs:
             gh issue create --title "$TITLE" --body "$body
 
           Opened by .github/workflows/main-ci-failure-tracker.yml. Later failures are added as comments; recoveries are noted. Close it once main is green."
+            # Another tracked workflow may have opened the same issue at the same moment: keep the oldest.
+            mapfile -t dupes < <(gh issue list --state open --json number,title --limit 100 \
+              | jq -r --arg t "$TITLE" '[.[] | select(.title == $t) | .number] | sort | .[]')
+            for n in "${dupes[@]:1}"; do
+              gh issue comment "${dupes[0]}" --body "$(gh issue view "$n" --json body --jq .body)"
+              gh issue close "$n" --reason "not planned" --comment "Duplicate of #${dupes[0]}; details copied there."
+            done
           fi
