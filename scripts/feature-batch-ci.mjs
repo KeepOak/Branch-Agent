@@ -9,10 +9,10 @@ import {
 } from './feature-batch-ci-runtime.mjs';
 
 export async function validateScope() {
-  await runNamedE2eTests(env, shard);
   for (const lane of ['engine', 'window']) {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     for (const file of namedTests(lane)) await fs.access(path.join(root, file));
+    if (lane === 'engine') for (const file of namedE2eTests(lane)) await fs.access(path.join(root, file));
   }
   for (const file of capabilityTests()) await fs.access(path.join(engineRoot, file));
   const source = JSON.parse(await fs.readFile(path.join(windowRoot, 'package.json'), 'utf8'));
@@ -102,6 +102,7 @@ async function runNamedE2eTests(env, shard) {
 async function runFeatureTests(scratch) {
   const env = await featureTestEnv(scratch);
   const shard = shardOf();
+  await runNamedE2eTests(env, shard);
   for (const lane of ['engine', 'window']) {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     const config = path.join(repoRoot, 'scripts', `feature-batch-ci-${lane}.config.mjs`);

@@ -182,3 +182,12 @@ test('a changed engine e2e test is covered only when the named e2e list (run by 
   assert.deepEqual(uncoveredTests(['engine/ui/src/e2e/other.e2e.test.ts'], coverageTargets('', '', '', '', e2eListed)),
     ['engine/ui/src/e2e/other.e2e.test.ts']);
 });
+
+test('feature-batch-ci runs named e2e tests in runFeatureTests only, and preflight checks they exist', () => {
+  const src = readFileSync(new URL('./feature-batch-ci.mjs', import.meta.url), 'utf8');
+  const body = (name) => src.slice(src.indexOf(`function ${name}(`), src.indexOf('\n}\n', src.indexOf(`function ${name}(`)));
+  assert.doesNotMatch(body('validateScope'), /runNamedE2eTests/);
+  assert.match(body('validateScope'), /namedE2eTests\(lane\)\) await fs\.access/);
+  const run = body('runFeatureTests');
+  assert.ok(run.indexOf('runNamedE2eTests(env, shard)') > run.indexOf('const shard = shardOf()'));
+});
