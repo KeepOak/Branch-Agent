@@ -231,7 +231,7 @@ describe("server preferences", () => {
     const reset = loadSettings();
     expect(changedServerUiPrefs(before, reset)).toEqual({
       theme: "grove",
-      themeMode: "system",
+      themeMode: "light",
       accent: null,
       locale: null,
       chatSendShortcut: "enter",
@@ -239,7 +239,7 @@ describe("server preferences", () => {
     });
     expect(reset).toMatchObject({
       theme: "grove",
-      themeMode: "system",
+      themeMode: "light",
     });
     expect(reset.locale).toBeUndefined();
     expect(reset.chatFollowUpMode).toBeUndefined();
