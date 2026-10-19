@@ -207,10 +207,34 @@ export function parseGitLogRecords(raw) {
   });
 }
 
-// Commits on the PR head that are not on the checked-out default branch: the same set GitHub lists.
-export function readLocalPrCommits({ headRef = LOCAL_PR_HEAD_REF, baseRef = 'HEAD', exec = execFileSync } = {}) {
+// Commits on the PR head that are not on the PR's base: the same set GitHub lists. The checkout is the default
+// branch, which can be ahead of or behind the PR base, so HEAD is never used as the range start.
+export function localPrRange({ baseSha, headRef = LOCAL_PR_HEAD_REF, exec = execFileSync } = {}) {
+  const base = String(baseSha ?? '').trim();
+  if (!/^[0-9a-f]{7,64}$/i.test(base)) {
+    throw Object.assign(new Error('PR_BASE_SHA is missing or not a commit sha'), { missingBase: true });
+  }
+  const git = (args) => String(exec('git', args, { encoding: 'utf8', windowsHide: true }) ?? '').trim();
+  try {
+    git(['rev-parse', '--verify', '--quiet', `${base}^{commit}`]);
+  } catch {
+    throw Object.assign(new Error('PR base commit is not in the local history'), { missingBase: true });
+  }
+  let start = base;
+  try {
+    start = git(['merge-base', base, headRef]) || base;
+  } catch {
+    start = base;
+  }
+  return `${start}..${headRef}`;
+}
+
+export function readLocalPrCommits({
+  baseSha = process.env.PR_BASE_SHA, headRef = LOCAL_PR_HEAD_REF, exec = execFileSync,
+} = {}) {
+  const range = localPrRange({ baseSha, headRef, exec });
   const raw = exec('git', [
-    'log', '--no-color', `--format=%H${FIELD}%ae${FIELD}%ce${FIELD}%cI${FIELD}%B${RECORD}`, `${baseRef}..${headRef}`,
+    'log', '--no-color', `--format=%H${FIELD}%ae${FIELD}%ce${FIELD}%cI${FIELD}%B${RECORD}`, range,
   ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true });
   return parseGitLogRecords(raw);
 }
@@ -233,8 +257,9 @@ export function runCommitEmailCheck({
     }
     try {
       commits = readLocal();
-    } catch {
-      return { exitCode: 2, lines: [`${apiFailureLine(error, prNumber)} The local PR history was not available either.`] };
+    } catch (localError) {
+      const why = localError?.missingBase ? ` ${localError.message}.` : '';
+      return { exitCode: 2, lines: [`${apiFailureLine(error, prNumber)} The local PR history was not available either.${why}`] };
     }
     if (!Array.isArray(commits) || commits.length === 0) {
       return { exitCode: 2, lines: [`${apiFailureLine(error, prNumber)} The local PR history had no commits, so nothing was checked.`] };

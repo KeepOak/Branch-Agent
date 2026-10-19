@@ -380,9 +380,48 @@ test('local git records parse into the API commit shape, with multi-line message
   assert.deepEqual(evaluateCommits(commits).map((f) => f.field), ['co-author']);
 });
 
-test('readLocalPrCommits asks git only for commits on the PR head and not on the base', () => {
-  let seen;
-  readLocalPrCommits({ exec: (cmd, args) => { seen = [cmd, ...args]; return ''; } });
-  assert.equal(seen[0], 'git');
-  assert.equal(seen.at(-1), 'HEAD..refs/remotes/pr/head');
+const BASE = 'b'.repeat(40);
+const MB = 'c'.repeat(40);
+
+function fakeGit({ mergeBase = MB, verify = true } = {}) {
+  const calls = [];
+  const exec = (cmd, args) => {
+    calls.push([cmd, ...args]);
+    if (args[0] === 'rev-parse') { if (!verify) throw new Error('unknown revision'); return BASE; }
+    if (args[0] === 'merge-base') { if (mergeBase == null) throw new Error('no merge base'); return `${mergeBase}\n`; }
+    return '';
+  };
+  return { exec, calls };
+}
+
+test('the local range starts at the merge-base of the PR base sha, never HEAD', () => {
+  const { exec, calls } = fakeGit();
+  readLocalPrCommits({ baseSha: BASE, exec });
+  const log = calls.find((c) => c[1] === 'log');
+  assert.equal(log.at(-1), `${MB}..refs/remotes/pr/head`);
+  assert.deepEqual(calls.find((c) => c[1] === 'merge-base').slice(1), ['merge-base', BASE, 'refs/remotes/pr/head']);
+  assert.ok(calls.every((c) => !c.some((a) => /\bHEAD\.\./.test(a))), 'HEAD is never a range start');
 });
+
+test('if merge-base fails the range falls back to the PR base sha', () => {
+  const { exec, calls } = fakeGit({ mergeBase: null });
+  readLocalPrCommits({ baseSha: BASE, exec });
+  assert.equal(calls.find((c) => c[1] === 'log').at(-1), `${BASE}..refs/remotes/pr/head`);
+});
+
+for (const [name, opts] of [
+  ['a missing base sha', { baseSha: undefined }],
+  ['a non-sha base', { baseSha: 'main; rm -rf /' }],
+  ['a base commit absent from local history', { baseSha: BASE, verify: false }],
+]) {
+  test(`${name} exits 2 on the fallback path and runs no git log`, () => {
+    const { exec, calls } = fakeGit({ verify: opts.verify ?? true });
+    const result = runCommitEmailCheck({
+      repo: 'o/r', prNumber: '1', token: 't', api: RATE_LIMITED,
+      readLocal: () => readLocalPrCommits({ baseSha: opts.baseSha, exec }),
+    });
+    assert.equal(result.exitCode, 2);
+    assert.match(result.lines[0], /PR base|PR_BASE_SHA/);
+    assert.ok(!calls.some((c) => c[1] === 'log'));
+  });
+}
