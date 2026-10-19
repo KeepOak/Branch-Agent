@@ -2045,7 +2045,11 @@ function shutdown(): void {
   writeGatewayPortFile(cfg.gatewayPort);
 }
 
-if (!app.requestSingleInstanceLock()) {
+if (installedLauncher) {
+  // Handing off (above): app.exit(0) does not stop this module, so take no lock and start nothing. Holding the lock here
+  // would make the installed copy, if it starts before this process is gone, see "another window is open" and quit.
+  log("handed off to the installed Branch; skipping the single-instance lock and startup");
+} else if (!app.requestSingleInstanceLock()) {
   log("another Branch Agent window is open; quitting");
   app.quit();
 } else {

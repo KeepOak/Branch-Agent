@@ -136,4 +136,13 @@ test("a dev copy under the data folder hands off to the installed copy", () => {
   assert.ok(handoff !== -1 && handoff < main.indexOf("app.requestSingleInstanceLock()"), "hands off before taking the single-instance lock");
   assert.match(main, /spawn\(installedLauncher, process\.argv\.slice\(1\), \{[^}]*\bwindowsHide: true\b[^}]*\}\)\.unref\(\);\s*app\.exit\(0\);/,
     "the handoff launch starts hidden, like every Windows child process");
+  const lock = main.indexOf("app.requestSingleInstanceLock()");
+  assert.equal(main.indexOf("app.requestSingleInstanceLock()", lock + 1), -1, "one single-instance lock");
+  assert.match(main, /^if \(installedLauncher\) \{\n(?:\s*\/\/[^\n]*\n)*\s*log\([^\n]*\);\n\} else if \(!app\.requestSingleInstanceLock\(\)\) \{/m,
+    "a copy that hands off never takes the lock, so the installed copy it just started does not see it and quit");
+  const startup = main.slice(lock);
+  for (const handler of ["app.whenReady().then(start)", 'app.on("second-instance"', 'app.on("will-quit"']) {
+    assert.ok(startup.includes(handler), `${handler} runs only in the branch that took the lock`);
+    assert.equal(main.indexOf(handler), lock + startup.indexOf(handler), `${handler} is registered nowhere before the lock`);
+  }
 });
