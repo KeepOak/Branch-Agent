@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkSelfCheck } from './check-self-check.mjs';
 import { explainFinalHeadDrift } from './final-head-history.mjs';
-import { checkUIProof } from './check-ui-proof.mjs';
+import { checkCommittedProofImages, checkUIProof } from './check-ui-proof.mjs';
 import { ALLOWED_SUFFIX, FIX_LINES, evaluateCommits, fetchPrCommitsWithApi } from './check-commit-emails.mjs';
 import {
   changedFilesFromPrFiles,
@@ -115,6 +115,13 @@ export function uiProofProblems({ changedFiles, body }) {
   const result = checkUIProof(changedFiles, body ?? '');
   if (result.exitCode === 0) return [];
   return [problem('ui-proof', result.message.split('\n')[0], 'add a screenshot image or link to the body, or the line "No visible change: <reason>"')];
+}
+
+export function proofImageProblems(files) {
+  const added = (files ?? []).filter((f) => f.status === 'added' || f.status === 'renamed').map((f) => f.filename);
+  const result = checkCommittedProofImages(added);
+  if (result.exitCode === 0) return [];
+  return [problem('proof-images', result.message.split('\n')[0], 'remove the committed screenshots; attach them to the PR description, or (bots) push them to the evidence branch under verifier/<PR number>/, and link the raw URLs in the body')];
 }
 
 export function windowCleanProblems(windowResult) {
@@ -275,6 +282,7 @@ export function runPreflight(input) {
     ...namedListProblems({ changedFiles, listText: input.listText ?? null, listPath: input.listPath }),
     ...priorArtProblems({ title: input.title, body }),
     ...uiProofProblems({ changedFiles, body }),
+    ...proofImageProblems(input.files),
     ...windowCleanProblems(input.windowResult),
     ...shardProblems(input.shardResult),
     ...gateFileProblems({
