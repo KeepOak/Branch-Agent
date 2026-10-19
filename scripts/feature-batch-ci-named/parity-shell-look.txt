@@ -1,5 +1,5 @@
+engine:src/gateway/server-methods/themes.test.ts
+engine:ui/src/app/mount-fallback.test.ts
 engine:ui/src/app/server-prefs.test.ts
 engine:ui/src/lib/presence-lone-owner.test.ts
 engine:ui/src/pages/agents-home/card-preview.test.ts
-engine:src/gateway/server-methods/themes.test.ts
-engine:ui/src/app/mount-fallback.test.ts
