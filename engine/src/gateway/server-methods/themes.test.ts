@@ -195,7 +195,7 @@ describe("theme RPC", () => {
     expect(await invoke("themes.list")).toMatchObject({
       ok: true,
       payload: {
-        current: { id: "grove", mode: "system", scope: "profile", overrides: {} },
+        current: { id: "grove", mode: "light", scope: "profile", overrides: {} },
         themes: expect.arrayContaining([
           expect.objectContaining({ id: "grove", description: expect.stringMatching(/\S/) }),
           descriptor,
@@ -207,6 +207,29 @@ describe("theme RPC", () => {
       payload: { theme: descriptor, definition, artwork: entry.artwork },
     });
     expect(await invoke("themes.get", { id: "grove" })).not.toHaveProperty("payload.artwork");
+  });
+
+  it("defaults an unsaved mode to light while keeping a saved system mode", async () => {
+    expect(await invoke("themes.get")).toMatchObject({
+      ok: true,
+      payload: { current: { id: "grove", mode: "light", effectiveMode: "light", overrides: {} } },
+    });
+
+    const fromConfig = await invoke(
+      "themes.get",
+      {},
+      { context: { getRuntimeConfig: () => ({ ui: { prefs: { themeMode: "system" } } }) } },
+    );
+    expect(fromConfig).toMatchObject({ ok: true, payload: { current: { mode: "system" } } });
+    expect(fromConfig).not.toHaveProperty("payload.current.effectiveMode");
+
+    expect(setUserPreferences(requesterProfileId, { "ui.themeMode": "system" }).ok).toBe(true);
+    const fromProfile = await invoke("themes.get");
+    expect(fromProfile).toMatchObject({
+      ok: true,
+      payload: { current: { mode: "system", overrides: { mode: "system" } } },
+    });
+    expect(fromProfile).not.toHaveProperty("payload.current.effectiveMode");
   });
 
   it("imports and applies in one durable profile mutation, preserving other preferences and notifying only that profile", async () => {

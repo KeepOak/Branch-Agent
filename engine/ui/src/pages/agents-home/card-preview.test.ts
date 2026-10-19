@@ -17,6 +17,13 @@ describe("agentCardPreviewText", () => {
     );
   });
 
+  it("keeps all-digit runs such as order numbers", () => {
+    expect(agentCardPreviewText("Refund sent for order 202610190001234")).toBe(
+      "Refund sent for order 202610190001234",
+    );
+    expect(agentCardPreviewText("order=123456789012 shipped")).toBe("order=123456789012 shipped");
+  });
+
   it("returns an empty string for missing previews", () => {
     expect(agentCardPreviewText(undefined)).toBe("");
     expect(agentCardPreviewText(null)).toBe("");

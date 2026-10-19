@@ -42,6 +42,9 @@ import { publishUserPreferencesChanged } from "./user-preference-events.js";
 import { defineValidatedGatewayMethod } from "./validation.js";
 
 const DEFINITION_PREFIX = "ui.themeDefinition.";
+// Mode used when neither the profile nor the Gateway config saved one. Matches
+// UI_APPEARANCE_DEFAULTS.themeMode in ui/src/app/settings.ts; a saved "system" is still honored.
+const DEFAULT_THEME_MODE: ThemeMode = "light";
 type ThemeRequest = Omit<GatewayRequestHandlerOptions, "params">;
 
 function requestOwner(options: ThemeRequest) {
@@ -151,7 +154,8 @@ function selection(
   const requestedId = id ?? config.ui?.prefs?.theme ?? "grove";
   const selected = catalog.find((theme) => theme.id === requestedId);
   const effectiveTheme = selected ?? BUILTIN_THEMES[0];
-  const selectedMode = mode ?? normalizeThemeMode(config.ui?.prefs?.themeMode) ?? "system";
+  const selectedMode =
+    mode ?? normalizeThemeMode(config.ui?.prefs?.themeMode) ?? DEFAULT_THEME_MODE;
   const effectiveMode =
     effectiveTheme?.modes.length === 1
       ? effectiveTheme.modes[0]
@@ -292,7 +296,8 @@ export const themeHandlers: GatewayRequestHandlers = {
             selected.modes,
             mode,
             result.current.mode,
-            normalizeThemeMode(options.context.getRuntimeConfig().ui?.prefs?.themeMode) ?? "system",
+            normalizeThemeMode(options.context.getRuntimeConfig().ui?.prefs?.themeMode) ??
+              DEFAULT_THEME_MODE,
           )
         : mode;
       await writeThemes(
@@ -355,7 +360,8 @@ export const themeHandlers: GatewayRequestHandlers = {
             (["light", "dark"] as const).filter((palette) => Boolean(definition[palette])),
             mode,
             current.mode,
-            normalizeThemeMode(options.context.getRuntimeConfig().ui?.prefs?.themeMode) ?? "system",
+            normalizeThemeMode(options.context.getRuntimeConfig().ui?.prefs?.themeMode) ??
+              DEFAULT_THEME_MODE,
           )
         : undefined;
       await writeThemes(
