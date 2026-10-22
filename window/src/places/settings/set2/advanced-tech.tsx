@@ -8,7 +8,8 @@ import type { WindowEngine } from "../../../connect/engine";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { Btn, Ctl, Empty, Hint, Pill, Prow, Sec, usePinsKit, type Lv } from "../kit";
 import { Icon } from "../../../shell/icons";
-import { errorText, list } from "../adapter";
+import { list } from "../adapter";
+import { plainError } from "../../../shell/plain-error";
 import { configStore, type ConfigPath } from "../config-store";
 import { Dialog } from "../../../shell/Dialog";
 import { CallLine, CopyBtn, Kv, rec, str, useCall, useLive, when, type RecordValue } from "./common";
@@ -43,7 +44,7 @@ function useLogTail(engine: WindowEngine) {
       cursor.current = typeof r.cursor === "number" ? r.cursor : cursor.current;
       setState((s) => ({ lines: (first ? fresh : [...s.lines, ...fresh]).slice(-2000), file: str(r.file) || s.file }));
     } catch (error) {
-      setState((s) => ({ ...s, error: errorText(error) }));
+      setState((s) => ({ ...s, error: plainError(error) }));
     }
   }, [engine]);
   return { ...state, pull };
@@ -82,7 +83,7 @@ export function LogsDialog({ engine, source, onClose }: { engine: WindowEngine; 
         <CopyBtn text={shown.map((l) => `${l.time} ${l.level.toUpperCase()} ${l.text}`).join("\n")} label="Copy the log" />
       </div>
       <div className="s2-chips s2advanced-gap">{LEVEL_CHIPS.map(([l]) => <button key={l} type="button" className="chip6" aria-pressed={levels[l]} onClick={() => setLevels((s) => ({ ...s, [l]: !s[l] }))}>{l}</button>)}</div>
-      {tail.error ? <p className="hint s2-err" role="alert">{tail.error}</p> : null}
+      {tail.error ? <p className="hint s2-err" role="alert">{plainError(tail.error)}</p> : null}
       <div className="s2advanced-logbox" ref={box} tabIndex={0} aria-label="Log lines" onScroll={(e) => { const b = e.currentTarget; const atEnd = b.scrollHeight - b.scrollTop - b.clientHeight < 4; if (atEnd !== follow) setFollow(atEnd); }}>
         {shown.length ? shown.map((l, i) => <div key={i} className="s2advanced-ll"><time>{clock(l.time)}</time><span className={`s2advanced-lv s2advanced-lv-${chipOf(l.level).toLowerCase()}`}>{l.level || "info"}</span><span>{l.text}</span></div>)
           : <Empty>{tail.lines.length ? "No log lines match." : "No log lines yet."}</Empty>}
@@ -126,7 +127,7 @@ export function ConvDialog({ engine, lv, onClose }: { engine: WindowEngine; lv: 
         <input className="inp" placeholder="Search conversations" aria-label="Search conversations" value={q} onChange={(e) => reset(() => setQ(e.target.value))} />
         <span className="sseg" role="group" aria-label="Which conversations">{(["Active", "Archived", "All"] as const).map((o) => <button key={o} type="button" aria-pressed={seg === o} onClick={() => reset(() => setSeg(o))}>{o}</button>)}</span>
       </div>
-      {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
+      {res.error ? <p className="hint s2-err" role="alert">{plainError(res.error)}</p> : null}
       <div className="s2advanced-ctwrap">
         {rows.length ? <ConvTable rows={rows} lv={lv} sort={sort} onSort={(k) => setSort((s) => ({ k, dir: s.k === k ? (s.dir === 1 ? -1 : 1) : k === "last" ? -1 : 1 }))} engine={engine} onSaved={() => void res.reload()} />
           : res.loading ? <p className="hint">Reading conversations…</p> : <Empty>{q ? "No conversation matches." : "No conversations yet."}</Empty>}
@@ -210,7 +211,7 @@ export function SectionDialog({ c, path, title, onClose }: { c: Ctx; path: strin
   const mine = fields.filter((f) => f.path === path || f.path.startsWith(`${path}.`));
   const go = () => void save.run(async () => {
     let next: unknown;
-    try { next = JSON.parse(text); } catch (error) { throw new Error(`That isn’t valid JSON: ${errorText(error)}`); }
+    try { next = JSON.parse(text); } catch { throw new Error("That isn’t valid JSON. Check the text and try again."); }
     const patch = mergePatch(value ?? {}, next);
     if (patch !== undefined) await configStore(c.engine).set(path as ConfigPath, patch);
     onClose();
@@ -253,7 +254,7 @@ export function EverythingElse({ c }: { c: Ctx }) {
   return (
     <Sec title="Everything else" hint="Settings that have no page of their own." help="Settings that have no page of their own. Every field shows, including the fine ones.">
       {OTHER.map(([t, k]) => <KeyRow key={k} t={t} k={k} onEdit={() => setOpen([t, k])} />)}
-      <Ctl title="Ctrl K to find anything" sub={error ?? (loading ? "Checking…" : `${fields.length} settings. Read only here; edit one in its section.`)} stack after={
+      <Ctl title="Ctrl K to find anything" sub={error ? plainError(error) : (loading ? "Checking…" : `${fields.length} settings. Read only here; edit one in its section.`)} stack after={
         <div className="s2advanced-find">
           <input className="inp" placeholder="Ctrl K to find anything" aria-label="Ctrl K to find anything" value={q} onChange={(e) => setQ(e.target.value)} />
           {hits.length ? <FieldList fields={hits} config={c.config} /> : q.trim().length > 1 && !loading ? <p className="hint">No setting matches.</p> : null}
@@ -274,12 +275,12 @@ export function HealthDialog({ engine, onClose }: { engine: WindowEngine; onClos
   const snaps: [string, { data?: unknown; error?: string }][] = [["Status", status], ["Health", health], ["Stability", stab]];
   return (
     <Dialog title="Health" wide onClose={onClose} footer={<><Btn ghost onClick={() => { void status.reload(); void health.reload(); void lanes.reload(); void stab.reload(); }}>Check again</Btn></>}>
-      <Kv rows={[["Branch version", version ? versionParts(version).detail : "Unavailable"], ["Process", str(rec(status.data).pid)], ["Health check", rec(health.data).ok === true ? `Answered ${when(rec(health.data).ts)}` : str(health.error)], ["Stability events", str(rec(stab.data).count)]]} />
+      <Kv rows={[["Branch version", version ? versionParts(version).detail : "Unavailable"], ["Process", str(rec(status.data).pid)], ["Health check", rec(health.data).ok === true ? `Answered ${when(rec(health.data).ts)}` : (health.error ? plainError(health.error) : "")], ["Stability events", str(rec(stab.data).count)]]} />
       <h3 className="s2-h3">Snapshots</h3>
-      {snaps.map(([t, r]) => <details key={t} className="s2advanced-snap"><summary>{t}</summary>{r.error ? <p className="hint s2-err">{r.error}</p> : <pre className="s2-pre">{JSON.stringify(r.data ?? null, null, 2)}</pre>}</details>)}
+      {snaps.map(([t, r]) => <details key={t} className="s2advanced-snap"><summary>{t}</summary>{r.error ? <p className="hint s2-err">{plainError(r.error)}</p> : <pre className="s2-pre">{JSON.stringify(r.data ?? null, null, 2)}</pre>}</details>)}
       <h3 className="s2-h3">Lanes</h3>
       <p className="hint">How much work each lane is doing and what is waiting.</p>
-      {lanes.error ? <p className="hint s2-err">{lanes.error}</p> : (
+      {lanes.error ? <p className="hint s2-err">{plainError(lanes.error)}</p> : (
         <div className="s2advanced-ctwrap"><table className="s2advanced-ct"><thead><tr><th>Lane</th><th>Active</th><th>Queued</th><th>At most</th><th>Group</th></tr></thead>
           <tbody>{list(rec(lanes.data).lanes).map((l) => <tr key={str(l.lane)}><td>{str(l.lane)}</td><td>{str(l.activeCount)}</td><td>{str(l.queuedCount)}</td><td>{str(l.maxConcurrent)}</td><td>{str(l.group)}</td></tr>)}</tbody></table></div>
       )}
@@ -300,7 +301,7 @@ export function WebSearchDialog({ engine, agent, onClose }: { engine: WindowEngi
   return (
     <Dialog title="Web search" wide onClose={onClose}>
       <p className="hint s2advanced-gap">These apply to every Trunk.</p>
-      {st.error ? <p className="hint s2-err" role="alert">{st.error}</p> : null}
+      {st.error ? <p className="hint s2-err" role="alert">{plainError(st.error)}</p> : null}
       <h3 className="s2-h3">Which search each model uses</h3>
       <Kv rows={[["Model", d.model ? `${str(rec(d.model).provider)}/${str(rec(d.model).id)}` : ""], ["Search for this model", str(route.label)], ["Why", str(route.reason)]]} />
       <h3 className="s2-h3">Set up a search service</h3>
@@ -314,7 +315,7 @@ export function WebSearchDialog({ engine, agent, onClose }: { engine: WindowEngi
   );
 }
 function SearchResult({ r }: { r: RecordValue }) {
-  if (r.status === "error") return <p className="hint s2-err" role="alert">{str(r.error) || "The search failed."}</p>;
+  if (r.status === "error") return <p className="hint s2-err" role="alert">{r.error ? plainError(r.error) : "The search failed."}</p>;
   return (
     <>
       <p className="hint">{`${str(r.provider)} answered in ${Math.round(Number(r.latencyMs) || 0)} ms${r.cached === true ? " (from the cache)" : ""}.`}</p>
@@ -343,7 +344,7 @@ export function HooksSec({ c }: { c: Ctx }) {
   const add = dir ? `Hooks are folders with a HOOK.md; add one in ${dir}.` : "Hooks are folders with a HOOK.md in the hooks folder.";
   return (
     <Sec title="Hooks" hint="Your own scripts, run on these events." help="Your own scripts, run on these events. A script before a tool runs can stop it.">
-      {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
+      {res.error ? <p className="hint s2-err" role="alert">{plainError(res.error)}</p> : null}
       <div className="rows">
         {HOOK_EVENTS.map(([t, events]) => {
           const found = events.length ? names(events) : [];
@@ -368,7 +369,7 @@ export function MigrateDialog({ engine, agent, onClose }: { engine: WindowEngine
   return (
     <Dialog title="Other coding agents’ memory" wide onClose={onClose}>
       <p className="hint s2advanced-gap">What other coding tools left on this computer, ready to copy into this Trunk’s memory. Nothing is copied until you choose.</p>
-      {plan.error ? <p className="hint s2-err" role="alert">{plan.error}</p> : null}
+      {plan.error ? <p className="hint s2-err" role="alert">{plainError(plan.error)}</p> : null}
       {plan.data && !providers.length ? <p className="hint">No other coding agent’s memory was found on this computer.</p> : null}
       <div className="rows">{providers.map((p) => {
         const s = rec(p.summary);

@@ -1,13 +1,20 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../connect/engine";
 import { displayName } from "../../display-names";
+import { plainError } from "../../shell/plain-error";
 
 export type RecordValue = Record<string, unknown>;
 export function record(value: unknown): RecordValue { return value && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : {}; }
 export function list(value: unknown): RecordValue[] { return Array.isArray(value) ? value.map(record) : []; }
 export function at(value: unknown, path: string): unknown { return path.split(".").reduce<unknown>((v, key) => record(v)[key], value); }
 export function text(value: unknown): string { return value === undefined || value === null ? "Not set" : typeof value === "object" ? JSON.stringify(value) : String(value); }
-export function errorText(error: unknown): string { return error instanceof Error ? error.message : text(error); }
+/** Exact engine words other settings code still matches or re-wraps: save-retry, Coming / unknown-method
+ *  checks, invalid-value reasons, and connect dumps that a lead sentence then runs through plainError. */
+const KEEP_WORDS = /config changed since last load|changed since last load|changed since it was read|base hash|unknown method|Expected boolean|UNAVAILABLE|E(?:CONNREFUSED|CONNRESET|CONNABORTED|HOSTUNREACH|NETUNREACH)|Failed to fetch|NetworkError|gateway (?:closed|not connected)|socket hang up/i;
+export function errorText(error: unknown): string {
+  const words = error instanceof Error ? error.message : text(error);
+  return KEEP_WORDS.test(words) ? words : plainError(error);
+}
 
 export type ConfigSnapshot = { hash?: string; valid?: boolean; config?: RecordValue; issues?: unknown; writeError?: unknown };
 export async function saveConfig(engine: WindowEngine, snapshot: ConfigSnapshot, changes: Record<string, unknown>): Promise<ConfigSnapshot> {
