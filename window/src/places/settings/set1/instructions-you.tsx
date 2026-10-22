@@ -18,7 +18,23 @@ function docOf(r: unknown): Doc {
 
 const NO_NOTE: Doc = { content: "", hash: null, missing: true };
 
+const NOT_KEPT = <span className="grow"><b>Not kept on this Branch</b><small>Branch keeps this note for people who share it. Nothing is written here.</small></span>;
+
 export function JustAboutYou({ engine, agentId }: { engine: WindowEngine; agentId: string }) {
+  // A one-person Branch (the engine's hello says so) refuses users.personalFile.*, so don't ask: each refusal is
+  // logged as a gateway error (#1920).
+  if (engine.sharedGateway === false) {
+    return (
+      <Sec title="Just about you">
+        <Plist><div className="prow if-row" data-row="Just about you">{NOT_KEPT}</div></Plist>
+        <Hint>The shared USER.md above stays the household’s.</Hint>
+      </Sec>
+    );
+  }
+  return <JustAboutYouFile engine={engine} agentId={agentId} />;
+}
+
+function JustAboutYouFile({ engine, agentId }: { engine: WindowEngine; agentId: string }) {
   const file = useResource<RecordValue>(engine, "users.personalFile.get", { agentId });
   const last = useRef<Doc | null>(null);
   const [open, setOpen] = useState(false);
@@ -31,7 +47,7 @@ export function JustAboutYou({ engine, agentId }: { engine: WindowEngine; agentI
     <Sec title="Just about you">
       <Plist>
         <div className="prow if-row" data-row="Just about you">
-          {refused ? <span className="grow"><b>Not kept on this Branch</b><small>Branch keeps this note for people who share it. Nothing is written here.</small></span>
+          {refused ? NOT_KEPT
             : n ? <>
               <code className="if-name">USER.md</code>
               <span className="grow"><b>Just about you</b><small>Yours: what this Trunk should know about you. Only you and it read it. · {linesText(n)}</small></span>

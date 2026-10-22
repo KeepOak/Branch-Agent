@@ -1,0 +1,2 @@
+# scripts/release-freshness.test.mjs is a node:test file at the repo root, not an engine/window vitest file.
+# It runs in .github/workflows/release-freshness.yml via `node --test`, so no feature-batch lane entry applies.

@@ -1173,6 +1173,7 @@ export class SaplingSession {
 
 function buildEngine(session: SaplingSession, sessionKey: string | null, hello: HelloOk | null, features: EngineFeatures | undefined): WindowEngine {
   const attachments = hello?.policy.attachments;
+  const shared = hello?.policy.hasMultipleSessionSharingIdentities;
   const agentId = sessionKey ? agentIdOf(sessionKey) : undefined;
   return {
     gatewayUrl: session.gatewayUrl,
@@ -1191,6 +1192,7 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
     requestScopeUpgrade: (options) => session.requestScopeUpgrade(options),
     cancelScopeUpgrade: () => session.cancelScopeUpgrade(),
     ...(attachments ? { attachmentPolicy: { maxBytes: attachments.maxBytes, maxImageBytes: attachments.maxImageBytes } } : {}),
+    ...(typeof shared === "boolean" ? { sharedGateway: shared } : {}),
   };
 }
 

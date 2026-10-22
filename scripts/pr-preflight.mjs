@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkSelfCheck } from './check-self-check.mjs';
 import { explainFinalHeadDrift } from './final-head-history.mjs';
-import { checkUIProof } from './check-ui-proof.mjs';
+import { checkCommittedProofImages, checkUIProof } from './check-ui-proof.mjs';
 import { ALLOWED_SUFFIX, FIX_LINES, evaluateCommits, fetchPrCommitsWithApi } from './check-commit-emails.mjs';
 import {
   changedFilesFromPrFiles,
@@ -95,7 +95,9 @@ export function selfCheckProblems({ branch, headSha, body, repoDir }) {
   return problems;
 }
 
-// Named-test list: every changed engine or window test file must appear in the branch's list, sorted.
+// Named-test list: every changed engine or window test file must appear in the branch's list, in any order.
+// Only one PR edits its own list, so order cannot cause merge conflicts. The shared engineTests and windowTests
+// arrays in feature-batch-ci-targets.mjs stay sorted; namedTests() checks those.
 export function namedListProblems({ changedFiles, listText, listPath }) {
   const wanted = changedFiles.filter((f) => ENGINE_OR_WINDOW_TEST.test(f)).map((f) => f.replace(/^(engine|window)\//, '$1:')).sort();
   if (wanted.length === 0) return [];
@@ -104,17 +106,20 @@ export function namedListProblems({ changedFiles, listText, listPath }) {
   }
   const have = listText.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
   const missing = wanted.filter((w) => !have.includes(w));
-  const problems = missing.map((w) => problem('named-tests', `${listPath} lacks ${w}`, `add the line ${w}`));
-  if (JSON.stringify(have) !== JSON.stringify([...have].sort())) {
-    problems.push(problem('named-tests', `${listPath} is not sorted`, `sort the lines in ${listPath}`));
-  }
-  return problems;
+  return missing.map((w) => problem('named-tests', `${listPath} lacks ${w}`, `add the line ${w}`));
 }
 
 export function uiProofProblems({ changedFiles, body }) {
   const result = checkUIProof(changedFiles, body ?? '');
   if (result.exitCode === 0) return [];
   return [problem('ui-proof', result.message.split('\n')[0], 'add a screenshot image or link to the body, or the line "No visible change: <reason>"')];
+}
+
+export function proofImageProblems(files) {
+  const added = (files ?? []).filter((f) => f.status === 'added' || f.status === 'renamed').map((f) => f.filename);
+  const result = checkCommittedProofImages(added);
+  if (result.exitCode === 0) return [];
+  return [problem('proof-images', result.message.split('\n')[0], 'remove the committed screenshots; attach them to the PR description, or (bots) push them to the evidence branch under verifier/<PR number>/, and link the raw URLs in the body')];
 }
 
 export function windowCleanProblems(windowResult) {
@@ -141,7 +146,7 @@ export function gateFileProblems({
   return [problem(
     'gate-files',
     `protected gate file(s) changed without a reviewer marker for this head: ${review.protectedFiles.join(', ')}`,
-    'this change needs a non-author review of this exact head; GOD adds the gate-change-reviewed marker after approval. Do not add it yourself',
+    'this change needs a non-author review of this exact head; after approval the reviewer or the merge owner adds the line gate-change-reviewed: <full head sha> to the PR body. The PR author never adds it',
   )];
 }
 
@@ -275,6 +280,7 @@ export function runPreflight(input) {
     ...namedListProblems({ changedFiles, listText: input.listText ?? null, listPath: input.listPath }),
     ...priorArtProblems({ title: input.title, body }),
     ...uiProofProblems({ changedFiles, body }),
+    ...proofImageProblems(input.files),
     ...windowCleanProblems(input.windowResult),
     ...shardProblems(input.shardResult),
     ...gateFileProblems({

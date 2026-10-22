@@ -1,9 +1,10 @@
-import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler, Linking, Platform } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { EventAlerts } from './src/alerts/eventAlerts';
+import { chatRowForAlert, isAgentSessionKey, type AlertRoute } from './src/alerts/route';
 import { ApprovalAlerts, type AppStateSource, type Notifier, type NotificationPermission } from './src/approvals/approvalAlerts';
 import { ApprovalInbox, trunkOf, type Approval, type ApprovalDecision } from './src/approvals/approvals';
 import { headline } from './src/approvals/approvalWords';
@@ -11,7 +12,7 @@ import { testApprovalsOn } from './src/approvals/testApproval';
 import { useTestApproval } from './src/approvals/useTestApproval';
 import { createExpoNotifier, noNotifier } from './src/approvals/expoNotifier';
 import { AgentList, type AgentRow } from './src/agents/agentList';
-import { appIdentity, type AppIdentity } from './src/build/appIdentity';
+import { appIdentity, installedAppVersion, type AppIdentity } from './src/build/appIdentity';
 import { Conversation } from './src/chat/conversation';
 import { ChatList, chatForNew, filterRows, type ChatRow } from './src/chats/chatList';
 import { ComputerList, computerName, type ComputerRow } from './src/computers/computerList';
@@ -207,10 +208,7 @@ function Shell({
   const theme = useTheme();
   const state = usePairingState(session);
   const update = useApkUpdate();
-  const installed = {
-    version: Constants.expoConfig?.version ?? '0.1.0',
-    versionCode: Constants.expoConfig?.android?.versionCode ?? 1,
-  };
+  const installed = installedAppVersion();
   const updateBanner = (
     <UpdateBanner state={update.state} onUpdate={update.startUpdate} onAllowInstalls={() => update.allowInstalls()} />
   );
@@ -248,11 +246,26 @@ function Shell({
     };
   }, [chats, agents, computers]);
 
-  // Approvals are followed for the whole session, on every screen, so a notification can go out while
-  // Branch is in the background and its buttons can answer.
+  // Approvals and the other engine events are followed for the whole session, on every screen, so a
+  // notification can go out while Branch is in the background and a tap can open the right place.
   const [inbox] = useState(() => new ApprovalInbox(session));
   const approvals = useSyncExternalStore(inbox.subscribe, inbox.getSnapshot);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
+  const eventsRef = useRef<EventAlerts | null>(null);
+  const chatsRef = useRef(chats);
+  chatsRef.current = chats;
+  const openAlert = (route: AlertRoute) => {
+    if (route.screen === 'chat') {
+      if (!isAgentSessionKey(route.sessionKey)) return;
+      setPairedRoute({ name: 'chat', row: chatRowForAlert(route.sessionKey, chatsRef.current.getSnapshot().rows) });
+      return;
+    }
+    if (route.screen === 'settings') {
+      setPairedRoute({ name: 'settings' });
+      return;
+    }
+    setPairedRoute({ name: 'approvals', focus: route.approvalId });
+  };
   const [prefs, setPrefs] = useState(getLivePhonePrefs);
   useEffect(() => subscribeLivePhonePrefs(() => setPrefs(getLivePhonePrefs())), []);
   useEffect(() => {
@@ -267,13 +280,24 @@ function Shell({
   }, [store]);
   useEffect(() => {
     inbox.attach();
-    const alerts = new ApprovalAlerts(inbox, notifier, appState, (focus) => setPairedRoute({ name: 'approvals', focus }), () => getLivePhonePrefs().tellMe);
+    const alerts = new ApprovalAlerts(inbox, notifier, appState, (focus) => setPairedRoute({ name: 'approvals', focus }), {
+      prefs: getLivePhonePrefs,
+      onRoute: openAlert,
+    });
+    const events = new EventAlerts(session, notifier, appState, getLivePhonePrefs);
+    eventsRef.current = events;
     alerts.attach();
+    events.attach();
     return () => {
+      eventsRef.current = null;
       alerts.dispose();
+      events.dispose();
       inbox.dispose();
     };
-  }, [inbox, notifier, appState]);
+  }, [inbox, notifier, appState, session]);
+  useEffect(() => {
+    void eventsRef.current?.notifyUpdate(update.state);
+  }, [update.state]);
   useEffect(() => {
     if (!store) return;
     return chats.subscribe(() => {

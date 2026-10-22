@@ -28,6 +28,9 @@ minimumReleaseAgeExclude:
   - "@types/node@26.6.4"
   - "mailparser@3.9.33"
   - "nodemailer@10.0.13"
+  # Security fix for markdown-it (Dependabot #25-#34); remove after 2026-10-30T01:25:00Z.
+  - "markdown-it@15.0.3"
+  - "argparse@3.0.3"
 
 # Isolated installs let pnpm reuse whole-package APFS clones instead of relinking every file.
 nodeLinker: isolated
