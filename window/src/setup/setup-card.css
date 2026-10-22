@@ -89,7 +89,7 @@
   height: 88px;
   border-radius: 22.5%;
   background: url(/keepoak-app-icon-512.png) center/cover no-repeat;
-  box-shadow: 0 14px 36px rgba(21, 58, 40, 0.28), inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+  box-shadow: var(--ob-mark-lift);
 }
 /* The rail layout's .ob-body > p rules (max-width, bottom margin, the pose gutter) don't apply on the card. */
 .ob-p37 .ob-body > p {

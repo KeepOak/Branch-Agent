@@ -226,13 +226,14 @@ describe("setup flow", () => {
     } as unknown as SaplingSession;
     const host = await show(<WindowShell session={session} url="ws://127.0.0.1:19661" />);
     await act(async () => new Promise((r) => setTimeout(r, 750)));
-    expect(host.querySelector("h1, h2")?.textContent).toBe("Hi, I’m Branch.");
+    // Scope to the setup dialog: the shell behind it has its own headings.
+    expect(host.querySelector('[data-testid="setup"] h1, [data-testid="setup"] h2')?.textContent).toBe("Hi, I’m Branch.");
     await act(async () => tid(host, "setup-next").click());
     await act(async () => byText(host, "install a model on this computer").click());
     expect(host.textContent).toContain("Models that run here, free and private.");
     expect(host.querySelector('[data-testid="setup"]')).toBeNull();
     await act(async () => host.querySelector<HTMLButtonElement>(".set-back")!.click());
-    expect(host.querySelector("h1, h2")?.textContent).toBe(hasTrunk ? undefined : "Create your first Trunk");
+    expect(host.querySelector('[data-testid="setup"] h1, [data-testid="setup"] h2')?.textContent).toBe(hasTrunk ? undefined : "Create your first Trunk");
   });
   it("opens Welcome on a fresh connection even after pre-connect choices", async () => {
     sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
