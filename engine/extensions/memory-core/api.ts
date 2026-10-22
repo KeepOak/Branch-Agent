@@ -24,4 +24,8 @@ export {
   pluginStateIsolatedDoctorCheckIds,
   registerMemoryCoreDoctorChecks,
 } from "./src/doctor-health.js";
-export { MISSING_LOCAL_MEMORY_EMBEDDING_PROVIDER_MESSAGE } from "./src/memory/local-embedding-provider.js";
+export {
+  DEFAULT_MEMORY_EMBEDDING_PROVIDER,
+  LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE,
+  MISSING_LOCAL_MEMORY_EMBEDDING_PROVIDER_MESSAGE,
+} from "./src/memory/local-embedding-provider.js";

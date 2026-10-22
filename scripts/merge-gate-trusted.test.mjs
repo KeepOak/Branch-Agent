@@ -1485,8 +1485,8 @@ test('more than 100 check-runs are all read across pages', () => {
     return requestPath.endsWith('page=1') ? page1 : page2;
   });
   assert.deepEqual(calls, [
-    `commits/${SHA}/check-runs?per_page=100&page=1`,
-    `commits/${SHA}/check-runs?per_page=100&page=2`,
+    `commits/${SHA}/check-runs?filter=latest&per_page=100&page=1`,
+    `commits/${SHA}/check-runs?filter=latest&per_page=100&page=2`,
   ]);
   assert.equal(fetched.length, 101);
   assert.equal(fetched[100].name, 'Named feature tests on ubuntu-latest (9/10)');
@@ -2004,6 +2004,8 @@ test('old-base PR still runs the trusted check from the default branch', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-recheck.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-recheck.test.mjs'));
   const trustedSource = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
   assert.match(trustedSource, /from '\.\/check-ui-proof\.mjs'/);
   assert.match(trustedSource, /runUiProofFromPr\(/);
@@ -3367,10 +3369,33 @@ test('one listing attributes every check it covers, and only the rest use a per-
 });
 
 test('an incomplete head listing is not trusted: every check falls back to its own lookup', () => {
-  const api = () => ({ total_count: 250, workflow_runs: [attrRun] });
+  const api = (_repo, _token, path) => {
+    if (String(path).includes('page=2')) return { total_count: 250, workflow_runs: [] };
+    return { total_count: 250, workflow_runs: [attrRun] };
+  };
   assert.equal(gate.fetchRunsByIdForHead('o/r', 't', 'abc', { api }).size, 0);
   const complete = () => ({ total_count: 1, workflow_runs: [attrRun] });
   assert.equal(gate.fetchRunsByIdForHead('o/r', 't', 'abc', { api: complete }).get('555').id, 555);
+});
+
+test('fetchRunsByIdForHead paginates a head with more than 100 runs instead of falling back', () => {
+  const calls = [];
+  const page1 = {
+    total_count: 101,
+    workflow_runs: Array.from({ length: 100 }, (_, index) => ({ id: index + 1 })),
+  };
+  const page2 = { total_count: 101, workflow_runs: [{ id: 101 }] };
+  const api = (_repo, _token, path) => {
+    calls.push(path);
+    return String(path).includes('page=2') ? page2 : page1;
+  };
+  const map = gate.fetchRunsByIdForHead('o/r', 't', 'abc', { api });
+  assert.equal(map.size, 101);
+  assert.equal(map.get('101').id, 101);
+  assert.deepEqual(calls, [
+    'actions/runs?head_sha=abc&per_page=100&page=1',
+    'actions/runs?head_sha=abc&per_page=100&page=2',
+  ]);
 });
 
 test('regression: a thrown attribution lookup is never reported as a forged trusted check', () => {
@@ -3754,4 +3779,80 @@ test('the trusted gate gives its API calls their own rate-limit budget, separate
   const main = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
   assert.match(main, /gateApiBudget\.budgetSeconds = Number\(process\.env\.MERGE_GATE_API_WAIT_SECONDS \?\? DEFAULT_API_WAIT_SECONDS\)/);
   assert.equal(gate.DEFAULT_API_WAIT_SECONDS, 600);
+});
+
+// #1907: the first merge-gate suite ran while the PR still targeted another base and failed. A newer suite of the
+// same workflow and job on the same head SHA, bound to this PR and main, passed. Only the newest attempt counts.
+const staleBaseGate = {
+  ...passCheckRuns[0],
+  id: 90,
+  conclusion: 'failure',
+  check_suite: { id: 190 },
+  details_url: 'https://github.com/example/repo/actions/runs/290/job/90',
+};
+const staleBaseWorkflow = {
+  ...mergeGateWorkflow,
+  id: 290,
+  checkSuiteId: 190,
+  pullRequests: [{ number: PR_NUMBER, base: 'old-base' }],
+};
+
+test('regression: #1907 newer bound success supersedes an older failed suite from before a retarget', () => {
+  for (const checkRuns of [
+    [staleBaseGate, ...passCheckRuns, analyzeCheck],
+    [...passCheckRuns, analyzeCheck, staleBaseGate],
+  ]) {
+    for (const workflowPatch of [{}, { pullRequests: [] }]) {
+      const result = evaluateTrustedGate({
+        checkRuns,
+        workflowsByCheckId: { ...passWorkflows, 90: { ...staleBaseWorkflow, ...workflowPatch } },
+        changedFiles: ['README.md'],
+        coreWorkflows,
+        currentRunId: CURRENT_RUN_ID,
+        ...prContext,
+      });
+      assert.deepEqual(result.failed, []);
+      assert.deepEqual(result.missingCore, []);
+      assert.equal(result.ok, true);
+    }
+  }
+  // The ordinary gate's shared collapse is unchanged unless the trusted gate opts in.
+  assert.ok(newestChecksByIdentity([staleBaseGate, passCheckRuns[0]], { ...passWorkflows, 90: staleBaseWorkflow }, prContext)
+    .includes(staleBaseGate));
+});
+
+for (const [reason, runPatch, workflowPatch] of [
+  ['the stale suite is newer', { check_suite: { id: 990 } }, { checkSuiteId: 990 }],
+  ['another head SHA', {}, { headSha: 'other-sha' }],
+  ['another workflow path', {}, { path: '.github/workflows/desktop-checks.yml' }],
+  ['another event', {}, { event: 'workflow_dispatch' }],
+  ['another app', { app: { id: 1 } }, {}],
+]) {
+  test(`regression: #1907 an unbound failure still fails the trusted gate when ${reason}`, () => {
+    const stale = { ...staleBaseGate, ...runPatch };
+    const result = evaluateTrustedGate({
+      checkRuns: [stale, ...passCheckRuns, analyzeCheck],
+      workflowsByCheckId: { ...passWorkflows, 90: { ...staleBaseWorkflow, ...workflowPatch } },
+      changedFiles: ['README.md'],
+      coreWorkflows,
+      currentRunId: CURRENT_RUN_ID,
+      ...prContext,
+    });
+    assert.equal(result.ok, false);
+    assert.ok(result.failed.includes(stale));
+  });
+}
+
+test('regression: #1907 a stale failure stays when the newer bound suite did not succeed', () => {
+  const newerFailed = { ...passCheckRuns[0], conclusion: 'failure' };
+  const result = evaluateTrustedGate({
+    checkRuns: [staleBaseGate, newerFailed, ...passCheckRuns.slice(1), analyzeCheck],
+    workflowsByCheckId: { ...passWorkflows, 90: staleBaseWorkflow },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.failed.includes(staleBaseGate));
 });

@@ -60,16 +60,18 @@ path.
   </Accordion>
 
   <Accordion title="Embedding provider switched or stopped working">
-    If `memory.search.provider` is unset, Branch Agent uses OpenAI embeddings. Set
-    `memory.search.provider` explicitly for Bedrock, DeepInfra, Gemini, GitHub
-    Copilot, LM Studio, local, Mistral, Ollama, Voyage, or OpenAI-compatible
-    embeddings. If the configured provider cannot run, `memory_search` may
-    degrade to lexical-only retrieval; runtime failures after a provider is
-    already selected do not fall back automatically.
+    If `memory.search.provider` is unset or `auto`, Branch Agent uses on-device
+    local embeddings. Set `memory.search.provider` explicitly for Bedrock,
+    DeepInfra, Gemini, GitHub Copilot, LM Studio, Mistral, Ollama, Voyage,
+    OpenAI, or OpenAI-compatible embeddings. A ChatGPT or OAuth login is not
+    enough. If the local provider cannot run, `memory_search` degrades to
+    keyword-only retrieval. Named remote providers fail closed instead of
+    silently falling back.
 
-    Set an optional `memory.search.fallback` only when you want a deliberate
-    single fallback. See [Memory Search](/concepts/memory-search) for the full
-    list of providers and examples.
+    Set an optional `memory.search.fallback` only when you also choose the main
+    provider yourself. Auto and unset ignore a paid backup. See
+    [Memory Search](/concepts/memory-search) for the full list of providers and
+    examples.
 
   </Accordion>
 

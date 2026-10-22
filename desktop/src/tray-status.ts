@@ -103,6 +103,8 @@ export function createClosedWindowNotifier(deps: ClosedWindowNotifierDeps): { ob
 
 export interface TrayActions {
   open(): void;
+  /** Opens the Control UI in the default browser, already signed in (#1932). */
+  openInBrowser?(): void;
   pauseAll?(): void;
   /** Quits the app only: with the engine service, the engine keeps working. */
   quit(): void;
@@ -116,6 +118,7 @@ export function trayMenu(state: EngineLiveState | undefined, actions: TrayAction
   const items: TrayMenuItem[] = [];
   if (state) items.push({ label: trayLabel(state), enabled: false }, { type: "separator" });
   items.push({ label: "Open Branch", click: actions.open });
+  if (actions.openInBrowser) items.push({ label: "Open in browser", click: actions.openInBrowser });
   if (actions.pauseAll) items.push({ label: "Pause all work", enabled: Boolean(state?.running && state.workingTrunks > 0), click: actions.pauseAll });
   items.push({ type: "separator" }, { label: "Quit Branch", click: actions.quit });
   if (actions.stopCompletely) items.push({ label: "Stop Branch completely", click: actions.stopCompletely });

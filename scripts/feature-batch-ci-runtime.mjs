@@ -147,7 +147,9 @@ export async function verifiedExceptionFlags(lane) {
     assert.match(policy, /^minimumReleaseAgeStrict: true$/m);
     retained = policy.split('minimumReleaseAgeExclude:')[1].split('\n\n')[0]
       .split('\n').map(line => line.match(/^  - "([^"]+)"/)?.[1]).filter(Boolean);
-    assert.equal(retained.length, 14, 'Review changed source exclusions before changing this gate');
+    // 16 = 14 reviewed + 2 temporary security exclusions from the markdown-it 15.0.3 advisory fix
+    // (markdown-it@15.0.3, argparse@3.0.3). Drop back to 14 once they age past minimumReleaseAge (after 2026-10-30).
+    assert.equal(retained.length, 16, 'Review changed source exclusions before changing this gate');
   }
   return [...new Set([...retained, ...targets.map(([name, version]) => `${name}@${version}`)])]
     .map(value => `--config.minimum-release-age-exclude=${value}`);

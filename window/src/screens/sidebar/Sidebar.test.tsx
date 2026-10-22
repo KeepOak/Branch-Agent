@@ -101,6 +101,26 @@ describe("R1 sidebar", () => {
     expect(host.querySelector('.r1sb-rw[data-kind="person"] .r1sb-more')).toBeNull();
   });
 
+  it("marks unread topics read when opening the row, without deleting conversations", async () => {
+    const responses = {
+      ...FULL,
+      "contacts.list": {
+        contacts: [
+          contact("trunk:sapling", "trunk", "Sapling", { isDefault: true, pinnedAt: 1 }),
+          contact("trunk:ledger", "trunk", "Ledger", { unreadTopics: 21, threadUnread: false }),
+        ],
+      },
+      "contacts.markRead": { updated: 21 },
+    };
+    const { render, request, props } = setup(responses);
+    await render();
+    expect(host.querySelector('.r1sb-row[aria-label^="Ledger"]')?.getAttribute("aria-label")).toMatch(/unread/);
+    await click(host.querySelector('.r1sb-row[aria-label^="Ledger"]'));
+    expect(props.onOpen).toHaveBeenCalledWith("agent:ledger:main");
+    expect(request).toHaveBeenCalledWith("contacts.markRead", { contactId: "trunk:ledger" });
+    expect(request.mock.calls.some(([method]) => method === "sessions.delete")).toBe(false);
+  });
+
   it("opens the row menu as the preview's list and pins through sessions.patch", async () => {
     const ledger = { key: "agent:ledger:main", title: "Ledger", agentId: "ledger", pinned: false, archived: false, unread: true, snoozedUntil: null, createdAt: 1, updatedAt: 10, preview: "", working: false, kind: "direct", system: false, automation: false, totalTokens: 0, contextTokens: 0 };
     const { render, request } = setup(FULL, true, { sessions: [ledger] as unknown as SidebarProps["sessions"] });

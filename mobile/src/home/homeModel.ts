@@ -32,7 +32,7 @@ export function laterUpdate(label: string): string {
   return `${label} comes in a later update.`;
 }
 
-export const LATER_HOME_ACTIONS = ['Talk', 'New Trunk', 'Scan', 'Automations', 'What’s left'] as const;
+export const LATER_HOME_ACTIONS = ['New Trunk', 'Automations', 'What’s left'] as const;
 export type LaterHomeAction = (typeof LATER_HOME_ACTIONS)[number];
 
 /** Trunk chats that are working right now. Rooms are left out, as in workingG18. */

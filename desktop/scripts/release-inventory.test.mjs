@@ -219,7 +219,9 @@ function simulatedGitHub(options = {}) {
       compares++;
       return options.leftMain && head === "main" && compares > 1 ? "diverged" : compare(options.source ?? base, head);
     }
-    if (args[0] === "api" && args[1].endsWith("/releases")) return JSON.stringify([options.existing ? [{ tag_name: `v${version}` }] : []]);
+    if (args[0] === "api" && args[1].endsWith("/releases")) {
+      return JSON.stringify([options.existing ? [{ tag_name: `v${version}`, target_commitish: options.existingCommit ?? commit }] : []]);
+    }
     if (args[0] === "api" && args[1].endsWith("/releases/latest")) {
       if (published) return JSON.stringify({ draft: false, prerelease: false, target_commitish: commit, tag_name: `v${version}` });
       if (!options.latest) throw notFound();
@@ -254,8 +256,18 @@ test("publication of a main commit proceeds while main advances, replacing an ol
   assert(remote.calls.find(args => args[1] === "edit").includes("--latest"));
 }));
 
+test("publication skips an existing release for the same source commit", () => fixture(async ({ assets }) => {
+  const remote = simulatedGitHub({ existing: true });
+  const result = await publishRelease(assets, commit, version, remote.request);
+  assert.equal(result.skipped, true);
+  assert.match(result.reason, /already exists; skipping publish/);
+  assert.equal(result.tag, `v${version}`);
+  assert.equal(result.commit, commit);
+  assert(!remote.calls.some(args => args[1] === "create" || args[1] === "edit"));
+}));
+
 for (const [label, options, expected] of [
-  ["existing immutable release", { existing: true }, /immutable/],
+  ["existing release for a different commit", { existing: true, existingCommit: "d".repeat(40), tagSha: "d".repeat(40) }, /different source/],
   ["wrong immutable tag", { tagSha: "d".repeat(40) }, /different source/],
   ["corrupted uploaded bytes", { corrupt: true }, /readback differs/],
   ["a source that is not on main", { source: "b".repeat(40) }, /not a commit on main/],
