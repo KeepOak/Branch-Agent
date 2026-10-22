@@ -30,16 +30,16 @@ irm https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.ps1
 
 The scripts install for the current user with no sudo or admin prompt. They check the download's SHA-256 against the release's `SHA256SUMS` before installing and stop on a mismatch. For a specific release, run `... | sh -s -- --version v1.2.3`, or on Windows set `$env:BRANCH_INSTALL_VERSION = 'v1.2.3'` first. Re-running upgrades in place. On Linux the script installs the release's AppImage as `~/.local/bin/branch-agent` with an app-menu entry. Details are in [desktop/INSTALLERS.md](desktop/INSTALLERS.md).
 
-Alternatively, download the installer from the [latest release](https://github.com/KeepOak/Branch-Agent/releases/latest). It isn't signed yet, so macOS needs right-click → Open on first launch, Windows SmartScreen needs More info → Run anyway, and Linux needs `chmod +x` on the AppImage plus FUSE so it can mount; the sandbox may ask for a password once.
+Alternatively, download the installer from the [latest release](https://github.com/KeepOak/Branch-Agent/releases/latest). The Linux Download link is a .deb for Debian and Ubuntu (`sudo apt install ./Branch-Linux.deb`); the one-line install and in-app updates use the AppImage. To run the AppImage directly, use `chmod +x` and install FUSE so it can mount; the sandbox may ask for a password once. The installers aren't signed yet, so macOS needs right-click → Open on first launch and Windows SmartScreen needs More info → Run anyway.
 
 ## Requirements
 
 The downloaded app is enough to install. You do not need Node.js, pnpm or Git.
 
-- **Computers it runs on:** an Apple silicon Mac, 64-bit Windows 10 or later, or 64-bit Linux. There is no Intel Mac build yet. Windows and Linux builds are x64 only. The Linux package is an AppImage for any distro.
+- **Computers it runs on:** an Apple silicon Mac, 64-bit Windows 10 or later, or 64-bit Linux. There is no Intel Mac build yet. Windows and Linux builds are x64 only. The Linux Download link is a .deb for Debian and Ubuntu; the one-line install and in-app updates use the AppImage for other Linux distributions too.
 - **Hardware and disk:** this repository does not publish a RAM or disk minimum. The first time you open the app it downloads the engine and window, so you need an internet connection and free space for those packages.
 - **Accounts:** you can install without signing in. Replies use a model account or subscription you connect, or a free local model when this computer can run one. Connecting an account is suggested, not required, to install.
-- **Other software:** the app already includes the runtime it needs (a bundled Node). The one-line install needs `curl` on a Mac or Linux, or PowerShell on Windows. Linux needs FUSE so the AppImage can mount, and the sandbox may ask for a password once.
+- **Other software:** the app already includes the runtime it needs (a bundled Node). The one-line install needs `curl` on a Mac or Linux, or PowerShell on Windows. The Linux AppImage needs FUSE so it can mount, and the sandbox may ask for a password once.
 
 To build from this repository, see [Build from source](#build-from-source).
 
