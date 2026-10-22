@@ -15,7 +15,7 @@ export function ConnectModelNotice({ onOpen, onRetry, className }: {
     <div className={className} data-testid="connect-model">
       <p>{CONNECT_MODEL_ANSWERS}</p>
       <div className="connect-model-acts">
-        <button type="button" className="btn pri sm" onClick={go}>{CONNECT_MODEL_ACTION}</button>
+        <button type="button" className="btn pri sm" data-solid="" style={{ background: "var(--btn)", borderColor: "var(--btn)", color: "var(--on-btn)" }} onClick={go}>{CONNECT_MODEL_ACTION}</button>
         {onRetry ? <button type="button" className="r1c-undo" onClick={onRetry}>Try again</button> : null}
       </div>
     </div>
