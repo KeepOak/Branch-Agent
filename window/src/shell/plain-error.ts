@@ -27,6 +27,7 @@ export const PLAIN_FAILURE = "That didn’t work. Try again.";
 
 /** Error classes, codes and engine sentences, each with the plain sentence a person reads instead. First match wins. */
 const SAYS: [RegExp, string][] = [
+  [/Gateway is only bound to loopback|PAIRING_GATEWAY_LOOPBACK/i, "Your phone can't reach this computer yet."],
   [/\bunknown method\b|\bmethod not found\b/i, "This part of Branch isn’t ready on this computer yet. Update Branch, then try again."],
   [/\bunknown agent id\b|\bagent not found\b|\bno such agent\b/i, "That Trunk isn’t on this computer. Choose another Trunk."],
   [/\bNo API key found\b|\bno (?:model|provider) (?:is )?(?:connected|configured|set)\b|\bmodel_not_found\b|\bno auth profile\b|\bMissing(?:ApiKey|Credentials)\b/i, "No model is connected. Connect one in Settings, Models, then try again."],
@@ -41,6 +42,7 @@ const SAYS: [RegExp, string][] = [
 ];
 
 const RAW: RegExp[] = [
+  /Gateway is only bound to loopback/i, // a pairing route refusal
   /\n\s*at\s+\S|\bat\s+[\w$.<>]+\s+\([^)]*:\d+:\d+\)/, // a stack
   /\b[A-Z][A-Za-z]*(?:Error|Exception)\b/, // an error class
   /^\s*(?:Uncaught\s+)?Error\b\s*:/,

@@ -17,14 +17,6 @@ const ACCESS: { id: Access; name: string; line: string }[] = [
 ];
 type Code = { setupId: string; setupCode: string; confirmCode: string; qr: string; joinUrl: string; expiresAtMs: number | null; downgraded: boolean };
 
-function pairError(value: unknown): string {
-  const text = errorText(value);
-  if (/Gateway is only bound to loopback|PAIRING_GATEWAY_LOOPBACK|restart the Gateway/i.test(text)) {
-    return "Couldn’t make a pairing link. Try again.";
-  }
-  return plainError(value);
-}
-
 // TODO(engine-lane): before the code, the artifact asks "Let your phone reach Branch?" when the Gateway only listens on
 // this computer ("The Gateway only listens on this computer now.", buttons Not now / Tailscale / My network). Choosing
 // one changes where the Gateway listens (gateway.bind / Tailscale), which the engine lane adds; draw that dialog here,
@@ -43,13 +35,13 @@ export function PairDialog({ engine, close }: { engine: WindowEngine; close: () 
       const setupCode = str(r.setupCode);
       const confirm = str(r.confirmCode) || pairingConfirmCode(setupId || setupCode);
       setCode({ setupId, setupCode, confirmCode: confirm, qr: str(r.qrDataUrl), joinUrl: str(r.joinUrl), expiresAtMs: typeof r.expiresAtMs === "number" ? r.expiresAtMs : null, downgraded: r.accessDowngraded === true });
-    } catch (e) { setError(pairError(e)); }
+    } catch (e) { setError(errorText(e)); }
     finally { setBusy(false); }
   };
   usePairStatus(engine, code?.setupId ?? "", paired === null, setPaired);
   return <Dialog title="Pair a phone" onClose={close} testid="pair"
     footer={code ? <><button type="button" className="btn ghost" disabled={busy} onClick={() => void make()}>Make a new code</button><button type="button" className="btn pri" onClick={close}>Done</button></>
-      : <><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn pri" disabled={busy} onClick={() => void make()}>Make the code</button></>}>
+      : <><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn pri" disabled={busy} onClick={() => void make()}>{error ? "Try again" : "Make the code"}</button></>}>
     {!code ? <div className="cz-radios" role="radiogroup" aria-label="What it may do"><b>What it may do</b>{ACCESS.map(a => <label key={a.id} className="cz-radio"><input type="radio" name="pair-access" checked={access === a.id} onChange={() => setAccess(a.id)} /><span><b>{a.name}</b><small>{a.line}</small></span></label>)}</div>
       : <div className="cz-pair">
         {code.qr && <img src={code.qr} alt="Pairing code" width={180} height={180} />}
