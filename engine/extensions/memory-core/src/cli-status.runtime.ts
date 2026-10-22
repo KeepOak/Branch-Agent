@@ -204,13 +204,17 @@ export const MEMORY_STATUS_AGENT_TIMEOUT_MS = 30_000;
 
 class MemoryStatusAgentTimeoutError extends Error {}
 
+/** How long a timed-out agent's manager may take to close before the command moves on. */
+export const MEMORY_STATUS_CLOSE_GRACE_MS = 2_000;
+
 async function withAgentStatusTimeout<T>(
   agentId: string,
   timeoutMs: number,
-  task: () => Promise<T>,
+  task: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const pending = task();
+  const controller = new AbortController();
+  const pending = task(controller.signal);
   // The abandoned task may still settle after the deadline; never surface it as unhandled.
   pending.catch(() => {});
   try {
@@ -218,6 +222,8 @@ async function withAgentStatusTimeout<T>(
       pending,
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
+          // Stop the abandoned task from starting any further steps.
+          controller.abort();
           reject(
             new MemoryStatusAgentTimeoutError(
               `memory status timed out for agent "${agentId}" after ${timeoutMs / 1000} seconds. Retry with --agent ${agentId}; if it keeps timing out, stop other Branch Agent processes using this agent's database and check storage performance.`,
@@ -498,7 +504,7 @@ function renderMemoryStatusResult(
 export async function runMemoryStatus(
   opts: MemoryCommandOptions,
   hostOptions?: MemoryCoreRuntimeHost,
-  statusOptions?: { agentTimeoutMs?: number },
+  statusOptions?: { agentTimeoutMs?: number; closeGraceMs?: number },
 ) {
   setVerbose(Boolean(opts.verbose));
   const runtimeConfig = getRuntimeConfig({ skipPluginValidation: true });
@@ -509,6 +515,7 @@ export async function runMemoryStatus(
   }
   const deep = Boolean(opts.deep || opts.index);
   const allResults: Array<MemoryStatusResult | MemoryStatusFailure> = [];
+  const timedOutAgents = new Set<string>();
   // Index and fix runs do real work and keep their own progress; only read-only status is capped.
   const timeoutMs =
     opts.index || opts.fix
@@ -522,8 +529,12 @@ export async function runMemoryStatus(
     purpose: opts.index || opts.fix ? "cli" : "status",
     inspectSources: true,
     ...hostOptions,
+    closeTimeoutMsFor: (agentId) =>
+      timedOutAgents.has(agentId)
+        ? (statusOptions?.closeGraceMs ?? MEMORY_STATUS_CLOSE_GRACE_MS)
+        : undefined,
     run: async ({ manager, agentId, cfg: agentCfg }) => {
-      const collect = async (): Promise<MemoryStatusResult> => {
+      const collect = async (signal?: AbortSignal): Promise<MemoryStatusResult> => {
         let embeddingProbe: MemoryEmbeddingProbeResult | undefined;
         let indexError: string | undefined;
         const syncFn = manager.sync ? manager.sync.bind(manager) : undefined;
@@ -586,8 +597,10 @@ export async function runMemoryStatus(
             defaultRuntime.log("Memory backend does not support manual reindex.");
           }
         }
+        signal?.throwIfAborted();
         const status = manager.status();
         const scan = await scanMemoryManagerSources(status);
+        signal?.throwIfAborted();
         const workspaceDir = status.workspaceDir;
         let audit: ShortTermAuditSummary | undefined;
         let repair: RepairShortTermPromotionArtifactsResult | undefined;
@@ -621,11 +634,12 @@ export async function runMemoryStatus(
         result =
           timeoutMs === undefined
             ? await collect()
-            : await withAgentStatusTimeout(agentId, timeoutMs, collect);
+            : await withAgentStatusTimeout(agentId, timeoutMs, (signal) => collect(signal));
       } catch (err) {
         if (!(err instanceof MemoryStatusAgentTimeoutError)) {
           throw err;
         }
+        timedOutAgents.add(agentId);
         const error = err.message;
         defaultRuntime.error(error);
         process.exitCode = 1;
