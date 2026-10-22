@@ -2,7 +2,7 @@ import { PHONE_PREFS_DEFAULT, clonePhonePrefs, type PhonePrefs } from '../settin
 import { lendNotice, lentAbilities, stopLending } from './lendService';
 
 function prefs(patch: Partial<PhonePrefs> = {}): PhonePrefs {
-  return { ...clonePhonePrefs(PHONE_PREFS_DEFAULT), ...patch };
+  return { ...clonePhonePrefs(PHONE_PREFS_DEFAULT), lendOn: true, lend: { ...PHONE_PREFS_DEFAULT.lend, cam: true }, ...patch };
 }
 
 describe('lending notification', () => {

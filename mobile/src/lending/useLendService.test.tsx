@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react-native';
-import { PHONE_PREFS_DEFAULT, PHONE_PREFS_KEY, clonePhonePrefs, resetLivePhonePrefs, type PhonePrefs } from '../settings/phonePrefs';
+import { PHONE_PREFS_DEFAULT, PHONE_PREFS_KEY, clonePhonePrefs, resetLivePhonePrefs, setLivePhonePrefs, type PhonePrefs } from '../settings/phonePrefs';
 import { memoryStore } from '../storage/keyValueStore';
 import { useLendService } from './useLendService';
 
@@ -21,7 +21,7 @@ jest.mock('./native', () => ({
   }),
 }));
 
-const lent = (): PhonePrefs => clonePhonePrefs(PHONE_PREFS_DEFAULT);
+const lent = (): PhonePrefs => ({ ...clonePhonePrefs(PHONE_PREFS_DEFAULT), lendOn: true, lend: { ...PHONE_PREFS_DEFAULT.lend, cam: true } });
 
 describe('useLendService', () => {
   afterEach(() => {
@@ -56,6 +56,7 @@ describe('useLendService', () => {
   });
 
   it('turns lending off when Stop is tapped on the notification', async () => {
+    setLivePhonePrefs(lent());
     const store = memoryStore();
     const { unmount } = await renderHook(() => useLendService({ paired: true, online: true, prefs: lent(), store }));
     expect(stopListener).toBeDefined();
@@ -64,7 +65,7 @@ describe('useLendService', () => {
     });
     const saved = JSON.parse((await store.get(PHONE_PREFS_KEY)) ?? '{}') as PhonePrefs;
     expect(saved.lendOn).toBe(false);
-    expect(saved.lend).toEqual(PHONE_PREFS_DEFAULT.lend);
+    expect(saved.lend).toEqual(lent().lend);
     unmount();
   });
 
