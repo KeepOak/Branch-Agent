@@ -226,13 +226,13 @@ describe("setup flow", () => {
     } as unknown as SaplingSession;
     const host = await show(<WindowShell session={session} url="ws://127.0.0.1:19661" />);
     await act(async () => new Promise((r) => setTimeout(r, 750)));
-    expect(host.querySelector("h2")?.textContent).toBe("Hi, I’m Branch.");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Hi, I’m Branch.");
     await act(async () => tid(host, "setup-next").click());
     await act(async () => byText(host, "install a model on this computer").click());
     expect(host.textContent).toContain("Models that run here, free and private.");
     expect(host.querySelector('[data-testid="setup"]')).toBeNull();
     await act(async () => host.querySelector<HTMLButtonElement>(".set-back")!.click());
-    expect(host.querySelector("h2")?.textContent).toBe(hasTrunk ? undefined : "Create your first Trunk");
+    expect(host.querySelector("h1, h2")?.textContent).toBe(hasTrunk ? undefined : "Create your first Trunk");
   });
   it("opens Welcome on a fresh connection even after pre-connect choices", async () => {
     sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
@@ -277,12 +277,12 @@ describe("setup flow", () => {
   it("keeps a zero-Trunk reopen on first-Trunk creation after config prefill", async () => {
     const { engine: e } = engine({ "config.get": { hash: "h", config: { wizard: { lastRunAt: "x", securityAcknowledgedAt: "x", lastRunMode: "local" }, agents: { defaults: { model: "openai/gpt" } } } } });
     const host = await show(<SetupFlow engine={e} version="1" trunkNames={[]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={4} onClose={() => {}} onLocalModel={() => {}} />);
-    expect(host.querySelector("h2")?.textContent).toBe("Create your first Trunk");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Create your first Trunk");
   });
   it("keeps an explicitly requested fresh opening on Welcome", async () => {
     const { engine: e } = engine({ "config.get": { hash: "h", config: { wizard: { lastRunAt: "x", lastRunMode: "local", securityAcknowledgedAt: "x" } } } });
     const host = await show(<SetupFlow engine={e} version="1" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={0} onClose={() => {}} onLocalModel={() => {}} />);
-    expect(host.querySelector("h2")?.textContent).toBe("Hi, I’m Branch.");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Hi, I’m Branch.");
   });
   it("does not reopen Welcome after a quick Skip and retries a zero-Trunk reopen after an overlay", async () => {
     const fresh = { request: vi.fn(async () => ({ config: {} })) } as unknown as SaplingSession;
@@ -321,7 +321,7 @@ describe("setup flow", () => {
   it("Make it yours says Full access does not include the screen switch", async () => {
     const { engine: e } = engine({});
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={3} onClose={() => {}} onLocalModel={() => {}} />);
-    expect(host.querySelector("h2")?.textContent).toBe("Make it yours");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Make it yours");
     expect(host.textContent).toContain("Full access");
     expect(host.textContent).toContain("Seeing the screen and using the mouse is a separate switch in Settings › Computer & browser");
   });
@@ -333,7 +333,7 @@ describe("setup flow", () => {
     expect(tid(host, "setup-skip")?.textContent).toBe("Set up later");
     expect(host.querySelector('input[type="checkbox"]')).toBeNull();
     await act(async () => tid(host, "setup-next").click());
-    expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Which models should answer?");
   });
   it("visits steps 2–4 before first-contact creation, then allows Back and Skip", async () => {
     const { engine: e, request } = engine({ "config.get": { hash: "h", config: {} }, "config.patch": { ok: true }, "agents.create": { ok: true, agentId: "branch-agent" }, "agents.list": { agents: [{ id: "branch-agent", name: "Branch Agent" }] } });
@@ -341,10 +341,10 @@ describe("setup flow", () => {
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={[]} defaultAgentId="bootstrap" defaultName="Branch" onClose={closed} onLocalModel={() => {}} />);
     for (const heading of ["Which models should answer?", "Make it yours", "Create your first Trunk"]) {
       await act(async () => tid(host, "setup-next").click());
-      expect(host.querySelector("h2")?.textContent).toBe(heading);
+      expect(host.querySelector("h1, h2")?.textContent).toBe(heading);
     }
     await act(async () => byText(host, "Back").click());
-    expect(host.querySelector("h2")?.textContent).toBe("Make it yours");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Make it yours");
     await act(async () => tid(host, "setup-next").click());
     await act(async () => tid(host, "setup-skip").click());
     expect(closed).toHaveBeenCalledWith(false);
@@ -357,7 +357,7 @@ describe("setup flow", () => {
     const closed = vi.fn();
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={[]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={2} onClose={closed} onLocalModel={() => {}} />);
     await act(async () => tid(host, "setup-skip").click());
-    expect(host.querySelector("h2")?.textContent).toBe("Create your first Trunk");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Create your first Trunk");
     expect(closed).not.toHaveBeenCalled();
     expect(params(request, "config.patch")).toHaveLength(0);
   });
@@ -383,7 +383,7 @@ describe("setup flow", () => {
   it("shows an existing default Trunk without creating a duplicate", async () => {
     const { engine: e, request } = engine({});
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["C3-PO"]} defaultAgentId="c3po" defaultName="C3-PO" startAt={4} onClose={() => {}} onLocalModel={() => {}} />);
-    expect(host.querySelector("h2")?.textContent).toBe("Your first Trunks");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Your first Trunks");
     expect(host.textContent).not.toContain("Create your first Trunk");
     expect(host.querySelector(".ob-default-trunk")?.textContent).toContain("C3-PO");
     await act(async () => byText(host, "Edit").click());
@@ -483,7 +483,7 @@ describe("setup flow", () => {
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     const fix = [...host.querySelectorAll<HTMLButtonElement>('[data-testid="setup-checks"] button')].find((b) => b.textContent === "Fix it")!;
     await act(async () => fix.click());
-    expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Which models should answer?");
     expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
   });
   it("does not put gateway diagnostics into setup's health copy", async () => {
@@ -516,10 +516,10 @@ describe("setup flow", () => {
     const closed = vi.fn();
     const host = await show(<SetupFlow engine={e} version="1" trunkNames={[]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={3} onTalk={onTalk} onClose={closed} onLocalModel={() => {}} />);
     await act(async () => tid(host, "setup-talk").click());
-    expect(host.querySelector("h2")).toBeNull();
+    expect(host.querySelector("h1, h2")).toBeNull();
     const handle = onTalk.mock.calls.find(([value]) => value)?.[0] as TalkHandle;
     await act(async () => handle.finish());
-    expect(host.querySelector("h2")?.textContent).toBe("Create your first Trunk");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Create your first Trunk");
     expect(closed).not.toHaveBeenCalled();
     const input = host.querySelector("input")!;
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Fern"); input.dispatchEvent(new Event("input", { bubbles: true })); });
@@ -530,7 +530,7 @@ describe("setup flow", () => {
     expect(closed).toHaveBeenCalledWith(true);
     expect(onTalk).toHaveBeenLastCalledWith(null);
     expect(params(request, "config.patch").some((patch) => Boolean(JSON.parse(String(patch.raw)).wizard?.lastRunAt))).toBe(true);
-    expect(host.querySelector("h2")).not.toBeNull();
+    expect(host.querySelector("h1, h2")).not.toBeNull();
   });
   it("writes the same Install updates setting as Updates & about", async () => {
     const { engine: e, request } = engine({ "config.get": { hash: "h", config: { update: { checkOnStart: false } } }, "config.patch": { ok: true } });
@@ -608,7 +608,7 @@ describe("setup flow", () => {
     const { engine: e } = engine({ "config.get": { hash: "h", config: { wizard: { securityAcknowledgedAt: "x", lastRunAt: "x" }, agents: { defaults: { model: { primary: "openai/gpt" } } } } } });
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
     await act(async () => new Promise((r) => setTimeout(r, 0)));
-    expect(host.querySelector("h2")?.textContent).toBe("Make it yours");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Make it yours");
     const rail = [...host.querySelectorAll(".ob-rail li")].map((li) => li.className);
     expect(rail.slice(0, 4)).toEqual(["done", "done", "done", "now"]);
     await act(async () => host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")[2].click());

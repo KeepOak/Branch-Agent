@@ -50,6 +50,8 @@ export const WHERE_PLACES = [
 export const whereWord = (w: Where) => (w === "remote" ? "another computer" : w === "keepoak" ? "a KeepOak computer" : "this computer");
 export const SETUP_LATER_TOAST = "Set up later: the steps are in “Finish setting up” on Overview and in the Guide.";
 export const SETUP_LATER_KEY = "branch.setupLater";
+/** Set by Welcome's "Set up by talking" before the window connects; setup starts that conversation once it can. */
+export const SETUP_TALK_KEY = "branch.setupTalk";
 
 /** The six starting jobs (§4.8.1.5, the job list in §4.6.6). Colours live on the shared job tiles. */
 export const JOBS = STARTING_JOBS.map((job) => ({ name: job.name, line: job.description, colour: job.color }));

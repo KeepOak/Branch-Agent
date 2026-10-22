@@ -22,14 +22,10 @@ export function SetupBrand() {
 }
 
 export function WelcomeHero() {
+  // The preview's Welcome tile (.obMarkP37): the KeepOak app icon, a dark-green tile with the cream leaf, in both themes.
   return (
     <div className="ob-hero" aria-hidden="true" data-testid="setup-welcome-mark">
-      <span className="ob-mark">
-        <img className="ob-mark-colour" src="/keepoak-mark.svg" alt="" draggable={false} />
-        <span className="ob-mark-ink">
-          <KeeperMark size={60} />
-        </span>
-      </span>
+      <span className="ob-mark" />
     </div>
   );
 }

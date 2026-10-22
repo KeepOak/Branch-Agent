@@ -88,21 +88,16 @@
   width: 88px;
   height: 88px;
   border-radius: 22.5%;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  background: var(--raise);
-  box-shadow: 0 14px 36px color-mix(in srgb, var(--leaf) 45%, transparent), inset 0 0 0 0.5px var(--gw-edge);
+  background: url(/keepoak-app-icon-512.png) center/cover no-repeat;
+  box-shadow: 0 14px 36px rgba(21, 58, 40, 0.28), inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
 }
-.ob-mark-colour {
-  width: 64px;
-  height: 64px;
+/* The rail layout's .ob-body > p rules (max-width, bottom margin, the pose gutter) don't apply on the card. */
+.ob-p37 .ob-body > p {
+  margin: 0;
+  max-width: none;
+  padding-right: 0;
 }
-.ob-mark-ink {
-  display: none;
-  color: var(--ink);
-}
-.ob-promise {
+.ob-p37 .ob-body > p.ob-promise {
   margin: 4px auto 0;
   display: flex;
   align-items: center;
@@ -110,6 +105,7 @@
   padding: 12px 16px;
   border-radius: 16px;
   max-width: 420px;
+  box-sizing: border-box;
   font-size: 14px;
   background: var(--gw-chip);
   box-shadow: inset 0 0 0 0.5px var(--gw-edge), inset 0 1px 0 var(--gw-hi);
@@ -153,6 +149,11 @@
 }
 .ob-later .link {
   color: var(--ink-3);
+}
+/* Set up by talking is a live link on the card, never drawn as Coming (preview .obLaterRowP37). */
+.ob-later .link:not(:disabled) {
+  opacity: 1;
+  cursor: pointer;
 }
 .ob-mode {
   display: flex;
@@ -237,30 +238,10 @@
   font-size: 12.5px;
   color: var(--ink-3);
 }
-:root[data-theme="dark"] .ob-mark {
-  background: color-mix(in srgb, var(--ink) 8%, var(--bg));
-  box-shadow: 0 14px 36px color-mix(in srgb, var(--mask-opaque) 40%, transparent), inset 0 0 0 1px var(--gw-edge);
-}
-:root[data-theme="dark"] .ob-mark-colour {
-  display: none;
-}
-:root[data-theme="dark"] .ob-mark-ink {
-  display: grid;
-}
 :root[data-theme="dark"] .ob-p37 small {
   color: var(--ink-2);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .ob-mark {
-    background: color-mix(in srgb, var(--ink) 8%, var(--bg));
-    box-shadow: 0 14px 36px color-mix(in srgb, var(--mask-opaque) 40%, transparent), inset 0 0 0 1px var(--gw-edge);
-  }
-  :root:not([data-theme="light"]) .ob-mark-colour {
-    display: none;
-  }
-  :root:not([data-theme="light"]) .ob-mark-ink {
-    display: grid;
-  }
   :root:not([data-theme="light"]) .ob-p37 small {
     color: var(--ink-2);
   }
