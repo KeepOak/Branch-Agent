@@ -47,4 +47,30 @@ describe("Mac driver broker client", () => {
       await new Promise<void>(resolve => server.close(() => resolve()));
     }
   }, 10_000);
+
+  it("explains on stderr why it exits 1 when the broker is unreachable (#1948)", async () => {
+    const server = createServer();
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("broker did not bind");
+    }
+    // Free the port so the helper's connection is refused.
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+    const child = spawn(process.execPath, ["-e", MAC_BROKER_CLIENT], {
+      env: { ...process.env, BRANCH_CUA_BROKER_PORT: String(address.port), BRANCH_CUA_BROKER_SECRET: "b".repeat(64) },
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stderr = "";
+    child.stderr!.on("data", chunk => { stderr += chunk.toString(); });
+    const [code] = await once(child, "close");
+    expect(code).toBe(1);
+    expect(stderr).toContain("branch cua broker: broker connection failed: ECONNREFUSED");
+  }, 10_000);
 });
