@@ -63,8 +63,14 @@ const UNATTENDED_TRIGGERS = new Set(["cron", "heartbeat", "memory", "overflow"])
 export function canAskCodexDownload(params: {
   trigger?: string;
   messageChannel?: string;
+  gatewayClientMode?: string;
 }): boolean {
   if (params.trigger && UNATTENDED_TRIGGERS.has(params.trigger)) {
+    return false;
+  }
+  // `branch-engine agent -m` reaches the gateway on the internal channel too,
+  // but a terminal has no Yes button: only window clients can answer.
+  if (params.gatewayClientMode?.trim().toLowerCase() === "cli") {
     return false;
   }
   return params.messageChannel?.trim().toLowerCase() === "webchat";
