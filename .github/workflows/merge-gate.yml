@@ -22,6 +22,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      actions: read
     runs-on: ubuntu-latest
     # Leave room for coverage checks after the bounded 10-minute rate-limit wait.
     timeout-minutes: 15
@@ -39,31 +40,56 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Skip heavy steps on a body-only edit
+        # A title/body edit (bots paste verdict markers) keeps the head SHA. When another run of this
+        # workflow on the same SHA succeeded or is still going, only the body checks below rerun; the
+        # rest repeats work already done on this exact tree. A base-branch change, a failed or
+        # cancelled earlier run, or any API error runs everything (skip stays unset).
+        id: debounce
+        if: github.event.action == 'edited' && !github.event.changes.base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_GATE_ACTION: edited
+        run: node scripts/merge-gate-rate-limit.mjs skip-edited || true
       - name: Test the coverage check
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/changed-test-coverage.test.mjs
       - name: Test the trusted merge-gate helper
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/merge-gate-trusted.test.mjs
       - name: Test the event-driven gate recheck planner
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/merge-gate-recheck.test.mjs
       - name: Test the local PR preflight
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/pr-preflight.test.mjs
       - name: Test the pre-push named-test check
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/check-named-tests.test.mjs
       - name: Test the rate-limit wait helper
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
       - name: Test the core API budget logger
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/github-api-budget.test.mjs
       - name: Test the release-freshness decision
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/release-freshness.test.mjs
       - name: Require every changed test to run in CI
+        if: steps.debounce.outputs.skip != 'true'
         run: node scripts/changed-test-coverage.mjs
       - name: Check merge command patterns in documentation
+        if: steps.debounce.outputs.skip != 'true'
         run: node scripts/check-merge-command.mjs
       - name: Guard COPIED.csv and harvest lists
+        if: steps.debounce.outputs.skip != 'true'
         run: |
           node --test scripts/check-copied-csv.test.mjs scripts/feature-batch-ci-shard.test.mjs
           node scripts/check-copied-csv.mjs
       - name: Test UI screenshot proof check
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/check-ui-proof.test.mjs
       - name: Read the pull request once for the body checks
         # One live read for both checks below (each used to read the body itself). Fails closed on error.
@@ -82,6 +108,7 @@ jobs:
           PR_SNAPSHOT_FILE: ${{ runner.temp }}/pr-snapshot.json
         run: node scripts/check-ui-proof.mjs
       - name: Test the SELF-CHECK block check
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/check-self-check.test.mjs
       - name: Require a SELF-CHECK block on trunk/ pull requests
         env:
@@ -91,8 +118,10 @@ jobs:
           PR_SNAPSHOT_FILE: ${{ runner.temp }}/pr-snapshot.json
         run: node scripts/check-self-check.mjs
       - name: Test the window cleanliness check
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/check-window-clean.test.mjs
       - name: Fail new window cleanliness violations
+        if: steps.debounce.outputs.skip != 'true'
         run: node scripts/check-window-clean.mjs
 
   merge-gate:
@@ -118,7 +147,8 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-          MERGE_GATE_ACTION: ${{ github.event.action }}
+          # A base-branch change is a real change: never treat it as a skippable edit.
+          MERGE_GATE_ACTION: ${{ (github.event.action == 'edited' && github.event.changes.base) && 'edited-base' || github.event.action }}
         run: |
           set -euo pipefail
           gh() {
