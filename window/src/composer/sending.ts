@@ -1,6 +1,8 @@
 // What Send does with the draft (DESIGN-SPEC §4.3.1 Interactions and "Sending while it works").
 import { toChatAttachments, type DraftFile } from "./attachments";
+import { CONNECT_MODEL_ANSWERS } from "./connect-model";
 import type { SendExtras } from "./engine";
+import { FREE_MODEL_READY } from "./no-key-default";
 import { commandWord } from "./slash";
 import type { Person } from "./DockRow";
 import { mentionsIn } from "./useDraft";
@@ -34,6 +36,26 @@ export function planSend(text: string, hasFiles: boolean, working: boolean, queu
 export function sendTooltip(queueMode: string): string {
   if (queueMode === "interrupt") return "Send";
   return queueMode === "steer" || queueMode === "" ? "Enter: steer it now · Ctrl Enter: wait in line" : "Enter: wait in line · Ctrl Enter: steer it now";
+}
+
+export const STILL_LOADING_MODELS = "Still loading models. Try again in a moment.";
+export const BRANCH_RECONNECTING = "Offline: Branch is reconnecting.";
+
+/** Why Enter or Send cannot go. Null when send can go. Never drop a press in silence. */
+export function sendHoldReason(input: {
+  offline?: boolean;
+  loadingModels?: boolean;
+  preparing?: boolean;
+  noKeyError?: string | null;
+  waitingForFreeModel?: boolean;
+  noModel?: boolean;
+}): string | null {
+  if (input.offline) return BRANCH_RECONNECTING;
+  if (input.preparing || input.loadingModels) return STILL_LOADING_MODELS;
+  if (input.noKeyError) return input.noKeyError;
+  if (input.waitingForFreeModel) return FREE_MODEL_READY;
+  if (input.noModel) return CONNECT_MODEL_ANSWERS;
+  return null;
 }
 
 /** Words to keep on screen the moment Send is pressed in an empty conversation (preview send()). */
