@@ -6,6 +6,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
+import { KitProvider } from "../../../places/settings/kit";
+import { SelfPage } from "../../../places/settings/set2/self";
 import { HISTORY_ROWS } from "./history";
 import { DataFolder, EveryChange } from "./history-live";
 
@@ -50,6 +52,24 @@ const reasonOf = (el: Element | undefined) => {
 };
 
 describe("History & backups: Roll back and Move… say why in a visible line", () => {
+  it("Classic Move names its visible later-update reason through aria-describedby", async () => {
+    await act(async () => root.render(
+      <KitProvider level={2} report={{ saving: () => undefined, saved: () => undefined, failed: () => undefined }} scope={null}>
+        <SelfPage page="self" title="About Branch" level="technical" engine={engineStub()} />
+      </KitProvider>,
+    ));
+    await settle();
+    const moves = buttons("Move…");
+    expect(moves).toHaveLength(1);
+    const [move] = moves;
+    expect(move.disabled).toBe(true);
+    expect(move.hasAttribute("title")).toBe(false);
+    expect(reasonOf(move)).toBe("Moving your data folder comes in a later update.");
+    const line = document.getElementById(move.getAttribute("aria-describedby")!);
+    expect(line?.classList.contains("why-k")).toBe(true);
+    expect(move.closest('[data-row="Where your data lives"]')?.contains(line)).toBe(true);
+  });
+
   it("Every change shows one reason line for the list, named by each greyed Roll back", async () => {
     await act(async () => root.render(<EveryChange engine={engineStub()} row={row("history.undo.changes")} />));
     await settle();

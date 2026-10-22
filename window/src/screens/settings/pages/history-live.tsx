@@ -12,7 +12,7 @@ import { useConfig } from "../../../places/settings/kit";
 import { DAY, WEEK, MEDIA_FILE_MB, MEDIA_TOTAL_MB, destinationOf, gitSchedule, lastBackup, type Destination, type MediaLimits } from "../../../places/settings/set2/backups";
 import { str, useLive, when } from "../../../places/settings/set2/common";
 import { BackfillDialog, DiaryDialog } from "../../../places/settings/set2/seasons";
-import { ImportDialog, SOURCE, exportSettings } from "../../../places/settings/set2/self";
+import { ImportDialog, MOVE_WHY, SOURCE, exportSettings } from "../../../places/settings/set2/self";
 import { Segmented, Toggle } from "../RowView";
 import { useLevel } from "../SettingsFrame";
 import type { SlotControlProps } from "../slots";
@@ -299,7 +299,6 @@ export function ImportSettings({ engine, row }: SlotControlProps) {
 }
 
 /** Where your data lives: the folder the engine reports; moving it needs the Branch app. */
-const MOVE_WHY = "Moving your data folder comes in a later update.";
 /** The control column of this row is capped, so a long folder path never squeezes the label and its description into a
  *  narrow strip (Private #1093). The path is cut with an ellipsis and its full text is the tooltip. */
 const FOLDER_COL = { maxWidth: "min(18rem, 42vw)", justifyContent: "flex-end" } as const;
