@@ -2,7 +2,7 @@ import type { Contact, Topic } from "../../../packages/gateway-protocol/src/sche
 import { resolveCanonicalMainSessionKey } from "../../config/sessions/main-session-key.js";
 import type { SessionEntrySummary } from "../../config/sessions/session-accessor.js";
 import type { SessionScope } from "../../config/sessions/types.js";
-import { parseAgentSessionKey } from "../../routing/session-key.js";
+import { parseAgentSessionKey, parseSessionDeliveryRoute } from "../../routing/session-key.js";
 
 export type ContactAgent = { id: string; name: string; iconUrl?: string };
 export type OutsidePeer = {
@@ -63,6 +63,26 @@ export function contactIdForSession(row: SessionEntrySummary): string | undefine
   return `trunk:${parsed.agentId}`;
 }
 
+/**
+ * A topic the window can open from this contact row: a child of the main thread,
+ * a window/dashboard/background key, or a chat-app DM. Leftover script-made
+ * sessions stay on disk; they are not listed or counted as unread.
+ */
+export function isOpenableContactTopic(row: SessionEntrySummary, threadKey: string): boolean {
+  if (row.entry.parentSessionKey === threadKey || row.entry.contactAnchor?.threadKey === threadKey) {
+    return true;
+  }
+  const parsed = parseAgentSessionKey(row.sessionKey);
+  if (!parsed) {
+    return false;
+  }
+  const rest = parsed.rest;
+  if (rest.startsWith("window:") || rest.startsWith("background:") || rest.startsWith("dashboard:")) {
+    return true;
+  }
+  return parseSessionDeliveryRoute(row.sessionKey) !== null;
+}
+
 function topicTitle(row: SessionEntrySummary, preview: string, derivedTitle?: string): string {
   const outsideDm = row.sessionKey.match(/:([^:]+):direct:([^:]+)$/);
   return (
@@ -105,7 +125,10 @@ export function projectContacts(input: ContactProjectionInput): {
     const thread = byKey.get(threadKey);
     const contactId = `trunk:${agentId}`;
     const children = visibleSessions.filter(
-      (row) => row.sessionKey !== threadKey && contactIdForSession(row) === contactId,
+      (row) =>
+        row.sessionKey !== threadKey &&
+        contactIdForSession(row) === contactId &&
+        isOpenableContactTopic(row, threadKey),
     );
     const projectedTopics = children.map((row): Topic => {
       const entry = row.entry;

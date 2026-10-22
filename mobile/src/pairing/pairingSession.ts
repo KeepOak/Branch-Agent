@@ -2,6 +2,7 @@
 // PhoneGateway, saves the computer's address once the engine approves this phone, and reconnects to it
 // on the next launch with the device token the engine issued.
 import { ConnectErrorDetailCodes, type GatewayBrowserDeviceIdentity, type HelloOk } from '@branch/gateway-client/browser';
+import { DEVICE_IDENTITY_KEY } from '../connect/deviceIdentity';
 import type { KeyValueStore } from '../storage/keyValueStore';
 import { createDeviceTokenStore } from '../connect/deviceTokenStore';
 import { OPERATOR_ROLE, PhoneGateway, phoneClient, type GatewayStatus, type PhoneGatewayOptions, type PhoneReconnect, type Platform } from '../connect/phoneGateway';
@@ -136,7 +137,7 @@ export class PairingSession implements EngineLink {
     return () => this.listeners.delete(listener);
   }
 
-  /** On launch: reconnect to the computer this phone paired with, or show the welcome. */
+  /** On launch: reconnect to the computer this phone paired with, or show pairing. */
   async restore(): Promise<void> {
     const record = this.readRecord(await this.deps.store.get(PAIRING_RECORD_KEY));
     this.paired = record;
@@ -169,7 +170,7 @@ export class PairingSession implements EngineLink {
     return expires !== undefined && expires <= this.now();
   }
 
-  /** Stops a pairing that hasn't finished and goes back to the welcome. */
+  /** Stops a pairing that hasn't finished and goes back to pairing. */
   cancel(): void {
     this.stopGateway();
     this.setup = null;
@@ -200,6 +201,15 @@ export class PairingSession implements EngineLink {
     }
     await this.deps.store.remove(PAIRING_RECORD_KEY);
     this.set({ step: 'unpaired' });
+  }
+
+  /**
+   * Reset this phone: unpair, then drop this phone's device key. Forget uses unpair only, so a later
+   * pairing can keep the same key.
+   */
+  async reset(): Promise<void> {
+    await this.unpair();
+    await this.deps.store.remove(DEVICE_IDENTITY_KEY);
   }
 
   dispose(): void {

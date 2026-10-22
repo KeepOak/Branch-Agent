@@ -14,7 +14,14 @@ import {
   type Ctx, type SecSpec, type Spec,
 } from "./advanced-more";
 import { ConvDialog, EverythingElse, HealthDialog, HooksSec, LogsDialog, MigrateDialog, SectionDialog, WebSearchDialog } from "./advanced-tech";
+import { SetupDialog } from "../set1/local-setup";
 import "./advanced.css";
+
+const MEMORY_MODEL_LEDE = "This downloads the small meaning-search model (about 0.3 GB) onto this computer. Your chat model stays the same. Branch asks before it starts.";
+const MEMORY_MODEL_OPTION = { id: "llama-cpp-memory", label: "the meaning-search model" };
+const MEMORY_MODEL_DONE = "The meaning-search model is on this computer.";
+const MEMORY_MODEL_SKIPPED = "Nothing was downloaded. Branch still finds memories by matching words.";
+const MEMORY_MODEL_FAILED = "Couldn’t get the meaning-search model. Branch still finds memories by matching words.";
 
 const LEDE = "What’s running under the hood, for when something needs a look.";
 const { sw, no } = SPEC;
@@ -104,16 +111,33 @@ function MeaningSearch({ c }: { c: Ctx }) {
   const st = useLive<RecordValue>(c.engine, "doctor.memory.status", params, ["memory", "agents.changed", "config.changed"]);
   const test = useCall();
   const [probe, setProbe] = useState<RecordValue | null>(null);
+  const [setup, setSetup] = useState(0);
   const emb = rec((probe ?? rec(st.data)).embedding);
-  const provider = str(rec(probe ?? st.data).provider) || str(c.config.get("memory.search.provider")) || "openai";
+  const provider = str(rec(probe ?? st.data).provider) || str(c.config.get("memory.search.provider")) || "local";
   const name = PROVIDERS.find((p) => p.id === provider)?.label ?? provider;
   const checked = emb.checked !== false && (emb.ok === true || Boolean(emb.error));
   const word = !checked ? "Not checked yet" : emb.ok === true ? "Working" : "Not working";
   const line = !checked ? "Branch hasn’t checked meaning search yet." : emb.ok === true ? "Meaning search answered." : str(emb.error);
+  const needModel = provider === "local" && checked && emb.ok !== true;
+  const retest = () => void test.run(async () => {
+    const next = rec(await c.engine.request("doctor.memory.status", { ...params, probe: true }));
+    setProbe(next);
+    return next;
+  }, (next) => rec(next.embedding).ok === true ? "Meaning search is working." : (str(rec(next.embedding).error) || "Meaning search is not working yet."));
+  const getModel = () => setSetup((n) => n + 1);
+  const finishSetup = (outcome?: "installed" | "skipped" | "failed") => {
+    setSetup(0);
+    if (outcome !== "installed") return;
+    const saved = str(c.config.get("memory.search.provider"));
+    if (saved === "local") retest();
+    else void c.config.set("memory.search.provider", "local").then(() => retest(), () => retest());
+  };
   return (
-    <Ctl title="Meaning search" sub={`${st.error ?? line} ${name} · ${LOCAL.has(provider) ? "on this computer" : "in the cloud"}`} after={<CallLine call={test} />}>
+    <Ctl title="Meaning search" sub={`${st.error ?? line} ${name} · ${LOCAL.has(provider) ? "on this computer" : "in the cloud"}`} after={<>{needModel && !test.note && !test.error ? <p className="hint">About 0.3 GB. Branch asks before it downloads.</p> : null}<CallLine call={test} /></>}>
       <span className="s2advanced-v">{word}</span>
-      <Btn sm disabled={test.busy} onClick={() => void test.run(async () => setProbe(rec(await c.engine.request("doctor.memory.status", { ...params, probe: true }))))}>Test</Btn>
+      <Btn sm disabled={test.busy} onClick={() => retest()}>Test</Btn>
+      {needModel ? <Btn sm disabled={test.busy || setup > 0} onClick={getModel}>Get the model</Btn> : null}
+      {setup > 0 ? <SetupDialog key={setup} engine={c.engine} option={MEMORY_MODEL_OPTION} agent={c.agent ? { agentId: c.agent } : {}} lede={MEMORY_MODEL_LEDE} doneText={MEMORY_MODEL_DONE} skippedText={MEMORY_MODEL_SKIPPED} failedText={MEMORY_MODEL_FAILED} onRetry={() => setSetup((n) => n + 1)} onClose={finishSetup} /> : null}
     </Ctl>
   );
 }
@@ -156,7 +180,7 @@ const MEMORY: SecSpec = { title: "Memory", lv: 1, rows: [
   { t: "All start files together", s: "All the files a Trunk reads first load up to this much together.", k: "agents.defaults.bootstrapTotalMaxChars", kind: "num", unit: "characters", def: 60000, min: 1 },
   sw("Match by meaning", "Finds “invoice” when the fact says “bill”.", "memory.search.store.vector.enabled", true),
   { t: "Meaning search", draw: (c) => <MeaningSearch c={c} /> },
-  { t: "Meaning search uses", s: "The service that turns facts into something searchable by meaning. Changing it rebuilds the index.", k: "memory.search.provider", kind: "pick", def: "openai", opts: PROVIDERS },
+  { t: "Meaning search uses", s: "The service that turns facts into something searchable by meaning. Changing it rebuilds the index.", k: "memory.search.provider", kind: "pick", def: "local", opts: PROVIDERS },
   no("Share memory between Trunks", "Off: each Trunk keeps its own. Off until you choose: it changes where your data goes."),
   no("Ask before remembering", "Off: a Trunk writes what is worth keeping as it works, and the conversation shows “Remembered”. On: it asks “Remember this?” first."),
   { t: "Memory engine", lv: 2, draw: (c) => <MemoryEngine c={c} /> },

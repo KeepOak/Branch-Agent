@@ -103,6 +103,8 @@ describe('the release signing config plugin', () => {
     expect(signingRelease).toMatch(/ANDROID_KEY_ALIAS/);
     expect(signingRelease).toMatch(/ANDROID_KEY_PASSWORD/);
     expect(signingRelease).toMatch(/storeType "PKCS12"/);
+    expect(signingRelease).toMatch(/enableV1Signing true/);
+    expect(signingRelease).toMatch(/enableV2Signing true/);
     expect(signingRelease).toMatch(/REQUIRE_ANDROID_RELEASE_SIGNING/);
     expect(signingRelease).toMatch(/GradleException/);
     expect(signingRelease).not.toMatch(/signingConfig signingConfigs\.debug/);
@@ -136,6 +138,8 @@ describe('build-android.mjs signing args and log redaction', () => {
     expect(args).toContain('assembleRelease');
     expect(args).toContain('-Pandroid.injected.signing.store.file=/tmp/android-release.p12');
     expect(args).toContain('-Pandroid.injected.signing.store.type=PKCS12');
+    expect(args).toContain('-Pandroid.injected.signing.v1-enabled=true');
+    expect(args).toContain('-Pandroid.injected.signing.v2-enabled=true');
     expect(signingEnv[callRelease<string>('GRADLE_SIGNING_STORE_PASSWORD_ENV')]).toBe('store-secret');
     expect(signingEnv[callRelease<string>('GRADLE_SIGNING_KEY_PASSWORD_ENV')]).toBe('key-secret');
     expect(signingEnv[callRelease<string>('GRADLE_SIGNING_KEY_ALIAS_ENV')]).toBe('branch');
@@ -150,6 +154,8 @@ describe('build-android.mjs signing args and log redaction', () => {
       'assembleRelease',
       '-Pandroid.injected.signing.store.file=/tmp/android-release.p12',
       '-Pandroid.injected.signing.store.type=PKCS12',
+      '-Pandroid.injected.signing.v1-enabled=true',
+      '-Pandroid.injected.signing.v2-enabled=true',
       '-Pandroid.injected.signing.store.password=store-secret',
       '-Pandroid.injected.signing.key.password=key-secret',
       '-Pandroid.injected.signing.key.alias=branch',
@@ -157,6 +163,8 @@ describe('build-android.mjs signing args and log redaction', () => {
       'assembleRelease',
       '-Pandroid.injected.signing.store.file=/tmp/android-release.p12',
       '-Pandroid.injected.signing.store.type=PKCS12',
+      '-Pandroid.injected.signing.v1-enabled=true',
+      '-Pandroid.injected.signing.v2-enabled=true',
       '-Pandroid.injected.signing.store.password=***',
       '-Pandroid.injected.signing.key.password=***',
       '-Pandroid.injected.signing.key.alias=***',

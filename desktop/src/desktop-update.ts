@@ -570,6 +570,22 @@ export function windowsStableLauncher(install: DesktopInstall): string | undefin
   return rawFs.existsSync(launcher) ? launcher : undefined;
 }
 
+/**
+ * The installed copy's launcher, when this process is an old dev copy under <dataDir>\dist (the old package.ps1
+ * default) and the setup .exe has installed Branch under %LOCALAPPDATA%\Programs\Branch Agent. Two copies must never
+ * share one data folder, so the dev copy hands off to the installed one and exits. Windows only.
+ */
+export function windowsInstalledHandoff(install: DesktopInstall, dataDir: string, env: NodeJS.ProcessEnv = process.env,
+  exists: (file: string) => boolean = rawFs.existsSync): string | undefined {
+  if ((install.platform ?? process.platform) !== "win32" || !env.LOCALAPPDATA) return undefined;
+  const inside = relative(join(dataDir, "dist"), install.appDir);
+  if (inside.startsWith("..") || isAbsolute(inside)) return undefined;
+  const root = join(env.LOCALAPPDATA, "Programs", "Branch Agent");
+  if (!exists(join(root, WINDOWS_POINTER))) return undefined;
+  const launcher = join(root, WINDOWS_LAUNCHER_EXE);
+  return exists(launcher) ? launcher : undefined;
+}
+
 /** What a pin of a running window should start: the launcher, so the pin never names a version folder. */
 export function windowsRelaunchDetails(install: DesktopInstall): { appId: string; relaunchCommand: string; relaunchDisplayName: string; appIconPath: string } | undefined {
   const launcher = windowsStableLauncher(install);

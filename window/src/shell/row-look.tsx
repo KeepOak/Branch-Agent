@@ -4,6 +4,7 @@
 import { useState } from "react";
 import type { Conversation } from "../connect/conversations";
 import { Icon, type IconName } from "./icons";
+import { plainError } from "./plain-error";
 import type { MenuItem } from "./Menu";
 
 /** The engine's colour names, the hue each is drawn with, and the name the picker shows (the preview's where it has one). */
@@ -67,14 +68,14 @@ export function IconColourPicker({ row, onSet }: PickerProps) {
   const [error, setError] = useState("");
   const send = async (patch: { icon?: string | null; color?: string | null }) => {
     const failed = await onSet(patch);
-    setError(failed ?? "");
+    setError(failed ? plainError(failed) : "");
     if (failed) return;
     if ("color" in patch) setColour(patch.color ?? null);
     if ("icon" in patch) setIcon(patch.icon ?? null);
   };
   const use = () => {
     const r = customIcon(custom);
-    if ("error" in r) setError(r.error);
+    if ("error" in r) setError(plainError(r.error));
     else void send({ icon: r.value });
   };
   return (

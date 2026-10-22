@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { loadGatewayPlugins } from "../gateway/server-plugins.js";
-import { collectConfiguredAgentModelProviderIds } from "./gateway-startup-plugin-providers.js";
+import {
+  collectConfiguredAgentModelProviderIds,
+  collectConfiguredMemoryEmbeddingProviderIds,
+} from "./gateway-startup-plugin-providers.js";
 import type { PluginManifestRecord, PluginManifestRegistry } from "./manifest-registry.js";
 import { getPluginLoaderCacheState } from "./registry-lifecycle.js";
 import { disposePluginRegistryInstances, resetPluginRuntimeStateForTest } from "./runtime.js";
@@ -245,5 +248,42 @@ describe("selected CLI backend Gateway startup", () => {
       loaded.retireGatewayRuntimeBindings();
       await disposePluginRegistryInstances(loaded.pluginRegistry);
     }
+  });
+});
+
+describe("configured memory embedding provider startup", () => {
+  it("defaults unset and auto providers to local embeddings", () => {
+    expect(collectConfiguredMemoryEmbeddingProviderIds({})).toEqual(new Set(["local"]));
+    expect(
+      collectConfiguredMemoryEmbeddingProviderIds({
+        memory: { search: { provider: "auto" } },
+      }),
+    ).toEqual(new Set(["local"]));
+  });
+
+  it("does not start a paid OpenAI fallback when a ChatGPT login is present but not chosen", () => {
+    expect(
+      collectConfiguredMemoryEmbeddingProviderIds({
+        memory: { search: { fallback: "openai" } },
+        models: {
+          providers: {
+            openai: { apiKey: "sk-test-not-for-memory", models: [] },
+          },
+        },
+        auth: {
+          profiles: {
+            "openai:codex": { provider: "openai", mode: "oauth" },
+          },
+        },
+      } as BranchConfig),
+    ).toEqual(new Set(["local"]));
+  });
+
+  it("still starts an explicit paid provider", () => {
+    expect(
+      collectConfiguredMemoryEmbeddingProviderIds({
+        memory: { search: { provider: "openai" } },
+      }),
+    ).toEqual(new Set(["openai"]));
   });
 });

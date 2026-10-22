@@ -13,15 +13,15 @@ import { stalledRead } from "../stall";
 
 export type DevicePrefs = { enabled: boolean; label: string; categories?: Partial<Record<CategoryKey, boolean>>; detailLevel?: Detail; quietHours?: Quiet; agentIds?: string[] };
 type Perm = NotificationPermission | "unsupported";
-type PushState = { supported: boolean; permission: Perm; reg: ServiceWorkerRegistration | null; sub: PushSubscription | null; device: DevicePrefs | null; loading: boolean; error?: string };
+export type PushState = { supported: boolean; permission: Perm; reg: ServiceWorkerRegistration | null; sub: PushSubscription | null; device: DevicePrefs | null; loading: boolean; error?: string };
 
-function facts(): Pick<PushState, "supported" | "permission"> {
+export function facts(): Pick<PushState, "supported" | "permission"> {
   const hasN = typeof window !== "undefined" && "Notification" in window;
   const sw = typeof navigator !== "undefined" && "serviceWorker" in navigator;
   return { supported: hasN && sw && "PushManager" in window, permission: hasN ? Notification.permission : "unsupported" };
 }
 
-async function current(): Promise<{ reg: ServiceWorkerRegistration | null; sub: PushSubscription | null }> {
+export async function current(): Promise<{ reg: ServiceWorkerRegistration | null; sub: PushSubscription | null }> {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return { reg: null, sub: null };
   const reg = (await navigator.serviceWorker.getRegistration()) ?? null;
   const sub = reg?.pushManager ? await reg.pushManager.getSubscription() : null;
@@ -56,7 +56,7 @@ export function deviceOff(p: PushState): string | undefined {
   return undefined;
 }
 
-async function subscribe(engine: WindowEngine, reg: ServiceWorkerRegistration) {
+export async function subscribe(engine: WindowEngine, reg: ServiceWorkerRegistration) {
   const permission = await Notification.requestPermission();
   if (permission !== "granted") throw new Error("Notifications weren’t allowed for Branch.");
   const { vapidPublicKey } = record(await engine.request("push.web.vapidPublicKey", {}));

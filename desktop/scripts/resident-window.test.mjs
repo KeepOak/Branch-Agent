@@ -201,3 +201,42 @@ test('macOS and Linux keep the gateway resident after the window closes', () => 
     assert.equal(quitClose.prevented, false);
   }
 });
+
+test('Open in browser opens only a one-time pairing link from the engine, never the Gateway secret', async () => {
+  const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
+  const { pickBrowserHandoffUrl, openInBrowser, DASHBOARD_HANDOFF_ARGS } = require(join(dist, 'open-in-browser.js'));
+  const { trayMenu } = require(join(dist, 'tray-status.js'));
+  assert.deepEqual([...DASHBOARD_HANDOFF_ARGS], ['branch.mjs', 'dashboard', '--json', '--ttl-seconds', '120']);
+  const code = 'one-time-code-1';
+  const good = `http://127.0.0.1:19031/#bootstrapToken=${code}&bootstrapProfile=owner&gatewayUrl=ws%3A%2F%2F127.0.0.1%3A19031`;
+  const answer = (fields) => `preparing\n${JSON.stringify({ ok: true, url: 'http://127.0.0.1:19031/#token=SHARED', ...fields })}\n`;
+  assert.equal(new URL(pickBrowserHandoffUrl(answer({ browserUrl: good }), 19031)).hash.includes(code), true);
+  const refused = [
+    ['not JSON', 19031], [JSON.stringify({ ok: false, error: 'SHARED' }), 19031], [answer({}), 19031],
+    [answer({ browserUrl: good }), 19032],
+    [answer({ browserUrl: good.replace('127.0.0.1:19031/', 'example.com:19031/') }), 19031],
+    [answer({ browserUrl: `${good}&token=SHARED` }), 19031],
+    [answer({ browserUrl: good.replace('/#', '/?token=SHARED#') }), 19031],
+    [answer({ browserUrl: 'http://127.0.0.1:19031/#token=SHARED' }), 19031],
+    [answer({ browserUrl: 'file:///etc/passwd' }), 19031],
+  ];
+  for (const [stdout, port] of refused) {
+    assert.throws(() => pickBrowserHandoffUrl(stdout, port), (error) => !String(error.message).includes('SHARED'));
+  }
+  // Each click asks for a fresh code and logs neither the link nor the engine's answer.
+  const lines = [], opened = []; let issued = 0;
+  const steps = { issue: async () => { issued += 1; return answer({ browserUrl: good }); }, port: () => 19031,
+    open: async (url) => { opened.push(url); }, log: (line) => lines.push(line) };
+  assert.equal(await openInBrowser(steps), true);
+  assert.equal(await openInBrowser(steps), true);
+  assert.equal(issued, 2); assert.equal(opened.length, 2);
+  assert.equal(await openInBrowser({ ...steps, issue: async () => { throw Error('dashboard failed: SHARED stderr'); } }), false);
+  assert.equal(await openInBrowser({ ...steps, issue: async () => answer({ browserUrl: 'http://127.0.0.1:19031/#token=SHARED' }) }), false);
+  assert.equal(opened.length, 2);
+  assert.ok(lines.length > 0);
+  for (const line of lines) { assert.ok(!line.includes(code) && !line.includes('SHARED'), line); }
+  let clicks = 0;
+  trayMenu(undefined, { open() {}, quit() {}, openInBrowser() { clicks += 1; } }).find(item => item.label === 'Open in browser').click();
+  assert.equal(clicks, 1);
+  assert.equal(trayMenu(undefined, { open() {}, quit() {} }).some(item => item.label === 'Open in browser'), false);
+});
