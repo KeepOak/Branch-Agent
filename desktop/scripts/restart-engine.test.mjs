@@ -292,7 +292,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     catch (error) { if (error.code === "ENOENT" || error instanceof SyntaxError) return []; throw error; }
   };
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
-  // A healthy host unless a test says otherwise: 87 GB free exceeds the update size plus about 5 GB (Private #951).
+  // A healthy host unless a test says otherwise: 87 GB free exceeds the disk floor (Private #951).
   process.env.BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES = "87000000000";
   process.env.BRANCH_DESKTOP_UPDATE_FREE_MEMORY = "0.5";
   await prepare?.(root);
@@ -1447,7 +1447,7 @@ test("an automatic update that arrives mid-run hands off at the next gap, with t
   await eventually(() => !alive(old));
 }, false, false, false, true, false, defaultHandoff));
 
-for (const [name, env, reason] of [["low-disk", { BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES: "3200000000" }, "low disk: 3.2 GB free, the update needs about 6.0 GB"],
+for (const [name, env, reason] of [["low-disk", { BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES: "1610612736" }, "low disk: 1.5 GB free, the update needs about 2.0 GB"],
   ["low-RAM", { BRANCH_DESKTOP_UPDATE_FREE_MEMORY: "0.1" }, "low memory: 10% free, under 20%"]]) {
   test(`a ${name} host refuses to start an automatic update (Private #951)`, () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
     const sent = idleWindow(runtime), old = (await starts())[0];
@@ -1619,10 +1619,11 @@ test("an Update click or an automatic update during a staged-update replacement 
   let releaseGuard;
   const held = new Promise(resolve => { releaseGuard = resolve; });
   const replacement = swapGuard(async () => { await held; return true; });
-  // Past the hold, auto-apply skips the replacement lock instead of trying the update.
+  // Past the hold, auto-apply waits out the replacement lock instead of trying the update, and stays on (Private #1054).
   clock.skew = 61_000;
   offerStaged();
-  await eventually(async () => (await log()).includes("auto-apply: off; awaiting Restart"));
+  await eventually(async () => (await log()).includes("auto-apply: waiting; replace the staged update in progress; fixture-next applies once it ends"));
+  assert.doesNotMatch(await log(), /auto-apply: off/);
   await pause(100);
   assert.doesNotMatch(await log(), /auto-apply: restarting for fixture-next/);
   assert.doesNotMatch(await log(), /auto-apply: waiting; activity check failed: The desktop is not ready to update/);

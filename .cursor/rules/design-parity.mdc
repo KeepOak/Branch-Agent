@@ -1,0 +1,6 @@
+---
+description: Design parity target is the private Branch App Preview, not spec-v23.
+alwaysApply: true
+---
+
+The design target is the owner's latest Branch App Preview, kept privately. Never commit it to this public repo. Parity briefs paste only the slices they need. `design/spec-v23` is superseded (Oct 18, 2026) and is historical reference only, not the parity target.

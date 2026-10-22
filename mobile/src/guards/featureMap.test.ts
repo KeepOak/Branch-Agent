@@ -28,6 +28,7 @@ describe('mobile feature map', () => {
       'settings',
       'more',
       'profile',
+      'you',
     ]);
   });
 

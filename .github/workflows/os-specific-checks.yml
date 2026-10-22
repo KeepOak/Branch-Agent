@@ -2,8 +2,9 @@ name: macOS checks for OS-specific changes
 
 # Pull requests run the feature checks on Linux and Windows only. macOS runs on main after each merge,
 # nightly, and here for pull requests that touch code whose behaviour differs by operating system:
-# process spawning, the daemon/service layer, platform-named files, installers, dependency locks and
-# the CI runners themselves. Desktop changes already run all three systems in desktop-checks.yml.
+# process spawning, the daemon/service layer, platform-named files, the macOS computer-use extension,
+# installers, dependency locks and the CI runners themselves. Desktop changes already run all three
+# systems in desktop-checks.yml.
 on:
   pull_request:
     paths:
@@ -20,6 +21,8 @@ on:
       # The engine handoff standby: detached processes, loopback port handover and lock timing differ by OS.
       - 'engine/src/cli/gateway-cli/standby*'
       - 'engine/src/infra/standby-port-placeholder*'
+      # The computer-use extension starts the macOS driver proxy; its proxy tests run only on macOS (#1948).
+      - 'engine/extensions/cua-computer/**'
       - 'engine/scripts/build-installers.mjs'
       - 'engine/pnpm-lock.yaml'
       - 'window/pnpm-lock.yaml'

@@ -450,6 +450,7 @@ export function runAgentAttempt(
       sourceReplyDeliveryMode: params.opts.sourceReplyDeliveryMode,
       taskSuggestionDeliveryMode: params.opts.taskSuggestionDeliveryMode,
       clientCaps: params.opts.clientCaps,
+      gatewayClientMode: params.opts.gatewayClientMode,
       gatewayUiCommandTarget: params.opts.gatewayUiCommandTarget,
       media: params.opts.media,
       skillsSnapshot: params.skillsSnapshot,

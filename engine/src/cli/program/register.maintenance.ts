@@ -312,13 +312,23 @@ export function registerMaintenanceCommands(
     .option("--no-open", "Print URL but do not launch a browser")
     .option("--json", "Output dashboard connection details as JSON", false)
     .option("--yes", "Start/install the gateway without prompting when needed", false)
+    .option(
+      "--ttl-seconds <seconds>",
+      "Expire the one-time browser pairing link sooner (30 to 600 seconds)",
+    )
     .action(async (opts) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
+        const ttlSeconds =
+          opts.ttlSeconds === undefined ? undefined : Number.parseInt(String(opts.ttlSeconds), 10);
+        if (ttlSeconds !== undefined && (!Number.isInteger(ttlSeconds) || ttlSeconds <= 0)) {
+          throw new Error("--ttl-seconds must be a whole number of seconds");
+        }
         const { dashboardCommand } = await import("../../commands/dashboard.js");
         await dashboardCommand(defaultRuntime, {
           json: Boolean(opts.json),
           noOpen: opts.open === false,
           yes: Boolean(opts.yes),
+          ...(ttlSeconds === undefined ? {} : { ttlSeconds }),
         });
       });
     });

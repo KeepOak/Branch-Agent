@@ -1677,6 +1677,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           selection.clear();
           setTopicReturnKey(null);
           const contact = contacts.find((candidate) => candidate.threadKey === key);
+          if (contact && contact.unreadTopics > 0) markReadContact(contact);
           setPhoneTopicListFor(innerWidth <= 640 && contact?.topicCount && topicLayout !== "tabs" && topicLayout !== "side" ? contact.id : null);
           setFocusTopic(contact?.preview.kind === "topic" ? { key: contact.preview.topicKey, nonce: Date.now() } : null);
           openConversation(key);

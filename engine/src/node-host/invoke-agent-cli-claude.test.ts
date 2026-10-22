@@ -748,7 +748,12 @@ const child = spawn(process.execPath, ["--input-type=module", "-e",
 ], { stdio: ["ignore", "ignore", "ignore", 3] });
 child.unref();
 process.stdout.write(JSON.stringify({ type: "result", result: prompt }) + "\\n");`);
-        await withEnvAsync({ BRANCH_SERVICE_MARKER: "" }, async () => {
+        // Linux: empty marker keeps these fixtures off the subreaper path, which
+        // reports identity-lost before the mock can certify extinction.
+        // Darwin: a service marker takes the process-group relay so the
+        // descendant inherits control fd 3 and the root can exit 0. An empty
+        // marker uses a detached child with no extra fds, so spawn(stdio 3) fails.
+        await withEnvAsync({ BRANCH_SERVICE_MARKER: process.platform === "darwin" ? "branch" : "" }, async () => {
           const calls: Array<{ method: string; params: unknown }> = [];
           const request = {
             argv: ["-p"],

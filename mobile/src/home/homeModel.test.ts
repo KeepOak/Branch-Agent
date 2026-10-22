@@ -39,7 +39,7 @@ describe('home model', () => {
   });
 
   it('names an unfinished Home feature the way the owner rule asks', () => {
-    expect(laterUpdate('Talk')).toBe('Talk comes in a later update.');
+    expect(laterUpdate('New Trunk')).toBe('New Trunk comes in a later update.');
     expect(isAdvanced('regular')).toBe(false);
     expect(isAdvanced('advanced')).toBe(true);
     expect(isAdvanced('technical')).toBe(true);

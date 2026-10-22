@@ -18,25 +18,25 @@ import {
   type AccessLevel,
   type LaterHomeAction,
 } from '../home/homeModel';
+import { tapHaptic } from '../settings/phoneEffects';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { PlacesBar, placesBarHeight, statusBandHeight, type PhoneLook, type Place } from '../ui/PlacesBar';
+import { initials } from '../people/self';
 import { Avatar } from './ChatsScreen';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 
-const QUICK_WORKING = [
-  ['new-chat', 'New chat'],
-  ['computer', 'Computer'],
-] as const;
-
-const QUICK_LATER: Array<[string, LaterHomeAction]> = [
-  ['talk', 'Talk'],
-  ['new-trunk', 'New Trunk'],
-  ['scan', 'Scan'],
-  ['automations', 'Automations'],
+/** Preview r50 Home chips, in that order. Later chips stay off Regular. */
+const QUICK: Array<{ id: string; label: string; later?: LaterHomeAction }> = [
+  { id: 'new-chat', label: 'New chat' },
+  { id: 'talk', label: 'Talk' }, // testID="home-quick-talk"
+  { id: 'computer', label: 'Computer' },
+  { id: 'new-trunk', label: 'New Trunk', later: 'New Trunk' },
+  { id: 'scan', label: 'Scan' }, // testID="home-quick-scan"
+  { id: 'automations', label: 'Automations', later: 'Automations' },
 ];
 
 function Section({ title, count, action }: { title: string; count?: number; action?: ReactNode }) {
@@ -106,10 +106,11 @@ function Chip({ title, onPress, kind = 'quiet', testID, disabled }: { title: str
 /**
  * The paired Home from preview r50: greeting, one-line summary, Needs you (Allow or Send, Deny,
  * Look first — and the exact command, folder and warnings before Allow on a command-run), Working
- * now with the last real line as the current step, What’s left, quick actions, Finished, and Branch
- * on your computer. Unfinished destinations stay off Regular; at Advanced they say
- * "<label> comes in a later update." iPhone chrome is the large title and status band; Android
- * keeps the app-bar title. One implementation for both looks.
+ * now with the last real line as the current step, What’s left, quick actions (New chat, Talk,
+ * Computer, Scan; New Trunk and Automations at Advanced+), Finished, and Branch on your computer.
+ * Unfinished destinations stay off Regular; at Advanced they say "<label> comes in a later update."
+ * iPhone chrome is the large title and status band; Android keeps the app-bar title. One
+ * implementation for both looks.
  */
 export function HomeScreen({
   chats,
@@ -117,11 +118,15 @@ export function HomeScreen({
   online,
   accessLevel = 'regular',
   onNewChat,
+  onTalk,
   onComputer,
+  onScan,
   onAnswer,
   onLookFirst,
   onPlace,
   onOpenChat,
+  onYou,
+  youName = 'Owner',
   now: fixedNow,
   updateBanner,
   look = Platform.OS === 'ios' ? 'ios' : 'android',
@@ -131,11 +136,16 @@ export function HomeScreen({
   online: boolean;
   accessLevel?: AccessLevel;
   onNewChat: () => void;
+  onTalk: () => void;
   onComputer: () => void;
+  onScan: () => void;
   onAnswer: (id: string, decision: ApprovalDecision) => void;
   onLookFirst: (id: string, sessionKey?: string) => void;
   onPlace: (place: Place) => void;
   onOpenChat?: (row: ChatRow) => void;
+  /** Preview meG18: the person's initial opens their profile. */
+  onYou?: () => void;
+  youName?: string;
   now?: number;
   updateBanner?: ReactNode;
   look?: PhoneLook;
@@ -158,10 +168,7 @@ export function HomeScreen({
     setLater(laterUpdate(label));
   };
 
-  const quick = [
-    ...QUICK_WORKING.map(([id, label]) => ({ id, label, later: false as const })),
-    ...(advanced ? QUICK_LATER.map(([id, label]) => ({ id, label, later: true as const })) : []),
-  ];
+  const quick = QUICK.filter((item) => !item.later || advanced);
 
   return (
     <View testID="home-screen" style={{ flex: 1, backgroundColor: color.bg }}>
@@ -181,16 +188,26 @@ export function HomeScreen({
           <ThemedText testID="home-greeting" variant={ios ? 'largeTitle' : 'title2'} accessibilityRole="header">
             {greet(now)}
           </ThemedText>
-          <View
+          <Pressable
             testID="home-you"
-            accessibilityRole="image"
-            accessibilityLabel="You"
-            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: color.fill, alignItems: 'center', justifyContent: 'center' }}
+            accessibilityRole="button"
+            accessibilityLabel={`${youName}’s profile`}
+            onPress={onYou}
+            disabled={!onYou}
+            style={({ pressed }) => ({
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: color.fill,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.7 : 1,
+            })}
           >
             <ThemedText variant="footnote" style={{ color: color.ink, fontWeight: '600' }}>
-              You
+              {initials(youName, 1)}
             </ThemedText>
-          </View>
+          </Pressable>
         </View>
 
         {updateBanner}
@@ -256,9 +273,9 @@ export function HomeScreen({
                   ) : null}
                   <View style={{ flexDirection: 'row', flexWrap: 'nowrap', gap: space.sm, marginTop: space.sm }}>
                     {canAllowNeed(need) ? (
-                      <Chip title={need.yes} kind="ink" testID={`home-allow-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => onAnswer(need.id, 'allow-once')} />
+                      <Chip title={need.yes} kind="ink" testID={`home-allow-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => { tapHaptic(); onAnswer(need.id, 'allow-once'); }} />
                     ) : null}
-                    <Chip title={need.no} testID={`home-deny-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => onAnswer(need.id, 'deny')} />
+                    <Chip title={need.no} testID={`home-deny-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => { tapHaptic(); onAnswer(need.id, 'deny'); }} />
                     <Chip title="Look first" testID={`home-look-${need.id}`} onPress={() => onLookFirst(need.id, need.sessionKey)} />
                   </View>
                 </View>
@@ -336,12 +353,14 @@ export function HomeScreen({
               accessibilityLabel={item.label}
               onPress={() => {
                 if (item.id === 'new-chat') onNewChat();
+                else if (item.id === 'talk') onTalk();
                 else if (item.id === 'computer') onComputer();
-                else showLater(item.label as LaterHomeAction);
+                else if (item.id === 'scan') onScan();
+                else if (item.later) showLater(item.later);
               }}
               style={({ pressed }) => ({
                 width: '31%',
-                flexGrow: 1,
+                flexGrow: 0,
                 minHeight: layout.rowMinHeight + 12,
                 backgroundColor: color.fill,
                 borderRadius: 16,

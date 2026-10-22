@@ -271,6 +271,22 @@ test('a feature-batch matrix below the shard floors fails closed', () => {
   assert.equal(validateFeatureBatchMatrix(real, 'push'), real);
 });
 
+test('namedTests omit e2e files so a preflight listing cannot cover the handoff suite', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'named-e2e-'));
+  writeFileSync(
+    path.join(dir, 'pr-e2e.txt'),
+    'engine:test/gateway-desktop-handoff.e2e.test.ts\nengine:src/process/windows-hidden-launch.test.ts\n',
+  );
+  try {
+    setNamedListDir(dir);
+    const engine = namedTests('engine');
+    assert.equal(engine.includes('test/gateway-desktop-handoff.e2e.test.ts'), false);
+    assert.ok(engine.includes('src/process/windows-hidden-launch.test.ts'));
+  } finally {
+    setNamedListDir(fileURLToPath(new URL('./feature-batch-ci-named/', import.meta.url)));
+  }
+});
+
 test('the planner reads the PR named lists as data, from the directory it is given', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'named-lists-'));
   writeFileSync(path.join(dir, 'pr-added.txt'), 'engine:src/pr-added-data.test.ts\n');

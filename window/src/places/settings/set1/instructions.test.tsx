@@ -190,7 +190,8 @@ describe("Settings › Instructions & personality", () => {
     expect(row("Just about you")?.querySelectorAll("button").length).toBe(0);
     const many = engineOf({ "users.personalFile.get": () => ({ agentId: "main", profileId: "p1", content: "", hash: null, missing: true }) });
     await render(many.engine);
-    expect(host.textContent).toContain("Tell Branch your name, what you do and how you like replies.");
+    expect(row("Just about you").querySelector("code.if-name")?.textContent).toBe("USER.md");
+    expect(row("Just about you").querySelector("small")?.textContent).toBe("Yours: what this Trunk should know about you. Only you and it read it.");
     await act(async () => button(row("Just about you"), "Write").click());
     const dlg = document.querySelector<HTMLElement>('[data-testid="just-about-you"]')!;
     expect(dlg.textContent).toContain("0 / 4,000 characters");
@@ -199,5 +200,17 @@ describe("Settings › Instructions & personality", () => {
     await type(dlg.querySelector("textarea")!, "Call me T.");
     await act(async () => button(dlg, "Save").click());
     expect(many.request).toHaveBeenCalledWith("users.personalFile.set", { agentId: "main", content: "Call me T.", expectedHash: null });
+  });
+
+  it("leaves Just about you out, and never asks for the personal USER.md, when the hello says one person uses this Branch (#1920)", async () => {
+    const one = engineOf();
+    (one.engine as { sharedGateway?: boolean }).sharedGateway = false;
+    await render(one.engine);
+    // As in the preview: a one-person Branch has no Just about you section at all.
+    expect(host.textContent).not.toContain("Just about you");
+    expect(host.textContent).not.toContain("Not kept on this Branch");
+    expect(host.querySelector('.if-row[data-row="Just about you"]')).toBeNull();
+    expect(host.textContent).toContain("Who your assistant is: tone and boundaries");
+    expect(one.request.mock.calls.some(([m]) => m === "users.personalFile.get")).toBe(false);
   });
 });
