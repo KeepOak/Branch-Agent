@@ -24,6 +24,7 @@ import {
 import "./theme-mode-toggle.ts";
 import "./tooltip.ts";
 import type { CatalogProjectGrouping } from "../lib/sessions/catalog-project-grouping.ts";
+import { isGraftThreadKey } from "../lib/sessions/graft-thread-key.ts";
 import { showToast } from "../lib/toast.ts";
 import { SubscriptionsController } from "../lit/subscriptions-controller.ts";
 import { SETTINGS_ROUTE_TARGETS } from "../pages/config/route-data.ts";
@@ -476,7 +477,11 @@ class AppSidebar extends AppSidebarSessionNavigationElement implements SessionLi
       );
     }
     const navigationState = this.getSessionNavigationState();
-    const visibleSessions = this.selectedAgentSessionRows(navigationState);
+    const openSessionKey = isSessionRouteId(this.activeRouteId) ? this.getRouteSessionKey() : "";
+    // Threads other agents start through Graft stay out of the list unless open (#1933).
+    const visibleSessions = this.selectedAgentSessionRows(navigationState).filter(
+      (row) => row.key === openSessionKey || !isGraftThreadKey(row.key),
+    );
     const expandedAgentId = this.expandedAgentId();
     const terminalCatalog =
       this.activeRouteId === "terminal"

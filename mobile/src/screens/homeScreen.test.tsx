@@ -61,6 +61,7 @@ describe('home screen', () => {
   it('shows the greeting, the one-line summary, Needs you, Working now, quick actions and Branch', async () => {
     await renderHome();
     expect(screen.getByTestId('home-greeting')).toHaveTextContent('Good evening');
+    expect(screen.getByTestId('home-you')).toHaveTextContent('O');
     expect(screen.getByTestId('home-summary')).toHaveTextContent('2 waiting for you · 1 working');
     expect(screen.getByTestId('home-need-exec-1')).toBeOnTheScreen();
     expect(within(screen.getByTestId('home-need-exec-1')).getByText('Oak')).toBeOnTheScreen();
@@ -228,6 +229,14 @@ describe('home screen', () => {
     await renderHome();
     expect(screen.getByTestId('home-scroll')).toHaveProp('showsVerticalScrollIndicator', false);
     expect(screen.getByTestId('home-scroll')).toHaveProp('showsHorizontalScrollIndicator', false);
+  });
+
+  it('opens You from the initials in the title row', async () => {
+    const onYou = jest.fn();
+    await renderHome({ onYou, youName: 'Ada Lovelace' });
+    expect(screen.getByTestId('home-you')).toHaveTextContent('A');
+    await fireEvent.press(screen.getByTestId('home-you'));
+    expect(onYou).toHaveBeenCalledTimes(1);
   });
 });
 

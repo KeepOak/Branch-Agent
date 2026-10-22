@@ -11,6 +11,7 @@ import {
   GH_API_MAX_BUFFER,
   IGNORE_CHECK_NAMES,
   MAX_RATE_LIMIT_SLEEP_SECONDS,
+  RATE_LIMIT_WAKE_SPREAD_SECONDS,
   POLL_INTERVAL_SECONDS,
   VISUAL_TOUR_WORKFLOW_PATH,
   backoffSeconds,
@@ -188,8 +189,57 @@ test('withRateLimitRetry fails when a rate limit outlasts the wait budget', () =
     log: () => {},
   }), /rate limit exceeded/);
   const waited = sleeps.reduce((sum, seconds) => sum + seconds, 0);
-  assert.ok(waited <= 100, `waited ${waited}s, over the 100s cap`);
-  assert.ok(sleeps.length >= 1);
+  assert.equal(waited, 0, 'a reset after the job budget fails closed immediately instead of waiting in lock-step');
+  assert.deepEqual(sleeps, []);
+});
+
+test('withRateLimitRetry fails immediately when the reset is after the remaining budget', () => {
+  const start = 1_700_000_000_000;
+  const sleeps = [];
+  assert.throws(() => withRateLimitRetry(() => {
+    throw Object.assign(new Error('gh: API rate limit exceeded for installation (HTTP 403)'), {
+      httpStatus: 403,
+      headers: { 'x-ratelimit-reset': String(start / 1000 + 5_000), 'x-ratelimit-remaining': '0' },
+    });
+  }, {
+    sleep: (seconds) => sleeps.push(seconds),
+    now: () => start,
+    startedAt: start,
+    budgetSeconds: 100,
+    fetchRateLimit: () => null,
+    retryTransient: false,
+    log: () => {},
+  }), /rate limit exceeded/);
+  assert.deepEqual(sleeps, []);
+});
+
+test('rate-limit waiters add wake spread so concurrent jobs do not retry together', () => {
+  assert.equal(RATE_LIMIT_WAKE_SPREAD_SECONDS, 45);
+  const start = 1_700_000_000_000;
+  const sleeps = [];
+  let calls = 0;
+  const value = withRateLimitRetry(() => {
+    calls += 1;
+    if (calls === 1) {
+      throw Object.assign(new Error('gh: API rate limit exceeded for installation (HTTP 403)'), {
+        httpStatus: 403,
+        headers: { 'x-ratelimit-reset': String(start / 1000 + 10), 'x-ratelimit-remaining': '0' },
+      });
+    }
+    return 'ok';
+  }, {
+    sleep: (seconds) => sleeps.push(seconds),
+    now: () => start,
+    startedAt: start,
+    budgetSeconds: 3600,
+    spreadSeconds: RATE_LIMIT_WAKE_SPREAD_SECONDS,
+    random: () => 1,
+    fetchRateLimit: () => null,
+    retryTransient: false,
+    log: () => {},
+  });
+  assert.equal(value, 'ok');
+  assert.deepEqual(sleeps, [10 + RATE_LIMIT_WAKE_SPREAD_SECONDS]);
 });
 
 test('a coverage miss is not a rate limit and is not retried', () => {
@@ -277,6 +327,7 @@ test('backoff and poll intervals stay capped and increase 30/60/90', () => {
   assert.deepEqual([0, 1, 2, 3].map((index) => pollIntervalSeconds(index)), [30, 60, 90, 90]);
   assert.equal(DEFAULT_WAIT_BUDGET_SECONDS, 64 * 30);
   assert.equal(MAX_RATE_LIMIT_SLEEP_SECONDS, 120);
+  assert.equal(RATE_LIMIT_WAKE_SPREAD_SECONDS, 45);
   assert.equal(GH_API_MAX_BUFFER, 64 * 1024 * 1024);
 });
 
@@ -760,6 +811,8 @@ test('ordinary merge-gate workflow runs the rate-limit waiter from a checkout', 
   assert.doesNotMatch(yaml, /sleep 10/);
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-recheck.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-recheck.test.mjs'));
 });
 
 test('shouldSkipEditedRerun keeps a failed SHA live and skips in-progress or green runs', () => {
