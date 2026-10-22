@@ -1319,3 +1319,32 @@ test("first launch is skipped when the window is already installed", async () =>
   assert.equal(await launch.runFirstLaunchInstall(cfg, request, { ask: async () => true }), "skipped");
   assert.equal(requests.length, 0);
 }));
+
+test("a pending record whose target already serves is cleared, and the next check stages a newer build", async () => fixture(async ({ cfg, request, release, engine, window, output }) => {
+  assert.equal(await source.refreshComponentUpdate(cfg, request), true);
+  const applied = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  // The engine was swapped in, but its confirmation was lost: the journal still says "pending".
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), applied + "\n");
+  const logs = [];
+  assert.equal(await source.refreshComponentUpdate(cfg, request, { log: line => logs.push(line) }), false, "without a serving engine nothing changes");
+  assert.equal(JSON.parse(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8")).phase, "pending");
+  // A newer release appears on the manifest.
+  await writeFile(join(engine, "dist", "build-info.json"), '{"version":"newer"}');
+  await rm(output, { recursive: true, force: true });
+  const newer = await makeComponentRelease({ version: "0.4.4", tag: "v0.4.4", engine, window, output });
+  Object.assign(release, newer);
+  const guard = async replace => replace();
+  assert.equal(await source.refreshComponentUpdate(cfg, request, { log: line => logs.push(line), underSwapGuard: guard, servingEngine: () => applied }), true, logs.join("\n"));
+  assert.ok(logs.some(line => line.includes("0.4.3 is already running; clearing its stale pending record")), logs.join("\n"));
+  const journal = JSON.parse(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8"));
+  assert.equal(journal.phase, "pending"); assert.equal(journal.version, "0.4.4", "the newer build superseded the stale record");
+  assert.equal(journal.enginePrevious, applied);
+}));
+
+test("a pending record is never cleared while a different engine serves", async () => fixture(async ({ cfg, request }) => {
+  assert.equal(await source.refreshComponentUpdate(cfg, request), true);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  assert.equal(await source.settleAppliedComponentUpdate(cfg, { servingEngine: () => cfg.engineDir }), false);
+  assert.equal(JSON.parse(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8")).version, "0.4.3");
+  assert.equal(await source.rollbackComponentUpdate(cfg), true); await unchanged(cfg);
+}));

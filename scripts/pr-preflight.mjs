@@ -95,7 +95,9 @@ export function selfCheckProblems({ branch, headSha, body, repoDir }) {
   return problems;
 }
 
-// Named-test list: every changed engine or window test file must appear in the branch's list, sorted.
+// Named-test list: every changed engine or window test file must appear in the branch's list, in any order.
+// Only one PR edits its own list, so order cannot cause merge conflicts. The shared engineTests and windowTests
+// arrays in feature-batch-ci-targets.mjs stay sorted; namedTests() checks those.
 export function namedListProblems({ changedFiles, listText, listPath }) {
   const wanted = changedFiles.filter((f) => ENGINE_OR_WINDOW_TEST.test(f)).map((f) => f.replace(/^(engine|window)\//, '$1:')).sort();
   if (wanted.length === 0) return [];
@@ -104,11 +106,7 @@ export function namedListProblems({ changedFiles, listText, listPath }) {
   }
   const have = listText.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
   const missing = wanted.filter((w) => !have.includes(w));
-  const problems = missing.map((w) => problem('named-tests', `${listPath} lacks ${w}`, `add the line ${w}`));
-  if (JSON.stringify(have) !== JSON.stringify([...have].sort())) {
-    problems.push(problem('named-tests', `${listPath} is not sorted`, `sort the lines in ${listPath}`));
-  }
-  return problems;
+  return missing.map((w) => problem('named-tests', `${listPath} lacks ${w}`, `add the line ${w}`));
 }
 
 export function uiProofProblems({ changedFiles, body }) {
@@ -233,11 +231,64 @@ export function priorArtProblems({ title, body }) {
   return [problem('prior-art', 'the Prior art entry ' + gaps[0], PRIOR_ART_FIX)];
 }
 
-export function personalInfoProblems(addedLines) {
-  const real = addedLines.filter((l) => !FIXTURE_FILE.test(l.file));
-  return real.filter((l) => PERSONAL_PATTERNS.some((p) => p.test(l.text))).map((l) => (
-    problem('personal-info', `${l.file}:${l.line} contains a personal path or email`, 'replace it with a placeholder or remove it')
+// Generic machine-detail patterns. /home/<name>/ skips fixture-like names; *.local skips
+// file names such as .env.local or settings.local.json (a dot, slash or word follows or precedes).
+const HOME_PATH = /\/home\/([A-Za-z0-9._-]+)\//g;
+const FIXTURE_HOME_NAMES = new Set(['user', 'username', 'runner', 'ubuntu', 'node', 'example', 'test', 'tester', 'me', 'ci', 'name', 'someone', 'alice', 'bob']);
+const LOCAL_HOSTNAME = /(?<![\w./-])[A-Za-z][A-Za-z0-9-]*\.local\b(?![.\w/-])/i;
+
+export function personalHomePath(text) {
+  for (const m of String(text).matchAll(HOME_PATH)) {
+    if (!FIXTURE_HOME_NAMES.has(m[1].toLowerCase())) return true;
+  }
+  return false;
+}
+
+// Private names (machine names, hostnames, account handles) come from the environment, never from the repo:
+// BRANCH_PRIVATE_NAME_DENYLIST is a comma-separated list, set locally or as a CI secret.
+export function privateNameDenylist(env = process.env) {
+  return String(env.BRANCH_PRIVATE_NAME_DENYLIST ?? '')
+    .split(',').map((n) => n.trim()).filter((n) => n.length >= 3);
+}
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function deniedNameIn(text, denylist) {
+  const value = String(text);
+  return denylist.some((name) => new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(name)}(?![A-Za-z0-9])`, 'i').test(value));
+}
+
+// In a path, a directory named like a host (<host>.local/) counts; a file name ending in .local does not.
+function hostDirectoryInPath(file) {
+  return String(file).split('/').slice(0, -1).some((part) => /^[A-Za-z][A-Za-z0-9-]*\.local$/i.test(part));
+}
+
+function genericMachineDetail(text) {
+  return PERSONAL_PATTERNS.some((p) => p.test(text)) || personalHomePath(text) || LOCAL_HOSTNAME.test(text);
+}
+
+// Added lines and changed file paths. Test files are exempt from the generic patterns (they carry
+// synthetic fixtures) but never from the private denylist, whose names must not appear anywhere.
+// The problem text never repeats the matched name, so a CI log cannot leak it.
+// The branch name lands in main's history through merge commits, so it is scanned as well.
+export function branchNameProblems(branch, denylist = privateNameDenylist()) {
+  if (!branch || branch === 'HEAD') return [];
+  if (!genericMachineDetail(branch) && !/[A-Za-z][A-Za-z0-9-]*\.local(?![A-Za-z0-9.])/i.test(branch) && !deniedNameIn(branch, denylist)) return [];
+  return [problem('personal-info', 'the branch name contains a personal path, hostname or private name', 'push the work to a new branch with a generic name')];
+}
+
+export function personalInfoProblems(addedLines, { changedFiles = [], denylist = privateNameDenylist(), branch = null } = {}) {
+  const lineProblems = addedLines.filter((l) => (
+    (!FIXTURE_FILE.test(l.file) && genericMachineDetail(l.text)) || deniedNameIn(l.text, denylist)
+  )).map((l) => (
+    problem('personal-info', `${l.file}:${l.line} contains a personal path, email, hostname or private name`, 'replace it with a placeholder or remove it')
   ));
+  const pathProblems = [...new Set(changedFiles)].filter((f) => genericMachineDetail(f) || hostDirectoryInPath(f) || deniedNameIn(f, denylist)).map((f) => (
+    problem('personal-info', `changed file path ${f} contains a personal path, hostname or private name`, 'rename the file to a generic name')
+  ));
+  return [...branchNameProblems(branch, denylist), ...pathProblems, ...lineProblems];
 }
 
 // Bodies are public prose, not test fixtures. Scan every domain and Markdown
@@ -292,7 +343,7 @@ export function runPreflight(input) {
       repoDir: input.repoDir,
     }),
     ...desktopCoverageProblems({ files: input.files ?? [], desktopWorkflow: input.desktopWorkflow ?? null }),
-    ...personalInfoProblems(input.addedLines ?? []),
+    ...personalInfoProblems(input.addedLines ?? [], { changedFiles, denylist: input.denylist ?? privateNameDenylist(), branch: input.branch }),
     ...bodyEmailProblems(body),
     ...unverifiedPatchProblems(input.unverifiedFiles ?? []),
   ];
@@ -468,7 +519,7 @@ function apiInputFromEnv(env) {
   const prNumber = env.PR_NUMBER;
   const token = env.GITHUB_TOKEN;
   const headSha = env.HEAD_SHA;
-  const headBranch = env.HEAD_BRANCH;
+  const headBranch = env.HEAD_BRANCH || env.GITHUB_HEAD_REF;
   if (!repo || !prNumber || !token || !headSha || !headBranch) {
     throw new Error('CI mode needs REPO, PR_NUMBER, GITHUB_TOKEN, HEAD_SHA and HEAD_BRANCH');
   }

@@ -67,7 +67,7 @@ cd desktop && node --test scripts/<name>.test.mjs
 
 ### Making CI run your tests
 
-CI runs an explicit list of test files. A pull request adds its own list as `scripts/feature-batch-ci-named/<branch-name>.txt`, one entry per line, sorted:
+CI runs an explicit list of test files. A pull request adds its own list as `scripts/feature-batch-ci-named/<branch-name>.txt`, one entry per line, in any order (only the shared arrays in `scripts/feature-batch-ci-targets.mjs` must stay sorted):
 
 ```text
 engine:src/gateway/contacts/outside-agents.test.ts
@@ -75,6 +75,8 @@ window:src/connect/conversations.test.ts
 ```
 
 Don't edit the arrays in `scripts/feature-batch-ci-targets.mjs` for new tests. `scripts/feature-batch-ci-named/README.txt` describes the format.
+
+Before you push, run `node scripts/check-named-tests.mjs`. It applies the same rule as the PR preflight and prints the expected list file name and every missing line.
 
 ## Windows child processes
 

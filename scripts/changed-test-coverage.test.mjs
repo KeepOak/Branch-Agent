@@ -190,4 +190,27 @@ test('feature-batch-ci runs named e2e tests in runFeatureTests only, and preflig
   assert.match(body('validateScope'), /namedE2eTests\(lane\)\) await fs\.access/);
   const run = body('runFeatureTests');
   assert.ok(run.indexOf('runNamedE2eTests(env, shard)') > run.indexOf('const shard = shardOf()'));
+  // Only full-scope Linux shards run them (PR Linux shards always run); never the touched or non-Linux jobs.
+  assert.match(body('runNamedE2eTests'), /if \(!namedE2eScope\(\)\) return;/);
+  assert.match(src, /scope !== 'touched' && platform === 'linux'/);
+});
+
+test('named e2e entries stay out of the unit named list that feeds the vitest shards', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const targets = await import('./feature-batch-ci-targets.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'named-'));
+  writeFileSync(join(dir, 'x.txt'), [
+    'engine:ui/src/e2e/about.e2e.test.ts',
+    'engine:test/gateway-desktop-handoff.e2e.test.ts',
+    'engine:src/foo.test.ts',
+  ].join('\n'));
+  targets.setNamedListDir(dir);
+  try {
+    assert.deepEqual(targets.namedTestFiles('engine'), ['src/foo.test.ts']);
+    assert.deepEqual(targets.namedTestFiles('engine', undefined, { e2e: true }), ['ui/src/e2e/about.e2e.test.ts']);
+  } finally {
+    targets.setNamedListDir(new URL('./feature-batch-ci-named/', import.meta.url).pathname);
+  }
 });

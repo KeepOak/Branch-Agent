@@ -92,18 +92,22 @@ async function ensurePlaywrightChromium(cwd, env) {
 
 // Feature-batch vitest excludes **/*.e2e.test.ts, so named engine e2e tests run here through
 // the engine's own e2e configs (control UI e2e under ui/src/e2e, the rest under test/vitest).
+// Only the full-scope Linux shards run them: those run on every PR, and the e2e suites (Chromium,
+// the prebuilt UI bundle) are Linux-only in CI. The Windows "touched" job and the main-push
+// Windows/macOS shards skip them, so they never run e2e files under the unit configs either.
+export function namedE2eScope({ scope = process.env.FEATURE_SCOPE, platform = process.platform } = {}) {
+  return scope !== 'touched' && platform === 'linux';
+}
+
 async function runNamedE2eTests(env, shard) {
-  const named = namedE2eTests('engine');
-  const changed = process.env.FEATURE_SCOPE === 'touched' ? await prChangedFiles() : [];
-  const tests = process.env.FEATURE_SCOPE === 'touched'
-    ? named.filter(file => changed.includes(`engine/${file}`))
-    : shardTests(named, shard);
+  if (!namedE2eScope()) return;
+  const tests = shardTests(namedE2eTests('engine'), shard);
   const ui = tests.filter(file => file.startsWith('ui/src/e2e/'));
   const other = tests.filter(file => !ui.includes(file));
   for (const [config, files] of [['test/vitest/vitest.ui-e2e.config.ts', ui], ['test/vitest/vitest.e2e.config.ts', other]]) {
     if (!files.length) continue;
     if (files === ui) await ensurePlaywrightChromium(engineRoot, env);
-    console.log(`engine e2e: ${files.length} named test files with ${config}`);
+    console.log(`engine e2e: ${files.length} named test files with ${config} in shard ${shard.index + 1}/${shard.total}`);
     await run(process.execPath, [path.join(engineRoot, 'scripts/run-vitest.mjs'),
       'run', '--config', config, ...files], engineRoot, env);
   }

@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
 const { createAutoApplyUpdate, readUpdateHealth, updateHealthRefusal, AUTO_APPLY_POLL_MS, AUTO_APPLY_GAP_MS, AUTO_APPLY_RETRY_MS,
-  TRUNK_UPDATE_MIN_INTERVAL_MS, TRUNK_WORK_SAMPLE_MS, AUTO_APPLY_PENDING_CAP_MS, AUTO_APPLY_CHECK_BACKOFF_MAX_MS } = await import(
+  TRUNK_UPDATE_MIN_INTERVAL_MS, TRUNK_WORK_SAMPLE_MS, UPDATE_MIN_FREE_DISK_BYTES, UPDATE_MIN_FREE_MEMORY_BYTES, AUTO_APPLY_SILENT_IDLE_AFTER, updateDiskFloor, AUTO_APPLY_PENDING_CAP_MS, AUTO_APPLY_CHECK_BACKOFF_MAX_MS } = await import(
   pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "auto-apply-update.js"))
 );
 const { COMPONENT_UPDATE_CHECK_MS } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js")));
@@ -255,23 +255,21 @@ test("a pending update that keeps being replaced by newer releases still lands o
   assert.match(f.restarts[0], /^0\.4\.4-build-\d+$/);
 });
 
-test("repeated probe timeouts leave auto-apply on and back off before each retry (Private #1054)", async () => {
-  let now = 0; let probes = 0; let timingOut = true; let enabledReads = 0;
+test("repeated probe timeouts leave auto-apply on, back off, then count as idle (Private #1054)", async () => {
+  let now = 0; let probes = 0; let enabledReads = 0;
   const restarts = []; const logs = [];
   const controller = createAutoApplyUpdate({
     pendingVersion: async () => "0.4.4-build-next",
     enabled: () => { enabledReads++; return true; },
-    activity: async () => {
-      probes++;
-      if (timingOut) throw new Error("The window activity check timed out");
-      return { activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false };
-    },
+    activity: async () => { probes++; throw new Error("The window activity check timed out"); },
     restart: async version => { restarts.push(version); },
     log: line => logs.push(line),
     now: () => now,
   });
   assert.equal(AUTO_APPLY_CHECK_BACKOFF_MAX_MS, 5 * 60_000);
-  const waits = [30_000, 60_000, 120_000, 240_000, 300_000, 300_000];
+  // The first failures back off as before; from the AUTO_APPLY_SILENT_IDLE_AFTER-th they count as idle.
+  const waits = [30_000, 60_000];
+  assert.equal(waits.length, AUTO_APPLY_SILENT_IDLE_AFTER - 1);
   for (const [i, wait] of waits.entries()) {
     await controller.tick();
     assert.equal(probes, i + 1, "each scheduled retry probes once");
@@ -280,11 +278,12 @@ test("repeated probe timeouts leave auto-apply on and back off before each retry
     assert.equal(probes, i + 1, "no probe before the back-off ends");
     now += 1;
   }
+  await controller.tick();
+  assert.deepEqual(restarts, [], "the idle hold still applies");
+  assert.ok(logs.some(line => line.includes("treating the window as idle")), logs.join("\n"));
+  now += AUTO_APPLY_GAP_MS; await controller.tick();
   assert.ok(enabledReads > 0);
   assert.ok(logs.every(line => !line.includes("off")), logs.join("\n"));
-  timingOut = false;
-  await controller.tick();
-  now += AUTO_APPLY_GAP_MS; await controller.tick();
   assert.deepEqual(restarts, ["0.4.4-build-next"]);
 });
 
@@ -441,4 +440,61 @@ test("M5: relaunch arguments keep the window or tray state on Windows only", () 
   assert.deepEqual(relaunchArgs([START_IN_TRAY, "--x"], true, "win32"), ["--x"]);
   assert.deepEqual(relaunchArgs([START_IN_TRAY, "--x"], false, "win32"), ["--x", START_IN_TRAY]);
   assert.deepEqual(relaunchArgs(["--x"], false, "darwin"), ["--x"]);
+});
+
+const GB = 1024 ** 3;
+test("the disk guard is an absolute floor: a big drive at 9% free still updates", () => {
+  // 89.6 GB free on a 952 GB drive is 9.4%: the old percentage rule blocked it forever.
+  assert.equal(updateHealthRefusal({ diskFree: 0.094, memoryFree: 0.5, diskFreeBytes: 89.6 * GB, memoryFreeBytes: 8 * GB }), undefined);
+  assert.match(updateHealthRefusal({ diskFree: 0.5, memoryFree: 0.5, diskFreeBytes: 1.5 * GB, memoryFreeBytes: 8 * GB }), /low disk: 1\.5 GB free, under 2\.0 GB/);
+  assert.equal(updateDiskFloor(), UPDATE_MIN_FREE_DISK_BYTES);
+  assert.equal(updateDiskFloor(1 * GB), 3 * GB, "three times a large update's size");
+  assert.match(updateHealthRefusal({ diskFree: 0.5, memoryFree: 0.5, diskFreeBytes: 2.5 * GB, memoryFreeBytes: 8 * GB }, 1 * GB), /under 3\.0 GB/);
+});
+
+test("the memory guard is an absolute floor: 17% of a large RAM still updates", () => {
+  assert.equal(updateHealthRefusal({ diskFree: 0.5, memoryFree: 0.17, diskFreeBytes: 50 * GB, memoryFreeBytes: 5.4 * GB }), undefined);
+  assert.match(updateHealthRefusal({ diskFree: 0.5, memoryFree: 0.5, diskFreeBytes: 50 * GB, memoryFreeBytes: 0.5 * GB }), /low memory: 0\.5 GB free, under 1\.0 GB/);
+  assert.equal(UPDATE_MIN_FREE_MEMORY_BYTES, GB);
+});
+
+test("a real health reading carries byte counts, and byte pins override them", () => {
+  const real = readUpdateHealth(process.cwd(), 4 * GB, 16 * GB, {});
+  assert.ok(real.diskFreeBytes > 0);
+  assert.equal(real.memoryFreeBytes, 4 * GB);
+  const pinned = readUpdateHealth(process.cwd(), 4 * GB, 16 * GB, { BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES: String(GB), BRANCH_DESKTOP_UPDATE_FREE_MEMORY_BYTES: "0" });
+  assert.equal(pinned.diskFreeBytes, GB); assert.equal(pinned.memoryFreeBytes, 0);
+  assert.match(updateHealthRefusal(pinned), /low disk/);
+});
+
+test("a large host (9% disk, 17% RAM, both plenty in bytes) applies the update", async () => {
+  const f = cadence();
+  f.state.health = { diskFree: 0.094, memoryFree: 0.17, diskFreeBytes: 89.6 * GB, memoryFreeBytes: 5 * GB };
+  await f.tick(); f.state.now += AUTO_APPLY_GAP_MS; await f.tick();
+  assert.deepEqual(f.restarts, [["next", true]], f.logs.join("\n"));
+});
+
+function silentWindow({ runs = 0 } = {}) {
+  let now = 0;
+  const restarts = [], logs = [];
+  let probes = 0;
+  const controller = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true,
+    activity: async () => { probes++; throw new Error("The window activity check timed out"); },
+    activeRuns: async () => runs, restart: async version => { restarts.push(version); }, log: line => logs.push(line), now: () => now });
+  return { controller, restarts, logs, probes: () => probes, advance: ms => { now += ms; } };
+}
+
+test("a window activity check that keeps timing out counts as idle after a few retries", async () => {
+  const f = silentWindow();
+  for (let i = 0; i < 40 && !f.restarts.length; i++) { await f.controller.tick(); f.advance(AUTO_APPLY_POLL_MS); }
+  assert.deepEqual(f.restarts, ["next"], f.logs.join("\n"));
+  assert.ok(f.logs.some(line => /activity check failed .*waiting|retrying in/.test(line)), "the first failures still back off");
+  assert.ok(f.logs.some(line => line.includes(`activity check failed ${AUTO_APPLY_SILENT_IDLE_AFTER} times`) && line.includes("treating the window as idle")), f.logs.join("\n"));
+});
+
+test("a silent window still never interrupts runs the engine reports", async () => {
+  const f = silentWindow({ runs: 2 });
+  for (let i = 0; i < 40; i++) { await f.controller.tick(); f.advance(AUTO_APPLY_POLL_MS); }
+  assert.deepEqual(f.restarts, []);
+  assert.ok(f.logs.some(line => line.includes("waiting for 2 active runs")), f.logs.join("\n"));
 });
