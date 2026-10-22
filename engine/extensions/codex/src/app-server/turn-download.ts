@@ -48,7 +48,36 @@ export type PrepareCodexForTurnParams = {
   /** Tests: the on-demand source and the pending check. */
   onDemand?: ManagedCodexOnDemand;
   pending?: (startOptions: CodexAppServerStartOptions) => Promise<boolean>;
+  /**
+   * False when nobody can answer the size question for this run (the CLI, a
+   * chat channel, a scheduled or background run). The turn then fails at once
+   * with what to do, instead of waiting on a yes that never comes.
+   */
+  canAsk?: boolean;
 };
+
+/** Run triggers with nobody watching the conversation to say yes. */
+const UNATTENDED_TRIGGERS = new Set(["cron", "heartbeat", "memory", "overflow"]);
+
+/** Only the Branch window draws the download question and its Yes button. */
+export function canAskCodexDownload(params: {
+  trigger?: string;
+  messageChannel?: string;
+}): boolean {
+  if (params.trigger && UNATTENDED_TRIGGERS.has(params.trigger)) {
+    return false;
+  }
+  return params.messageChannel?.trim().toLowerCase() === "webchat";
+}
+
+/** What an unattended run says when Codex still has to be downloaded. */
+export function codexDownloadNeededMessage(question: string | undefined): string {
+  const ask = question ? ` "${question}"` : " the Codex download";
+  return (
+    `Codex isn't downloaded yet, so this agent can't answer here. ` +
+    `Open the Branch window and say yes to${ask}, or pick a model that doesn't use Codex.`
+  );
+}
 
 /**
  * Downloads Codex before the turn starts it, when the turn would otherwise wait
@@ -76,6 +105,17 @@ export async function prepareCodexForTurn(params: PrepareCodexForTurnParams): Pr
       // The chat line is a courtesy; the download goes on without it.
     }
   };
+  if (!onDemand.downloadAllowed() && params.canAsk === false) {
+    const question = onDemand.askMessage();
+    const message = codexDownloadNeededMessage(question);
+    emit({
+      state: "failed",
+      message,
+      ...(question ? { ask: question } : {}),
+      reason: "not-downloaded",
+    });
+    throw new CodexRuntimeUnavailableError("not-downloaded", message);
+  }
   if (!onDemand.downloadAllowed()) {
     const question = onDemand.askMessage() ?? "Download Codex?";
     const preview = await readStatus(onDemand);
