@@ -1,75 +1,53 @@
 import { consume } from "@lit/context";
 import { html } from "lit";
-import { state } from "lit/decorators.js";
-import { titleForRoute } from "../../app-navigation.ts";
 import { applicationContext, type ApplicationContext } from "../../app/context.ts";
-import { shellLayoutTraits } from "../../app/shell-layout-traits.ts";
 import { CONTROL_UI_BUILD_INFO } from "../../build-info.ts";
-import { renderSettingsWorkspace } from "../../components/settings-workspace.ts";
-import { copyToClipboard } from "../../lib/clipboard.ts";
+import { t } from "../../i18n/index.ts";
+import "../../components/modal-dialog.ts";
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
-import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
-import { renderAbout, type AboutCommitCopyState } from "./view.ts";
+import { detectAboutPlatform, renderAbout } from "./view.ts";
 
-const COPY_RESULT_VISIBLE_MS = 1800;
+// Settings fallback when About was opened directly (no in-app page to go back to).
+const ABOUT_CLOSE_FALLBACK_ROUTE = "profile";
 
+/**
+ * The About route draws the preview's small About Branch dialog over Settings
+ * (spec-v23 `ACTS.about` via `openDlg`). Closing it returns to where it was opened from.
+ */
 class AboutPage extends BranchLightDomElement {
   @consume({ context: applicationContext, subscribe: true })
   private context!: ApplicationContext;
 
-  @state() private copyState: AboutCommitCopyState = "idle";
+  private closing = false;
 
-  private copyResetTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
-  private readonly subscriptions = new SubscriptionsController(this).watchStore(
-    () => this.context?.gateway,
-  );
-
-  override disconnectedCallback() {
-    this.subscriptions.clear();
-    globalThis.clearTimeout(this.copyResetTimer ?? undefined);
-    this.copyResetTimer = null;
-    super.disconnectedCallback();
-  }
-
-  private async copyCommit() {
-    const commit = CONTROL_UI_BUILD_INFO.commit;
-    if (!commit || this.copyState === "copying") {
+  private close = (event?: Event) => {
+    event?.preventDefault();
+    if (this.closing) {
       return;
     }
-    // A previous feedback reset must not clear a pending retry's busy state.
-    globalThis.clearTimeout(this.copyResetTimer ?? undefined);
-    this.copyResetTimer = null;
-    this.copyState = "copying";
-    const copied = await copyToClipboard(commit);
-    if (!this.isConnected) {
+    this.closing = true;
+    // Only app-owned pushes carry a history state object (app/browser.ts), so a
+    // null state means About was the first page: fall back to Settings instead.
+    if (globalThis.history.state !== null && globalThis.history.length > 1) {
+      globalThis.history.back();
       return;
     }
-    this.copyState = copied ? "copied" : "error";
-    this.copyResetTimer = globalThis.setTimeout(() => {
-      this.copyResetTimer = null;
-      this.copyState = "idle";
-    }, COPY_RESULT_VISIBLE_MS);
-  }
+    this.context.replace(ABOUT_CLOSE_FALLBACK_ROUTE);
+  };
 
   override render() {
-    const gatewaySnapshot = this.context.gateway.snapshot;
-    const gatewayVersion =
-      gatewaySnapshot.phase === "connected"
-        ? gatewaySnapshot.hello?.server?.version?.trim() || null
-        : null;
-    const body = renderAbout({
-      buildInfo: CONTROL_UI_BUILD_INFO,
-      gatewayVersion,
-      copyState: this.copyState,
-      onCopyCommit: () => void this.copyCommit(),
-    });
     return html`
-      <section class="content-header" ${shellLayoutTraits({ toolbarHeader: true })}>
-        <div>
-          <h1 class="page-title">${titleForRoute("about")}</h1>
-        </div>
-      </section>
-      ${renderSettingsWorkspace(body)}
+      <branch-modal-dialog
+        class="about-modal"
+        .label=${t("aboutPage.title")}
+        @modal-cancel=${this.close}
+      >
+        ${renderAbout({
+          buildInfo: CONTROL_UI_BUILD_INFO,
+          platform: detectAboutPlatform(),
+          onClose: () => this.close(),
+        })}
+      </branch-modal-dialog>
     `;
   }
 }

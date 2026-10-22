@@ -1,22 +1,73 @@
-/* Settings > About: the preview's small About Branch dialog (spec-v23 `ACTS.about`, .about18u / .aboutline18u),
-   drawn as one centred card on the About route. */
+/* About Branch: the preview's small modal dialog (spec-v23 `openDlg` .dlg / .dlg-h / .dlg-b with
+   `ACTS.about` .about18u / .aboutline18u), opened over Settings from every About entry point. */
+.about-modal {
+  --branch-modal-width: 520px;
+}
+
 .about-dialog {
   box-sizing: border-box;
-  width: min(460px, 100%);
-  margin: 24px auto;
-  padding: 20px 22px 18px;
-  border-radius: 22px;
-  border: 1px solid var(--border);
+  width: min(520px, 100%);
+  border-radius: 18px;
   background: var(--card);
-  display: grid;
-  gap: 0;
+  color: var(--text);
+  box-shadow: var(--shadow-lg, 0 18px 48px rgba(0, 0, 0, 0.18));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* .dlg-h: title + close X. */
+.about-dialog__h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 14px 6px 24px;
 }
 
 .about-dialog__title {
-  margin: 0 0 14px;
-  font-size: var(--control-ui-text-md, 15px);
-  font-weight: 650;
+  margin: 0;
+  flex: 1;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
   color: var(--text-strong);
+}
+
+.about-dialog__close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: var(--cursor-action);
+}
+
+.about-dialog__close span {
+  display: flex;
+}
+
+.about-dialog__close svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.about-dialog__close:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* .dlg-b */
+.about-dialog__b {
+  padding: 14px 24px 20px;
+  overflow: auto;
 }
 
 /* Mark + identity, side by side (.about18u). */
@@ -35,11 +86,7 @@
   user-select: none;
 }
 
-.about-hero__name {
-  font-weight: 650;
-  color: var(--text-strong);
-}
-
+.about-hero__name,
 .about-hero__version {
   font: inherit;
   font-weight: 650;
@@ -51,130 +98,49 @@
   color: var(--text);
 }
 
+/* .hint: "By KeepOak · <platform>". */
 .about-hero__byline {
   margin: 2px 0 0;
-  font-size: var(--control-ui-text-xs);
+  font-size: var(--control-ui-text-xs, 12px);
   color: var(--muted);
 }
 
-/* keepoak.com · Handbook · What's new as small ghost buttons (.acts .btn.ghost.sm). */
+/* keepoak.com · Handbook · What's new as plain text links (preview `.link`), not pills. */
 .about-hero__links {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 6px 14px;
   margin-top: 12px;
 }
 
 .about-hero__link {
-  display: inline-flex;
-  align-items: center;
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
   color: var(--text);
-  font-size: var(--control-ui-text-sm);
-  text-decoration: none;
-  transition: background var(--duration-fast) ease;
+  font-size: 13px;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong, var(--border));
+  text-underline-offset: 3px;
 }
 
 .about-hero__link:hover {
-  background: var(--bg-hover);
+  text-decoration-color: currentColor;
 }
 
 .about-hero__link:focus-visible,
-.about-footer__licences:focus-visible {
+.about-footer__licences:focus-visible,
+.about-dialog__close:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
 
+/* .aboutline18u */
 .about-footer {
   margin: 10px 0 0;
-  font-size: var(--control-ui-text-xs);
+  font-size: 12px;
   color: var(--muted);
 }
 
 .about-footer__licences {
   color: inherit;
   text-decoration: underline;
-}
-
-.about-dialog__h {
-  margin: 16px 0 6px;
-  font-size: var(--control-ui-text-sm);
-  font-weight: 650;
-  color: var(--text-strong);
-}
-
-/* About labels are short, so the shared 120px settings label track leaves an
-   oversized gutter here. Keep the values close while preserving room to wrap. */
-.about-build-grid {
-  grid-template-columns: max-content minmax(0, 1fr);
-}
-
-/* Commit hash, age, and copy button cluster inside the build facts grid. */
-.about-commit {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.about-commit code {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  user-select: all;
-}
-
-/* Borderless inline copy affordance; kept tiny so the hash stays the focus. */
-.about-commit__copy {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  cursor: var(--cursor-action);
-  transition:
-    opacity var(--duration-fast, 120ms) ease,
-    color var(--duration-fast, 120ms) ease,
-    background var(--duration-fast, 120ms) ease;
-}
-
-.about-commit__copy:hover,
-.about-commit__copy:focus-visible {
-  color: var(--text-strong);
-  background: var(--bg-hover);
-}
-
-.about-commit__copy svg {
-  display: block;
-  width: 14px;
-  height: 14px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.5px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-/* Hover-revealed only where hover exists; touch/keyboard keep it visible
-   (focus-within covers tabbing, coarse pointers never match the media query). */
-@media (hover: hover) and (pointer: fine) {
-  .about-commit .about-commit__copy {
-    opacity: 0;
-  }
-
-  .about-commit:hover .about-commit__copy,
-  .about-commit:focus-within .about-commit__copy {
-    opacity: 1;
-  }
-}
-
-.about-commit__age {
-  color: var(--muted);
-  font-size: var(--control-ui-text-xs, 12px);
-  white-space: nowrap;
+  text-underline-offset: 3px;
 }
