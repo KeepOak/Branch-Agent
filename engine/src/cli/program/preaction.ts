@@ -3,7 +3,6 @@ import type { Command } from "commander";
 import type { StartupConfigPreflightOptions } from "../../commands/startup-config-preflight.js";
 import { setVerbose } from "../../globals.js";
 import type { LogLevel } from "../../logging/levels.js";
-import { resolvePluginInstallInvalidConfigPolicy } from "../../plugins/install-config.js";
 import { defaultRuntime } from "../../runtime.js";
 import { resolveCliArgvInvocation } from "../argv-invocation.js";
 import { getVerboseFlag, isHelpOrVersionInvocation } from "../argv.js";
@@ -16,7 +15,6 @@ import { resolveCliCommandPathPolicy } from "../command-path-policy.js";
 import { resolveCliStartupPolicy } from "../command-startup-policy.js";
 import { applyResolvedCommandOutputMode } from "../json-output-mode.js";
 import { isModelsPlainMachineOutput } from "../models-output-mode.js";
-import { resolvePluginInstallPreactionRequest } from "../plugin-install-config-policy.js";
 import { getCommanderCommandPath, hasCommanderOptionToken } from "./commander-parse-facts.js";
 import { isCommandJsonOutputMode } from "./json-mode.js";
 import { isParentDefaultHelpAction } from "./parent-default-help.js";
@@ -32,9 +30,23 @@ function setProcessTitleForCommand() {
   }
 }
 
-function shouldAllowInvalidConfigForAction(actionCommand: Command, commandPath: string[]): boolean {
+async function shouldAllowInvalidConfigForAction(
+  actionCommand: Command,
+  commandPath: string[],
+): Promise<boolean> {
+  if (commandPath[0] === "update") {
+    return true;
+  }
+  // Plugin install policy pulls in config IO and validation; load it only for `plugins install`.
+  if (commandPath[0] !== "plugins" || commandPath[1] !== "install") {
+    return false;
+  }
+  const [{ resolvePluginInstallInvalidConfigPolicy }, { resolvePluginInstallPreactionRequest }] =
+    await Promise.all([
+      import("../../plugins/install-config.js"),
+      import("../plugin-install-config-policy.js"),
+    ]);
   return (
-    commandPath[0] === "update" ||
     resolvePluginInstallInvalidConfigPolicy(
       resolvePluginInstallPreactionRequest({
         actionCommand,
@@ -189,7 +201,7 @@ export function registerPreActionHooks(program: Command, programVersion: string)
       return;
     }
     let beforeStatePreparation: StartupConfigPreflightOptions["beforeStatePreparation"];
-    let allowInvalid = shouldAllowInvalidConfigForAction(actionCommand, commandPath);
+    let allowInvalid = await shouldAllowInvalidConfigForAction(actionCommand, commandPath);
     if (isGatewayRunAction(actionCommand)) {
       const { prepareGatewayRunBootstrap, recheckGatewayRunBootstrap } =
         await import("../gateway-cli/pre-bootstrap.js");
