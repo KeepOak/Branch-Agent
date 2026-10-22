@@ -42,6 +42,7 @@ import type { SettingsLevel } from './src/screens/settingsExtras';
 import { VoiceScreen } from './src/screens/VoiceScreen';
 import { applyKeepAwake, parseShareUrl, shouldKeepScreenAwake } from './src/settings/phoneEffects';
 import { resetThisPhone, takeShareToBranchAgent, writeOfflineChats, writeSavedAgents, writeWaitingMessages } from './src/settings/phoneLocal';
+import { useLendService } from './src/lending/useLendService';
 import { getLivePhonePrefs, readPhonePrefs, subscribeLivePhonePrefs } from './src/settings/phonePrefs';
 import { parseShowLevel, readShowLevel, settingsLevelOf, showLevelOf, writeShowLevel, type ShowLevel } from './src/settings/showLevel';
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
@@ -271,6 +272,7 @@ function Shell({
       live = false;
     };
   }, [store]);
+  useLendService({ paired: state.step === 'paired', online: state.step === 'paired' && state.online, prefs, store });
   useEffect(() => {
     inbox.attach();
     const alerts = new ApprovalAlerts(inbox, notifier, appState, (focus) => setPairedRoute({ name: 'approvals', focus }), {
