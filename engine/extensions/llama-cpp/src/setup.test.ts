@@ -3,11 +3,15 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   ProviderAppGuidedSetupContext,
   ProviderAuthContext,
+  ProviderPlugin,
 } from "branch/plugin-sdk/plugin-entry";
+import { createTestPluginApi } from "branch/plugin-sdk/plugin-test-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { listBundledPluginPackArtifacts } from "../../../scripts/lib/bundled-plugin-build-entries.mjs";
 
 const mocks = vi.hoisted(() => ({
   ensureModel: vi.fn(),
@@ -48,6 +52,7 @@ vi.mock("./hardware.js", async (importOriginal) => ({
   detectLlamaCppHardware: mocks.hardware,
 }));
 import { downloadVerifiedFile, type LlamaDownloadProgress } from "./llama-server-install.js";
+import { registerLlamaCppProvider } from "./managed-provider.js";
 import { resolveLlamaCppCatalogArtifact, resolveLlamaCppModelCandidates } from "./model-catalog.js";
 import { detectLlamaCppSetup, prepareLlamaCppSetup, runLlamaCppSetup } from "./setup.js";
 
@@ -179,6 +184,56 @@ const externalChatRoutes: Array<{
 ];
 
 describe("llama.cpp managed setup", () => {
+  it("ships the enabled no-account llama.cpp setup provider in the engine package", async () => {
+    const cwd = fileURLToPath(new URL("../../../", import.meta.url));
+    const artifacts = listBundledPluginPackArtifacts({ cwd, env: {} });
+    expect(artifacts).toEqual(
+      expect.arrayContaining([
+        "dist/extensions/llama-cpp/index.js",
+        "dist/extensions/llama-cpp/branch.plugin.json",
+        "dist/extensions/llama-cpp/provider-policy-api.js",
+      ]),
+    );
+    const manifest = JSON.parse(
+      await fs.readFile(new URL("../branch.plugin.json", import.meta.url), "utf8"),
+    );
+    expect(manifest.enabledByDefault).toBe(true);
+    expect(manifest.providerAuthChoices).toContainEqual(
+      expect.objectContaining({
+        provider: "llama-cpp",
+        method: "local",
+        choiceId: "llama-cpp",
+        appGuidedDiscovery: true,
+      }),
+    );
+    const providers: ProviderPlugin[] = [];
+    registerLlamaCppProvider(
+      createTestPluginApi({
+        config: {},
+        registerProvider: (provider) => providers.push(provider),
+      }),
+    );
+    expect(providers.find((provider) => provider.id === "llama-cpp")?.auth).toContainEqual(
+      expect.objectContaining({ id: "local", run: runLlamaCppSetup }),
+    );
+  });
+
+  it("offers a sized free-model download with no accounts and cancels without downloading", async () => {
+    const ctx = authContext(false);
+    ctx.config = {};
+
+    await expect(runLlamaCppSetup(ctx)).resolves.toEqual({ profiles: [] });
+
+    expect(ctx.prompter.confirm).toHaveBeenCalledWith({
+      message: expect.stringMatching(/Download .+ \(\d+\.\d GB\), .+runtime, then use this model\?/),
+      initialValue: false,
+    });
+    expect(mocks.ensureModel).not.toHaveBeenCalledWith(expect.objectContaining({ download: true }));
+    expect(mocks.prepareServer).not.toHaveBeenCalled();
+    expect(mocks.removeProfiles).not.toHaveBeenCalled();
+    expect(ctx.config).toEqual({});
+  });
+
   it.each([
     {
       label: "initial shared tick",
