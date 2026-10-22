@@ -76,6 +76,8 @@ window:src/connect/conversations.test.ts
 
 Don't edit the arrays in `scripts/feature-batch-ci-targets.mjs` for new tests. `scripts/feature-batch-ci-named/README.txt` describes the format.
 
+Before you push, run `node scripts/check-named-tests.mjs`. It applies the same rule as the PR preflight and prints the expected list file name and every missing line.
+
 ## Windows child processes
 
 Every child process Branch starts on Windows (the engine, shells, probes, git, PowerShell, coding agents) starts hidden: `windowsHide: true` on Node spawns, `CREATE_NO_WINDOW` for native launches. A console window that flashes open is a bug. `desktop/scripts/hidden-processes.test.mjs` checks the desktop's own spawns; keep new spawns covered.

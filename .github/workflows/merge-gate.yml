@@ -47,6 +47,8 @@ jobs:
         run: node --test scripts/merge-gate-recheck.test.mjs
       - name: Test the local PR preflight
         run: node --test scripts/pr-preflight.test.mjs
+      - name: Test the pre-push named-test check
+        run: node --test scripts/check-named-tests.test.mjs
       - name: Test the rate-limit wait helper
         run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
       - name: Test the core API budget logger

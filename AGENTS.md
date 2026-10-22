@@ -29,6 +29,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
    Never run whole suites (`npm test`, `pnpm test`, or vitest with no file). Tests never open visible windows and never use a running app's ports (`19031`/`19032`) or data folder.
 
 5. **List new test files for CI** in `scripts/feature-batch-ci-named/<branch-name>.txt` (`engine:<path>` or `window:<path>`, one per line, in any order; only the shared `engineTests` and `windowTests` arrays in `scripts/feature-batch-ci-targets.mjs` must stay sorted). For desktop tests, add a `node --test` step to `.github/workflows/desktop-checks.yml`.
+   Before every push, run `node scripts/check-named-tests.mjs` (add `--base <ref>` if not `origin/main`). It uses preflight's own rule and prints the expected list file and each missing line.
 
 6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors. If engine lint reports raw-copy baseline drift, regenerate with `cd engine && pnpm ui:i18n:baseline` and commit `engine/ui/src/i18n/.i18n/raw-copy-baseline.json`. Do not commit `catalog-fallbacks.json` on a source PR; post-merge locale refresh owns that file.
 
