@@ -275,6 +275,17 @@ export function R1Window({ session }: { session: SaplingSession }) {
   // Re-hosted Classic Settings pages open a place with branch:navigate-place (Classic WindowShell's event): R1 opens it here.
   const navigateTo = useRef(navigate);
   useEffect(() => { navigateTo.current = navigate; });
+  // Shared chat notices use the same settings event as the Classic shell.
+  useEffect(() => {
+    const openSettings = (event: Event) => {
+      const page = (event as CustomEvent<{ page?: string }>).detail?.page;
+      if (typeof page === "string" && /^[a-z][a-z0-9-]*$/.test(page)) {
+        navigateTo.current({ kind: "settings", page });
+      }
+    };
+    window.addEventListener("branch:navigate-settings", openSettings);
+    return () => window.removeEventListener("branch:navigate-settings", openSettings);
+  }, []);
   // Settings' "Find anything" row opens the same palette as Ctrl K, once the engine offers search.
   useEffect(() => {
     const open = () => { if (availability(engine, "sessions.search") !== "no") setFinding(true); };
