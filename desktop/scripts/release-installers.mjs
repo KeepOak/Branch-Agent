@@ -123,6 +123,129 @@ export function layoutWindowsInstallRoot({ payload, root, version, signApp = () 
   return folder;
 }
 
+/** The data folder the app uses on Windows (config.ts defaultDataDirectory) and the old dev copy package.ps1 wrote into it. */
+export const WINDOWS_DATA_DIR = "{localappdata}\\BranchAgent";
+export const WINDOWS_DEV_COPY = `${WINDOWS_DATA_DIR}\\dist`;
+
+/**
+ * Pascal [Code] for the installer. PrepareToInstall runs only after the user has confirmed the install (and in a
+ * silent install), never when Setup opens, so cancelling Setup leaves every running Branch alone. It closes only the
+ * processes whose executable is under the old dev copy <data>\dist\ (matched by full image path, case-insensitive,
+ * and stopped by process id, never by name), asking first and then forcing, so the installed copy under {app} is
+ * never touched here; CloseApplications handles {app} the usual way. CurStepChanged(ssPostInstall) then renames
+ * <data>\dist to dist.migrated-<stamp>: the app folder only, never the data folder, and reversible by renaming it back.
+ * engine-current.txt is rewritten first when it points inside dist, and restored if the rename fails, so startup
+ * never follows a pointer into a folder that moved.
+ */
+export function innoMigrationCode() {
+  return [
+    "[Code]",
+    "function StartsWithText(const Value, Prefix: String): Boolean;",
+    "begin",
+    "  Result := CompareText(Copy(Value, 1, Length(Prefix)), Prefix) = 0;",
+    "end;",
+    "",
+    "function StopDevCopyProcesses(const Force: Boolean): Integer;",
+    "var",
+    "  Dist, ExePath, Args: String;",
+    "  Locator, Service, Procs, Proc: Variant;",
+    "  I, Pid, ResultCode: Integer;",
+    "begin",
+    "  Result := 0;",
+    `  Dist := ExpandConstant('${WINDOWS_DEV_COPY}');`,
+    "  try",
+    "    Locator := CreateOleObject('WbemScripting.SWbemLocator');",
+    "    Service := Locator.ConnectServer('.', 'root\\CIMV2');",
+    "    Procs := Service.ExecQuery('SELECT ProcessId, ExecutablePath FROM Win32_Process');",
+    "    for I := 0 to Procs.Count - 1 do",
+    "    begin",
+    "      Proc := Procs.ItemIndex(I);",
+    "      if not VarIsNull(Proc.ExecutablePath) then",
+    "      begin",
+    "        ExePath := Proc.ExecutablePath;",
+    "        if StartsWithText(ExePath, Dist + '\\') then",
+    "        begin",
+    "          Pid := Proc.ProcessId;",
+    "          Args := '/PID ' + IntToStr(Pid);",
+    "          if Force then Args := '/F ' + Args;",
+    "          Log('Branch: closing old dev copy process ' + IntToStr(Pid) + ' (' + ExePath + ')');",
+    "          Exec(ExpandConstant('{sys}\\taskkill.exe'), Args, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);",
+    "          Result := Result + 1;",
+    "        end;",
+    "      end;",
+    "    end;",
+    "  except",
+    "    Log('Branch: could not list running processes; the old dev copy is left running: ' + GetExceptionMessage);",
+    "  end;",
+    "end;",
+    "",
+    "procedure CloseDevCopy();",
+    "begin",
+    "  if StopDevCopyProcesses(False) > 0 then",
+    "  begin",
+    "    Sleep(3000);",
+    "    StopDevCopyProcesses(True);",
+    "  end;",
+    "end;",
+    "",
+    "function PrepareToInstall(var NeedsRestart: Boolean): String;",
+    "begin",
+    "  CloseDevCopy();",
+    "  Result := '';",
+    "end;",
+    "",
+    "procedure MigrateDevCopy();",
+    "var",
+    "  Dist, Moved, PointerFile, Original, Updated: String;",
+    "  Lines, NewLines: TArrayOfString;",
+    "  Rewrote: Boolean;",
+    "begin",
+    `  Dist := ExpandConstant('${WINDOWS_DEV_COPY}');`,
+    "  if not DirExists(Dist) then Exit;",
+    "  Moved := Dist + '.migrated-' + GetDateTimeString('yyyymmdd-hhnnss', '-', '-');",
+    `  PointerFile := ExpandConstant('${WINDOWS_DATA_DIR}\\engine-current.txt');`,
+    "  Rewrote := False;",
+    "  Original := '';",
+    "  if FileExists(PointerFile) and LoadStringsFromFile(PointerFile, Lines) and (GetArrayLength(Lines) > 0) then",
+    "  begin",
+    "    Original := Trim(Lines[0]);",
+    "    Updated := '';",
+    "    if CompareText(Original, Dist) = 0 then Updated := Moved",
+    "    else if StartsWithText(Original, Dist + '\\') then Updated := Moved + Copy(Original, Length(Dist) + 1, MaxInt);",
+    "    if Updated <> '' then",
+    "    begin",
+    "      SetArrayLength(NewLines, 1);",
+    "      NewLines[0] := Updated;",
+    "      if not SaveStringsToUTF8FileWithoutBOM(PointerFile, NewLines, False) then",
+    "      begin",
+    "        Log('Branch: engine-current.txt points inside the old dev copy and could not be rewritten; leaving it in place');",
+    "        Exit;",
+    "      end;",
+    "      Rewrote := True;",
+    "    end;",
+    "  end;",
+    "  if RenameFile(Dist, Moved) then",
+    "    Log('Branch: moved the old dev copy to ' + Moved)",
+    "  else",
+    "  begin",
+    "    Log('Branch: could not move the old dev copy (a file is in use); leaving it in place');",
+    "    if Rewrote then",
+    "    begin",
+    "      SetArrayLength(NewLines, 1);",
+    "      NewLines[0] := Original;",
+    "      SaveStringsToUTF8FileWithoutBOM(PointerFile, NewLines, False);",
+    "    end;",
+    "  end;",
+    "end;",
+    "",
+    "procedure CurStepChanged(CurStep: TSetupStep);",
+    "begin",
+    "  if CurStep = ssPostInstall then MigrateDevCopy();",
+    "end;",
+    "",
+  ];
+}
+
 /**
  * Per-user install under %LOCALAPPDATA%\Programs. Each build lives in a version folder; current.txt is the pointer
  * the launcher reads. Shortcuts open the launcher at the root, which outlives every version folder, and carry the
@@ -158,6 +281,13 @@ export function innoSetupScript({ version, source, out }) {
     `OutputDir=${out}`,
     `OutputBaseFilename=${installerName(version, "win32-x64").replace(/\.exe$/, "")}`,
     "",
+    "[InstallDelete]",
+    // Shortcuts an old dev copy left behind (scripts/shortcuts.ps1); [Icons] recreates the ones that open {app}.
+    'Type: files; Name: "{autoprograms}\\Branch Agent.lnk"',
+    'Type: files; Name: "{autodesktop}\\Branch Agent.lnk"',
+    'Type: files; Name: "{userprograms}\\Branch Agent.lnk"',
+    'Type: files; Name: "{userdesktop}\\Branch Agent.lnk"',
+    "",
     "[Tasks]",
     'Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked',
     "",
@@ -175,6 +305,7 @@ export function innoSetupScript({ version, source, out }) {
     'Type: filesandordirs; Name: "{app}"',
     'Type: filesandordirs; Name: "{app}.previous"',
     "",
+    ...innoMigrationCode(),
   ].join("\r\n");
 }
 

@@ -42,7 +42,7 @@ export function PairedScreen({
   onBack: () => void;
   /** Settings: this phone’s version and a manual check for a sideloaded Android APK. */
   updateCard?: ReactNode;
-  backTo?: 'Chats' | 'Settings';
+  backTo?: 'Chats' | 'Settings' | 'More';
 }) {
   const { color, space, radius, layout } = useTheme();
   const [confirming, setConfirming] = useState(false);

@@ -6,6 +6,7 @@ import { pairingConfirmCode } from "../../shared/pairing-confirm-code";
 import { CopyToken } from "../../shell/CopyToken";
 import { Dialog } from "../../shell/Dialog";
 import { errorText } from "../library/data";
+import { plainError } from "../../shell/plain-error";
 import { rec, str } from "./common";
 
 type Access = "full" | "limited" | "node";
@@ -21,7 +22,7 @@ function pairError(value: unknown): string {
   if (/Gateway is only bound to loopback|PAIRING_GATEWAY_LOOPBACK|restart the Gateway/i.test(text)) {
     return "Couldn’t make a pairing link. Try again.";
   }
-  return text;
+  return plainError(value);
 }
 
 // TODO(engine-lane): before the code, the artifact asks "Let your phone reach Branch?" when the Gateway only listens on
@@ -58,7 +59,7 @@ export function PairDialog({ engine, close }: { engine: WindowEngine; close: () 
         {code.downgraded && <p className="cz-hint">Limited for safety: this address isn't private, so the code gives chat and approvals only.</p>}
         {paired && <p role="status" className="cz-ok">Paired with {paired}.</p>}
       </div>}
-    {error && <p role="alert" className="cz-error">{error}</p>}
+    {error && <p role="alert" className="cz-error">{plainError(error)}</p>}
   </Dialog>;
 }
 

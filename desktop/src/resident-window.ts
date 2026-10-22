@@ -41,7 +41,7 @@ export function keepWindowResident(
   window: BrowserWindow,
   icon: string,
   options: { hidden?: boolean; platform?: NodeJS.Platform; keepRunning?: () => boolean; onTrayClick?: () => void;
-    pauseAll?: () => void; stopCompletely?: () => void; signals?: SignalSource } = {},
+    pauseAll?: () => void; stopCompletely?: () => void; openInBrowser?: () => void; signals?: SignalSource } = {},
 ): Tray | undefined {
   const platform = options.platform ?? process.platform;
   if (platform !== "win32" && platform !== "darwin" && platform !== "linux") return;
@@ -109,7 +109,7 @@ export function keepWindowResident(
   const signals = options.signals ?? (process.versions.electron ? process : undefined);
   if (signals) quitOnSignals(signals, () => { if (!quitting) stop(); });
   const tray = new Tray(menuBarIcon(icon, platform));
-  const actions = { open: reveal, pauseAll: options.pauseAll, quit };
+  const actions = { open: reveal, openInBrowser: options.openInBrowser, pauseAll: options.pauseAll, quit };
   let shown: string | undefined;
   const render = (state?: EngineLiveState): void => {
     if (state) latest = state;

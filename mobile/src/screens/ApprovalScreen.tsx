@@ -7,6 +7,7 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { Card, Screen } from '../ui/Screen';
+import { plainError } from '../ui/plainError';
 import { useNow } from '../ui/useNow';
 
 type Waiting = Extract<PairingState, { step: 'connecting' | 'approval' | 'failed' }>;
@@ -79,7 +80,7 @@ export function ApprovalScreen({
           Pairing didn’t finish
         </ThemedText>
         <Card>
-          <ThemedText variant="body">{state.message}</ThemedText>
+          <ThemedText variant="body">{plainError(state.message)}</ThemedText>
         </Card>
       </Screen>
     );

@@ -23,7 +23,8 @@ jobs:
       contents: read
       pull-requests: read
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Leave room for coverage checks after the bounded 10-minute rate-limit wait.
+    timeout-minutes: 15
     steps:
       - name: Check out the PR merge commit and its base
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -46,10 +47,14 @@ jobs:
         run: node --test scripts/merge-gate-recheck.test.mjs
       - name: Test the local PR preflight
         run: node --test scripts/pr-preflight.test.mjs
+      - name: Test the pre-push named-test check
+        run: node --test scripts/check-named-tests.test.mjs
       - name: Test the rate-limit wait helper
         run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
       - name: Test the core API budget logger
         run: node --test scripts/github-api-budget.test.mjs
+      - name: Test the release-freshness decision
+        run: node --test scripts/release-freshness.test.mjs
       - name: Require every changed test to run in CI
         run: node scripts/changed-test-coverage.mjs
       - name: Check merge command patterns in documentation
@@ -150,7 +155,22 @@ jobs:
             combined=$(jq '{check_runs: [.[].check_runs[]]}' <<<"$pages")
             runs=$(jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted")]' <<<"$combined")
             # Skip the recheck workflow's own `recheck` check only when its run proves merge-gate-recheck.yml.
+            # Cancelled and skipped `recheck` checks go through the same proof: dropping them by conclusion
+            # alone would hide a foreign workflow's `recheck` and could go green.
+            # One head listing supplies paths so a burst of cancelled rechecks is not one GET each.
             # A failing or running `recheck` from any other workflow is still waited on.
+            run_paths='{}'
+            run_page=1
+            while :; do
+              payload=$(gh api "repos/$REPO/actions/runs?head_sha=$SHA&per_page=100&page=$run_page") || payload='{"workflow_runs":[]}'
+              run_paths=$(jq -c --argjson acc "$run_paths" '
+                $acc + ([(.workflow_runs // [])[] | select(.id != null) | {key: (.id|tostring), value: (.path // "")}] | from_entries)
+              ' <<<"$payload")
+              batch_len=$(jq '(.workflow_runs // []) | length' <<<"$payload")
+              [ "$batch_len" -lt 100 ] && break
+              run_page=$((run_page + 1))
+              [ "$run_page" -gt 10 ] && break
+            done
             recheck_paths='{}'
             while IFS= read -r check; do
               [ -z "$check" ] && continue
@@ -158,7 +178,10 @@ jobs:
               path=""
               run_id=$(jq -r '(.details_url // .html_url // "") | capture("/actions/runs/(?<id>[0-9]+)")? | .id // empty' <<<"$check")
               if [ -n "$run_id" ]; then
-                path=$(gh api "repos/$REPO/actions/runs/$run_id" | jq -r '.path // empty') || path=""
+                path=$(jq -r --arg id "$run_id" '.[$id] // empty' <<<"$run_paths")
+                if [ -z "$path" ]; then
+                  path=$(gh api "repos/$REPO/actions/runs/$run_id" | jq -r '.path // empty') || path=""
+                fi
               else
                 suite=$(jq -r '.check_suite.id // empty' <<<"$check")
                 if [ -n "$suite" ]; then

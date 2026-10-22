@@ -1,0 +1,2 @@
+# Model Setup must not hang on "Checking this Gateway" (#1929)
+engine:ui/src/pages/model-setup/model-setup-page.loading-stall.test.ts

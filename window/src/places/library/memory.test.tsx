@@ -219,6 +219,15 @@ describe("Library › Memory", () => {
     expect(dialog.textContent).not.toMatch(/Rings/);
     expect(button("Write past nights")).toBeUndefined();
   });
+  it("shows a plain memory search error at Regular when no local embedding model is available", async () => {
+    const open = vi.fn();
+    const { engine } = engineOf(base((m) => m === "doctor.memory.status" ? { embedding: { ok: false, checked: true, error: "Search by meaning is off until this computer has the small model that powers it. Branch still finds memories by matching words." } } : undefined));
+    await mount(engine, "regular", open);
+    expect(host.textContent).toContain("Search by meaning is off until this computer has the small model that powers it. Branch still finds memories by matching words.");
+    expect(host.textContent).not.toContain("Settings › Advanced");
+    await click("Set it up");
+    expect(open).toHaveBeenCalledWith("advanced");
+  });
   it("shows the overnight cleanup row with the Seasons link before it has run", async () => {
     const open = vi.fn();
     const { engine } = engineOf(base((m) => m === "doctor.memory.status" ? { embedding: { ok: false, checked: false } } : undefined));

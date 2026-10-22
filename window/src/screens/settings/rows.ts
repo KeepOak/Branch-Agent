@@ -9,6 +9,7 @@ import { APPEARANCE_ROWS } from "./pages/appearance";
 import { AUTOS_ROWS } from "./pages/autos";
 import { CUSTOMIZE_ROWS } from "./pages/customize";
 import { GENERAL_ROWS } from "./pages/general";
+import { MEMORY_ROWS } from "./pages/memory";
 
 export type RowSource =
   /** An engine config path: config.get, saved with config.patch through the window's one config store. */
@@ -60,7 +61,15 @@ export type Row = {
   /** A slot row whose control is a list that names its own items (computers, connections): drawn without the row's own
    *  label and help, which still name it for search and the level. */
   bare?: true;
+  /** Exists only while more than one person uses Branch (the engine's hello says so: WindowEngine.sharedGateway). On a
+   *  one-person Branch the row, and a card left with no other row, is not drawn or found by search, as in the preview. */
+  sharedOnly?: true;
 };
+
+/** The rows this engine has: a sharedOnly row goes when the engine says only one person uses it. An engine that doesn't
+ *  say (an older one) keeps every row. */
+export const rowsFor = (rows: Row[], sharedGateway: boolean | undefined): Row[] =>
+  sharedGateway === false ? rows.filter((row) => !row.sharedOnly) : rows;
 
 /** One config.schema uiHints entry. */
 export type UiHint = { label?: string; help?: string; tags?: string[]; group?: string; order?: number; advanced?: boolean; sensitive?: boolean; placeholder?: string };
@@ -117,7 +126,7 @@ export function shownLevel(row: Row, hints: UiHints, controls?: Readonly<Record<
 }
 
 /** Every row of the R1 Settings pages. Pages add their list here. */
-export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS, ...AUTOS_ROWS];
+export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS, ...AUTOS_ROWS, ...MEMORY_ROWS];
 
 /** The rows of one card at this level, in table order. A row above the level is hidden, and so is a Coming row at
  *  Regular. */

@@ -56,6 +56,8 @@ ${p}    storePassword keystorePassword
 ${p}    keyAlias releaseKeyAlias
 ${p}    keyPassword releaseKeyPassword
 ${p}    storeType "PKCS12"
+${p}    enableV1Signing true
+${p}    enableV2Signing true
 ${p}} else {
 ${p}    initWith signingConfigs.debug
 ${p}}

@@ -6,7 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { makeComponentRelease } from "./make-component-release.mjs";
 import { fileDigest, writeReleaseInventory } from "./release-inventory.mjs";
-import { PUBLIC_LATEST_BUDGET_MS, publicLatestDelayMs, publishRelease } from "./publish-component-release.mjs";
+import { PUBLIC_LATEST_BUDGET_MS, alreadyPublishedMessage, publicLatestDelayMs, publishRelease } from "./publish-component-release.mjs";
 import { DOWNLOAD_PLATFORMS, UPDATE_ONLY_LABEL, downloadAssetName, formatReleaseNotes } from "./release-notes.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -55,7 +55,7 @@ function compare(base, head) {
   return delta === 0 ? "identical" : delta > 0 ? "ahead" : "behind";
 }
 
-function githubMock(assets, { staleReads = 0, corrupt = false, previous = true, rollbackFails = false, moveLatestAfterReads = 0 } = {}) {
+function githubMock(assets, { staleReads = 0, corrupt = false, previous = true, rollbackFails = false, moveLatestAfterReads = 0, existing = null } = {}) {
   const calls = [];
   const publicReads = [];
   const sleeps = [];
@@ -71,7 +71,11 @@ function githubMock(assets, { staleReads = 0, corrupt = false, previous = true, 
       const [base, head] = args[1].split("/compare/")[1].split("...");
       return compare(base, head);
     }
-    if (args[0] === "api" && args[1].endsWith("/releases")) return JSON.stringify([latestTag ? [{ tag_name: latestTag }] : []]);
+    if (args[0] === "api" && args[1].endsWith("/releases")) {
+      const listed = latestTag ? [{ tag_name: latestTag, target_commitish: latestTag === tag ? commit : older }] : [];
+      if (existing) listed.push(existing);
+      return JSON.stringify([listed]);
+    }
     if (args[0] === "api" && args[1].endsWith("/releases/latest")) {
       if (!latestTag) throw notFound();
       const ours = latestTag === tag;
@@ -233,6 +237,40 @@ test("desktop checks run the publication order test by name", async () => {
   const source = await readFile(new URL("./publish-component-release.mjs", import.meta.url), "utf8");
   assert.match(source, /formatReleaseNotes\(\{ commit, version, names \}\)/);
 });
+
+test("an existing release for this version skips with success and does not create assets", () => fixture(async assets => {
+  const remote = githubMock(assets, { existing: { tag_name: tag, target_commitish: commit } });
+  const result = await publishRelease(assets, commit, version, remote.request, remote.download, {
+    sleep: remote.sleep, now: remote.now,
+  });
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, alreadyPublishedMessage(tag));
+  assert.equal(alreadyPublishedMessage(tag), `Release ${tag} already exists; skipping publish`);
+  assert(!remote.calls.some(args => args[1] === "create" || args[1] === "edit"));
+  assert.equal(remote.latest(), previousTag);
+  assertReleaseKept(remote.calls);
+}));
+
+test("a leftover draft for this version is not treated as already published", () => fixture(async assets => {
+  const remote = githubMock(assets, { existing: { tag_name: tag, target_commitish: commit, draft: true } });
+  const result = await publishRelease(assets, commit, version, remote.request, remote.download, {
+    sleep: remote.sleep, now: remote.now,
+  });
+  assert.equal(result.skipped, undefined);
+  assert.ok(remote.calls.some(args => args[1] === "create"));
+  assert.equal(remote.latest(), tag);
+  assertReleaseKept(remote.calls);
+}));
+
+test("an existing release whose tag points at another commit still fails", () => fixture(async assets => {
+  const remote = githubMock(assets, {
+    existing: { tag_name: tag, target_commitish: older },
+  });
+  await assert.rejects(publishRelease(assets, commit, version, remote.request, remote.download), /different source/);
+  assert(!remote.calls.some(args => args[1] === "create" || args[1] === "edit"));
+  assert.equal(remote.latest(), previousTag);
+  assertReleaseKept(remote.calls);
+}));
 
 const installerNames = { "win32-x64": `Branch-Agent-Setup-${version}-win32-x64.exe`, "darwin-arm64": `Branch-Agent-${version}-darwin-arm64.dmg`,
   "linux-x64": `Branch-Agent-${version}-linux-x64.AppImage` };

@@ -94,7 +94,7 @@ describe("captured catalog auth labels", () => {
       providers: ["OPENAI", "amazon-bedrock", "anthropic", "openai"],
     });
     const expected = {
-      key: "key=ke...ne",
+      key: "key=••••",
       token: "token=token:ref",
       oauth: "oauth=OAuth (Configured account)",
       mismatch: "mismatch=missing",
@@ -130,7 +130,7 @@ describe("captured catalog auth labels", () => {
       env: {},
       providers: ["openai"],
     });
-    expect(refreshed.get("openai")?.all).toMatchObject({ profiles: { key: "key=re...nt" } });
+    expect(refreshed.get("openai")?.all).toMatchObject({ profiles: { key: "key=••••" } });
   });
 
   it("captures configured AWS SDK authentication without a stored credential", () => {
@@ -158,10 +158,10 @@ describe("captured catalog auth labels", () => {
         },
         { auth: { order: { openai: ["first", "second"] } } },
       );
-      expect(captured.read()).toContain("first=token:fi...ey (next,  exp 1h)");
+      expect(captured.read()).toContain("first=token:•••• (next,  exp 1h)");
       now.mockReturnValue(3_610_000);
       expect(captured.read()).not.toContain("first=");
-      expect(captured.read()).toContain("second=token:se...ey (next,  exp 1h)");
+      expect(captured.read()).toContain("second=token:•••• (next,  exp 1h)");
     } finally {
       now.mockRestore();
     }
@@ -182,9 +182,9 @@ describe("captured catalog auth labels", () => {
         },
         { auth: { order: { openai: ["first", "second"] } } },
       );
-      expect(captured.read()).toContain("second=se...ey (next)");
+      expect(captured.read()).toContain("second=•••• (next)");
       now.mockReturnValue(11_000);
-      expect(captured.read()).toContain("first=fi...ey (next)");
+      expect(captured.read()).toContain("first=•••• (next)");
       expect(captured.read()).not.toContain("cooldown");
     } finally {
       now.mockRestore();
@@ -213,7 +213,7 @@ describe("captured catalog auth labels", () => {
         store,
         metadataSnapshot: { plugins: [] },
       }),
-    ).toBe("workspac...dentials (workspace credentials)");
+    ).toBe("••••ials (workspace credentials)");
     expect(envKey).toHaveBeenCalledWith("anthropic", env, {
       config,
       workspaceDir: "/tmp/workspace",

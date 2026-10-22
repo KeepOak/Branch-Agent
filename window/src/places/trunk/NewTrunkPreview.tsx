@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Dialog } from "../../shell/Dialog";
+import { plainError } from "../../shell/plain-error";
 import { trunkAppearance } from "../../face/appearance";
 import { CharacterFace } from "../../face/CharacterFace";
 import { LOOKS, lookOf, type Roster } from "./model";
@@ -32,5 +33,5 @@ export function NewTrunkPreview({ roster, fixedName, busy, error, onConfirm, onC
     {appearance && <CharacterFace appearance={appearance} size={84} label={choice.name} />}
     <button type="button" className="btn sm" disabled={busy} title={fixedName ? "Pick a different look" : "Pick a different name and look"} onClick={() => setChoice(nextTrunkChoice(roster, choice, fixedName))}><Icon name="dice" small />{fixedName ? "Random look" : "Random name"}</button>
     <label className="tk-field"><span className="tk-label">Name</span><input className="inp" value={choice.name} disabled={Boolean(fixedName) || busy} onChange={(event) => setChoice({ ...choice, name: event.target.value })} /></label>
-  </div>{error && <p role="alert" className="tk-error">{error}</p>}</Dialog></Layer>;
+  </div>{error && <p role="alert" className="tk-error">{plainError(error)}</p>}</Dialog></Layer>;
 }
