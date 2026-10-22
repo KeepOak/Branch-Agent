@@ -27,7 +27,7 @@ export function keepWindowResident(
   window: BrowserWindow,
   icon: string,
   options: { hidden?: boolean; platform?: NodeJS.Platform; keepRunning?: () => boolean; onTrayClick?: () => void;
-    pauseAll?: () => void; stopCompletely?: () => void } = {},
+    pauseAll?: () => void; stopCompletely?: () => void; openInBrowser?: () => void } = {},
 ): Tray | undefined {
   const platform = options.platform ?? process.platform;
   if (platform !== "win32" && platform !== "darwin" && platform !== "linux") return;
@@ -49,7 +49,7 @@ export function keepWindowResident(
   // Hidden native fixtures exercise the same close policy without adding a visible tray.
   if (options.hidden) return;
   const tray = new Tray(menuBarIcon(icon, platform));
-  const actions = { open: reveal, pauseAll: options.pauseAll, quit: () => app.quit(), stopCompletely: options.stopCompletely };
+  const actions = { open: reveal, openInBrowser: options.openInBrowser, pauseAll: options.pauseAll, quit: () => app.quit(), stopCompletely: options.stopCompletely };
   let shown: string | undefined;
   const render = (state?: EngineLiveState): void => {
     const label = state ? trayLabel(state) : undefined;

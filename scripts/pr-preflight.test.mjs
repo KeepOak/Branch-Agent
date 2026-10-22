@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  proofImageProblems,
   addedLinesFromPatch,
   cloudAgentTrailer,
   ciSkippedLines,
@@ -162,7 +163,9 @@ test('a changed protected gate file needs the reviewer marker for this head', ()
   const problems = runPreflight(withInput({ changedFiles: ['scripts/merge-gate-trusted.test.mjs'] }));
   assert.deepEqual(checksOf(problems), ['gate-files']);
   assert.match(problems[0].message, /reviewer marker for this head/);
-  assert.match(problems[0].fix, /Do not add it yourself/);
+  assert.match(problems[0].fix, /the reviewer or the merge owner adds the line gate-change-reviewed: <full head sha> to the PR body/);
+  assert.match(problems[0].fix, /The PR author never adds it/);
+  assert.doesNotMatch(problems[0].fix, /GOD|PR Closer/);
 });
 
 test('the gate marker for this exact head satisfies the gate-file rule; a marker for another head does not', () => {
@@ -931,4 +934,22 @@ test('the CLI rejects a Final head when a regular commit follows it', () => {
     rmSync(dir, { recursive: true, force: true });
     rmSync(bodyDir, { recursive: true, force: true });
   }
+});
+
+test('proofImageProblems flags added proof screenshots only', () => {
+  assert.deepEqual(proofImageProblems([
+    { filename: 'docs/proof/1768/welcome.png', status: 'modified' },
+    { filename: 'window/public/assets/logo.png', status: 'added' },
+  ]), []);
+  const problems = proofImageProblems([{ filename: 'verifier/1918/a.png', status: 'added' }]);
+  assert.equal(problems.length, 1);
+  assert.equal(problems[0].check, 'proof-images');
+  assert.match(problems[0].fix, /evidence branch under verifier\/<PR number>\//);
+  assert.match(problems[0].fix, /raw URLs in the body/);
+});
+
+test('proofImageProblems flags an image renamed into a proof folder, as the merge-gate gh path does', () => {
+  const problems = proofImageProblems([{ filename: 'proof/1955/moved.png', status: 'renamed' }]);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0].message, /1 proof screenshot\(s\)/);
 });
