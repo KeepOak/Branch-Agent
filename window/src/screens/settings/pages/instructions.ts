@@ -1,6 +1,8 @@
-// Settings › Instructions & personality: the approved preview's seven cards (preview.html PG instructions), in order. Just
-// about you and the files each Trunk reads are Classic's own blocks (instructions-you.tsx, instructions.tsx) drawn in
-// their cards without a Classic heading; every other row waits for Branch and is Coming in its own words.
+// Settings › Instructions & personality: the approved preview's cards (preview.html PG instructions), in order. The files
+// each Trunk reads lead the page in an untitled card, as the preview draws them right under the title; Just about you
+// follows only while more than one person uses Branch. Both are Classic's own blocks (instructions.tsx,
+// instructions-you.tsx) drawn in their cards without a Classic heading; every other row waits for Branch and is Coming
+// in its own words.
 import type { Level } from "../nav";
 import type { Control, Row, RowOption } from "../rows";
 
@@ -14,10 +16,10 @@ const EVERY = "What goes with every message";
 const QUICK = "Prompts behind quick actions";
 
 export const INSTRUCTIONS_ROWS: Row[] = [
-  { id: "instructions.you.file", page: "instructions", card: "Just about you", label: "Just about you", level: 0, control: "custom", bare: true,
-    source: { kind: "slot", calls: ["users.personalFile.get", "users.personalFile.set"], reason: "Just about you comes in a later update." } },
-  { id: "instructions.project.files", page: "instructions", card: PROJ, label: "Whose files", level: 0, control: "custom", bare: true,
+  { id: "instructions.project.files", page: "instructions", card: "", label: "Whose files", level: 0, control: "custom", bare: true,
     source: { kind: "slot", calls: ["agents.list", "agents.files.list", "agents.files.get", "agents.files.set"], reason: "Whose files comes in a later update." } },
+  { id: "instructions.you.file", page: "instructions", card: "Just about you", label: "Just about you", level: 0, control: "custom", bare: true, sharedOnly: true,
+    source: { kind: "slot", calls: ["users.personalFile.get", "users.personalFile.set"], reason: "Just about you comes in a later update." } },
   coming("instructions.project.family", PROJ, "Project instruction files", "engine: instruction files kept to one model family",
     { help: "Read from the project folder. A file written for one model family is read only when a model of that family answers." }),
   coming("instructions.project.rule-files", PROJ, "Trunks may write rule files", SET, { control: "toggle", help: "A Trunk can add a rule to the project’s rules folder; you see each one." }),

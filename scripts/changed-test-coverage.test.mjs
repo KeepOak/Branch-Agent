@@ -77,7 +77,7 @@ test('the post-merge catalog-fallback test counts as covered only through its ex
   const desktop = readFileSync(new URL('../.github/workflows/desktop-checks.yml', import.meta.url), 'utf8');
   const file = 'engine/test/scripts/control-ui-i18n.generated.test.ts';
   // Hermetic: no named list from the repo, so the file is covered only by the post-merge run line.
-  const noNamedLists = { namedFor: () => [] };
+  const noNamedLists = { namedFor: () => [], namedE2eFor: () => [] };
   assert.deepEqual(uncoveredTests([file], coverageTargets(desktop, '', '', '', noNamedLists)), [file]);
   assert.deepEqual(uncoveredTests([file], coverageTargets(desktop, '', '', workflow, noNamedLists)), []);
 });
@@ -171,4 +171,46 @@ test('a changed test that no CI job runs is still a coverage failure', () => {
   const missing = 'window/src/not-in-ci.test.tsx';
   assert.equal(covered.has(missing), false);
   assert.deepEqual(uncoveredTests([missing], covered), [missing]);
+});
+
+test('a changed engine e2e test is covered only when the named e2e list (run by feature-batch-ci) has it', () => {
+  const file = 'engine/ui/src/e2e/about.e2e.test.ts';
+  const none = { namedFor: () => [], namedE2eFor: () => [] };
+  assert.deepEqual(uncoveredTests([file], coverageTargets('', '', '', '', none)), [file]);
+  const e2eListed = { namedFor: () => [], namedE2eFor: (lane) => (lane === 'engine' ? ['ui/src/e2e/about.e2e.test.ts'] : []) };
+  assert.deepEqual(uncoveredTests([file], coverageTargets('', '', '', '', e2eListed)), []);
+  assert.deepEqual(uncoveredTests(['engine/ui/src/e2e/other.e2e.test.ts'], coverageTargets('', '', '', '', e2eListed)),
+    ['engine/ui/src/e2e/other.e2e.test.ts']);
+});
+
+test('feature-batch-ci runs named e2e tests in runFeatureTests only, and preflight checks they exist', () => {
+  const src = readFileSync(new URL('./feature-batch-ci.mjs', import.meta.url), 'utf8');
+  const body = (name) => src.slice(src.indexOf(`function ${name}(`), src.indexOf('\n}\n', src.indexOf(`function ${name}(`)));
+  assert.doesNotMatch(body('validateScope'), /runNamedE2eTests/);
+  assert.match(body('validateScope'), /namedE2eTests\(lane\)\) await fs\.access/);
+  const run = body('runFeatureTests');
+  assert.ok(run.indexOf('runNamedE2eTests(env, shard)') > run.indexOf('const shard = shardOf()'));
+  // Only full-scope Linux shards run them (PR Linux shards always run); never the touched or non-Linux jobs.
+  assert.match(body('runNamedE2eTests'), /if \(!namedE2eScope\(\)\) return;/);
+  assert.match(src, /scope !== 'touched' && platform === 'linux'/);
+});
+
+test('named e2e entries stay out of the unit named list that feeds the vitest shards', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const targets = await import('./feature-batch-ci-targets.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'named-'));
+  writeFileSync(join(dir, 'x.txt'), [
+    'engine:ui/src/e2e/about.e2e.test.ts',
+    'engine:test/gateway-desktop-handoff.e2e.test.ts',
+    'engine:src/foo.test.ts',
+  ].join('\n'));
+  targets.setNamedListDir(dir);
+  try {
+    assert.deepEqual(targets.namedTestFiles('engine'), ['src/foo.test.ts']);
+    assert.deepEqual(targets.namedTestFiles('engine', undefined, { e2e: true }), ['ui/src/e2e/about.e2e.test.ts']);
+  } finally {
+    targets.setNamedListDir(new URL('./feature-batch-ci-named/', import.meta.url).pathname);
+  }
 });

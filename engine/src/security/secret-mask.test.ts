@@ -50,15 +50,15 @@ describe("maskEmail / redactIdentifiersInText", () => {
     ["Google OAuth", ["ya29.", "a0AfH6SMBxFAKEfakeFAKEfake567890abcd1234"].join("")], // pragma: allowlist secret
     ["Google API key", ["AIza", "SyFAKEfakeFAKEfakeFAKEfakeFAKE01234"].join("")], // pragma: allowlist secret
     ["GitHub classic", ["ghp_", "FAKEfakeFAKEfakeFAKEfakeFAKEfake1234"].join("")], // pragma: allowlist secret
-    ["GitHub OAuth", "gho_FAKEfakeFAKEfakeFAKEfakeFAKEfake1234"], // pragma: allowlist secret
-    ["GitHub fine-grained", "github_pat_11FAKEFAKE0fakefakefake_FAKEfakeFAKE1234"], // pragma: allowlist secret
+    ["GitHub OAuth", ["gho_", "FAKEfakeFAKEfakeFAKEfakeFAKEfake1234"].join("")], // pragma: allowlist secret
+    ["GitHub fine-grained", ["gith", "ub_pat_11FAKEFAKE0fakefakefake_FAKEfakeFAKE1234"].join("")], // pragma: allowlist secret
     ["Slack bot", ["xoxb-", "1234567890-FAKEfakeFAKE-1234"].join("")], // pragma: allowlist secret
     ["Slack user", ["xoxp-", "1234567890-FAKEfakeFAKE-1234"].join("")], // pragma: allowlist secret
     [
       "JWT",
-      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlIn0.FAKEfakeFAKEfakeSig1234", // pragma: allowlist secret
+      ["eyJh", "bGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlIn0.FAKEfakeFAKEfakeSig1234"].join(""), // pragma: allowlist secret
     ],
-    ["AWS access key", "AKIAFAKEFAKEFAKE1234"], // pragma: allowlist secret
+    ["AWS access key", ["AKIA", "FAKEFAKEFAKE1234"].join("")], // pragma: allowlist secret
   ])("masks a %s token in free text", (_name, token) => {
     const out = redactIdentifiersInText(`provider failed with ${token} (retrying)`);
     expect(out).not.toContain(token);
