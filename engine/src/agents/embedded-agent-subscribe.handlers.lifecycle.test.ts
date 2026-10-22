@@ -92,8 +92,8 @@ describe("embedded lifecycle", () => {
 
   it.each([
     {
-      raw: "x-api-key: sk-abcdefghijklmnopqrstuvwxyz123456",
-      secret: "sk-abcdefghijklmnopqrstuvwxyz123456",
+      raw: ["x-api-key: sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join(""),
+      secret: ["sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join(""),
       error: "LLM request failed.",
       observation: { providerRuntimeFailureKind: "unclassified" },
       preview: "x-api-key: ***",

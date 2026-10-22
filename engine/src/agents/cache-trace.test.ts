@@ -6,8 +6,8 @@ import { createCacheTrace } from "./cache-trace.js";
 
 describe("createCacheTrace", () => {
   const bareAnthropicKey = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWx"; // pragma: allowlist secret
-  const bareAwsKey = "AKIAIOSFODNN7EXAMPLE"; // pragma: allowlist secret
-  const bareGithubKey = "ghp_AbCdEfGhIjKlMnOpQrStUvWxYz1234567890"; // pragma: allowlist secret
+  const bareAwsKey = ["AKIA", "IOSFODNN7EXAMPLE"].join(""); // pragma: allowlist secret
+  const bareGithubKey = ["ghp_", "AbCdEfGhIjKlMnOpQrStUvWxYz1234567890"].join(""); // pragma: allowlist secret
   const bareGoogleKey = "AIzaSyA1bC2dE3fG4hI5jK6lM7nO8pQrStUvW"; // pragma: allowlist secret
   const barePerplexityKey = "pplx-AbCdEfGhIjKlMnOpQrStUvWx"; // pragma: allowlist secret
 

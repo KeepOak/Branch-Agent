@@ -31,7 +31,7 @@ describe("Tendril Slack transport", () => {
         expect(transport.createGatewayConfig({ baseUrl: "http://127.0.0.1:1" })).toMatchObject({
           channels: {
             slack: {
-              botToken: "xoxb-crabline-slack-token",
+              botToken: ["xoxb", "-crabline-slack-token"].join(""),
               enabled: true,
               mode: "http",
               signingSecret: "crabline-slack-signing-secret",
@@ -40,7 +40,7 @@ describe("Tendril Slack transport", () => {
         });
         expect(transport.createRuntimeEnvPatch?.()).toMatchObject({
           SLACK_API_URL: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/api\/$/u),
-          SLACK_BOT_TOKEN: "xoxb-crabline-slack-token",
+          SLACK_BOT_TOKEN: ["xoxb", "-crabline-slack-token"].join(""),
           SLACK_SIGNING_SECRET: "crabline-slack-signing-secret",
         });
         expect(transport.buildAgentDelivery({ target: "C1234567890" })).toMatchObject({

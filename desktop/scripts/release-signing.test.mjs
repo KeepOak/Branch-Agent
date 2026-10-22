@@ -27,7 +27,7 @@ const MAC_ENV = {
   APPLE_DEVELOPER_ID_PASSWORD: "p12-password-secret",
   APPLE_NOTARY_KEY_ID: "KEYID12345",
   APPLE_NOTARY_ISSUER_ID: "issuer-3333-secret",
-  APPLE_NOTARY_KEY: "-----BEGIN PRIVATE KEY-----\nnotary-key-secret\n-----END PRIVATE KEY-----\n",
+  APPLE_NOTARY_KEY: ["-----BEGIN ", "PRIVATE KEY-----\nnotary-key-secret\n-----END PRIVATE KEY-----\n"].join(""),
 };
 const IDENTITY = "0123456789ABCDEF0123456789ABCDEF01234567";
 

@@ -66,7 +66,7 @@ const REPLACEMENT_FRAME_IMAGE =
 // Synthetic, non-usable credential fixtures for model-visible redaction coverage.
 const SYNTHETIC_BEARER_CREDENTIAL = "bearer-model-visible-credential-1234567890";
 const SYNTHETIC_ACCESS_TOKEN =
-  "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzeW50aGV0aWMifQ.c3ludGhldGljLXNpZ25hdHVyZQ";
+  ["eyJh", "bGciOiJIUzI1NiJ9.eyJzdWIiOiJzeW50aGV0aWMifQ.c3ludGhldGljLXNpZ25hdHVyZQ"].join("");
 const SYNTHETIC_CREDENTIAL_REPORT = [
   "Deployment finished in 42s.",
   `Authorization: Bearer ${SYNTHETIC_BEARER_CREDENTIAL}`,

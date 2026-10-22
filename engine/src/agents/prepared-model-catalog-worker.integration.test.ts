@@ -839,7 +839,7 @@ describe("prepared model catalog worker boundary", () => {
       expect((await refreshAuth()).codex).toBeUndefined();
       nativeCommand(
         ["login", "--with-api-key"],
-        "sk-synthetic-warm-native-owner-111111111111111111111111111\n",
+        ["sk-s", "ynthetic-warm-native-owner-111111111111111111111111111\n"].join(""),
       );
       const nativeCredential = fs.readFileSync(path.join(codexHome, "auth.json"));
 

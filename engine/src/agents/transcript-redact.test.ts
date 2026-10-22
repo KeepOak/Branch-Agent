@@ -413,7 +413,7 @@ describe("redactTranscriptMessage", () => {
       "        register(timeObserverToken)",
       "        struct.timeObserverToken",
     ];
-    const apiKey = "sk-abcdef1234567890abcdef1234567890";
+    const apiKey = ["sk-a", "bcdef1234567890abcdef1234567890"].join("");
     const envToken = "environment-token-value-1234567890";
     const input = [...sourceLines, `"apiKey": "${apiKey}"`, `API_TOKEN=${envToken}`].join("\n");
     const msg = castAgentMessage({

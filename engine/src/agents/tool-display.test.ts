@@ -908,7 +908,7 @@ describe("coerceDisplayValue middle truncation", () => {
     // redaction-before-truncation, middle truncation could preserve
     // the raw token at the tail after its prefix context is cut.
     const longValue =
-      "Deploying service to production cluster with auth ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop and " +
+      ["Deploying service to production cluster with auth ghp_", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop and "].join("") +
       "x".repeat(200) +
       " final-step";
     const detail = formatToolDetail(

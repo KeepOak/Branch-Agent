@@ -62,6 +62,8 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 17. **No personal machine details.** Never put machine names, hostnames, personal paths, account emails or secrets in the public repo, its pull requests or issues. The personal-info PR scan fails when the title, body or added lines include them; editing the description re-runs it.
 
+18. **No secret-shaped literals, even in tests.** Build fake API keys and PEM headers at runtime (for example `['s', 'k-', 'x'.repeat(40)].join('')`); preflight's secret-literal check fails added lines that match a provider key format, test files included.
+
 ## Common tasks
 
 ### Install dependencies

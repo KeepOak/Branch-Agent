@@ -32,7 +32,7 @@ describe("push APNs auth and helper coverage", () => {
       BRANCH_APNS_TEAM_ID: "TEAM123",
       BRANCH_APNS_KEY_ID: "KEY123",
       BRANCH_APNS_PRIVATE_KEY_P8:
-        "-----BEGIN PRIVATE KEY-----\\nline-a\\nline-b\\n-----END PRIVATE KEY-----", // pragma: allowlist secret
+        ["-----BEGIN ", "PRIVATE KEY-----\\nline-a\\nline-b\\n-----END PRIVATE KEY-----"].join(""), // pragma: allowlist secret
       BRANCH_APNS_PRIVATE_KEY: "ignored",
     } as NodeJS.ProcessEnv);
 
@@ -51,7 +51,7 @@ describe("push APNs auth and helper coverage", () => {
       BRANCH_APNS_KEY_ID: "KEY123",
       BRANCH_APNS_PRIVATE_KEY_P8: "   ",
       BRANCH_APNS_PRIVATE_KEY:
-        "-----BEGIN PRIVATE KEY-----\\nline-c\\nline-d\\n-----END PRIVATE KEY-----", // pragma: allowlist secret
+        ["-----BEGIN ", "PRIVATE KEY-----\\nline-c\\nline-d\\n-----END PRIVATE KEY-----"].join(""), // pragma: allowlist secret
     } as NodeJS.ProcessEnv);
 
     expect(resolved.ok).toBe(true);
@@ -59,7 +59,7 @@ describe("push APNs auth and helper coverage", () => {
       expect(resolved.value.teamId).toBe("TEAM123");
       expect(resolved.value.keyId).toBe("KEY123");
       expect(resolved.value.privateKey).toBe(
-        "-----BEGIN PRIVATE KEY-----\nline-c\nline-d\n-----END PRIVATE KEY-----",
+        ["-----BEGIN ", "PRIVATE KEY-----\nline-c\nline-d\n-----END PRIVATE KEY-----"].join(""),
       );
     }
   });
@@ -69,7 +69,7 @@ describe("push APNs auth and helper coverage", () => {
     const keyPath = path.join(dir, "apns-key.p8");
     await fs.writeFile(
       keyPath,
-      "-----BEGIN PRIVATE KEY-----\\nline-e\\nline-f\\n-----END PRIVATE KEY-----\n",
+      ["-----BEGIN ", "PRIVATE KEY-----\\nline-e\\nline-f\\n-----END PRIVATE KEY-----\n"].join(""),
       "utf8",
     );
 
@@ -84,7 +84,7 @@ describe("push APNs auth and helper coverage", () => {
       expect(resolved.value.teamId).toBe("TEAM123");
       expect(resolved.value.keyId).toBe("KEY123");
       expect(resolved.value.privateKey).toBe(
-        "-----BEGIN PRIVATE KEY-----\nline-e\nline-f\n-----END PRIVATE KEY-----",
+        ["-----BEGIN ", "PRIVATE KEY-----\nline-e\nline-f\n-----END PRIVATE KEY-----"].join(""),
       );
     }
   });

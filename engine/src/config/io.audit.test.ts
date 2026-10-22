@@ -91,7 +91,7 @@ function historicalRecord() {
       "config",
       "set",
       "channels.slack.botToken",
-      "xoxb-real-bot-token-1234567890abcdef0123456789abcdef",
+      ["xoxb", "-real-bot-token-1234567890abcdef0123456789abcdef"].join(""),
     ],
     execArgv: ["--disable-warning=ExperimentalWarning"],
   };
@@ -201,7 +201,7 @@ describe("config io audit helpers", () => {
         ...createAuditRecordBase(path.join(home, ".branch", "branch.json")),
         suspicious: [
           "provider returned ya29.fake-access-token-with-enough-length",
-          "plugin returned AIzaSyD-very-real-looking-google-api-key-123",
+          ["plugin returned AIza", "SyD-very-real-looking-google-api-key-123"].join(""),
         ],
       },
       result: "failed",
@@ -405,7 +405,7 @@ describe("config io audit helpers", () => {
     expect(result).toEqual({ scanned: 1, rewritten: 1, skipped: 0, aborted: false });
     const text = fs.readFileSync(auditPath, "utf-8");
     expect(text).toBe(original);
-    expect(text).toContain("xoxb-real-bot-token");
+    expect(text).toContain(["xoxb", "-real-bot-token"].join(""));
   });
 
   it.each(["write"] as const)(
@@ -435,7 +435,7 @@ describe("config io audit helpers", () => {
       }
       const after = fs.readFileSync(auditPath, "utf-8");
       expect(after).toBe(`${original}${appendedLine}`);
-      expect(after).toContain("xoxb-real-bot-token");
+      expect(after).toContain(["xoxb", "-real-bot-token"].join(""));
       expect(fs.readdirSync(path.dirname(auditPath))).toEqual(["config-audit.jsonl"]);
     },
   );

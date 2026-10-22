@@ -115,7 +115,7 @@ describe("run trace", () => {
     setRunTraceSinkForTest((line) => lines.push(line));
     traceRunStep("has a space", "accept");
     traceRunStep("line\nbreak", "accept");
-    traceRunStep("sk-abcdefghijklmnopqrstuvwxyz0123456789", "accept");
+    traceRunStep(["sk-a", "bcdefghijklmnopqrstuvwxyz0123456789"].join(""), "accept");
     traceRunStep("run-ok-1", "accept");
     traceRunStep("3f2c9a7e-1b4d-4e8a-9c2f-6d7e8f9a0b1c", "accept");
     expect(lines).toEqual([

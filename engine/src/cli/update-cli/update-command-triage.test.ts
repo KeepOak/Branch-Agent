@@ -382,7 +382,7 @@ describe("update failure triage boundary", () => {
       };
       const targetWithResult: UpdateTriageTarget = { ...target, failureResult: result };
       await fs.writeFile(contextPath, JSON.stringify({ error: "Stale pre-recovery result" }));
-      const secret = "sk-test-managed-triage-secret-1234567890";
+      const secret = ["sk-t", "est-managed-triage-secret-1234567890"].join("");
       const detail = `Fresh Doctor failed token=${secret}; original Doctor diagnostic`;
       const failure =
         kind === "reported" ? new UpdateCommandFailure(result, 1, detail) : new Error(detail);
@@ -613,7 +613,7 @@ describe("update failure triage boundary", () => {
         const receiptPath = state.path("agent-receipts.jsonl");
         const releasedPath = state.path("released");
         const bin = state.path("bin");
-        const secret = "sk-test-triage-recovery-secret-1234567890";
+        const secret = ["sk-t", "est-triage-recovery-secret-1234567890"].join("");
         await fs.mkdir(invocationCwd);
         await fs.mkdir(bin);
         if (stateFailure === "missing") {

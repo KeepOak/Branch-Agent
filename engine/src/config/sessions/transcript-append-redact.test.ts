@@ -121,7 +121,7 @@ describe("appendExactAssistantMessageToSessionTranscript - redaction", () => {
     const sessionKey = "test-channel:test-user";
     await seedSessionEntry({ sessionId, sessionKey, storePath });
 
-    const fakeApiKey = "sk-proj-FAKEKEYFORTESTINGONLY1234567890";
+    const fakeApiKey = ["sk-p", "roj-FAKEKEYFORTESTINGONLY1234567890"].join("");
     const config: BranchConfig = {};
     const signature = JSON.stringify({
       id: "A".repeat(416),
@@ -176,7 +176,7 @@ describe("appendExactAssistantMessageToSessionTranscript - redaction", () => {
     const sessionKey = "test-channel:test-redact-event";
     await seedSessionEntry({ sessionId, sessionKey, storePath });
 
-    const fakeApiKey = "sk-proj-FAKEKEYFORTESTINGONLY1234567890";
+    const fakeApiKey = ["sk-p", "roj-FAKEKEYFORTESTINGONLY1234567890"].join("");
     const config: BranchConfig = {};
     const updates: Array<{ message?: unknown }> = [];
     const unsubscribe = onSessionTranscriptUpdate((update) => updates.push(update));
@@ -227,7 +227,7 @@ describe("appendExactAssistantMessageToSessionTranscript - redaction", () => {
     const sessionKey = "test-channel:test-redact-dedupe";
     await seedSessionEntry({ sessionId, sessionKey, storePath });
 
-    const fakeApiKey = "sk-proj-FAKEKEYFORTESTINGONLY1234567890";
+    const fakeApiKey = ["sk-p", "roj-FAKEKEYFORTESTINGONLY1234567890"].join("");
     const config: BranchConfig = {};
 
     const first = await appendAssistantMessageToSessionTranscript({
@@ -264,7 +264,7 @@ describe("appendExactAssistantMessageToSessionTranscript - redaction", () => {
     const sessionKey = "test-channel:test-redact-upgrade-dedupe";
     await seedSessionEntry({ sessionId, sessionKey, storePath });
 
-    const fakeApiKey = "sk-proj-OLDERUNREDACTEDTRANSCRIPT1234567890";
+    const fakeApiKey = ["sk-p", "roj-OLDERUNREDACTEDTRANSCRIPT1234567890"].join("");
     const unredacted = await appendExactAssistantMessageToSessionTranscript({
       sessionKey,
       storePath,

@@ -43,7 +43,7 @@ function observation(pages: SlackMessage[][]) {
     expect(messages).toBeDefined();
     return Response.json({ ok: true, messages });
   };
-  const client = loadSlackQaRuntime().createSlackWebClient("xoxb-qa-approval-fixture", { fetch });
+  const client = loadSlackQaRuntime().createSlackWebClient(["xoxb", "-qa-approval-fixture"].join(""), { fetch });
   const observedMessages: SlackObservedMessage[] = [];
   return {
     approvalKind: "plugin" as const,
@@ -136,7 +136,7 @@ it.each(["ok", "failed", "missing-command-result"] as const)(
         ],
       });
     };
-    const client = loadSlackQaRuntime().createSlackWebClient("xoxb-qa-approval-fixture", { fetch });
+    const client = loadSlackQaRuntime().createSlackWebClient(["xoxb", "-qa-approval-fixture"].join(""), { fetch });
     vi.mocked(writeSlackApprovalCheckpoint).mockImplementation(async ({ state }) => {
       await Promise.resolve();
       phases.push(`checkpoint-${state}`);

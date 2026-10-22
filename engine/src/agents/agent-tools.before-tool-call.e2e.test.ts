@@ -1135,7 +1135,7 @@ describe("before_tool_call loop detection behavior", () => {
     await withToolExecutionEvents(async (emitted, flush) => {
       await tool.execute(
         "tool-call-1",
-        { command: "pwd", token: "sk-1234567890abcdef1234567890abcdef" },
+        { command: "pwd", token: ["sk-1", "234567890abcdef1234567890abcdef"].join("") },
         undefined,
         undefined,
       );
@@ -1167,7 +1167,7 @@ describe("before_tool_call loop detection behavior", () => {
         type: "tool.execution.completed",
       });
       expect(typeof completed.durationMs).toBe("number");
-      expect(JSON.stringify(emitted)).not.toContain("sk-1234567890abcdef1234567890abcdef");
+      expect(JSON.stringify(emitted)).not.toContain(["sk-1", "234567890abcdef1234567890abcdef"].join(""));
       expect(JSON.stringify(emitted)).not.toContain("pwd");
     });
   });
@@ -1675,7 +1675,7 @@ describe("before_tool_call loop detection behavior", () => {
 
   it("emits diagnostic tool execution error events with redacted errors", async () => {
     const execute = vi.fn().mockRejectedValue(
-      Object.assign(new Error("failed with key sk-1234567890abcdef1234567890abcdef"), {
+      Object.assign(new Error(["failed with key sk-1", "234567890abcdef1234567890abcdef"].join("")), {
         code: "SECRET_TOKEN",
         status: 429,
       }),
@@ -1705,7 +1705,7 @@ describe("before_tool_call loop detection behavior", () => {
       });
       expect(typeof errorEvent.durationMs).toBe("number");
       expect(JSON.stringify(emitted[1])).not.toContain("SECRET_TOKEN");
-      expect(JSON.stringify(emitted[1])).not.toContain("sk-1234567890abcdef1234567890abcdef");
+      expect(JSON.stringify(emitted[1])).not.toContain(["sk-1", "234567890abcdef1234567890abcdef"].join(""));
     });
   });
 

@@ -42,7 +42,7 @@ vi.mock("../agents/runtime-plugins.js", () => ({
 
 type FailurePhase = "capture" | "revalidate" | "callback";
 type Scenario = FailurePhase | "success" | "drift";
-const syntheticToken = "sk-140392syntheticfixturetoken123456789";
+const syntheticToken = ["sk-1", "40392syntheticfixturetoken123456789"].join("");
 const syntheticStructuredValue = "140392-structured-placeholder";
 const syntheticCustomValue = "PR140392_PRIVATE_SAMPLE";
 const guidance = "Run `branch onboard` to connect and live-test AI first.";

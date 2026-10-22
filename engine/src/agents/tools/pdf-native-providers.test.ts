@@ -243,7 +243,7 @@ describe("native PDF provider API calls", () => {
   });
 
   it("redacts a reflected x-api-key credential from Anthropic API error bodies", async () => {
-    const needle = "sk-ant-api03-vX7qP2mN9wKzR4tY8uI0oP3aS6dF7gH1jL5k";
+    const needle = ["sk-a", "nt-api03-vX7qP2mN9wKzR4tY8uI0oP3aS6dF7gH1jL5k"].join("");
     mockFetchResponse(
       textResponse(`upstream echoed x-api-key: ${needle}`, {
         status: 401,

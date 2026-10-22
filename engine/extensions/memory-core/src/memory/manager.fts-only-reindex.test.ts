@@ -523,7 +523,7 @@ describe("memory manager FTS-only reindex", () => {
   });
 
   it("redacts credential material from bootstrap debug reasons", async () => {
-    const credential = "sk-test-abcdefghijklmnopqrstuvwxyz123456";
+    const credential = ["sk-t", "est-abcdefghijklmnopqrstuvwxyz123456"].join("");
     providerConstructionError = Object.assign(new Error(`apiKey=${credential}`), {
       name: "MissingProviderAuthError",
       code: "missing-api-key",

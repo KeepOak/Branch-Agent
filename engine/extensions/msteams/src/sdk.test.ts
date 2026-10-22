@@ -24,7 +24,7 @@ const privateQaBotToken = [
 const { readSecretFile } = vi.hoisted(() => ({
   readSecretFile: vi
     .fn<(filePath: string, label: string) => Promise<string>>()
-    .mockResolvedValue("-----BEGIN RSA PRIVATE KEY-----\nfake-key\n-----END RSA PRIVATE KEY-----"),
+    .mockResolvedValue(["-----BEGIN ", "RSA PRIVATE KEY-----\nfake-key\n-----END RSA PRIVATE KEY-----"].join("")),
 }));
 
 vi.mock("branch/plugin-sdk/secret-file", async (importOriginal) => {
@@ -62,7 +62,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   readSecretFile
     .mockReset()
-    .mockResolvedValue("-----BEGIN RSA PRIVATE KEY-----\nfake-key\n-----END RSA PRIVATE KEY-----");
+    .mockResolvedValue(["-----BEGIN ", "RSA PRIVATE KEY-----\nfake-key\n-----END RSA PRIVATE KEY-----"].join(""));
 });
 
 async function createMSTeamsApp(...args: Parameters<typeof loadMSTeamsSdkWithAuth>) {

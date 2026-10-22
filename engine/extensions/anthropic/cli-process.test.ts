@@ -141,7 +141,7 @@ async function waitForDescendantExit(pid: number, signal: AbortSignal): Promise<
 
 describe("Claude subprocess diagnostics through the direct CLI transport", () => {
   it("drains pipe-sized stderr and reports a bounded redacted fatal diagnostic", async () => {
-    const secret = "sk-ant-api03-synthetic-diagnostic-credential-123456789";
+    const secret = ["sk-a", "nt-api03-synthetic-diagnostic-credential-123456789"].join("");
     const context = await contextForChild(`
       import { writeSync } from "node:fs";
       writeSync(2, "discarded noise".repeat(100_000) + "\\n");
