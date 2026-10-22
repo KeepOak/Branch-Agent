@@ -17,13 +17,13 @@ export const AUTO_APPLY_RETRY_MS = 60_000;
  * doubling up to this cap, and retries with the setting left on (Private #1054). Auto-apply never turns itself off.
  */
 export const AUTO_APPLY_CHECK_BACKOFF_MAX_MS = 5 * 60_000;
-/** An update pending this long applies at the next gap, without waiting for the Trunk-work batch (Private #1047). */
 /**
  * After this many activity checks fail in a row (a window that never answers its probe), the failure counts as
  * unknown-idle: the engine's own run count decides, and the usual idle hold still applies before anything restarts.
  * Without it, a silent window held a staged update forever.
  */
 export const AUTO_APPLY_SILENT_IDLE_AFTER = 3;
+/** An update pending this long applies at the next gap, without waiting for the Trunk-work batch (Private #1047). */
 export const AUTO_APPLY_PENDING_CAP_MS = 6 * 60 * 60_000;
 
 /**
