@@ -36,32 +36,25 @@ async function open(tab: string, fx: Record<string, unknown> = {}, level: Level 
   return request;
 }
 
-describe("Customize › Chat apps (#1049)", () => {
-  it("has no Chat apps tab: asking for it opens Settings › Chat apps", async () => {
+describe("Customize's former tabs (#1049)", () => {
+  it.each([["Chat apps", "chatapps"], ["Trunks", "trunks"]])("has no %s tab: asking for it opens Settings > %s", async (tab, page) => {
     const openSettings = vi.fn();
     host = document.createElement("div"); document.body.append(host);
     root = createRoot(host);
     const engine = { request: async (method: string) => BASE[method] ?? { ok: true }, onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"] } as unknown as WindowEngine;
     await act(async () => { root!.render(<CustomizePlace engine={engine} facts={{ running: 0, waiting: 0 }} openConversation={() => {}} openPlace={() => {}} openSettings={openSettings} level={"regular" as Level} />); });
-    await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Chat apps" } })); });
-    expect(openSettings).toHaveBeenCalledWith("chatapps");
-    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Trunks", "Tools"]);
+    await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab } })); });
+    expect(openSettings).toHaveBeenCalledExactlyOnceWith(page);
+    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Tools"]);
     expect(host.querySelector(".cz-chgrid")).toBeNull();
   });
 });
 
 describe("Customize tabs", () => {
-  it("shows the Trunk count on the Trunks tab, from agents.list", async () => {
-    await open("Trunks");
-    const trunksTab = host.querySelector('[aria-label="Customize"] [role="tab"]')!;
-    expect(trunksTab.textContent).toBe("Trunks");
-    expect(trunksTab.getAttribute("data-count")).toBe("2");
-    expect(trunksTab.getAttribute("aria-label")).toBe("Trunks, 2");
-  });
-  it("has only Trunks and Tools: Specialists, Everywhere and Chat apps live in Settings (DA-55, #1049)", async () => {
+  it("has only Tools: Trunks, Specialists, Everywhere and Chat apps live in Settings (DA-55, #1049)", async () => {
     await open("Specialists");
-    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Trunks", "Tools"]);
-    expect(host.querySelector('[aria-label="Customize"] [aria-selected="true"]')?.textContent).toBe("Trunks");
+    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Tools"]);
+    expect(host.querySelector('[aria-label="Customize"] [aria-selected="true"]')?.textContent).toBe("Tools");
     expect(host.querySelector('[data-testid="specialists"]')).toBeNull();
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Everywhere" } })); });
     expect(host.querySelector('[data-testid="everywhere"]')).toBeNull();

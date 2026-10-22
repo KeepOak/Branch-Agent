@@ -39,7 +39,7 @@ describe("branch:place-tab", () => {
   });
   it("opens the named Customize tab, and Tools at a named kind", async () => {
     await mount();
-    expect(selectedTab()).toBe("Trunks");
+    expect(selectedTab()).toBe("Tools");
     await send("customize", "Plugins");
     expect(selectedTab()).toBe("Tools");
     expect(kind()).toBe("Plugins");
@@ -50,16 +50,17 @@ describe("branch:place-tab", () => {
     await mount();
     await send("library", "Channels");
     await send("customize", "Nowhere");
-    expect(selectedTab()).toBe("Trunks");
+    expect(selectedTab()).toBe("Tools");
   });
-  it("hides the Trunks count at zero and shows it when Trunks exist", async () => {
+  it("keeps only Tools whether or not Trunks exist", async () => {
     await mount([]);
     const tab = () => host.querySelector<HTMLButtonElement>('[aria-label="Customize"] [role="tab"]');
     expect(tab()?.hasAttribute("data-count")).toBe(false);
     expect(tab()?.getAttribute("aria-label")).toBeNull();
     await act(async () => root?.unmount()); root = null;
     await mount();
-    expect(tab()?.getAttribute("data-count")).toBe("1");
-    expect(tab()?.getAttribute("aria-label")).toBe("Trunks, 1");
+    expect(tab()?.textContent).toBe("Tools");
+    expect(tab()?.hasAttribute("data-count")).toBe(false);
+    expect(host.querySelectorAll('[aria-label="Customize"] [role="tab"]')).toHaveLength(1);
   });
 });
