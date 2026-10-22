@@ -1,7 +1,8 @@
 # Preview button map
 
-Unique clickable controls in `design/spec-v23` (the design preview) and where they go in `window/`.
-This is the expected-destination list for a click-every-button tester.
+Historical map of unique clickable controls in `design/spec-v23` (superseded Oct 18, 2026; not the parity target) and where they go in `window/`.
+The current design target is the owner's latest Branch App Preview, kept privately and never committed; parity briefs paste only the slices they need.
+This file remains the expected-destination list for a click-every-button tester of the old snapshot.
 
 Each JSON entry has `id`, `screen`, `label`, `previewAction`, `appFile`, `appComponent`, `appAction`, `status`.
 Statuses: `same` (app matches the preview), `different` (exists but destination or behaviour differs), `missing` (the preview has it, the app doesn't), `extra` (exists in the app, not in the preview), `dead` (app control does nothing / only a toast), `unknown` (could not determine statically).

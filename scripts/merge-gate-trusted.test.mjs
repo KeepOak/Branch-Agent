@@ -1485,8 +1485,8 @@ test('more than 100 check-runs are all read across pages', () => {
     return requestPath.endsWith('page=1') ? page1 : page2;
   });
   assert.deepEqual(calls, [
-    `commits/${SHA}/check-runs?per_page=100&page=1`,
-    `commits/${SHA}/check-runs?per_page=100&page=2`,
+    `commits/${SHA}/check-runs?filter=latest&per_page=100&page=1`,
+    `commits/${SHA}/check-runs?filter=latest&per_page=100&page=2`,
   ]);
   assert.equal(fetched.length, 101);
   assert.equal(fetched[100].name, 'Named feature tests on ubuntu-latest (9/10)');
@@ -3779,4 +3779,80 @@ test('the trusted gate gives its API calls their own rate-limit budget, separate
   const main = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
   assert.match(main, /gateApiBudget\.budgetSeconds = Number\(process\.env\.MERGE_GATE_API_WAIT_SECONDS \?\? DEFAULT_API_WAIT_SECONDS\)/);
   assert.equal(gate.DEFAULT_API_WAIT_SECONDS, 600);
+});
+
+// #1907: the first merge-gate suite ran while the PR still targeted another base and failed. A newer suite of the
+// same workflow and job on the same head SHA, bound to this PR and main, passed. Only the newest attempt counts.
+const staleBaseGate = {
+  ...passCheckRuns[0],
+  id: 90,
+  conclusion: 'failure',
+  check_suite: { id: 190 },
+  details_url: 'https://github.com/example/repo/actions/runs/290/job/90',
+};
+const staleBaseWorkflow = {
+  ...mergeGateWorkflow,
+  id: 290,
+  checkSuiteId: 190,
+  pullRequests: [{ number: PR_NUMBER, base: 'old-base' }],
+};
+
+test('regression: #1907 newer bound success supersedes an older failed suite from before a retarget', () => {
+  for (const checkRuns of [
+    [staleBaseGate, ...passCheckRuns, analyzeCheck],
+    [...passCheckRuns, analyzeCheck, staleBaseGate],
+  ]) {
+    for (const workflowPatch of [{}, { pullRequests: [] }]) {
+      const result = evaluateTrustedGate({
+        checkRuns,
+        workflowsByCheckId: { ...passWorkflows, 90: { ...staleBaseWorkflow, ...workflowPatch } },
+        changedFiles: ['README.md'],
+        coreWorkflows,
+        currentRunId: CURRENT_RUN_ID,
+        ...prContext,
+      });
+      assert.deepEqual(result.failed, []);
+      assert.deepEqual(result.missingCore, []);
+      assert.equal(result.ok, true);
+    }
+  }
+  // The ordinary gate's shared collapse is unchanged unless the trusted gate opts in.
+  assert.ok(newestChecksByIdentity([staleBaseGate, passCheckRuns[0]], { ...passWorkflows, 90: staleBaseWorkflow }, prContext)
+    .includes(staleBaseGate));
+});
+
+for (const [reason, runPatch, workflowPatch] of [
+  ['the stale suite is newer', { check_suite: { id: 990 } }, { checkSuiteId: 990 }],
+  ['another head SHA', {}, { headSha: 'other-sha' }],
+  ['another workflow path', {}, { path: '.github/workflows/desktop-checks.yml' }],
+  ['another event', {}, { event: 'workflow_dispatch' }],
+  ['another app', { app: { id: 1 } }, {}],
+]) {
+  test(`regression: #1907 an unbound failure still fails the trusted gate when ${reason}`, () => {
+    const stale = { ...staleBaseGate, ...runPatch };
+    const result = evaluateTrustedGate({
+      checkRuns: [stale, ...passCheckRuns, analyzeCheck],
+      workflowsByCheckId: { ...passWorkflows, 90: { ...staleBaseWorkflow, ...workflowPatch } },
+      changedFiles: ['README.md'],
+      coreWorkflows,
+      currentRunId: CURRENT_RUN_ID,
+      ...prContext,
+    });
+    assert.equal(result.ok, false);
+    assert.ok(result.failed.includes(stale));
+  });
+}
+
+test('regression: #1907 a stale failure stays when the newer bound suite did not succeed', () => {
+  const newerFailed = { ...passCheckRuns[0], conclusion: 'failure' };
+  const result = evaluateTrustedGate({
+    checkRuns: [staleBaseGate, newerFailed, ...passCheckRuns.slice(1), analyzeCheck],
+    workflowsByCheckId: { ...passWorkflows, 90: staleBaseWorkflow },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.failed.includes(staleBaseGate));
 });

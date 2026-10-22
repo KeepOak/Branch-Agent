@@ -504,4 +504,15 @@ describe('pairing with the computer', () => {
     expect(session.getState()).toEqual({ step: 'unpaired' });
     expect(Object.keys(store.dump())).toEqual([DEVICE_IDENTITY_KEY]);
   });
+
+  it('Reset unpairs and drops the device key; Forget keeps the key', async () => {
+    const { session, engine, store } = sessionWith();
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
+    engine.approve();
+    await until(session, (s) => s.step === 'paired' && s.online);
+    await session.reset();
+    expect(session.getState()).toEqual({ step: 'unpaired' });
+    expect(store.dump()).toEqual({});
+    session.dispose();
+  });
 });

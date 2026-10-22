@@ -248,11 +248,12 @@ describe('Android release version and signing plan', () => {
 });
 
 describe('the mobile Android release workflow', () => {
-  it('builds on a published release, a manual run, or a main push, and never touches the merge gate', () => {
+  it('builds only on a published release or a manual run, has no push trigger, and never touches the merge gate', () => {
     expect(workflow).toMatch(/release:\s*\n\s*types:\s*\[[^\]]*published/);
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toMatch(/workflow_dispatch:[\s\S]*?inputs:[\s\S]*?\btag:/);
-    expect(workflow).toMatch(/push:\s*\n\s*branches:\s*\[main\]/);
+    // #1923 removed the main push trigger so Android no longer pre-creates desktop releases.
+    expect(workflow).not.toMatch(/^\s+push:/m);
     expect(workflow).toContain('npm run build:android');
     expect(workflow).not.toMatch(/merge-gate/);
     expect(workflow).not.toMatch(/^\s+pull_request:/m);
@@ -806,6 +807,7 @@ describe('attach retries GitHub rate limits', () => {
       const start = 1_700_000_000_000;
       let now = start;
       const sleeps = [];
+      let calls = 0;
       const err = new Error('gh: API rate limit exceeded for installation (HTTP 403)');
       err.stderr = 'gh: API rate limit exceeded for installation (HTTP 403)';
       err.httpStatus = 403;
@@ -823,7 +825,7 @@ describe('attach retries GitHub rate limits', () => {
           rateLimitSleep: (seconds) => { sleeps.push(seconds); now += seconds * 1000; },
           log: () => {},
           random: () => 0.5,
-          run: () => { throw err; },
+          run: () => { calls += 1; throw err; },
         });
       } catch (error) {
         message = String(error.message);
@@ -838,13 +840,67 @@ describe('attach retries GitHub rate limits', () => {
         }),
         sleeps,
         waited: sleeps.reduce((sum, seconds) => sum + seconds, 0),
+        calls,
       }));`);
     expect(result.message).toBe(result.expected);
     expect(result.message).toContain(`APK artifact ${files.artifactName}`);
     expect(result.message).toContain(`run ${runId}`);
-    expect(result.waited).toBeLessThanOrEqual(100);
-    expect(result.sleeps.length).toBeGreaterThanOrEqual(1);
-    expect(result.sleeps.every((seconds: number) => seconds <= 100)).toBe(true);
+    expect(result.calls).toBe(1);
+    expect(result.waited).toBe(0);
+    expect(result.sleeps).toEqual([]);
+  });
+
+  it('retries a rate-limited upload POST after waiting for reset', () => {
+    const result = callModule(`import { attachSignedApkAssets } from ${JSON.stringify(helper)};
+      const start = 1_700_000_000_000;
+      let now = start;
+      const sleeps = [];
+      const calls = [];
+      let tagGets = 0;
+      let posts = 0;
+      const err = new Error('gh: API rate limit exceeded for installation (HTTP 403)');
+      err.stderr = 'gh: API rate limit exceeded for installation (HTTP 403)';
+      err.httpStatus = 403;
+      err.headers = { 'x-ratelimit-reset': String(start / 1000 + 20), 'x-ratelimit-remaining': '0' };
+      const attached = await attachSignedApkAssets({
+        ...${JSON.stringify(files)},
+        wait: { intervalMs: 1, maxAttempts: 2, backoff: 2 },
+        sleep: async () => { throw new Error('must not use 404 backoff for a rate limit'); },
+        now: () => now,
+        startedAt: start,
+        rateLimitSleep: (seconds) => { sleeps.push(seconds); now += seconds * 1000; },
+        log: () => {},
+        random: () => 0.5,
+        run: (_file, args) => {
+          calls.push(args);
+          if (String(args[1] ?? '').includes('/releases/tags/')) {
+            tagGets += 1;
+            return JSON.stringify(${JSON.stringify(release)});
+          }
+          if (args.includes('--method') && args.includes('POST')) {
+            posts += 1;
+            if (posts === 1) throw err;
+            return '';
+          }
+          return '';
+        },
+      });
+      console.log(JSON.stringify({
+        uploaded: attached.uploaded,
+        sleeps,
+        tagGets,
+        posts,
+        listed: calls.some((args) => args.includes('--paginate')),
+      }));`);
+    expect(result.uploaded).toEqual([
+      apkName,
+      `${apkName}.sha256`,
+      `${apkName}.versioncode.8`,
+    ]);
+    expect(result.tagGets).toBe(1);
+    expect(result.posts).toBe(4);
+    expect(result.sleeps).toEqual([35]);
+    expect(result.listed).toBe(false);
   });
 
   it('does not retry a generic 403 and does not call rate_limit', () => {

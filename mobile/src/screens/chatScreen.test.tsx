@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import { Vibration } from 'react-native';
 import App from '../../App';
 import { readApproval, type Approval, type ApprovalDecision } from '../approvals/approvals';
 import { NO_ATTACH_METHOD_NOTE, type PickedFile } from '../chat/attachments';
@@ -10,10 +11,15 @@ import { fixtureApprovals } from '../testing/approvalFixtures';
 import { fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { fixtureEnvironments } from '../testing/computerFixtures';
 import { createFakeSession } from '../testing/fakeSession';
+import { PHONE_PREFS_DEFAULT, resetLivePhonePrefs, setLivePhonePrefs } from '../settings/phonePrefs';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { ChatScreen, takeControlCopy, takeControlDetail, threadApprovals, workedFor } from './ChatScreen';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 3000 });
+
+beforeEach(() => {
+  resetLivePhonePrefs();
+});
 // pairedApp compiles the full App (pairing through chats). Jest's 5s default is too tight
 // on a cold CI worker — same budget as pairingScreens.test.tsx and settingsScreen.test.tsx.
 jest.setTimeout(20_000);
@@ -453,5 +459,28 @@ describe('thread parity', () => {
     expect(onAnswer).not.toHaveBeenCalledWith('exec-empty', 'allow-once');
     conversation.dispose();
     session.dispose();
+  });
+
+  it('buzzes on send when Vibrate on taps is on, and stays still when it is off', async () => {
+      const vibrate = jest.spyOn(Vibration, 'vibrate').mockImplementation(() => undefined);
+    try {
+      setLivePhonePrefs({ ...PHONE_PREFS_DEFAULT, haptics: true });
+      const on = await renderChat(true, (engine) => engine.setHistory(KEY, history));
+      await fireEvent.changeText(screen.getByTestId('composer'), 'Hello');
+      await fireEvent.press(screen.getByTestId('send'));
+      expect(vibrate).toHaveBeenCalled();
+      on.conversation.dispose();
+      on.session.dispose();
+      vibrate.mockClear();
+      setLivePhonePrefs({ ...PHONE_PREFS_DEFAULT, haptics: false });
+      const off = await renderChat(true, (engine) => engine.setHistory(KEY, history));
+      await fireEvent.changeText(screen.getByTestId('composer'), 'Hello again');
+      await fireEvent.press(screen.getByTestId('send'));
+      expect(vibrate).not.toHaveBeenCalled();
+      off.conversation.dispose();
+      off.session.dispose();
+    } finally {
+      vibrate.mockRestore();
+    }
   });
 });

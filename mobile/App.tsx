@@ -1,9 +1,10 @@
-import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler, Linking, Platform } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { EventAlerts } from './src/alerts/eventAlerts';
+import { chatRowForAlert, isAgentSessionKey, type AlertRoute } from './src/alerts/route';
 import { ApprovalAlerts, type AppStateSource, type Notifier, type NotificationPermission } from './src/approvals/approvalAlerts';
 import { ApprovalInbox, trunkOf, type Approval, type ApprovalDecision } from './src/approvals/approvals';
 import { headline } from './src/approvals/approvalWords';
@@ -11,9 +12,9 @@ import { testApprovalsOn } from './src/approvals/testApproval';
 import { useTestApproval } from './src/approvals/useTestApproval';
 import { createExpoNotifier, noNotifier } from './src/approvals/expoNotifier';
 import { AgentList, type AgentRow } from './src/agents/agentList';
-import { appIdentity, type AppIdentity } from './src/build/appIdentity';
+import { appIdentity, installedAppVersion, type AppIdentity } from './src/build/appIdentity';
 import { Conversation } from './src/chat/conversation';
-import { ChatList, filterRows, type ChatRow } from './src/chats/chatList';
+import { ChatList, chatForNew, filterRows, type ChatRow } from './src/chats/chatList';
 import { ComputerList, computerName, type ComputerRow } from './src/computers/computerList';
 import { messageSearcher } from './src/chats/messageSearch';
 import { createDeviceSession } from './src/pairing/createDeviceSession';
@@ -39,6 +40,9 @@ import { useSelf } from './src/people/useSelf';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import type { SettingsLevel } from './src/screens/settingsExtras';
 import { VoiceScreen } from './src/screens/VoiceScreen';
+import { applyKeepAwake, parseShareUrl, shouldKeepScreenAwake } from './src/settings/phoneEffects';
+import { resetThisPhone, takeShareToBranchAgent, writeOfflineChats, writeSavedAgents, writeWaitingMessages } from './src/settings/phoneLocal';
+import { getLivePhonePrefs, readPhonePrefs, subscribeLivePhonePrefs } from './src/settings/phonePrefs';
 import { parseShowLevel, readShowLevel, settingsLevelOf, showLevelOf, writeShowLevel, type ShowLevel } from './src/settings/showLevel';
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
 import { PairingTheme, ThemeProvider, useTheme } from './src/theme/ThemeProvider';
@@ -48,6 +52,8 @@ import { placesBarHeight, type Place } from './src/ui/PlacesBar';
 import { applyQuietJsUpdate } from './src/updates/ota';
 import { SettingsUpdateCard, UpdateBanner } from './src/updates/UpdateBanner';
 import { useApkUpdate } from './src/updates/useApkUpdate';
+import { routeForWidgetAction, type WidgetAction } from './src/widget/homeWidget';
+import { useHomeWidget } from './src/widget/useHomeWidget';
 
 // The splash stays up until the saved pairing has been read, so the first frame is the right screen.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -81,12 +87,6 @@ const HOME: PairedRoute = { name: 'home' };
 const SCAN: PairedRoute = { name: 'scan' };
 const CODE: PairedRoute = { name: 'code' };
 
-/** New chat from Home or Chats: the main conversation, else the first non-room chat. */
-function chatForNew(rows: ChatRow[]): ChatRow | undefined {
-  const shown = filterRows(rows, 'all', Date.now());
-  return shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
-}
-
 /** Talk from Home: the most recent chat, else the same pick New chat uses. */
 function chatForTalk(rows: ChatRow[]): ChatRow | undefined {
   const shown = filterRows(rows, 'all', Date.now());
@@ -115,6 +115,7 @@ function OpenChat({
   sending,
   failed,
   onAnswer,
+  store,
 }: {
   session: PairingSession;
   row: ChatRow;
@@ -127,12 +128,19 @@ function OpenChat({
   sending: Record<string, ApprovalDecision>;
   failed: Record<string, string>;
   onAnswer: (id: string, decision: ApprovalDecision) => void;
+  store?: KeyValueStore;
 }) {
   const [conversation] = useState(() => new Conversation(row.key, session, () => session.newId()));
   useEffect(() => {
     conversation.attach();
     return () => conversation.dispose();
   }, [conversation]);
+  useEffect(() => {
+    if (!store) return;
+    return conversation.subscribe(() => {
+      void writeWaitingMessages(store, row.key, conversation.getSnapshot().sends);
+    });
+  }, [conversation, store, row.key]);
   // Opening a chat reads it; the mark is cleared once, for the unread state it was opened with.
   const [opened] = useState(row);
   useEffect(() => {
@@ -186,6 +194,7 @@ function Shell({
   store,
   showLevel,
   onShowLevel,
+  onPhoneReset,
 }: {
   session: PairingSession;
   notifier: Notifier;
@@ -194,14 +203,12 @@ function Shell({
   store?: KeyValueStore;
   showLevel: ShowLevel;
   onShowLevel: (next: ShowLevel) => void;
+  onPhoneReset?: () => void;
 }) {
   const theme = useTheme();
   const state = usePairingState(session);
   const update = useApkUpdate();
-  const installed = {
-    version: Constants.expoConfig?.version ?? '0.1.0',
-    versionCode: Constants.expoConfig?.android?.versionCode ?? 1,
-  };
+  const installed = installedAppVersion();
   const updateBanner = (
     <UpdateBanner state={update.state} onUpdate={update.startUpdate} onAllowInstalls={() => update.allowInstalls()} />
   );
@@ -226,7 +233,7 @@ function Shell({
   const [computers] = useState(() => new ComputerList(session));
   const computerList = useSyncExternalStore(computers.subscribe, computers.getSnapshot);
   const [searchMessages] = useState(() => messageSearcher((method, params) => session.request(method, params)));
-  const { self, reload: reloadSelf } = useSelf(session, state.step === 'paired' && state.online);
+  const { self, loadFailed, reload: reloadSelf } = useSelf(session, state.step === 'paired' && state.online);
 
   useEffect(() => {
     chats.attach();
@@ -239,20 +246,96 @@ function Shell({
     };
   }, [chats, agents, computers]);
 
-  // Approvals are followed for the whole session, on every screen, so a notification can go out while
-  // Branch is in the background and its buttons can answer.
+  // Approvals and the other engine events are followed for the whole session, on every screen, so a
+  // notification can go out while Branch is in the background and a tap can open the right place.
   const [inbox] = useState(() => new ApprovalInbox(session));
   const approvals = useSyncExternalStore(inbox.subscribe, inbox.getSnapshot);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
+  const eventsRef = useRef<EventAlerts | null>(null);
+  const chatsRef = useRef(chats);
+  chatsRef.current = chats;
+  const openAlert = (route: AlertRoute) => {
+    if (route.screen === 'chat') {
+      if (!isAgentSessionKey(route.sessionKey)) return;
+      setPairedRoute({ name: 'chat', row: chatRowForAlert(route.sessionKey, chatsRef.current.getSnapshot().rows) });
+      return;
+    }
+    if (route.screen === 'settings') {
+      setPairedRoute({ name: 'settings' });
+      return;
+    }
+    setPairedRoute({ name: 'approvals', focus: route.approvalId });
+  };
+  const [prefs, setPrefs] = useState(getLivePhonePrefs);
+  useEffect(() => subscribeLivePhonePrefs(() => setPrefs(getLivePhonePrefs())), []);
+  useEffect(() => {
+    if (!store) return;
+    let live = true;
+    void readPhonePrefs(store).then((saved) => {
+      if (live) setPrefs(saved);
+    });
+    return () => {
+      live = false;
+    };
+  }, [store]);
   useEffect(() => {
     inbox.attach();
-    const alerts = new ApprovalAlerts(inbox, notifier, appState, (focus) => setPairedRoute({ name: 'approvals', focus }));
+    const alerts = new ApprovalAlerts(inbox, notifier, appState, (focus) => setPairedRoute({ name: 'approvals', focus }), {
+      prefs: getLivePhonePrefs,
+      onRoute: openAlert,
+    });
+    const events = new EventAlerts(session, notifier, appState, getLivePhonePrefs);
+    eventsRef.current = events;
     alerts.attach();
+    events.attach();
     return () => {
+      eventsRef.current = null;
       alerts.dispose();
+      events.dispose();
       inbox.dispose();
     };
-  }, [inbox, notifier, appState]);
+  }, [inbox, notifier, appState, session]);
+  useEffect(() => {
+    void eventsRef.current?.notifyUpdate(update.state);
+  }, [update.state]);
+  useEffect(() => {
+    if (!store) return;
+    return chats.subscribe(() => {
+      const snap = chats.getSnapshot();
+      if (snap.loaded) void writeOfflineChats(store, snap.rows);
+    });
+  }, [chats, store]);
+  useEffect(() => {
+    if (!store) return;
+    return agents.subscribe(() => {
+      const snap = agents.getSnapshot();
+      if (snap.loaded) void writeSavedAgents(store, snap.rows);
+    });
+  }, [agents, store]);
+  const working = chatList.rows.some((row) => row.working) || agentList.rows.some((row) => row.status === 'running');
+  useEffect(() => {
+    applyKeepAwake(shouldKeepScreenAwake(prefs.awake, working));
+    return () => applyKeepAwake(false);
+  }, [prefs.awake, working]);
+  useEffect(() => {
+    if (!store) return;
+    const handle = (url: string) => {
+      const share = parseShareUrl(url);
+      if (!share) return;
+      const sessionKey =
+        pairedRoute.name === 'chat'
+          ? pairedRoute.row.key
+          : chatForNew(chatList.rows)?.key ?? 'agent:main:main';
+      void takeShareToBranchAgent(share, {
+        store,
+        prefs: getLivePhonePrefs(),
+        need: { pendingCount: approvals.pending.length, chatOpen: pairedRoute.name === 'chat' },
+        sessionKey,
+      });
+    };
+    const sub = Linking.addEventListener('url', ({ url }) => handle(url));
+    return () => sub.remove();
+  }, [store, pairedRoute, chatList, approvals.pending.length]);
   useEffect(() => {
     if (state.step !== 'paired') return;
     let live = true;
@@ -314,6 +397,23 @@ function Shell({
     else if (place === 'inbox') setPairedRoute({ name: 'approvals' });
     else setPairedRoute({ name: 'more' });
   };
+  const onWidgetAction = useCallback(
+    (action: WidgetAction) => {
+      if (state.step !== 'paired') return;
+      const next = routeForWidgetAction(action, chatList.rows);
+      if (next.name === 'chat') setPairedRoute({ name: 'chat', row: next.row });
+      else if (next.name === 'approvals') setPairedRoute({ name: 'approvals' });
+      else if (next.name === 'home') setPairedRoute(HOME);
+      else setPairedRoute(CHATS);
+    },
+    [state.step, chatList.rows],
+  );
+  useHomeWidget({
+    paired: state.step === 'paired',
+    approvals,
+    chats: chatList,
+    onAction: onWidgetAction,
+  });
 
   const begin = (setup: SetupPayload) => session.begin(setup);
   // A new pairing from Home replaces this computer only once a code is submitted (that is the confirm).
@@ -488,8 +588,10 @@ function Shell({
             scopes={session.hello?.auth.scopes ?? []}
             computer={host ? computerName(host) : 'This computer'}
             computerStatus={state.online ? 'Connected to your computer' : 'Reconnecting to your computer…'}
+            loadFailed={loadFailed}
             onComputer={() => setPairedRoute({ name: 'computers', from: 'you', youFrom: pairedRoute.from })}
             onBack={() => setPairedRoute(pairedBack(pairedRoute))}
+            onRetry={() => void reloadSelf()}
             onRename={
               self.id
                 ? async (name) => {
@@ -514,6 +616,9 @@ function Shell({
               onTurnOnNotifications={turnOnNotifications}
               onConnectAnother={() => setPairedRoute(SCAN)}
               onForget={() => void session.unpair()}
+              onReset={() => {
+                void resetThisPhone(session, store).then(() => onPhoneReset?.());
+              }}
               onSetupTalk={() => {
                 const row = chatForTalk(chatList.rows);
                 if (row) setPairedRoute({ name: 'voice', row });
@@ -558,6 +663,7 @@ function Shell({
             online={state.online}
             link={session}
             pending={approvals.pending}
+            level={showLevel}
             onAnswer={(id, decision) => void inbox.answer(id, decision)}
             onClose={toChat}
             onEnd={toChat}
@@ -581,31 +687,31 @@ function Shell({
             sending={approvals.sending}
             failed={approvals.failed}
             onAnswer={(id, decision) => void inbox.answer(id, decision)}
+            store={store}
           />
         );
       } else if (pairedRoute.name === 'approvals') {
         const chatFor = (key: string) => chatList.rows.find((r) => r.key === key);
         screen = (
-          <PhoneShell current="inbox" inboxCount={approvals.pending.length} onPlace={goPlace} look={look}>
-            <ApprovalsScreen
-              snapshot={approvals}
-              online={state.online}
-              permission={permission}
-              onTurnOnNotifications={turnOnNotifications}
-              onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
-              onAnswer={(id, decision) => void inbox.answer(id, decision)}
-              onRetry={() => void inbox.refresh()}
-              onBack={() => setPairedRoute(CHATS)}
-              canOpenChat={(key) => Boolean(chatFor(key))}
-              onOpenChat={(key) => {
-                const row = chatFor(key);
-                if (row) setPairedRoute({ name: 'chat', row });
-              }}
-              focusId={pairedRoute.focus}
-              test={testTools ? { state: testApproval.state, onSend: testApproval.send, onCancel: testApproval.cancel } : undefined}
-              bottomExtra={extraPad}
-            />
-          </PhoneShell>
+          <ApprovalsScreen
+            snapshot={approvals}
+            online={state.online}
+            permission={permission}
+            onTurnOnNotifications={turnOnNotifications}
+            onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
+            onAnswer={(id, decision) => void inbox.answer(id, decision)}
+            onRetry={() => void inbox.refresh()}
+            onBack={() => setPairedRoute(CHATS)}
+            canOpenChat={(key) => Boolean(chatFor(key))}
+            onOpenChat={(key) => {
+              const row = chatFor(key);
+              if (row) setPairedRoute({ name: 'chat', row });
+            }}
+            focusId={pairedRoute.focus}
+            test={testTools ? { state: testApproval.state, onSend: testApproval.send, onCancel: testApproval.cancel } : undefined}
+            onPlace={goPlace}
+            look={look}
+          />
         );
       } else {
         const first = approvals.pending[0];
@@ -676,12 +782,13 @@ export default function App({
   themeStore?: KeyValueStore;
   showLevel?: ShowLevel;
 }) {
-  const [session] = useState(() => given ?? createDeviceSession());
+  // Keep one store for pairing, Settings and Reset so a render cannot mint a new device store.
+  const [store] = useState(() => themeStore ?? (given ? undefined : deviceStore()));
+  const [session] = useState(() => given ?? createDeviceSession(store ?? deviceStore()));
   const [notifier] = useState(() => givenNotifier ?? (Platform.OS === 'web' ? noNotifier : createExpoNotifier()));
   const [identity] = useState(() => givenIdentity ?? appIdentity());
-  // Keep one store for the life of this App so a render cannot mint a new device store and reload the saved level.
-  const [store] = useState(() => themeStore ?? (given ? undefined : deviceStore()));
   const [showLevel, setShowLevel] = useState<ShowLevel>(() => parseShowLevel(givenLevel));
+  const [themeEpoch, setThemeEpoch] = useState(0);
   useEffect(() => {
     if (givenLevel !== undefined) {
       setShowLevel(givenLevel);
@@ -710,7 +817,7 @@ export default function App({
   return (
     // Starting from the window's known insets draws the first frame at once instead of a blank one.
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      <ThemeProvider scheme={scheme} store={store}>
+      <ThemeProvider key={themeEpoch} scheme={scheme} store={store}>
         <Shell
           session={session}
           notifier={notifier}
@@ -719,6 +826,10 @@ export default function App({
           store={store}
           showLevel={showLevel}
           onShowLevel={onShowLevel}
+          onPhoneReset={() => {
+            setShowLevel('regular');
+            setThemeEpoch((n) => n + 1);
+          }}
         />
       </ThemeProvider>
     </SafeAreaProvider>

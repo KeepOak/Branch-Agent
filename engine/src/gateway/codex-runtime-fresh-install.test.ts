@@ -11,6 +11,10 @@ import { connectGatewayClient, disconnectGatewayClient } from "./test-helpers.e2
 
 // A full boot loads every default plugin from source; loaded CI runners need headroom.
 const BOOT_BUDGET_MS = 180_000;
+// The first operator connect on a just-booted fresh install pairs the device and
+// resolves its profile while startup work is still settling; on CI runners that
+// handshake takes 11-13s, past the helper's 10s default.
+const CONNECT_BUDGET_MS = 60_000;
 
 afterEach(() => {
   resetLogger();
@@ -62,6 +66,7 @@ describe("fresh install codex runtime", () => {
             token,
             // The window's operator scopes, so a missing plugin shows as "unknown method".
             scopes: ["operator.admin"],
+            timeoutMs: CONNECT_BUDGET_MS,
           });
           try {
             const status = await client.request<{ state?: unknown }>("codex.runtime", {});

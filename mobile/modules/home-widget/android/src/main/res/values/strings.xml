@@ -1,0 +1,8 @@
+<resources>
+  <string name="branch_home_widget_label">Ask Branch</string>
+  <string name="branch_home_widget_description">Ask Branch and see what is waiting for you.</string>
+  <string name="branch_home_widget_brand">Branch</string>
+  <string name="branch_home_widget_ask">Ask Branch</string>
+  <string name="branch_home_widget_title_default">Ask Branch</string>
+  <string name="branch_home_widget_detail_default">Open Branch to see what needs you.</string>
+</resources>

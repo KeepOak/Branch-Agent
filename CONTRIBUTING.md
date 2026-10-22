@@ -67,7 +67,7 @@ cd desktop && node --test scripts/<name>.test.mjs
 
 ### Making CI run your tests
 
-CI runs an explicit list of test files. A pull request adds its own list as `scripts/feature-batch-ci-named/<branch-name>.txt`, one entry per line, sorted:
+CI runs an explicit list of test files. A pull request adds its own list as `scripts/feature-batch-ci-named/<branch-name>.txt`, one entry per line, in any order (only the shared arrays in `scripts/feature-batch-ci-targets.mjs` must stay sorted):
 
 ```text
 engine:src/gateway/contacts/outside-agents.test.ts
@@ -75,6 +75,8 @@ window:src/connect/conversations.test.ts
 ```
 
 Don't edit the arrays in `scripts/feature-batch-ci-targets.mjs` for new tests. `scripts/feature-batch-ci-named/README.txt` describes the format.
+
+Before you push, run `node scripts/check-named-tests.mjs`. It applies the same rule as the PR preflight and prints the expected list file name and every missing line.
 
 ## Windows child processes
 
@@ -94,7 +96,7 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
 - `main` is protected by the ruleset "main requires the merge gate": the only required check is `merge-gate`, and force-pushes and branch deletion are blocked. The other workflows are path-filtered, so `merge-gate` (`.github/workflows/merge-gate.yml`) waits for whichever of them started on the PR's head commit and fails if any of them failed.
 - After this lands, a second required check will replace it: `merge-gate-trusted` from `.github/workflows/merge-gate-trusted.yml`. That workflow is `pull_request_target`, so GitHub always runs **main's copy** and checks out the default branch (current main), never the PR's recorded base SHA or head. It never checks out or executes the pull request. Permissions are read-only (`contents`, `checks`, `actions`, `pull-requests`) and it uses no secrets. The job waits for the other checks with the same rules as `merge-gate`, fails if `merge-gate` is missing or unsuccessful, fails if a path-filtered core workflow never started, fails if any other workflow posts a check named `merge-gate-trusted`, and re-runs the changed-test-coverage and merge-command scripts from main against the PR file list fetched through the API. Reviewers see workflow, gate-script, and `package.json` changes in the job summary. **Two-step switch:** merge this workflow first and watch it on a few PRs, then the repo admin changes the required check from `merge-gate` to `merge-gate-trusted`. Until that switch, `merge-gate` remains the required check.
 - `gate-files-fresh` (`.github/workflows/gate-files-fresh.yml`) fails a PR that edits a merge-gate file but dropped a line main added since the PR forked; merge main in and keep main's version of this file.
-- Only the PR reviewer (Branch PR Closer) adds the `gate-change-reviewed: <full head SHA>` marker, after reviewing the workflow and gate-file changes on that exact head. An earlier head's marker also counts when every later commit only merges main cleanly and the gate-file diff is unchanged. Fixers and authors never add it.
+- After a non-author reviewer approves the workflow and gate-file changes on the exact head, the reviewer or the merge owner adds `gate-change-reviewed: <full head SHA>` as its own line in the PR body (the gate reads only the body, not comments); the PR's author never adds it. An earlier head's marker also counts when every later commit only merges main cleanly and the gate-file diff is unchanged.
 - After review, Branch PR Closer merges by hand with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge:
 
   ```bash
