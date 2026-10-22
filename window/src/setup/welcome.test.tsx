@@ -37,7 +37,7 @@ const tid = (host: HTMLElement, id: string) => host.querySelector(`[data-testid=
 describe("Welcome", () => {
   it("shows the preview Welcome copy, Get started enabled, and no promise checkbox", async () => {
     const host = await show(<SetupFlow engine={engine()} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
-    expect(host.querySelector("h2")?.textContent).toBe("Hi, I’m Branch.");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Hi, I’m Branch.");
     expect(host.textContent).toContain(WELCOME_LEDE);
     expect(host.textContent).toContain(WELCOME_LOCK);
     expect(host.textContent).not.toContain("How Branch stays safe");
@@ -53,17 +53,25 @@ describe("Welcome", () => {
     expect(host.textContent).toContain("Runs on");
     expect(host.textContent).toContain("this computer");
     await act(async () => tid(host, "setup-next").click());
-    expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Which models should answer?");
     expect(host.querySelector('[data-testid="setup-welcome-mark"]')).toBeNull();
   });
 
-  it("draws the Welcome mark as an 88px oak tile", () => {
+  it("draws the Welcome mark as the preview's 88px app-icon tile", () => {
     const markup = renderToStaticMarkup(<WelcomeHero />);
     expect(markup).toContain('data-testid="setup-welcome-mark"');
-    expect(markup).toContain("ob-mark");
-    expect(markup).toContain("/keepoak-mark.svg");
-    expect(markup).toContain("keepoak-mark-mono-white-1024.png");
-    expect(markup).toContain('fill="currentColor"');
+    expect(markup).toContain('class="ob-mark"');
+    expect(markup).not.toContain("/keepoak-mark.svg");
+  });
+
+  it("shows the centred card, not the 11-step rail, when Branch is already connected", async () => {
+    const host = await show(<SetupFlow engine={engine()} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
+    expect(host.querySelector(".ob-rail")).toBeNull();
+    expect(host.querySelector(".ob-p37 .ob-card")).not.toBeNull();
+    expect(host.querySelectorAll(".ob-dots i")).toHaveLength(4);
+    expect(host.querySelector("h1")?.textContent).toBe("Hi, I’m Branch.");
+    await act(async () => tid(host, "setup-next").click());
+    expect(host.querySelector(".ob-rail")).not.toBeNull();
   });
 });
 
@@ -143,6 +151,34 @@ describe("pre-connect Welcome", () => {
     });
     await act(async () => tid(host, "setup-next").click());
     expect(connect).toHaveBeenCalledWith("wss://desk.example.test", "secret");
+  });
+});
+
+describe("Set up by talking before connecting", () => {
+  it("is a live link that connects locally and asks setup to start the talk", async () => {
+    const connect = vi.fn();
+    const host = await show(<PreConnect local="ws://127.0.0.1:18789" address={null} state={{ kind: "address" }} busy={false} onConnect={connect} onRetry={() => {}} />);
+    const talk = tid(host, "setup-talk-welcome");
+    expect(talk.getAttribute("aria-disabled")).toBeNull();
+    expect(talk.disabled).toBe(false);
+    await act(async () => talk.click());
+    expect(connect).toHaveBeenCalledWith("ws://127.0.0.1:18789", "");
+    expect(sessionStorage.getItem("branch.setupTalk")).toBe("1");
+  });
+
+  it("setup starts the talking conversation once connected, then clears the ask", async () => {
+    sessionStorage.setItem("branch.setupTalk", "1");
+    const request = vi.fn(async (method: string) => {
+      if (method === "config.get") return { hash: "h", config: {} };
+      if (method === "sessions.create") return { key: "setup-talk" };
+      return {};
+    });
+    const e = { request, onEvent: () => () => {}, sessionKey: "k", scopes: ["operator.admin"], agentId: "main" } as unknown as WindowEngine;
+    const talked = vi.fn();
+    await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} onTalkConversation={talked} />);
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(sessionStorage.getItem("branch.setupTalk")).toBeNull();
+    expect(request.mock.calls.some(([m]) => m === "sessions.create")).toBe(true);
   });
 });
 

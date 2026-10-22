@@ -2,14 +2,13 @@
 // runs here — "Hi, I'm Branch." — with Where Branch runs behind Change, and the address, key, approval wait and
 // connect problems in plain words (DESIGN-SPEC §4.8.1.1–2, "Can't connect: reason and fix steps").
 import { useState } from "react";
-import { Coming } from "../glass/coming";
 import { notify } from "../shell/notify";
 import { connectProblem } from "./connect-problems";
 import { isLocalTarget, readPreConnect, readTargetName, savePreConnect } from "./pre-connect-state";
 import { SetupShell } from "./SetupShell";
 import { WelcomeHero } from "./SetupBrand";
 import { RemoteForm, SETUP_LATER_TOAST, WELCOME_LEDE, WelcomeBody, WhereSheet } from "./steps-early";
-import { FIRST_RUN_STEP_NAMES, SETUP_LATER_KEY, type Where } from "./setup-model";
+import { FIRST_RUN_STEP_NAMES, SETUP_LATER_KEY, SETUP_TALK_KEY, type Where } from "./setup-model";
 
 export type PreConnectState =
   | { kind: "address" }
@@ -89,6 +88,15 @@ export function PreConnect({ local, address, state, busy, startAtWhere, onConnec
     notify(SETUP_LATER_TOAST);
     onConnect(local, "");
   };
+  /** Set up by talking: connect to this computer as Get started does; setup then opens the talking conversation. */
+  const talk = () => {
+    try {
+      sessionStorage.setItem(SETUP_TALK_KEY, "1");
+    } catch {
+      // session blocked: setup opens at its Welcome instead
+    }
+    start();
+  };
   const start = () => {
     remember({});
     if (remote) return;
@@ -123,11 +131,9 @@ export function PreConnect({ local, address, state, busy, startAtWhere, onConnec
         hero={<WelcomeHero />}
         later={
           <>
-            <Coming need="sessions.create" engine={null} unwired reason="Connect to Branch first." where="Set up by talking">
-              <button type="button" className="link" data-testid="setup-talk-welcome">
-                Set up by talking
-              </button>
-            </Coming>
+            <button type="button" className="link" data-testid="setup-talk-welcome" disabled={busy} onClick={talk}>
+              Set up by talking
+            </button>
             <span aria-hidden="true">·</span>
             <button type="button" className="link" data-testid="setup-skip" onClick={later}>
               Set up later

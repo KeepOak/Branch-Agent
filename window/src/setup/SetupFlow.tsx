@@ -16,7 +16,7 @@ import { Icon } from "../shell/icons";
 import { notify } from "../shell/notify";
 import { startSetupTalk } from "../screens/onboarding/finish";
 import { readThemeChoice, setThemeChoice } from "../theme/theme";
-import { doneSteps, firstOn, freshChoices, LAST, railTicked, RUN_SETUP_AGAIN, SETUP_LATER_TOAST, STEPS, type Check, type SetupChoices, type TestResult, type Where } from "./setup-model";
+import { doneSteps, firstOn, freshChoices, LAST, railTicked, FIRST_RUN_STEP_NAMES, RUN_SETUP_AGAIN, SETUP_LATER_TOAST, SETUP_TALK_KEY, STEPS, type Check, type SetupChoices, type TestResult, type Where } from "./setup-model";
 import { SetupShell } from "./SetupShell";
 import { WelcomeHero } from "./SetupBrand";
 import { ModelsBody, WELCOME_LEDE, WelcomeBody, WhereBody, WhereSheet } from "./steps-early";
@@ -177,6 +177,19 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
     // Published once when talking starts; the card keeps its own place from there.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [talking]);
+  useEffect(() => {
+    // Welcome's Set up by talking was chosen before the window connected: start that conversation now.
+    let asked = false;
+    try {
+      asked = sessionStorage.getItem(SETUP_TALK_KEY) === "1";
+      sessionStorage.removeItem(SETUP_TALK_KEY);
+    } catch {
+      // session blocked: stay on Welcome
+    }
+    if (asked && p.onTalkConversation) void talkWelcome();
+    // Once, on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const doneChecks = checks.filter((c) => c.state !== "checking").length;
   const later = () => {
     latest.current.choices = { ...latest.current.choices, promise: true };
@@ -242,6 +255,8 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
   return (
     <>
       <SetupShell
+        variant={step === 0 ? "card" : "rail"}
+        steps={step === 0 ? FIRST_RUN_STEP_NAMES : STEPS}
         step={step}
         reach={LAST}
         reachReason="Connect to a Branch first."
