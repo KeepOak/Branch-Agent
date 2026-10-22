@@ -1,6 +1,7 @@
 package expo.modules.assistant
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 
@@ -9,11 +10,7 @@ class AssistActivity : Activity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     AssistLaunch.offer()
-    val launch = packageManager.getLaunchIntentForPackage(packageName)
-    if (launch != null) {
-      launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-      startActivity(launch)
-    }
+    AssistLaunch.appIntent(this)?.let { startActivity(it) }
     finish()
   }
 }
@@ -30,6 +27,12 @@ object AssistLaunch {
     pending = true
     listener?.invoke()
   }
+
+  /** The app's own launch intent, brought to the front; the JS side then opens a new chat. */
+  fun appIntent(context: Context): Intent? =
+    context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+    }
 
   fun take(): Boolean {
     val was = pending
