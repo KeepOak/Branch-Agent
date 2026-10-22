@@ -5,6 +5,7 @@ import type { GatewayBrowserClient, GatewayHelloOk } from "../../api/gateway.ts"
 import type { AgentsListResult } from "../../api/types.ts";
 import { fetchAssistantIdentity } from "../../app/assistant-identity.ts";
 import {
+  OWNER_AVATAR_ID,
   resolveLocalUserAvatarText,
   resolveLocalUserAvatarUrl,
   resolveLocalUserName,
@@ -16,6 +17,7 @@ import {
   renderIdentityAvatarImage,
   resolveIdentityAvatarView,
 } from "../../components/identity-avatar-view.ts";
+import { t } from "../../i18n/index.ts";
 import { resolveAgentTextAvatar } from "../../lib/agents/display.ts";
 import type { AssistantIdentity } from "../../lib/assistant-identity.ts";
 import {
@@ -46,7 +48,7 @@ export function renderChatAvatar(
   assistant?: Pick<AssistantIdentity, "agentId" | "name" | "avatar"> & {
     textAvatar?: string | null;
   },
-  user?: { name?: string | null; avatar?: string | null },
+  user?: { id?: string | null; name?: string | null; avatar?: string | null },
   sender?: SenderIdentity | null,
 ) {
   const normalized = normalizeRoleForGrouping(role);
@@ -108,7 +110,10 @@ export function renderChatAvatar(
     const imageUrl = resolveAvatarImageUrl(userAvatarUrl) ?? userAvatarUrl;
     return renderUserAvatarSlot(
       {
-        fallback: resolveAvatarInitials({ name: userName }),
+        fallback: resolveAvatarInitials({
+          id: user?.id?.trim() || OWNER_AVATAR_ID,
+          name: userName,
+        }),
         imageUrl,
         sourceUrl: userAvatarUrl.startsWith("/") ? userAvatarUrl : undefined,
         pending: typeof imageUrl !== "string",
@@ -121,6 +126,22 @@ export function renderChatAvatar(
     return html`<div class="chat-avatar ${className}" role="img" aria-label="${userName}">
       ${userAvatarText}
     </div>`;
+  }
+
+  // The owner's own messages: the same initial and colour as the sidebar footer, never a generic person.
+  if (normalized === "user" && user) {
+    const ownerName = user.name?.trim() || t("nav.owner");
+    return renderUserAvatarSlot(
+      {
+        fallback: resolveAvatarInitials({
+          id: user.id?.trim() || OWNER_AVATAR_ID,
+          name: ownerName,
+        }),
+        imageUrl: null,
+        pending: false,
+      },
+      ownerName,
+    );
   }
 
   return html`<div class="chat-avatar ${className}">${initial}</div>`;

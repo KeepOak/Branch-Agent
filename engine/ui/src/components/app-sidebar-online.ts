@@ -7,6 +7,7 @@ import { renderHoverMarquee } from "../lib/hover-marquee.ts";
 import {
   presenceViewerActivity,
   presenceActivityLabel,
+  presenceUserLabel,
   presenceViewerLabel,
   projectOnlinePresenceViewers,
   type PresenceViewer,
@@ -23,7 +24,11 @@ export function renderAppSidebarOnline(host: AppSidebarRenderHost) {
   const team = host.sidebarAgentsMode === "roster";
   const collapsed = team ? !host.teamOnlineExpanded : host.collapsedSessionSections.has(sectionId);
   const label = t("presence.rosterTitle");
-  let onlineUsers = projectOnlinePresenceViewers(host.sessionData.presencePayload);
+  // The shared owner key is the person on this computer, already in the footer; the preview lists only
+  // other people here, so a solo owner gets no Online list (#1937).
+  let onlineUsers = projectOnlinePresenceViewers(host.sessionData.presencePayload).filter(
+    (user) => !presenceUserLabel(user).isSharedOwner,
+  );
   const previousFaces = onlineFaces.get(host);
   // Recheck activity ordering on each render, but retain equal facepile inputs.
   if (
