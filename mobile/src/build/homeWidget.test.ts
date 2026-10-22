@@ -11,6 +11,8 @@ const provider = path.join(mobileRoot, 'modules/home-widget/android/src/main/jav
 const moduleKt = path.join(mobileRoot, 'modules/home-widget/android/src/main/java/expo/modules/homewidget/HomeWidgetModule.kt');
 const info = path.join(mobileRoot, 'modules/home-widget/android/src/main/res/xml/branch_home_widget_info.xml');
 const layout = path.join(mobileRoot, 'modules/home-widget/android/src/main/res/layout/branch_home_widget.xml');
+const tile = path.join(mobileRoot, 'modules/home-widget/android/src/main/java/expo/modules/homewidget/TalkTileService.kt');
+const tileIcon = path.join(mobileRoot, 'modules/home-widget/android/src/main/res/drawable/branch_talk_tile.xml');
 const manifest = path.join(mobileRoot, 'modules/home-widget/android/src/main/AndroidManifest.xml');
 
 type Plugin = string | [string, Record<string, unknown>];
@@ -56,5 +58,35 @@ describe('the Android home-screen widget', () => {
     const twice = ensureHomeWidgetReceiver(once);
     expect(twice.manifest.application[0].receiver).toHaveLength(1);
     expect(twice.manifest.application[0].receiver[0].$['android:name']).toBe(PROVIDER_CLASS);
+  });
+
+  it('ships a Talk to Branch Quick Settings tile that opens Talk', () => {
+    expect(existsSync(tile)).toBe(true);
+    expect(existsSync(tileIcon)).toBe(true);
+    const kotlin = readFileSync(tile, 'utf8');
+    expect(kotlin).toContain('class TalkTileService : TileService()');
+    expect(kotlin).toContain('ACTION_TALK');
+    expect(kotlin).toContain('unlockAndRun');
+    const mf = readFileSync(manifest, 'utf8');
+    expect(mf).toContain('android.service.quicksettings.action.QS_TILE');
+    expect(mf).toContain('android.permission.BIND_QUICK_SETTINGS_TILE');
+    expect(readFileSync(path.join(mobileRoot, 'modules/home-widget/android/src/main/res/values/strings.xml'), 'utf8')).toContain(
+      '<string name="branch_talk_tile_label">Talk to Branch</string>',
+    );
+  });
+
+  it('adds the tile service only once on the generated app manifest', () => {
+    const { ensureTalkTileService, TALK_TILE_CLASS } = require(pluginPath) as {
+      ensureTalkTileService: (manifest: unknown) => {
+        manifest: { application: Array<{ service: Array<{ $: Record<string, string> }> }> };
+      };
+      TALK_TILE_CLASS: string;
+    };
+    const empty = { manifest: { application: [{ $: { 'android:name': '.MainApplication' } }] } };
+    const twice = ensureTalkTileService(ensureTalkTileService(empty));
+    const services = twice.manifest.application[0].service;
+    expect(services).toHaveLength(1);
+    expect(services[0].$['android:name']).toBe(TALK_TILE_CLASS);
+    expect(services[0].$['android:permission']).toBe('android.permission.BIND_QUICK_SETTINGS_TILE');
   });
 });
