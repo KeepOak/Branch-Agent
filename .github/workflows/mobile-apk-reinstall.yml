@@ -124,10 +124,13 @@ jobs:
           V2_APK: ${{ steps.apk.outputs.v2_apk }}
           ASSIST_APK: ${{ steps.real_apk.outputs.path }}
         with:
-          api-level: 30
+          # API 30 boots RoleManager (dumpsys role), but cmd role get/add-role-holder
+          # subcommands only exist from Android 12 / API 31 (RoleShellCommand @SdkSuppress S).
+          # google_apis ships the full PermissionController that exposes those shell cmds.
+          api-level: 31
           arch: x86_64
-          target: default
-          force-avd-creation: false
+          target: google_apis
+          force-avd-creation: true
           disable-animations: true
           disable-linux-hw-accel: false
           emulator-boot-timeout: 120

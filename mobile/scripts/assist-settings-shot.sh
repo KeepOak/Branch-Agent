@@ -7,7 +7,7 @@
 #   activity or VoiceInteractionService);
 # - Assist settings opens, shows a "Digital assistant app" row, and the picker
 #   behind it lists Branch;
-# - `cmd role` exists (needs API 30+), `cmd role add-role-holder
+# - `cmd role` exists (needs API 31+), `cmd role add-role-holder
 #   android.app.role.ASSISTANT` succeeds, and Branch is then the role holder.
 # Screenshots and dumps are always saved as evidence.
 set -uo pipefail
@@ -63,8 +63,9 @@ if [[ "$opened" != yes ]]; then
   fail "Could not open the Assist settings screen on this emulator"
   capture assist-settings || true
 elif capture assist-settings; then
-  # Find the node whose text is "Digital assistant app" (or its parent row) and tap its centre.
-  bounds="$(grep -oE 'text="Digital assistant app"[^>]*bounds="\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]"' "$OUT/assist-settings.xml" \
+  # Tap the preference row ("Default digital assistant app"), not the action-bar title
+  # which is also literally "Digital assistant app" and is not the picker entry point.
+  bounds="$(grep -oE 'text="Default digital assistant app"[^>]*bounds="\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]"' "$OUT/assist-settings.xml" \
     | grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]' | head -n1)"
   if [[ -z "$bounds" ]]; then
     fail "No 'Digital assistant app' row in the Assist settings dump; picker not captured"
@@ -99,7 +100,7 @@ adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
 } >> "$ROLE_LOG"
 
 if grep -qiE "Unknown command|not found|Can't find service|No shell command implementation" <<<"$before"; then
-  fail "'cmd role' is not available on this emulator (needs API 30+); the assistant role could not be verified"
+  fail "'cmd role' is not available on this emulator (needs API 31+); the assistant role could not be verified"
   exit 1
 fi
 
