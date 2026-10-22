@@ -45,4 +45,59 @@ describe("maskEmail / redactIdentifiersInText", () => {
     expect(out).not.toContain("sk-proj");
     expect(out).toContain(`${SECRET_MASK}1234`);
   });
+
+  it.each([
+    ["Google OAuth", "ya29.a0AfH6SMBxFAKEfakeFAKEfake567890abcd1234"], // pragma: allowlist secret
+    ["Google API key", "AIzaSyFAKEfakeFAKEfakeFAKEfakeFAKE01234"], // pragma: allowlist secret
+    ["GitHub classic", "ghp_FAKEfakeFAKEfakeFAKEfakeFAKEfake1234"], // pragma: allowlist secret
+    ["GitHub OAuth", "gho_FAKEfakeFAKEfakeFAKEfakeFAKEfake1234"], // pragma: allowlist secret
+    ["GitHub fine-grained", "github_pat_11FAKEFAKE0fakefakefake_FAKEfakeFAKE1234"], // pragma: allowlist secret
+    ["Slack bot", "xoxb-1234567890-FAKEfakeFAKE-1234"], // pragma: allowlist secret
+    ["Slack user", "xoxp-1234567890-FAKEfakeFAKE-1234"], // pragma: allowlist secret
+    [
+      "JWT",
+      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlIn0.FAKEfakeFAKEfakeSig1234", // pragma: allowlist secret
+    ],
+    ["AWS access key", "AKIAFAKEFAKEFAKE1234"], // pragma: allowlist secret
+  ])("masks a %s token in free text", (_name, token) => {
+    const out = redactIdentifiersInText(`provider failed with ${token} (retrying)`);
+    expect(out).not.toContain(token);
+    expect(out).not.toContain(token.slice(0, 8));
+    expect(out).toBe(`provider failed with ${SECRET_MASK}1234 (retrying)`);
+  });
+
+  it("masks bearer tokens but keeps the scheme word", () => {
+    const out = redactIdentifiersInText(
+      "Authorization: Bearer FAKEfakeFAKEfake.opaque-1234", // pragma: allowlist secret
+    );
+    expect(out).toBe(`Authorization: Bearer ${SECRET_MASK}1234`);
+  });
+
+  it.each([
+    ["api_key=", "FAKEfakeFAKEfakeFAKEfakeFAKEfake1234"], // pragma: allowlist secret
+    ['token: "', "0123456789abcdef0123456789abcdef1234"], // pragma: allowlist secret
+    ["client secret ", "RkFLRWZha2VGQUtFZmFrZUZBS0VmYWtl+/1234=="], // pragma: allowlist secret
+  ])("masks long labelled secrets after %o", (label, value) => {
+    const out = redactIdentifiersInText(`${label}${value}`);
+    expect(out).not.toContain(value);
+    expect(out.startsWith(label)).toBe(true);
+    expect(out).toContain(SECRET_MASK);
+  });
+
+  it("leaves normal status lines unchanged", () => {
+    const lines = [
+      "Default model: anthropic/claude-sonnet-4-5-20250929",
+      "openai/gpt-5.1-codex-max (context 400k) ready",
+      "google/gemini-2.5-pro-preview-06-05 via OAuth",
+      "build 05f07ae3dbb602ab5ebc0d3f3342dc98bded9828 on main",
+      "sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "Auth: Bearer token configured (env OPENAI_API_KEY)",
+      "token usage: 12,345 input / 6,789 output",
+      "key: openai-codex profile default",
+      "skill-runner ok; task-scheduler ok; desk-agent ok",
+    ];
+    for (const line of lines) {
+      expect(redactIdentifiersInText(line)).toBe(line);
+    }
+  });
 });
