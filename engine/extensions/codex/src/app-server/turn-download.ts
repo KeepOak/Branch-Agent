@@ -8,6 +8,7 @@
  * Every line is a `run_status` event with phase "codex_download" on the
  * waiting run, so the window draws it where the turn is waiting.
  */
+import { isGatewayCliClient } from "branch/plugin-sdk/routing";
 import type { CodexAppServerStartOptions } from "./config.js";
 import {
   getManagedCodexOnDemand,
@@ -70,7 +71,7 @@ export function canAskCodexDownload(params: {
   }
   // `branch-engine agent -m` reaches the gateway on the internal channel too,
   // but a terminal has no Yes button: only window clients can answer.
-  if (params.gatewayClientMode?.trim().toLowerCase() === "cli") {
+  if (isGatewayCliClient({ mode: params.gatewayClientMode })) {
     return false;
   }
   return params.messageChannel?.trim().toLowerCase() === "webchat";

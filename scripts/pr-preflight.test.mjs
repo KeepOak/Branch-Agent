@@ -19,6 +19,9 @@ import {
   runPreflight,
   scopedChecks,
   secretLiteralProblems,
+  personalInfoProblems as machineDetailProblems,
+  privateNameDenylist,
+  branchNameProblems,
 } from './pr-preflight.mjs';
 import { gateApiBudget } from './merge-gate-trusted.mjs';
 
@@ -594,6 +597,47 @@ test('a personal path or email in an added non-test line fails, and a test fixtu
   assert.deepEqual(checksOf(problems), ['personal-info']);
   assert.match(problems[0].message, /docs\/notes\.md:3/);
   assert.deepEqual(runPreflight(withInput({ addedLines: [{ file: 'scripts/x.test.mjs', line: 9, text: 'x@gmail.com' }] })), []);
+});
+
+// Machine details: generic patterns always, private names only from the environment. Fake names only.
+const line = (file, text) => ({ file, line: 1, text });
+
+test('generic machine details in added lines fail: Windows, mac and Linux home paths and .local hostnames', () => {
+  for (const text of ['C:\\Users\\fakeperson\\Code', 'open /Users/fakeperson/x', 'cd /home/fakeperson/src', 'ssh fake-box.local']) {
+    assert.equal(machineDetailProblems([line('docs/a.md', text)], { denylist: [] }).length, 1, text);
+  }
+});
+
+test('fixture-like home names and .local file names pass', () => {
+  for (const text of ['/home/runner/work', '/home/user/app', 'copy .env.local', 'settings.local.json', 'http://localhost:3210']) {
+    assert.deepEqual(machineDetailProblems([line('docs/a.md', text)], { denylist: [] }), [], text);
+  }
+});
+
+test('changed file paths are scanned too', () => {
+  const problems = machineDetailProblems([], { changedFiles: ['docs/fake-box.local/notes.md', 'docs/ok.md'], denylist: [] });
+  assert.equal(problems.length, 1);
+  assert.match(problems[0].message, /changed file path/);
+  assert.equal(machineDetailProblems([], { changedFiles: ['docs/fakehost-7-notes.md'], denylist: ['fakehost-7'] }).length, 1);
+});
+
+test('the private denylist comes from the environment and applies even to test files, without echoing the name', () => {
+  const denylist = privateNameDenylist({ BRANCH_PRIVATE_NAME_DENYLIST: ' fakehost-7, Zorbix ,, x ' });
+  assert.deepEqual(denylist, ['fakehost-7', 'Zorbix']);
+  const problems = machineDetailProblems([line('scripts/a.test.mjs', 'runs on ZORBIX today')], { denylist });
+  assert.equal(problems.length, 1);
+  assert.doesNotMatch(problems[0].message, /zorbix/i);
+  assert.deepEqual(machineDetailProblems([line('docs/a.md', 'zorbixes and prefakehost-7x')], { denylist }), []);
+  assert.deepEqual(privateNameDenylist({}), []);
+});
+
+test('the branch name is scanned for hostnames and private names', () => {
+  assert.equal(branchNameProblems('trunk/fake-box.local-fix', []).length, 1);
+  assert.equal(branchNameProblems('trunk/zorbix-fix', ['zorbix']).length, 1);
+  assert.doesNotMatch(branchNameProblems('trunk/zorbix-fix', ['zorbix'])[0].message, /zorbix/i);
+  assert.deepEqual(branchNameProblems('trunk/settings-fix', ['zorbix']), []);
+  assert.deepEqual(branchNameProblems('HEAD', ['zorbix']), []);
+  assert.equal(runPreflight(withInput({ branch: 'trunk/zorbix-fix', denylist: ['zorbix'] })).filter((p) => p.check === 'personal-info').length, 1);
 });
 
 // Fake keys are joined at runtime so this file never holds a secret-shaped literal.
