@@ -118,4 +118,18 @@ jobs:
           ram-size: 2048
           cores: 2
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: node mobile/scripts/apk-reinstall-survives.mjs --adb-reinstall
+          script: |
+            node mobile/scripts/apk-reinstall-survives.mjs --adb-reinstall
+            bash mobile/scripts/assist-settings-shot.sh assist-shot
+
+      - name: Upload the default assistant screenshot
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-default-assistant-shot
+          path: |
+            assist-shot/assist-settings.png
+            assist-shot/assist-settings.xml
+            assist-shot/am-start.log
+          if-no-files-found: warn
+          retention-days: 14
