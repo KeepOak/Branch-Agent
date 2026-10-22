@@ -1,0 +1,4 @@
+engine:ui/src/pages/apps/chrome-setup.test.ts
+engine:ui/src/pages/apps/upstream-store-links.test.ts
+engine:ui/src/pages/apps/view.test.ts
+window:src/shell/GetApps.test.tsx
