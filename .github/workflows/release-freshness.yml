@@ -4,10 +4,6 @@ on:
   schedule:
     - cron: '*/30 * * * *'
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'scripts/release-freshness*.mjs'
-      - '.github/workflows/release-freshness.yml'
 
 permissions:
   contents: read
@@ -33,7 +29,6 @@ jobs:
       - name: Test the release-freshness decision
         run: node --test scripts/release-freshness.test.mjs
       - name: Fail when main HEAD has no published release after 90 minutes
-        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
