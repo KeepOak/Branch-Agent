@@ -34,6 +34,26 @@ describe("canAskCodexDownload", () => {
     expect(canAskCodexDownload({ messageChannel: "telegram", trigger: "user" })).toBe(false);
   });
 
+  it("never asks a CLI turn sent through the gateway, though it is on webchat", () => {
+    expect(
+      canAskCodexDownload({ messageChannel: "webchat", trigger: "user", gatewayClientMode: "cli" }),
+    ).toBe(false);
+    expect(canAskCodexDownload({ messageChannel: "webchat", gatewayClientMode: " CLI " })).toBe(
+      false,
+    );
+  });
+
+  it("still asks a real window turn", () => {
+    expect(
+      canAskCodexDownload({
+        messageChannel: "webchat",
+        trigger: "user",
+        gatewayClientMode: "webchat",
+      }),
+    ).toBe(true);
+    expect(canAskCodexDownload({ messageChannel: "webchat", gatewayClientMode: "ui" })).toBe(true);
+  });
+
   it("never asks for unattended runs, even from the window", () => {
     for (const trigger of ["cron", "heartbeat", "memory", "overflow"]) {
       expect(canAskCodexDownload({ messageChannel: "webchat", trigger })).toBe(false);
