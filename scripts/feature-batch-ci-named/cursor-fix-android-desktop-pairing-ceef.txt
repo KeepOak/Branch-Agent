@@ -2,4 +2,5 @@ window:src/connect/update-probe.test.ts
 window:src/places/customize/customize.test.tsx
 window:src/places/customize/pairing.test.tsx
 window:src/places/inbox/inbox.test.tsx
+window:src/shell/CopyToken.test.tsx
 window:src/shell/pairing-prompt.test.tsx

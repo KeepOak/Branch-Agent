@@ -127,6 +127,29 @@ describe("the pairing prompt", () => {
     expect(host.querySelector("[data-testid=pairing-prompt]")).toBeNull();
   });
 
+  it("disarms Allow when a different request replaces the prompt", async () => {
+    vi.useFakeTimers();
+    const OTHER = { ...REQUEST, requestId: "request-2", displayName: "Galaxy", deviceId: "galaxy-1", ts: 2 };
+    const { request, emit } = await render();
+    await act(async () => { emit("device.pair.requested", REQUEST); });
+    await act(async () => { vi.advanceTimersByTime(PAIRING_PROMPT_ARM_MS); });
+    const allowButton = () => [...host.querySelectorAll("button")].find((el) => el.textContent?.trim() === "Allow") as HTMLButtonElement;
+    expect(allowButton().disabled).toBe(false);
+    await act(async () => { emit("device.pair.requested", OTHER); });
+    expect(host.querySelector("[data-testid=pairing-prompt]")?.textContent).toContain("Galaxy wants to connect");
+    expect(host.querySelector("[data-testid=pair-check-code] .pair-check-value")?.textContent).toBe(pairingCheckCode(OTHER.requestId));
+    expect(allowButton().disabled).toBe(true);
+    await act(async () => { allowButton().click(); });
+    expect(request).not.toHaveBeenCalledWith("device.pair.approve", expect.anything());
+    await act(async () => { vi.advanceTimersByTime(PAIRING_PROMPT_ARM_MS - 1); });
+    expect(allowButton().disabled).toBe(true);
+    await act(async () => { vi.advanceTimersByTime(1); });
+    expect(allowButton().disabled).toBe(false);
+    await click("Allow");
+    expect(request).toHaveBeenCalledWith("device.pair.approve", { requestId: OTHER.requestId });
+    expect(request).not.toHaveBeenCalledWith("device.pair.approve", { requestId: REQUEST.requestId });
+  });
+
   it("rejects the request", async () => {
     const { request, emit } = await render();
     await act(async () => { emit("device.pair.requested", REQUEST); });
@@ -141,6 +164,27 @@ describe("the pairing prompt", () => {
     expect(host.querySelector("[data-testid=pairing-prompt]")).toBeTruthy();
     await act(async () => { emit("device.pair.resolved", { requestId: REQUEST.requestId, decision: "approved" }); });
     expect(host.querySelector("[data-testid=pairing-prompt]")).toBeNull();
+  });
+
+  it("moves on to the next waiting request after one is answered", async () => {
+    const OTHER = { ...REQUEST, requestId: "req-iphone-0001", displayName: "iPhone", deviceId: "iphone-1", ts: 0 };
+    const { request } = await render({ "device.pair.list": { pending: [OTHER, REQUEST] } });
+    expect(host.querySelector("[data-testid=pairing-prompt]")?.textContent).toContain("Pixel wants to connect");
+    await click("Don’t allow");
+    expect(request).toHaveBeenCalledWith("device.pair.reject", { requestId: REQUEST.requestId });
+    // The list still names Pixel (a stale read); the answered request stays closed and iPhone opens.
+    const dialog = host.querySelector("[data-testid=pairing-prompt]");
+    expect(dialog?.textContent).toContain("iPhone wants to connect");
+    expect(host.querySelector("[data-testid=pair-check-code] .pair-check-value")?.textContent).toBe(pairingCheckCode(OTHER.requestId));
+  });
+
+  it("moves on to the next waiting request when the shown one is resolved elsewhere", async () => {
+    const OTHER = { ...REQUEST, requestId: "req-iphone-0001", displayName: "iPhone", deviceId: "iphone-1", ts: 0 };
+    const { emit } = await render({ "device.pair.list": { pending: [OTHER, REQUEST] } });
+    expect(host.querySelector("[data-testid=pairing-prompt]")?.textContent).toContain("Pixel wants to connect");
+    await act(async () => { emit("device.pair.resolved", { requestId: REQUEST.requestId, decision: "approved" }); });
+    await act(async () => { await Promise.resolve(); });
+    expect(host.querySelector("[data-testid=pairing-prompt]")?.textContent).toContain("iPhone wants to connect");
   });
 
   it("stays closed when the connection cannot approve pairing", async () => {

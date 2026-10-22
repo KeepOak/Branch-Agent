@@ -55,9 +55,9 @@ export function PairDialog({ engine, close }: { engine: WindowEngine; close: () 
           <li>Open the Branch app on your phone.</li>
           <li>Tap <b>Pair with a computer</b>.</li>
           <li>Point the camera at this code.</li>
-          <li>Or type this pairing code on your phone:<CopyToken value={code.setupCode} label="Copy pairing code" testid="pair-setup-code" /></li>
+          <li>Or type this pairing code on your phone:<CopyToken value={code.setupCode} label="Copy pairing code" wrap testid="pair-setup-code" /></li>
         </ol>
-        {code.joinUrl && <div className="cz-hint">Or open this link on that computer:<CopyToken value={code.joinUrl} label="Copy link" testid="pair-link" /></div>}
+        {code.joinUrl && <div className="cz-hint">Or open this link on that computer:<CopyToken value={code.joinUrl} label="Copy link" wrap testid="pair-link" /></div>}
         <p className="cz-hint">After it scans, this computer shows a short check code to match the phone.{code.expiresAtMs ? ` The pairing code works once and expires at ${new Date(code.expiresAtMs).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.` : ""}</p>
         {code.downgraded && <p className="cz-hint">Limited for safety: this address isn't private, so the code gives chat and approvals only.</p>}
         {paired && <p role="status" className="cz-ok">Paired with {paired}.</p>}

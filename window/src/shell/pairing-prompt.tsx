@@ -123,9 +123,15 @@ export function PairingCheckCode({ requestId }: { requestId: string }) {
 export function PairingPrompt({ engine, ready }: { engine: WindowEngine; ready: boolean }) {
   const [request, setRequest] = useState<PairingRequest | null>(null);
   const [busy, setBusy] = useState(false);
-  const [armed, setArmed] = useState(false);
+  // Allow arms for one request id. A different request that replaces the prompt is unarmed on its
+  // very first render, so a click aimed at the previous device can never approve the new one.
+  const [armedFor, setArmedFor] = useState<string | null>(null);
   const dismissed = useRef(new Set<string>());
   const shownId = useRef<string | null>(null);
+  // Requests this prompt already answered; a pending list read just after the answer must not reopen them.
+  const answered = useRef(new Set<string>());
+  // Re-reads device.pair.list so the next waiting phone opens once the shown request is answered or resolved.
+  const reload = useRef<() => void>(() => undefined);
 
   const open = (next: PairingRequest | null) => {
     if (!next || dismissed.current.has(next.requestId)) return;
@@ -138,16 +144,20 @@ export function PairingPrompt({ engine, ready }: { engine: WindowEngine; ready: 
       return;
     }
     let live = true;
-    const load = async () => {
+    const load = async (next = false) => {
       try {
         const listed = rec(await engine.request("device.pair.list", {}));
         if (!live) return;
         const pending = rows(listed.pending).map(readPairingRequest).filter((row): row is PairingRequest => row !== null)
-          .filter((row) => !dismissed.current.has(row.requestId));
-        open(pickLatest(pending));
+          .filter((row) => !dismissed.current.has(row.requestId) && !answered.current.has(row.requestId));
+        const latest = pickLatest(pending);
+        // After an answer, fill an empty prompt only; a request that arrived meanwhile keeps the screen.
+        if (next) { if (latest) setRequest((current) => current ?? latest); }
+        else open(latest);
       } catch { /* the prompt waits for the next event */ }
     };
     void load();
+    reload.current = () => { void load(true); };
     const off = engine.onEvent(({ event, payload }) => {
       if (event === "device.pair.requested") {
         const next = readPairingRequest(payload);
@@ -158,20 +168,24 @@ export function PairingPrompt({ engine, ready }: { engine: WindowEngine; ready: 
         const id = str(rec(payload).requestId);
         if (id) {
           dismissed.current.delete(id);
+          answered.current.add(id);
           setRequest((current) => current?.requestId === id ? null : current);
+          void load(true);
         }
       }
     });
-    return () => { live = false; off(); };
+    return () => { live = false; reload.current = () => undefined; off(); };
   }, [engine, ready]);
 
   useEffect(() => {
     if (!request) {
       shownId.current = null;
-      setArmed(false);
+      setArmedFor(null);
       return;
     }
-    const timer = setTimeout(() => setArmed(true), PAIRING_PROMPT_ARM_MS);
+    const id = request.requestId;
+    setArmedFor((current) => current === id ? current : null);
+    const timer = setTimeout(() => setArmedFor(id), PAIRING_PROMPT_ARM_MS);
     if (shownId.current !== request.requestId) {
       shownId.current = request.requestId;
       announcePairingRequest(request);
@@ -180,15 +194,21 @@ export function PairingPrompt({ engine, ready }: { engine: WindowEngine; ready: 
   }, [request]);
 
   if (!request) return null;
+  const armed = armedFor === request.requestId;
   const name = request.displayName || request.deviceId || "New device";
   const asks = request.scopes.map((scope) => SCOPE_WORDS[scope] || scope).filter(Boolean);
   const decide = async (method: "device.pair.approve" | "device.pair.reject", message: string) => {
     if (busy) return;
+    // Answer only the request this prompt showed, and approve only once it has been armed.
+    const requestId = request.requestId;
+    if (method === "device.pair.approve" && !armed) return;
     setBusy(true);
     try {
-      await engine.request(method, { requestId: request.requestId });
+      await engine.request(method, { requestId });
       notify(message);
-      setRequest(null);
+      answered.current.add(requestId);
+      setRequest((current) => current?.requestId === requestId ? null : current);
+      reload.current();
     } catch (error) {
       notify(plainError(error), { tone: "bad" });
     } finally {
@@ -198,6 +218,7 @@ export function PairingPrompt({ engine, ready }: { engine: WindowEngine; ready: 
   const later = () => {
     dismissed.current.add(request.requestId);
     setRequest(null);
+    reload.current();
   };
 
   return (

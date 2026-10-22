@@ -56,6 +56,8 @@ describe("Pair a phone", () => {
     });
     await click("Make the code");
     expect(host.querySelector("[data-testid=pair-setup-code] .copy-token-text")?.textContent).toBe(setupCode);
+    // The code is typed by hand on the phone, so it wraps and shows in full instead of ending in an ellipsis.
+    expect(host.querySelector("[data-testid=pair-setup-code]")?.classList.contains("wrap")).toBe(true);
     expect(host.textContent).toContain("Or type this pairing code on your phone");
     expect(host.textContent).toContain("this computer shows a short check code");
   });
