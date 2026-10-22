@@ -54,6 +54,7 @@ import { SettingsUpdateCard, UpdateBanner } from './src/updates/UpdateBanner';
 import { useApkUpdate } from './src/updates/useApkUpdate';
 import { routeForWidgetAction, type WidgetAction } from './src/widget/homeWidget';
 import { useHomeWidget } from './src/widget/useHomeWidget';
+import { useAssistLaunch } from './src/assistant/useAssistLaunch';
 
 // The splash stays up until the saved pairing has been read, so the first frame is the right screen.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -336,6 +337,11 @@ function Shell({
     const sub = Linking.addEventListener('url', ({ url }) => handle(url));
     return () => sub.remove();
   }, [store, pairedRoute, chatList, approvals.pending.length]);
+  useAssistLaunch({
+    paired: state.step === 'paired',
+    rows: chatList.rows,
+    onOpen: (next) => setPairedRoute(next.name === 'chat' ? { name: 'chat', row: next.row } : CHATS),
+  });
   useEffect(() => {
     if (state.step !== 'paired') return;
     let live = true;

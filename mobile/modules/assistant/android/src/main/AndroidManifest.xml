@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- Lets Android offer Branch Agent as the digital assistant app; the assist gesture lands here. -->
+    <activity
+      android:name=".AssistActivity"
+      android:excludeFromRecents="true"
+      android:exported="true"
+      android:label="@string/branch_assistant_label"
+      android:noHistory="true"
+      android:theme="@android:style/Theme.Translucent.NoTitleBar">
+      <intent-filter>
+        <action android:name="android.intent.action.ASSIST" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>
