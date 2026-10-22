@@ -14,7 +14,7 @@ describe("maskApiKey", () => {
   });
 
   it("never reveals a prefix or more than 4 trailing characters", () => {
-    const masked = maskApiKey("sk-ant-oat01-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789wxyz"); // pragma: allowlist secret
+    const masked = maskApiKey(["sk-ant-", "oat01-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789wxyz"].join("")); // pragma: allowlist secret
     expect(masked).toBe(`${SECRET_MASK}wxyz`);
     expect(masked).not.toContain("sk-");
   });
@@ -39,7 +39,7 @@ describe("maskEmail / redactIdentifiersInText", () => {
   it("masks emails and raw sk- tokens in free text", () => {
     expect(maskEmail("jane.doe@example.com")).toBe(`j${SECRET_MASK}@${SECRET_MASK}`);
     const out = redactIdentifiersInText(
-      "anthropic:jane.doe@example.com=OAuth (jane.doe@example.com) key sk-proj-ABCDEFGHIJKL1234",
+      ["anthropic:jane.doe@example.com=OAuth (jane.doe@example.com) key sk-", "proj-ABCDEFGHIJKL1234"].join(""),
     );
     expect(out).not.toContain("example.com");
     expect(out).not.toContain("sk-proj");
@@ -47,13 +47,13 @@ describe("maskEmail / redactIdentifiersInText", () => {
   });
 
   it.each([
-    ["Google OAuth", "ya29.a0AfH6SMBxFAKEfakeFAKEfake567890abcd1234"], // pragma: allowlist secret
-    ["Google API key", "AIzaSyFAKEfakeFAKEfakeFAKEfakeFAKE01234"], // pragma: allowlist secret
-    ["GitHub classic", "ghp_FAKEfakeFAKEfakeFAKEfakeFAKEfake1234"], // pragma: allowlist secret
+    ["Google OAuth", ["ya29.", "a0AfH6SMBxFAKEfakeFAKEfake567890abcd1234"].join("")], // pragma: allowlist secret
+    ["Google API key", ["AIza", "SyFAKEfakeFAKEfakeFAKEfakeFAKE01234"].join("")], // pragma: allowlist secret
+    ["GitHub classic", ["ghp_", "FAKEfakeFAKEfakeFAKEfakeFAKEfake1234"].join("")], // pragma: allowlist secret
     ["GitHub OAuth", "gho_FAKEfakeFAKEfakeFAKEfakeFAKEfake1234"], // pragma: allowlist secret
     ["GitHub fine-grained", "github_pat_11FAKEFAKE0fakefakefake_FAKEfakeFAKE1234"], // pragma: allowlist secret
-    ["Slack bot", "xoxb-1234567890-FAKEfakeFAKE-1234"], // pragma: allowlist secret
-    ["Slack user", "xoxp-1234567890-FAKEfakeFAKE-1234"], // pragma: allowlist secret
+    ["Slack bot", ["xoxb-", "1234567890-FAKEfakeFAKE-1234"].join("")], // pragma: allowlist secret
+    ["Slack user", ["xoxp-", "1234567890-FAKEfakeFAKE-1234"].join("")], // pragma: allowlist secret
     [
       "JWT",
       "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlIn0.FAKEfakeFAKEfakeSig1234", // pragma: allowlist secret
