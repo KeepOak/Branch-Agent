@@ -122,15 +122,14 @@ test('a changed engine test without a named-test list fails and names the file',
   assert.match(problems[0].fix, /engine:src\/thing\.test\.ts/);
 });
 
-test('a named-test list missing an entry, or unsorted, is reported', () => {
+test('a named-test list missing an entry is reported, and its order does not matter', () => {
   const files = ['window/src/shell/a.test.ts', 'engine/src/b.test.ts'];
   const missing = runPreflight(withInput({ changedFiles: files, listText: 'engine:src/b.test.ts\n' }));
   assert.match(missing.map((p) => p.message).join('\n'), /lacks window:src\/shell\/a\.test\.ts/);
   const sorted = runPreflight(withInput({ changedFiles: files, listText: 'engine:src/b.test.ts\nwindow:src/shell/a.test.ts\n' }));
   assert.deepEqual(sorted, []);
   const reversed = runPreflight(withInput({ changedFiles: files, listText: 'window:src/shell/a.test.ts\nengine:src/b.test.ts\n' }));
-  assert.deepEqual(checksOf(reversed), ['named-tests']);
-  assert.match(reversed[0].message, /is not sorted/);
+  assert.deepEqual(reversed, []);
 });
 
 test('an engine .mts test needs a named-test entry like a .ts test does', () => {

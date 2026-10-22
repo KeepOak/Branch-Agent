@@ -67,7 +67,7 @@ cd desktop && node --test scripts/<name>.test.mjs
 
 ### Making CI run your tests
 
-CI runs an explicit list of test files. A pull request adds its own list as `scripts/feature-batch-ci-named/<branch-name>.txt`, one entry per line, sorted:
+CI runs an explicit list of test files. A pull request adds its own list as `scripts/feature-batch-ci-named/<branch-name>.txt`, one entry per line, in any order (only the shared arrays in `scripts/feature-batch-ci-targets.mjs` must stay sorted):
 
 ```text
 engine:src/gateway/contacts/outside-agents.test.ts
