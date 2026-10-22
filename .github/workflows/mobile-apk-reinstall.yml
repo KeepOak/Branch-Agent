@@ -95,6 +95,21 @@ jobs:
         id: apk
         run: node mobile/scripts/apk-reinstall-survives.mjs --build
 
+      # The reinstall APKs above are a stand-in with a hard-coded manifest (no prebuild, no
+      # config plugins), so the assistant check runs on the latest signed release APK instead.
+      - name: Download the signed release APK for the assistant check
+        id: real_apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          dir="${RUNNER_TEMP}/release-apk"
+          mkdir -p "$dir"
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir "$dir"
+          apk="$(find "$dir" -maxdepth 1 -name '*.apk' | head -n1)"
+          test -s "$apk"
+          echo "path=$apk" >> "$GITHUB_OUTPUT"
+
       - name: Enable KVM
         run: |
           set -euo pipefail
@@ -107,8 +122,9 @@ jobs:
         env:
           V1_APK: ${{ steps.apk.outputs.v1_apk }}
           V2_APK: ${{ steps.apk.outputs.v2_apk }}
+          ASSIST_APK: ${{ steps.real_apk.outputs.path }}
         with:
-          api-level: 29
+          api-level: 30
           arch: x86_64
           target: default
           force-avd-creation: false
@@ -120,6 +136,8 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             node mobile/scripts/apk-reinstall-survives.mjs --adb-reinstall
+            adb uninstall com.keepoak.branch
+            adb install "$ASSIST_APK"
             bash mobile/scripts/assist-settings-shot.sh assist-shot
 
       - name: Upload the default assistant screenshot
