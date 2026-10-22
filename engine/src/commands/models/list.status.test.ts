@@ -1,4 +1,5 @@
 import { createRequireRecord } from "branch/plugin-sdk/test-fixtures";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import {
@@ -562,7 +563,7 @@ describe("modelsStatusCommand auth overview", () => {
       profiles: {
         labels: expect.arrayContaining([
           expect.stringContaining("OAuth"),
-          expect.stringContaining("..."),
+          expect.stringContaining("••••"),
         ]),
       },
     });
@@ -570,9 +571,9 @@ describe("modelsStatusCommand auth overview", () => {
     expect(openai).toMatchObject({
       env: {
         source: expect.stringContaining("OPENAI_API_KEY"),
-        value: expect.stringContaining("..."),
+        value: expect.stringContaining("••••"),
       },
-      profiles: { labels: expect.arrayContaining([expect.stringContaining("...")]) },
+      profiles: { labels: expect.arrayContaining([expect.stringContaining("••••")]) },
     });
     expect(JSON.stringify(openai)).not.toContain("abc123");
     expect(payload.auth.providersWithOAuth).toEqual(
@@ -619,15 +620,16 @@ describe("modelsStatusCommand auth overview", () => {
   });
 
   it("honors BRANCH_AGENT_DIR when no --agent override is provided", async () => {
-    const { payload } = await withEnvAsync(
-      { BRANCH_AGENT_DIR: "/tmp/branch-isolated-agent" },
-      () => jsonStatus(),
+    const { payload } = await withEnvAsync({ BRANCH_AGENT_DIR: "/tmp/branch-isolated-agent" }, () =>
+      jsonStatus(),
     );
 
+    // The override goes through resolveUserPath, so on Windows it gains a drive letter and backslashes.
+    const isolatedDir = path.resolve("/tmp/branch-isolated-agent");
     expectResolveAgentDirCalledFor("main");
-    expect(mocks.ensureAuthProfileStore).toHaveBeenCalledWith("/tmp/branch-isolated-agent");
-    expect(payload.agentDir).toBe("/tmp/branch-isolated-agent");
-    expect(payload.auth.storePath).toBe("/tmp/branch-isolated-agent/auth-profiles.json");
+    expect(mocks.ensureAuthProfileStore).toHaveBeenCalledWith(isolatedDir);
+    expect(payload.agentDir).toBe(isolatedDir);
+    expect(payload.auth.storePath).toBe(`${isolatedDir}/auth-profiles.json`);
   });
 
   it("uses agent overrides and reports sources", async () => {

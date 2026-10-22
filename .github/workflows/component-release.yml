@@ -568,10 +568,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"
-  # Starts mobile-android-release.yml after a published desktop release.
+  # Starts mobile-android-release.yml after a published desktop release. A release
+  # published with GITHUB_TOKEN never fires the APK workflow's release trigger, so this
+  # dispatch is the only path to an APK. always() is required: without it the implicit
+  # success() sees the skipped readiness-rehearsal job upstream and skips this job.
   dispatch-android-apk:
     needs: [identity, publish]
-    if: github.event_name != 'pull_request' && needs.publish.result == 'success'
+    if: always() && !cancelled() && github.event_name != 'pull_request' && needs.identity.result == 'success' && needs.identity.outputs.already_released != 'true' && needs.publish.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

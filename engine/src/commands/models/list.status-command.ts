@@ -93,6 +93,7 @@ import {
   formatMs,
   resolveModelsTargetAgent,
 } from "./shared.js";
+import { createRedactingRuntime } from "./status-redaction.js";
 
 function resolveEnvAgentDirOverride(env: NodeJS.ProcessEnv = process.env): string | undefined {
   const override = env.BRANCH_AGENT_DIR?.trim() || env.PI_CODING_AGENT_DIR?.trim();
@@ -255,8 +256,9 @@ export async function modelsStatusCommand(
     probeMaxTokens?: string;
     agent?: string;
   },
-  runtime: RuntimeEnv,
+  rawRuntime: RuntimeEnv,
 ) {
+  const runtime = createRedactingRuntime(rawRuntime);
   ensureFlagCompatibility(opts);
   if (opts.plain && opts.probe) {
     throw new Error("--probe cannot be used with --plain output.");
@@ -1250,13 +1252,13 @@ export async function modelsStatusCommand(
             probes: probeSummary,
           },
         });
-        finishModelsStatusOutput(runtime, opts.check, checkStatus);
+        finishModelsStatusOutput(rawRuntime, opts.check, checkStatus);
         return;
       }
 
       if (opts.plain) {
         writeRuntimeStdout(runtime, resolvedLabel);
-        finishModelsStatusOutput(runtime, opts.check, checkStatus);
+        finishModelsStatusOutput(rawRuntime, opts.check, checkStatus);
         return;
       }
 
@@ -1617,7 +1619,7 @@ export async function modelsStatusCommand(
           runtime.log(colorize(rich, theme.muted, describeProbeSummary(probeSummary)));
         }
       }
-      finishModelsStatusOutput(runtime, opts.check, checkStatus);
+      finishModelsStatusOutput(rawRuntime, opts.check, checkStatus);
     },
     { config: cfg, workspaceDir, env: process.env },
   );

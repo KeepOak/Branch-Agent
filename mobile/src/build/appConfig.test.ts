@@ -26,6 +26,16 @@ describe('the Expo app config', () => {
     expect(app.expo.android.permissions).toEqual(expect.arrayContaining([
       'android.permission.CAMERA',
       'android.permission.POST_NOTIFICATIONS',
+      'android.permission.WAKE_LOCK',
     ]));
+  });
+
+  it('registers Branch Agent as a share-sheet target for text and images', () => {
+    expect(app.expo.android.intentFilters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: 'SEND', data: [{ mimeType: 'text/plain' }] }),
+        expect.objectContaining({ action: 'SEND', data: [{ mimeType: 'image/*' }] }),
+      ]),
+    );
   });
 });
