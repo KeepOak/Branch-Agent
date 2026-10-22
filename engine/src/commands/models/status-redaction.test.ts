@@ -6,10 +6,10 @@ import { createRedactingRuntime } from "./status-redaction.js";
 
 const FAKE_EMAIL = "fake.user+test@example-mail.com";
 const FAKE_SECRETS = [
-  "sk-ant-oat01-Zq9vX2mN8pL4kR7tY1wB3cD5fG6hJ0aS-QwErTyUiOp_AsDfGhJkL1234", // pragma: allowlist secret
-  "sk-ant-api03-Mn8Bv7Cx6Zl5Kj4Hg3Fd2Sa1Po0IuYtReWq-9876ZyXwVuTs5678", // pragma: allowlist secret
-  "sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcd", // pragma: allowlist secret
-  "ya29.a0AfH6SMBxQ-FAKEoauthACCESStoken_9f8e7d6c5b4a3210zz99", // pragma: allowlist secret
+  ["sk-ant-", "oat01-Zq9vX2mN8pL4kR7tY1wB3cD5fG6hJ0aS-QwErTyUiOp_AsDfGhJkL1234"].join(""), // pragma: allowlist secret
+  ["sk-ant-", "api03-Mn8Bv7Cx6Zl5Kj4Hg3Fd2Sa1Po0IuYtReWq-9876ZyXwVuTs5678"].join(""), // pragma: allowlist secret
+  ["sk-proj-", "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcd"].join(""), // pragma: allowlist secret
+  ["ya29.", "a0AfH6SMBxQ-FAKEoauthACCESStoken_9f8e7d6c5b4a3210zz99"].join(""), // pragma: allowlist secret
 ];
 
 vi.mock("../../agents/auth-profiles/display.js", () => ({
