@@ -1,18 +1,37 @@
 import { sliceUtf16Safe } from "@branch/normalization-core/utf16-slice";
 
-/** Masks credential-like values without splitting UTF-16 surrogate pairs at the edges. */
+export const SECRET_MASK = "\u2022\u2022\u2022\u2022";
+
+/**
+ * Masks credential-like values for display.
+ * Never reveals a prefix; reveals at most the last 4 characters, and only when the
+ * value is long enough (>= 12) that the suffix cannot meaningfully narrow it down.
+ */
 export function maskApiKey(value: string): string {
   const trimmed = stripControlCharacters(value).trim();
   if (!trimmed) {
     return "missing";
   }
-  if (trimmed.length <= 6) {
-    return `${sliceUtf16Safe(trimmed, 0, 1)}...${sliceUtf16Safe(trimmed, -1)}`;
+  if (trimmed.length < 12) {
+    return SECRET_MASK;
   }
-  if (trimmed.length <= 16) {
-    return `${sliceUtf16Safe(trimmed, 0, 2)}...${sliceUtf16Safe(trimmed, -2)}`;
-  }
-  return `${sliceUtf16Safe(trimmed, 0, 8)}...${sliceUtf16Safe(trimmed, -8)}`;
+  return `${SECRET_MASK}${sliceUtf16Safe(trimmed, -4)}`;
+}
+
+const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
+const TOKEN_PATTERN = /\bsk-[A-Za-z0-9_-]{8,}/g;
+
+/** Masks an email address, keeping only its first character. */
+export function maskEmail(email: string): string {
+  const first = sliceUtf16Safe(email, 0, 1);
+  return `${first}${SECRET_MASK}@${SECRET_MASK}`;
+}
+
+/** Replaces email addresses and raw `sk-` style tokens found anywhere in free text. */
+export function redactIdentifiersInText(text: string): string {
+  return text
+    .replace(EMAIL_PATTERN, (match) => maskEmail(match))
+    .replace(TOKEN_PATTERN, (match) => maskApiKey(match));
 }
 
 function stripControlCharacters(value: string): string {

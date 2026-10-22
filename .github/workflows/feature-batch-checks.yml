@@ -87,10 +87,11 @@ jobs:
     # Pull requests run every shard at once (one wave), so the slowest shard sets the wall-clock, not two waves.
     # max-parallel comes from the planner (featureBatchMaxParallel in scripts/feature-batch-ci-matrix.mjs):
     # the full PR matrix size on pull requests, 6 on main and nightly. Do not hard-code it here.
+    # The '24' / '6' fallback only applies while main's planner does not print max_parallel yet.
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: ${{ fromJSON(needs.plan.outputs.max_parallel || (github.event_name == 'pull_request' && '20' || '6')) }}
+      max-parallel: ${{ fromJSON(needs.plan.outputs.max_parallel || (github.event_name == 'pull_request' && '24' || '6')) }}
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       CI: 'true'

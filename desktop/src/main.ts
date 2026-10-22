@@ -907,7 +907,7 @@ const autoApply = createAutoApplyUpdate({
   // Crash recovery or a staged-update replacement only postpones the update; the setting stays on (Private #1054).
   busy: () => updateLock.purpose,
   seamlessHandoff,
-  // Private #951: no automatic update starts under 10% free disk or 20% free RAM.
+  // Private #951: no automatic update starts under an absolute floor of free disk (2 GB) or free RAM (1 GB).
   health: async () => readUpdateHealth(cfg.dataDir, (await measureAvailableMemory({ maxAgeMs: HEALTH_MEMORY_MAX_AGE_MS })).bytes, totalmem()),
   // Runs in flight mark a machine running Trunk work, whose updates are batched (hourly at most, only when idle).
   activeRuns: async () => {
@@ -1495,6 +1495,8 @@ async function start(): Promise<void> {
   else void pruneStartupUpdates(cfg, log);
   autoApply.start();
   stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, underSwapGuard, log,
+    // An applied update whose confirmation was lost is cleared, so checks move on to newer builds.
+    servingEngine: () => engineServing() || serviceEngine ? lastGoodEngineDir : undefined,
     onWithdrawal: version => {
       withdrawnUpdateVersion = version;
       engineUpdateReady = false;
