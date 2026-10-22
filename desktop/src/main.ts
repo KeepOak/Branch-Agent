@@ -35,7 +35,7 @@ import { createShellRelaunch } from "./shell-relaunch";
 import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
-import { confirmDesktopUpdate, ensureWindowsLauncher, handOffDesktopUpdate, pruneWindowsInstall, runsFromAppImage, windowsRelaunchDetails, type DesktopInstall } from "./desktop-update";
+import { confirmDesktopUpdate, ensureWindowsLauncher, handOffDesktopUpdate, pruneWindowsInstall, runsFromAppImage, windowsInstalledHandoff, windowsRelaunchDetails, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
 import { candidateCheckSkippedLine, candidateMinFreeBytes, HEALTH_MEMORY_MAX_AGE_MS, measureAvailableMemory } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
@@ -132,6 +132,15 @@ function log(line: string): void {
 }
 const launchStarted = Date.now();
 log(`launch v${app.getVersion()} pid ${process.pid}`);
+// An old dev copy under <dataDir>\dist hands off to the installed copy, so two builds never share one data folder.
+const installedLauncher = install ? windowsInstalledHandoff(install, cfg.dataDir) : undefined;
+if (installedLauncher) {
+  log(`this copy runs from the old dev folder; opening the installed Branch at ${installedLauncher} instead`);
+  // The launcher is a windowless stub that starts Branch Agent.exe with its own (visible) startup info, so hiding it
+  // never hides the app window.
+  spawn(installedLauncher, process.argv.slice(1), { cwd: homedir(), detached: true, stdio: "ignore", windowsHide: true }).unref();
+  app.exit(0);
+}
 // Private #1036: a full disk pauses saving behind one banner and never raises Electron's modal error box, which also
 // blocked a normal quit. Any other uncaught error is still reported the way Electron reports it.
 installDiskFullGuard(process, error => {
@@ -2036,7 +2045,11 @@ function shutdown(): void {
   writeGatewayPortFile(cfg.gatewayPort);
 }
 
-if (!app.requestSingleInstanceLock()) {
+if (installedLauncher) {
+  // Handing off (above): app.exit(0) does not stop this module, so take no lock and start nothing. Holding the lock here
+  // would make the installed copy, if it starts before this process is gone, see "another window is open" and quit.
+  log("handed off to the installed Branch; skipping the single-instance lock and startup");
+} else if (!app.requestSingleInstanceLock()) {
   log("another Branch Agent window is open; quitting");
   app.quit();
 } else {
