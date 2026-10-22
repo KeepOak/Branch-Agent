@@ -1,0 +1,2 @@
+window:src/places/settings/set1/add-account-dialog.test.tsx
+window:src/places/settings/set1/add-account.test.ts

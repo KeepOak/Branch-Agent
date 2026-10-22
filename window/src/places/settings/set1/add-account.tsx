@@ -16,7 +16,7 @@ import { providersOf, tokenLabel, type Profile, type Provider } from "./accounts
 export type AddStart = { provider?: string };
 type Kind = "plan" | "key" | "local" | "custom";
 /** One service tile: a provider with plan sign-ins or a key, or an engine setup option (local or your own). */
-export type Service = { id: string; brand: string; name: string; kind: Kind; signedIn: number; logins: RecordValue[]; choice?: string; keySupported?: boolean; providers?: string[] };
+export type Service = { id: string; brand: string; name: string; kind: Kind; signedIn: number; logins: RecordValue[]; choice?: string; keySupported?: boolean; keyProvider?: string; providers?: string[] };
 const FEATURED = ["openai", "openrouter", "xai", "google", "anthropic"];
 const KIND_RANK: Record<Kind, number> = { local: 0, custom: 1, plan: 2, key: 3 };
 /** Local runtimes the engine may also advertise as login options. They belong on this computer, never under Your plan. */
@@ -31,7 +31,7 @@ const KIND_LABEL: Record<Kind, string> = { plan: "Your plan", key: "A key", loca
 const KIND_SUB: Record<Kind, string> = { plan: "your plan", key: "a key", local: "on this computer", custom: "your own" };
 
 /** Pasted sign-in secrets the engine's setup offers (branch.setup.detect manualProviders, e.g. Anthropic's
- *  setup-token), as plan sign-ins for a service with no browser sign-in. Keys stay under "A key". Adapted from
+ *  setup-token), as plan sign-ins for a service with no browser sign-in. Adapted from
  *  engine/ui/src/pages/model-providers/login-providers.ts ("setup-secret" choices). */
 function addSecretLogins(out: Service[], manual: RecordValue[], count: (id: string, key: boolean) => number): void {
   for (const o of manual.filter((x) => !/api-?key/i.test(text(x.id)))) {
@@ -116,7 +116,20 @@ export function servicesOf(caps: RecordValue[], providers: Provider[], detect: R
   const listed = [...out.values()];
   addSecretLogins(listed, list(detect?.manualProviders), count);
   const merged = new Map<string, Service>();
-  for (const row of listed) putService(merged, row);
+  // Keep the key's provider id: a plan may use a different alias for the same brand.
+  for (const row of listed) {
+    const plan = row.kind === "key" ? listed.find((s) => s.kind === "plan" && s.brand === row.brand) : undefined;
+    if (plan) {
+      plan.keySupported = true;
+      plan.keyProvider = row.providers?.[0] ?? row.brand;
+      plan.signedIn += row.signedIn;
+      plan.providers = [...new Set([...(plan.providers ?? [plan.brand]), ...(row.providers ?? [row.brand])])];
+    }
+  }
+  for (const row of listed) {
+    if (row.kind === "key" && listed.some((s) => s.kind === "plan" && s.brand === row.brand)) continue;
+    putService(merged, row);
+  }
   for (const o of list(detect?.prepareOptions)) {
     const brand = brandOf(text(o.brandId ?? o.id));
     putService(merged, { id: `local:${text(o.id)}`, brand, name: serviceName(brand, o.label), kind: "local", signedIn: 0, logins: [], choice: text(o.id) });
@@ -297,7 +310,10 @@ function SignIn({ engine, svc, agent, onRun, onKey }: SignInProps) {
   if (svc.kind === "custom") return <Lead text={`Branch asks for the address and sign-in of ${svc.name}.`} action="Start" onGo={() => onRun({ method: "branch.setup.auth.start", params: { authChoice: svc.choice, ...agent } })} />;
   const [main, ...rest] = [...svc.logins].sort((a, b) => Number(b.kind === "oauth") - Number(a.kind === "oauth") || Number(b.featured === true) - Number(a.featured === true));
   const go = (o: RecordValue) => onRun({ method: "models.authLogin", params: { authChoice: text(o.id), ...agent } });
-  if (main?.kind === "setup-secret") return <details><summary className={g.label()}>Paste a token instead</summary><SecretSignIn engine={engine} svc={svc} login={main} agent={agent} onRun={onRun} /></details>;
+  if (main?.kind === "setup-secret") return <>
+    <details><summary className={g.label()}>Paste a token instead</summary><SecretSignIn engine={engine} svc={svc} login={main} agent={agent} onRun={onRun} /></details>
+    {svc.keySupported ? <details><summary className={g.label()}>Paste a key instead</summary><KeyEntry engine={engine} svc={svc} agent={agent} onSaved={onKey} /></details> : null}
+  </>;
   return (
     <>
       <div className="aa-card">
@@ -381,7 +397,7 @@ function KeyEntry({ engine, svc, agent, onSaved }: { engine: WindowEngine; svc: 
   const save = async () => {
     setBusy(true); setError("");
     try {
-      await engine.request("models.authSetApiKey", { provider: svc.providers?.[0] ?? svc.brand, apiKey: key.trim(), ...agent });
+      await engine.request("models.authSetApiKey", { provider: svc.keyProvider ?? svc.providers?.[0] ?? svc.brand, apiKey: key.trim(), ...agent });
       setKey(""); onSaved();
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };

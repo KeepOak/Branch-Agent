@@ -84,6 +84,41 @@ function namesIn(shown: ReturnType<typeof catalogue>, section: string) {
 }
 
 describe("Add an account catalogue", () => {
+  it("shows each service once across all groups", async () => {
+    const request = vi.fn(async (method: string) => (method === "branch.setup.detect" ? DETECT : {}));
+    await act(async () => root.render(
+      <AddAccountDialog engine={engineOf(request)} start={{}} caps={CAPS} providers={[]} agent={{}} onClose={() => undefined} />,
+    ));
+    const shown = catalogue();
+    const names = shown.tiles.map((tile) => tile.name);
+    expect(names.length).toBeGreaterThan(0);
+    expect(names).toHaveLength(new Set(names).size);
+    for (const name of ["Claude", "Google Gemini", "MiniMax"]) {
+      expect(namesIn(shown, "Your plan")).toContain(name);
+      expect(namesIn(shown, "A key")).not.toContain(name);
+    }
+    expect(namesIn(shown, "A key")).toContain("Hugging Face");
+    expect(shown.lede).toContain(`${names.length} services`);
+  });
+
+  it.each(["browser", "token-only"])("keeps the key choice reachable from the single %s plan tile", async (mode) => {
+    const caps = [{ provider: "anthropic", apiKeySupported: true, loginOptions: mode === "browser" ? CAPS[0].loginOptions : [] }];
+    const request = vi.fn(async (method: string) => (method === "branch.setup.detect" ? DETECT : {}));
+    await act(async () => root.render(
+      <AddAccountDialog engine={engineOf(request)} start={{}} caps={caps} providers={[]} agent={{}} onClose={() => undefined} />,
+    ));
+    const tiles = [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].filter((tile) => tile.querySelector(":scope > b")?.textContent === "Claude");
+    expect(tiles).toHaveLength(1);
+    await act(async () => tiles[0].click());
+    const summary = [...document.querySelectorAll("summary")].find((node) => node.textContent === "Paste a key instead");
+    expect(summary).toBeDefined();
+    await act(async () => summary!.click());
+    expect(summary!.closest("details")?.open).toBe(true);
+    expect(summary!.closest("details")?.querySelector('input[aria-label="Key"]')).not.toBeNull();
+    expect(dialog()?.textContent).toContain(mode === "browser" ? "Open the sign-in page" : "Paste a token instead");
+    expect(request.mock.calls.every(([method]) => method === "branch.setup.detect" || method === "models.authStatus")).toBe(true);
+  });
+
   it("stays the same after backing out of a sign-in when detect arrives late", async () => {
     let resolveDetect!: (value: unknown) => void;
     const detected = new Promise<unknown>((resolve) => { resolveDetect = resolve; });
@@ -100,7 +135,7 @@ describe("Add an account catalogue", () => {
     expect(namesIn(before, "Your plan")).not.toEqual(expect.arrayContaining(["Ollama", "LM Studio", "OpenCode"]));
     expect(namesIn(before, "On this computer")).toEqual(expect.arrayContaining(["Ollama", "LM Studio", "OpenCode"]));
     expect(namesIn(before, "Your plan").filter((name) => name === "MiniMax")).toHaveLength(1);
-    expect(namesIn(before, "A key").filter((name) => name === "Google Gemini")).toHaveLength(1);
+    expect(namesIn(before, "A key").filter((name) => name === "Google Gemini")).toHaveLength(0);
     expect(before.tiles.map((tile) => tile.name)).toEqual(expect.arrayContaining(["Microsoft Foundry", "OpenCode Go", "Ollama Cloud", "Hugging Face", "LiteLLM"]));
     expect(before.tiles.some((tile) => tile.section === "A key" && tile.sub.includes("a key"))).toBe(true);
     expect(before.tiles.some((tile) => tile.section === "Your plan" && tile.sub.includes("your plan"))).toBe(true);

@@ -14,7 +14,7 @@ describe("servicesOf", () => {
     { id: "openai-api-key", brandId: "openai", label: "OpenAI API Key" },
   ] };
 
-  it("offers Claude's setup-token as a plan sign-in and keeps keys under keys", () => {
+  it("offers Claude's setup-token and key on the same plan service", () => {
     const out = servicesOf(caps, [], detect);
     const claude = out.find((s) => s.id === "plan:anthropic");
     expect(claude?.logins.map((l) => [l.id, l.kind])).toEqual([["setup-token", "setup-secret"]]);
@@ -38,11 +38,11 @@ describe("servicesOf", () => {
     );
     const names = out.map((s) => s.name);
     expect(out.filter((s) => s.name === "Google Gemini" && s.kind === "plan")).toHaveLength(1);
-    expect(out.filter((s) => s.name === "Google Gemini" && s.kind === "key")).toHaveLength(1);
+    expect(out.filter((s) => s.name === "Google Gemini" && s.kind === "key")).toHaveLength(0);
     expect(out.filter((s) => s.name === "OpenRouter" && s.kind === "plan")).toHaveLength(1);
     expect(out.filter((s) => s.name === "xAI" && s.kind === "plan")).toHaveLength(1);
     expect(out.filter((s) => s.name === "MiniMax" && s.kind === "plan")).toHaveLength(1);
-    expect(out.filter((s) => s.name === "MiniMax" && s.kind === "key")).toHaveLength(1);
+    expect(out.filter((s) => s.name === "MiniMax" && s.kind === "key")).toHaveLength(0);
     expect(names).toContain("LiteLLM");
     expect(names).toContain("Hugging Face");
     expect(names[0]).toBe("Ollama");
@@ -61,7 +61,7 @@ describe("servicesOf", () => {
     )?.profile.profileId).toBe("minimax-portal:work");
   });
 
-  it("lists each service once per section, keeps local runtimes off Your plan, and uses product names", () => {
+  it("lists each service once across sections, keeps local runtimes off Your plan, and uses product names", () => {
     const caps = [
       { provider: "google", apiKeySupported: true, loginOptions: [{ id: "google-oauth", kind: "oauth" }] },
       { provider: "google-gemini", apiKeySupported: true },
@@ -102,7 +102,7 @@ describe("servicesOf", () => {
       expect(list.filter((s) => s.kind === "plan").map((s) => s.name)).not.toEqual(expect.arrayContaining(["Ollama", "LM Studio", "OpenCode"]));
       expect(list.filter((s) => s.kind === "local").map((s) => s.name).sort()).toEqual(["LM Studio", "Ollama", "OpenCode"]);
       expect(list.filter((s) => s.name === "MiniMax" && s.kind === "plan")).toHaveLength(1);
-      expect(list.filter((s) => s.name === "Google Gemini" && s.kind === "key")).toHaveLength(1);
+      expect(list.filter((s) => s.name === "Google Gemini" && s.kind === "key")).toHaveLength(0);
       expect(list.filter((s) => s.name === "Google Gemini" && s.kind === "plan")).toHaveLength(1);
       expect(list.map((s) => s.name)).toEqual(expect.arrayContaining(["Microsoft Foundry", "OpenCode Go", "Ollama Cloud", "Hugging Face", "LiteLLM"]));
       expect(list.map((s) => s.name).join("\n")).not.toMatch(/Microsoft-foundry|Opencode-go|Ollama-cloud|Huggingface|Litellm/);
@@ -110,6 +110,29 @@ describe("servicesOf", () => {
         const names = list.filter((s) => s.kind === kind).map((s) => s.name);
         expect(names).toEqual([...new Set(names)]);
       }
+    }
+  });
+
+  it("never lists a provider id in more than one group", () => {
+    const capabilities = [
+      ...caps,
+      { provider: "openai-codex", loginOptions: [{ id: "codex-oauth", kind: "oauth" }] },
+      { provider: "google", apiKeySupported: true, loginOptions: [{ id: "google-oauth", kind: "oauth" }] },
+      { provider: "openrouter", apiKeySupported: true, loginOptions: [{ id: "openrouter-oauth", kind: "oauth" }] },
+      { provider: "xai", apiKeySupported: true, loginOptions: [{ id: "xai-oauth", kind: "oauth" }] },
+      { provider: "minimax-portal", loginOptions: [{ id: "minimax-oauth", kind: "oauth" }] },
+      { provider: "minimax", apiKeySupported: true },
+      { provider: "huggingface", apiKeySupported: true },
+    ];
+    for (const input of [capabilities, [...capabilities].reverse()]) {
+      const out = servicesOf(input, [], detect);
+      const ids = out.flatMap((s) => s.providers ?? [s.brand]);
+      expect(ids).toHaveLength(new Set(ids).size);
+      expect(out.map((s) => s.brand)).toHaveLength(new Set(out.map((s) => s.brand)).size);
+      for (const brand of ["anthropic", "openai", "google", "openrouter", "xai", "minimax"]) {
+        expect(out.find((s) => s.brand === brand)).toMatchObject({ kind: "plan", keySupported: true, keyProvider: brand });
+      }
+      expect(out.find((s) => s.brand === "huggingface")?.kind).toBe("key");
     }
   });
 
