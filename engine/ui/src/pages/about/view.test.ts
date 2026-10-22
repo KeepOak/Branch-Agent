@@ -26,8 +26,6 @@ function createProps(overrides: Partial<AboutProps> = {}): AboutProps {
     gatewayVersion: "2026.7.9",
     copyState: "idle",
     onCopyCommit: vi.fn(),
-    clawdWaving: false,
-    onPokeClawd: vi.fn(),
     ...overrides,
   };
 }
@@ -38,45 +36,41 @@ describe("renderAbout", () => {
     await i18n.setLocale("en");
   });
 
-  it("renders the hero with Clawd, identity, community links, and license", () => {
-    const onPokeClawd = vi.fn();
+  it("renders the preview's small About dialog: leaf mark, identity, three links, licences", () => {
     const container = document.createElement("div");
-    render(renderAbout(createProps({ onPokeClawd })), container);
+    render(renderAbout(createProps()), container);
 
+    const dialog = container.querySelector(".about-dialog");
+    expect(dialog?.querySelector("#about-dialog-title")?.textContent).toBe("About Branch");
     const hero = container.querySelector(".about-hero");
     expect(hero?.querySelector(".about-hero__name")?.textContent).toBe("Branch Agent");
-    expect(hero?.querySelector(".about-hero__version")?.textContent).toBe("v2026.7.10");
-    expect(hero?.querySelector(".about-hero__clawd svg")).not.toBeNull();
+    expect(hero?.querySelector(".about-hero__version")?.textContent).toBe("2026.7.10");
+    expect(hero?.querySelector("img.about-hero__mark")?.getAttribute("src")).toContain(
+      "brand/keepoak-app-icon-512.png",
+    );
+    expect(hero?.querySelector("svg")).toBeNull();
+    expect(container.querySelector(".about-hero__clawd")).toBeNull();
+    expect(container.textContent).not.toContain("Clawd");
 
-    const clawd = hero?.querySelector<HTMLButtonElement>(".about-hero__clawd");
-    expect(clawd?.getAttribute("aria-label")).toBe("Wave hello to Clawd");
-    clawd?.click();
-    expect(onPokeClawd).toHaveBeenCalledOnce();
-
-    const links = Array.from(hero?.querySelectorAll<HTMLAnchorElement>(".about-hero__link") ?? []);
-    expect(links.map((link) => link.getAttribute("href"))).toEqual([
-      "https://keepoak.com",
-      "https://keepoak.com/help",
-      "https://github.com/KeepOak/Branch-Agent",
-      "https://x.com/branch",
-      "https://github.com/KeepOak/Branch-Agent/releases",
+    const links = Array.from(container.querySelectorAll<HTMLAnchorElement>(".about-hero__link"));
+    expect(links.map((link) => [link.textContent?.trim(), link.getAttribute("href")])).toEqual([
+      ["keepoak.com", "https://keepoak.com"],
+      ["Handbook", "https://keepoak.com/help"],
+      ["What’s new", "https://github.com/KeepOak/Branch-Agent/releases"],
     ]);
-    for (const link of links) {
+    const licences = container.querySelector<HTMLAnchorElement>(".about-footer__licences");
+    expect(licences?.textContent?.trim()).toBe("Open-source licences");
+    expect(licences?.getAttribute("href")).toBe(
+      "https://github.com/KeepOak/Branch-Agent/blob/main/NOTICE",
+    );
+    for (const link of [...links, licences!]) {
       expect(link.getAttribute("target")).toBe("_blank");
       expect(link.getAttribute("rel")).toContain("noopener");
       expect(link.getAttribute("rel")).toContain("noreferrer");
     }
-
-    expect(container.querySelector(".about-footer")?.textContent).toContain("MIT License");
-  });
-
-  it("marks the hero as waving only while a poke is active", () => {
-    const container = document.createElement("div");
-    render(renderAbout(createProps({ clawdWaving: true })), container);
-    expect(container.querySelector(".about-hero__clawd--wave")).not.toBeNull();
-
-    render(renderAbout(createProps({ clawdWaving: false })), container);
-    expect(container.querySelector(".about-hero__clawd--wave")).toBeNull();
+    expect(container.innerHTML).not.toContain("x.com");
+    expect(container.innerHTML).not.toContain("openclaw");
+    expect(container.querySelector(".about-footer")?.textContent).toContain("© 2026 KeepOak");
   });
 
   it("keeps version, commit, branch, and localized UTC build date in one facts grid", () => {

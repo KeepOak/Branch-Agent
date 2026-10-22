@@ -77,7 +77,8 @@
             rose: ["rose", "rose-light"],
             miami: ["miami", "miami-light"],
           };
-          var pair = FAMILIES[theme] ||
+          var pair =
+            FAMILIES[theme] ||
             (/^[a-z0-9][a-z0-9-]*$/.test(theme) && theme !== "grove"
               ? [theme, theme + "-light"]
               : null);
@@ -91,9 +92,7 @@
             // The gateway stamps the mount prefix and asset version before this runs.
             var base =
               document.documentElement.getAttribute("data-branch-control-ui-base-path") || "";
-            var buildId = document.documentElement.getAttribute(
-              "data-branch-control-ui-build-id",
-            );
+            var buildId = document.documentElement.getAttribute("data-branch-control-ui-build-id");
             var version = buildId ? "?v=" + encodeURIComponent(buildId) : "";
             var palette = document.createElement("link");
             palette.rel = "stylesheet";
@@ -415,11 +414,8 @@
           <li>If this persists, reload or try a clean browser profile.</li>
           <li>
             See
-            <a
-              href="https://docs.openclaw.ai/web/control-ui#blank-control-ui-page"
-              target="_blank"
-              rel="noopener noreferrer"
-              >Control UI troubleshooting</a
+            <a href="https://keepoak.com/help" target="_blank" rel="noopener noreferrer"
+              >Branch help</a
             >.
           </li>
         </ul>

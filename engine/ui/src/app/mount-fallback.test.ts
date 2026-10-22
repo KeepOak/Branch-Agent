@@ -120,7 +120,8 @@ describe("Control UI mount fallback", () => {
     expect(fallback.hidden).toBe(false);
     expect([...frameWindow.document.body.classList]).toEqual(["branch-mount-fallback-active"]);
     expect(fallback.querySelector("h1")?.textContent?.trim()).toBe("Control UI did not start");
-    expect(fallback.querySelector("a")?.textContent?.trim()).toBe("Control UI troubleshooting");
+    expect(fallback.querySelector("a")?.textContent?.trim()).toBe("Branch help");
+    expect(fallback.querySelector("a")?.getAttribute("href")).toBe("https://keepoak.com/help");
     expect(frameWindow.document.activeElement).toBeInstanceOf(frameWindow.HTMLElement);
     expect([...(frameWindow.document.activeElement as HTMLElement).classList]).toEqual([
       "mount-fallback__panel",

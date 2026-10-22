@@ -272,43 +272,26 @@ suite.define(() => {
         .poll(() => gatewayRow.textContent())
         .toContain("separate from this Control UI build");
 
-      const hero = page.locator(".about-hero");
-      await expect.poll(() => hero.locator(".about-hero__name").textContent()).toBe("Branch Agent");
+      const dialog = page.locator(".about-dialog");
       await expect
-        .poll(() => hero.locator(".about-hero__version").textContent())
-        .toBe("v2026.7.10");
-
-      const githubLink = hero.getByRole("link", { name: "GitHub", exact: true });
+        .poll(() => dialog.locator(".about-hero__name").textContent())
+        .toBe("Branch Agent");
       await expect
-        .poll(() => githubLink.getAttribute("href"))
-        .toBe("https://github.com/KeepOak/Branch-Agent");
-      await expect.poll(() => githubLink.getAttribute("target")).toBe("_blank");
-      await expect.poll(() => githubLink.getAttribute("rel")).toContain("noopener");
+        .poll(() => dialog.locator(".about-hero__version").textContent())
+        .toBe("2026.7.10");
+      await expect.poll(() => dialog.locator("img.about-hero__mark").count()).toBe(1);
+      await expect.poll(() => page.locator(".about-hero__clawd").count()).toBe(0);
+
+      const handbook = dialog.getByRole("link", { name: "Handbook", exact: true });
+      await expect.poll(() => handbook.getAttribute("href")).toBe("https://keepoak.com/help");
+      await expect.poll(() => handbook.getAttribute("target")).toBe("_blank");
+      await expect.poll(() => handbook.getAttribute("rel")).toContain("noopener");
+      await expect.poll(() => dialog.locator(".about-hero__link").count()).toBe(3);
+      await expect.poll(() => dialog.locator('a[href*="x.com"]').count()).toBe(0);
+
       await expect
-        .poll(() => hero.getByRole("link", { name: "Discord", exact: true }).count())
-        .toBe(0);
-      const xLink = hero.getByRole("link", { name: "X (Twitter)", exact: true });
-      await expect.poll(() => xLink.getAttribute("href")).toBe("https://x.com/branch");
-
-      const clawd = page.getByRole("button", { name: "Wave hello to Clawd" });
-      // CLAWD_WAVE_MS clears the class after 1400ms, so click and read it in one browser step.
-      const clawdWaving = await clawd.evaluate(async (element) => {
-        const button = element as HTMLButtonElement;
-        const owner = element.closest("branch-about-page") as
-          | (HTMLElement & {
-              updateComplete: Promise<unknown>;
-            })
-          | null;
-        if (!owner) {
-          throw new Error("About page owner is unavailable");
-        }
-        button.click();
-        await owner.updateComplete;
-        return button.classList.contains("about-hero__clawd--wave");
-      });
-      expect(clawdWaving).toBe(true);
-
-      await expect.poll(() => page.locator(".about-footer").textContent()).toContain("MIT License");
+        .poll(() => page.locator(".about-footer").textContent())
+        .toContain("Open-source licences");
 
       const copyButton = strip.locator(".about-commit button");
       await expect.poll(() => copyButton.getAttribute("aria-label")).toBe("Copy full commit hash");
