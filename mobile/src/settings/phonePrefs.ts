@@ -1,6 +1,8 @@
 // Phone Settings prefs from the r50 Android preview (phSettings + PG18).
 // Defaults match design/spec-v23: lock Off, notifications On, share When needed,
 // Talk On, push Off, screen awake On, wake word Off, speaker On, auto-connect On.
+// Lending is the exception: it starts Off with the camera Off, so nothing is lent until the person chooses it.
+// A saved choice always wins over these defaults.
 
 import type { KeyValueStore } from '../storage/keyValueStore';
 
@@ -75,8 +77,8 @@ export const PHONE_PREFS_DEFAULT: PhonePrefs = {
   textSize: '100%',
   mic: 'Phone’s default',
   notifKinds: [...NOTIF_KIND_DEFAULTS],
-  lendOn: true,
-  lend: { cam: true, loc: true, photos: false, notif: true },
+  lendOn: false,
+  lend: { cam: false, loc: true, photos: false, notif: true },
 };
 
 export function nextCycle(value: CyclePos): CyclePos {
