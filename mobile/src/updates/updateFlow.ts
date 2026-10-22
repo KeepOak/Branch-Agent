@@ -1,7 +1,8 @@
+import { plainError } from '../ui/plainError';
 import type { ApkOffer } from './githubRelease';
 import { fetchReleases, findNewerApk } from './githubRelease';
 import { filePath } from './native';
-import { assertCertsMatch, assertChecksum, parseSha256Asset } from './verify';
+import { assertCertsMatch, assertChecksum, CERT_UNREADABLE_MESSAGE, parseSha256Asset, VerifyError } from './verify';
 
 export const NEEDS_PERMISSION_MESSAGE =
   'Android asks once before Branch can install an update. Allow it for Branch, then this screen comes back and the update continues.';
@@ -37,7 +38,8 @@ function apkDest(cacheDir: string): string {
 }
 
 function asError(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+  if (error instanceof VerifyError) return error.userText;
+  return plainError(error, fallback);
 }
 
 export function createUpdateFlow(deps: UpdateFlowDeps) {
@@ -90,7 +92,12 @@ export function createUpdateFlow(deps: UpdateFlowDeps) {
       const actual = await deps.sha256File(filePath(dest));
       assertChecksum(actual, expected);
       const installed = await deps.installedSigningCerts();
-      const apkCerts = await deps.apkSigningCerts(filePath(dest));
+      let apkCerts: string[];
+      try {
+        apkCerts = await deps.apkSigningCerts(filePath(dest));
+      } catch (error) {
+        throw error instanceof VerifyError ? error : new VerifyError(CERT_UNREADABLE_MESSAGE);
+      }
       assertCertsMatch(installed, apkCerts);
       if (mine !== generation) return;
       set({ status: 'installing', offer });

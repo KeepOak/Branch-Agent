@@ -10,13 +10,13 @@
 
 /* The frost: one recipe for every pill this screen draws. */
 :is(.r1-ask-q, .r1-ask-pill, .r1-ask-kv, .r1-ask-code, .r1-ask-btn:not([data-kind="primary"]), .r1-ask-note, .r1-ask-error, .r1-ask-what,
-  .r1-ask-chip, .r1-ask-option, .r1-ask-input, .r1-ask-qtext, .r1-drop-who, .r1-drop-q, .r1-drop-more, .r1-drop-done, .r1-banner-text,
+  .r1-ask-chip, .r1-ask-option, .r1-ask-input, .r1-ask-qtext, .r1-ask-sub, .r1-drop-who, .r1-drop-q, .r1-drop-more, .r1-drop-done, .r1-banner-text,
   .r1-banner-x, .r1-banner-icon, .r1-lock, .r1-ask-history h3, .r1-ask-row > :is(code, small, time, span:not(.r1-ask-pill))) {
   background: var(--gp-fill); -webkit-backdrop-filter: var(--gp-blur); backdrop-filter: var(--gp-blur);
   box-shadow: inset 0 0 0 1px var(--gp-edge); border: 0; color: var(--ink);
   --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2);
 }
-:is(.r1-ask-q, .r1-ask-what, .r1-ask-note, .r1-ask-error, .r1-ask-qtext, .r1-drop-who, .r1-drop-q, .r1-drop-done, .r1-ask-history h3, .r1-ask-row > :is(code, small, time, span:not(.r1-ask-pill))) {
+:is(.r1-ask-q, .r1-ask-what, .r1-ask-note, .r1-ask-error, .r1-ask-qtext, .r1-ask-sub, .r1-drop-who, .r1-drop-q, .r1-drop-done, .r1-ask-history h3, .r1-ask-row > :is(code, small, time, span:not(.r1-ask-pill))) {
   width: fit-content; max-width: 100%; box-sizing: border-box; padding: 2px 9px; border-radius: var(--r-pill);
 }
 
@@ -51,8 +51,12 @@
 .r1-ask-question { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: 100%; }
 .r1-ask-qline { display: flex; align-items: center; gap: 6px; font-size: 13.5px; flex-wrap: wrap; }
 .r1-ask-chip { padding: 1px 8px; border-radius: var(--r-pill); font-size: 11px; color: var(--gp-ink-2); }
-.r1-ask-options { display: flex; flex-wrap: wrap; gap: 6px; }
-.r1-ask-option { height: 28px; padding: 0 12px; border-radius: var(--r-pill); font-size: 12.5px; cursor: pointer; }
+.r1-ask-options { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.r1-ask-option { display: grid; grid-template-columns: 22px 1fr; grid-template-rows: auto auto; column-gap: 8px; align-items: center; min-height: 36px; padding: 6px 12px; border-radius: 12px; font-size: 12.5px; cursor: pointer; text-align: start; }
+.r1-ask-option kbd, .r1-ask-option .r1-ask-box { grid-row: 1 / span 2; justify-self: center; width: 22px; height: 22px; display: grid; place-items: center; border-radius: var(--r-kbd, 6px); font: 600 11px var(--sans); background: var(--gp-on); color: var(--ink-2); }
+.r1-ask-option b { font-weight: 600; font-size: 13.5px; }
+.r1-ask-option small { grid-column: 2; color: var(--gp-ink-2); font-size: 12px; }
+.r1-ask-sub { font-size: 12.5px; color: var(--gp-ink-2); }
 /* Why the #g48 ids (glass/glass.css explains the ladder): a picked option is a button on clear glass, so glass.css's pill rule
    (.g-clear button:not(... #g48), one id) and the shared-frost reset (:is(.g-frost, .g-label) button:not(#g48#g48), two ids)
    would otherwise win. Three ids match glass.css's own chosen-lift rule for [aria-selected]/[aria-pressed], which does not

@@ -5,11 +5,21 @@ export const CHECKSUM_MISMATCH_MESSAGE =
 export const CHECKSUM_MISSING_MESSAGE = 'The checksum file from this release isn’t a SHA-256 digest.';
 export const CERT_MISMATCH_MESSAGE =
   'This update isn’t signed the same way as the app on this phone. Branch won’t install it.';
+export const CERT_UNREADABLE_MESSAGE =
+  'Branch couldn’t read the update’s signing certificate.';
+
+/** An update check that already has plain words for the screen. */
+export class VerifyError extends Error {
+  constructor(readonly userText: string) {
+    super(userText);
+    this.name = 'VerifyError';
+  }
+}
 
 /** First 64-char hex in a `.sha256` sidecar (`<hex>  filename`, `SHA256 (…) = <hex>`, or the hex alone). */
 export function parseSha256Asset(text: string): string {
   const match = HEX64.exec(text);
-  if (!match) throw new Error(CHECKSUM_MISSING_MESSAGE);
+  if (!match) throw new VerifyError(CHECKSUM_MISSING_MESSAGE);
   return match[0].toLowerCase();
 }
 
@@ -18,15 +28,17 @@ export function checksumMatches(actual: string, expected: string): boolean {
 }
 
 export function assertChecksum(actual: string, expected: string): void {
-  if (!checksumMatches(actual, expected)) throw new Error(CHECKSUM_MISMATCH_MESSAGE);
+  if (!checksumMatches(actual, expected)) throw new VerifyError(CHECKSUM_MISMATCH_MESSAGE);
 }
 
-/** True when the APK is signed by a certificate this install already trusts. */
+/** True when both sides are exactly one cert and those fingerprints are the same. */
 export function certsMatch(installed: string[], apk: string[]): boolean {
-  const trusted = new Set(installed.map((value) => value.trim().toLowerCase()).filter(Boolean));
-  return apk.some((value) => trusted.has(value.trim().toLowerCase()));
+  if (installed.length !== 1 || apk.length !== 1) return false;
+  const current = installed[0].trim().toLowerCase();
+  const update = apk[0].trim().toLowerCase();
+  return Boolean(current) && current === update;
 }
 
 export function assertCertsMatch(installed: string[], apk: string[]): void {
-  if (!certsMatch(installed, apk)) throw new Error(CERT_MISMATCH_MESSAGE);
+  if (!certsMatch(installed, apk)) throw new VerifyError(CERT_MISMATCH_MESSAGE);
 }

@@ -54,7 +54,7 @@ const DEFAULT_EMBEDDINGS_BODY_BYTES = 5 * 1024 * 1024;
 const MAX_EMBEDDING_INPUTS = 128;
 const MAX_EMBEDDING_INPUT_CHARS = 8_192;
 const MAX_EMBEDDING_TOTAL_CHARS = 65_536;
-const DEFAULT_MEMORY_EMBEDDING_PROVIDER = "openai";
+const DEFAULT_MEMORY_EMBEDDING_PROVIDER = "local";
 type MemorySearchEmbeddingConfig = Pick<
   NonNullable<ReturnType<typeof resolveMemorySearchConfig>>,
   "local" | "remote" | "inputType" | "queryInputType" | "documentInputType"
@@ -227,7 +227,7 @@ export async function handleOpenAiEmbeddingsHttpRequest(
   }
   const agentDir = resolveAgentDir(cfg, agentId);
   const memorySearch = resolveMemorySearchConfig(cfg, agentId);
-  const configuredProvider = memorySearch?.provider ?? "openai";
+  const configuredProvider = memorySearch?.provider ?? DEFAULT_MEMORY_EMBEDDING_PROVIDER;
   const overrideModel =
     normalizeOptionalString(getHeader(req, "x-branch-model")) ||
     normalizeOptionalString(memorySearch?.model) ||

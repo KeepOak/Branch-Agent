@@ -16,6 +16,7 @@ export function useWizard(engine: WindowEngine, start: WizardStart) {
   const [view, setView] = useState<WizardView>({ phase: "starting" });
   const [value, setValue] = useState<unknown>(undefined);
   const [busy, setBusy] = useState(true);
+  const [notes, setNotes] = useState<string[]>([]);
   const session = useRef({ id: crypto.randomUUID(), notes: [] as string[], opened: new Set<string>(), answered: new Set<string>(), live: true, generation: 0 });
   const show = (step: WizardStep, waiting: boolean) => {
     const url = safeSignInUrl(step.externalUrl);
@@ -34,6 +35,7 @@ export function useWizard(engine: WindowEngine, start: WizardStart) {
       return;
     }
     setBusy(false);
+    setNotes([...session.current.notes]);
     if (!result.done && result.step) {
       setValue(result.step.initialValue ?? (result.step.type === "multiselect" ? [] : ""));
       show(result.step, false);
@@ -43,7 +45,7 @@ export function useWizard(engine: WindowEngine, start: WizardStart) {
       setView({ phase: "error", message: [result.error || (result.status === "cancelled" ? "Sign-in was cancelled." : "Sign-in did not finish."), ...session.current.notes].join("\n\n") });
     }
   };
-  const fail = (error: unknown) => { if (session.current.live) { setBusy(false); setView({ phase: "error", message: errorText(error) }); } };
+  const fail = (error: unknown) => { if (session.current.live) { setBusy(false); setNotes([...session.current.notes]); setView({ phase: "error", message: errorText(error) }); } };
   const next = (answer: WizardAnswer | undefined) => {
     session.current.generation += 1;
     setBusy(true);
@@ -63,7 +65,7 @@ export function useWizard(engine: WindowEngine, start: WizardStart) {
     session.current.live = false;
     void engine.request("wizard.cancel", { sessionId: session.current.id }).catch(() => undefined);
   };
-  return { view, value, setValue, busy, answer, cancel };
+  return { view, value, setValue, busy, answer, cancel, notes };
 }
 
 type Session = RefObject<{ id: string; notes: string[]; generation: number }>;

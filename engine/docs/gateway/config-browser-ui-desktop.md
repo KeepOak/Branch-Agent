@@ -138,7 +138,7 @@ For the full key index and the other top-level config domains, see [Configuratio
     seamColor: "#FF4500",
     prefs: {
       theme: "grove", // grove | knot | dash | absolutely | tide | beacon | phosphor | crt | manuscript | rose | miami | custom
-      themeMode: "system", // light | dark | system
+      themeMode: "light", // light | dark | system (default: light)
       locale: "en",
       chatShowThinking: true,
       chatShowToolCalls: true,
