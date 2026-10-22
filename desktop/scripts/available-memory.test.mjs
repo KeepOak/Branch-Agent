@@ -72,7 +72,7 @@ test("Windows with no Available Bytes reading yet stays on os.freemem()", () => 
   assert.equal(memory.measure, "os.freemem");
 });
 
-test("Windows counts standby: the Legion's 389 MB free with 15 GB available passes both gates (Private #1054)", () => {
+test("Windows counts standby: a low-free-memory Windows machine's 389 MB free with 15 GB available passes both gates (Private #1054)", () => {
   const strictlyFree = 389 * MIB, total = 32 * GIB;
   const memory = availableMemory({ platform: "win32", windowsAvailable: `${15 * GIB}\r\n`, freemem: strictlyFree, totalmem: total });
   assert.equal(memory.bytes, 15 * GIB);
