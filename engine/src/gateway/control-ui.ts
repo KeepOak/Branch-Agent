@@ -84,6 +84,7 @@ import {
 } from "./control-ui-http-utils.js";
 import { resolveAssistantMediaRoutePath } from "./control-ui-resource-routes.js";
 import { selectControlUiRoutePreloads } from "./control-ui-route-preloads.js";
+import { controlUiRequestRequiresNetworkAuth } from "./control-ui-network-admission.js";
 import { classifyControlUiRequest, isControlUiApprovalDocumentPath } from "./control-ui-routing.js";
 import { isControlUiSharePath, serveControlUiShareDocument } from "./control-ui-share.js";
 import { normalizeControlUiBasePath } from "./control-ui-shared.js";
@@ -990,6 +991,26 @@ export async function handleControlUiHttpRequest(
       })),
     } satisfies ControlUiBootstrapConfig);
     return true;
+  }
+
+  if (
+    controlUiRequestRequiresNetworkAuth({
+      socket: req.socket,
+      auth: opts?.auth,
+      isStaticAsset: isControlUiStaticAssetExtension(path.extname(pathname).toLowerCase()),
+    })
+  ) {
+    // A network listener serves the dashboard only to an authorized client.
+    const documentAuth = await authorizeControlUiReadRequestOrReply({
+      ...opts,
+      req,
+      res,
+      cfg: opts?.cfg ?? opts?.config,
+      allowQueryToken: true,
+    });
+    if (!documentAuth) {
+      return true;
+    }
   }
 
   const rootState = opts?.root;
