@@ -9,11 +9,6 @@ on:
         description: Release tag to attach a signed APK to. Leave empty for an artifact-only build.
         required: false
         type: string
-  push:
-    branches: [main]
-    paths:
-      - 'mobile/**'
-      - '.github/workflows/mobile-android-release.yml'
 
 permissions:
   contents: read

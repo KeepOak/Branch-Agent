@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { capabilityTests, harvestTests, namedTests } from './feature-batch-ci-targets.mjs';
+import { capabilityTests, harvestTests, namedE2eTests, namedTests } from './feature-batch-ci-targets.mjs';
 import { slices, windowSlices } from './feature-slice-ci-targets.mjs';
 import { priorityMemoryIntegration, priorityTests } from './priority-capabilities-ci-targets.mjs';
 
@@ -532,13 +532,13 @@ export function coverageTargets(
   handoffWorkflow = '',
   handoffConfig = '',
   lintBaselinesWorkflow = '',
-  { namedFor = namedTests } = {},
+  { namedFor = namedTests, namedE2eFor = namedE2eTests } = {},
 ) {
   const covered = pullRequestDesktopRunTargets(desktopWorkflow);
   for (const file of handoffRunTargets(handoffWorkflow, handoffConfig)) covered.add(file);
   for (const file of postMergeEngineRunTargets(lintBaselinesWorkflow)) covered.add(file);
   for (const lane of ['engine', 'window']) {
-    for (const file of [...namedFor(lane), ...harvestTests(lane)]) covered.add(`${lane}/${file}`);
+    for (const file of [...namedFor(lane), ...namedE2eFor(lane), ...harvestTests(lane)]) covered.add(`${lane}/${file}`);
   }
   for (const file of capabilityTests()) covered.add(`engine/${file}`);
   for (const slice of slices) {

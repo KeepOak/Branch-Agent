@@ -14,7 +14,7 @@ import {
 } from "./run-attempt-lifecycle.js";
 import type { CodexAttemptResources } from "./run-attempt-resources.js";
 import { CodexThreadPolicyHandoffError } from "./thread-policy.js";
-import { prepareCodexForTurn } from "./turn-download.js";
+import { canAskCodexDownload, prepareCodexForTurn } from "./turn-download.js";
 
 export async function startCodexAttemptRuntime(resources: CodexAttemptResources) {
   const {
@@ -86,6 +86,7 @@ export async function startCodexAttemptRuntime(resources: CodexAttemptResources)
     await prepareCodexForTurn({
       startOptions: pluginAppServer.start,
       signal: runAbortController.signal,
+      canAsk: canAskCodexDownload(params),
       emit: (event) => emitCodexAppServerEvent(params, event),
     });
     const startupResult = await startCodexAttemptThread({

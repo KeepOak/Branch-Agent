@@ -170,6 +170,8 @@ export async function createChildAdapter(
 
   const stdinMode = params.stdinMode ?? (params.input !== undefined ? "pipe-closed" : "inherit");
 
+  // Relay owns the process group (Darwin) or subreaper (Linux) so descendants
+  // inherit the control fd. An empty marker uses a detached child with no extra fds.
   if (
     process.platform !== "win32" &&
     params.ownedWorker === undefined &&
