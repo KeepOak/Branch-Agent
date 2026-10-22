@@ -1,4 +1,5 @@
 import { createRequireRecord } from "branch/plugin-sdk/test-fixtures";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import {
@@ -623,10 +624,12 @@ describe("modelsStatusCommand auth overview", () => {
       jsonStatus(),
     );
 
+    // The override goes through resolveUserPath, so on Windows it gains a drive letter and backslashes.
+    const isolatedDir = path.resolve("/tmp/branch-isolated-agent");
     expectResolveAgentDirCalledFor("main");
-    expect(mocks.ensureAuthProfileStore).toHaveBeenCalledWith("/tmp/branch-isolated-agent");
-    expect(payload.agentDir).toBe("/tmp/branch-isolated-agent");
-    expect(payload.auth.storePath).toBe("/tmp/branch-isolated-agent/auth-profiles.json");
+    expect(mocks.ensureAuthProfileStore).toHaveBeenCalledWith(isolatedDir);
+    expect(payload.agentDir).toBe(isolatedDir);
+    expect(payload.auth.storePath).toBe(`${isolatedDir}/auth-profiles.json`);
   });
 
   it("uses agent overrides and reports sources", async () => {
