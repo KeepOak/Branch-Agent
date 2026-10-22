@@ -703,6 +703,18 @@ export function touchedTests(lane, changedFiles) {
   return all.filter(file => changed.has(file) || listedByPr.has(file) || windowsSmokeTests[lane].includes(file));
 }
 
+/** Engine-lane files under ui/ belong to the Control UI package (engine/ui). They need its vitest
+ *  config: jsdom/browser projects and UI Vite plugins such as virtual:branch-control-ui-locale/*.
+ *  Under the engine config they fail with "document is not defined" or unresolved virtual modules.
+ *  Returns UI files relative to engine/ui, and the rest unchanged for the engine config. */
+export const uiPackagePrefix = 'ui/';
+export function splitUiTests(lane, files) {
+  if (lane !== 'engine') return { ui: [], other: [...files] };
+  const ui = files.filter(file => file.startsWith(uiPackagePrefix)).map(file => file.slice(uiPackagePrefix.length));
+  const other = files.filter(file => !file.startsWith(uiPackagePrefix));
+  return { ui, other };
+}
+
 export function shardOf(value = process.env.FEATURE_SHARD) {
   if (!value) return { index: 0, total: 1 };
   const match = /^(\d+)\/(\d+)$/.exec(value);

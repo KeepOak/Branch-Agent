@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestFileSecondsFor, harvestMatrix, harvestMaxShards, harvestShardBudgetSeconds, harvestShardFiles, harvestTestFiles, harvestTests, harvestUnlistedFileSeconds, planHarvestShards, mainPushShardCounts, namedTests, planShards, plannedJobSeconds, plannedSlowestSeconds, overBudgetShards, setNamedListDir, pullRequestLinuxShardCount, resolvedShardCounts, runnerSetupSeconds, runnerTestScale, shardBudgetFor, shardBudgetSeconds, shardCountFor, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
+import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestFileSecondsFor, harvestMatrix, harvestMaxShards, harvestShardBudgetSeconds, harvestShardFiles, harvestTestFiles, harvestTests, harvestUnlistedFileSeconds, planHarvestShards, mainPushShardCounts, namedTests, planShards, plannedJobSeconds, plannedSlowestSeconds, overBudgetShards, setNamedListDir, pullRequestLinuxShardCount, resolvedShardCounts, runnerSetupSeconds, runnerTestScale, shardBudgetFor, shardBudgetSeconds, shardCountFor, shardOf, shardTests, splitUiTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
 import { featureBatchMatrix, validateFeatureBatchMatrix } from './feature-batch-ci-matrix.mjs';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -314,4 +314,14 @@ test('the plan job uses the default-branch planner when it exists, and only a re
   assert.equal(push.include.filter((row) => row.os === 'windows-latest').length, mainPushShardCounts.windows);
   assert.equal(push.include.filter((row) => row.os === 'macos-latest').length, mainPushShardCounts.macos);
   assert.equal(push.include.filter((row) => row.os === 'ubuntu-latest').length, mainPushShardCounts.ubuntu);
+});
+
+test('engine-lane Control UI files route to the UI vitest config, everything else stays on its lane config', () => {
+  const files = ['src/a.test.ts', 'ui/src/ui/markdown.test.ts', 'ui/src/pages/x.browser.test.ts', 'extensions/ui-thing/b.test.ts'];
+  assert.deepEqual(splitUiTests('engine', files), {
+    ui: ['src/ui/markdown.test.ts', 'src/pages/x.browser.test.ts'],
+    other: ['src/a.test.ts', 'extensions/ui-thing/b.test.ts'],
+  });
+  assert.deepEqual(splitUiTests('window', ['ui/src/x.test.ts']), { ui: [], other: ['ui/src/x.test.ts'] });
+  assert.deepEqual(splitUiTests('engine', []), { ui: [], other: [] });
 });

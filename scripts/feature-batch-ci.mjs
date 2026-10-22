@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { capabilityTests, namedTests, shardOf, shardTests, touchedTests } from './feature-batch-ci-targets.mjs';
+import { capabilityTests, namedTests, shardOf, shardTests, splitUiTests, touchedTests } from './feature-batch-ci-targets.mjs';
 import { runTargetedStrictChecks } from './feature-batch-ci-typecheck.mjs';
 import {
   assertLocalModules, engineRoot, gitHead, hostedChrome, preparePnpm, publishWindowDependencies, repoRoot, run,
@@ -86,10 +86,18 @@ async function runFeatureTests(scratch) {
   for (const lane of ['engine', 'window']) {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     const config = path.join(repoRoot, 'scripts', `feature-batch-ci-${lane}.config.mjs`);
-    const tests = process.env.FEATURE_SCOPE === 'touched'
+    const selected = process.env.FEATURE_SCOPE === 'touched'
       ? touchedTests(lane, await prChangedFiles()) : shardTests(namedTests(lane), shard);
-    if (!tests.length) continue;
-    console.log(`${lane}: ${tests.length} named test files in shard ${shard.index + 1}/${shard.total}`);
+    if (!selected.length) continue;
+    console.log(`${lane}: ${selected.length} named test files in shard ${shard.index + 1}/${shard.total}`);
+    // Control UI files (engine/ui) run under the UI package's own vitest config and root.
+    const { ui: uiTests, other: tests } = splitUiTests(lane, selected);
+    if (uiTests.length) {
+      const uiRoot = path.join(engineRoot, 'ui');
+      console.log(`${lane}/ui: ${uiTests.length} Control UI test files under ui/vitest.config.ts`);
+      await run(process.execPath, [path.join(uiRoot, 'node_modules/vitest/vitest.mjs'),
+        'run', '--config', path.join(uiRoot, 'vitest.config.ts'), ...uiTests], uiRoot, env);
+    }
     const browserTests = lane === 'engine' ? tests.filter(file => file.endsWith('.browser.test.ts')) : [];
     const regularTests = tests.filter(file => !browserTests.includes(file));
     if (regularTests.length) {
