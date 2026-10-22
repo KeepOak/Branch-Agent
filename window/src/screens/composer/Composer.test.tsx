@@ -212,15 +212,16 @@ describe("R1-04 composer", () => {
     expect(opened).toHaveBeenCalledWith("settings/accounts/add");
   });
 
-  it("keeps the draft and disables Send when no model is usable", async () => {
+  it("keeps the draft and shows Connect a model when enabled Send is clicked with no usable model", async () => {
     const { host, send } = await mount({ models: false });
     await vi.waitFor(() => expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Connect a model to start"));
     await type(host, "Hello");
-    expect(button("Send")?.disabled).toBe(true);
+    expect(button("Send")?.disabled).toBe(false);
     expect(button("Send")?.title).toBe(CONNECT_MODEL_ANSWERS);
     await act(async () => button("Send")!.click());
     expect(send).not.toHaveBeenCalled();
     expect(host.querySelector<HTMLTextAreaElement>('[data-testid="composer"]')?.value).toBe("Hello");
+    expect(host.querySelector('[data-testid="connect-model"]')?.textContent).toContain(CONNECT_MODEL_ANSWERS);
   });
 
   it("shows the failure and Try again when a free model is not ready", async () => {
@@ -232,7 +233,7 @@ describe("R1-04 composer", () => {
     expect(host.querySelector("textarea")?.getAttribute("placeholder")).not.toBe("Getting a free model ready…");
     expect(button("Connect a model to get answers")).toBeTruthy();
     await type(host, "Hello");
-    expect(button("Send")?.disabled).toBe(true);
+    expect(button("Send")?.disabled).toBe(false);
     expect(button("Send")?.title).toBe(CONNECT_MODEL_ANSWERS);
     await act(async () => button("Try again")!.click());
     expect(request.mock.calls.filter((c) => c[0] === "branch.setup.activate.start").length).toBeGreaterThanOrEqual(2);

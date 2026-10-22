@@ -169,7 +169,7 @@ export function Composer(props: Props) {
   const thinking = currentThinking(row, conv.defaults);
   const noModel = hasNoModel(conv, currentRef);
   const waitingForFreeModel = noModel && !conv.noKeySettled && !conv.noKeyError;
-  const freeModelBlocked = noModel;
+  const freeModelBlocked = waitingForFreeModel;
   const admin = isAdmin(engine.scopes ?? []);
   const mode: EngineMode | null = isEngineMode(row.permissionMode) ? row.permissionMode : null;
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;
@@ -238,6 +238,7 @@ export function Composer(props: Props) {
     if (plan.kind === "stop") { onStop(); draft.clear(); return; }
     if (offline) return;
     if (freeModelBlocked && plan.kind !== "command") return;
+    if (noModel && plan.kind !== "command") { setProblem(CONNECT_MODEL_ANSWERS); return; }
     if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") { void runBackground(plan.text); return; }
     if (topic && plan.kind === "send") { void sendToTopic(topic.key, topic.title); return; }

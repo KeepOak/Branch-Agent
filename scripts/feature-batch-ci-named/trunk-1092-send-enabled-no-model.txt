@@ -1,0 +1,3 @@
+window:src/composer/send-blocked.test.tsx
+window:src/screens/composer/Composer.test.tsx
+window:src/screens/composer/send-blocked.test.tsx

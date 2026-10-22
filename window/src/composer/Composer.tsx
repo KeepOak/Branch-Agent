@@ -25,6 +25,7 @@ import { buildExtras, planSend, sendTooltip, type Reply } from "./sending";
 import { Drawer } from "./SlashDrawer";
 import { useBackground } from "./useBackground";
 import { CONNECT_MODEL_ANSWERS } from "./connect-model";
+import { ConnectModelNotice } from "./ConnectModelNotice";
 import { FreeModelSetup } from "./FreeModelSetup";
 import { FREE_MODEL_READY } from "./no-key-default";
 import { hasNoModel, useConversation } from "./useConversation";
@@ -154,7 +155,7 @@ export function Composer(props: Props) {
   // No model set up: the engine names a default model but none is connected (models.list has none usable), or none at all.
   const noModel = hasNoModel(conv, currentRef);
   const waitingForFreeModel = noModel && !conv.noKeySettled && !conv.noKeyError;
-  const freeModelBlocked = noModel;
+  const freeModelBlocked = waitingForFreeModel;
   const admin = isAdmin(engine?.scopes ?? []);
   const mode: EngineMode | null = isEngineMode(row.permissionMode) ? row.permissionMode : null;
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;
@@ -234,6 +235,7 @@ export function Composer(props: Props) {
       return;
     }
     if (freeModelBlocked && plan.kind !== "command") return;
+    if (noModel && plan.kind !== "command") { setProblem(CONNECT_MODEL_ANSWERS); return; }
     if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") {
       void runBackground(plan.text);
@@ -453,7 +455,7 @@ export function Composer(props: Props) {
       {noModel && engine ? <FreeModelSetup engine={engine} onReady={() => void conv.reload()} /> : null}
       {noModel ? <NoModelLine onOpen={onOpen} error={conv.noKeyError} onRetry={() => void conv.retryNoKey()} /> : null}
       {conversationProblem ? <p className={isPreparationPending(conversationProblem) ? "c-note" : "c-note bad"} role={isPreparationPending(conversationProblem) ? "status" : "alert"}>{isPreparationPending(conversationProblem) ? preparationLabel(trunkName) : shortReason(conversationProblem)}</p> : null}
-      {problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : shortReason(problem)}</p> : null}
+      {problem === CONNECT_MODEL_ANSWERS ? <ConnectModelNotice onOpen={onOpen} /> : problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : shortReason(problem)}</p> : null}
       {line.error ? <p className="c-note bad" role="alert">{isPreparationPending(line.error) ? preparationLabel(trunkName) : shortReason(line.error)}</p> : null}
       {draft.note ? <p className="c-note">{draft.note}</p> : null}
       {picks.length > 0 ? (
