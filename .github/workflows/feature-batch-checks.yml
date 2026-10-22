@@ -38,6 +38,7 @@ jobs:
       contents: read
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
+      max_parallel: ${{ steps.plan.outputs.max_parallel }}
     steps:
       - name: Check out the default branch (the planner comes only from here)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -62,6 +63,7 @@ jobs:
         # data. An empty matrix or one below the floors fails this job, so the feature jobs cannot be skipped.
         # Bootstrap: until the planner is on the default branch, the matrix is the floors written here (this file
         # is a reviewed gate file, and no PR code runs). Nothing is read from the PR's own planner.
+        # The planner also prints max_parallel (the PR matrix size, or 6 on main), so the cap tracks the plan.
         env:
           EVENT_NAME: ${{ github.event_name }}
         run: |
@@ -69,8 +71,10 @@ jobs:
             node base/scripts/feature-batch-ci-matrix.mjs "$EVENT_NAME" --named-dir "$GITHUB_WORKSPACE/pr/scripts/feature-batch-ci-named" >> "$GITHUB_OUTPUT"
           elif [ "$EVENT_NAME" = pull_request ]; then
             echo 'matrix={"include":[{"os":"ubuntu-latest","shard":"1/10","label":"1/10","scope":"all"},{"os":"ubuntu-latest","shard":"2/10","label":"2/10","scope":"all"},{"os":"ubuntu-latest","shard":"3/10","label":"3/10","scope":"all"},{"os":"ubuntu-latest","shard":"4/10","label":"4/10","scope":"all"},{"os":"ubuntu-latest","shard":"5/10","label":"5/10","scope":"all"},{"os":"ubuntu-latest","shard":"6/10","label":"6/10","scope":"all"},{"os":"ubuntu-latest","shard":"7/10","label":"7/10","scope":"all"},{"os":"ubuntu-latest","shard":"8/10","label":"8/10","scope":"all"},{"os":"ubuntu-latest","shard":"9/10","label":"9/10","scope":"all"},{"os":"ubuntu-latest","shard":"10/10","label":"10/10","scope":"all"},{"os":"windows-latest","shard":"1/1","label":"touched","scope":"touched"}]}' >> "$GITHUB_OUTPUT"
+            echo 'max_parallel=11' >> "$GITHUB_OUTPUT"
           else
             echo 'matrix={"include":[{"os":"ubuntu-latest","shard":"1/7","label":"1/7","scope":"all"},{"os":"ubuntu-latest","shard":"2/7","label":"2/7","scope":"all"},{"os":"ubuntu-latest","shard":"3/7","label":"3/7","scope":"all"},{"os":"ubuntu-latest","shard":"4/7","label":"4/7","scope":"all"},{"os":"ubuntu-latest","shard":"5/7","label":"5/7","scope":"all"},{"os":"ubuntu-latest","shard":"6/7","label":"6/7","scope":"all"},{"os":"ubuntu-latest","shard":"7/7","label":"7/7","scope":"all"},{"os":"windows-latest","shard":"1/11","label":"1/11","scope":"all"},{"os":"windows-latest","shard":"2/11","label":"2/11","scope":"all"},{"os":"windows-latest","shard":"3/11","label":"3/11","scope":"all"},{"os":"windows-latest","shard":"4/11","label":"4/11","scope":"all"},{"os":"windows-latest","shard":"5/11","label":"5/11","scope":"all"},{"os":"windows-latest","shard":"6/11","label":"6/11","scope":"all"},{"os":"windows-latest","shard":"7/11","label":"7/11","scope":"all"},{"os":"windows-latest","shard":"8/11","label":"8/11","scope":"all"},{"os":"windows-latest","shard":"9/11","label":"9/11","scope":"all"},{"os":"windows-latest","shard":"10/11","label":"10/11","scope":"all"},{"os":"windows-latest","shard":"11/11","label":"11/11","scope":"all"},{"os":"macos-latest","shard":"1/10","label":"1/10","scope":"all"},{"os":"macos-latest","shard":"2/10","label":"2/10","scope":"all"},{"os":"macos-latest","shard":"3/10","label":"3/10","scope":"all"},{"os":"macos-latest","shard":"4/10","label":"4/10","scope":"all"},{"os":"macos-latest","shard":"5/10","label":"5/10","scope":"all"},{"os":"macos-latest","shard":"6/10","label":"6/10","scope":"all"},{"os":"macos-latest","shard":"7/10","label":"7/10","scope":"all"},{"os":"macos-latest","shard":"8/10","label":"8/10","scope":"all"},{"os":"macos-latest","shard":"9/10","label":"9/10","scope":"all"},{"os":"macos-latest","shard":"10/10","label":"10/10","scope":"all"}]}' >> "$GITHUB_OUTPUT"
+            echo 'max_parallel=6' >> "$GITHUB_OUTPUT"
           fi
 
   feature-batch:
@@ -81,12 +85,12 @@ jobs:
     # scripts/feature-batch-ci-targets.mjs (shardCountFor), with the floors kept as minimums.
     # Pull requests: Linux shards, plus the touched Windows tests. Main and nightly: Linux, Windows and macOS.
     # Pull requests run every shard at once (one wave), so the slowest shard sets the wall-clock, not two waves.
-    # The PR cap must stay at or above the PR matrix size (checked in scripts/feature-batch-ci-shard.test.mjs).
-    # Main and nightly keep max-parallel 6: extra jobs there add setup cost and queue time, not PR wait.
+    # max-parallel comes from the planner (featureBatchMaxParallel in scripts/feature-batch-ci-matrix.mjs):
+    # the full PR matrix size on pull requests, 6 on main and nightly. Do not hard-code it here.
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: ${{ github.event_name == 'pull_request' && 20 || 6 }}
+      max-parallel: ${{ fromJSON(needs.plan.outputs.max_parallel || (github.event_name == 'pull_request' && '20' || '6')) }}
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       CI: 'true'
