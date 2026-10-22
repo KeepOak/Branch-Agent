@@ -130,6 +130,9 @@ jobs:
           path: |
             assist-shot/assist-settings.png
             assist-shot/assist-settings.xml
+            assist-shot/assist-picker.png
+            assist-shot/assist-picker.xml
+            assist-shot/assist-role.log
             assist-shot/am-start.log
           if-no-files-found: warn
           retention-days: 14
