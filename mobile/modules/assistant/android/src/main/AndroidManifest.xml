@@ -13,5 +13,35 @@
         <category android:name="android.intent.category.DEFAULT" />
       </intent-filter>
     </activity>
+
+    <!-- Also declared by withAssistant.js into the app manifest. Keep both in sync so a missed prebuild still ships a valid voice-interaction stack. -->
+    <service
+      android:name=".BranchVoiceInteractionService"
+      android:exported="true"
+      android:label="@string/branch_assistant_label"
+      android:permission="android.permission.BIND_VOICE_INTERACTION">
+      <intent-filter>
+        <action android:name="android.service.voice.VoiceInteractionService" />
+      </intent-filter>
+      <meta-data
+        android:name="android.voice_interaction"
+        android:resource="@xml/branch_voice_interaction_service" />
+    </service>
+    <service
+      android:name=".BranchVoiceInteractionSessionService"
+      android:exported="true"
+      android:permission="android.permission.BIND_VOICE_INTERACTION" />
+    <service
+      android:name=".BranchRecognitionService"
+      android:exported="true"
+      android:label="@string/branch_assistant_label"
+      android:permission="android.permission.BIND_RECOGNITION_SERVICE">
+      <intent-filter>
+        <action android:name="android.speech.RecognitionService" />
+      </intent-filter>
+      <meta-data
+        android:name="android.speech"
+        android:resource="@xml/branch_recognition_service" />
+    </service>
   </application>
 </manifest>
