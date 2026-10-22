@@ -24,6 +24,12 @@ export interface RefreshOptions {
    */
   underSwapGuard?: (replace: () => Promise<boolean>) => Promise<boolean | undefined>;
   log?: (line: string) => void;
+  /**
+   * The engine folder that is running and healthy now, or undefined. Given it, a pending journal whose target is
+   * already that engine (an applied update whose confirmation was lost) is confirmed and cleared, so it no longer
+   * blocks the next update check.
+   */
+  servingEngine?: () => string | undefined;
   /** Clear an offered version as soon as the manifest withdraws it, before Windows folder moves retry. */
   onWithdrawal?: (version: string) => void;
 }
@@ -788,8 +794,40 @@ async function replaceStaged(cfg: DesktopConfig, held: Publication, release: Com
  * Does not stop/restart the running engine. The desktop owns activation after staging.
  * An unfinished publication, or a staged one that cannot be replaced, blocks the desktop component too.
  */
+/**
+ * A "pending" journal whose target engine is already the published, recorded and serving engine was applied; only its
+ * confirmation was lost (a crash or a failed write after the swap). Confirm it now, under the swap guard when there is
+ * one, so the updater moves on to newer builds instead of waiting behind a build that already runs.
+ */
+export async function settleAppliedComponentUpdate(cfg: DesktopConfig, options: RefreshOptions = {}): Promise<boolean> {
+  const serving = options.servingEngine?.();
+  if (!serving) return false;
+  const stale = async () => {
+    const pending = await publication(cfg);
+    if (pending?.phase !== "pending" || !pending.engineNext) return undefined;
+    if (!await sameFolder(serving, pending.engineNext)) return undefined;
+    if (await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== pending.engineNext) return undefined;
+    const running = await readOrEmpty(join(cfg.dataDir, "engine-running.txt"));
+    if (!running || !await sameFolder(running, pending.engineNext)) return undefined;
+    return pending;
+  };
+  const settle = async (): Promise<boolean> => {
+    const pending = await stale();
+    if (!pending) return false;
+    options.log?.(`Update ${pending.version} is already running; clearing its stale pending record`);
+    await confirmComponentUpdate(cfg, error => options.log?.(`Confirmed update cleanup: ${String(error)}`), false, options.log);
+    return true;
+  };
+  // Read first without the swap guard: taking it on every check would hold auto-apply ("replace the staged update in
+  // progress") and the engine watchdog off on each refresh, even when there is no stale record to clear.
+  if (!await stale()) return false;
+  if (options.underSwapGuard) return await options.underSwapGuard(settle) === true;
+  return settle();
+}
+
 async function refresh(cfg: DesktopConfig, request: typeof fetch, options: RefreshOptions): Promise<boolean> {
   await recoverComponentUpdate(cfg);
+  await settleAppliedComponentUpdate(cfg, options);
   const held = await publication(cfg);
   if (held && (!options.underSwapGuard || !await replaceable(cfg, held))) return false;
   const release = await readComponentManifest(request);
