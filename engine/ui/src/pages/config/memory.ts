@@ -16,6 +16,7 @@ import { t } from "../../i18n/index.ts";
 import { registerMemoryImportEnglish } from "../../i18n/locales/en-memory-import.ts";
 import { registerPluginManagementEnglish } from "../../i18n/locales/en-plugin-management.ts";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import type { PluginCatalogItem } from "../../lib/plugins/index.ts";
 import {
   selectedEngineId,
@@ -62,9 +63,7 @@ export function buildMemoryEngineOptions(
     .map((plugin) => ({
       id: plugin.id,
       label:
-        plugin.id === DEFAULT_MEMORY_ENGINE_ID
-          ? t("memoryPage.engine.branchMemory")
-          : plugin.name,
+        plugin.id === DEFAULT_MEMORY_ENGINE_ID ? t("memoryPage.engine.branchMemory") : plugin.name,
       available: true,
     }))
     .toSorted((left, right) => {
@@ -80,8 +79,7 @@ export function buildMemoryEngineOptions(
   if (selected && !options.some((option) => option.id === selected)) {
     const unavailable = {
       id: selected,
-      label:
-        selected === DEFAULT_MEMORY_ENGINE_ID ? t("memoryPage.engine.branchMemory") : selected,
+      label: selected === DEFAULT_MEMORY_ENGINE_ID ? t("memoryPage.engine.branchMemory") : selected,
       available: false,
     };
     if (selected === DEFAULT_MEMORY_ENGINE_ID) {
@@ -192,7 +190,7 @@ type MemoryViewProps = {
 
 const MEMORY_PANEL_ID = "memory-settings-panel";
 
-const MEMORY_DOCS_URL = "https://docs.openclaw.ai/concepts/memory";
+const MEMORY_DOCS_URL = BRANCH_HELP_URL;
 
 const MEMORY_ENGINE_OFF = "";
 

@@ -306,7 +306,7 @@ describe("native device settings pages", () => {
     const page = await mount("branch-device-page", capability);
     expect(page.querySelector(".page-title")?.textContent).toContain("This Mac");
     expect(page.querySelector<HTMLAnchorElement>(".page-subtitle a")?.href).toBe(
-      "https://docs.openclaw.ai/platforms/macos",
+      "https://keepoak.com/help",
     );
     expect(row(page, "Quick Chat shortcut").textContent).toContain("Not set");
     const iconStyles = row(page, "Dock icon").querySelector<HTMLSelectElement>("select")!;

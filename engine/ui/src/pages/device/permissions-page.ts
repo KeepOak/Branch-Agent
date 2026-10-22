@@ -18,6 +18,7 @@ import {
 import { renderSettingsWorkspace } from "../../components/settings-workspace.ts";
 import { t } from "../../i18n/index.ts";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 
@@ -148,7 +149,7 @@ class DevicePermissionsPage extends BranchLightDomElement {
       ${renderSettingsPageHeader({
         title: titleForRoute("device-permissions"),
         subtitle: html`${t(snapshot?.device.platform === "macos" ? "configPage.deviceSettings.permissionsIntro" : "configPage.deviceSettings.permissionsIntroIos")}
-        ${renderLearnMoreLink(`https://docs.openclaw.ai/platforms/${snapshot?.device.platform ?? "macos"}`)}`,
+        ${renderLearnMoreLink(BRANCH_HELP_URL)}`,
       })}
       ${renderSettingsWorkspace(renderSettingsPage(body))}
     `;

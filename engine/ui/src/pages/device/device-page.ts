@@ -24,10 +24,11 @@ import { renderSettingsWorkspace } from "../../components/settings-workspace.ts"
 import { t } from "../../i18n/index.ts";
 import { registerAppsEnglish } from "../../i18n/locales/en-apps.ts";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
-import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 import "../../components/native-chrome-setup.ts";
 import "./device.css";
+import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 
 registerAppsEnglish();
 registerSettingsEnglish();
@@ -225,7 +226,7 @@ class DevicePage extends BranchLightDomElement {
                   rel="noopener noreferrer"
                   >${t("appsPage.ctaChromeWebStore")}</a
                 >
-                ${renderLearnMoreLink("https://docs.openclaw.ai/tools/chrome-extension")}
+                ${renderLearnMoreLink(BRANCH_HELP_URL)}
               </div>
             </div>
           `,
@@ -565,7 +566,7 @@ class DevicePage extends BranchLightDomElement {
       ${renderSettingsPageHeader({
         title: t(deviceSettingsGroupLabelKey(snapshot)),
         subtitle: html`${t(snapshot?.device.platform === "macos" ? "configPage.deviceSettings.intro" : "configPage.deviceSettings.introIos")}
-        ${renderLearnMoreLink(`https://docs.openclaw.ai/platforms/${snapshot?.device.platform ?? "macos"}`)}`,
+        ${renderLearnMoreLink(BRANCH_HELP_URL)}`,
       })}
       ${renderSettingsWorkspace(renderSettingsPage(body))}
     `;

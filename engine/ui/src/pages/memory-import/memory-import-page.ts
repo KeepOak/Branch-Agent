@@ -14,6 +14,7 @@ import { renderSettingsWorkspace } from "../../components/settings-workspace.ts"
 import { listSelectableAgents } from "../../lib/agents/display.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { isGatewayMethodAdvertised } from "../../lib/gateway-methods.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { generateUUID } from "../../lib/uuid.ts";
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
@@ -25,7 +26,7 @@ import {
 } from "./view.ts";
 
 const SESSION_BACKFILL_BATCH_DAYS = 14;
-const MEMORY_IMPORT_DOCS_URL = "https://docs.openclaw.ai/install/migrating";
+const MEMORY_IMPORT_DOCS_URL = BRANCH_HELP_URL;
 
 type PendingMemoryImport = {
   providerId: string;

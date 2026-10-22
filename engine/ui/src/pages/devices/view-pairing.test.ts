@@ -11,11 +11,11 @@ describe("device pairing dialog", () => {
   it.each([
     {
       access: "full" as const,
-      href: "https://docs.openclaw.ai/channels/pairing#pair-from-the-control-ui-recommended",
+      href: "https://keepoak.com/help",
     },
     {
       access: "node" as const,
-      href: "https://docs.openclaw.ai/gateway/pairing#one-paste-node-pairing",
+      href: "https://keepoak.com/help",
     },
   ])("links $access setup help to the matching workflow", ({ access, href }) => {
     // Light DOM is enough: awaiting branch-modal-dialog updateComplete hung

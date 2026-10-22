@@ -19,6 +19,7 @@ import {
 import { renderWizardStepControls } from "../../components/wizard-step-controls.ts";
 import { t } from "../../i18n/index.ts";
 import { registerModelAccountsEnglish } from "../../i18n/locales/en-model-accounts.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 
 registerModelAccountsEnglish();
 
@@ -351,9 +352,7 @@ export function renderModelAccountsSection(
               <button type="button" class="btn btn--sm" @click=${context.onConnectionSettings}>
                 ${t("profilePage.modelAccounts.connectionSettings")}
               </button>
-              ${renderLearnMoreLink(
-                "https://docs.openclaw.ai/concepts/multi-user#per-person-model-accounts",
-              )}
+              ${renderLearnMoreLink(BRANCH_HELP_URL)}
             `,
           })
     }

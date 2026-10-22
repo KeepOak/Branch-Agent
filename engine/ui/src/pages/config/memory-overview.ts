@@ -1,12 +1,6 @@
 import { html, nothing } from "lit";
 import type { DoctorMemoryStatusPayload } from "../../../../src/gateway/server-methods/doctor.ts";
 import { shellLayoutTraits } from "../../app/shell-layout-traits.ts";
-import { trellisPetSeed } from "../../components/trellis-pet-contract.ts";
-import {
-  createTrellisPetLook,
-  trellisLookStyle,
-  renderTrellisSvg,
-} from "../../components/trellis-pet-look.ts";
 import {
   renderSettingsNavRow,
   renderSettingsRow,
@@ -14,10 +8,17 @@ import {
   renderSettingsStatus,
   renderSettingsValue,
 } from "../../components/settings-ui.ts";
+import { trellisPetSeed } from "../../components/trellis-pet-contract.ts";
+import {
+  createTrellisPetLook,
+  trellisLookStyle,
+  renderTrellisSvg,
+} from "../../components/trellis-pet-look.ts";
 import { t } from "../../i18n/index.ts";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
 import { formatRelativeTimestamp } from "../../lib/format.ts";
 import "../../styles/memory-overview.css";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import type { MemoryEngineSelection } from "./memory-schema.ts";
 import { selectedEngineId } from "./memory-schema.ts";
 
@@ -185,7 +186,7 @@ function renderSchedule(rings: RingsStatus) {
         title: t("memoryPage.overview.schedule.learnMore"),
         control: html`<a
           class="memory-page__link"
-          href="https://docs.openclaw.ai/concepts/dreaming"
+          href=${BRANCH_HELP_URL}
           target="_blank"
           rel="noreferrer noopener"
           >${t("memoryPage.overview.schedule.openDocs")}</a

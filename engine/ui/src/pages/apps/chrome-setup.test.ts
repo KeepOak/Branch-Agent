@@ -108,7 +108,7 @@ describe("Apps local Chrome setup", () => {
     expect(setup.querySelector("button")).toBeNull();
     expect([...card.querySelectorAll("a")].map((a) => a.href)).toEqual([
       "https://chromewebstore.google.com/detail/branch/kcdjddhmeafeomebliikmbpblkmkfoig",
-      "https://docs.openclaw.ai/tools/chrome-extension",
+      "https://keepoak.com/help",
     ]);
   });
   it.each([0, 1])("recognizes an installed extension with %i enabled profiles", async (enabled) => {

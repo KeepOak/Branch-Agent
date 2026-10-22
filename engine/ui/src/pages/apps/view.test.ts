@@ -8,22 +8,22 @@ import { renderApps } from "./view.ts";
 
 const EXPECTED_EXTERNAL_HREFS = [
   "https://apps.apple.com/app/branch-ai-that-does-things/id6780396132",
-  "https://docs.openclaw.ai/platforms/ios",
+  "https://keepoak.com/help",
   "https://play.google.com/store/apps/details?id=ai.branch.app",
-  "https://docs.openclaw.ai/platforms/android",
-  "https://docs.openclaw.ai/platforms/ios",
-  "https://docs.openclaw.ai/platforms/android",
+  "https://keepoak.com/help",
+  "https://keepoak.com/help",
+  "https://keepoak.com/help",
   "https://github.com/openclaw/openclaw/releases",
-  "https://docs.openclaw.ai/platforms/macos",
+  "https://keepoak.com/help",
   "https://github.com/openclaw/openclaw-windows-node/releases/latest",
-  "https://docs.openclaw.ai/platforms/windows",
+  "https://keepoak.com/help",
   "https://github.com/openclaw/openclaw/releases",
-  "https://docs.openclaw.ai/platforms/linux",
+  "https://keepoak.com/help",
   "https://chromewebstore.google.com/detail/branch/kcdjddhmeafeomebliikmbpblkmkfoig",
-  "https://docs.openclaw.ai/tools/chrome-extension",
+  "https://keepoak.com/help",
   "https://clawhub.ai",
   "https://discord.gg/clawd",
-  "https://docs.openclaw.ai",
+  "https://keepoak.com/help",
 ];
 
 describe("renderApps", () => {

@@ -248,8 +248,8 @@ suite.define(() => {
         expect(dialogBox?.width).toBeLessThanOrEqual(390);
         await captureUiProof(page, "01-mobile-access-selection.png");
 
-        const helpDocumentUrl = "https://docs.openclaw.ai/channels/pairing";
-        const helpUrl = `${helpDocumentUrl}#pair-from-the-control-ui-recommended`;
+        const helpDocumentUrl = "https://keepoak.com/help";
+        const helpUrl = helpDocumentUrl;
         // This mocked scenario owns navigation, not docs-site availability. Context
         // routing also covers the popup's first request, which page routing misses.
         await page.context().route(helpDocumentUrl, (route) =>

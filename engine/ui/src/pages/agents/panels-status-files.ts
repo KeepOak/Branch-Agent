@@ -19,6 +19,7 @@ import type { AgentContext } from "../../lib/agents/display.ts";
 import type { AgentsPanel } from "../../lib/agents/index.ts";
 import { resolveChannelExtras as resolveChannelExtrasFromConfig } from "../../lib/channels/index.ts";
 import { formatRelativeTimestamp } from "../../lib/format.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import {
   formatCronPayload,
   formatCronSchedule,
@@ -165,7 +166,7 @@ export function renderAgentChannels(params: {
                     ? html`
                         <a
                           class="settings-row__value"
-                          href="https://docs.openclaw.ai/channels"
+                          href=${BRANCH_HELP_URL}
                           target="_blank"
                           rel="noopener"
                           >${t("agents.channels.setupGuide")}</a

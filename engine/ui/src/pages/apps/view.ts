@@ -8,6 +8,7 @@ import { registerAppsEnglish } from "../../i18n/locales/en-apps.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "../../lib/external-link.ts";
 import "../../styles/apps.css";
 import "../../components/native-chrome-setup.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { COMMUNITY_DISCORD_URL } from "../../lib/product-links.ts";
 import { appsBrandIcons } from "./brand-icons.ts";
 
@@ -45,8 +46,8 @@ const externalCta = (href: string, labelKey: string): AppCardCta => ({
   href,
   labelKey,
 });
-const docsCta = (path: string) =>
-  externalCta(`https://docs.openclaw.ai${path}`, "appsPage.ctaDocs");
+// Branch help has no per-platform pages yet, so every platform's Docs button opens it.
+const DOCS_CTA = externalCta(BRANCH_HELP_URL, "appsPage.ctaDocs");
 
 const APP_SECTIONS: readonly AppSection[] = [
   {
@@ -63,7 +64,7 @@ const APP_SECTIONS: readonly AppSection[] = [
             "https://apps.apple.com/app/branch-ai-that-does-things/id6780396132",
             "appsPage.ctaAppStore",
           ),
-          docsCta("/platforms/ios"),
+          DOCS_CTA,
         ],
       },
       {
@@ -76,7 +77,7 @@ const APP_SECTIONS: readonly AppSection[] = [
             "https://play.google.com/store/apps/details?id=ai.branch.app",
             "appsPage.ctaPlayStore",
           ),
-          docsCta("/platforms/android"),
+          DOCS_CTA,
         ],
       },
     ],
@@ -91,7 +92,7 @@ const APP_SECTIONS: readonly AppSection[] = [
         icon: appsBrandIcons.watch,
         copyKey: "appsPage.cards.appleWatch",
         badge: "appsPage.badgeBundledIos",
-        ctas: [docsCta("/platforms/ios")],
+        ctas: [DOCS_CTA],
       },
       {
         id: "wear-os",
@@ -99,7 +100,7 @@ const APP_SECTIONS: readonly AppSection[] = [
         icon: appsBrandIcons.watch,
         copyKey: "appsPage.cards.wearOs",
         badge: "appsPage.badgeBundledAndroid",
-        ctas: [docsCta("/platforms/android")],
+        ctas: [DOCS_CTA],
       },
     ],
   },
@@ -114,7 +115,7 @@ const APP_SECTIONS: readonly AppSection[] = [
         copyKey: "appsPage.cards.macos",
         ctas: [
           externalCta("https://github.com/openclaw/openclaw/releases", "appsPage.ctaDownload"),
-          docsCta("/platforms/macos"),
+          DOCS_CTA,
         ],
       },
       {
@@ -127,7 +128,7 @@ const APP_SECTIONS: readonly AppSection[] = [
             "https://github.com/openclaw/openclaw-windows-node/releases/latest",
             "appsPage.ctaDownload",
           ),
-          docsCta("/platforms/windows"),
+          DOCS_CTA,
         ],
       },
       {
@@ -137,7 +138,7 @@ const APP_SECTIONS: readonly AppSection[] = [
         copyKey: "appsPage.cards.linux",
         ctas: [
           externalCta("https://github.com/openclaw/openclaw/releases", "appsPage.ctaDownload"),
-          docsCta("/platforms/linux"),
+          DOCS_CTA,
         ],
       },
     ],
@@ -156,7 +157,7 @@ const APP_SECTIONS: readonly AppSection[] = [
             "https://chromewebstore.google.com/detail/branch/kcdjddhmeafeomebliikmbpblkmkfoig",
             "appsPage.ctaChromeWebStore",
           ),
-          externalCta("https://docs.openclaw.ai/tools/chrome-extension", "appsPage.ctaSetupGuide"),
+          externalCta(BRANCH_HELP_URL, "appsPage.ctaSetupGuide"),
         ],
       },
       {
@@ -179,7 +180,7 @@ const COMMUNITY_LINKS: ReadonlyArray<{ href: string; icon: TemplateResult; label
     icon: brandIcons.discord,
     labelKey: "appsPage.linkDiscord",
   },
-  { href: "https://docs.openclaw.ai", icon: icons.book, labelKey: "appsPage.linkDocs" },
+  { href: BRANCH_HELP_URL, icon: icons.book, labelKey: "appsPage.linkDocs" },
 ];
 
 function renderCta(cta: AppCardCta, index: number, props: AppsProps) {

@@ -12,12 +12,12 @@ import type {
 } from "../../lib/device-pair-setup.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "../../lib/external-link.ts";
 import { formatCountdown } from "../../lib/format.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 
 registerDevicesEnglish();
 
-const MOBILE_PAIRING_DOCS_URL =
-  "https://docs.openclaw.ai/channels/pairing#pair-from-the-control-ui-recommended";
-const NODE_PAIRING_DOCS_URL = "https://docs.openclaw.ai/gateway/pairing#one-paste-node-pairing";
+const MOBILE_PAIRING_DOCS_URL = BRANCH_HELP_URL;
+const NODE_PAIRING_DOCS_URL = BRANCH_HELP_URL;
 const PAIRING_ACCESS_OPTIONS = [
   ["full", "devices.pairing.fullAccess", "devices.pairing.fullAccessHint"],
   ["limited", "devices.pairing.limitedAccess", "devices.pairing.limitedAccessHint"],
@@ -183,16 +183,16 @@ export function renderDevicePairSetup(props: DevicePairSetupProps) {
                             setupExpired
                               ? nothing
                               : html`<div class="login-gate__command">
-                                  <code>${nodeCommand}</code>
-                                  ${renderCopyButton(nodeCommand, t("connection.help.copyCommand"))}
-                                </div>
-                                <p class="device-pair-setup__hint">
-                                  When prompted, paste this setup code:
-                                </p>
-                                <div class="login-gate__command">
-                                  <code>${nodeSetupCode}</code>
-                                  ${renderCopyButton(nodeSetupCode, copyLabel)}
-                                </div>`
+                                    <code>${nodeCommand}</code>
+                                    ${renderCopyButton(nodeCommand, t("connection.help.copyCommand"))}
+                                  </div>
+                                  <p class="device-pair-setup__hint">
+                                    When prompted, paste this setup code:
+                                  </p>
+                                  <div class="login-gate__command">
+                                    <code>${nodeSetupCode}</code>
+                                    ${renderCopyButton(nodeSetupCode, copyLabel)}
+                                  </div>`
                           }
                           <p class="device-pair-setup__waiting" role="timer" aria-live="off">
                             ${

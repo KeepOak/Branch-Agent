@@ -5,6 +5,7 @@ import { routeIdFromPath } from "../app-route-paths.ts";
 import { resolveControlUiPaths } from "../app/browser.ts";
 import { i18n, t } from "../i18n/index.ts";
 import { truncateText } from "../lib/format.ts";
+import { BRANCH_HELP_URL } from "../lib/help-links.ts";
 import { parseGitHubLinkTarget } from "./github-link-target.ts";
 import { createAssistantTranscriptPlainTextFallback } from "./markdown-assistant-transcript.ts";
 import { renderMarkdownCodeBlock } from "./markdown-code-blocks.ts";
@@ -114,7 +115,9 @@ const MARKDOWN_CHAR_LIMIT = 140_000;
 // up to 50k characters enter this 500-entry LRU, keeping memory bounded.
 const MARKDOWN_CACHE_LIMIT = 500;
 const MARKDOWN_CACHE_MAX_CHARS = 50_000;
-const DOCS_ORIGIN = "https://docs.openclaw.ai";
+// Root-relative doc links in replies ("/channels/telegram") are parsed against this base, then sent to Branch
+// help: there are no per-topic Branch docs to map them to.
+const DOCS_ORIGIN = "https://docs.invalid";
 const DOCS_ROOT_SEGMENTS = new Set([
   "agent-runtime-architecture",
   "announcements",
@@ -433,7 +436,7 @@ function normalizeDocsRootHref(href: string): string {
     if (isControlUiResourcePath(resourceSegments)) {
       return href;
     }
-    return isDocsRootPath(normalizedPath, segments) ? url.href : href;
+    return isDocsRootPath(normalizedPath, segments) ? BRANCH_HELP_URL : href;
   } catch {
     return href;
   }

@@ -13,8 +13,9 @@ import {
 import "../../components/web-awesome.ts";
 import { i18n, t } from "../../i18n/index.ts";
 import { formatRelativeTimestamp } from "../../lib/format.ts";
-import type { SecretsStoreDraft } from "../../lib/secrets-store/index.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import "../../styles/secrets-store.css";
+import type { SecretsStoreDraft } from "../../lib/secrets-store/index.ts";
 
 export type SecretsDialogMode = "add" | "edit" | null;
 
@@ -53,7 +54,7 @@ type SecretsStoreViewProps = {
   onDelete: (entry: SecretStoreEntry) => void;
 };
 
-const DOCS_URL = "https://docs.openclaw.ai/gateway/secrets#shared-secret-store";
+const DOCS_URL = BRANCH_HELP_URL;
 const SECRET_MASK = "••••••••";
 
 function updatedLabel(entry: SecretStoreEntry): string {

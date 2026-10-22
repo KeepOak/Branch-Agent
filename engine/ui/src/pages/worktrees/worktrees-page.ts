@@ -27,6 +27,7 @@ import { t } from "../../i18n/index.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { formatRelativeTimestamp } from "../../lib/format.ts";
 import type { GatewayConnectionScope } from "../../lib/gateway-connection-lifecycle.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { shouldHandleNavigationClick } from "../../lib/navigation-click.ts";
 import { pathDisplayName } from "../../lib/path-display.ts";
 import {
@@ -35,10 +36,10 @@ import {
 } from "../../lib/sessions/route-navigation.ts";
 import { createManagedWorktree } from "../../lib/worktrees/create-worktree.ts";
 import { gcManagedWorktrees } from "../../lib/worktrees/gc-worktrees.ts";
-import { GatewayPageController } from "../../lit/gateway-page-controller.ts";
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
+import { GatewayPageController } from "../../lit/gateway-page-controller.ts";
 
-const WORKTREES_DOCS_URL = "https://docs.openclaw.ai/concepts/managed-worktrees";
+const WORKTREES_DOCS_URL = BRANCH_HELP_URL;
 
 class WorktreesPage extends BranchLightDomElement {
   @consume({ context: applicationContext, subscribe: true })

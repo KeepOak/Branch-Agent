@@ -1,5 +1,5 @@
-import { consume } from "@lit/context";
 import { asOptionalRecord } from "@branch/normalization-core/record-coerce";
+import { consume } from "@lit/context";
 import { html, nothing } from "lit";
 import { state } from "lit/decorators.js";
 import type {
@@ -39,16 +39,17 @@ import { t } from "../../i18n/index.ts";
 import { registerModelAccountsEnglish } from "../../i18n/locales/en-model-accounts.ts";
 import { registerProfileEnglish } from "../../i18n/locales/en-profile.ts";
 import { formatUiError } from "../../lib/format-error.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { IdentityAvatarController } from "../../lib/identity-avatar-loader.ts";
 import { assertUploadsEnabled } from "../../lib/uploads.ts";
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
-import { PROFILE_SETTINGS_TARGET_IDS } from "../config/settings-targets.ts";
 import "../../styles/profile.css";
 import "../../features/github-connections/github-connections.ts";
-import { processProfileAvatar, ProfileAvatarError } from "./avatar-processing.ts";
+import { PROFILE_SETTINGS_TARGET_IDS } from "../config/settings-targets.ts";
 import "./model-accounts.ts";
 import "./personal-instructions.ts";
+import { processProfileAvatar, ProfileAvatarError } from "./avatar-processing.ts";
 import { renderIdentitySection } from "./identity-section.ts";
 import { userProfileAvatarUrl } from "./profile-avatar-url.ts";
 import { renderProfileHero } from "./profile-hero.ts";
@@ -56,7 +57,7 @@ import { renderProfileHero } from "./profile-hero.ts";
 registerModelAccountsEnglish();
 registerProfileEnglish();
 
-const PROFILE_DOCS_URL = "https://docs.openclaw.ai/concepts/user-model";
+const PROFILE_DOCS_URL = BRANCH_HELP_URL;
 
 type IdentityChange =
   | { kind: "display-name" }

@@ -26,6 +26,7 @@ import {
   type RuntimeConfigState,
 } from "../../lib/config/config-state-model.ts";
 import type { CronState } from "../../lib/cron/types.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import type { ModelCatalogPresentation } from "../../lib/model-catalog-store.ts";
 import type { AgentFilesViewState } from "./files.ts";
 import { renderAgentFiles } from "./panels-files.ts";
@@ -36,7 +37,7 @@ import { renderAgentChannels, renderAgentCron } from "./panels-status-files.ts";
 import { renderAgentTools } from "./panels-tools-skills.ts";
 import type { AgentSkillsState } from "./skills.ts";
 
-const AGENTS_DOCS_URL = "https://docs.openclaw.ai/concepts/multi-agent";
+const AGENTS_DOCS_URL = BRANCH_HELP_URL;
 
 type AgentsProps = {
   access: {

@@ -140,7 +140,7 @@ describe("LabsPage", () => {
     expect(page.querySelector(".settings-page__intro")).toBeNull();
     const introLink = page.querySelector<HTMLAnchorElement>(".page-subtitle a");
     expect(introLink?.textContent?.trim()).toBe("Learn more");
-    expect(introLink?.href).toBe("https://docs.openclaw.ai/concepts/experimental-features");
+    expect(introLink?.href).toBe("https://keepoak.com/help");
     expect(page.querySelectorAll(".settings-row wa-switch")).toHaveLength(LAB_FEATURES.length);
     expect(page.textContent).toContain("Code Mode");
     for (const title of [
