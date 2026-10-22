@@ -235,7 +235,16 @@ async function runMainCronCase(
         enqueued: true,
       });
     } else {
-      scheduledTick = Promise.resolve(clock.advanceTo(job.state.nextRunAtMs!));
+      // Cron arms its host timer asynchronously (startup catch-up, store persist), so on
+      // slow runners advancing first can find no timer armed and the run never fires.
+      // Wait for the scheduler's own arm event for this due time, then advance.
+      const dueAtMs = job.state.nextRunAtMs!;
+      await withTestTimeout(
+        clock.whenArmedBy(dueAtMs),
+        10_000,
+        "cron did not arm a host timer for the scheduled run",
+      );
+      scheduledTick = Promise.resolve(clock.advanceTo(dueAtMs));
     }
 
     const [terminal, followUp] = await withTestTimeout(
