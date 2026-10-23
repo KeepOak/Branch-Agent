@@ -33,4 +33,23 @@ describe("empty chat with no usable model", () => {
     expect(host.textContent).not.toMatch(/gpt-6-astra/i);
     expect(host.querySelector(".starters")).toBeNull();
   });
+
+  it("Connect a model click opens Add an account", async () => {
+    const opened = vi.fn();
+    window.addEventListener("branch:navigate-settings", opened as EventListener);
+    sessionStorage.clear();
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => { root!.render(<EmptyState onStart={() => {}} />); });
+    await act(async () => {
+      [...host.querySelectorAll("button")].find((b) => b.textContent === "Connect a model")!.click();
+    });
+    expect(sessionStorage.getItem("branch.openAddAccount")).toBe("1");
+    expect(opened).toHaveBeenCalled();
+    const detail = (opened.mock.calls[0]![0] as CustomEvent).detail;
+    expect(detail).toMatchObject({ page: "accounts" });
+    expect(host.querySelector("button.connect-model-btn")).toBeTruthy();
+    window.removeEventListener("branch:navigate-settings", opened as EventListener);
+  });
 });

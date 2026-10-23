@@ -100,10 +100,14 @@ describe("Add an account catalogue", () => {
     expect(namesIn(before, "Your plan")).not.toEqual(expect.arrayContaining(["Ollama", "LM Studio", "OpenCode"]));
     expect(namesIn(before, "On this computer")).toEqual(expect.arrayContaining(["Ollama", "LM Studio", "OpenCode"]));
     expect(namesIn(before, "Your plan").filter((name) => name === "MiniMax")).toHaveLength(1);
-    expect(namesIn(before, "A key").filter((name) => name === "Google Gemini")).toHaveLength(1);
+    expect(namesIn(before, "Your plan")).toContain("Google Gemini");
+    expect(namesIn(before, "A key")).not.toContain("Google Gemini");
     expect(before.tiles.map((tile) => tile.name)).toEqual(expect.arrayContaining(["Microsoft Foundry", "OpenCode Go", "Ollama Cloud", "Hugging Face", "LiteLLM"]));
     expect(before.tiles.some((tile) => tile.section === "A key" && tile.sub.includes("a key"))).toBe(true);
     expect(before.tiles.some((tile) => tile.section === "Your plan" && tile.sub.includes("your plan"))).toBe(true);
+    for (const name of namesIn(before, "Your plan")) {
+      expect(namesIn(before, "A key"), `${name} must not also appear under A key`).not.toContain(name);
+    }
 
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].find((button) => button.textContent?.includes("Claude"))!.click());
     expect(dialog()?.querySelector("h2")?.textContent).toMatch(/Claude/);
