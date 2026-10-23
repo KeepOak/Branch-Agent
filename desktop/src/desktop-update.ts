@@ -20,6 +20,7 @@ import {
   windowsInstallRoot, windowsVersionFolderName,
 } from "./desktop-update-helper";
 import { assertNoMacSigningDowngrade, chooseStagedMacBundle, ensureMacApplicationsInstall, readMacSignature } from "./mac-applications";
+import { resolveLinuxDebUpdateInstall } from "./linux-deb-install";
 import {
   WINDOWS_APP_USER_MODEL_ID, WINDOWS_LAUNCHER, WINDOWS_LAUNCHER_EXE, WINDOWS_LAUNCHER_RESOURCE, WINDOWS_LAUNCHER_REVISION,
   WINDOWS_LAUNCHER_REVISION_FILE, windowsLauncherScript, windowsShortcutNeedsLauncher,
@@ -29,6 +30,11 @@ export {
   WINDOWS_POINTER, WINDOWS_PREVIOUS, isWindowsVersionFolder, pruneWindowsVersionFolders,
   usesWindowsVersionedLayout, windowsInstallRoot, windowsVersionFolderName,
 } from "./desktop-update-helper";
+export {
+  LINUX_DEB_SYSTEM_ROOT, LINUX_DEB_USER_APP_SEGMENTS, canWriteDirectory, ensureLinuxDebUserInstall,
+  isLinuxDebSystemInstall, linuxDebSystemHandoff, linuxDebUserAppDir, linuxDebUserDataHome,
+  linuxDebUserDesktopInstall, resolveLinuxDebUpdateInstall,
+} from "./linux-deb-install";
 export {
   WINDOWS_LAUNCHER, WINDOWS_LAUNCHER_EXE, WINDOWS_LAUNCHER_RESOURCE, WINDOWS_LAUNCHER_REVISION, windowsLaunchTarget,
   windowsLauncherScript, windowsShortcutNeedsLauncher,
@@ -297,6 +303,7 @@ async function stageAppImageUpdate(cfg: DesktopConfig, release: ComponentRelease
 /** Downloads, verifies and extracts the release's desktop component; nothing in the running app changes. */
 export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, install?: DesktopInstall): Promise<boolean> {
   if (!install) return false;
+  install = resolveLinuxDebUpdateInstall(install);
   const held = await readDesktopJournal(cfg);
   // A staged app that was never applied is replaced by a newer release. Left alone, it would be applied after the newer
   // engine and window, and roll the app back to an older build.
@@ -408,6 +415,7 @@ function startHelper(node: string, args: string[], env: NodeJS.ProcessEnv): Prom
  * Restart) ignores the wait after a swap that found the app still in use.
  */
 export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopInstall, helperSource: string, args: string[] = [], explicit = false): Promise<boolean> {
+  install = resolveLinuxDebUpdateInstall(install);
   let journal: DesktopJournal | undefined;
   try { journal = await readDesktopJournal(cfg); } catch (error) {
     return discardStagedUpdate(cfg, undefined, `the record is unreadable (${error instanceof Error ? error.message : String(error)})`);

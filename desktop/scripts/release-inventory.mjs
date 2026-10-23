@@ -12,12 +12,31 @@ export async function fileDigest(file) {
   return { sha256: hash.digest("hex"), bytes: (await stat(file)).size };
 }
 
-/** The one installer a target may ship, or null when it has none. Linux ships a per-user AppImage. */
+/** The versioned installer install.sh and the in-app updater fetch. Linux's is the AppImage. */
 export function installerAssetName(version, target) {
   if (target === "win32-x64") return `Branch-Agent-Setup-${version}-win32-x64.exe`;
   if (target === "darwin-arm64") return `Branch-Agent-${version}-darwin-arm64.dmg`;
   if (target === "linux-x64") return `Branch-Agent-${version}-linux-x64.AppImage`;
   return null;
+}
+
+/**
+ * Stable download names for the README and the release notes. Same bytes as the versioned Windows and macOS
+ * installers. On Linux this is the .deb, not a copy of the AppImage. The versioned names stay so updater feeds
+ * and the one-line installers keep matching a single SHA256SUMS entry.
+ */
+export const PUBLIC_DOWNLOAD_NAMES = Object.freeze({
+  "win32-x64": "Branch-Setup-Windows.exe",
+  "darwin-arm64": "Branch-macOS.dmg",
+  "linux-x64": "Branch-Linux.deb",
+});
+
+export function publicDownloadName(target) {
+  return PUBLIC_DOWNLOAD_NAMES[target] ?? null;
+}
+
+export function allowedInstallerNames(version, target) {
+  return [installerAssetName(version, target), publicDownloadName(target)].filter(Boolean);
 }
 
 /**
@@ -30,7 +49,7 @@ export async function recordInstaller(directory, target, file) {
   validateReleaseIdentity(proof);
   assert.equal(`${proof.platform}-${proof.arch}`, target, "Installer target differs from the release proof");
   const name = basename(file);
-  assert.equal(name, installerAssetName(proof.version, target), "Unexpected installer for this target");
+  assert.ok(allowedInstallerNames(proof.version, target).includes(name), "Unexpected installer for this target");
   assert(!Object.hasOwn(proof.assets ?? {}, name), "Installer name collides with a release asset");
   proof.installers = { ...proof.installers, [name]: await fileDigest(file) };
   await writeFile(proofFile, JSON.stringify(proof, null, 2) + "\n");
@@ -127,8 +146,9 @@ async function verifyInstallers(directory, proof, inventory) {
   const installers = proof.installers ?? {};
   assert(installers && typeof installers === "object" && !Array.isArray(installers), "Invalid installer inventory");
   const target = `${proof.platform}-${proof.arch}`;
+  const allowed = new Set(allowedInstallerNames(proof.version, target));
   for (const [name, expected] of Object.entries(installers)) {
-    assert.equal(name, installerAssetName(proof.version, target), "Unexpected installer for this target");
+    assert.ok(allowed.has(name), "Unexpected installer for this target");
     assert(!Object.hasOwn(proof.assets, name) && !inventory.has(name), "Installer name collides with a release asset");
     let actual;
     try { actual = await fileDigest(join(directory, name)); }
