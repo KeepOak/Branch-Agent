@@ -160,15 +160,10 @@ jobs:
           ram-size: 2048
           cores: 2
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # android-emulator-runner runs each script line as its own `sh -c`.
           script: |
             node mobile/scripts/apk-reinstall-survives.mjs --adb-reinstall
-            if [ "${SKIP_ASSIST:-}" = "true" ] || [ -z "${ASSIST_APK:-}" ]; then
-              echo "Skipping signed-APK assistant install (no release APK available)."
-              exit 0
-            fi
-            adb uninstall com.keepoak.branch
-            adb install "$ASSIST_APK"
-            bash mobile/scripts/assist-settings-shot.sh assist-shot
+            bash mobile/scripts/assist-signed-apk-install.sh
 
       - name: Upload the default assistant screenshot
         if: always()
