@@ -47,7 +47,7 @@ test("active runs, approvals, streams, and file drafts reset the idle hold", asy
   await f.controller.tick();
   f.setActivity({ activeRuns: 2 }); f.advance(AUTO_APPLY_GAP_MS); await f.controller.tick();
   assert.deepEqual(f.restarts, []);
-  assert.ok(f.logs.some(line => line.includes("waiting for 2 active runs")));
+  assert.ok(f.logs.some(line => line.includes("waiting for 2 active runs") && line.includes("retrying in 30s")));
   f.setActivity({ activeRuns: 0, pendingApprovals: 1 }); await f.controller.tick();
   f.setActivity({ pendingApprovals: 0, streaming: true }); await f.controller.tick();
   f.setActivity({ streaming: false, unsavedDraftFiles: true }); await f.controller.tick();
@@ -63,6 +63,69 @@ test("setting off preserves manual Restart and rejected releases are not retried
   f.setEnabled(true); f.setVersion(null); await f.controller.tick();
   f.advance(AUTO_APPLY_GAP_MS); await f.controller.tick();
   assert.deepEqual(f.restarts, []);
+});
+
+async function flushAutoApply() {
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+}
+
+test("awaiting Restart still schedules the next check", async () => {
+  const logs = [];
+  let polls = 0;
+  let tickFn;
+  const controller = createAutoApplyUpdate({
+    pendingVersion: async () => { polls++; return "0.4.5"; },
+    enabled: () => false,
+    activity: async () => ({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    restart: async () => {},
+    log: line => logs.push(line),
+    interval: fn => { tickFn = fn; return 1; },
+    clear: () => {},
+  });
+  controller.start();
+  await flushAutoApply();
+  assert.ok(logs.some(line => line.includes("off; awaiting Restart") && line.includes("retrying in 30s")), logs.join("\n"));
+  assert.equal(typeof tickFn, "function", "the next check is scheduled while awaiting Restart");
+  const before = polls;
+  tickFn();
+  await flushAutoApply();
+  assert.ok(polls > before, `the scheduled check ran while awaiting Restart, got ${polls}`);
+  controller.stop();
+});
+
+test("after applying a build, awaiting Restart still schedules the next check", async () => {
+  // Mac log: a build applied at 08:01 UTC, then `auto-apply: off; awaiting Restart`, then ten hours of silence.
+  const logs = [];
+  const restarts = [];
+  let polls = 0;
+  let tickFn;
+  let now = 0;
+  const controller = createAutoApplyUpdate({
+    pendingVersion: async () => { polls++; return "0.4.5"; },
+    enabled: () => true,
+    activity: async () => ({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    restart: async version => { restarts.push(version); },
+    log: line => logs.push(line),
+    now: () => now,
+    interval: fn => { tickFn = fn; return 1; },
+    clear: () => {},
+  });
+  await controller.tick();
+  now += AUTO_APPLY_GAP_MS - 1;
+  await controller.tick();
+  assert.deepEqual(restarts, []);
+  now += 1;
+  await controller.tick();
+  assert.deepEqual(restarts, ["0.4.5"], "the build applied in place");
+  controller.start();
+  await flushAutoApply();
+  assert.ok(logs.some(line => line.includes("off; awaiting Restart") && line.includes("retrying in 30s")), logs.join("\n"));
+  assert.equal(typeof tickFn, "function", "the next check is scheduled in the awaiting-Restart state");
+  const before = polls;
+  tickFn();
+  await flushAutoApply();
+  assert.ok(polls > before, `the next check ran after applying, in the awaiting-Restart state, got ${polls}`);
+  controller.stop();
 });
 
 test("staged idle is rechecked every 30 seconds and releases every ten minutes", () => {

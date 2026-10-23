@@ -32,6 +32,8 @@ export interface RefreshOptions {
   servingEngine?: () => string | undefined;
   /** Clear an offered version as soon as the manifest withdraws it, before Windows folder moves retry. */
   onWithdrawal?: (version: string) => void;
+  /** Caps a hung refresh; tests shorten it. Production uses COMPONENT_UPDATE_CHECK_TIMEOUT_MS. */
+  timeoutMs?: number;
 }
 
 interface ReleaseIdentity { version: string; engineSha256: string; windowSha256: string }
@@ -652,8 +654,12 @@ export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> 
   if ((await publication(cfg))?.phase === "prepared") await rollbackComponentUpdate(cfg);
 }
 
-export async function readComponentManifest(request: typeof fetch = fetch): Promise<ComponentRelease> {
-  const response = await request(RELEASE_MANIFEST_URL, { signal: AbortSignal.timeout(30_000), cache: "no-store" });
+export async function readComponentManifest(request: typeof fetch = fetch, signal?: AbortSignal): Promise<ComponentRelease> {
+  const timeout = AbortSignal.timeout(30_000);
+  const response = await request(RELEASE_MANIFEST_URL, {
+    signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
+    cache: "no-store",
+  });
   trustedDownloadResponse(response);
   let body = "";
   for await (const chunk of response.body!) {
@@ -686,6 +692,7 @@ async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typ
       if (!(await stat(join(directory, file))).isFile()) throw new Error(`Incomplete release: ${file}`);
     }
     await replaceFile(join(directory, "window", "branch-build.txt"), `${release.version}\n`);
+    if (stageHold) await stageHold(cfg);
     return { engine: join(directory, "engine"), window: join(directory, "window") };
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
 }
@@ -725,6 +732,10 @@ async function removeStagedFolder(cfg: DesktopConfig, folder: string, log?: (lin
 /** Test seam: replaces the folder move used by a staged-pair replacement (to fail it part way). */
 let replacementMove: typeof move = move;
 export function setReplacementMoveForTests(fn: typeof move | undefined): void { replacementMove = fn ?? move; }
+
+/** Test seam: pause after archives are on disk, before publish, so a timed-out check can ignore abort and still finish. */
+let stageHold: ((cfg: DesktopConfig) => Promise<void>) | undefined;
+export function setStageHoldForTests(fn: ((cfg: DesktopConfig) => Promise<void>) | undefined): void { stageHold = fn; }
 
 /**
  * Replaces a staged, never-started engine/window pair with a newer release in place, under one journal. The running
@@ -987,7 +998,7 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
   await settleAppliedComponentUpdate(cfg, options);
   const held = await publication(cfg);
   if (held && (!options.underSwapGuard || !await replaceable(cfg, held))) return false;
-  const release = await readComponentManifest(request);
+  const release = await readComponentManifest(request, options.signal);
   if (held) {
     const result = await replaceStaged(cfg, held, release, request, options);
     if (!result.ok) return false;
@@ -1015,17 +1026,82 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
   return staged;
 }
 
-const refreshes = new WeakMap<DesktopConfig, Promise<boolean>>();
+/**
+ * One in-flight inner `refresh()` per config. The outer promise may reject on timeout while `inner` is still
+ * running (extract/swap do not always honor abort). Later callers wait for `inner` to settle, then start their own
+ * check, so a late result cannot overwrite a newer staged update.
+ */
+interface InFlightRefresh {
+  inner: Promise<unknown>;
+  outer: Promise<boolean>;
+  timedOut: boolean;
+}
+const refreshes = new WeakMap<DesktopConfig, InFlightRefresh>();
 export const COMPONENT_UPDATE_CHECK_MS = 10 * 60 * 1000;
 /** Copies downloaded while the app runs are pruned on this cadence, not only at the next restart. */
 export const UPDATE_CLEANUP_MS = 60 * 60 * 1000;
+/**
+ * A hung GitHub fetch (or a swap that never returns) must not occupy the checker forever. Two 5-minute archive
+ * downloads plus extract still fit; a fetch left open after the engine is killed does not.
+ */
+export const COMPONENT_UPDATE_CHECK_TIMEOUT_MS = 15 * 60 * 1000;
+/** Caps probation cleanup after each periodic check so a stuck folder delete cannot occupy `busy`. */
+export const PRUNE_ENDED_PROBATION_TIMEOUT_MS = 60 * 1000;
 /** Startup, periodic and manual staging share one publication owner. */
 export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch = fetch, options: RefreshOptions = {}): Promise<boolean> {
   const active = refreshes.get(cfg);
-  if (active) return active;
-  const next = refresh(cfg, request, options).finally(() => refreshes.delete(cfg));
-  refreshes.set(cfg, next);
-  return next;
+  if (active) {
+    if (!active.timedOut) return active.outer;
+    return active.inner.then(
+      () => refreshComponentUpdate(cfg, request, options),
+      () => refreshComponentUpdate(cfg, request, options),
+    );
+  }
+  const timeoutMs = options.timeoutMs ?? COMPONENT_UPDATE_CHECK_TIMEOUT_MS;
+  const ac = new AbortController();
+  const signal = options.signal ? AbortSignal.any([options.signal, ac.signal]) : ac.signal;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const work = refresh(cfg, request, { ...options, signal });
+  const entry: InFlightRefresh = { inner: work, outer: Promise.resolve(false), timedOut: false };
+  const outer = new Promise<boolean>((resolve, reject) => {
+    timer = setTimeout(() => {
+      timer = undefined;
+      entry.timedOut = true;
+      ac.abort();
+      reject(new Error("Component update check timed out"));
+    }, timeoutMs);
+    timer.unref?.();
+    void work.then(
+      value => {
+        if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
+        if (refreshes.get(cfg) === entry) refreshes.delete(cfg);
+        resolve(value);
+      },
+      error => {
+        if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
+        if (refreshes.get(cfg) === entry) refreshes.delete(cfg);
+        reject(error);
+      },
+    );
+  });
+  entry.outer = outer;
+  refreshes.set(cfg, entry);
+  return outer;
+}
+
+export type StopComponentWatch = (() => void) & { notifyStopped(): void };
+
+export interface WatchComponentUpdatesOptions extends RefreshOptions {
+  onStaged?: () => void;
+  setTimeout?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
+  clearTimeout?: (id: ReturnType<typeof setTimeout>) => void;
+  checkMs?: number;
+  /** Caps `pruneEndedProbation` after each check. Production uses PRUNE_ENDED_PROBATION_TIMEOUT_MS. */
+  pruneTimeoutMs?: number;
+  /** Tests replace the GitHub refresh. Production always uses refreshComponentUpdate. */
+  refresh?: (cfg: DesktopConfig, request: typeof fetch, options: RefreshOptions) => Promise<boolean>;
+  /** Tests replace probation cleanup. Production always uses pruneEndedProbation. */
+  prune?: (cfg: DesktopConfig, log: (line: string) => void) => Promise<boolean>;
 }
 
 export interface UpdateCleanupWatchOptions {
@@ -1067,30 +1143,97 @@ export async function readComponentUpdateStatus(cfg: DesktopConfig): Promise<Com
     publicationInProgress: Boolean(pending), previousWindowDir };
 }
 
-export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void, options: RefreshOptions & { onStaged?: () => void } = {}): () => void {
+export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void, options: WatchComponentUpdatesOptions = {}): StopComponentWatch {
   let busy = false;
   let stopped = false;
   let first = true;
-  const tick = async (): Promise<void> => {
-    if (busy || stopped) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let hangTimer: ReturnType<typeof setTimeout> | undefined;
+  const waitMs = options.checkMs ?? COMPONENT_UPDATE_CHECK_MS;
+  const hangMs = options.timeoutMs ?? COMPONENT_UPDATE_CHECK_TIMEOUT_MS;
+  const schedule = options.setTimeout ?? setTimeout;
+  const cancel = options.clearTimeout ?? clearTimeout;
+  const runRefresh = options.refresh ?? refreshComponentUpdate;
+  const retryLine = (why: string): void => {
+    const secs = Math.max(1, Math.round(waitMs / 1000));
+    log(`${why}; next check in ${secs}s`);
+  };
+  const arm = (delayMs: number): void => {
+    if (stopped) return;
+    if (timer !== undefined) cancel(timer);
+    timer = schedule(() => {
+      timer = undefined;
+      void run();
+    }, delayMs);
+  };
+  const run = async (): Promise<void> => {
+    if (stopped) return;
+    // Arm the next pass before this one starts, so a hung check, error or lease-overrun stop never leaves the loop silent.
+    arm(waitMs);
+    if (busy) {
+      retryLine("Component update check still running");
+      return;
+    }
     busy = true;
+    const ac = new AbortController();
+    const signal = options.signal ? AbortSignal.any([options.signal, ac.signal]) : ac.signal;
     try {
       // A download kept while the update lock was held is staged on this check, including the next tick.
-      if (await refreshComponentUpdate(cfg, fetch, options)) {
+      const staged = await new Promise<boolean>((resolve, reject) => {
+        hangTimer = schedule(() => {
+          hangTimer = undefined;
+          ac.abort();
+          reject(new Error("timed out"));
+        }, hangMs);
+        void runRefresh(cfg, fetch, { ...options, signal, timeoutMs: hangMs }).then(resolve, reject);
+      });
+      if (staged) {
         log("Verified GitHub component update staged");
         options.onStaged?.();
       }
-    }
-    catch (error) { log(`Component update check: ${error instanceof Error ? error.message : String(error)}`); }
-    finally {
-      // Startup already pruned: later checks remove a previous engine whose probation has ended since.
-      if (!first && !stopped) await pruneEndedProbation(cfg, log);
-      first = false;
-      busy = false;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      retryLine(/timed out/i.test(message) ? "Component update check timed out" : `Component update check: ${message}`);
+    } finally {
+      if (hangTimer !== undefined) cancel(hangTimer);
+      hangTimer = undefined;
+      try {
+        // Startup already pruned: later checks remove a previous engine whose probation has ended since.
+        if (!first && !stopped) {
+          const pruneMs = options.pruneTimeoutMs ?? PRUNE_ENDED_PROBATION_TIMEOUT_MS;
+          const runPrune = options.prune ?? pruneEndedProbation;
+          let pruneTimer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await new Promise<void>((resolve, reject) => {
+              pruneTimer = schedule(() => reject(new Error("timed out")), pruneMs);
+              void runPrune(cfg, log).then(() => resolve(), reject);
+            });
+          } catch (error) {
+            log(`Update cleanup: ${error instanceof Error ? error.message : String(error)}`);
+          } finally {
+            if (pruneTimer !== undefined) cancel(pruneTimer);
+          }
+        }
+      } finally {
+        first = false;
+        busy = false;
+      }
     }
   };
-  void tick();
-  const timer = setInterval(() => void tick(), COMPONENT_UPDATE_CHECK_MS);
+  const notifyStopped = (): void => {
+    if (stopped) return;
+    retryLine("Component update check: engine stopped past its lease");
+    arm(waitMs);
+  };
+  void run();
   const stopCleanup = watchUpdateCleanup(cfg, log);
-  return () => { stopped = true; clearInterval(timer); stopCleanup(); };
+  const stop = (): void => {
+    stopped = true;
+    if (timer !== undefined) cancel(timer);
+    if (hangTimer !== undefined) cancel(hangTimer);
+    timer = undefined;
+    hangTimer = undefined;
+    stopCleanup();
+  };
+  return Object.assign(stop, { notifyStopped });
 }

@@ -1586,3 +1586,239 @@ test("a pending record is never cleared while a different engine serves", async 
   assert.equal(JSON.parse(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8")).version, "0.4.3");
   assert.equal(await source.rollbackComponentUpdate(cfg), true); await unchanged(cfg);
 }));
+
+function fakeCheckTimers() {
+  const timers = [];
+  let nextId = 1;
+  let now = 0;
+  return {
+    setTimeout: (fn, ms) => {
+      const id = nextId++;
+      timers.push({ id, at: now + ms, fn });
+      return id;
+    },
+    clearTimeout: (id) => {
+      const index = timers.findIndex(timer => timer.id === id);
+      if (index >= 0) timers.splice(index, 1);
+    },
+    pending: () => timers.length,
+    async advance(ms) {
+      now += ms;
+      const due = timers.filter(timer => timer.at <= now).sort((a, b) => a.at - b.at);
+      for (const timer of due) {
+        const index = timers.indexOf(timer);
+        if (index < 0) continue;
+        timers.splice(index, 1);
+        timer.fn();
+      }
+      await Promise.resolve();
+      await Promise.resolve();
+    },
+  };
+}
+
+test("a lease-overrun stop still schedules the next update check", async () => fixture(async ({ cfg }) => {
+  let checks = 0;
+  let releaseFirst;
+  const first = new Promise(resolve => { releaseFirst = resolve; });
+  const logs = [];
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, line => logs.push(line), {
+    checkMs: 20,
+    refresh: async () => {
+      checks++;
+      if (checks === 1) await first;
+      return false;
+    },
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(checks, 1, "first check started");
+    assert.ok(clock.pending() >= 1, "the next check is armed while the first still runs");
+    stop.notifyStopped();
+    assert.ok(logs.some(line => line.includes("engine stopped past its lease") && line.includes("next check in")), logs.join("\n"));
+    await clock.advance(20);
+    assert.ok(logs.some(line => line.includes("still running") && line.includes("next check in")), logs.join("\n"));
+    releaseFirst();
+    await first;
+    await Promise.resolve();
+    await Promise.resolve();
+    await clock.advance(20);
+    assert.ok(checks >= 2, `next check after the lease-overrun stop, got ${checks}`);
+  } finally { stop(); }
+}));
+
+test("a staged update awaiting Restart still schedules the next GitHub check", async () => fixture(async ({ cfg }) => {
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({
+    phase: "staged", version: "0.4.5", kind: "asar", staged: join(cfg.dataDir, "x", "app.asar"), target: "app.asar",
+  }));
+  assert.equal((await source.readComponentUpdateStatus(cfg)).pendingVersion, "0.4.5");
+  let checks = 0;
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, () => {}, {
+    checkMs: 20,
+    refresh: async () => {
+      checks++;
+      return false;
+    },
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(checks, 1, "first check ran in the awaiting-Restart state");
+    assert.ok(clock.pending() >= 1, "the next check is armed while a staged update awaits Restart");
+    await clock.advance(20);
+    assert.ok(checks >= 2, `checker kept its schedule while awaiting Restart, got ${checks}`);
+  } finally { stop(); }
+}));
+
+test("a hung update check times out and the next scheduled check still runs", async () => fixture(async ({ cfg }) => {
+  let checks = 0;
+  const logs = [];
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, line => logs.push(line), {
+    checkMs: 20,
+    timeoutMs: 30,
+    refresh: async () => {
+      checks++;
+      if (checks === 1) return new Promise(() => {});
+      return false;
+    },
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    assert.equal(checks, 1, "first check started and never resolved");
+    await clock.advance(20);
+    assert.equal(checks, 1, "busy hang does not start a second overlapping check");
+    assert.ok(logs.some(line => line.includes("still running") && line.includes("next check in")), logs.join("\n"));
+    await clock.advance(10);
+    assert.ok(logs.some(line => line.includes("timed out") && line.includes("next check in")), logs.join("\n"));
+    await clock.advance(20);
+    assert.ok(checks >= 2, `later scheduled check ran after the hang timed out, got ${checks}`);
+  } finally { stop(); }
+}));
+
+test("a timed-out check that ignores abort cannot overwrite a later staged update", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const newer = await newerRelease(context);
+  const pending = async () => (await source.readComponentUpdateStatus(cfg)).componentsPendingVersion;
+  let released = false;
+  let releaseHold = () => {};
+  const hold = new Promise(resolve => { releaseHold = resolve; });
+  let signalHeld = () => {};
+  const held = new Promise(resolve => { signalHeld = resolve; });
+  let heldOnce = false;
+  let secondFetchedDuringHold = false;
+  source.setStageHoldForTests(async (holdCfg) => {
+    if (holdCfg !== cfg) return;
+    if (heldOnce) return;
+    heldOnce = true;
+    signalHeld();
+    await hold;
+  });
+  const secondRequest = async (url) => {
+    if (!released) secondFetchedDuringHold = true;
+    return newer.request(url);
+  };
+  try {
+    const first = source.refreshComponentUpdate(cfg, request, { timeoutMs: 1000, underSwapGuard: freeGuard });
+    const reached = await Promise.race([
+      held.then(() => "held"),
+      first.then(() => "resolved", () => "rejected"),
+    ]);
+    assert.equal(reached, "held", "first check must finish downloading before the timeout");
+    await assert.rejects(first, /timed out/);
+    const second = source.refreshComponentUpdate(cfg, secondRequest, { timeoutMs: 15_000, underSwapGuard: freeGuard });
+    // Concurrent path (old refreshes map): check 2 stages 0.4.4 while check 1 is still held.
+    // Wait path (fix): check 2 does not fetch until check 1 is released, so this poll times out.
+    const until = Date.now() + 1000;
+    let stagedDuringHold = false;
+    while (Date.now() < until) {
+      if (await pending() === "0.4.4") { stagedDuringHold = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    // Check 2 started during the hold but has not published yet: wait for that publish before letting check 1 finish.
+    if (secondFetchedDuringHold && !stagedDuringHold) {
+      const extra = Date.now() + 5000;
+      while (Date.now() < extra) {
+        if (await pending() === "0.4.4") { stagedDuringHold = true; break; }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    }
+    if (stagedDuringHold) await second;
+    released = true;
+    releaseHold();
+    assert.equal(await second, true, "check 2 must stage its update");
+    // Check 1's ignored-abort publish runs after the hold; wait long enough for it to land if it will overwrite.
+    const lateUntil = Date.now() + 500;
+    while (Date.now() < lateUntil) await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal(await pending(), "0.4.4", "check 2's staged update must remain after check 1 finishes");
+    if (!stagedDuringHold) {
+      assert.equal(secondFetchedDuringHold, false, "check 2 waited for check 1 to settle before staging");
+    }
+  } finally {
+    source.setStageHoldForTests(undefined);
+    released = true;
+    releaseHold();
+  }
+}));
+
+test("a hung probation prune times out and the next update check still runs", async () => fixture(async ({ cfg }) => {
+  let checks = 0;
+  const logs = [];
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, line => logs.push(line), {
+    checkMs: 20,
+    pruneTimeoutMs: 15,
+    refresh: async () => {
+      checks++;
+      return false;
+    },
+    prune: async () => new Promise(() => {}),
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(checks, 1);
+    await clock.advance(20);
+    assert.equal(checks, 2, "second check runs prune after the first");
+    await clock.advance(15);
+    assert.ok(logs.some(line => line.includes("Update cleanup") && /timed out/i.test(line)), logs.join("\n"));
+    await clock.advance(20);
+    assert.ok(checks >= 3, `next check after prune timed out, got ${checks}`);
+  } finally { stop(); }
+}));
+
+test("an update-check error still leaves a pending retry", async () => fixture(async ({ cfg }) => {
+  let checks = 0;
+  const logs = [];
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, line => logs.push(line), {
+    checkMs: 15,
+    refresh: async () => {
+      checks++;
+      if (checks === 1) throw new Error("manifest unreachable");
+      return false;
+    },
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(checks, 1);
+    assert.ok(logs.some(line => line.includes("manifest unreachable") && line.includes("next check in")), logs.join("\n"));
+    await clock.advance(15);
+    assert.ok(checks >= 2, `retry after the error, got ${checks}`);
+  } finally { stop(); }
+}));
