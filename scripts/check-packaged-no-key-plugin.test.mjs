@@ -104,3 +104,24 @@ test("ENGINE_ROOT fails when llama-cpp plugin dir is absent", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("engine package.json ships llama-cpp in the stock dist (no files exclusion)", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const packageJson = JSON.parse(
+    await readFile(join(ROOT, "engine/package.json"), "utf8"),
+  );
+  const files = packageJson.files ?? [];
+  assert.equal(
+    files.includes("!dist/extensions/llama-cpp/**"),
+    false,
+    'engine/package.json must not exclude dist/extensions/llama-cpp (FreeModelSetup / #1090 needs it stock)',
+  );
+  // Peer local providers already ship; keep the contract explicit.
+  for (const id of ["ollama", "lmstudio", "vllm", "sglang"]) {
+    assert.equal(
+      files.includes(`!dist/extensions/${id}/**`),
+      false,
+      `stock local provider ${id} must remain packaged`,
+    );
+  }
+});
