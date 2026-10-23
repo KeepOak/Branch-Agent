@@ -4,7 +4,9 @@ import type { RowEntry } from "../kit";
 const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "models", title, sec, group: sec.startsWith("Per connection") ? "Per account" : sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 
 export const MODELS_ROWS: RowEntry[] = [
-  ...rows("Defaults", 0, ["Reading pictures", "Everyday answers", "Planning and hard problems", "Quick and cheap jobs", "Summaries", "If the model fails"]),
+  ...rows("Defaults", 0, ["Reading pictures", "Everyday answers", "Quick and cheap jobs", "Summaries", "If the model fails"]),
+  // Coming (#1093): Planning shows only at Technical (Ctl isComingWhy / COMING_FROM).
+  ...rows("Defaults", 2, ["Planning and hard problems"]),
   ...rows("Second opinion", 0, ["Ask a second model on hard questions"]),
   ...rows("Media", 0, ["Make pictures", "Make short videos"]),
   ...rows("Any model, more", 1, ["Add pictures and tools to any model"]),
