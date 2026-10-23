@@ -1,13 +1,14 @@
-// The plain pre-connect screens (WINDOW-GAPS 8a): before the window talks to a Branch, setup's first two steps run
-// here, "Hi, I'm Branch." then "Where should Branch run?", with the address and key, the approval wait and the
+// The plain pre-connect screens (WINDOW-GAPS 8a): before the window talks to a Branch, setup's first-run Welcome
+// runs here — "Hi, I'm Branch." — with Where Branch runs behind Change, and the address, key, approval wait and
 // connect problems in plain words (DESIGN-SPEC §4.8.1.1–2, "Can't connect: reason and fix steps").
 import { useState } from "react";
+import { notify } from "../shell/notify";
 import { connectProblem } from "./connect-problems";
 import { isLocalTarget, readPreConnect, readTargetName, savePreConnect } from "./pre-connect-state";
 import { SetupShell } from "./SetupShell";
 import { WelcomeHero } from "./SetupBrand";
-import { RemoteForm, WelcomeBody, WhereBody } from "./steps-early";
-import { FIRST_RUN_STEP_NAMES, type Where } from "./setup-model";
+import { RemoteForm, SETUP_LATER_TOAST, WELCOME_LEDE, WelcomeBody, WhereSheet } from "./steps-early";
+import { FIRST_RUN_STEP_NAMES, SETUP_LATER_KEY, SETUP_TALK_KEY, type Where } from "./setup-model";
 
 export type PreConnectState =
   | { kind: "address" }
@@ -61,57 +62,107 @@ function Failed({ host, address, code, message }: { host: string; address: strin
   );
 }
 
+function markLater(): void {
+  try {
+    sessionStorage.setItem(SETUP_LATER_KEY, "1");
+  } catch {
+    // session blocked: setup may open again after connect
+  }
+}
+
 export function PreConnect({ local, address, state, busy, startAtWhere, onConnect, onRetry }: Props) {
   const target = address ?? local;
   const host = isLocalTarget(target) ? "This computer" : readTargetName(target) ?? "That computer";
   const saved = readPreConnect();
-  const [promise, setPromise] = useState(saved?.promise ?? false);
-  const [where, setWhere] = useState<Where>(startAtWhere ? "remote" : (saved?.where ?? (address && address !== local ? "remote" : "this")));
-  const [step, setStep] = useState(saved?.promise || startAtWhere ? 1 : 0);
-  const remember = (patch: { promise?: boolean; where?: Where }) => savePreConnect({ promise: promise || Boolean(startAtWhere), where, ...patch });
-  const url = where === "remote" ? (address && address !== local ? address : "") : local;
+  const [where, setWhere] = useState<Where>(saved?.where ?? (address && address !== local ? "remote" : "this"));
+  const [choosing, setChoosing] = useState(Boolean(startAtWhere));
+  const remember = (patch: { where?: Where }) => savePreConnect({ promise: true, where, ...patch });
+  const remote = where === "remote" || where === "keepoak";
+  const url = remote ? (address && address !== local ? address : "") : local;
   const connect = (to: string, key: string) => (remember({}), onConnect(to, key));
-  const form = <RemoteForm key={where} address={url} busy={busy} problem={null} onConnect={connect} />;
+  /** App set a local address but startKey found no preload or stored token — ask for the key on this card. */
+  const askKey = !remote && state.kind === "key";
+  const later = () => {
+    remember({ where: "this" });
+    markLater();
+    notify(SETUP_LATER_TOAST);
+    onConnect(local, "");
+  };
+  /** Set up by talking: connect to this computer as Get started does; setup then opens the talking conversation. */
+  const talk = () => {
+    try {
+      sessionStorage.setItem(SETUP_TALK_KEY, "1");
+    } catch {
+      // session blocked: setup opens at its Welcome instead
+    }
+    start();
+  };
+  const start = () => {
+    remember({});
+    if (remote) return;
+    onConnect(local, "");
+  };
   return (
     <SetupShell
-      steps={FIRST_RUN_STEP_NAMES}
-      step={0}
-      reach={0}
-      reachReason="Connect to a Branch first."
-      done={() => false}
-      onStep={() => undefined}
-      onSkip={null}
-      title={step === 0 ? "Hi, I’m Branch." : "Where should Branch run?"}
-      lede={step === 0 ? "An assistant that lives on this computer, with Trunks that each take one job. This takes about three minutes; you can change everything later." : "The engine and the gateway live here. You can talk to it from anywhere."}
-      hero={step === 0 ? <WelcomeHero /> : undefined}
-      footer={
-        step === 0 ? (
+        variant="card"
+        steps={FIRST_RUN_STEP_NAMES}
+        step={0}
+        reach={0}
+        reachReason="Connect to a Branch first."
+        done={() => false}
+        onStep={() => undefined}
+        onSkip={later}
+        sheet={choosing}
+        overlay={
+          choosing ? (
+            <WhereSheet
+              where={where}
+              onPick={(w) => {
+                setWhere(w);
+                remember({ where: w });
+                setChoosing(false);
+              }}
+              onClose={() => setChoosing(false)}
+            />
+          ) : null
+        }
+        title="Hi, I’m Branch."
+        lede={WELCOME_LEDE}
+        hero={<WelcomeHero />}
+        later={
           <>
-            <span className="grow" />
-            <button type="button" className="btn pri" data-testid="setup-next" disabled={!promise} onClick={() => (remember({}), setStep(1))}>
-              Start
+            <button type="button" className="link" data-testid="setup-talk-welcome" disabled={busy} onClick={talk}>
+              Set up by talking
+            </button>
+            <span aria-hidden="true">·</span>
+            <button type="button" className="link" data-testid="setup-skip" onClick={later}>
+              Set up later
             </button>
           </>
-        ) : (
-          <>
-            <button type="button" className="btn ghost" onClick={() => setStep(0)}>
-              Back
-            </button>
-            <span className="grow" />
-          </>
-        )
-      }
-    >
-      {step === 0 ? (
-        <WelcomeBody promise={promise} onPromise={(v) => (setPromise(v), remember({ promise: v }))} />
-      ) : (
-        <>
-          <WhereBody where={where} onWhere={(w) => (setWhere(w), remember({ where: w }))} />
-          {state.kind === "pairing" ? <Pairing host={host} address={target} onRetry={onRetry} /> : null}
-          {state.kind === "failed" ? <Failed host={host} address={target} code={state.code} message={state.message} /> : null}
-          {state.kind !== "pairing" ? form : null}
-        </>
-      )}
+        }
+        footer={
+          remote || askKey ? (
+            <>
+              <span />
+              <button type="submit" form="setup-remote" className="btn pri ob-go" data-testid="setup-next" disabled={busy}>
+                {busy ? "Connecting…" : "Get started"}
+              </button>
+            </>
+          ) : (
+            <>
+              <span />
+              <button type="button" className="btn pri ob-go" data-testid="setup-next" onClick={start}>
+                Get started
+              </button>
+            </>
+          )
+        }
+      >
+        <WelcomeBody where={where} onChangeWhere={() => setChoosing(true)} />
+        {state.kind === "pairing" ? <Pairing host={host} address={target} onRetry={onRetry} /> : null}
+        {state.kind === "failed" ? <Failed host={host} address={target} code={state.code} message={state.message} /> : null}
+        {askKey ? <RemoteForm formId="setup-remote" hideSubmit hideAddress address={local} busy={busy} problem={null} onConnect={connect} /> : null}
+        {remote && state.kind !== "pairing" ? <RemoteForm key={where} formId="setup-remote" hideSubmit address={url} busy={busy} problem={null} onConnect={connect} /> : null}
     </SetupShell>
   );
 }
