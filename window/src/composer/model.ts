@@ -120,7 +120,6 @@ export function groupModels(models: readonly ModelChoice[], query: string): Arra
   const q = query.trim().toLowerCase();
   const groups = new Map<string, ModelChoice[]>();
   for (const m of models) {
-    if (m.available === false) continue;
     if (q && !`${m.name} ${m.id} ${m.provider}`.toLowerCase().includes(q)) {
       continue;
     }

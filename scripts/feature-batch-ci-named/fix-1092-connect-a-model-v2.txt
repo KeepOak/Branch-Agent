@@ -1,0 +1,7 @@
+window:src/composer/ConnectModelNotice.test.tsx
+window:src/composer/connect-model.test.ts
+window:src/composer/send-blocked.test.tsx
+window:src/places/settings/set1/add-account.test.ts
+window:src/screens/composer/send-blocked.test.tsx
+window:src/screens/composer/Composer.test.tsx
+window:src/places/settings/set1/add-account-dialog.test.tsx
