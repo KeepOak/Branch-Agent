@@ -4,7 +4,7 @@
 // (desktop/INSTALLERS.md, "Left for the owner"); until then the installers are built unsigned and the log says so.
 //   node desktop/scripts/release-installers.mjs --assets <release-assets> --version <version> --target <target> --out <dir>
 // win32-x64: a per-user Inno Setup installer (no admin prompt; each update lands in a version folder under that root).
-// darwin-arm64: a .dmg holding the already-signed Branch Agent.app and an Applications link.
+// darwin-arm64 and darwin-x64: a .dmg holding the already-signed Branch Agent.app and an Applications link.
 // linux-x64: a per-user AppImage (install.sh puts it at ~/.local/bin/branch-agent), built with a pinned appimagetool.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -12,7 +12,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSy
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { installerAssetName, recordInstaller } from "./release-inventory.mjs";
+import { installerAssetName, publicDownloadName, recordInstaller } from "./release-inventory.mjs";
 import { createSigner, statusLine } from "./release-signing.mjs";
 import { WINDOWS_APP_USER_MODEL_ID, WINDOWS_LAUNCHER, WINDOWS_LAUNCHER_EXE, WINDOWS_LAUNCHER_RESOURCE, WINDOWS_LAUNCHER_REVISION,
   WINDOWS_LAUNCHER_REVISION_FILE, WINDOWS_POINTER, windowsLauncherScript } from "./windows-launcher.mjs";
@@ -23,7 +23,7 @@ export { windowsLauncherScript };
 export const WINDOWS_APP_ID = "{{6F0B6A43-3C1E-4D8B-9A57-2E4B1C9D7F10}";
 /** The bundled Electron's floor (Electron 23 dropped Windows 7, 8 and 8.1). */
 export const WINDOWS_MIN_VERSION = "10.0";
-export const TARGETS = ["win32-x64", "darwin-arm64", "linux-x64"];
+export const TARGETS = ["win32-x64", "darwin-arm64", "darwin-x64", "linux-x64"];
 
 /**
  * appimagetool and the AppImage runtime it embeds, pinned by release, size and SHA-256. Each download is checked before
@@ -348,6 +348,7 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
     mkdirSync(payload);
     run(process.platform === "win32" ? join(process.env.SYSTEMROOT ?? "C:\\Windows", "System32", "tar.exe") : "tar", ["-xzf", archive, "-C", payload]);
     const file = resolve(out, installerName(version, target));
+    const files = [file];
     if (target === "win32-x64") {
       if (!existsSync(join(payload, "Branch Agent.exe"))) throw new Error("The Windows package has no Branch Agent.exe at its root");
       signer.signApp(join(payload, "Branch Agent.exe"));
@@ -371,7 +372,14 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
     if (!existsSync(file)) throw new Error(`The installer was not written: ${file}`);
     const signed = signer.signInstaller(file);
     console.log(`${signed ? "signed" : "unsigned"} installer: ${file}`);
-    return file;
+    const download = publicDownloadName(target);
+    if (download) {
+      const alias = resolve(out, download);
+      copyFileSync(file, alias);
+      files.push(alias);
+      console.log(`download: ${alias}`);
+    }
+    return files;
   } finally {
     signer.dispose();
     rmSync(work, { recursive: true, force: true });
@@ -380,8 +388,11 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const file = await main();
-    // The target's release proof lists the installer, so publish attaches it and checks its bytes.
-    if (file) { const { assets, target } = parseArgs(process.argv.slice(2)); await recordInstaller(assets, target, file); }
+    const files = await main();
+    // The target's release proof lists each installer, so publish attaches them and checks their bytes.
+    if (files?.length) {
+      const { assets, target } = parseArgs(process.argv.slice(2));
+      for (const file of files) await recordInstaller(assets, target, file);
+    }
   } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exit(1); }
 }

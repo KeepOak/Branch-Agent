@@ -15,7 +15,7 @@ const hostTarget = `${process.platform}-${process.arch}`;
 const supported = process.platform === "darwin" || process.platform === "linux";
 const skip = supported ? false : `install.sh runs on macOS and Linux; this host is ${hostTarget}`;
 const RELEASE_DESIGNATED = 'designated => identifier "com.electron.branch-agent" and certificate root = H"30bbf0b68236ae05e063465c39dea6c5b396b11c"';
-const TARGETS = ["darwin-arm64", "linux-x64"];
+const TARGETS = ["darwin-arm64", "darwin-x64", "linux-x64"];
 
 function sha256(file) { return createHash("sha256").update(readFileSync(file)).digest("hex"); }
 
@@ -38,7 +38,7 @@ esac
 
 /** The asset install.sh installs for a target: the macOS desktop package, or the Linux AppImage. */
 const assetName = (version, target) => target.startsWith("darwin") ? `branch-desktop-${version}-${target}.tar.gz` : `Branch-Agent-${version}-${target}.AppImage`;
-const isInstallAsset = name => /^branch-desktop-\d.*-darwin-arm64\.tar\.gz$|^Branch-Agent-\d.*-linux-x64\.AppImage$/.test(name);
+const isInstallAsset = name => /^branch-desktop-\d.*-darwin-(arm64|x64)\.tar\.gz$|^Branch-Agent-\d.*-linux-x64\.AppImage$/.test(name);
 
 /** A fake installable asset for the target, as the release publishes it. */
 function makeAsset(root, version, target, signing) {
@@ -248,6 +248,24 @@ test("a tampered AppImage leaves an installed AppImage and an earlier tar.gz ins
     assert.equal(existsSync(join(old, "Branch Agent.bin")), true);
     assert.deepEqual(f.leftovers(), []);
   } finally { f.cleanup(); }
+});
+
+test("install.sh picks this Mac's desktop package when SHA256SUMS lists both architectures", { skip }, () => {
+  for (const [target, other] of [["darwin-x64", "darwin-arm64"], ["darwin-arm64", "darwin-x64"]]) {
+    const f = fixture(["1.2.3"], { target });
+    try {
+      const dir = join(f.releases, "latest", "download");
+      writeFileSync(join(dir, `branch-desktop-1.2.3-${other}.tar.gz`), `${other} package`);
+      const sums = readdirSync(dir).filter(name => name !== "SHA256SUMS").sort()
+        .map(name => `${sha256(join(dir, name))}  ${name}`).join("\n") + "\n";
+      writeFileSync(join(dir, "SHA256SUMS"), sums);
+      const result = f.run();
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, new RegExp(`Downloading branch-desktop-1\\.2\\.3-${target}\\.tar\\.gz`));
+      assert.doesNotMatch(result.stdout, new RegExp(other));
+      assert.equal(f.installed(), "1.2.3");
+    } finally { f.cleanup(); }
+  }
 });
 
 test("an ad-hoc release never replaces an app signed with the pinned release identity", { skip }, () => {

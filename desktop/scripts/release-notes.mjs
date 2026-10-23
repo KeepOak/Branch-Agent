@@ -1,4 +1,4 @@
-import { installerAssetName } from "./release-inventory.mjs";
+import { installerAssetName, publicDownloadName } from "./release-inventory.mjs";
 
 const repository = "KeepOak/Branch-Agent";
 export const UPDATE_ONLY_LABEL = "used by automatic updates, you don't need this";
@@ -6,6 +6,7 @@ export const UPDATE_ONLY_LABEL = "used by automatic updates, you don't need this
 /** One person-facing installer per platform, in the order a stranger reads the release page. */
 export const DOWNLOAD_PLATFORMS = Object.freeze([
   ["macOS", "darwin-arm64"],
+  ["macOS Intel", "darwin-x64"],
   ["Windows", "win32-x64"],
   ["Linux", "linux-x64"],
 ]);
@@ -14,9 +15,13 @@ function assetUrl(version, name) {
   return `https://github.com/${repository}/releases/download/v${version}/${name}`;
 }
 
-/** The installer a person should grab for this target, or null when that target has none. */
-export function downloadAssetName(version, target) {
-  return installerAssetName(version, target);
+/**
+ * The installer a person should grab for this target from the uploaded names, or null when it has none.
+ * The stable Intel name (Branch-macOS-Intel.dmg) wins over the versioned disk image when both are present.
+ */
+export function downloadAssetName(version, target, names) {
+  const uploaded = names ?? [];
+  return [publicDownloadName(target), installerAssetName(version, target)].find((name) => name && uploaded.includes(name)) ?? null;
 }
 
 /**
@@ -28,8 +33,8 @@ export function formatReleaseNotes({ commit, version, names }) {
   const downloads = [];
   const downloadNames = new Set();
   for (const [label, target] of DOWNLOAD_PLATFORMS) {
-    const name = downloadAssetName(version, target);
-    if (!name || !uploaded.includes(name)) continue;
+    const name = downloadAssetName(version, target, uploaded);
+    if (!name) continue;
     downloadNames.add(name);
     downloads.push(`- ${label}: [${name}](${assetUrl(version, name)})`);
   }
@@ -44,7 +49,7 @@ export function formatReleaseNotes({ commit, version, names }) {
     ...(others.length ? [""] : []),
     `Branch Agent built from ${commit}.`,
     "",
-    "Native Windows x64, macOS arm64 and Linux x64 packages; verified engine, renderer and desktop app update components. Existing data and credentials are retained. Installed desktop apps take the new desktop app on their next start.",
+    "Native Windows x64, macOS arm64, macOS x64 and Linux x64 packages; verified engine, renderer and desktop app update components. Existing data and credentials are retained. Installed desktop apps take the new desktop app on their next start.",
     "",
   ].join("\n");
 }

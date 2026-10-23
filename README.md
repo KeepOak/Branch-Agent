@@ -6,7 +6,7 @@ This is a source snapshot under active development. A feature being present in s
 
 ## Install
 
-macOS (Apple silicon) and Linux (x64):
+macOS (Apple silicon and Intel) and Linux (x64):
 
 ```sh
 curl -fsSL https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.sh | sh
@@ -26,7 +26,7 @@ Alternatively, download the installer from the [latest release](https://github.c
 
 The downloaded app is enough to install. You do not need Node.js, pnpm or Git.
 
-- **Computers it runs on:** an Apple silicon Mac, 64-bit Windows 10 or later, or 64-bit Linux. There is no Intel Mac build yet. Windows and Linux builds are x64 only. The Linux package is an AppImage for any distro.
+- **Computers it runs on:** an Apple silicon or Intel Mac, 64-bit Windows 10 or later, or 64-bit Linux. Windows and Linux builds are x64 only. The Linux package is an AppImage for any distro.
 - **Hardware and disk:** this repository does not publish a RAM or disk minimum. The first time you open the app it downloads the engine and window, so you need an internet connection and free space for those packages.
 - **Accounts:** you can install without signing in. Replies use a model account or subscription you connect, or a free local model when this computer can run one. Connecting an account is suggested, not required, to install.
 - **Other software:** the app already includes the runtime it needs (a bundled Node). The one-line install needs `curl` on a Mac or Linux, or PowerShell on Windows. Linux needs FUSE so the AppImage can mount, and the sandbox may ask for a password once.
