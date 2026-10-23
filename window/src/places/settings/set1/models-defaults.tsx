@@ -11,7 +11,6 @@ import { useLevel } from "../kit";
 import { showsInternals } from "../internals";
 
 const PREF = "branch.models.connectionDefaults";
-const NONE = "Branch has no setting for this yet.";
 /** Coming: a separate planning model is not in the engine yet. Survives shownWhy (not a dev note) and Ctl hides the row below Technical. */
 export const PLANNING_WHY = "Choosing a separate model for planning and hard problems comes in a later update.";
 
