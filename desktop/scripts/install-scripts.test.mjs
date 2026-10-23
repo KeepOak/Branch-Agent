@@ -68,9 +68,12 @@ function makeRelease(root, versions, target, signing = {}) {
     const asset = makeAsset(root, version, target, signing[version]);
     cpSync(asset.file, join(dir, asset.name));
     // Neighbouring assets: the desktop-app component whose name shares the prefix and, on Linux, the bootstrap
-    // tar.gz that the desktop updater uses but install.sh must never pick.
+    // tar.gz that the desktop updater uses but install.sh must never pick. The stable download names sit here too.
     writeFileSync(join(dir, `branch-desktop-app-${version}-${target}.tar.gz`), "component");
     if (target.startsWith("linux")) writeFileSync(join(dir, `branch-desktop-${version}-${target}.tar.gz`), "bootstrap package");
+    writeFileSync(join(dir, "Branch-Linux.deb"), "deb");
+    writeFileSync(join(dir, "Branch-Setup-Windows.exe"), "setup");
+    writeFileSync(join(dir, "Branch-macOS.dmg"), "dmg");
     writeFileSync(join(dir, `branch-release-${target}.json`), "{}");
     const sums = readdirSync(dir).sort().map(name => `${sha256(join(dir, name))}  ${name}`).join("\n") + "\n";
     writeFileSync(join(dir, "SHA256SUMS"), sums);
@@ -192,7 +195,7 @@ test("Linux installs the AppImage, never the tar.gz, as an executable with a des
     const first = f.run();
     assert.equal(first.status, 0, first.stderr);
     assert.match(first.stdout, /Downloading Branch-Agent-1\.2\.3-linux-x64\.AppImage/);
-    assert.doesNotMatch(first.stdout + first.stderr, /tar\.gz/);
+    assert.doesNotMatch(first.stdout + first.stderr, /tar\.gz|Branch-Linux\.deb/);
     const published = join(f.releases, "latest", "download", "Branch-Agent-1.2.3-linux-x64.AppImage");
     assert.equal(sha256(f.installRoot), sha256(published));
     assert.equal(statSync(f.installRoot).mode & 0o777, 0o755);

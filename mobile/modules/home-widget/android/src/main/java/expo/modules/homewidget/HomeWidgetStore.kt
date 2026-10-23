@@ -18,6 +18,7 @@ object HomeWidgetLaunch {
   const val ACTION_ASK = "ask"
   const val ACTION_OPEN = "open"
   const val ACTION_APPROVALS = "approvals"
+  const val ACTION_TALK = "talk"
 
   @Volatile
   private var pending: String? = null

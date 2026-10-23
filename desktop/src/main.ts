@@ -36,6 +36,7 @@ import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./ti
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, ensureWindowsLauncher, handOffDesktopUpdate, pruneWindowsInstall, runsFromAppImage, windowsInstalledHandoff, windowsRelaunchDetails, type DesktopInstall } from "./desktop-update";
+import { linuxDebSystemHandoff } from "./linux-deb-install";
 import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
 import { candidateCheckSkippedLine, candidateMinFreeBytes, HEALTH_MEMORY_MAX_AGE_MS, measureAvailableMemory } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
@@ -139,6 +140,13 @@ if (installedLauncher) {
   // The launcher is a windowless stub that starts Branch Agent.exe with its own (visible) startup info, so hiding it
   // never hides the app window.
   spawn(installedLauncher, process.argv.slice(1), { cwd: homedir(), detached: true, stdio: "ignore", windowsHide: true }).unref();
+  app.exit(0);
+}
+// A .deb system copy under /opt is root-owned; seed the per-user live app and hand off so updates can apply.
+const linuxDebLauncher = install ? linuxDebSystemHandoff(install) : undefined;
+if (linuxDebLauncher) {
+  log(`this copy runs from the system package; opening the user install at ${linuxDebLauncher} instead`);
+  spawn(linuxDebLauncher, process.argv.slice(1), { cwd: homedir(), detached: true, stdio: "ignore" }).unref();
   app.exit(0);
 }
 // Private #1036: a full disk pauses saving behind one banner and never raises Electron's modal error box, which also
@@ -1468,10 +1476,16 @@ async function start(): Promise<void> {
     });
     log(`first-launch components: ${outcome}`);
     if (!firstLaunchAllowsWindow(outcome)) {
-      if (starting && !starting.isDestroyed()) {
-        await starting.webContents.executeJavaScript(firstLaunchNeedComponentsScript()).catch(() => undefined);
+      if (!starting || starting.isDestroyed()) { app.quit(); return; }
+      const { recoverFirstLaunchInstall } = await import("./first-launch-install.js");
+      const recovered = await recoverFirstLaunchInstall(starting, cfg, fetch, {
+        desktop: install, underSwapGuard, log,
+        choose: () => starting.webContents.executeJavaScript(firstLaunchNeedComponentsScript()),
+      });
+      if (recovered === "quit") {
+        app.quit();
+        return;
       }
-      return;
     }
   }
   servedWindowDir = cfg.windowDir;

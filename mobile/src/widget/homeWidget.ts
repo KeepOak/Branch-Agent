@@ -2,10 +2,10 @@
 // plus Ask Branch. A tap opens a new chat, Approvals, or Home from data the phone already has.
 import { headline } from '../approvals/approvalWords';
 import { trunkOf, type Approval, type Trunk } from '../approvals/approvals';
-import { chatForNew, unreadCount, type ChatRow } from '../chats/chatList';
+import { chatForNew, chatForTalk, unreadCount, type ChatRow } from '../chats/chatList';
 import { workingNow } from '../home/homeModel';
 
-export const WIDGET_ACTIONS = ['ask', 'open', 'approvals'] as const;
+export const WIDGET_ACTIONS = ['ask', 'open', 'approvals', 'talk'] as const;
 export type WidgetAction = (typeof WIDGET_ACTIONS)[number];
 
 export const ASK_BRANCH = 'Ask Branch';
@@ -30,8 +30,18 @@ export function routeForWidgetAction(
   action: WidgetAction,
   rows: ChatRow[],
   now = Date.now(),
-): { name: 'chat'; row: ChatRow } | { name: 'approvals' } | { name: 'home' } | { name: 'chats' } {
+):
+  | { name: 'chat'; row: ChatRow }
+  | { name: 'voice'; row: ChatRow }
+  | { name: 'approvals' }
+  | { name: 'home' }
+  | { name: 'chats' } {
   if (action === 'approvals') return { name: 'approvals' };
+  if (action === 'talk') {
+    // The Talk to Branch tile: Talk in the most recent chat, the same pick as Home's Talk.
+    const row = chatForTalk(rows, now);
+    return row ? { name: 'voice', row } : { name: 'chats' };
+  }
   if (action === 'ask') {
     const row = chatForNew(rows, now);
     return row ? { name: 'chat', row } : { name: 'chats' };

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync } from "node:fs";
-import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, truncate, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, truncate, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -113,6 +113,86 @@ test("an AppImage install never stages a swap of its read-only mount", () => {
   assert.equal(desktopUpdate.runsFromAppImage("linux", { APPIMAGE: "/home/person/.local/bin/branch-agent" }), true);
   assert.equal(desktopUpdate.runsFromAppImage("linux", {}), false);
   assert.equal(desktopUpdate.runsFromAppImage("darwin", { APPIMAGE: "/tmp/x" }), false);
+});
+
+
+test("a root-owned Linux deb install seeds a user copy the updater can swap", { skip: process.platform === "win32" }, async () => {
+  const parent = join(tmpdir(), "Codex-session-files"); await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(join(parent, "linux-deb-update-"));
+  const { bringBesideTarget } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
+  try {
+    const system = join(root, "opt", "branch-agent");
+    const home = join(root, "home");
+    const dataDir = join(root, "data");
+    await mkdir(join(system, "resources"), { recursive: true });
+    await mkdir(home, { recursive: true });
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(join(system, "Branch Agent.bin"), "old bin");
+    await writeFile(join(system, "branch-agent"), "#!/bin/sh\nexit 0\n");
+    await writeFile(join(system, "chrome-sandbox"), "sandbox");
+    await writeFile(join(system, "resources", "app.asar"), "old desktop asar");
+    if (process.platform !== "win32") {
+      await chmod(join(system, "resources", "app.asar"), 0o444);
+      await chmod(join(system, "resources"), 0o555);
+      await chmod(system, 0o555);
+    }
+    const systemInstall = {
+      appDir: system, resourcesDir: join(system, "resources"), executable: join(system, "Branch Agent.bin"),
+      electronVersion: ELECTRON, nodePath: process.execPath, platform: "linux",
+    };
+    assert.equal(desktopUpdate.isLinuxDebSystemInstall(system, system), true);
+    assert.equal(desktopUpdate.canWriteDirectory(system), false);
+    // Writing a sibling under the root-owned system tree must fail for a normal user (helper bringBesideTarget).
+    await assert.rejects(() => writeFile(join(system, ".probe"), "x"), error => error && (error.code === "EACCES" || error.code === "EPERM"));
+    const stagedProbe = join(root, "staged-probe");
+    await writeFile(stagedProbe, "incoming");
+    await assert.rejects(
+      () => bringBesideTarget(stagedProbe, join(system, "resources", "app.asar")),
+      error => error && (error.code === "EACCES" || error.code === "EPERM"),
+    );
+
+    const xdg = { XDG_DATA_HOME: join(home, ".local", "share") };
+    const resolved = desktopUpdate.resolveLinuxDebUpdateInstall(systemInstall, {
+      homeDirectory: home, env: xdg, systemRoot: system,
+    });
+    const live = desktopUpdate.linuxDebUserAppDir(home, xdg);
+    assert.equal(resolved.appDir, live);
+    assert.equal(await readFile(join(live, "resources", "app.asar"), "utf8"), "old desktop asar");
+    assert.notEqual(resolved.appDir, system);
+
+    const handoff = desktopUpdate.linuxDebSystemHandoff(systemInstall, {
+      homeDirectory: home, env: xdg, systemRoot: system,
+    });
+    assert.equal(handoff, join(live, "branch-agent"));
+
+    const staged = join(root, "staged-asar");
+    await writeFile(staged, "new desktop asar");
+    const journalPath = join(dataDir, "desktop-update-pending.json");
+    await writeFile(journalPath, JSON.stringify({
+      version: "0.4.5", sha256: "a".repeat(64), kind: "asar", staged, target: join(live, "resources", "app.asar"),
+      phase: "staged", stagedSha256: createHash("sha256").update("new desktop asar").digest("hex"),
+    }));
+    const exited = spawn(process.execPath, ["-e", ""]); await new Promise(resolve => exited.on("exit", resolve));
+    const confirm = `require("node:fs").rmSync(${JSON.stringify(journalPath)}, { force: true });`;
+    const plan = {
+      journal: journalPath,
+      versionFile: join(dataDir, "desktop-update-version.txt"),
+      rejectedFile: join(dataDir, "desktop-update-rejected.json"),
+      log: join(dataDir, "desktop.log"), waitPid: exited.pid,
+      relaunch: { command: process.execPath, args: ["-e", confirm] }, confirmTimeoutMs: 15_000,
+    };
+    assert.equal(await runHelper(plan), "applied");
+    assert.equal(await readFile(join(live, "resources", "app.asar"), "utf8"), "new desktop asar");
+    assert.equal(await readFile(join(live, "resources", "app.asar.previous"), "utf8"), "old desktop asar");
+    assert.equal(await readFile(join(system, "resources", "app.asar"), "utf8"), "old desktop asar");
+  } finally {
+    try {
+      await chmod(join(root, "opt", "branch-agent"), 0o755);
+      await chmod(join(root, "opt", "branch-agent", "resources"), 0o755);
+      await chmod(join(root, "opt", "branch-agent", "resources", "app.asar"), 0o644);
+    } catch { /* best effort */ }
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
 });
 
 test("manifest accepts a targeted desktop component and rejects one without its Electron", () => fixture(async ({ release }) => {
