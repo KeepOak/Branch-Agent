@@ -446,6 +446,46 @@ for (const [label, options, expected] of [
   assert(!remote.calls.some(args => args[1] === "create" || args[1] === "edit"));
 }));
 
+test("publication uploads attested .sig sidecars and latest.json in SHA256SUMS", () => fixture(async assets => {
+  const payloads = [
+    `branch-desktop-${version}-darwin-arm64.tar.gz`,
+    `branch-desktop-${version}-linux-x64.tar.gz`,
+    `branch-desktop-${version}-win32-x64.tar.gz`,
+    `branch-desktop-app-${version}-linux-x64.tar.gz`,
+    `branch-desktop-app-${version}-win32-x64.tar.gz`,
+  ];
+  await listInstaller(assets, "linux-x64");
+  await listInstaller(assets, "win32-x64");
+  for (const payload of payloads) await writeFile(join(assets, `${payload}.sig`), `sig-${payload}`);
+  await writeFile(join(assets, `${installerNames["linux-x64"]}.sig`), "appimage-sig");
+  await writeFile(join(assets, `${installerNames["win32-x64"]}.sig`), "setup-sig");
+  await writeFile(join(assets, "latest.json"), JSON.stringify({
+    version,
+    notes: "fixture",
+    pub_date: "2026-10-23T00:00:00.000Z",
+    platforms: {
+      "darwin-aarch64": { url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${payloads[0]}`, signature: "sig" },
+      "linux-x86_64": { url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${installerNames["linux-x64"]}`, signature: "sig" },
+      "windows-x86_64": { url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${payloads[2]}`, signature: "sig" },
+    },
+  }, null, 2) + "\n");
+  const remote = githubMock(assets);
+  await publishRelease(assets, commit, version, remote.request, remote.download, { sleep: remote.sleep, now: remote.now });
+  const created = remote.calls.find(args => args[1] === "create");
+  const uploaded = created.slice(3, created.indexOf("--repo")).map(file => basename(file));
+  for (const payload of payloads) assert(uploaded.includes(`${payload}.sig`), `${payload}.sig missing from upload`);
+  assert(uploaded.includes(`${installerNames["linux-x64"]}.sig`));
+  assert(uploaded.includes(`${installerNames["win32-x64"]}.sig`));
+  assert(uploaded.includes("latest.json"));
+  const sums = await readFile(join(assets, "SHA256SUMS"), "utf8");
+  for (const name of [...payloads.map((p) => `${p}.sig`), `${installerNames["linux-x64"]}.sig`, `${installerNames["win32-x64"]}.sig`, "latest.json"]) {
+    assert.match(sums, new RegExp(`^${(await fileDigest(join(assets, name))).sha256}  ${name.replace(/\./g, "\\.")}$`, "m"));
+  }
+  assert(uploaded.includes("SHA256SUMS"));
+  assert.equal(remote.latest(), tag);
+}));
+
+
 // Wraps githubMock so a created draft shows up in the release list, and
 // pattern downloads return only the manifests and SHA256SUMS.
 function draftAware(remote) {
