@@ -11,6 +11,8 @@ permissions:
   contents: read
   checks: read
   actions: read
+  issues: read
+  pull-requests: read
 
 concurrency:
   # Body edits keep the same SHA; do not cancel the wait already running for this PR.
@@ -90,6 +92,16 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_SNAPSHOT_FILE: ${{ runner.temp }}/pr-snapshot.json
         run: node scripts/check-self-check.mjs
+      - name: Test the MERGE verdict check
+        run: node --test scripts/check-merge-verdict.test.mjs
+      - name: Require a MERGE verdict on the current head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          PR_SNAPSHOT_FILE: ${{ runner.temp }}/pr-snapshot.json
+        run: node scripts/check-merge-verdict.mjs
       - name: Test the window cleanliness check
         run: node --test scripts/check-window-clean.test.mjs
       - name: Fail new window cleanliness violations
