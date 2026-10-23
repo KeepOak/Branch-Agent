@@ -76,7 +76,8 @@ export function readUpdateHealth(dataDir: string, availableMemoryBytes: number, 
   if (diskFree === undefined) {
     const disk = statfsSync(dataDir);
     diskFree = disk.blocks > 0 ? disk.bavail / disk.blocks : 1;
-    diskFreeBytes = pinnedBytes(env.BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES) ?? disk.bavail * disk.bsize;
+    // On Windows, bavail counts available clusters and bsize is bytes per cluster.
+    diskFreeBytes = pinnedBytes(env.BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES) ?? Number(disk.bavail) * Number(disk.bsize);
   }
   let memoryFree = pinned(env.BRANCH_DESKTOP_UPDATE_FREE_MEMORY);
   let memoryFreeBytes: number | undefined;
@@ -98,7 +99,7 @@ export function updateHealthRefusal(health: UpdateHealth, updateBytes = 0): stri
   const gb = (bytes: number) => `${(bytes / GIB).toFixed(1)} GB`;
   if (health.diskFreeBytes !== undefined) {
     const floor = updateDiskFloor(updateBytes);
-    if (health.diskFreeBytes < floor) return `low disk: ${gb(health.diskFreeBytes)} free, under ${gb(floor)}`;
+    if (health.diskFreeBytes < floor) return `low disk: ${gb(health.diskFreeBytes)} free, the update needs about ${gb(floor)}`;
   } else if (health.diskFree < UPDATE_MIN_FREE_DISK) return `low disk: ${percent(health.diskFree)} free, under ${percent(UPDATE_MIN_FREE_DISK)}`;
   if (health.memoryFreeBytes !== undefined) {
     if (health.memoryFreeBytes < UPDATE_MIN_FREE_MEMORY_BYTES) return `low memory: ${gb(health.memoryFreeBytes)} free, under ${gb(UPDATE_MIN_FREE_MEMORY_BYTES)}`;
