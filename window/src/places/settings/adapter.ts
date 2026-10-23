@@ -8,8 +8,17 @@ export function record(value: unknown): RecordValue { return value && typeof val
 export function list(value: unknown): RecordValue[] { return Array.isArray(value) ? value.map(record) : []; }
 export function at(value: unknown, path: string): unknown { return path.split(".").reduce<unknown>((v, key) => record(v)[key], value); }
 export function text(value: unknown): string { return value === undefined || value === null ? "Not set" : typeof value === "object" ? JSON.stringify(value) : String(value); }
-/** Engine failure words for Settings: Regular gets one plain sentence and a next step (Private #1089); Advanced and Technical keep the exact words. */
-export function errorText(error: unknown): string { return plainError(error); }
+/** Engine wording Settings must keep so callers can detect it: a save conflict, a stale config hash, an unknown
+ *  method (Coming / visitor managed-copy), or a validation "Expected …" line. Everything else goes through plainError
+ *  (Private #1089). */
+const KEEP_ENGINE = /^(?:conflict)$|config changed since last load|base hash|unknown method|Expected (?:number|string|boolean|object|array|integer)/i;
+/** Engine failure words for Settings: Regular gets one plain sentence and a next step (Private #1089); Advanced and
+ *  Technical keep the exact words. Conflict / stale-config / unknown-method / Expected-… pass through unchanged. */
+export function errorText(error: unknown): string {
+  const exact = (error instanceof Error ? error.message : typeof error === "string" ? error : text(error)).trim();
+  if (KEEP_ENGINE.test(exact)) return exact;
+  return plainError(error);
+}
 
 export type ConfigSnapshot = { hash?: string; valid?: boolean; config?: RecordValue; issues?: unknown; writeError?: unknown };
 export async function saveConfig(engine: WindowEngine, snapshot: ConfigSnapshot, changes: Record<string, unknown>): Promise<ConfigSnapshot> {

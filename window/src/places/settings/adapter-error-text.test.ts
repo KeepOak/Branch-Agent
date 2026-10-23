@@ -25,10 +25,15 @@ describe("settings errorText is plain at Regular (Private #1089)", () => {
 
   it("turns a thrown engine Error into one plain sentence with a next step", () => {
     expect(errorText(new Error("connect ECONNREFUSED 127.0.0.1:18789"))).toBe(REACH);
-    expect(errorText(new Error("unknown method: logbook.status"))).toBe(
-      "This part of Branch isn’t ready on this computer yet. Update Branch, then try again.",
-    );
     expect(errorText("TypeError: Cannot read properties of undefined (reading 'path')\n    at runTool (/app/engine/dist/tools/run.js:41:12)")).not.toMatch(RAW);
+  });
+
+  it("keeps conflict, stale-config and unknown-method wording so callers can detect them", () => {
+    expect(errorText(new Error("conflict"))).toBe("conflict");
+    expect(errorText(new Error("config changed since last load; re-run config.get and retry"))).toBe(
+      "config changed since last load; re-run config.get and retry",
+    );
+    expect(errorText(new Error("unknown method: visitor.policy"))).toBe("unknown method: visitor.policy");
   });
 
   it("Advanced keeps the exact words", () => {
