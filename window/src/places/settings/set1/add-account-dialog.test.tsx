@@ -100,7 +100,8 @@ describe("Add an account catalogue", () => {
     expect(namesIn(before, "Your plan")).not.toEqual(expect.arrayContaining(["Ollama", "LM Studio", "OpenCode"]));
     expect(namesIn(before, "On this computer")).toEqual(expect.arrayContaining(["Ollama", "LM Studio", "OpenCode"]));
     expect(namesIn(before, "Your plan").filter((name) => name === "MiniMax")).toHaveLength(1);
-    expect(namesIn(before, "A key").filter((name) => name === "Google Gemini")).toHaveLength(1);
+    expect(namesIn(before, "Your plan").filter((name) => name === "Google Gemini")).toHaveLength(1);
+    expect(namesIn(before, "A key").filter((name) => name === "Google Gemini")).toHaveLength(0);
     expect(before.tiles.map((tile) => tile.name)).toEqual(expect.arrayContaining(["Microsoft Foundry", "OpenCode Go", "Ollama Cloud", "Hugging Face", "LiteLLM"]));
     expect(before.tiles.some((tile) => tile.section === "A key" && tile.sub.includes("a key"))).toBe(true);
     expect(before.tiles.some((tile) => tile.section === "Your plan" && tile.sub.includes("your plan"))).toBe(true);
