@@ -81,6 +81,15 @@ async function prChangedFiles() {
   return changedFilesCache;
 }
 
+// Linux uses the hosted Chrome; macOS and Windows runners need Playwright's own Chromium.
+let playwrightChromiumReady = false;
+async function ensurePlaywrightChromium(cwd, env) {
+  if (process.platform === 'linux' || playwrightChromiumReady) return;
+  await run(process.execPath, [path.join(engineRoot, 'node_modules/playwright/cli.js'),
+    'install', 'chromium'], cwd, env);
+  playwrightChromiumReady = true;
+}
+
 // Feature-batch vitest excludes **/*.e2e.test.ts, so named engine e2e tests run here through
 // the engine's own e2e configs (control UI e2e under ui/src/e2e, the rest under test/vitest).
 // Only the full-scope Linux shards run them: those run on every PR, and the e2e suites (Chromium,
@@ -97,6 +106,7 @@ async function runNamedE2eTests(env, shard) {
   const other = tests.filter(file => !ui.includes(file));
   for (const [config, files] of [['test/vitest/vitest.ui-e2e.config.ts', ui], ['test/vitest/vitest.e2e.config.ts', other]]) {
     if (!files.length) continue;
+    if (files === ui) await ensurePlaywrightChromium(engineRoot, env);
     console.log(`engine e2e: ${files.length} named test files with ${config} in shard ${shard.index + 1}/${shard.total}`);
     await run(process.execPath, [path.join(engineRoot, 'scripts/run-vitest.mjs'),
       'run', '--config', config, ...files], engineRoot, env);
@@ -121,10 +131,7 @@ async function runFeatureTests(scratch) {
         'run', '--config', config, ...regularTests], root, env);
     }
     if (browserTests.length) {
-      if (process.platform !== 'linux') {
-        await run(process.execPath, [path.join(engineRoot, 'node_modules/playwright/cli.js'),
-          'install', 'chromium'], root, env);
-      }
+      await ensurePlaywrightChromium(root, env);
       if (process.platform === 'win32') {
         env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = await hostedChrome();
       }
