@@ -503,7 +503,7 @@ describe('the mobile Android release workflow', () => {
             tagGets += 1;
             throw tag404;
           }
-          return JSON.stringify(listPages);
+          return JSON.stringify(listPages[0]);
         },
       });
       const attachCalls = [];
@@ -521,7 +521,8 @@ describe('the mobile Android release workflow', () => {
         run: (file, args) => {
           attachCalls.push([file, args]);
           if (String(args[1] ?? '').includes('/releases/tags/')) throw tag404;
-          if (/\/releases(\?|$)/.test(String(args[1] ?? '')) && !String(args[1] ?? '').includes('/tags/')) {
+          // Avoid /\/…/ regexes inside this template literal (they become // comments).
+          if (String(args[1] ?? '').includes('/releases?per_page=')) {
             return JSON.stringify(listPages[0]);
           }
           return '';
@@ -782,7 +783,9 @@ describe('attach retries GitHub rate limits', () => {
             if (tagGets === 1) throw limited;
             throw miss;
           }
-          if (args.includes('--paginate')) return JSON.stringify([[${JSON.stringify(release)}]]);
+          if (String(args[1] ?? '').includes('/releases?per_page=')) {
+            return JSON.stringify([${JSON.stringify(release)}]);
+          }
           return '';
         },
       });
@@ -790,7 +793,7 @@ describe('attach retries GitHub rate limits', () => {
         uploaded: attached.uploaded,
         sleeps,
         tagGets,
-        listed: calls.some((args) => args.includes('--paginate')),
+        listed: calls.some((args) => String(args[1] ?? '').includes('/releases?per_page=')),
         posted: calls.some((args) => args.includes('--method') && args.includes('POST')),
       }));`);
     expect(result.uploaded).toEqual([
