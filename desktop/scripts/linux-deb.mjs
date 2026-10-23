@@ -1,6 +1,8 @@
 // Debian package for the Linux desktop download. The versioned AppImage stays the file install.sh and the
-// in-app updater fetch; this package is what a person installs from the release page. dpkg sets the executable
-// bits and the application-menu entry, which a browser download of the AppImage does not.
+// AppImage in-app updater fetch; this package is what a person installs from the release page. dpkg places the
+// payload under /opt/branch-agent (including setuid chrome-sandbox). The PATH launcher seeds a per-user live
+// copy under ~/.local/share/branch-agent/app on first run and starts that copy so in-app updates can swap it
+// without writing under /opt. .deb installs do not use AppImage updates.
 import { lstatSync, readFileSync, readdirSync, readlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,20 +11,45 @@ import { gzipSync, gunzipSync } from "node:zlib";
 const ICON = fileURLToPath(new URL("../assets/brand/linux/branch-512.png", import.meta.url));
 const INSTALL_ROOT = "opt/branch-agent";
 
-/** Application menu entry. Exec is the package path, so the launcher's own directory is the install root. */
+/** Application menu entry. Exec is the PATH launcher so menu starts also seed the per-user live copy. */
 export const LINUX_DEB_DESKTOP = [
   "[Desktop Entry]",
   "Type=Application",
   "Name=Branch Agent",
-  "Exec=/opt/branch-agent/branch-agent %U",
+  "Exec=/usr/bin/branch-agent %U",
   "Icon=branch-agent",
   "Categories=Utility;",
   "Terminal=false",
   "",
 ].join("\n");
 
-/** PATH entry. A symlink would leave $0 in /usr/bin and the launcher would miss the package beside it. */
-export const LINUX_DEB_LAUNCHER = "#!/bin/sh\nexec /opt/branch-agent/branch-agent \"$@\"\n";
+/**
+ * PATH entry. Seeds ~/.local/share/branch-agent/app from /opt/branch-agent once (so a normal user owns the live
+ * app), then starts that copy. An existing user copy is left alone so in-app updates are not overwritten by apt.
+ */
+export const LINUX_DEB_LAUNCHER = [
+  "#!/bin/sh",
+  "set -eu",
+  "SYSTEM=/opt/branch-agent",
+  'DATA="${XDG_DATA_HOME:-$HOME/.local/share}/branch-agent"',
+  'LIVE="$DATA/app"',
+  'if [ ! -f "$LIVE/branch-agent" ]; then',
+  '  if [ ! -f "$SYSTEM/branch-agent" ] || [ ! -f "$SYSTEM/Branch Agent.bin" ] || [ ! -f "$SYSTEM/chrome-sandbox" ]; then',
+  '    printf \'%s\\n\' "Branch Agent system package is incomplete under $SYSTEM." >&2',
+  "    exit 1",
+  "  fi",
+  '  staging="$DATA/.app-seed-$$"',
+  '  mkdir -p "$DATA"',
+  '  rm -rf "$staging"',
+  '  cp -a "$SYSTEM" "$staging"',
+  '  # cp -a keeps root package modes; the live tree must be writable for in-app updates.',
+  '  chmod -R u+rwX "$staging"',
+  '  rm -rf "$LIVE"',
+  '  mv "$staging" "$LIVE"',
+  "fi",
+  'exec "$LIVE/branch-agent" "$@"',
+  "",
+].join("\n");
 
 function header(name, size, mode, type = "0", link = "") {
   const originalName = name;
@@ -135,8 +162,9 @@ export function debVersion(version) {
 }
 
 /**
- * Writes Branch-Linux.deb: the desktop package under /opt/branch-agent, a PATH launcher, the icon and a menu entry.
- * chrome-sandbox is mode 4755 so Chromium's sandbox is available after dpkg installs the package as root.
+ * Writes Branch-Linux.deb: the desktop package under /opt/branch-agent, a PATH launcher that seeds a per-user
+ * live copy, the icon and a menu entry. chrome-sandbox is mode 4755 so Chromium's sandbox is available after
+ * dpkg installs the package as root; the user live copy relies on the package's branch-agent sandbox launcher.
  */
 export function buildLinuxDeb({ payload, version, out, icon = ICON }) {
   requirePayload(payload, "Branch Agent.bin");

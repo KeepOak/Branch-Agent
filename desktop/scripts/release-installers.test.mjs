@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -78,6 +78,59 @@ test("the Linux deb installs an executable launcher and an application menu entr
       assert.match(contents.stdout, /branch-agent\.desktop$/m);
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test("the Linux deb PATH launcher seeds a user-owned live app a normal user can update", { skip: process.platform === "win32" }, () => {
+  const root = mkdtempSync(join(tmpdir(), "branch-deb-seed-"));
+  try {
+    const system = join(root, "opt", "branch-agent");
+    const home = join(root, "home");
+    mkdirSync(join(system, "resources"), { recursive: true });
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(system, "Branch Agent.bin"), "#!/bin/sh\nprintf 'bin:%s\\n' \"$1\"\n");
+    writeFileSync(join(system, "branch-agent"), "#!/bin/sh\nprintf 'started:%s\\n' \"$1\"\n");
+    writeFileSync(join(system, "chrome-sandbox"), "sandbox");
+    writeFileSync(join(system, "resources", "app.asar"), "old asar");
+    chmodSync(join(system, "Branch Agent.bin"), 0o755);
+    chmodSync(join(system, "branch-agent"), 0o755);
+    chmodSync(join(system, "resources", "app.asar"), 0o444);
+    chmodSync(join(system, "resources"), 0o555);
+    // Simulate a root-owned install: directories not writable by the launching user.
+    chmodSync(system, 0o555);
+    const launcher = join(root, "usr-bin-branch-agent");
+    writeFileSync(launcher, LINUX_DEB_LAUNCHER.replaceAll("/opt/branch-agent", system));
+    chmodSync(launcher, 0o755);
+    const env = { ...process.env, HOME: home, XDG_DATA_HOME: join(home, ".local", "share") };
+    delete env.APPIMAGE;
+    const first = spawnSync(launcher, ["ready"], { encoding: "utf8", env });
+    assert.equal(first.status, 0, first.stderr);
+    assert.equal(first.stdout.trim(), "started:ready");
+    const live = join(home, ".local", "share", "branch-agent", "app");
+    assert.equal(readFileSync(join(live, "resources", "app.asar"), "utf8"), "old asar");
+    assert.equal(statSync(live).uid, statSync(home).uid);
+    // User can place a replacement beside the live app (what the update helper does).
+    writeFileSync(join(live, "resources", "app.asar.incoming"), "new asar");
+    renameSync(join(live, "resources", "app.asar"), join(live, "resources", "app.asar.previous"));
+    renameSync(join(live, "resources", "app.asar.incoming"), join(live, "resources", "app.asar"));
+    assert.equal(readFileSync(join(live, "resources", "app.asar"), "utf8"), "new asar");
+    // A second launch must not overwrite the updated user copy from /opt.
+    const second = spawnSync(launcher, ["again"], { encoding: "utf8", env });
+    assert.equal(second.status, 0, second.stderr);
+    assert.equal(readFileSync(join(live, "resources", "app.asar"), "utf8"), "new asar");
+    // The system tree stays untouched and still refuses new siblings (helper bringBesideTarget).
+    assert.equal(readFileSync(join(system, "resources", "app.asar"), "utf8"), "old asar");
+    assert.throws(() => writeFileSync(join(system, "resources", "app.asar.incoming"), "nope"));
+    assert.match(LINUX_DEB_DESKTOP, /^Exec=\/usr\/bin\/branch-agent %U$/m);
+    assert.doesNotMatch(LINUX_DEB_LAUNCHER, /APPIMAGE/);
+  } finally {
+    try {
+      chmodSync(join(root, "opt", "branch-agent"), 0o755);
+      chmodSync(join(root, "opt", "branch-agent", "resources"), 0o755);
+      chmodSync(join(root, "opt", "branch-agent", "resources", "app.asar"), 0o644);
+    } catch { /* best effort before rm */ }
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("the Linux installer builds the deb before the AppImage consumes the package", () => {
