@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { SaplingSession } from "../connect/session";
+import { askedForFirstRun, clearFirstRunPath } from "./first-run-path";
 import { freshChoices, needsFirstContact, RUN_SETUP_AGAIN, SETUP_LATER_KEY, setupDone } from "./setup-model";
 import { recordSetup } from "./use-setup-engine";
 
