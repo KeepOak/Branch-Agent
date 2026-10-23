@@ -163,9 +163,11 @@ export function createAutoApplyUpdate(options: {
   /** The version whose pending-over-cap line is already in the log, so each tick does not repeat it. */
   let cappedNoted: string | undefined;
   const now = options.now ?? Date.now;
+  const retryIn = (): string => `retrying in ${Math.max(1, Math.round(AUTO_APPLY_POLL_MS / 1000))}s`;
   const decision = (line: string) => {
     if (line !== lastDecision) { options.log(`auto-apply: ${line}`); lastDecision = line; }
   };
+  const defer = (line: string) => decision(`${line}; ${retryIn()}`);
   /** A turn is streaming, an approval waits, or a draft is unsaved: the gap rule holds the update off. */
   const turnWaiting = (activity: UpdateActivity) => Boolean(activity.streaming || activity.pendingApprovals || activity.unsavedDraftFiles);
   /** Every activity read notes a run in flight, which marks this machine as running Trunk work. */
@@ -220,7 +222,8 @@ export function createAutoApplyUpdate(options: {
       }
       if (!version || !options.enabled() || appliedVersion === version) {
         idleSince = undefined;
-        if (version) decision("off; awaiting Restart");
+        // A staged update waiting for Restart still polls: the GitHub checker is separate and must keep its schedule.
+        if (version) defer("off; awaiting Restart");
         // Nothing to apply: still notice Trunk work now and then, so the next update knows how to land.
         if (!options.trunkWork && options.activeRuns && (lastSampleAt === undefined || now() - lastSampleAt >= TRUNK_WORK_SAMPLE_MS)) {
           await noteRuns().catch(() => undefined);
@@ -238,7 +241,7 @@ export function createAutoApplyUpdate(options: {
       const refusal = health && updateHealthRefusal(health);
       if (refusal) {
         idleSince = undefined;
-        decision(`not starting ${version}: ${refusal}`);
+        defer(`not starting ${version}: ${refusal}`);
         return;
       }
       const security = await options.securityFix?.(version) ?? false;
@@ -253,7 +256,7 @@ export function createAutoApplyUpdate(options: {
       const batched = !security && !capped && runningTrunkWork();
       if (batched && lastAppliedAt !== undefined && now() - lastAppliedAt < TRUNK_UPDATE_MIN_INTERVAL_MS) {
         idleSince = undefined;
-        decision(`batching ${version} with Trunk work; the last update applied under an hour ago`);
+        defer(`batching ${version} with Trunk work; the last update applied under an hour ago`);
         return;
       }
       const relaunch = await options.relaunchesApp?.(version) ?? false;
@@ -278,12 +281,12 @@ export function createAutoApplyUpdate(options: {
       const activity = await readActivity();
       if (busy(activity)) {
         idleSince = undefined;
-        decision(`waiting for ${activity.activeRuns} active runs, ${activity.pendingApprovals} approvals${activity.streaming ? ", streaming reply" : ""}${activity.unsavedDraftFiles ? ", unsaved draft files" : ""}${batched ? `; deferring ${version} until a gap in Trunk work` : ""}`);
+        defer(`waiting for ${activity.activeRuns} active runs, ${activity.pendingApprovals} approvals${activity.streaming ? ", streaming reply" : ""}${activity.unsavedDraftFiles ? ", unsaved draft files" : ""}${batched ? `; deferring ${version} until a gap in Trunk work` : ""}`);
         return;
       }
       idleSince ??= now();
       if (now() - idleSince < AUTO_APPLY_GAP_MS) {
-        decision(`idle hold for ${version}`);
+        defer(`idle hold for ${version}`);
         return;
       }
       // A fresh gateway snapshot closes the gap after the hold timer and before relaunch.
@@ -297,7 +300,7 @@ export function createAutoApplyUpdate(options: {
       }
       if (busy(final) || !options.enabled()) {
         idleSince = undefined;
-        decision(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals`);
+        defer(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals`);
         return;
       }
       // The handoff keeps running work alive, so it lands at a gap whatever Trunks are doing.
@@ -312,7 +315,7 @@ export function createAutoApplyUpdate(options: {
       // Without a handoff, a drain protects running work only on an idle engine, or once the update is over the cap:
       // then it drains at this gap, and the engine finishes its runs before it stops.
       if (final.activeRuns && !capped) {
-        decision(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals; no standby to hand off to for ${version}`);
+        defer(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals; no standby to hand off to for ${version}`);
         return;
       }
       restarting = true;
