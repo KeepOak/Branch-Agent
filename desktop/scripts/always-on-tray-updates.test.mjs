@@ -1,5 +1,5 @@
 // Always on (Private #454 C+E): closing hides the window while the service engine keeps working, the tray shows the
-// engine's live state with Pause all work and Stop Branch completely, and engine updates restart the SERVICE through
+// engine's live state with Pause all work and Quit (which stops Branch completely), and engine updates restart the SERVICE through
 // the standby/readiness/rollback steps while a window-only update never touches the engine. Nothing here installs,
 // starts or stops a real service or gateway: temp folders, a loopback stand-in engine and a recording fake CLI only.
 import assert from 'node:assert/strict';
@@ -15,6 +15,7 @@ if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error('Compile the exact deskto
 const require = createRequire(import.meta.url), Module = require('node:module');
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 const { readEngineLiveState, stopBranchCompletely, trayLabel, trayMenu } = require(join(dist, 'tray-status.js'));
+const { resetQuitIntent } = require(join(dist, 'quit-intent.js'));
 const { sameEngineBuild, updateServiceEngine, TRUNKS_STILL_WORKING } = require(join(dist, 'service-update.js'));
 const { engineServiceArgs } = require(join(dist, 'engine-service.js'));
 const originalLoad = Module._load, originalFetch = globalThis.fetch;
@@ -128,13 +129,13 @@ async function serviceApp(t, work, run, env = {}, setup = () => undefined) {
   const vars = { BRANCH_DESKTOP_DATA: root, BRANCH_DESKTOP_HIDDEN: '0', BRANCH_DESKTOP_ENGINE_PROFILE: profile, ...env };
   const saved = Object.fromEntries(Object.keys(vars).map(key => [key, process.env[key]]));
   Object.assign(process.env, vars);
-  const runtime = electronFixture(work);
+  const runtime = electronFixture(work), signals = new EventEmitter();
   Module._load = function(name, ...args) {
     if (name === 'electron') return runtime.electron;
     const loaded = originalLoad.call(this, name, ...args);
     if (name !== './resident-window') return loaded;
     return { ...loaded, keepWindowResident(app, window, icon, options) {
-      return loaded.keepWindowResident(app, window, icon, { ...options, platform: 'win32' });
+      return loaded.keepWindowResident(app, window, icon, { ...options, platform: 'win32', signals });
     } };
   };
   globalThis.fetch = (url, options) => String(url).startsWith('https://') ? Promise.resolve(new Response('', { status: 404 })) : originalFetch(url, options);
@@ -146,7 +147,7 @@ async function serviceApp(t, work, run, env = {}, setup = () => undefined) {
     await eventually(() => desktopLog().includes('engine: attached to the running service engine'));
     const wc = runtime.window.webContents;
     const clickUpdate = () => runtime.electron.ipcMain.emit('branch-desktop:restart-engine', { sender: wc, senderFrame: wc.mainFrame });
-    await run({ ...runtime, window: runtime.window, tray: runtime.tray, root, gatewayPort, desktopLog, clickUpdate,
+    await run({ ...runtime, window: runtime.window, tray: runtime.tray, root, gatewayPort, desktopLog, clickUpdate, signals,
       cliCalls: () => lines('cli-calls.txt'), standbys: () => lines('standbys.txt').map(Number), serviceRuns: runs,
       runningRecord: () => readFileSync(join(root, 'engine-running.txt'), 'utf8').trim(),
       publish: (name, build) => { const dir = fakeEngine(root, name, build); writeFileSync(join(root, 'engine-current.txt'), `${dir}\n`); return dir; } });
@@ -161,18 +162,37 @@ const idle = () => ({ pendingApprovals: 0, streaming: false, unsavedDraftFiles: 
 const serving = async port => (await originalFetch(`http://127.0.0.1:${port}/readyz`).then(r => r.status, () => 0)) === 200;
 const item = (tray, label) => tray.menu.find(entry => entry.label === label);
 
-test('close hides the window and the service engine keeps running: no stop call, Quit keeps it too', async t => {
-  await serviceApp(t, () => ({ pendingApprovals: 0, streaming: false, unsavedDraftFiles: false, workingTrunks: 2 }), async ({ app, window, tray, gatewayPort, cliCalls, desktopLog }) => {
+test('close hides the window and the service engine keeps running; Quit asks first, then stops the service too', async t => {
+  await serviceApp(t, () => ({ pendingApprovals: 0, streaming: false, unsavedDraftFiles: false, workingTrunks: 2 }), async ({ app, window, tray, gatewayPort, cliCalls, dialogs }) => {
     assert.equal(window.close().prevented, true);
     assert.equal(window.hidden, true);
     assert.equal(window.destroyed, false);
     assert.equal(app.quitCalls ?? 0, 0);
-    assert.ok(item(tray, 'Open Branch') && item(tray, 'Pause all work') && item(tray, 'Stop Branch completely'), 'the tray offers Open, Pause all work and Stop completely');
-    item(tray, 'Quit Branch').click();
+    assert.equal(await serving(gatewayPort), true, 'closing the window leaves the engine service answering');
+    assert.deepEqual(cliCalls(), [], 'closing the window installs, starts or stops nothing');
+    assert.ok(item(tray, 'Open Branch') && item(tray, 'Pause all work') && item(tray, 'Quit'), 'the tray offers Open Branch, Pause all work and Quit');
+    assert.equal(item(tray, 'Stop Branch completely'), undefined, 'Quit is the one way to stop Branch');
+    await eventually(() => tray.tooltip === 'Branch Agent · 2 Trunks working');
+    item(tray, 'Quit').click();
+    await eventually(() => (app.quitCalls ?? 0) === 1);
     assert.equal(window.destroyed, true);
-    assert.equal(await serving(gatewayPort), true, 'the engine service keeps answering after the app quits');
-    assert.deepEqual(cliCalls(), [], 'nothing installed, started or stopped the service');
-    assert.match(desktopLog(), /quit; the engine service keeps running/);
+    // The first close's one-time notice (this stand-in has no system notifications), then Quit's one question.
+    assert.deepEqual(dialogs.filter(d => d[0] === 'warn').map(d => d[1]), ['Branch closes to the tray.', 'Quit while 2 Trunks are working?']);
+    assert.deepEqual(cliCalls(), ['gateway stop --force --json @engine'], 'Quit stops the engine service through the engine CLI');
+  });
+});
+
+test('a signal (Ctrl C in a terminal, kill) stops the engine service too, as tray Quit does, and never asks', async t => {
+  await serviceApp(t, () => ({ pendingApprovals: 0, streaming: false, unsavedDraftFiles: false, workingTrunks: 2 }), async ({ app, window, tray, gatewayPort, cliCalls, dialogs, signals }) => {
+    assert.equal(window.close().prevented, true, 'the close button only hides the window');
+    assert.equal(await serving(gatewayPort), true, 'the engine service keeps answering after the close');
+    await eventually(() => tray.tooltip === 'Branch Agent · 2 Trunks working');
+    assert.deepEqual(cliCalls(), []);
+    signals.emit('SIGTERM');
+    await eventually(() => (app.quitCalls ?? 0) === 1);
+    assert.equal(window.destroyed, true);
+    assert.deepEqual(dialogs.filter(d => d[0] === 'warn').map(d => d[1]), ['Branch closes to the tray.'], 'a signal asks nothing, even while Trunks work');
+    assert.deepEqual(cliCalls(), ['gateway stop --force --json @engine'], 'a signal stops the engine service through the engine CLI, as Quit does');
   });
 });
 
@@ -187,12 +207,24 @@ test('the tray label follows the engine state the app reads, and Pause all work 
   });
 });
 
-test('Stop Branch completely warns while work runs, then stops the service through the engine CLI and quits', async t => {
+test('Quit warns once while work runs, then stops the service through the engine CLI and quits', async t => {
   await serviceApp(t, () => ({ pendingApprovals: 1, streaming: true, unsavedDraftFiles: false, workingTrunks: 1 }), async ({ app, tray, dialogs, cliCalls }) => {
-    item(tray, 'Stop Branch completely').click();
+    await eventually(() => tray.tooltip === 'Branch Agent · Waiting on you (1)');
+    item(tray, 'Quit').click();
     await eventually(() => (app.quitCalls ?? 0) === 1);
-    assert.deepEqual(dialogs.filter(d => d[0] === 'warn').map(d => d[1]), ['1 Trunk is still working.']);
+    assert.deepEqual(dialogs.filter(d => d[0] === 'warn').map(d => d[1]), ['Quit while 1 Trunk is working?'], 'one question, never a second one');
     assert.deepEqual(cliCalls(), ['gateway stop --force --json @engine']);
+  });
+});
+
+test('Quit with nothing running asks nothing and still stops the service through the engine CLI', async t => {
+  await serviceApp(t, idle, async ({ app, tray, dialogs, cliCalls }) => {
+    await eventually(() => tray.tooltip === 'Branch Agent · Ready');
+    assert.equal(item(tray, 'Stop Branch completely'), undefined);
+    item(tray, 'Quit').click();
+    await eventually(() => (app.quitCalls ?? 0) === 1);
+    assert.deepEqual(dialogs.filter(d => d[0] === 'warn').map(d => d[1]), [], 'nothing runs, so Quit does not ask');
+    assert.deepEqual(cliCalls(), ['gateway stop --force --json @engine'], 'Quit keeps what Stop Branch completely did');
   });
 });
 
@@ -209,11 +241,13 @@ test('trayLabel and readEngineLiveState read the engine state plainly', async ()
   // A window from before the count: the child engine's own run count, else one live stream.
   assert.equal((await readEngineLiveState({ engineUp: async () => true, window: async () => ({ pendingApprovals: 0, streaming: true }), engineRuns: async () => 4 })).workingTrunks, 4);
   assert.equal((await readEngineLiveState({ engineUp: async () => true, window: async () => { throw Error('no window'); } })).workingTrunks, 0);
-  const labels = trayMenu({ running: true, workingTrunks: 0, waitingOnYou: 0 }, { open() {}, pauseAll() {}, quit() {}, stopCompletely() {} }).map(i => i.label ?? '-');
-  assert.deepEqual(labels, ['Ready', '-', 'Open Branch', 'Pause all work', '-', 'Quit Branch', 'Stop Branch completely']);
+  const labels = trayMenu({ running: true, workingTrunks: 0, waitingOnYou: 0 }, { open() {}, pauseAll() {}, quit() {} }).map(i => i.label ?? '-');
+  assert.deepEqual(labels, ['Ready', '-', 'Open Branch', 'Pause all work', '-', 'Quit']);
 });
 
 test('Stop Branch completely: no warning when idle, nothing stopped when the warning is declined', async () => {
+  // The Quit tests above chose Quit in this process; this checks the step on its own.
+  resetQuitIntent();
   const run = async (state, answer) => {
     const calls = [];
     const result = await stopBranchCompletely({ state: async () => state, confirm: async message => { calls.push(`warn:${message}`); return answer; },
@@ -410,4 +444,236 @@ test('auto-apply in service mode: the handoff attempt makes no restart call and 
     assert.deepEqual(standbys(), [], 'nor warmed a standby');
     assert.equal(serviceRuns(), 'engine');
   }, autoEnv, pending);
+});
+
+// Close and Quit (Private #1095, walkthrough B-102, B-103, B-104). The window's close button hides Branch to the tray
+// and says so once; Quit, from the tray, the Branch menu or Ctrl/Cmd Q, stops the app, its engine and every process the
+// engine started, even the fallback engine that Keep working leaves running after other quits. Temp folders, a loopback
+// stand-in engine with one worker of its own, and a recording Electron stand-in only.
+const killGroup = pid => { if (!pid) return; try { process.kill(-pid, 'SIGKILL'); } catch { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } } };
+
+/** Electron stand-in: one window, a recording tray, dialogs that answer `answer`, and recorded notifications. */
+function quitElectronFixture(answer = 0) {
+  let window, tray, quitting = false;
+  const app = new EventEmitter(), ipcMain = Object.assign(new EventEmitter(), { handle() {} });
+  const dialogs = [], notices = [];
+  Object.assign(app, { getVersion: () => 'fixture', setPath() {}, setAppUserModelId() {},
+    requestSingleInstanceLock: () => true, whenReady: async () => {}, quit() {
+      if (quitting) return; quitting = true; app.quitCalls = (app.quitCalls ?? 0) + 1;
+      app.emit('before-quit'); window?.close(); app.emit('will-quit');
+    } });
+  class BrowserWindow extends EventEmitter {
+    static fromWebContents(sender) { return window?.webContents === sender ? window : null; }
+    constructor() {
+      super(); window = this; this.hidden = false; this.destroyed = false;
+      const wc = this.webContents = new EventEmitter();
+      Object.assign(wc, { mainFrame: { url: '' }, getURL: () => this.url, setWindowOpenHandler() {}, isDestroyed: () => this.destroyed, reload() {}, send() {} });
+    }
+    async loadURL(url) { this.url = url; this.webContents.mainFrame.url = url; this.webContents.emit('did-finish-load'); }
+    close() { const event = { prevented: false, preventDefault() { this.prevented = true; } };
+      this.emit('close', event); if (!event.prevented) { this.destroyed = true; this.emit('closed'); } return event; }
+    hide() { this.hidden = true; } show() { this.hidden = false; } focus() {} isMinimized() { return false; } restore() {}
+    setMenuBarVisibility() {} maximize() {} isMaximized() { return false; } isVisible() { return !this.hidden; }
+    isDestroyed() { return this.destroyed; } getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; }
+    getBounds() { return this.getNormalBounds(); }
+  }
+  class Tray extends EventEmitter { constructor() { super(); tray = this; }
+    setToolTip(value) { this.tooltip = value; } setContextMenu(value) { this.menu = value; } setImage() {} destroy() { this.destroyed = true; } }
+  class Notification extends EventEmitter { static isSupported() { return true; }
+    constructor(options) { super(); this.options = options; } show() { notices.push(this.options); } }
+  return { app, dialogs, notices, get window() { return window; }, get tray() { return tray; }, electron: { app, BrowserWindow, Tray, ipcMain, Notification,
+    Menu: { buildFromTemplate: value => value },
+    screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) },
+    dialog: { showErrorBox: (...args) => dialogs.push(['error', ...args]),
+      showMessageBox: async options => { dialogs.push(['ask', options.message, options.buttons]); return { response: answer }; } },
+    session: { fromPartition() { return { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, on() {} }; }, defaultSession: { setPermissionRequestHandler() {} } },
+    shell: { openExternal() {} } } };
+}
+
+/**
+ * A fake engine folder. The service CLI fails the way it does on a computer with no service manager, so the app runs
+ * the engine itself (the fallback). The engine answers /readyz and starts one worker process of its own.
+ */
+function fallbackEngineFolder(root) {
+  const dir = join(root, 'engine');
+  mkdirSync(join(dir, 'dist'), { recursive: true });
+  writeFileSync(join(dir, 'dist', 'build-info.json'), JSON.stringify({ version: 'fixture' }));
+  writeFileSync(join(dir, 'branch.mjs'), `import fs from "node:fs"; import http from "node:http"; import { spawn } from "node:child_process";
+const root = ${JSON.stringify(root)}, args = process.argv.slice(2);
+if (args[0] === "gateway" && (args[1] === "--port" || args[1] === "--dev")) {
+  const worker = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  fs.writeFileSync(root + "/worker.pid", String(worker.pid));
+  fs.writeFileSync(root + "/engine.pid", String(process.pid));
+  http.createServer((q, r) => { r.statusCode = q.url === "/readyz" ? 200 : 404; r.end(); }).listen(Number(args[args.indexOf("--port") + 1]), "127.0.0.1");
+} else {
+  fs.appendFileSync(root + "/cli-calls.txt", args.join(" ") + "\\n");
+  console.error("No supported service manager detected");
+  process.exit(1);
+}`);
+  return dir;
+}
+
+/** The real main.js with Always on and Keep working on, on a computer whose service cannot be installed. */
+async function fallbackApp(t, run) {
+  const root = tempDir(t, 'branch-quit-fallback-');
+  const windowDir = join(root, 'window'), profile = join(root, 'profile');
+  for (const dir of [windowDir, profile]) mkdirSync(dir, { recursive: true });
+  const engine = fallbackEngineFolder(root);
+  writeFileSync(join(windowDir, 'index.html'), '<html>fixture</html>');
+  const gatewayPort = await freePort(), windowPort = await freePort();
+  writeFileSync(join(root, 'desktop.json'), JSON.stringify({ dataDir: root, engineDir: engine, windowDir, nodePath: process.execPath,
+    gatewayPort, windowPort, alwaysOn: true }));
+  const vars = { BRANCH_DESKTOP_DATA: root, BRANCH_DESKTOP_HIDDEN: '0', BRANCH_DESKTOP_ENGINE_PROFILE: profile };
+  const saved = Object.fromEntries(Object.keys(vars).map(key => [key, process.env[key]]));
+  Object.assign(process.env, vars);
+  const runtime = quitElectronFixture();
+  Module._load = function(name, ...args) {
+    if (name === 'electron') return runtime.electron;
+    const loaded = originalLoad.call(this, name, ...args);
+    if (name !== './resident-window') return loaded;
+    return { ...loaded, keepWindowResident(app, window, icon, options) {
+      return loaded.keepWindowResident(app, window, icon, { ...options, platform: 'linux' });
+    } };
+  };
+  globalThis.fetch = (url, options) => String(url).startsWith('https://') ? Promise.resolve(new Response('', { status: 404 })) : originalFetch(url, options);
+  for (const name of ['main.js', 'config.js', 'resident-window.js']) delete require.cache[join(dist, name)];
+  const desktopLog = () => { try { return readFileSync(join(root, 'desktop.log'), 'utf8'); } catch { return ''; } };
+  const pid = file => { try { return Number(readFileSync(join(root, file), 'utf8')); } catch { return 0; } };
+  let engineRan = 0, workerRan = 0;
+  // Registered before the folder's removal: whatever this test left running is gone before the folder is.
+  t.after(async () => { killGroup(engineRan); killGroup(workerRan); await pause(100); });
+  try {
+    require(join(dist, 'main.js'));
+    await eventually(() => desktopLog().includes('running the engine inside the app') && pid('worker.pid') > 0 && desktopLog().includes('gateway ready after'));
+    engineRan = pid('engine.pid'); workerRan = pid('worker.pid');
+    await run({ ...runtime, window: runtime.window, tray: runtime.tray, root, gatewayPort, desktopLog, engine: engineRan, worker: workerRan });
+  } finally {
+    runtime.app.quit(); Module._load = originalLoad; globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    await pause(50);
+  }
+}
+
+test('tray Quit stops the fallback engine and the worker it started, even with Keep working on: nothing is left running', { skip: process.platform === 'win32' && 'process groups (the Windows leg checks the job tree)' }, async t => {
+  await fallbackApp(t, async ({ app, window, tray, engine, worker, gatewayPort, root }) => {
+    assert.ok(alive(engine) && alive(worker), 'the engine and its worker run');
+    assert.equal(window.close().prevented, true, 'the close button only hides the window');
+    assert.equal(alive(engine), true, 'closing the window keeps the engine working');
+    const quit = tray.menu.find(entry => /^Quit/.test(entry.label ?? ''));
+    quit.click();
+    await eventually(() => (app.quitCalls ?? 0) === 1);
+    await eventually(() => !alive(engine) && !alive(worker), 5_000).catch(() => undefined);
+    assert.equal(alive(engine), false, 'Quit stopped the engine');
+    assert.equal(alive(worker), false, 'Quit stopped the engine\'s worker: no orphan');
+    assert.equal(await originalFetch(`http://127.0.0.1:${gatewayPort}/readyz`).then(r => r.status, () => 0), 0, 'nothing answers on the engine port');
+    const { findSurvivingEngine } = require(join(dist, 'engine-records.js'));
+    assert.equal(await findSurvivingEngine(root, gatewayPort), undefined, 'the next launch has nothing to attach to');
+  });
+});
+
+/** keepWindowResident on its own, with a recording Electron stand-in. */
+function residentFixture({ userData, answer = 0, platform = 'linux' } = {}) {
+  const notices = [], dialogs = [];
+  let tray, appMenu;
+  const electron = {
+    Menu: { buildFromTemplate: value => value, setApplicationMenu: value => { appMenu = value; } },
+    Tray: class extends EventEmitter { constructor() { super(); tray = this; } setToolTip(value) { this.tooltip = value; } setContextMenu(value) { this.menu = value; } destroy() {} },
+    Notification: class extends EventEmitter { static isSupported() { return true; } constructor(options) { super(); this.options = options; } show() { notices.push(this.options); } },
+    dialog: { showMessageBox: async options => { dialogs.push(options); return { response: answer }; } },
+    nativeImage: { createFromPath: () => ({ setTemplateImage() {} }) },
+  };
+  Module._load = function(name, ...args) { return name === 'electron' ? electron : originalLoad.call(this, name, ...args); };
+  delete require.cache[join(dist, 'resident-window.js')];
+  const { keepWindowResident, showTrayStatus } = require(join(dist, 'resident-window.js'));
+  Module._load = originalLoad;
+  const app = Object.assign(new EventEmitter(), { quitCalls: 0, quit() { this.quitCalls++; }, getPath: () => userData });
+  const window = Object.assign(new EventEmitter(), { hidden: false, webContents: new EventEmitter(),
+    hide() { this.hidden = true; }, show() { this.hidden = false; }, focus() {}, isMinimized: () => false, restore() {} });
+  const calls = [];
+  keepWindowResident(app, window, 'unused.png', { platform, keepRunning: () => true, pauseAll: () => calls.push('pause'), stopCompletely: () => calls.push('stop') });
+  const close = () => { const event = { prevented: false, preventDefault() { this.prevented = true; } }; window.emit('close', event); return event; };
+  return { app, window, notices, dialogs, calls, close, get tray() { return tray; }, get appMenu() { return appMenu; }, status: state => showTrayStatus(tray, state) };
+}
+
+test('the first close shows the one-time notice in the preview\'s words, exactly once, and never again after a relaunch', t => {
+  const userData = tempDir(t, 'branch-close-notice-');
+  const first = residentFixture({ userData });
+  assert.equal(first.close().prevented, true);
+  assert.equal(first.window.hidden, true);
+  assert.deepEqual(first.notices.map(n => n.title), ['Branch closes to the tray.']);
+  assert.equal(first.notices[0].body, 'It keeps working there. To stop it, choose Quit in the tray menu.');
+  first.window.show(); first.close(); first.window.show(); first.close();
+  assert.equal(first.notices.length, 1, 'later closes stay quiet');
+  const relaunched = residentFixture({ userData });
+  relaunched.close();
+  assert.equal(relaunched.notices.length, 0, 'remembered across launches');
+  const mac = residentFixture({ userData: tempDir(t, 'branch-close-notice-mac-'), platform: 'darwin' });
+  mac.close();
+  assert.equal(mac.notices[0].body, 'It keeps working there. To stop it, choose Quit Branch in the Branch menu.');
+});
+
+test('Quit asks in the preview\'s words while work runs; Keep it running in the tray stops nothing', async t => {
+  const kept = residentFixture({ userData: tempDir(t, 'branch-quit-keep-'), answer: 1 });
+  assert.deepEqual(kept.tray.menu.map(i => i.label ?? '-'), ['Open Branch', 'Pause all work', '-', 'Quit']);
+  kept.status({ running: true, workingTrunks: 2, waitingOnYou: 0 });
+  kept.tray.menu.find(i => i.label === 'Quit').click();
+  await eventually(() => kept.window.hidden);
+  assert.equal(kept.dialogs.length, 1);
+  assert.equal(kept.dialogs[0].message, 'Quit while 2 Trunks are working?');
+  assert.equal(kept.dialogs[0].detail, 'If you quit, they stop and pick up next time you open Branch. Keep Branch in the tray to let them finish.');
+  assert.deepEqual(kept.dialogs[0].buttons, ['Quit anyway', 'Keep it running in the tray']);
+  assert.deepEqual(kept.calls, [], 'nothing was stopped');
+  const { fullStopRequested } = require(join(dist, 'quit-intent.js'));
+  assert.equal(fullStopRequested(), false);
+
+  const quit = residentFixture({ userData: tempDir(t, 'branch-quit-anyway-'), answer: 0 });
+  quit.status({ running: true, workingTrunks: 1, waitingOnYou: 0 });
+  quit.tray.menu.find(i => i.label === 'Quit').click();
+  await eventually(() => quit.calls.includes('stop'));
+  assert.equal(quit.dialogs[0].message, 'Quit while 1 Trunk is working?');
+  assert.equal(quit.dialogs[0].detail, 'If you quit, it stops and picks up next time you open Branch. Keep Branch in the tray to let it finish.');
+  assert.equal(fullStopRequested(), true, 'the engine stops with the app');
+
+  const idle = residentFixture({ userData: tempDir(t, 'branch-quit-idle-') });
+  idle.status({ running: true, workingTrunks: 0, waitingOnYou: 0 });
+  idle.tray.menu.find(i => i.label === 'Quit').click();
+  await eventually(() => idle.calls.includes('stop'));
+  assert.equal(idle.dialogs.length, 0, 'nothing runs, so Quit does not ask');
+});
+
+test('Branch › Quit Branch (Cmd Q) on a Mac, and Ctrl Q in the window elsewhere, reach the same Quit', async t => {
+  const mac = residentFixture({ userData: tempDir(t, 'branch-menu-mac-'), platform: 'darwin' });
+  const branch = mac.appMenu?.[0];
+  assert.equal(branch?.label, 'Branch');
+  const item = branch.submenu.find(i => i.label === 'Quit Branch');
+  assert.equal(item.accelerator, 'Command+Q');
+  assert.ok(branch.submenu.some(i => i.label === 'About Branch'));
+  assert.deepEqual(mac.appMenu.slice(1).map(m => m.role), ['fileMenu', 'editMenu', 'viewMenu', 'windowMenu'], 'copy, paste and Close Window keep working');
+  mac.status({ running: true, workingTrunks: 0, waitingOnYou: 0 });
+  item.click();
+  await eventually(() => mac.calls.includes('stop'));
+
+  const linux = residentFixture({ userData: tempDir(t, 'branch-menu-linux-') });
+  assert.equal(linux.appMenu, undefined, 'Windows and Linux keep their hidden menu bar');
+  linux.status({ running: true, workingTrunks: 0, waitingOnYou: 0 });
+  const key = (input) => { const event = { prevented: false, preventDefault() { this.prevented = true; } }; linux.window.webContents.emit('before-input-event', event, input); return event; };
+  assert.equal(key({ type: 'keyDown', key: 'q', control: true, shift: true }).prevented, false, 'Ctrl Shift Q is left to the page');
+  assert.equal(key({ type: 'keyDown', key: 'a', control: true }).prevented, false);
+  assert.deepEqual(linux.calls, []);
+  assert.equal(key({ type: 'keyDown', key: 'q', control: true }).prevented, true);
+  await eventually(() => linux.calls.includes('stop'));
+});
+
+test('a signal (Ctrl C in a terminal, kill) quits the same way; the question has a plain answer for every state', () => {
+  const { quitOnSignals } = require(join(dist, 'quit-intent.js'));
+  const source = new EventEmitter(), seen = [];
+  quitOnSignals(source, signal => seen.push(signal));
+  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP', 'SIGTERM']) source.emit(signal);
+  assert.deepEqual(seen, ['SIGTERM', 'SIGINT', 'SIGHUP'], 'once each; a second signal falls through to the system');
+  const { quitQuestion } = require(join(dist, 'tray-status.js'));
+  assert.equal(quitQuestion({ running: true, workingTrunks: 0, waitingOnYou: 0 }), undefined);
+  assert.equal(quitQuestion({ running: false, workingTrunks: 0, waitingOnYou: 0 }), undefined);
+  assert.equal(quitQuestion(undefined).message, 'Quit while Branch may still be working?');
+  assert.equal(quitQuestion({ running: true, workingTrunks: 0, waitingOnYou: 1 }).message, 'Quit while 1 request is waiting on you?');
+  assert.equal(quitQuestion({ running: true, workingTrunks: 0, waitingOnYou: 3 }).message, 'Quit while 3 requests are waiting on you?');
 });
