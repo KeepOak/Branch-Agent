@@ -110,13 +110,41 @@ jobs:
   merge-gate:
     needs: changed-test-coverage
     if: always()
+    # actions: write only lets a superseded run cancel itself (see the first step).
+    permissions:
+      contents: read
+      checks: read
+      actions: write
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - name: Require changed test coverage
         env:
           COVERAGE_RESULT: ${{ needs.changed-test-coverage.result }}
-        run: test "$COVERAGE_RESULT" = success
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$COVERAGE_RESULT" = success ]; then exit 0; fi
+          # `if: always()` keeps this job running after concurrency cancels the run, so a run
+          # superseded by a newer one would end red. When coverage was cancelled and a newer
+          # merge-gate run for this same head SHA exists and was not itself cancelled, cancel
+          # this run instead so it ends `cancelled` (never success) and the newer run decides.
+          # Anything else (failure, timeout, manual cancel, no newer run, API error) fails.
+          if [ "$COVERAGE_RESULT" = cancelled ]; then
+            newer=$(gh api "repos/$REPO/actions/runs?head_sha=$SHA&event=pull_request&per_page=100" \
+              --jq "[.workflow_runs[] | select((.path | startswith(\".github/workflows/merge-gate.yml\")) and .id > $RUN_ID and .conclusion != \"cancelled\")] | length" \
+              || echo 0)
+            if [ "${newer:-0}" -gt 0 ] 2>/dev/null; then
+              echo "::notice::Superseded by a newer merge-gate run for $SHA; cancelling this run."
+              gh run cancel "$RUN_ID" -R "$REPO" || true
+              sleep 120
+            fi
+          fi
+          echo "::error::changed-test-coverage result is $COVERAGE_RESULT"
+          exit 1
       - name: Check out the wait helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
