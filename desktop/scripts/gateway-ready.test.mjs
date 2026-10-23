@@ -250,6 +250,20 @@ test("a standby that never warms is stopped at its deadline and leaves no proces
     assert.equal(alive(), false, "the timed-out standby was left running");
   }));
 
+test("engineEnvironment omits BRANCH_SKIP_CHANNELS so spawn cannot coerce undefined to empty string", async () => {
+  const { engineEnvironment } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const prior = process.env.BRANCH_SKIP_CHANNELS;
+  process.env.BRANCH_SKIP_CHANNELS = "1";
+  try {
+    const env = engineEnvironment({ dataDir: "/tmp/branch-env-omit", gatewayPort: 18765 }, false, 18765, "tok");
+    assert.equal(Object.hasOwn(env, "BRANCH_SKIP_CHANNELS"), false);
+    assert.equal(env.BRANCH_SKIP_CHANNELS, undefined);
+  } finally {
+    if (prior === undefined) delete process.env.BRANCH_SKIP_CHANNELS;
+    else process.env.BRANCH_SKIP_CHANNELS = prior;
+  }
+});
+
 test("the owned desktop gateway starts configured channels even when the launcher environment skips them", async () => {
   const { mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
