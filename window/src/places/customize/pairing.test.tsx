@@ -15,6 +15,7 @@ afterEach(async () => {
   if (root) await act(async () => root!.unmount());
   root = null;
   document.body.innerHTML = "";
+  localStorage.removeItem("branch.level");
 });
 
 async function open(fx: Record<string, unknown> = {}) {
@@ -77,7 +78,30 @@ describe("Pair a phone", () => {
       ),
     });
     await click("Make the code");
-    expect(host.textContent).toContain("Couldn’t make a pairing link. Try again.");
+    expect(host.textContent).toContain("Your phone can't reach this computer yet.");
     expect(host.textContent).not.toMatch(/loopback|restart the Gateway|publicOrigin/i);
+  });
+
+  const loopbackError = "Gateway is only bound to loopback. Set gateway.publicOrigin to your public HTTPS origin, configure plugins.entries.device-pair.config.publicUrl, enable tailscale serve, or set gateway.bind=lan.";
+
+  it("shows a plain loopback failure at Regular with one working retry action", async () => {
+    localStorage.setItem("branch.level", "regular");
+    const request = await open({ "device.pair.setupCode": new Error(loopbackError) });
+    await click("Make the code");
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("Your phone can't reach this computer yet.");
+    expect(host.innerHTML).not.toMatch(/publicOrigin|gateway\.bind|tailscale serve/i);
+    expect([...host.querySelectorAll(".dlg-f button")].map(button => button.textContent?.trim())).toEqual(["Cancel", "Try again"]);
+    request.mockResolvedValueOnce({ setupId: "retry-setup", setupCode: "retry-code", confirmCode: "ABC123" });
+    await click("Try again");
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(host.querySelector("[data-testid=pair-code] .copy-token-text")?.textContent).toBe("ABC123");
+  });
+
+  it.each(["advanced", "technical"])("keeps the exact loopback engine words at %s", async level => {
+    localStorage.setItem("branch.level", level);
+    await open({ "device.pair.setupCode": new Error(loopbackError) });
+    await click("Make the code");
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe(loopbackError);
   });
 });
