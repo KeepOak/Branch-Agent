@@ -1,8 +1,10 @@
 // Setup opens by itself on first run (DESIGN-SPEC §4.8.1 "When it opens"): 700 ms after the window is ready, when the
 // engine's config has no setup record (wizard.lastRunAt) and nothing else is on top. A completed setup with no
 // usable Trunks also reopens at the first-Trunk step so the window cannot strand a person without a contact.
+// Opening the window at /onboarding or /welcome always shows the first-run Welcome ("Hi, I'm Branch.").
 import { useEffect, useRef, useState } from "react";
 import type { SaplingSession } from "../connect/session";
+import { askedForFirstRun, clearFirstRunPath } from "./first-run-path";
 import { needsFirstContact, RUN_SETUP_AGAIN, setupDone } from "./setup-model";
 
 /** The step setup is open at, or null; `open(step)` reopens it by hand (Guide › Set up Branch, Replay the first run). */
@@ -29,16 +31,18 @@ export function useFirstRun(session: Pick<SaplingSession, "request">, ready: boo
     let timer: ReturnType<typeof setTimeout> | undefined;
     session.request("config.get", {}).then(
       (config) => {
-        if (live) { setRequiresContact(needsFirstContact(config)); setIsFirstRun(!setupDone(config)); }
-        if (live && (setupDone(config) ? usableTrunks === 0 : true)) {
-          const retryOverlay = setupDone(config);
+        const asked = askedForFirstRun();
+        if (live) { setRequiresContact(needsFirstContact(config)); setIsFirstRun(asked || !setupDone(config)); }
+        if (live && (asked || (setupDone(config) ? usableTrunks === 0 : true))) {
+          const retryOverlay = !asked && setupDone(config);
           const target = retryOverlay ? 4 : 0;
           const openWhenClear = () => {
             if (!live || closed.current) return;
             if (busy()) {
-              if (retryOverlay) timer = setTimeout(openWhenClear, 700);
+              if (retryOverlay || asked) timer = setTimeout(openWhenClear, 700);
               return;
             }
+            if (asked) clearFirstRunPath();
             setStep((current) => current ?? target);
           };
           timer = setTimeout(openWhenClear, 700);
