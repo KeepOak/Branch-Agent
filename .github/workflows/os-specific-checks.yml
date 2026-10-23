@@ -74,6 +74,8 @@ jobs:
         # An empty macOS matrix fails this job, so the macOS feature jobs cannot be skipped.
         run: |
           full=$(node base/scripts/feature-batch-ci-matrix.mjs push --named-dir "$GITHUB_WORKSPACE/pr/scripts/feature-batch-ci-named")
+          # The planner prints matrix=... and max_parallel=...; keep only the matrix line for jq.
+          full=$(printf '%s\n' "$full" | grep -m1 '^matrix=')
           macos=$(printf '%s' "${full#matrix=}" | jq -c '{include: [.include[] | select(.os == "macos-latest")]}')
           count=$(printf '%s' "$macos" | jq '.include | length')
           if [ "$count" -lt 1 ]; then echo "macOS named matrix is empty; the macOS feature tests would be skipped" >&2; exit 1; fi
