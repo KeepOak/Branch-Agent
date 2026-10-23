@@ -13,6 +13,8 @@ import { showsInternals } from "../internals";
 
 const PREF = "branch.models.connectionDefaults";
 const NONE = "Branch has no setting for this yet.";
+/** Coming: a separate planning model is not in the engine yet. Survives shownWhy (not a dev note) and Ctl hides the row below Technical. */
+export const PLANNING_WHY = "Choosing a separate model for planning and hard problems comes in a later update.";
 
 /** Each connection's default model, kept with the person's preferences (users.prefs). */
 function useConnectionDefaults(m: ModelsCtx) {
@@ -70,7 +72,7 @@ function WhoAnswers({ m, conns, defaultOf }: { m: ModelsCtx; conns: Connection[]
         <Pick label="Reading pictures" value={image} options={[{ id: "", label: "Automatic" }, ...modelOpts(m.models, (x) => x.images)]} onChange={(v) => void m.cfg.set(m.shared("imageModel", "primary"), v || null)} />
       </Ctl>
       <Ctl title="Everyday answers" sub="Most conversations."><Seg label="Everyday answers" value={connOf(primary)} options={segs} onChange={(id) => setConn(["model", "primary"], id)} /></Ctl>
-      <Ctl title="Planning and hard problems" sub="When a task has many steps." off={NONE}><Seg label="Planning and hard problems" value={connOf(primary)} options={segs} onChange={() => undefined} /></Ctl>
+      <Ctl title="Planning and hard problems" sub="When a task has many steps." off={PLANNING_WHY}><Seg label="Planning and hard problems" value={connOf(primary)} options={segs} onChange={() => undefined} /></Ctl>
       <Ctl title="Quick and cheap jobs" sub="Sorting, tagging, short replies."><Seg label="Quick and cheap jobs" value={connOf(refOf(m.ownOrShared("utilityModel")))} options={segs} onChange={(id) => setConn(["utilityModel"], id)} /></Ctl>
       <Ctl title="Summaries" sub="Keeping long conversations short."><Seg label="Summaries" value={connOf(text(m.cfg.get(m.shared("compaction", "model")) ?? ""))} options={segs} onChange={(id) => { const c = conns.find((x) => x.id === id); if (c) void m.cfg.set(m.shared("compaction", "model"), defaultOf(c)); }} /></Ctl>
       <Ctl title="If the model fails" sub="When the default model can’t answer, try this one." help="When the default model can’t answer, try this one. Your next account is tried first." after={<TrunkFallbackNote m={m} />}>
