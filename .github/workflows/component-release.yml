@@ -567,7 +567,7 @@ jobs:
         if: github.event_name != 'pull_request' && needs.identity.outputs.already_released != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"
+        run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}" --keep-draft
   # Starts mobile-android-release.yml after a published desktop release. A release
   # published with GITHUB_TOKEN never fires the APK workflow's release trigger, so this
   # dispatch is the only path to an APK. always() is required: without it the implicit
@@ -586,6 +586,47 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: gh workflow run mobile-android-release.yml -f tag=v${{ needs.identity.outputs.version }}
+  # This job keeps the run, and so the release concurrency group, busy while the draft
+  # waits. readiness in the next run cannot start until the draft is published, so it
+  # never sees the previous release as Latest and starts a second release.
+  # publish leaves the release as a draft; the Android workflow publishes it right after
+  # attaching the signed APK. If that has not happened in 30 minutes, publish without the
+  # APK so desktop updates still ship, and fail this job so someone looks at Android.
+  apk-watchdog:
+    needs: [identity, publish]
+    if: always() && !cancelled() && github.event_name != 'pull_request' && needs.identity.result == 'success' && needs.identity.outputs.already_released != 'true' && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Wait up to 30 minutes for the APK, then publish the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          is_draft() {
+            gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=20" --jq ".[] | select(.tag_name == \"${TAG}\") | .draft"
+          }
+          for _ in $(seq 1 30); do
+            if [[ "$(is_draft || echo true)" == "false" ]]; then
+              echo "${TAG} was published by the Android workflow"
+              exit 0
+            fi
+            sleep 60
+          done
+          node desktop/scripts/publish-component-release.mjs publish-draft "$TAG"
+          echo "::error::No signed APK was attached to ${TAG} within 30 minutes; published the release without it"
+          exit 1
   # Waits out the 25-minute batching window, then starts one release if main moved.
   # The sleep is the catch-up, so this job is longer than the 15-minute check cap.
   # A failed publish still enters this job. It continues only when that commit is

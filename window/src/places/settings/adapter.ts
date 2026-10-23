@@ -1,13 +1,25 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../connect/engine";
 import { displayName } from "../../display-names";
+import { plainError } from "../../shell/plain-error";
 
 export type RecordValue = Record<string, unknown>;
 export function record(value: unknown): RecordValue { return value && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : {}; }
 export function list(value: unknown): RecordValue[] { return Array.isArray(value) ? value.map(record) : []; }
 export function at(value: unknown, path: string): unknown { return path.split(".").reduce<unknown>((v, key) => record(v)[key], value); }
 export function text(value: unknown): string { return value === undefined || value === null ? "Not set" : typeof value === "object" ? JSON.stringify(value) : String(value); }
-export function errorText(error: unknown): string { return error instanceof Error ? error.message : text(error); }
+/** Engine wording Settings must keep so callers can detect it: a save conflict, a bare "disconnected" load
+ *  error, a stale config hash, an unknown method (Coming / visitor managed-copy), or a validation "Expected …" line.
+ *  Everything else goes through plainError (Private #1089). */
+const KEEP_ENGINE = /^(?:conflict|disconnected)$|config changed since last load|base hash|unknown method|Expected (?:number|string|boolean|object|array|integer)/i;
+/** Engine failure words for Settings: Regular gets one plain sentence and a next step (Private #1089); Advanced and
+ *  Technical keep the exact words. Conflict / disconnected / stale-config / unknown-method / Expected-… pass through
+ *  unchanged. */
+export function errorText(error: unknown): string {
+  const exact = (error instanceof Error ? error.message : typeof error === "string" ? error : text(error)).trim();
+  if (KEEP_ENGINE.test(exact)) return exact;
+  return plainError(error);
+}
 
 export type ConfigSnapshot = { hash?: string; valid?: boolean; config?: RecordValue; issues?: unknown; writeError?: unknown };
 export async function saveConfig(engine: WindowEngine, snapshot: ConfigSnapshot, changes: Record<string, unknown>): Promise<ConfigSnapshot> {

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, cp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, readdir, cp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { makeComponentRelease } from "./make-component-release.mjs";
 import { fileDigest, publicDownloadName, writeReleaseInventory } from "./release-inventory.mjs";
-import { PUBLIC_LATEST_BUDGET_MS, alreadyPublishedMessage, publicLatestDelayMs, publishRelease } from "./publish-component-release.mjs";
+import { PUBLIC_LATEST_BUDGET_MS, alreadyPublishedMessage, draftAlreadyPublishedMessage, publicLatestDelayMs, publishDraft, publishRelease } from "./publish-component-release.mjs";
 import { DOWNLOAD_PLATFORMS, UPDATE_ONLY_LABEL, downloadAssetName, formatReleaseNotes } from "./release-notes.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -430,3 +430,66 @@ for (const [label, options, expected] of [
   await assert.rejects(publishRelease(assets, commit, version, remote.request, remote.download), expected);
   assert(!remote.calls.some(args => args[1] === "create" || args[1] === "edit"));
 }));
+
+// Wraps githubMock so a created draft shows up in the release list, and
+// pattern downloads return only the manifests and SHA256SUMS.
+function draftAware(remote) {
+  const request = async args => {
+    if (args[0] === "api" && args[1].endsWith("/releases")) {
+      const listed = JSON.parse(await remote.request(args)).flat();
+      const created = remote.calls.some(call => call[1] === "create");
+      if (created && remote.latest() !== tag) listed.push({ tag_name: tag, target_commitish: commit, draft: true });
+      return JSON.stringify([listed]);
+    }
+    const result = await remote.request(args);
+    if (args[0] === "release" && args[1] === "download" && args.includes("--pattern")) {
+      const directory = args[args.indexOf("--dir") + 1];
+      for (const name of await readdir(directory)) {
+        if (!/^branch-release-.+\.json$/.test(name) && name !== "SHA256SUMS") await rm(join(directory, name));
+      }
+    }
+    return result;
+  };
+  return { ...remote, request };
+}
+
+test("keepDraft uploads and verifies the release but leaves Latest alone", () => fixture(async assets => {
+  const remote = githubMock(assets);
+  const result = await publishRelease(assets, commit, version, remote.request, remote.download, {
+    keepDraft: true, sleep: remote.sleep, now: remote.now,
+  });
+  assert.deepEqual(result, { draft: true, tag, commit });
+  assert.ok(remote.calls.some(args => args[1] === "create" && args.includes("--draft")));
+  assert.ok(remote.calls.some(args => args[1] === "download"));
+  assert.equal(remote.calls.some(args => args[1] === "edit"), false);
+  assert.equal(remote.publicReads.length, 0);
+  assert.equal(remote.latest(), previousTag);
+  assertReleaseKept(remote.calls);
+}));
+
+test("publish-draft exposes a kept draft from its uploaded manifests, then skips once published", () => fixture(async assets => {
+  const remote = draftAware(githubMock(assets));
+  await publishRelease(assets, commit, version, remote.request, remote.download, { keepDraft: true, sleep: remote.sleep, now: remote.now });
+  const result = await publishDraft(tag, remote.request, remote.download, { sleep: remote.sleep, now: remote.now });
+  assert.equal(result.publicLatest.tag, tag);
+  assert.deepEqual(result.publicLatest.publiclyVerifiedTargets, ["darwin-arm64", "linux-x64", "win32-x64"]);
+  assert.equal(remote.latest(), tag);
+  const again = await publishDraft(tag, remote.request, remote.download, { sleep: remote.sleep, now: remote.now });
+  assert.equal(again.skipped, true);
+  assert.equal(again.reason, draftAlreadyPublishedMessage(tag));
+  assertReleaseKept(remote.calls);
+}));
+
+test("publish-draft refuses a draft whose Latest is already newer", () => fixture(async assets => {
+  const remote = draftAware(githubMock(assets));
+  await publishRelease(assets, commit, version, remote.request, remote.download, { keepDraft: true, sleep: remote.sleep, now: remote.now });
+  const newer = async args => (args[0] === "api" && args[1].endsWith("/releases/latest")
+    ? JSON.stringify({ draft: false, prerelease: false, target_commitish: "e".repeat(40), tag_name: "v9.9.9" })
+    : remote.request(args));
+  await assert.rejects(publishDraft(tag, newer, remote.download), /stale automatic update/);
+  assert.equal(remote.calls.some(args => args[1] === "edit"), false);
+}));
+
+test("publish-draft needs a release tag", async () => {
+  await assert.rejects(publishDraft("main", async () => "[]"), /needs a release tag/);
+});
