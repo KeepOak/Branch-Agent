@@ -143,6 +143,10 @@ jobs:
       - name: Fail new window cleanliness violations
         if: steps.debounce.outputs.skip != 'true'
         run: node scripts/check-window-clean.mjs
+      - name: Test the paid-defaults check
+        run: node --test scripts/check-no-paid-defaults.test.mjs
+      - name: Fail default paid provider keys and embeddings
+        run: node scripts/check-no-paid-defaults.mjs
 
   merge-gate:
     needs: changed-test-coverage
