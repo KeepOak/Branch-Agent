@@ -122,8 +122,10 @@ async function runFeatureTests(scratch) {
     }
     if (browserTests.length) {
       if (process.platform !== 'linux') {
+        // Vitest browser launches chromium-headless-shell; installing only "chromium"
+        // leaves that binary missing on macOS GH runners (merge-gate red on os-specific PRs).
         await run(process.execPath, [path.join(engineRoot, 'node_modules/playwright/cli.js'),
-          'install', 'chromium'], root, env);
+          'install', 'chromium', 'chromium-headless-shell'], root, env);
       }
       if (process.platform === 'win32') {
         env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = await hostedChrome();
