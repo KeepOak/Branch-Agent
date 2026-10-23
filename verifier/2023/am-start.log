@@ -1,0 +1,8 @@
+$ adb shell am start -W -n 'com.android.settings/.Settings$ManageAssistActivity'
+Starting: Intent { cmp=com.android.settings/.Settings$ManageAssistActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.android.settings/.Settings$ManageAssistActivity
+TotalTime: 2189
+WaitTime: 2277
+Complete

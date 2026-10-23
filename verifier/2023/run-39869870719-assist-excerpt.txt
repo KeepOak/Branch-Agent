@@ -1,0 +1,27 @@
+# Verifier excerpt — Mobile APK reinstall run 39869870719 attempt 2
+# Job: Android APK reinstall (120163277788)
+# Conclusion: failure
+# Head: 3b0701287fe79c4ce72c6de0f5044f9aa422a28a (#2021)
+# When: 2026-10-22 20:13 America/New_York
+
+## APK under test
+ASSIST_APK: branch-android-0.4.4-build-85612a8f5516.apk
+(release v0.4.4-build-85612a8f5516 / versionCode 55 / includes #2023)
+
+## Emulator
+system-images;android-31;google_apis;x86_64
+
+## Assist check (key lines)
+APK declares an assistant entry point: yes
+Branch is listed in the Digital assistant app picker
+assist-picker.xml title text="Branch Agent" (with None and Google)
+cmd role get-role-holders android.app.role.ASSISTANT -> Unknown command: get-role-holders
+dumpsys role shows android.app.role.ASSISTANT holders=com.google.android.googlequicksearchbox
+Job failed before add-role-holder could run.
+
+## Verdict for #2023
+Picker live proof PASSED on vc55 (Branch Agent listed).
+Role-holder live proof NOT obtained (cmd role shell subcommands missing on this image; not an old-APK miss).
+
+## Artifact
+https://github.com/KeepOak/Branch-Agent/actions/runs/39869870719/artifacts/12468044790
