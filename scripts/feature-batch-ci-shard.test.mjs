@@ -6,7 +6,8 @@ import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstSh
 import {
   REGISTRY_DOWNLOAD_ATTEMPTS, isTransientRegistryError, registryRetryWaitMs, withRegistryRetry,
 } from './feature-batch-ci-runtime.mjs';
-import { featureBatchMatrix, validateFeatureBatchMatrix } from './feature-batch-ci-matrix.mjs';
+import { featureBatchMatrix, featureBatchMaxParallel, mainPushMaxParallel, validateFeatureBatchMatrix } from './feature-batch-ci-matrix.mjs';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -90,12 +91,32 @@ test('the OS-specific macOS workflow takes its shard count from the planner, not
 
 test('pull requests start every planned shard in one wave; main pushes keep max-parallel 6', () => {
   const yaml = readFileSync(new URL('../.github/workflows/feature-batch-checks.yml', import.meta.url), 'utf8');
-  const cap = yaml.match(/max-parallel: \$\{\{ github\.event_name == 'pull_request' && (\d+) \|\| (\d+) \}\}/);
-  assert.ok(cap, 'feature-batch max-parallel must be set per event');
-  const [prCap, pushCap] = [Number(cap[1]), Number(cap[2])];
-  const pr = featureBatchMatrix({ event: 'pull_request' }).include;
-  assert.ok(prCap >= pr.length, `PR max-parallel ${prCap} is below the ${pr.length} planned PR jobs, so they would run in two waves`);
-  assert.equal(pushCap, 6);
+  // The cap is the planner's output, not a number in the workflow that can fall behind the matrix.
+  assert.match(yaml, /max_parallel: \$\{\{ steps\.plan\.outputs\.max_parallel \}\}/);
+  assert.match(yaml, /max-parallel: \$\{\{ fromJSON\(needs\.plan\.outputs\.max_parallel \|\|/);
+  assert.doesNotMatch(yaml, /max-parallel: \$\{\{ github\.event_name == 'pull_request' && \d+/);
+  const pr = featureBatchMatrix({ event: 'pull_request' });
+  assert.equal(featureBatchMaxParallel(pr, 'pull_request'), pr.include.length);
+  assert.equal(featureBatchMaxParallel(featureBatchMatrix({ event: 'push' }), 'push'), mainPushMaxParallel);
+  assert.equal(mainPushMaxParallel, 6);
+  // A named list that adds a Linux shard raises the cap with it (the #2001 case: 21 jobs against a fixed 20).
+  const grown = { include: [...pr.include, { os: 'ubuntu-latest', shard: 'x', label: 'x', scope: 'all' }] };
+  assert.equal(featureBatchMaxParallel(grown, 'pull_request'), pr.include.length + 1);
+  // The bootstrap matrices in the workflow print a cap that covers them.
+  const boot = [...yaml.matchAll(/echo 'matrix=(\{.*?\})' >> "\$GITHUB_OUTPUT"\n\s*echo 'max_parallel=(\d+)'/g)];
+  assert.equal(boot.length, 2);
+  assert.ok(Number(boot[0][2]) >= JSON.parse(boot[0][1]).include.length);
+  assert.equal(Number(boot[1][2]), 6);
+});
+
+test('the matrix CLI prints the matrix and its max_parallel', () => {
+  const script = fileURLToPath(new URL('./feature-batch-ci-matrix.mjs', import.meta.url));
+  for (const event of ['pull_request', 'push']) {
+    const out = execFileSync(process.execPath, [script, event], { encoding: 'utf8' });
+    const matrix = JSON.parse(out.match(/^matrix=(.*)$/m)[1]);
+    const cap = Number(out.match(/^max_parallel=(\d+)$/m)[1]);
+    assert.equal(cap, event === 'pull_request' ? matrix.include.length : 6);
+  }
 });
 
 test('macOS and Windows main-push shards keep ten percent budget headroom', () => {
