@@ -905,8 +905,9 @@ describe("branch.chat", () => {
       ok: false,
       error: {
         code: "UNAVAILABLE",
-        message: expect.stringContaining("workspace owner branch is missing from the roster"),
-        details: { code: "system_agent_session_invalidated" },
+        message:
+          "Branch can't reach your AI account right now. Reconnect it in Accounts, then try again.",
+        details: { code: "system_agent_session_invalidated", action: "open-accounts" },
       },
     });
     expect(dispose).toHaveBeenCalledOnce();
