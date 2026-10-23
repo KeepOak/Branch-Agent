@@ -34,20 +34,20 @@ async function oldInstall(home, platform) {
     await writeFile(appImage, "#!/bin/sh\n# Branch Agent AppImage fixture\n# version 0.4.4\n", { mode: 0o755 });
     await writeFile(join(mount, "branch-agent"), "old runtime"); await writeFile(join(mount, "resources/app.asar"), "old desktop asar");
     return { appDir: mount, resourcesDir: join(mount, "resources"), executable: join(mount, "branch-agent"), electronVersion: OLD_ELECTRON,
-      nodePath: process.execPath, appImage, platform };
+      nodePath: process.execPath, appImage, platform, updaterPubkey: "" };
   }
   if (platform === "win32") {
     const appDir = join(home, "AppData/Local/Programs/Branch Agent");
     await mkdir(join(appDir, "resources"), { recursive: true });
     await writeFile(join(appDir, "Branch Agent.exe"), "old runtime"); await writeFile(join(appDir, "resources/app.asar"), "old desktop asar");
     return { appDir, resourcesDir: join(appDir, "resources"), executable: join(appDir, "Branch Agent.exe"), electronVersion: OLD_ELECTRON,
-      nodePath: process.execPath, platform };
+      nodePath: process.execPath, platform, updaterPubkey: "" };
   }
   const appDir = join(home, "Applications/Branch Agent.app");
   await mkdir(join(appDir, "Contents/MacOS"), { recursive: true }); await mkdir(join(appDir, "Contents/Resources"), { recursive: true });
   await writeFile(join(appDir, "Contents/MacOS/Branch Agent"), "old runtime"); await writeFile(join(appDir, "Contents/Resources/app.asar"), "old desktop asar");
   return { appDir, resourcesDir: join(appDir, "Contents/Resources"), executable: join(appDir, "Contents/MacOS/Branch Agent"), electronVersion: OLD_ELECTRON,
-    nodePath: process.execPath, platform, readSignature: async () => pinned };
+    nodePath: process.execPath, platform, readSignature: async () => pinned, updaterPubkey: "" };
 }
 
 /** What the platform's installed copy holds now: the AppImage bytes, or the executable and app.asar. */
@@ -211,6 +211,21 @@ test("Linux: a release without SHA256SUMS never updates an AppImage", () => fixt
   await rm(join(root, "release", "SHA256SUMS"));
   await assert.rejects(desktopUpdate.stageDesktopUpdate(cfg, release, request, install), /Release download failed \(404\)/);
   assert.equal(await installed(install), OLD.linux);
+}));
+
+test("the old SHA256SUMS updater ignores a signed release's extra latest.json and .sig files", () => fixture("linux", async ({ root, cfg, release, request, install }) => {
+  const dir = join(root, "release");
+  await writeFile(join(dir, "latest.json"), `${JSON.stringify({ version: VERSION, platforms: {} })}\n`);
+  await writeFile(join(dir, `${desktopUpdate.appImageAssetName(VERSION)}.sig`), "c2lnbmF0dXJl");
+  const sums = [];
+  for (const name of (await readdir(dir)).sort()) {
+    if (name === "SHA256SUMS") continue;
+    sums.push(`${sha256(await readFile(join(dir, name)))}  ${name}`);
+  }
+  await writeFile(join(dir, "SHA256SUMS"), `${sums.join("\n")}\n`);
+  assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, install), true);
+  assert.equal(await installed(install), OLD.linux, "extra signed-release files must not touch the running install");
+  assert.equal((await desktopUpdate.readDesktopJournal(cfg)).kind, "appimage");
 }));
 
 test("an install that already matches the release fetches nothing, not even SHA256SUMS", async () => {
