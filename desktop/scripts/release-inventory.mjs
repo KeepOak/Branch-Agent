@@ -111,8 +111,41 @@ export async function verifyReleaseDirectory(directory, expectedCommit, expected
     await verifyTarget(directory, proof, inventory);
     inventory.set(name, await fileDigest(join(directory, name)));
   }
+  // sign-release-updates.mjs writes .sig sidecars + latest.json after proofs are built.
+  // Attest them here so publish's verifyReleaseDirectory accepts the signed directory.
+  await attestSignedUpdateSidecars(directory, inventory, expectedVersion);
   assert.deepEqual(names, [...inventory.keys()].sort(), "Unattested or missing release assets");
   return { targets: [...targets].sort(), inventory: Object.fromEntries(inventory) };
+}
+
+/**
+ * Digests free-updater sidecars into the inventory. Each `.sig` must name an already
+ * attested payload (proof asset or installer). `latest.json` is the updater feed.
+ */
+export async function attestSignedUpdateSidecars(directory, inventory, expectedVersion) {
+  const names = (await readdir(directory)).sort();
+  for (const name of names) {
+    if (name === "latest.json") {
+      assert(/^[A-Za-z0-9.-]+$/.test(name), "Unsafe asset filename");
+      const body = JSON.parse(await readFile(join(directory, name), "utf8"));
+      assert.equal(body.version, expectedVersion, "latest.json version differs from the release");
+      assert(body.platforms && typeof body.platforms === "object" && !Array.isArray(body.platforms), "latest.json missing platforms");
+      assert(Object.keys(body.platforms).length > 0, "latest.json needs a platform entry");
+      const actual = await fileDigest(join(directory, name));
+      if (inventory.has(name)) assert.deepEqual(inventory.get(name), actual, "Conflicting shared asset");
+      inventory.set(name, actual);
+      continue;
+    }
+    if (!name.endsWith(".sig")) continue;
+    assert(/^[A-Za-z0-9.-]+$/.test(name), "Unsafe signature filename");
+    const payload = name.slice(0, -".sig".length);
+    assert(inventory.has(payload), `Unattested signed payload for sidecar: ${name}`);
+    const actual = await fileDigest(join(directory, name));
+    assert(actual.bytes > 0, `Empty signature sidecar: ${name}`);
+    if (inventory.has(name)) assert.deepEqual(inventory.get(name), actual, "Conflicting shared asset");
+    inventory.set(name, actual);
+  }
+  return inventory;
 }
 
 async function verifyTarget(directory, proof, inventory) {

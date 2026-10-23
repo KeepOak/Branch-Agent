@@ -161,6 +161,59 @@ test("a target without an installer still verifies beside targets that have one"
   assert(!Object.keys(result.inventory).some(name => name.endsWith(".dmg")));
 }));
 
+
+test("signed update sidecars and latest.json are attested beside release assets", () => fixture(async ({ assets }) => {
+  const payloads = [
+    `branch-desktop-${version}-darwin-arm64.tar.gz`,
+    `branch-desktop-${version}-linux-x64.tar.gz`,
+    `branch-desktop-${version}-win32-x64.tar.gz`,
+    `branch-desktop-app-${version}-linux-x64.tar.gz`,
+    `branch-desktop-app-${version}-win32-x64.tar.gz`,
+  ];
+  for (const payload of payloads) {
+    assert(Object.hasOwn((await verifyReleaseDirectory(assets, commit, version)).inventory, payload));
+    await writeFile(join(assets, `${payload}.sig`), `sig-for-${payload}`);
+  }
+  await listInstaller(assets, "linux-x64");
+  await listInstaller(assets, "win32-x64");
+  await writeFile(join(assets, `${installerNames["linux-x64"]}.sig`), "appimage-sig");
+  await writeFile(join(assets, `${installerNames["win32-x64"]}.sig`), "setup-sig");
+  await writeFile(join(assets, "latest.json"), JSON.stringify({
+    version,
+    notes: "fixture",
+    pub_date: "2026-10-23T00:00:00.000Z",
+    platforms: {
+      "darwin-aarch64": { url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${payloads[0]}`, signature: "sig" },
+      "linux-x86_64": { url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${installerNames["linux-x64"]}`, signature: "sig" },
+      "windows-x86_64": { url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${payloads[2]}`, signature: "sig" },
+    },
+  }, null, 2) + "\n");
+  const result = await verifyReleaseDirectory(assets, commit, version);
+  for (const payload of payloads) {
+    assert(Object.hasOwn(result.inventory, `${payload}.sig`), `missing ${payload}.sig`);
+    assert.deepEqual(result.inventory[`${payload}.sig`], await fileDigest(join(assets, `${payload}.sig`)));
+  }
+  assert(Object.hasOwn(result.inventory, `${installerNames["linux-x64"]}.sig`));
+  assert(Object.hasOwn(result.inventory, `${installerNames["win32-x64"]}.sig`));
+  assert(Object.hasOwn(result.inventory, "latest.json"));
+  assert.deepEqual(result.inventory["latest.json"], await fileDigest(join(assets, "latest.json")));
+}));
+
+test("release inventory rejects a .sig whose payload is not attested", () => fixture(async ({ assets }) => {
+  await writeFile(join(assets, "orphan-payload.bin.sig"), "sig");
+  await assert.rejects(verifyReleaseDirectory(assets, commit, version), /Unattested signed payload/);
+}));
+
+test("release inventory rejects latest.json whose version differs from the release", () => fixture(async ({ assets }) => {
+  await writeFile(join(assets, "latest.json"), JSON.stringify({
+    version: "9.9.9",
+    notes: "",
+    pub_date: "2026-10-23T00:00:00.000Z",
+    platforms: { "linux-x86_64": { url: "https://example.com/x", signature: "s" } },
+  }, null, 2) + "\n");
+  await assert.rejects(verifyReleaseDirectory(assets, commit, version), /latest\.json version/);
+}));
+
 test("release inventory refuses a listed installer that is missing", () => fixture(async ({ assets }) => {
   await listInstaller(assets, "darwin-arm64", { place: false });
   await assert.rejects(verifyReleaseDirectory(assets, commit, version), /Missing listed installer/);
