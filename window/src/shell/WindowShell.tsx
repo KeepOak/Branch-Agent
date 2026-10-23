@@ -1979,6 +1979,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             setSetupTalk(handle);
             if (handle && s.mainKey) { openConversation(s.mainKey); void session.open(s.mainKey); }
           }}
+          onTalkConversation={(sessionKey) => {
+            firstRun.close();
+            openConversation(sessionKey);
+            void session.open(sessionKey);
+          }}
           onClose={(finished) => {
             setSetupTalk(null);
             firstRun.close();
