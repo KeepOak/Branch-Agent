@@ -146,7 +146,7 @@ export function gateFileProblems({
   return [problem(
     'gate-files',
     `protected gate file(s) changed without a reviewer marker for this head: ${review.protectedFiles.join(', ')}`,
-    'this change needs a non-author review of this exact head; after approval the reviewer or the merge owner adds the line gate-change-reviewed: <full head sha> to the PR body. The PR author never adds it',
+    'this change needs a reviewer verdict comment ("[Full] Verifier:" or "[Full] Gardener:", or the [Mobile] form) with review-verdict: MERGE <full head sha> and gate-change-reviewed: <same sha>. A PR body line counts for nothing, and the PR author bot never posts the verdict',
   )];
 }
 
@@ -336,12 +336,8 @@ export function runPreflight(input) {
     ...proofImageProblems(input.files),
     ...windowCleanProblems(input.windowResult),
     ...shardProblems(input.shardResult),
-    ...gateFileProblems({
-      changedFiles, body, headSha: input.headSha, protectedPaths,
-      commits: input.prCommits, files: input.files, baseRef: input.baseRef,
-      request: input.request, prNumber: input.prNumber, baselineGrew: input.baselineGrew,
-      repoDir: input.repoDir,
-    }),
+    // Gate files are not a preflight problem: the reviewer's verdict comment satisfies them after review,
+    // and merge-gate-trusted checks that comment (AGENTS.md rule 12). The PR body never counts.
     ...desktopCoverageProblems({ files: input.files ?? [], desktopWorkflow: input.desktopWorkflow ?? null }),
     ...personalInfoProblems(input.addedLines ?? [], { changedFiles, denylist: input.denylist ?? privateNameDenylist(), branch: input.branch }),
     ...bodyEmailProblems(body),

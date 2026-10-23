@@ -1,0 +1,41 @@
+name: Merge gate verdict rerun
+
+# merge-gate-trusted reads the review verdict from PR comments (AGENTS.md rule 12), but a new comment does not
+# start a pull_request_target run. When a comment that looks like a verdict lands on a pull request, this reruns
+# the failed jobs of the newest finished, unsuccessful merge-gate-trusted run for the PR's current head, so the
+# gate re-reads the comments. It never checks out code, and the comment text is never passed to a shell.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  pull-requests: read
+
+concurrency:
+  group: merge-gate-verdict-rerun-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  rerun:
+    if: github.event.issue.pull_request && contains(github.event.comment.body, 'review-verdict: MERGE ')
+    runs-on: ubuntu-latest
+    # 15-minute cap (AGENTS.md rule 13).
+    timeout-minutes: 5
+    steps:
+      - name: Rerun merge-gate-trusted for the PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          head=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.head.sha')
+          run=$(gh api "repos/$REPO/actions/workflows/merge-gate-trusted.yml/runs?head_sha=$head&event=pull_request_target&per_page=1" \
+            --jq '.workflow_runs[0] // empty | select(.status == "completed" and .conclusion != "success") | .id')
+          if [ -z "$run" ]; then
+            echo "No finished, unsuccessful merge-gate-trusted run for $head; nothing to rerun." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh api -X POST "repos/$REPO/actions/runs/$run/rerun-failed-jobs"
+          echo "Reran the failed jobs of merge-gate-trusted run $run for $head." >> "$GITHUB_STEP_SUMMARY"

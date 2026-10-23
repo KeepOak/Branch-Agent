@@ -2776,6 +2776,14 @@ function compareRequest({
   };
 }
 
+function withCommitFiles(request, filesBySha) {
+  return (requestPath, options) => {
+    const match = /^commits\/([0-9a-f]{40})$/.exec(requestPath);
+    if (match && filesBySha[match[1]]) return { sha: match[1], files: filesBySha[match[1]] };
+    return request(requestPath, options);
+  };
+}
+
 function carryReview(overrides = {}) {
   const markerSha = overrides.markerSha ?? MARKER_M;
   const headSha = overrides.headSha ?? MERGE_ONE;
@@ -3043,11 +3051,12 @@ test('an author commit after the marker that touches a gate file does not carry'
       apiCommit(AUTHOR_SHA, [MARKER_M]),
     ],
     files: [carryFile({ patch: `${CARRY_PATCH}+author\n` })],
+    request: withCommitFiles(compareRequest({ markerFiles: [carryFile()] }), { [AUTHOR_SHA]: [{ filename: CARRY_FILE, status: 'modified' }] }),
   });
   assert.equal(result.ok, false);
   assert.equal(result.markerMatched, false);
   assert.match(result.message, new RegExp(AUTHOR_SHA));
-  assert.match(result.message, /is not a merge commit/);
+  assert.match(result.message, /is neither a merge commit nor a change to scripts\/feature-batch-ci-named\/\*\.txt only/);
 });
 
 test('an author commit after the marker that touches no gate file does not carry', () => {
@@ -3057,11 +3066,122 @@ test('an author commit after the marker that touches no gate file does not carry
       apiCommit(MARKER_M, [REVIEW_HEAD]),
       apiCommit(AUTHOR_SHA, [MARKER_M]),
     ],
+    request: withCommitFiles(compareRequest(), { [AUTHOR_SHA]: [{ filename: 'engine/src/x.ts', status: 'modified' }] }),
   });
   assert.equal(result.ok, false);
   assert.equal(result.markerMatched, false);
   assert.match(result.message, new RegExp(AUTHOR_SHA));
-  assert.match(result.message, /is not a merge commit/);
+  assert.match(result.message, /is neither a merge commit nor a change to scripts\/feature-batch-ci-named\/\*\.txt only/);
+});
+
+test('a commit after the marker that only edits a named-test list carries the marker', () => {
+  const result = carryReview({
+    headSha: AUTHOR_SHA,
+    commits: [
+      apiCommit(MARKER_M, [REVIEW_HEAD]),
+      apiCommit(AUTHOR_SHA, [MARKER_M]),
+    ],
+    request: withCommitFiles(compareRequest(), {
+      [AUTHOR_SHA]: [{ filename: 'scripts/feature-batch-ci-named/parity-shell-look.txt', status: 'modified' }],
+    }),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.carriedFrom, MARKER_M);
+});
+
+test('a named-list commit that also renames a file in from elsewhere does not carry', () => {
+  assert.equal(gate.filesAreNamedListsOnly([{ filename: 'scripts/feature-batch-ci-named/a.txt', status: 'modified' }]), true);
+  assert.equal(gate.filesAreNamedListsOnly([{ filename: 'scripts/feature-batch-ci-named/a.txt', previous_filename: 'scripts/x.mjs', status: 'renamed' }]), false);
+  assert.equal(gate.filesAreNamedListsOnly([{ filename: 'scripts/feature-batch-ci-named/sub/a.txt', status: 'added' }]), false);
+  assert.equal(gate.filesAreNamedListsOnly([]), false);
+});
+
+// ---- Review verdict comments (AGENTS.md rule 12)
+const V_HEAD = 'c8d0bf70b94cfa62635af64e375c90f3c8630415';
+const V_OLD = 'cc7a382b3618280f0627d236f5b56a9a44e31e76';
+const vCommit = (sha, parents, date) => ({ sha, parents: parents.map((p) => ({ sha: p })), commit: { committer: { date } } });
+const V_COMMITS = [
+  vCommit(V_OLD, [REVIEW_HEAD], '2026-10-19T07:40:10Z'),
+  vCommit(V_HEAD, [V_OLD], '2026-10-19T08:39:08Z'),
+];
+const vComment = (body, created_at = '2026-10-19T09:05:13Z', id = 1) => ({ id, body, created_at, user: { login: 'stabrea' } });
+
+test('a Verifier comment with review-verdict: MERGE <head> after the head commit passes', () => {
+  const result = gate.evaluateReviewVerdict({
+    comments: [vComment(`[Full] Verifier: looks right.\n\nreview-verdict: MERGE ${V_HEAD}`)],
+    commits: V_COMMITS, headSha: V_HEAD,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.verdictSha, V_HEAD);
+  for (const prefix of ['[Full] Gardener:', '[Mobile] Verifier:', '[Mobile] Gardener:']) {
+    assert.equal(gate.evaluateReviewVerdict({
+      comments: [vComment(`${prefix} ok\nreview-verdict: MERGE ${V_HEAD}`)], commits: V_COMMITS, headSha: V_HEAD,
+    }).ok, true, prefix);
+  }
+});
+
+test('a body marker, an author-bot comment, a short sha or an early comment never counts', () => {
+  const cases = [
+    [],
+    [vComment(`[Full] Parity Builder: done\nreview-verdict: MERGE ${V_HEAD}`)],
+    [vComment(`[Full] GOD: release check\nreview-verdict: MERGE ${V_HEAD}`)],
+    [vComment(`Verifier: ok\nreview-verdict: MERGE ${V_HEAD}`)],
+    [vComment(`[Full] Verifier: ok\nreview-verdict: MERGE ${V_HEAD.slice(0, 10)}`)],
+    [vComment(`[Full] Verifier: ok\nreview-verdict: FIX ${V_HEAD}`)],
+    [vComment(`[Full] Verifier: ok\nreview-verdict: MERGE ${V_HEAD}`, '2026-10-19T08:39:08Z')],
+    [vComment(`[Full] Verifier: ok\nreview-verdict: MERGE ${'d'.repeat(40)}`)],
+  ];
+  for (const comments of cases) {
+    const result = gate.evaluateReviewVerdict({ comments, commits: V_COMMITS, headSha: V_HEAD });
+    assert.equal(result.ok, false, JSON.stringify(comments));
+    assert.match(result.message, /A marker in the PR body counts for nothing/);
+  }
+});
+
+test('a verdict for an earlier head carries only across a named-list-only commit', () => {
+  const comments = [vComment(`[Full] Verifier: ok\nreview-verdict: MERGE ${V_OLD}`, '2026-10-19T07:55:59Z', 6262453280)];
+  const listOnly = withCommitFiles(compareRequest({ markerSha: V_OLD, markerFiles: [] }), {
+    [V_HEAD]: [{ filename: 'scripts/feature-batch-ci-named/parity-shell-look.txt', status: 'modified' }],
+  });
+  const carried = gate.evaluateReviewVerdict({
+    comments, commits: V_COMMITS, headSha: V_HEAD, baseRef: 'main', files: [], protectedPaths: new Set(), request: listOnly,
+  });
+  assert.equal(carried.ok, true);
+  assert.equal(carried.carriedFrom, V_OLD);
+  assert.match(gate.formatReviewVerdictSummary(carried), /Verdict carried from: cc7a382b/);
+  assert.match(gate.formatReviewVerdictSummary(carried), /6262453280/);
+  const codeChange = withCommitFiles(compareRequest({ markerSha: V_OLD, markerFiles: [] }), {
+    [V_HEAD]: [{ filename: 'engine/ui/src/pages/agents-home/card-preview.ts', status: 'modified' }],
+  });
+  const blocked = gate.evaluateReviewVerdict({
+    comments, commits: V_COMMITS, headSha: V_HEAD, baseRef: 'main', files: [], protectedPaths: new Set(), request: codeChange,
+  });
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.message, /The review verdict cc7a382b/);
+});
+
+test('the gate marker counts only from a verdict comment for the same sha', () => {
+  const both = gate.verdictsFromComments([vComment(`[Full] Gardener: gate ok\nreview-verdict: MERGE ${V_HEAD}\ngate-change-reviewed: ${V_HEAD}`)], V_COMMITS);
+  assert.equal(gate.verdictGateBody(both), `gate-change-reviewed: ${V_HEAD}`);
+  const mismatched = gate.verdictsFromComments([vComment(`[Full] Gardener: gate ok\nreview-verdict: MERGE ${V_HEAD}\ngate-change-reviewed: ${V_OLD}`)], V_COMMITS);
+  assert.equal(gate.verdictGateBody(mismatched), '');
+  const gateOnly = gate.verdictsFromComments([vComment(`[Full] Gardener: gate ok\ngate-change-reviewed: ${V_HEAD}`)], V_COMMITS);
+  assert.equal(gate.verdictGateBody(gateOnly), '');
+  const review = gate.evaluateGateChangeReview({
+    changedFiles: ['.github/workflows/merge-gate.yml'], body: gate.verdictGateBody(both), headSha: V_HEAD, protectedPaths: new Set(),
+  });
+  assert.equal(review.ok, true);
+});
+
+test('fetchPrComments flattens pages and fails closed on a non-list answer', () => {
+  const seen = [];
+  const comments = gate.fetchPrComments('o/r', 7, 't', (requestPath, options) => {
+    seen.push([requestPath, options]);
+    return [[{ id: 1 }], [{ id: 2 }]];
+  });
+  assert.deepEqual(comments.map((c) => c.id), [1, 2]);
+  assert.deepEqual(seen, [['issues/7/comments?per_page=100', { paginate: true }]]);
+  assert.throws(() => gate.fetchPrComments('o/r', 7, 't', () => ({ message: 'Not Found' })), /not a list/);
 });
 
 test('a merge whose conflict resolution changes the gate patch does not carry', () => {
@@ -3338,7 +3458,9 @@ test('merge-gate-trusted still reruns when the pull request body is edited', () 
   assert.match(source, /buttonCrawlBaselineGrowth\(\{/);
   assert.match(source, /fetchFileText\(repo, baseRef, token, BUTTON_CRAWL_BASELINE\)/);
   assert.match(source, /fetchFileText\(repo, sha, token, BUTTON_CRAWL_BASELINE\)/);
-  assert.match(source, /evaluateGateChangeReview\(\{\s*changedFiles, body, headSha: sha, baselineGrew, files, baseRef, prNumber, request,/);
+  assert.match(source, /evaluateGateChangeReview\(\{\s*changedFiles, body: verdictGateBody\(verdict\.verdicts\), headSha: sha, baselineGrew, files, baseRef, prNumber, request, commits,/);
+  assert.match(source, /fetchPrComments\(repo, prNumber, token, request\)/);
+  assert.match(source, /if \(!verdict\.ok\)/);
   assert.match(source, /writeSummary\(formatGateChangeReviewSummary\(review\)\)/);
   assert.match(source, /if \(!review\.ok\)/);
 });

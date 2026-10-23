@@ -553,7 +553,7 @@ export function formatGateChangeSummary(changedFiles) {
 }
 
 export const GATE_CHANGE_REVIEW_REQUIRED =
-  'The gate change needs a separate review before the marker can be added for this head.';
+  'The gate change needs a reviewer verdict comment with gate-change-reviewed: <full head sha> for this head.';
 export const BUTTON_CRAWL_BASELINE = 'scripts/button-crawl/baseline.json';
 const GATE_CHANGE_REVIEWED_LINE = /^gate-change-reviewed: ([0-9a-f]{40})$/;
 
@@ -781,6 +781,30 @@ function fetchMarkerProtectedDiff(request, baseRef, markerSha, protectedPaths) {
     if (!payload || !Array.isArray(payload.files)) return null;
     if (payload.truncated === true) return { ok: false };
     return protectedFileDiffTuples(payload.files, protectedPaths);
+  } catch {
+    return null;
+  }
+}
+
+// A commit that only edits named-test lists (scripts/feature-batch-ci-named/*.txt) changes which tests CI
+// names, not what the product does, so a review verdict carries across it. null: the API answer was unusable.
+export const NAMED_LIST_PATH = /^scripts\/feature-batch-ci-named\/[^/]+\.txt$/;
+
+export function filesAreNamedListsOnly(files) {
+  if (!Array.isArray(files) || files.length === 0) return false;
+  return files.every((file) => [file?.filename, file?.previous_filename]
+    .filter(Boolean)
+    .every((name) => NAMED_LIST_PATH.test(name)) && Boolean(file?.filename));
+}
+
+function commitTouchesOnlyNamedLists(sha, request) {
+  if (typeof request !== 'function' || !isGateFullSha(sha)) return null;
+  try {
+    const payload = request(`commits/${sha}`);
+    if (!payload || !Array.isArray(payload.files)) return null;
+    // GitHub caps one commit's file list at 300; a capped list cannot prove "named lists only".
+    if (payload.files.length >= 300) return false;
+    return filesAreNamedListsOnly(payload.files);
   } catch {
     return null;
   }
@@ -1078,9 +1102,14 @@ export function gateChangeMarkerCarriesForward({
   }
 
   for (const step of after) {
+    if (step.parents.length === 1) {
+      const namedOnly = commitTouchesOnlyNamedLists(step.sha, request);
+      if (namedOnly == null) return { ok: false, known: false };
+      if (namedOnly) continue;
+    }
     if (step.parents.length < 2) {
       return carryFailure(
-        `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${step.sha} is not a merge commit.`,
+        `The gate-change-reviewed marker ${markerSha} does not carry forward to ${headSha} because ${step.sha} is neither a merge commit nor a change to scripts/feature-batch-ci-named/*.txt only.`,
         step.sha,
       );
     }
@@ -1159,7 +1188,7 @@ export function formatGateChangeReviewFailure(protectedFiles, headSha, body, car
     GATE_CHANGE_REVIEW_REQUIRED,
   ];
   if (found.length === 0) {
-    lines.push('The pull request body has no gate-change-reviewed marker for this head.');
+    lines.push('No counted verdict comment has a gate-change-reviewed marker for this head.');
   } else {
     lines.push(`The gate-change-reviewed marker does not match the current head ${headSha}.`);
   }
@@ -1214,6 +1243,110 @@ export function formatGateChangeReviewSummary(result) {
   lines.push(`Marker matched: ${result.markerMatched ? 'yes' : 'no'}`);
   if (result.carriedFrom) lines.push(`Marker carried from: ${result.carriedFrom}`);
   return lines.join('\n');
+}
+
+// ---- Review verdict (AGENTS.md rule 12). A merge needs a reviewer's PR comment, never a PR body line.
+// Every bot posts through the same GitHub account, so the login cannot tell the PR's author bot from its
+// reviewer. The comment must start with a reviewer bot's prefix; the PR's author bot never posts one.
+// A prefix is only a convention any bot could type: a separate reviewer GitHub identity is the real fix.
+export const VERDICT_COMMENT_PREFIX = /^\[(?:Full|Mobile)\] (?:Verifier|Gardener):/;
+const REVIEW_VERDICT_LINE = /^review-verdict: MERGE ([0-9a-f]{40})$/;
+export const VERDICT_REQUIRED =
+  'Merging needs a PR comment from Branch Verifier or Branch Gardener that starts with "[Full] Verifier:", "[Full] Gardener:", "[Mobile] Verifier:" or "[Mobile] Gardener:" and has the line review-verdict: MERGE <full head sha>, posted after that commit. A marker in the PR body counts for nothing. Gate-file changes also need gate-change-reviewed: <same sha> in that comment.';
+
+function markerLines(body, pattern) {
+  const shas = [];
+  for (const raw of String(body ?? '').split(/\r?\n/)) {
+    const match = pattern.exec(raw.trim());
+    if (match) shas.push(match[1].toLowerCase());
+  }
+  return shas;
+}
+
+export function reviewVerdictShas(body) {
+  return markerLines(body, REVIEW_VERDICT_LINE);
+}
+
+function commitDateMs(commit) {
+  const value = commit?.commit?.committer?.date ?? commit?.committer?.date;
+  const ms = typeof value === 'string' ? Date.parse(value) : NaN;
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function commitDatesBySha(commits) {
+  const dates = new Map();
+  for (const commit of Array.isArray(commits) ? commits : []) {
+    const sha = commitShaOf(commit);
+    const ms = commitDateMs(commit);
+    if (sha && ms != null) dates.set(sha, ms);
+  }
+  return dates;
+}
+
+// One entry per (comment, sha): a reviewer-prefixed comment, created after that commit's committed date,
+// with review-verdict: MERGE <sha>. gate says whether the same comment also has gate-change-reviewed: <sha>.
+export function verdictsFromComments(comments, commits) {
+  const dates = commitDatesBySha(commits);
+  const verdicts = [];
+  for (const comment of Array.isArray(comments) ? comments : []) {
+    const body = String(comment?.body ?? '');
+    if (!VERDICT_COMMENT_PREFIX.test(body.trimStart())) continue;
+    const created = typeof comment?.created_at === 'string' ? Date.parse(comment.created_at) : NaN;
+    if (!Number.isFinite(created)) continue;
+    const gates = new Set(gateChangeReviewedShas(body).map((sha) => sha.toLowerCase()));
+    for (const sha of new Set(reviewVerdictShas(body))) {
+      const committed = dates.get(sha);
+      if (committed == null || created <= committed) continue;
+      verdicts.push({ sha, gate: gates.has(sha), commentId: comment?.id ?? null });
+    }
+  }
+  return verdicts;
+}
+
+// The gate-change review reads only markers that a counted verdict comment carried for the same sha.
+export function verdictGateBody(verdicts) {
+  return verdicts.filter((verdict) => verdict.gate).map((verdict) => `gate-change-reviewed: ${verdict.sha}`).join('\n');
+}
+
+export function evaluateReviewVerdict({
+  comments, commits, headSha, baseRef, files, protectedPaths, request, prNumber, repoDir,
+} = {}) {
+  const head = String(headSha ?? '').toLowerCase();
+  const verdicts = verdictsFromComments(comments, commits);
+  const fail = (message) => ({
+    ok: false, verdicts, verdictSha: null, carriedFrom: null, message: [VERDICT_REQUIRED, message].filter(Boolean).join('\n'),
+  });
+  if (!isGateFullSha(head)) return fail('The head SHA is missing.');
+  if (verdicts.some((verdict) => verdict.sha === head)) {
+    return { ok: true, verdicts, verdictSha: head, carriedFrom: null, message: '' };
+  }
+  let last = '';
+  for (const sha of [...new Set(verdicts.map((verdict) => verdict.sha))]) {
+    const carried = gateChangeMarkerCarriesForward({
+      markerSha: sha, headSha: head, baseRef, commits, files,
+      protectedPaths: protectedPaths ?? loadProtectedGatePaths(), request, prNumber, repoDir,
+    });
+    if (carried.ok) return { ok: true, verdicts, verdictSha: head, carriedFrom: sha, message: '' };
+    if (carried.known && carried.message) {
+      last = carried.message.replace('The gate-change-reviewed marker', 'The review verdict');
+    }
+  }
+  if (verdicts.length === 0) return fail(`No counted verdict comment names ${head}.`);
+  return fail(last || `No counted verdict comment names ${head}, and no earlier verdict carries forward to it.`);
+}
+
+export function formatReviewVerdictSummary(result) {
+  const lines = ['## Review verdict', '', `Verdict for this head: ${result.ok ? 'yes' : 'no'}`];
+  if (result.carriedFrom) lines.push(`Verdict carried from: ${result.carriedFrom}`);
+  const ids = [...new Set(result.verdicts.map((verdict) => verdict.commentId).filter((id) => id != null))];
+  if (ids.length) lines.push(`Counted verdict comments: ${ids.join(', ')}`);
+  return lines.join('\n');
+}
+
+export function fetchPrComments(repo, prNumber, token, request = (requestPath, options) => ghApiWithRetry(repo, token, requestPath, options)) {
+  const payload = request(`issues/${prNumber}/comments?per_page=100`, { paginate: true });
+  if (!Array.isArray(payload)) throw new Error('PR comments: the API answer was not a list');
+  return payload.flatMap((item) => (Array.isArray(item) ? item : [item])).filter(Boolean);
 }
 
 export function parseNamedTestList(text, source = 'scripts/feature-batch-ci-named/<list>.txt') {
@@ -1902,8 +2035,19 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       : null,
   });
   const request = (requestPath, options) => ghApiWithRetry(repo, token, requestPath, options);
+  // Rule 12: the verdict and the gate marker come from reviewer comments only. The PR body never counts.
+  const commits = fetchPrCommitsForMarker(request, prNumber);
+  const comments = fetchPrComments(repo, prNumber, token, request);
+  const verdict = evaluateReviewVerdict({
+    comments, commits, headSha: sha, baseRef, files, prNumber, request,
+  });
+  writeSummary(formatReviewVerdictSummary(verdict));
+  if (!verdict.ok) {
+    console.error(verdict.message);
+    process.exit(1);
+  }
   const review = evaluateGateChangeReview({
-    changedFiles, body, headSha: sha, baselineGrew, files, baseRef, prNumber, request,
+    changedFiles, body: verdictGateBody(verdict.verdicts), headSha: sha, baselineGrew, files, baseRef, prNumber, request, commits,
   });
   writeSummary(formatGateChangeSummary(changedFiles));
   writeSummary(formatGateChangeReviewSummary(review));
