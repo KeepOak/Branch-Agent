@@ -1,35 +1,125 @@
 // node --test scripts/check-packaged-no-key-plugin.test.mjs
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import {
+  evaluatePackageFiles,
+  excludedExtensionIds,
+} from "./check-packaged-no-key-plugin.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRIPT = join(ROOT, "scripts/check-packaged-no-key-plugin.mjs");
 
+function strippedEnv(extra = {}) {
+  return {
+    ...Object.fromEntries(
+      Object.entries(process.env).filter(
+        ([k]) =>
+          k !== "ENGINE_ROOT" &&
+          k !== "PLUGIN_IDS_JSON" &&
+          k !== "PACKAGE_JSON",
+      ),
+    ),
+    ...extra,
+  };
+}
+
 function run({ env = {}, cwd = ROOT } = {}) {
   return spawnSync(process.execPath, [SCRIPT], {
     cwd,
-    env: { ...process.env, ...env },
+    env: strippedEnv(env),
     encoding: "utf8",
     windowsHide: true,
   });
 }
 
-test("fails closed when neither ENGINE_ROOT nor PLUGIN_IDS_JSON is set", () => {
-  const stripped = spawnSync(process.execPath, [SCRIPT], {
-    cwd: ROOT,
-    env: Object.fromEntries(
-      Object.entries(process.env).filter(([k]) => k !== "ENGINE_ROOT" && k !== "PLUGIN_IDS_JSON"),
-    ),
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  assert.notEqual(stripped.status, 0);
-  assert.match(stripped.stderr, /set ENGINE_ROOT or PLUGIN_IDS_JSON/);
+test("evaluatePackageFiles fails when llama-cpp is pack-excluded", () => {
+  const result = evaluatePackageFiles([
+    "dist/**",
+    "!dist/extensions/llama-cpp/**",
+    "!dist/extensions/qa-lab/**",
+  ]);
+  assert.equal(result.ok, false);
+  assert.match(result.message, /excludes required plugin "llama-cpp"/);
+});
+
+test("evaluatePackageFiles passes when llama-cpp is not excluded", () => {
+  const files = [
+    "dist/**",
+    "!dist/extensions/qa-lab/**",
+    "!dist/extensions/ollama-extra/**",
+  ];
+  const result = evaluatePackageFiles(files);
+  assert.equal(result.ok, true);
+  assert.deepEqual([...excludedExtensionIds(files)].sort(), [
+    "ollama-extra",
+    "qa-lab",
+  ]);
+});
+
+test("PACKAGE_JSON fails when files exclude llama-cpp", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "packaged-no-key-pkg-"));
+  try {
+    const pkg = join(dir, "package.json");
+    await writeFile(
+      pkg,
+      JSON.stringify({
+        files: ["dist/**", "!dist/extensions/llama-cpp/**"],
+      }),
+    );
+    const result = run({ env: { PACKAGE_JSON: pkg } });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /excludes required plugin "llama-cpp"/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("PACKAGE_JSON passes when llama-cpp is not excluded", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "packaged-no-key-pkg-"));
+  try {
+    const pkg = join(dir, "package.json");
+    await writeFile(
+      pkg,
+      JSON.stringify({
+        files: ["dist/**", "!dist/extensions/qa-lab/**"],
+      }),
+    );
+    const result = run({ env: { PACKAGE_JSON: pkg } });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /not pack-excluded/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("default (no env) checks engine/package.json and passes when llama-cpp ships", () => {
+  const result = run({});
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  assert.match(result.stdout, /not pack-excluded/);
+});
+
+test("engine package.json ships llama-cpp in the stock dist (no files exclusion)", async () => {
+  const packageJson = JSON.parse(
+    await readFile(join(ROOT, "engine/package.json"), "utf8"),
+  );
+  const files = packageJson.files ?? [];
+  assert.equal(
+    files.includes("!dist/extensions/llama-cpp/**"),
+    false,
+    "engine/package.json must not exclude dist/extensions/llama-cpp (FreeModelSetup / #1090 needs it stock)",
+  );
+  for (const id of ["ollama", "lmstudio", "vllm", "sglang"]) {
+    assert.equal(
+      files.includes(`!dist/extensions/${id}/**`),
+      false,
+      `stock local provider ${id} must remain packaged`,
+    );
+  }
 });
 
 test("PLUGIN_IDS_JSON passes when llama-cpp is listed", () => {
@@ -61,19 +151,9 @@ test("ENGINE_ROOT passes when extensions include llama-cpp manifest", async () =
       join(root, "extensions", "ollama", "branch.plugin.json"),
       JSON.stringify({ id: "ollama" }),
     );
-    const result2 = spawnSync(process.execPath, [SCRIPT], {
-      cwd: ROOT,
-      env: {
-        ...Object.fromEntries(
-          Object.entries(process.env).filter(([k]) => k !== "PLUGIN_IDS_JSON"),
-        ),
-        ENGINE_ROOT: root,
-      },
-      encoding: "utf8",
-      windowsHide: true,
-    });
-    assert.equal(result2.status, 0, result2.stderr);
-    assert.match(result2.stdout, /ok \(llama-cpp present\)/);
+    const result = run({ env: { ENGINE_ROOT: root } });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /ok \(llama-cpp present\)/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -87,41 +167,10 @@ test("ENGINE_ROOT fails when llama-cpp plugin dir is absent", async () => {
       join(root, "extensions", "ollama", "branch.plugin.json"),
       JSON.stringify({ id: "ollama" }),
     );
-    const result = spawnSync(process.execPath, [SCRIPT], {
-      cwd: ROOT,
-      env: {
-        ...Object.fromEntries(
-          Object.entries(process.env).filter(([k]) => k !== "PLUGIN_IDS_JSON"),
-        ),
-        ENGINE_ROOT: root,
-      },
-      encoding: "utf8",
-      windowsHide: true,
-    });
+    const result = run({ env: { ENGINE_ROOT: root } });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /missing required plugin "llama-cpp"/);
   } finally {
     await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("engine package.json ships llama-cpp in the stock dist (no files exclusion)", async () => {
-  const { readFile } = await import("node:fs/promises");
-  const packageJson = JSON.parse(
-    await readFile(join(ROOT, "engine/package.json"), "utf8"),
-  );
-  const files = packageJson.files ?? [];
-  assert.equal(
-    files.includes("!dist/extensions/llama-cpp/**"),
-    false,
-    'engine/package.json must not exclude dist/extensions/llama-cpp (FreeModelSetup / #1090 needs it stock)',
-  );
-  // Peer local providers already ship; keep the contract explicit.
-  for (const id of ["ollama", "lmstudio", "vllm", "sglang"]) {
-    assert.equal(
-      files.includes(`!dist/extensions/${id}/**`),
-      false,
-      `stock local provider ${id} must remain packaged`,
-    );
   }
 });

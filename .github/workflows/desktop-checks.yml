@@ -6,6 +6,7 @@ on:
       - 'desktop/**'
       - 'scripts/check-packaged-no-key-plugin.mjs'
       - 'scripts/check-packaged-no-key-plugin.test.mjs'
+      - 'engine/package.json'
       - 'engine/scripts/lib/available-memory.*'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
@@ -16,6 +17,7 @@ on:
       - 'desktop/**'
       - 'scripts/check-packaged-no-key-plugin.mjs'
       - 'scripts/check-packaged-no-key-plugin.test.mjs'
+      - 'engine/package.json'
       - 'engine/scripts/lib/available-memory.*'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
@@ -152,6 +154,9 @@ jobs:
       - name: Check packaged engine exposes llama-cpp for no-key default
         working-directory: ${{ github.workspace }}
         run: node --test scripts/check-packaged-no-key-plugin.test.mjs
+      - name: Fail if engine package.json pack-excludes llama-cpp
+        working-directory: ${{ github.workspace }}
+        run: node scripts/check-packaged-no-key-plugin.mjs
   mac-applications:
     name: macOS Applications install
     runs-on: macos-latest
