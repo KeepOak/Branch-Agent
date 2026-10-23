@@ -27,4 +27,6 @@ export function inferenceProblem(error: unknown): string | null {
 export function openConnectModel(): void {
   sessionStorage.setItem("branch.openAddAccount", "1");
   window.dispatchEvent(new CustomEvent("branch:navigate-settings", { detail: { page: "accounts" } }));
+  // Accounts already on screen listens for this and opens the dialog without a remount.
+  window.dispatchEvent(new CustomEvent("branch:open-add-account"));
 }
