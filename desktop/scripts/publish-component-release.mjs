@@ -184,6 +184,13 @@ export async function publishRelease(directory, commit, version, request = gh, d
   await ensureImmutableTag(tag, commit, request);
   // The one-line install scripts ride along with every release and are checksummed like any other asset.
   await addInstallScripts(directory, proof.inventory);
+  const signedNames = (await readdir(directory)).filter((name) => name === "latest.json" || name.endsWith(".sig")).sort();
+  if (signedNames.length === 0 && process.env.BRANCH_REQUIRE_SIGNED_UPDATES === "1") {
+    throw new Error("latest.json is missing; sign update payloads with TAURI_SIGNING_PRIVATE_KEY before publish");
+  }
+  for (const name of signedNames) {
+    if (!Object.hasOwn(proof.inventory, name)) proof.inventory[name] = await fileDigest(join(directory, name));
+  }
   const checksums = Object.entries(proof.inventory).map(([name, info]) => `${info.sha256}  ${name}`).join("\n") + "\n";
   await writeFile(join(directory, "SHA256SUMS"), checksums);
   const names = [...Object.keys(proof.inventory), "SHA256SUMS"].sort();
