@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createFixtureLifetime } from "../../test/helpers/fixture-lifetime.js";
 import { createBranchTestInstance } from "../../test/helpers/branch-test-instance.js";
 import { stopChildProcess } from "../../test/helpers/stop-child-process.js";
@@ -46,8 +46,19 @@ const STARTUP_RECOVERY =
   'Run "branch doctor --fix" against the same state/config, then restart the gateway.';
 const tempDirs = createFixtureLifetime();
 afterAll(() => tempDirs.cleanup());
+
 const DOCTOR_CHILD_TIMEOUT_MS = 60_000;
 const LEGACY_APPROVAL_CHILD_TIMEOUT_MS = 45_000;
+
+// An in-process repair keeps running after a Vitest timeout, under its swapped process.env and holding the
+// global plugin-lifecycle lease. The next case then saw "plugin lifecycle lease ... was lost" (#1877, macOS
+// shard 9/35). Await it before the next case starts so it cannot outlive its test or the env swap.
+let pendingInProcessRepair: Promise<unknown> | undefined;
+afterEach(async () => {
+  const pending = pendingInProcessRepair;
+  pendingInProcessRepair = undefined;
+  await pending?.catch(() => undefined);
+}, LEGACY_APPROVAL_CHILD_TIMEOUT_MS);
 const windowsTouched =
   process.platform === "win32" && process.env.FEATURE_SCOPE === "touched";
 function createDoctorEnv(root: string, stateDir: string, configPath: string): NodeJS.ProcessEnv {
@@ -298,7 +309,8 @@ describe("doctor invalid config process exit", () => {
       const runtime = createDoctorCliRuntime(root);
       if (runtime.source) {
         const { withEnvAsync } = await import("../test-utils/env.js");
-        await withEnvAsync(env, () => repairConfigInProcess(configPath));
+        pendingInProcessRepair = withEnvAsync(env, () => repairConfigInProcess(configPath));
+        await pendingInProcessRepair;
       } else {
         const result = await tempDirs.track(
           runDoctorCli(

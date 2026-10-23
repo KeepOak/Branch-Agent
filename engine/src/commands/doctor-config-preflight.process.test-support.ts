@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { expect } from "vitest";
 import { runCliProcessChild } from "../cli/cli-process-child.test-helpers.js";
 import { loadCronJobsStoreWithConfigJobsReadOnly, loadCronQuarantinedJobs } from "../cron/store.js";
+import { isTruthyEnvValue } from "../infra/env.js";
 import { resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
 import { removeCanonicalValidationFromHistoricalAgentFixture } from "../state/branch-agent-db.test-support.js";
 import { seedBranchAgentSchemaV21 } from "../state/branch-agent-schema-v21.test-support.js";
@@ -82,6 +83,18 @@ export function runSourceRuntime(
   });
 }
 
+// Opt-in timing for slow child runs: with BRANCH_GATEWAY_STARTUP_TRACE=1 (the repo's startup trace switch, which
+// already times every Doctor preflight step), the child also reports when its script starts (after node and tsx boot) and when it
+// exits, so a CI log separates node + tsx compile time from Doctor work. Off by default.
+function withStartupTraceMarker(env: NodeJS.ProcessEnv, script: string): string {
+  if (!isTruthyEnvValue(env.BRANCH_GATEWAY_STARTUP_TRACE)) {
+    return script;
+  }
+  const mark = (label: string) =>
+    `process.stderr.write("[doctor-test] ${label} total=" + performance.now().toFixed(1) + "ms\\n");`;
+  return `${mark("script-start")}\nprocess.once("exit", () => { ${mark("exit")} });\n${script}`;
+}
+
 export function runIsolatedModuleScript(
   env: NodeJS.ProcessEnv,
   script: string,
@@ -95,7 +108,7 @@ export function runIsolatedModuleScript(
       "tsx",
       "--input-type=module",
       "--eval",
-      script,
+      withStartupTraceMarker(env, script),
     ],
     {
       cwd: options.runtimeRoot ?? path.resolve("."),
