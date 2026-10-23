@@ -147,4 +147,23 @@ describe("Add an account catalogue", () => {
     expect(filled.tiles.map((tile) => tile.name)).toEqual(expect.arrayContaining(["Claude", "Google Gemini", "Ollama"]));
     expect(filled.tiles.length).toBeGreaterThan(empty.tiles.length);
   });
+
+  it("lists each brand at most once across Your plan and A key", async () => {
+    let resolveDetect!: (value: unknown) => void;
+    const detected = new Promise<unknown>((resolve) => { resolveDetect = resolve; });
+    const request = vi.fn(async (method: string) => (method === "branch.setup.detect" ? detected : {}));
+    await act(async () => root.render(
+      <AddAccountDialog engine={engineOf(request)} start={{}} caps={CAPS} providers={[]} agent={{ agentId: "main" }} onClose={() => undefined} />,
+    ));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => resolveDetect(DETECT));
+    await act(async () => { await Promise.resolve(); });
+    const shown = catalogue();
+    const plan = namesIn(shown, "Your plan");
+    const key = namesIn(shown, "A key");
+    for (const name of plan) {
+      expect(key, `${name} must not also appear under A key`).not.toContain(name);
+    }
+  });
+
 });
