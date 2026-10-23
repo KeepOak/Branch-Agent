@@ -63,6 +63,10 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 17. **No personal machine details.** Never put machine names, hostnames, personal paths, account emails or secrets in the public repo, its pull requests or issues. The personal-info PR scan fails when the title, body or added lines include them; editing the description re-runs it.
 
+19. **Chat works with zero accounts.** A fresh install must reach a first reply without any sign-in or API key, using a free local default (managed `llama-cpp` when no Ollama/LM Studio is present). Packaged desktop and mobile engines must load the `llama-cpp` plugin. A release that omits it fails the packaging smoke (`scripts/check-packaged-no-key-plugin.mjs`). Never auto-start a multi-GB download without size + Cancel.
+
+20. **One Connect-a-model path.** With no usable model: the reply area shows exactly "Connect a model to get answers" and one "Connect a model" button that opens Add an account (deduplicated plain names, free/local first, no reflow). The button must be readable on light and dark themes. Do not leave a control that looks clickable but opens nothing. GOD private #1092 supersedes the earlier #1797 send-disabled bar: Send is allowed; fixing the app follows GOD's current ruling, not the old disable-Send tests. Do not mass-rewrite those tests until the app flip lands.
+
 ## Common tasks
 
 ### Install dependencies

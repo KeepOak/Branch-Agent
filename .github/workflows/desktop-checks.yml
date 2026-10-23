@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'desktop/**'
+      - 'scripts/check-packaged-no-key-plugin.mjs'
+      - 'scripts/check-packaged-no-key-plugin.test.mjs'
       - 'engine/scripts/lib/available-memory.*'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
@@ -12,6 +14,8 @@ on:
     branches: [main]
     paths:
       - 'desktop/**'
+      - 'scripts/check-packaged-no-key-plugin.mjs'
+      - 'scripts/check-packaged-no-key-plugin.test.mjs'
       - 'engine/scripts/lib/available-memory.*'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
@@ -141,6 +145,9 @@ jobs:
       - name: Check documentation merge command patterns
         working-directory: ${{ github.workspace }}
         run: node --test scripts/check-merge-command.test.mjs
+      - name: Check packaged engine exposes llama-cpp for no-key default
+        working-directory: ${{ github.workspace }}
+        run: node --test scripts/check-packaged-no-key-plugin.test.mjs
   mac-applications:
     name: macOS Applications install
     runs-on: macos-latest
