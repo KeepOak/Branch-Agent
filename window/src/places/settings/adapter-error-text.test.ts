@@ -28,8 +28,10 @@ describe("settings errorText is plain at Regular (Private #1089)", () => {
     expect(errorText("TypeError: Cannot read properties of undefined (reading 'path')\n    at runTool (/app/engine/dist/tools/run.js:41:12)")).not.toMatch(RAW);
   });
 
-  it("keeps conflict, stale-config and unknown-method wording so callers can detect them", () => {
+  it("keeps conflict, disconnected, stale-config and unknown-method wording so callers can detect them", () => {
     expect(errorText(new Error("conflict"))).toBe("conflict");
+    expect(errorText(new Error("disconnected"))).toBe("disconnected");
+    expect(errorText("disconnected")).toBe("disconnected");
     expect(errorText(new Error("config changed since last load; re-run config.get and retry"))).toBe(
       "config changed since last load; re-run config.get and retry",
     );
