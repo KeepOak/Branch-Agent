@@ -1,0 +1,6 @@
+engine:ui/src/app/mount-fallback.test.ts
+engine:ui/src/e2e/about.e2e.test.ts
+engine:ui/src/e2e/new-session-page.provisional-navigation.e2e.test.ts
+engine:ui/src/e2e/plugins-hub-navigation.e2e.test.ts
+engine:ui/src/pages/about/view.test.ts
+engine:ui/src/pages/chat/chat-pane-session-controls.test.ts
