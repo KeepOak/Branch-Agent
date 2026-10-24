@@ -25,6 +25,7 @@ it("Pair your phone opens the pairing dialog at Regular, and Cancel closes it", 
   expect(pair.disabled).toBe(false);
   expect(dialog()).toBeNull();
   await act(async () => pair.click());
+  await act(async () => { await vi.dynamicImportSettled(); });
   expect(dialog()).not.toBeNull();
   expect(document.body.textContent).toContain("Pair a phone");
   expect(document.body.textContent).toContain("What it may do");
