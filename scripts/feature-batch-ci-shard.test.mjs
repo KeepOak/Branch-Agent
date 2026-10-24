@@ -8,6 +8,7 @@ import {
 } from './feature-batch-ci-runtime.mjs';
 import { featureBatchMatrix, featureBatchMaxParallel, mainPushMaxParallel, validateFeatureBatchMatrix } from './feature-batch-ci-matrix.mjs';
 import { execFileSync } from 'node:child_process';
+import { splitUiTests } from './feature-batch-ci-targets.mjs';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -382,4 +383,14 @@ test('registry download retries use backoff, then give up, and never retry a clo
     throw new Error('Download failed 502: https://registry.npmjs.org/pnpm/12.5.1');
   }, { sleep: async () => {}, log() {} }), /Download failed 502/);
   assert.equal(exhausted, REGISTRY_DOWNLOAD_ATTEMPTS);
+});
+
+test('engine-lane Control UI files route to the UI vitest config, everything else stays on its lane config', () => {
+  const files = ['src/a.test.ts', 'ui/src/ui/markdown.test.ts', 'ui/src/pages/x.browser.test.ts', 'extensions/ui-thing/b.test.ts'];
+  assert.deepEqual(splitUiTests('engine', files), {
+    ui: ['src/ui/markdown.test.ts', 'src/pages/x.browser.test.ts'],
+    other: ['src/a.test.ts', 'extensions/ui-thing/b.test.ts'],
+  });
+  assert.deepEqual(splitUiTests('window', ['ui/src/x.test.ts']), { ui: [], other: ['ui/src/x.test.ts'] });
+  assert.deepEqual(splitUiTests('engine', []), { ui: [], other: [] });
 });
