@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { FileLockHandle } from "@openclaw/fs-safe/file-lock";
-import { availableMemoryBytes, defaultMemoryNeedBytes } from "./available-memory.mjs";
+import { availableMemoryBytes, defaultHeavyStepMemoryNeedBytes } from "./available-memory.mjs";
 import {
   acquireDistArtifactOwnership,
   canReclaimDistArtifactOwner,
@@ -24,14 +24,25 @@ export function resolveHostHeavyStepRoot(env: NodeJS.ProcessEnv = process.env): 
   );
 }
 
-export function resolveHeavyStepMemoryNeed(kind: HeavyStepKind, env = process.env): number {
+export function resolveHeavyStepMemoryNeed(
+  kind: HeavyStepKind,
+  env = process.env,
+  host: { totalmem?: number; platform?: NodeJS.Platform } = {},
+): number {
   const configured = Number(env[`BRANCH_HEAVY_STEP_${kind.toUpperCase()}_MEMORY_MB`]);
   return Number.isFinite(configured) &&
     configured >= 0 &&
     env[`BRANCH_HEAVY_STEP_${kind.toUpperCase()}_MEMORY_MB`]?.trim()
     ? configured * 1024 ** 2
-    : defaultMemoryNeedBytes(DEFAULT_HEAVY_STEP_MEMORY_MB[kind] * 1024 ** 2);
+    : defaultHeavyStepMemoryNeedBytes(
+        DEFAULT_HEAVY_STEP_MEMORY_MB[kind] * 1024 ** 2,
+        host.totalmem,
+        host.platform,
+      );
 }
+
+/** A waiter past this long names the reason and the PID it waits behind. */
+export const HOST_HEAVY_STEP_WAIT_REPORT_MS = 5 * 60_000;
 
 export type HostHeavyStepHandle = {
   env: NodeJS.ProcessEnv;
@@ -97,6 +108,35 @@ function hasChildClaims(directory: string): boolean {
   }
 }
 
+/**
+ * A dead or recycled owner can never join its children, so its "unjoined" marker and child
+ * claims are stale. They are reclaimed with the owner lock's own test (no directory, so the
+ * retained marker cannot keep a dead PID alive), and only while owner.json is unchanged.
+ */
+function reclaimDeadOwnerClaims(directory: string, ownerPath: string): void {
+  if (!hasChildClaims(directory)) {
+    return;
+  }
+  const owner = readOwner(ownerPath);
+  if (owner === undefined || !canReclaimDistArtifactOwner(owner)) {
+    return;
+  }
+  const observed = JSON.stringify(owner);
+  for (const entry of fs.readdirSync(directory)) {
+    if (entry !== "unjoined" && !entry.startsWith("child-")) {
+      continue;
+    }
+    if (JSON.stringify(readOwner(ownerPath)) !== observed) {
+      return;
+    }
+    fs.rmSync(path.join(directory, entry), { force: true, recursive: true });
+  }
+}
+
+function waitingPid(record: unknown): number | undefined {
+  return isRecord(record) && typeof record.pid === "number" ? record.pid : undefined;
+}
+
 /** Reuses dist-artifact ownership, including its dead/recycled-PID and child fences. */
 export async function acquireHostHeavyStep(
   kind: HeavyStepKind,
@@ -104,8 +144,11 @@ export async function acquireHostHeavyStep(
     env?: NodeJS.ProcessEnv;
     signal?: AbortSignal;
     onWait?: (message: string) => void;
+    /** Clock for the 5-minute wait report (tests). */
+    now?: () => number;
   } = {},
 ): Promise<HostHeavyStepHandle> {
+  const now = options.now ?? Date.now;
   let env = options.env ?? process.env;
   options.signal?.throwIfAborted();
   const root = resolveHostHeavyStepRoot(env);
@@ -148,8 +191,17 @@ export async function acquireHostHeavyStep(
       // Reusing a slot must not skip a larger child step's memory requirement.
       const inheritedNeed = typeof inherited.need === "number" ? inherited.need : 0;
       if (need > inheritedNeed) {
+        const waitStarted = now();
+        let previousMessage: string | undefined;
         while (availableMemoryBytes() < need) {
-          (options.onWait ?? console.error)("Waiting for memory: 0 builds ahead");
+          const message =
+            now() - waitStarted > HOST_HEAVY_STEP_WAIT_REPORT_MS
+              ? "Waiting for memory: 0 builds ahead (waiting over 5 minutes)"
+              : "Waiting for memory: 0 builds ahead";
+          if (message !== previousMessage) {
+            (options.onWait ?? console.error)(message);
+            previousMessage = message;
+          }
           await delay(500, undefined, { signal: options.signal });
         }
       }
@@ -181,21 +233,29 @@ export async function acquireHostHeavyStep(
     { flag: "wx" },
   );
   fs.renameSync(staging, request);
+  const waitStarted = now();
   let previousMessage: string | undefined;
   try {
     while (true) {
       options.signal?.throwIfAborted();
-      const ahead = fs.readdirSync(requests).filter((entry) => {
-        if (!entry.endsWith(".json") || entry >= name) {
-          return false;
+      reclaimDeadOwnerClaims(directory, ownerPath);
+      // Sweep every queued request, not only those ahead, so a dead or recycled waiter
+      // never holds a place in line for this or any later request.
+      const waitersAhead: number[] = [];
+      for (const entry of fs.readdirSync(requests).toSorted()) {
+        if (!entry.endsWith(".json") || entry === name) {
+          continue;
         }
         const waiting = readOwner(path.join(requests, entry));
         if (!waiting || canReclaimDistArtifactOwner(waiting)) {
           fs.rmSync(path.join(requests, entry), { force: true });
-          return false;
+          continue;
         }
-        return true;
-      }).length;
+        if (entry < name) {
+          waitersAhead.push(waitingPid(waiting) ?? 0);
+        }
+      }
+      const ahead = waitersAhead.length;
       let lock: FileLockHandle | undefined;
       if (ahead === 0 && availableMemoryBytes() >= need && !hasChildClaims(directory)) {
         try {
@@ -242,12 +302,17 @@ export async function acquireHostHeavyStep(
         await lock.release();
       }
       const active = readOwner(ownerPath);
-      const count =
-        ahead +
-        (hasChildClaims(directory) || (active && !canReclaimDistArtifactOwner(active, directory))
-          ? 1
-          : 0);
-      const message = `Waiting for ${availableMemoryBytes() < need ? "memory" : "build slot"}: ${count} build${count === 1 ? "" : "s"} ahead`;
+      const held =
+        hasChildClaims(directory) || (active && !canReclaimDistArtifactOwner(active, directory));
+      const count = ahead + (held ? 1 : 0);
+      let message = `Waiting for ${availableMemoryBytes() < need ? "memory" : "build slot"}: ${count} build${count === 1 ? "" : "s"} ahead`;
+      if (now() - waitStarted > HOST_HEAVY_STEP_WAIT_REPORT_MS) {
+        // Reported once per change: the text holds no elapsed time.
+        const pidAhead = held ? waitingPid(active) : waitersAhead[0];
+        message += pidAhead
+          ? ` (waiting over 5 minutes behind PID ${pidAhead})`
+          : " (waiting over 5 minutes)";
+      }
       if (message !== previousMessage) {
         (options.onWait ?? console.error)(message);
         previousMessage = message;

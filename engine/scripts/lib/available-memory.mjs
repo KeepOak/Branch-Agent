@@ -108,12 +108,22 @@ export function availableMemory(probe = {}) {
           timeout: 3_000,
           stdio: ["ignore", "pipe", "ignore"],
         });
+      // macOS available memory is the pages the system can hand out without compressing
+      // or swapping: vm_stat "Pages free" (already excludes speculative), "Pages
+      // speculative", "Pages inactive" and "Pages purgeable". Active pages are in use and
+      // never count, nor do wired pages or pages held by the compressor.
+      const count = (field) =>
+        pages(new RegExp(String.raw`^Pages ${field}:\s+(\d+)\.`, "mu").exec(text)?.[1]);
       const pageSize = pages(/page size of (\d+) bytes/u.exec(text)?.[1]);
-      const free = pages(/^Pages free:\s+(\d+)\./mu.exec(text)?.[1]);
-      const inactive = pages(/^Pages inactive:\s+(\d+)\./mu.exec(text)?.[1]);
-      const purgeable = pages(/^Pages purgeable:\s+(\d+)\./mu.exec(text)?.[1]) ?? 0;
+      const free = count("free");
+      const inactive = count("inactive");
+      const speculative = count("speculative") ?? 0;
+      const purgeable = count("purgeable") ?? 0;
       if (pageSize !== undefined && free !== undefined && inactive !== undefined) {
-        return { bytes: (free + inactive + purgeable) * pageSize, measure: "vm_stat" };
+        return {
+          bytes: (free + speculative + inactive + purgeable) * pageSize,
+          measure: "vm_stat",
+        };
       }
     }
   } catch {
@@ -129,4 +139,21 @@ export function availableMemoryBytes(probe = {}) {
 // The desktop's existing default-load rule; explicit settings remain absolute.
 export function defaultMemoryNeedBytes(defaultBytes, totalBytes = totalmem()) {
   return Math.min(defaultBytes, Math.floor(totalBytes / 4));
+}
+
+const GIB = 1024 ** 3;
+
+/**
+ * Default heavy-step need. A Mac with 16 GB of RAM or less needs a quarter of RAM, at most
+ * 4 GB and at least 2 GB; larger Macs, Linux and Windows keep the shared load rule.
+ */
+export function defaultHeavyStepMemoryNeedBytes(
+  defaultBytes,
+  totalBytes = totalmem(),
+  platform = process.platform,
+) {
+  if (platform === "darwin" && totalBytes <= 16 * GIB) {
+    return Math.max(2 * GIB, Math.min(defaultBytes, 4 * GIB, Math.floor(totalBytes / 4)));
+  }
+  return defaultMemoryNeedBytes(defaultBytes, totalBytes);
 }

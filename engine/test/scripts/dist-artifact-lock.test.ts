@@ -10,12 +10,14 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import * as availableMemory from "../../scripts/lib/available-memory.mjs";
 import {
   acquireDistArtifactOwnership,
+  readDistArtifactStartIdentity,
   resolveDistArtifactLockPath,
   withDistArtifactOwnership,
 } from "../../scripts/lib/dist-artifact-lock.mts";
 import { withDistArtifactOwnership as withBuildArtifactOwnership } from "../../scripts/lib/dist-artifact-ownership.mts";
 import {
   acquireHostHeavyStep,
+  HOST_HEAVY_STEP_WAIT_REPORT_MS,
   resolveHeavyStepMemoryNeed,
   withHostHeavyStep,
 } from "../../scripts/lib/host-heavy-step.mts";
@@ -579,20 +581,251 @@ it("host memory thresholds are configurable without a minimum or upper cap", () 
   expect(
     resolveHeavyStepMemoryNeed("typecheck", { BRANCH_HEAVY_STEP_TYPECHECK_MEMORY_MB: "100000" }),
   ).toBe(100000 * 1024 ** 2);
-  expect(resolveHeavyStepMemoryNeed("test", { BRANCH_HEAVY_STEP_TEST_MEMORY_MB: "invalid" })).toBe(
-    Math.min(6 * 1024 ** 3, Math.floor(os.totalmem() / 4)),
-  );
+  expect(
+    resolveHeavyStepMemoryNeed(
+      "test",
+      { BRANCH_HEAVY_STEP_TEST_MEMORY_MB: "invalid" },
+      { platform: "linux" },
+    ),
+  ).toBe(Math.min(6 * 1024 ** 3, Math.floor(os.totalmem() / 4)));
 });
 
 it("host default memory needs fit small hosts while explicit settings remain absolute", () => {
   vi.spyOn(os, "totalmem").mockReturnValue(7 * 1024 ** 3);
   syncBuiltinESMExports();
-  expect(resolveHeavyStepMemoryNeed("test", {})).toBe((7 * 1024 ** 3) / 4);
-  expect(resolveHeavyStepMemoryNeed("typecheck", {})).toBe((7 * 1024 ** 3) / 4);
-  expect(resolveHeavyStepMemoryNeed("build", {})).toBe((7 * 1024 ** 3) / 4);
+  const linux = { platform: "linux" } as const;
+  expect(resolveHeavyStepMemoryNeed("test", {}, linux)).toBe((7 * 1024 ** 3) / 4);
+  expect(resolveHeavyStepMemoryNeed("typecheck", {}, linux)).toBe((7 * 1024 ** 3) / 4);
+  expect(resolveHeavyStepMemoryNeed("build", {}, linux)).toBe((7 * 1024 ** 3) / 4);
   expect(resolveHeavyStepMemoryNeed("test", { BRANCH_HEAVY_STEP_TEST_MEMORY_MB: "6144" })).toBe(
     6 * 1024 ** 3,
   );
+});
+
+it("a Mac with 16 GB or less needs a quarter of RAM, at most 4 GB and at least 2 GB", () => {
+  const GIB = 1024 ** 3;
+  const mac = (totalmem: number) => ({ platform: "darwin" as const, totalmem });
+  for (const kind of ["build", "typecheck", "test"] as const) {
+    expect(resolveHeavyStepMemoryNeed(kind, {}, mac(16 * GIB))).toBe(4 * GIB);
+    expect(resolveHeavyStepMemoryNeed(kind, {}, mac(12 * GIB))).toBe(3 * GIB);
+    expect(resolveHeavyStepMemoryNeed(kind, {}, mac(8 * GIB))).toBe(2 * GIB);
+    expect(resolveHeavyStepMemoryNeed(kind, {}, mac(4 * GIB))).toBe(2 * GIB);
+  }
+  // Larger Macs and other platforms keep min(default, RAM / 4).
+  expect(resolveHeavyStepMemoryNeed("test", {}, mac(32 * GIB))).toBe(6 * GIB);
+  expect(resolveHeavyStepMemoryNeed("build", {}, mac(32 * GIB))).toBe(4 * GIB);
+  expect(resolveHeavyStepMemoryNeed("test", {}, { platform: "linux", totalmem: 4 * GIB })).toBe(
+    GIB,
+  );
+  expect(resolveHeavyStepMemoryNeed("test", {}, { platform: "win32", totalmem: 16 * GIB })).toBe(
+    4 * GIB,
+  );
+  // Explicit settings stay absolute on a small Mac.
+  expect(
+    resolveHeavyStepMemoryNeed("test", { BRANCH_HEAVY_STEP_TEST_MEMORY_MB: "100" }, mac(8 * GIB)),
+  ).toBe(100 * 1024 ** 2);
+});
+
+it("macOS available memory counts free, speculative, inactive and purgeable pages, never active", () => {
+  const PAGE = 16384;
+  const GIB = 1024 ** 3;
+  // A 16 GB Mac with memory_pressure at 32% free.
+  const sample = (active: string) =>
+    [
+      `Mach Virtual Memory Statistics: (page size of ${PAGE} bytes)`,
+      "Pages free:                                     7255.",
+      ...(active ? [active] : []),
+      "Pages inactive:                               160504.",
+      "Pages speculative:                              1377.",
+      "Pages throttled:                                   0.",
+      "Pages wired down:                             201412.",
+      "Pages purgeable:                                   2.",
+      "File-backed pages:                             89084.",
+      "Anonymous pages:                              235051.",
+      "Pages stored in compressor:                  2202878.",
+      "Pages occupied by compressor:                 480943.",
+    ].join("\n");
+  const vmStat = sample("Pages active:                                 162254.");
+  const mac = (totalmem: number) => ({ platform: "darwin" as const, totalmem });
+  const memory = availableMemory.availableMemory({
+    platform: "darwin",
+    vmStat,
+    freemem: 7255 * PAGE,
+  });
+  expect(memory).toEqual({ bytes: (7255 + 1377 + 160504 + 2) * PAGE, measure: "vm_stat" });
+  // Active pages never count, whatever their number.
+  for (const active of ["", "Pages active:                                 900000."]) {
+    expect(availableMemory.availableMemory({ platform: "darwin", vmStat: sample(active) })).toEqual(
+      memory,
+    );
+  }
+  // The 2 GB floor admits a Mac whose free + speculative + inactive + purgeable is at least 2 GB.
+  const floorNeed = resolveHeavyStepMemoryNeed("test", {}, mac(8 * GIB));
+  expect(floorNeed).toBe(2 * GIB);
+  expect(memory.bytes).toBeGreaterThanOrEqual(floorNeed);
+  const twoGib = [
+    `Mach Virtual Memory Statistics: (page size of ${PAGE} bytes)`,
+    `Pages free:                                    ${(2 * GIB) / PAGE - 3}.`,
+    "Pages active:                                 500000.",
+    "Pages inactive:                                    1.",
+    "Pages speculative:                                 1.",
+    "Pages purgeable:                                   1.",
+  ].join("\n");
+  expect(availableMemory.availableMemory({ platform: "darwin", vmStat: twoGib }).bytes).toBe(
+    floorNeed,
+  );
+  // Linux keeps MemAvailable.
+  expect(
+    availableMemory.availableMemory({
+      platform: "linux",
+      meminfo: "MemAvailable:    1024 kB\n",
+      vmStat,
+    }),
+  ).toEqual({ bytes: 1024 * 1024, measure: "MemAvailable" });
+});
+
+const DEAD_PID = 0x7ffffffe;
+
+it.for([
+  ["dead", { pid: DEAD_PID, startIdentity: "gone" }],
+  ["recycled", { pid: process.pid, startIdentity: "different-process-start" }],
+] as const)(
+  "host admission reclaims the unjoined marker and child claims of a %s owner",
+  async ([, owner]) => {
+    const root = createRoot();
+    const directory = resolveDistArtifactLockPath(root, false);
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(
+      path.join(directory, "owner.json"),
+      JSON.stringify({ ...owner, startedAt: new Date().toISOString() }),
+    );
+    fs.writeFileSync(path.join(directory, "unjoined"), "Heavy-step child cleanup unverified.\n");
+    fs.writeFileSync(
+      path.join(directory, "child-4242-claim"),
+      "Awaiting heavy-step child completion.\n",
+    );
+    const handle = await acquireHostHeavyStep("build", {
+      env: { BRANCH_HEAVY_STEP_DIRECTORY: root, BRANCH_HEAVY_STEP_BUILD_MEMORY_MB: "0" },
+      signal: AbortSignal.timeout(5_000),
+      onWait: () => {},
+    });
+    try {
+      expect(fs.readdirSync(directory).filter((name) => name !== "owner.json")).toEqual([]);
+      const current = JSON.parse(fs.readFileSync(path.join(directory, "owner.json"), "utf8"));
+      expect(current.pid).toBe(process.pid);
+      expect(current.startIdentity).not.toBe(owner.startIdentity);
+    } finally {
+      await handle.release();
+    }
+  },
+);
+
+it("host admission keeps the unjoined marker of a live owner", async () => {
+  const root = createRoot();
+  const directory = resolveDistArtifactLockPath(root, false);
+  fs.mkdirSync(directory, { recursive: true });
+  const ownerPath = path.join(directory, "owner.json");
+  const bytes = JSON.stringify({
+    pid: process.pid,
+    startIdentity: readDistArtifactStartIdentity(process.pid),
+  });
+  fs.writeFileSync(ownerPath, bytes);
+  fs.writeFileSync(path.join(directory, "unjoined"), "Heavy-step child cleanup unverified.\n");
+  const controller = new AbortController();
+  const waiting = vi.fn(() => controller.abort());
+  await expect(
+    acquireHostHeavyStep("build", {
+      env: { BRANCH_HEAVY_STEP_DIRECTORY: root, BRANCH_HEAVY_STEP_BUILD_MEMORY_MB: "0" },
+      signal: controller.signal,
+      onWait: waiting,
+    }),
+  ).rejects.toThrow();
+  expect(waiting).toHaveBeenCalledWith("Waiting for build slot: 1 build ahead");
+  expect(fs.readFileSync(ownerPath, "utf8")).toBe(bytes);
+  expect(fs.existsSync(path.join(directory, "unjoined"))).toBe(true);
+});
+
+it("host admission names the reason and the owner PID once after 5 minutes", async () => {
+  const root = createRoot();
+  const env = { BRANCH_HEAVY_STEP_DIRECTORY: root, BRANCH_HEAVY_STEP_BUILD_MEMORY_MB: "8" };
+  const owner = await acquireHostHeavyStep("build", { env });
+  let clock = 1_000_000;
+  const messages: string[] = [];
+  const controller = new AbortController();
+  const pending = acquireHostHeavyStep("build", {
+    env,
+    signal: controller.signal,
+    onWait: (message) => messages.push(message),
+    now: () => clock,
+  }).catch((error: unknown) => error);
+  try {
+    await vi.waitFor(() => expect(messages).toEqual(["Waiting for build slot: 1 build ahead"]));
+    clock += HOST_HEAVY_STEP_WAIT_REPORT_MS + 1;
+    const slot = `Waiting for build slot: 1 build ahead (waiting over 5 minutes behind PID ${process.pid})`;
+    await vi.waitFor(() => expect(messages.at(-1)).toBe(slot));
+    vi.mocked(availableMemory.availableMemoryBytes).mockReturnValue(0);
+    const memory = `Waiting for memory: 1 build ahead (waiting over 5 minutes behind PID ${process.pid})`;
+    await vi.waitFor(() => expect(messages.at(-1)).toBe(memory));
+    clock += 60_000;
+    await new Promise((resolve) => {
+      setTimeout(resolve, 1_200);
+    });
+    expect(messages.filter((message) => message === slot)).toHaveLength(1);
+    expect(messages.filter((message) => message === memory)).toHaveLength(1);
+    expect(messages).toHaveLength(3);
+  } finally {
+    controller.abort();
+    await pending;
+    await owner.release();
+  }
+});
+
+it("host admission sweeps dead and recycled waiters anywhere in the queue on every loop", async () => {
+  const root = createRoot();
+  const env = { BRANCH_HEAVY_STEP_DIRECTORY: root, BRANCH_HEAVY_STEP_BUILD_MEMORY_MB: "0" };
+  const requests = path.join(root, ".artifacts", "waiting");
+  fs.mkdirSync(requests, { recursive: true });
+  const queue = (name: string, record: Record<string, unknown>) =>
+    fs.writeFileSync(path.join(requests, name), JSON.stringify(record));
+  const live = { pid: process.pid, startIdentity: readDistArtifactStartIdentity(process.pid) };
+  queue("0000000000000001-dead.json", { pid: DEAD_PID, startIdentity: "gone" });
+  queue("0000000000000002-recycled.json", {
+    pid: process.pid,
+    startIdentity: "different-process-start",
+  });
+  queue("0000000000000003-live.json", live);
+  queue("9999999999999999-dead-behind.json", { pid: DEAD_PID, startIdentity: "gone" });
+  let clock = 0;
+  const messages: string[] = [];
+  const controller = new AbortController();
+  const pending = acquireHostHeavyStep("build", {
+    env,
+    signal: controller.signal,
+    onWait: (message) => messages.push(message),
+    now: () => clock,
+  });
+  try {
+    await vi.waitFor(() => expect(messages).toEqual(["Waiting for build slot: 1 build ahead"]));
+    const others = () =>
+      fs.readdirSync(requests).filter((name) => name.startsWith("0000") || name.startsWith("9999"));
+    expect(others()).toEqual(["0000000000000003-live.json"]);
+    queue("9999999999999998-dead-later.json", { pid: DEAD_PID, startIdentity: "gone" });
+    await vi.waitFor(() => expect(others()).toEqual(["0000000000000003-live.json"]));
+    clock += HOST_HEAVY_STEP_WAIT_REPORT_MS + 1;
+    await vi.waitFor(() =>
+      expect(messages.at(-1)).toBe(
+        `Waiting for build slot: 1 build ahead (waiting over 5 minutes behind PID ${process.pid})`,
+      ),
+    );
+    fs.rmSync(path.join(requests, "0000000000000003-live.json"));
+    await (await pending).release();
+  } finally {
+    controller.abort();
+    await pending.then(
+      (handle) => handle.release(),
+      () => {},
+    );
+  }
 });
 
 it("host admission keeps the shared directory in child environments and restores its parent", async () => {
