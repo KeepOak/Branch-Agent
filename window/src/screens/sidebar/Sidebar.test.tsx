@@ -60,6 +60,21 @@ const text = (selector: string) => [...document.querySelectorAll(selector)].map(
 const click = async (node: Element | null) => act(async () => { (node as HTMLElement).click(); });
 
 describe("R1 sidebar", () => {
+  it.each(["regular", "advanced", "technical"])("at %s, only Technical draws the New folder Coming chip", async (level) => {
+    localStorage.setItem("branch.level", level);
+    const { render } = setup(FULL);
+    await render();
+    const add = host.querySelector('[aria-label="New folder"]');
+    if (level === "technical") {
+      expect(add?.getAttribute("data-coming")).toBe("Your own folders come in a later update.");
+      expect(add?.getAttribute("aria-disabled")).toBe("true");
+    } else {
+      expect(add).toBeNull();
+    }
+    expect(host.querySelector('.r1sb-fold [role="tab"]')).not.toBeNull();
+    expect(host.querySelector(".r1sb-seed")).not.toBeNull();
+  });
+
   it("says why when the conversation list couldn't load", async () => {
     const { render } = setup(FULL, true, { error: "Couldn’t load conversations: gateway timeout" });
     await render();
@@ -157,6 +172,7 @@ describe("R1 sidebar", () => {
   });
 
   it("opens Recently deleted to a Nothing here state, marks New folder Coming (preview foldP11), and opens Seedbank, Grove and Settings", async () => {
+    localStorage.setItem("branch.level", "technical");
     const { render, props } = setup(FULL);
     await render();
     const deleted = [...host.querySelectorAll<HTMLButtonElement>(".r1sb-bins .r1sb-bin")].find(bin => bin.textContent?.includes("Recently deleted"))!;

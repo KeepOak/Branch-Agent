@@ -63,6 +63,33 @@ async function pasteTo(text: string) {
 }
 
 describe("Seedbank", () => {
+  it.each(["regular", "advanced", "technical"])("at %s, only Technical draws Seedbank Coming sections and controls", async (level) => {
+    localStorage.setItem("branch.level", level);
+    const { engine } = engineOf(["trunks.template.list", "trunks.template.create"], method => method === "trunks.template.list" ? TEMPLATES : {});
+    const host = await render(engine);
+    const technical = level === "technical";
+    expect(host.querySelector("[data-coming-kind]") !== null).toBe(technical);
+    expect(host.querySelector(".sb-adapter") !== null).toBe(technical);
+    expect(host.querySelector("[data-coming]") !== null).toBe(technical);
+    expect(buttons(host, "Adapters").length).toBe(technical ? 1 : 0);
+    expect(buttons(host, "Grove layouts").length).toBe(technical ? 1 : 0);
+    expect(buttons(host, "＋ Paste a seed")).toHaveLength(1);
+    expect(host.querySelector('[aria-label="Add Home Desk"]')?.getAttribute("aria-disabled")).toBeNull();
+    expect(host.querySelector('[aria-label="Add Home Desk"]')).not.toBeNull();
+    await click(buttons(host, "Connectors")[0]);
+    expect(buttons(host, "Public registry").length).toBe(technical ? 1 : 0);
+    expect(buttons(host, "Agents")).toHaveLength(1);
+  });
+
+  it.each(["regular", "advanced", "technical"])("at %s, opening Adapters directly keeps Coming tiles Technical-only", async (level) => {
+    localStorage.setItem("branch.level", level);
+    const { engine } = engineOf([]);
+    const host = await render(engine, <Seedbank engine={engine} initialKind="adapters" />);
+    expect(host.querySelectorAll(".sb-adapter")).toHaveLength(level === "technical" ? 6 : 0);
+    expect(host.querySelector("[data-coming-kind=adapters]") !== null).toBe(level === "technical");
+    expect(buttons(host, "＋ Paste a seed")).toHaveLength(1);
+  });
+
   it("renders with an empty engine: the eight templates, every unwired control Coming, nothing undeclared", async () => {
     localStorage.setItem("branch.level", "technical");   // the Add pills' Coming reasons show only at Technical
     const { engine, request } = engineOf([]);
@@ -227,6 +254,7 @@ describe("Seedbank", () => {
     expect(host.textContent).toContain("Added Sales desk: 2 Trunks.");
   });
   it("draws exactly the preview's kind chips and sections, with no Coming to Branch kind (#1049)", async () => {
+    localStorage.setItem("branch.level", "technical");
     const { engine } = engineOf([]);
     const host = await render(engine);
     // preview.html Seedbank KINDS: All · Agents · Grove layouts · Graft setups · Skills · Connectors · Plugins ·
