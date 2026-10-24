@@ -520,12 +520,77 @@ test("a pending update whose folder vanished (ENOENT writing the helper) is disc
   const journal = join(cfg.dataDir, "desktop-update-pending.json");
   await writeFile(journal, JSON.stringify({ version: "0.4.5", sha256: stagedSha256, kind: "appimage", staged, target, phase: "staged", stagedSha256,
     work: join(cfg.dataDir, "updates", "desktop-0.4.5-gone00") }));
-  const launch = await launchHandOff(cfg, install);
+  const launch = await launchHandOff(cfg, { ...install, appImage: target, platform: "linux" });
   assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" });
   assert.equal(await exists(journal), false, "the record is removed");
   assert.equal(await exists(staged), false, "the orphaned staged file is removed");
   assert.equal(await readFile(target, "utf8"), "old appimage", "the installed app is untouched");
   assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: ENOENT.*desktop-update-helper\.js.*; starting the current build/);
+}));
+
+/** A staged AppImage update beside an AppImage file, as the one-line installer's copy leaves it. */
+async function stagedAppImageRecord(root, cfg, stagedBody = "new appimage") {
+  const target = join(root, "Branch-Agent.AppImage"), staged = target + ".update-0.4.5";
+  await writeFile(target, "old appimage"); await writeFile(staged, stagedBody, { mode: 0o755 });
+  const stagedSha256 = createHash("sha256").update(stagedBody).digest("hex");
+  const work = join(cfg.dataDir, "updates", "desktop-0.4.5-image0"); await mkdir(work, { recursive: true });
+  const journal = join(cfg.dataDir, "desktop-update-pending.json");
+  await writeFile(journal, JSON.stringify({ version: "0.4.5", sha256: stagedSha256, kind: "appimage", staged, target, phase: "staged", stagedSha256, work }));
+  return { target, staged, journal };
+}
+
+test("a .deb launch drops a staged AppImage update instead of swapping the AppImage", { skip: process.platform === "win32" ? "Linux-only update path (.deb); runs on Linux CI" : false }, () => fixture(async ({ root, cfg, install }) => {
+  const { target, staged, journal } = await stagedAppImageRecord(root, cfg);
+  const deb = { ...install, platform: "linux" };
+  assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, deb, join(dist, "desktop-update-helper.js")), false, "the app starts on its current build");
+  assert.equal(await exists(journal), false, "the record is removed");
+  assert.equal(await exists(staged), false, "the staged AppImage is removed");
+  assert.equal(await readFile(target, "utf8"), "old appimage", "the AppImage the record names is untouched");
+  assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the installed app is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"),
+    /desktop update 0\.4\.5 discarded: it was staged for a different install \(AppImage\), this copy is the \.deb; starting the current build/);
+}));
+
+test("an AppImage launch drops a staged AppImage update for another AppImage file", () => fixture(async ({ root, cfg, install }) => {
+  const { target, staged, journal } = await stagedAppImageRecord(root, cfg);
+  const running = join(root, "other", "branch-agent"); await mkdir(dirname(running), { recursive: true }); await writeFile(running, "running appimage");
+  assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, { ...install, appImage: running, platform: "linux" }, join(dist, "desktop-update-helper.js")), false);
+  assert.equal(await exists(journal), false, "the record is removed");
+  assert.equal(await exists(staged), false, "the staged AppImage is removed");
+  assert.equal(await readFile(target, "utf8"), "old appimage");
+  assert.equal(await readFile(running, "utf8"), "running appimage", "the running AppImage is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: it was staged for a different install \(AppImage .+\), this copy runs from /);
+}));
+
+for (const kind of ["asar", "runtime"]) {
+  test("an AppImage launch drops a staged " + kind + " update instead of applying it", () => fixture(async ({ root, cfg, request, install }) => {
+    await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+    const recorded = await desktopUpdate.readDesktopJournal(cfg);
+    assert.equal(recorded.kind, kind);
+    const appImage = join(root, "Branch-Agent.AppImage"); await writeFile(appImage, "running appimage");
+    assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, { ...install, appImage, platform: "linux" }, join(dist, "desktop-update-helper.js")), false);
+    assert.equal(await exists(join(cfg.dataDir, "desktop-update-pending.json")), false, "the record is removed");
+    assert.equal(await readFile(appImage, "utf8"), "running appimage", "the running AppImage is untouched");
+    assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the unpacked app is untouched");
+    assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"),
+      new RegExp("desktop update 0\\.4\\.5 discarded: it was staged for a different install \\(" + (kind === "asar" ? "app\\.asar" : "the whole app") + "\\), this copy is an AppImage"));
+  }, { runtime: kind === "runtime" }));
+}
+
+test("an AppImage launch still hands off its own staged AppImage update", { skip: process.platform === "win32" ? "Linux-only update path (AppImage); runs on Linux CI" : false }, () => fixture(async ({ root, cfg }) => {
+  const confirm = join(root, "confirm.cjs");
+  await writeFile(confirm, "require(" + JSON.stringify(join(dist, "desktop-update.js")) + ").confirmDesktopUpdate(" + JSON.stringify(cfg) + ");");
+  const { target, journal } = await stagedAppImageRecord(root, cfg, "#!/bin/sh\nexec " + JSON.stringify(process.execPath) + " " + JSON.stringify(confirm) + "\n");
+  const appImage = { appDir: root, resourcesDir: join(root, "resources"), executable: target, electronVersion: ELECTRON,
+    nodePath: process.execPath, appImage: target, platform: "linux", updaterPubkey: "" };
+  const handOff = "require(" + JSON.stringify(join(dist, "desktop-update.js")) + ").handOffDesktopUpdate(" + JSON.stringify(cfg) + "," + JSON.stringify(appImage)
+    + "," + JSON.stringify(join(dist, "desktop-update-helper.js")) + ").then(r=>process.exit(r?0:3),()=>process.exit(5))";
+  const app = spawn(process.execPath, ["-e", handOff], { stdio: "inherit" });
+  assert.equal(await new Promise(resolve => app.on("exit", resolve)), 0, "the matching update is handed off");
+  await eventually(async () => (await readFile(join(cfg.dataDir, "desktop-update-version.txt"), "utf8").catch(() => "")).trim() === "0.4.5");
+  assert.match(await readFile(target, "utf8"), /confirm\.cjs/, "the staged AppImage replaced the running one");
+  assert.equal(await exists(journal), false);
+  assert.doesNotMatch(await readFile(join(cfg.dataDir, "desktop.log"), "utf8").catch(() => ""), /different install/);
 }));
 
 /**
