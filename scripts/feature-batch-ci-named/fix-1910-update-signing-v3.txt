@@ -1,0 +1,8 @@
+# No engine or window tests. Desktop coverage is the node --test steps in
+# .github/workflows/desktop-checks.yml:
+# scripts/update-signing.test.mjs
+# scripts/sign-release-updates.test.mjs
+# scripts/publish-component-release.test.mjs
+# scripts/desktop-update.test.mjs
+# scripts/auto-update-e2e.test.mjs
+# scripts/install-scripts.test.mjs

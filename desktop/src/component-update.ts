@@ -24,8 +24,16 @@ export interface RefreshOptions {
    */
   underSwapGuard?: (replace: () => Promise<boolean>) => Promise<boolean | undefined>;
   log?: (line: string) => void;
+  /**
+   * The engine folder that is running and healthy now, or undefined. Given it, a pending journal whose target is
+   * already that engine (an applied update whose confirmation was lost) is confirmed and cleared, so it no longer
+   * blocks the next update check.
+   */
+  servingEngine?: () => string | undefined;
   /** Clear an offered version as soon as the manifest withdraws it, before Windows folder moves retry. */
   onWithdrawal?: (version: string) => void;
+  /** Caps a hung refresh; tests shorten it. Production uses COMPONENT_UPDATE_CHECK_TIMEOUT_MS. */
+  timeoutMs?: number;
 }
 
 interface ReleaseIdentity { version: string; engineSha256: string; windowSha256: string }
@@ -163,7 +171,7 @@ export async function settleFailedComponentUpdate(cfg: DesktopConfig, serving: s
 const runProcessList = promisify(execFile);
 
 /** Adopt only old, fully published release layouts whose build identity matches the folder. */
-async function backfillLegacyReleaseMarker(folder: string, name: string): Promise<boolean> {
+async function legacyReleaseIsComplete(folder: string, name: string): Promise<boolean> {
   const match = /^release-(.+-build-([a-f0-9]{12}))-[A-Za-z0-9]{6}$/.exec(name);
   if (!match) return false;
   const folderInfo = await stat(folder);
@@ -177,14 +185,19 @@ async function backfillLegacyReleaseMarker(folder: string, name: string): Promis
     for (const file of ["engine/branch.mjs", "engine/package.json", "engine/dist/build-info.json"]) {
       if (!(await stat(join(folder, file))).isFile()) return false;
     }
-    // Existing folders predate the marker. The manifest's source hash and complete
-    // engine layout distinguish them from incomplete downloads before adoption.
-    await writeFile(join(folder, ".release-complete"), "");
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) return false;
     throw error;
   }
+}
+
+async function backfillLegacyReleaseMarker(folder: string, name: string): Promise<boolean> {
+  if (!await legacyReleaseIsComplete(folder, name)) return false;
+  // Existing folders predate the marker. The manifest's source hash and complete
+  // engine layout distinguish them from incomplete downloads before adoption.
+  await writeFile(join(folder, ".release-complete"), "");
+  return true;
 }
 
 /** If inspection fails, keep releases: deleting an active engine is worse than retaining an old one. */
@@ -208,13 +221,85 @@ async function runningProcessCommands(): Promise<string> {
   return (await runProcessList(command, args, { encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024 })).stdout;
 }
 
+const CASEFOLD = process.platform === "win32" || process.platform === "darwin";
+function samePath(a: string, b: string): boolean {
+  return CASEFOLD ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+function foldName(name: string): string {
+  return CASEFOLD ? name.toLowerCase() : name;
+}
+/** First path segment under updates/, even when the live path's case does not match the on-disk folder. */
+function ownedUpdateSegment(updates: string, target: string): string | undefined {
+  const rel = relative(updates, target);
+  const part = rel.split(/[\\/]/)[0];
+  if (part && part !== ".." && !isAbsolute(rel)) return part;
+  if (!CASEFOLD) return;
+  const root = updates.replace(/[\\/]+$/, "");
+  if (target.length <= root.length || !target.toLowerCase().startsWith(root.toLowerCase())) return;
+  const boundary = target[root.length];
+  if (boundary !== "/" && boundary !== "\\") return;
+  return target.slice(root.length + 1).split(/[\\/]/)[0] || undefined;
+}
+
 /** Count the removed tree without following links into another installation. */
 async function updateBytes(folder: string): Promise<number> {
   const info = await lstat(folder);
-  if (!info.isDirectory()) return info.size;
+  // Junctions and symlinks look like directories on Windows; never walk into their targets (#569).
+  if (info.isSymbolicLink() || !info.isDirectory()) return info.size;
   let bytes = 0;
   for (const entry of await readdir(folder)) bytes += await updateBytes(join(folder, entry));
   return bytes;
+}
+
+/**
+ * A keep-list entry must exist and hold a finished copy. Empty or in-progress folders never occupy a
+ * current/previous slot; live and staged copies are protected separately.
+ */
+async function holdsValidCopy(folder: string, name: string): Promise<boolean> {
+  try {
+    const info = await lstat(folder);
+    if (info.isSymbolicLink() || !info.isDirectory()) return false;
+  } catch {
+    return false;
+  }
+  let entries: string[];
+  try { entries = await readdir(folder); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+  if (entries.length === 0 || existsSync(join(folder, ".update-staging"))) return false;
+  const content = entries.filter(entry => entry !== ".release-complete" && entry !== ".desktop-complete");
+  if (content.length === 0) return false;
+  if (name.startsWith("desktop-")) {
+    if (existsSync(join(folder, ".desktop-complete"))) return true;
+    return Date.now() - (await stat(folder)).mtimeMs >= 24 * 60 * 60 * 1000;
+  }
+  if (!name.startsWith("release-")) return false;
+  if (existsSync(join(folder, ".release-complete"))) {
+    try { return (await readdir(join(folder, "engine"))).length > 0; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  }
+  return legacyReleaseIsComplete(folder, name);
+}
+
+/** One cleanup at a time: a download that lands mid-prune is collected by the queued run, never by overlapping work. */
+let cleanupTail: Promise<void> = Promise.resolve();
+let cleanupHook: ((run: () => Promise<void>) => Promise<void>) | undefined;
+export function setUpdateCleanupHookForTests(fn?: (run: () => Promise<void>) => Promise<void>): void {
+  cleanupHook = fn;
+}
+
+function enqueueCleanup(work: () => Promise<void>): Promise<void> {
+  const run = cleanupTail.then(
+    () => cleanupHook ? cleanupHook(work) : work(),
+    () => cleanupHook ? cleanupHook(work) : work(),
+  );
+  cleanupTail = run.then(() => undefined, () => undefined);
+  return run;
 }
 
 /** Only completed folders created directly under this data directory are owned by the updater. */
@@ -227,81 +312,147 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
   const updatesReal = await realpath(updates);
   let removed = 0, freed = 0;
   const retained = new Set<string>();
-  for (const engine of [current, previous, running, cfg.engineDir, await readOrEmpty(join(cfg.dataDir, "engine-current.txt"))]) {
-    if (!engine) continue;
+  const kept = new Set<string>();
+  const protectedNames = new Set<string>();
+  const protectName = (name: string): void => { if (name) protectedNames.add(foldName(name)); };
+  const nameProtected = (name: string): boolean => protectedNames.has(foldName(name));
+  const pathRetained = (folder: string): boolean => {
+    if (retained.has(folder)) return true;
+    if (!CASEFOLD) return false;
+    const key = folder.toLowerCase();
+    for (const value of retained) if (value.toLowerCase() === key) return true;
+    return false;
+  };
+  const retainFolder = async (folder: string, protect: boolean): Promise<void> => {
+    const valid = await holdsValidCopy(folder, basename(folder));
+    if (valid) kept.add(folder);
+    if (protect || valid) {
+      retained.add(folder);
+      protectName(basename(folder));
+    }
+  };
+  const retainEngine = async (engine: string | undefined, protect: boolean): Promise<void> => {
+    if (!engine) return;
+    if (protect) protectName(basename(dirname(engine)));
+    const parent = resolve(dirname(engine));
+    if (samePath(dirname(parent), resolve(updates)) || samePath(dirname(parent), updatesReal)) {
+      await retainFolder(parent, protect);
+    }
     try {
       const folder = await realpath(dirname(engine));
-      if (dirname(folder) === updatesReal) retained.add(folder);
+      if (samePath(dirname(folder), updatesReal) || samePath(dirname(folder), resolve(updates))) await retainFolder(folder, protect);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (!["ENOENT", "ELOOP", "EINVAL", "ENOTDIR"].includes(code)) throw error;
     }
+  };
+  const retainOwnedPath = async (path: string | undefined, protect: boolean): Promise<void> => {
+    if (!path) return;
+    const part = ownedUpdateSegment(updates, path);
+    if (!part || part === "..") return;
+    if (protect) protectName(part);
+    const folder = join(updates, part);
+    try {
+      const info = await lstat(folder);
+      if (info.isSymbolicLink()) return;
+    } catch { return; }
+    try { await retainFolder(await realpath(folder), protect); }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (!["ENOENT", "ELOOP", "EINVAL", "ENOTDIR"].includes(code)) throw error;
+    }
+  };
+  // Live copies are always protected; they join the keep list only when they hold a valid copy.
+  for (const engine of [current, running, cfg.engineDir, await readOrEmpty(join(cfg.dataDir, "engine-current.txt"))]) {
+    await retainEngine(engine, true);
   }
+  // Previous rollback copy: never list an empty or partial folder as kept.
+  await retainEngine(previous, false);
   const pending = await publication(cfg);
   if (pending) {
     for (const engine of [pending.engineNext, pending.enginePrevious, pending.engineReplaced]) {
-      if (engine && existsSync(dirname(engine))) retained.add(await realpath(dirname(engine)));
+      await retainEngine(engine, true);
     }
+    // The running build's window lives beside a superseded engine; never delete that folder.
+    await retainOwnedPath(pending.windowPrevious, true);
   }
   const desktop = await readDesktopJournal(cfg);
   const desktopReceipt = await readOrEmpty(join(cfg.dataDir, "desktop-update-retained.json"));
-  const desktopRetained: string[] = desktopReceipt ? JSON.parse(desktopReceipt) : [];
-  if (desktopRetained.length < 2) {
+  const desktopRetained: string[] = desktopReceipt ? JSON.parse(desktopReceipt) as string[] : [];
+  const validDesktop: string[] = [];
+  for (const folder of desktopRetained) {
+    if (typeof folder === "string" && existsSync(folder) && await holdsValidCopy(folder, basename(folder))) validDesktop.push(folder);
+  }
+  if (validDesktop.length < 2) {
     const legacy: Array<{ folder: string; time: number }> = [];
     for (const entry of await readdir(updates, { withFileTypes: true })) {
       const folder = join(updates, entry.name);
-      if (!entry.isDirectory() || !entry.name.startsWith("desktop-") || existsSync(join(folder, ".update-staging"))
+      if (entry.isSymbolicLink() || !entry.isDirectory() || !entry.name.startsWith("desktop-")
+        || existsSync(join(folder, ".update-staging"))
         || desktop?.staged.startsWith(folder + (process.platform === "win32" ? "\\" : "/"))) continue;
-      const time = (await stat(folder)).mtimeMs;
-      if (existsSync(join(folder, ".desktop-complete")) || Date.now() - time >= 24 * 60 * 60 * 1000) legacy.push({ folder, time });
+      if (!await holdsValidCopy(folder, entry.name)) continue;
+      legacy.push({ folder, time: (await stat(folder)).mtimeMs });
     }
     legacy.sort((a, b) => b.time - a.time || a.folder.localeCompare(b.folder));
     for (const { folder } of legacy) {
-      if (desktopRetained.length >= 2) break;
-      if (!desktopRetained.includes(folder)) desktopRetained.push(folder);
+      if (validDesktop.length >= 2) break;
+      if (!validDesktop.includes(folder)) validDesktop.push(folder);
     }
   }
-  for (const path of [desktop?.staged, desktop?.target, ...desktopRetained, process.execPath]) {
-    if (!path) continue;
-    const part = relative(updates, path).split(/[\\/]/)[0];
-    if (part && part !== ".." && existsSync(join(updates, part))) retained.add(await realpath(join(updates, part)));
-  }
+  // Staged and running desktop copies are always protected; retained slots are valid copies only.
+  await retainOwnedPath(desktop?.staged, true);
+  await retainOwnedPath(desktop?.target, true);
+  for (const folder of validDesktop) await retainOwnedPath(folder, false);
+  await retainOwnedPath(process.execPath, true);
+  log?.(`keeping ${[...kept].map(folder => basename(folder)).sort().join(", ") || "none"}`);
   let commands: string;
   try { commands = await runningProcessCommands(); }
   catch (error) { reportFailure?.(error); return; }
   for (const entry of await readdir(updates, { withFileTypes: true })) {
-    if (entry.isDirectory() && /^\.trash-(release|desktop)-/.test(entry.name)) {
-      try { const bytes = await updateBytes(join(updates, entry.name)); await rm(join(updates, entry.name), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); removed++; freed += bytes; }
-      catch (error) { reportFailure?.(new Error(`Could not finish pruning ${entry.name}: ${String(error)}`)); }
-      continue;
-    }
-    if (!entry.isDirectory() || !/^(release|desktop)-[\w.-]+-[A-Za-z0-9]{6}$/.test(entry.name)
-      || /(?:^|[-.])(staging|pending)(?:[-.]|$)/i.test(entry.name)) continue;
-    const folder = resolve(updates, entry.name);
-    const folderReal = await realpath(folder);
-    // A download has the same release-* name until staging completes; never select it for pruning.
-    if (existsSync(join(folder, ".update-staging"))) continue;
-    if (entry.name.startsWith("desktop-")) {
-      // Older desktop downloads have no completion marker. Fresh, unjournaled
-      // folders can still be extracting in an older launcher.
-      if (!existsSync(join(folder, ".desktop-complete")) && Date.now() - (await stat(folder)).mtimeMs < 24 * 60 * 60 * 1000) continue;
-    } else if (!existsSync(join(folder, ".release-complete"))) {
-      try { if (!await backfillLegacyReleaseMarker(folder, entry.name)) continue; }
-      catch (error) { reportFailure?.(new Error(`Could not verify ${entry.name}: ${String(error)}`)); continue; }
-    }
-    const separator = process.platform === "win32" ? "\\" : "/";
-    const commandsLower = commands.toLowerCase();
-    if (retained.has(folderReal) || [folder, folderReal].some(path => commandsLower.includes(`${path}${separator}`.toLowerCase()) || commandsLower.split("\n").includes(path.toLowerCase()))) continue;
-    const trash = join(updates, `.trash-${entry.name}-${process.pid}-${Math.random().toString(36).slice(2)}`);
     try {
-      const bytes = await updateBytes(folder);
-      // A deferred prune can overlap a new publication. Stop if any owner changed
-      // while sizing this tree; the next startup will finish the remaining work.
-      const latest = await Promise.all(stateFiles.map(file => readOrEmpty(join(cfg.dataDir, file))));
-      if (latest.some((value, index) => value !== snapshot[index])) break;
-      await rename(folder, trash);
-      await rm(trash, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
-      removed++; freed += bytes;
-    } catch (error) { reportFailure?.(new Error(`Could not prune ${entry.name}: ${String(error)}`)); }
+      const folder = resolve(updates, entry.name);
+      // Junctions and dirent-directory symlinks are never followed or walked (#569).
+      if (entry.isSymbolicLink()) continue;
+      let info;
+      try { info = await lstat(folder); }
+      catch { continue; }
+      if (info.isSymbolicLink()) continue;
+      if (info.isDirectory() && /^\.trash-(release|desktop)-/.test(entry.name)) {
+        try { const bytes = await updateBytes(folder); await rm(folder, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); removed++; freed += bytes; }
+        catch (error) { reportFailure?.(new Error(`Could not finish pruning ${entry.name}: ${String(error)}`)); }
+        continue;
+      }
+      if (!info.isDirectory() || !/^(release|desktop)-[\w.-]+-[A-Za-z0-9]{6}$/.test(entry.name)
+        || /(?:^|[-.])(staging|pending)(?:[-.]|$)/i.test(entry.name)) continue;
+      let folderReal: string;
+      try { folderReal = await realpath(folder); }
+      catch { continue; }
+      // A download has the same release-* name until staging completes; never select it for pruning.
+      if (existsSync(join(folder, ".update-staging"))) continue;
+      if (entry.name.startsWith("desktop-")) {
+        // Older desktop downloads have no completion marker. Fresh, unjournaled
+        // folders can still be extracting in an older launcher.
+        if (!existsSync(join(folder, ".desktop-complete")) && Date.now() - (await stat(folder)).mtimeMs < 24 * 60 * 60 * 1000) continue;
+      } else if (!existsSync(join(folder, ".release-complete"))) {
+        try { if (!await backfillLegacyReleaseMarker(folder, entry.name)) continue; }
+        catch (error) { reportFailure?.(new Error(`Could not verify ${entry.name}: ${String(error)}`)); continue; }
+      }
+      const separator = process.platform === "win32" ? "\\" : "/";
+      const commandsLower = commands.toLowerCase();
+      if (pathRetained(folder) || pathRetained(folderReal) || nameProtected(entry.name)
+        || [folder, folderReal].some(path => commandsLower.includes(`${path}${separator}`.toLowerCase()) || commandsLower.split("\n").includes(path.toLowerCase()))) continue;
+      const trash = join(updates, `.trash-${entry.name}-${process.pid}-${Math.random().toString(36).slice(2)}`);
+      try {
+        const bytes = await updateBytes(folder);
+        // A deferred prune can overlap a new publication. Stop if any owner changed
+        // while sizing this tree; the next cleanup will finish the remaining work.
+        const latest = await Promise.all(stateFiles.map(file => readOrEmpty(join(cfg.dataDir, file))));
+        if (latest.some((value, index) => value !== snapshot[index])) break;
+        await rename(folder, trash);
+        await rm(trash, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+        removed++; freed += bytes;
+      } catch (error) { reportFailure?.(new Error(`Could not prune ${entry.name}: ${String(error)}`)); }
+    } catch (error) { reportFailure?.(new Error(`Could not inspect ${entry.name}: ${String(error)}`)); }
   }
   log?.(`removed ${removed} old updates, freed ${(freed / 1_000_000_000).toFixed(2)} GB`);
 }
@@ -347,16 +498,20 @@ export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFail
   await rm(journalFile(cfg));
   await rm(timeoutFile(cfg), { force: true });
   // Cleanup is maintenance, not a readiness failure: never roll back a healthy engine because a stale folder is locked.
-  const prune = async () => {
+  const prune = () => enqueueCleanup(async () => {
     try { await pruneConfirmedReleases(cfg, pending.engineNext, pending.enginePrevious, reportPruneFailure, log); }
     catch (error) { reportPruneFailure?.(error); }
-  };
+  });
   if (deferPrune) return prune;
   await prune();
 }
 
 /** Once the startup engine is healthy, clean installations that have no pending update to confirm. */
 export async function pruneStartupUpdates(cfg: DesktopConfig, log: (line: string) => void): Promise<void> {
+  return enqueueCleanup(() => pruneStartupUpdatesWork(cfg, log));
+}
+
+async function pruneStartupUpdatesWork(cfg: DesktopConfig, log: (line: string) => void): Promise<void> {
   try {
     const current = await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) || cfg.engineDir;
     let previous = await readOrEmpty(previousFile(cfg));
@@ -364,18 +519,28 @@ export async function pruneStartupUpdates(cfg: DesktopConfig, log: (line: string
       const undo = await readOrEmpty(undoFile(cfg));
       if (undo) previous = (JSON.parse(undo) as UndoReceipt).enginePrevious;
     }
-    if (!previous && existsSync(join(cfg.dataDir, "updates"))) {
+    if (!previous && !await publication(cfg) && existsSync(join(cfg.dataDir, "updates"))) {
       // Pre-retention installs have no receipt: keep the newest older engine.
-      const currentFolder = existsSync(dirname(current)) ? await realpath(dirname(current)) : dirname(current);
+      let currentFolder = dirname(current);
+      try { if (existsSync(dirname(current))) currentFolder = await realpath(dirname(current)); }
+      catch { /* keep dirname(current); a broken live link must not abort cleanup */ }
       const currentTime = existsSync(currentFolder) ? (await stat(currentFolder)).mtimeMs : Infinity;
       const candidates: Array<{ folder: string; time: number }> = [];
       for (const entry of await readdir(join(cfg.dataDir, "updates"), { withFileTypes: true })) {
-        const folder = join(cfg.dataDir, "updates", entry.name);
-        if (!entry.isDirectory() || !entry.name.startsWith("release-") || await realpath(folder) === currentFolder
-          || existsSync(join(folder, ".update-staging")) || !existsSync(join(folder, "engine"))) continue;
-        const time = (await stat(folder)).mtimeMs;
-        if (!existsSync(join(folder, ".release-complete")) && !await backfillLegacyReleaseMarker(folder, entry.name)) continue;
-        if (time <= currentTime) candidates.push({ folder, time });
+        try {
+          if (entry.isSymbolicLink() || !entry.isDirectory() || !entry.name.startsWith("release-")) continue;
+          const folder = join(cfg.dataDir, "updates", entry.name);
+          let info;
+          try { info = await lstat(folder); } catch { continue; }
+          if (info.isSymbolicLink() || !info.isDirectory()) continue;
+          let folderReal: string;
+          try { folderReal = await realpath(folder); } catch { continue; }
+          if (samePath(folderReal, currentFolder) || existsSync(join(folder, ".update-staging"))
+            || !await holdsValidCopy(folder, entry.name)) continue;
+          const time = (await stat(folder)).mtimeMs;
+          if (!existsSync(join(folder, ".release-complete")) && !await backfillLegacyReleaseMarker(folder, entry.name)) continue;
+          if (time <= currentTime) candidates.push({ folder, time });
+        } catch { continue; }
       }
       candidates.sort((a, b) => b.time - a.time || a.folder.localeCompare(b.folder));
       if (candidates[0]) {
@@ -489,8 +654,12 @@ export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> 
   if ((await publication(cfg))?.phase === "prepared") await rollbackComponentUpdate(cfg);
 }
 
-export async function readComponentManifest(request: typeof fetch = fetch): Promise<ComponentRelease> {
-  const response = await request(RELEASE_MANIFEST_URL, { signal: AbortSignal.timeout(30_000), cache: "no-store" });
+export async function readComponentManifest(request: typeof fetch = fetch, signal?: AbortSignal): Promise<ComponentRelease> {
+  const timeout = AbortSignal.timeout(30_000);
+  const response = await request(RELEASE_MANIFEST_URL, {
+    signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
+    cache: "no-store",
+  });
   trustedDownloadResponse(response);
   let body = "";
   for await (const chunk of response.body!) {
@@ -523,6 +692,7 @@ async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typ
       if (!(await stat(join(directory, file))).isFile()) throw new Error(`Incomplete release: ${file}`);
     }
     await replaceFile(join(directory, "window", "branch-build.txt"), `${release.version}\n`);
+    if (stageHold) await stageHold(cfg);
     return { engine: join(directory, "engine"), window: join(directory, "window") };
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
 }
@@ -562,6 +732,10 @@ async function removeStagedFolder(cfg: DesktopConfig, folder: string, log?: (lin
 /** Test seam: replaces the folder move used by a staged-pair replacement (to fail it part way). */
 let replacementMove: typeof move = move;
 export function setReplacementMoveForTests(fn: typeof move | undefined): void { replacementMove = fn ?? move; }
+
+/** Test seam: pause after archives are on disk, before publish, so a timed-out check can ignore abort and still finish. */
+let stageHold: ((cfg: DesktopConfig) => Promise<void>) | undefined;
+export function setStageHoldForTests(fn: ((cfg: DesktopConfig) => Promise<void>) | undefined): void { stageHold = fn; }
 
 /**
  * Replaces a staged, never-started engine/window pair with a newer release in place, under one journal. The running
@@ -788,15 +962,49 @@ async function replaceStaged(cfg: DesktopConfig, held: Publication, release: Com
  * Does not stop/restart the running engine. The desktop owns activation after staging.
  * An unfinished publication, or a staged one that cannot be replaced, blocks the desktop component too.
  */
+/**
+ * A "pending" journal whose target engine is already the published, recorded and serving engine was applied; only its
+ * confirmation was lost (a crash or a failed write after the swap). Confirm it now, under the swap guard when there is
+ * one, so the updater moves on to newer builds instead of waiting behind a build that already runs.
+ */
+export async function settleAppliedComponentUpdate(cfg: DesktopConfig, options: RefreshOptions = {}): Promise<boolean> {
+  const serving = options.servingEngine?.();
+  if (!serving) return false;
+  const stale = async () => {
+    const pending = await publication(cfg);
+    if (pending?.phase !== "pending" || !pending.engineNext) return undefined;
+    if (!await sameFolder(serving, pending.engineNext)) return undefined;
+    if (await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== pending.engineNext) return undefined;
+    const running = await readOrEmpty(join(cfg.dataDir, "engine-running.txt"));
+    if (!running || !await sameFolder(running, pending.engineNext)) return undefined;
+    return pending;
+  };
+  const settle = async (): Promise<boolean> => {
+    const pending = await stale();
+    if (!pending) return false;
+    options.log?.(`Update ${pending.version} is already running; clearing its stale pending record`);
+    await confirmComponentUpdate(cfg, error => options.log?.(`Confirmed update cleanup: ${String(error)}`), false, options.log);
+    return true;
+  };
+  // Read first without the swap guard: taking it on every check would hold auto-apply ("replace the staged update in
+  // progress") and the engine watchdog off on each refresh, even when there is no stale record to clear.
+  if (!await stale()) return false;
+  if (options.underSwapGuard) return await options.underSwapGuard(settle) === true;
+  return settle();
+}
+
 async function refresh(cfg: DesktopConfig, request: typeof fetch, options: RefreshOptions): Promise<boolean> {
   await recoverComponentUpdate(cfg);
+  await settleAppliedComponentUpdate(cfg, options);
   const held = await publication(cfg);
   if (held && (!options.underSwapGuard || !await replaceable(cfg, held))) return false;
-  const release = await readComponentManifest(request);
+  const release = await readComponentManifest(request, options.signal);
   if (held) {
     const result = await replaceStaged(cfg, held, release, request, options);
     if (!result.ok) return false;
-    return await stageDesktopUpdate(cfg, result.release, request, options.desktop) || result.ok === "replaced";
+    const stagedHeld = await stageDesktopUpdate(cfg, result.release, request, options.desktop) || result.ok === "replaced";
+    if (stagedHeld) await pruneStartupUpdates(cfg, options.log ?? (() => {}));
+    return stagedHeld;
   }
   const selected = await selectRelease(cfg, release);
   const chosen = selected.release;
@@ -813,18 +1021,103 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
     await dropOlderKept(cfg, chosen.version, dirname(next.engine), options.log);
     staged = true;
   } else if (selected.kept) await dropOlderKept(cfg, installed, undefined, options.log);
-  return await stageDesktopUpdate(cfg, chosen, request, options.desktop) || staged;
+  staged = await stageDesktopUpdate(cfg, chosen, request, options.desktop) || staged;
+  if (staged) await pruneStartupUpdates(cfg, options.log ?? (() => {}));
+  return staged;
 }
 
-const refreshes = new WeakMap<DesktopConfig, Promise<boolean>>();
+/**
+ * One in-flight inner `refresh()` per config. The outer promise may reject on timeout while `inner` is still
+ * running (extract/swap do not always honor abort). Later callers wait for `inner` to settle, then start their own
+ * check, so a late result cannot overwrite a newer staged update.
+ */
+interface InFlightRefresh {
+  inner: Promise<unknown>;
+  outer: Promise<boolean>;
+  timedOut: boolean;
+}
+const refreshes = new WeakMap<DesktopConfig, InFlightRefresh>();
 export const COMPONENT_UPDATE_CHECK_MS = 10 * 60 * 1000;
+/** Copies downloaded while the app runs are pruned on this cadence, not only at the next restart. */
+export const UPDATE_CLEANUP_MS = 60 * 60 * 1000;
+/**
+ * A hung GitHub fetch (or a swap that never returns) must not occupy the checker forever. Two 5-minute archive
+ * downloads plus extract still fit; a fetch left open after the engine is killed does not.
+ */
+export const COMPONENT_UPDATE_CHECK_TIMEOUT_MS = 15 * 60 * 1000;
+/** Caps probation cleanup after each periodic check so a stuck folder delete cannot occupy `busy`. */
+export const PRUNE_ENDED_PROBATION_TIMEOUT_MS = 60 * 1000;
 /** Startup, periodic and manual staging share one publication owner. */
 export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch = fetch, options: RefreshOptions = {}): Promise<boolean> {
   const active = refreshes.get(cfg);
-  if (active) return active;
-  const next = refresh(cfg, request, options).finally(() => refreshes.delete(cfg));
-  refreshes.set(cfg, next);
-  return next;
+  if (active) {
+    if (!active.timedOut) return active.outer;
+    return active.inner.then(
+      () => refreshComponentUpdate(cfg, request, options),
+      () => refreshComponentUpdate(cfg, request, options),
+    );
+  }
+  const timeoutMs = options.timeoutMs ?? COMPONENT_UPDATE_CHECK_TIMEOUT_MS;
+  const ac = new AbortController();
+  const signal = options.signal ? AbortSignal.any([options.signal, ac.signal]) : ac.signal;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const work = refresh(cfg, request, { ...options, signal });
+  const entry: InFlightRefresh = { inner: work, outer: Promise.resolve(false), timedOut: false };
+  const outer = new Promise<boolean>((resolve, reject) => {
+    timer = setTimeout(() => {
+      timer = undefined;
+      entry.timedOut = true;
+      ac.abort();
+      reject(new Error("Component update check timed out"));
+    }, timeoutMs);
+    timer.unref?.();
+    void work.then(
+      value => {
+        if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
+        if (refreshes.get(cfg) === entry) refreshes.delete(cfg);
+        resolve(value);
+      },
+      error => {
+        if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
+        if (refreshes.get(cfg) === entry) refreshes.delete(cfg);
+        reject(error);
+      },
+    );
+  });
+  entry.outer = outer;
+  refreshes.set(cfg, entry);
+  return outer;
+}
+
+export type StopComponentWatch = (() => void) & { notifyStopped(): void };
+
+export interface WatchComponentUpdatesOptions extends RefreshOptions {
+  onStaged?: () => void;
+  setTimeout?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
+  clearTimeout?: (id: ReturnType<typeof setTimeout>) => void;
+  checkMs?: number;
+  /** Caps `pruneEndedProbation` after each check. Production uses PRUNE_ENDED_PROBATION_TIMEOUT_MS. */
+  pruneTimeoutMs?: number;
+  /** Tests replace the GitHub refresh. Production always uses refreshComponentUpdate. */
+  refresh?: (cfg: DesktopConfig, request: typeof fetch, options: RefreshOptions) => Promise<boolean>;
+  /** Tests replace probation cleanup. Production always uses pruneEndedProbation. */
+  prune?: (cfg: DesktopConfig, log: (line: string) => void) => Promise<boolean>;
+}
+
+export interface UpdateCleanupWatchOptions {
+  intervalMs?: number;
+  interval?: (tick: () => void, ms: number) => NodeJS.Timeout;
+  clear?: (timer: NodeJS.Timeout) => void;
+}
+
+/** Hourly cleanup while the app runs. The timer is unref'd so it never blocks quit. */
+export function watchUpdateCleanup(cfg: DesktopConfig, log: (line: string) => void, options: UpdateCleanupWatchOptions = {}): () => void {
+  const timer = (options.interval ?? setInterval)(
+    () => pruneStartupUpdates(cfg, log),
+    options.intervalMs ?? UPDATE_CLEANUP_MS,
+  ) as NodeJS.Timeout;
+  timer.unref?.();
+  return () => (options.clear ?? clearInterval)(timer);
 }
 
 export interface ComponentUpdateState {
@@ -850,29 +1143,97 @@ export async function readComponentUpdateStatus(cfg: DesktopConfig): Promise<Com
     publicationInProgress: Boolean(pending), previousWindowDir };
 }
 
-export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void, options: RefreshOptions & { onStaged?: () => void } = {}): () => void {
+export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void, options: WatchComponentUpdatesOptions = {}): StopComponentWatch {
   let busy = false;
   let stopped = false;
   let first = true;
-  const tick = async (): Promise<void> => {
-    if (busy || stopped) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let hangTimer: ReturnType<typeof setTimeout> | undefined;
+  const waitMs = options.checkMs ?? COMPONENT_UPDATE_CHECK_MS;
+  const hangMs = options.timeoutMs ?? COMPONENT_UPDATE_CHECK_TIMEOUT_MS;
+  const schedule = options.setTimeout ?? setTimeout;
+  const cancel = options.clearTimeout ?? clearTimeout;
+  const runRefresh = options.refresh ?? refreshComponentUpdate;
+  const retryLine = (why: string): void => {
+    const secs = Math.max(1, Math.round(waitMs / 1000));
+    log(`${why}; next check in ${secs}s`);
+  };
+  const arm = (delayMs: number): void => {
+    if (stopped) return;
+    if (timer !== undefined) cancel(timer);
+    timer = schedule(() => {
+      timer = undefined;
+      void run();
+    }, delayMs);
+  };
+  const run = async (): Promise<void> => {
+    if (stopped) return;
+    // Arm the next pass before this one starts, so a hung check, error or lease-overrun stop never leaves the loop silent.
+    arm(waitMs);
+    if (busy) {
+      retryLine("Component update check still running");
+      return;
+    }
     busy = true;
+    const ac = new AbortController();
+    const signal = options.signal ? AbortSignal.any([options.signal, ac.signal]) : ac.signal;
     try {
       // A download kept while the update lock was held is staged on this check, including the next tick.
-      if (await refreshComponentUpdate(cfg, fetch, options)) {
+      const staged = await new Promise<boolean>((resolve, reject) => {
+        hangTimer = schedule(() => {
+          hangTimer = undefined;
+          ac.abort();
+          reject(new Error("timed out"));
+        }, hangMs);
+        void runRefresh(cfg, fetch, { ...options, signal, timeoutMs: hangMs }).then(resolve, reject);
+      });
+      if (staged) {
         log("Verified GitHub component update staged");
         options.onStaged?.();
       }
-    }
-    catch (error) { log(`Component update check: ${error instanceof Error ? error.message : String(error)}`); }
-    finally {
-      // Startup already pruned: later checks remove a previous engine whose probation has ended since.
-      if (!first && !stopped) await pruneEndedProbation(cfg, log);
-      first = false;
-      busy = false;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      retryLine(/timed out/i.test(message) ? "Component update check timed out" : `Component update check: ${message}`);
+    } finally {
+      if (hangTimer !== undefined) cancel(hangTimer);
+      hangTimer = undefined;
+      try {
+        // Startup already pruned: later checks remove a previous engine whose probation has ended since.
+        if (!first && !stopped) {
+          const pruneMs = options.pruneTimeoutMs ?? PRUNE_ENDED_PROBATION_TIMEOUT_MS;
+          const runPrune = options.prune ?? pruneEndedProbation;
+          let pruneTimer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await new Promise<void>((resolve, reject) => {
+              pruneTimer = schedule(() => reject(new Error("timed out")), pruneMs);
+              void runPrune(cfg, log).then(() => resolve(), reject);
+            });
+          } catch (error) {
+            log(`Update cleanup: ${error instanceof Error ? error.message : String(error)}`);
+          } finally {
+            if (pruneTimer !== undefined) cancel(pruneTimer);
+          }
+        }
+      } finally {
+        first = false;
+        busy = false;
+      }
     }
   };
-  void tick();
-  const timer = setInterval(() => void tick(), COMPONENT_UPDATE_CHECK_MS);
-  return () => { stopped = true; clearInterval(timer); };
+  const notifyStopped = (): void => {
+    if (stopped) return;
+    retryLine("Component update check: engine stopped past its lease");
+    arm(waitMs);
+  };
+  void run();
+  const stopCleanup = watchUpdateCleanup(cfg, log);
+  const stop = (): void => {
+    stopped = true;
+    if (timer !== undefined) cancel(timer);
+    if (hangTimer !== undefined) cancel(hangTimer);
+    timer = undefined;
+    hangTimer = undefined;
+    stopCleanup();
+  };
+  return Object.assign(stop, { notifyStopped });
 }

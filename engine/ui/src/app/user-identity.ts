@@ -63,3 +63,21 @@ export function resolveLocalUserAvatarText(
   }
   return resolveLocalUserAvatarUrl(normalized) ? null : avatar;
 }
+
+/** The avatar id the sidebar footer uses for the owner when the Gateway has no signed-in profile. */
+export const OWNER_AVATAR_ID = "owner";
+
+/**
+ * The owner's display name, shared by the sidebar footer and the owner's own chat avatar so both show the same
+ * initial: the signed-in profile's name or email, else the name set on this computer.
+ */
+export function resolveOwnerDisplayName(
+  selfUser: { name?: string | null; email?: string | null } | null | undefined,
+  local?: Partial<LocalUserIdentity> | null,
+): string | null {
+  return (
+    normalizeOptionalString(selfUser?.name) ??
+    normalizeOptionalString(selfUser?.email) ??
+    normalizeLocalUserIdentity(local).name
+  );
+}

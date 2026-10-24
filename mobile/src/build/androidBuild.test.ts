@@ -67,6 +67,7 @@ describe('the installable Android build', () => {
     expect(app.expo.android.versionCode).toBe(4);
     expect(app.expo.android.permissions).toContain('android.permission.REQUEST_INSTALL_PACKAGES');
     expect(plugins).toContain('./plugins/withApkInstaller.js');
+    expect(plugins).toContain('./plugins/withHomeWidget.js');
     expect(plugins).toContain('./plugins/withReleaseSigning.js');
   });
 

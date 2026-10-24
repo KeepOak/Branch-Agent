@@ -23,7 +23,7 @@ const NO_LEARN = "Needs the engine’s learning loop.";
 const COSTS_NOTE = "Needs the engine to count what each skill, connector and agent costs.";
 const NO_ROLLBACK = "Rolling back a change needs the engine’s roll back.";
 const NO_SETTING = "Needs an engine setting for it.";
-const APP = "Runs in the Branch app on your computer.";
+export const MOVE_WHY = "Moving your data folder comes in a later update.";
 export const SOURCE: Record<string, string> = { "system-agent": "Branch", doctor: "Check and fix", "config-rpc": "Settings", cli: "The terminal", "plugin-install": "A plugin install", external: "Edited outside Branch", unknown: "" };
 
 /** A greyed switch row: title, sub-line, the reason, and the level it shows from. */
@@ -335,8 +335,8 @@ function YourSettings({ engine, config }: Ctx) {
       <Ctl title="Where files are kept" sub="Attachments and what Trunks make." off="Needs the engine to keep files somewhere else.">
         <Pick label="Where files are kept" value="local" onChange={() => undefined} options={[{ id: "local", label: "This computer" }, { id: "s3", label: "Amazon S3" }, { id: "gcs", label: "Google Cloud Storage" }, { id: "azure", label: "Azure Blob" }]} />
       </Ctl>
-      <Ctl title="Where your data lives" sub="Moves conversations, memory and settings together." help="Moves conversations, memory and settings together. Portable mode (Developer) keeps them beside the program.">
-        {str(sys.diskPath) ? <code className="s2-code">{str(sys.diskPath)}</code> : null}<Btn sm disabled title={APP}>Move…</Btn>
+      <Ctl title="Where your data lives" sub="Moves conversations, memory and settings together." help="Moves conversations, memory and settings together. Portable mode (Developer) keeps them beside the program." off={MOVE_WHY}>
+        {str(sys.diskPath) ? <code className="s2-code">{str(sys.diskPath)}</code> : null}<Btn sm disabled>Move…</Btn>
       </Ctl>
       <Ctl title="Put Branch on a USB stick" sub="Runs on Mac, Windows or Linux from the stick." off="Writing a copy to a USB stick needs the Branch app."><Btn sm disabled>Make one</Btn></Ctl>
       {incoming ? <ImportDialog engine={engine} config={config} file={incoming} onClose={() => setIncoming(null)} /> : null}
