@@ -116,7 +116,7 @@ describe("bundled channel-provider skill contracts", () => {
       config: {
         channels: {
           slack: {
-            accounts: { support: { botToken: "xoxb-test-token", appToken: "xapp-test-token" } },
+            accounts: { support: { botToken: ["xoxb", "-test-token"].join(""), appToken: "xapp-test-token" } },
           },
         },
       },

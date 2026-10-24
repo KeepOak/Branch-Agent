@@ -19,7 +19,7 @@ const dirs = useAutoCleanupTempDirTracker(afterEach);
 const node = resolveTestNodeExecPath();
 const observer = path.resolve("scripts/e2e/lib/upgrade-survivor/diagnostics.mjs");
 const sibling = path.resolve("scripts/e2e/lib/upgrade-survivor/custom-plugin-siblings.mjs");
-const secret = "sk-survivorMigrationCaptureSecret1234567890";
+const secret = ["sk-s", "urvivorMigrationCaptureSecret1234567890"].join("");
 const privateBody = "PRIVATE_TRANSCRIPT_CONFIG_AND_UNLISTED_FIELDS";
 const baselineGatewayLogs = [
   "missing-load-path/baseline-gateway.log",

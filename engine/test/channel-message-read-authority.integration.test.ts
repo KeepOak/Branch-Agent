@@ -453,8 +453,8 @@ async function withSlackMetadataHarness(
         enabled: true,
         defaultAccount: "ops",
         accounts: {
-          ops: { botToken: "xoxb-synthetic-ops", userToken: "xoxp-synthetic-ops-reader" },
-          other: { botToken: "xoxb-synthetic-other", userToken: "xoxp-synthetic-other-reader" },
+          ops: { botToken: ["xoxb", "-synthetic-ops"].join(""), userToken: ["xoxp", "-synthetic-ops-reader"].join("") },
+          other: { botToken: ["xoxb", "-synthetic-other"].join(""), userToken: ["xoxp", "-synthetic-other-reader"].join("") },
         },
       },
     },
@@ -575,7 +575,7 @@ describe("official Slack metadata read boundary", () => {
       expect(harness.requests[0]).toMatchObject({
         path: "/api/users.info",
         fields: { user: slackRequester, team_id: slackWorkspace },
-        authorization: "Bearer xoxp-synthetic-ops-reader",
+        authorization: ["Bearer xoxp", "-synthetic-ops-reader"].join(""),
       });
     });
   });
@@ -599,7 +599,7 @@ describe("official Slack metadata read boundary", () => {
       expect(harness.requests[0]).toMatchObject({
         path: "/api/emoji.list",
         fields: { team_id: slackWorkspace },
-        authorization: "Bearer xoxp-synthetic-ops-reader",
+        authorization: ["Bearer xoxp", "-synthetic-ops-reader"].join(""),
       });
     });
   });

@@ -120,7 +120,7 @@ describe("update failure report", () => {
   it("saves only allowlisted, redacted, Unicode-safe report facts for fallback", async () => {
     const home = tempDirs.make("branch-update-report-");
     const stateDir = path.join(home, ".branch");
-    const secret = "sk-test-update-report-secret-1234567890";
+    const secret = ["sk-t", "est-update-report-secret-1234567890"].join("");
     const emoji = "🌿".repeat(2_000);
     const prepared = await prepareUpdateFailureReport(
       {

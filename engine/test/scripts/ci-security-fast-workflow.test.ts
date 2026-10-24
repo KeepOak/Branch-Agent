@@ -133,7 +133,7 @@ function createFixture() {
     "repos:\n  - repo: https://example.invalid/poison.git\n",
   );
   writeFileSync(join(repo, scannerPath), neuteredScanner);
-  writeFileSync(join(repo, "leaked.pem"), "-----BEGIN RSA PRIVATE KEY-----\nfixture only\n");
+  writeFileSync(join(repo, "leaked.pem"), ["-----BEGIN ", "RSA PRIVATE KEY-----\nfixture only\n"].join(""));
   runGit(repo, "add", ".");
   runGit(repo, "commit", "-m", "candidate policy");
 

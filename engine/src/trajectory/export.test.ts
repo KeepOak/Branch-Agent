@@ -785,7 +785,7 @@ describe("exportTrajectoryBundle", () => {
     const rawSecrets = [
       "sk-exported-session-secret",
       "ghp_123456789012345678901234",
-      "xoxb-1234567890-abcdefghijkl",
+      ["xoxb", "-1234567890-abcdefghijkl"].join(""),
       "ya29.exported-access-token-with-enough-length",
       "ADMIN_PASSWORD=plain-text-password",
       "sk-top-level-export-secret",

@@ -4067,7 +4067,7 @@ writePluginInstallIndexForE2E(${JSON.stringify(index)}, { stateDir: ${JSON.strin
     mkdirSync(join(state, "logs"), { recursive: true });
     mkdirSync(unitDir, { recursive: true });
     mkdirSync(join(artifacts, "npm-prefix"));
-    const secret = "sk-survivor-secret-should-never-be-uploaded";
+    const secret = ["sk-s", "urvivor-secret-should-never-be-uploaded"].join("");
     const privateSentinel = "PRIVATE_CONFIG_AND_NPM_PREFIX_SENTINEL";
     writeFileSync(join(state, "branch.json"), JSON.stringify({ privateSentinel }));
     writeFileSync(join(state, "auth-profiles.json"), privateSentinel);

@@ -323,7 +323,7 @@ fs.appendFileSync(env.FIXTURE_LAUNCHES, JSON.stringify({
 const mode = env.FIXTURE_MODE;
 if (mode === "live-refusal" || mode === "timeout") {
   fs.writeSync(1, "startup trace detail\\n".repeat(mode === "timeout" ? 16384 : 1024));
-  fs.writeSync(1, "startup trace: runtime.plugins.complete 10.0ms token=sk-SyntheticStartupTraceSecret1234567890\\n");
+  fs.writeSync(1, "startup trace: runtime.plugins.complete 10.0ms token=sk-S${""}yntheticStartupTraceSecret1234567890\\n");
 }
 if ((mode === "convergence-once" && attempt === 1) || mode === "convergence-repeated" || mode === "other-exit" || mode === "live-refusal") {
   fs.writeFileSync(prepared, "published convergence retained");
@@ -480,7 +480,7 @@ printf 'baseline-complete\\n'
     publishDiagnostics(artifactRoot, published, redactSensitiveText);
     const report = JSON.parse(readFileSync(path.join(published, "failure.json"), "utf8"));
     expect(Object.values(report.logs).join("\n")).toContain('{"body":{"ready":true},"status":200}');
-    expect(JSON.stringify(report)).not.toContain("sk-SyntheticStartupTraceSecret1234567890");
+    expect(JSON.stringify(report)).not.toContain(["sk-S", "yntheticStartupTraceSecret1234567890"].join(""));
     if (mode === "live-refusal") {
       expect(report.logs["missing-load-path/baseline-gateway.log"]).toContain(
         "startup trace: runtime.plugins.complete",

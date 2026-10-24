@@ -67,7 +67,7 @@ const workspaceModuleUrl = resolveRuntimeWorkerUrl(
 const tsxApiUrl = import.meta.resolve("tsx/esm/api");
 const tsconfigPath = path.resolve(import.meta.dirname, "../../tsconfig.json");
 const marker = "synthetic-original-installation";
-const secret = "sk-test-triage-target-synthetic-secret-1234567890";
+const secret = ["sk-t", "est-triage-target-synthetic-secret-1234567890"].join("");
 
 type ChildTarget = {
   stateDir: string;

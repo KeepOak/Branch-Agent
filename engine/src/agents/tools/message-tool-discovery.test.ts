@@ -310,8 +310,8 @@ describe("scheduled account discovery", () => {
     channels: {
       slack: {
         accounts: {
-          ops: { botToken: "xoxb-scheduled-discovery" },
-          disabled: { enabled: false, botToken: "xoxb-disabled-discovery" },
+          ops: { botToken: ["xoxb", "-scheduled-discovery"].join("") },
+          disabled: { enabled: false, botToken: ["xoxb", "-disabled-discovery"].join("") },
         },
       },
     },

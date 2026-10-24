@@ -508,7 +508,7 @@ describe("scanSkillContent", () => {
   it.each([
     "sk-...",
     "github_pat_EXAMPLE",
-    "xoxb-your-token",
+    ["xoxb", "-your-token"].join(""),
     "AIza-example",
     ["-----BEGIN", "PRIVATE KEY-----"].join(" "),
   ])("allows short credential placeholders: %s", (placeholder) => {

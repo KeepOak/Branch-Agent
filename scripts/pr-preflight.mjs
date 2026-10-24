@@ -28,6 +28,20 @@ const PERSONAL_PATTERNS = [
   /[A-Za-z]:\\Users\\[A-Za-z0-9._-]+\\/,
   /\b[A-Za-z0-9._%+-]+@(gmail|outlook|hotmail|yahoo|icloud|proton)\.[a-z.]+\b/i,
 ];
+// Provider key formats. Test files are scanned too: a literal fake key in a fixture still trips
+// GitHub secret scanning. Minimum lengths keep short placeholders such as sk-test passing.
+const SECRET_PATTERNS = [
+  ['github-token', /\bgh[pousr]_[A-Za-z0-9]{36,}\b/],
+  ['github-fine-grained-token', /\bgithub_pat_[A-Za-z0-9_]{22,}/],
+  ['anthropic-key', /\bsk-ant-[A-Za-z0-9_-]{32,}/],
+  ['openai-key', /\bsk-(?!ant-)(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}/],
+  ['aws-access-key-id', /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
+  ['slack-token', /\bxox[bpar]-[A-Za-z0-9-]{10,}/],
+  ['stripe-live-key', /\b(?:sk|rk)_live_[A-Za-z0-9]{24,}/],
+  ['google-api-key', /\bAIza[0-9A-Za-z_-]{35}/],
+  ['jwt', /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/],
+  ['private-key-pem', /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY( BLOCK)?-----/],
+];
 // Test files carry synthetic fixtures (example addresses, sample paths) on purpose, so they are exempt.
 const FIXTURE_FILE = /\.test\.(mjs|ts|tsx)$/;
 const WINDOW_INPUTS = /^(window\/|scripts\/window-clean)/;
@@ -291,6 +305,22 @@ export function personalInfoProblems(addedLines, { changedFiles = [], denylist =
   return [...branchNameProblems(branch, denylist), ...pathProblems, ...lineProblems];
 }
 
+// Never echo the matched value: the problem text lands in CI logs.
+export function secretLiteralProblems(addedLines) {
+  const problems = [];
+  for (const l of addedLines) {
+    const hit = SECRET_PATTERNS.find(([, re]) => re.test(l.text));
+    if (hit) {
+      problems.push(problem(
+        'secret-literal',
+        `${l.file}:${l.line} adds a literal that looks like a ${hit[0]}`,
+        'remove it; for a test fixture, build the fake key at runtime (for example by joining string parts)',
+      ));
+    }
+  }
+  return problems;
+}
+
 // Bodies are public prose, not test fixtures. Scan every domain and Markdown
 // context, but retain the GitHub noreply identity exemption used by the gates.
 export function bodyEmailProblems(body) {
@@ -344,6 +374,7 @@ export function runPreflight(input) {
     }),
     ...desktopCoverageProblems({ files: input.files ?? [], desktopWorkflow: input.desktopWorkflow ?? null }),
     ...personalInfoProblems(input.addedLines ?? [], { changedFiles, denylist: input.denylist ?? privateNameDenylist(), branch: input.branch }),
+    ...secretLiteralProblems(input.addedLines ?? []),
     ...bodyEmailProblems(body),
     ...unverifiedPatchProblems(input.unverifiedFiles ?? []),
   ];

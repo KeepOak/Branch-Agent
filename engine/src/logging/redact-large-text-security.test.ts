@@ -62,7 +62,7 @@ const RULE_FAMILY_SAMPLES: readonly (readonly [string, string, string?])[] = [
     ['aws_secret_access_key = "', "wJalrXUtnFEMIK7MDENGb"].join("") +
       ["PxRfiCYEXAMPLEKEY0a", '"'].join(""),
   ],
-  ["pem block", "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----"],
+  ["pem block", ["-----BEGIN ", "PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----"].join("")],
   // Authorization / header families.
   ["authorization bearer", "Authorization: Bearer abcdefghij0123456789"],
   ["authorization basic", "Authorization: Basic dXNlcjpwYXNzd29yZDE"],
@@ -109,7 +109,7 @@ const RULE_FAMILY_SAMPLES: readonly (readonly [string, string, string?])[] = [
   ["gitlab glrt", "glrt-abcdefghijklmnopqrst"],
   ["gitlab gr134", "GR1348941abcdefghijklmnopqrst"],
   ["gitlab session", "_gitlab_session=abcdefghijklmnopqrst"],
-  ["slack xoxb", "xoxb-123456789012-abcdefghij"],
+  ["slack xoxb", ["xoxb", "-123456789012-abcdefghij"].join("")],
   ["slack xapp", "xapp-123456789012-abcdefghij"],
   [
     "slack webhook",
@@ -168,8 +168,8 @@ const RULE_FAMILY_SAMPLES: readonly (readonly [string, string, string?])[] = [
   ["fireworks fw score", " fw_abcdefghij01234567890123456789"],
   ["fireworks fpk", " fpk_abcdefghij01234567890123456789"],
   ["hsk", "hsk-abcdefghij12345"],
-  ["aws akia", "AKIAABCDEFGHIJKLMNOP"],
-  ["aws asia", "ASIAABCDEFGHIJKLMNOP"],
+  ["aws akia", ["AKIA", "ABCDEFGHIJKLMNOP"].join("")],
+  ["aws asia", ["ASIA", "ABCDEFGHIJKLMNOP"].join("")],
   ["aws akid", "AKIDabcdefghij12345"],
   ["aliyun ltai", "LTAIabcdefghij12345"],
   ["huggingface", "hf_abcdefghij12345"],

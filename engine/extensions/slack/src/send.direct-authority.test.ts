@@ -36,7 +36,7 @@ function withSlackApi(
     async (baseUrl) => {
       vi.stubEnv("SLACK_API_URL", `${baseUrl}/api/`);
       await run(
-        { channels: { slack: { botToken: "xoxb-direct-authority", textChunkLimit } } },
+        { channels: { slack: { botToken: ["xoxb", "-direct-authority"].join(""), textChunkLimit } } },
         paths,
       );
     },

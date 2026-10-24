@@ -250,7 +250,7 @@ async function expectPrivateDownloadRedirect(params: {
 
   const result = await resolveSlackMedia({
     files: [{ url_private_download: "https://files.slack.com/download.jpg", name: "test.jpg" }],
-    token: "xoxb-test-token",
+    token: ["xoxb", "-test-token"].join(""),
     maxBytes: 1024 * 1024,
   });
 
@@ -258,7 +258,7 @@ async function expectPrivateDownloadRedirect(params: {
   expect(mockFetch).toHaveBeenCalledTimes(2);
   expect(requireMockCall(mockFetch, 0, "fetch")[0]).toBe("https://files.slack.com/download.jpg");
   expect(requireMockCall(mockFetch, 1, "fetch")[0]).toBe(params.redirectedUrl);
-  expect(getRequestHeader(0, "Authorization")).toBe("Bearer xoxb-test-token");
+  expect(getRequestHeader(0, "Authorization")).toBe(["Bearer xoxb", "-test-token"].join(""));
   expect(getRequestHeader(1, "Authorization")).toBe(params.secondAuthorization);
 }
 
@@ -284,7 +284,7 @@ describe("resolveSlackMedia", () => {
           name: "test.jpg",
         },
       ],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
     });
 
@@ -296,7 +296,7 @@ describe("resolveSlackMedia", () => {
     await expectPrivateDownloadRedirect({
       location: "/files/redirect-target",
       redirectedUrl: "https://files.slack.com/files/redirect-target",
-      secondAuthorization: "Bearer xoxb-test-token",
+      secondAuthorization: ["Bearer xoxb", "-test-token"].join(""),
     });
   });
 
@@ -322,13 +322,13 @@ describe("resolveSlackMedia", () => {
       const result = await resolveSlackMedia({
         files: [{ url_private_download: "https://files.slack-gov.com/direct.png" }],
         client,
-        token: "xoxb-test-token",
+        token: ["xoxb", "-test-token"].join(""),
         maxBytes: 1024,
       });
 
       expectSlackMediaResult(result);
       expectFetchCalledWithUrl(mockFetch, "https://files.slack-gov.com/direct.png");
-      expect(getRequestHeader(0, "Authorization")).toBe("Bearer xoxb-test-token");
+      expect(getRequestHeader(0, "Authorization")).toBe(["Bearer xoxb", "-test-token"].join(""));
     },
   );
 
@@ -356,7 +356,7 @@ describe("resolveSlackMedia", () => {
         },
       ],
       client,
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024,
     });
 
@@ -387,7 +387,7 @@ describe("resolveSlackMedia", () => {
     const result = await resolveSlackMedia({
       files: [{ id: "FGOV123" }],
       client,
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024,
     });
 
@@ -410,14 +410,14 @@ describe("resolveSlackMedia", () => {
     const result = await resolveSlackMedia({
       files: [{ id: "FGOV123", url_private_download: "https://files.slack-gov.com/expired.png" }],
       client,
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024,
     });
 
     expect(result).toBeNull();
     expect(client.files.info).toHaveBeenCalledWith({ file: "FGOV123" });
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(getRequestHeader(0, "Authorization")).toBe("Bearer xoxb-test-token");
+    expect(getRequestHeader(0, "Authorization")).toBe(["Bearer xoxb", "-test-token"].join(""));
   });
 
   it.each([
@@ -453,7 +453,7 @@ describe("resolveSlackMedia", () => {
     const result = await resolveSlackMedia({
       files: [{ url_private_download: `https://${hostname}/image.png` }],
       client: { slackApiUrl } as WebClient,
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024,
     });
 
@@ -487,13 +487,13 @@ describe("resolveSlackMedia", () => {
       const result = await resolveSlackMedia({
         files: [{ url_private_download: sourceUrl }],
         client: { slackApiUrl } as WebClient,
-        token: "xoxb-test-token",
+        token: ["xoxb", "-test-token"].join(""),
         maxBytes: 1024,
       });
 
       expect(result).toBeNull();
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      expect(getRequestHeader(0, "Authorization")).toBe("Bearer xoxb-test-token");
+      expect(getRequestHeader(0, "Authorization")).toBe(["Bearer xoxb", "-test-token"].join(""));
     },
   );
 
@@ -508,7 +508,7 @@ describe("resolveSlackMedia", () => {
 
     const result = await resolveSlackMedia({
       files: [{ url_private: "https://files.slack.com/test.jpg", name: "test.jpg" }],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
     });
 
@@ -520,7 +520,7 @@ describe("resolveSlackMedia", () => {
     expect(fetchOptions.readIdleTimeoutMs).toBe(SLACK_MEDIA_READ_IDLE_TIMEOUT_MS);
     expect(fetchOptions.requestInit?.signal).toBeInstanceOf(AbortSignal);
     expect(new Headers(fetchOptions.requestInit?.headers).get("Authorization")).toBe(
-      "Bearer xoxb-test-token",
+      ["Bearer xoxb", "-test-token"].join(""),
     );
   });
 
@@ -544,7 +544,7 @@ describe("resolveSlackMedia", () => {
 
       const resultPromise = resolveSlackMedia({
         files: [{ url_private: "https://files.slack.com/slow.jpg", name: "slow.jpg" }],
-        token: "xoxb-test-token",
+        token: ["xoxb", "-test-token"].join(""),
         maxBytes: 1024 * 1024,
         totalTimeoutMs: 25,
       });
@@ -578,7 +578,7 @@ describe("resolveSlackMedia", () => {
     const result = await resolveSlackMedia({
       files: [{ id: "F123", name: "test.jpg" }],
       client: mockClient,
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
     });
 
@@ -604,7 +604,7 @@ describe("resolveSlackMedia", () => {
     const result = await resolveSlackMedia({
       files: [{ id: "F123", name: "test.jpg" }],
       client: mockClient,
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
     });
     expect(result).toBeNull();
@@ -639,7 +639,7 @@ describe("resolveSlackMedia", () => {
         },
       ],
       client: mockClient,
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
     });
 
@@ -680,7 +680,7 @@ describe("resolveSlackMedia", () => {
         },
       ],
       client: mockClient,
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
       isRefreshedFileAllowed: () => false,
     });
@@ -706,7 +706,7 @@ describe("resolveSlackMedia", () => {
       try {
         const result = await resolveSlackAttachmentContent({
           files: [file],
-          token: "xoxb-test-token",
+          token: ["xoxb", "-test-token"].join(""),
           maxBytes: 1024 * 1024,
         });
 
@@ -740,7 +740,7 @@ describe("resolveSlackMedia", () => {
           mimetype: "text/html",
         },
       ],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
     });
 
@@ -775,7 +775,7 @@ describe("resolveSlackMedia", () => {
           subtype: "slack_audio",
         },
       ],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 16 * 1024 * 1024,
     });
 
@@ -808,7 +808,7 @@ describe("resolveSlackMedia", () => {
           mimetype: "video/mp4",
         },
       ],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 16 * 1024 * 1024,
     });
 
@@ -865,7 +865,7 @@ describe("resolveSlackMedia", () => {
           size: 34,
         },
       ],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
     });
 
@@ -901,7 +901,7 @@ describe("resolveSlackMedia", () => {
     const result = await resolveSlackMedia({
       files,
       unavailableFiles,
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
     });
 
@@ -930,7 +930,7 @@ describe("resolveSlackMedia", () => {
 
       const result = await resolveSlackMedia({
         files: [{ url_private: "https://files.slack.com/test.jpg", name: "test.jpg" }],
-        token: "xoxb-test-token",
+        token: ["xoxb", "-test-token"].join(""),
         maxBytes: 1024 * 1024,
       });
 
@@ -946,7 +946,7 @@ describe("resolveSlackMedia", () => {
       expect(fetchInit.redirect).toBe("manual");
       expect("dispatcher" in fetchInit).toBe(hasDispatcher);
       expect(fetchInit.dispatcher).toBe(hasDispatcher ? dispatcher : undefined);
-      expect(new Headers(fetchInit.headers).get("Authorization")).toBe("Bearer xoxb-test-token");
+      expect(new Headers(fetchInit.headers).get("Authorization")).toBe(["Bearer xoxb", "-test-token"].join(""));
     },
   );
 });
@@ -964,7 +964,7 @@ describe("Slack media SSRF policy", () => {
 
     await resolveSlackMedia({
       files: [{ url_private: "https://files.slack.com/test.jpg", name: "test.jpg" }],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024,
     });
 
@@ -990,7 +990,7 @@ describe("Slack media SSRF policy", () => {
 
     await resolveSlackAttachmentContent({
       attachments: [{ is_share: true, image_url: "https://files.slack.com/forwarded.jpg" }],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024,
     });
 
@@ -1015,7 +1015,7 @@ describe("Slack media SSRF policy", () => {
     await resolveSlackMedia({
       files: [{ url_private_download: "https://files.slack-gov.com/direct.png" }],
       client: { slackApiUrl: "https://slack-gov.com/api/" } as WebClient,
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024,
     });
 
@@ -1106,7 +1106,7 @@ describe("Slack media SSRF policy", () => {
       const result = await resolveSlackMedia({
         files: [{ url_private_download: `https://${fileHostname}/guarded.png` }],
         client: { slackApiUrl } as WebClient,
-        token: "xoxb-test-token",
+        token: ["xoxb", "-test-token"].join(""),
         maxBytes: 1024,
       });
 
@@ -1163,7 +1163,7 @@ describe("Slack message file intake", () => {
       isThreadReply: false,
       threadStarter: null,
       isBotMessage: false,
-      botToken: "xoxb-test-token",
+      botToken: ["xoxb", "-test-token"].join(""),
       mediaMaxBytes: 1024,
       preloadedMedia: params.preloadedMedia,
     });
@@ -1412,7 +1412,7 @@ describe("resolveSlackAttachmentContent", () => {
           ? { files: [file] }
           : { attachments: [{ is_share: true, files: [file] }] }),
         client,
-        token: "xoxb-test-token",
+        token: ["xoxb", "-test-token"].join(""),
         maxBytes: 1024,
       });
 
@@ -1436,7 +1436,7 @@ describe("resolveSlackAttachmentContent", () => {
           image_url: "https://example.com/unfurl.jpg",
         },
       ],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
     });
 
@@ -1453,7 +1453,7 @@ describe("resolveSlackAttachmentContent", () => {
           text: "Please review this",
         },
       ],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
     });
 
@@ -1469,7 +1469,7 @@ describe("resolveSlackAttachmentContent", () => {
     const file = { id: "FFORWARD", name: "forwarded-report.pdf" };
     const result = await resolveSlackAttachmentContent({
       attachments: [{ is_share: true, files: [file] }],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
     });
 
@@ -1490,7 +1490,7 @@ describe("resolveSlackAttachmentContent", () => {
     );
     const result = await resolveSlackAttachmentContent({
       files: [{ name: "file.png", url_private: "https://files.slack.com/file.png" }],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024,
     });
 
@@ -1505,7 +1505,7 @@ describe("resolveSlackAttachmentContent", () => {
   it("skips forwarded image URLs on non-Slack hosts", async () => {
     const result = await resolveSlackAttachmentContent({
       attachments: [{ is_share: true, image_url: "https://example.com/forwarded.jpg" }],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
     });
 
@@ -1526,7 +1526,7 @@ describe("resolveSlackAttachmentContent", () => {
 
     const result = await resolveSlackAttachmentContent({
       attachments: [{ is_share: true, image_url: "https://files.slack.com/forwarded.jpg" }],
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024 * 1024,
     });
 
@@ -1546,7 +1546,7 @@ describe("resolveSlackAttachmentContent", () => {
     expect(firstCall[0]).toBe("https://files.slack.com/forwarded.jpg");
     const firstInit = requireRecord(firstCall[1], "fetch init") as RequestInit;
     expect(firstInit.redirect).toBe("manual");
-    expect(new Headers(firstInit.headers).get("Authorization")).toBe("Bearer xoxb-test-token");
+    expect(new Headers(firstInit.headers).get("Authorization")).toBe(["Bearer xoxb", "-test-token"].join(""));
   });
 
   it.each([
@@ -1572,7 +1572,7 @@ describe("resolveSlackAttachmentContent", () => {
     const result = await resolveSlackAttachmentContent({
       attachments: [attachment],
       client: { slackApiUrl: "https://slack-gov.com/api/" } as WebClient,
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024,
     });
 
@@ -1586,7 +1586,7 @@ describe("resolveSlackAttachmentContent", () => {
     const result = await resolveSlackAttachmentContent({
       attachments: [{ is_share: true, image_url: "https://files.slack.com/forwarded.png" }],
       client: { slackApiUrl: "https://slack-gov.com/api/" } as WebClient,
-      token: "xoxb-test-token",
+      token: ["xoxb", "-test-token"].join(""),
       maxBytes: 1024,
     });
 

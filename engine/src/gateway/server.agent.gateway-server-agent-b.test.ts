@@ -321,7 +321,7 @@ describe("gateway server agent", () => {
   });
 
   test("agent final response surfaces redacted ACP runtime cause details", async () => {
-    const token = "sk-abcdefghijklmnopqrstuvwxyz123456";
+    const token = ["sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join("");
     vi.mocked(agentCommandMock).mockRejectedValueOnce(
       new AcpRuntimeError("ACP_TURN_FAILED", "Internal error", {
         cause: new Error(`upstream rejected token=${token}`),

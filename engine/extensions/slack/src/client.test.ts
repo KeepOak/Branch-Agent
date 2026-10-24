@@ -289,14 +289,14 @@ describe("slack web client config", () => {
   });
 
   it("builds stable non-secret token cache keys", () => {
-    const token = "xoxb-sensitive-token";
+    const token = ["xoxb", "-sensitive-token"].join("");
     const first = createSlackTokenCacheKey(token);
     const second = createSlackTokenCacheKey(token);
 
     expect(first).toBe(second);
     expect(first).toMatch(/^sha256:/);
     expect(first).not.toContain(token);
-    expect(createSlackTokenCacheKey("xoxb-other-token")).not.toBe(first);
+    expect(createSlackTokenCacheKey(["xoxb", "-other-token"].join(""))).not.toBe(first);
   });
 });
 
