@@ -12,7 +12,7 @@ import { noticesHereOn, setNoticesHere } from "../../../shell/notify";
 import { Segmented, Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
 import { useRead } from "./accounts-live";
-import { Failed, Needs, useFailure } from "./appearance-live";
+import { Failed, LevelNeeds as Needs, useFailure } from "./appearance-live";
 
 /** A value many rows read: subscribe, snapshot, set. */
 class Shared<T> {

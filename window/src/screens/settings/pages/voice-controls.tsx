@@ -16,7 +16,7 @@ import { Dialog } from "../../../shell/Dialog";
 import { Segmented, Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
 import { useRead } from "./accounts-live";
-import { Failed, Needs, useFailure } from "./appearance-live";
+import { Failed, LevelNeeds as Needs, useFailure } from "./appearance-live";
 import { copyAndSay } from "../../../shell/clipboard";
 import { VOICE_CODE } from "./voice";
 

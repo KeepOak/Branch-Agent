@@ -19,6 +19,8 @@ import { DEFAULT_PET, PETS, petsHad, pickPet } from "../../../places/settings/se
 import { sceneFile, useLook } from "../../../places/settings/set1/appearance-store";
 import { localId, Swatch, themeGroup, themeName, ThemesDialog, useThemes, type Extra } from "../../../places/settings/set1/appearance-themes";
 import { useThemeChoice, useTrunk } from "../../../places/settings/set1/appearance-top";
+import { COMING_FROM } from "../rows";
+import { useLevelNow } from "../level-now";
 import { r1DefaultTopicLayout, r1TopicLayoutNames, setR1TopicLayout, TOPIC_LAYOUT_KEY, type R1TopicLayout } from "../../../shell/topic-layout";
 import { setThemeChoice, type ThemeChoice } from "../../../theme/theme";
 import { Segmented } from "../RowView";
@@ -33,6 +35,13 @@ const lookCalls = (look: Look): string[] => (look.snap.where === "device" ? [] :
  *  engine lacks a call the control is Coming, and is not drawn (below Technical, rows.ts COMING_FROM). */
 export function Needs({ engine, need, where, hidden, children }: { engine: WindowEngine; need: string[]; where: string; hidden?: boolean; children: ReactElement }) {
   return need.length ? <Coming engine={engine} need={need} where={where} hidden={hidden}>{children}</Coming> : cloneElement(children, { "data-local": "" } as Record<string, unknown>);
+}
+
+/** Needs, at the person's level: a control this engine can't run yet is Coming, and like every Coming control it shows
+ *  only at Technical (rows.ts COMING_FROM, Private #1093). A control that works today shows at every level. */
+export function LevelNeeds({ hidden, ...props }: Parameters<typeof Needs>[0]) {
+  const level = useLevelNow(props.engine);
+  return <Needs {...props} hidden={hidden || level < COMING_FROM} />;
 }
 
 /** A failed change, on its own pill under the control. */
