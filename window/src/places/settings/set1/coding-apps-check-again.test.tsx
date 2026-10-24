@@ -117,6 +117,26 @@ describe("Coding-app rows that could not check", () => {
     }
   });
 
+  it.each(["advanced", "technical"] as const)("keeps the raw 401 reason for %s without a sign-in capability and restores Regular guidance", async (level) => {
+    const { engine, request } = engineWith("HTTP 401");
+    await show(engine, "regular", []);
+    for (const { name } of APPS) {
+      expect(row(name).querySelector("small")?.textContent).toBe(`Open ${name} on this computer and sign in there, then choose Check again.`);
+    }
+    request.mockClear();
+    await show(engine, level, []);
+    for (const { name } of APPS) {
+      expect(row(name).querySelector("small")?.textContent).toBe("HTTP 401");
+      expect([...row(name).querySelectorAll("button")].filter((button) => button.getAttribute("role") !== "switch")).toHaveLength(0);
+    }
+    await show(engine, "regular", []);
+    for (const { name } of APPS) {
+      expect(row(name).querySelector("small")?.textContent).toBe(`Open ${name} on this computer and sign in there, then choose Check again.`);
+    }
+    expect(request).not.toHaveBeenCalled();
+    expect(signIn).not.toHaveBeenCalled();
+  });
+
   it.each(["advanced", "technical"] as const)("keeps the raw reason for %s and formats it again at draw time", async (level) => {
     const { engine, request } = engineWith(NETWORK_ERROR);
     await show(engine);

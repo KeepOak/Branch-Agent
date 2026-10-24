@@ -5,7 +5,7 @@ import { CheckedAt, useCheckedAt } from "../checked-at";
 import type { WindowEngine } from "../../../connect/engine";
 import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
-import { Btn, Ctl, Sec, Switch, useConfig, useScope } from "../kit";
+import { Btn, Ctl, Sec, Switch, useConfig, useLevel, useScope } from "../kit";
 import { Coming } from "../../../glass/coming";
 import { CODEX_DOWNLOAD_METHOD, codexDownloadOffered, useCodexDownload } from "./codex-get";
 import { brandOf, Logo } from "./service";
@@ -40,6 +40,7 @@ export function appSub(app: App, f: Found, on: boolean): string {
 export function CodingApps({ engine, caps = [], onSignIn }: { engine: WindowEngine; caps?: RecordValue[]; onSignIn?: (provider: string) => void }) {
   const [checked, stamp] = useCheckedAt();
   const scope = useScope();
+  const level = useLevel();
   const detect = useResource<RecordValue>(engine, "branch.setup.detect", scope ? { agentId: scope } : {});
   const usage = useResource<RecordValue>(engine, "usage.status");
   const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
@@ -58,7 +59,7 @@ export function CodingApps({ engine, caps = [], onSignIn }: { engine: WindowEngi
         const [tone, word] = detect.error ? ["idle", "Couldn’t check"] : detect.loading ? ["idle", "Looking…"] : PILL[f.state];
         const pluginOn = app.plugin ? cfg.get(`plugins.entries.${app.plugin}.enabled`) === true : f.state === "ready";
         const asking = app.plugin === "codex" ? codex.prompt : undefined;
-        const sub = authError && !signIn ? `Open ${app.name} on this computer and sign in there, then choose Check again.` : asking ? asking : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detect.error ? plainError(detect.error) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
+        const sub = authError && !signIn && level === 0 ? `Open ${app.name} on this computer and sign in there, then choose Check again.` : asking ? asking : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detect.error ? plainError(detect.error) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
         return (
           <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={sub} after={detect.error ? authError ? signIn ? <Btn sm onClick={() => onSignIn?.(text(signIn.provider))}>Sign in again</Btn> : undefined : <Btn sm onClick={() => void detect.reload()}>Check again</Btn> : asking ? <span data-testid="codex-download-prompt"><Coming need={CODEX_DOWNLOAD_METHOD} where="Download Codex"><Btn sm onClick={() => void codex.accept()}>Yes</Btn></Coming><Btn sm onClick={() => void codex.decline()}>Cancel</Btn></span> : getting?.action ? <Coming need={CODEX_DOWNLOAD_METHOD} where={getting.action}><Btn sm onClick={() => codex.requestPrompt()}>{getting.action}</Btn></Coming> : undefined}>
             {app.plugin
