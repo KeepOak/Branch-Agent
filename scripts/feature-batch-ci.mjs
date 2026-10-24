@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { capabilityTests, namedE2eTests, namedTests, shardOf, shardTests, splitUiTests, touchedTests } from './feature-batch-ci-targets.mjs';
+import { capabilityTests, namedE2eTests, namedTests, shardOf, shardTests, touchedTests } from './feature-batch-ci-targets.mjs';
+import { splitUiTests } from './feature-batch-ci-targets.mjs';
 import { runTargetedStrictChecks } from './feature-batch-ci-typecheck.mjs';
 import {
   assertLocalModules, engineRoot, gitHead, hostedChrome, preparePnpm, publishWindowDependencies, repoRoot, run,
@@ -132,6 +133,8 @@ async function runFeatureTests(scratch) {
     const { ui: uiTests, other: tests } = splitUiTests(lane, selected);
     if (uiTests.length) {
       const uiRoot = path.join(engineRoot, 'ui');
+      // Control UI vitest launches chromium-headless-shell; macOS/Windows need Playwright's own install.
+      await ensurePlaywrightChromium(uiRoot, env);
       console.log(`${lane}/ui: ${uiTests.length} Control UI test files under ui/vitest.config.ts`);
       await run(process.execPath, [path.join(uiRoot, 'node_modules/vitest/vitest.mjs'),
         'run', '--config', path.join(uiRoot, 'vitest.config.ts'), ...uiTests], uiRoot, env);
