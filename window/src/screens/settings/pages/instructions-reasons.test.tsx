@@ -18,7 +18,6 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 
 const settle = () => act(async () => { for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0)); });
-const click = async (el: Element | null | undefined) => { expect(el).toBeTruthy(); await act(async () => { (el as HTMLElement).click(); }); await settle(); };
 /** The visible line a greyed control (or the wrapper it sits in, up to its row) names with aria-describedby. */
 function reasonOf(el: Element, row: Element): string {
   for (let n: Element | null = el; n && n !== row.parentElement; n = n.parentElement) {
