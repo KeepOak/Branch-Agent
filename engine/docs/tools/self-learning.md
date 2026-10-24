@@ -12,9 +12,10 @@ Self-learning turns corrections and successful work into reusable skills. Skills
 are the durable unit: they hold procedures that future sessions can discover and
 follow. [Skill Workshop](/tools/skill-workshop) owns the agent's learned skills.
 
-The default mode is `auto`. Background learning uses normal agent file tools to
-maintain the Workshop directory, like weekly collection review. Choose `propose`
-to stage drafts for review instead, or `off` to disable autonomous learning.
+The default mode is `auto`. Background learning stages Workshop proposals and
+the runtime publishes checked instruction-only autonomous skills. Script-backed
+tools always need approval. Choose `propose` to keep all drafts pending, or `off`
+to disable autonomous learning.
 
 ## Immediate repair
 
@@ -79,20 +80,16 @@ different evidence. The review runs under a private detached session identity.
 Its messages never enter the foreground transcript or session record. Reviews
 retain the foreground session's sandbox policy.
 
-In `auto` mode, the reviewer uses ordinary directory, file, patch, and shell
-tools under the source session's permissions. It can inspect complete skills and
-supporting files, correct several connected files, and verify the result. Its
-file tools are rooted at the Workshop directory. Shell commands retain the
-operator's existing approval policy. An enabled sandbox must provide writable
-access to that directory. The run uses the normal configured agent timeout.
+In both modes, only `skill_workshop` executes under the source session's
+permissions. It can inspect Workshop skills and prepare one proposal mutation.
+Raw file and shell tools are unavailable in this review, so they cannot bypass
+`skills.workshop.highestStep` or tool publication approvals. The run uses the
+normal configured agent timeout. Sandboxed sessions do not run detached reviews.
 
-The reviewer shares the weekly collection's maintenance instructions: audit
-before editing, give a procedure one home, preserve distinct tasks, and verify
-the resulting files. New learning should replace a misleading rule or strengthen
-an existing one rather than append another copy. A covered lesson needs no edit.
-The runtime receipt identifies skills actually used in the foreground turn.
-Ordinary directory reads discover the current collection without a separate
-clipped inventory.
+New learning should replace a misleading rule or strengthen an existing one
+rather than append another copy. A covered lesson needs no edit. The runtime
+receipt identifies skills actually used in the foreground turn, and a bounded
+inventory identifies existing Workshop skills.
 
 In `propose` mode, only `skill_workshop` executes. The reviewer can inspect and
 read before staging one create, patch, update, or revision. Existing proposal
@@ -100,10 +97,10 @@ read/hash/size validation remains in effect. The draft stays pending even if the
 operator enables automatic learning during that review.
 
 Each review gets one attempt. A failure is recorded instead of retried. Automatic
-maintenance records `completed` when the agent run succeeds. That status is not
-a claim that a file changed. Completed file edits survive later failure or
-cancellation, and future sessions receive a refreshed skill snapshot. Source
-session deletion, replacement, or a permission-mode change fences retained tools.
+learning records `completed` after publishing a checked instruction-only skill,
+`proposed` for a pending draft, and `nothing` when no draft was made. Failed runs
+do not publish their drafts. Source deletion, replacement, or permission changes
+fence retained tools and publication.
 
 Good candidates include:
 
@@ -126,11 +123,11 @@ The reviewer should abstain for:
 
 ## Mode policy
 
-| Mode      | Capture behavior                                                             |
-| --------- | ---------------------------------------------------------------------------- |
-| `off`     | Does not create experience-review captures.                                  |
-| `propose` | Creates or revises pending proposals. Nothing applies automatically.         |
-| `auto`    | Maintains Workshop skills with normal agent file tools. This is the default. |
+| Mode      | Capture behavior                                                                                    |
+| --------- | --------------------------------------------------------------------------------------------------- |
+| `off`     | Does not create experience-review captures.                                                         |
+| `propose` | Creates or revises pending proposals. Nothing applies automatically.                                |
+| `auto`    | Publishes checked instruction-only autonomous skills. Tools wait for approval. This is the default. |
 
 Set the mode with the CLI:
 
@@ -160,10 +157,9 @@ three modes.
 
 ## Why auto is safe to default
 
-Automatic background learning follows the same normal file-edit semantics as
-weekly collection maintenance:
+Automatic background learning uses the enforced Workshop proposal path:
 
-- **Workshop ownership:** file tools stay in
+- **Workshop ownership:** proposals target
   `<state-dir>/agents/<agentId>/agent/workshop-skills`. Other skill roots remain
   outside the maintenance task.
 - **Existing permissions:** the run preserves the source session's permission
@@ -174,10 +170,10 @@ weekly collection maintenance:
 - **Editorial judgment:** the agent reads complete relevant files, preserves
   useful meaning, and checks its changes rather than targeting a size or count.
 
-Direct maintenance does not create proposals, run a post-turn scanner, or record
-automatic rollback snapshots. Use backups for recovery from unwanted direct
-edits. Explicit proposals and immediate foreground repair retain their existing
-scanner, hash binding, size validation, and rollback metadata.
+Automatic publication retains scanning, revision binding, size validation,
+evaluator checks, and rollback metadata. Script-backed tools remain pending for
+approval even when `approvalPolicy` is `auto`. See
+[Highest step](/tools/skill-workshop/configuration#highest-step) for the capability limit.
 
 Reject a pending miscapture with one command:
 
@@ -185,9 +181,8 @@ Reject a pending miscapture with one command:
 branch skills workshop reject <proposal-id> --reason "Not reusable"
 ```
 
-Proposal captures remain visible in `branch skills workshop list`. Direct
-maintenance changes appear in the installed Workshop skills, not as proposal
-records. Weekly review results remain in automation history. Retained legacy
+Proposal captures remain visible in `branch skills workshop list`, including
+automatically applied instruction-only skills. Weekly review results remain in automation history. Retained legacy
 backups keep their [restore path](/tools/skill-workshop#changes-and-recovery).
 
 Residual risk remains: an agent can make an incorrect edit. Inspect installed

@@ -3,6 +3,7 @@ import { SKILL_WORKSHOP_TOOL_DISPLAY_SUMMARY } from "../tool-description-presets
 
 export function buildSkillWorkshopToolDescription(params: {
   autonomousMode: "off" | "propose" | "auto";
+  highestStep?: "skill" | "tool";
   proposalRevision: boolean;
 }): string {
   if (params.proposalRevision) {
@@ -14,5 +15,9 @@ export function buildSkillWorkshopToolDescription(params: {
       : params.autonomousMode === "propose"
         ? "A foreground patch to a skill used in this run stays pending for review."
         : "A foreground patch to a skill used in this run is scanned and applied immediately.";
-  return `${SKILL_WORKSHOP_TOOL_DISPLAY_SUMMARY} Workshop actions: list enumerates proposals (limit maximum 50, default 20); use status=pending for pending proposals. inspect/revise use proposal_id or name from list; read/prepare_patch/patch/update use skill_name; update needs complete proposal_content. Stage pending proposals to create or update reusable-procedure skills in your agent's Workshop directory. Create and update do not publish or activate skills; a later apply step makes the proposal active. Read, prepare an exact bounded patch, patch, revise, inspect, evaluate, and apply Workshop proposals. Other skills the user owns are edited directly with file tools when the user asks. Restore a retained backup from the previous collection-review implementation when the user asks. New reviews use automation history and do not create collection backups. ${repairPolicy}\n\n${SKILL_AUTHORING_STANDARDS_PROMPT}`;
+  const capabilityPolicy =
+    params.highestStep === "skill"
+      ? " Highest step: instructions and document support files only; no scripts or tool code."
+      : " Highest step: script-backed tools bundled as skills. Stage code under scripts/ and reference it from the skill. Publishing any tool code always requires approval of the exact revision, even in auto mode. Add-on installation is outside Budding; Branch code changes are PR-only, never live self-modification.";
+  return `${SKILL_WORKSHOP_TOOL_DISPLAY_SUMMARY} Workshop actions: list enumerates proposals (limit maximum 50, default 20); use status=pending for pending proposals. inspect/revise use proposal_id or name from list; read/prepare_patch/patch/update use skill_name; update needs complete proposal_content. Stage pending proposals to create or update reusable-procedure skills in your agent's Workshop directory. Create and update do not publish or activate skills; a later apply step makes the proposal active. Read, prepare an exact bounded patch, patch, revise, inspect, evaluate, and apply Workshop proposals. Other skills the user owns are edited directly with file tools when the user asks. Restore a retained backup from the previous collection-review implementation when the user asks. New reviews use automation history and do not create collection backups. ${repairPolicy}${capabilityPolicy}\n\n${SKILL_AUTHORING_STANDARDS_PROMPT}`;
 }

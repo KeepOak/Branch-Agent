@@ -35,7 +35,7 @@ describe("resolveSkillCollectionReviewMonitorSpecs", () => {
       payload: {
         kind: "agentTurn",
         message: expect.any(String),
-        toolsAllow: ["ls", "read", "write", "edit", "apply_patch", "exec", "process"],
+        toolsAllow: ["ls", "read", "skill_workshop"],
       },
       schedule: {
         kind: "every",
@@ -47,6 +47,12 @@ describe("resolveSkillCollectionReviewMonitorSpecs", () => {
       wakeMode: "next-heartbeat",
     });
     expect(specs[0]?.input.payload).not.toHaveProperty("toolsAllowIsDefault");
+    expect(specs[0]?.input.payload).toMatchObject({
+      message: expect.stringContaining("skills.workshop.highestStep"),
+    });
+    expect(specs[0]?.input.payload).toMatchObject({
+      message: expect.stringContaining("exact-revision operator approval"),
+    });
     const repeated = Array.from(
       resolveSkillCollectionReviewMonitorSpecs(cfg, [], { schedulerSeed: "test-seed" }),
     );

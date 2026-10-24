@@ -5,7 +5,9 @@ import type { BranchConfig } from "../../config/types.branch.js";
 import { PLUGIN_APPROVAL_DESCRIPTION_MAX_LENGTH } from "../../infra/plugin-approvals.js";
 import { logDebug } from "../../logger.js";
 import type { PluginHookBeforeToolCallResult } from "../../plugins/hook-before-tool-call-result.js";
+import { assertWorkshopCapability, hasWorkshopToolFiles } from "./capability-policy.js";
 import { resolveSkillWorkshopConfig } from "./config.js";
+import { prepareWorkshopToolApproval, WORKSHOP_TOOL_APPROVAL_PARAM } from "./tool-approval.js";
 
 const SKILL_WORKSHOP_LIFECYCLE_APPROVALS = {
   apply: {
@@ -161,6 +163,66 @@ export async function resolveSkillWorkshopToolApproval(params: {
     return undefined;
   }
   const config = resolveSkillWorkshopConfig(params.config);
+  if (action === "apply") {
+    try {
+      if (!params.agentId || !params.workspaceDir) {
+        throw new Error("Workshop approval scope is missing.");
+      }
+      const { resolvePendingSkillProposal } = await import("./service-query.js");
+      const raw = asNullableRecord(params.toolParams) ?? {};
+      const proposal = await resolvePendingSkillProposal({
+        proposalId: normalizeOptionalString(raw.proposal_id),
+        name: normalizeOptionalString(raw.name),
+        workspaceDir: params.workspaceDir,
+        config: params.config,
+        agentId: params.agentId,
+      });
+      assertWorkshopCapability(params.config, proposal.record.supportFiles);
+      if (hasWorkshopToolFiles(proposal.record.supportFiles)) {
+        if (raw.expected_revision_hash && raw.expected_revision_hash !== proposal.revisionHash) {
+          throw new Error("Workshop proposal changed since it was reviewed.");
+        }
+        const approval = prepareWorkshopToolApproval({
+          proposalId: proposal.record.id,
+          revisionHash: proposal.revisionHash,
+          agentId: params.agentId,
+        });
+        return {
+          params: {
+            ...raw,
+            proposal_id: proposal.record.id,
+            expected_revision_hash: proposal.revisionHash,
+            [WORKSHOP_TOOL_APPROVAL_PARAM]: approval.token,
+          },
+          requireApproval: {
+            pluginId: "workspace-skills",
+            title: "Publish a Workshop tool",
+            description: buildLifecycleApprovalDescription({
+              proposalId: proposal.record.id,
+              skillName: proposal.record.target.skillName,
+              description: proposal.record.description,
+              supportFileCount: proposal.record.supportFiles?.length ?? 0,
+              bodySizeKb: (Buffer.byteLength(proposal.content, "utf8") / 1024).toFixed(1),
+            }),
+            severity: "warning",
+            timeoutMs: SKILL_WORKSHOP_APPROVAL_TIMEOUT_MS,
+            timeoutReason: lifecycleApprovalTimeoutReason({
+              action,
+              proposalId: proposal.record.id,
+            }),
+            allowedDecisions: ["allow-once", "deny"],
+            onResolution: approval.resolve,
+          },
+        };
+      }
+    } catch (error) {
+      if (config.approvalPolicy === "auto") {
+        return { block: true, blockReason: String(error) };
+      }
+      // Pending-policy lookup failures retain the existing generic card.
+      // Execution still revalidates capability and revision before writing.
+    }
+  }
   if (config.approvalPolicy === "auto") {
     return undefined;
   }
