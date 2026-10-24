@@ -902,7 +902,7 @@ describe("Codex auth bridge", () => {
     agentDir,
   }) => {
     const startOptions = createStartOptions({ clearEnv: ["FOO"] });
-    const tokenLikeKey = ["eyJh", "bGciOiJub25l.eyJzdWIiOiJjb2RleCJ9.signature123456"].join("");
+    const tokenLikeKey = "eyJhbGciOiJub25l.eyJzdWIiOiJjb2RleCJ9.signature123456";
 
     persistProfile(agentDir, {
       type: "api_key",
