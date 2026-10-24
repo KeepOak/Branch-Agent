@@ -85,8 +85,12 @@ async function prChangedFiles() {
 let playwrightChromiumReady = false;
 async function ensurePlaywrightChromium(cwd, env) {
   if (process.platform === 'linux' || playwrightChromiumReady) return;
+  // Vitest browser launches chromium-headless-shell; installing only "chromium"
+  // leaves that binary missing on macOS GH runners (merge-gate red on os-specific PRs).
   await run(process.execPath, [path.join(engineRoot, 'node_modules/playwright/cli.js'),
     'install', 'chromium'], cwd, env);
+  await run(process.execPath, [path.join(engineRoot, 'node_modules/playwright/cli.js'),
+    'install', 'chromium-headless-shell'], cwd, env);
   playwrightChromiumReady = true;
 }
 
