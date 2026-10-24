@@ -137,6 +137,9 @@
 .ob-foot .grow {
   flex: 1;
 }
+.ob-main > .ob-later {
+  padding: 0 32px 12px;
+}
 .pose11 {
   display: block;
   object-fit: contain;
