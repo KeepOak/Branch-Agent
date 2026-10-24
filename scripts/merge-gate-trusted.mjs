@@ -73,6 +73,7 @@ export const GATE_SCRIPTS = [
   'scripts/merge-gate-rate-limit.test.mjs',
   'scripts/merge-gate-recheck.mjs',
   'scripts/merge-gate-recheck.test.mjs',
+  'desktop/scripts/run-unlisted-tests.mjs',
 ];
 // Workflows whose jobs must actually run on a PR they apply to. A skipped job is missing here, not a pass.
 export const MUST_RUN_WORKFLOWS = new Set(['.github/workflows/feature-batch-checks.yml']);
