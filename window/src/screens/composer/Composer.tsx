@@ -169,7 +169,6 @@ export function Composer(props: Props) {
   const thinking = currentThinking(row, conv.defaults);
   const noModel = hasNoModel(conv, currentRef);
   const waitingForFreeModel = noModel && !conv.noKeySettled && !conv.noKeyError;
-  const freeModelBlocked = noModel;
   const admin = isAdmin(engine.scopes ?? []);
   const mode: EngineMode | null = isEngineMode(row.permissionMode) ? row.permissionMode : null;
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;
@@ -237,7 +236,11 @@ export function Composer(props: Props) {
     }
     if (plan.kind === "stop") { onStop(); draft.clear(); return; }
     if (offline) return;
-    if (freeModelBlocked && plan.kind !== "command") return;
+    // GOD #1092: Send stays enabled. With nothing usable, keep the draft and show the one Connect path.
+    if (noModel && plan.kind !== "command") {
+      setProblem(CONNECT_MODEL_ANSWERS);
+      return;
+    }
     if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") { void runBackground(plan.text); return; }
     if (topic && plan.kind === "send") { void sendToTopic(topic.key, topic.title); return; }
@@ -376,7 +379,7 @@ export function Composer(props: Props) {
   };
   const hasDraft = hasText || draft.files.length > 0;
   const stopMode = working && !hasDraft;
-  const ready = hasDraft && !offline && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && !freeModelBlocked;
+  const ready = hasDraft && !offline && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem);
   const usage = tightest(props.limits);
   const context = contextUse(props.row?.totalTokens, props.row?.contextTokens);
   const runningCount = props.running.length;

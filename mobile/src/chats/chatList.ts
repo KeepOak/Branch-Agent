@@ -115,6 +115,13 @@ export function chatForNew(rows: ChatRow[], now = Date.now()): ChatRow | undefin
   return shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
 }
 
+/** Talk from Home, the widget or the Quick Settings tile: the most recent chat, else the same pick New chat uses. */
+export function chatForTalk(rows: ChatRow[], now = Date.now()): ChatRow | undefined {
+  const shown = filterRows(rows, 'all', now);
+  const recent = [...shown].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  return recent ?? chatForNew(rows, now);
+}
+
 export type ChatListSnapshot = {
   rows: ChatRow[];
   /** A read has landed, on this connection or an earlier one. */

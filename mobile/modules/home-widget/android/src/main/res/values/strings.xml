@@ -5,4 +5,6 @@
   <string name="branch_home_widget_ask">Ask Branch</string>
   <string name="branch_home_widget_title_default">Ask Branch</string>
   <string name="branch_home_widget_detail_default">Open Branch to see what needs you.</string>
+  <string name="branch_talk_tile_label">Talk to Branch</string>
+  <string name="branch_talk_tile_description">Open Talk in your most recent Branch chat.</string>
 </resources>

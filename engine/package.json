@@ -324,7 +324,6 @@
     "!dist/extensions/kilocode/**",
     "!dist/extensions/kimi-coding/**",
     "!dist/extensions/line/**",
-    "!dist/extensions/llama-cpp/**",
     "!dist/extensions/trellis/**",
     "!dist/extensions/longcat/**",
     "!dist/extensions/mattermost/**",
