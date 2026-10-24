@@ -87,7 +87,7 @@ const APP_SECTIONS: readonly AppSection[] = [
         icon: appsBrandIcons.watch,
         copyKey: "appsPage.cards.appleWatch",
         badge: "appsPage.badgeBundledIos",
-        ctas: [DOCS_CTA],
+        ctas: [docsCta("/platforms/ios")],
       },
       {
         id: "wear-os",
@@ -95,7 +95,7 @@ const APP_SECTIONS: readonly AppSection[] = [
         icon: appsBrandIcons.watch,
         copyKey: "appsPage.cards.wearOs",
         badge: "appsPage.badgeBundledAndroid",
-        ctas: [DOCS_CTA],
+        ctas: [docsCta("/platforms/android")],
       },
     ],
   },
