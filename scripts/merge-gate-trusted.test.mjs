@@ -2423,6 +2423,7 @@ test('protected paths reuse the gate file lists and the scripts merge-gate runs'
   assert.ok(paths.has('scripts/check-commit-emails.mjs'));
   assert.ok(paths.has('scripts/check-commit-emails.test.mjs'));
   assert.ok(paths.has('scripts/check-gate-files-fresh.test.mjs'));
+  assert.ok(loadProtectedGatePaths().has('desktop/scripts/run-unlisted-tests.mjs'));
   const owners = reviewChange(['engine/.github/CODEOWNERS'], '');
   assert.equal(owners.ok, false);
   assert.deepEqual(owners.protectedFiles, ['engine/.github/CODEOWNERS']);
@@ -2500,6 +2501,13 @@ test('a desktop-checks.yml-only change is a protected gate change', () => {
   assert.match(summary, /Protected files touched: yes/);
   assert.match(summary, /desktop-checks\.yml/);
   assert.match(summary, /Marker matched: no/);
+});
+
+test('a change to the desktop unlisted-tests runner is a protected gate change', () => {
+  const file = 'desktop/scripts/run-unlisted-tests.mjs';
+  const result = reviewChange([file], '');
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.protectedFiles, [file]);
 });
 
 test('a deleted protected gate file with no marker is flagged', () => {
