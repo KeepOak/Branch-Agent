@@ -14,10 +14,12 @@ import { str, useLive, when } from "../../../places/settings/set2/common";
 import { BackfillDialog, DiaryDialog } from "../../../places/settings/set2/seasons";
 import { ImportDialog, MOVE_WHY, SOURCE, exportSettings } from "../../../places/settings/set2/self";
 import { Segmented, Toggle } from "../RowView";
+import { useLevelNow } from "../level-now";
+import { COMING_FROM } from "../rows";
 import { useLevel } from "../SettingsFrame";
 import type { SlotControlProps } from "../slots";
 import { useRead } from "./accounts-live";
-import { Failed, Needs, useFailure } from "./appearance-live";
+import { Failed, LevelNeeds as Needs, useFailure } from "./appearance-live";
 import { copyAndSay } from "../../../shell/clipboard";
 import { CLEANUP_CODE, NEVER_DIES } from "./history";
 
@@ -135,10 +137,11 @@ export function BackupNow({ engine, row }: SlotControlProps) {
  *  put back from here). */
 export function LastBackup({ engine }: SlotControlProps) {
   const b = useBackups(engine);
+  const level = useLevelNow(engine);
   const last = lastBackup(b.status.data, str(b.schedule?.target));
   return <>
     <span className="r1s-own-ctl"><Val>{last.pill ? last.pill.label : "None"}</Val>
-      <Coming engine={engine} need="backup.restore" unwired reason="Restoring a copy comes in a later update." where="Restore…"><button type="button" className="r1s-btn" disabled>Restore…</button></Coming></span>
+      <Coming engine={engine} need="backup.restore" unwired reason="Restoring a copy comes in a later update." where="Restore…" hidden={level < COMING_FROM}><button type="button" className="r1s-btn" disabled>Restore…</button></Coming></span>
     <Line bad={last.pill?.tone === "bad"}>{last.sub}</Line>
   </>;
 }
@@ -256,7 +259,8 @@ export function EveryChange({ engine, row }: SlotControlProps) {
   const whyId = useId();
   const changes = useLive<RecordValue>(engine, "branch.changes.list", { limit: 50 }, ["config"]);
   const entries = list(record(changes.data).entries);
-  const canRollBack = entries.some((e) => e.kind === "config-write");
+  // Roll back is Coming, so like every Coming control it and its reason show only at Technical (Private #1093).
+  const canRollBack = level >= COMING_FROM && entries.some((e) => e.kind === "config-write");
   return (
     <Needs engine={engine} need={["branch.changes.list"]} where={row.label ?? ""}>
       <div className="r1s-own-ctl">
@@ -268,7 +272,7 @@ export function EveryChange({ engine, row }: SlotControlProps) {
               <li key={str(e.id)} className="r1s-change" data-bad={e.invalid === true || undefined}>
                 <span className="r1s-change-t">{line.title}</span>
                 <time className="r1s-change-when" dateTime={typeof e.at === "number" ? new Date(e.at).toISOString() : undefined}>{line.sub}</time>
-                {e.kind === "config-write" ? <div className="r1s-change-acts"><Coming engine={engine} need="engine: rolling back a settings change" unwired reason="Rolling back a change comes in a later update." where="Roll back">
+                {canRollBack && e.kind === "config-write" ? <div className="r1s-change-acts"><Coming engine={engine} need="engine: rolling back a settings change" unwired reason="Rolling back a change comes in a later update." where="Roll back">
                   <button type="button" className="r1s-link" disabled aria-describedby={whyId}>Roll back</button></Coming></div> : null}
               </li>
             ); })}

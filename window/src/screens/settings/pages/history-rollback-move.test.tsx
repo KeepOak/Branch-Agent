@@ -71,6 +71,8 @@ describe("History & backups: Roll back and Move… say why in a visible line", (
   });
 
   it("Every change shows one reason line for the list, named by each greyed Roll back", async () => {
+    // Roll back is Coming, so it shows at Technical (Private #1093).
+    localStorage.setItem("branch.level", "technical");
     await act(async () => root.render(<EveryChange engine={engineStub()} row={row("history.undo.changes")} />));
     await settle();
     const rollBacks = buttons("Roll back");
