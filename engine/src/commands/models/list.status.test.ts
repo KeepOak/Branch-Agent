@@ -1,5 +1,6 @@
 import { createRequireRecord } from "branch/plugin-sdk/test-fixtures";
 import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import {
@@ -1114,6 +1115,38 @@ describe("modelsStatusCommand auth overview", () => {
     expect(output).toContain("Default (defaults)");
     expect(output).toContain(`Fallbacks (${fallbacks.length}) (defaults)`);
     expect(mocks.ensureAuthProfileStore).toHaveBeenLastCalledWith("/tmp/branch-agent");
+  });
+
+  it("says no model is ready on the Default line when the default has no usable auth", async () => {
+    const primary = "anthropic/claude-opus-4-6";
+    configureStatus({ primary, profiles: {} });
+
+    const { payload } = await jsonStatus();
+    const { text } = await textStatus();
+    const defaultLine = stripVTControlCharacters(text)
+      .split("\n")
+      .find((line) => line.startsWith("Default"));
+
+    expect(payload.auth.missingProvidersInUse).toEqual(["anthropic"]);
+    expect(payload.defaultModel).toBe(primary);
+    expect(payload.resolvedDefault).toBe(primary);
+    expect(defaultLine).toBe("Default       : none ready yet. Connect a model to get answers.");
+    expect(defaultLine).not.toContain(primary);
+  });
+
+  it("keeps the configured id on the Default line when the default has usable auth", async () => {
+    // Default fixture: anthropic primary with stored anthropic profiles.
+    const primary = "anthropic/claude-opus-4-6";
+
+    const { payload } = await jsonStatus();
+    const { text } = await textStatus();
+    const defaultLine = stripVTControlCharacters(text)
+      .split("\n")
+      .find((line) => line.startsWith("Default"));
+
+    expect(payload.auth.missingProvidersInUse).not.toContain("anthropic");
+    expect(defaultLine).toBe(`Default       : ${primary}`);
+    expect(text).not.toContain("none ready yet");
   });
 
   it("exits non-zero when auth is missing", async () => {
