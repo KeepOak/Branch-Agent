@@ -84,6 +84,33 @@ function namesIn(shown: ReturnType<typeof catalogue>, section: string) {
 }
 
 describe("Add an account catalogue", () => {
+  it.each([
+    ["ollama", "Ollama", "Add an Ollama account"],
+    ["openai", "ChatGPT", "Add a ChatGPT account"],
+    ["openrouter", "OpenRouter", "Add an OpenRouter account"],
+    ["opencode-go", "OpenCode Go", "Add an OpenCode Go account"],
+    ["xai", "xAI", "Add an xAI account"],
+    ["lmstudio", "LM Studio", "Add a LM Studio account"],
+    ["anthropic", "Claude", "Add a Claude account"],
+  ])("shows the step-2 title %s: %s as %s", async (provider, name, title) => {
+    const request = vi.fn(async (_method: string) => ({}));
+    await act(async () => root.render(
+      <AddAccountDialog engine={engineOf(request)} start={{}} caps={[{ provider, apiKeySupported: true }]} providers={[]} agent={{ agentId: "main" }} onClose={() => undefined} />,
+    ));
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].find((button) => button.querySelector(":scope > b")?.textContent === name)!.click());
+    expect(dialog()?.querySelector("h2")?.textContent).toBe(title);
+    expect(request.mock.calls.every(([method]) => method === "branch.setup.detect")).toBe(true);
+  });
+
+  it("shows vLLM, not Vllm, in the local runtime list", async () => {
+    const request = vi.fn(async () => ({}));
+    await act(async () => root.render(
+      <AddAccountDialog engine={engineOf(request)} start={{}} caps={[{ provider: "vllm" }]} providers={[]} agent={{ agentId: "main" }} onClose={() => undefined} />,
+    ));
+    expect(namesIn(catalogue(), "On this computer")).toEqual(["vLLM"]);
+    expect(dialog()?.textContent).not.toContain("Vllm");
+  });
+
   it("stays the same after backing out of a sign-in when detect arrives late", async () => {
     let resolveDetect!: (value: unknown) => void;
     const detected = new Promise<unknown>((resolve) => { resolveDetect = resolve; });
@@ -107,7 +134,7 @@ describe("Add an account catalogue", () => {
     expect(before.tiles.some((tile) => tile.section === "Your plan" && tile.sub.includes("your plan"))).toBe(true);
 
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].find((button) => button.textContent?.includes("Claude"))!.click());
-    expect(dialog()?.querySelector("h2")?.textContent).toMatch(/Claude/);
+    expect(dialog()?.querySelector("h2")?.textContent).toBe("Sign in with Claude");
     await act(async () => resolveDetect(DETECT));
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg-f button")].find((button) => button.textContent === "Back")!.click());
     expect(catalogue()).toEqual(before);

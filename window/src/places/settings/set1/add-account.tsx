@@ -193,7 +193,7 @@ export function AddAccountDialog({ engine, start, caps, providers, agent, onClos
   const [added, setAdded] = useState(false);
   const ids = providers.flatMap((p) => p.profiles.map((a) => a.profileId));
   const signedIn = () => { setAdded(true); if (step.n === 2) setStep({ n: 3, svc: step.svc, before: ids }); };
-  const title = step.n === 1 ? "Add an account" : step.n === 2 && step.svc.brand === "anthropic" && step.svc.kind === "plan" ? "Sign in with Claude" : `Add a ${step.svc.name} account`;
+  const title = step.n === 1 ? "Add an account" : step.n === 2 && step.svc.brand === "anthropic" && step.svc.kind === "plan" ? "Sign in with Claude" : `Add ${/^(?:[aeiou]|xai)/i.test(step.svc.name) ? "an" : "a"} ${step.svc.name} account`;
   const waiting = !capsReady || (!detectReady && !pin.current);
   return (
     <Clear.Provider value={Boolean(clear)}><Dialog title={title} wide={step.n === 1} clear={clear} onClose={() => onClose(added)} testid="add-account" footer={<StepFoot step={step} onBack={() => setStep({ n: 1 })} onClose={() => onClose(added)} />}>
