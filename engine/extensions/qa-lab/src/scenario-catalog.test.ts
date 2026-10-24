@@ -214,7 +214,7 @@ describe("qa scenario catalog", () => {
       channels: {
         slack: {
           accounts: {
-            $selectedAccount: { botToken: ["xoxb", "-intentionally-invalid-lifecycle"].join("") },
+            $selectedAccount: { botToken: "xoxb-intentionally-invalid-lifecycle" },
           },
         },
       },
