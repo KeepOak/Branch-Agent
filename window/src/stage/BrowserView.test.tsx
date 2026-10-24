@@ -92,12 +92,13 @@ describe("scoped browser viewing", () => {
   it("offers a scoped managed browser and guidance before the first recorded tab", async () => {
     const request = vi.fn(async () => ({ running: false }));
     await render(owner(request as any), []);
+    await flush();
     expect(request).toHaveBeenCalledWith("browser.request", {
       target: "host", method: "GET", path: "/", query: { profile: "branch" }, tabScope: { sessionKey: "agent:scout:one" },
     });
-    expect(container.textContent).toContain("Scout’s browser");
-    expect(container.textContent).toContain("Type a website or a search above and press Enter");
-    expect(container.textContent).toContain("ask Scout to read, compare or work on the page");
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ method: "POST", path: "/start" }));
+    expect(container.textContent).toContain("The browser isn’t running");
+    expect(container.querySelector('[aria-label="Search or enter an address"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="New tab"]')).not.toBeNull();
     // Back, forward and reload keep their place in the toolbar, as Chrome's do, and stay off until a page is open (#1103).
     for (const label of ["Back", "Forward", "Reload"]) {
@@ -112,6 +113,7 @@ describe("scoped browser viewing", () => {
     let opened = false;
     const request = vi.fn(async (_m: string, p: any) => {
       if (p.path === "/") return { running: opened };
+      if (p.path === "/start") return { running: true };
       if (p.path === "/tabs/open") return new Promise((r) => { resolve = r; });
       if (p.path === "/tabs") return { tabs: [{ targetId: "first", url: "https://example.test", title: "Example" }] };
       return new Promise(() => {});
@@ -191,7 +193,7 @@ describe("scoped browser viewing", () => {
     expect(container.querySelector<HTMLInputElement>(".br-addr-st")!.value).toContain("private-page");
     await render(owner(vi.fn(async () => ({ running: false })) as any, "agent:ada:two"), []);
     expect(container.querySelector<HTMLInputElement>(".br-addr-st")!.value).toBe("");
-    expect(container.textContent).toContain("Scout’s browser");
+    expect(container.textContent).toMatch(/Scout’s browser|The browser isn’t running/);
   });
   it("retires a closing final tab immediately and restores it if closing fails", async () => {
     let reject!: (error: Error) => void;
@@ -372,9 +374,10 @@ describe("scoped browser viewing", () => {
     const request = vi.fn(async (_m: string, params: any) => (params.path === "/" ? { running: false } : {}));
     await render(owner(request as any));
     await flush();
-    expect(container.textContent).toContain("Scout’s browser");
+    expect(container.textContent).toContain("The browser isn’t running");
     const input = await enterAddress("example.test");
     await act(async () => input.form!.requestSubmit());
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ method: "POST", path: "/start" }));
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ method: "POST", path: "/tabs/open", target: "node", node: "node-one", query: { profile: "work" }, body: { url: "https://example.test" } }));
   });
   it("goes back, reloads and opens an address on the tab in front", async () => {

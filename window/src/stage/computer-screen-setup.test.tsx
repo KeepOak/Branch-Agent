@@ -52,13 +52,23 @@ function fixture(snapshot: () => Promise<unknown> = async () => ({ payload: fram
   const engine = { request, sessionKey: "agent:scout:one", scopes: ["operator.admin"], onEvent: () => () => {} } as WindowEngine;
   return { engine, request };
 }
-async function render(engine: WindowEngine) {
+async function render(engine: WindowEngine, ownerScreen = false) {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await act(async () => root!.render(<ComputerStage engine={engine} gatewayUrl="ws://gateway.invalid" name="Scout" mode="Computer" onMode={() => {}} onClose={() => {}} onChooseComputer={() => {}} />));
+  await act(async () => root!.render(<ComputerStage engine={engine} gatewayUrl="ws://gateway.invalid" name="Scout" mode="Computer" ownerScreen={ownerScreen} onMode={() => {}} onClose={() => {}} onChooseComputer={() => {}} />));
 }
 describe("computer screen setup", () => {
+  it("opens this computer's live screen from the header without a Trunk placement", async () => {
+    const { engine, request } = fixture();
+    await render(engine, true);
+    expect(document.querySelector("img.native-screen")?.getAttribute("src")).toBe(`data:image/png;base64,${frame.base64}`);
+    expect(document.querySelector(".computer-stage")?.getAttribute("aria-label")).toBe("This computer");
+    expect(request.mock.calls.map(([method]) => method)).not.toContain("desktop.observe");
+    expect(request.mock.calls.some(([method]) => method === "computer.invoke")).toBe(true);
+    expect(request.mock.calls.some(([method]) => method === "sessions.dispatch" || method === "sessions.move")).toBe(false);
+    expect(screenButton()).toBeUndefined();
+  });
   it("offers one screen switch and never captures before it is chosen", async () => {
     const { engine, request } = fixture();
     await render(engine);
