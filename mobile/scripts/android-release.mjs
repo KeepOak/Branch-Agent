@@ -17,6 +17,19 @@ import {
 
 export { isRateLimitError, MAX_RATE_LIMIT_SLEEP_SECONDS };
 
+/** gh release JSON can exceed Node's default 1MB execFileSync buffer (ENOBUFS). */
+export const GH_EXEC_MAX_BUFFER = 256 * 1024 * 1024;
+
+export function ghExecFile(file, args, extra = {}) {
+  return execFileSync(file, args, {
+    encoding: 'utf8',
+    windowsHide: true,
+    maxBuffer: GH_EXEC_MAX_BUFFER,
+    ...extra,
+  });
+}
+
+
 export const SIGNING_SECRET_NAMES = [
   'ANDROID_KEYSTORE_B64',
   'ANDROID_KEYSTORE_PASSWORD',
@@ -220,7 +233,7 @@ function defaultRateLimitSleep(seconds) {
 }
 
 export function runGithubApi(file, args, {
-  exec = (bin, argv) => execFileSync(bin, argv, { encoding: 'utf8', windowsHide: true }),
+  exec = (bin, argv) => ghExecFile(bin, argv),
 } = {}) {
   if (file !== 'gh' || !Array.isArray(args) || args[0] !== 'api') {
     return exec(file, args);
@@ -272,20 +285,59 @@ export function flattenReleasePages(parsed) {
 
 export function listGithubReleases({
   repository = process.env.GITHUB_REPOSITORY,
-  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+  run = (file, args) => ghExecFile(file, args),
   paginate = false,
+  maxPages = 50,
 } = {}) {
   if (!String(repository ?? '').trim()) {
     throw new Error('GITHUB_REPOSITORY is required to list releases');
   }
-  const args = paginate
-    ? ['api', `repos/${repository}/releases`, '--paginate', '--slurp']
-    : ['api', `repos/${repository}/releases?per_page=100`];
-  const releases = flattenReleasePages(JSON.parse(run('gh', args)));
-  if (!Array.isArray(releases)) {
-    throw new Error('GitHub releases response was not a list');
+  if (!paginate) {
+    const releases = flattenReleasePages(JSON.parse(run('gh', [
+      'api', `repos/${repository}/releases?per_page=100`,
+    ])));
+    if (!Array.isArray(releases)) {
+      throw new Error('GitHub releases response was not a list');
+    }
+    return releases;
   }
-  return releases;
+  const all = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const chunk = flattenReleasePages(JSON.parse(run('gh', [
+      'api', `repos/${repository}/releases?per_page=100&page=${page}`,
+    ])));
+    if (!Array.isArray(chunk)) {
+      throw new Error('GitHub releases response was not a list');
+    }
+    all.push(...chunk);
+    if (chunk.length < 100) break;
+  }
+  return all;
+}
+
+/** Page releases until the tag is found so attach never slurps the whole catalogue into one buffer. */
+export function findGithubReleaseInPages({
+  tag,
+  repository = process.env.GITHUB_REPOSITORY,
+  run = (file, args) => ghExecFile(file, args),
+  maxPages = 50,
+} = {}) {
+  const repo = String(repository ?? '').trim();
+  const t = String(tag ?? '').trim();
+  if (!repo) throw new Error('GITHUB_REPOSITORY is required to find a release');
+  if (!t) throw new Error('A release tag is required to attach APK assets');
+  for (let page = 1; page <= maxPages; page += 1) {
+    const chunk = flattenReleasePages(JSON.parse(run('gh', [
+      'api', `repos/${repo}/releases?per_page=100&page=${page}`,
+    ])));
+    if (!Array.isArray(chunk)) {
+      throw new Error('GitHub releases response was not a list');
+    }
+    const hit = pickReleaseFromList(chunk, t);
+    if (hit) return hit;
+    if (chunk.length < 100) return null;
+  }
+  return null;
 }
 
 export function pickReleaseFromList(releases, tag) {
@@ -297,7 +349,7 @@ export function pickReleaseFromList(releases, tag) {
 export function readGithubReleaseByTag({
   tag,
   repository = process.env.GITHUB_REPOSITORY,
-  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+  run = (file, args) => ghExecFile(file, args),
 } = {}) {
   const repo = String(repository ?? '').trim();
   const t = String(tag ?? '').trim();
@@ -329,7 +381,7 @@ export function missingAttachReleaseError(tag, wait = RELEASE_LOOKUP_WAIT) {
 export async function findGithubRelease({
   tag,
   repository = process.env.GITHUB_REPOSITORY,
-  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+  run = (file, args) => ghExecFile(file, args),
   sleep,
   wait = RELEASE_LOOKUP_WAIT,
 } = {}) {
@@ -347,7 +399,7 @@ export async function findGithubRelease({
       lastMiss = error;
     }
     try {
-      const listed = pickReleaseFromList(listGithubReleases({ repository: repo, run, paginate: true }), t);
+      const listed = findGithubReleaseInPages({ tag: t, repository: repo, run });
       if (listed) return listed;
     } catch (error) {
       if (!githubReleaseLookupMiss(error)) throw error;
@@ -374,7 +426,7 @@ export function existingReleaseAsset(release, name) {
 export function deleteGithubReleaseAsset({
   repository = process.env.GITHUB_REPOSITORY,
   assetId,
-  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+  run = (file, args) => ghExecFile(file, args),
 } = {}) {
   const repo = String(repository ?? '').trim();
   const id = String(assetId ?? '').trim();
@@ -386,7 +438,7 @@ export function deleteGithubReleaseAsset({
 export function uploadGithubReleaseAsset({
   uploadUrl,
   filePath,
-  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+  run = (file, args) => ghExecFile(file, args),
 } = {}) {
   const url = String(uploadUrl ?? '').trim();
   const file = String(filePath ?? '').trim();
@@ -493,7 +545,7 @@ export function createGithubRelease({
   repository = process.env.GITHUB_REPOSITORY,
   title,
   notes = 'Signed Android APK.',
-  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+  run = (file, args) => ghExecFile(file, args),
 } = {}) {
   const repo = String(repository ?? '').trim();
   const t = String(tag ?? '').trim();

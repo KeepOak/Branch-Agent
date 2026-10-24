@@ -1,0 +1,5 @@
+# No engine or window tests. This PR changes desktop tests only, covered by the
+# node --test steps in .github/workflows/desktop-checks.yml:
+# desktop/scripts/auto-apply-update.test.mjs
+# desktop/scripts/available-memory.test.mjs
+# desktop/scripts/component-update.test.mjs

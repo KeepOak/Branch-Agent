@@ -328,8 +328,10 @@ export function engineEnvironment(cfg: DesktopConfig, legacyDevMode: boolean, po
       BRANCH_CONFIG_PATH: join(cfg.dataDir, "home", ".branch", "branch.json"),
     }),
     // The desktop owns the live gateway: let it start every configured channel.
-    // Candidate and smoke gateways opt out separately.
-    BRANCH_SKIP_CHANNELS: undefined,
+    // Candidate and smoke gateways opt out separately. Do not set
+    // BRANCH_SKIP_CHANNELS: undefined here — after spreading process.env that
+    // keeps the key and spawn (esp. on macOS) coerces it to "", so the child
+    // sees empty instead of unset. Delete below instead.
     BRANCH_GATEWAY_PORT: String(port),
     // The configured port (desktop.json), even when this child is a standby on a spare.
     // After a hand-over the successor also listens here once the old engine exits.
@@ -337,6 +339,9 @@ export function engineEnvironment(cfg: DesktopConfig, legacyDevMode: boolean, po
     BRANCH_GATEWAY_TOKEN: token,
     ...testProfile(),
   };
+  // Clear launcher skip so the owned desktop gateway starts configured channels.
+  // delete (not undefined): spawn coerces undefined env values to "" on some platforms.
+  delete env.BRANCH_SKIP_CHANNELS;
   // The Mac driver lease is a secret. Service and linger children must not inherit it.
   delete env.BRANCH_CUA_DRIVER_ENDPOINT;
   delete env.BRANCH_CUA_DRIVER_ENDPOINT_FILE;

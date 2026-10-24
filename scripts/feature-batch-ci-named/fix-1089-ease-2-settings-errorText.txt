@@ -1,0 +1,3 @@
+window:src/places/settings/adapter-error-text.test.ts
+window:src/places/settings/set2/usage-check-again.test.tsx
+window:src/shell/plain-error.test.tsx

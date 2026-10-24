@@ -1,5 +1,5 @@
 import { readApproval } from '../approvals/approvals';
-import { chatForNew, chatRows, readAgents, unreadCount } from '../chats/chatList';
+import { chatForNew, chatForTalk, chatRows, readAgents, unreadCount } from '../chats/chatList';
 import { fixtureApprovals } from '../testing/approvalFixtures';
 import { FIXTURE_NOW, fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { homeWidgetCopy, parseWidgetAction, routeForWidgetAction } from './homeWidget';
@@ -57,7 +57,8 @@ describe('home-screen widget copy', () => {
 });
 
 describe('home-screen widget taps', () => {
-  it('only accepts Ask Branch, open and Approvals', () => {
+  it('only accepts Ask Branch, open, Approvals and the Talk to Branch tile', () => {
+    expect(parseWidgetAction('talk')).toBe('talk');
     expect(parseWidgetAction('ask')).toBe('ask');
     expect(parseWidgetAction('open')).toBe('open');
     expect(parseWidgetAction('approvals')).toBe('approvals');
@@ -71,5 +72,12 @@ describe('home-screen widget taps', () => {
     expect(routeForWidgetAction('open', rows, FIXTURE_NOW)).toEqual({ name: 'home' });
     expect(routeForWidgetAction('ask', rows, FIXTURE_NOW)).toEqual({ name: 'chat', row: chatForNew(rows, FIXTURE_NOW) });
     expect(routeForWidgetAction('ask', [], FIXTURE_NOW)).toEqual({ name: 'chats' });
+  });
+
+  it('opens Talk in the most recent chat from the Talk to Branch tile, or Chats when there is none', () => {
+    const row = chatForTalk(rows, FIXTURE_NOW);
+    expect(row).toBeDefined();
+    expect(routeForWidgetAction('talk', rows, FIXTURE_NOW)).toEqual({ name: 'voice', row });
+    expect(routeForWidgetAction('talk', [], FIXTURE_NOW)).toEqual({ name: 'chats' });
   });
 });

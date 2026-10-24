@@ -384,3 +384,6 @@
 
 /* Lift under the chat's frosted pills (who line, fold line, close). */
 :root { --r1x-lift-xs: 0 4px 12px rgba(0,0,0,.08); --r1x-lift-sm: 0 6px 18px rgba(0,0,0,.12); --r1x-lift: 0 6px 18px rgba(0,0,0,.14); }
+
+/* Lift under the setup Welcome app-icon tile (preview .obMarkP37). */
+:root { --ob-mark-lift: 0 14px 36px rgba(21, 58, 40, 0.28), inset 0 0 0 0.5px rgba(255, 255, 255, 0.18); }
