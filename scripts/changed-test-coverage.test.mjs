@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import {
   allowlistedDesktopRunTargets,
@@ -7,6 +9,8 @@ import {
   coverageTargets,
   desktopRunTargets,
   handoffRunTargets,
+  loadUnlistedRunner,
+  unlistedDesktopTargets,
   postMergeEngineRunTargets,
   pullRequestDesktopRunTargets,
   uncoveredTests,
@@ -163,6 +167,60 @@ test('coverage includes actual slice, priority, Harvest and desktop CI targets',
   assert.deepEqual(uncoveredTests(changed, covered), []);
   assert.deepEqual(uncoveredTests(['engine/src/agents/agent-scope.test.ts'], covered),
     ['engine/src/agents/agent-scope.test.ts']);
+});
+
+const STAND_IN_RUNNER = [
+  "import { existsSync, readdirSync, readFileSync } from 'node:fs';",
+  "import { join } from 'node:path';",
+  "export const EXCLUDED = [['scripts/excluded.test.mjs', 'needs a display']];",
+  'export function pickUnlistedTests({ desktopDir, workflowPath, excluded = EXCLUDED }) {',
+  "  const workflow = readFileSync(workflowPath, 'utf8');",
+  '  const skip = new Set(excluded.map(([file]) => file));',
+  "  const dir = join(desktopDir, 'scripts');",
+  '  if (!existsSync(dir)) return [];',
+  "  return readdirSync(dir).filter((name) => name.endsWith('.test.mjs')).map((name) => `scripts/${name}`)",
+  '    .filter((file) => !workflow.includes(file) && !skip.has(file));',
+  '}',
+  '',
+].join('\n');
+
+// A temporary repo root; with the stand-in runner written into it when asked. Never the real repo.
+function tempRepo(withRunner) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'unlisted-runner-'));
+  if (withRunner) {
+    mkdirSync(path.join(dir, 'desktop/scripts'), { recursive: true });
+    writeFileSync(path.join(dir, 'desktop/scripts/run-unlisted-tests.mjs'), STAND_IN_RUNNER);
+  }
+  return dir;
+}
+
+const UNNAMED_WORKFLOW = 'on:\n  pull_request:\njobs:\n  desktop:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n';
+
+// The CLI's own steps: the gate's targets, plus what the runner (if the repo has it) would run.
+async function uncoveredWithRunner(file, withRunner) {
+  const dir = tempRepo(withRunner);
+  try {
+    const runner = await loadUnlistedRunner(dir);
+    assert.equal(runner === null, !withRunner);
+    const changed = changedTestPaths(`A\t${file}\n`);
+    const covered = coverageTargets(UNNAMED_WORKFLOW, '', '', '', { namedFor: () => [], namedE2eFor: () => [] });
+    for (const target of unlistedDesktopTargets(runner, changed, UNNAMED_WORKFLOW)) covered.add(target);
+    return uncoveredTests(changed, covered);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('without the unlisted-tests runner file, a desktop test no step names is still uncovered', async () => {
+  assert.deepEqual(await uncoveredWithRunner('desktop/scripts/new.test.mjs', false), ['desktop/scripts/new.test.mjs']);
+});
+
+test('with the unlisted-tests runner present, a desktop test it picks up is covered', async () => {
+  assert.deepEqual(await uncoveredWithRunner('desktop/scripts/new.test.mjs', true), []);
+});
+
+test('with the unlisted-tests runner present, a desktop test in its EXCLUDED list is still uncovered', async () => {
+  assert.deepEqual(await uncoveredWithRunner('desktop/scripts/excluded.test.mjs', true), ['desktop/scripts/excluded.test.mjs']);
 });
 
 test('a changed test that no CI job runs is still a coverage failure', () => {
