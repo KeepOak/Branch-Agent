@@ -1595,22 +1595,36 @@ export function fetchFileTextsBatch(repo, sha, token, paths, {
   }));
 }
 
-export function fetchNamedTestLists(repo, sha, token, api = ghApi) {
-  let entries;
-  try {
-    entries = api(repo, token, `contents/scripts/feature-batch-ci-named?ref=${sha}`);
-  } catch (error) {
-    // Only "no directory" is empty. A rate limit or outage must not read as "no named lists" (fail closed).
-    if (isNotFoundError(error)) return [];
-    throw error;
+// All named lists in ONE GraphQL request (the tree and every blob text), instead of one REST call per file: the
+// folder has hundreds of lists, and the REST contents listing stops at 1,000 entries. Fails closed: a GraphQL
+// error, a thrown error (rate limit, outage) or a kept list that is truncated, binary or has no text throws.
+// Only a missing folder (object null, no errors) is empty. There is no per-file REST fallback.
+export function fetchNamedTestLists(repo, sha, token, { graphql = graphqlRequest } = {}) {
+  const dir = 'scripts/feature-batch-ci-named';
+  const [owner, name] = repo.split('/');
+  const expression = JSON.stringify(sha + ':' + dir);
+  const query = 'query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { '
+    + 'object(expression: ' + expression + ') { ... on Tree { entries { name type object { ... on Blob { text isBinary isTruncated } } } } } } }';
+  const payload = graphql(token, query, { owner, name });
+  if (payload?.errors?.length) {
+    const messages = payload.errors.map((error) => error?.message ?? String(error)).join('; ');
+    throw new Error('named test lists: GraphQL error reading ' + dir + ': ' + messages);
   }
-  if (!Array.isArray(entries)) return [];
+  const repository = payload?.data?.repository;
+  if (!repository) throw new Error('named test lists: no repository in the GraphQL answer for ' + dir);
+  if (repository.object === null) return [];
+  const entries = repository.object?.entries;
+  if (!Array.isArray(entries)) throw new Error('named test lists: ' + dir + ' is not a folder in the GraphQL answer');
   const extra = [];
   for (const entry of entries) {
-    if (entry.type !== 'file' || !entry.name?.endsWith('.txt') || entry.name === 'README.txt') continue;
-    const text = fetchFileText(repo, sha, token, entry.path, api);
-    if (text == null) continue;
-    extra.push(...parseNamedTestList(text, entry.path));
+    if (entry?.type !== 'blob' || !entry.name?.endsWith('.txt') || entry.name === 'README.txt') continue;
+    const filePath = dir + '/' + entry.name;
+    const blob = entry.object;
+    if (!blob || typeof blob.text !== 'string' || blob.isBinary !== false || blob.isTruncated !== false) {
+      const why = !blob ? 'no blob' : blob.isTruncated ? 'truncated' : blob.isBinary ? 'binary' : 'no text';
+      throw new Error('named test lists: ' + filePath + ' could not be read (' + why + ')');
+    }
+    extra.push(...parseNamedTestList(blob.text, filePath));
   }
   return extra;
 }
