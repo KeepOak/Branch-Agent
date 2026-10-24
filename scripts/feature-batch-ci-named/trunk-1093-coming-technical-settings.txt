@@ -1,0 +1,4 @@
+window:src/screens/settings/pages/coming-technical-1093.test.tsx
+window:src/screens/settings/pages/general-live.test.tsx
+window:src/screens/settings/pages/history-rollback-move.test.tsx
+window:src/screens/settings/SettingsFrame.test.tsx
