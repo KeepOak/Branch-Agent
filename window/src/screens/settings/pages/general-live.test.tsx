@@ -43,11 +43,11 @@ const labels = (card: string) => [...host.querySelectorAll<HTMLElement>(`.r1s-se
 it("draws the preview's General cards at each level, and Pinned only once a row is pinned", async () => {
   const { engine } = engineOf();
   await mount(engine, "regular");
-  expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "Cover the screen"]);
+  expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing"]);
   await remount();
   await mount(engine, "advanced");
-  // Clipboard history and Controllers wait for a later update: they show with every Coming row, at Technical (Private #1093 item 4).
-  expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "Quick ask", "Cover the screen"]);
+  // Clipboard history, Controllers, Quick ask and Cover the screen wait for a later update: they show with every Coming row, at Technical (Private #1093 items 4 and 5).
+  expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns"]);
   await remount();
   await mount(engine, "technical");
   expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "History repair", "Waiting line", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"]);
@@ -79,7 +79,8 @@ it("uses the preview's rows and words in Writing, The conversation, Summaries, H
   // Both History repair rows wait for a later update (Check waits on an engine history check), in table order.
   expect(labels("History repair")).toEqual(["Repair the history before each call", "Check the history now"]);
   expect(labels("Waiting line")).toEqual(["Wait before sending what’s in line", "Most messages in line", "When the line is full"]);
-  expect(labels("Quick ask")).toEqual(["Quick ask shortcut", "Quick ask from anywhere"]);
+  // Both Quick ask rows wait for a later update, so they fold together in table order.
+  expect(labels("Quick ask")).toEqual(["Quick ask from anywhere", "Quick ask shortcut"]);
   expect(labels("Cover the screen")).toEqual(["Cover now"]);
 });
 

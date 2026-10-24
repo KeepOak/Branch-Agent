@@ -15,6 +15,7 @@ import { lookStore } from "../../../places/settings/set1/appearance-store";
 import { ConvDialog } from "../../../places/settings/set2/advanced-tech";
 import { ShortcutsDialog } from "../../../shell/ShortcutsDialog";
 import { onMac, shownInline } from "../../../shell/keymap";
+import { useLevelNow } from "../level-now";
 import { pageFor } from "../nav";
 import { COMING_FROM } from "../rows";
 import { useLevel } from "../SettingsFrame";
@@ -118,13 +119,18 @@ export function SummaryModel({ engine, row }: SlotControlProps) {
   </>;
 }
 
-/** A preview button with nothing behind it yet: its keys (if the preview shows any) and the button, Coming. */
+/** A preview button with nothing behind it yet: its keys (if the preview shows any) and the button, Coming. Like every
+ *  Coming control it shows only at Technical (rows.ts COMING_FROM); its row is a Coming row, so the frame hides it too. */
 function comingButton(button: string, keys?: () => string): SlotControl {
   return function ComingButton({ engine, row }: SlotControlProps) {
-    const src = row.source.kind === "slot" ? row.source : null;
+    const level = useLevelNow(engine);
+    const src = row.source;
+    const need = src.kind === "slot" ? src.calls : src.kind === "coming" ? [src.need] : [];
+    const reason = src.kind === "slot" || src.kind === "coming" ? src.reason : undefined;
+    if (level < COMING_FROM) return null;
     return <span className="r1s-own-ctl">
       {keys ? <span className="r1s-val g-label">{keys()}</span> : null}
-      <Coming engine={engine} need={src?.calls ?? []} unwired reason={src?.reason} where={row.label ?? button}>
+      <Coming engine={engine} need={need} unwired reason={reason} where={row.label ?? button}>
         <button type="button" className="r1s-btn">{button}</button>
       </Coming>
     </span>;

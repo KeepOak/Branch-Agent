@@ -67,7 +67,8 @@ describe("SettingsFrame", () => {
     // preview.html PG.general: the card list, in order; at Regular the preview draws these six (Pinned only with a pin).
     const PREVIEW_GENERAL = ["Pinned", "Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "History repair", "Waiting line", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"];
     expect(titles).toEqual(PREVIEW_GENERAL.filter((t) => titles.includes(t)));
-    expect(titles).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "Cover the screen"]);
+    // Cover the screen waits for a later update, so like every Coming row it shows at Technical (Private #1093).
+    expect(titles).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing"]);
     expect(titles).not.toContain("Waiting line");
     expect(titles).not.toContain("Pinned");
     const keyboard = secs.find((s) => s.querySelector("h2")?.textContent === "Keyboard")!;
