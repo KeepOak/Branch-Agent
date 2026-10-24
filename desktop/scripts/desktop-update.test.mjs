@@ -539,7 +539,7 @@ async function stagedAppImageRecord(root, cfg, stagedBody = "new appimage") {
   return { target, staged, journal };
 }
 
-test("a .deb launch drops a staged AppImage update instead of swapping the AppImage", () => fixture(async ({ root, cfg, install }) => {
+test("a .deb launch drops a staged AppImage update instead of swapping the AppImage", { skip: process.platform === "win32" ? "Linux-only update path (.deb); runs on Linux CI" : false }, () => fixture(async ({ root, cfg, install }) => {
   const { target, staged, journal } = await stagedAppImageRecord(root, cfg);
   const deb = { ...install, platform: "linux" };
   assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, deb, join(dist, "desktop-update-helper.js")), false, "the app starts on its current build");
@@ -577,7 +577,7 @@ for (const kind of ["asar", "runtime"]) {
   }, { runtime: kind === "runtime" }));
 }
 
-test("an AppImage launch still hands off its own staged AppImage update", () => fixture(async ({ root, cfg }) => {
+test("an AppImage launch still hands off its own staged AppImage update", { skip: process.platform === "win32" ? "Linux-only update path (AppImage); runs on Linux CI" : false }, () => fixture(async ({ root, cfg }) => {
   const confirm = join(root, "confirm.cjs");
   await writeFile(confirm, "require(" + JSON.stringify(join(dist, "desktop-update.js")) + ").confirmDesktopUpdate(" + JSON.stringify(cfg) + ");");
   const { target, journal } = await stagedAppImageRecord(root, cfg, "#!/bin/sh\nexec " + JSON.stringify(process.execPath) + " " + JSON.stringify(confirm) + "\n");
