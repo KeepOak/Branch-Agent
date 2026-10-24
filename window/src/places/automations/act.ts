@@ -1,3 +1,4 @@
+import { plainError } from "../../shell/plain-error";
 // One engine change at a time, with the outcome as a toast (preview: every Automations change answers in a toast).
 import { useRef, useState } from "react";
 import { notify } from "../../shell/notify";
@@ -30,7 +31,7 @@ export function useAct(refresh: () => Promise<void>) {
       await refresh();
       return true;
     } catch (e) {
-      notify(errorText(e), { tone: "bad" });
+      notify(plainError(errorText(e), true), { tone: "bad" });
       return false;
     }
   };

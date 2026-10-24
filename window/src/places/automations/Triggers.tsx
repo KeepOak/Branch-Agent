@@ -2,6 +2,7 @@
 // a check first (cron trigger script) or a process event schedule (on-exit / stream), with the check readout
 // from their state. [A] Hooks lists hooks.status and switches hooks.internal.entries.<key>.enabled.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { Failure } from "./Failure";
 import { useState } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
@@ -54,7 +55,7 @@ function TriggerCard({ card, set, level, trunks, busy, canWrite, error, onCancel
     <Field label="Check every"><span className="au-inline"><input className="inp au-num" type="number" min="0.5" step="any" aria-label="Check every" value={card.every} onChange={e => set({ every: e.target.value })} /><span>minutes</span></span></Field>
     <SwitchRow title="Stop after the first time it fires" on={card.once} change={once => set({ once })} />
     {tech && <Field label="The check" hint="30 seconds, 5 tool calls and 16 KB of saved state per check."><textarea className="inp au-text" aria-label="The check" value={card.script} onChange={e => set({ script: e.target.value })} /></Field>}
-    {error && <p className="au-error" role="alert">{error}</p>}
+    {error && <div className="au-error" role="alert"><Failure error={error} /></div>}
     <div className="au-actions"><button type="button" className="btn ghost sm" onClick={onCancel}>Cancel</button><button type="button" className="btn pri sm" title={shownWhy(reason)} disabled={busy || Boolean(reason)} onClick={onConfirm}>Confirm the trigger</button></div>
   </section>;
 }
@@ -75,7 +76,7 @@ function HooksDialog({ engine, canWrite, onClose }: { engine: WindowEngine; canW
   const hooks = state.data ?? [], ready = hooks.filter(h => hookPill(h) === "Ready").length;
   return <Dialog wide title="Hooks" onClose={onClose} footer={<><button type="button" className="btn sm" disabled title={shownWhy(TRIGGER_NEEDS.packs)}>Add a hook pack…</button></>}>
     <p className="au-hint">Small programs that run when something happens in Branch: a command, a message, a conversation starting or being shortened, the Gateway starting. They run with full access to the Gateway’s computer.</p>
-    {state.error && <p className="au-error" role="alert">{state.error}</p>}
+    {state.error && <div className="au-error" role="alert"><Failure error={state.error} /></div>}
     {hooks.length > 0 && <SwitchRow title={`${ready} of ${hooks.length} ready`} sub="Only ready ones" on={onlyReady} change={setOnlyReady} />}
     {!state.loading && !hooks.length && !state.error && <p className="au-hint">No hooks on this computer yet.</p>}
     {hooks.filter(h => !onlyReady || hookPill(h) === "Ready").map(h => {
@@ -119,7 +120,7 @@ export function TriggersTab({ engine, level, openConversation }: { engine: Windo
       <button type="submit" className="btn pri" disabled={!write || !words.trim()}>Add</button>
     </form>
     {card && <TriggerCard card={card} set={p => setCard(c => c && { ...c, ...p })} level={level} trunks={data?.trunks ?? []} busy={busy} canWrite={write} error={error} onCancel={() => setCard(null)} onConfirm={confirm} />}
-    {state.error && <p className="au-error" role="alert">{state.error}</p>}
+    {state.error && <div className="au-error" role="alert"><Failure error={state.error} /></div>}
     {data && (jobs.length ? <div className="au-list">{jobs.map(job => <JobRow key={str(job.id)} job={job} trunk={trunkNameOf(data.trunks, job.agentId, data.defaultId)} runs={data.runs.get(str(job.id))?.entries ?? []} total={data.runs.get(str(job.id))?.total} level={level} canWrite={write} busy={busy} checkReadout actions={{ open: j => setOpen({ kind: "sheet", job: j }), toggle: j => void act("cron.update", { id: j.id, ...(j.configRevision ? { expectedConfigRevision: j.configRevision } : {}), patch: { enabled: j.enabled !== true } }, j.enabled ? `Paused ${jobName(j)}.` : `${jobName(j)} is on.`), menu: (j, at) => setOpen({ kind: "menu", job: j, at }) }} />)}</div>
       : <EmptyLine icon={<Glyph name="pulse" size={22} />}>Nothing starts on its own yet. Describe what should start it above.</EmptyLine>)}
     {adv && <Hooks engine={engine} level={level} canWrite={write} />}
