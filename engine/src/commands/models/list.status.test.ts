@@ -1119,10 +1119,27 @@ describe("modelsStatusCommand auth overview", () => {
 
   it("says no model is ready on the Default line when the default has no usable auth", async () => {
     const primary = "anthropic/claude-opus-4-6";
-    configureStatus({ primary, profiles: {} });
+    // With no anthropic profile at all, read-only status has no auth evidence and
+    // reports the route as indeterminate, not missing. An expired sign-in is a
+    // definite "no usable auth" for the default's provider.
+    configureStatus({
+      primary,
+      profiles: {
+        "anthropic:default": {
+          type: "token",
+          provider: "anthropic",
+          token: "expired-token", // pragma: allowlist secret
+          expires: Date.now() - 60_000,
+        },
+      },
+    });
 
-    const { payload } = await jsonStatus();
-    const { text } = await textStatus();
+    // The availability resolver reads env evidence from process.env, so clear the
+    // anthropic env vars the runner may carry.
+    const { payload, text } = await withEnvAsync(
+      { ANTHROPIC_API_KEY: undefined, ANTHROPIC_OAUTH_TOKEN: undefined },
+      async () => ({ ...(await jsonStatus()), ...(await textStatus()) }),
+    );
     const defaultLine = stripVTControlCharacters(text)
       .split("\n")
       .find((line) => line.startsWith("Default"));
