@@ -20,6 +20,8 @@ import { LaterRows } from "../../../glass/LaterRows";
 import { clientOs } from "../../../connect/client-os";
 import { desktopControls, NEEDS_NEWER_APP, type AppRemovalPlan } from "../../../connect/desktop-controls";
 import { latestVersionLine, useMinuteClock } from "./version-line";
+import { PairDialog } from "../../customize/pairing";
+import type { WindowEngine } from "../../../connect/engine";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -66,7 +68,7 @@ export function UpdatesPage(props: SettingsPageProps) {
  *  the Updating card is the app's own updater. */
 export function UpdatesBlock(props: SettingsPageProps & { part: "updating" | "devices" | "before" | "reports" | "editors" | "about" | "privacy" | "remove" }) {
   const { part } = props;
-  if (part === "devices") return <Devices lv={lvOf(props.level)} />;
+  if (part === "devices") return <Devices lv={lvOf(props.level)} engine={props.engine} />;
   if (part === "before") return <BeforeInstall />;
   if (part === "reports") return <Reports />;
   if (part === "editors") return <Editors gatewayUrl={props.engine.gatewayUrl} technical={showsInternals(props.level)} />;
@@ -108,7 +110,7 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
       {status.loading && !status.data ? <Hint>Checking…</Hint> : null}
       {status.data ? <Waiting {...props} data={data} version={version} /> : null}
       {status.data ? <Updating {...props} data={data} /> : null}
-      <Devices lv={lvOf(props.level)} />
+      <Devices lv={lvOf(props.level)} engine={props.engine} />
       <About />
       <RemoveBranch />
       <Reports />
@@ -310,16 +312,18 @@ function DeviceRow({ icon, title, sub, store, apk, whyId }: { icon: string; titl
   );
 }
 
-function Devices({ lv }: { lv: number }) {
+function Devices({ lv, engine }: { lv: number; engine: WindowEngine }) {
   const whyId = useId();
+  const [pairing, setPairing] = useState(false);
   return (
     <Sec title="Branch on your other devices">
       <Plist>
         {DEVICES.map(([icon, title, sub, store]) => <DeviceRow key={title} icon={icon} title={title} sub={sub} store={store} apk={title === "Android" && lv >= 1} whyId={whyId} />)}
       </Plist>
       <p className="hint" id={whyId}>{STORES_LINE}</p>
-      <Ctl title="Already have the app?" off="Pairing a phone needs the Branch phone app."><Btn sm>Pair your phone</Btn></Ctl>
+      <Ctl title="Already have the app?"><Btn sm onClick={() => setPairing(true)}>Pair your phone</Btn></Ctl>
       <Ctl title="Add more to Branch"><Btn sm onClick={() => openPlace("customize", "Plugins")}>Open Plugins</Btn><Btn sm ghost onClick={() => openPlace("customize", "Skills")}>Browse the skill library</Btn></Ctl>
+      {pairing && <PairDialog engine={engine} close={() => setPairing(false)} />}
     </Sec>
   );
 }
