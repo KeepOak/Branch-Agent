@@ -53,6 +53,7 @@ import { ThreadExtras } from "./ThreadExtras";
 import { WhatsNewHost } from "../updates/WhatsNewHost";
 import { R1Tour, type R1TourKind } from "../onboarding/R1Tour";
 import { useR1Topics } from "./Topics";
+import { setR1ContactTopicLayout } from "../../shell/topic-layout";
 import { useMarkRead } from "./use-mark-read";
 import { FindAnything } from "../find/FindAnything";
 import { FIND_ANYTHING_EVENT } from "../find/find-event";
@@ -565,6 +566,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {chat ? <ConversationMenu session={session} open={convMenu} anchor={convAnchor} onClose={() => setConvMenu(false)} sessionKey={snapshot.sessionKey}
       row={current ?? null} isDefault={Boolean(snapshot.sessionKey && snapshot.sessionKey === snapshot.mainKey)} list={list} name={name || "Conversation"} history={snapshot.history}
       work={work} onOpen={openConversation} mainKey={snapshot.mainKey} onPlace={place => navigate({ kind: "place", place })} onSettings={page => navigate({ kind: "settings", page })} room={room.menu}
+      threads={threads.contact ? { name: threads.contact.name, layout: threads.layout, set: layout => setR1ContactTopicLayout(threads.contact!.id, layout) } : null}
       changesNeed={CHANGES_NEED} onChanges={() => { setStage(null); setPip(null); setChanges(true); setConvMenu(false); }} /> : null}
   </>;
 }

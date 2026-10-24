@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { r1DefaultTopicLayout, r1LayoutOf, r1TopicLayoutFor, r1TopicLayoutNames, readTopicSettings, setR1TopicLayout, TOPIC_LAYOUT_KEY } from "./topic-layout";
+import { r1DefaultTopicLayout, r1LayoutOf, r1TopicLayoutFor, r1TopicLayoutNames, readTopicSettings, setR1ContactTopicLayout, setR1TopicLayout, TOPIC_LAYOUT_KEY } from "./topic-layout";
 
 beforeEach(() => localStorage.clear());
 afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); });
@@ -45,5 +45,12 @@ describe("R1 thread layouts (owner item 47)", () => {
     expect(JSON.parse(localStorage.getItem(TOPIC_LAYOUT_KEY)!)).toEqual({ layout: "tabs", width: 0, per: { "trunk:juniper": "rail" } });
     expect(r1TopicLayoutFor("trunk:oak")).toBe("tabs");
     window.removeEventListener("branch:topic-layout-changed", events);
+  });
+  it("#1049: sets one contact's own layout from its View menu, keeping the default", () => {
+    setR1TopicLayout("free");
+    setR1ContactTopicLayout("trunk:oak", "tabs");
+    expect(r1TopicLayoutFor("trunk:oak")).toBe("tabs");
+    expect(r1TopicLayoutFor("trunk:juniper")).toBe("free");
+    expect(r1DefaultTopicLayout()).toBe("free");
   });
 });
