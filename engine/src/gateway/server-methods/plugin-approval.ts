@@ -213,6 +213,10 @@ export function createPluginApprovalHandlers(
       // Always server-generate the ID — never accept plugin-provided IDs.
       // Kind-prefix so /approve routing can distinguish plugin vs exec IDs deterministically.
       const record = manager.create(request, timeoutMs, `plugin:${randomUUID()}`);
+      // Attributes each prompt to its tool so the run log shows which actions asked first.
+      context.logGateway?.info?.(
+        `plugin approval requested: tool=${request.toolName ?? "none"} id=${record.id}`,
+      );
       if (trustedAgentRuntime) {
         record.agentRuntimeDelegatedAuthority = trustedAgentRuntime.delegatedAuthority;
         if (request.mcpTool && request.toolCallId) {

@@ -194,6 +194,29 @@ describe("computer Gateway and node targets", () => {
     });
   });
 
+  it("runs granted Gateway actions with no per-action approval request", async () => {
+    gatewayComputerStatusMock.mockResolvedValue({
+      configured: true,
+      available: true,
+      computerUse: v2Descriptor(["screenshot", "left_click", "type"]),
+    });
+    listNodesMock.mockResolvedValue([]);
+    const tool = createHostedComputerTool();
+    const screenshot = await tool.execute("observe", { action: "screenshot" });
+    await tool.execute("click", {
+      action: "left_click",
+      coordinate: [0, 0],
+      frameId: readFrameId(screenshot),
+    });
+    await tool.execute("type", { action: "type", text: "fixture" });
+    const methods = callGatewayToolMock.mock.calls.map(([method]) => method);
+    expect(methods.length).toBeGreaterThanOrEqual(3);
+    expect(methods.every((method) => method === "computer.invoke")).toBe(true);
+    expect(
+      callGatewayToolMock.mock.calls.filter((call) => call[2].params?.action === "left_click"),
+    ).toHaveLength(1);
+  });
+
   it("unites both hosts' initial actions and keeps explicit node selection on the node", async () => {
     const gateway = v2Descriptor(["screenshot", "list_windows"]);
     const node = v2Descriptor(["screenshot", "get_cursor_position"]);

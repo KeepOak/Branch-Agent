@@ -310,6 +310,28 @@ describe("createPluginApprovalHandlers", () => {
       expect(finalResult.decision).toBe("allow-once");
     });
 
+    it("logs which tool each approval prompt belongs to", async () => {
+      const handlers = createPluginApprovalHandlers(manager);
+      const { respond, accepted } = createApprovalRequestResponder();
+      const opts = createMockOptions(
+        "plugin.approval.request",
+        {
+          title: "Computer action",
+          description: "Click in the focused window",
+          toolName: "computer",
+          twoPhase: true,
+        },
+        { respond },
+      );
+      const handlerPromise = invokeHandler(handlers, opts);
+      const approvalId = await accepted;
+      expect(opts.context.logGateway.info).toHaveBeenCalledWith(
+        `plugin approval requested: tool=computer id=${approvalId}`,
+      );
+      await manager.resolve(approvalId, "deny");
+      await handlerPromise;
+    });
+
     it("sanitizes title/description/detail at creation so every surface gets safe text", async () => {
       const handlers = createPluginApprovalHandlers(manager);
       const { respond, accepted } = createApprovalRequestResponder();
