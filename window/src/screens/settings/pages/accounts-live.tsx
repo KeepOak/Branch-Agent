@@ -236,6 +236,7 @@ export const ADD_CALLS = ["models.authStatus", "branch.setup.detect", "models.au
  *  composer's settings/accounts/add). */
 export function AddAccount({ engine }: SlotControlProps) {
   const { status, agent, providers, caps, all } = useAccounts(engine);
+  const capsReady = status.data !== undefined || Boolean(status.error && !status.loading);
   const [failed, , report] = useFailure();
   const [add, setAdd] = useState<AddStart | null>(null);
   useEffect(() => {
@@ -263,7 +264,7 @@ export function AddAccount({ engine }: SlotControlProps) {
       )) : null}
     </div>
     <Failed text={failed} />
-    {add ? <AddAccountDialog clear engine={engine} start={add} caps={caps} providers={providers} agent={agent} onClose={(added) => { setAdd(null); if (added) void status.reload(); }} /> : null}
+    {add ? <AddAccountDialog clear engine={engine} start={add} caps={caps} providers={providers} agent={agent} onClose={(added) => { setAdd(null); if (added) void status.reload(); }} capsReady={capsReady} /> : null}
   </Kit>;
 }
 

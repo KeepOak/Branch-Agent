@@ -10,7 +10,7 @@ import { nodeOutsideSwappedFolder } from "./install-folder-holders";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, engineEnvironment, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopEnginePid, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
 import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, runEngineCli, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
-import { appHoldsSleepBlock, claimServiceKeepAwake, createRunKeepAwake, handOffKeepAwake, POWER_STATE_REFRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, writePowerState } from "./keep-awake";
+import { appHoldsSleepBlock, claimServiceKeepAwake, createRunKeepAwake, handOffKeepAwake, POWER_STATE_REFRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, TRAY_STATUS_MS, TRAY_STATUS_WORKING_MS, writePowerState } from "./keep-awake";
 import { applyGuestWebPreferences, BRANCH_BROWSER_PARTITION, guestAttachDecision, guestPermissionDecision, guestUrlDecision, popupDecision, r1WebPreferences } from "./browser-guest-policy";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
@@ -24,7 +24,7 @@ import { DASHBOARD_HANDOFF_ARGS, openInBrowser } from "./open-in-browser";
 import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
 import { plainDialogText, STOP_FAILED_PLAIN, UPDATE_FAILED_PLAIN } from "./plain-dialog";
-import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
+import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates, type StopComponentWatch } from "./component-update";
 import { askFirstLaunchInWindow, FIRST_LAUNCH_DOWNLOAD, FIRST_LAUNCH_RETRY, FIRST_LAUNCH_WATCH_CANCEL, firstLaunchAllowsWindow, firstLaunchNeedComponentsScript, firstLaunchProgressScript, needsFirstLaunchComponents, runFirstLaunchInstall } from "./first-launch-install";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
@@ -36,6 +36,7 @@ import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./ti
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, ensureWindowsLauncher, handOffDesktopUpdate, pruneWindowsInstall, runsFromAppImage, windowsInstalledHandoff, windowsRelaunchDetails, type DesktopInstall } from "./desktop-update";
+import { linuxDebSystemHandoff } from "./linux-deb-install";
 import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
 import { candidateCheckSkippedLine, candidateMinFreeBytes, HEALTH_MEMORY_MAX_AGE_MS, measureAvailableMemory } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
@@ -141,6 +142,13 @@ if (installedLauncher) {
   spawn(installedLauncher, process.argv.slice(1), { cwd: homedir(), detached: true, stdio: "ignore", windowsHide: true }).unref();
   app.exit(0);
 }
+// A .deb system copy under /opt is root-owned; seed the per-user live app and hand off so updates can apply.
+const linuxDebLauncher = install ? linuxDebSystemHandoff(install) : undefined;
+if (linuxDebLauncher) {
+  log(`this copy runs from the system package; opening the user install at ${linuxDebLauncher} instead`);
+  spawn(linuxDebLauncher, process.argv.slice(1), { cwd: homedir(), detached: true, stdio: "ignore" }).unref();
+  app.exit(0);
+}
 // Private #1036: a full disk pauses saving behind one banner and never raises Electron's modal error box, which also
 // blocked a normal quit. Any other uncaught error is still reported the way Electron reports it.
 installDiskFullGuard(process, error => {
@@ -229,7 +237,7 @@ function savedConversationKeys(): string[] {
 let token = "";
 let engineUpdateReady = false;
 let stopEngineWatch: (() => void) | undefined;
-let stopComponentWatch: (() => void) | undefined;
+let stopComponentWatch: StopComponentWatch | undefined;
 let stopWindowWatch: (() => void) | undefined;
 let componentsReady = false;
 let pendingReleasePrune: (() => Promise<void>) | undefined;
@@ -669,6 +677,7 @@ function keepRetiring(label: string, child: ChildProcess): void {
     }
     log(`update ${label}: old engine ${child.pid} is still alive past its lease deadline; stopping it`);
     stopGateway(child, "SIGKILL");
+    stopComponentWatch?.notifyStopped();
   };
   const arm = (ms: number) => {
     const timer = setTimeout(() => void expire(), ms);
@@ -907,7 +916,7 @@ const autoApply = createAutoApplyUpdate({
   // Crash recovery or a staged-update replacement only postpones the update; the setting stays on (Private #1054).
   busy: () => updateLock.purpose,
   seamlessHandoff,
-  // Private #951: no automatic update starts under 10% free disk or 20% free RAM.
+  // Private #951: no automatic update starts under an absolute floor of free disk (2 GB) or free RAM (1 GB).
   health: async () => readUpdateHealth(cfg.dataDir, (await measureAvailableMemory({ maxAgeMs: HEALTH_MEMORY_MAX_AGE_MS })).bytes, totalmem()),
   // Runs in flight mark a machine running Trunk work, whose updates are batched (hourly at most, only when idle).
   activeRuns: async () => {
@@ -1468,10 +1477,16 @@ async function start(): Promise<void> {
     });
     log(`first-launch components: ${outcome}`);
     if (!firstLaunchAllowsWindow(outcome)) {
-      if (starting && !starting.isDestroyed()) {
-        await starting.webContents.executeJavaScript(firstLaunchNeedComponentsScript()).catch(() => undefined);
+      if (!starting || starting.isDestroyed()) { app.quit(); return; }
+      const { recoverFirstLaunchInstall } = await import("./first-launch-install.js");
+      const recovered = await recoverFirstLaunchInstall(starting, cfg, fetch, {
+        desktop: install, underSwapGuard, log,
+        choose: () => starting.webContents.executeJavaScript(firstLaunchNeedComponentsScript()),
+      });
+      if (recovered === "quit") {
+        app.quit();
+        return;
       }
-      return;
     }
   }
   servedWindowDir = cfg.windowDir;
@@ -1495,6 +1510,8 @@ async function start(): Promise<void> {
   else void pruneStartupUpdates(cfg, log);
   autoApply.start();
   stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, underSwapGuard, log,
+    // An applied update whose confirmation was lost is cleared, so checks move on to newer builds.
+    servingEngine: () => engineServing() || serviceEngine ? lastGoodEngineDir : undefined,
     onWithdrawal: version => {
       withdrawnUpdateVersion = version;
       engineUpdateReady = false;
@@ -1888,9 +1905,6 @@ function liveEngineState(): Promise<EngineLiveState> {
   });
 }
 
-const TRAY_STATUS_MS = 10_000;
-/** While a Trunk works the state is read more often, so the sleep blocker is released soon after its run ends. */
-const TRAY_STATUS_WORKING_MS = 3_000;
 /** Reach you with the window closed (Private #454 D): approvals and "done" as OS notifications from the tray. */
 const notifier = createClosedWindowNotifier({
   windowShown: () => Boolean(win && !win.isDestroyed() && win.isVisible?.() !== false && win.isMinimized?.() !== true),
@@ -1923,9 +1937,12 @@ function watchTrayStatus(): void {
     void liveEngineState().then(state => {
       working = state.running && state.workingTrunks > 0;
       showTrayStatus(tray, state);
-      keepAwake.update(appHoldsSleepBlock(serviceEngine) && working);
       notifier.observe(state);
-    }).finally(() => { reading = false; schedule(working); });
+    }).catch(() => { working = false; }).finally(() => {
+      keepAwake.update(appHoldsSleepBlock(serviceEngine) && working);
+      reading = false;
+      schedule(working);
+    });
   };
   refresh();
   app.once("will-quit", () => { if (timer) clearTimeout(timer); });

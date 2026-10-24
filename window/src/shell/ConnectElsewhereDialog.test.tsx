@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { readSavedTargets, readTarget } from "../setup/pre-connect-state";
 
 vi.mock("../connect/session", () => ({
@@ -23,6 +23,15 @@ vi.mock("./WindowShell", () => ({
 
 const HOME = "ws://127.0.0.1:19621";
 let root: Root | undefined;
+// Same warmup as App.window-swap / App.window-default: the first App mount used to sit on the
+// 5 s per-test limit on slower Windows runners. Load App here so that cost is not a test timeout.
+beforeAll(async () => {
+  await import("../App");
+  vi.resetModules();
+}, 60_000);
+afterAll(() => {
+  vi.resetModules();
+});
 
 afterEach(async () => {
   if (root) await act(async () => root?.unmount());
@@ -81,7 +90,7 @@ it("dispatching connect-elsewhere while connected shows the dialog and keeps the
   expect(host.querySelector("[data-testid=window-shell]")?.textContent).toBe(HOME);
   expect(readTarget()).toBeNull();
   expect(readSavedTargets()).toEqual([]);
-});
+}, 30_000);
 
 it("Save with wss://example.test saves the target and switches; an expired or unreadable setup code shows the preview error and saves nothing", async () => {
   const host = await mountConnected();
@@ -106,4 +115,4 @@ it("Save with wss://example.test saves the target and switches; an expired or un
   expect(readSavedTargets()).toEqual([{ url: "wss://example.test", name: "example.test" }]);
   expect(host.querySelector("[data-testid=connect-elsewhere]")).toBeNull();
   expect(host.querySelector("[data-testid=window-shell]")).toBeNull();
-});
+}, 30_000);

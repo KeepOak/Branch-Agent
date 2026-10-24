@@ -376,8 +376,9 @@ describe('r50 settings parity', () => {
     await fireEvent.press(screen.getByTestId('later-lend'));
     expect(screen.getByRole('header')).toHaveTextContent('Lend this phone');
     expect(screen.getByTestId('lend-cam')).toBeOnTheScreen();
-    await fireEvent.press(screen.getByTestId('lend-toggle'));
     expect(screen.getByText('Lend this phone to Branch Agent')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('lend-toggle'));
+    expect(screen.getByText('Stop lending this phone')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('settings-lend-back'));
     await fireEvent.press(screen.getByTestId('settings-setup-talk'));
     expect(mocks.onSetupTalk).toHaveBeenCalledTimes(1);

@@ -286,6 +286,28 @@
       "zh-CN",
       "zh-TW"
     ],
+    "appsPage.notOutYet": [
+      "ar",
+      "de",
+      "es",
+      "fa",
+      "fr",
+      "hi",
+      "id",
+      "it",
+      "ja-JP",
+      "ko",
+      "nl",
+      "pl",
+      "pt-BR",
+      "ru",
+      "th",
+      "tr",
+      "uk",
+      "vi",
+      "zh-CN",
+      "zh-TW"
+    ],
     "browser.navigationCheckFailed": [
       "ar",
       "de",
@@ -7899,6 +7921,6 @@
       "zh-TW"
     ]
   },
-  "sourceHash": "e9d0bf4ba9f89cfb6e66699f79220451a1c1ddf00e2bbca464ba15faecd112d9",
+  "sourceHash": "2dcb7e71c33b994d4a1a40d1d69521db6d2373bbdc44e810a0438c77d9b8b6b2",
   "version": 1
 }
