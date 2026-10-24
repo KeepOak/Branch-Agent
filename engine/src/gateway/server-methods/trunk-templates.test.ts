@@ -574,7 +574,7 @@ describe("trunks.template.create applies toolset switches and skills", () => {
     createAnswers(workspace());
     mutateMock.mockRejectedValue(
       new Error(
-        "EACCES: open '/Users/taofikbishi/secret/config.json' token sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789",
+        "EACCES: open '/Users/alice/secret/config.json' token sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789",
       ),
     );
     const file = templateFile({ toolsets: { browser: false } });
@@ -582,7 +582,7 @@ describe("trunks.template.create applies toolset switches and skills", () => {
     await done;
     const error = respond.mock.calls[0]?.[2] as { message: string };
     expect(error.message).toContain("EACCES");
-    expect(error.message).not.toContain("/Users/taofikbishi");
+    expect(error.message).not.toContain("/Users/alice");
     expect(error.message).not.toContain("abcdefghijklmnopqrstuvwxyz0123456789");
   });
 });
