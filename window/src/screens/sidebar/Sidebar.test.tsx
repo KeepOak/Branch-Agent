@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CapabilityProvider } from "../../connect/capabilities";
 import type { ConversationList } from "../../connect/conversations";
+import { forgetLookStore, LOOK_PREF, lookStore } from "../../places/settings/set1/appearance-store";
 import type { SaplingSession } from "../../connect/session";
 import { comingControls } from "../../glass/coming-registry";
 import { Sidebar, type SidebarProps } from "./Sidebar";
@@ -17,7 +18,7 @@ vi.mock("../../connect/branch-version", async (load) => ({ ...(await load<typeof
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root, host: HTMLDivElement;
 beforeEach(() => {
-  localStorage.clear(); update.value = null;
+  localStorage.clear(); forgetLookStore(); update.value = null;
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
@@ -46,7 +47,7 @@ const methods = ["contacts.list", "agents.list", "rooms.list", "sessions.patch",
 
 function setup(responses: Record<string, unknown>, ready = true, over: Partial<SidebarProps> = {}) {
   const request = vi.fn(async (method: string) => responses[method] ?? {});
-  const engine = { request, features: { methods, events: [] } };
+  const engine = { request, features: { methods, events: [] }, onEvent: () => () => undefined };
   const session = { request, onGatewayEvent: () => () => undefined, engine, gatewayUrl: "ws://127.0.0.1:1", open: vi.fn(async () => undefined), send: vi.fn() } as unknown as SaplingSession;
   const props: SidebarProps = {
     onNewTrunk: vi.fn(), session, ready, list: { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [] }) } as unknown as ConversationList,
@@ -60,6 +61,34 @@ const text = (selector: string) => [...document.querySelectorAll(selector)].map(
 const click = async (node: Element | null) => act(async () => { (node as HTMLElement).click(); });
 
 describe("R1 sidebar", () => {
+  it("updates New folder immediately through the Settings look store while the sidebar stays mounted", async () => {
+    localStorage.setItem("branch.level", "regular");
+    const { props, request } = setup({
+      ...FULL,
+      "users.prefs.get": { status: "ok", entries: { [LOOK_PREF]: { level: "technical" } } },
+      "users.prefs.set": { status: "ok" },
+    });
+    await act(async () => root.render(<Sidebar {...props} />));
+    await act(async () => undefined);
+    const folderStrip = host.querySelector(".r1sb-fold");
+    expect(folderStrip).not.toBeNull();
+    const store = lookStore(props.session.engine);
+    await act(async () => store.load());
+    expect(store.snap.where).toBe("profile");
+    expect(host.querySelector('[aria-label="New folder"]')?.getAttribute("data-coming")).toBe("Your own folders come in a later update.");
+
+    // SettingsFrame's level control writes this same store. No rerender or storage event.
+    for (const level of ["advanced", "technical", "regular"] as const) {
+      await act(async () => store.set("level", level));
+      const add = host.querySelector('[aria-label="New folder"]');
+      if (level === "technical") expect(add?.getAttribute("data-coming")).toBe("Your own folders come in a later update.");
+      else expect(add).toBeNull();
+      expect(host.querySelector(".r1sb-fold")).toBe(folderStrip);
+      expect(localStorage.getItem("branch.level")).toBe("regular");
+    }
+    expect(request).toHaveBeenCalledWith("users.prefs.set", expect.objectContaining({ entries: { [LOOK_PREF]: { level: "regular" } } }));
+  });
+
   it.each(["regular", "advanced", "technical"])("at %s, only Technical draws the New folder Coming chip", async (level) => {
     localStorage.setItem("branch.level", level);
     const { render } = setup(FULL);
