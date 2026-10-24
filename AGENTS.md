@@ -14,7 +14,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 ## Rules
 
-1. **Copy upstream, don't invent.** If upstream OpenClaw or an established open-source project already does it, copy that code and its tests. Keep the source's defaults and limits; never add a stricter one. Fix names through `scripts/rebrand-map.json`, not by hand.
+1. **Copy upstream, don't invent.** If upstream OpenClaw or an established open-source project already does it, copy that code and its tests. Keep the source's defaults and limits; never add a stricter one. Fix names through `scripts/rebrand-map.json`, not by hand. Record copied-file provenance in your own shard `docs/upstream/copied/<branch-or-card>.csv` (same header as `docs/upstream/COPIED.csv`) instead of appending to `COPIED.csv`, so parallel PRs do not conflict; `scripts/check-copied-csv.mjs` checks both together.
 
 2. **Smallest complete change.** Follow existing patterns. No stubs, placeholder behaviour, skipped tests or TODOs for the thing you built. A control is either real or shown disabled with its reason.
 
