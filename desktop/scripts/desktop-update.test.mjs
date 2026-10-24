@@ -1062,3 +1062,50 @@ test("the helper copies holders beside itself and releases them before an in-pla
   assert.ok(nodeCopy !== -1 && install !== -1 && nodeCopy < install, "bundled node is copied before the install object uses it");
 });
 
+/**
+ * An AppImage launch with a leftover staged AppImage record for the same file. The running build's version comes from
+ * the package.json in its app.asar (a folder here, as plain Node reads it); the helper is a stand-in that does nothing.
+ */
+async function leftoverAppImage(root, cfg, install, { running, staged: version }) {
+  const resourcesDir = join(root, "appimage-resources");
+  await mkdir(join(resourcesDir, "app.asar"), { recursive: true });
+  await writeFile(join(resourcesDir, "app.asar", "package.json"), JSON.stringify({ name: "branch-agent-desktop", version: running }));
+  const target = join(root, "Branch-Agent.AppImage"), staged = target + ".update-" + version;
+  await writeFile(target, "running appimage " + running); await writeFile(staged, "staged appimage " + version, { mode: 0o755 });
+  const stagedSha256 = createHash("sha256").update("staged appimage " + version).digest("hex");
+  const work = join(cfg.dataDir, "updates", "desktop-" + version + "-left00"); await mkdir(work, { recursive: true });
+  const journal = join(cfg.dataDir, "desktop-update-pending.json");
+  await writeFile(journal, JSON.stringify({ version, sha256: stagedSha256, kind: "appimage", staged, target, phase: "staged", stagedSha256, work }));
+  const helper = join(root, "stand-in-helper.js"); await writeFile(helper, "");
+  const appImage = { ...install, resourcesDir, appImage: target, platform: "linux" };
+  return { target, staged, journal, helper, appImage };
+}
+
+for (const [label, staged] of [["older than", "0.4.3"], ["the same version as", "0.4.4"]]) {
+  test("an AppImage launch discards a leftover AppImage update " + label + " the running build", () => fixture(async ({ root, cfg, install }) => {
+    const left = await leftoverAppImage(root, cfg, install, { running: "0.4.4", staged });
+    const launch = await launchHandOff(cfg, left.appImage, left.helper);
+    assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" }, "nothing is handed off; the running build starts");
+    assert.equal(await exists(left.journal), false, "the record is removed");
+    assert.equal(await exists(left.staged), false, "the staged AppImage is removed");
+    assert.equal(await readFile(left.target, "utf8"), "running appimage 0.4.4", "the running AppImage is untouched");
+    assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"),
+      new RegExp("desktop update " + staged.replaceAll(".", "\\.") + " discarded: it is not newer than the running build 0\\.4\\.4; starting the current build"));
+  }));
+}
+
+test("an AppImage launch still hands off a staged AppImage update newer than the running build", () => fixture(async ({ root, cfg, install }) => {
+  const left = await leftoverAppImage(root, cfg, install, { running: "0.4.4", staged: "0.4.5" });
+  const launch = await launchHandOff(cfg, left.appImage, left.helper);
+  assert.equal(launch.code, 4, "the newer update is handed off");
+  assert.equal(await exists(left.journal), true, "the record stays for the helper");
+  assert.equal(await exists(left.staged), true, "the staged AppImage stays for the helper");
+  assert.doesNotMatch(await readFile(join(cfg.dataDir, "desktop.log"), "utf8").catch(() => ""), /not newer/);
+}));
+
+test("an AppImage update whose version has no order against the running build is handed off as before", () => fixture(async ({ root, cfg, install }) => {
+  const left = await leftoverAppImage(root, cfg, install, { running: "0.4.4", staged: "0.4.4-build-abcdef123456" });
+  assert.equal((await launchHandOff(cfg, left.appImage, left.helper)).code, 4, "a build of the same base version is not judged older");
+  assert.equal(await exists(left.staged), true);
+}));
+
