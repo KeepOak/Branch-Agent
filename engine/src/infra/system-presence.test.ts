@@ -466,4 +466,21 @@ describe("system-presence", () => {
     expect(entries.filter((entry) => entry.deviceId?.startsWith(freshPrefix))).toHaveLength(198);
     expect(entries.map((entry) => entry.reason)).toContain("self");
   });
+
+  it("shows BRANCH_DISPLAY_HOSTNAME instead of the real hostname for the gateway", async () => {
+    vi.spyOn(os, "hostname").mockReturnValue("real-host-sentinel");
+    vi.stubEnv("BRANCH_DISPLAY_HOSTNAME", "tour-machine");
+    try {
+      vi.resetModules();
+      const fresh = await import("./system-presence.js");
+      const self = fresh.listSystemPresence().find((entry) => entry.reason === "self");
+      expect(self?.host).toBe("tour-machine");
+      expect(self?.ip).not.toBe(os.hostname());
+      expect(self?.text).toContain("tour-machine");
+      expect(self?.text).not.toContain(os.hostname());
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
 });

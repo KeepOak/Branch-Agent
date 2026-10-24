@@ -10,7 +10,12 @@ test('tour refuses to start without BRANCH_DISPLAY_HOSTNAME', () => {
     const env = { ...process.env };
     delete env.BRANCH_DISPLAY_HOSTNAME;
     if (value !== undefined) env.BRANCH_DISPLAY_HOSTNAME = value;
-    const run = spawnSync(process.execPath, [tour], { env, encoding: 'utf8', timeout: 30000 });
+    const run = spawnSync(process.execPath, [tour], {
+      env,
+      encoding: 'utf8',
+      timeout: 30000,
+      windowsHide: true,
+    });
     assert.notEqual(run.status, 0);
     assert.match(run.stderr, /set BRANCH_DISPLAY_HOSTNAME/);
   }
