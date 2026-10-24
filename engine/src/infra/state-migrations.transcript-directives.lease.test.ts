@@ -5,10 +5,14 @@ import {
   releaseBranchAgentDatabaseLease,
 } from "../state/branch-agent-db-lease.js";
 import {
+  closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
   openBranchAgentDatabase,
 } from "../state/branch-agent-db.js";
-import { closeBranchStateDatabaseForTest } from "../state/branch-state-db.js";
+import {
+  closeBranchStateDatabaseAsync,
+  closeBranchStateDatabaseForTest,
+} from "../state/branch-state-db.js";
 import { openNodeSqliteDatabase } from "./node-sqlite.js";
 import { createLegacyStateMigrationStepReceipt } from "./state-migrations.messages.js";
 import { migrateHistoricalTranscriptDirectives } from "./state-migrations.transcript-directives.js";
@@ -27,8 +31,11 @@ function readMigrationCursor(databasePath: string): unknown {
   }
 }
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
+  // Drain worker-held handles before rm; Windows refuses to delete open SQLite files.
+  await closeBranchAgentDatabasesAsync();
+  await closeBranchStateDatabaseAsync();
   closeBranchAgentDatabasesForTest();
   closeBranchStateDatabaseForTest();
   cleanupTempDirs(tempDirs);
