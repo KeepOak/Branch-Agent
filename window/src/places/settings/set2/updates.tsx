@@ -3,7 +3,7 @@
 // failure reports through update.report, and the parts that only the Branch app can do, greyed with why.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { CheckedAt, useCheckedAt } from "../checked-at";
-import { useEffect, useId, useState } from "react";
+import { Suspense, lazy, useEffect, useId, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, useHeadless, type RowEntry } from "../kit";
 import { list } from "../adapter";
@@ -20,9 +20,11 @@ import { LaterRows } from "../../../glass/LaterRows";
 import { clientOs } from "../../../connect/client-os";
 import { desktopControls, NEEDS_NEWER_APP, type AppRemovalPlan } from "../../../connect/desktop-controls";
 import { latestVersionLine, useMinuteClock } from "./version-line";
-import { PairDialog } from "../../customize/pairing";
 import type { WindowEngine } from "../../../connect/engine";
 import "./updates.css";
+
+// Loaded on demand: a static import of customize/pairing closes an import cycle through the settings pages.
+const PairDialog = lazy(() => import("../../customize/pairing").then((m) => ({ default: m.PairDialog })));
 
 const UPDATE_EVENTS = ["update"];
 const OS: Record<string, string> = { win32: "Windows", darwin: "macOS", linux: "Linux" };
@@ -323,7 +325,7 @@ function Devices({ lv, engine }: { lv: number; engine: WindowEngine }) {
       <p className="hint" id={whyId}>{STORES_LINE}</p>
       <Ctl title="Already have the app?"><Btn sm onClick={() => setPairing(true)}>Pair your phone</Btn></Ctl>
       <Ctl title="Add more to Branch"><Btn sm onClick={() => openPlace("customize", "Plugins")}>Open Plugins</Btn><Btn sm ghost onClick={() => openPlace("customize", "Skills")}>Browse the skill library</Btn></Ctl>
-      {pairing && <PairDialog engine={engine} close={() => setPairing(false)} />}
+      {pairing && <Suspense fallback={null}><PairDialog engine={engine} close={() => setPairing(false)} /></Suspense>}
     </Sec>
   );
 }
