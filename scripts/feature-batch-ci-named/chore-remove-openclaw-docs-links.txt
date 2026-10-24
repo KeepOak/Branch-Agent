@@ -10,7 +10,6 @@ engine:ui/src/pages/approvals/approvals-page.test.ts
 engine:ui/src/pages/channels/view.test.ts
 engine:ui/src/pages/channels/wizard-view.test.ts
 engine:ui/src/pages/config/memory-overview.test.ts
-engine:ui/src/pages/device/device-pages.test.ts
 engine:ui/src/pages/devices/view-pairing.test.ts
 engine:ui/src/pages/labs/labs-page.test.ts
 engine:ui/src/pages/model-providers/model-providers-page.login.test.ts
