@@ -125,8 +125,12 @@ export function servicesOf(caps: RecordValue[], providers: Provider[], detect: R
     const brand = brandOf(text(o.brandId ?? o.id));
     putService(merged, { id: `custom:${text(o.id)}`, brand, name: serviceName(brand, o.label), kind: "custom", signedIn: 0, logins: [], choice: text(o.id) });
   }
-  return dedupeByName([...merged.values()]).sort(rankServices);
+  const listedAll = dedupeByName([...merged.values()]);
+  // One brand across Your plan and A key: plan keeps keySupported ("Paste a key instead"); key-only brands stay under A key.
+  const planBrands = new Set(listedAll.filter((s) => s.kind === "plan").map((s) => s.brand));
+  return listedAll.filter((s) => s.kind !== "key" || !planBrands.has(s.brand)).sort(rankServices);
 }
+
 
 /** The newly signed-in profile, even when it was saved under an aliased provider id (minimax-portal → minimax). */
 export function freshAccount(providers: Provider[], brand: string, before: readonly string[]): { provider: Provider; profile: Profile } | undefined {

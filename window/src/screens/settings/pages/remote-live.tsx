@@ -66,10 +66,13 @@ export function BrowserPage({ engine, row }: SlotControlProps) {
 
 /** "The gateway isn’t answering." and what plainError() makes of the engine's words (Private #1089): at Regular a plain
  *  next step, never the raw text (ECONNREFUSED, an address, a stack); Advanced and Technical keep the exact words. A
- *  leading "Error:" goes first, so plainError() never keeps it as a lead of its own. */
+ *  leading "Error:" goes first, so plainError() never keeps it as a lead of its own. useLive already ran errorText →
+ *  plainError, so `error` may already be plain; normalize a leftover "Lead: plain" colon to a period. */
 function notAnswering(error: string): string {
   const lead = "The gateway isn’t answering";
-  const said = plainError(`${lead}: ${error.replace(/^\s*(?:Uncaught\s+)?Error:\s*/, "")}`);
+  const body = error.replace(/^\s*(?:Uncaught\s+)?Error:\s*/, "");
+  let said = plainError(`${lead}: ${body}`);
+  if (said.startsWith(`${lead}: `)) said = `${lead}. ${said.slice(lead.length + 2)}`;
   return said === `${lead}. ${PLAIN_FAILURE}` ? `${lead}. Try again in a moment.` : said;
 }
 

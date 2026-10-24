@@ -365,8 +365,12 @@ export class SaplingSession {
     if (!key || key === this.snapshot.sessionKey) {
       const echo = this.firstEcho.peek(key);
       if (echo && !this.snapshot.pendingUser && !this.snapshot.history.length && this.snapshot.historyReady !== false) this.seedFirstSend(key, echo.text, echo.runId);
-      // A failed read leaves the conversation unready. Opening it again, including the same row, tries the read once more.
-      if (key && key === this.snapshot.sessionKey && this.snapshot.historyReady === false && this.snapshot.error) await this.loadOpen();
+      // Unready (failed, still loading, or a hung shared flight): opening the same row again drops the
+      // in-flight join and reads once more, so "Opening this conversation…" cannot stick forever.
+      if (key && key === this.snapshot.sessionKey && this.snapshot.historyReady === false) {
+        this.transcriptFlight.delete(key);
+        await this.loadOpen();
+      }
       return;
     }
     this.wanted = key;
