@@ -457,6 +457,14 @@ test('a late old-head completion cannot share the new head concurrency group', (
   assert.doesNotMatch(group, /pull_requests\[0\]\.number \}\}-/);
 });
 
+test('a completion on main never starts a recheck', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
+  const group = /^\s+group: (.+)$/m.exec(yaml)?.[1] ?? '';
+  const condition = /^\s+if: (.+)$/m.exec(yaml.slice(yaml.indexOf('  recheck:')))?.[1] ?? '';
+  assert.match(group, /workflow_run\.head_branch != 'main' &&/);
+  assert.match(condition, /^github\.event\.workflow_run\.head_branch != 'main' && /);
+});
+
 test('workflow_run.pull_requests head.sha is the associated run snapshot, not a live PR head', () => {
   // When GitHub includes the association, head.sha names the commit that run was linked to.
   // It equals the triggering workflow_run.head_sha and is not refreshed if the PR later moves.
