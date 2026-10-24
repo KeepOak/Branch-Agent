@@ -23,6 +23,7 @@ import {
   type EmbeddingProviderRuntime,
 } from "./embeddings.js";
 import { MemoryManagerDatabaseContext } from "./manager-database-context.js";
+import { MemoryEmbeddingAccountBackoff } from "./manager-embedding-account-backoff.js";
 import type { MemoryIndexEntry } from "./manager-index-preparation.js";
 import {
   resolveMemoryPrimaryProviderRequest,
@@ -130,9 +131,38 @@ export abstract class MemoryManagerSyncBase extends MemoryManagerDatabaseContext
   protected sessionsDirtyFiles = new Set<string>();
   protected sessionPendingFiles = new Set<string>();
   protected sessionPendingTargets = new Map<string, MemorySessionSyncTarget>();
+  // Quota and credential failures pause automatic embedding work and log once
+  // per window instead of once per watch or transcript event.
+  protected readonly embeddingAccountBackoff = new MemoryEmbeddingAccountBackoff();
+  // Index identity mismatches served from the keyword index are reported once
+  // per manager with the repair command, not on every search.
+  protected readonly reportedIndexIdentityMismatches = new Set<string>();
 
   protected abstract readonly cache: { enabled: boolean; maxEntries?: number };
   protected abstract computeProviderKey(): string;
+
+  /** Logs a detached sync failure; account failures log once per backoff window. */
+  protected reportBackgroundSyncFailure(reason: string, err: unknown): void {
+    if (this.embeddingAccountBackoff.claimLog(err)) {
+      const suffix = this.embeddingAccountBackoff.isActive()
+        ? `; ${this.embeddingAccountBackoff.describeWindow()}`
+        : "";
+      log.warn(`memory sync failed (${reason}): ${String(err)}${suffix}`);
+      return;
+    }
+    log.debug(`memory sync failed (${reason}); embedding account backoff active`);
+  }
+
+  /** Automatic syncs wait while the embedding provider account is rejecting requests. */
+  protected shouldDeferAutomaticSyncForEmbeddingBackoff(reason: string | undefined): boolean {
+    return (
+      this.embeddingAccountBackoff.isActive() &&
+      (reason === "watch" ||
+        reason === "interval" ||
+        reason === "session-delta" ||
+        reason === "session-startup-catchup")
+    );
+  }
   protected abstract resolveProviderIndexIdentities(): MemoryIndexProviderIdentity[];
   protected abstract sync(params?: MemorySyncParams): Promise<void>;
   protected abstract withTimeout<T>(

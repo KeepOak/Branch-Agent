@@ -27,6 +27,18 @@ import { createMemoryGetTool, createMemorySearchTool, testing } from "./tools.js
 const { closeAllMemorySearchManagers, getMemorySearchManager } = await import("./memory/index.js");
 const { MemoryIndexManager } = await import("./memory/manager.js");
 
+const EMBEDDING_QUOTA_MESSAGE =
+  "openai embeddings failed (429): You have no credits remaining. Add credits to continue using the API. [type=insufficient_quota, code=credit_balance_exhausted]";
+
+// Mirrors ProviderHttpError for an OpenAI account with no credits.
+function embeddingQuotaError() {
+  return Object.assign(new Error(EMBEDDING_QUOTA_MESSAGE), {
+    status: 429,
+    errorType: "insufficient_quota",
+    errorCode: "credit_balance_exhausted",
+  });
+}
+
 function searchTool(
   config: BranchConfig,
   options: Parameters<typeof createMemorySearchTool>[0] = {},
@@ -342,40 +354,90 @@ describe("memory_search real manager", () => {
     expect(recovered.details).not.toHaveProperty("unavailable");
   });
 
-  it("preserves reindex guidance alongside wiki results after an embedding model change", async () => {
+  it("answers from the existing index alongside wiki results after an embedding model change", async () => {
     const manager = await indexedManager(
       createConfig({ model: "old-embed", vectorEnabled: false }),
       undefined,
       "cli",
     );
     await manager.close();
-    const embeddingCalls = provider.embedBatchCalls;
     withWiki();
     const tool = searchTool(createConfig({ model: "new-embed", vectorEnabled: false }));
-    const action =
-      "Tell the user to run: branch memory status --index --agent main. Rebuilding may call the configured embedding provider and can incur provider cost.";
-    const primary = await tool.execute("paused-primary", { query: "alpha" });
+    const primary = await tool.execute("mismatched-primary", { query: "alpha" });
     expect(primary.details).toMatchObject({
-      disabled: true,
-      unavailable: true,
-      error: "index was built for model old-embed, expected new-embed",
-      action,
+      results: [expect.objectContaining({ path: memoryPath })],
+      action: expect.stringContaining("branch memory status --index --agent main"),
     });
+    expect(primary.details).not.toHaveProperty("unavailable");
+    expect(primary.details).not.toHaveProperty("disabled");
 
-    const combined = await tool.execute("paused-with-wiki", { query: "alpha", corpus: "all" });
+    const combined = await tool.execute("mismatched-with-wiki", { query: "alpha", corpus: "all" });
     expect(combined.details).toMatchObject({
-      results: [wikiHit],
+      results: expect.arrayContaining([expect.objectContaining({ path: memoryPath }), wikiHit]),
       corpora: [
-        { corpus: "memory", outcome: "unavailable" },
+        { corpus: "memory", outcome: "ok" },
         { corpus: "wiki", outcome: "ok" },
       ],
-      warning: expect.stringContaining("Memory corpus unavailable"),
-      action,
     });
-    expect(combined.details).not.toHaveProperty("disabled");
     expect(combined.details).not.toHaveProperty("unavailable");
-    expect(provider.embedBatchCalls).toBe(embeddingCalls);
     expect(provider.embedQueryCalls).toBe(0);
+  });
+
+  it("answers from the existing index while the embedding quota is exhausted", async () => {
+    const cfg = createConfig({ vectorEnabled: false });
+    cfg.memory = { ...cfg.memory, search: { ...cfg.memory?.search, cache: { enabled: false } } };
+    const manager = await indexedManager(cfg, "cli");
+    await manager.close();
+    const quota = embeddingQuotaError();
+    let queryAttempts = 0;
+    provider.embedBatchPermanentFailure = quota;
+    provider.beforeEmbedQuery = async () => {
+      queryAttempts += 1;
+      throw quota;
+    };
+    const tool = searchTool(cfg);
+
+    const first = await tool.execute("quota-first", alphaQuery);
+    expect(first.details).toMatchObject({
+      results: [expect.objectContaining({ path: memoryPath })],
+    });
+    expect(first.details).not.toHaveProperty("unavailable");
+    const attemptsAfterFirst = queryAttempts;
+
+    // The account backoff answers from the keyword index without asking the
+    // provider again until the window ends.
+    const second = await tool.execute("quota-second", alphaQuery);
+    expect(second.details).toMatchObject({
+      results: [expect.objectContaining({ path: memoryPath })],
+    });
+    expect(second.details).not.toHaveProperty("unavailable");
+    expect(queryAttempts).toBe(attemptsAfterFirst);
+  });
+
+  it("defers automatic syncs while the embedding quota is exhausted", async () => {
+    const cfg = createConfig({ vectorEnabled: false });
+    const manager = await indexedManager(cfg, "cli");
+    let batchAttempts = 0;
+    provider.embedBatchPermanentFailure = embeddingQuotaError();
+    provider.beforeEmbedBatch = async () => {
+      batchAttempts += 1;
+    };
+    await fs.writeFile(
+      path.join(fixture.paths.workspace, "memory", "2026-01-13.md"),
+      "Zebra notes written while the quota is exhausted.\n",
+    );
+    await expect(manager.sync({ reason: "cli", force: true })).rejects.toThrow(
+      "no credits remaining",
+    );
+    const attemptsAfterFailure = batchAttempts;
+    expect(attemptsAfterFailure).toBeGreaterThan(0);
+
+    await manager.sync({ reason: "watch" });
+    await manager.sync({ reason: "interval" });
+    expect(batchAttempts).toBe(attemptsAfterFailure);
+    await expect(manager.search("alpha")).resolves.toEqual([
+      expect.objectContaining({ path: memoryPath }),
+    ]);
   });
 
   it("keeps routine transcript refresh silent during memory_search", async () => {

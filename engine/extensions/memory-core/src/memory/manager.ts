@@ -324,6 +324,11 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     if (this.closing || this.closed) {
       return;
     }
+    // Callers mark their work dirty before syncing, so a deferred pass is
+    // picked up by the first automatic or search sync after the window.
+    if (this.shouldDeferAutomaticSyncForEmbeddingBackoff(params?.reason)) {
+      return;
+    }
     // Close must drain accepted syncs through provider initialization and final writes.
     return await this.withManagerOperation(async () => {
       if (hasTargetedSessionSyncParams(params) && this.sessionSyncQueue.hasPending) {
