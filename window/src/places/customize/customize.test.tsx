@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import type { Level } from "../../places-nav/level";
+import { SettingsFrame } from "../../places-nav/SettingsFrame";
 import { CustomizePlace } from "./index";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span role="img" aria-label={label} /> }));
@@ -37,6 +38,26 @@ async function open(tab: string, fx: Record<string, unknown> = {}, level: Level 
 }
 
 describe("Customize's former tabs (#1049)", () => {
+  it("opens the Trunks page, not General, when Customize requests Trunks in Classic", async () => {
+    host = document.createElement("div"); document.body.append(host);
+    root = createRoot(host);
+    const engine = { request: async (method: string) => BASE[method] ?? {}, onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"] } as unknown as WindowEngine;
+    function ClassicHost() {
+      const [page, setPage] = useState<string | null>(null);
+      return page ? <SettingsFrame page={page} backName="Conversation" engine={engine} onPage={setPage} onBack={() => setPage(null)} />
+        : <CustomizePlace engine={engine} facts={{ running: 0, waiting: 0 }} openConversation={() => {}} openPlace={() => {}} openSettings={setPage} level={"regular" as Level} />;
+    }
+    await act(async () => { root!.render(<ClassicHost />); });
+    await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Trunks" } })); });
+    expect(host.querySelector("h1")?.textContent).toBe("Trunks");
+    expect(host.querySelector('[aria-label="Sapling: profile"]')).not.toBeNull();
+    expect(host.querySelector('[data-page="trunks"][aria-current="true"]')).not.toBeNull();
+    expect(host.querySelector('[data-page="general"][aria-current="true"]')).toBeNull();
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-level="advanced"]')!.click(); });
+    expect(host.querySelector("h1")?.textContent).toBe("Trunks");
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-level="regular"]')!.click(); });
+    expect(host.querySelector("h1")?.textContent).toBe("Trunks");
+  });
   it.each([["Chat apps", "chatapps"], ["Trunks", "trunks"]])("has no %s tab: asking for it opens Settings > %s", async (tab, page) => {
     const openSettings = vi.fn();
     host = document.createElement("div"); document.body.append(host);
