@@ -31,6 +31,7 @@ import {
   appendExecTimeoutRetryGuidance,
   renderExecExitLabel,
 } from "./bash-tools.exec-output.js";
+import { gateProcessInput } from "./bash-tools.process-floor.js";
 import { ProcessToolOutputSchema } from "./bash-tools.process-schema.js";
 import { handleProcessSendKeys, writeProcessStdin } from "./bash-tools.process-send-keys.js";
 import { processSchema } from "./bash-tools.schemas.js";
@@ -305,7 +306,7 @@ export function createProcessTool(
     description: describeProcessTool({ hasCronTool: defaults?.hasCronTool === true }),
     parameters: processSchema,
     outputSchema: ProcessToolOutputSchema,
-    execute: async (_toolCallId, args, signal, _onUpdate): Promise<AgentToolResult<unknown>> => {
+    execute: async (toolCallId, args, signal, _onUpdate): Promise<AgentToolResult<unknown>> => {
       const assertCurrent = () => {
         signal?.throwIfAborted();
         assertSourceCurrent();
@@ -541,6 +542,17 @@ export function createProcessTool(
           if (!resolved.ok) {
             return resolved.result;
           }
+          // Interactive input passes the always-ask floor line by line before it is written.
+          const gateInput = async (data: string | Buffer) => {
+            const gate = await gateProcessInput({
+              session: resolved.session,
+              sessionId: params.sessionId ?? resolved.session.id,
+              data,
+              toolCallId,
+            });
+            assertCurrent();
+            return gate;
+          };
           if (inputAction === "send-keys") {
             return await handleProcessSendKeys({
               sessionId: params.sessionId,
@@ -549,6 +561,7 @@ export function createProcessTool(
               keys: params.keys,
               hex: params.hex,
               literal: params.literal,
+              beforeWrite: gateInput,
             });
           }
           const payload =
@@ -560,6 +573,11 @@ export function createProcessTool(
           if (inputAction === "paste" && !payload) {
             return failText("No paste text provided.");
           }
+          const gate = await gateInput(payload);
+          if (!gate.allowed) {
+            return failText(gate.message);
+          }
+          gate.commit();
           await writeProcessStdin(resolved.stdin, payload);
           if (inputAction === "write" && params.eof) {
             assertCurrent();
