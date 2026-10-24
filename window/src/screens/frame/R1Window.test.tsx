@@ -168,7 +168,7 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
   expect(opened).toEqual({
     card: "r1:card", goto: "r1:goto",
     general: "r1:general", appearance: "r1:appearance", notifications: "r1:notifications", who: "r1:who",
-    trunks: "classic:advanced", instructions: "r1:instructions", customize: "r1:customize", seedbank: "r1:seedbank", memory: "r1:memory", autos: "r1:autos",
+    trunks: "r1:trunks", instructions: "r1:instructions", customize: "r1:customize", seedbank: "r1:seedbank", memory: "r1:memory", autos: "r1:autos",
     voice: "r1:voice", chatapps: "r1:chatapps",
     accounts: "r1:accounts", models: "r1:models",
     permissions: "r1:permissions", signins: "r1:signins", privacy: "r1:privacy",
