@@ -54,10 +54,10 @@ test("the Linux deb installs an executable launcher and an application menu entr
     mkdirSync(incomplete);
     assert.throws(() => buildLinuxDeb({ payload: incomplete, version: "0.4.4", out: join(root, "missing.deb") }), /no Branch Agent\.bin/);
     const out = join(root, "Branch-Linux.deb");
-    buildLinuxDeb({ payload, version: "0.4.4-build-56aed4e6d99d", out });
+    buildLinuxDeb({ payload, version: "0.4.4-build-56aed4e6d99d", out, env: { GITHUB_RUN_NUMBER: "812" } });
     const deb = readLinuxDeb(readFileSync(out));
     assert.match(deb.control, /^Package: branch-agent$/m);
-    assert.match(deb.control, /^Version: 0\.4\.4-build-56aed4e6d99d$/m);
+    assert.match(deb.control, /^Version: 0\.4\.4\.812\+56aed4e6d99d$/m);
     assert.match(deb.control, /^Architecture: amd64$/m);
     const file = name => deb.files.find(entry => entry.name === name);
     assert.equal(file("./opt/branch-agent/chrome-sandbox").mode, 0o4755);

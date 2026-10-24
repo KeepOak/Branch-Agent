@@ -155,10 +155,20 @@ function requirePayload(payload, name) {
   catch (error) { if (error?.code === "ENOENT" || error.message === "not a file") throw new Error(`The Linux package has no ${name} at its root`); throw error; }
 }
 
-/** Debian control Version. Release versions already match this; anything else is refused. */
-export function debVersion(version) {
-  if (!/^[0-9][A-Za-z0-9.+~-]*$/.test(version)) throw new Error(`Not a Debian package version: ${version}`);
-  return version;
+/**
+ * Debian control Version: <base>.<run>+<sha12>, e.g. 0.4.4.812+56aed4e6d99d, so dpkg and apt order two builds of
+ * one base by CI run. The raw release version (0.4.4-build-<sha>) cannot be ordered: dpkg reads the sha as the
+ * revision. Run comes from GITHUB_RUN_NUMBER, sha from the version's build-<sha> or GITHUB_SHA. Without a run
+ * number the run is 0 (a local build sorts below every CI build); without a sha the +<sha12> part is left off.
+ * Only the .deb control file uses this; the release tag, asset names and AppImage keep the release version.
+ */
+export function debVersion(version, env = process.env) {
+  const match = /^([0-9]+(?:\.[0-9]+)*)(?:-build-([0-9a-f]{12,40}))?$/.exec(String(version));
+  if (!match) throw new Error(`Not a Debian package version: ${version}`);
+  const run = env.GITHUB_RUN_NUMBER ?? "";
+  if (run !== "" && !/^[0-9]+$/.test(run)) throw new Error(`Not a run number: ${run}`);
+  const sha = (match[2] ?? (/^[0-9a-f]{12,40}$/.test(env.GITHUB_SHA ?? "") ? env.GITHUB_SHA : "")).slice(0, 12);
+  return `${match[1]}.${run === "" ? "0" : String(Number(run))}${sha ? `+${sha}` : ""}`;
 }
 
 /**
@@ -166,7 +176,7 @@ export function debVersion(version) {
  * live copy, the icon and a menu entry. chrome-sandbox is mode 4755 so Chromium's sandbox is available after
  * dpkg installs the package as root; the user live copy relies on the package's branch-agent sandbox launcher.
  */
-export function buildLinuxDeb({ payload, version, out, icon = ICON }) {
+export function buildLinuxDeb({ payload, version, out, icon = ICON, env = process.env }) {
   requirePayload(payload, "Branch Agent.bin");
   requirePayload(payload, "chrome-sandbox");
   requirePayload(payload, "branch-agent");
@@ -187,7 +197,7 @@ export function buildLinuxDeb({ payload, version, out, icon = ICON }) {
   const installed = files.reduce((sum, entry) => sum + (entry.data?.length ?? entry.link?.length ?? 0), 0);
   const control = [
     "Package: branch-agent",
-    `Version: ${debVersion(version)}`,
+    `Version: ${debVersion(version, env)}`,
     "Section: utils",
     "Priority: optional",
     "Architecture: amd64",
