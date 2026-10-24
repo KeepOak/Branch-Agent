@@ -19,7 +19,7 @@ import {
   truncateSanitizedExternalContent,
   wrapWebContent,
 } from "../../security/external-content.js";
-import { MAX_SEARCH_COUNT } from "./web-search-provider-common.js";
+import { MAX_SEARCH_COUNT, resolveWebSearchErrorDocs } from "./web-search-provider-common.js";
 
 const WebSearchExternalContentSchema = Type.Object(
   {
@@ -250,7 +250,8 @@ export function normalizeWebSearchOutput(params: {
       2_000,
     );
     const rawMessage = typeof result.message === "string" ? result.message : rawError;
-    const docs = typeof result.docs === "string" ? toHttpUrl(result.docs) : undefined;
+    const docs =
+      typeof result.docs === "string" ? toHttpUrl(resolveWebSearchErrorDocs(result.docs)) : undefined;
     return {
       kind: "error",
       provider,

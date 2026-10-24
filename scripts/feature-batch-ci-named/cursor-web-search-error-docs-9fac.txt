@@ -1,0 +1,3 @@
+engine:src/agents/tools/web-search.provider-errors.test.ts
+engine:src/agents/tools/web-search.test.ts
+engine:src/plugins/web-provider-capture-lifetime.test.ts
