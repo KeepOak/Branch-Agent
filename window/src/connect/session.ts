@@ -103,12 +103,14 @@ const STARTUP_POLL_MS = 3_000;
  *  given up after this long and read again, so a hung request cannot leave the window connecting. */
 const BOOTSTRAP_REQUEST: GatewayProtocolRequestOptions = { timeoutMs: 15_000 };
 const BOOTSTRAP_RETRY_MAX_MS = 10_000;
-/** A failed read as the snapshot keeps it: a startup wait by code, a retrying history UNAVAILABLE in plain words, else the engine's words. The one-minute history cap is applied in `set()`. */
+/** A failed read as the snapshot keeps it: a startup wait by code, a retrying history UNAVAILABLE in plain words, else the raw error with load context. The one-minute history cap is applied in `set()`. */
 const failure = (error: unknown): Pick<SessionSnapshot, "error" | "startup"> => {
   const message = error instanceof Error ? error.message : String(error);
   if (isStartupUnavailable(error)) return { error: message, startup: { detail: message, stalled: false } };
   if (isHistoryTemporarilyUnavailable(error)) return { error: HISTORY_STARTING_LABEL, startup: null };
-  return { error: message, startup: null };
+  // Startup wording stays exact so the retry watch can still see a pending preparation.
+  if (isPreparationPending(error)) return { error: message, startup: null };
+  return { error: `Couldn't load this conversation: ${message}`, startup: null };
 };
 /** The code the gateway client gives a request it gave up on (GatewayProtocolRequestTimeoutError). */
 const isRequestTimeout = (error: unknown): boolean => (error as { code?: unknown } | null)?.code === "CLIENT_TIMEOUT";
@@ -363,8 +365,12 @@ export class SaplingSession {
     if (!key || key === this.snapshot.sessionKey) {
       const echo = this.firstEcho.peek(key);
       if (echo && !this.snapshot.pendingUser && !this.snapshot.history.length && this.snapshot.historyReady !== false) this.seedFirstSend(key, echo.text, echo.runId);
-      // A failed read leaves the conversation unready. Opening it again, including the same row, tries the read once more.
-      if (key && key === this.snapshot.sessionKey && this.snapshot.historyReady === false && this.snapshot.error) await this.loadOpen();
+      // Unready (failed, still loading, or a hung shared flight): opening the same row again drops the
+      // in-flight join and reads once more, so "Opening this conversation…" cannot stick forever.
+      if (key && key === this.snapshot.sessionKey && this.snapshot.historyReady === false) {
+        this.transcriptFlight.delete(key);
+        await this.loadOpen();
+      }
       return;
     }
     this.wanted = key;

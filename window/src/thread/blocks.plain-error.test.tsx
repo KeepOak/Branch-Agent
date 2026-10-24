@@ -5,9 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { FRIENDLY_ERROR } from "../connect/friendly-error";
 import type { WindowEngine } from "../connect/engine";
-import { NotSent, resetStepsFoldChoice, StepsFold } from "./blocks";
+import { Notice, NotSent, resetStepsFoldChoice, StepsFold } from "./blocks";
 import { ThreadContext } from "./context";
 import type { Block } from "./model";
+import { shortReason } from "./format";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
@@ -16,6 +17,7 @@ afterEach(async () => {
   root = undefined;
   document.body.innerHTML = "";
   resetStepsFoldChoice();
+  localStorage.clear();
 });
 
 type Step = Extract<Block, { kind: "step" }>;
@@ -74,6 +76,48 @@ describe("NotSent visible reason", () => {
     const why = host.querySelector(".send-why") as HTMLElement;
     expect(why.textContent).toBe("Couldn't send this message.");
     expect(why.getAttribute("title")).toBe("Couldn't send this message.");
+  });
+});
+
+describe("engine Notice text", () => {
+  it.each([
+    "Moved to Claude account 2.",
+    "No other subscription is free, so it waits until then.",
+  ])("keeps the account-limit notice and its next step whole: %s", async (nextStep) => {
+    const text = `Claude account 1 hit its limit until Sat 2:00 AM. ${nextStep}`;
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(<Notice block={{ kind: "notice", key: "n", text }} />));
+    expect(host.textContent).toBe(text);
+  });
+
+  it.each(["advanced", "technical"])("keeps error wording at %s while short reasons hide paths", async (level) => {
+    localStorage.setItem("branch.level", level);
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    for (const text of ["PLUGIN_STATE_READ_FAILED. Try again.", JSON_DUMP, "Failed in '/tmp/example/log.txt'. Try again."]) {
+      expect(shortReason(text)).toBe(text.replace("/tmp/example/log.txt", "a local file"));
+      await act(async () => root!.render(<Notice block={{ kind: "notice", key: "n", text }} />));
+      expect(host.textContent).toBe(text);
+    }
+  });
+
+  it("shows a plain sentence for a raw connect failure", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    host.className = "thread";
+    root = createRoot(host);
+    await act(async () => root!.render(<Notice block={{ kind: "notice", key: "n", text: "connect ECONNREFUSED 127.0.0.1:19031" }} />));
+    const line = host.querySelector("[data-testid='notice']")?.textContent ?? "";
+    expect(line).toBe("Branch can’t reach its engine right now. It keeps trying, so try again in a moment.");
+    expect(line).not.toMatch(/ECONNREFUSED|127\.0\.0\.1|19031/);
+  });
+
+  it("keeps already-plain copy unchanged", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    host.className = "thread";
+    root = createRoot(host);
+    await act(async () => root!.render(<Notice block={{ kind: "notice", key: "n", text: "The Gateway restarted." }} />));
+    expect(host.querySelector("[data-testid='notice']")?.textContent).toBe("The Gateway restarted.");
   });
 });
 

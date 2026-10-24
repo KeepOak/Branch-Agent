@@ -2,7 +2,8 @@
 import type { Block } from "./model";
 import { displayModelName } from "../composer/model-display";
 import { computerStepWords, isComputerToolName, isScreenToolName, screenStepWords } from "./computer-action-label";
-import { looksRawError, plainError } from "../shell/plain-error";
+import { isLockBusyMessage, LOCK_BUSY, looksRawError, plainError } from "../shell/plain-error";
+import { readLevel } from "../places-nav/SettingsFrame";
 
 export function formatDuration(ms?: number): string {
   if (!ms || ms < 0) {
@@ -323,6 +324,10 @@ export function scrubLocalPaths(text: string): string {
 
 /** The first sentence of an engine error, without the engine's own lead-in and warning sign. */
 export function shortReason(message: string): string {
+  if (isLockBusyMessage(message)) {
+    return LOCK_BUSY;
+  }
+  if (readLevel() !== "regular") return scrubLocalPaths(message);
   if (/PLUGIN_STATE_READ_FAILED|Session maintenance protection changed|PluginInstanceUnavailableError|^\s*\{|\"telemetry\"/.test(message)) {
     return "Something went wrong. Try again, or open Diagnostics for details.";
   }
@@ -333,6 +338,9 @@ export function shortReason(message: string): string {
     .trim();
   const first = /^(.+?[.!?])(\s|$)/.exec(plain)?.[1] ?? plain;
   const short = first.length > 160 ? `${first.slice(0, 157)}…` : first;
+  if (isLockBusyMessage(short)) {
+    return LOCK_BUSY;
+  }
   // No error class, code, HTTP status, id, stack or engine method name at Regular (Private issue 1089): the scrubbed first
   // sentence is checked as issue 1700's friendlyError() checks it, and a raw one reads as a plain sentence instead.
   return looksRawError(first) ? plainError(short) : short;

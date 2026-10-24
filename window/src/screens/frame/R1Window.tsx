@@ -307,6 +307,17 @@ export function R1Window({ session }: { session: SaplingSession }) {
     window.addEventListener("branch:navigate-place", openPlace);
     return () => window.removeEventListener("branch:navigate-place", openPlace);
   }, []);
+  // Empty-chat Connect a model (openConnectModel) and other surfaces that only know the Classic event.
+  useEffect(() => {
+    const openSettings = (event: Event) => {
+      const page = (event as CustomEvent<{ page?: string }>).detail?.page;
+      if (typeof page === "string" && /^[a-z][a-z0-9-]*$/.test(page)) {
+        navigateTo.current({ kind: "settings", page });
+      }
+    };
+    window.addEventListener("branch:navigate-settings", openSettings);
+    return () => window.removeEventListener("branch:navigate-settings", openSettings);
+  }, []);
   // Settings › Updates & about › Show the welcome tour.
   useEffect(() => {
     const openTour = () => setTour("full");

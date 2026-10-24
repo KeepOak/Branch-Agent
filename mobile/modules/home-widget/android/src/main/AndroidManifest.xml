@@ -11,5 +11,26 @@
         android:name="android.appwidget.provider"
         android:resource="@xml/branch_home_widget_info" />
     </receiver>
+    <receiver
+      android:name=".TalkWidgetProvider"
+      android:exported="true"
+      android:label="@string/branch_talk_tile_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/branch_talk_widget_info" />
+    </receiver>
+    <service
+      android:name=".TalkTileService"
+      android:exported="true"
+      android:icon="@drawable/branch_talk_tile"
+      android:label="@string/branch_talk_tile_label"
+      android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+      <intent-filter>
+        <action android:name="android.service.quicksettings.action.QS_TILE" />
+      </intent-filter>
+    </service>
   </application>
 </manifest>
