@@ -65,7 +65,7 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
     const qr = app.id === "whatsappweb";
     const needs = qr ? ["web.login.start", "web.login.wait"] : ["wizard.start", "wizard.next", "wizard.cancel"];
     const offered = on ? canAll(engine, ["channels.status"]) : qr ? listed.has("whatsapp") : canAll(engine, needs);
-    const locked = !on && offered && !admin;
+    const locked = Boolean(app.channel) && !on && offered && !admin;
     const enabled = Boolean(app.channel && (on ? onManage : onSetup) && offered && !locked);
     return { state, on, qr, needs, locked, enabled };
   };
