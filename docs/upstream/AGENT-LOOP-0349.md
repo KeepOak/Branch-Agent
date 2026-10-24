@@ -1,14 +1,17 @@
-# AGENT-LOOP-0349: skipped (no TypeScript source, too big for one row)
+# AGENT-LOOP-0349: ported (first slice: detector, log and diff compressors)
 
 Source: `JuliusBrussee/caveman@b39c90862855ad2f0813ce775b8bf07a9d6d2a50`, `engine/`.
 
-The upstream is Go, not TypeScript. The cited compressors (`compressors/log.go`, `json.go`, `diff.go`) depend on `invariants.go` (33 KB), `redundancy.go`, `relevance.go` and `text.go`. `engine.go` adds a safety-class table, a BPE token counter and file-wrapper unwrapping. The recovery store (`ccr/store_sqlite.go`, 30 KB) has platform-specific file-security code for Linux, POSIX and Windows. A faithful port with its tests is a card of its own, not one row.
+Ported to `engine/src/agents/tool-output-compression/`:
 
-Branch already covers part of the row:
+- `detect.ts`, `detect-structured.ts`: the full `Detect` order from `detect.go` (JSON, terminal, diff, HTML, table, code, log, search results, config, text), including `LooksTabular` and `LooksConfig`.
+- `log.ts`: the log compressor (`log.go`) with its query relevance (`relevance.go`, BM25 from `contextwindow.go`) and redundancy gate (`redundancy.go`).
+- `diff.ts`: the unified-diff compressor (`diff.go`).
+- `line-ends.ts`: mixed line-ending handling (`lineends.go`).
+- `index.ts`: detect, route to the compressor, and keep the original when the result is not smaller (`engine.go`).
 
-- `engine/src/agents/embedded-agent-runner/tool-result-truncation.ts` truncates oversized tool results. It keeps the head, and also the tail when the tail holds errors, exit codes or a summary.
-- Exec and `web_fetch` spill the full output to a private file (`details.fullOutputPath`, `details.spill.path`). The truncation footer tells the model where the full bytes are, so originals can be read back.
+Wiring: `truncateToolResultMessage` in `engine/src/agents/embedded-agent-runner/tool-result-truncation.ts` runs the compressor before head/tail truncation, only when the tool already saved the complete original (`details.fullOutputPath` or an untruncated `details.spill.path` that still exists). The compressed text always carries the `Full output:` footer, so every elided line can be read back from the existing saved-output file. No second store was added.
 
-What is still missing: detecting the content type (log, JSON, diff, HTML, table) and choosing a compressor for it, plus a query-addressable store of the originals. No production file changed. No tests were ported.
+Tests: `detect.test.ts` (detect_test.go, detect_html_test.go), `log.test.ts` (log_test.go, log_match_test.go, the log cases of redundancy_test.go and lineends_test.go), `diff.test.ts` (the diff case of lineends_test.go plus behaviour cases; upstream has no diff_test.go), and `tool-result-compression.behaviour.test.ts` for the wiring.
 
-Unblock: open a dedicated card to port `detect.go`, the log, JSON and diff compressors with their helpers, and their tests. Store originals in Branch's existing state database instead of a second SQLite store. Run the compressor inside `truncateToolResultText`, behind a config switch.
+Not in this slice (follow-up card): the JSON, HTML, code, table, config, search-result, text and terminal compressors; the per-run invariant summaries in `invariants.go`; unwrapping file tags and line gutters before detection (`filewrap.go`, `listing.go`); query-addressed retrieval (`retrieve_query.go`).
