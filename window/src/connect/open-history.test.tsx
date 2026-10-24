@@ -163,7 +163,7 @@ it("retries a hung same-row open instead of staying on Opening this conversation
 it("stops a failed history read and reads that conversation again on the next open", async () => {
   fake.historyError = new Error("history unavailable");
   const session = await connect();
-  await vi.waitFor(() => expect(session.getSnapshot().error).toBe("history unavailable"));
+  await vi.waitFor(() => expect(session.getSnapshot().error).toBe("Couldn't load this conversation: history unavailable"));
   expect(session.getSnapshot().historyReady).toBe(false);
   expect(session.getSnapshot().history).toEqual([]);
   const failed = await renderThread({ history: session.getSnapshot().history, historyReady: session.getSnapshot().historyReady, preparationError: session.getSnapshot().error });
@@ -178,7 +178,7 @@ it("stops a failed history read and reads that conversation again on the next op
   expect(failedReads).toBeGreaterThan(0);
   await session.open(KEY);
   expect(readsOf(KEY)).toBe(failedReads + 1);
-  expect(session.getSnapshot()).toMatchObject({ historyReady: false, error: "history unavailable", history: [] });
+  expect(session.getSnapshot()).toMatchObject({ historyReady: false, error: "Couldn't load this conversation: history unavailable", history: [] });
   await expect(session.reload()).rejects.toThrow("history unavailable");
   expect(readsOf(KEY)).toBe(failedReads + 2);
   expect(session.getSnapshot().historyReady).toBe(false);
