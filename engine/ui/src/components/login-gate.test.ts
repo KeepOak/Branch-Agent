@@ -146,7 +146,7 @@ describe("login gate failure recovery", () => {
     expect(steps).toMatch(/trusted proxy or Tailscale/iu);
     expect(steps).toMatch(/shared Gateway token or password/iu);
     expect(failure?.querySelector(".login-gate__failure-docs")?.getAttribute("href")).toBe(
-      "https://docs.openclaw.ai/gateway/operator-scopes",
+      "https://keepoak.com/help",
     );
   });
 
@@ -168,7 +168,7 @@ describe("login gate failure recovery", () => {
     expect(steps).toMatch(/forward/iu);
     expect(steps).toMatch(/WebSocket upgrade/iu);
     expect(failure?.querySelector(".login-gate__failure-docs")?.getAttribute("href")).toBe(
-      "https://docs.openclaw.ai/gateway/trusted-proxy-auth",
+      "https://keepoak.com/help",
     );
     expect(failure?.querySelector(".login-gate__failure-raw")?.textContent).toBe("unauthorized");
     expect(failure?.querySelectorAll(".login-gate__failure-steps code")).toHaveLength(0);
@@ -220,7 +220,7 @@ describe("login gate failure recovery", () => {
     expect(steps?.textContent).not.toMatch(/Gateway is running|Gateway URL|token|password/iu);
     expect(steps?.querySelector("code")?.textContent).toBe("branch users list --json");
     expect(failure?.querySelector(".login-gate__failure-docs")?.getAttribute("href")).toBe(
-      "https://docs.openclaw.ai/gateway/operator-scopes#named-operator-roles",
+      "https://keepoak.com/help",
     );
   });
 

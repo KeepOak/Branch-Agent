@@ -1,7 +1,7 @@
-import { consume } from "@lit/context";
-import "../../styles/config.css";
-import { initialState, Task, TaskStatus } from "@lit/task";
 import { asNullableRecord as asConfigRecord } from "@branch/normalization-core/record-coerce";
+import "../../styles/config.css";
+import { consume } from "@lit/context";
+import { initialState, Task, TaskStatus } from "@lit/task";
 import { html, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 import type {
@@ -45,17 +45,18 @@ import { resolveControlUiServerQueueMode } from "../../lib/chat/follow-up-mode.t
 import { formatUiError } from "../../lib/format-error.ts";
 import { isMissingOperatorReadScopeError } from "../../lib/gateway-errors.ts";
 import { canCallGatewayMethod } from "../../lib/gateway-methods.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { loadModelCatalog } from "../../lib/model-catalog-store.ts";
 import {
   canReadSystemInfo,
   readSystemInfo,
   SYSTEM_INFO_POLL_INTERVAL_MS,
 } from "../../lib/system-info.ts";
+import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import {
   GatewayPageController,
   type GatewayPageChange,
 } from "../../lit/gateway-page-controller.ts";
-import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import { PollController } from "../../lit/poll-controller.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 import {
@@ -76,18 +77,18 @@ import {
 } from "./config-sections.ts";
 import * as themeImport from "./custom-theme-import-owner.ts";
 import { importCustomThemeFromUrl } from "./custom-theme-import.ts";
-import { renderMcp, renderMcpIntro } from "./mcp.ts";
 import "./meeting-capture.ts";
 import "./memory-page.ts";
+import { renderMcp, renderMcpIntro } from "./mcp.ts";
 import { memorySettingsSchema } from "./memory-schema.ts";
 import { configTargetIdFromHash, type ConfigRouteData } from "./route-data.ts";
 import { renderSecurity, type SecurityOverview } from "./security.ts";
+import "./session-storage.ts";
+import "./talk-page.ts";
 import {
   buildSessionObserverTogglePatch,
   buildSessionObserverUtilityModelPatch,
 } from "./session-observer-settings.ts";
-import "./session-storage.ts";
-import "./talk-page.ts";
 import { renderUpdatesPage } from "./updates-page.ts";
 import {
   createConfigViewState,
@@ -163,16 +164,13 @@ export function configSelectionFromSearch(pageId: ConfigPageId, search: string):
 function renderConfigPageSubtitle(pageId: ConfigPageId) {
   switch (pageId) {
     case "appearance":
-      return html`${t("configView.appearance.intro")}
-      ${renderLearnMoreLink("https://docs.openclaw.ai/web/control-ui")}`;
+      return html`${t("configView.appearance.intro")} ${renderLearnMoreLink(BRANCH_HELP_URL)}`;
     case "mcp":
       return renderMcpIntro();
     case "security":
-      return html`${t("quickSettings.security.intro")}
-      ${renderLearnMoreLink("https://docs.openclaw.ai/gateway/security")}`;
+      return html`${t("quickSettings.security.intro")} ${renderLearnMoreLink(BRANCH_HELP_URL)}`;
     case "talk":
-      return html`${t("talkPage.intro")}
-      ${renderLearnMoreLink("https://docs.openclaw.ai/nodes/talk")}`;
+      return html`${t("talkPage.intro")} ${renderLearnMoreLink(BRANCH_HELP_URL)}`;
     case "updates":
       return t("updates.page.intro");
     default:

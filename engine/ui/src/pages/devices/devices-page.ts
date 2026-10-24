@@ -1,10 +1,10 @@
-import { consume } from "@lit/context";
-import { initialState, Task, TaskStatus } from "@lit/task";
 import type {
   EnvironmentSummary,
   EnvironmentsListResult,
   SystemInfoResult,
 } from "@branch/gateway-protocol";
+import { consume } from "@lit/context";
+import { initialState, Task, TaskStatus } from "@lit/task";
 import { html, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 import { GATEWAY_EVENT_DEVICE_PAIR_CHANGED } from "../../../../src/gateway/events.js";
@@ -26,6 +26,7 @@ import { t } from "../../i18n/index.ts";
 import { registerDevicesEnglish } from "../../i18n/locales/en-devices.ts";
 import { currentConfigObject } from "../../lib/config/config-state-model.ts";
 import { isMissingOperatorReadScopeError } from "../../lib/gateway-errors.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { presenceConnectivitySignature } from "../../lib/nodes/inventory.ts";
 import {
   approveDevicePairing,
@@ -42,11 +43,11 @@ import {
   type DevicesPageDataState,
 } from "../../lib/nodes/page-operations.ts";
 import { canReadSystemInfo, readSystemInfo } from "../../lib/system-info.ts";
+import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import {
   GatewayPageController,
   type GatewayPageChange,
 } from "../../lit/gateway-page-controller.ts";
-import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import { PollController } from "../../lit/poll-controller.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 import { DevicesDialogController } from "./devices-dialogs.ts";
@@ -54,7 +55,7 @@ import { renderDevices } from "./view.ts";
 
 registerDevicesEnglish();
 
-const DEVICES_DOCS_URL = "https://docs.openclaw.ai/nodes";
+const DEVICES_DOCS_URL = BRANCH_HELP_URL;
 
 export type DevicesRouteData = {
   // Client identity alone cannot distinguish provider replacement or reconnect epochs.

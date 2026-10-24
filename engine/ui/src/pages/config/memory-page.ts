@@ -1,8 +1,8 @@
+import { asNullableRecord as asConfigRecord } from "@branch/normalization-core/record-coerce";
 // Controller for the Memory destination page. The URL owns the active tab;
 // this element projects Settings agent selection into Overview status and
 // consumes the global configuration controllers used by Settings.
 import { consume } from "@lit/context";
-import { asNullableRecord as asConfigRecord } from "@branch/normalization-core/record-coerce";
 import { html, type PropertyValues, type TemplateResult } from "lit";
 import { property, state } from "lit/decorators.js";
 import type { DoctorMemoryStatusPayload } from "../../../../src/gateway/server-methods/doctor.ts";
@@ -19,6 +19,7 @@ import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
 import { currentConfigObject } from "../../lib/config/config-state-model.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { isGatewayMethodAdvertised } from "../../lib/gateway-methods.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import {
   loadPluginCatalog,
   runPluginConfigMutation,
@@ -27,16 +28,16 @@ import {
 import { normalizeAgentId } from "../../lib/sessions/session-key.ts";
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
+import "../agents/memory/memory-panel.ts";
+import "./memory-memories.ts";
 import {
   resolveConfiguredRings,
   resolveRingsConfigPathSupport,
   type RingsConfigPathSupport,
 } from "../agents/memory/rings.ts";
-import "../agents/memory/memory-panel.ts";
-import "./memory-memories.ts";
 import { ringsConfigPath, resolveRingsTimezoneDefault } from "./memory-defaults.ts";
-import { renderRingsSettings, renderRingsUnsupported } from "./memory-rings.ts";
 import { renderMemoryOverview, type MemoryOverviewStatus } from "./memory-overview.ts";
+import { renderRingsSettings, renderRingsUnsupported } from "./memory-rings.ts";
 import {
   canonicalMemoryRouteLocation,
   memoryTabForRoute,
@@ -62,7 +63,7 @@ registerSettingsEnglish();
 /** Explicit-off sentinel; resolveSlotSelection maps it to an `off` selection. */
 const MEMORY_SLOT_OFF = "none";
 const MEMORY_SLOT_PATH = ["plugins", "slots", "memory"];
-const RINGS_DOCS_URL = "https://docs.openclaw.ai/concepts/dreaming";
+const RINGS_DOCS_URL = BRANCH_HELP_URL;
 
 type GatewayClient = NonNullable<ApplicationContext["gateway"]["snapshot"]["client"]>;
 
@@ -585,8 +586,7 @@ class MemorySettingsPage extends BranchLightDomElement {
     const entry = asConfigRecord(asConfigRecord(plugins?.entries)?.[pluginId]);
     return html`
       <p class="settings-page__intro">
-        ${t("memoryPage.rings.intro", { plugin: pluginId })}
-        ${renderLearnMoreLink(RINGS_DOCS_URL)}
+        ${t("memoryPage.rings.intro", { plugin: pluginId })} ${renderLearnMoreLink(RINGS_DOCS_URL)}
       </p>
       ${
         this.support === "unsupported"

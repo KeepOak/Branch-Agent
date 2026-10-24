@@ -21,6 +21,7 @@ import { registerTranscriptsEnglish } from "../../i18n/locales/en-transcripts.ts
 import { formatDurationCompact } from "../../lib/format-duration.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { isArchiveAccessDeniedError } from "../../lib/gateway-errors.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { shouldHandleNavigationClick } from "../../lib/navigation-click.ts";
 import { SETTINGS_SEARCH_TARGETS } from "../config/settings-targets.ts";
 import {
@@ -286,10 +287,7 @@ function renderLibrary(props: TranscriptsViewProps) {
               ${t(TRANSCRIPT_FILTER_KEYS.some((key) => new URLSearchParams(props.search).has(key)) ? "meetings.noResults" : "meetings.emptyTitle")}
             </h2>
             <p>${t("transcripts.emptyHint")}</p>
-            <a
-              href="https://docs.openclaw.ai/cli/transcripts"
-              target="_blank"
-              rel="noopener noreferrer"
+            <a href=${BRANCH_HELP_URL} target="_blank" rel="noopener noreferrer"
               >${t("meetings.docs")}</a
             >
           </div>`

@@ -34,6 +34,7 @@ import {
 import { renderSettingsWorkspace } from "../../components/settings-workspace.ts";
 import { i18n, t } from "../../i18n/index.ts";
 import { formatUiError } from "../../lib/format-error.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 
@@ -57,7 +58,7 @@ function grantIsActive(grant: ExecApprovalStandingGrant, nowMs: number): boolean
   return grant.revokedAtMs === null && (grant.expiresAtMs === null || grant.expiresAtMs > nowMs);
 }
 const APPROVAL_HISTORY_REQUIRED_SCOPE = "operator.approvals";
-const APPROVALS_DOCS_URL = "https://docs.openclaw.ai/tools/exec-approvals";
+const APPROVALS_DOCS_URL = BRANCH_HELP_URL;
 
 function formatResolvedAt(timestampMs: number): string {
   return new Intl.DateTimeFormat(i18n.getLocale(), {

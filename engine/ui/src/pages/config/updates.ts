@@ -36,6 +36,7 @@ import { renderUpdateGitRevisions } from "../../components/update-git-revisions.
 import { t } from "../../i18n/index.ts";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
 import { formatDateTimeMs, formatTimeAgo } from "../../lib/format.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 
 registerSettingsEnglish();
 
@@ -655,9 +656,7 @@ export function renderUpdates(props: UpdatesViewProps): TemplateResult {
           }),
         ]),
         html`<p class="settings-page__hint">
-          <a href="https://docs.openclaw.ai/install/update-troubleshooting" target="_blank"
-            >${t("updates.page.troubleshoot")}</a
-          >
+          <a href=${BRANCH_HELP_URL} target="_blank">${t("updates.page.troubleshoot")}</a>
         </p>`,
       ])}
     </div>

@@ -1,7 +1,7 @@
-import { consume } from "@lit/context";
-import { initialState, Task } from "@lit/task";
 import { parseStrictPositiveInteger } from "@branch/normalization-core/number-coercion";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
+import { consume } from "@lit/context";
+import { initialState, Task } from "@lit/task";
 import { html, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
@@ -28,6 +28,7 @@ import { watchAgentScope } from "../../lib/agents/index.ts";
 import { openEditor } from "../../lib/editor-links.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { canCallGatewayMethod } from "../../lib/gateway-methods.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { openExternalUrlSafe } from "../../lib/open-external-url.ts";
 import {
   readSessionMethodAccess,
@@ -64,8 +65,8 @@ import { runSessionNavigationAction } from "../../lib/sessions/session-menu-navi
 import { requestSessionInvolvement } from "../../lib/sessions/session-requests.ts";
 import { searchVisibleSessionTranscripts } from "../../lib/sessions/transcript-search.ts";
 import { formatPreservedWorktreesNotice } from "../../lib/sessions/worktree-preservation.ts";
-import { GatewayPageController } from "../../lit/gateway-page-controller.ts";
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
+import { GatewayPageController } from "../../lit/gateway-page-controller.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 import { runControlUiPluginAction } from "../../plugins/control-ui-actions.ts";
 import { ensureSessionAgentIdentities, sessionAgentIdentityById } from "./agent-scope.ts";
@@ -84,7 +85,7 @@ import { SessionDetailsController } from "./session-details-controller.ts";
 import { renderSessionManagementMenu } from "./session-menu.ts";
 import { renderSessions, type SessionsProps } from "./view.ts";
 
-const SESSIONS_DOCS_URL = "https://docs.openclaw.ai/concepts/session";
+const SESSIONS_DOCS_URL = BRANCH_HELP_URL;
 const SESSION_SEARCH_DEBOUNCE_MS = 200;
 
 type SessionsPageRequestScope = {

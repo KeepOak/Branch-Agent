@@ -9,10 +9,11 @@ import "../../components/mcp-servers-card.ts";
 import { t } from "../../i18n/index.ts";
 import { registerMcpEnglish } from "../../i18n/locales/en-mcp.ts";
 import { summarizeMcpServers } from "../../lib/config/mcp-servers.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 
 registerMcpEnglish();
 
-const MCP_DOCS_URL = "https://docs.openclaw.ai/tools/mcp";
+const MCP_DOCS_URL = BRANCH_HELP_URL;
 
 type McpViewProps = {
   configObject: Record<string, unknown>;

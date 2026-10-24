@@ -1,0 +1,17 @@
+engine:ui/src/components/login-gate.test.ts
+engine:ui/src/components/markdown.test.ts
+engine:ui/src/components/mcp-servers-card.test.ts
+engine:ui/src/e2e/cloud-workers-settings.e2e.test.ts
+engine:ui/src/e2e/meetings.e2e.test.ts
+engine:ui/src/e2e/mobile-pairing.e2e.test.ts
+engine:ui/src/pages/apps/chrome-setup.test.ts
+engine:ui/src/pages/apps/view.test.ts
+engine:ui/src/pages/approvals/approvals-page.test.ts
+engine:ui/src/pages/channels/view.test.ts
+engine:ui/src/pages/channels/wizard-view.test.ts
+engine:ui/src/pages/config/memory-overview.test.ts
+engine:ui/src/pages/devices/view-pairing.test.ts
+engine:ui/src/pages/labs/labs-page.test.ts
+engine:ui/src/pages/model-providers/model-providers-page.login.test.ts
+engine:ui/src/pages/profile/profile-page.test.ts
+engine:ui/src/pages/worktrees/worktrees-page.test.ts

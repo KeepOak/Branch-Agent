@@ -19,6 +19,7 @@ import {
 } from "../lib/config/mcp-servers.ts";
 import { formatUiError } from "../lib/format-error.ts";
 import { canCallGatewayMethod } from "../lib/gateway-methods.ts";
+import { BRANCH_HELP_URL } from "../lib/help-links.ts";
 import { BranchLightDomElement } from "../lit/branch-element.ts";
 import { SubscriptionsController } from "../lit/subscriptions-controller.ts";
 import { icons } from "./icons.ts";
@@ -58,7 +59,7 @@ class McpServersCard extends BranchLightDomElement {
 
   @property() pluginsHref = "";
 
-  @property() docsUrl = "https://docs.openclaw.ai/tools/mcp";
+  @property() docsUrl = BRANCH_HELP_URL;
 
   @state() private rows: McpServerSummary[] | null = null;
   @state() private busy = false;

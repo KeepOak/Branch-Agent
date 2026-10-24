@@ -172,7 +172,7 @@ it("renders identity before Usage statistics and opens the usage page", async ()
   ).toHaveLength(1);
   const docsLink = page.querySelector<HTMLAnchorElement>(".page-subtitle a");
   expect(docsLink?.textContent?.trim()).toBe("Learn more");
-  expect(docsLink?.href).toBe("https://docs.openclaw.ai/concepts/user-model");
+  expect(docsLink?.href).toBe("https://keepoak.com/help");
   expect(page.querySelector(".profile-stats")).toBeNull();
   expect(page.querySelector(".profile-heatmap")).toBeNull();
   const usageRow = page.querySelector<HTMLButtonElement>(".settings-row--nav");
@@ -306,7 +306,7 @@ it("offers identity connection setup without profile RPCs or secret inputs for u
   expect(identity?.textContent).toContain("This connection has no personal profile");
   expect(identity?.textContent).toContain("Cloudflare Access, Tailscale Serve, or a trusted proxy");
   expect(
-    page.querySelector('a[href="https://docs.openclaw.ai/concepts/user-model"]'),
+    page.querySelector('a[href="https://keepoak.com/help"]'),
   ).not.toBeNull();
   expect(page.querySelector(".identity-name-control")).toBeNull();
   expect(page.querySelector('input[type="file"]')).toBeNull();

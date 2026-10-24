@@ -19,16 +19,17 @@ import type { SparklineSample } from "../../components/sparkline-tile.ts";
 import { t } from "../../i18n/index.ts";
 import { isMissingOperatorReadScopeError } from "../../lib/gateway-errors.ts";
 import { formatGatewayHost } from "../../lib/gateway-host.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import {
   canReadSystemInfo,
   readSystemInfo,
   SYSTEM_INFO_POLL_INTERVAL_MS,
 } from "../../lib/system-info.ts";
+import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import {
   GatewayPageController,
   type GatewayPageChange,
 } from "../../lit/gateway-page-controller.ts";
-import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import { PollController } from "../../lit/poll-controller.ts";
 import {
   CONNECTION_PING_SAMPLE_LIMIT,
@@ -38,7 +39,7 @@ import {
 import { isUnknownSystemInfoMethodError } from "./system-info.ts";
 import { renderConnection } from "./view.ts";
 
-const CONNECTION_DOCS_URL = "https://docs.openclaw.ai/gateway/remote";
+const CONNECTION_DOCS_URL = BRANCH_HELP_URL;
 
 export class ConnectionPage extends BranchLightDomElement {
   @consume({ context: applicationContext, subscribe: true })

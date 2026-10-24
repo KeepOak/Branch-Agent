@@ -8,6 +8,7 @@ import { registerAppsEnglish } from "../../i18n/locales/en-apps.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "../../lib/external-link.ts";
 import "../../styles/apps.css";
 import "../../components/native-chrome-setup.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { COMMUNITY_DISCORD_URL } from "../../lib/product-links.ts";
 import { appsBrandIcons } from "./brand-icons.ts";
 import { BRANCH_DOWNLOAD_PAGES, type ReleaseDownloadId } from "./release-downloads.ts";
@@ -156,7 +157,7 @@ const COMMUNITY_LINKS: ReadonlyArray<{ href: string; icon: TemplateResult; label
     icon: brandIcons.discord,
     labelKey: "appsPage.linkDiscord",
   },
-  { href: "https://docs.openclaw.ai", icon: icons.book, labelKey: "appsPage.linkDocs" },
+  { href: BRANCH_HELP_URL, icon: icons.book, labelKey: "appsPage.linkDocs" },
 ];
 
 function renderCta(cta: AppCardCta, index: number, props: AppsProps) {

@@ -384,7 +384,7 @@ suite.define(() => {
       await view.getByRole("heading", { name: "Your meeting notes, together" }).waitFor();
       expect(
         await view.getByRole("link", { name: "Set up meeting transcripts" }).getAttribute("href"),
-      ).toBe("https://docs.openclaw.ai/cli/transcripts");
+      ).toBe("https://keepoak.com/help");
       await gateway.setMethodResponse("transcripts.list", {
         __mockError: { code: "UNAVAILABLE", message: "Meetings temporarily unavailable" },
       });

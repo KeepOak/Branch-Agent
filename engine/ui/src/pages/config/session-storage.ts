@@ -1,7 +1,7 @@
-import { consume } from "@lit/context";
-import { initialState, Task, TaskStatus } from "@lit/task";
 import type { SessionsStorageStatusResult } from "@branch/gateway-protocol";
 import { asNullableRecord } from "@branch/normalization-core/record-coerce";
+import { consume } from "@lit/context";
+import { initialState, Task, TaskStatus } from "@lit/task";
 import { html, nothing, type TemplateResult } from "lit";
 import { property, state } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
@@ -22,8 +22,9 @@ import { t } from "../../i18n/index.ts";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { formatByteSize, formatDateTimeMs } from "../../lib/format.ts";
-import { GatewayPageController } from "../../lit/gateway-page-controller.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
+import { GatewayPageController } from "../../lit/gateway-page-controller.ts";
 import { PollController } from "../../lit/poll-controller.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 import { SESSION_STORAGE_SETTINGS_TARGET_ID } from "./settings-targets.ts";
@@ -487,7 +488,7 @@ class SessionStorageSettings extends BranchLightDomElement {
             `,
           )}
           <p class="settings-page__intro">${t("configView.sessionStorage.backupHint")}</p>
-          ${renderLearnMoreLink("https://docs.openclaw.ai/gateway/config-agents/sessions#cold-storage")}
+          ${renderLearnMoreLink(BRANCH_HELP_URL)}
         </div>
       `)}
       <details

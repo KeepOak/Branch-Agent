@@ -1,6 +1,7 @@
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { t } from "../../i18n/index.ts";
 import { registerLabsEnglish } from "../../i18n/locales/en-labs.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 
 registerLabsEnglish();
 
@@ -65,7 +66,7 @@ export const LAB_FEATURES = [
     id: "decisionAssistance",
     title: () => t("labsPage.decisionAssistance.title"),
     description: () => t("labsPage.decisionAssistance.description"),
-    docsUrl: "https://docs.openclaw.ai/concepts/experimental-features#decision-assistance",
+    docsUrl: BRANCH_HELP_URL,
     configPath: ["agents", "defaults", "experimental", "decisionAssistance"],
   },
   {
@@ -73,7 +74,7 @@ export const LAB_FEATURES = [
     id: "codeMode",
     title: () => t("labsPage.codeMode.title"),
     description: () => t("labsPage.codeMode.description"),
-    docsUrl: "https://docs.openclaw.ai/tools/code-mode",
+    docsUrl: BRANCH_HELP_URL,
     configPath: ["tools", "codeMode", "enabled"],
     // The on position writes the "auto" tier, never `true`: Labs offers
     // Auto/Off, and force-on for unevaluated models stays a config-only choice.
@@ -91,7 +92,7 @@ export const LAB_FEATURES = [
     id: "toolSearch",
     title: () => t("labsPage.toolSearch.title"),
     description: () => t("labsPage.toolSearch.description"),
-    docsUrl: "https://docs.openclaw.ai/tools/tool-search",
+    docsUrl: BRANCH_HELP_URL,
     configPath: ["tools", "toolSearch", "enabled"],
     // Mirrors resolveToolSearchConfig: unauthored config is on, while explicit
     // booleans and objects retain their own enablement semantics.
@@ -106,7 +107,7 @@ export const LAB_FEATURES = [
     id: "customPluginUi",
     title: () => t("labsPage.customPluginUi.title"),
     description: () => t("labsPage.customPluginUi.description"),
-    docsUrl: "https://docs.openclaw.ai/plugins/feature-plugins",
+    docsUrl: BRANCH_HELP_URL,
     configPath: ["gateway", "controlUi", "experimental", "customPlugins"],
   },
   {
@@ -114,7 +115,7 @@ export const LAB_FEATURES = [
     id: "hostDesktop",
     title: () => t("labsPage.hostDesktop.title"),
     description: () => t("labsPage.hostDesktop.description"),
-    docsUrl: "https://docs.openclaw.ai/gateway/configuration-reference#desktop",
+    docsUrl: BRANCH_HELP_URL,
     configPath: ["desktop", "host", "enabled"],
     resetScope: null,
   },
@@ -123,7 +124,7 @@ export const LAB_FEATURES = [
     id: "workerDesktop",
     title: () => t("labsPage.workerDesktop.title"),
     description: () => t("labsPage.workerDesktop.description"),
-    docsUrl: "https://docs.openclaw.ai/gateway/cloud-workers#desktop-interactive",
+    docsUrl: BRANCH_HELP_URL,
     configPath: ["cloudWorkers", "desktop"],
   },
 ] as const satisfies readonly LabFeature[];

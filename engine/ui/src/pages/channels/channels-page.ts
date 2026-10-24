@@ -18,12 +18,13 @@ import { t } from "../../i18n/index.ts";
 import { resolveChannelPairingAuthSignature } from "../../lib/channels/index.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import type { GatewayConnectionScope } from "../../lib/gateway-connection-lifecycle.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { resolveScrollBehavior } from "../../lib/scroll-behavior.ts";
+import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import {
   GatewayPageController,
   type GatewayPageChange,
 } from "../../lit/gateway-page-controller.ts";
-import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import { PollController } from "../../lit/poll-controller.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 import { importNostrProfile, parseValidationErrors, putNostrProfile } from "./nostr-profile-ops.ts";
@@ -36,7 +37,7 @@ import { ChannelWizardHost } from "./wizard-host.ts";
 
 type NostrProfileFormState = ReturnType<typeof createNostrProfileFormState> | null;
 const CHANNEL_PAIRING_POLL_INTERVAL_MS = 30_000;
-const CHANNELS_DOCS_URL = "https://docs.openclaw.ai/channels";
+const CHANNELS_DOCS_URL = BRANCH_HELP_URL;
 
 type NostrOperation = {
   scope: GatewayConnectionScope;

@@ -847,7 +847,7 @@ describe("Models provider login", () => {
       );
       expect(dialog.querySelector('input[type="password"]')).toBeNull();
       expect(
-        dialog.querySelector('a[href="https://docs.openclaw.ai/concepts/model-providers"]'),
+        dialog.querySelector('a[href="https://keepoak.com/help"]'),
       ).not.toBeNull();
       expect(request.mock.calls.some(([method]) => method === "models.authSetApiKey")).toBe(false);
       const apiKey = page.querySelector<HTMLButtonElement>("[data-models-login-api-key]");

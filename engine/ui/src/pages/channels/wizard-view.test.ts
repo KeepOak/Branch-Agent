@@ -203,7 +203,7 @@ describe("renderChannelWizard", () => {
     expect(subtitle?.textContent?.replace(/\s+/gu, " ").trim()).toBe(
       "Guided channel setup View docs",
     );
-    expect(docs?.href).toBe("https://docs.openclaw.ai/channels/slack");
+    expect(docs?.href).toBe("https://keepoak.com/help");
     expect(container.querySelector(".channels-wizard__links")).toBeNull();
   });
 });

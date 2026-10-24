@@ -21,9 +21,10 @@ import { t } from "../../i18n/index.ts";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
 import { formatUiExternalText } from "../../lib/format-error.ts";
 import { formatCompactTokenCount, formatCost, formatTimeMs } from "../../lib/format.ts";
-import { MODEL_SETTINGS_TARGET_IDS } from "../config/route-data.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import "../../styles/model-providers.css";
 import "../../styles/usage.css";
+import { MODEL_SETTINGS_TARGET_IDS } from "../config/route-data.ts";
 import type { ModelProviderRowMessage } from "./config-mutation.ts";
 import type {
   DefaultModelSelection,
@@ -610,8 +611,7 @@ export function renderModelProvidersPageShell(props: {
   return html`
     ${renderSettingsPageHeader({
       title: titleForRoute("model-providers"),
-      subtitle: html`${t("modelProviders.subtitle")}
-      ${renderLearnMoreLink("https://docs.openclaw.ai/concepts/model-providers")}`,
+      subtitle: html`${t("modelProviders.subtitle")} ${renderLearnMoreLink(BRANCH_HELP_URL)}`,
     })}
     ${renderSettingsWorkspace(html`${renderMutationMessage(props.loginMessage)}${props.body}`)}
     ${props.login}

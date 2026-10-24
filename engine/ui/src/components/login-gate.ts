@@ -13,6 +13,7 @@ import { registerLoginEnglish } from "../i18n/locales/en-login.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "../lib/external-link.ts";
 import { formatGatewayHost } from "../lib/gateway-host.ts";
 import { classifyGatewaySecret } from "../lib/gateway-secret-shape.ts";
+import { BRANCH_HELP_URL } from "../lib/help-links.ts";
 import { BranchLightDomContentsElement } from "../lit/branch-element.ts";
 import { PollController } from "../lit/poll-controller.ts";
 import { renderConnectCommand } from "./connect-command.ts";
@@ -326,15 +327,13 @@ function renderFormBody(params: { props: LoginGateProps; feedback: LoginFailureF
                   <li>
                     ${t("connection.help.step1")}${renderConnectCommand("branch gateway run")}
                   </li>
-                  <li>
-                    ${t("connection.help.step2")} ${renderConnectCommand("branch dashboard")}
-                  </li>
+                  <li>${t("connection.help.step2")} ${renderConnectCommand("branch dashboard")}</li>
                   <li>${t("connection.help.step3")}</li>
                 </ol>
                 <div class="login-gate__docs">
                   <a
                     class="session-link"
-                    href="https://docs.openclaw.ai/web/dashboard"
+                    href=${BRANCH_HELP_URL}
                     target=${EXTERNAL_LINK_TARGET}
                     rel=${buildExternalLinkRel()}
                     >${t("connection.help.docsLink")}</a

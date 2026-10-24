@@ -1,5 +1,5 @@
-import { consume } from "@lit/context";
 import { isRecord } from "@branch/normalization-core/record-coerce";
+import { consume } from "@lit/context";
 import { html, nothing } from "lit";
 import { state } from "lit/decorators.js";
 import { titleForRoute } from "../../app-navigation.ts";
@@ -21,8 +21,9 @@ import {
 } from "../../lib/config/config-state-model.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "../../lib/external-link.ts";
 import { formatUiError } from "../../lib/format-error.ts";
-import { GatewayPageController } from "../../lit/gateway-page-controller.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
+import { GatewayPageController } from "../../lit/gateway-page-controller.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 import { renderSettingsSelectRow } from "../config/settings-select-row.ts";
 import {
@@ -269,8 +270,7 @@ class LabsPage extends BranchLightDomElement {
     return html`
       ${renderSettingsPageHeader({
         title: titleForRoute("labs"),
-        subtitle: html`${t("labsPage.intro")}
-        ${renderLearnMoreLink("https://docs.openclaw.ai/concepts/experimental-features")}`,
+        subtitle: html`${t("labsPage.intro")} ${renderLearnMoreLink(BRANCH_HELP_URL)}`,
       })}
       ${renderSettingsWorkspace(body)}
     `;

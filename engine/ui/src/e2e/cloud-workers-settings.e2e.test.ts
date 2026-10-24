@@ -86,7 +86,7 @@ suite.define(() => {
       const docsLink = page.getByRole("link", { name: "Learn more", exact: true });
       await docsLink.waitFor();
       expect(await docsLink.getAttribute("href")).toBe(
-        "https://docs.openclaw.ai/gateway/cloud-workers",
+        "https://keepoak.com/help",
       );
       await gateway.waitForRequest("environments.list");
       const socketCount = await gateway.getSocketCount();

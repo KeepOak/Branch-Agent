@@ -25,10 +25,14 @@ import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
 import { resolveEditableSnapshotConfig } from "../../lib/config/config-state-model.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { canCallGatewayMethod } from "../../lib/gateway-methods.ts";
-import { GatewayPageController } from "../../lit/gateway-page-controller.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
+import { GatewayPageController } from "../../lit/gateway-page-controller.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 import { CloudWorkerConfigSave } from "./cloud-worker-config-save.ts";
+import "./cloud-worker-repositories.ts";
+import "./cloud-worker-pool.ts";
+import "./cloud-worker-snapshots.ts";
 import {
   buildCloudWorkerDeletePatch,
   buildCloudWorkerUpsertPatch,
@@ -38,13 +42,10 @@ import {
   type CloudWorkerProfileDraft,
   type ConfiguredCloudWorkerProfile,
 } from "./cloud-worker-config.ts";
-import "./cloud-worker-repositories.ts";
-import "./cloud-worker-pool.ts";
-import "./cloud-worker-snapshots.ts";
 
 registerSettingsEnglish();
 
-const CLOUD_WORKERS_DOCS_URL = "https://docs.openclaw.ai/gateway/cloud-workers";
+const CLOUD_WORKERS_DOCS_URL = BRANCH_HELP_URL;
 type ProfileSummary = NonNullable<EnvironmentsListResult["profiles"]>[number];
 type EditorState = { kind: "add" } | { kind: "edit"; profileId: string } | null;
 
@@ -560,9 +561,7 @@ class CloudWorkersPage extends BranchLightDomElement {
         rows,
       )}
       ${this.renderEditor()}
-      <branch-cloud-worker-repositories
-        .canManage=${canManage}
-      ></branch-cloud-worker-repositories>
+      <branch-cloud-worker-repositories .canManage=${canManage}></branch-cloud-worker-repositories>
     `);
     return html`
       ${renderSettingsPageHeader({

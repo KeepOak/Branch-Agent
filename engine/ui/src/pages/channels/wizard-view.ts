@@ -9,7 +9,7 @@ import {
 } from "../../components/wizard-step-controls.ts";
 import { t } from "../../i18n/index.ts";
 import "../../components/modal-dialog.ts";
-import { channelDocsUrl } from "./hub-meta.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import type { ChannelWizardState } from "./wizard-controller.ts";
 
 type ChannelWizardViewProps = {
@@ -279,7 +279,7 @@ export function renderChannelWizard(
                 channel
                   ? html`<a
                       class="channels-wizard__link"
-                      href=${channelDocsUrl(channel)}
+                      href=${BRANCH_HELP_URL}
                       target="_blank"
                       rel="noreferrer noopener"
                       >${t("channels.setup.viewDocs")}</a

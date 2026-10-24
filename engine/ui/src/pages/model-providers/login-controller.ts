@@ -12,6 +12,7 @@ import { resolveAgentConfig, resolveModelPrimary } from "../../lib/agents/displa
 import { currentConfigObject } from "../../lib/config/config-state-model.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "../../lib/external-link.ts";
 import { formatUiError } from "../../lib/format-error.ts";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import { invalidateModelAuthStatusRequests } from "../../lib/model-auth-request-state.ts";
 import { canonicalModelAuthProviderId, loadModelAuthStatus } from "../../lib/model-auth.ts";
 import type {
@@ -21,8 +22,8 @@ import type {
 import type { ModelProviderRowMessage } from "./config-mutation.ts";
 import { buildModelProviderCards, type ModelProviderCard } from "./data.ts";
 import { buildLoginProviders } from "./login-providers.ts";
-import { renderProviderAccountSummary } from "./profiles-view.ts";
 import "../../styles/model-providers.css";
+import { renderProviderAccountSummary } from "./profiles-view.ts";
 registerSettingsEnglish();
 
 type LoginControllerOptions = {
@@ -335,8 +336,7 @@ export class ModelProviderLoginController implements ReactiveController {
             )
           : [];
       const docsUrl =
-        provider?.choices.find((choice) => choice.docsUrl)?.docsUrl ??
-        "https://docs.openclaw.ai/concepts/model-providers";
+        provider?.choices.find((choice) => choice.docsUrl)?.docsUrl ?? BRANCH_HELP_URL;
       const missing = this.missingSelection();
       const recovery =
         missing && accounts.some((card) => card.id === missing.provider) ? missing : null;

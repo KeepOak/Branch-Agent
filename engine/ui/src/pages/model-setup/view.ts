@@ -9,6 +9,7 @@ import { renderSettingsWorkspace } from "../../components/settings-workspace.ts"
 import { t } from "../../i18n/index.ts";
 import { registerModelSetupEnglish } from "../../i18n/locales/en-model-setup.ts";
 import "../../styles/model-setup.css";
+import { BRANCH_HELP_URL } from "../../lib/help-links.ts";
 import type { ModelProviderLoginController } from "../model-providers/login-controller.ts";
 import {
   renderMutationMessage,
@@ -36,7 +37,7 @@ import { renderModelSetupWizard } from "./wizard-view.ts";
 
 registerModelSetupEnglish();
 
-const MODEL_SETUP_DOCS_URL = "https://docs.openclaw.ai/concepts/model-providers";
+const MODEL_SETUP_DOCS_URL = BRANCH_HELP_URL;
 
 type Candidate = SystemAgentSetupDetectResult["candidates"][number];
 type AuthOption = NonNullable<SystemAgentSetupDetectResult["authOptions"]>[number];

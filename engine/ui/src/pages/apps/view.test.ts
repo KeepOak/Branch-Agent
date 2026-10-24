@@ -22,7 +22,7 @@ const EXPECTED_EXTERNAL_HREFS = [
   "https://docs.openclaw.ai/platforms/linux",
   "https://clawhub.ai",
   "https://discord.gg/clawd",
-  "https://docs.openclaw.ai",
+  "https://keepoak.com/help",
 ];
 const NOT_OUT_YET = "Not out yet. Use the Android, Mac, Windows or Linux app for now.";
 
