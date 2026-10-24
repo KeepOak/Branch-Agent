@@ -1,0 +1,27 @@
+{
+  "name": "@branch/bitwarden",
+  "version": "2026.9.8",
+  "private": true,
+  "description": "Bitwarden SecretRef resolver and saved sign-in fill list for Branch Agent",
+  "type": "module",
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "build": {
+      "staticAssets": [
+        {
+          "source": "./bitwarden-secret-ref-resolver.js",
+          "output": "bitwarden-secret-ref-resolver.js"
+        },
+        {
+          "source": "./bitwarden-secret-id.js",
+          "output": "bitwarden-secret-id.js"
+        }
+      ]
+    }
+  }
+}
