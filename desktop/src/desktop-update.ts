@@ -220,6 +220,51 @@ async function discardStagedUpdate(cfg: DesktopConfig, journal: Pick<DesktopJour
   return false;
 }
 
+/** A release version's numbers ("0.4.5", "v0.4.5") and whatever follows them ("-build-abc", "-rc.1"). */
+function releaseVersionParts(version: string): { numbers: number[]; suffix: string } | undefined {
+  const match = /^v?(\d+(?:\.\d+)*)(.*)$/.exec(version.trim());
+  return match ? { numbers: match[1]!.split(".").map(Number), suffix: match[2]! } : undefined;
+}
+
+/** Below zero, zero or above zero when a is older than, the same as or newer than b; undefined when they have no order. */
+function compareReleaseVersions(a: string, b: string): number | undefined {
+  const left = releaseVersionParts(a), right = releaseVersionParts(b);
+  if (!left || !right) return undefined;
+  for (let i = 0; i < Math.max(left.numbers.length, right.numbers.length); i++) {
+    const difference = (left.numbers[i] ?? 0) - (right.numbers[i] ?? 0);
+    if (difference) return difference;
+  }
+  // The same numbers with different suffixes (a -build-<commit> release beside its plain one) have no order.
+  return left.suffix === right.suffix ? 0 : undefined;
+}
+
+/**
+ * The version of the build this process runs: the package.json inside its app.asar, which app.getVersion() reads.
+ * For an AppImage that file lives in the running AppImage's own mount, so it names the build actually running.
+ * A -build-<commit> release keeps only the base version there; when desktop-update-version.txt names a build of that
+ * same base, that exact build is used instead. Undefined when the running version cannot be read.
+ */
+async function runningDesktopVersion(cfg: DesktopConfig, install: DesktopInstall): Promise<string | undefined> {
+  let packaged: unknown;
+  try { packaged = (JSON.parse(await readFile(join(install.resourcesDir, "app.asar", "package.json"), "utf8")) as { version?: unknown }).version; } catch { return undefined; }
+  if (typeof packaged !== "string" || !packaged.trim()) return undefined;
+  const base = packaged.trim();
+  const recorded = await readOrEmpty(versionFile(cfg)).catch(() => "");
+  return recorded.startsWith(base + "-") || recorded.startsWith(base + "+") ? recorded : base;
+}
+
+/**
+ * Why a staged AppImage update would roll the app back: its version is older than or the same as the running build.
+ * Undefined for other kinds, or when either version cannot be read or ordered; those are handed off as before.
+ */
+async function stagedAppImageNotNewer(cfg: DesktopConfig, journal: DesktopJournal, install: DesktopInstall): Promise<string | undefined> {
+  if (journal.kind !== "appimage" || typeof journal.version !== "string") return undefined;
+  const running = await runningDesktopVersion(cfg, install);
+  if (!running) return undefined;
+  const order = compareReleaseVersions(journal.version, running);
+  return order !== undefined && order <= 0 ? "it is not newer than the running build " + running : undefined;
+}
+
 async function assertFile(file: string): Promise<void> {
   if (!(await stat(file)).isFile()) throw new Error(`Incomplete desktop component: ${basename(file)}`);
 }
@@ -496,6 +541,13 @@ async function handOffJournal(cfg: DesktopConfig, install: DesktopInstall, helpe
   if (defect) {
     if (journal.kind === "appimage") await rm(journal.staged, { force: true });
     return discardStagedUpdate(cfg, journal, defect);
+  }
+  // A leftover AppImage update that is not newer than the running build would swap the app back to an older one.
+  const notNewer = await stagedAppImageNotNewer(cfg, journal, install);
+  if (notNewer) {
+    // Only the staged copy goes; never the file this copy runs from, nor the AppImage the record would replace.
+    if (journal.staged !== install.appImage && journal.staged !== journal.target) await rm(journal.staged, { force: true });
+    return discardStagedUpdate(cfg, journal, notNewer);
   }
   if (await stagedMatchesInstalled(journal, install)) {
     // Nothing would change: no swap, no restart; the installed copy already is this release's desktop.
