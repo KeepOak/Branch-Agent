@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
-import { AddAccountDialog } from "./add-account";
+import { accountArticle, AddAccountDialog } from "./add-account";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -85,12 +85,19 @@ function namesIn(shown: ReturnType<typeof catalogue>, section: string) {
 
 describe("Add an account catalogue", () => {
   it.each([
+    ["MCP", "an"],
+    ["GPU", "a"],
+  ])("uses the first letter's sound for %s: %s", (name, article) => {
+    expect(accountArticle(name)).toBe(article);
+  });
+
+  it.each([
     ["ollama", "Ollama", "Add an Ollama account"],
     ["openai", "ChatGPT", "Add a ChatGPT account"],
     ["openrouter", "OpenRouter", "Add an OpenRouter account"],
     ["opencode-go", "OpenCode Go", "Add an OpenCode Go account"],
     ["xai", "xAI", "Add an xAI account"],
-    ["lmstudio", "LM Studio", "Add a LM Studio account"],
+    ["lmstudio", "LM Studio", "Add an LM Studio account"],
     ["anthropic", "Claude", "Add a Claude account"],
   ])("shows the step-2 title %s: %s as %s", async (provider, name, title) => {
     const request = vi.fn(async (_method: string) => ({}));
