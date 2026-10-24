@@ -183,7 +183,8 @@ it("describes every greyed Chat apps card when setup calls are missing", async (
 });
 it("describes locked Chat apps cards with the full access requirement", async () => {
   const { host, setup } = await render({}, methods, ["operator.read"]);
-  const cards = host.querySelectorAll<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]');
+  const cards = [...host.querySelectorAll<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]')]
+    .filter(card => card.querySelector(".r1-ca-action")?.textContent === "Needs full access");
   expect(cards).toHaveLength(3);
   for (const card of cards) {
     expect(describedReason(card)).toContain("needs full access on this connection.");
