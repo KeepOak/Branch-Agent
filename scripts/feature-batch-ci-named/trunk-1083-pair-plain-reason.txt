@@ -1,0 +1,2 @@
+window:src/places/customize/pairing.test.tsx
+window:src/stage/AddComputer.test.tsx

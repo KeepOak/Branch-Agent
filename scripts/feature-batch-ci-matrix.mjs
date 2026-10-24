@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Builds the feature-batch job matrix from the shard planner, so shard counts follow the test weights.
 // Usage: node <default-branch>/scripts/feature-batch-ci-matrix.mjs <event-name> [--named-dir <pr>/scripts/feature-batch-ci-named]
-// Prints one line: matrix={"include":[...]}. The planner always comes from the script's own tree (the default
+// Prints two lines: matrix={"include":[...]} and max_parallel=<n>. The planner always comes from the script's own tree (the default
 // branch in CI). The PR's named lists are read as data only. An empty or under-floor matrix is an error.
 import { fileURLToPath } from 'node:url';
 import {
@@ -41,6 +41,15 @@ export function validateFeatureBatchMatrix(matrix, event) {
   return matrix;
 }
 
+// Main and nightly keep 6 at once: extra jobs there add setup cost and queue time, not PR wait.
+export const mainPushMaxParallel = 6;
+
+// The workflow's max-parallel comes from here, so it cannot drift below the planned PR matrix again.
+// Pull requests start every planned job in one wave; main and nightly stay at mainPushMaxParallel.
+export function featureBatchMaxParallel(matrix, event) {
+  return event === 'pull_request' ? matrix.include.length : mainPushMaxParallel;
+}
+
 function argValue(name, argv) {
   const i = argv.indexOf(name);
   return i === -1 ? null : argv[i + 1];
@@ -51,5 +60,5 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const namedDir = argValue('--named-dir', process.argv);
   if (namedDir) setNamedListDir(namedDir);
   const matrix = validateFeatureBatchMatrix(featureBatchMatrix({ event }), event);
-  process.stdout.write(`matrix=${JSON.stringify(matrix)}\n`);
+  process.stdout.write(`matrix=${JSON.stringify(matrix)}\nmax_parallel=${featureBatchMaxParallel(matrix, event)}\n`);
 }
