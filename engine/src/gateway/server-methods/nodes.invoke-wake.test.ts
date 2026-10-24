@@ -245,7 +245,7 @@ const DIRECT_APNS_AUTH = {
   value: {
     teamId: "TEAM123",
     keyId: "KEY123",
-    privateKey: ["-----BEGIN ", "PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----"].join(""), // pragma: allowlist secret
+    privateKey: "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----", // pragma: allowlist secret
   },
 } as const;
 const DIRECT_APNS_RESULT = {

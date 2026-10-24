@@ -247,7 +247,7 @@ AwEB/zAKBggqhkjOPQQDAgNJADBGAiEAphAGvWPFTevL7rEy7dBjoTVAk/oT93Mm
 qvz6jsUI73ACIQDLLDdqa0x1RevRJ98Y1vQad1mNK9Yk4Oh6k2HkafQ9tg==
 -----END CERTIFICATE-----`;
 const RELAY_TEST_TLS_KEY = [
-  ["-----BEGIN ", "PRIVATE KEY-----"].join(""), // pragma: allowlist secret
+  "-----BEGIN PRIVATE KEY-----", // pragma: allowlist secret
   "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgnzhEeRMhzEsaGPOM",
   "xvBVdxlMJ7ANKKYd4P6pIl1KgpWhRANCAASmAvzCvqURJAhoPophOCRgC5RbtmlU",
   "D+1yTQpHs7PiXsFfzgMQeEc11XIEoBij+lEkGgwZ6AQRMvt+EB9s17Sd",
@@ -375,7 +375,7 @@ KRex7/5RE+NU0dPOL/O8CRHwb+E3wxgCIFDhc4Vg3fcHr5ikIEP/MoPmW3bzY6Zr
 JsM7IY73LbvH
 -----END CERTIFICATE-----`;
 const PROXY_TEST_TLS_KEY = [
-  ["-----BEGIN ", "PRIVATE KEY-----"].join(""), // pragma: allowlist secret
+  "-----BEGIN PRIVATE KEY-----", // pragma: allowlist secret
   "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgfNkHctgW5/YMXhIV",
   "IsfB7B4SdGLfJ29gyMPdKS42FsyhRANCAAQyrWZQxelGyxTiGOm8XZq4vN8pQyCk",
   "ugO4ZHeJfq7oPG+IFjzMoUqdQhVz9YYwTxrS1e9vcfgWc/FI2t4SrvEP",
