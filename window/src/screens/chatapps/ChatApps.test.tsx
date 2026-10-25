@@ -212,6 +212,22 @@ it("describes disabled Open and Manage without enabling either action", async ()
   expect(describedReason(open)).toBe("Managing Telegram is unavailable in this view.");
   const card = host.querySelector<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]')!;
   expect(describedReason(card)).toBe("Managing Telegram is unavailable in this view.");
+  expect(card.querySelector(".r1-ca-action")?.textContent).toBe("Connected");
+  expect(card.querySelector(".r1-ca-action")?.textContent).not.toBe("Coming");
   await act(async () => { open.click(); card.click(); });
+  expect(manage).not.toHaveBeenCalled();
+});
+it("labels a connected card that isn't running with its state word, never Coming, when Manage is unavailable", async () => {
+  const { host, manage } = await render({ channelAccounts: { telegram: [{ accountId: "default", configured: true, running: false }] } }, methods, ["operator.admin"], undefined, false);
+  // The connected list's pill and the card's action share appOf's word: not running reads Offline.
+  expect(host.querySelector(".r1-ca-connected [role=listitem]")!.textContent).toContain("Offline");
+  const card = host.querySelector<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]')!;
+  expect(card.querySelector("b")?.textContent).toBe("Telegram");
+  const label = card.querySelector(".r1-ca-action")?.textContent;
+  expect(label).toBe("Offline");
+  expect(label).not.toBe("Coming");
+  expect(label).not.toBe("Connected");
+  expect(describedReason(card)).toBe("Managing Telegram is unavailable in this view.");
+  await act(async () => card.click());
   expect(manage).not.toHaveBeenCalled();
 });
