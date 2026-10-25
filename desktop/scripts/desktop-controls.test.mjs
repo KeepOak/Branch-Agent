@@ -527,8 +527,9 @@ for (const kind of process.platform === "win32" ? ["cmd", "sh"] : ["sh"]) {
   }));
 
   if (kind === "sh") {
-    // Git Bash MSYS ps has no -o args=; the shim then space-joins /proc cmdline
-    // (same bytes macOS ps would print) and walks a spaced node path.
+    // macOS: real ps -o args=. Linux: a ps without -o args= (as Git Bash), so the shim space-joins
+    // /proc cmdline and walks a spaced node path. Windows: gateway.pid is a native pid that MSYS ps
+    // and /proc never list, so Git Bash reaches it through the PowerShell lookup.
     test("sh branch command finds a live gateway via ps when the node path contains spaces", async () => cliFixture(async f => {
       const named = await f.engine("pointer engine");
       const live = await f.engine("live engine");
@@ -540,7 +541,14 @@ for (const kind of process.platform === "win32" ? ["cmd", "sh"] : ["sh"]) {
       try {
         assert.ok(Number.isInteger(child.pid) && child.pid > 0);
         await writeFile(join(f.dataDir, "gateway.pid"), String(child.pid) + "\r\n");
-        const result = await f.execute("sh", { BRANCH_SHIM_FORCE_PS: "1" });
+        let env = { BRANCH_SHIM_FORCE_PS: "1" };
+        if (process.platform === "win32") env = undefined;
+        else if (process.platform === "linux") {
+          const bin = join(f.root, "no-ps-args"); await mkdir(bin);
+          await writeFile(join(bin, "ps"), "#!/bin/sh\nexit 1\n"); await chmod(join(bin, "ps"), 0o755);
+          env.PATH = `${bin}:${process.env.PATH}`;
+        }
+        const result = await f.execute("sh", env);
         assert.equal(result.status, 0, result.stderr);
         assert.equal(JSON.parse(result.stdout).engine, "live engine");
       } finally {
