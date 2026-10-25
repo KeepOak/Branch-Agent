@@ -12,10 +12,14 @@ export async function fileDigest(file) {
   return { sha256: hash.digest("hex"), bytes: (await stat(file)).size };
 }
 
+/** Native desktop targets every release must publish. Sorted as verifyReleaseDirectory reports them. */
+export const NATIVE_RELEASE_TARGETS = Object.freeze(["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64"]);
+
 /** The versioned installer install.sh and the in-app updater fetch. Linux's is the AppImage. */
 export function installerAssetName(version, target) {
   if (target === "win32-x64") return `Branch-Agent-Setup-${version}-win32-x64.exe`;
   if (target === "darwin-arm64") return `Branch-Agent-${version}-darwin-arm64.dmg`;
+  if (target === "darwin-x64") return `Branch-Agent-${version}-darwin-x64.dmg`;
   if (target === "linux-x64") return `Branch-Agent-${version}-linux-x64.AppImage`;
   return null;
 }
@@ -23,11 +27,13 @@ export function installerAssetName(version, target) {
 /**
  * Stable download names for the README and the release notes. Same bytes as the versioned Windows and macOS
  * installers. On Linux this is the .deb, not a copy of the AppImage. The versioned names stay so updater feeds
- * and the one-line installers keep matching a single SHA256SUMS entry.
+ * and the one-line installers keep matching a single SHA256SUMS entry. darwin-x64 is Branch-macOS-Intel.dmg so it
+ * sits next to Branch-macOS.dmg (arm64).
  */
 export const PUBLIC_DOWNLOAD_NAMES = Object.freeze({
   "win32-x64": "Branch-Setup-Windows.exe",
   "darwin-arm64": "Branch-macOS.dmg",
+  "darwin-x64": "Branch-macOS-Intel.dmg",
   "linux-x64": "Branch-Linux.deb",
 });
 
@@ -193,8 +199,11 @@ async function verifyInstallers(directory, proof, inventory) {
 
 /** macOS proofs say how the app is signed (mac-release-signing.mjs); other targets carry no signing field. */
 function verifySigning(proof) {
-  if (proof.platform === "darwin") assert(MAC_SIGNING_KINDS.includes(proof.signing), "macOS release proof must declare signing: identity or adhoc");
-  else assert.equal(proof.signing, undefined, "Only macOS release proofs declare signing");
+  if (proof.platform === "darwin" && proof.arch === "x64") {
+    assert.equal(proof.signing, "adhoc", "darwin-x64 release proof must declare signing: adhoc");
+  } else if (proof.platform === "darwin") {
+    assert(MAC_SIGNING_KINDS.includes(proof.signing), "macOS release proof must declare signing: identity or adhoc");
+  } else assert.equal(proof.signing, undefined, "Only macOS release proofs declare signing");
 }
 
 function verifyRuntime(proof) {
