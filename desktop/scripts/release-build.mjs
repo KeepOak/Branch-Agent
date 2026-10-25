@@ -164,7 +164,7 @@ export async function buildRelease(mode, output, windowDirectory) {
   assert(["window", "components"].includes(mode), "Usage: release-build.mjs window|components output [built-window]");
   const identity = await releaseIdentity();
   // Read before the long build: a partial signing identity fails here, naming what is missing.
-  const macSigning = mode === "components" && identity.platform === "darwin" ? macSigningPlan() : undefined;
+  const macSigning = mode === "components" && identity.platform === "darwin" ? macSigningPlan(process.env, identity) : undefined;
   if (macSigning?.signing === "adhoc") console.log(MAC_ADHOC_NOTICE);
   const scratch = await scratchRoot();
   const pnpm = await preparePnpm(scratch);

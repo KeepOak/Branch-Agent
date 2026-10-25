@@ -204,3 +204,13 @@ describe("window maps main's unchanged engine GatewayLockError", () => {
     }
   });
 });
+
+describe("A sign-in failure at Regular (Private #1089, R1 Coding apps)", () => {
+  it("reads token expired (401) as one plain sentence without the code or the word token", () => {
+    const shown = plainError("token expired (401)");
+    expect(shown).toBe("Branch isn’t signed in for that. Sign in again, then try again.");
+    expect(shown).not.toMatch(/401|token/i);
+    localStorage.setItem("branch.level", "technical");
+    expect(plainError("token expired (401)")).toBe("token expired (401)");
+  });
+});

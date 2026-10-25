@@ -187,12 +187,24 @@ function identityKey(run, workflow) {
   return JSON.stringify([run.app.id, workflow.path, workflow.event, run.name]);
 }
 
+// A run whose PR list is empty (GitHub often drops it after a rerun or a merge) is bound only when it ran on this
+// repo (not a fork) and on this PR's head branch; the same head SHA and identity key are still required. With no
+// repo or head branch to compare, this never binds (fail closed). A run with a PR list keeps the PR/base rule.
+function boundWithoutPrList(workflow, { repo, headBranch }) {
+  return Boolean(repo) && Boolean(headBranch)
+    && (workflow?.pullRequests ?? []).length === 0
+    && workflow?.headRepo != null && workflow.headRepo === repo
+    && workflow?.headBranch != null && workflow.headBranch === headBranch;
+}
+
 // supersedeStale is the trusted gate's opt-in: an older suite of the same app, workflow path, event and job
 // on the same head SHA that is not bound to this PR and base (for example a run from before the PR was
 // retargeted to main, or whose PR list the API no longer reports) is superseded by a newer bound suite that
-// fully succeeded. Such a stale run can never supersede anything itself.
+// fully succeeded. Such a stale run can never supersede anything itself. A run with an empty PR list counts
+// as bound only through boundWithoutPrList (same repo, same head branch).
 export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, {
   sha, prNumber, baseRef, supersedeStale = false,
+  headBranch = process.env.HEAD_BRANCH, repo = process.env.REPO,
 } = {}) {
   const drop = new Set();
   const groups = new Map();
@@ -207,8 +219,9 @@ export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, {
     if (!sameHead) continue;
     // Same app, workflow path, event, and job can supersede older suites only.
     const prs = workflow?.pullRequests ?? [];
-    const bound = prNumber && prs.some((pr) => Number(pr.number) === Number(prNumber))
-      && baseRef && prs.every((pr) => pr.base === baseRef);
+    const bound = (prNumber && prs.some((pr) => Number(pr.number) === Number(prNumber))
+      && baseRef && prs.every((pr) => pr.base === baseRef))
+      || boundWithoutPrList(workflow, { repo, headBranch });
     if (!bound) {
       if (supersedeStale) stale.push([run, identityKey(run, workflow)]);
       continue;
@@ -1448,6 +1461,8 @@ export function workflowFromActionsRun(run) {
     checkSuiteId: run.check_suite_id ?? null,
     headSha: run.head_sha ?? null,
     pullRequests: (run.pull_requests ?? []).map((pr) => ({ number: pr.number, base: pr.base?.ref })),
+    ...(run.head_branch != null && { headBranch: run.head_branch }),
+    ...(run.head_repository?.full_name != null && { headRepo: run.head_repository.full_name }),
   };
 }
 
