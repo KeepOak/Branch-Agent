@@ -69,6 +69,9 @@ jobs:
       - name: Test the trusted merge-gate helper
         if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/merge-gate-trusted.test.mjs
+      - name: Test the trusted merge-gate bound-run rule
+        if: steps.debounce.outputs.skip != 'true'
+        run: node --test scripts/merge-gate-trusted.bound-runs.test.mjs
       - name: Test the event-driven gate recheck planner
         if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/merge-gate-recheck.test.mjs
