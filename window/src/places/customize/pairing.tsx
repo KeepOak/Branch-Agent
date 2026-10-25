@@ -6,6 +6,7 @@ import { pairingConfirmCode } from "../../shared/pairing-confirm-code";
 import { CopyToken } from "../../shell/CopyToken";
 import { Dialog } from "../../shell/Dialog";
 import { errorText } from "../library/data";
+import { PAIRING_UNREACHABLE, plainError } from "../../shell/plain-error";
 import { rec, str } from "./common";
 
 type Access = "full" | "limited" | "node";
@@ -16,12 +17,10 @@ const ACCESS: { id: Access; name: string; line: string }[] = [
 ];
 type Code = { setupId: string; setupCode: string; confirmCode: string; qr: string; joinUrl: string; expiresAtMs: number | null; downgraded: boolean };
 
+/** At Regular, Pair a phone keeps the phone sentence; shared plainError stays device-neutral for Add Computer. */
 function pairError(value: unknown): string {
-  const text = errorText(value);
-  if (/Gateway is only bound to loopback|PAIRING_GATEWAY_LOOPBACK|restart the Gateway/i.test(text)) {
-    return "Couldn’t make a pairing link. Try again.";
-  }
-  return text;
+  const plain = plainError(value);
+  return plain === PAIRING_UNREACHABLE ? "Your phone can't reach this computer yet." : plain;
 }
 
 // TODO(engine-lane): before the code, the artifact asks "Let your phone reach Branch?" when the Gateway only listens on
@@ -48,7 +47,7 @@ export function PairDialog({ engine, close }: { engine: WindowEngine; close: () 
   usePairStatus(engine, code?.setupId ?? "", paired === null, setPaired);
   return <Dialog title="Pair a phone" onClose={close} testid="pair"
     footer={code ? <><button type="button" className="btn ghost" disabled={busy} onClick={() => void make()}>Make a new code</button><button type="button" className="btn pri" onClick={close}>Done</button></>
-      : <><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn pri" disabled={busy} onClick={() => void make()}>Make the code</button></>}>
+      : <><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn pri" disabled={busy} onClick={() => void make()}>{error ? "Try again" : "Make the code"}</button></>}>
     {!code ? <div className="cz-radios" role="radiogroup" aria-label="What it may do"><b>What it may do</b>{ACCESS.map(a => <label key={a.id} className="cz-radio"><input type="radio" name="pair-access" checked={access === a.id} onChange={() => setAccess(a.id)} /><span><b>{a.name}</b><small>{a.line}</small></span></label>)}</div>
       : <div className="cz-pair">
         {code.qr && <img src={code.qr} alt="Pairing code" width={180} height={180} />}
@@ -58,7 +57,7 @@ export function PairDialog({ engine, close }: { engine: WindowEngine; close: () 
         {code.downgraded && <p className="cz-hint">Limited for safety: this address isn't private, so the code gives chat and approvals only.</p>}
         {paired && <p role="status" className="cz-ok">Paired with {paired}.</p>}
       </div>}
-    {error && <p role="alert" className="cz-error">{error}</p>}
+    {error && <p role="alert" className="cz-error">{plainError(error)}</p>}
   </Dialog>;
 }
 

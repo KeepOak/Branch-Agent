@@ -59,7 +59,7 @@
           if (typeof m !== "string") m = "";
           var legacy = LEGACY[t];
           var theme = THEMES[t] ? t : legacy ? legacy.split(":")[0] : "grove";
-          var mode = MODES[m] ? m : legacy ? legacy.split(":")[1] : "system";
+          var mode = MODES[m] ? m : legacy ? legacy.split(":")[1] : "light";
           if (mode === "system") {
             mode = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
           }

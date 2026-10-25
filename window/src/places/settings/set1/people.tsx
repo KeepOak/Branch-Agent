@@ -30,6 +30,7 @@ const HELP = "Everyone who uses Branch: on this computer, on their own devices, 
  *  the top of Who uses Branch (R1 pages/who.ts). */
 export function PeopleBlock(props: SettingsPageProps) {
   const ctx = usePeople(props);
+  const lv = useLevel();
   const [selId, setSel] = useState<string | null>(null);
   const [invite, setInvite] = useState(false);
   const sel = ctx.people.find((p) => p.id === selId) ?? ctx.self ?? ctx.people[0] ?? null;
@@ -45,7 +46,7 @@ export function PeopleBlock(props: SettingsPageProps) {
         {sel ? <PersonCard key={sel.id} ctx={ctx} p={sel} /> : null}
       </div>
       <Hint>Separation on one computer, not separate accounts. Each person’s conversations and memory are their own.</Hint>
-      {invite ? <InviteDialog engine={props.engine} onClose={() => { setInvite(false); void ctx.reload(); }} /> : null}
+      {invite ? <InviteDialog engine={props.engine} technical={lv >= 2} onClose={() => { setInvite(false); void ctx.reload(); }} /> : null}
     </>
   );
 }
@@ -71,7 +72,7 @@ export function PeoplePage(props: SettingsPageProps) {
       <VisitorAccess engine={props.engine} admin={ctx.admin} />
       <EachPerson roles={ctx.roles} />
       {lv >= 1 ? <Records engine={props.engine} trunks={ctx.trunks} /> : null}
-      {invite ? <InviteDialog engine={props.engine} onClose={() => { setInvite(false); void ctx.reload(); }} /> : null}
+      {invite ? <InviteDialog engine={props.engine} technical={lv >= 2} onClose={() => { setInvite(false); void ctx.reload(); }} /> : null}
     </Page>
   );
 }

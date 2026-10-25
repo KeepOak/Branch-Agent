@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
-import { fileOf, rec, useResource } from "./data";
+import { fileOf, plainFailure, rec, useResource } from "./data";
 
 /** A document's name as people read it: "Untitled document", not "Untitled document.md". When another file beside it
  * would read the same ("plan.md" and "plan.txt"), both keep their extension; Advanced always shows it. */
@@ -88,13 +88,13 @@ export function DocumentEditor({ engine, agentId, path, level, onClose, onSaved,
   return <Dialog title={documentTitle(name, level)} wide onClose={close} testid="document-editor" footer={footer}>
     {shows(level, "advanced") && <p className="lib-hint">{path}</p>}
     {file.loading && text === null && <p className="lib-hint" role="status">Loading…</p>}
-    {file.error && <p className="lib-bad" role="alert">{file.error}</p>}
+    {file.error && <p className="lib-bad" role="alert">{plainFailure(file.error)}</p>}
     {loaded?.encoding === "base64" && <p className="lib-hint">This file isn’t text, so it can’t be shown here.</p>}
     {readOnly && <p className="lib-hint">{documentTitle(name, level)} · read only</p>}
     {text !== null && <textarea className="inp lib-editor" aria-label={documentTitle(name, level)} autoFocus rows={16} value={text} readOnly={readOnly}
       onChange={event => { typed.current = true; setText(event.target.value); setState(s => (s.busy ? s : { busy: false })); }}
       onKeyDown={event => { if (!readOnly && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void save(); } }} />}
     {state.note && <p className="lib-hint" role="status">{state.note}</p>}
-    {state.error && <p className="lib-bad" role="alert">{state.error}</p>}
+    {state.error && <p className="lib-bad" role="alert">{plainFailure(state.error)}</p>}
   </Dialog>;
 }

@@ -18,6 +18,8 @@ import { useRead } from "./accounts-live";
 import { Failed, Needs, useFailure } from "./appearance-live";
 import { copyAndSay } from "../../../shell/clipboard";
 import { CODE, FACTS } from "./learning";
+import { useLevel } from "../SettingsFrame";
+import { COMING_FROM } from "../rows";
 
 const RINGS = "plugins.entries.memory-core.config.rings";
 const Line = ({ children, bad }: { children: ReactNode; bad?: boolean }) => <small className={"r1s-msg g-label" + (bad ? " r1s-bad" : "")} role={bad ? "status" : undefined} data-lines>{children}</small>;
@@ -125,11 +127,12 @@ export function ProcessNames({ engine }: SlotControlProps) {
 /** Connected now: windows, terminals, phones and chat apps on this engine (system-presence), with See them. */
 export function ConnectedNow({ engine, row }: SlotControlProps) {
   const presence = useLive<unknown>(engine, "system-presence", {}, ["presence"]);
+  const [level] = useLevel(engine);
   const [open, setOpen] = useState(false);
   const clients = list(presence.data);
   const names = [...new Set(clients.map(clientName))];
   return <>
-    <Needs engine={engine} need={["system-presence"]} where={row.label ?? ""}><Btn disabled={!presence.data} onClick={() => setOpen(true)}>See them</Btn></Needs>
+    <Needs engine={engine} need={["system-presence"]} where={row.label ?? ""} hidden={level < COMING_FROM}><Btn disabled={!presence.data} onClick={() => setOpen(true)}>See them</Btn></Needs>
     {clients.length ? <Line>{`${clients.length} on one engine: ${names.join(", ")}.`}</Line> : null}
     {open ? (
       <Dialog title="Connected now" onClose={() => setOpen(false)}>

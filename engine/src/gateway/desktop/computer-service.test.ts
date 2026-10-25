@@ -7,7 +7,12 @@ import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { startComputerHostProcess, type ComputerHostProcess } from "./computer-process.js";
 import { ComputerHostFinalizationError } from "./computer-protocol.js";
-import { createGatewayComputerService, type GatewayComputerService } from "./computer-service.js";
+import {
+  COMPUTER_MANAGED_DISCOVERY_LINGER_MS,
+  COMPUTER_NATIVE_DISCOVERY_LINGER_MS,
+  createGatewayComputerService,
+  type GatewayComputerService,
+} from "./computer-service.js";
 import type { HostDesktopService } from "./host-source.js";
 import type { DesktopComputerLease } from "./managed-linux.js";
 
@@ -177,6 +182,39 @@ function createFixture(env?: NodeJS.ProcessEnv) {
 }
 
 describe("Gateway computer service", () => {
+  it("keeps a discovery-only native host warm across turn gaps so each turn does not restart it", async () => {
+    vi.useFakeTimers();
+    try {
+      const f = createFixture();
+      f.config.desktop!.host!.enabled = false;
+      expect(await f.service.status()).toMatchObject({ available: true });
+      await vi.advanceTimersByTimeAsync(COMPUTER_MANAGED_DISCOVERY_LINGER_MS + 1_000);
+      expect(f.children[0]!.close).not.toHaveBeenCalled();
+      expect(await f.service.status()).toMatchObject({ available: true });
+      expect(startComputerHostProcess).toHaveBeenCalledOnce();
+
+      await vi.advanceTimersByTimeAsync(COMPUTER_NATIVE_DISCOVERY_LINGER_MS + 1_000);
+      expect(f.children[0]!.close).toHaveBeenCalledOnce();
+      expect(await f.service.status()).toMatchObject({ available: true });
+      expect(startComputerHostProcess).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still retires a discovery-only managed desktop after the observer linger", async () => {
+    vi.useFakeTimers();
+    try {
+      const f = createFixture();
+      expect(await f.service.status()).toMatchObject({ available: true });
+      await vi.advanceTimersByTimeAsync(COMPUTER_MANAGED_DISCOVERY_LINGER_MS + 1_000);
+      expect(f.children[0]!.close).toHaveBeenCalledOnce();
+      expect(f.leases[0]!.release).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("passes the desktop's driver address to the computer host even though the Gateway's environment lacks it", async () => {
     const lease = JSON.stringify({ v: 2, port: 1, secret: "a".repeat(64) });
     const key = Symbol.for("branch.macComputerEndpoint");

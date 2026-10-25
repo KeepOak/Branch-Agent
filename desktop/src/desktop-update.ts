@@ -20,6 +20,9 @@ import {
   windowsInstallRoot, windowsVersionFolderName,
 } from "./desktop-update-helper";
 import { assertNoMacSigningDowngrade, chooseStagedMacBundle, ensureMacApplicationsInstall, readMacSignature } from "./mac-applications";
+import { resolveLinuxDebUpdateInstall } from "./linux-deb-install";
+import { assertUpdateSignature, MISSING_UPDATE_SIGNATURE, requiresUpdateSignature } from "./update-signature";
+import { UPDATER_PUBKEY } from "./updater-pubkey";
 import {
   WINDOWS_APP_USER_MODEL_ID, WINDOWS_LAUNCHER, WINDOWS_LAUNCHER_EXE, WINDOWS_LAUNCHER_RESOURCE, WINDOWS_LAUNCHER_REVISION,
   WINDOWS_LAUNCHER_REVISION_FILE, windowsLauncherScript, windowsShortcutNeedsLauncher,
@@ -29,6 +32,11 @@ export {
   WINDOWS_POINTER, WINDOWS_PREVIOUS, isWindowsVersionFolder, pruneWindowsVersionFolders,
   usesWindowsVersionedLayout, windowsInstallRoot, windowsVersionFolderName,
 } from "./desktop-update-helper";
+export {
+  LINUX_DEB_SYSTEM_ROOT, LINUX_DEB_USER_APP_SEGMENTS, canWriteDirectory, ensureLinuxDebUserInstall,
+  isLinuxDebSystemInstall, linuxDebSystemHandoff, linuxDebUserAppDir, linuxDebUserDataHome,
+  linuxDebUserDesktopInstall, resolveLinuxDebUpdateInstall,
+} from "./linux-deb-install";
 export {
   WINDOWS_LAUNCHER, WINDOWS_LAUNCHER_EXE, WINDOWS_LAUNCHER_RESOURCE, WINDOWS_LAUNCHER_REVISION, windowsLaunchTarget,
   windowsLauncherScript, windowsShortcutNeedsLauncher,
@@ -50,6 +58,11 @@ export interface DesktopInstall {
   platform?: NodeJS.Platform;
   /** An app's code signature report (macOS); defaults to codesign. */
   readSignature?: (app: string) => Promise<string | undefined>;
+  /**
+   * Updater minisign public key. Omit to use the embedded UPDATER_PUBKEY. An empty string is a build
+   * that shipped before the key: the first signed update is accepted without a .sig.
+   */
+  updaterPubkey?: string;
 }
 export interface DesktopJournal {
   version: string;
@@ -189,6 +202,28 @@ async function stagedDefect(journal: DesktopJournal, install: DesktopInstall): P
   return undefined;
 }
 
+/**
+ * Why a staged update was made for another kind of install than the one running now, or undefined when it fits.
+ * An AppImage update replaces one AppImage file; app.asar and whole-app updates replace an unpacked install. A
+ * record left by one kind (say the one-line installer's AppImage) must never be applied by the other (the .deb).
+ */
+function installKindMismatch(journal: DesktopJournal, install: DesktopInstall): string | undefined {
+  if (journal.kind === "appimage") {
+    if (!install.appImage) {
+      const running = (install.platform ?? process.platform) === "linux" ? "the .deb" : "not an AppImage";
+      return "it was staged for a different install (AppImage), this copy is " + running;
+    }
+    if (journal.target !== install.appImage) {
+      return "it was staged for a different install (AppImage " + String(journal.target) + "), this copy runs from " + install.appImage;
+    }
+    return undefined;
+  }
+  if (install.appImage) {
+    return "it was staged for a different install (" + (journal.kind === "asar" ? "app.asar" : "the whole app") + "), this copy is an AppImage";
+  }
+  return undefined;
+}
+
 /** The helper ships inside app.asar; without it the swap cannot run. Other read errors still surface. */
 async function helperMissing(helperSource: string): Promise<boolean> {
   try { await readFile(helperSource); return false; } catch (error) {
@@ -219,6 +254,37 @@ function releaseBase(release: ComponentRelease): string {
 
 /** The Linux AppImage a release publishes (release-installers.mjs names it). */
 export const appImageAssetName = (version: string): string => `Branch-Agent-${version}-linux-x64.AppImage`;
+
+/** Empty when this install shipped before the key; those builds still accept the first signed update. */
+export function updateTrustRoot(install?: DesktopInstall): string {
+  if (install && Object.hasOwn(install, "updaterPubkey")) return (install.updaterPubkey ?? "").trim();
+  return UPDATER_PUBKEY.trim();
+}
+
+async function readPublishedSignature(release: ComponentRelease, assetName: string, request: typeof fetch): Promise<string | undefined> {
+  const base = releaseBase(release);
+  const sigResponse = await request(`${base}/${assetName}.sig`, { signal: AbortSignal.timeout(60_000) });
+  if (sigResponse.ok) return (await sigResponse.text()).trim();
+  if (sigResponse.status !== 404) trustedDownloadResponse(sigResponse);
+  const latestResponse = await request(`${base}/latest.json`, { signal: AbortSignal.timeout(60_000) });
+  if (latestResponse.status === 404) return undefined;
+  trustedDownloadResponse(latestResponse);
+  const latest = JSON.parse(await latestResponse.text()) as { platforms?: Record<string, { url?: string; signature?: string }> };
+  for (const entry of Object.values(latest.platforms ?? {})) {
+    if (typeof entry?.url !== "string" || typeof entry.signature !== "string") continue;
+    if (basename(new URL(entry.url).pathname) === assetName) return entry.signature.trim();
+  }
+  return undefined;
+}
+
+/** Builds that embed a pubkey require a valid .sig before staging; keyless installs skip this check. */
+export async function assertStagedUpdateSignature(release: ComponentRelease, assetName: string, file: string, request: typeof fetch, install?: DesktopInstall): Promise<void> {
+  const pubkey = updateTrustRoot(install);
+  if (!requiresUpdateSignature(pubkey)) return;
+  const signature = await readPublishedSignature(release, assetName, request);
+  if (!signature) throw new Error(`${assetName} ${MISSING_UPDATE_SIGNATURE}`);
+  assertUpdateSignature(await readFile(file), signature, pubkey);
+}
 
 /**
  * The release's SHA256SUMS as name to digest. `required` refuses a release without one; otherwise a release
@@ -265,7 +331,7 @@ async function downloadVerified(url: string, sha256: string, file: string, reque
  * The AppImage update: the release's AppImage, checked against its SHA256SUMS entry, staged executable beside
  * the running file so the helper's rename over it is atomic (same folder, same filesystem).
  */
-async function stageAppImageUpdate(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, appImage: string): Promise<boolean> {
+async function stageAppImageUpdate(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, appImage: string, install?: DesktopInstall): Promise<boolean> {
   const name = appImageAssetName(release.version);
   const sha256 = (await releaseSha256Sums(release, request, true))!.get(name);
   if (!sha256) throw new Error(`Release ${release.version} lists no ${name} in SHA256SUMS`);
@@ -281,6 +347,7 @@ async function stageAppImageUpdate(cfg: DesktopConfig, release: ComponentRelease
   try {
     await writeFile(join(work, ".update-staging"), "");
     await downloadVerified(`${releaseBase(release)}/${name}`, sha256, staged, request);
+    await assertStagedUpdateSignature(release, name, staged, request, install);
     await chmod(staged, 0o755);
     const journal: DesktopJournal = { version: release.version, sha256, kind: "appimage", staged, target: appImage, phase: "staged", stagedSha256: sha256, work };
     await replaceFile(journalFile(cfg), JSON.stringify(journal));
@@ -297,6 +364,7 @@ async function stageAppImageUpdate(cfg: DesktopConfig, release: ComponentRelease
 /** Downloads, verifies and extracts the release's desktop component; nothing in the running app changes. */
 export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, install?: DesktopInstall): Promise<boolean> {
   if (!install) return false;
+  install = resolveLinuxDebUpdateInstall(install);
   const held = await readDesktopJournal(cfg);
   // A staged app that was never applied is replaced by a newer release. Left alone, it would be applied after the newer
   // engine and window, and roll the app back to an older build.
@@ -306,7 +374,7 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
   }
   if (install.appImage) {
     if (await readOrEmpty(versionFile(cfg)) === release.version) return false;
-    return stageAppImageUpdate(cfg, release, request, install.appImage);
+    return stageAppImageUpdate(cfg, release, request, install.appImage, install);
   }
   if (process.platform === "win32" && await readOrEmpty(packagedIconFile(install)) === ICON_REVISION
     && await readOrEmpty(iconFile(cfg)) !== ICON_REVISION) {
@@ -334,6 +402,7 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
     const archive = join(directory, "desktop.tar.gz");
     const payload = join(directory, "payload");
     await downloadComponent(choice.asset, archive, request);
+    await assertStagedUpdateSignature(release, assetName, archive, request, install);
     await mkdir(payload);
     await extractComponentArchive(archive, payload, choice.asset.expandedBytes, stagedName);
     await rm(archive);
@@ -391,6 +460,18 @@ export async function stagedDesktopVersion(cfg: DesktopConfig): Promise<string |
 }
 
 /**
+ * Why a staged desktop update is not handed off now, or undefined when startup may apply it before loading.
+ * A hold after a swap that found the app in use only covers the helper's immediate relaunch; the next launch applies.
+ */
+export function desktopUpdateHandOffBlock(journal: DesktopJournal | undefined, explicit: boolean, now = Date.now()): string | undefined {
+  if (journal?.phase !== "staged") return undefined;
+  if (!explicit && (journal.heldUntil ?? 0) > now) {
+    return `desktop update ${journal.version} deferred: the last swap found the app still in use; retrying at the next launch after ${new Date(journal.heldUntil!).toISOString()}`;
+  }
+  return undefined;
+}
+
+/**
  * Starts the helper detached. Resolves to undefined once it runs, or to the failure text when it cannot start. The
  * error listener is required: an unhandled 'error' event would stop the app before startup continues.
  */
@@ -408,6 +489,7 @@ function startHelper(node: string, args: string[], env: NodeJS.ProcessEnv): Prom
  * Restart) ignores the wait after a swap that found the app still in use.
  */
 export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopInstall, helperSource: string, args: string[] = [], explicit = false): Promise<boolean> {
+  install = resolveLinuxDebUpdateInstall(install);
   let journal: DesktopJournal | undefined;
   try { journal = await readDesktopJournal(cfg); } catch (error) {
     return discardStagedUpdate(cfg, undefined, `the record is unreadable (${error instanceof Error ? error.message : String(error)})`);
@@ -424,10 +506,21 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
 async function handOffJournal(cfg: DesktopConfig, install: DesktopInstall, helperSource: string, args: string[], explicit: boolean,
   journal: DesktopJournal | undefined): Promise<boolean> {
   const updateWaiting = journal?.phase === "staged";
-  if (!updateWaiting || !explicit && (journal?.heldUntil ?? 0) > Date.now()) {
-    if (!updateWaiting) await ensureMacApplicationsInstall(install.appDir, join(cfg.dataDir, "desktop.log"));
+  if (!updateWaiting) await ensureMacApplicationsInstall(install.appDir, join(cfg.dataDir, "desktop.log"));
+  // A record staged for another kind of install is dropped before anything else; the next check stages the right one.
+  const mismatch = updateWaiting ? installKindMismatch(journal, install) : undefined;
+  if (updateWaiting && mismatch) {
+    // Only the staged copy goes; never the file this copy runs from, nor the AppImage the record would replace.
+    if (journal.kind === "appimage" && typeof journal.staged === "string" && journal.staged !== install.appImage
+      && journal.staged !== journal.target) await rm(journal.staged, { force: true });
+    return discardStagedUpdate(cfg, journal, mismatch);
+  }
+  const blocked = desktopUpdateHandOffBlock(journal, explicit);
+  if (blocked) {
+    try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} ${blocked}\n`, BRANCH_LOG_LIMITS); } catch { /* ignore */ }
     return false;
   }
+  if (!updateWaiting) return false;
   const work = journal.work ?? dirname(journal.kind === "asar" ? dirname(journal.staged) : journal.staged);
   const defect = await stagedDefect(journal, install) ?? (await helperMissing(helperSource) ? "the update helper is missing" : undefined);
   if (defect) {
@@ -448,6 +541,10 @@ async function handOffJournal(cfg: DesktopConfig, install: DesktopInstall, helpe
   const helper = join(work, "desktop-update-helper.js");
   // Read, not copied: the source sits inside app.asar, which only Electron's own fs can read.
   await writeFile(helper, await readFile(helperSource));
+  // The helper asks leftover processes in the install folder to leave before an in-place rename.
+  await readFile(join(dirname(helperSource), "install-folder-holders.js")).then(bytes => writeFile(join(work, "install-folder-holders.js"), bytes)).catch((error: unknown) => {
+    try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} desktop update ${journal.version}: install-folder holders not copied (${String(error)})\n`, BRANCH_LOG_LIMITS); } catch { /* ignore */ }
+  });
   // The Windows layout's helper writes the cmd stub and points shortcuts at the launcher from the one shared module.
   // Without it the helper still swaps, so a failed copy only logs.
   if (journal.installRoot) {
@@ -522,10 +619,14 @@ export interface WindowsShortcut { path: string; target: string }
 export interface WindowsShortcuts {
   list(): Promise<WindowsShortcut[]>;
   retarget(paths: string[], launcher: string): Promise<void>;
+  /** Points Start in at the user folder without changing the target. */
+  repairWorkingDirectory?(paths: string[]): Promise<void>;
 }
-/** The Start menu, the desktop and the taskbar pins: where a Branch Agent.lnk can live. */
-const SHORTCUT_FOLDERS = "@([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'),"
+/** The Start menu, the desktop, Startup and the taskbar pins: where a Branch Agent.lnk can live. */
+const SHORTCUT_FOLDERS = "@([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'),[Environment]::GetFolderPath('Startup'),"
   + "(Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'Microsoft\\Internet Explorer\\Quick Launch\\User Pinned\\TaskBar'))";
+const SHORTCUT_WORKING_DIR_MARK = "working-dir=userprofile";
+const shortcutMarkerValue = (launcher: string): string => `${launcher}\n${SHORTCUT_WORKING_DIR_MARK}`;
 const psQuote = (value: string): string => `'${value.replaceAll("'", "''")}'`;
 function powershell(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -545,8 +646,12 @@ export const powershellShortcuts: WindowsShortcuts = {
   },
   retarget: async (paths, launcher) => {
     await powershell(`$shell=New-Object -ComObject WScript.Shell; $exe=${psQuote(launcher)}; foreach($path in @(${paths.map(psQuote).join(",")})) { `
-      + "$link=$shell.CreateShortcut($path); $link.TargetPath=$exe; $link.WorkingDirectory=[IO.Path]::GetDirectoryName($exe); "
+      + "$link=$shell.CreateShortcut($path); $link.TargetPath=$exe; $link.WorkingDirectory=$env:USERPROFILE; "
       + "$link.IconLocation=\"$exe,0\"; $link.Save() }");
+  },
+  repairWorkingDirectory: async (paths) => {
+    await powershell(`$shell=New-Object -ComObject WScript.Shell; foreach($path in @(${paths.map(psQuote).join(",")})) { `
+      + "$link=$shell.CreateShortcut($path); $link.WorkingDirectory=$env:USERPROFILE; $link.Save() }");
   },
 };
 const shortcutMarker = (cfg: DesktopConfig): string => join(cfg.dataDir, "desktop-shortcut-launcher.txt");
@@ -556,6 +661,22 @@ export function windowsStableLauncher(install: DesktopInstall): string | undefin
   if (!usesWindowsVersionedLayout(install.platform, install.appImage)) return undefined;
   const launcher = join(windowsInstallRoot(install.appDir), WINDOWS_LAUNCHER_EXE);
   return rawFs.existsSync(launcher) ? launcher : undefined;
+}
+
+/**
+ * The installed copy's launcher, when this process is an old dev copy under <dataDir>\dist (the old package.ps1
+ * default) and the setup .exe has installed Branch under %LOCALAPPDATA%\Programs\Branch Agent. Two copies must never
+ * share one data folder, so the dev copy hands off to the installed one and exits. Windows only.
+ */
+export function windowsInstalledHandoff(install: DesktopInstall, dataDir: string, env: NodeJS.ProcessEnv = process.env,
+  exists: (file: string) => boolean = rawFs.existsSync): string | undefined {
+  if ((install.platform ?? process.platform) !== "win32" || !env.LOCALAPPDATA) return undefined;
+  const inside = relative(join(dataDir, "dist"), install.appDir);
+  if (inside.startsWith("..") || isAbsolute(inside)) return undefined;
+  const root = join(env.LOCALAPPDATA, "Programs", "Branch Agent");
+  if (!exists(join(root, WINDOWS_POINTER))) return undefined;
+  const launcher = join(root, WINDOWS_LAUNCHER_EXE);
+  return exists(launcher) ? launcher : undefined;
 }
 
 /** What a pin of a running window should start: the launcher, so the pin never names a version folder. */
@@ -592,10 +713,15 @@ export async function ensureWindowsLauncher(cfg: DesktopConfig, install: Desktop
   // A package without the launcher (a development build) leaves the shortcuts as they are.
   if (!rawFs.existsSync(launcher)) return [];
   if (!rawFs.existsSync(join(root, WINDOWS_LAUNCHER))) await writeFile(join(root, WINDOWS_LAUNCHER), windowsLauncherScript()).catch(() => undefined);
-  if (await readOrEmpty(shortcutMarker(cfg)) === launcher) return [];
-  const stale = (await shortcuts.list()).filter(link => windowsShortcutNeedsLauncher(link.target, root)).map(link => link.path);
+  if (await readOrEmpty(shortcutMarker(cfg)) === shortcutMarkerValue(launcher)) return [];
+  const listed = await shortcuts.list();
+  const stale = listed.filter(link => windowsShortcutNeedsLauncher(link.target, root)).map(link => link.path);
   if (stale.length) await shortcuts.retarget(stale, launcher);
-  await replaceFile(shortcutMarker(cfg), `${launcher}\n`);
+  if (shortcuts.repairWorkingDirectory) {
+    const repair = listed.filter(link => stale.includes(link.path) || link.target === launcher).map(link => link.path);
+    if (repair.length) await shortcuts.repairWorkingDirectory(repair);
+  }
+  await replaceFile(shortcutMarker(cfg), `${shortcutMarkerValue(launcher)}\n`);
   if (stale.length) log(`windows launcher: pointed ${stale.length} shortcut(s) at ${WINDOWS_LAUNCHER_EXE}`);
   return stale;
 }

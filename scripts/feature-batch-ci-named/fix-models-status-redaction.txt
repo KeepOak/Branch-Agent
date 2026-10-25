@@ -1,0 +1,6 @@
+engine:src/security/secret-mask.test.ts
+engine:src/commands/models/status-redaction.test.ts
+engine:src/agents/model-catalog-auth-labels.test.ts
+engine:src/commands/models/list.status.test.ts
+engine:src/commands/models/list.auth-overview.test.ts
+engine:src/commands/models/list.auth-overview.secret-ref.test.ts

@@ -46,17 +46,17 @@ describe('theme tokens', () => {
 });
 
 describe('app shell', () => {
-  it.each(schemes)('draws the welcome screen from the %s tokens', async scheme => {
+  it.each(schemes)('draws the pairing screen from the %s tokens', async scheme => {
     await render(<App scheme={scheme} session={createFakeSession().session} />);
-    const theme = themeFor(scheme);
-    expect(await screen.findByRole('header')).toHaveTextContent('Branch');
-    expect(StyleSheet.flatten(screen.getByTestId('welcome-screen').props.style).backgroundColor).toBe(
+    const theme = pairingTheme(themeFor(scheme));
+    expect(await screen.findByRole('header')).toHaveTextContent('Connect to your Branch');
+    expect(StyleSheet.flatten(screen.getByTestId('camera-permission').props.style).backgroundColor).toBe(
       theme.color.grouped,
     );
-    expect(StyleSheet.flatten(screen.getByTestId('pairing-steps').props.style).backgroundColor).toBe(
+    expect(StyleSheet.flatten(screen.getByTestId('pairing-nearby').props.style).backgroundColor).toBe(
       theme.color.raise,
     );
-    expect(screen.getByRole('button', { name: 'Pair with your computer' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeOnTheScreen();
   });
 });
 

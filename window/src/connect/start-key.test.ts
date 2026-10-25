@@ -21,4 +21,13 @@ describe("startKey", () => {
     expect(startKey("ws://elsewhere:1", null, bridge)).toBeNull();
     expect(startKey(URL_, "typed", bridge)).toBe("typed");
   });
+
+  it("uses the desktop preload token when Get started passes an empty key", () => {
+    expect(startKey(URL_, "", bridge)).toBe("desktop-key");
+  });
+
+  it("asks for a key on this computer when nothing can fill an empty Get started", () => {
+    expect(startKey(URL_, "", undefined)).toBeNull();
+    expect(startKey(URL_, null, undefined)).toBeNull();
+  });
 });

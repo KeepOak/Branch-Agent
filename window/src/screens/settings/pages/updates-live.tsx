@@ -9,6 +9,8 @@ import { FIND_ANYTHING_EVENT } from "../../find/find-event";
 import { Coming } from "../../../glass/coming";
 import type { SlotControlProps } from "../slots";
 import { ClassicBlock } from "./spec-rows";
+import { useLevel } from "../SettingsFrame";
+import { COMING_FROM } from "../rows";
 
 type Part = Parameters<typeof UpdatesBlock>[0]["part"];
 const part = (p: Part) => (props: SlotControlProps) => <ClassicBlock {...props} draw={(c) => <UpdatesBlock {...c.props} part={p} />} />;
@@ -28,13 +30,14 @@ export const TOUR_EVENT = "branch:welcome-tour";
 /** Keyboard shortcuts, Guide, Show the welcome tour, Get the apps, Find anything, Collapse the list to faces, Quick ask. */
 export function ShortcutButtons({ engine }: SlotControlProps) {
   const [keys, setKeys] = useState(false);
+  const [level] = useLevel(engine);
   // A jump button scrolls its section into view; the marker tells the crawl that the scroll is the result.
   const btn = (label: string, run: () => void, kbd?: string, jump = false) => (
     <button type="button" className="r1s-btn" onClick={run} data-jump-to={jump ? "" : undefined}>{label}{kbd ? <kbd className="g-label"> {kbd}</kbd> : null}</button>
   );
   return <span className="r1s-own-ctl r1s-acts" data-local="">
     {btn("Keyboard shortcuts", () => setKeys(true), "?")}
-    <Coming engine={engine} need="window: the guide to why each thing is here" unwired reason="Guide: why each thing is here comes in a later update." where="Guide: why each thing is here">
+    <Coming engine={engine} need="window: the guide to why each thing is here" unwired reason="Guide: why each thing is here comes in a later update." where="Guide: why each thing is here" hidden={level < COMING_FROM}>
       <button type="button" className="r1s-btn" disabled>Guide: why each thing is here</button>
     </Coming>
     {btn("Show the welcome tour", () => window.dispatchEvent(new CustomEvent(TOUR_EVENT)))}

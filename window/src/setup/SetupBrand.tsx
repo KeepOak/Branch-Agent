@@ -1,4 +1,4 @@
-// Setup is a logo place (DESIGN-SPEC §1.2 rule 3, §4.8.1 rule 3): the rail brand, the Welcome hero and the step poses.
+// Setup is a logo place (DESIGN-SPEC §1.2 rule 3, §4.8.1 rule 3): the rail brand, the Welcome oak mark and the step poses.
 // The poses are stills: Branch faces rest and move only on actions (owner rule), so nothing here loops.
 import mail from "./art/branch-mail.webp";
 import point from "./art/branch-point.webp";
@@ -22,9 +22,10 @@ export function SetupBrand() {
 }
 
 export function WelcomeHero() {
+  // The preview's Welcome tile (.obMarkP37): the KeepOak app icon, a dark-green tile with the cream leaf, in both themes.
   return (
-    <div className="ob-stage11" aria-hidden="true" data-testid="setup-welcome-mark">
-      <KeeperMark size={96} />
+    <div className="ob-hero" aria-hidden="true" data-testid="setup-welcome-mark">
+      <span className="ob-mark" />
     </div>
   );
 }

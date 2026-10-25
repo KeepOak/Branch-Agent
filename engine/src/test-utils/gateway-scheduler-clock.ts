@@ -31,6 +31,15 @@ export function createGatewaySchedulerClock(initialNowMs = 0) {
     delayMs: number;
     cancelled: boolean;
   }> = [];
+  const armWaiters = new Set<{ byMs: number; resolve: () => void }>();
+  const notifyArmWaiters = (atMs: number) => {
+    for (const waiter of armWaiters) {
+      if (atMs <= waiter.byMs) {
+        armWaiters.delete(waiter);
+        waiter.resolve();
+      }
+    }
+  };
   const clock: GatewaySchedulerClock = {
     now: () => nowMs,
     monotonicNow: () => elapsedMs,
@@ -55,6 +64,7 @@ export function createGatewaySchedulerClock(initialNowMs = 0) {
       };
       armed = timer;
       wakes.push(timer);
+      notifyArmWaiters(timer.atMs);
       return () => {
         timer.cancelled = true;
         if (armed === timer) {
@@ -84,6 +94,15 @@ export function createGatewaySchedulerClock(initialNowMs = 0) {
       nowMs = timeMs;
     },
     wake,
+    /** Resolves once a host timer is armed due at or before `timeMs` (event, not polling). */
+    whenArmedBy: (timeMs: number): Promise<void> => {
+      if (armed && armed.atMs <= timeMs) {
+        return Promise.resolve();
+      }
+      return new Promise<void>((resolve) => {
+        armWaiters.add({ byMs: timeMs, resolve });
+      });
+    },
     get armedAtMs() {
       return armed?.atMs ?? null;
     },

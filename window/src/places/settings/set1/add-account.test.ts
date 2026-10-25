@@ -38,11 +38,12 @@ describe("servicesOf", () => {
     );
     const names = out.map((s) => s.name);
     expect(out.filter((s) => s.name === "Google Gemini" && s.kind === "plan")).toHaveLength(1);
-    expect(out.filter((s) => s.name === "Google Gemini" && s.kind === "key")).toHaveLength(1);
+    expect(out.filter((s) => s.name === "Google Gemini" && s.kind === "key")).toHaveLength(0);
+    expect(out.find((s) => s.name === "Google Gemini" && s.kind === "plan")?.keySupported).toBe(true);
     expect(out.filter((s) => s.name === "OpenRouter" && s.kind === "plan")).toHaveLength(1);
     expect(out.filter((s) => s.name === "xAI" && s.kind === "plan")).toHaveLength(1);
     expect(out.filter((s) => s.name === "MiniMax" && s.kind === "plan")).toHaveLength(1);
-    expect(out.filter((s) => s.name === "MiniMax" && s.kind === "key")).toHaveLength(1);
+    expect(out.filter((s) => s.name === "MiniMax" && s.kind === "key")).toHaveLength(0);
     expect(names).toContain("LiteLLM");
     expect(names).toContain("Hugging Face");
     expect(names[0]).toBe("Ollama");
@@ -102,8 +103,12 @@ describe("servicesOf", () => {
       expect(list.filter((s) => s.kind === "plan").map((s) => s.name)).not.toEqual(expect.arrayContaining(["Ollama", "LM Studio", "OpenCode"]));
       expect(list.filter((s) => s.kind === "local").map((s) => s.name).sort()).toEqual(["LM Studio", "Ollama", "OpenCode"]);
       expect(list.filter((s) => s.name === "MiniMax" && s.kind === "plan")).toHaveLength(1);
-      expect(list.filter((s) => s.name === "Google Gemini" && s.kind === "key")).toHaveLength(1);
+      expect(list.filter((s) => s.name === "Google Gemini" && s.kind === "key")).toHaveLength(0);
       expect(list.filter((s) => s.name === "Google Gemini" && s.kind === "plan")).toHaveLength(1);
+      expect(list.find((s) => s.name === "Google Gemini" && s.kind === "plan")?.keySupported).toBe(true);
+      const planNames = list.filter((s) => s.kind === "plan").map((s) => s.name);
+      const keyNames = list.filter((s) => s.kind === "key").map((s) => s.name);
+      for (const name of planNames) expect(keyNames, `${name} must not also appear under A key`).not.toContain(name);
       expect(list.map((s) => s.name)).toEqual(expect.arrayContaining(["Microsoft Foundry", "OpenCode Go", "Ollama Cloud", "Hugging Face", "LiteLLM"]));
       expect(list.map((s) => s.name).join("\n")).not.toMatch(/Microsoft-foundry|Opencode-go|Ollama-cloud|Huggingface|Litellm/);
       for (const kind of ["plan", "key", "local", "custom"] as const) {
