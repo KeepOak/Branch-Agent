@@ -38,6 +38,29 @@ const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement
 const click = async (el: HTMLElement | undefined) => { if (!el) throw new Error("no such button"); await act(async () => el.click()); await flush(); };
 
 describe("Check what works (B-029)", () => {
+  it.each(["regular", "advanced", "technical"] as const)("keeps raw computer status rows Technical-only at %s", async (level) => {
+    const { engine } = engineWith({
+      "config.get": { hash: "h", valid: true, config: {} },
+      "computer.status": { available: true, computerUse: { contractVersion: 2, ready: true, provider: { label: "Screen driver" } } },
+    });
+    await act(async () => root.render(<SettingsPage page="computer" title="Computer & browser" level={level} engine={engine} />));
+    await flush();
+    const row = document.querySelector<HTMLElement>('[data-row="Check what works"]')!;
+    await click([...row.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Check"));
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("Computer control works through Screen driver.");
+    expect(dialog.textContent).toMatch(/Checked at /);
+    expect([...dialog.querySelectorAll("button")].some((b) => b.textContent === "Check again")).toBe(true);
+    if (level === "technical") {
+      const rows = [...dialog.querySelectorAll("dl > div")].map((r) => [r.querySelector("dt")?.textContent, r.querySelector("dd")?.textContent]);
+      expect(rows).toEqual([["contractVersion", "2"], ["ready", "true"]]);
+    } else {
+      expect(dialog.textContent).not.toContain("contractVersion");
+      expect(dialog.textContent).not.toContain("ready");
+      expect(dialog.querySelector("dl")).toBeNull();
+    }
+  });
+
   it("says in one plain line what the check found, never a blank dialog, and Check again ends with its time", async () => {
     const { engine, request } = engineWith({ "config.get": { hash: "h", valid: true, config: {} }, "computer.status": {} });
     await act(async () => root.render(<SettingsPage page="computer" title="Computer & browser" level="regular" engine={engine} />));
