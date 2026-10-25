@@ -21,7 +21,7 @@ function assetUrl(version, name) {
  * the versioned one.
  */
 export function downloadAssetName(version, target, names) {
-  return [publicDownloadName(target), installerAssetName(version, target)].find((name) => name && names.includes(name)) ?? null;
+  return [publicDownloadName(target), installerAssetName(version, target)].find((name) => name && (names ?? []).includes(name)) ?? null;
 }
 
 /**
