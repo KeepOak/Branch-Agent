@@ -186,6 +186,19 @@ it("describes locked Chat apps cards with the full access requirement", async ()
   const cards = [...host.querySelectorAll<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]')]
     .filter(card => card.querySelector(".r1-ca-action")?.textContent === "Needs full access");
   expect(cards).toHaveLength(3);
+  expect(cards.map(c => c.querySelector("b")?.textContent)).toEqual(["Telegram", "Discord", "Slack"]);
+  for (const card of cards) {
+    expect(describedReason(card)).toContain("needs full access on this connection.");
+    await act(async () => card.click());
+  }
+  expect(setup).not.toHaveBeenCalled();
+});
+it("counts WhatsApp (your number) as needing full access once the engine lists WhatsApp", async () => {
+  const { host, setup } = await render({ channelOrder: ["telegram", "whatsapp"] }, methods, ["operator.read"]);
+  const cards = [...host.querySelectorAll<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]')]
+    .filter(card => card.querySelector(".r1-ca-action")?.textContent === "Needs full access");
+  // Cards render by group: Messaging (Telegram, Discord, WhatsApp (your number)) before Work (Slack).
+  expect(cards.map(c => c.querySelector("b")?.textContent)).toEqual(["Telegram", "Discord", "WhatsApp (your number)", "Slack"]);
   for (const card of cards) {
     expect(describedReason(card)).toContain("needs full access on this connection.");
     await act(async () => card.click());
