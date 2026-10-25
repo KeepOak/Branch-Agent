@@ -21,7 +21,7 @@ import { NO_ROUTE, type OpenTarget } from "./nav";
 import { PhotoDialog, PictureDialog } from "./PhotoDialog";
 import { PlugMenu } from "./PlugMenu";
 import { PlusMenu } from "./PlusMenu";
-import { buildExtras, planSend, sendTooltip, type Reply } from "./sending";
+import { buildExtras, planSend, sendHoldReason, sendTooltip, type Reply } from "./sending";
 import { Drawer } from "./SlashDrawer";
 import { useBackground } from "./useBackground";
 import { CONNECT_MODEL_ANSWERS } from "./connect-model";
@@ -160,6 +160,12 @@ export function Composer(props: Props) {
   const queueMode = str(row.effectiveQueueMode);
   const trunkName = conv.trunk?.name || name;
   const conversationProblem = conv.error ?? (isPreparationPending(conv.modelsError) || conv.modelsError?.includes("is still starting up.") ? conv.modelsError : null);
+  const holdReason = sendHoldReason({
+    offline: Boolean(props.offline),
+    loadingModels: conv.modelsLoading && !conv.models.some((m) => m.available),
+    preparing: isPreparationPending(conversationProblem),
+    noModel,
+  });
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
 
   const levels = current?.levels ?? [];
@@ -232,11 +238,11 @@ export function Composer(props: Props) {
       draft.clear();
       return;
     }
-    if (noModel && plan.kind !== "command") {
-      setProblem(CONNECT_MODEL_ANSWERS);
+    if (holdReason && plan.kind !== "command" && (plan.kind !== "background" || !isPreparationPending(conversationProblem))) {
+      setProblem(holdReason);
+      if (!conv.modelsLoading) void conv.readModelList({ refresh: true });
       return;
     }
-    if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") {
       void runBackground(plan.text);
       return;
@@ -595,7 +601,7 @@ export function Composer(props: Props) {
           type="submit"
           className={stopMode ? "send stop" : ready ? "send ready" : "send"}
           aria-label={stopMode ? "Stop" : "Send"}
-          title={working && hasDraft ? sendTooltip(queueMode) : undefined}
+          title={holdReason ?? (working && hasDraft ? sendTooltip(queueMode) : undefined)}
           disabled={!stopMode && !ready}
         >
           {stopMode ? <StopMark /> : <Icon name="up" stroke={2.2} />}
