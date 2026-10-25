@@ -106,7 +106,7 @@ const HARDLINE_ALLOW = [
   "rm -rf /tmp/*",
   "rm -rf ./build",
   "rm -rf node_modules",
-  "rm -rf /home/user/scratch",
+  "rm -rf /srv/example/scratch",
   "rm -rf ~/Downloads/old",
   "rm -rf $HOME/tmp",
   "rm foo.txt",
@@ -336,7 +336,7 @@ describe("hardline blocklist", () => {
   it("test_root_collapse_pattern_leaves_real_paths_alone", () => {
     for (const command of [
       "rm -rf /tmp",
-      "rm -rf /home/user/x",
+      "rm -rf /srv/example/x",
       "rm -rf /.ssh",
       "rm -rf /.config",
       "rm -rf ./build",
