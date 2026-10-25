@@ -230,7 +230,7 @@ describe("scoped browser viewing", () => {
     expect(container.querySelector<HTMLInputElement>(".br-addr-st")!.value).toContain("private-page");
     await render(owner(vi.fn(async () => ({ running: false })) as any, "agent:ada:two"), []);
     expect(container.querySelector<HTMLInputElement>(".br-addr-st")!.value).toBe("");
-    expect(container.textContent).toMatch(/Scout’s browser|The browser isn’t running/);
+    expect(container.textContent).toContain("The browser isn’t running.");
   });
   it("retires a closing final tab immediately and restores it if closing fails", async () => {
     let reject!: (error: Error) => void;

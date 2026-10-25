@@ -122,7 +122,7 @@ it("lists the engine's computers in the picker, and Add a computer opens the add
   await flush();
   expect(request.mock.calls.map(call => call[0])).toContain("environments.list");
   const pick = host.querySelector<HTMLButtonElement>(".r1-stage .st7-pick");
-  expect(pick?.textContent).toMatch(/This computer \(viewing\)|2 computers/);
+  expect(pick?.textContent).toBe("This computer (viewing)");
   await act(async () => pick!.click());
   await flush();
   const text = document.body.textContent ?? "";
