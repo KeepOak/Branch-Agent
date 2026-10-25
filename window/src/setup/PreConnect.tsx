@@ -27,7 +27,7 @@ function Pairing({ host, address, onRetry }: { host: string; address: string; on
         <b>Allow this window</b>
         <p>This window passed sign-in at {host}, but that computer hasn't seen it before. Allow it once there.</p>
         <ol className="ob-steps">
-          <li>On that computer, open Branch and go to Settings › Computer &amp; browser.</li>
+          <li>On that computer, open Branch and go to Settings › Devices.</li>
           <li>Under Waiting for your yes, choose Allow for this window.</li>
         </ol>
         <p className="hint">Waiting for approval… this connects by itself once approved.</p>

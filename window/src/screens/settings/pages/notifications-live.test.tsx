@@ -35,12 +35,12 @@ const comingLabels = new Set(NOTIFICATIONS_ROWS.filter((r) => r.source.kind === 
 const regularCards = Object.entries(REGULAR).map(([title, rows]) => [title, rows.filter((l) => !comingLabels.has(l))] as const).filter(([, rows]) => rows.length);
 const METHODS = ["config.get", "config.schema", "users.prefs.get", "users.prefs.set", "agents.list", "push.web.test", "push.web.preferences.get", "push.web.preferences.set",
   "push.web.vapidPublicKey", "push.web.subscribe", "push.web.unsubscribe"];
-function engineOf() {
-  let saved: unknown = { categories: { approvalRequested: true, agentQuestion: false }, quietHours: { enabled: true, startMinute: 1320, endMinute: 420, timeZone: "UTC" } };
+function engineOf(first: unknown = { categories: { approvalRequested: true, agentQuestion: false }, quietHours: { enabled: true, startMinute: 1320, endMinute: 420, timeZone: "UTC" } }, prefsStatus = "ok") {
+  let saved: unknown = first;
   const request = vi.fn(async (method: string, params?: unknown) => {
     if (method === "config.get") return { hash: "h1", valid: true, config: {} };
     if (method === "config.schema") return { schema: {}, uiHints: {} };
-    if (method === "users.prefs.get") return { status: "ok", entries: { "notifications.web.v1": saved } };
+    if (method === "users.prefs.get") return prefsStatus === "ok" ? { status: "ok", entries: { "notifications.web.v1": saved } } : { status: prefsStatus };
     if (method === "users.prefs.set") { saved = (params as { entries: Record<string, unknown> }).entries["notifications.web.v1"]; return { status: "ok" }; }
     if (method === "agents.list") return { agents: [{ id: "main", name: "Sapling" }, { id: "scout", name: "Scout" }] };
     if (method === "push.web.test") return { results: [{ ok: true }] };
@@ -126,5 +126,39 @@ describe("R1 Settings › Notifications is a native R1 page with the preview's c
       const why = document.getElementById(send.getAttribute("aria-describedby") ?? "");
       expect(why?.textContent, level).toBe("Sends a real notification from the Branch app on your computer.");
     }
+  });
+});
+
+// Private #1093 point 2: every greyed control on the page says why in one plain line it names with aria-describedby.
+const greyed = (sec: HTMLElement) => [...sec.querySelectorAll<HTMLElement>("input, select, button, [role=switch]")]
+  .filter((el) => (el as HTMLInputElement).disabled || el.getAttribute("aria-disabled") === "true");
+const reasonOf = (el: HTMLElement) => (el.getAttribute("aria-describedby") ?? "").split(" ").map((id) => document.getElementById(id)?.textContent ?? "").join(" ").trim();
+async function mountWith(first?: unknown, prefsStatus?: string) {
+  const env = engineOf(first, prefsStatus);
+  await act(async () => root.render(<SettingsFrame engine={env.engine} page="notifications" pages={R1_PAGES} />));
+  await settle();
+  await setLevel("Advanced");
+}
+
+describe("R1 Settings › Notifications greyed controls say why (Private #1093)", () => {
+  it("This PC greyed controls say why: each names one plain line while this computer has no notifications set up", async () => {
+    await mountWith();
+    const pc = greyed(card("This PC"));
+    expect(pc.length).toBeGreaterThanOrEqual(9);
+    for (const el of pc) expect(reasonOf(el), el.getAttribute("aria-label") ?? "").toBe("This computer can’t show notifications.");
+  });
+
+  it("Quiet hours says why: the hours and time zone name a line while quiet hours are off", async () => {
+    await mountWith({ quietHours: { enabled: false, startMinute: 1320, endMinute: 420, timeZone: "UTC" } });
+    const quiet = greyed(card("Quiet"));
+    expect(quiet.map((el) => el.getAttribute("aria-label"))).toEqual(expect.arrayContaining(["From", "To", "Time zone"]));
+    for (const el of quiet) expect(reasonOf(el), el.getAttribute("aria-label") ?? "").toBe("Turn on quiet hours to pick the hours and time zone.");
+  });
+
+  it("Quiet hours says why when your defaults can't change here: every greyed Quiet control names the reason", async () => {
+    await mountWith(undefined, "no_durable_identity");
+    const quiet = greyed(card("Quiet"));
+    expect(quiet.map((el) => el.getAttribute("aria-label"))).toEqual(expect.arrayContaining(["From", "To", "Quiet hours", "Time zone"]));
+    for (const el of quiet) expect(reasonOf(el), el.getAttribute("aria-label") ?? "").toBe("Saving these needs your Branch profile, and this connection has none.");
   });
 });
