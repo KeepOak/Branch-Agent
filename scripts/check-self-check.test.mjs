@@ -150,6 +150,13 @@ test('a Base line with a sha passes, bare or after a main ref, bulleted or inden
   assert.equal(check('SELF-CHECK\n  * Base: keepoak/main abc1234\nFiles: 1\nTests: x -> 1 passed, 0 failed').ok, true);
 });
 
+test('a Main base line and a lower-case base line are read as the Base line', () => {
+  assert.equal(check('SELF-CHECK\n- Main base: 0123456789abcdef0123456789abcdef01234567\n- Files: 1\n- Tests: x -> 1 passed, 0 failed').ok, true);
+  assert.equal(check('SELF-CHECK\nbase: origin/main abc1234\nFiles: 1\nTests: x -> 1 passed, 0 failed').ok, true);
+  assert.match(problems('SELF-CHECK\nMain base: origin/main <sha it was branched from>\nFiles: 1\nTests: x -> 1 passed, 0 failed'), /Base line still has a template placeholder/);
+  assert.match(problems('SELF-CHECK\nMAIN BASE: main\nFiles: 1\nTests: x -> 1 passed, 0 failed'), /Base line does not give a commit sha/);
+});
+
 test('Base problems come after Files problems and before Tests problems', () => {
   const result = check('SELF-CHECK\nFiles: some\nBase: main\nTests: x -> 0 passed, 0 failed');
   assert.equal(result.problems.length, 3);

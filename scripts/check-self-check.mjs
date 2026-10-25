@@ -45,7 +45,7 @@ function entries(block) {
   let testIndent = null;
   for (const line of block) {
     const file = line.match(/^\s*(?:[-*]\s+)?Files(?:\s*\((\d+)\))?:\s*(.*)$/);
-    const baseLine = line.match(/^\s*(?:[-*]\s+)?Base:\s*(.*)$/);
+    const baseLine = line.match(/^\s*(?:[-*]\s+)?(?:Main\s+)?Base:\s*(.*)$/i);
     const test = line.match(/^\s*(?:[-*]\s+)?Tests[^:]*:\s*(.*)$/);
     if (file) files = { labelCount: file[1], value: file[2] };
     if (baseLine) base = baseLine[1];
