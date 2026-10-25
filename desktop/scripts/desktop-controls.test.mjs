@@ -1,7 +1,7 @@
 // Desktop controls bridge: every OS call is a fake, so nothing on this computer changes.
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { execFileSync, spawnSync } from "node:child_process";
+import { chmod, copyFile, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -284,13 +284,18 @@ test("ring bitmap draws the share left as an arc over a faint track", () => {
 
 test("branch shim reads the published engine and token at run time", () => {
   const shim = branchShim({ dataDir: "C:\\Data", engineDir: "C:\\App\\engine", nodePath: "C:\\App\\node.exe", gatewayPort: 19031 });
-  assert.ok(shim.includes('set /p ENGINE=<"%BRANCH_DATA%\\engine-current.txt"'));
+  assert.ok(shim.includes('call :read_engine "%BRANCH_DATA%\\engine-current.txt"'));
   // The engine that runs, not a staged one still waiting to be applied.
-  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('set /p ENGINE=<"%BRANCH_DATA%\\engine-running.txt"'));
+  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('call :read_engine "%BRANCH_DATA%\\engine-running.txt"'));
   assert.ok(shim.includes('set /p BRANCH_GATEWAY_TOKEN=<"%BRANCH_DATA%\\gateway-token"'));
   // The configured port is the default; the live port an update moved the engine to wins.
   assert.ok(shim.indexOf('set "BRANCH_GATEWAY_PORT=19031"') < shim.indexOf('set /p BRANCH_GATEWAY_PORT=<"%BRANCH_DATA%\\gateway-port"'));
   assert.ok(shim.includes('"C:\\App\\node.exe" "%ENGINE%\\branch.mjs" %*'));
+  assert.ok(shim.includes('"%BRANCH_DATA%\\gateway.pid"'));
+  assert.ok(shim.includes(":read_live_engine"));
+  assert.ok(shim.includes("EXPECTPORT"), "live pid is accepted only on the recorded gateway port");
+  assert.match(shim, /branch\\.mjs[\s\S]*gateway/);
+  assert.ok(shim.includes("^\\d+$"), "PowerShell refuses a non-digit pid or port before the WQL query");
   assert.doesNotMatch(shim, /[0-9a-f]{64}/);
 });
 
@@ -299,16 +304,261 @@ test("Git Bash shim reads the same files, drops CR and passes arguments through"
   assert.ok(shim.startsWith("#!/bin/sh\n"));
   assert.ok(shim.includes("data='C:/Data'\\''s'"));
   assert.ok(shim.includes("tr -d '\\r'"));
-  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('if [ -f "$data/engine-running.txt" ]'));
+  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('read_engine "$data/engine-running.txt"'));
   // An empty read (never expected: the desktop renames the file into place) keeps the configured port.
   assert.ok(shim.includes(`if [ -f "$data/gateway-port" ]; then live=$(head -n 1 "$data/gateway-port" | tr -d '\\r'); if [ -n "$live" ]; then BRANCH_GATEWAY_PORT=$live; fi; fi`));
-  assert.ok(shim.indexOf("BRANCH_GATEWAY_PORT=19031") < shim.indexOf("$data/gateway-port"));
+  assert.ok(shim.indexOf("BRANCH_GATEWAY_PORT=19031") < shim.indexOf("BRANCH_GATEWAY_PORT=$live"));
   // As the cmd shim: a long-running `branch mcp serve` finds the desktop's gateway-port again after an update.
   assert.ok(shim.includes("BRANCH_DATA='C:\\Data'\\''s'"));
   assert.match(shim, /export BRANCH_DATA /);
   assert.ok(shim.includes(`exec 'C:/App/node.exe' "$engine/branch.mjs" "$@"`));
+  assert.ok(shim.includes("$data/gateway.pid"));
+  assert.ok(shim.includes("read_live_engine"));
+  assert.ok(shim.includes('ps -o args= -p "$pid"'), "macOS reads the live command line from ps when /proc is absent");
+  assert.ok(shim.includes('ps -o command= -p "$pid"'), "Linux/Git Bash ps may only expose command=, not args=");
+  assert.ok(shim.includes(`tr '\\0' ' '`), "Git Bash reconstructs a ps-like line from /proc when ps -o is empty");
+  assert.ok(shim.includes(`tr -d '\"'`), "quoted Windows/Git Bash paths must not break the /branch.mjs gateway glob");
+  assert.ok(shim.includes("/branch.mjs gateway"), "live pid must have gateway immediately after branch.mjs");
+  assert.ok(shim.includes("BRANCH_SHIM_FORCE_PS"), "tests can skip /proc and exercise the ps parser");
+  assert.ok(shim.includes("*[!0-9]*"), "pid and port must be digits before they are interpolated");
+  assert.ok(shim.includes('rest=${rest#* }'), "a spaced node path is stripped one word at a time");
+  assert.ok(shim.includes("parse_live_cmdline()"), "macOS /bin/sh (bash 3.2) cannot parse case/;; inside $(...)");
+  assert.match(shim, /--port\\ "\$expect"/, "the port glob quotes expect so a non-digit value cannot widen the match");
+  assert.match(shim, /powershell\.exe[^\n]*-Command '/, "PowerShell is single-quoted so [\\\\/] keeps its backslash");
+  assert.ok(shim.includes("[\\\\/]"), "the PowerShell path class still matches a backslash after sh quoting");
   assert.doesNotMatch(shim, /\r/);
+  const sh = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
+  const syntax = spawnSync(sh, ["-n", "-c", shim], { windowsHide: true, encoding: "utf8" });
+  assert.equal(syntax.status, 0, syntax.stderr);
 });
+
+async function spacedNodeBinary(root) {
+  const dir = join(root, "Branch Agent.app", "Contents", "Resources", "node");
+  await mkdir(dir, { recursive: true });
+  if (process.platform === "win32") {
+    const dest = join(dir, "node.exe");
+    await copyFile(process.execPath, dest);
+    return dest;
+  }
+  const dest = join(dir, "node");
+  await writeFile(dest, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} "$@"\n`);
+  await chmod(dest, 0o755);
+  return dest;
+}
+
+function stopPid(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  try {
+    if (process.platform === "win32") {
+      execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 5_000 });
+    } else {
+      process.kill(pid, "SIGKILL");
+    }
+  } catch { /* already gone */ }
+}
+
+async function waitPidGone(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  const end = Date.now() + 5_000;
+  while (Date.now() < end) {
+    try { process.kill(pid, 0); } catch (error) {
+      if (error.code !== "EPERM") return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+}
+
+/** Windows locks a copied node.exe until that process has fully exited. */
+async function removeTree(dir) {
+  const end = Date.now() + 5_000;
+  for (;;) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (!["EPERM", "EBUSY", "EACCES", "ENOTEMPTY"].includes(error.code) || Date.now() > end) throw error;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  }
+}
+
+async function cliFixture(run) {
+  const root = await mkdtemp(join(tmpdir(), "branch-cli-"));
+  const dataDir = join(root, "data"), engineDir = join(root, "bundled engine");
+  await mkdir(dataDir); await mkdir(engineDir);
+  const engine = async name => {
+    const dir = join(root, name); await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "branch.mjs"), `if (process.argv.includes("--hold") || process.argv[2] === "gateway") setInterval(() => {}, 1000); else console.log(JSON.stringify({engine:${JSON.stringify(name)},args:process.argv.slice(2)}));`);
+    return dir;
+  };
+  await engine("bundled engine");
+  const options = { dataDir, engineDir, nodePath: process.execPath, gatewayPort: 19045 };
+  const execute = async (kind, extraEnv) => {
+    const cmd = kind === "cmd", file = join(root, cmd ? "branch.cmd" : "branch");
+    await writeFile(file, cmd ? branchShim(options) : branchShShim(options));
+    const shell = cmd ? process.env.ComSpec : process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
+    return spawnSync(shell, cmd ? ["/d", "/c", file, "status", "quoted arg"] : [file, "status", "quoted arg"],
+      { windowsHide: true, encoding: "utf8", env: extraEnv ? { ...process.env, ...extraEnv } : undefined });
+  };
+  try { await run({ root, dataDir, engineDir, engine, execute }); } finally { await removeTree(root); }
+}
+
+for (const kind of process.platform === "win32" ? ["cmd", "sh"] : ["sh"]) {
+  test(`${kind} branch command ignores stale running engine and uses valid published engine`, async () => cliFixture(async f => {
+    const current = await f.engine("published engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), current + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), join(f.dataDir, "missing") + "\r\n");
+    const result = await f.execute(kind);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), { engine: "published engine", args: ["status", "quoted arg"] });
+  }));
+
+  test(`${kind} branch command ignores stale and empty pointers and uses bundled engine`, async () => cliFixture(async f => {
+    for (const current of ["", join(f.dataDir, "missing")]) {
+      for (const running of ["", join(f.dataDir, "missing")]) {
+        await writeFile(join(f.dataDir, "engine-current.txt"), current + "\r\n");
+        await writeFile(join(f.dataDir, "engine-running.txt"), running + "\r\n");
+        const result = await f.execute(kind);
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(JSON.parse(result.stdout).engine, "bundled engine");
+      }
+    }
+  }));
+
+  test(`${kind} branch command prefers valid running engine`, async () => cliFixture(async f => {
+    await writeFile(join(f.dataDir, "engine-current.txt"), await f.engine("published engine"));
+    await writeFile(join(f.dataDir, "engine-running.txt"), await f.engine("running engine"));
+    const result = await f.execute(kind);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).engine, "running engine");
+  }));
+
+  test(`${kind} branch command reports missing engines before launching node`, async () => cliFixture(async f => {
+    await rm(join(f.engineDir, "branch.mjs"));
+    const result = await f.execute(kind);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Branch Agent engine is unavailable.*Open Branch Agent/);
+    assert.doesNotMatch(result.stderr, /MODULE_NOT_FOUND/);
+  }));
+
+  test(`${kind} branch command reports unreadable pointer without falling back`, async () => cliFixture(async f => {
+    await mkdir(join(f.dataDir, "engine-running.txt"));
+    const result = await f.execute(kind);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Cannot read Branch Agent engine pointer.*check.*permissions/i);
+    assert.equal(result.stdout, "");
+  }));
+
+  test(`${kind} branch command uses the live engine process when the pointer names a different valid engine`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    const live = await f.engine("live engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "gateway-port"), "19045\r\n");
+    const child = spawn(process.execPath, [join(live, "branch.mjs"), "gateway", "--port", "19045"], { windowsHide: true, stdio: "ignore" });
+    try {
+      assert.ok(Number.isInteger(child.pid) && child.pid > 0);
+      await writeFile(join(f.dataDir, "gateway.pid"), String(child.pid) + "\r\n");
+      const result = await f.execute(kind);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).engine, "live engine");
+    } finally { stopPid(child.pid); }
+  }));
+
+  test(`${kind} branch command keeps the pointer engine when gateway.pid is a non-gateway branch.mjs`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    const other = await f.engine("other engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "gateway-port"), "19045\r\n");
+    const child = spawn(process.execPath, [join(other, "branch.mjs"), "--hold"], { windowsHide: true, stdio: "ignore" });
+    try {
+      assert.ok(Number.isInteger(child.pid) && child.pid > 0);
+      await writeFile(join(f.dataDir, "gateway.pid"), String(child.pid) + "\r\n");
+      const result = await f.execute(kind);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).engine, "pointer engine");
+    } finally { stopPid(child.pid); }
+  }));
+
+  test(`${kind} branch command uses a live gateway whose engine path contains spaces`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    const live = await f.engine("engine dir with spaces");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "gateway-port"), "19045\r\n");
+    const child = spawn(process.execPath, [join(live, "branch.mjs"), "gateway", "--port", "19045"], { windowsHide: true, stdio: "ignore" });
+    try {
+      assert.ok(Number.isInteger(child.pid) && child.pid > 0);
+      await writeFile(join(f.dataDir, "gateway.pid"), String(child.pid) + "\r\n");
+      const result = await f.execute(kind);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).engine, "engine dir with spaces");
+    } finally { stopPid(child.pid); }
+  }));
+
+  test(`${kind} branch command keeps the pointer engine when gateway.pid is dead`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    const live = await f.engine("live engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    const child = spawn(process.execPath, [join(live, "branch.mjs"), "--hold"], { windowsHide: true, stdio: "ignore" });
+    const pid = child.pid;
+    stopPid(pid);
+    const end = Date.now() + 5_000;
+    while (Date.now() < end) {
+      try { process.kill(pid, 0); } catch { break; }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    await writeFile(join(f.dataDir, "gateway.pid"), String(pid) + "\r\n");
+    const result = await f.execute(kind);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).engine, "pointer engine");
+  }));
+
+  test(`${kind} branch command keeps the pointer engine when gateway.pid is not digits`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "gateway.pid"), "not-a-pid\r\n");
+    const result = await f.execute(kind);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).engine, "pointer engine");
+  }));
+
+  if (kind === "sh") {
+    // macOS: real ps -o args=. Linux: a ps without -o args= (as Git Bash), so the shim space-joins
+    // /proc cmdline and walks a spaced node path. Windows: gateway.pid is a native pid that MSYS ps
+    // and /proc never list, so Git Bash reaches it through the PowerShell lookup.
+    test("sh branch command finds a live gateway via ps when the node path contains spaces", async () => cliFixture(async f => {
+      const named = await f.engine("pointer engine");
+      const live = await f.engine("live engine");
+      await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+      await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+      await writeFile(join(f.dataDir, "gateway-port"), "19045\r\n");
+      const nodePath = await spacedNodeBinary(f.root);
+      const child = spawn(nodePath, [join(live, "branch.mjs"), "gateway", "--port", "19045"], { windowsHide: true, stdio: "ignore" });
+      try {
+        assert.ok(Number.isInteger(child.pid) && child.pid > 0);
+        await writeFile(join(f.dataDir, "gateway.pid"), String(child.pid) + "\r\n");
+        let env = { BRANCH_SHIM_FORCE_PS: "1" };
+        if (process.platform === "win32") env = undefined;
+        else if (process.platform === "linux") {
+          const bin = join(f.root, "no-ps-args"); await mkdir(bin);
+          await writeFile(join(bin, "ps"), "#!/bin/sh\nexit 1\n"); await chmod(join(bin, "ps"), 0o755);
+          env.PATH = `${bin}:${process.env.PATH}`;
+        }
+        const result = await f.execute("sh", env);
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(JSON.parse(result.stdout).engine, "live engine");
+      } finally {
+        stopPid(child.pid);
+        await waitPidGone(child.pid);
+      }
+    }));
+  }
+}
+
 /** A packaged install as it ships now: the app code is sealed in app.asar (no Resources/app/dist/cli.js), node sits
  *  beside it, and the engine the app runs is the unpacked copy named in the data folder's engine-*.txt files. */
 async function packagedLayout(root) {
