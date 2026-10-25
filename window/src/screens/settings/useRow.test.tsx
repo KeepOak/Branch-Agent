@@ -93,11 +93,11 @@ describe("useRow on this device and the desktop app", () => {
     await mount(engineOf().engine, { ...startRow, fallback: false });
 
     expect(get).not.toHaveBeenCalled();
-    expect(view).toMatchObject({ state: "ready", value: true });
+    expect(view).toMatchObject({ state: "ready", value: true, lastSeen: true });
 
     await act(async () => { await view.retry(); });
     expect(get).toHaveBeenCalledTimes(1);
-    expect(view).toMatchObject({ state: "ready", value: false });
+    expect(view).toMatchObject({ state: "ready", value: false, lastSeen: false });
     expect(readOwnDesktopState()).toEqual(fresh);
 
     await act(async () => { await view.set(true); });
@@ -114,10 +114,30 @@ describe("useRow on this device and the desktop app", () => {
     await mount(engineOf().engine, startRow);
     expect(get).not.toHaveBeenCalled();
     expect(view.value).toBe(true);
+    expect(view.lastSeen).toBe(true);
     await act(async () => { await view.set(false); });
     expect(get).toHaveBeenCalledTimes(1);
     expect(set).toHaveBeenCalledWith("startWithWindows", false);
     expect(view.value).toBe(false);
+    expect(view.lastSeen).toBe(false);
+  });
+
+  it("marks a stored desktop value as last seen until the first read, and checking while it runs", async () => {
+    writeOwnDesktopState(controls({ startWithWindows: true }));
+    let finish!: () => void;
+    const get = vi.fn(() => new Promise<DesktopControlsState>((done) => { finish = () => done(controls()); }));
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get, set: vi.fn() } };
+    await mount(engineOf().engine, startRow);
+
+    expect(get).not.toHaveBeenCalled();
+    expect(view).toMatchObject({ state: "ready", value: true, lastSeen: true, checking: false });
+
+    let read!: Promise<void>;
+    await act(async () => { read = view.retry(); });
+    expect(view).toMatchObject({ state: "ready", value: true, lastSeen: true, checking: true });
+    await act(async () => { finish(); await read; });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(view).toMatchObject({ state: "ready", value: false, lastSeen: false, checking: false });
   });
 
   it("reads and changes a desktop app switch through the bridge, and follows a change made elsewhere", async () => {

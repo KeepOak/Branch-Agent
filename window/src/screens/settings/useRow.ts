@@ -35,6 +35,8 @@ export type RowView = {
   retry: () => Promise<void>;
   /** A desktop row is reading the app's real state now (it shows "Checking with the app..."). */
   checking?: boolean;
+  /** A desktop row shows Branch's own last stored value, not yet checked with the app (it says "Last seen by Branch"). */
+  lastSeen?: boolean;
 };
 
 export const LOAD_FAILED = "Settings didn’t load. Try again.";
@@ -142,7 +144,8 @@ class PrefStore extends Emitter {
   }
 }
 
-/** fresh: state came from the app in this window (a real get() or a change), not from Branch's own last stored values.
+/** fresh: state came from the app since this window opened (a real get() or a change). Not fresh: Branch's own last
+ *  stored values from its local storage, kept across restarts, so they can be out of date until the app is checked.
  *  checking: a get() is in flight. */
 type DesktopSnap = { state: DesktopControlsState | null; error?: string; fresh?: boolean; checking?: boolean };
 /** Load the desktop snapshot when the person opens or uses a row, not when Starting up first mounts. */
@@ -177,8 +180,9 @@ class DesktopStore extends Emitter {
       this.emit();
     });
     // Do not call bridge.get() on first mount: on macOS that reads other apps' login items (Sequoia App Data).
-    // Show the last values Branch itself stored in this window (its own storage, not another app's data), marked not
-    // fresh so the first use still reads the real state once. With nothing stored the row says it is not checked yet.
+    // Show Branch's own last stored values from its local storage (not another app's data). They are kept across
+    // restarts, so they can be out of date (a login item turned off in System Settings): marked not fresh, the row says
+    // "Last seen by Branch" and the first use still reads the real state once. With nothing stored it says not checked yet.
     if (!this.snap.fresh && !this.snap.checking) this.snap = { state: readOwnDesktopState(), fresh: false };
     this.emit();
   }
@@ -252,8 +256,9 @@ export function useSchemaHints(engine: WindowEngine): { hints: UiHints; schema: 
   return { hints: snap?.hints ?? {}, schema: snap?.schema, error: snap?.error, loading: !snap };
 }
 
-/** checking: a desktop row's first read is running (the row says so instead of "Not checked yet"). */
-type Status = { state: RowState; reason?: string; checking?: boolean };
+/** checking: a desktop row's first read is running (the row says so instead of "Not checked yet").
+ *  lastSeen: a desktop row shows a stored value not yet checked with the app. */
+type Status = { state: RowState; reason?: string; checking?: boolean; lastSeen?: boolean };
 type Source = {
   subscribe: (fn: Listener) => () => void;
   snapshot: () => unknown;
@@ -365,8 +370,14 @@ function sourceOf(engine: WindowEngine, row: Row): Source {
       read: () => store.snap.state?.[src.name],
       // A one-time line the app has for this switch (the engine running inside the app) replaces its help.
       note: () => store.snap.state?.notes?.[src.name],
-      // A failed read says so even over a stored value; a stored value shows (enabled) until the first use reads.
-      status: (): Status => (store.snap.error ? { state: "error", reason: LOAD_FAILED } : isDesktopStateReady(store.snap.state) ? { state: "ready" } : { state: "loading", checking: store.snap.checking === true }),
+      // A failed read says so even over a stored value; a stored value shows (enabled, marked last seen) until the first
+      // use reads.
+      status: (): Status => {
+        const checking = store.snap.checking === true;
+        if (store.snap.error) return { state: "error", reason: LOAD_FAILED };
+        if (!isDesktopStateReady(store.snap.state)) return { state: "loading", checking };
+        return store.snap.fresh ? { state: "ready" } : { state: "ready", checking, lastSeen: true };
+      },
       blocked: () => undefined,
       save: async (value: unknown) => { await store.ensureLoaded(); return store.set(src.name, value === true); },
       retry: async () => { await store.load(); return isDesktopStateReady(store.snap.state) && !store.snap.error; },
@@ -445,7 +456,7 @@ export function useRow(engine: WindowEngine, row: Row): RowView {
   return {
     value, set, retry, state, reason: failed ?? blocked ?? base.reason,
     need: row.source.kind === "coming" ? row.source.need : row.source.kind === "slot" ? row.source.calls.join(" ") : undefined,
-    calls: callsOf(engine, row), checking: base.checking === true,
+    calls: callsOf(engine, row), checking: base.checking === true, lastSeen: base.lastSeen === true,
     label: rowLabel(row, hints), help: source.note?.() ?? rowHelp(row, hints), level: rowLevel(row, hints), restart, sensitive: hint?.sensitive === true,
   };
 }

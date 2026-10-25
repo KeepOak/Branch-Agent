@@ -1,4 +1,5 @@
-// Last desktop-control values Branch itself wrote in this window, after a real get() or a change. Regular Starting
+// Branch's own last desktop-control values, stored in its local storage after a real get() or a change. They are kept
+// across restarts, so they can be out of date until the app is checked (the row says "Last seen by Branch"). Regular Starting
 // up (and a level switch that lands there) must not read Electron's login-item list on first mount. On macOS,
 // getLoginItemSettings walks other apps' login items and Sequoia treats that as "access data from other apps".
 import type { DesktopControlsState } from "../../connect/desktop-controls";
@@ -10,7 +11,8 @@ export function isDesktopStateReady(state: unknown): state is DesktopControlsSta
   return Boolean(state && typeof state === "object" && Object.values(state).some((value) => typeof value === "boolean"));
 }
 
-/** What Branch stored itself; DesktopStore.start shows it (not fresh) so a row is not greyed until first use. */
+/** Branch's own last stored values (kept across restarts, so maybe out of date); DesktopStore.start shows them as not
+ *  fresh, so a row is not greyed until first use and says "Last seen by Branch" until the app is checked. */
 export function readOwnDesktopState(): DesktopControlsState | null {
   try {
     const raw = typeof localStorage === "undefined" ? null : localStorage.getItem(DESKTOP_OWN_STATE_KEY);

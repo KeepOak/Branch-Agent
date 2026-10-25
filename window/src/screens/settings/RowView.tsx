@@ -114,6 +114,8 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
   const tag = TAG[r.level];
   // A desktop row not read yet (Branch never asks the app on mount, #1826) is focusable and named, so focus reads it.
   const unknown = row.source.kind === "desktop" && r.state === "loading";
+  // A desktop row showing Branch's own stored value says so until the app is checked; the value stays usable.
+  const lastSeen = row.source.kind === "desktop" && r.lastSeen === true && (r.state === "ready" || r.state === "saving");
   const labelId = `row-${row.id}-label`;
   const stack = row.control === "segmented" && options.length > 3;
   return (
@@ -138,6 +140,10 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
                 ? <Coming engine={engine} need="users.prefs.get"><button type="button" className="r1s-link" onClick={() => void r.retry()}>Try again</button></Coming>
                 : <button type="button" className="r1s-link" data-local="" onClick={() => void r.retry()}>Try again</button>}</>
               : r.reason}
+          </small>
+        ) : lastSeen ? (
+          <small className="r1s-note g-label" data-lines role="status">
+            {r.checking ? "Checking with the app..." : <>Last seen by Branch · <button type="button" className="r1s-link" data-local="" onClick={() => void r.retry()}>Check with the app</button></>}
           </small>
         ) : r.restart ? <small className="r1s-note g-label">{RESTART_NOTE}</small> : null}
     </div>
