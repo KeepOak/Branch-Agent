@@ -112,18 +112,25 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
     }
   })();
   const tag = TAG[r.level];
+  // A desktop row not read yet (Branch never asks the app on mount, #1826) is focusable and named, so focus reads it.
+  const unknown = row.source.kind === "desktop" && r.state === "loading";
+  const labelId = `row-${row.id}-label`;
   const stack = row.control === "segmented" && options.length > 3;
   return (
     <div id={`row-${row.id}`} className={`r1s-row${stack ? " r1s-stack" : ""}`} data-row={row.id} data-lv={tag} aria-disabled={coming || undefined}
-      tabIndex={row.source.kind === "desktop" && r.state === "loading" ? 0 : undefined}
+      tabIndex={unknown ? 0 : undefined} role={unknown ? "group" : undefined} aria-labelledby={unknown ? labelId : undefined}
       aria-busy={r.state === "saving" || undefined} data-coming={coming ? r.need : undefined} title={coming ? r.reason : undefined}>
-      <b className="g-label" data-lv={tag}>{r.label}</b>
+      <b id={labelId} className="g-label" data-lv={tag}>{r.label}</b>
       {r.help ? <small className="g-label" data-lines>{plainCopy(r.help, chosen)}</small> : null}
       {coming || r.calls.length
         ? <Coming engine={engine} need={r.calls} unwired={coming} reason={coming ? r.reason : undefined} where={r.label}><div className="r1s-ctl">{control}</div></Coming>
         : <div className="r1s-ctl" data-local="">{control}</div>}
       {coming || r.state === "blocked" ? <small className="r1s-note g-label" data-lines>{r.reason}</small>
-        : r.state === "error" && r.reason ? (
+        : unknown ? (
+          <small className="r1s-note g-label" data-lines role="status">
+            {r.checking ? "Checking with the app..." : <>Not checked yet · <button type="button" className="r1s-link" data-local="" onClick={() => void r.retry()}>Check with the app</button></>}
+          </small>
+        ) : r.state === "error" && r.reason ? (
           <small className="r1s-note r1s-bad g-label" data-lines role="status">
             {r.reason === CHANGED_ELSEWHERE ? <>Changed somewhere else · <Coming engine={engine} need="config.get"><button type="button" className="r1s-link" onClick={() => void r.retry()}>Reload</button></Coming></>
               // A config load failure has the page's own Try again; a pref load failure is retried here.

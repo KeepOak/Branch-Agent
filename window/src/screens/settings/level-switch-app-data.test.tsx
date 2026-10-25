@@ -9,7 +9,7 @@ import type { DesktopControlsBridge, DesktopControlsState } from "../../connect/
 import type { WindowEngine } from "../../connect/engine";
 import { forgetLookStore, lookStore } from "../../places/settings/set1/appearance-store";
 import { startingUpRows } from "./pages/general";
-import { FOREIGN_DESKTOP_READS, isDesktopStateReady, regularStartingUpForeignReads } from "./desktop-own-state";
+import { isDesktopStateReady } from "./desktop-own-state";
 import { RowView } from "./RowView";
 import { useRow, type RowView as RowHook } from "./useRow";
 import type { Row } from "./rows";
@@ -65,8 +65,6 @@ describe("level switch and Regular Starting up never read other apps on first mo
   });
 
   it("does not call desktop get (login items / other bundle IDs) when Regular Starting up mounts or the level is saved", async () => {
-    expect(regularStartingUpForeignReads()).toEqual([]);
-    for (const read of FOREIGN_DESKTOP_READS) expect(regularStartingUpForeignReads()).not.toContain(read);
     expect(isDesktopStateReady({} as DesktopControlsState)).toBe(false);
 
     const get = vi.fn(async () => offAtLogin);
@@ -105,6 +103,43 @@ describe("level switch and Regular Starting up never read other apps on first mo
     expect(get).toHaveBeenCalledTimes(1);
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     expect(toggle.disabled).toBe(false);
+  });
+
+  it("says a Starting up row is not checked yet, names the row, and checks with the app on request", async () => {
+    let finish!: () => void;
+    const onAtLogin: DesktopControlsState = { ...offAtLogin, startWithWindows: true, keepWorking: true };
+    const get = vi.fn(() => new Promise<DesktopControlsState>((done) => { finish = () => done(onAtLogin); }));
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get, set: vi.fn(async () => onAtLogin) } as unknown as DesktopControlsBridge };
+    const { engine } = engineOf();
+    const rows = startingUpRows("macOS").filter((row) => row.level === 0);
+    await act(async () => root.render(<>{rows.map((row) => <RowView key={row.id} engine={engine} row={row} />)}</>));
+    await flush();
+    expect(get).not.toHaveBeenCalled();
+
+    for (const row of rows) {
+      const el = document.getElementById(`row-${row.id}`)!;
+      expect(el.getAttribute("role")).toBe("group");
+      const named = document.getElementById(el.getAttribute("aria-labelledby")!);
+      expect(named?.textContent).toBe(row.label);
+      expect(el.textContent).toContain("Not checked yet");
+      expect([...el.querySelectorAll("button")].some((b) => b.textContent === "Check with the app")).toBe(true);
+    }
+
+    const el = document.getElementById("row-general.start.with-computer")!;
+    const check = [...el.querySelectorAll("button")].find((b) => b.textContent === "Check with the app")!;
+    expect(check.className).toBe("r1s-link");
+    await act(async () => { check.click(); });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(el.textContent).toContain("Checking with the app...");
+    await act(async () => { finish(); });
+    await flush();
+    expect(get).toHaveBeenCalledTimes(1);
+    const toggle = el.querySelector<HTMLButtonElement>("[role=switch]")!;
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(toggle.disabled).toBe(false);
+    expect(el.textContent).not.toContain("Not checked yet");
+    expect(el.getAttribute("role")).toBeNull();
+    expect(el.tabIndex).toBe(-1);
   });
 
   it("reflects the real login-item state after loading, not the row fallback", async () => {

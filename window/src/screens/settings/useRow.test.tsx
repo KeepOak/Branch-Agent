@@ -8,7 +8,7 @@ import type { Row } from "./rows";
 import { askBeforeDelete } from "../../shell/ConfirmDelete";
 import { IN_BROWSER, type DesktopControlsBridge, type DesktopControlsState } from "../../connect/desktop-controls";
 import { askBeforeDeleting } from "./pages/general";
-import { DESKTOP_OWN_STATE_KEY, readOwnDesktopState } from "./desktop-own-state";
+import { DESKTOP_OWN_STATE_KEY, readOwnDesktopState, writeOwnDesktopState } from "./desktop-own-state";
 import { CHANGED_ELSEWHERE, INVALID_CONFIG, LOAD_FAILED, NEEDS_ADMIN, NEEDS_APP_UPDATE, NEEDS_WRITE, NO_PERSON, schemaDefault, useRow, type RowView } from "./useRow";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -82,6 +82,42 @@ describe("useRow on this device and the desktop app", () => {
     expect(get).toHaveBeenCalledTimes(1);
     expect(view).toMatchObject({ state: "ready", value: false });
     expect(readOwnDesktopState()).toEqual(controls());
+  });
+
+  it("shows the values Branch stored itself before any read, then the first use reads the real state once", async () => {
+    writeOwnDesktopState(controls({ startWithWindows: true }));
+    const fresh = controls({ startWithWindows: false });
+    const get = vi.fn(async () => fresh);
+    const set = vi.fn(async (name: keyof DesktopControlsState, on: boolean) => ({ ...fresh, [name]: on }));
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get, set } };
+    await mount(engineOf().engine, { ...startRow, fallback: false });
+
+    expect(get).not.toHaveBeenCalled();
+    expect(view).toMatchObject({ state: "ready", value: true });
+
+    await act(async () => { await view.retry(); });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(view).toMatchObject({ state: "ready", value: false });
+    expect(readOwnDesktopState()).toEqual(fresh);
+
+    await act(async () => { await view.set(true); });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith("startWithWindows", true);
+    expect(readOwnDesktopState()).toEqual(controls({ startWithWindows: true }));
+  });
+
+  it("reads the real state once on a first change over a stored value", async () => {
+    writeOwnDesktopState(controls({ startWithWindows: true }));
+    const get = vi.fn(async () => controls());
+    const set = vi.fn(async (name: keyof DesktopControlsState, on: boolean) => controls({ [name]: on }));
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get, set } };
+    await mount(engineOf().engine, startRow);
+    expect(get).not.toHaveBeenCalled();
+    expect(view.value).toBe(true);
+    await act(async () => { await view.set(false); });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith("startWithWindows", false);
+    expect(view.value).toBe(false);
   });
 
   it("reads and changes a desktop app switch through the bridge, and follows a change made elsewhere", async () => {
