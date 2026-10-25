@@ -168,6 +168,28 @@ describe("wide-area DNS-SD zone rendering", () => {
   });
 });
 
+describe("wide-area DNS-SD zone default host label", () => {
+  const REAL_HOST = "real-host-sentinel";
+  const PLACEHOLDER = "Tour Mac";
+  const savedDisplayHostname = process.env.BRANCH_DISPLAY_HOSTNAME;
+
+  afterEach(() => {
+    if (savedDisplayHostname === undefined) {
+      delete process.env.BRANCH_DISPLAY_HOSTNAME;
+    } else {
+      process.env.BRANCH_DISPLAY_HOSTNAME = savedDisplayHostname;
+    }
+  });
+
+  it("labels the zone with the display placeholder, never the real hostname", () => {
+    process.env.BRANCH_DISPLAY_HOSTNAME = PLACEHOLDER;
+    vi.spyOn(os, "hostname").mockReturnValue(REAL_HOST);
+    const text = renderZoneText({ hostLabel: undefined, instanceLabel: undefined, displayName: "" });
+    expectZoneRecords(text, ["tour-mac IN A 100.123.224.76", "tour-mac-gateway._branch-gw._tcp", "displayName=Tour Mac"]);
+    expect(text).not.toContain(REAL_HOST);
+  });
+});
+
 describe("wide-area DNS zone writes", () => {
   it("rejects blank domains", async () => {
     await expect(writeWideAreaGatewayZone(makeZoneOpts({ domain: "   " }))).rejects.toThrow(

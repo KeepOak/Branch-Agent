@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { graftAddressCandidates, graftInviteParams, tailnetIPv4 } from "../cli/graft-cli.js";
+import { graftAddressCandidates, graftInviteParams, graftJoinName, tailnetIPv4 } from "../cli/graft-cli.js";
 import {
   graftBranchIdentity,
   graftTrunkIdentity,
@@ -185,5 +185,46 @@ describe("branch graft join", () => {
       }),
     ).toBe("100.64.0.7");
     expect(tailnetIPv4({ en0: [entry("100.63.0.1")], en1: [entry("100.128.0.1")] })).toBeUndefined();
+  });
+});
+
+describe("graft identity without a computer name", () => {
+  const REAL_HOST = "real-host-sentinel";
+  const PLACEHOLDER = "Tour Mac";
+  const savedDisplayHostname = process.env.BRANCH_DISPLAY_HOSTNAME;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (savedDisplayHostname === undefined) {
+      delete process.env.BRANCH_DISPLAY_HOSTNAME;
+    } else {
+      process.env.BRANCH_DISPLAY_HOSTNAME = savedDisplayHostname;
+    }
+  });
+
+  it("defaults where to the display placeholder, never the real hostname, and keeps the id", () => {
+    process.env.BRANCH_DISPLAY_HOSTNAME = PLACEHOLDER;
+    vi.spyOn(os, "hostname").mockReturnValue(REAL_HOST);
+    const branch = graftBranchIdentity("Studio Laptop");
+    expect(branch.where).toBe(PLACEHOLDER);
+    expect(JSON.stringify(branch)).not.toContain(REAL_HOST);
+    expect(branch.id).toBe(graftBranchIdentity("Studio Laptop", "studio").id);
+    expect(branch.id).toBe("branch-studio-laptop");
+  });
+
+  it("joins under the display placeholder when no name is given, never the real hostname", () => {
+    process.env.BRANCH_DISPLAY_HOSTNAME = PLACEHOLDER;
+    vi.spyOn(os, "hostname").mockReturnValue(REAL_HOST);
+    expect(graftJoinName()).toBe(PLACEHOLDER);
+    expect(graftJoinName("   ")).toBe(PLACEHOLDER);
+    expect(graftJoinName(" Studio Laptop ")).toBe("Studio Laptop");
+    expect(graftJoinName()).not.toContain(REAL_HOST);
+  });
+
+  it("keeps the real hostname when no display name is set", () => {
+    delete process.env.BRANCH_DISPLAY_HOSTNAME;
+    vi.spyOn(os, "hostname").mockReturnValue(REAL_HOST);
+    expect(graftJoinName()).toBe(REAL_HOST);
+    expect(graftBranchIdentity("Studio Laptop").where).toBe(REAL_HOST);
   });
 });
