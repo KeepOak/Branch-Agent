@@ -3771,13 +3771,180 @@ test('a GraphQL error or outage reads every file over REST, never as empty', () 
   assert.deepEqual(restReads, ['a.md', 'b.md', 'c.md']);
 });
 
-test('named test lists: a rate limit is an error, not an empty list; a missing directory is empty', () => {
-  assert.throws(() => gate.fetchNamedTestLists('o/r', 'abc', 'tok', () => {
-    throw new Error('gh: API rate limit exceeded (HTTP 403)');
+const namedBlob = (text, extra = {}) => ({ text, isBinary: false, isTruncated: false, ...extra });
+const namedListing = (entries) => ({ data: { repository: { object: { entries } } } });
+const namedListEntry = (entryName, type = 'blob') => ({ name: entryName, type });
+
+// A stand-in GraphQL function: the names request gets the listing, each page request gets the blobs it asks for
+// (a name missing from blobs answers null). onPage(pageIndex, aliases) may return a different answer or throw.
+function namedListsStandIn(entries, blobs, { onPage } = {}) {
+  const requests = [];
+  const pages = [];
+  const graphql = (token, query, variables) => {
+    requests.push({ token, query, variables });
+    if (requests.length === 1) return namedListing(entries);
+    const aliases = [...query.matchAll(/(f\d+): object\(expression: "abc:scripts\/feature-batch-ci-named\/([^"]+)"\) \{ \.\.\. on Blob \{ text isBinary isTruncated \} \}/g)]
+      .map(([, alias, fileName]) => ({ alias, fileName }));
+    pages.push(aliases);
+    const answer = onPage?.(pages.length - 1, aliases);
+    if (answer !== undefined) return answer;
+    return {
+      data: {
+        repository: Object.fromEntries(aliases.map(({ alias, fileName }) => [alias, Object.hasOwn(blobs, fileName) ? blobs[fileName] : null])),
+      },
+    };
+  };
+  return { graphql, requests, pages };
+}
+
+function eightHundredNamedLists() {
+  const entries = [];
+  const blobs = {};
+  for (let index = 0; index < 800; index += 1) {
+    const fileName = 'list-' + index + '.txt';
+    entries.push(namedListEntry(fileName));
+    blobs[fileName] = namedBlob('# list ' + index + '\nengine:src/a' + index + '.test.ts\nwindow:src/w' + index + '.test.ts\n');
+  }
+  return { entries, blobs };
+}
+
+test('named test lists: 800 lists are 1 names request plus 6 page requests and every list is parsed in name order', () => {
+  const { entries, blobs } = eightHundredNamedLists();
+  const standIn = namedListsStandIn(entries, blobs);
+  const out = gate.fetchNamedTestLists('o/r', 'abc', 'tok', { graphql: standIn.graphql });
+  assert.equal(standIn.requests.length, 7);
+  for (const request of standIn.requests) {
+    assert.equal(request.token, 'tok');
+    assert.deepEqual(request.variables, { owner: 'o', name: 'r' });
+    assert.match(request.query, /^query\(\$owner: String!, \$name: String!\) \{ repository\(owner: \$owner, name: \$name\) \{ /);
+  }
+  const namesQuery = standIn.requests[0].query;
+  assert.match(namesQuery, /object\(expression: "abc:scripts\/feature-batch-ci-named"\) \{ \.\.\. on Tree \{ entries \{ name type \} \} \}/);
+  assert.doesNotMatch(namesQuery, /text|Blob/);
+  const sortedNames = entries.map((entry) => entry.name).sort();
+  assert.deepEqual(standIn.pages.flat().map(({ fileName }) => fileName), sortedNames);
+  const expected = [];
+  for (const fileName of sortedNames) {
+    const index = /^list-(\d+)\.txt$/.exec(fileName)[1];
+    expected.push({ lane: 'engine', file: 'src/a' + index + '.test.ts' }, { lane: 'window', file: 'src/w' + index + '.test.ts' });
+  }
+  assert.deepEqual(out, expected);
+});
+
+test('named test lists: every page request has at most NAMED_LIST_PAGE_SIZE (150) aliases', () => {
+  assert.equal(gate.NAMED_LIST_PAGE_SIZE, 150);
+  const { entries, blobs } = eightHundredNamedLists();
+  const standIn = namedListsStandIn(entries, blobs);
+  gate.fetchNamedTestLists('o/r', 'abc', 'tok', { graphql: standIn.graphql });
+  assert.deepEqual(standIn.pages.map((page) => page.length), [150, 150, 150, 150, 150, 50]);
+  for (const [pageIndex, page] of standIn.pages.entries()) {
+    assert.ok(page.length <= gate.NAMED_LIST_PAGE_SIZE);
+    assert.deepEqual(page.map(({ alias }) => alias), page.map((_, index) => 'f' + index));
+    const query = standIn.requests[pageIndex + 1].query;
+    assert.equal((query.match(/\bf\d+: object\(/g) ?? []).length, page.length);
+  }
+});
+
+test('named test lists: a missing folder is 1 call and an empty list', () => {
+  let calls = 0;
+  const out = gate.fetchNamedTestLists('o/r', 'abc', 'tok', {
+    graphql: () => { calls += 1; return { data: { repository: { object: null } } }; },
+  });
+  assert.deepEqual(out, []);
+  assert.equal(calls, 1);
+});
+
+test('named test lists: an error on page 3 throws, stops reading and returns no partial result', () => {
+  const { entries, blobs } = eightHundredNamedLists();
+  const errored = namedListsStandIn(entries, blobs, {
+    onPage: (pageIndex) => (pageIndex === 2 ? { errors: [{ message: 'Something went wrong' }], data: null } : undefined),
+  });
+  let out;
+  assert.throws(() => { out = gate.fetchNamedTestLists('o/r', 'abc', 'tok', { graphql: errored.graphql }); },
+    /GraphQL error reading page 3 \(scripts\/feature-batch-ci-named\/list-\S+\.txt to scripts\/feature-batch-ci-named\/list-\S+\.txt\): Something went wrong/);
+  assert.equal(out, undefined);
+  assert.equal(errored.requests.length, 4);
+
+  const thrown = namedListsStandIn(entries, blobs, {
+    onPage: (pageIndex) => { if (pageIndex === 2) throw new Error('gh: API rate limit exceeded (HTTP 403)'); },
+  });
+  assert.throws(() => gate.fetchNamedTestLists('o/r', 'abc', 'tok', { graphql: thrown.graphql }),
+    /request failed reading page 3 .*rate limit/);
+  assert.equal(thrown.requests.length, 4);
+
+  const fieldError = namedListsStandIn(entries, blobs, {
+    onPage: (pageIndex, aliases) => (pageIndex === 2
+      ? { errors: [{ message: 'Timeout', path: ['repository', aliases[7].alias] }], data: { repository: {} } }
+      : undefined),
+  });
+  const seventh = entries.map((entry) => entry.name).sort()[2 * 150 + 7];
+  assert.throws(() => gate.fetchNamedTestLists('o/r', 'abc', 'tok', { graphql: fieldError.graphql }),
+    new RegExp('scripts/feature-batch-ci-named/' + seventh.replace('.', '[.]') + ': Timeout'));
+});
+
+test('named test lists skip README.txt, non-.txt files and folders and never request them', () => {
+  const standIn = namedListsStandIn([
+    namedListEntry('README.txt'),
+    namedListEntry('notes.md'),
+    namedListEntry('nested.txt', 'tree'),
+    namedListEntry('sub', 'tree'),
+    namedListEntry('kept.txt'),
+  ], {
+    'README.txt': namedBlob('this is not a list\n'),
+    'notes.md': namedBlob('not a list either\n'),
+    'kept.txt': namedBlob('window:src/kept.test.ts\n'),
+  });
+  const out = gate.fetchNamedTestLists('o/r', 'abc', 'tok', { graphql: standIn.graphql });
+  assert.deepEqual(out, [{ lane: 'window', file: 'src/kept.test.ts' }]);
+  assert.equal(standIn.requests.length, 2);
+  assert.deepEqual(standIn.pages, [[{ alias: 'f0', fileName: 'kept.txt' }]]);
+});
+
+test('named test lists are parsed in sorted name order whatever order the folder answers in', () => {
+  const standIn = namedListsStandIn([namedListEntry('b.txt'), namedListEntry('c.txt'), namedListEntry('a.txt')], {
+    'a.txt': namedBlob('engine:src/a.test.ts\n'),
+    'b.txt': namedBlob('engine:src/b.test.ts\n'),
+    'c.txt': namedBlob('window:src/c.test.ts\n'),
+  });
+  assert.deepEqual(gate.fetchNamedTestLists('o/r', 'abc', 'tok', { graphql: standIn.graphql }), [
+    { lane: 'engine', file: 'src/a.test.ts' },
+    { lane: 'engine', file: 'src/b.test.ts' },
+    { lane: 'window', file: 'src/c.test.ts' },
+  ]);
+});
+
+test('named test lists fail closed: a GraphQL error or thrown rate limit on the names request throws', () => {
+  assert.throws(() => gate.fetchNamedTestLists('o/r', 'abc', 'tok', {
+    graphql: () => ({ errors: [{ message: 'Something went wrong' }], data: { repository: { object: null } } }),
+  }), /GraphQL error reading scripts\/feature-batch-ci-named: Something went wrong/);
+  assert.throws(() => gate.fetchNamedTestLists('o/r', 'abc', 'tok', {
+    graphql: () => { throw new Error('gh: API rate limit exceeded (HTTP 403)'); },
   }), /rate limit/);
-  assert.deepEqual(gate.fetchNamedTestLists('o/r', 'abc', 'tok', () => {
-    throw Object.assign(new Error('gh: Not Found (HTTP 404)'), { httpStatus: 404 });
-  }), []);
+  assert.throws(() => gate.fetchNamedTestLists('o/r', 'abc', 'tok', {
+    graphql: () => ({ data: { repository: null } }),
+  }), /no repository in the GraphQL answer/);
+  assert.throws(() => gate.fetchNamedTestLists('o/r', 'abc', 'tok', {
+    graphql: () => ({ data: { repository: { object: {} } } }),
+  }), /is not a folder/);
+});
+
+test('named test lists fail closed: a page GraphQL error, thrown rate limit, or truncated, binary, null or textless blob throws', () => {
+  const twoLists = [namedListEntry('ok.txt'), namedListEntry('z.txt')];
+  const fetchWith = (zBlob, options) => {
+    const standIn = namedListsStandIn(twoLists, { 'ok.txt': namedBlob('engine:src/ok.test.ts\n'), 'z.txt': zBlob }, options);
+    return () => gate.fetchNamedTestLists('o/r', 'abc', 'tok', { graphql: standIn.graphql });
+  };
+  assert.throws(fetchWith(namedBlob('engine:src/z.test.ts\n'), {
+    onPage: () => ({ errors: [{ message: 'Something went wrong' }], data: { repository: { f0: null, f1: null } } }),
+  }), /GraphQL error reading page 1 .*Something went wrong/);
+  assert.throws(fetchWith(namedBlob('engine:src/z.test.ts\n'), {
+    onPage: () => { throw new Error('gh: API rate limit exceeded (HTTP 403)'); },
+  }), /rate limit/);
+  assert.throws(fetchWith(namedBlob('engine:src/cut', { isTruncated: true })),
+    /scripts\/feature-batch-ci-named\/z\.txt could not be read \(truncated\)/);
+  assert.throws(fetchWith({ text: null, isBinary: true, isTruncated: false }), /z\.txt could not be read \(binary\)/);
+  assert.throws(fetchWith(null), /z\.txt could not be read \(no blob\)/);
+  assert.throws(fetchWith({ isBinary: false, isTruncated: false }), /z\.txt could not be read \(no text\)/);
 });
 
 test('the trusted gate gives its API calls their own rate-limit budget, separate from the zero poll budget', () => {

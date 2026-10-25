@@ -23,7 +23,7 @@ export function NewTopicSheet({ trunkName, clear, onCancel, onCreate }: {
     try { await onCreate({ name: value, icon, colour }); } catch (e) { setError(e instanceof Error ? e.message : String(e)); setBusy(false); }
   };
   return <Dialog title="New topic" clear={clear} onClose={onCancel} testid="new-topic"
-    footer={<><button className="btn ghost" type="button" onClick={onCancel}>Cancel</button><button className="btn pri" type="button" disabled={busy} onClick={() => void submit()}>Create</button></>}>
+    footer={<><button className="btn ghost" type="button" onClick={onCancel}>Cancel</button><button className="btn pri" type="button" disabled={busy || !name.trim()} onClick={() => void submit()}>Create</button></>}>
     <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
       <label className="fld"><span>Name</span><input className="inp" autoFocus maxLength={60} placeholder="What is it about?" value={name} onChange={(e) => setName(e.target.value)} /></label>
       <div className="fld"><span>Icon and colour</span>

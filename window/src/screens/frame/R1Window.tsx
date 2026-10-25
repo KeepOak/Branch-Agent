@@ -294,6 +294,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
     const openPlace = (event: Event) => {
       const request = placeRequest((event as CustomEvent).detail, PLACES.map(p => p.id));
       if (!request) return;
+      // Customize's old Trunks and Chat apps tabs live in Settings (#1049).
+      if (request.place === "customize" && request.tab === "Chat apps") { navigateTo.current({ kind: "settings", page: "chatapps" }); return; }
+      if (request.place === "customize" && request.tab === "Trunks") { navigateTo.current({ kind: "settings", page: "trunks" }); return; }
       navigateTo.current({ kind: "place", place: request.place });
       // A tab named with the request is told to the place once it shows.
       if (request.tab) {

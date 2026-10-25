@@ -1274,8 +1274,30 @@ export async function modelsStatusCommand(
         runtime.log(
           `${label(source ? `${name} (${source})` : name)}${colorize(rich, theme.muted, ":")} ${colorize(rich, style, value)}`,
         );
-      const displayDefault =
-        rawModel && rawModel !== resolvedLabel
+      // #1092: never show a model name that cannot answer. When the default's
+      // provider is in the missing-auth list, the Default line says so in plain
+      // words; the configured id stays in --json and --plain.
+      const defaultUseRef = resolveStatusModelRef(defaultLabel);
+      const defaultUseProvider = defaultUseRef?.provider
+        ? normalizeProviderId(defaultUseRef.provider)
+        : undefined;
+      const defaultUse = defaultUseProvider
+        ? providerUses.find(
+            (usage) =>
+              usage.allowCodexRuntimeFallback &&
+              usage.provider === defaultUseProvider &&
+              usage.model === defaultUseRef?.model,
+          )
+        : undefined;
+      const defaultReady =
+        !defaultUse ||
+        hasUsableAuthForProviderInUse(defaultUse) ||
+        !missingProvidersInUse.includes(
+          resolveCliRuntimeAuthProvider(defaultUse) ?? defaultUse.provider,
+        );
+      const displayDefault = !defaultReady
+        ? "none ready yet. Connect a model to get answers."
+        : rawModel && rawModel !== resolvedLabel
           ? `${resolvedLabel} (from ${rawModel})`
           : resolvedLabel;
 
@@ -1284,7 +1306,7 @@ export async function modelsStatusCommand(
       logField(
         "Default",
         displayDefault,
-        theme.success,
+        defaultReady ? theme.success : theme.warn,
         agentId ? (agentModelPrimary ? "agent" : "defaults") : undefined,
       );
       logField(

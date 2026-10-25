@@ -103,6 +103,8 @@ jobs:
           package-manager-cache: false
       - name: Test the trusted gate helper
         run: node --test scripts/merge-gate-trusted.test.mjs
+      - name: Test the trusted gate bound-run rule
+        run: node --test scripts/merge-gate-trusted.bound-runs.test.mjs
       - name: Test the rate-limit wait helper
         run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
       - name: Read the core API budget before this job

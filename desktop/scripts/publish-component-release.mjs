@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { addInstallScripts, fileDigest, verifyReleaseDirectory } from "./release-inventory.mjs";
+import { addInstallScripts, fileDigest, NATIVE_RELEASE_TARGETS, verifyReleaseDirectory } from "./release-inventory.mjs";
 import { formatReleaseNotes } from "./release-notes.mjs";
 
 const repository = "KeepOak/Branch-Agent";
@@ -169,7 +169,7 @@ async function restorePreviousLatest(previous, tag, request) {
 
 export async function publishRelease(directory, commit, version, request = gh, download = fetch, options = {}) {
   const proof = await verifyReleaseDirectory(directory, commit, version);
-  assert.deepEqual(proof.targets, ["darwin-arm64", "linux-x64", "win32-x64"], "All native release targets must pass");
+  assert.deepEqual(proof.targets, [...NATIVE_RELEASE_TARGETS], "All native release targets must pass");
   const tag = `v${version}`;
   const existing = JSON.parse(await request(["api", `repos/${repository}/releases`, "--paginate", "--slurp"])).flat();
   const found = existing.find(item => item.tag_name === tag);
@@ -277,7 +277,7 @@ export async function publishDraft(tag, request = gh, download = fetch, options 
     inventory[name] = digest;
     targets.push(match[1]);
   }
-  assert.deepEqual(targets, ["darwin-arm64", "linux-x64", "win32-x64"], "Draft is missing a native release manifest");
+  assert.deepEqual(targets, [...NATIVE_RELEASE_TARGETS], "Draft is missing a native release manifest");
   const previous = await assertPublishableMainCommit(commit, request);
   return exposeRelease(directory, commit, version, { targets, inventory }, previous, request, download, options);
 }
