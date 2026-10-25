@@ -4,7 +4,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
-import { errorText, record, type RecordValue } from "./adapter";
+import { record, type RecordValue } from "./adapter";
 import { configStore, pathKeys, type ConfigPath } from "./config-store";
 import { Icon } from "../../shell/icons";
 import { PIN_MAX, type Pins } from "./pins";
@@ -54,7 +54,7 @@ export function useSaveRunner(failureMessage?: string): (save: () => Promise<unk
       return true;
     } catch (error) {
       console.warn("Settings save failed:", error);
-      report.failed(failureMessage ?? errorText(error));
+      report.failed(failureMessage ?? plainError(error));
       return false;
     }
   }, [report, failureMessage]);
