@@ -166,6 +166,22 @@ export function Composer(props: Props) {
     preparing: isPreparationPending(conversationProblem),
     noModel,
   });
+  // A held send leaves its reason in `problem`. Clear that one alert, and only that one, once send can go again or a
+  // send goes out, so the old Connect a model words do not stay after an account is added.
+  const heldProblem = useRef<string | null>(null);
+  const showHold = (why: string) => {
+    heldProblem.current = why;
+    setProblem(why);
+  };
+  const clearHold = useCallback(() => {
+    const held = heldProblem.current;
+    if (!held) return;
+    heldProblem.current = null;
+    setProblem((now) => (now === held ? null : now));
+  }, []);
+  useEffect(() => {
+    if (!holdReason) clearHold();
+  }, [holdReason, clearHold]);
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
 
   const levels = current?.levels ?? [];
@@ -239,7 +255,7 @@ export function Composer(props: Props) {
       return;
     }
     if (holdReason && plan.kind !== "command" && (plan.kind !== "background" || !isPreparationPending(conversationProblem))) {
-      setProblem(holdReason);
+      showHold(holdReason);
       if (!conv.modelsLoading) void conv.readModelList({ refresh: true });
       return;
     }
@@ -249,7 +265,10 @@ export function Composer(props: Props) {
     }
     if (props.draftAgentId) {
       void Promise.resolve(sendMessage(draftMessage(), { files: draft.files, people: draft.people, replyTo: props.replyTo })).then((created) => {
-        if (created) draft.clear();
+        if (created) {
+          clearHold();
+          draft.clear();
+        }
       });
       return;
     }
@@ -260,6 +279,7 @@ export function Composer(props: Props) {
       sendMessage(draftMessage(), { files: draft.files, people: draft.people, queue: plan.kind === "send" ? plan.queueMode : undefined, replyTo: props.replyTo });
       if (plan.kind === "send" && plan.queueMode === "steer") toast(`Steered ${trunkName}. It picks this up at its next step.`);
     }
+    clearHold();
     history.record(draft.text.trim());
     draft.clear();
     props.onClearReply?.();

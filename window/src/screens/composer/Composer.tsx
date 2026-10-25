@@ -181,6 +181,22 @@ export function Composer(props: Props) {
     preparing: isPreparationPending(conversationProblem),
     noModel,
   });
+  // A held send leaves its reason in `problem`. Clear that one alert, and only that one, once send can go again or a
+  // send goes out, so the old Connect a model words do not stay after an account is added.
+  const heldProblem = useRef<string | null>(null);
+  const showHold = (why: string) => {
+    heldProblem.current = why;
+    setProblem(why);
+  };
+  const clearHold = useCallback(() => {
+    const held = heldProblem.current;
+    if (!held) return;
+    heldProblem.current = null;
+    setProblem((now) => (now === held ? null : now));
+  }, []);
+  useEffect(() => {
+    if (!holdReason) clearHold();
+  }, [holdReason, clearHold]);
 
   const drawer = useDrawer(engine, conv.trunks, current?.levels ?? [], useMemo(() => ({ think: thinking }), [thinking]));
   const [picks, setPicks] = useState<SkillPick[]>([]);
@@ -226,6 +242,7 @@ export function Composer(props: Props) {
     const text = resolveSend(message.text, message.picks, drawer.skills);
     try {
       await engine.request("chat.send", { ...buildExtras(text, draft.files, draft.people), sessionKey: key, message: text, idempotencyKey: crypto.randomUUID() });
+      clearHold();
       draft.clear();
       toast(`Sent to ${title}.`);
     } catch (error) {
@@ -243,7 +260,7 @@ export function Composer(props: Props) {
     if (plan.kind === "stop") { onStop(); draft.clear(); return; }
     // GOD #1092: Send stays enabled. With nothing usable, keep the draft and show the one Connect path.
     if (holdReason && plan.kind !== "command" && (plan.kind !== "background" || !isPreparationPending(conversationProblem))) {
-      setProblem(holdReason);
+      showHold(holdReason);
       if (!conv.modelsLoading) void conv.readModelList({ refresh: true });
       return;
     }
@@ -257,6 +274,7 @@ export function Composer(props: Props) {
       props.onClearReply?.();
       if (plan.kind === "send" && plan.queueMode === "steer") toast(`Steered ${trunkName}. It picks this up at its next step.`);
     }
+    clearHold();
     history.record(draft.text.trim());
     draft.clear();
   };
