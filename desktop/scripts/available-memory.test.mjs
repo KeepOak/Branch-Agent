@@ -72,17 +72,18 @@ test("Windows with no Available Bytes reading yet stays on os.freemem()", () => 
   assert.equal(memory.measure, "os.freemem");
 });
 
-test("Windows counts standby: the Legion's 389 MB free with 15 GB available passes both gates (Private #1054)", () => {
+test("Windows counts standby: a low-free-memory Windows machine's 389 MB free with 15 GB available passes both gates (Private #1054)", () => {
   const strictlyFree = 389 * MIB, total = 32 * GIB;
   const memory = availableMemory({ platform: "win32", windowsAvailable: `${15 * GIB}\r\n`, freemem: strictlyFree, totalmem: total });
   assert.equal(memory.bytes, 15 * GIB);
   assert.equal(memory.measure, "AvailableBytes");
   assert.ok(memory.bytes >= candidateMinFreeBytes({ envMb: undefined, totalmem: total }), "the candidate check runs");
   assert.ok(strictlyFree < candidateMinFreeBytes({ envMb: undefined, totalmem: total }), "old os.freemem() gate would skip");
-  // The 20% health rule (#1428) still applies, now to available memory.
-  assert.equal(updateHealthRefusal(readUpdateHealth(process.cwd(), memory.bytes, total, { BRANCH_DESKTOP_UPDATE_FREE_DISK: "0.5" })), undefined);
-  assert.equal(updateHealthRefusal(readUpdateHealth(process.cwd(), strictlyFree, total, { BRANCH_DESKTOP_UPDATE_FREE_DISK: "0.5" })), "low memory: 1% free, under 20%");
-  assert.equal(updateHealthRefusal(readUpdateHealth(process.cwd(), 6 * GIB, total, { BRANCH_DESKTOP_UPDATE_FREE_DISK: "0.5" })), "low memory: 19% free, under 20%");
+  // The health rule (#1428) applies to available memory, as an absolute 1 GB floor rather than 20%.
+  assert.equal(updateHealthRefusal(readUpdateHealth(process.cwd(), memory.bytes, total, { BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES: "87000000000" })), undefined);
+  assert.equal(updateHealthRefusal(readUpdateHealth(process.cwd(), strictlyFree, total, { BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES: "87000000000" })), "low memory: 0.4 GB free, under 1.0 GB");
+  // 6 GB available is 19% of 32 GB: the old percentage rule refused it; the floor lets it through.
+  assert.equal(updateHealthRefusal(readUpdateHealth(process.cwd(), 6 * GIB, total, { BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES: "87000000000" })), undefined);
   assert.equal(candidateCheckSkippedLine(400 * MIB, "AvailableBytes"), "candidate check skipped; 400 MB free (AvailableBytes)");
 });
 

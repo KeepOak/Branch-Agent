@@ -11,6 +11,7 @@ import {
   GH_API_MAX_BUFFER,
   IGNORE_CHECK_NAMES,
   MAX_RATE_LIMIT_SLEEP_SECONDS,
+  RATE_LIMIT_WAKE_SPREAD_SECONDS,
   POLL_INTERVAL_SECONDS,
   VISUAL_TOUR_WORKFLOW_PATH,
   backoffSeconds,
@@ -32,6 +33,12 @@ import {
   resolveOrdinaryWorkflows,
   runGhWithRetry,
   shouldSkipEditedRerun,
+  skipEditedMergeGate,
+  isReusableRunCandidate,
+  isVerifiedRunJobs,
+  fetchRunJobs,
+  fetchMergeGateRuns,
+  VERIFIED_RUN_STEPS,
   withIncludeFlag,
   TRANSIENT_RETRY_LIMIT,
   withRateLimitRetry,
@@ -188,8 +195,57 @@ test('withRateLimitRetry fails when a rate limit outlasts the wait budget', () =
     log: () => {},
   }), /rate limit exceeded/);
   const waited = sleeps.reduce((sum, seconds) => sum + seconds, 0);
-  assert.ok(waited <= 100, `waited ${waited}s, over the 100s cap`);
-  assert.ok(sleeps.length >= 1);
+  assert.equal(waited, 0, 'a reset after the job budget fails closed immediately instead of waiting in lock-step');
+  assert.deepEqual(sleeps, []);
+});
+
+test('withRateLimitRetry fails immediately when the reset is after the remaining budget', () => {
+  const start = 1_700_000_000_000;
+  const sleeps = [];
+  assert.throws(() => withRateLimitRetry(() => {
+    throw Object.assign(new Error('gh: API rate limit exceeded for installation (HTTP 403)'), {
+      httpStatus: 403,
+      headers: { 'x-ratelimit-reset': String(start / 1000 + 5_000), 'x-ratelimit-remaining': '0' },
+    });
+  }, {
+    sleep: (seconds) => sleeps.push(seconds),
+    now: () => start,
+    startedAt: start,
+    budgetSeconds: 100,
+    fetchRateLimit: () => null,
+    retryTransient: false,
+    log: () => {},
+  }), /rate limit exceeded/);
+  assert.deepEqual(sleeps, []);
+});
+
+test('rate-limit waiters add wake spread so concurrent jobs do not retry together', () => {
+  assert.equal(RATE_LIMIT_WAKE_SPREAD_SECONDS, 45);
+  const start = 1_700_000_000_000;
+  const sleeps = [];
+  let calls = 0;
+  const value = withRateLimitRetry(() => {
+    calls += 1;
+    if (calls === 1) {
+      throw Object.assign(new Error('gh: API rate limit exceeded for installation (HTTP 403)'), {
+        httpStatus: 403,
+        headers: { 'x-ratelimit-reset': String(start / 1000 + 10), 'x-ratelimit-remaining': '0' },
+      });
+    }
+    return 'ok';
+  }, {
+    sleep: (seconds) => sleeps.push(seconds),
+    now: () => start,
+    startedAt: start,
+    budgetSeconds: 3600,
+    spreadSeconds: RATE_LIMIT_WAKE_SPREAD_SECONDS,
+    random: () => 1,
+    fetchRateLimit: () => null,
+    retryTransient: false,
+    log: () => {},
+  });
+  assert.equal(value, 'ok');
+  assert.deepEqual(sleeps, [10 + RATE_LIMIT_WAKE_SPREAD_SECONDS]);
 });
 
 test('a coverage miss is not a rate limit and is not retried', () => {
@@ -277,6 +333,7 @@ test('backoff and poll intervals stay capped and increase 30/60/90', () => {
   assert.deepEqual([0, 1, 2, 3].map((index) => pollIntervalSeconds(index)), [30, 60, 90, 90]);
   assert.equal(DEFAULT_WAIT_BUDGET_SECONDS, 64 * 30);
   assert.equal(MAX_RATE_LIMIT_SLEEP_SECONDS, 120);
+  assert.equal(RATE_LIMIT_WAKE_SPREAD_SECONDS, 45);
   assert.equal(GH_API_MAX_BUFFER, 64 * 1024 * 1024);
 });
 
@@ -760,23 +817,179 @@ test('ordinary merge-gate workflow runs the rate-limit waiter from a checkout', 
   assert.doesNotMatch(yaml, /sleep 10/);
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-recheck.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-recheck.test.mjs'));
 });
 
-test('shouldSkipEditedRerun keeps a failed SHA live and skips in-progress or green runs', () => {
-  const current = { id: 9, head_sha: 'abc', status: 'in_progress', conclusion: null };
-  assert.equal(shouldSkipEditedRerun([
-    current,
-    { id: 8, head_sha: 'abc', status: 'in_progress', conclusion: null },
-  ], { runId: 9, sha: 'abc' }), true);
-  assert.equal(shouldSkipEditedRerun([
-    current,
-    { id: 8, head_sha: 'abc', status: 'completed', conclusion: 'success' },
-  ], { runId: 9, sha: 'abc' }), true);
-  assert.equal(shouldSkipEditedRerun([
-    current,
-    { id: 8, head_sha: 'abc', status: 'completed', conclusion: 'failure' },
-  ], { runId: 9, sha: 'abc' }), false);
-  assert.equal(shouldSkipEditedRerun([current], { runId: 9, sha: 'abc' }), false);
+const EDIT_SCOPE = { runId: 9, sha: 'abc', prNumber: 42, baseRef: 'main', baseSha: 'base1' };
+
+function editRun(overrides = {}) {
+  return {
+    id: 8,
+    head_sha: 'abc',
+    event: 'pull_request',
+    status: 'completed',
+    conclusion: 'success',
+    pull_requests: [{ number: 42, base: { ref: 'main', sha: 'base1' } }],
+    ...overrides,
+  };
+}
+
+function fullJobs({ skipped = [], jobConclusion = 'success' } = {}) {
+  return Object.entries(VERIFIED_RUN_STEPS).map(([name, steps]) => ({
+    name,
+    status: 'completed',
+    conclusion: jobConclusion,
+    steps: [
+      { name: 'Set up job', status: 'completed', conclusion: 'success' },
+      ...steps.map((step) => ({
+        name: step,
+        status: 'completed',
+        conclusion: skipped.includes(step) ? 'skipped' : 'success',
+      })),
+    ],
+  }));
+}
+
+test('shouldSkipEditedRerun reuses only a completed, verified run for this PR, base and SHA', () => {
+  const current = editRun({ id: 9, status: 'in_progress', conclusion: null });
+  assert.equal(shouldSkipEditedRerun([current, editRun()], EDIT_SCOPE, { fetchJobs: () => fullJobs() }), true);
+  // The run itself, alone, never counts.
+  assert.equal(shouldSkipEditedRerun([current], EDIT_SCOPE, { fetchJobs: () => fullJobs() }), false);
+  // Without a jobs lookup nothing is proven.
+  assert.equal(shouldSkipEditedRerun([editRun()], EDIT_SCOPE), false);
+});
+
+test('finding 1: an in-progress or queued earlier run is never reused', () => {
+  let fetched = 0;
+  const fetchJobs = () => { fetched += 1; return fullJobs(); };
+  for (const status of ['in_progress', 'queued', 'waiting', 'pending']) {
+    assert.equal(shouldSkipEditedRerun([editRun({ status, conclusion: null })], EDIT_SCOPE, { fetchJobs }), false, status);
+  }
+  assert.equal(fetched, 0);
+});
+
+test('a failed, cancelled, timed-out or skipped earlier run is never reused', () => {
+  for (const conclusion of ['failure', 'cancelled', 'timed_out', 'skipped', 'neutral', 'action_required', null]) {
+    assert.equal(shouldSkipEditedRerun([editRun({ conclusion })], EDIT_SCOPE, { fetchJobs: () => fullJobs() }), false, String(conclusion));
+  }
+});
+
+test('finding 2: a debounced earlier success is never trusted, so skips cannot chain', () => {
+  // Run B debounced: heavy steps and the wait were skipped, yet the run concluded success.
+  const debounced = fullJobs({ skipped: [...VERIFIED_RUN_STEPS['changed-test-coverage'], ...VERIFIED_RUN_STEPS['merge-gate']] });
+  assert.equal(shouldSkipEditedRerun([editRun()], EDIT_SCOPE, { fetchJobs: () => debounced }), false);
+  // Any single required step skipped is enough to refuse.
+  for (const step of Object.values(VERIFIED_RUN_STEPS).flat()) {
+    assert.equal(isVerifiedRunJobs(fullJobs({ skipped: [step] })), false, step);
+  }
+  // Run A (real) failed, B (debounced) green: C must still run everything.
+  const runs = [editRun({ id: 7, conclusion: 'failure' }), editRun({ id: 8 })];
+  const jobsById = { 7: fullJobs({ jobConclusion: 'failure' }), 8: debounced };
+  assert.equal(shouldSkipEditedRerun(runs, EDIT_SCOPE, { fetchJobs: (id) => jobsById[id] }), false);
+});
+
+test('isVerifiedRunJobs fails closed on missing, duplicate or unfinished jobs and steps', () => {
+  assert.equal(isVerifiedRunJobs(fullJobs()), true);
+  assert.equal(isVerifiedRunJobs(undefined), false);
+  assert.equal(isVerifiedRunJobs([]), false);
+  assert.equal(isVerifiedRunJobs(fullJobs().slice(1)), false);
+  assert.equal(isVerifiedRunJobs([...fullJobs(), fullJobs()[0]]), false);
+  const noSteps = fullJobs().map((job) => ({ ...job, steps: [] }));
+  assert.equal(isVerifiedRunJobs(noSteps), false);
+  const running = fullJobs().map((job) => ({ ...job, status: 'in_progress', conclusion: null }));
+  assert.equal(isVerifiedRunJobs(running), false);
+});
+
+test('finding 3: a run for another PR, base, event or head is never reused', () => {
+  const fetchJobs = () => fullJobs();
+  const cases = {
+    otherPr: editRun({ pull_requests: [{ number: 41, base: { ref: 'main', sha: 'base1' } }] }),
+    otherBaseRef: editRun({ pull_requests: [{ number: 42, base: { ref: 'release', sha: 'base1' } }] }),
+    otherBaseSha: editRun({ pull_requests: [{ number: 42, base: { ref: 'main', sha: 'base0' } }] }),
+    otherEvent: editRun({ event: 'pull_request_target' }),
+    pushEvent: editRun({ event: 'push' }),
+    otherHead: editRun({ head_sha: 'def' }),
+    noHead: editRun({ head_sha: undefined }),
+  };
+  for (const [label, run] of Object.entries(cases)) {
+    assert.equal(shouldSkipEditedRerun([run], EDIT_SCOPE, { fetchJobs }), false, label);
+  }
+  // Same PR listed alongside another one is still this PR's run.
+  const shared = editRun({ pull_requests: [{ number: 41, base: { ref: 'x', sha: 'y' } }, { number: 42, base: { ref: 'main', sha: 'base1' } }] });
+  assert.equal(shouldSkipEditedRerun([shared], EDIT_SCOPE, { fetchJobs }), true);
+});
+
+test('an empty or missing pull_requests list (fork runs) means no skip', () => {
+  const fetchJobs = () => fullJobs();
+  assert.equal(shouldSkipEditedRerun([editRun({ pull_requests: [] })], EDIT_SCOPE, { fetchJobs }), false);
+  assert.equal(shouldSkipEditedRerun([editRun({ pull_requests: undefined })], EDIT_SCOPE, { fetchJobs }), false);
+  assert.equal(shouldSkipEditedRerun([editRun({ pull_requests: null })], EDIT_SCOPE, { fetchJobs }), false);
+});
+
+test('a missing PR number, base ref or head SHA in scope means no skip', () => {
+  const fetchJobs = () => fullJobs();
+  for (const key of ['prNumber', 'baseRef', 'sha']) {
+    assert.equal(shouldSkipEditedRerun([editRun()], { ...EDIT_SCOPE, [key]: '' }, { fetchJobs }), false, key);
+  }
+  assert.equal(isReusableRunCandidate(editRun(), { ...EDIT_SCOPE, baseSha: undefined }), true);
+});
+
+test('a jobs lookup error propagates so the debounce step fails closed', () => {
+  assert.throws(() => shouldSkipEditedRerun([editRun()], EDIT_SCOPE, { fetchJobs: () => { throw new Error('HTTP 500'); } }), /HTTP 500/);
+  const dir = mkdtempSync(path.join(tmpdir(), 'skip-edited-'));
+  const out = path.join(dir, 'out');
+  writeFileSync(out, '');
+  assert.throws(() => skipEditedMergeGate({
+    repo: 'o/r', sha: 'abc', token: 't', runId: 9, prNumber: 42, baseRef: 'main', baseSha: 'base1', action: 'edited',
+    fetchRuns: () => [editRun()], fetchJobs: () => { throw new Error('boom'); }, outputFile: out,
+  }), /boom/);
+  assert.equal(readFileSync(out, 'utf8'), '');
+});
+
+test('skipEditedMergeGate writes skip only for a plain edit with a verified run', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'skip-edited-'));
+  const out = path.join(dir, 'out');
+  writeFileSync(out, '');
+  const base = { repo: 'o/r', sha: 'abc', token: 't', runId: 9, prNumber: 42, baseRef: 'main', baseSha: 'base1', outputFile: out };
+  assert.equal(skipEditedMergeGate({ ...base, action: 'edited', fetchRuns: () => [editRun()], fetchJobs: () => fullJobs() }), true);
+  assert.equal(skipEditedMergeGate({ ...base, action: 'edited', fetchRuns: () => [editRun({ status: 'in_progress', conclusion: null })], fetchJobs: () => fullJobs() }), false);
+  assert.equal(skipEditedMergeGate({ ...base, action: 'synchronize', fetchRuns: () => { throw new Error('not called'); } }), false);
+  assert.equal(readFileSync(out, 'utf8'), 'skip=true\nskip=false\n');
+});
+
+test('only the first few candidates are inspected to bound API use', () => {
+  const runs = Array.from({ length: 10 }, (_, i) => editRun({ id: 100 + i }));
+  const seen = [];
+  const fetchJobs = (id) => { seen.push(id); return fullJobs({ skipped: ["Wait for the PR's other checks"] }); };
+  assert.equal(shouldSkipEditedRerun(runs, EDIT_SCOPE, { fetchJobs }), false);
+  assert.deepEqual(seen, [100, 101, 102]);
+});
+
+test('fetchMergeGateRuns and fetchRunJobs ask for scoped, finished data and fail closed', () => {
+  const calls = [];
+  const exec = (_cmd, args) => { calls.push(args); return JSON.stringify(args.some((a) => a.includes('/jobs')) ? { jobs: [] } : { workflow_runs: [] }); };
+  assert.deepEqual(fetchMergeGateRuns('o/r', 'abc', 't', { exec }), []);
+  assert.deepEqual(fetchRunJobs('o/r', 8, 't', { exec }), []);
+  const flat = calls.map((args) => args.join(' ')).join('\n');
+  assert.match(flat, /merge-gate\.yml\/runs\?head_sha=abc&event=pull_request&status=success/);
+  assert.match(flat, /actions\/runs\/8\/jobs\?filter=latest/);
+  assert.throws(() => fetchRunJobs('o/r', 8, 't', { exec: () => JSON.stringify({ message: 'Not Found' }) }), /No jobs list/);
+});
+
+test('merge-gate.yml marks debounced runs and wires the PR scope into the debounce step', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  for (const step of Object.values(VERIFIED_RUN_STEPS).flat()) {
+    const escaped = step.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(yaml, new RegExp(`- name: ${escaped}\\n\\s+if: (steps\\.debounce\\.outputs\\.skip|needs\\.changed-test-coverage\\.outputs\\.debounced) != 'true'`), step);
+  }
+  assert.match(yaml, /debounced: \$\{\{ steps\.debounce\.outputs\.skip \}\}/);
+  const debounce = yaml.slice(yaml.indexOf('id: debounce'), yaml.indexOf('skip-edited || true'));
+  for (const key of ['PR_NUMBER', 'BASE_REF', 'BASE_SHA', 'SHA']) assert.match(debounce, new RegExp(`\\b${key}:`), key);
+  assert.match(debounce, /!github\.event\.changes\.base/);
+  // The wait step itself must never skip on its own, or a debounced run would look verified.
+  const wait = yaml.slice(yaml.indexOf("- name: Wait for the PR's other checks"));
+  assert.doesNotMatch(wait, /skip-edited/);
 });
 
 test('execGhApi and ghApiArgs read HTTP headers and cap the process buffer', () => {

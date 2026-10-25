@@ -1,6 +1,7 @@
 // The service fallback (the per-user service cannot be installed) with Keep working on.
 // The child is detached on every OS so quit does not take it down. It is not a service, so sign-out and reboot do not start it again.
 import type { SpawnOptions } from "node:child_process";
+import { fullStopRequested } from "./quit-intent";
 
 /**
  * That fallback outlives quit only when Always on is on and Keep working is on.
@@ -32,8 +33,9 @@ export function fallbackEngineSpawnOptions(input: FallbackSpawnInput): SpawnOpti
 
 /**
  * Quit drains and kills the child unless this launch's fallback was started detached, Keep working is still on,
- * and no update handoff is retiring an engine. A handoff in flight stops the engine, as it does today.
+ * and no update handoff is retiring an engine. A handoff in flight stops the engine, as it does today. Quit chosen by the
+ * person (tray, Branch menu, Ctrl/Cmd Q, a signal) always stops it with its workers: nothing is left running (Private #1095).
  */
 export function quitLeavesFallbackEngine(detachedFallback: boolean, keepWorking: boolean, handoffInFlight: boolean): boolean {
-  return detachedFallback && keepWorking && !handoffInFlight;
+  return detachedFallback && keepWorking && !handoffInFlight && !fullStopRequested();
 }

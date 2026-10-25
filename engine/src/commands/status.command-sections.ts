@@ -71,7 +71,9 @@ export function buildStatusHeartbeatValue(params: { summary: Pick<SummaryLike, "
       return `disabled (${agent.agentId})`;
     }
     if (agent.waitingForRoute) {
-      return `${agent.every} (${agent.agentId}; waiting for delivery route — set commands.ownerAllowFrom=["telegram:123456789"] or channel allowFrom; explicit delivery: heartbeat.target="telegram" with heartbeat.to="123456789")`;
+      // A plain next step, never a config snippet with sample IDs a user would paste (#1970).
+      const connect = formatCliCommand("branch channels add");
+      return `${agent.every} (${agent.agentId}; no chat app to send alerts to yet — connect one with ${connect})`;
     }
     return `${agent.every} (${agent.agentId})`;
   });

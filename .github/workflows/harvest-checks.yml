@@ -22,13 +22,15 @@ concurrency:
 jobs:
   select:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
     steps:
+      # Shallow: a full-history checkout of this repo takes 2.5-5 min and hit the old 5 min limit.
+      # The pick step only needs the base commit's tree for a two-dot diff, fetched below if missing.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          fetch-depth: 0
+          fetch-depth: 2
           persist-credentials: false
       - name: Test Harvest shard selection
         run: node --test scripts/feature-batch-ci-shard.test.mjs
@@ -37,6 +39,9 @@ jobs:
           HARVEST_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           if [ '${{ github.event_name }}' = 'pull_request' ]; then mode=pr; else mode=nightly; fi
+          if [ -n "$HARVEST_BASE" ] && ! git cat-file -e "$HARVEST_BASE^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$HARVEST_BASE"
+          fi
           echo "matrix=$(node scripts/feature-batch-ci-harvest.mjs "$mode")" >> "$GITHUB_OUTPUT"
 
   test:

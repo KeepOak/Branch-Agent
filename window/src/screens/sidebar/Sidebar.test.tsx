@@ -101,6 +101,26 @@ describe("R1 sidebar", () => {
     expect(host.querySelector('.r1sb-rw[data-kind="person"] .r1sb-more')).toBeNull();
   });
 
+  it("marks unread topics read when opening the row, without deleting conversations", async () => {
+    const responses = {
+      ...FULL,
+      "contacts.list": {
+        contacts: [
+          contact("trunk:sapling", "trunk", "Sapling", { isDefault: true, pinnedAt: 1 }),
+          contact("trunk:ledger", "trunk", "Ledger", { unreadTopics: 21, threadUnread: false }),
+        ],
+      },
+      "contacts.markRead": { updated: 21 },
+    };
+    const { render, request, props } = setup(responses);
+    await render();
+    expect(host.querySelector('.r1sb-row[aria-label^="Ledger"]')?.getAttribute("aria-label")).toMatch(/unread/);
+    await click(host.querySelector('.r1sb-row[aria-label^="Ledger"]'));
+    expect(props.onOpen).toHaveBeenCalledWith("agent:ledger:main");
+    expect(request).toHaveBeenCalledWith("contacts.markRead", { contactId: "trunk:ledger" });
+    expect(request.mock.calls.some(([method]) => method === "sessions.delete")).toBe(false);
+  });
+
   it("opens the row menu as the preview's list and pins through sessions.patch", async () => {
     const ledger = { key: "agent:ledger:main", title: "Ledger", agentId: "ledger", pinned: false, archived: false, unread: true, snoozedUntil: null, createdAt: 1, updatedAt: 10, preview: "", working: false, kind: "direct", system: false, automation: false, totalTokens: 0, contextTokens: 0 };
     const { render, request } = setup(FULL, true, { sessions: [ledger] as unknown as SidebarProps["sessions"] });
@@ -200,7 +220,8 @@ describe("R1 sidebar", () => {
     await click(host.querySelector(".r1sb-me"));
     expect(document.querySelector(".g-popover > .r1sb-pop.r1sb-person")).not.toBeNull();
     const css = readFileSync("src/screens/sidebar/sidebar.css", "utf8").replace(/\s+/g, " ");
-    expect(css).toContain(".g-popover:has(> .r1sb-pop) { background: transparent; backdrop-filter: none;");
+    expect(css).toMatch(/\.g-popover:has\(> \.r1sb-pop\)[^{]*\{ background: var\(--raise\); backdrop-filter: none;/);
+    expect(css).toMatch(/\.g-popover:has\(> \.r1sb-pop\):not\(#g48#g48#g48\) \{[^}]*box-shadow: var\(--pop\)/);
     expect(css).toMatch(/\.r1sb-pop :is\(\.g-menu-row, \.g-menu-tile[^{]*\{ background: var\(--gp-fill\); backdrop-filter: var\(--gp-blur\);[^}]*box-shadow: inset 0 0 0 1px var\(--gp-edge\);/);
     expect(readFileSync("src/theme/tokens.css", "utf8")).toContain("--gp-fill: rgba(255,255,255,.76); --gp-edge: rgba(0,0,0,.11);");
   });

@@ -41,18 +41,33 @@ async function assertPublishableMainCommit(commit, request) {
   return latest;
 }
 
-async function ensureImmutableTag(tag, commit, request) {
+async function readTagCommit(tag, request) {
   let reference;
   try { reference = JSON.parse(await request(["api", `repos/${repository}/git/ref/tags/${tag}`])); }
   catch (error) { if (!error.stderr?.includes("HTTP 404")) throw error; }
-  if (!reference) {
-    await request(["api", "--method", "POST", `repos/${repository}/git/refs`, "-f", `ref=refs/tags/${tag}`, "-f", `sha=${commit}`]);
-    return;
-  }
+  if (!reference) return null;
   let object = reference.object;
   while (object.type === "tag") object = JSON.parse(await request(["api", `repos/${repository}/git/tags/${object.sha}`])).object;
   assert.equal(object.type, "commit");
-  assert.equal(object.sha, commit, "Existing immutable tag points at a different source commit");
+  return object.sha;
+}
+
+async function ensureImmutableTag(tag, commit, request) {
+  const sha = await readTagCommit(tag, request);
+  if (!sha) {
+    await request(["api", "--method", "POST", `repos/${repository}/git/refs`, "-f", `ref=refs/tags/${tag}`, "-f", `sha=${commit}`]);
+    return;
+  }
+  assert.equal(sha, commit, "Existing immutable tag points at a different source commit");
+}
+
+function existingReleaseCommit(release, tagSha) {
+  if (/^[a-f0-9]{40}$/.test(release?.target_commitish ?? "")) return release.target_commitish;
+  return tagSha;
+}
+
+export function alreadyPublishedMessage(tag) {
+  return `Release ${tag} already exists; skipping publish`;
 }
 
 // /releases/latest/download can keep serving the previous manifest after Latest
@@ -155,13 +170,27 @@ async function restorePreviousLatest(previous, tag, request) {
 export async function publishRelease(directory, commit, version, request = gh, download = fetch, options = {}) {
   const proof = await verifyReleaseDirectory(directory, commit, version);
   assert.deepEqual(proof.targets, ["darwin-arm64", "linux-x64", "win32-x64"], "All native release targets must pass");
-  await assertPublishableMainCommit(commit, request);
   const tag = `v${version}`;
   const existing = JSON.parse(await request(["api", `repos/${repository}/releases`, "--paginate", "--slurp"])).flat();
-  assert(!existing.some(item => item.tag_name === tag), "Release tags/assets are immutable; choose a new source version");
+  const found = existing.find(item => item.tag_name === tag);
+  if (found && found.draft !== true) {
+    const tagSha = await readTagCommit(tag, request);
+    assert.equal(existingReleaseCommit(found, tagSha), commit, "Existing immutable tag points at a different source commit");
+    const reason = alreadyPublishedMessage(tag);
+    console.log(reason);
+    return { skipped: true, reason, tag, commit };
+  }
+  await assertPublishableMainCommit(commit, request);
   await ensureImmutableTag(tag, commit, request);
   // The one-line install scripts ride along with every release and are checksummed like any other asset.
   await addInstallScripts(directory, proof.inventory);
+  const signedNames = (await readdir(directory)).filter((name) => name === "latest.json" || name.endsWith(".sig")).sort();
+  if (signedNames.length === 0 && process.env.BRANCH_REQUIRE_SIGNED_UPDATES === "1") {
+    throw new Error("latest.json is missing; sign update payloads with TAURI_SIGNING_PRIVATE_KEY before publish");
+  }
+  for (const name of signedNames) {
+    if (!Object.hasOwn(proof.inventory, name)) proof.inventory[name] = await fileDigest(join(directory, name));
+  }
   const checksums = Object.entries(proof.inventory).map(([name, info]) => `${info.sha256}  ${name}`).join("\n") + "\n";
   await writeFile(join(directory, "SHA256SUMS"), checksums);
   const names = [...Object.keys(proof.inventory), "SHA256SUMS"].sort();
@@ -173,8 +202,18 @@ export async function publishRelease(directory, commit, version, request = gh, d
   await request(["release", "download", tag, "--repo", repository, "--dir", downloaded]);
   assert.deepEqual((await readdir(downloaded)).sort(), names, "Uploaded release has missing/extra assets");
   for (const name of names) assert.deepEqual(await fileDigest(join(downloaded, name)), await fileDigest(join(directory, name)), `GitHub upload readback differs: ${name}`);
+  if (options.keepDraft) {
+    // The Android workflow (or the watchdog) runs publish-draft once the signed APK is attached.
+    console.log(`Release ${tag} uploaded and verified; kept as a draft until its signed APK is attached`);
+    return { draft: true, tag, commit };
+  }
   const previous = await assertPublishableMainCommit(commit, request);
-  // API readback above hashed every uploaded asset. Latest stays unchanged until that passes.
+  return exposeRelease(directory, commit, version, proof, previous, request, download, options);
+}
+
+// Moves a verified draft to Latest, checks the public download, and rolls back on a mismatch.
+async function exposeRelease(directory, commit, version, proof, previous, request, download, options) {
+  const tag = `v${version}`;
   let exposed = false;
   try {
     await request(["release", "edit", tag, "--repo", repository, "--draft=false", "--latest"]);
@@ -198,6 +237,59 @@ export async function publishRelease(directory, commit, version, request = gh, d
   }
 }
 
+export function draftAlreadyPublishedMessage(tag) {
+  return `Release ${tag} is already published; skipping publish-draft`;
+}
+
+/**
+ * Publishes a draft that publishRelease left with keepDraft. Re-reads the draft's
+ * release manifests and SHA256SUMS from GitHub so it needs no local build output.
+ * Safe to run twice: a release that is no longer a draft is skipped.
+ */
+export async function publishDraft(tag, request = gh, download = fetch, options = {}) {
+  assert.match(tag ?? "", /^v\d+\.\d+\.\d+(-build-[a-f0-9]{12})?$/, "publish-draft needs a release tag");
+  const releases = JSON.parse(await request(["api", `repos/${repository}/releases`, "--paginate", "--slurp"])).flat();
+  const found = releases.find(item => item.tag_name === tag);
+  assert(found, `Release ${tag} was not found`);
+  if (found.draft !== true) {
+    const reason = draftAlreadyPublishedMessage(tag);
+    console.log(reason);
+    return { skipped: true, reason, tag };
+  }
+  const commit = found.target_commitish;
+  assert.match(commit ?? "", /^[a-f0-9]{40}$/, "Draft does not name an exact source commit");
+  const version = tag.slice(1);
+  const directory = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), "branch-release-draft-"));
+  await request(["release", "download", tag, "--repo", repository, "--dir", directory,
+    "--pattern", "branch-release-*.json", "--pattern", "SHA256SUMS"]);
+  const sums = new Map((await readFile(join(directory, "SHA256SUMS"), "utf8")).split("\n").filter(Boolean)
+    .map(line => { const [sha256, name] = line.split(/\s+/); return [name, sha256]; }));
+  const inventory = {};
+  const targets = [];
+  for (const name of (await readdir(directory)).sort()) {
+    const match = /^branch-release-(.+)\.json$/.exec(name);
+    if (!match) continue;
+    const digest = await fileDigest(join(directory, name));
+    assert.equal(digest.sha256, sums.get(name), `Draft manifest differs from SHA256SUMS: ${name}`);
+    const manifest = JSON.parse(await readFile(join(directory, name), "utf8"));
+    assert.equal(manifest.sourceCommit, commit, `Draft manifest has a different source commit: ${name}`);
+    assert.equal(manifest.version, version, `Draft manifest has a different version: ${name}`);
+    inventory[name] = digest;
+    targets.push(match[1]);
+  }
+  assert.deepEqual(targets, ["darwin-arm64", "linux-x64", "win32-x64"], "Draft is missing a native release manifest");
+  const previous = await assertPublishableMainCommit(commit, request);
+  return exposeRelease(directory, commit, version, { targets, inventory }, previous, request, download, options);
+}
+
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  console.log(JSON.stringify(await publishRelease(resolve(process.argv[2]), process.argv[3], process.argv[4])));
+  const args = process.argv.slice(2);
+  if (args[0] === "publish-draft") {
+    console.log(JSON.stringify(await publishDraft(args[1])));
+  } else {
+    const keepDraft = args.includes("--keep-draft");
+    const [dir, commit, version] = args.filter(arg => arg !== "--keep-draft");
+    console.log(JSON.stringify(await publishRelease(resolve(dir), commit, version, gh, fetch, { keepDraft })));
+  }
 }

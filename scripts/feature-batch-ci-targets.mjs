@@ -483,7 +483,11 @@ export function setNamedListDir(dirPath) {
   NAMED_DIR = pathToFileURL(`${path.resolve(dirPath)}${path.sep}`);
 }
 
-export function namedTestFiles(lane, only) {
+const E2E_TEST = /\.e2e\.test\.(?:ts|tsx)$/;
+// The real-engine handoff file runs only in engine-handoff-checks (sharded by case).
+const HANDOFF_E2E = 'test/gateway-desktop-handoff.e2e.test.ts';
+
+export function namedTestFiles(lane, only, { e2e = false } = {}) {
   let names = [];
   try {
     names = readdirSync(NAMED_DIR).filter(name => name.endsWith('.txt') && (!only || only.includes(name))).sort();
@@ -497,7 +501,14 @@ export function namedTestFiles(lane, only) {
       if (!line || line.startsWith('#')) continue;
       const match = /^(engine|window):(.+)$/.exec(line);
       if (!match) throw new Error(`scripts/feature-batch-ci-named/${name}: expected engine:<file> or window:<file>, got "${line}"`);
-      if (match[1] === lane) files.push(match[2].trim());
+      if (match[1] !== lane) continue;
+      const file = match[2].trim();
+      // Feature-batch vitest excludes **/*.e2e.test.ts. The real-engine handoff file is
+      // covered by engine-handoff-checks; listing it here is only for preflight.
+      // Those e2e entries are returned only with { e2e: true } and run by the e2e step.
+      if (E2E_TEST.test(file) !== e2e) continue;
+      if (e2e && file === HANDOFF_E2E) continue;
+      files.push(file);
     }
   }
   return files;
@@ -516,6 +527,17 @@ export function namedTests(lane) {
   if (bad) {
     throw new Error(`Feature test "${lane}:${bad}" must be a repository-relative *.test.ts, *.test.tsx, *.test.mjs, or *.test.mts file`);
   }
+  return targets;
+}
+
+// Named engine e2e tests. feature-batch-ci.mjs runs them with the engine's e2e configs, so
+// changed-test-coverage.mjs may count them as covered. Window has no e2e suite.
+export function namedE2eTests(lane) {
+  if (!['engine', 'window'].includes(lane)) throw new Error('Unknown feature test lane');
+  if (lane !== 'engine') return [];
+  const targets = [...new Set(namedTestFiles(lane, undefined, { e2e: true }))];
+  const bad = targets.find(file => file.includes('..') || file.startsWith('/'));
+  if (bad) throw new Error(`Feature e2e test "${lane}:${bad}" must be repository-relative`);
   return targets;
 }
 
@@ -696,6 +718,18 @@ export function touchedTests(lane, changedFiles) {
     .map(file => file.slice('scripts/feature-batch-ci-named/'.length))));
   const all = namedTests(lane);
   return all.filter(file => changed.has(file) || listedByPr.has(file) || windowsSmokeTests[lane].includes(file));
+}
+
+/** Engine-lane files under ui/ belong to the Control UI package (engine/ui). They need its vitest
+ *  config: jsdom/browser projects and UI Vite plugins such as virtual:branch-control-ui-locale/*.
+ *  Under the engine config they fail with "document is not defined" or unresolved virtual modules.
+ *  Returns UI files relative to engine/ui, and the rest unchanged for the engine config. */
+export const uiPackagePrefix = 'ui/';
+export function splitUiTests(lane, files) {
+  if (lane !== 'engine') return { ui: [], other: [...files] };
+  const ui = files.filter(file => file.startsWith(uiPackagePrefix)).map(file => file.slice(uiPackagePrefix.length));
+  const other = files.filter(file => !file.startsWith(uiPackagePrefix));
+  return { ui, other };
 }
 
 export function shardOf(value = process.env.FEATURE_SHARD) {

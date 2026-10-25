@@ -53,6 +53,13 @@
 .r1c .r1c-connect { display: grid; justify-items: center; gap: 8px; margin: 0 auto 8px; }
 .r1c .r1c-connect p { margin: 0; font-size: var(--fs-13); color: var(--ink-2); }
 .r1c .connect-model-acts, .c-nomodel .connect-model-acts { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; }
+
+.r1c .connect-model-btn, .c-nomodel .connect-model-btn {
+  height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--btn);
+  background: var(--btn); color: var(--on-btn); font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.r1c .connect-model-btn:hover, .c-nomodel .connect-model-btn:hover { filter: brightness(1.06); }
+
 /* Improve my draft's Undo, inside its note (#977). */
 .r1c-undo { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
 
@@ -61,7 +68,7 @@
   border: 1px solid transparent; transition: box-shadow .15s; }
 .r1c-pill[data-temp] { border-style: dashed; border-color: var(--r1c-p-edge); box-shadow: none; }
 .r1c-pill textarea { flex: 1; min-width: 0; align-self: center; height: auto; min-height: 35.75px; max-height: 160px; padding: 7px 6px; border: 0; outline: 0; resize: none;
-  background: transparent; color: var(--ink); font: inherit; font-size: 15px; line-height: 1.45; field-sizing: content; overflow-y: auto; }
+  background: transparent; color: var(--ink); font: inherit; font-size: calc(15px * var(--chat-text, 1)); line-height: 1.45; field-sizing: content; overflow-y: auto; }
 .r1c-pill textarea::placeholder { color: var(--ink-3); }
 .r1c-btn, .g-ring { position: relative; display: grid; place-items: center; flex: none; width: 34px; height: 34px; margin-block: 1px; padding: 0; border: 0; border-radius: 50%;
   background: transparent; color: var(--ink-3); cursor: pointer; transition: background-color .14s cubic-bezier(.2,.8,.2,1), color .14s cubic-bezier(.2,.8,.2,1); }
