@@ -70,6 +70,7 @@ const RAW: RegExp[] = [
   /^\s*[{[]|\{\s*"\w+"\s*:/, // JSON
   /\b(?:HTTP|status(?: code)?)\s*[:=]?\s*[1-5]\d{2}\b/i, // an HTTP status
   /\bgateway (?:closed|not connected)\b/i, // a socket close
+  /\btoken (?:mismatch|expired)\b/i, // a sign-in failure in the engine's words (`token expired (401)`)
   /\bCannot read propert|\bis not a function\b|\bis not defined\b|\bUnexpected token\b|\bnpm ERR!|\bfetch failed\b|\bFailed to fetch\b|\bsocket hang up\b|\bNo API key found\b/i,
   /\bagent:[\w-]+:[\w:.-]+/, // a session key
   // PR 1700 id shapes (connect/friendly-error.ts), so words that skip friendlyError() still never show an id.
