@@ -1,6 +1,7 @@
 // The New Trunk sheet (preview editTrunk look controls, then newTrunkC18's chat questions).
 // Colour and shape are the preview's pebble sets. Create sends them with the name; the chat asks the rest.
 import type { WindowEngine } from "../../connect/engine";
+import { errorWords } from "../../shell/plain-error";
 import { existingTrunkId } from "./api";
 import { COLOURS } from "./LookTab";
 
@@ -85,7 +86,11 @@ export async function createShapedTrunk(engine: WindowEngine, draft: NewTrunkDra
     if (!id) throw new Error("The engine did not confirm that the Trunk was created.");
     return id;
   } catch (error) {
-    if (!triedBefore) throw error;
+    if (!triedBefore) {
+      // A clear "already exists" on a first try means an older Trunk has the name: forget it so Create again asks again.
+      if (/already exists/i.test(errorWords(error))) tried.delete(key);
+      throw error;
+    }
     const existing = await existingTrunkId(engine, name, error);
     if (existing) return existing;
     throw error;
