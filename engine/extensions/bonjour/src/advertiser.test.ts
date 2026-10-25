@@ -472,7 +472,7 @@ describe("gateway bonjour advertiser", () => {
   });
 
   it("truncates reported Kubernetes service name at the DNS label byte limit", async () => {
-    const reportedHostname = "app-41627eae5842473f9e05f139ea307277-7f9477f4d6-lqqzf";
+    const reportedHostname = "app-41627eae5842473f9e05f139ea30-7f9477f4d6-lqqzf";
     enableAdvertiserUnitMode(reportedHostname);
 
     const started = await startAdvertiser();

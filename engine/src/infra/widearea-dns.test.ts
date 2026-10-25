@@ -174,6 +174,7 @@ describe("wide-area DNS-SD zone default host label", () => {
   const savedDisplayHostname = process.env.BRANCH_DISPLAY_HOSTNAME;
 
   afterEach(() => {
+    vi.restoreAllMocks();
     if (savedDisplayHostname === undefined) {
       delete process.env.BRANCH_DISPLAY_HOSTNAME;
     } else {
