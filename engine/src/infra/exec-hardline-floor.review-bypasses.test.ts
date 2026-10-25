@@ -1,6 +1,7 @@
 // One case per bypass named in the PR #1278 security review and the follow-up independent review.
 // Each case only calls detectExecHardlineFloor on a string; nothing here runs a command.
-import { describe, expect, it } from "vitest";
+import os from "node:os";
+import { describe, expect, it, vi } from "vitest";
 import { detectExecHardlineFloor } from "./exec-hardline-floor.js";
 import { normalizeFloorPath } from "./exec-hardline-structural.js";
 
@@ -129,5 +130,16 @@ describe("security review bypasses (PR #1278)", () => {
     ["/usr/./", "/usr"],
   ])("normalizes %j to %j", (input, expected) => {
     expect(normalizeFloorPath(input)).toBe(expected);
+  });
+
+  it("a tilde target asks when the home directory is unknown", () => {
+    const spy = vi.spyOn(os, "homedir").mockReturnValue("");
+    try {
+      for (const command of ["rm -rf ~/x", "rm -rf ~other/x"]) {
+        expect(detectExecHardlineFloor(command), command).not.toBeNull();
+      }
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

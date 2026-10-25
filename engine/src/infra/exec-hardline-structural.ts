@@ -147,7 +147,10 @@ function classifyTarget(word: Word): TargetClass {
     if (user.includes(UNRESOLVED)) {
       return "unresolved";
     }
-    const home = os.homedir() || "/home/user";
+    const home = os.homedir();
+    if (!home) {
+      return "unresolved";
+    }
     const base = user ? path.posix.join(path.posix.dirname(home), user) : home;
     value = base + (slash < 0 ? "" : value.slice(slash));
   }
