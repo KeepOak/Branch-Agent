@@ -267,7 +267,7 @@ export function AddAccount({ engine }: SlotControlProps) {
       )) : null}
     </div>
     <Failed text={failed} />
-    {add ? <AddAccountDialog clear engine={engine} start={add} caps={caps} providers={providers} agent={agent} onClose={(added) => { setAdd(null); if (added) void status.reload(); }} capsReady={capsReady} /> : null}
+    {add ? <AddAccountDialog clear engine={engine} start={add} caps={caps} providers={providers} agent={agent} onClose={(added) => { setAdd(null); if (added) { void status.reload(); void sharedRead(engine, "branch.setup.detect").reload(); } }} capsReady={capsReady} /> : null}
   </Kit>;
 }
 

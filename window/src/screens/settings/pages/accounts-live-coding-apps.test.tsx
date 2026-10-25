@@ -43,6 +43,9 @@ function engineWith(error: string) {
     if (method === "usage.status") return { providers: [] };
     if (method === "users.listModelAccounts") return { accounts: [] };
     if (method === "agents.list") return { defaultId: "main", agents: [{ id: "main", name: "Main" }] };
+    // The ChatGPT sign-in finishes at once, and the coding apps check again after it.
+    if (method === "models.authLogin") return { ok: true };
+    if (method === "wizard.next") { failed = false; return { done: true, status: "done" }; }
     return { ok: true };
   });
   const engine = { request, onEvent: () => () => undefined, sessionKey: "s", agentId: "main", scopes: ["operator.admin"], features: { methods: METHODS, events: [] } } as unknown as WindowEngine;
@@ -98,6 +101,33 @@ describe("R1 Coding apps rows that couldn't check", () => {
     expect(dialog).not.toBeNull();
     expect(dialog!.textContent).toContain("Add a ChatGPT account");
     expect(request.mock.calls.map(([method]) => method)).not.toContain("models.authLogin");
+  });
+
+  it("checks the Codex row again after Sign in again adds an account", async () => {
+    const { request } = await mount(engineWith(SIGN_IN_ERROR));
+    const codex = "accounts.apps.codex";
+    expect(line(codex)).toBe(SIGN_IN_REASON);
+    await click(actions(codex)[0]);
+    const dialog = () => document.querySelector<HTMLElement>('[data-testid="add-account"]');
+    await click([...dialog()!.querySelectorAll("button")].find((b) => b.textContent === "Open the sign-in page"));
+    request.mockClear();
+    await click([...dialog()!.querySelectorAll("button")].find((b) => b.textContent === "Done"));
+    expect(dialog()).toBeNull();
+    expect(request.mock.calls.map(([method]) => method)).toContain("branch.setup.detect");
+    expect(row(codex).querySelector(".r1s-item-t b")?.textContent).toBe("Models ready");
+    expect(line(codex)).toBe("Codex is connected on this computer. Turn it on to use its models.");
+    expect(row(codex).textContent).not.toContain(SIGN_IN_REASON);
+    expect(actions(codex).map((b) => b.textContent)).toEqual([]);
+  });
+
+  it("does not check again when the Add a ChatGPT account dialog closes without an account", async () => {
+    const { request } = await mount(engineWith(SIGN_IN_ERROR));
+    await click(actions("accounts.apps.codex")[0]);
+    request.mockClear();
+    await click(document.querySelector('[data-testid="add-account"] button[aria-label="Close"]'));
+    expect(document.querySelector('[data-testid="add-account"]')).toBeNull();
+    expect(request.mock.calls.map(([method]) => method)).not.toContain("branch.setup.detect");
+    expect(line("accounts.apps.codex")).toBe(SIGN_IN_REASON);
   });
 
   it("gives Claude Code and Gemini CLI plain sign-in guidance and no Sign in again", async () => {
