@@ -1,5 +1,6 @@
 // Settings nav and page structure, ported from the approved R1 preview (item 36: NAV and PG). Page ids are the new
 // ids; OLD_IDS sends the preview's and Classic's old ids to their new page so old deep links still land.
+import type { IconName } from "../../shell/icons";
 
 /** How much to show: 0 Regular, 1 Advanced, 2 Technical. */
 export type Level = 0 | 1 | 2;
@@ -34,13 +35,14 @@ export type PageId =
   | "features"
   | "developer";
 
-export type NavPage = { id: PageId; title: string; icon: string; minLevel?: Level };
+/** A page's nav row: its icon is the preview's (item 36 NAV). Your card has none: its row is your initial (MeButton). */
+export type NavPage = { id: PageId; title: string; icon?: IconName; minLevel?: Level };
 export type NavGroup = { title: string; pages: NavPage[] };
 
 /** The two rows above the groups. */
 export const TOP_PAGES: NavPage[] = [
-  { id: "card", title: "Your card", icon: "person" },
-  { id: "goto", title: "Go to", icon: "compass" },
+  { id: "card", title: "Your card" },
+  { id: "goto", title: "Go to", icon: "home" },
 ];
 /** Sub-line under Go to. */
 export const GOTO_SUB = "Overview, Canopy, Inbox…";
@@ -100,7 +102,7 @@ export const PAGES: Record<PageId, PageSpec> = {
   notifications: { title: "Notifications", lede: "When Branch tells you something, and how.", cards: ["Tell me when…", "Quiet", "When work stalls", "Live activity", "Kinds of notice", "Sorting", "This PC", "Send events to a web address", "Web Push"] },
   who: { title: "Who uses Branch", lede: "The people who use Branch on this computer, and how they sign in.", cards: ["People", "Records", "Signing in to Branch"] },
   trunks: { title: "Trunks", lede: "Your Trunks, groups and grafted agents: make one the default, change it, package it or remove it.", cards: ["", "Defaults for every Trunk", "Trunks’ own databases"] },
-  instructions: { title: "Instructions & personality", lede: "What every Trunk knows about you, and how it writes.", cards: ["Just about you", "Project instructions", "Kits", "How replies are written", "Prompts behind quick actions", "What goes with every message", "Rules"] },
+  instructions: { title: "Instructions & personality", lede: "What every Trunk knows about you, and how it writes.", cards: ["", "Just about you", "Project instructions", "Kits", "How replies are written", "Prompts behind quick actions", "What goes with every message", "Rules"] },
   customize: { title: "Customize", lede: "Toolsets, connectors, skills, plugins, command-line tools, agents and prompts, for every Trunk or one.", cards: ["", "Saved prompts", "Tools and skills", "Skills", "Plugins", "Helpers and other agents", "What it can do", "Allow", "Connected agents", "Connect an agent", "Another Branch"] },
   seedbank: { title: "Seedbank", lede: "Agents, skills, connectors, plugins, command-line tools and toolsets shared by people who use Branch.", cards: [""] },
   memory: { title: "Memory & documents", lede: "What Trunks remember, what they read, and your Library.", cards: ["Memory", "Recall and memory files", "Documents it reads", "Library"] },

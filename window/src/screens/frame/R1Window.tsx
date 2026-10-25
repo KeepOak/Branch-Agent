@@ -25,7 +25,7 @@ import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
 import { PlaceView } from "../../places-nav/PlaceView";
 import { placeRequest } from "../../places-nav/place-request";
-import { PLACES, loadRoute, parseRoute, placeTitle, saveRoute, windowTitle, type PlaceId, type Route } from "../../places-nav/routes";
+import { PLACES, loadRoute, parseRoute, placeTitle, saveRoute, windowTitle, type Route } from "../../places-nav/routes";
 import { SettingsFrame as ClassicSettingsFrame } from "../../places-nav/SettingsFrame";
 import { PAGES as R1_PAGE_SPECS, r1PageFor } from "../settings/nav";
 import { SettingsFrame } from "../settings";
@@ -100,21 +100,11 @@ export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
   coding: "computer", // Computer & browser: code and commits, repositories
 };
 
-/**
- * Settings pages that are a place: Memory & documents opens Library on its Memory tab, which has its controls.
- * Customize and Automations are R1 Settings pages of their own.
- */
-export const SETTINGS_PLACE: Readonly<Record<string, { place: PlaceId; tab?: string }>> = {
-  memory: { place: "library", tab: "memory" },
-};
-
-/** The route a link, a saved route or a nav item really opens: a Settings page that is a place (by its id or an old id
- *  for it) opens that place. An old id for Customize opens the R1 Customize page. Every other route is itself. */
+/** The route a link, a saved route or a nav item really opens: an old id for Customize opens the R1 Customize page.
+ *  Every other route is itself. */
 export function resolveRoute(route: Route): Route {
   if (route.kind !== "settings") return route;
   const page = r1PageFor(route.page);
-  const target = SETTINGS_PLACE[page];
-  if (target) return { kind: "place", place: target.place };
   if (page === "customize" && route.page !== "customize") return { kind: "settings", page: "customize" };
   return route;
 }
@@ -125,12 +115,6 @@ export function r1Route(route: Route): Route {
   if (resolved.kind !== "place" || resolved.place !== "seedbank") return resolved;
   requestCustomize({ mode: "community" });
   return { kind: "place", place: "customize" };
-}
-
-/** The tab a Settings page that is a place opens on, told to the place after it shows (as WindowShell does). */
-function openPlaceTab(route: Route): void {
-  const target = route.kind === "settings" ? SETTINGS_PLACE[r1PageFor(route.page)] : undefined;
-  if (target?.tab) setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: target.place, tab: target.tab } })), 0);
 }
 
 /**
@@ -254,7 +238,6 @@ export function R1Window({ session }: { session: SaplingSession }) {
   }, [applyRoute]);
   const navigate = (asked: Route) => {
     const next = r1Route(asked);
-    openPlaceTab(asked);
     if (JSON.stringify(next) === JSON.stringify(route)) return;
     const index = history.index + 1;
     entries.current = [...entries.current.slice(0, index), next];
@@ -312,7 +295,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       const request = placeRequest((event as CustomEvent).detail, PLACES.map(p => p.id));
       if (!request) return;
       navigateTo.current({ kind: "place", place: request.place });
-      // A tab named with the request is told to the place once it shows, as openPlaceTab does for Settings pages.
+      // A tab named with the request is told to the place once it shows.
       if (request.tab) {
         const tab = request.tab;
         setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: request.place, tab } })), 0);
@@ -320,6 +303,17 @@ export function R1Window({ session }: { session: SaplingSession }) {
     };
     window.addEventListener("branch:navigate-place", openPlace);
     return () => window.removeEventListener("branch:navigate-place", openPlace);
+  }, []);
+  // Empty-chat Connect a model (openConnectModel) and other surfaces that only know the Classic event.
+  useEffect(() => {
+    const openSettings = (event: Event) => {
+      const page = (event as CustomEvent<{ page?: string }>).detail?.page;
+      if (typeof page === "string" && /^[a-z][a-z0-9-]*$/.test(page)) {
+        navigateTo.current({ kind: "settings", page });
+      }
+    };
+    window.addEventListener("branch:navigate-settings", openSettings);
+    return () => window.removeEventListener("branch:navigate-settings", openSettings);
   }, []);
   // Settings › Updates & about › Show the welcome tour.
   useEffect(() => {

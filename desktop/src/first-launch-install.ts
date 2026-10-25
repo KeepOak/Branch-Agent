@@ -63,14 +63,14 @@ export function isAbortError(error: unknown): boolean {
     || (typeof error === "object" && error !== null && (error as { name?: string }).name === "AbortError");
 }
 
-function page(message: string, primary: string | null): string {
+function page(message: string, primary: string | null, secondary: string = FIRST_LAUNCH_CANCEL): string {
   const css = `font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:${THEME.bg};color:${THEME.ink}`;
   const card = "max-width:28rem;padding:1.25rem 1.5rem;text-align:center;line-height:1.45";
   const row = "display:flex;gap:.75rem;justify-content:center;margin-top:1rem";
   const btn = `font:inherit;padding:.4rem .9rem;border-radius:999px;border:1px solid ${THEME.line};background:${THEME.raise};cursor:pointer`;
   const pri = `${btn};background:${THEME.accent};color:${THEME.onBtn};border-color:${THEME.accent}`;
   const actions = primary
-    ? `<div style="${row}"><button type="button" id="branch-first-launch-yes" style="${pri}">${escapeHtml(primary)}</button><button type="button" id="branch-first-launch-cancel" style="${btn}">${FIRST_LAUNCH_CANCEL}</button></div>`
+    ? `<div style="${row}"><button type="button" id="branch-first-launch-yes" style="${pri}">${escapeHtml(primary)}</button><button type="button" id="branch-first-launch-cancel" style="${btn}">${escapeHtml(secondary)}</button></div>`
     : "";
   return `<div style="${css}"><div style="${card}"><p id="branch-first-launch-msg">${escapeHtml(message)}</p>${actions}</div></div>`;
 }
@@ -117,10 +117,42 @@ export function firstLaunchAllowsWindow(outcome: FirstLaunchOutcome): boolean {
 }
 
 export function firstLaunchNeedComponentsScript(): string {
-  return `(function () {
+  return `new Promise((resolve) => {
     document.body.style.cssText = "-webkit-app-region:no-drag";
-    document.body.innerHTML = ${JSON.stringify(page(FIRST_LAUNCH_NEED_COMPONENTS, null))};
-  })()`;
+    document.body.innerHTML = ${JSON.stringify(page(`The download did not finish. ${FIRST_LAUNCH_NEED_COMPONENTS}`, "Download again", "Quit"))};
+    document.getElementById("branch-first-launch-yes").addEventListener("click", () => resolve("again"));
+    document.getElementById("branch-first-launch-cancel").addEventListener("click", () => resolve("quit"));
+  })`;
+}
+
+/** A fresh ask-first attempt after each cancellation, without reusing an aborted signal. */
+export async function recoverFirstLaunchInstall(
+  win: FirstLaunchWindow,
+  cfg: DesktopConfig,
+  request: typeof fetch,
+  options: Omit<RefreshOptions, "signal"> & { choose: () => Promise<unknown> },
+): Promise<"installed" | "skipped" | "quit"> {
+  for (;;) {
+    if (win.isDestroyed?.()) return "quit";
+    const choice = await options.choose().catch(() => "quit");
+    if (choice !== "again" || win.isDestroyed?.()) return "quit";
+    const outcome = await runFirstLaunchInstall(cfg, request, {
+      ...options,
+      ask: prompt => askFirstLaunchInWindow(win, prompt.message, prompt.buttons[0]),
+      watchCancel: async () => {
+        if (win.isDestroyed?.()) return;
+        await win.webContents.executeJavaScript(FIRST_LAUNCH_WATCH_CANCEL).catch(() => undefined);
+      },
+      onProgress: update => {
+        options.onProgress?.(update);
+        const pct = update.total ? Math.round(update.bytes / update.total * 100) : 0;
+        if (!win.isDestroyed?.()) void win.webContents.executeJavaScript(
+          firstLaunchProgressScript(`Downloading ${update.name}... ${pct}%`),
+        ).catch(() => undefined);
+      },
+    });
+    if (outcome === "installed" || outcome === "skipped") return outcome;
+  }
 }
 
 /** Ask with size and Cancel; download only after yes. Cancel before or during leaves nothing published. */

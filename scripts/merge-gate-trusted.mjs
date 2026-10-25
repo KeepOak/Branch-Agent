@@ -183,30 +183,57 @@ function keepNewestSuite(runs) {
   return runs;
 }
 
-export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, { sha, prNumber, baseRef } = {}) {
+function identityKey(run, workflow) {
+  return JSON.stringify([run.app.id, workflow.path, workflow.event, run.name]);
+}
+
+// supersedeStale is the trusted gate's opt-in: an older suite of the same app, workflow path, event and job
+// on the same head SHA that is not bound to this PR and base (for example a run from before the PR was
+// retargeted to main, or whose PR list the API no longer reports) is superseded by a newer bound suite that
+// fully succeeded. Such a stale run can never supersede anything itself.
+export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, {
+  sha, prNumber, baseRef, supersedeStale = false,
+} = {}) {
   const drop = new Set();
   const groups = new Map();
+  const stale = [];
   for (const run of checkRuns) {
     const workflow = lookupWorkflow(workflowsByCheckId, run.id);
-    // Same app, workflow path, event, and job can supersede older suites only.
-    const prs = workflow?.pullRequests ?? [];
-    const bound = run.app?.id != null && workflow?.path
+    const sameHead = run.app?.id != null && workflow?.path
       && COLLAPSIBLE_CHECK_EVENTS.includes(workflow.event)
       && sha && workflow.headSha === sha
       && workflow.checkSuiteId != null && run.check_suite?.id != null
-      && Number(run.check_suite.id) === Number(workflow.checkSuiteId)
-      && prNumber && prs.some((pr) => Number(pr.number) === Number(prNumber))
+      && Number(run.check_suite.id) === Number(workflow.checkSuiteId);
+    if (!sameHead) continue;
+    // Same app, workflow path, event, and job can supersede older suites only.
+    const prs = workflow?.pullRequests ?? [];
+    const bound = prNumber && prs.some((pr) => Number(pr.number) === Number(prNumber))
       && baseRef && prs.every((pr) => pr.base === baseRef);
-    if (!bound) continue;
-    const key = JSON.stringify([run.app.id, workflow.path, workflow.event, run.name]);
+    if (!bound) {
+      if (supersedeStale) stale.push([run, identityKey(run, workflow)]);
+      continue;
+    }
+    const key = identityKey(run, workflow);
     const group = groups.get(key);
     if (group) group.push(run);
     else groups.set(key, [run]);
   }
-  for (const runs of groups.values()) {
-    const kept = new Set(keepNewestSuite(runs));
+  for (const [key, runs] of groups) {
+    const kept = keepNewestSuite(runs);
     for (const run of runs) {
-      if (!kept.has(run)) drop.add(run);
+      if (!kept.includes(run)) drop.add(run);
+    }
+    groups.set(key, kept);
+  }
+  // A stale run is dropped only when a bound, newer suite of the same identity fully succeeded.
+  for (const [run, key] of stale) {
+    const kept = groups.get(key);
+    if (!kept?.length) continue;
+    const newestBound = Math.max(...kept.map(suiteNumber));
+    const inNewest = kept.filter((item) => suiteNumber(item) === newestBound);
+    if (newestBound > suiteNumber(run)
+      && inNewest.every((item) => item.status === 'completed' && item.conclusion === 'success')) {
+      drop.add(run);
     }
   }
   return checkRuns.filter((run) => !drop.has(run));
@@ -398,8 +425,9 @@ export function missingCoreWorkflows({
   sha,
   prNumber,
   baseRef,
+  supersedeStale = false,
 }) {
-  checkRuns = newestChecksByIdentity(checkRuns, workflowsByCheckId, { sha, prNumber, baseRef });
+  checkRuns = newestChecksByIdentity(checkRuns, workflowsByCheckId, { sha, prNumber, baseRef, supersedeStale });
   const missing = [];
 
   for (const job of requiredJobs) {
@@ -441,7 +469,8 @@ export function evaluateTrustedGate({
   prNumber,
   baseRef,
 }) {
-  const context = { sha, prNumber, baseRef };
+  // Only the trusted gate opts in; the ordinary jq waiter keeps its own collapse rules.
+  const context = { sha, prNumber, baseRef, supersedeStale: true };
   const { others, pending, failed } = evaluateOtherChecks(checkRuns, workflowsByCheckId, TRUSTED_JOB, context);
   const unresolvedCurrent = checkRuns.filter((run) => run.name === TRUSTED_JOB
     && currentRunId != null && currentRunId !== '' && Number.isFinite(Number(currentRunId))
@@ -1324,7 +1353,7 @@ export function mergeCheckRunPages(payload) {
 export function fetchCheckRuns(repo, sha, token, api = ghApi) {
   const pages = [];
   for (let page = 1; ; page += 1) {
-    const payload = api(repo, token, `commits/${sha}/check-runs?per_page=100&page=${page}`);
+    const payload = api(repo, token, `commits/${sha}/check-runs?filter=latest&per_page=100&page=${page}`);
     pages.push(payload);
     const merged = mergeCheckRunPages(pages);
     if (merged.complete) return merged.checkRuns;
@@ -1566,22 +1595,70 @@ export function fetchFileTextsBatch(repo, sha, token, paths, {
   }));
 }
 
-export function fetchNamedTestLists(repo, sha, token, api = ghApi) {
-  let entries;
+// The named lists, read in pages: ONE GraphQL request lists the folder (names and types only), then the kept
+// lists are read in sorted order, at most NAMED_LIST_PAGE_SIZE blobs per request, one page after another. A single
+// request for every blob text grew with each new list and came close to the request timeout. Fails closed: a
+// GraphQL error, a thrown error (rate limit, outage) or a kept list that is missing, truncated, binary or has no
+// text throws, naming the file or page, and nothing is returned. Only a missing folder (object null, no errors) is
+// empty. There is no per-file REST fallback.
+export const NAMED_LIST_PAGE_SIZE = 150;
+const NAMED_LIST_DIR = 'scripts/feature-batch-ci-named';
+
+function namedListsQuery(fields) {
+  return 'query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ' + fields + ' } }';
+}
+
+function namedListsRequest(graphql, token, query, variables, what, filesByAlias = new Map()) {
+  let payload;
   try {
-    entries = api(repo, token, `contents/scripts/feature-batch-ci-named?ref=${sha}`);
+    payload = graphql(token, query, variables);
   } catch (error) {
-    // Only "no directory" is empty. A rate limit or outage must not read as "no named lists" (fail closed).
-    if (isNotFoundError(error)) return [];
-    throw error;
+    throw new Error('named test lists: request failed reading ' + what + ': ' + (error?.message ?? String(error)), { cause: error });
   }
-  if (!Array.isArray(entries)) return [];
+  if (payload?.errors?.length) {
+    const messages = payload.errors.map((error) => {
+      const message = error?.message ?? String(error);
+      const alias = Array.isArray(error?.path) ? error.path.find((part) => filesByAlias.has(part)) : undefined;
+      return alias === undefined ? message : filesByAlias.get(alias) + ': ' + message;
+    }).join('; ');
+    throw new Error('named test lists: GraphQL error reading ' + what + ': ' + messages);
+  }
+  const repository = payload?.data?.repository;
+  if (!repository) throw new Error('named test lists: no repository in the GraphQL answer for ' + what);
+  return repository;
+}
+
+export function fetchNamedTestLists(repo, sha, token, { graphql = graphqlRequest } = {}) {
+  const dir = NAMED_LIST_DIR;
+  const [owner, name] = repo.split('/');
+  const variables = { owner, name };
+  const namesQuery = namedListsQuery('object(expression: ' + JSON.stringify(sha + ':' + dir) + ') { ... on Tree { entries { name type } } }');
+  const listing = namedListsRequest(graphql, token, namesQuery, variables, dir);
+  if (listing.object === null) return [];
+  const entries = listing.object?.entries;
+  if (!Array.isArray(entries)) throw new Error('named test lists: ' + dir + ' is not a folder in the GraphQL answer');
+  const names = entries
+    .filter((entry) => entry?.type === 'blob' && typeof entry.name === 'string'
+      && entry.name.endsWith('.txt') && entry.name !== 'README.txt')
+    .map((entry) => entry.name)
+    .sort();
   const extra = [];
-  for (const entry of entries) {
-    if (entry.type !== 'file' || !entry.name?.endsWith('.txt') || entry.name === 'README.txt') continue;
-    const text = fetchFileText(repo, sha, token, entry.path, api);
-    if (text == null) continue;
-    extra.push(...parseNamedTestList(text, entry.path));
+  for (let start = 0; start < names.length; start += NAMED_LIST_PAGE_SIZE) {
+    const paths = names.slice(start, start + NAMED_LIST_PAGE_SIZE).map((entryName) => dir + '/' + entryName);
+    const filesByAlias = new Map(paths.map((filePath, index) => ['f' + index, filePath]));
+    const fields = paths.map((filePath, index) => (
+      'f' + index + ': object(expression: ' + JSON.stringify(sha + ':' + filePath) + ') { ... on Blob { text isBinary isTruncated } }'
+    ));
+    const what = 'page ' + (start / NAMED_LIST_PAGE_SIZE + 1) + ' (' + paths[0] + ' to ' + paths[paths.length - 1] + ')';
+    const repository = namedListsRequest(graphql, token, namedListsQuery(fields.join(' ')), variables, what, filesByAlias);
+    paths.forEach((filePath, index) => {
+      const blob = repository['f' + index];
+      if (!blob || typeof blob.text !== 'string' || blob.isBinary !== false || blob.isTruncated !== false) {
+        const why = !blob ? 'no blob' : blob.isTruncated ? 'truncated' : blob.isBinary ? 'binary' : 'no text';
+        throw new Error('named test lists: ' + filePath + ' could not be read (' + why + ')');
+      }
+      extra.push(...parseNamedTestList(blob.text, filePath));
+    });
   }
   return extra;
 }

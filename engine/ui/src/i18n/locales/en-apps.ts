@@ -18,6 +18,7 @@ const enApps = {
     ctaAppStore: "App Store",
     ctaPlayStore: "Google Play",
     ctaDownload: "Download",
+    notOutYet: "Not out yet. Use the Android, Mac, Windows or Linux app for now.",
     ctaOpenMac: "Open in Mac app",
     ctaDocs: "Docs",
     ctaSetupGuide: "Setup guide",

@@ -5,7 +5,7 @@ import { fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier';
 import { createFakeSession } from '../testing/fakeSession';
 import { ThemeProvider } from '../theme/ThemeProvider';
-import { EMPTY_SELF, type SelfProfile } from '../people/self';
+import { EMPTY_SELF, FAILED_SELF, type SelfProfile } from '../people/self';
 import { YouScreen } from './YouScreen';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 4000 });
@@ -31,8 +31,13 @@ async function renderYou(extra: Partial<Parameters<typeof YouScreen>[0]> = {}) {
   return { mocks };
 }
 
-async function pairedApp(extra: Parameters<typeof App>[0] = {}, engineExtra: Parameters<typeof createFakeEngine>[0] = {}) {
+async function pairedApp(
+  extra: Parameters<typeof App>[0] = {},
+  engineExtra: Parameters<typeof createFakeEngine>[0] = {},
+  beforePair?: (engine: ReturnType<typeof createFakeEngine>) => void,
+) {
   const engine = createFakeEngine({ sessions: fixtureSessions, agents: fixtureAgents, ...engineExtra });
+  beforePair?.(engine);
   const { session } = createFakeSession(engine);
   const fake = createFakeNotifier('granted');
   await render(
@@ -99,6 +104,17 @@ describe('you screen', () => {
     expect(screen.getByTestId('you-name-error')).toHaveTextContent(/Can’t reach Branch|Couldn’t save your name|That didn’t work/);
     expect(screen.getByTestId('you-name-error')).not.toHaveTextContent(/ECONNREFUSED|EngineLink|setDisplayName/);
   });
+
+  it('shows Couldn’t load with an empty name when users.self failed', async () => {
+    const onRetry = jest.fn();
+    await renderYou({ self: FAILED_SELF, loadFailed: true, onRename: undefined, onRetry });
+    expect(screen.getByTestId('you-name')).not.toHaveTextContent('Owner');
+    expect(screen.getByTestId('you-load-error')).toHaveTextContent('Couldn’t load');
+    expect(screen.queryByTestId('you-name-change')).toBeNull();
+    expect(screen.queryByTestId('you-name-disabled')).toBeNull();
+    await fireEvent.press(screen.getByTestId('you-load-retry'));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('you in the app', () => {
@@ -142,6 +158,39 @@ describe('you in the app', () => {
 
     await fireEvent.press(screen.getByTestId('you-back'));
     expect(screen.getByTestId('home-screen')).toBeOnTheScreen();
+    session.dispose();
+  });
+
+  it('does not fall back to Owner when users.self fails, and Try again reloads', async () => {
+    const { session, engine } = await pairedApp({}, {}, (eng) => {
+      eng.failMethod('users.self', 'users.self: ECONNREFUSED at EngineLink.request');
+    });
+    await fireEvent.press(screen.getByTestId('more-button'));
+    await eventually(() => expect(screen.getByTestId('more-you')).not.toHaveTextContent(/Owner/));
+    await fireEvent.press(screen.getByTestId('more-you'));
+    expect(screen.getByTestId('you-screen')).toBeOnTheScreen();
+    expect(screen.getByTestId('you-load-error')).toHaveTextContent('Couldn’t load');
+    expect(screen.getByTestId('you-name')).not.toHaveTextContent('Owner');
+    expect(screen.getByTestId('you-screen')).not.toHaveTextContent(/ECONNREFUSED|EngineLink/);
+
+    engine.failMethod('users.self', null);
+    await fireEvent.press(screen.getByTestId('you-load-retry'));
+    await eventually(() => expect(screen.getByTestId('you-name')).toHaveTextContent('Owner'));
+    expect(screen.queryByTestId('you-load-error')).toBeNull();
+    session.dispose();
+  });
+
+  it('shows a plain rename failure from the engine, never raw text', async () => {
+    const { session, engine } = await pairedApp();
+    engine.failMethod('users.setDisplayName', 'users.setDisplayName: ECONNREFUSED at EngineLink.request');
+    await fireEvent.press(screen.getByTestId('more-button'));
+    await fireEvent.press(screen.getByTestId('more-you'));
+    await fireEvent.press(screen.getByTestId('you-name-change'));
+    await fireEvent.changeText(screen.getByTestId('you-name-input'), 'Ada');
+    await fireEvent.press(screen.getByTestId('you-name-save'));
+    await waitFor(() => expect(screen.getByTestId('you-name-error')).toBeOnTheScreen());
+    expect(screen.getByTestId('you-name-error')).toHaveTextContent(/Can’t reach Branch|Couldn’t save your name|That didn’t work/);
+    expect(screen.getByTestId('you-name-error')).not.toHaveTextContent(/ECONNREFUSED|EngineLink|setDisplayName/);
     session.dispose();
   });
 });
