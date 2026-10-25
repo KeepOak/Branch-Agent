@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
+import { creationProblem } from "./model";
 import { canCreateTrunk, createShapedTrunk, newTrunkReadyLine, OPEN_NEW_TRUNK_SHEET, openNewTrunkSheet, startingLook, TRUNK_COLOURS, TRUNK_SHAPES, type NewTrunkDraft } from "./new-trunk-sheet";
 
 function engineWith(result: unknown | ((method: string) => unknown)): { engine: WindowEngine; request: ReturnType<typeof vi.fn> } {
@@ -79,23 +80,44 @@ describe("New Trunk sheet", () => {
     expect(request).toHaveBeenCalledWith("agents.list", {});
   });
 
-  it("opens the existing Trunk when the engine throws the already-exists line", async () => {
+  it("opens the Trunk when the first reply was lost and Create again says it already exists", async () => {
+    let calls = 0;
     const { engine, request } = engineWith((method: string) => {
-      if (method === "agents.create") throw new Error('agent "hazel" already exists');
-      if (method === "agents.list") throw new Error("Roster temporarily unavailable");
+      if (method === "agents.create") {
+        calls += 1;
+        if (calls === 1) throw new Error("Connection closed before the reply arrived");
+        return { ok: false, error: { message: 'agent "fern" already exists' } };
+      }
+      if (method === "agents.list") return { agents: [{ id: "fern", identity: { name: "Fern" } }] };
       return {};
     });
-    await expect(createShapedTrunk(engine, { name: "Hazel", colour: "#2F8C86", shape: "Circle" })).resolves.toBe("hazel");
-    expect(request).toHaveBeenCalledWith("agents.list", {});
+    await expect(createShapedTrunk(engine, fern)).rejects.toThrow("Connection closed before the reply arrived");
+    await expect(createShapedTrunk(engine, fern)).resolves.toBe("fern");
+    expect(request.mock.calls.filter(([method]) => method === "agents.create")).toHaveLength(2);
   });
 
-  it("finds the existing Trunk by name when the refusal has no quoted id", async () => {
+  it("asks for another name when the engine throws the already-exists line for an older Trunk", async () => {
+    const { engine, request } = engineWith((method: string) => {
+      if (method === "agents.create") throw new Error('agent "hazel" already exists');
+      if (method === "agents.list") return { agents: [{ id: "hazel", identity: { name: "Hazel" } }] };
+      return {};
+    });
+    const error = await createShapedTrunk(engine, { name: "Hazel", colour: "#2F8C86", shape: "Circle" }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe('agent "hazel" already exists');
+    expect(creationProblem(error)).toBe("That Trunk name is already taken. Choose another name.");
+    expect(request).not.toHaveBeenCalledWith("agents.list", {});
+  });
+
+  it("asks for another name when an older Trunk has the name and the refusal has no quoted id", async () => {
     const { engine } = engineWith((method: string) => {
       if (method === "agents.create") return { ok: false, error: { message: "agent already exists" } };
       if (method === "agents.list") return { agents: [{ id: "fern", identity: { name: "Fern" } }] };
       return {};
     });
-    await expect(createShapedTrunk(engine, { name: "Fern", colour: "#2F8C86", shape: "Circle" })).resolves.toBe("fern");
+    const error = await createShapedTrunk(engine, { name: "Fern", colour: "#2F8C86", shape: "Circle" }).catch((caught: unknown) => caught);
+    expect((error as Error).message).toBe("agent already exists");
+    expect(creationProblem(error)).toBe("That Trunk name is already taken. Choose another name.");
   });
 
   it("still throws a real create failure", async () => {
