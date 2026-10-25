@@ -3,7 +3,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { tourCards } from "../../shell/Walkthrough";
+import { tourCards, Walkthrough } from "../../shell/Walkthrough";
 import { canShow, INTRO_CARDS, R1Tour } from "./R1Tour";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -37,7 +37,16 @@ it("is skippable, and the card set ends in the message box", async () => {
   expect(document.activeElement).toBe(document.querySelector('[data-testid="composer"]'));
 });
 
-it("after setup, each intro card marks a visible part of the conversation, or sits centred with no spotlight", async () => {
+type Rect = { left: number; top: number; width: number; height: number };
+const hits = (a: Rect, b: Rect) => a.left < b.left + b.width && a.left + a.width > b.left && a.top < b.top + b.height && a.top + a.height > b.top;
+const spot = () => document.querySelector<HTMLElement>(".tour-spot")!;
+const hole = (): Rect => { const s = spot(); return { left: parseFloat(s.style.left), top: parseFloat(s.style.top), width: parseFloat(s.style.width), height: parseFloat(s.style.height) }; };
+const place = (): Rect => {
+  const node = card();
+  return { left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: Math.min(340, parseFloat(node.style.maxWidth) || 340), height: 220 };
+};
+/** A wide window right after setup: the R1 sidebar on the left, the Trunk's name in the header, the message box below. */
+function layout() {
   vi.stubGlobal("innerWidth", 1440);
   vi.stubGlobal("innerHeight", 900);
   document.body.querySelector("nav")?.remove();
@@ -62,43 +71,39 @@ it("after setup, each intro card marks a visible part of the conversation, or si
   };
   const sidebar = box(side, 0, 0, 280, 900);
   box(side.querySelector(".r1sb-sec")!, 12, 120, 248, 180);
-  box(side.querySelector(".r1sb-seed")!, 16, 760, 200, 36);
-  box(side.querySelector(".r1sb-me")!, 16, 820, 36, 36);
+  const seed = box(side.querySelector(".r1sb-seed")!, 16, 760, 200, 36);
+  const me = box(side.querySelector(".r1sb-me")!, 16, 820, 36, 36);
   const trunk = box(pill, 640, 18, 160, 36);
   box(composer, 360, 780, 640, 44);
-  const hits = (a: { left: number; top: number; width: number; height: number }, b: { left: number; top: number; width: number; height: number }) =>
-    a.left < b.left + b.width && a.left + a.width > b.left && a.top < b.top + b.height && a.top + a.height > b.top;
-  const spot = () => document.querySelector<HTMLElement>(".tour-spot")!;
-  const place = () => {
-    const node = card();
-    return { left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: Math.min(340, parseFloat(node.style.maxWidth) || 340), height: 220 };
-  };
+  return { sidebar, seed, me, trunk };
+}
+
+it("after setup, each intro card spotlights where its thing lives", async () => {
+  const { sidebar, seed, me, trunk } = layout();
   await act(async () => root.render(<R1Tour kind="intro" defaultName="Sapling" onClose={() => {}} />));
-  const marked = spot();
-  const hole = { left: parseFloat(marked.style.left), top: parseFloat(marked.style.top), width: parseFloat(marked.style.width), height: parseFloat(marked.style.height) };
-  expect(marked.classList.contains("none")).toBe(false);
-  expect(hits(hole, trunk)).toBe(true);
-  expect(hits(hole, sidebar)).toBe(false);
+  expect(spot().classList.contains("none")).toBe(false);
+  expect(hits(hole(), trunk)).toBe(true);
+  expect(hits(hole(), sidebar)).toBe(false);
   expect(hits(place(), sidebar)).toBe(false);
   await click(button("Next"));
   expect(card().querySelector("b")?.textContent).toBe("Customize & Seedbank");
-  expect(spot().classList.contains("none")).toBe(true);
-  const customize = place();
-  expect(customize.left).toBeGreaterThan(sidebar.left + sidebar.width + 80);
-  expect(customize.top).toBeGreaterThan(280);
-  expect(customize.top).toBeLessThan(420);
-  expect(hits(customize, sidebar)).toBe(false);
+  expect(spot().classList.contains("none")).toBe(false);
+  expect(hits(hole(), seed)).toBe(true);
+  expect(hits(place(), hole())).toBe(false);
   await click(button("Next"));
   expect(card().querySelector("b")?.textContent).toBe("Settings, Guide & help");
   expect(card().querySelector("p")?.textContent).toBe("Everything has a home in Settings, and search finds anything. The Guide, in the menu on your name, takes you on the full tour any time.");
+  expect(spot().classList.contains("none")).toBe(false);
+  expect(hits(hole(), me)).toBe(true);
+  expect(hits(place(), hole())).toBe(false);
+  // Your Trunks marks the name in the header; the other two mark the Seedbank button and the menu on your name.
+  expect(INTRO_CARDS.map((c) => c.target)).toEqual([".r1-header .g-pill", ".r1sb-seed", ".r1sb-me"]);
+});
+
+it("a card that does not opt in still gets no spotlight in the sidebar", async () => {
+  layout();
+  await act(async () => root.render(<Walkthrough clear defaultName="Sapling" cards={[{ title: "x", text: "", target: ".r1sb-seed" }]} onClose={() => {}} />));
   expect(spot().classList.contains("none")).toBe(true);
-  const guide = place();
-  expect(guide.left).toBeGreaterThan(sidebar.left + sidebar.width + 80);
-  expect(guide.top).toBeGreaterThan(280);
-  expect(guide.top).toBeLessThan(420);
-  expect(hits(guide, sidebar)).toBe(false);
-  // Your Trunks marks the name in the header. The other two have nothing on the conversation to mark.
-  expect(INTRO_CARDS.map((c) => c.target)).toEqual([".r1-header .g-pill", null, null]);
 });
 
 it("the full tour counts only the cards that can show in this window, so the counter never jumps", async () => {
