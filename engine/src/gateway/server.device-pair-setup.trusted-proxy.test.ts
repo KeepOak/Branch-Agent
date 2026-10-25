@@ -121,6 +121,39 @@ test.each(["mobile", "node"] as const)("trusted-proxy %s pairing", async (profil
       if (profile === "node") {
         delete nodeHeaders["x-forwarded-user"];
       }
+      // A setup code never approves itself: the first bootstrap connect parks a
+      // pending request that a person must approve before the device is admitted.
+      const firstAttempt = await openTrackedWs(started.port, nodeHeaders);
+      sockets.push(firstAttempt);
+      const rejected = await connectReq(firstAttempt, {
+        skipDefaultAuth: true,
+        bootstrapToken: payload.bootstrapToken,
+        role: "node",
+        scopes: [],
+        client: nodeClient,
+        deviceIdentityPath: phone.identityPath,
+      });
+      expect(rejected.ok).toBe(false);
+      expect(rejected.error?.code).toBe("NOT_PAIRED");
+      expect(rejected.error?.details).toMatchObject({
+        reason: "not-paired",
+        requestedRole: "node",
+        deviceId: phone.identity.deviceId,
+        requestId: expect.any(String),
+      });
+      const rejectedDetails = rejected.error?.details;
+      const requestId = isRecord(rejectedDetails) ? rejectedDetails.requestId : undefined;
+      if (typeof requestId !== "string") {
+        throw new Error("missing pending pairing requestId");
+      }
+      expect(await getPairedDevice(phone.identity.deviceId)).toBeNull();
+      expect((await listDevicePairing()).pending).toContainEqual(
+        expect.objectContaining({ requestId, deviceId: phone.identity.deviceId }),
+      );
+      // The paired admin operator approves the request, as a person would.
+      const approval = await rpcReq(ws, "device.pair.approve", { requestId });
+      expect(approval.ok, JSON.stringify(approval.error)).toBe(true);
+
       const node = await openTrackedWs(started.port, nodeHeaders);
       sockets.push(node);
       const connected = await connectReq(node, {
