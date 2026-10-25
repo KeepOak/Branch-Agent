@@ -202,6 +202,28 @@ async function stagedDefect(journal: DesktopJournal, install: DesktopInstall): P
   return undefined;
 }
 
+/**
+ * Why a staged update was made for another kind of install than the one running now, or undefined when it fits.
+ * An AppImage update replaces one AppImage file; app.asar and whole-app updates replace an unpacked install. A
+ * record left by one kind (say the one-line installer's AppImage) must never be applied by the other (the .deb).
+ */
+function installKindMismatch(journal: DesktopJournal, install: DesktopInstall): string | undefined {
+  if (journal.kind === "appimage") {
+    if (!install.appImage) {
+      const running = (install.platform ?? process.platform) === "linux" ? "the .deb" : "not an AppImage";
+      return "it was staged for a different install (AppImage), this copy is " + running;
+    }
+    if (journal.target !== install.appImage) {
+      return "it was staged for a different install (AppImage " + String(journal.target) + "), this copy runs from " + install.appImage;
+    }
+    return undefined;
+  }
+  if (install.appImage) {
+    return "it was staged for a different install (" + (journal.kind === "asar" ? "app.asar" : "the whole app") + "), this copy is an AppImage";
+  }
+  return undefined;
+}
+
 /** The helper ships inside app.asar; without it the swap cannot run. Other read errors still surface. */
 async function helperMissing(helperSource: string): Promise<boolean> {
   try { await readFile(helperSource); return false; } catch (error) {
@@ -530,6 +552,14 @@ async function handOffJournal(cfg: DesktopConfig, install: DesktopInstall, helpe
   journal: DesktopJournal | undefined): Promise<boolean> {
   const updateWaiting = journal?.phase === "staged";
   if (!updateWaiting) await ensureMacApplicationsInstall(install.appDir, join(cfg.dataDir, "desktop.log"));
+  // A record staged for another kind of install is dropped before anything else; the next check stages the right one.
+  const mismatch = updateWaiting ? installKindMismatch(journal, install) : undefined;
+  if (updateWaiting && mismatch) {
+    // Only the staged copy goes; never the file this copy runs from, nor the AppImage the record would replace.
+    if (journal.kind === "appimage" && typeof journal.staged === "string" && journal.staged !== install.appImage
+      && journal.staged !== journal.target) await rm(journal.staged, { force: true });
+    return discardStagedUpdate(cfg, journal, mismatch);
+  }
   const blocked = desktopUpdateHandOffBlock(journal, explicit);
   if (blocked) {
     try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} ${blocked}\n`, BRANCH_LOG_LIMITS); } catch { /* ignore */ }
