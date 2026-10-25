@@ -566,3 +566,10 @@ test("publish-draft refuses a draft whose Latest is already newer", () => fixtur
 test("publish-draft needs a release tag", async () => {
   await assert.rejects(publishDraft("main", async () => "[]"), /needs a release tag/);
 });
+
+test("downloadAssetName returns null when no uploaded names are given", () => {
+  for (const [, target] of DOWNLOAD_PLATFORMS) {
+    assert.equal(downloadAssetName(version, target), null);
+    assert.equal(downloadAssetName(version, target, undefined), null);
+  }
+});
