@@ -1865,8 +1865,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             lockdownOn: lockdown.on,
             tryExamples: () => {
               startTryExamples(request);
-              openPlace("customize");
-              window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Trunks" } }));
+              openSettings("trunks");
             },
           })}
         />
