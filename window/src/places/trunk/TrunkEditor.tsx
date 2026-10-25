@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { notify } from "../../shell/notify";
+import { plainError } from "../../shell/plain-error";
 import type { Level } from "../../places-nav/level";
 import { saveTrunk, type Draft } from "./api";
 import { ComputersTab } from "./ComputersTab";
@@ -12,7 +13,7 @@ import { canWrite, loadTrunkData, useLoad, WRITE_WHY, type TrunkData } from "./d
 import { COLOURS, EYES, LookTab, SHAPES } from "./LookTab";
 import { readMay } from "./may";
 import { MayTab } from "./MayTab";
-import { errorText, lookOf, LOOKS } from "./model";
+import { lookOf, LOOKS } from "./model";
 import { TrunkFace } from "./TrunkFace";
 import { Layer } from "./layer";
 import "./trunk.css";
@@ -60,7 +61,7 @@ export function TrunkEditor(props: TrunkEditorProps) {
   // Until the Trunk is read, the title names it plainly: never the engine id (research-desk).
   const name = initial?.name || "this Trunk";
   if (!data.data || !initial) {
-    const line = data.error || (data.loading ? "Reading this Trunk…" : "This Trunk is no longer in the engine’s list.");
+    const line = data.error ? plainError(data.error) : (data.loading ? "Reading this Trunk…" : "This Trunk is no longer in the engine’s list.");
     return <Layer><Dialog title={`Edit ${name}`} wide onClose={onClose} testid="trunk-editor" footer={<button type="button" className="btn ghost" onClick={onClose}>Cancel</button>}><p className={data.error ? "tk-error" : "tk-hint"} role={data.error ? "alert" : "status"}>{line}</p></Dialog></Layer>;
   }
   return <EditorBody {...props} data={data.data} initial={initial} />;
@@ -105,7 +106,7 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
   const save = async () => {
     setBusy(true); setError(null);
     try { await saveTrunk(engine, agentId, initial, draft); notify(`${draft.name.trim() || initial.name} is saved.`); onSaved?.(); onClose(); }
-    catch (e) { setError(errorText(e)); }
+    catch (e) { setError(plainError(e)); }
     finally { setBusy(false); }
   };
   const write = canWrite(engine);
@@ -128,8 +129,8 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
             {tab === "may" && <MayTab engine={engine} agentId={agentId} name={initial.name} draft={draft} models={data.models} level={level} set={set} openSettings={openSettings} />}
             {tab === "computers" && <ComputersTab name={initial.name} draft={draft} computers={data.computers} set={set} openSettings={openSettings} />}
           </div>
-          {data.partial.map((p) => <p key={p} className="tk-hint" role="status">{p}</p>)}
-          {error && <p className="tk-error" role="alert">{error}</p>}
+          {data.partial.map((p) => <p key={p} className="tk-hint" role="status">{plainError(p)}</p>)}
+          {error && <p className="tk-error" role="alert">{plainError(error)}</p>}
         </div>
       </div>
     </Dialog></Layer>

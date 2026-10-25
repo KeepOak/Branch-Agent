@@ -48,7 +48,11 @@ export type EnsureNoKeyDefaultDeps = {
   ) => Promise<ActivateSetupInferenceResult>;
 };
 
-/** Always-confirm prompter for first-run local setup. Llama.cpp consent defaults to no; quickstart honors that and would skip the download. */
+/**
+ * Silent first-run prompter: never start a download the prompt itself declined.
+ * Llama.cpp consent defaults to no (`initialValue: false`); honoring that keeps
+ * `branch.setup.activate` from pulling multi-GB models without the owner.
+ */
 export function createFirstRunNoKeyPrompter(runtime: NoKeyLogRuntime): WizardPrompter {
   const unexpected = (kind: string) => {
     throw new Error(`branch setup hit an interactive ${kind} prompt; the free local default must not ask`);
@@ -67,7 +71,7 @@ export function createFirstRunNoKeyPrompter(runtime: NoKeyLogRuntime): WizardPro
     },
     multiselect: async () => unexpected("multiselect"),
     text: async () => unexpected("text"),
-    confirm: async () => true,
+    confirm: async (params) => params.initialValue === true,
     progress: (label) => {
       runtime.log(label);
       return {
@@ -127,6 +131,7 @@ function unavailable(): ActivateSetupInferenceResult {
 /**
  * First-run chat without an account: reuse a ready local server, otherwise install
  * managed llama.cpp with first-run consent. No-ops when a usable route already exists.
+ * Silent activate never auto-yes a download; the window wizard is what asks.
  */
 export async function ensureNoKeyDefaultModel(
   params: ActivateSetupInferenceParams,

@@ -8,12 +8,13 @@ import { Icon } from "./icons";
 import { rowTime } from "./list-model";
 import type { MenuItem } from "./Menu";
 import { notify } from "./notify";
+import { plainError } from "./plain-error";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
-const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const reason = (e: unknown) => plainError(e);
 
 export type CatalogThread = { catalogId: string; hostId: string; threadId: string; sourceHomeId?: string; name: string; at: number; canArchive: boolean; canContinue: boolean };
 export type Catalog = { id: string; label: string; threads: CatalogThread[] };
@@ -95,7 +96,7 @@ export function useCatalogs(request: Request, ready: boolean) {
       notify(r.created === false ? "Already up to date." : `Brought in ${Number(r.importedItems) || 0} messages.`); // fakes-ok: F4 the preview's own words (app-latest ACTS.extinPA18)
       return str(r.sessionKey) || null;
     } catch (e) {
-      notify(`Couldn't bring it in: ${reason(e)}.`, { tone: "bad" });
+      notify(`Couldn't bring it in: ${reason(e)}`, { tone: "bad" });
       return null;
     }
   };
@@ -105,7 +106,7 @@ export function useCatalogs(request: Request, ready: boolean) {
       notify(`Deleted ${t.name}.`);
       load();
     } catch (e) {
-      notify(`Couldn't delete ${t.name}: ${reason(e)}.`, { tone: "bad" });
+      notify(`Couldn't delete ${t.name}: ${reason(e)}`, { tone: "bad" });
     }
   };
   return { catalogs: catalogs.filter((c) => !hidden.has(c.id) && c.threads.length), open, fold, hide, bringIn, remove, reload: load };
@@ -187,7 +188,7 @@ export function ReadOnlyThread({ request, thread, label, onClose, onBringIn }: {
       (r) => setItems((Array.isArray(rec(r).items) ? (rec(r).items as unknown[]).map(rec) : [])
         .filter((i) => (str(i.type) === "userMessage" || str(i.type) === "agentMessage") && str(i.text).trim())
         .map((i) => ({ who: str(i.type) === "userMessage" ? "You" : label, text: str(i.text) }))),
-      (e: unknown) => setError(`Couldn't read it: ${reason(e)}.`),
+      (e: unknown) => setError(plainError(`Couldn't read it: ${e instanceof Error ? e.message : String(e)}`)),
     );
   }, [request, thread, label]);
   return (

@@ -129,7 +129,7 @@ describe("resolveExecDefaults", () => {
     ).toBe(true);
   });
 
-  it("uses host approval defaults for gateway when exec policy is unset", () => {
+  it("uses Ask first for gateway when exec policy is unset", () => {
     const defaults = resolveExecDefaults({
       cfg: withDefaultAgent({
         tools: {
@@ -144,9 +144,55 @@ describe("resolveExecDefaults", () => {
     expect(defaults.host).toBe("auto");
     expect(defaults.effectiveHost).toBe("gateway");
     expect(defaults.canRequestNode).toBe(true);
-    expect(defaults.mode).toBe("full");
-    expect(defaults.security).toBe("full");
-    expect(defaults.ask).toBe("off");
+    expect(defaults.mode).toBe("ask");
+    expect(defaults.security).toBe("allowlist");
+    expect(defaults.ask).toBe("on-miss");
+  });
+
+  it.each([
+    {
+      name: "empty config",
+      cfg: {},
+    },
+    {
+      name: "command-line setup wizard only",
+      cfg: {
+        wizard: {
+          accessMode: "full" as const,
+          securityAcknowledgedAt: "2026-10-01T00:00:00.000Z",
+        },
+      },
+    },
+  ])("starts on Ask first when nothing is saved ($name)", ({ cfg }) => {
+    expect(
+      resolveExecDefaults({
+        cfg: withDefaultAgent(cfg),
+        sandboxAvailable: false,
+      }),
+    ).toMatchObject({
+      mode: "ask",
+      security: "allowlist",
+      ask: "on-miss",
+    });
+  });
+
+  it.each([
+    { mode: "full" as const },
+    { mode: "deny" as const },
+    { mode: "ask" as const },
+  ])("keeps a saved tools.exec.mode=$mode", ({ mode }) => {
+    const policy =
+      mode === "full"
+        ? { mode, security: "full", ask: "off" }
+        : mode === "deny"
+          ? { mode, security: "deny", ask: "off" }
+          : { mode, security: "allowlist", ask: "on-miss" };
+    expect(
+      resolveExecDefaults({
+        cfg: withDefaultAgent({ tools: { exec: { mode } } }),
+        sandboxAvailable: false,
+      }),
+    ).toMatchObject(policy);
   });
 
   it("ignores host approval defaults when auto resolves to sandbox", () => {

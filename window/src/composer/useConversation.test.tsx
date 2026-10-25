@@ -17,7 +17,7 @@ afterEach(async () => {
   document.body.innerHTML = "";
 });
 
-it("marks the free-model try settled after activate returns, even when models.list is still empty", async () => {
+it("does not silently activate a free model when none is connected", async () => {
   const request = vi.fn(async (method: string) => {
     if (method === "agents.list") return { defaultId: "main", agents: [{ id: "main", name: "Sapling" }] };
     if (method === "sessions.describe") return { session: { model: "openai/test" } };
@@ -42,9 +42,11 @@ it("marks the free-model try settled after activate returns, even when models.li
   root = createRoot(document.body.appendChild(document.createElement("div")));
   await act(async () => root?.render(<Probe />));
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-  await vi.waitFor(() => expect(latest?.noKeySettled).toBe(true));
+  await vi.waitFor(() => expect(latest?.loaded).toBe(true));
+  expect(latest?.noKeySettled).toBe(true);
   expect(latest?.noKeyError).toBeNull();
-  expect(request.mock.calls.some(([m]) => m === "branch.setup.activate")).toBe(true);
+  expect(request.mock.calls.some(([m]) => m === "branch.setup.activate")).toBe(false);
+  expect(request.mock.calls.some(([m]) => m === "branch.setup.activate.start")).toBe(false);
 });
 
 it("re-reads the Trunk's default mode when the engine announces a config change", async () => {

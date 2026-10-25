@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, readlink, rm, stat, symlink, utimes, writeFile, rename } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, readFile, readdir, readlink, rm, stat, symlink, utimes, writeFile, rename } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createPortProbe } from "node:net";
 import { createRequire } from "node:module";
@@ -45,9 +45,20 @@ async function fixture(run, modify = () => {}) {
   const requests = [];
   const server = createServer((request, response) => {
     const filename = request.url?.slice(1);
-    if (filename === `branch-release-${process.platform}-${process.arch}.json`) { response.end(JSON.stringify(release)); return; }
+    if (filename === `branch-release-${process.platform}-${process.arch}.json`) {
+      const body = JSON.stringify(release);
+      response.writeHead(200, { "Content-Length": Buffer.byteLength(body) });
+      response.end(body);
+      return;
+    }
     if (!Object.values(release.components).some(asset => asset.url.endsWith("/" + filename))) { response.writeHead(404).end(); return; }
-    createReadStream(join(output, filename)).on("error", () => response.destroy()).pipe(response);
+    // Send the whole file with its length. A piped stream without Content-Length can
+    // end early on Windows under the native job's 96 MB heap; downloadComponent then
+    // hashes a short body and throws SHA256/size mismatch.
+    readFile(join(output, filename)).then(body => {
+      response.writeHead(200, { "Content-Length": body.length });
+      response.end(body);
+    }, () => { if (!response.headersSent) response.writeHead(404); response.end(); });
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port;
@@ -56,7 +67,10 @@ async function fixture(run, modify = () => {}) {
     const filename = new URL(url).pathname.split("/").at(-1);
     const response = await fetch(`http://127.0.0.1:${port}/${filename}`, options);
     // Real loopback HTTP bytes; production still validates the real GitHub redirect URL.
-    return new Response(response.body, { status: response.status, headers: response.headers });
+    // Hold the bytes before wrapping so the inner fetch response cannot be collected
+    // while downloadComponent is still reading the stream.
+    const body = response.body ? await response.arrayBuffer() : new ArrayBuffer(0);
+    return new Response(body, { status: response.status, headers: response.headers });
   };
   try { await run({ root, engine, window, output, cfg, release, request, requests }); }
   finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
@@ -154,14 +168,61 @@ test("a staged update is not replaced while the swap guard is held, or once its 
   const staged = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
   const newer = await newerRelease(context);
   await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
-  // An update or recovery holds the guard: the newer download is discarded, the staged pair stays.
+  // An update or recovery holds the guard: the newer download stays, and the staged pair stays.
   assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: busyGuard }), false);
   assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
-  assert.deepEqual((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")), [], "the discarded download was left on disk");
+  assert.equal((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")).length, 1, "the download stays while the lock is held");
   // The staged engine already runs: it is never replaced underneath itself.
   await writeFile(join(cfg.dataDir, "engine-running.txt"), staged + "\n");
   assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: freeGuard }), false);
   assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
+}));
+
+test("a release downloaded while the update lock is held is staged once the lock is free", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const newer = await newerRelease(context);
+  let fetches = 0;
+  const counting = async (url) => { fetches += 1; return newer.request(url); };
+  const logs = [];
+  const log = line => logs.push(line);
+  assert.equal(await source.refreshComponentUpdate(cfg, counting, { underSwapGuard: busyGuard, log }), false);
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.3");
+  const kept = (await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-"));
+  assert.equal(kept.length, 1);
+  assert.equal(existsSync(join(cfg.dataDir, "updates", kept[0], ".update-kept")), true);
+  assert.match(logs.join("\n"), /Skipped staging 0\.4\.4 because the update lock is held\. The download stays and staging will retry\./);
+  const downloaded = fetches;
+  assert.equal(await source.refreshComponentUpdate(cfg, counting, { underSwapGuard: freeGuard, log }), true);
+  assert.equal(fetches, downloaded + 1, "the kept download was fetched again");
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.4");
+  assert.equal(await readFile(join(cfg.windowDir, "index.html"), "utf8"), "<title>0.4.4 window</title>");
+  assert.deepEqual((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")), kept);
+  // The next manifest is older: it must not replace the newer staged build.
+  assert.equal(await source.refreshComponentUpdate(cfg, request, { underSwapGuard: freeGuard, log }), false);
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.4");
+  assert.match(logs.join("\n"), /Skipped staging 0\.4\.3 because 0\.4\.4 is newer\./);
+}));
+
+test("a marker that cannot be written while the lock is held does not delete the download", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const newer = await newerRelease(context);
+  // The download is in place before the guard returns. A directory where the marker file should go
+  // makes the write fail the way a Windows lock does, after the download exists.
+  const guard = async () => {
+    const updates = join(cfg.dataDir, "updates");
+    for (const name of await readdir(updates)) {
+      if (name.startsWith("release-0.4.4-")) await mkdir(join(updates, name, ".update-kept"));
+    }
+    return undefined;
+  };
+  await assert.rejects(() => source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: guard }), { code: "EISDIR" });
+  assert.equal((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")).length, 1,
+    "the download was deleted when the kept marker could not be written");
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.3");
 }));
 
 /** Fails the replacement's folder moves chosen by `fails(from, to)`; every other move runs for real. */
@@ -306,9 +367,9 @@ test("confirmed update retains current and previous releases but prunes older up
   await writeFile(join(cfg.dataDir, "engine-current.txt"), join(previous, "engine") + "\n");
   await source.refreshComponentUpdate(cfg, request);
   const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
-  assert.equal(await exists(stale), true, "nothing is pruned before readiness confirmation");
+  assert.equal(await exists(stale), false, "a successful stage prunes copies that are no longer current, previous or staged");
   const prune = await source.confirmComponentUpdate(cfg, undefined, true);
-  assert.equal(await exists(stale), true, "confirmation does not prune before the app reports ready");
+  assert.equal(await exists(stale), false, "confirmation still finds the staged-time cleanup already done");
   assert.equal(typeof prune, "function");
   await prune();
   assert.equal(await exists(current), true);
@@ -392,6 +453,41 @@ test("new per-user installation stages components and creates a stable local tok
   await source.confirmComponentUpdate(cfg);
   assert.equal(await readFile(join(cfg.windowDir, "index.html"), "utf8"), "<title>new window</title>");
 }));
+
+test("loopback component archives advertise their exact byte count", async () => fixture(async ({ request, release }) => {
+  for (const asset of Object.values(release.components)) {
+    const response = await request(asset.url);
+    assert.equal(response.headers.get("content-length"), String(asset.bytes));
+    const body = Buffer.from(await response.arrayBuffer());
+    assert.equal(body.length, asset.bytes);
+    assert.equal(createHash("sha256").update(body).digest("hex"), asset.sha256);
+  }
+}));
+
+test("a component download that ends before the manifest size is refused", async () => {
+  const files = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-files.js")));
+  const root = await mkdtemp(join(tmpdir(), "branch-truncated-"));
+  const server = createServer((_request, response) => { response.end("partial"); });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  const asset = {
+    url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0.4.3/branch-window-0.4.3.tar.gz",
+    sha256: "ab".repeat(32),
+    bytes: 64,
+    expandedBytes: 64,
+  };
+  const request = async (_url, options) => {
+    const response = await fetch(`http://127.0.0.1:${port}/partial`, options);
+    return new Response(response.body, { status: response.status, headers: response.headers });
+  };
+  try {
+    await assert.rejects(files.downloadComponent(asset, join(root, "window.tar.gz"), request), /SHA256\/size mismatch/);
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+});
 
 test("packaging bundles a real Node24 runtime with hash receipt", async () => fixture(async ({ root }) => {
   const resources = join(root, "resources"); const receipt = await bundleNode(resources);
@@ -932,7 +1028,8 @@ test("startup prunes old engine and desktop updates, retains rollback and stagin
   await source.pruneStartupUpdates(cfg, line => logs.push(line));
   for (const name of [names[0], names[3]]) assert.equal(await exists(join(updates, name)), false, name);
   for (const name of names.filter((_, index) => index !== 0 && index !== 3)) assert.equal(await exists(join(updates, name)), true, name);
-  assert.deepEqual(logs, ["removed 2 old updates, freed 0.00 GB"]);
+  assert.ok(logs.some(line => line.startsWith("keeping ")));
+  assert.equal(logs.at(-1), "removed 2 old updates, freed 0.00 GB");
   await source.pruneStartupUpdates(cfg, line => logs.push(line));
   assert.equal(logs.at(-1), "removed 0 old updates, freed 0.00 GB");
 }));
@@ -941,12 +1038,11 @@ test("startup uses the confirmed predecessor instead of a newer incomplete downl
   const updates = join(cfg.dataDir, "updates");
   const previous = join(updates, "release-previous-111aaa");
   const stale = join(updates, "release-stale-222bbb");
-  for (const folder of [previous, stale]) {
-    await mkdir(join(folder, "engine"), { recursive: true });
-    await writeFile(join(folder, ".release-complete"), "");
-  }
+  await completeEngine(previous);
+  await completeEngine(stale);
   await writeFile(join(cfg.dataDir, "engine-current.txt"), join(previous, "engine"));
   await source.refreshComponentUpdate(cfg, request);
+  assert.equal(await exists(stale), false, "a successful stage prunes older complete copies");
   await source.confirmComponentUpdate(cfg, undefined, true);
   const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
   const download = join(updates, "release-download-333ccc");
@@ -958,7 +1054,8 @@ test("startup uses the confirmed predecessor instead of a newer incomplete downl
   assert.equal(await exists(selected), true);
   assert.equal(await exists(download), true);
   assert.equal(await exists(stale), false);
-  assert.deepEqual(logs, ["removed 1 old updates, freed 0.00 GB"]);
+  assert.ok(logs.some(line => line.startsWith("keeping ")));
+  assert.equal(logs.at(-1), "removed 0 old updates, freed 0.00 GB");
 }));
 
 test("deferred cleanup retains a newly selected engine and both sides of an in-progress publication", async () => fixture(async ({ cfg, request }) => {
@@ -997,7 +1094,8 @@ test("startup reduces twenty legacy releases to current plus previous and remain
   const logs = [];
   await source.pruneStartupUpdates(cfg, line => logs.push(line));
   for (const [index, folder] of folders.entries()) assert.equal(await exists(folder), index >= 18, folder);
-  assert.deepEqual(logs, ["removed 18 old updates, freed 0.01 GB"]);
+  assert.ok(logs.some(line => line.startsWith("keeping ")));
+  assert.equal(logs.at(-1), "removed 18 old updates, freed 0.01 GB");
   await source.pruneStartupUpdates(cfg, line => logs.push(line));
   assert.equal(await exists(folders[18]), true);
   assert.equal(await exists(folders[19]), true);
@@ -1163,4 +1261,564 @@ test("prune retains a process working directly in an old release folder", { skip
     child.kill();
     await exited;
   }
+}));
+
+async function completeEngine(folder) {
+  await mkdir(join(folder, "engine"), { recursive: true });
+  await writeFile(join(folder, "engine", "branch.mjs"), "payload");
+  await writeFile(join(folder, ".release-complete"), "");
+}
+
+async function completeDesktop(folder) {
+  await mkdir(join(folder, "payload"), { recursive: true });
+  await writeFile(join(folder, "payload", "app.asar"), "desktop");
+  await writeFile(join(folder, ".desktop-complete"), "");
+}
+
+test("periodic run prunes copies downloaded after startup", async () => fixture(async ({ cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const current = join(updates, "release-current-111aaa");
+  const previous = join(updates, "release-previous-222bbb");
+  const desktopCurrent = join(updates, "desktop-current-111aaa");
+  const desktopPrevious = join(updates, "desktop-previous-222bbb");
+  await completeEngine(current);
+  await completeEngine(previous);
+  await completeDesktop(desktopCurrent);
+  await completeDesktop(desktopPrevious);
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-previous.txt"), join(previous, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-probation.json"), JSON.stringify({
+    previous: join(previous, "engine"), confirmedAt: Date.now(),
+  }));
+  await writeFile(join(cfg.dataDir, "desktop-update-retained.json"), JSON.stringify([desktopCurrent, desktopPrevious]));
+  await source.pruneStartupUpdates(cfg, () => {});
+  const downloaded = join(updates, "release-nightly-333ccc");
+  const desktopDownloaded = join(updates, "desktop-nightly-444ddd");
+  await completeEngine(downloaded);
+  await completeDesktop(desktopDownloaded);
+  let tick;
+  let intervalMs;
+  let unrefed = false;
+  const stop = source.watchUpdateCleanup(cfg, () => {}, {
+    interval: (fn, ms) => {
+      tick = fn;
+      intervalMs = ms;
+      return { unref() { unrefed = true; } };
+    },
+    clear: () => {},
+  });
+  assert.equal(intervalMs, source.UPDATE_CLEANUP_MS);
+  assert.equal(unrefed, true);
+  assert.equal(await exists(downloaded), true, "copies downloaded after startup remain until the periodic run");
+  assert.equal(await exists(desktopDownloaded), true);
+  await tick();
+  stop();
+  assert.equal(await exists(downloaded), false);
+  assert.equal(await exists(desktopDownloaded), false);
+  assert.equal(await exists(current), true);
+  assert.equal(await exists(previous), true);
+  assert.equal(await exists(desktopCurrent), true);
+  assert.equal(await exists(desktopPrevious), true);
+}));
+
+test("empty folders are excluded from the keep list", async () => fixture(async ({ cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const current = join(updates, "release-current-111aaa");
+  const previous = join(updates, "release-previous-222bbb");
+  const emptyEngine = join(updates, "release-empty-333ccc");
+  const emptyDesktopA = join(updates, "desktop-empty-111aaa");
+  const emptyDesktopB = join(updates, "desktop-empty-222bbb");
+  const realDesktopA = join(updates, "desktop-real-333ccc");
+  const realDesktopB = join(updates, "desktop-real-444ddd");
+  await completeEngine(current);
+  await completeEngine(previous);
+  await mkdir(emptyEngine, { recursive: true });
+  await writeFile(join(emptyEngine, ".release-complete"), "");
+  await mkdir(emptyDesktopA, { recursive: true });
+  await writeFile(join(emptyDesktopA, ".desktop-complete"), "");
+  await mkdir(emptyDesktopB, { recursive: true });
+  await writeFile(join(emptyDesktopB, ".desktop-complete"), "");
+  await completeDesktop(realDesktopA);
+  await completeDesktop(realDesktopB);
+  const older = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const newer = new Date(Date.now() - 36 * 60 * 60 * 1000);
+  await utimes(realDesktopA, older, older);
+  await utimes(realDesktopB, older, older);
+  await utimes(emptyDesktopA, newer, newer);
+  await utimes(emptyDesktopB, newer, newer);
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-previous.txt"), join(emptyEngine, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "desktop-update-retained.json"), JSON.stringify([emptyDesktopA, emptyDesktopB]));
+  const logs = [];
+  await source.pruneStartupUpdates(cfg, line => logs.push(line));
+  const keeping = logs.find(line => line.startsWith("keeping ")) ?? "";
+  assert.equal(keeping.includes("release-empty-333ccc"), false);
+  assert.equal(keeping.includes("desktop-empty-111aaa"), false);
+  assert.equal(keeping.includes("desktop-empty-222bbb"), false);
+  assert.match(keeping, /release-current-111aaa/);
+  assert.match(keeping, /desktop-real-333ccc/);
+  assert.match(keeping, /desktop-real-444ddd/);
+  assert.equal(await exists(emptyEngine), false);
+  assert.equal(await exists(emptyDesktopA), false);
+  assert.equal(await exists(emptyDesktopB), false);
+  assert.equal(await exists(realDesktopA), true);
+  assert.equal(await exists(realDesktopB), true);
+  assert.equal(await exists(current), true);
+}));
+
+test("live and staged copies are never deleted", async () => fixture(async ({ cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const live = join(updates, "release-live-111aaa");
+  const current = join(updates, "release-current-222bbb");
+  const staging = join(updates, "release-staging-333ccc");
+  const stale = join(updates, "release-stale-444ddd");
+  const desktopStaged = join(updates, "desktop-staged-111aaa");
+  const desktopKeepA = join(updates, "desktop-keepa-222bbb");
+  const desktopKeepB = join(updates, "desktop-keepb-333ccc");
+  const desktopStale = join(updates, "desktop-stale-444ddd");
+  for (const folder of [live, current, stale]) await completeEngine(folder);
+  await mkdir(join(staging, "engine"), { recursive: true });
+  await writeFile(join(staging, ".update-staging"), "");
+  await completeDesktop(desktopStaged);
+  await completeDesktop(desktopKeepA);
+  await completeDesktop(desktopKeepB);
+  await completeDesktop(desktopStale);
+  const oldest = new Date(Date.now() - 72 * 60 * 60 * 1000);
+  const older = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const newer = new Date(Date.now() - 12 * 60 * 60 * 1000);
+  await utimes(live, older, older);
+  await utimes(current, older, older);
+  await utimes(stale, newer, newer);
+  await utimes(desktopStaged, oldest, oldest);
+  await utimes(desktopStale, newer, newer);
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), join(live, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({
+    phase: "staged", staged: join(desktopStaged, "payload", "app.asar.staged"), target: join(cfg.dataDir, "app.asar"),
+  }));
+  await writeFile(join(cfg.dataDir, "desktop-update-retained.json"), JSON.stringify([desktopKeepA, desktopKeepB]));
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", join(live, "engine", "branch.mjs")], { stdio: "ignore", windowsHide: true });
+  try {
+    await new Promise((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
+    await source.pruneStartupUpdates(cfg, () => {});
+    assert.equal(await exists(live), true, "the live copy is never deleted");
+    assert.equal(await exists(current), true);
+    assert.equal(await exists(staging), true, "an in-progress download is never deleted");
+    assert.equal(await exists(desktopStaged), true, "the staged desktop copy is never deleted");
+    assert.equal(await exists(stale), false);
+    assert.equal(await exists(desktopStale), false);
+  } finally {
+    child.kill();
+    await new Promise(resolve => child.once("exit", resolve));
+  }
+}));
+
+test("no overlap between update cleanup runs", async () => fixture(async ({ cfg }) => {
+  await completeEngine(join(cfg.dataDir, "updates", "release-current-111aaa"));
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(cfg.dataDir, "updates", "release-current-111aaa", "engine") + "\n");
+  let overlap = 0, maxOverlap = 0;
+  source.setUpdateCleanupHookForTests(async run => {
+    overlap++;
+    maxOverlap = Math.max(maxOverlap, overlap);
+    await new Promise(resolve => setTimeout(resolve, 40));
+    try { return await run(); }
+    finally { overlap--; }
+  });
+  try {
+    await Promise.all([
+      source.pruneStartupUpdates(cfg, () => {}),
+      source.pruneStartupUpdates(cfg, () => {}),
+      source.pruneStartupUpdates(cfg, () => {}),
+    ]);
+    assert.equal(maxOverlap, 1);
+    assert.equal(overlap, 0);
+  } finally {
+    source.setUpdateCleanupHookForTests();
+  }
+}));
+
+function dirLink(target, dest) {
+  return symlink(target, dest, process.platform === "win32" ? "junction" : "dir");
+}
+
+test("broken junction is skipped without crashing the prune", async () => fixture(async ({ root, cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const current = join(updates, "release-current-111aaa");
+  const stale = join(updates, "release-stale-222bbb");
+  const dangling = join(updates, "release-broken-333ccc");
+  await completeEngine(current);
+  await completeEngine(stale);
+  const gone = join(root, "gone-engine");
+  await mkdir(gone, { recursive: true });
+  await dirLink(gone, dangling);
+  await rm(gone, { recursive: true, force: true });
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-previous.txt"), join(current, "engine") + "\n");
+  const logs = [];
+  await source.pruneStartupUpdates(cfg, line => logs.push(line));
+  assert.equal(await exists(current), true);
+  assert.equal(await exists(stale), false, "a later real folder is still pruned after the broken link");
+  assert.equal((await lstat(dangling)).isSymbolicLink(), true, "the broken link itself is skipped, not followed");
+  assert.equal(logs.some(line => line.startsWith("Update cleanup:")), false, "the prune must not abort on the broken link");
+}));
+
+test("link target outside the update folder is never deleted", async () => fixture(async ({ root, cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const current = join(updates, "release-current-111aaa");
+  const stale = join(updates, "release-stale-222bbb");
+  const alias = join(updates, "release-alias-333ccc");
+  await completeEngine(current);
+  await completeEngine(stale);
+  const outside = join(root, "precious-engine");
+  await mkdir(outside, { recursive: true });
+  await writeFile(join(outside, "keep-me"), "payload");
+  await dirLink(outside, alias);
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-previous.txt"), join(current, "engine") + "\n");
+  await source.pruneStartupUpdates(cfg, () => {});
+  assert.equal(await exists(current), true);
+  assert.equal(await exists(stale), false);
+  assert.equal(await readFile(join(outside, "keep-me"), "utf8"), "payload");
+  assert.equal(await exists(outside), true, "the link target outside updates/ is never deleted");
+  assert.equal((await lstat(alias)).isSymbolicLink(), true, "the prune skips the link instead of following it");
+}));
+
+test("case-mismatched live path stays protected", {
+  skip: process.platform !== "win32" && process.platform !== "darwin",
+}, async () => fixture(async ({ cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const live = join(updates, "release-live-111aaa");
+  const stale = join(updates, "release-stale-222bbb");
+  await completeEngine(live);
+  await completeEngine(stale);
+  const mismatched = join(updates, "RELEASE-LIVE-111AAA", "engine");
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), mismatched + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-previous.txt"), mismatched + "\n");
+  await source.pruneStartupUpdates(cfg, () => {});
+  assert.equal(await exists(live), true, "a live copy remains when the pointer differs only in case");
+  assert.equal(await exists(stale), false);
+}));
+
+const launch = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "first-launch-install.js")));
+
+test("first-launch prompt names the size and Cancel", () => {
+  const message = launch.firstLaunchAskMessage("695 MB");
+  assert.match(message, /695 MB/);
+  assert.equal(launch.FIRST_LAUNCH_CANCEL, "Cancel");
+  const html = launch.firstLaunchAskScript(message, launch.FIRST_LAUNCH_DOWNLOAD);
+  assert.match(html, /Cancel/);
+  assert.match(html, /#484ce5/);
+  assert.doesNotMatch(html, /#1f6feb/);
+  assert.equal(launch.formatDownloadSize(695 * 1024 * 1024), "695 MB");
+});
+
+test("first-launch cancel keeps a need-these-components page and does not load the window", () => {
+  assert.equal(launch.firstLaunchAllowsWindow("installed"), true);
+  assert.equal(launch.firstLaunchAllowsWindow("skipped"), true);
+  assert.equal(launch.firstLaunchAllowsWindow("cancelled"), false);
+  assert.equal(launch.firstLaunchAllowsWindow("failed"), false);
+  const html = launch.firstLaunchNeedComponentsScript();
+  assert.match(html, /Branch needs these components to open/);
+  assert.doesNotMatch(html, /#1f6feb/);
+});
+
+test("first launch does not download archives until the owner agrees", async () => fixture(async ({ cfg, request, requests }) => {
+  await rm(join(cfg.windowDir, "index.html"));
+  const asks = [];
+  const outcome = await launch.runFirstLaunchInstall(cfg, request, {
+    ask: async prompt => { asks.push(prompt); return false; },
+  });
+  assert.equal(outcome, "cancelled");
+  assert.equal(asks.length, 1);
+  assert.equal(asks[0].kind, "confirm");
+  assert.match(asks[0].message, /MB|GB/);
+  assert.deepEqual(asks[0].buttons, ["Download", "Cancel"]);
+  assert.equal(requests.some(url => String(url).includes(".tar.gz")), false);
+  assert.equal(requests.some(url => String(url).endsWith(".json") || String(url).includes(".json")), true);
+  assert.equal(await exists(join(cfg.dataDir, "component-update-pending.json")), false);
+}));
+
+test("first launch downloads after yes and cancel during download publishes nothing", async () => fixture(async ({ cfg, request, requests }) => {
+  await rm(join(cfg.windowDir, "index.html"));
+  const ac = new AbortController();
+  const gated = async (url, options) => {
+    if (String(url).includes(".tar.gz")) ac.abort();
+    return request(url, options);
+  };
+  const outcome = await launch.runFirstLaunchInstall(cfg, gated, { ask: async () => true, signal: ac.signal });
+  assert.equal(outcome, "cancelled");
+  assert.equal(await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8"), cfg.engineDir + "\n");
+  assert.equal(await exists(join(cfg.dataDir, "component-update-pending.json")), false);
+  assert.equal(requests.some(url => String(url).includes(".tar.gz")), true);
+}));
+
+test("first launch is skipped when the window is already installed", async () => fixture(async ({ cfg, request, requests }) => {
+  assert.equal(launch.needsFirstLaunchComponents(cfg), false);
+  assert.equal(await launch.runFirstLaunchInstall(cfg, request, { ask: async () => true }), "skipped");
+  assert.equal(requests.length, 0);
+}));
+
+test("a pending record whose target already serves is cleared, and the next check stages a newer build", async () => fixture(async ({ cfg, request, release, engine, window, output }) => {
+  assert.equal(await source.refreshComponentUpdate(cfg, request), true);
+  const applied = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  // The engine was swapped in, but its confirmation was lost: the journal still says "pending".
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), applied + "\n");
+  const logs = [];
+  assert.equal(await source.refreshComponentUpdate(cfg, request, { log: line => logs.push(line) }), false, "without a serving engine nothing changes");
+  assert.equal(JSON.parse(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8")).phase, "pending");
+  // A newer release appears on the manifest.
+  await writeFile(join(engine, "dist", "build-info.json"), '{"version":"newer"}');
+  await rm(output, { recursive: true, force: true });
+  const newer = await makeComponentRelease({ version: "0.4.4", tag: "v0.4.4", engine, window, output });
+  Object.assign(release, newer);
+  const guard = async replace => replace();
+  assert.equal(await source.refreshComponentUpdate(cfg, request, { log: line => logs.push(line), underSwapGuard: guard, servingEngine: () => applied }), true, logs.join("\n"));
+  assert.ok(logs.some(line => line.includes("0.4.3 is already running; clearing its stale pending record")), logs.join("\n"));
+  const journal = JSON.parse(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8"));
+  assert.equal(journal.phase, "pending"); assert.equal(journal.version, "0.4.4", "the newer build superseded the stale record");
+  assert.equal(journal.enginePrevious, applied);
+}));
+
+test("a pending record is never cleared while a different engine serves", async () => fixture(async ({ cfg, request }) => {
+  assert.equal(await source.refreshComponentUpdate(cfg, request), true);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  assert.equal(await source.settleAppliedComponentUpdate(cfg, { servingEngine: () => cfg.engineDir }), false);
+  assert.equal(JSON.parse(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8")).version, "0.4.3");
+  assert.equal(await source.rollbackComponentUpdate(cfg), true); await unchanged(cfg);
+}));
+
+function fakeCheckTimers() {
+  const timers = [];
+  let nextId = 1;
+  let now = 0;
+  return {
+    setTimeout: (fn, ms) => {
+      const id = nextId++;
+      timers.push({ id, at: now + ms, fn });
+      return id;
+    },
+    clearTimeout: (id) => {
+      const index = timers.findIndex(timer => timer.id === id);
+      if (index >= 0) timers.splice(index, 1);
+    },
+    pending: () => timers.length,
+    async advance(ms) {
+      now += ms;
+      const due = timers.filter(timer => timer.at <= now).sort((a, b) => a.at - b.at);
+      for (const timer of due) {
+        const index = timers.indexOf(timer);
+        if (index < 0) continue;
+        timers.splice(index, 1);
+        timer.fn();
+      }
+      await Promise.resolve();
+      await Promise.resolve();
+    },
+  };
+}
+
+test("a lease-overrun stop still schedules the next update check", async () => fixture(async ({ cfg }) => {
+  let checks = 0;
+  let releaseFirst;
+  const first = new Promise(resolve => { releaseFirst = resolve; });
+  const logs = [];
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, line => logs.push(line), {
+    checkMs: 20,
+    refresh: async () => {
+      checks++;
+      if (checks === 1) await first;
+      return false;
+    },
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(checks, 1, "first check started");
+    assert.ok(clock.pending() >= 1, "the next check is armed while the first still runs");
+    stop.notifyStopped();
+    assert.ok(logs.some(line => line.includes("engine stopped past its lease") && line.includes("next check in")), logs.join("\n"));
+    await clock.advance(20);
+    assert.ok(logs.some(line => line.includes("still running") && line.includes("next check in")), logs.join("\n"));
+    releaseFirst();
+    await first;
+    await Promise.resolve();
+    await Promise.resolve();
+    await clock.advance(20);
+    assert.ok(checks >= 2, `next check after the lease-overrun stop, got ${checks}`);
+  } finally { stop(); }
+}));
+
+test("a staged update awaiting Restart still schedules the next GitHub check", async () => fixture(async ({ cfg }) => {
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({
+    phase: "staged", version: "0.4.5", kind: "asar", staged: join(cfg.dataDir, "x", "app.asar"), target: "app.asar",
+  }));
+  assert.equal((await source.readComponentUpdateStatus(cfg)).pendingVersion, "0.4.5");
+  let checks = 0;
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, () => {}, {
+    checkMs: 20,
+    refresh: async () => {
+      checks++;
+      return false;
+    },
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(checks, 1, "first check ran in the awaiting-Restart state");
+    assert.ok(clock.pending() >= 1, "the next check is armed while a staged update awaits Restart");
+    await clock.advance(20);
+    assert.ok(checks >= 2, `checker kept its schedule while awaiting Restart, got ${checks}`);
+  } finally { stop(); }
+}));
+
+test("a hung update check times out and the next scheduled check still runs", async () => fixture(async ({ cfg }) => {
+  let checks = 0;
+  const logs = [];
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, line => logs.push(line), {
+    checkMs: 20,
+    timeoutMs: 30,
+    refresh: async () => {
+      checks++;
+      if (checks === 1) return new Promise(() => {});
+      return false;
+    },
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    assert.equal(checks, 1, "first check started and never resolved");
+    await clock.advance(20);
+    assert.equal(checks, 1, "busy hang does not start a second overlapping check");
+    assert.ok(logs.some(line => line.includes("still running") && line.includes("next check in")), logs.join("\n"));
+    await clock.advance(10);
+    assert.ok(logs.some(line => line.includes("timed out") && line.includes("next check in")), logs.join("\n"));
+    await clock.advance(20);
+    assert.ok(checks >= 2, `later scheduled check ran after the hang timed out, got ${checks}`);
+  } finally { stop(); }
+}));
+
+test("a timed-out check that ignores abort cannot overwrite a later staged update", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const newer = await newerRelease(context);
+  const pending = async () => (await source.readComponentUpdateStatus(cfg)).componentsPendingVersion;
+  let released = false;
+  let releaseHold = () => {};
+  const hold = new Promise(resolve => { releaseHold = resolve; });
+  let signalHeld = () => {};
+  const held = new Promise(resolve => { signalHeld = resolve; });
+  let heldOnce = false;
+  let secondFetchedDuringHold = false;
+  source.setStageHoldForTests(async (holdCfg) => {
+    if (holdCfg !== cfg) return;
+    if (heldOnce) return;
+    heldOnce = true;
+    signalHeld();
+    await hold;
+  });
+  const secondRequest = async (url) => {
+    if (!released) secondFetchedDuringHold = true;
+    return newer.request(url);
+  };
+  try {
+    const first = source.refreshComponentUpdate(cfg, request, { timeoutMs: 1000, underSwapGuard: freeGuard });
+    const reached = await Promise.race([
+      held.then(() => "held"),
+      first.then(() => "resolved", () => "rejected"),
+    ]);
+    assert.equal(reached, "held", "first check must finish downloading before the timeout");
+    await assert.rejects(first, /timed out/);
+    const second = source.refreshComponentUpdate(cfg, secondRequest, { timeoutMs: 15_000, underSwapGuard: freeGuard });
+    // Concurrent path (old refreshes map): check 2 stages 0.4.4 while check 1 is still held.
+    // Wait path (fix): check 2 does not fetch until check 1 is released, so this poll times out.
+    const until = Date.now() + 1000;
+    let stagedDuringHold = false;
+    while (Date.now() < until) {
+      if (await pending() === "0.4.4") { stagedDuringHold = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    // Check 2 started during the hold but has not published yet: wait for that publish before letting check 1 finish.
+    if (secondFetchedDuringHold && !stagedDuringHold) {
+      const extra = Date.now() + 5000;
+      while (Date.now() < extra) {
+        if (await pending() === "0.4.4") { stagedDuringHold = true; break; }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    }
+    if (stagedDuringHold) await second;
+    released = true;
+    releaseHold();
+    assert.equal(await second, true, "check 2 must stage its update");
+    // Check 1's ignored-abort publish runs after the hold; wait long enough for it to land if it will overwrite.
+    const lateUntil = Date.now() + 500;
+    while (Date.now() < lateUntil) await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal(await pending(), "0.4.4", "check 2's staged update must remain after check 1 finishes");
+    if (!stagedDuringHold) {
+      assert.equal(secondFetchedDuringHold, false, "check 2 waited for check 1 to settle before staging");
+    }
+  } finally {
+    source.setStageHoldForTests(undefined);
+    released = true;
+    releaseHold();
+  }
+}));
+
+test("a hung probation prune times out and the next update check still runs", async () => fixture(async ({ cfg }) => {
+  let checks = 0;
+  const logs = [];
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, line => logs.push(line), {
+    checkMs: 20,
+    pruneTimeoutMs: 15,
+    refresh: async () => {
+      checks++;
+      return false;
+    },
+    prune: async () => new Promise(() => {}),
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(checks, 1);
+    await clock.advance(20);
+    assert.equal(checks, 2, "second check runs prune after the first");
+    await clock.advance(15);
+    assert.ok(logs.some(line => line.includes("Update cleanup") && /timed out/i.test(line)), logs.join("\n"));
+    await clock.advance(20);
+    assert.ok(checks >= 3, `next check after prune timed out, got ${checks}`);
+  } finally { stop(); }
+}));
+
+test("an update-check error still leaves a pending retry", async () => fixture(async ({ cfg }) => {
+  let checks = 0;
+  const logs = [];
+  const clock = fakeCheckTimers();
+  const stop = source.watchComponentUpdates(cfg, line => logs.push(line), {
+    checkMs: 15,
+    refresh: async () => {
+      checks++;
+      if (checks === 1) throw new Error("manifest unreachable");
+      return false;
+    },
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  });
+  try {
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(checks, 1);
+    assert.ok(logs.some(line => line.includes("manifest unreachable") && line.includes("next check in")), logs.join("\n"));
+    await clock.advance(15);
+    assert.ok(checks >= 2, `retry after the error, got ${checks}`);
+  } finally { stop(); }
 }));

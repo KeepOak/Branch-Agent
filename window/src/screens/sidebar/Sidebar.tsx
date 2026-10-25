@@ -50,6 +50,7 @@ import { FIRST_MESSAGE, NEED, rowMenu } from "./row-menu";
 import { Face } from "../../face/Face";
 import { QUICK_ASK_EVENT, QUICK_ASK_NEED } from "../quickask/QuickAskHost";
 import "./sidebar.css";
+import { plainError } from "../../shell/plain-error";
 
 export type SidebarProps = {
   /** + › New Trunk: the sheet for a name and a face, then the chat questions (R1Window). */
@@ -171,7 +172,21 @@ export function Sidebar(p: SidebarProps) {
   const anyWaiting = [...p.waiting.values()].some(count => count > 0);
   const binsOpen = archivedOpen || narrow || prefs.status === "archived";
 
-  const openRow = (row: SideRow) => { if (row.key) p.onOpen(row.key); else p.onSettings("people"); };
+  const openRow = (row: SideRow) => {
+    if (!row.key) {
+      p.onSettings("people");
+      return;
+    }
+    const contact = row.contact;
+    // Opening the row clears topics the person can read from it. Hand-marked unread on the
+    // main thread (unreadTopics === 0) stays for useMarkRead.
+    if (contact && contact.unreadTopics > 0) {
+      void markContactRead(contact, request).then(refreshContacts, (error: unknown) =>
+        notify(`Couldn't mark ${contact.name} read: ${reason(error)}.`, { tone: "bad" }),
+      );
+    }
+    p.onOpen(row.key);
+  };
   // Select several (Classic shell/sidebar-state.ts): Alt+Click picks a row, Shift+Click extends, a plain click or Escape
   // clears. The rows go in the order they show; the Trunks' own conversations can't be picked, as in Classic.
   const shownRows = [...sections.pinned, ...sections.trunks, ...sections.people, ...sections.groups, ...sections.grafted, ...(binsOpen ? sections.archived : [])];
@@ -238,6 +253,7 @@ export function Sidebar(p: SidebarProps) {
     editTrunk: (agentId: string) => { p.onPlace("people"); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId, view: "edit" } })); },
     tidy: row => void tidy({ session, list: p.list }, row, false),
     advanced: readLevel() !== "regular",
+    technical: readLevel() === "technical",
     keepLast: row => setDialog({ kind: "keep", row }),
     removeTrunk: (agentId, name) => setDialog({ kind: "remove", agentId, name }),
     confirmDelete: row => (askBeforeDelete() ? setDialog({ kind: "delete", row }) : void actions.remove(row).then(refreshContacts)),
@@ -304,7 +320,7 @@ export function Sidebar(p: SidebarProps) {
       {query ? null : <R1FilterSort prefs={prefs} facts={filterFacts(rows, trunks.list, listPeople, readLevel(), prefs, now)} onChange={changePrefs} onSettings={p.onSettings} />}
     </div>
     <nav className="r1sb-list" aria-label="Conversations">
-      {p.error ? <p className="r1sb-error" role="alert">{p.error}</p> : null}
+      {p.error ? <p className="r1sb-error" role="alert">{plainError(p.error)}</p> : null}
       {results}
       {searching ? null : <>
       {sections.pinned.length ? <section className="r1sb-sec" data-section="pinned"><SectionHead label="Pinned" /><PinnedGrid rows={orderPins(sections.pinned, pinOrder.order)} currentKey={p.currentKey} handlers={handlers}

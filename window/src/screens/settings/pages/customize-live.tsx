@@ -20,7 +20,7 @@ import type { Ctx } from "../../../places/settings/set2/advanced-more";
 import { agentTitle, CONNECT_LINES, nextDeny, legacyOutsideId, readAgents, type OutsideAgentRow } from "../../../places/settings/set2/agents";
 import { BranchLinkDialog } from "../../../shell/BranchLinkDialog";
 import type { Level } from "../nav";
-import type { Row } from "../rows";
+import { COMING_FROM, type Row } from "../rows";
 import { Toggle } from "../RowView";
 import { useLevel } from "../SettingsFrame";
 import type { PageSlot, SlotControlProps, SlotPageProps } from "../slots";
@@ -153,6 +153,7 @@ export function AgentsOn({ engine, row }: SlotControlProps) {
  *  and disconnect (or let it back). */
 function AgentCard({ engine, agent, trunks, sessions, nested, reload }: { engine: WindowEngine; agent: OutsideAgentRow; trunks: Trunk[]; sessions: string[]; nested: OutsideAgentRow[]; reload: () => void }) {
   const { store, snap, get } = useConfigSnap(engine);
+  const [level] = useLevel(engine);
   const [failed, run] = useFailure();
   const [rights, setRights] = useState(false);
   const isBranch = agent.kind === "branch";
@@ -179,9 +180,9 @@ function AgentCard({ engine, agent, trunks, sessions, nested, reload }: { engine
       </div>
       {nested.length ? <ul className="r1s-agent-trunks" aria-label={`${agent.name}'s Trunks`}>{nested.map((t) => <li key={t.id} data-agent={t.id}>{t.name} · {t.online && !agent.revoked ? "Online now" : "Not online"}</li>)}</ul> : null}
       <div className="r1s-acts">
-        {/* The preview's seed and sharing buttons wait for the engine to describe a connected agent as a seed. */}
+        {/* Preview graftsT5 draws Permissions and Revoke only. Copy seed, Download and Share wait for a later update, so they show at Technical only (rows.ts COMING_FROM). */}
         {["Copy seed", "Download", "Share"].map((b) => (
-          <Coming key={b} engine={engine} need="engine: a connected agent as a seed" unwired reason="Sharing a connected agent comes in a later update.">
+          <Coming key={b} engine={engine} need="engine: a connected agent as a seed" unwired reason="Sharing a connected agent comes in a later update." hidden={level < COMING_FROM}>
             <button type="button" className="r1s-btn">{b}</button>
           </Coming>
         ))}

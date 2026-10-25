@@ -9,6 +9,7 @@ import { Dialog } from "../../shell/Dialog";
 import { shownWhy } from "../../shell/shown-why";
 import { Switch } from "../../shell/Popover";
 import { trunkName, useResource } from "../library/data";
+import { plainError } from "../../shell/plain-error";
 import { Status } from "../library/ui";
 import { denyList, denyPatch, Grey, list, PermRow, rec, Sec, Seg, str, WhoChips, withItem, type Rec } from "./common";
 import { CatalogDialog } from "./catalog";
@@ -116,7 +117,7 @@ function ConnectorDetail({ ctx, server }: { ctx: ToolsCtx; server: Server }) {
       <span className="grow"><b>{server.name}</b><small>{server.line}</small></span>
       <Switch label={`${server.name} on or off`} on={server.enabled} onChange={on => setServer({ enabled: on })} />
     </div>
-    {config.writeError && <p role="alert" className="cz-error">{config.writeError}</p>}
+    {config.writeError && <p role="alert" className="cz-error">{plainError(config.writeError)}</p>}
     {scoped ? <div className="cz-line"><span>{scoped.identity?.name || scoped.name || scoped.id} may use it</span><Switch label={`${scoped.id} may use ${server.name}`} on={mayUse(ctx, server.name, scoped.id)} onChange={on => setWho(scoped.id, on)} /></div>
       : <Sec title="Who may use it"><WhoChips trunks={trunks} may={id => mayUse(ctx, server.name, id)} toggle={config.busy ? undefined : setWho} reason="Saving…" /></Sec>}
     <ConnectorTools ctx={ctx} server={server} />
@@ -157,7 +158,7 @@ function ConnectorDetail({ ctx, server }: { ctx: ToolsCtx; server: Server }) {
       <span className="cz-grow" /><button type="button" className="btn ghost sm" onClick={() => setRemoving(true)}>Remove</button>
     </div></Sec>
     {removing && <Dialog title={`Remove ${server.name}?`} onClose={() => setRemoving(false)} footer={<><button type="button" className="btn ghost" onClick={() => setRemoving(false)}>Cancel</button><button type="button" className="btn bad" disabled={config.busy} onClick={() => { void config.patch({ mcp: { servers: { [server.name]: null } } }).then(ok => ok && setRemoving(false)); }}>Remove</button></>}>
-      <p className="dlg-p">Trunks stop using it. Its settings are taken out of Branch’s settings file.</p>{config.writeError && <p role="alert" className="cz-error">{config.writeError}</p>}
+      <p className="dlg-p">Trunks stop using it. Its settings are taken out of Branch’s settings file.</p>{config.writeError && <p role="alert" className="cz-error">{plainError(config.writeError)}</p>}
     </Dialog>}
   </div>;
 }
@@ -200,6 +201,6 @@ function OwnServer({ ctx, back, close }: { ctx: ToolsCtx; back: () => void; clos
     <label className="cz-field"><span>Name</span><input className="inp" value={name} onChange={e => setName(e.target.value)} placeholder="files" /></label>
     {taken && <p className="cz-error">A connector with that name already exists.</p>}
     <label className="cz-field"><span>{how === "local" ? "Command" : "Address"}</span><input className="inp" value={target} onChange={e => setTarget(e.target.value)} placeholder={how === "local" ? "npx -y @modelcontextprotocol/server-filesystem ~/Documents" : "https://"} /></label>
-    {ctx.config.writeError && <p role="alert" className="cz-error">{ctx.config.writeError}</p>}
+    {ctx.config.writeError && <p role="alert" className="cz-error">{plainError(ctx.config.writeError)}</p>}
   </Dialog>;
 }

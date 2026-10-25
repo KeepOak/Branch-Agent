@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NewTrunkSheet } from "./NewTrunkSheet";
-import { SHAPE_RADII, TRUNK_COLOURS } from "./new-trunk-sheet";
+import { TRUNK_COLOURS } from "./new-trunk-sheet";
 
 vi.mock("../../face/Face", () => ({
   Face: ({ label, pebbleLook }: { label?: string; pebbleLook?: { colour?: string; shape?: string; eyes?: string } }) => (
@@ -43,7 +43,7 @@ describe("New Trunk sheet", () => {
     expect(document.querySelector("[data-face]")?.getAttribute("data-shape")).toBe("Circle");
     expect(document.querySelector("[data-face]")?.getAttribute("data-eyes")).toBe("Round");
     const shapes = [...document.querySelectorAll(".nt-shape")];
-    expect(shapes.map((button) => button.textContent)).toEqual(["", "", "", "", ""]);
+    expect(shapes.map((button) => button.textContent)).toEqual(["Circle", "Stone", "Leaf", "Acorn", "Shield"]);
     expect(shapes.map((button) => button.getAttribute("aria-label"))).toEqual(["Circle", "Stone", "Leaf", "Acorn", "Shield"]);
     const colours = [...document.querySelectorAll(".nt-colour")];
     expect(colours).toHaveLength(TRUNK_COLOURS.length);
@@ -53,7 +53,7 @@ describe("New Trunk sheet", () => {
     await act(async () => { (document.querySelector('button[aria-label="Leaf"]') as HTMLButtonElement).click(); });
     await act(async () => { (document.querySelector('button[aria-label="Colour #B84A6B"]') as HTMLButtonElement).click(); });
     expect(document.querySelector('button[aria-label="Leaf"]')?.getAttribute("aria-pressed")).toBe("true");
-    expect(document.querySelector('button[aria-label="Leaf"] span')?.getAttribute("style")).toContain(SHAPE_RADII[2]);
+    expect(document.querySelector('button[aria-label="Leaf"] svg path')?.getAttribute("d")).toBe("M5 35Q-1 4 35 5Q36 36 5 35Z");
     expect(document.querySelector("[data-face]")?.getAttribute("data-shape")).toBe("Leaf");
     expect(document.querySelector("[data-face]")?.getAttribute("data-colour")).toBe("#B84A6B");
     await typeName("  Fern  ");

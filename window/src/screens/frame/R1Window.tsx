@@ -25,14 +25,15 @@ import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
 import { PlaceView } from "../../places-nav/PlaceView";
 import { placeRequest } from "../../places-nav/place-request";
-import { PLACES, loadRoute, parseRoute, placeTitle, saveRoute, windowTitle, type PlaceId, type Route } from "../../places-nav/routes";
+import { PLACES, loadRoute, parseRoute, placeTitle, saveRoute, windowTitle, type Route } from "../../places-nav/routes";
 import { SettingsFrame as ClassicSettingsFrame } from "../../places-nav/SettingsFrame";
 import { PAGES as R1_PAGE_SPECS, r1PageFor } from "../settings/nav";
 import { SettingsFrame } from "../settings";
 import { R1_PAGES } from "../settings/pages/plugged";
 import { placePages } from "../settings/pages/places-live";
 import { useSettingsSearch } from "./settings-search";
-import { ROWS } from "../settings/rows";
+import { COMING_FROM, ROWS } from "../settings/rows";
+import { useLevelNow } from "../settings/level-now";
 import { mergeRows, type PageSlots } from "../settings/slots";
 import type { Row } from "../settings/rows";
 import { lookStore } from "../../places/settings/set1/appearance-store";
@@ -99,21 +100,11 @@ export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
   coding: "computer", // Computer & browser: code and commits, repositories
 };
 
-/**
- * Settings pages that are a place: Memory & documents opens Library on its Memory tab, which has its controls.
- * Customize and Automations are R1 Settings pages of their own.
- */
-export const SETTINGS_PLACE: Readonly<Record<string, { place: PlaceId; tab?: string }>> = {
-  memory: { place: "library", tab: "memory" },
-};
-
-/** The route a link, a saved route or a nav item really opens: a Settings page that is a place (by its id or an old id
- *  for it) opens that place. An old id for Customize opens the R1 Customize page. Every other route is itself. */
+/** The route a link, a saved route or a nav item really opens: an old id for Customize opens the R1 Customize page.
+ *  Every other route is itself. */
 export function resolveRoute(route: Route): Route {
   if (route.kind !== "settings") return route;
   const page = r1PageFor(route.page);
-  const target = SETTINGS_PLACE[page];
-  if (target) return { kind: "place", place: target.place };
   if (page === "customize" && route.page !== "customize") return { kind: "settings", page: "customize" };
   return route;
 }
@@ -124,12 +115,6 @@ export function r1Route(route: Route): Route {
   if (resolved.kind !== "place" || resolved.place !== "seedbank") return resolved;
   requestCustomize({ mode: "community" });
   return { kind: "place", place: "customize" };
-}
-
-/** The tab a Settings page that is a place opens on, told to the place after it shows (as WindowShell does). */
-function openPlaceTab(route: Route): void {
-  const target = route.kind === "settings" ? SETTINGS_PLACE[r1PageFor(route.page)] : undefined;
-  if (target?.tab) setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: target.place, tab: target.tab } })), 0);
 }
 
 /**
@@ -253,7 +238,6 @@ export function R1Window({ session }: { session: SaplingSession }) {
   }, [applyRoute]);
   const navigate = (asked: Route) => {
     const next = r1Route(asked);
-    openPlaceTab(asked);
     if (JSON.stringify(next) === JSON.stringify(route)) return;
     const index = history.index + 1;
     entries.current = [...entries.current.slice(0, index), next];
@@ -285,6 +269,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
     return () => { live = false; off(); };
   }, [graftedKey, ready, session]);
   useEffect(() => { if (ready) void lookStore(engine).load(); }, [ready, engine]);
+  // Coming controls show only at Technical (rows.ts COMING_FROM, Private #1093 item 4): off a conversation the header's
+  // pill and tools have nothing to open yet, so below Technical they are not drawn.
+  const comingShown = useLevelNow(engine) >= COMING_FROM;
   // Re-hosted Classic Settings pages open a place with branch:navigate-place (Classic WindowShell's event): R1 opens it here.
   const navigateTo = useRef(navigate);
   useEffect(() => { navigateTo.current = navigate; });
@@ -308,7 +295,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       const request = placeRequest((event as CustomEvent).detail, PLACES.map(p => p.id));
       if (!request) return;
       navigateTo.current({ kind: "place", place: request.place });
-      // A tab named with the request is told to the place once it shows, as openPlaceTab does for Settings pages.
+      // A tab named with the request is told to the place once it shows.
       if (request.tab) {
         const tab = request.tab;
         setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: request.place, tab } })), 0);
@@ -316,6 +303,17 @@ export function R1Window({ session }: { session: SaplingSession }) {
     };
     window.addEventListener("branch:navigate-place", openPlace);
     return () => window.removeEventListener("branch:navigate-place", openPlace);
+  }, []);
+  // Empty-chat Connect a model (openConnectModel) and other surfaces that only know the Classic event.
+  useEffect(() => {
+    const openSettings = (event: Event) => {
+      const page = (event as CustomEvent<{ page?: string }>).detail?.page;
+      if (typeof page === "string" && /^[a-z][a-z0-9-]*$/.test(page)) {
+        navigateTo.current({ kind: "settings", page });
+      }
+    };
+    window.addEventListener("branch:navigate-settings", openSettings);
+    return () => window.removeEventListener("branch:navigate-settings", openSettings);
   }, []);
   // Settings › Updates & about › Show the welcome tour.
   useEffect(() => {
@@ -526,7 +524,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
         { label: "Side panel", icon: <Icon name="panel" />, need: PANE_TAB_NEEDS[DEFAULT_PANE_TAB], coming: "This engine can’t show the side panel.", onClick: tools ? () => { setAgentOpen(false); setPane(open => open ? null : DEFAULT_PANE_TAB); } : undefined },
         // ••• opens this window's conversation menu; each of its rows declares its own call.
         { label: "More", icon: <Icon name="more" />, onClick: tools ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },
-      ] : talk.item ? [talk.item, ...DEFAULT_TOOLS] : undefined,
+      ] : talk.item ? [talk.item, ...(comingShown ? DEFAULT_TOOLS : [])] : comingShown ? undefined : [],
+      hidden: route.kind !== "chat" && !comingShown,
       canBack: history.index > 0, canForward: history.index < history.count - 1, onBack: () => { if (history.index > 0) window.history.back(); }, onForward: () => { if (history.index < history.count - 1) window.history.forward(); },
     }} composer={chat ? <><ThreadExtras session={session} ready={ready} name={speaker} row={current ?? null} history={snapshot.history} ended={snapshot.ended}
       empty={snapshot.historyReady !== false && !snapshot.history.length && !snapshot.pendingUser && !snapshot.liveRunId} onOpen={openConversation} />{newTrunkFlow && newTrunkFlow.sessionKey === snapshot.sessionKey ? <NewTrunkCard engine={engine} flow={newTrunkFlow} onDone={(name) => { setNewTrunkFlow(null); notify(newTrunkReadyLine(name)); }} onChangeLook={() => { navigate({ kind: "place", place: "people" }); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: newTrunkFlow.agentId, view: "edit" } })); }} /> : null}<Composer startupShown={Boolean(startup)} name={speaker} placeholder={room.placeholder} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} working={Boolean(snapshot.liveRunId)} offline={!ready} limits={limits} row={current} topics={topics} running={running} mainKey={snapshot.mainKey?.split(":").slice(2).join(":") || "main"}

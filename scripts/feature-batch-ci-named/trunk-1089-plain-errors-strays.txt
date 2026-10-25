@@ -1,0 +1,1 @@
+window:src/shell/raw-errors-1089-strays.test.tsx

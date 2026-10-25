@@ -288,6 +288,6 @@ export class PhoneGateway {
       return;
     }
     const code = readConnectErrorDetailCode(details) ?? undefined;
-    this.opts.onStatus({ phase: 'failed', message: error?.message ?? `closed (${context.code})`, ...(code ? { code } : {}) });
+    this.opts.onStatus({ phase: 'failed', message: error?.message ?? `closed (${context.code})`, ...(code ? { code } : {}) }); // plain-error-allow: pairing first-run (Parity Builder)
   }
 }

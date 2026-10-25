@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { callFor, listItems, readAsk, settledFromEvent, settledText } from "./model";
+import { askIsHere, callFor, listItems, readAsk, settledFromEvent, settledText } from "./model";
 
 const EMAIL = { id: "p1", expiresAtMs: 99, request: { title: "Send this email to Dana Okafor?", description: "To: Dana Okafor\nSubject: Thursday\nSee you then.", agentId: "ledger", sessionKey: "agent:ledger:main", allowedDecisions: ["allow-once", "deny"] } };
 
@@ -27,6 +27,9 @@ describe("approvals model", () => {
   it("reads a pending question and answers or skips it through question.resolve", () => {
     const ask = readAsk("question", { id: "q1", status: "pending", createdAtMs: 1, expiresAtMs: 2, questions: [{ questionId: "pick", header: "Flight", question: "Which flight?", options: [{ label: "Morning" }, { label: "Evening", value: "pm" }] }] })!;
     expect(ask.questions[0].options).toEqual([{ label: "Morning", value: "Morning" }, { label: "Evening", value: "pm" }]);
+    expect(askIsHere(ask, "agent:scout:main")).toBe(true);
+    expect(askIsHere({ ...ask, sessionKey: "agent:ledger:main" }, "agent:scout:main")).toBe(false);
+    expect(askIsHere(readAsk("exec", { id: "e1", request: { command: "ls" } })!, "agent:scout:main")).toBe(false);
     expect(callFor(ask, { answers: { pick: ["pm"] } })).toEqual({ method: "question.resolve", params: { id: "q1", answers: { answers: { pick: ["pm"] } } } });
     expect(callFor(ask, "skip")).toEqual({ method: "question.resolve", params: { id: "q1", cancel: true } });
     expect(readAsk("question", { id: "q2", status: "answered", questions: [{ questionId: "a", question: "?" }] })).toBeNull();

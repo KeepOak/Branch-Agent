@@ -127,7 +127,7 @@ async function listInstaller(assets, target, { name = installerNames[target], pl
   await alterProof(assets, proof => { proof.installers = { ...proof.installers, [name]: digest }; }, target);
 }
 
-test("each platform's release proof lists its installer by name, size and sha256", () => fixture(async ({ root, assets }) => {
+test("each platform's release proof lists its installer and its stable download by name, size and sha256", () => fixture(async ({ root, assets }) => {
   const built = join(root, "installers"); await mkdir(built);
   for (const target of ["win32-x64", "darwin-arm64", "linux-x64"]) {
     const file = join(built, installerNames[target]);
@@ -135,13 +135,20 @@ test("each platform's release proof lists its installer by name, size and sha256
     await inventoryModule.recordInstaller(assets, target, file);
     const proof = JSON.parse(await readFile(join(assets, `release-proof-${target}.json`), "utf8"));
     assert.deepEqual(proof.installers, { [installerNames[target]]: { sha256: (await fileDigest(file)).sha256, bytes: Buffer.byteLength(`${target} installer bytes`) } });
+    const alias = inventoryModule.publicDownloadName(target);
+    const aliasFile = join(built, alias);
+    await writeFile(aliasFile, `${target} download bytes`);
+    await inventoryModule.recordInstaller(assets, target, aliasFile);
     await cp(file, join(assets, installerNames[target]));
+    await cp(aliasFile, join(assets, alias));
   }
   const result = await verifyReleaseDirectory(assets, commit, version);
-  assert.equal(Object.keys(result.inventory).length, 19);
-  // Linux ships the AppImage; its proof lists it beside the tar.gz bootstrap package the updater uses.
+  assert.equal(Object.keys(result.inventory).length, 22);
+  // Linux keeps the AppImage the updater fetches, and also ships the stable .deb download.
   assert(Object.hasOwn(result.inventory, `Branch-Agent-${version}-linux-x64.AppImage`));
+  assert(Object.hasOwn(result.inventory, "Branch-Linux.deb"));
   for (const name of Object.values(installerNames)) assert.deepEqual(result.inventory[name], await fileDigest(join(assets, name)));
+  for (const name of Object.values(inventoryModule.PUBLIC_DOWNLOAD_NAMES)) assert.deepEqual(result.inventory[name], await fileDigest(join(assets, name)));
   const stray = join(built, "Branch-Agent-other.exe"); await writeFile(stray, "x");
   await assert.rejects(inventoryModule.recordInstaller(assets, "win32-x64", stray), /Unexpected installer/);
 }));
@@ -152,6 +159,59 @@ test("a target without an installer still verifies beside targets that have one"
   assert.deepEqual(result.targets, ["darwin-arm64", "linux-x64", "win32-x64"]);
   assert(Object.hasOwn(result.inventory, installerNames["win32-x64"]));
   assert(!Object.keys(result.inventory).some(name => name.endsWith(".dmg")));
+}));
+
+
+test("signed update sidecars and latest.json are attested beside release assets", () => fixture(async ({ assets }) => {
+  const payloads = [
+    `branch-desktop-${version}-darwin-arm64.tar.gz`,
+    `branch-desktop-${version}-linux-x64.tar.gz`,
+    `branch-desktop-${version}-win32-x64.tar.gz`,
+    `branch-desktop-app-${version}-linux-x64.tar.gz`,
+    `branch-desktop-app-${version}-win32-x64.tar.gz`,
+  ];
+  for (const payload of payloads) {
+    assert(Object.hasOwn((await verifyReleaseDirectory(assets, commit, version)).inventory, payload));
+    await writeFile(join(assets, `${payload}.sig`), `sig-for-${payload}`);
+  }
+  await listInstaller(assets, "linux-x64");
+  await listInstaller(assets, "win32-x64");
+  await writeFile(join(assets, `${installerNames["linux-x64"]}.sig`), "appimage-sig");
+  await writeFile(join(assets, `${installerNames["win32-x64"]}.sig`), "setup-sig");
+  await writeFile(join(assets, "latest.json"), JSON.stringify({
+    version,
+    notes: "fixture",
+    pub_date: "2026-10-23T00:00:00.000Z",
+    platforms: {
+      "darwin-aarch64": { url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${payloads[0]}`, signature: "sig" },
+      "linux-x86_64": { url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${installerNames["linux-x64"]}`, signature: "sig" },
+      "windows-x86_64": { url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${payloads[2]}`, signature: "sig" },
+    },
+  }, null, 2) + "\n");
+  const result = await verifyReleaseDirectory(assets, commit, version);
+  for (const payload of payloads) {
+    assert(Object.hasOwn(result.inventory, `${payload}.sig`), `missing ${payload}.sig`);
+    assert.deepEqual(result.inventory[`${payload}.sig`], await fileDigest(join(assets, `${payload}.sig`)));
+  }
+  assert(Object.hasOwn(result.inventory, `${installerNames["linux-x64"]}.sig`));
+  assert(Object.hasOwn(result.inventory, `${installerNames["win32-x64"]}.sig`));
+  assert(Object.hasOwn(result.inventory, "latest.json"));
+  assert.deepEqual(result.inventory["latest.json"], await fileDigest(join(assets, "latest.json")));
+}));
+
+test("release inventory rejects a .sig whose payload is not attested", () => fixture(async ({ assets }) => {
+  await writeFile(join(assets, "orphan-payload.bin.sig"), "sig");
+  await assert.rejects(verifyReleaseDirectory(assets, commit, version), /Unattested signed payload/);
+}));
+
+test("release inventory rejects latest.json whose version differs from the release", () => fixture(async ({ assets }) => {
+  await writeFile(join(assets, "latest.json"), JSON.stringify({
+    version: "9.9.9",
+    notes: "",
+    pub_date: "2026-10-23T00:00:00.000Z",
+    platforms: { "linux-x86_64": { url: "https://example.com/x", signature: "s" } },
+  }, null, 2) + "\n");
+  await assert.rejects(verifyReleaseDirectory(assets, commit, version), /latest\.json version/);
 }));
 
 test("release inventory refuses a listed installer that is missing", () => fixture(async ({ assets }) => {
@@ -219,7 +279,9 @@ function simulatedGitHub(options = {}) {
       compares++;
       return options.leftMain && head === "main" && compares > 1 ? "diverged" : compare(options.source ?? base, head);
     }
-    if (args[0] === "api" && args[1].endsWith("/releases")) return JSON.stringify([options.existing ? [{ tag_name: `v${version}` }] : []]);
+    if (args[0] === "api" && args[1].endsWith("/releases")) {
+      return JSON.stringify([options.existing ? [{ tag_name: `v${version}`, target_commitish: options.existingCommit ?? commit }] : []]);
+    }
     if (args[0] === "api" && args[1].endsWith("/releases/latest")) {
       if (published) return JSON.stringify({ draft: false, prerelease: false, target_commitish: commit, tag_name: `v${version}` });
       if (!options.latest) throw notFound();
@@ -254,8 +316,18 @@ test("publication of a main commit proceeds while main advances, replacing an ol
   assert(remote.calls.find(args => args[1] === "edit").includes("--latest"));
 }));
 
+test("publication skips an existing release for the same source commit", () => fixture(async ({ assets }) => {
+  const remote = simulatedGitHub({ existing: true });
+  const result = await publishRelease(assets, commit, version, remote.request);
+  assert.equal(result.skipped, true);
+  assert.match(result.reason, /already exists; skipping publish/);
+  assert.equal(result.tag, `v${version}`);
+  assert.equal(result.commit, commit);
+  assert(!remote.calls.some(args => args[1] === "create" || args[1] === "edit"));
+}));
+
 for (const [label, options, expected] of [
-  ["existing immutable release", { existing: true }, /immutable/],
+  ["existing release for a different commit", { existing: true, existingCommit: "d".repeat(40), tagSha: "d".repeat(40) }, /different source/],
   ["wrong immutable tag", { tagSha: "d".repeat(40) }, /different source/],
   ["corrupted uploaded bytes", { corrupt: true }, /readback differs/],
   ["a source that is not on main", { source: "b".repeat(40) }, /not a commit on main/],

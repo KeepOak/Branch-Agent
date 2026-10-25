@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
+import { friendlyError } from "../../../connect/friendly-error";
 import { KeeperMark } from "../../../brand/KeeperMark";
 import { Btn, Ctl, Hint, Page, Sec, Status, Switch } from "../kit";
 import { useDesktopControls } from "../../../connect/desktop-controls";
@@ -47,8 +48,8 @@ export function DesktopUpdatesPage({ title, engine, level }: SettingsPageProps) 
     if (!bridge || busy) return;
     setBusy(method); setError(null);
     if (method === "check") setCheckEnded(null);
-    try { const status = await bridge[method](); data.setStatus(status); setError(status.error); if (method === "check") { if (!status.error) setCheckedHere(Date.now()); setCheckEnded(status.error ? "failed" : "ok"); } }
-    catch (error) { setError(error instanceof Error ? error.message : String(error)); if (method === "check") setCheckEnded("failed"); }
+    try { const status = await bridge[method](); data.setStatus(status); setError(status.error ? friendlyError(status.error) : null); if (method === "check") { if (!status.error) setCheckedHere(Date.now()); setCheckEnded(status.error ? "failed" : "ok"); } }
+    catch (error) { setError(friendlyError(error)); if (method === "check") setCheckEnded("failed"); }
     finally { setBusy(""); }
   };
   if (!bridge) return <HourlyUpdates title={title} engine={engine} level={level} reason={desktop?.unavailableReason} />;
@@ -68,9 +69,9 @@ export function DesktopUpdatesPage({ title, engine, level }: SettingsPageProps) 
     : statusLine(data.status, level, Math.max(data.status?.checkedAt ?? 0, checkedHere ?? 0) || null, now);
   return <Page title={title} lede={lede}>
     <div className="s2-keeper"><KeeperMark size={64} /></div>
-    {error || data.error ? <Status tone="bad" title="Branch couldn’t update">{error || data.error}</Status> : null}
+    {error || data.error ? <Status tone="bad" title="Branch couldn’t update">{error || friendlyError(data.error)}</Status> : null}
     <Status tone={failed ? "bad" : stagedWaiting ? "ok" : "idle"} title={headline}>
-      {failed ? (outcome?.message || "Branch kept the current version.")
+      {failed ? (outcome?.message ? friendlyError(outcome.message) : "Branch kept the current version.")
         : stagedWaiting && installRequested ? "Running work moves across to the new engine. Your conversations and settings stay in place."
         : stagedWaiting ? "It applies by itself, in place, the next time no Trunk is working. A safety copy is kept first, and nothing restarts."
         : running ? `Branch ${versionLabel(running, level)}. The window refreshes itself, running work moves across to the new engine, and nothing restarts. You only see a small “Updated” note. The desktop shell updates the next time you open Branch.`

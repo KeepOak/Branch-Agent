@@ -1,4 +1,6 @@
 import { createRequireRecord } from "branch/plugin-sdk/test-fixtures";
+import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import {
@@ -562,7 +564,7 @@ describe("modelsStatusCommand auth overview", () => {
       profiles: {
         labels: expect.arrayContaining([
           expect.stringContaining("OAuth"),
-          expect.stringContaining("..."),
+          expect.stringContaining("••••"),
         ]),
       },
     });
@@ -570,9 +572,9 @@ describe("modelsStatusCommand auth overview", () => {
     expect(openai).toMatchObject({
       env: {
         source: expect.stringContaining("OPENAI_API_KEY"),
-        value: expect.stringContaining("..."),
+        value: expect.stringContaining("••••"),
       },
-      profiles: { labels: expect.arrayContaining([expect.stringContaining("...")]) },
+      profiles: { labels: expect.arrayContaining([expect.stringContaining("••••")]) },
     });
     expect(JSON.stringify(openai)).not.toContain("abc123");
     expect(payload.auth.providersWithOAuth).toEqual(
@@ -619,15 +621,16 @@ describe("modelsStatusCommand auth overview", () => {
   });
 
   it("honors BRANCH_AGENT_DIR when no --agent override is provided", async () => {
-    const { payload } = await withEnvAsync(
-      { BRANCH_AGENT_DIR: "/tmp/branch-isolated-agent" },
-      () => jsonStatus(),
+    const { payload } = await withEnvAsync({ BRANCH_AGENT_DIR: "/tmp/branch-isolated-agent" }, () =>
+      jsonStatus(),
     );
 
+    // The override goes through resolveUserPath, so on Windows it gains a drive letter and backslashes.
+    const isolatedDir = path.resolve("/tmp/branch-isolated-agent");
     expectResolveAgentDirCalledFor("main");
-    expect(mocks.ensureAuthProfileStore).toHaveBeenCalledWith("/tmp/branch-isolated-agent");
-    expect(payload.agentDir).toBe("/tmp/branch-isolated-agent");
-    expect(payload.auth.storePath).toBe("/tmp/branch-isolated-agent/auth-profiles.json");
+    expect(mocks.ensureAuthProfileStore).toHaveBeenCalledWith(isolatedDir);
+    expect(payload.agentDir).toBe(isolatedDir);
+    expect(payload.auth.storePath).toBe(`${isolatedDir}/auth-profiles.json`);
   });
 
   it("uses agent overrides and reports sources", async () => {
@@ -1112,6 +1115,55 @@ describe("modelsStatusCommand auth overview", () => {
     expect(output).toContain("Default (defaults)");
     expect(output).toContain(`Fallbacks (${fallbacks.length}) (defaults)`);
     expect(mocks.ensureAuthProfileStore).toHaveBeenLastCalledWith("/tmp/branch-agent");
+  });
+
+  it("says no model is ready on the Default line when the default has no usable auth", async () => {
+    const primary = "anthropic/claude-opus-4-6";
+    // With no anthropic profile at all, read-only status has no auth evidence and
+    // reports the route as indeterminate, not missing. An expired sign-in is a
+    // definite "no usable auth" for the default's provider.
+    configureStatus({
+      primary,
+      profiles: {
+        "anthropic:default": {
+          type: "token",
+          provider: "anthropic",
+          token: "expired-token", // pragma: allowlist secret
+          expires: Date.now() - 60_000,
+        },
+      },
+    });
+
+    // The availability resolver reads env evidence from process.env, so clear the
+    // anthropic env vars the runner may carry.
+    const { payload, text } = await withEnvAsync(
+      { ANTHROPIC_API_KEY: undefined, ANTHROPIC_OAUTH_TOKEN: undefined },
+      async () => ({ ...(await jsonStatus()), ...(await textStatus()) }),
+    );
+    const defaultLine = stripVTControlCharacters(text)
+      .split("\n")
+      .find((line) => line.startsWith("Default"));
+
+    expect(payload.auth.missingProvidersInUse).toEqual(["anthropic"]);
+    expect(payload.defaultModel).toBe(primary);
+    expect(payload.resolvedDefault).toBe(primary);
+    expect(defaultLine).toBe("Default       : none ready yet. Connect a model to get answers.");
+    expect(defaultLine).not.toContain(primary);
+  });
+
+  it("keeps the configured id on the Default line when the default has usable auth", async () => {
+    // Default fixture: anthropic primary with stored anthropic profiles.
+    const primary = "anthropic/claude-opus-4-6";
+
+    const { payload } = await jsonStatus();
+    const { text } = await textStatus();
+    const defaultLine = stripVTControlCharacters(text)
+      .split("\n")
+      .find((line) => line.startsWith("Default"));
+
+    expect(payload.auth.missingProvidersInUse).not.toContain("anthropic");
+    expect(defaultLine).toBe(`Default       : ${primary}`);
+    expect(text).not.toContain("none ready yet");
   });
 
   it("exits non-zero when auth is missing", async () => {

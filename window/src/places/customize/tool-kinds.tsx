@@ -52,7 +52,7 @@ export function Clis({ ctx }: { ctx: ToolsCtx }) {
   const bin = shown.find(b => b.name === chosen) ?? shown[0];
   const add = async () => {
     setBusy(true); setError(null);
-    try { await allowCommand(ctx, path.trim()); setPath(""); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+    try { await allowCommand(ctx, path.trim()); setPath(""); } catch (e) { setError(plainError(e)); } finally { setBusy(false); }
   };
   return <>
     <KindHead ctx={ctx} kind="Command-line tools" count={`${bins.filter(b => b.present).length} of ${bins.length} on`}>
@@ -107,7 +107,7 @@ export function AddTool({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
   const allow = async () => {
     setBusy(true); setError(null);
     try { await allowCommand(ctx, path.trim()); setAdded(a => [...a, path.trim()]); setPath(""); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    catch (e) { setError(plainError(e)); }
     finally { setBusy(false); }
   };
   return <Dialog title="Add a command-line tool" onClose={close} footer={<button type="button" className="btn pri" onClick={close}>Done</button>}>

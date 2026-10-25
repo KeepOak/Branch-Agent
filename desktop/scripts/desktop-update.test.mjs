@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync } from "node:fs";
-import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, truncate, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, truncate, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -16,7 +16,10 @@ const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 const updater = await import(pathToFileURL(join(dist, "component-update.js")));
 const desktopUpdate = await import(pathToFileURL(join(dist, "desktop-update.js")));
 const { runHelper } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
+const { assertUpdateSignature, minisignTestKey, INVALID_UPDATE_SIGNATURE } = await import(pathToFileURL(join(dist, "update-signature.js")));
 const { parseComponentRelease } = await import(pathToFileURL(join(dist, "component-update-manifest.js")));
+const { cwdHoldsAppFolder, leaveAppWorkingFolder, userHome } = await import(pathToFileURL(join(dist, "app-working-folder.js")));
+const holders = await import(pathToFileURL(join(dist, "install-folder-holders.js")));
 const ELECTRON = "44.5.1";
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function eventually(predicate, ms = 20_000) {
@@ -63,15 +66,134 @@ async function fixture(run, { runtime = false, iconRuntime = false, macBundle = 
   const installedApp = macBundle ? join(installed, "Branch Agent.app") : installed;
   const install = { appDir: installedApp, resourcesDir: join(installedApp, macBundle ? "Contents/Resources" : "resources"),
     executable: join(installedApp, macBundle ? "Contents/MacOS/Branch Agent" : "Branch Agent.exe"),
-    electronVersion: ELECTRON, nodePath: process.execPath };
+    electronVersion: ELECTRON, nodePath: process.execPath, updaterPubkey: "" };
   try { await run({ root, cfg, release, request, install }); }
   finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
 }
+
+test("startup changes the working folder when it starts inside the app folder", () => {
+  const appDir = "C:\\Users\\person\\AppData\\Local\\Programs\\Branch Agent\\app-0.4.5-abcdef";
+  const installRoot = "C:\\Users\\person\\AppData\\Local\\Programs\\Branch Agent";
+  const home = "C:\\Users\\person";
+  const portable = "C:\\Users\\person\\BranchApp\\dist\\v0.4.5\\Branch Agent-win32-x64";
+  assert.equal(cwdHoldsAppFolder(appDir, appDir, true), true);
+  assert.equal(cwdHoldsAppFolder(join(appDir, "resources"), appDir, true), true);
+  assert.equal(cwdHoldsAppFolder(installRoot, appDir, true), true, "Setup Start in was the install root");
+  assert.equal(cwdHoldsAppFolder(portable, portable, true), true);
+  assert.equal(cwdHoldsAppFolder(home, appDir, true), false);
+  const seen = [];
+  assert.equal(leaveAppWorkingFolder({ cwd: appDir, appDir, home, chdir: (dir) => seen.push(dir), win32: true }), true);
+  assert.deepEqual(seen, [home]);
+  seen.length = 0;
+  assert.equal(leaveAppWorkingFolder({ cwd: installRoot, appDir, home, chdir: (dir) => seen.push(dir), win32: true }), true);
+  assert.deepEqual(seen, [home]);
+  seen.length = 0;
+  assert.equal(leaveAppWorkingFolder({ cwd: home, appDir, home, chdir: (dir) => seen.push(dir), win32: true }), false);
+  assert.deepEqual(seen, []);
+  seen.length = 0;
+  assert.equal(leaveAppWorkingFolder({
+    cwd: portable, appDir: portable, home, chdir: (dir) => seen.push(dir), win32: true,
+  }), true);
+  assert.deepEqual(seen, [home]);
+  seen.length = 0;
+  assert.equal(leaveAppWorkingFolder({
+    cwd: join(portable, "resources"), appDir: portable, home: portable, chdir: (dir) => seen.push(dir), win32: true,
+  }), false, "never chdir into the app folder");
+  assert.deepEqual(seen, []);
+});
+
+test("startup home falls back when Electron has no getPath", () => {
+  const home = "C:\\Users\\person";
+  assert.equal(userHome({ getPath: (name) => { assert.equal(name, "home"); return home; } }, () => "fallback"), home);
+  assert.equal(userHome({}, () => home), home, "desktop tests stub app without getPath");
+  assert.equal(userHome({ getPath: () => { throw new Error("no getPath"); } }, () => home), home);
+  assert.equal(userHome({ getPath: () => "  " }, () => home), home);
+});
 
 test("an AppImage install never stages a swap of its read-only mount", () => {
   assert.equal(desktopUpdate.runsFromAppImage("linux", { APPIMAGE: "/home/person/.local/bin/branch-agent" }), true);
   assert.equal(desktopUpdate.runsFromAppImage("linux", {}), false);
   assert.equal(desktopUpdate.runsFromAppImage("darwin", { APPIMAGE: "/tmp/x" }), false);
+});
+
+
+test("a root-owned Linux deb install seeds a user copy the updater can swap", { skip: process.platform === "win32" }, async () => {
+  const parent = join(tmpdir(), "Codex-session-files"); await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(join(parent, "linux-deb-update-"));
+  const { bringBesideTarget } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
+  try {
+    const system = join(root, "opt", "branch-agent");
+    const home = join(root, "home");
+    const dataDir = join(root, "data");
+    await mkdir(join(system, "resources"), { recursive: true });
+    await mkdir(home, { recursive: true });
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(join(system, "Branch Agent.bin"), "old bin");
+    await writeFile(join(system, "branch-agent"), "#!/bin/sh\nexit 0\n");
+    await writeFile(join(system, "chrome-sandbox"), "sandbox");
+    await writeFile(join(system, "resources", "app.asar"), "old desktop asar");
+    if (process.platform !== "win32") {
+      await chmod(join(system, "resources", "app.asar"), 0o444);
+      await chmod(join(system, "resources"), 0o555);
+      await chmod(system, 0o555);
+    }
+    const systemInstall = {
+      appDir: system, resourcesDir: join(system, "resources"), executable: join(system, "Branch Agent.bin"),
+      electronVersion: ELECTRON, nodePath: process.execPath, platform: "linux",
+    };
+    assert.equal(desktopUpdate.isLinuxDebSystemInstall(system, system), true);
+    assert.equal(desktopUpdate.canWriteDirectory(system), false);
+    // Writing a sibling under the root-owned system tree must fail for a normal user (helper bringBesideTarget).
+    await assert.rejects(() => writeFile(join(system, ".probe"), "x"), error => error && (error.code === "EACCES" || error.code === "EPERM"));
+    const stagedProbe = join(root, "staged-probe");
+    await writeFile(stagedProbe, "incoming");
+    await assert.rejects(
+      () => bringBesideTarget(stagedProbe, join(system, "resources", "app.asar")),
+      error => error && (error.code === "EACCES" || error.code === "EPERM"),
+    );
+
+    const xdg = { XDG_DATA_HOME: join(home, ".local", "share") };
+    const resolved = desktopUpdate.resolveLinuxDebUpdateInstall(systemInstall, {
+      homeDirectory: home, env: xdg, systemRoot: system,
+    });
+    const live = desktopUpdate.linuxDebUserAppDir(home, xdg);
+    assert.equal(resolved.appDir, live);
+    assert.equal(await readFile(join(live, "resources", "app.asar"), "utf8"), "old desktop asar");
+    assert.notEqual(resolved.appDir, system);
+
+    const handoff = desktopUpdate.linuxDebSystemHandoff(systemInstall, {
+      homeDirectory: home, env: xdg, systemRoot: system,
+    });
+    assert.equal(handoff, join(live, "branch-agent"));
+
+    const staged = join(root, "staged-asar");
+    await writeFile(staged, "new desktop asar");
+    const journalPath = join(dataDir, "desktop-update-pending.json");
+    await writeFile(journalPath, JSON.stringify({
+      version: "0.4.5", sha256: "a".repeat(64), kind: "asar", staged, target: join(live, "resources", "app.asar"),
+      phase: "staged", stagedSha256: createHash("sha256").update("new desktop asar").digest("hex"),
+    }));
+    const exited = spawn(process.execPath, ["-e", ""]); await new Promise(resolve => exited.on("exit", resolve));
+    const confirm = `require("node:fs").rmSync(${JSON.stringify(journalPath)}, { force: true });`;
+    const plan = {
+      journal: journalPath,
+      versionFile: join(dataDir, "desktop-update-version.txt"),
+      rejectedFile: join(dataDir, "desktop-update-rejected.json"),
+      log: join(dataDir, "desktop.log"), waitPid: exited.pid,
+      relaunch: { command: process.execPath, args: ["-e", confirm] }, confirmTimeoutMs: 15_000,
+    };
+    assert.equal(await runHelper(plan), "applied");
+    assert.equal(await readFile(join(live, "resources", "app.asar"), "utf8"), "new desktop asar");
+    assert.equal(await readFile(join(live, "resources", "app.asar.previous"), "utf8"), "old desktop asar");
+    assert.equal(await readFile(join(system, "resources", "app.asar"), "utf8"), "old desktop asar");
+  } finally {
+    try {
+      await chmod(join(root, "opt", "branch-agent"), 0o755);
+      await chmod(join(root, "opt", "branch-agent", "resources"), 0o755);
+      await chmod(join(root, "opt", "branch-agent", "resources", "app.asar"), 0o644);
+    } catch { /* best effort */ }
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
 });
 
 test("manifest accepts a targeted desktop component and rejects one without its Electron", () => fixture(async ({ release }) => {
@@ -245,7 +367,29 @@ test("a swap that cannot move the running copy stays staged without a relaunch l
   const journal = await desktopUpdate.readDesktopJournal(cfg);
   assert.equal(journal.phase, "staged"); assert.ok(journal.heldUntil > Date.now());
   const helper = join(dist, "desktop-update-helper.js");
-  assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, install, helper, [], false), false, "a normal start does not hand off again");
+  assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, install, helper, [], false), false, "the helper's immediate relaunch does not loop");
+  assert.match(desktopUpdate.desktopUpdateHandOffBlock(journal, false, journal.heldUntil - 1), /retrying at the next launch after/);
+  assert.equal(desktopUpdate.desktopUpdateHandOffBlock(journal, false, journal.heldUntil + 1), undefined, "the next launch after the cooldown applies");
+}));
+
+test("a staged app-bundle is applied on the next launch, before the window loads", () => fixture(async ({ cfg, request, install }) => {
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  const journal = await desktopUpdate.readDesktopJournal(cfg);
+  assert.equal(journal.phase, "staged");
+  assert.equal(journal.heldUntil, undefined);
+  assert.equal(await desktopUpdate.stagedDesktopVersion(cfg), "0.4.5");
+  assert.equal(desktopUpdate.desktopUpdateHandOffBlock(journal, false), undefined,
+    "the next launch applies the staged app-bundle; it does not wait for a full restart");
+  assert.match(desktopUpdate.desktopUpdateHandOffBlock({ ...journal, heldUntil: 1_000 }, false, 999), /retrying at the next launch after/);
+  assert.equal(desktopUpdate.desktopUpdateHandOffBlock({ ...journal, heldUntil: 1_000 }, false, 1_001), undefined);
+  assert.equal(desktopUpdate.desktopUpdateHandOffBlock({ ...journal, heldUntil: 1_000 }, true, 999), undefined, "Restart applies at once");
+  const main = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8");
+  const start = main.slice(main.indexOf("async function start(): Promise<void>"));
+  const handOffAt = start.indexOf("if (await handOffDesktop())");
+  const exitAt = start.indexOf("app.exit(0)");
+  assert.ok(handOffAt >= 0 && exitAt > handOffAt, "startup applies a staged desktop update before loading");
+  assert.doesNotMatch(start.slice(0, handOffAt), /loadURL|serveWindow/);
+  assert.ok(start.indexOf("loadURL") > handOffAt || start.indexOf("serveWindow") > handOffAt);
 }));
 
 test("desktop confirmation retains exactly the current and previous update folders", () => fixture(async ({ cfg }) => {
@@ -376,12 +520,77 @@ test("a pending update whose folder vanished (ENOENT writing the helper) is disc
   const journal = join(cfg.dataDir, "desktop-update-pending.json");
   await writeFile(journal, JSON.stringify({ version: "0.4.5", sha256: stagedSha256, kind: "appimage", staged, target, phase: "staged", stagedSha256,
     work: join(cfg.dataDir, "updates", "desktop-0.4.5-gone00") }));
-  const launch = await launchHandOff(cfg, install);
+  const launch = await launchHandOff(cfg, { ...install, appImage: target, platform: "linux" });
   assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" });
   assert.equal(await exists(journal), false, "the record is removed");
   assert.equal(await exists(staged), false, "the orphaned staged file is removed");
   assert.equal(await readFile(target, "utf8"), "old appimage", "the installed app is untouched");
   assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: ENOENT.*desktop-update-helper\.js.*; starting the current build/);
+}));
+
+/** A staged AppImage update beside an AppImage file, as the one-line installer's copy leaves it. */
+async function stagedAppImageRecord(root, cfg, stagedBody = "new appimage") {
+  const target = join(root, "Branch-Agent.AppImage"), staged = target + ".update-0.4.5";
+  await writeFile(target, "old appimage"); await writeFile(staged, stagedBody, { mode: 0o755 });
+  const stagedSha256 = createHash("sha256").update(stagedBody).digest("hex");
+  const work = join(cfg.dataDir, "updates", "desktop-0.4.5-image0"); await mkdir(work, { recursive: true });
+  const journal = join(cfg.dataDir, "desktop-update-pending.json");
+  await writeFile(journal, JSON.stringify({ version: "0.4.5", sha256: stagedSha256, kind: "appimage", staged, target, phase: "staged", stagedSha256, work }));
+  return { target, staged, journal };
+}
+
+test("a .deb launch drops a staged AppImage update instead of swapping the AppImage", { skip: process.platform === "win32" ? "Linux-only update path (.deb); runs on Linux CI" : false }, () => fixture(async ({ root, cfg, install }) => {
+  const { target, staged, journal } = await stagedAppImageRecord(root, cfg);
+  const deb = { ...install, platform: "linux" };
+  assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, deb, join(dist, "desktop-update-helper.js")), false, "the app starts on its current build");
+  assert.equal(await exists(journal), false, "the record is removed");
+  assert.equal(await exists(staged), false, "the staged AppImage is removed");
+  assert.equal(await readFile(target, "utf8"), "old appimage", "the AppImage the record names is untouched");
+  assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the installed app is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"),
+    /desktop update 0\.4\.5 discarded: it was staged for a different install \(AppImage\), this copy is the \.deb; starting the current build/);
+}));
+
+test("an AppImage launch drops a staged AppImage update for another AppImage file", () => fixture(async ({ root, cfg, install }) => {
+  const { target, staged, journal } = await stagedAppImageRecord(root, cfg);
+  const running = join(root, "other", "branch-agent"); await mkdir(dirname(running), { recursive: true }); await writeFile(running, "running appimage");
+  assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, { ...install, appImage: running, platform: "linux" }, join(dist, "desktop-update-helper.js")), false);
+  assert.equal(await exists(journal), false, "the record is removed");
+  assert.equal(await exists(staged), false, "the staged AppImage is removed");
+  assert.equal(await readFile(target, "utf8"), "old appimage");
+  assert.equal(await readFile(running, "utf8"), "running appimage", "the running AppImage is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: it was staged for a different install \(AppImage .+\), this copy runs from /);
+}));
+
+for (const kind of ["asar", "runtime"]) {
+  test("an AppImage launch drops a staged " + kind + " update instead of applying it", () => fixture(async ({ root, cfg, request, install }) => {
+    await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+    const recorded = await desktopUpdate.readDesktopJournal(cfg);
+    assert.equal(recorded.kind, kind);
+    const appImage = join(root, "Branch-Agent.AppImage"); await writeFile(appImage, "running appimage");
+    assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, { ...install, appImage, platform: "linux" }, join(dist, "desktop-update-helper.js")), false);
+    assert.equal(await exists(join(cfg.dataDir, "desktop-update-pending.json")), false, "the record is removed");
+    assert.equal(await readFile(appImage, "utf8"), "running appimage", "the running AppImage is untouched");
+    assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the unpacked app is untouched");
+    assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"),
+      new RegExp("desktop update 0\\.4\\.5 discarded: it was staged for a different install \\(" + (kind === "asar" ? "app\\.asar" : "the whole app") + "\\), this copy is an AppImage"));
+  }, { runtime: kind === "runtime" }));
+}
+
+test("an AppImage launch still hands off its own staged AppImage update", { skip: process.platform === "win32" ? "Linux-only update path (AppImage); runs on Linux CI" : false }, () => fixture(async ({ root, cfg }) => {
+  const confirm = join(root, "confirm.cjs");
+  await writeFile(confirm, "require(" + JSON.stringify(join(dist, "desktop-update.js")) + ").confirmDesktopUpdate(" + JSON.stringify(cfg) + ");");
+  const { target, journal } = await stagedAppImageRecord(root, cfg, "#!/bin/sh\nexec " + JSON.stringify(process.execPath) + " " + JSON.stringify(confirm) + "\n");
+  const appImage = { appDir: root, resourcesDir: join(root, "resources"), executable: target, electronVersion: ELECTRON,
+    nodePath: process.execPath, appImage: target, platform: "linux", updaterPubkey: "" };
+  const handOff = "require(" + JSON.stringify(join(dist, "desktop-update.js")) + ").handOffDesktopUpdate(" + JSON.stringify(cfg) + "," + JSON.stringify(appImage)
+    + "," + JSON.stringify(join(dist, "desktop-update-helper.js")) + ").then(r=>process.exit(r?0:3),()=>process.exit(5))";
+  const app = spawn(process.execPath, ["-e", handOff], { stdio: "inherit" });
+  assert.equal(await new Promise(resolve => app.on("exit", resolve)), 0, "the matching update is handed off");
+  await eventually(async () => (await readFile(join(cfg.dataDir, "desktop-update-version.txt"), "utf8").catch(() => "")).trim() === "0.4.5");
+  assert.match(await readFile(target, "utf8"), /confirm\.cjs/, "the staged AppImage replaced the running one");
+  assert.equal(await exists(journal), false);
+  assert.doesNotMatch(await readFile(join(cfg.dataDir, "desktop.log"), "utf8").catch(() => ""), /different install/);
 }));
 
 /**
@@ -615,12 +824,14 @@ async function upgradedRoot(run) {
       ["Programs/Branch Agent.lnk", join(root, "app-0.4.4-aaaaaa", "Branch Agent.exe")],
       ["Desktop/Branch Agent.lnk", join(root, "app-0.4.4-aaaaaa", "Branch Agent.exe")],
       ["TaskBar/Branch Agent.lnk", join(root, "app-0.4.4-aaaaaa", "Branch Agent.exe")],
+      ["Startup/Branch Agent.lnk", join(root, "app-0.4.4-aaaaaa", "Branch Agent.exe")],
       ["Desktop/Other.lnk", join(base, "Other", "Other.exe")],
     ]);
-    const calls = { list: 0, retarget: [] };
+    const calls = { list: 0, retarget: [], repair: [] };
     const shortcuts = {
       list: async () => { calls.list++; return [...links].map(([path, target]) => ({ path, target })); },
       retarget: async (paths, to) => { calls.retarget.push([...paths]); for (const path of paths) links.set(path, to); },
+      repairWorkingDirectory: async (paths) => { calls.repair.push([...paths]); },
     };
     await run({ root, cfg: { dataDir }, install, links, calls, shortcuts });
   } finally { await rm(base, { recursive: true, force: true }); }
@@ -629,21 +840,26 @@ async function upgradedRoot(run) {
 test("Windows: an upgrade from shortcuts into a version folder retargets them to the stable launcher exactly once", () => upgradedRoot(async ({ root, cfg, install, links, calls, shortcuts }) => {
   const stable = join(root, launcher.WINDOWS_LAUNCHER_EXE);
   const changed = await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts);
-  assert.deepEqual(changed.sort(), ["Desktop/Branch Agent.lnk", "Programs/Branch Agent.lnk", "TaskBar/Branch Agent.lnk"]);
+  assert.deepEqual(changed.sort(), ["Desktop/Branch Agent.lnk", "Programs/Branch Agent.lnk", "Startup/Branch Agent.lnk", "TaskBar/Branch Agent.lnk"]);
   assert.equal(calls.retarget.length, 1, "one rewrite for all of them");
+  assert.deepEqual(calls.repair[0].sort(), changed.sort(), "Start in is repaired to the user folder on the same pass");
   assert.equal(await readFile(stable, "utf8"), "launcher from app-0.4.5-bbbbbb", "placed from the running package");
   assert.equal(links.get("Programs/Branch Agent.lnk"), stable);
+  assert.equal(links.get("Startup/Branch Agent.lnk"), stable);
   assert.equal(links.get("Desktop/Other.lnk"), join(root, "..", "Other", "Other.exe"), "another app's shortcut is left alone");
   assert.equal(await readFile(join(root, launcher.WINDOWS_LAUNCHER), "utf8"), launcher.windowsLauncherScript());
+  assert.match(await readFile(join(cfg.dataDir, "desktop-shortcut-launcher.txt"), "utf8"), /working-dir=userprofile/);
   // Second launch: nothing to do, not even a look at the shortcuts.
   assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts), []);
   assert.equal(calls.list, 1);
   assert.equal(calls.retarget.length, 1);
-  // Even with the record gone, links that already open the launcher are not rewritten.
+  assert.equal(calls.repair.length, 1);
+  // Even with the record gone, links that already open the launcher are not retargeted; Start in is repaired once more.
   await rm(join(cfg.dataDir, "desktop-shortcut-launcher.txt"));
   assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts), []);
   assert.equal(calls.list, 2);
   assert.equal(calls.retarget.length, 1);
+  assert.equal(calls.repair.length, 2);
   // A launcher already at this revision (the installer's signed copy) is never replaced by the package's.
   await writeFile(stable, "signed by the installer");
   await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts);
@@ -662,13 +878,299 @@ test("Windows: shortcut targets survive a prune of old version folders, and the 
 test("Windows: a failed shortcut rewrite is tried again at the next launch", () => upgradedRoot(async ({ cfg, install, calls, shortcuts }) => {
   const failing = { ...shortcuts, retarget: async () => { throw new Error("powershell timed out"); } };
   await assert.rejects(desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, failing), /timed out/);
-  assert.equal((await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts)).length, 3);
+  assert.equal((await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts)).length, 4);
   assert.equal(calls.retarget.length, 1);
+}));
+
+test("Windows: an old launcher-only shortcut record still repairs Start in to the user folder", () => upgradedRoot(async ({ root, cfg, install, links, calls, shortcuts }) => {
+  const stable = join(root, launcher.WINDOWS_LAUNCHER_EXE);
+  for (const path of ["Programs/Branch Agent.lnk", "Desktop/Branch Agent.lnk", "TaskBar/Branch Agent.lnk", "Startup/Branch Agent.lnk"]) {
+    links.set(path, stable);
+  }
+  await writeFile(stable, "already placed");
+  await writeFile(join(root, launcher.WINDOWS_LAUNCHER_REVISION_FILE), `${launcher.WINDOWS_LAUNCHER_REVISION}\n`);
+  await writeFile(join(cfg.dataDir, "desktop-shortcut-launcher.txt"), `${stable}\n`);
+  assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts), []);
+  assert.equal(calls.retarget.length, 0, "already-launcher links are not retargeted");
+  assert.equal(calls.repair.length, 1);
+  assert.deepEqual(calls.repair[0].sort(), ["Desktop/Branch Agent.lnk", "Programs/Branch Agent.lnk", "Startup/Branch Agent.lnk", "TaskBar/Branch Agent.lnk"]);
+  assert.match(await readFile(join(cfg.dataDir, "desktop-shortcut-launcher.txt"), "utf8"), /working-dir=userprofile/);
+  assert.equal(await readFile(stable, "utf8"), "already placed");
 }));
 
 test("off Windows there is no launcher to place and no shortcut is read", () => upgradedRoot(async ({ cfg, install }) => {
   const never = { list: async () => assert.fail("no shortcuts off Windows"), retarget: async () => assert.fail("no shortcuts off Windows") };
   assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, { ...install, platform: "linux" }, () => undefined, never), []);
   assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, { ...install, platform: "win32", appImage: "/x" }, () => undefined, never), []);
+}));
+
+const INSTALL = "C:\\Program Files\\Branch Agent";
+const NODE_INSIDE = `${INSTALL}\\resources\\node\\node.exe`;
+const SHELL_INSIDE = `${INSTALL}\\Branch Agent.exe`;
+const ROOT = "C:\\Users\\Example\\AppData\\Local\\Programs\\Branch Agent";
+const SHELL = `${ROOT}\\app-0.4.4-aaaaaa`;
+const SHELL_EXE = `${SHELL}\\Branch Agent.exe`;
+const ENGINE_NODE = `${SHELL}\\resources\\node\\node.exe`;
+const HOME = "C:\\Users\\Example";
+const CODEX = `${HOME}\\AppData\\Local\\BranchAgent\\updates\\release-engine\\codex.exe`;
+
+function listedWindows(rows) {
+  return holders.parseWindowsProcessList(JSON.stringify(rows));
+}
+
+test("a leftover process in the install folder is a holder and a process outside it is not", () => {
+  const listed = listedWindows([
+    { ProcessId: 4242, ExecutablePath: NODE_INSIDE, CommandLine: `"${NODE_INSIDE}" gateway` },
+    { ProcessId: 4243, ExecutablePath: SHELL_INSIDE, CommandLine: `"${SHELL_INSIDE}"` },
+    { ProcessId: 7, ExecutablePath: "C:\\Other\\Branch Agent\\Branch Agent.exe", CommandLine: "Branch Agent.exe" },
+    { ProcessId: 8, ExecutablePath: "C:\\Program Files\\nodejs\\node.exe", CommandLine: `node.exe "${INSTALL}\\resources\\engine\\branch.mjs"` },
+    { ProcessId: 9, ExecutablePath: "C:\\Program Files\\Branch Agent Extra\\Branch Agent.exe", CommandLine: "Branch Agent.exe" },
+  ]);
+  assert.deepEqual(holders.holdersInInstall(INSTALL, listed, new Set()).map(item => item.executable), [NODE_INSIDE, SHELL_INSIDE]);
+  assert.equal(holders.pathInsideInstall(INSTALL, NODE_INSIDE), true);
+  assert.equal(holders.pathInsideInstall(INSTALL, SHELL_INSIDE), true);
+  assert.equal(holders.pathInsideInstall(INSTALL, "C:\\Other\\Branch Agent\\Branch Agent.exe"), false);
+  assert.equal(holders.pathInsideInstall(INSTALL, "C:\\Program Files\\nodejs\\node.exe"), false);
+  assert.equal(holders.pathInsideInstall(INSTALL, "C:\\Program Files\\Branch Agent Extra\\Branch Agent.exe"), false);
+});
+
+test("a process whose working directory is the shell folder is a holder and one outside is not", () => {
+  const listed = listedWindows([
+    { ProcessId: 31, ExecutablePath: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe", CurrentDirectory: SHELL },
+    { ProcessId: 32, ExecutablePath: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe", CurrentDirectory: "C:\\Users\\Example\\Desktop" },
+    { ProcessId: 33, ExecutablePath: CODEX, CommandLine: "codex.exe", CurrentDirectory: `${HOME}\\AppData\\Local\\BranchAgent\\updates\\release-engine` },
+  ]);
+  assert.deepEqual(holders.holdersInInstall(SHELL, listed, new Set()).map(item => item.pid), [31]);
+});
+
+test("a Windows PEB working directory with an NT prefix is still a holder", () => {
+  const pebCwd = `\\??\\C:\\Users\\Example\\AppData\\Local\\Programs\\Branch Agent\\app-0.4.4-aaaaaa`;
+  assert.equal(pebCwd, `\\??\\${SHELL}`);
+  assert.equal(holders.pathInsideInstall(SHELL, SHELL), true);
+  assert.equal(holders.pathInsideInstall(SHELL, pebCwd), true, "PEB DosPath");
+  assert.equal(holders.pathInsideInstall(SHELL, `\\\\?\\${SHELL}`), true, "Win32 long path");
+  assert.equal(holders.pathInsideInstall(SHELL, `\\??\\${SHELL}\\resources`), true);
+  assert.equal(holders.pathInsideInstall(SHELL, "\\??\\C:\\Other\\Branch Agent"), false);
+  const listed = listedWindows([
+    { ProcessId: 31, ExecutablePath: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe", CurrentDirectory: pebCwd },
+    { ProcessId: 32, ExecutablePath: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe", CurrentDirectory: "\\??\\C:\\Users\\Example\\Desktop" },
+  ]);
+  assert.equal(listed.find(item => item.pid === 31).cwd, pebCwd);
+  assert.deepEqual(holders.holdersInInstall(SHELL, listed, new Set()).map(item => item.pid), [31]);
+});
+
+test("releaseInstallFolderHolders asks then force-stops only processes inside the install", async () => {
+  const listed = [
+    { pid: 41, executable: ENGINE_NODE, command: `"${ENGINE_NODE}" branch.mjs gateway`, cwd: `${HOME}\\AppData\\Local\\BranchAgent\\updates\\release-engine`, files: [] },
+    { pid: 42, executable: SHELL_EXE, command: `"${SHELL_EXE}"`, cwd: SHELL, files: [] },
+    { pid: 43, executable: CODEX, command: "codex.exe", cwd: `${HOME}\\AppData\\Local\\BranchAgent\\updates\\release-engine`, files: [] },
+    { pid: 44, executable: "C:\\Program Files\\nodejs\\node.exe", command: "node.exe branch.mjs", cwd: "C:\\Program Files\\nodejs", files: [] },
+  ];
+  const asked = [];
+  const forced = [];
+  const logs = [];
+  const alive = new Set(listed.map(item => item.pid));
+  const leftover = await holders.releaseInstallFolderHolders(SHELL, [99], {
+    list: async () => listed,
+    askExit: async pid => { asked.push(pid); },
+    forceStop: async pid => { forced.push(pid); alive.delete(pid); },
+    alive: pid => alive.has(pid),
+    wait: async () => {},
+    log: line => logs.push(line),
+  }, 2);
+  assert.deepEqual(asked, [41, 42]);
+  assert.deepEqual(forced, [41, 42]);
+  assert.deepEqual(leftover, []);
+  for (const outsider of [43, 44]) {
+    assert.equal(asked.includes(outsider), false);
+    assert.equal(forced.includes(outsider), false);
+  }
+  assert.match(logs.join("\n"), new RegExp(ENGINE_NODE.replaceAll("\\", "\\\\")));
+  assert.equal(logs.join("\n").includes(CODEX), false);
+});
+
+test("shortcut working directories inside the shell or install root are repaired to the user folder", () => {
+  const link = { path: "C:\\Users\\Example\\Desktop\\Branch Agent.lnk", target: SHELL_EXE, workingDirectory: SHELL };
+  assert.equal(holders.repairedWorkingDirectory(link, SHELL, HOME), HOME);
+  assert.equal(holders.repairedWorkingDirectory({ ...link, workingDirectory: ROOT }, SHELL, HOME), HOME, "Setup Start in was the install root");
+  assert.equal(holders.repairedWorkingDirectory({ ...link, workingDirectory: HOME }, SHELL, HOME), undefined);
+  assert.equal(holders.repairedWorkingDirectory({ ...link, target: "C:\\Other\\Branch Agent\\Branch Agent.exe", workingDirectory: "C:\\Other\\Branch Agent" }, SHELL, HOME), undefined);
+  assert.equal(holders.repairedWorkingDirectory({ ...link, target: CODEX, workingDirectory: SHELL }, SHELL, HOME), undefined);
+  const launcherLink = {
+    path: "C:\\Users\\Example\\Desktop\\Branch Agent.lnk",
+    target: `${ROOT}\\Branch Agent Launcher.exe`,
+    workingDirectory: ROOT,
+  };
+  assert.equal(holders.repairedWorkingDirectory(launcherLink, SHELL, HOME), HOME);
+  const script = holders.shortcutRepairScript(SHELL_EXE, HOME);
+  assert.match(script, /WorkingDirectory=\$work/);
+  assert.match(script, /GetFolderPath\('Startup'\)/);
+  assert.match(script, /TargetPath -ieq \$exe/);
+  assert.equal(script.includes("Split-Path -Parent"), false);
+  assert.equal(script.includes(HOME), true);
+  assert.doesNotMatch(script, /BranchAgent/);
+});
+
+test("the engine node is copied outside the shell folder and other node binaries stay put", async () => {
+  const root = await mkdtemp(join(tmpdir(), "branch-node-home-"));
+  try {
+    const shell = join(root, "Branch Agent-win32-x64");
+    const bundled = join(shell, "resources", "node", "node");
+    await mkdir(join(shell, "resources", "node"), { recursive: true });
+    await writeFile(bundled, "bundled-node");
+    const data = join(root, "BranchAgent");
+    await mkdir(data);
+    const outside = holders.nodeOutsideSwappedFolder(bundled, data);
+    assert.equal(holders.pathInsideInstall(shell, outside), false);
+    assert.equal(await readFile(outside, "utf8"), "bundled-node");
+    assert.equal(holders.nodeOutsideSwappedFolder(process.execPath, data), process.execPath);
+    assert.equal(holders.shellOfBundledNode(ENGINE_NODE), SHELL);
+    assert.equal(holders.shellOfBundledNode("C:\\Program Files\\nodejs\\node.exe"), undefined);
+    assert.equal(holders.pathInsideInstall(SHELL, CODEX), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+function breakMinisignSignature(signature) {
+  const lines = Buffer.from(signature, "base64").toString("utf8").split("\n");
+  const block = Buffer.from(lines[1], "base64");
+  block[20] ^= 0xff;
+  lines[1] = block.toString("base64");
+  return Buffer.from(lines.join("\n")).toString("base64");
+}
+
+const sha256Hex = bytes => createHash("sha256").update(bytes).digest("hex");
+
+/** A Linux AppImage install plus a signed release, so a bad .sig can be shown to leave the running file alone. */
+async function signedAppImage(run, { mutate } = {}) {
+  const parent = join(tmpdir(), "Codex-session-files"); await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(join(parent, "signed-update-"));
+  const dataDir = join(root, "data"), bin = join(root, "bin"), releaseDir = join(root, "release");
+  await mkdir(dataDir); await mkdir(bin); await mkdir(releaseDir);
+  const appImage = join(bin, "branch-agent");
+  await writeFile(appImage, "#!/bin/sh\n# old appimage\n", { mode: 0o755 });
+  const key = minisignTestKey();
+  const original = Buffer.from("#!/bin/sh\n# Branch Agent AppImage fixture\n# version 0.4.5\n");
+  let published = original;
+  let signature = key.sign(original);
+  if (mutate === "file") {
+    published = Buffer.from(original);
+    published[published.length - 1] ^= 0xff;
+  }
+  if (mutate === "sig") signature = breakMinisignSignature(signature);
+  const pubkey = mutate === "key" ? minisignTestKey().pubkey : key.pubkey;
+  const name = desktopUpdate.appImageAssetName("0.4.5");
+  await writeFile(join(releaseDir, name), published);
+  if (mutate !== "missing") await writeFile(join(releaseDir, `${name}.sig`), signature);
+  await writeFile(join(releaseDir, "SHA256SUMS"), `${sha256Hex(published)}  ${name}\n`);
+  const release = { schemaVersion: 1, version: "0.4.5", components: {
+    engine: { url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0.4.5/branch-engine-0.4.5-linux-x64.tar.gz", sha256: "a".repeat(64), bytes: 1, expandedBytes: 1 },
+    window: { url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0.4.5/branch-window-0.4.5.tar.gz", sha256: "b".repeat(64), bytes: 1, expandedBytes: 1 },
+  } };
+  const server = createServer((request, response) => {
+    createReadStream(join(releaseDir, decodeURIComponent(request.url.slice(1)))).on("error", () => response.writeHead(404).end()).pipe(response);
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const request = async (url, options) => {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/${new URL(url).pathname.split("/").at(-1)}`, options);
+    return new Response(response.body, { status: response.status, headers: response.headers });
+  };
+  const cfg = { dataDir, windowDir: join(dataDir, "window-current"), engineDir: join(root, "old-engine") };
+  const install = { appDir: bin, resourcesDir: join(bin, "resources"), executable: appImage, electronVersion: ELECTRON,
+    nodePath: process.execPath, appImage, platform: "linux", updaterPubkey: pubkey };
+  try { await run({ root, cfg, release, request, install, name, original, published, signature, key }); }
+  finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
+}
+
+test("a valid minisign signature stages; a changed file, changed sig or wrong key fails and leaves the install untouched", async () => {
+  const key = minisignTestKey();
+  const bytes = Buffer.from("trusted-update-bytes");
+  const signature = key.sign(bytes);
+  assert.doesNotThrow(() => assertUpdateSignature(bytes, signature, key.pubkey));
+  assert.throws(() => assertUpdateSignature(Buffer.from("changed-update-bytes"), signature, key.pubkey), { message: INVALID_UPDATE_SIGNATURE });
+  assert.throws(() => assertUpdateSignature(bytes, breakMinisignSignature(signature), key.pubkey), { message: INVALID_UPDATE_SIGNATURE });
+  assert.throws(() => assertUpdateSignature(bytes, signature, minisignTestKey().pubkey), { message: INVALID_UPDATE_SIGNATURE });
+
+  await signedAppImage(async ({ cfg, release, request, install }) => {
+    assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, install), true);
+    assert.equal(await readFile(install.appImage, "utf8"), "#!/bin/sh\n# old appimage\n", "staging does not replace the running AppImage");
+    assert.equal((await desktopUpdate.readDesktopJournal(cfg)).kind, "appimage");
+  });
+  for (const mutate of ["file", "sig", "key", "missing"]) {
+    await signedAppImage(async ({ cfg, release, request, install }) => {
+      await assert.rejects(desktopUpdate.stageDesktopUpdate(cfg, release, request, install), mutate === "missing" ? /has no \.sig/ : { message: INVALID_UPDATE_SIGNATURE });
+      assert.equal(await readFile(install.appImage, "utf8"), "#!/bin/sh\n# old appimage\n");
+      assert.equal(await desktopUpdate.readDesktopJournal(cfg), undefined);
+      assert.deepEqual((await readdir(join(install.appImage, ".."))).sort(), ["branch-agent"]);
+    }, { mutate });
+  }
+});
+
+test("a build without the updater key still accepts the first signed update", () => signedAppImage(async ({ cfg, release, request, install }) => {
+  assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, { ...install, updaterPubkey: "" }), true);
+  assert.equal(await readFile(install.appImage, "utf8"), "#!/bin/sh\n# old appimage\n");
+}));
+
+test("the helper copies holders beside itself and releases them before an in-place rename", () => {
+  const update = readFileSync(join(import.meta.dirname, "../src/desktop-update.ts"), "utf8");
+  const helper = readFileSync(join(import.meta.dirname, "../src/desktop-update-helper.ts"), "utf8");
+  const main = readFileSync(join(import.meta.dirname, "../src/main.ts"), "utf8");
+  assert.match(update, /install-folder-holders\.js/);
+  assert.match(helper, /releaseInstallFolderHolders/);
+  assert.match(helper, /GetFolderPath\('Startup'\)/);
+  const release = helper.indexOf("releaseInstallFolderHolders");
+  const move = helper.indexOf("await move(journal.target, previous");
+  assert.ok(release !== -1 && move !== -1 && release < move, "holders leave before the live folder is renamed");
+  const nodeCopy = main.indexOf("cfg.nodePath = nodeOutsideSwappedFolder(cfg.nodePath, cfg.dataDir)");
+  const install = main.indexOf("const install: DesktopInstall");
+  assert.ok(nodeCopy !== -1 && install !== -1 && nodeCopy < install, "bundled node is copied before the install object uses it");
+});
+
+/**
+ * An AppImage launch with a leftover staged AppImage record for the same file. The running build's version comes from
+ * the package.json in its app.asar (a folder here, as plain Node reads it); the helper is a stand-in that does nothing.
+ */
+async function leftoverAppImage(root, cfg, install, { running, staged: version }) {
+  const resourcesDir = join(root, "appimage-resources");
+  await mkdir(join(resourcesDir, "app.asar"), { recursive: true });
+  await writeFile(join(resourcesDir, "app.asar", "package.json"), JSON.stringify({ name: "branch-agent-desktop", version: running }));
+  const target = join(root, "Branch-Agent.AppImage"), staged = target + ".update-" + version;
+  await writeFile(target, "running appimage " + running); await writeFile(staged, "staged appimage " + version, { mode: 0o755 });
+  const stagedSha256 = createHash("sha256").update("staged appimage " + version).digest("hex");
+  const work = join(cfg.dataDir, "updates", "desktop-" + version + "-left00"); await mkdir(work, { recursive: true });
+  const journal = join(cfg.dataDir, "desktop-update-pending.json");
+  await writeFile(journal, JSON.stringify({ version, sha256: stagedSha256, kind: "appimage", staged, target, phase: "staged", stagedSha256, work }));
+  const helper = join(root, "stand-in-helper.js"); await writeFile(helper, "");
+  const appImage = { ...install, resourcesDir, appImage: target, platform: "linux" };
+  return { target, staged, journal, helper, appImage };
+}
+
+for (const [label, staged] of [["older than", "0.4.3"], ["the same version as", "0.4.4"]]) {
+  test("an AppImage launch discards a leftover AppImage update " + label + " the running build", () => fixture(async ({ root, cfg, install }) => {
+    const left = await leftoverAppImage(root, cfg, install, { running: "0.4.4", staged });
+    const launch = await launchHandOff(cfg, left.appImage, left.helper);
+    assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" }, "nothing is handed off; the running build starts");
+    assert.equal(await exists(left.journal), false, "the record is removed");
+    assert.equal(await exists(left.staged), false, "the staged AppImage is removed");
+    assert.equal(await readFile(left.target, "utf8"), "running appimage 0.4.4", "the running AppImage is untouched");
+    assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"),
+      new RegExp("desktop update " + staged.replaceAll(".", "\\.") + " discarded: it is not newer than the running build 0\\.4\\.4; starting the current build"));
+  }));
+}
+
+test("an AppImage launch still hands off a staged AppImage update newer than the running build", () => fixture(async ({ root, cfg, install }) => {
+  const left = await leftoverAppImage(root, cfg, install, { running: "0.4.4", staged: "0.4.5" });
+  const launch = await launchHandOff(cfg, left.appImage, left.helper);
+  assert.equal(launch.code, 4, "the newer update is handed off");
+  assert.equal(await exists(left.journal), true, "the record stays for the helper");
+  assert.equal(await exists(left.staged), true, "the staged AppImage stays for the helper");
+  assert.doesNotMatch(await readFile(join(cfg.dataDir, "desktop.log"), "utf8").catch(() => ""), /not newer/);
+}));
+
+test("an AppImage update whose version has no order against the running build is handed off as before", () => fixture(async ({ root, cfg, install }) => {
+  const left = await leftoverAppImage(root, cfg, install, { running: "0.4.4", staged: "0.4.4-build-abcdef123456" });
+  assert.equal((await launchHandOff(cfg, left.appImage, left.helper)).code, 4, "a build of the same base version is not judged older");
+  assert.equal(await exists(left.staged), true);
 }));
 

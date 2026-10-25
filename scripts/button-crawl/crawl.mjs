@@ -25,6 +25,7 @@ import { REQUEST_WAIT_CAP_MS, waitForPermissionRequests as waitForRequests } fro
 import { viteLaunch } from './vite-launch.mjs';
 import { SettingsTwins, twinSkips } from './twins.mjs';
 import { NEVER_CLICKED_ALLOW, PageCoverage, neverKey } from './coverage.mjs';
+import { DISABLED_WITHOUT_REASON, disabledWithoutReason } from './disabled-reason.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const windowDir = resolve(root, 'window');
@@ -389,6 +390,14 @@ async function main() {
         checks.push({ screenId: 'sidebar', complete: true, keys });
       }
       const elements = await page.evaluate((overlay) => window.__crawl.collect(overlay), screen.depth > 0);
+      // A greyed control is never clicked (denylist.mjs), so it is checked here: at Regular and Advanced it must say why
+      // in one visible line. Its key is this screen's, so a fixed one shows as a stale baseline line, as dead does.
+      const reasonKeys = [];
+      for (const el of disabledWithoutReason(elements, screen.level)) {
+        const key = elementKey(screen.id, el.name);
+        add(found, key, [DISABLED_WITHOUT_REASON]);
+        if (!reasonKeys.includes(key)) reasonKeys.push(key);
+      }
       const pathNames = new Set((screen.path || []).map((step) => step.name));
       const skip = (el) => pathNames.has(el.name) || Boolean(skipReason(el)) || Boolean(el.selected);
       const wanted = chooseScreenClicks(elements, { limit: 10000, skip });
@@ -404,7 +413,7 @@ async function main() {
       const twin = twinEligible ? settingsTwins.twinOf(screen.route.page, wantedNames) : undefined;
       if (twin) {
         skipped.push(...twinSkips(screen.id, twin, wantedNames));
-        checks.push({ screenId: screen.id, complete: false, keys: [] });
+        checks.push({ screenId: screen.id, complete: false, keys: reasonKeys });
         continue;
       }
       const screenCap = settingsCap(screen);
@@ -444,7 +453,7 @@ async function main() {
         const reason = skipReason(el);
         if (reason) skipped.push({ screen: screen.id, label: el.name, reason });
       }
-      const screenKeys = openErrors.length ? [elementKey(screen.id, '(open)')] : [];
+      const screenKeys = [...(openErrors.length ? [elementKey(screen.id, '(open)')] : []), ...reasonKeys];
       for (const el of [...chosen, ...shared]) {
         if (clickCount >= caps.maxClicks) { clickedAll = false; break; }
         await show(page, screen);
@@ -473,6 +482,8 @@ async function main() {
           queue.push({
             id: `${screen.id} > ${el.name}`,
             route: screen.route,
+            // A menu or dialog opened from a Settings page at Regular or Advanced opens at that level too.
+            level: screen.level,
             depth: screen.depth + 1,
             path: [...(screen.path || []), { name: el.name, occurrence: el.occurrence, region: el.region }],
           });
@@ -485,6 +496,8 @@ async function main() {
           queue.push({
             id: `${screen.id} > ${el.name}`,
             route: screen.route,
+            // A menu or dialog opened from a Settings page at Regular or Advanced opens at that level too.
+            level: screen.level,
             depth: screen.depth + 1,
             path: [...(screen.path || []), { name: el.name, occurrence: el.occurrence, region: el.region }],
           });

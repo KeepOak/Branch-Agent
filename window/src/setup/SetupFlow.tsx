@@ -11,13 +11,15 @@ import { providersOf } from "../places/settings/set1/accounts";
 import { list, type RecordValue } from "../places/settings/adapter";
 import { useResource } from "../places/settings/hooks";
 import type { LoginStart } from "../places/settings/account-login";
+import { Coming } from "../glass/coming";
 import { Icon } from "../shell/icons";
 import { notify } from "../shell/notify";
+import { startSetupTalk } from "../screens/onboarding/finish";
 import { readThemeChoice, setThemeChoice } from "../theme/theme";
-import { doneSteps, firstOn, freshChoices, LAST, railTicked, RUN_SETUP_AGAIN, STEPS, type Check, type SetupChoices, type TestResult } from "./setup-model";
+import { doneSteps, firstOn, freshChoices, LAST, railTicked, FIRST_RUN_STEP_NAMES, RUN_SETUP_AGAIN, SETUP_LATER_TOAST, SETUP_TALK_KEY, STEPS, type Check, type SetupChoices, type TestResult, type Where } from "./setup-model";
 import { SetupShell } from "./SetupShell";
 import { WelcomeHero } from "./SetupBrand";
-import { ModelsBody, WelcomeBody, WhereBody } from "./steps-early";
+import { ModelsBody, WELCOME_LEDE, WelcomeBody, WhereBody, WhereSheet } from "./steps-early";
 import { MoreBody } from "./more-step";
 import { type ChatApp, CheckBody, KeepBody, PeopleBody, ReachBody, reachLede, ToolsBody, TrunksBody, YoursBody } from "./steps-later";
 import { makeTrunks, recordSetup, runChecks, testModel, useChatApps, useDetected, useKnown } from "./use-setup-engine";
@@ -41,10 +43,12 @@ type Props = {
   onLocalModel: () => void;
   /** Finish by talking: the setup card to show above the default Trunk's message box, or null to take it away. */
   onTalk?: (handle: TalkHandle | null) => void;
+  /** Set up by talking: the "Setting up Branch" conversation the Welcome link started. */
+  onTalkConversation?: (sessionKey: string) => void;
 };
 
 const TITLES: Record<number, [string, string?]> = {
-  0: ["Hi, I’m Branch.", "An assistant that lives on this computer, with Trunks that each take one job. This takes about three minutes; you can change everything later."],
+  0: ["Hi, I’m Branch.", WELCOME_LEDE],
   1: ["Where should Branch run?", "The engine and the gateway live here. You can talk to it from anywhere."],
   2: ["Which models should answer?", "Found on this computer:"],
   3: ["Make it yours", "Two quick choices. Both can change any time in Settings."],
@@ -91,6 +95,9 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
   const [checks, setChecks] = useState<Check[]>([]);
   const [login, setLogin] = useState<LoginStart | null>(null);
   const [busy, setBusy] = useState(false);
+  const [choosing, setChoosing] = useState(false);
+  const [talkError, setTalkError] = useState<string | null>(null);
+  const [talkingWelcome, setTalkingWelcome] = useState(false);
   const models = useDetected(p.engine);
   const chat = useChatApps(p.engine);
   const apps = chat.apps;
@@ -170,13 +177,49 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
     // Published once when talking starts; the card keeps its own place from there.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [talking]);
+  useEffect(() => {
+    // Welcome's Set up by talking was chosen before the window connected: start that conversation now.
+    let asked = false;
+    try {
+      asked = sessionStorage.getItem(SETUP_TALK_KEY) === "1";
+      sessionStorage.removeItem(SETUP_TALK_KEY);
+    } catch {
+      // session blocked: stay on Welcome
+    }
+    if (asked && p.onTalkConversation) void talkWelcome();
+    // Once, on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const doneChecks = checks.filter((c) => c.state !== "checking").length;
-  const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, boot: boot ?? (known?.promise ? null : true), setBoot, checks, setStep });
+  const later = () => {
+    latest.current.choices = { ...latest.current.choices, promise: true };
+    set({ promise: true });
+    notify(SETUP_LATER_TOAST);
+    void close(false);
+  };
+  const talkWelcome = async () => {
+    if (!p.onTalkConversation || talkingWelcome) return;
+    setTalkingWelcome(true);
+    setTalkError(null);
+    try {
+      const key = await startSetupTalk(p.engine);
+      latest.current.choices = { ...latest.current.choices, promise: true };
+      set({ promise: true });
+      await recordSetup(p.engine, latest.current.choices, p.version, null).catch(() => undefined);
+      p.onTalkConversation(key);
+      p.onClose(false);
+    } catch {
+      setTalkError("Couldn’t start that conversation. Try again.");
+    } finally {
+      setTalkingWelcome(false);
+    }
+  };
+  const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, boot: boot ?? (known?.promise ? null : true), setBoot, checks, setStep, onChangeWhere: () => setChoosing(true) });
   const [title, lede] = STEPS[step] === "Reach it anywhere" ? [TITLES[step][0], reachLede(apps)] : TITLES[step];
   const footer = (
     <>
       {step > 0 ? (
-        <button type="button" className="btn ghost" onClick={() => setStep(step - 1)}>
+        <button type="button" className="btn ghost" onClick={() => setStep(step === 2 ? 0 : step - 1)}>
           Back
         </button>
       ) : null}
@@ -191,8 +234,8 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
           {doneChecks < checks.length ? `Checking… ${doneChecks} of ${checks.length}` : "Open Branch and take the walkthrough"}
         </button>
       ) : (
-        <button type="button" className="btn pri" data-testid="setup-next" disabled={step === 0 && !choices.promise} onClick={() => setStep(step + 1)}>
-          {step === 0 ? "Start" : "Continue"}
+        <button type="button" className="btn pri" data-testid="setup-next" onClick={() => { if (step === 0) set({ promise: true }); setStep(step === 0 ? 2 : step + 1); }}>
+          {step === 0 ? "Get started" : "Continue"}
         </button>
       )}
     </>
@@ -212,18 +255,39 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
   return (
     <>
       <SetupShell
+        variant={step === 0 ? "card" : "rail"}
+        steps={step === 0 ? FIRST_RUN_STEP_NAMES : STEPS}
         step={step}
-        reach={choices.promise ? LAST : 0}
-        reachReason="Tick the promise on Welcome first."
+        reach={LAST}
+        reachReason="Connect to a Branch first."
         done={(i) => railTicked(step, i)}
         onStep={setStep}
-        onSkip={step === 0 || busy ? null : () => void close(false)}
+        onSkip={busy ? null : later}
         title={title}
         lede={lede}
         hero={step === 0 ? <WelcomeHero /> : undefined}
         footer={footer}
+        later={
+          <>
+            {step === 0 ? (
+              <>
+                <Coming need="sessions.create" engine={p.engine} unwired={!p.onTalkConversation} reason={p.onTalkConversation ? "This engine can’t start a conversation." : "Setting up by talking comes in a later update."} where="Set up by talking">
+                  <button type="button" className="link" data-testid="setup-talk-welcome" disabled={talkingWelcome} onClick={() => void talkWelcome()}>
+                    {talkingWelcome ? "Starting…" : "Set up by talking"}
+                  </button>
+                </Coming>
+                <span aria-hidden="true">·</span>
+              </>
+            ) : null}
+            <button type="button" className="link" data-testid="setup-skip" disabled={busy} onClick={later}>
+              Set up later
+            </button>
+          </>
+        }
+        overlay={choosing ? <WhereSheet where={choices.where} onPick={(where: Where) => { set({ where }); setChoosing(false); }} onClose={() => setChoosing(false)} /> : null}
       >
         {body}
+        {talkError ? <p className="ob-problem" role="alert">{talkError}</p> : null}
       </SetupShell>
       {dialogs}
     </>
@@ -249,6 +313,7 @@ type Ctx = {
   setBoot: (v: boolean) => void;
   checks: Check[];
   setStep: (i: number) => void;
+  onChangeWhere: () => void;
 };
 
 const SECRET = "secret";
@@ -275,7 +340,7 @@ function renderStep(step: number, c: Ctx): ReactNode {
   const { choices, set } = c;
   switch (STEPS[step]) {
     case "Welcome":
-      return <WelcomeBody promise={choices.promise} onPromise={(promise) => set({ promise })} />;
+      return <WelcomeBody where={choices.where} onChangeWhere={c.onChangeWhere} />;
     case "Where Branch runs":
       return <WhereBody where={choices.where} onWhere={(where) => set({ where })} remote={<p className="hint">This window already talks to a Branch. To move to another computer, use the machine menu › Connect to a Branch elsewhere….</p>} />;
     case "Models":

@@ -3,7 +3,8 @@
 // can remove. The release build compiles the launcher (resources/branch-launcher.exe in each Windows package); the
 // installer and the desktop app place it at the root; the installer and the update helper write the cmd stub below.
 // Node built-ins only: build.mjs copies this file into dist, and the update helper loads it from beside itself.
-import { dirname, join, win32 } from "node:path";
+import { homedir } from "node:os";
+import { join, win32 } from "node:path";
 
 /** Pointer the launcher, the cmd stub and the update helper read; switched by an atomic rename. */
 export const WINDOWS_POINTER = "current.txt";
@@ -15,7 +16,7 @@ export const WINDOWS_LAUNCHER_EXE = "Branch Agent Launcher.exe";
 export const WINDOWS_LAUNCHER_RESOURCE = "branch-launcher.exe";
 /** Beside the root launcher: the revision it was placed from. A newer revision replaces it; the same one never does. */
 export const WINDOWS_LAUNCHER_REVISION_FILE = "launcher-revision.txt";
-export const WINDOWS_LAUNCHER_REVISION = "launcher-v1";
+export const WINDOWS_LAUNCHER_REVISION = "launcher-v2";
 /** The app's AppUserModelID (main.ts); a shortcut that carries it is the one Windows pins for a running window. */
 export const WINDOWS_APP_USER_MODEL_ID = "dev.branch.agent.desktop";
 const APP_EXE = "Branch Agent.exe";
@@ -52,11 +53,16 @@ export function windowsLaunchTarget(root, fs) {
   return fs.exists(legacy) ? legacy : undefined;
 }
 
-/** What the launcher does when a shortcut opens it: start the target with the shortcut's arguments, from its folder. */
-export function runWindowsLauncher({ root, args = [], fs, spawn }) {
+/** Start in: the user's folder, never the app folder an update later renames (#1777). */
+export function windowsUserWorkingDirectory(env = process.env) {
+  return String(env.USERPROFILE || env.HOME || homedir() || "").trim();
+}
+
+/** What the launcher does when a shortcut opens it: start the target with the shortcut's arguments, from the user folder. */
+export function runWindowsLauncher({ root, args = [], fs, spawn, env = process.env }) {
   const exe = windowsLaunchTarget(root, fs);
   if (!exe) return undefined;
-  spawn(exe, args, { cwd: dirname(exe), detached: true, stdio: "ignore", windowsHide: false });
+  spawn(exe, args, { cwd: windowsUserWorkingDirectory(env), detached: true, stdio: "ignore", windowsHide: false });
   return exe;
 }
 
@@ -95,7 +101,8 @@ export function windowsLauncherSource() {
     "    if (exe == null) return 2;",
     "    ProcessStartInfo start = new ProcessStartInfo(exe, Join(args));",
     "    start.UseShellExecute = false;",
-    "    start.WorkingDirectory = Path.GetDirectoryName(exe);",
+    '    string home = Environment.GetEnvironmentVariable("USERPROFILE");',
+    "    if (!string.IsNullOrEmpty(home) && Directory.Exists(home)) start.WorkingDirectory = home;",
     "    using (Process.Start(start)) { }",
     "    return 0;",
     "  }",
