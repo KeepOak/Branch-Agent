@@ -17,11 +17,11 @@ function assetUrl(version, name) {
 
 /**
  * The installer a person should grab for this target from the uploaded names, or null when it has none.
- * The stable Intel name (Branch-macOS-Intel.dmg) wins over the versioned disk image when both are present.
+ * The stable name (Branch-Setup-Windows.exe, Branch-macOS.dmg, Branch-macOS-Intel.dmg, Branch-Linux.deb) wins over
+ * the versioned one.
  */
 export function downloadAssetName(version, target, names) {
-  const uploaded = names ?? [];
-  return [publicDownloadName(target), installerAssetName(version, target)].find((name) => name && uploaded.includes(name)) ?? null;
+  return [publicDownloadName(target), installerAssetName(version, target)].find((name) => name && names.includes(name)) ?? null;
 }
 
 /**

@@ -406,6 +406,7 @@ describe("registered maintenance commands", () => {
 
   it.each([
     ["dashboard --no-open --json", dashboardCommand, { noOpen: true, json: true }],
+    ["dashboard --json --ttl-seconds 120", dashboardCommand, { json: true, ttlSeconds: 120 }],
     [
       "reset --scope full --yes --non-interactive --dry-run",
       resetCommand,

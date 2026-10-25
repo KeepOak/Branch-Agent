@@ -11,6 +11,7 @@ import type { ApprovalDetails, Helper } from "./useEngineData";
 import type { NativeHelper } from "./native-helpers";
 import { NativeHelpers } from "./NativeHelpers";
 import { modelName } from "./format";
+import { plainError } from "../shell/plain-error";
 
 type Mark = "working" | "done" | "waiting" | "stopped" | "stalled";
 
@@ -67,7 +68,7 @@ function Row({ h, depth, props }: { h: Helper; depth: number; props: TreeProps }
         ) : null}
       </div>
       {h.task ? <p className="helper-job">{h.task}</p> : null}
-      {h.error ? <p className="helper-error">{h.error}</p> : null}
+      {h.error ? <p className="helper-error">{plainError(h.error)}</p> : null}
       {asks.map((a) => (
         <div key={a.id} className="helper-ask">
           <b>{a.command}</b>

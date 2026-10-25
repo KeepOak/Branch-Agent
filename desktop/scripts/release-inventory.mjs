@@ -15,7 +15,7 @@ export async function fileDigest(file) {
 /** Native desktop targets every release must publish. Sorted as verifyReleaseDirectory reports them. */
 export const NATIVE_RELEASE_TARGETS = Object.freeze(["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64"]);
 
-/** The one installer a target may ship, or null when it has none. Linux ships a per-user AppImage. */
+/** The versioned installer install.sh and the in-app updater fetch. Linux's is the AppImage. */
 export function installerAssetName(version, target) {
   if (target === "win32-x64") return `Branch-Agent-Setup-${version}-win32-x64.exe`;
   if (target === "darwin-arm64") return `Branch-Agent-${version}-darwin-arm64.dmg`;
@@ -25,11 +25,16 @@ export function installerAssetName(version, target) {
 }
 
 /**
- * Stable download names for the README and the release notes. Same bytes as the versioned installer.
- * darwin-x64 is Branch-macOS-Intel.dmg so it sits next to #1842's Branch-macOS.dmg (arm64).
+ * Stable download names for the README and the release notes. Same bytes as the versioned Windows and macOS
+ * installers. On Linux this is the .deb, not a copy of the AppImage. The versioned names stay so updater feeds
+ * and the one-line installers keep matching a single SHA256SUMS entry. darwin-x64 is Branch-macOS-Intel.dmg so it
+ * sits next to Branch-macOS.dmg (arm64).
  */
 export const PUBLIC_DOWNLOAD_NAMES = Object.freeze({
+  "win32-x64": "Branch-Setup-Windows.exe",
+  "darwin-arm64": "Branch-macOS.dmg",
   "darwin-x64": "Branch-macOS-Intel.dmg",
+  "linux-x64": "Branch-Linux.deb",
 });
 
 export function publicDownloadName(target) {
@@ -50,7 +55,7 @@ export async function recordInstaller(directory, target, file) {
   validateReleaseIdentity(proof);
   assert.equal(`${proof.platform}-${proof.arch}`, target, "Installer target differs from the release proof");
   const name = basename(file);
-  assert(allowedInstallerNames(proof.version, target).includes(name), "Unexpected installer for this target");
+  assert.ok(allowedInstallerNames(proof.version, target).includes(name), "Unexpected installer for this target");
   assert(!Object.hasOwn(proof.assets ?? {}, name), "Installer name collides with a release asset");
   proof.installers = { ...proof.installers, [name]: await fileDigest(file) };
   await writeFile(proofFile, JSON.stringify(proof, null, 2) + "\n");
@@ -112,8 +117,41 @@ export async function verifyReleaseDirectory(directory, expectedCommit, expected
     await verifyTarget(directory, proof, inventory);
     inventory.set(name, await fileDigest(join(directory, name)));
   }
+  // sign-release-updates.mjs writes .sig sidecars + latest.json after proofs are built.
+  // Attest them here so publish's verifyReleaseDirectory accepts the signed directory.
+  await attestSignedUpdateSidecars(directory, inventory, expectedVersion);
   assert.deepEqual(names, [...inventory.keys()].sort(), "Unattested or missing release assets");
   return { targets: [...targets].sort(), inventory: Object.fromEntries(inventory) };
+}
+
+/**
+ * Digests free-updater sidecars into the inventory. Each `.sig` must name an already
+ * attested payload (proof asset or installer). `latest.json` is the updater feed.
+ */
+export async function attestSignedUpdateSidecars(directory, inventory, expectedVersion) {
+  const names = (await readdir(directory)).sort();
+  for (const name of names) {
+    if (name === "latest.json") {
+      assert(/^[A-Za-z0-9.-]+$/.test(name), "Unsafe asset filename");
+      const body = JSON.parse(await readFile(join(directory, name), "utf8"));
+      assert.equal(body.version, expectedVersion, "latest.json version differs from the release");
+      assert(body.platforms && typeof body.platforms === "object" && !Array.isArray(body.platforms), "latest.json missing platforms");
+      assert(Object.keys(body.platforms).length > 0, "latest.json needs a platform entry");
+      const actual = await fileDigest(join(directory, name));
+      if (inventory.has(name)) assert.deepEqual(inventory.get(name), actual, "Conflicting shared asset");
+      inventory.set(name, actual);
+      continue;
+    }
+    if (!name.endsWith(".sig")) continue;
+    assert(/^[A-Za-z0-9.-]+$/.test(name), "Unsafe signature filename");
+    const payload = name.slice(0, -".sig".length);
+    assert(inventory.has(payload), `Unattested signed payload for sidecar: ${name}`);
+    const actual = await fileDigest(join(directory, name));
+    assert(actual.bytes > 0, `Empty signature sidecar: ${name}`);
+    if (inventory.has(name)) assert.deepEqual(inventory.get(name), actual, "Conflicting shared asset");
+    inventory.set(name, actual);
+  }
+  return inventory;
 }
 
 async function verifyTarget(directory, proof, inventory) {
@@ -147,8 +185,9 @@ async function verifyInstallers(directory, proof, inventory) {
   const installers = proof.installers ?? {};
   assert(installers && typeof installers === "object" && !Array.isArray(installers), "Invalid installer inventory");
   const target = `${proof.platform}-${proof.arch}`;
+  const allowed = new Set(allowedInstallerNames(proof.version, target));
   for (const [name, expected] of Object.entries(installers)) {
-    assert(allowedInstallerNames(proof.version, target).includes(name), "Unexpected installer for this target");
+    assert.ok(allowed.has(name), "Unexpected installer for this target");
     assert(!Object.hasOwn(proof.assets, name) && !inventory.has(name), "Installer name collides with a release asset");
     let actual;
     try { actual = await fileDigest(join(directory, name)); }

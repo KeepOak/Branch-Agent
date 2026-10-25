@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { Contact } from '@branch/gateway-protocol';
 import { historyToBlocks } from '../src/thread/history';
 import { WindowShell } from '../src/shell/WindowShell';
-import { R1Window, SETTINGS_PLACE } from '../src/screens/frame/R1Window';
+import { R1Window } from '../src/screens/frame/R1Window';
 import { PAGES as R1_PAGES_SPEC, pageShown, type PageId, type Level } from '../src/screens/settings/nav';
 import { dismiss, getToasts } from '../src/shell/notify';
 import { PLACES, type Route } from '../src/places-nav/routes';
@@ -79,12 +79,10 @@ const SELECTOR = [
   '[role="tab"]', '[role="switch"]', 'input[type="checkbox"]', '.chip', '.ib',
 ].join(',');
 
-// Every R1 Settings page at each level it is shown at. A page that is a place (Customize, Automations, Memory &
-// documents) opens that place, so the place screens cover it and it is not repeated here.
+// Every R1 Settings page at each level it is shown at.
 const LEVEL_WORD_LIST: LevelWord[] = ['regular', 'advanced', 'technical'];
 function r1SettingsScreens() {
   return Object.keys(R1_PAGES_SPEC)
-    .filter((page) => !(page in SETTINGS_PLACE))
     .flatMap((page) => LEVEL_WORD_LIST
       .filter((word) => pageShown(page as PageId, LEVEL_OF[word]))
       .map((word) => ({ page, level: word })));

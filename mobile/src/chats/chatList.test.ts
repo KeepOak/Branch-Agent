@@ -1,7 +1,7 @@
 import { createFakeEngine } from '../connect/fakeEngine';
 import { createFakeSession } from '../testing/fakeSession';
 import { FIXTURE_NOW, fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
-import { ChatList, chatRows, filterRows, LIST_PARAMS, matchesSearch, pinnedTrunks, readAgents, sortRows, unreadCount, type ChatListSnapshot } from './chatList';
+import { ChatList, chatForNew, chatRows, filterRows, LIST_PARAMS, matchesSearch, pinnedTrunks, readAgents, sortRows, unreadCount, type ChatListSnapshot } from './chatList';
 import { chatTime } from './chatTime';
 
 const { agents, mainKey } = readAgents(fixtureAgents);
@@ -53,6 +53,12 @@ describe('chat rows', () => {
     // A snooze that has run out brings the chat back to All by itself.
     expect(filterRows(rows, 'all', FIXTURE_NOW + 3 * 24 * 60 * 60_000).some((r) => r.key === 'agent:researcher:taxes')).toBe(true);
     expect(unreadCount(rows, FIXTURE_NOW)).toBe(2);
+  });
+
+  it('opens New chat on the first main conversation in All', () => {
+    const rows = filterRows(chatRows({ sessions: fixtureSessions }, agents, mainKey), 'all', FIXTURE_NOW);
+    expect(chatForNew(rows, FIXTURE_NOW)?.key).toBe('agent:researcher:main');
+    expect(chatForNew([], FIXTURE_NOW)).toBeUndefined();
   });
 
   it('lets the Filter sheet keep automation runs in All, and narrows by Working or Waiting', () => {

@@ -41,22 +41,30 @@ On macOS the new copy is unpacked and staged beside the install; on Linux the ve
 
 ## Download instead
 
-The release page also carries a normal download for each platform. It isn't signed yet, so on macOS right-click the app → Open the first time, and on Windows choose More info → Run anyway in SmartScreen.
+The release page also carries one stable download for each platform. The repository README and the release notes link to these, and `releases/latest/download/<name>` stays the same every release:
+
+| Platform | Stable name | What it is |
+|---|---|---|
+| Windows | `Branch-Setup-Windows.exe` | A copy of `Branch-Agent-Setup-<version>-win32-x64.exe`. |
+| macOS | `Branch-macOS.dmg` | A copy of `Branch-Agent-<version>-darwin-arm64.dmg`. |
+| Linux | `Branch-Linux.deb` | A Debian package of the same desktop build. It installs under `/opt/branch-agent`, puts `branch-agent` on `PATH`, and adds an application-menu entry (`sudo apt install ./Branch-Linux.deb`). The PATH launcher seeds `~/.local/share/branch-agent/app` on first run; in-app updates swap that per-user copy (not AppImage updates, and not `/opt`). |
+
+The versioned installer names stay, so the one-line installers and the in-app updater keep finding one SHA256SUMS entry each. AppImage installs still fetch the AppImage; .deb installs update the per-user live copy under `~/.local/share/branch-agent/app`. It isn't signed yet, so on macOS right-click the app → Open the first time, and on Windows choose More info → Run anyway in SmartScreen.
 
 ## Installer packages
 
 Every release already publishes each platform's verified desktop package (`branch-desktop-<version>-<target>.tar.gz`). On first launch it downloads the engine and window. `desktop/scripts/release-installers.mjs` wraps that package in something a person can double-click. The `native` job of `.github/workflows/component-release.yml` runs it after the package is verified and uploads the result as the `release-installers-<target>` workflow artifact (7 days).
 
-Installers are **release assets**. Once an installer is built, `release-installers.mjs` lists it (name, bytes, sha256) in its target's `release-proof-<target>.json`. The `publish` job downloads every `release-installers-<target>` artifact next to the native assets. `release-inventory.mjs` then checks each listed installer like any other asset, and `publish-component-release.mjs` uploads it with the release and adds it to `SHA256SUMS`. Windows and macOS installers are optional: a failed installer step there publishes without one. The Linux AppImage is how `install.sh` installs Linux, so its step is required and a failure stops the release. An installer that is listed but missing, or whose bytes differ, fails the publish. Installers ship unsigned until signing lands.
+Installers are **release assets**. Once an installer is built, `release-installers.mjs` lists it and that target's stable download (name, bytes, sha256) in its target's `release-proof-<target>.json`. The `publish` job downloads every `release-installers-<target>` artifact next to the native assets. `release-inventory.mjs` then checks each listed installer like any other asset, and `publish-component-release.mjs` uploads it with the release and adds it to `SHA256SUMS`. Windows and macOS installers are optional: a failed installer step there publishes without one. The Linux AppImage is how `install.sh` installs Linux, so its step is required and a failure stops the release. An installer that is listed but missing, or whose bytes differ, fails the publish. Installers ship unsigned. Updates are signed with the free updater key (see Signing below). No paid certificate is needed.
 
-Signing goes through `desktop/scripts/release-signing.mjs`. Until the owner adds the names below, the "Code signing status" step prints one line per target, such as `Windows signing: not configured (...). Shipping unsigned.`, and the installers are built unsigned. If only some names are set, the line lists exactly which are missing and nothing is signed. Run `node desktop/scripts/release-signing.mjs status --strict` to make missing or partial signing an error instead.
+OS installer signatures go through `desktop/scripts/release-signing.mjs` and stay off. The "Code signing status" step prints one line per target, such as `Windows signing: not configured (...). Shipping unsigned.`, and the installers are built unsigned. Paid Apple/Azure names are unused; see Signing below. Update payloads are signed with the free updater key.
 
-| Target | Installer | Signed? |
+| Target | Installer | OS-signed? |
 |---|---|---|
-| win32-x64 | `Branch-Agent-Setup-<version>-win32-x64.exe` (Inno Setup 6, per user, no admin prompt) | Not until the Azure names below are set. Then `Branch Agent.exe` is signed before packaging and the setup .exe after. |
-| darwin-arm64 | `Branch-Agent-<version>-darwin-arm64.dmg` (the app plus an Applications link) | Until the Apple names below are set, the app inside carries the release's stable self-signed identity and the image isn't notarized. Then the app is re-signed with Developer ID and the hardened runtime, and the image is signed, notarized and stapled. |
-| darwin-x64 | `Branch-Agent-<version>-darwin-x64.dmg` plus the stable `Branch-macOS-Intel.dmg` alias (the app plus an Applications link) | Always ad-hoc. The Apple Developer ID secrets stay on the arm64 job; this target never stamps the self-signed release identity. |
-| linux-x64 | `Branch-Agent-<version>-linux-x64.AppImage` (per user; `install.sh` puts it at `~/.local/bin/branch-agent`) | No. Built with appimagetool 1.9.1 and the type2 runtime 20251108, both pinned by size and SHA-256 in `APPIMAGE_TOOLS` (`release-installers.mjs`) and checked before either runs. |
+| win32-x64 | `Branch-Agent-Setup-<version>-win32-x64.exe` (Inno Setup 6, per user, no admin prompt) | OS signature: not until the Azure names below are set. The staged Windows update payload is `branch-desktop-<version>-win32-x64.tar.gz` (desktopRuntime) and carries a free `.sig` in `latest.json`. The Setup `.exe` is first-run only; when present it also gets a sidecar `.sig`. |
+| darwin-arm64 | `Branch-Agent-<version>-darwin-arm64.dmg` (the app plus an Applications link) | No paid Developer ID by default (ad-hoc). Optional Apple names below re-sign with Developer ID. The desktop tar.gz is the macOS update payload and carries a free `.sig`. |
+| darwin-x64 | `Branch-Agent-<version>-darwin-x64.dmg` plus the stable `Branch-macOS-Intel.dmg` alias (the app plus an Applications link) | No OS signature: always ad-hoc. The Apple Developer ID secrets stay on the arm64 job; this target never stamps the self-signed release identity. |
+| linux-x64 | `Branch-Agent-<version>-linux-x64.AppImage` (per user; `install.sh` puts it at `~/.local/bin/branch-agent`). The same step also writes `Branch-Linux.deb`. | No OS signature. The AppImage is built with appimagetool 1.9.1 and the type2 runtime 20251108, both pinned by size and SHA-256 in `APPIMAGE_TOOLS` (`release-installers.mjs`) and checked before either runs. The AppImage is the Linux update payload and carries a free `.sig`. |
 
 ## Why per-user and where
 
@@ -64,7 +72,8 @@ The desktop updates itself: a whole-app update renames the install folder to `<f
 
 - **Windows:** `%LOCALAPPDATA%\Programs\Branch Agent`, with `PrivilegesRequired=lowest`. The uninstaller sits in `Branch Agent Uninstall` beside it, so a whole-app swap doesn't strand it. Uninstall removes the folder and its `.previous`. The AppId never changes, so a newer installer upgrades the same install.
 - **macOS:** the person drags the app to Applications. The launcher's existing `ensureMacApplicationsInstall` takes it from there.
-- **Linux:** the AppImage file lives in `~/.local/bin`, which the person owns, but it runs from a read-only mount, so the desktop's own app.asar or whole-app swap can't apply. Under an AppImage (`APPIMAGE` set) the desktop updates the AppImage file itself instead (see "How updates arrive" below). Engine and window components still update in the data folder. Its `AppRun` (`scripts/branch-agent-appimage.sh`) uses unprivileged user namespaces for the Chromium sandbox when the kernel allows them. Otherwise it sets up a hash-checked copy of `chrome-sandbox` in `~/.local/share/branch-agent-sandbox` once (pkexec or sudo) and points Chromium at it with `CHROME_DEVEL_SANDBOX`. It never falls back to `--no-sandbox`.
+- **Linux (AppImage):** the AppImage file lives in `~/.local/bin`, which the person owns, but it runs from a read-only mount, so the desktop's own app.asar or whole-app swap can't apply. Under an AppImage (`APPIMAGE` set) the desktop updates the AppImage file itself instead (see "How updates arrive" below). Engine and window components still update in the data folder. Its `AppRun` (`scripts/branch-agent-appimage.sh`) uses unprivileged user namespaces for the Chromium sandbox when the kernel allows them. Otherwise it sets up a hash-checked copy of `chrome-sandbox` in `~/.local/share/branch-agent-sandbox` once (pkexec or sudo) and points Chromium at it with `CHROME_DEVEL_SANDBOX`. It never falls back to `--no-sandbox`.
+- **Linux (.deb):** dpkg installs under `/opt/branch-agent` as root. The PATH launcher and menu entry seed a per-user live copy at `~/.local/share/branch-agent/app` on first launch and start that copy. In-app updates use the normal asar/runtime swap against the user-owned folder (see "How updates arrive"). They do not fetch the AppImage and do not write under `/opt`.
 
 ## How updates arrive
 
@@ -76,24 +85,35 @@ Every file is checked before staging: the component's size and SHA-256 from the 
 |---|---|---|
 | macOS | The whole `.app` (`branch-desktop-<version>-darwin-arm64.tar.gz` or `branch-desktop-<version>-darwin-x64.tar.gz`, matching `process.arch`), because app.asar is sealed in the code signature | The bundle in `~/Applications` is renamed aside and the new one renamed in. Before staging, both signatures are read with codesign: an app signed with the pinned release identity is never replaced by an ad-hoc or unsigned one (`assertNoMacSigningDowngrade`), and that release is then not downloaded again. An ad-hoc install (a release that declares `signing: "adhoc"`) takes an ad-hoc or identity-signed update. The updater fetches `branch-release-darwin-<arch>.json` and checks that asset against SHA256SUMS. |
 | Linux (AppImage) | `Branch-Agent-<version>-linux-x64.AppImage`, checked against `SHA256SUMS` | Downloaded beside the running file as `<file>.update-<version>` (same folder, so the rename is atomic), made executable, then renamed over `$APPIMAGE` (normally `~/.local/bin/branch-agent`) and relaunched. The old file stays as `<file>.previous` for rollback. |
+| Linux (.deb) | `branch-desktop-app-<version>-linux-x64.tar.gz` (app.asar) or `branch-desktop-<version>-linux-x64.tar.gz` (whole app) when Electron changes | Same asar/runtime helper swap as Windows/macOS, against `~/.local/share/branch-agent/app` (seeded from `/opt/branch-agent` on first launch). Never writes under `/opt`; never fetches the AppImage. |
 | Windows | `branch-desktop-app-<version>-win32-x64.tar.gz` (app.asar alone), or `branch-desktop-<version>-win32-x64.tar.gz` (the whole app folder) when Electron changes | The folder in `%LOCALAPPDATA%\Programs\Branch Agent` is swapped as above. Inno Setup's per-user install puts the uninstaller beside it, so the swap doesn't strand it, and a later setup .exe still upgrades the same AppId. |
 
 `desktop/scripts/auto-update-e2e.test.mjs` drives this from an old install to a fixture new release (served over loopback HTTP, with its own `SHA256SUMS`, `HOME` in a temp folder) for all three paths on any OS: a good update lands and reports the new version, a tampered file is refused with the old install intact, an interrupted swap and a new app that never starts both roll back, and the macOS identity → ad-hoc downgrade is refused. The install's `platform` and `appImage` fields are what select another platform's path in the test. Desktop checks run it on macOS, Linux and Windows.
 
+## Signing (no money needed)
+
+The app ships unsigned. Windows SmartScreen and macOS Gatekeeper warn on a downloaded copy; `install.sh` and `install.ps1` avoid that. No paid Apple, Azure or Authenticode certificate is required or used.
+
+macOS builds sign ad-hoc (`codesign --force --deep --sign -`, Tauri `bundle.macOS.signingIdentity: "-"`). The paid P12 step in `.github/workflows/component-release.yml` is skipped when `BRANCH_MACOS_SIGNING_P12` and `BRANCH_MACOS_SIGNING_PASSWORD` are both empty.
+
+Updates — not the OS installer signature — are signed with a free self-generated Tauri/minisign key. The private key is the `TAURI_SIGNING_PRIVATE_KEY` repository secret (optional password `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). Generate with `cargo tauri signer generate`. Put the public key in `desktop/updater-pubkey.txt` and `engine/apps/linux/src-tauri/tauri.conf.json` `plugins.updater.pubkey`. Never commit the private key. A key rotation must change the committed pubkey with the secret. CI publish fails clearly if the secret is missing.
+
+Each release publishes `latest.json` with a `.sig` per present platform:
+
+| Platform | Update payload | Signature |
+|---|---|---|
+| darwin-aarch64 | `branch-desktop-<version>-darwin-arm64.tar.gz` | `.sig` verified against the committed pubkey |
+| linux-x86_64 | `Branch-Agent-<version>-linux-x64.AppImage` | same |
+| windows-x86_64 | `branch-desktop-<version>-win32-x64.tar.gz` (staged desktopRuntime) | same |
+| (sidecar) | `branch-desktop[-app]-<version>-linux-x64.tar.gz`, `branch-desktop-app-<version>-win32-x64.tar.gz`, optional Setup `.exe` | `.sig` beside the asset for `assertStagedUpdateSignature` |
+
+`desktop/scripts/sign-release-updates.mjs` signs those files and writes `latest.json`. The Linux companion workflow (`engine/.github/workflows/linux-app-release.yml`) uses the same key, the same pubkey, and the same `latest.json` platforms.
+
 ## Left for the owner
 
-The signing steps are already in the workflow (`desktop/scripts/release-signing.mjs`). They do nothing until these are added under the repository's Settings, Secrets and variables, Actions. Add all of a platform's names at once: a partial set signs nothing.
+Optional paid OS installer signatures are unused. The app ships unsigned and updates use the free key above. `desktop/scripts/release-signing.mjs` still has the hooks; they stay off. The "Code signing status" step prints one line per target, such as `Windows signing: not configured (...). Shipping unsigned.`, and the installers are built unsigned. If only some names are set, the line lists exactly which are missing and nothing is signed. Run `node desktop/scripts/release-signing.mjs status --strict` to make missing or partial signing an error instead. None of this is needed to ship or update.
 
-1. **Windows code signing (Azure Artifact Signing).** Create the Artifact Signing account, finish identity validation, create a public-trust certificate profile, and give an app registration the Artifact Signing Certificate Profile Signer role on it. Then add:
-   - Secrets: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET` (that app registration).
-   - Variables: `AZURE_SIGNING_ENDPOINT` (the account's regional endpoint, such as `https://eus.codesigning.azure.net`), `AZURE_SIGNING_ACCOUNT` (the account name) and `AZURE_SIGNING_PROFILE` (the certificate profile name).
-
-   The installer step fetches pinned SignTool and Artifact Signing dlib packages from NuGet and signs with SHA256 and Azure's timestamp server. Only the three secrets authenticate (EnvironmentCredential).
-2. **macOS Developer ID and notarization.** This needs a paid Apple Developer account. Add five secrets:
-   - `APPLE_DEVELOPER_ID_P12`: the Developer ID Application certificate and its private key, exported as .p12 and base64 encoded (`base64 -i cert.p12`).
-   - `APPLE_DEVELOPER_ID_PASSWORD`: the .p12 export password.
-   - `APPLE_NOTARY_KEY_ID`, `APPLE_NOTARY_ISSUER_ID` and `APPLE_NOTARY_KEY`: an App Store Connect API key (Developer access) for notarytool. `APPLE_NOTARY_KEY` is the .p8 file's contents, pasted as is or base64 encoded.
-
-   The certificate goes into a throwaway keychain that's deleted when the step ends. Notarization waits for Apple's answer inside the 35-minute native job. Only the installer's copy of the app is re-signed; the published desktop package keeps the stable self-signed identity the updater checks.
-3. **Publishing signed installers.** Installers already ship as release assets and are checked against each platform's inventory. A signing step has to finish before `release-installers.mjs` lists the installer, so the listed digest is the signed file's.
-4. **Linux:** a per-user AppImage (any distro), installed by `install.sh`; no signing is needed. An AppImage install updates itself (see "How updates arrive").
+1. **Windows code signing (Azure Artifact Signing).** Unused. If it were ever configured: Artifact Signing account, identity validation, public-trust certificate profile, and an app registration with the Artifact Signing Certificate Profile Signer role. Then secrets `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET`, and variables `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT` and `AZURE_SIGNING_PROFILE`.
+2. **macOS Developer ID and notarization.** Unused. Needs a paid Apple Developer account that this project will not buy. The P12 step is skipped when those secrets are missing. The names, if ever set, are `APPLE_DEVELOPER_ID_P12`, `APPLE_DEVELOPER_ID_PASSWORD`, `APPLE_NOTARY_KEY_ID`, `APPLE_NOTARY_ISSUER_ID` and `APPLE_NOTARY_KEY`. The certificate goes into a throwaway keychain that's deleted when the step ends. Notarization waits for Apple's answer inside the 35-minute native job. Only the installer's copy of the app is re-signed; the published desktop package keeps the stable self-signed identity the updater checks.
+3. **Publishing signed installers.** Installers already ship as release assets and are checked against each platform's inventory. A paid OS signing step has to finish before `release-installers.mjs` lists the installer, so the listed digest is the signed file's. Free update `.sig` files are produced separately by `sign-release-updates.mjs`.
+4. **Linux:** a per-user AppImage (any distro), installed by `install.sh`; OS code signing is not needed. The AppImage update payload is signed with the free updater key (see above). An AppImage install updates itself (see "How updates arrive"). A `.deb` install seeds `~/.local/share/branch-agent/app` and updates that copy in-app.

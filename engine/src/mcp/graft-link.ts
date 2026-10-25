@@ -13,6 +13,7 @@ import {
   readGraftLinks,
   type GraftLink,
 } from "./graft-join.js";
+import { GraftLinkResults } from "./graft-link-results.js";
 import { HELLO_INTERVAL_MS } from "./outside-presence.js";
 
 /** Pre-hello failures move the link to the next saved address, at most once per this interval. */
@@ -45,10 +46,29 @@ type GraftWorkJob = { id: string; trunkId: string; text: string; sourceAgentId: 
 /** A host refusal that only the owner can undo (a new setup code), as opposed to a dropped connection. */
 export function isHostRefusal(error: unknown): boolean {
   const code = readConnectErrorDetailCode((error as { details?: unknown } | undefined)?.details);
-  if (code) return code === "PAIRING_REQUIRED" || code.startsWith("AUTH_");
+  if (code) {
+    return code === "PAIRING_REQUIRED" || code.startsWith("AUTH_");
+  }
   return /pairing required|unauthorized|device token|was disconnected/i.test(
-    String((error as Error)?.message),
+    (error as Error)?.message ?? "",
   );
+}
+
+/** Longest pause after the host says it is briefly unavailable (restarting or suspending). */
+export const HOST_BUSY_MAX_BACKOFF_MS = 30_000;
+
+/**
+ * The host answered but can't take work right now (its gateway is restarting or suspending): a retryable
+ * UNAVAILABLE. Retrying on the normal 2-second timer only floods both logs (#1922), so the link waits instead.
+ */
+export function hostBusyRetryAfterMs(error: unknown): number | undefined {
+  const e = error as { code?: unknown; retryable?: unknown; retryAfterMs?: unknown } | undefined;
+  if (!e || e.code !== "UNAVAILABLE" || e.retryable !== true) {
+    return undefined;
+  }
+  return typeof e.retryAfterMs === "number" && Number.isFinite(e.retryAfterMs) && e.retryAfterMs > 0
+    ? e.retryAfterMs
+    : 1_000;
 }
 
 /** Pre-hello failures repeat every backoff step; one line per window says why the host is unreachable. */
@@ -63,6 +83,9 @@ export class GraftLinkRunner {
   private timer: ReturnType<typeof setInterval> | undefined;
   private workTimer: ReturnType<typeof setInterval> | undefined;
   private polling = false;
+  /** While the host is restarting, no work polls or hellos before this time; doubles per refusal up to the max. */
+  private busyUntil = 0;
+  private busyBackoffMs = 0;
 
   constructor(
     private readonly deps: {
@@ -91,6 +114,7 @@ export class GraftLinkRunner {
   private readonly handlers: LinkHandlers = {
     onHello: () => {
       this.state = "connected";
+      this.hostReady();
       this.deps.log(`graft link: connected to ${this.activeUrl()}`);
       void this.sayHello();
       this.clearTimer();
@@ -122,7 +146,9 @@ export class GraftLinkRunner {
   }
 
   stop(): void {
-    if (this.state !== "disconnected") this.state = "stopped";
+    if (this.state !== "disconnected") {
+      this.state = "stopped";
+    }
     this.clearTimer();
     this.client?.stop();
   }
@@ -130,7 +156,9 @@ export class GraftLinkRunner {
   /** This Branch, then each of its Trunks (the host binds the Trunks to the Branch row). */
   async sayHello(): Promise<void> {
     const client = this.client;
-    if (!client || this.state !== "connected") return;
+    if (!client || this.state !== "connected" || this.hostBusy()) {
+      return;
+    }
     try {
       const branch = graftBranchIdentity(this.deps.link.name);
       await client.request("contacts.outside.hello", { agent: branch });
@@ -140,13 +168,18 @@ export class GraftLinkRunner {
         });
       }
     } catch (error) {
-      if (isHostRefusal(error)) this.disconnected(String((error as Error).message));
-      else this.deps.log(`graft link: hello failed: ${String((error as Error)?.message ?? error)}`);
+      if (isHostRefusal(error)) {
+        this.disconnected((error as Error).message);
+      } else if (!this.markHostBusy(error)) {
+        this.deps.log(`graft link: hello failed: ${(error as Error)?.message ?? error}`);
+      }
     }
   }
 
   private disconnected(reason: string): void {
-    if (this.state === "disconnected" || this.state === "stopped") return;
+    if (this.state === "disconnected" || this.state === "stopped") {
+      return;
+    }
     this.state = "disconnected";
     this.deps.log(`graft link: ${this.deps.link.url} disconnected this Branch (${reason})`);
     this.clearTimer();
@@ -155,11 +188,13 @@ export class GraftLinkRunner {
   }
 
   private connectFailed(error: Error): void {
-    if (this.state === "connected" || this.state === "disconnected" || this.state === "stopped") return;
+    if (this.state === "connected" || this.state === "disconnected" || this.state === "stopped") {
+      return;
+    }
     const now = Date.now();
     if (now - this.lastConnectFailureLogAt >= CONNECT_FAILURE_LOG_INTERVAL_MS) {
       this.lastConnectFailureLogAt = now;
-      const reason = String(error?.message ?? error);
+      const reason = error.message;
       this.deps.log(
         `graft link: can't reach ${this.activeUrl()} (${reason}); retrying. If this host's address changed, rejoin it with a new setup code.`,
       );
@@ -169,8 +204,12 @@ export class GraftLinkRunner {
 
   /** Moves to the next saved address; the host's other addresses are how a link recovers when one changes. */
   private switchAddress(now: number): void {
-    if (!FALLBACK_ADDRESSES_VERIFIED || this.addresses().length < 2) return;
-    if (now - this.lastAddressSwitchAt < ADDRESS_SWITCH_INTERVAL_MS) return;
+    if (!FALLBACK_ADDRESSES_VERIFIED || this.addresses().length < 2) {
+      return;
+    }
+    if (now - this.lastAddressSwitchAt < ADDRESS_SWITCH_INTERVAL_MS) {
+      return;
+    }
     this.lastAddressSwitchAt = now;
     this.addressIndex += 1;
     this.client?.stop();
@@ -179,30 +218,87 @@ export class GraftLinkRunner {
     this.client.start();
   }
 
+  private hostBusy(): boolean {
+    return Date.now() < this.busyUntil;
+  }
+
+  private hostReady(): void {
+    this.busyUntil = 0;
+    this.busyBackoffMs = 0;
+  }
+
+  /** True (and quiet) when the host is briefly unavailable; the next poll waits out a growing pause. */
+  private markHostBusy(error: unknown): boolean {
+    const retryAfterMs = hostBusyRetryAfterMs(error);
+    if (retryAfterMs === undefined) {
+      return false;
+    }
+    this.busyBackoffMs = Math.min(
+      HOST_BUSY_MAX_BACKOFF_MS,
+      Math.max(retryAfterMs, this.busyBackoffMs * 2),
+    );
+    this.busyUntil = Date.now() + this.busyBackoffMs;
+    return true;
+  }
+
   private clearTimer(): void {
-    if (this.timer) clearInterval(this.timer);
-    if (this.workTimer) clearInterval(this.workTimer);
+    if (this.timer) {
+      clearInterval(this.timer);
+    }
+    if (this.workTimer) {
+      clearInterval(this.workTimer);
+    }
     this.timer = undefined;
     this.workTimer = undefined;
   }
 
   private async pollWork(): Promise<void> {
     const client = this.client;
-    if (!client || this.polling || this.state !== "connected" || !this.deps.handleWork) return;
+    if (
+      !client ||
+      this.polling ||
+      this.state !== "connected" ||
+      !this.deps.handleWork ||
+      this.hostBusy()
+    ) {
+      return;
+    }
     this.polling = true;
     try {
-      const response = await client.request("graft.work.poll", {}) as { job?: GraftWorkJob | null };
+      const results = new GraftLinkResults(this.deps.link);
+      const pending = results.pending();
+      if (pending) {
+        await client.request("graft.work.complete", { id: pending.id, ...pending.result });
+        results.acknowledge(pending.id);
+        this.hostReady();
+        return;
+      }
+      const response = (await client.request("graft.work.poll", {})) as {
+        job?: GraftWorkJob | null;
+      };
+      this.hostReady();
       const job = response.job;
-      if (!job) return;
-      let result: { reply?: string; error?: string };
-      try {
-        result = await this.deps.handleWork(job);
-      } catch (error) {
-        result = { error: String((error as Error)?.message ?? error) };
+      if (!job) {
+        return;
+      }
+      let result = results.get(job.id);
+      if (!result) {
+        try {
+          result = await this.deps.handleWork(job);
+        } catch (error) {
+          result = { error: error instanceof Error ? error.message : String(error) };
+        }
+        results.save(job.id, result);
       }
       await client.request("graft.work.complete", { id: job.id, ...result });
+      results.acknowledge(job.id);
     } catch (error) {
-      if (this.state === "connected") this.deps.log(`graft link: work poll failed: ${String((error as Error)?.message ?? error)}`);
+      if (this.markHostBusy(error)) {
+        return;
+      }
+      if (this.state === "connected") {
+        this.deps.log(`graft link: work poll failed: ${(error as Error)?.message ?? error}`);
+      }
     } finally {
       this.polling = false;
     }
@@ -241,7 +337,9 @@ export class GraftLinkSupervisor {
       }
     }
     for (const [url, link] of saved) {
-      if (this.runners.has(url)) continue;
+      if (this.runners.has(url)) {
+        continue;
+      }
       const runner = this.deps.createRunner(link);
       this.runners.set(url, runner);
       runner.start();
@@ -253,8 +351,12 @@ export class GraftLinkSupervisor {
   }
 
   stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    for (const runner of this.runners.values()) runner.stop();
+    if (this.timer) {
+      clearInterval(this.timer);
+    }
+    for (const runner of this.runners.values()) {
+      runner.stop();
+    }
     this.runners.clear();
   }
 }
@@ -284,8 +386,11 @@ export async function createDeviceLinkClient(
     onHelloOk: () => handlers.onHello(),
     onClose: () => handlers.onClose(),
     onConnectError: (error) => {
-      if (isHostRefusal(error)) handlers.onRefused(error.message);
-      else handlers.onConnectError?.(error);
+      if (isHostRefusal(error)) {
+        handlers.onRefused(error.message);
+      } else {
+        handlers.onConnectError?.(error);
+      }
     },
     onReconnectPaused: (info) =>
       handlers.onRefused(`${info.reason} (${info.detailCode ?? info.code})`),
@@ -314,10 +419,15 @@ export function startGraftLinks(log: (line: string) => void): GraftLinkSuperviso
           ]);
           const key = `agent:${job.trunkId}:graft:${job.id}`;
           try {
-            await callGateway({ method: "sessions.create", params: { key, agentId: job.trunkId, label: job.text.slice(0, 60) } });
+            await callGateway({
+              method: "sessions.create",
+              params: { key, agentId: job.trunkId, label: job.text.slice(0, 60) },
+            });
           } catch (error) {
             // A reclaimed job may already have made its thread before the link dropped.
-            await callGateway({ method: "sessions.describe", params: { key } }).catch(() => { throw error; });
+            await callGateway({ method: "sessions.describe", params: { key } }).catch(() => {
+              throw error;
+            });
           }
           const sent = await callGateway<{ runId?: string }>({
             method: "chat.send",
@@ -330,7 +440,9 @@ export function startGraftLinks(log: (line: string) => void): GraftLinkSuperviso
               outsideAgent: { id: "branch-host", name: "Host Branch" },
             },
           });
-          if (!sent.runId) return { error: "The joined Trunk did not accept the message." };
+          if (!sent.runId) {
+            return { error: "The joined Trunk did not accept the message." };
+          }
           const result = await waitForAgentRunReply({
             runId: sent.runId,
             timeoutMs: 10 * 60_000,
@@ -338,7 +450,10 @@ export function startGraftLinks(log: (line: string) => void): GraftLinkSuperviso
             untilTerminal: true,
           });
           return result.status === "ok"
-            ? { reply: result.replyText?.trim() || "The joined Trunk finished without a visible reply." }
+            ? {
+                reply:
+                  result.replyText?.trim() || "The joined Trunk finished without a visible reply.",
+              }
             : { error: result.error || `The joined Trunk ended with ${result.status}.` };
         },
         trunks: async () => {
@@ -349,10 +464,13 @@ export function startGraftLinks(log: (line: string) => void): GraftLinkSuperviso
           const cfg = getRuntimeConfig();
           const roster = await listGatewayAgentsBasic(cfg);
           const entries = new Map(listAgentEntries(cfg).map((entry) => [entry.id, entry]));
-          return roster.agents.filter((agent) => agent.kind !== "system").map((agent) => ({
-            ...agent,
-            avatar: entries.get(agent.id)?.identity?.avatar,
-          }));
+          return roster.agents
+            .filter((agent) => agent.kind !== "system")
+            .map((agent) =>
+              Object.assign({}, agent, {
+                avatar: entries.get(agent.id)?.identity?.avatar,
+              }),
+            );
         },
         forget: (gone) => {
           void import("./graft-join.js").then(({ forgetGraftLink }) => forgetGraftLink(gone.url));
@@ -361,12 +479,12 @@ export function startGraftLinks(log: (line: string) => void): GraftLinkSuperviso
         createClient: (handlers, url) => {
           const ready = createDeviceLinkClient({ ...link, url }, handlers).then((created) => {
             client = created;
-            if (stopped) created.stop();
+            if (stopped) {
+              created.stop();
+            }
             return created;
           });
-          ready.catch((error: unknown) =>
-            log(`graft link: ${String((error as Error)?.message ?? error)}`),
-          );
+          ready.catch((error: unknown) => log(`graft link: ${(error as Error)?.message ?? error}`));
           return {
             start: () =>
               void ready.then(
