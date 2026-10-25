@@ -248,11 +248,12 @@ describe('Android release version and signing plan', () => {
 });
 
 describe('the mobile Android release workflow', () => {
-  it('builds on a published release, a manual run, or a main push, and never touches the merge gate', () => {
+  it('builds only on a published release or a manual run, has no push trigger, and never touches the merge gate', () => {
     expect(workflow).toMatch(/release:\s*\n\s*types:\s*\[[^\]]*published/);
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toMatch(/workflow_dispatch:[\s\S]*?inputs:[\s\S]*?\btag:/);
-    expect(workflow).toMatch(/push:\s*\n\s*branches:\s*\[main\]/);
+    // #1923 removed the main push trigger so Android no longer pre-creates desktop releases.
+    expect(workflow).not.toMatch(/^\s+push:/m);
     expect(workflow).toContain('npm run build:android');
     expect(workflow).not.toMatch(/merge-gate/);
     expect(workflow).not.toMatch(/^\s+pull_request:/m);
@@ -502,7 +503,7 @@ describe('the mobile Android release workflow', () => {
             tagGets += 1;
             throw tag404;
           }
-          return JSON.stringify(listPages);
+          return JSON.stringify(listPages[0]);
         },
       });
       const attachCalls = [];
@@ -520,7 +521,10 @@ describe('the mobile Android release workflow', () => {
         run: (file, args) => {
           attachCalls.push([file, args]);
           if (String(args[1] ?? '').includes('/releases/tags/')) throw tag404;
-          if (args.includes('--paginate')) return JSON.stringify(listPages);
+          // Avoid /\/…/ regexes inside this template literal (they become // comments).
+          if (String(args[1] ?? '').includes('/releases?per_page=')) {
+            return JSON.stringify(listPages[0]);
+          }
           return '';
         },
       });
@@ -611,7 +615,7 @@ describe('the mobile Android release workflow', () => {
       'branch-android-0.4.4-build-14e1361bed24.apk.versioncode.8',
     ]);
     expect(result.attached.stale).toEqual(['branch-android-0.4.4-build-14e1361bed24.apk.versioncode.5']);
-    expect(result.attachCalls.some((call: string[]) => call[1].includes('--paginate'))).toBe(true);
+    expect(result.attachCalls.some((call: string[]) => /\/releases\?per_page=100&page=/.test(String(call[1] ?? '')))).toBe(true);
     expect(result.attachCalls.some((call: string[]) => call[1].includes('--method') && call[1].includes('POST'))).toBe(true);
     expect(result.attachCalls.some((call: string[]) => call[1].includes('--method') && call[1].includes('DELETE'))).toBe(true);
     expect(result.attachCalls.some((call: string[]) => call[1].includes('release') && call[1].includes('upload'))).toBe(false);
@@ -779,7 +783,9 @@ describe('attach retries GitHub rate limits', () => {
             if (tagGets === 1) throw limited;
             throw miss;
           }
-          if (args.includes('--paginate')) return JSON.stringify([[${JSON.stringify(release)}]]);
+          if (String(args[1] ?? '').includes('/releases?per_page=')) {
+            return JSON.stringify([${JSON.stringify(release)}]);
+          }
           return '';
         },
       });
@@ -787,7 +793,7 @@ describe('attach retries GitHub rate limits', () => {
         uploaded: attached.uploaded,
         sleeps,
         tagGets,
-        listed: calls.some((args) => args.includes('--paginate')),
+        listed: calls.some((args) => String(args[1] ?? '').includes('/releases?per_page=')),
         posted: calls.some((args) => args.includes('--method') && args.includes('POST')),
       }));`);
     expect(result.uploaded).toEqual([
@@ -806,6 +812,7 @@ describe('attach retries GitHub rate limits', () => {
       const start = 1_700_000_000_000;
       let now = start;
       const sleeps = [];
+      let calls = 0;
       const err = new Error('gh: API rate limit exceeded for installation (HTTP 403)');
       err.stderr = 'gh: API rate limit exceeded for installation (HTTP 403)';
       err.httpStatus = 403;
@@ -823,7 +830,7 @@ describe('attach retries GitHub rate limits', () => {
           rateLimitSleep: (seconds) => { sleeps.push(seconds); now += seconds * 1000; },
           log: () => {},
           random: () => 0.5,
-          run: () => { throw err; },
+          run: () => { calls += 1; throw err; },
         });
       } catch (error) {
         message = String(error.message);
@@ -838,13 +845,67 @@ describe('attach retries GitHub rate limits', () => {
         }),
         sleeps,
         waited: sleeps.reduce((sum, seconds) => sum + seconds, 0),
+        calls,
       }));`);
     expect(result.message).toBe(result.expected);
     expect(result.message).toContain(`APK artifact ${files.artifactName}`);
     expect(result.message).toContain(`run ${runId}`);
-    expect(result.waited).toBeLessThanOrEqual(100);
-    expect(result.sleeps.length).toBeGreaterThanOrEqual(1);
-    expect(result.sleeps.every((seconds: number) => seconds <= 100)).toBe(true);
+    expect(result.calls).toBe(1);
+    expect(result.waited).toBe(0);
+    expect(result.sleeps).toEqual([]);
+  });
+
+  it('retries a rate-limited upload POST after waiting for reset', () => {
+    const result = callModule(`import { attachSignedApkAssets } from ${JSON.stringify(helper)};
+      const start = 1_700_000_000_000;
+      let now = start;
+      const sleeps = [];
+      const calls = [];
+      let tagGets = 0;
+      let posts = 0;
+      const err = new Error('gh: API rate limit exceeded for installation (HTTP 403)');
+      err.stderr = 'gh: API rate limit exceeded for installation (HTTP 403)';
+      err.httpStatus = 403;
+      err.headers = { 'x-ratelimit-reset': String(start / 1000 + 20), 'x-ratelimit-remaining': '0' };
+      const attached = await attachSignedApkAssets({
+        ...${JSON.stringify(files)},
+        wait: { intervalMs: 1, maxAttempts: 2, backoff: 2 },
+        sleep: async () => { throw new Error('must not use 404 backoff for a rate limit'); },
+        now: () => now,
+        startedAt: start,
+        rateLimitSleep: (seconds) => { sleeps.push(seconds); now += seconds * 1000; },
+        log: () => {},
+        random: () => 0.5,
+        run: (_file, args) => {
+          calls.push(args);
+          if (String(args[1] ?? '').includes('/releases/tags/')) {
+            tagGets += 1;
+            return JSON.stringify(${JSON.stringify(release)});
+          }
+          if (args.includes('--method') && args.includes('POST')) {
+            posts += 1;
+            if (posts === 1) throw err;
+            return '';
+          }
+          return '';
+        },
+      });
+      console.log(JSON.stringify({
+        uploaded: attached.uploaded,
+        sleeps,
+        tagGets,
+        posts,
+        listed: calls.some((args) => args.includes('--paginate')),
+      }));`);
+    expect(result.uploaded).toEqual([
+      apkName,
+      `${apkName}.sha256`,
+      `${apkName}.versioncode.8`,
+    ]);
+    expect(result.tagGets).toBe(1);
+    expect(result.posts).toBe(4);
+    expect(result.sleeps).toEqual([35]);
+    expect(result.listed).toBe(false);
   });
 
   it('does not retry a generic 403 and does not call rate_limit', () => {
@@ -908,6 +969,80 @@ describe('attach retries GitHub rate limits', () => {
     expect(result.retryAfter).toBe('12');
     expect(result.reset).toBe('1700000120');
     expect(result.include).toBe(true);
+  });
+});
+
+describe('findGithubRelease survives large release catalogues', () => {
+  it('pages releases after a tags 404 and does not rely on --paginate --slurp', async () => {
+    const tag = 'v0.4.4-build-aaaaaaaaaaaa';
+    const result = callModule(`import { findGithubRelease, findGithubReleaseInPages, GH_EXEC_MAX_BUFFER } from ${JSON.stringify(helper)};
+      const calls = [];
+      const release = {
+        tag_name: ${JSON.stringify(tag)},
+        upload_url: 'https://uploads.github.com/repos/KeepOak/Branch-Agent/releases/1/assets{?name,label}',
+        assets: [],
+      };
+      const tag404 = new Error('HTTP 404: Not Found');
+      tag404.stderr = 'gh: Not Found (HTTP 404)';
+      const found = await findGithubRelease({
+        tag: ${JSON.stringify(tag)},
+        repository: 'KeepOak/Branch-Agent',
+        wait: { intervalMs: 1, maxAttempts: 2, backoff: 2 },
+        sleep: async () => {},
+        run: (file, args) => {
+          calls.push(args.slice());
+          const path = String(args[1] ?? '');
+          if (path.includes('/releases/tags/')) throw tag404;
+          if (path.includes('page=1')) return JSON.stringify([release]);
+          if (path.includes('/releases')) return JSON.stringify([]);
+          throw new Error('unexpected gh args ' + JSON.stringify(args));
+        },
+      });
+      let enobufs = null;
+      try {
+        await findGithubRelease({
+          tag: ${JSON.stringify(tag)},
+          repository: 'KeepOak/Branch-Agent',
+          wait: { intervalMs: 1, maxAttempts: 1, backoff: 2 },
+          sleep: async () => {},
+          run: (file, args) => {
+            const path = String(args[1] ?? '');
+            if (path.includes('/releases/tags/')) {
+              const err = new Error('HTTP 404: Not Found');
+              err.stderr = 'gh: Not Found (HTTP 404)';
+              throw err;
+            }
+            const err = new Error('spawnSync gh ENOBUFS');
+            err.code = 'ENOBUFS';
+            throw err;
+          },
+        });
+      } catch (error) {
+        enobufs = String(error && error.message);
+      }
+      const paged = findGithubReleaseInPages({
+        tag: ${JSON.stringify(tag)},
+        repository: 'KeepOak/Branch-Agent',
+        run: (file, args) => {
+          const path = String(args[1] ?? '');
+          if (path.includes('page=1')) return JSON.stringify([release]);
+          return JSON.stringify([]);
+        },
+      });
+      console.log(JSON.stringify({
+        foundTag: found.tag_name,
+        usedPaginateSlurp: calls.some((a) => a.includes('--paginate') || a.includes('--slurp')),
+        usedPageQuery: calls.some((a) => /page=1/.test(String(a[1] ?? ''))),
+        enobufs,
+        pagedTag: paged && paged.tag_name,
+        maxBuffer: GH_EXEC_MAX_BUFFER,
+      }));`);
+    expect(result.foundTag).toBe(tag);
+    expect(result.usedPaginateSlurp).toBe(false);
+    expect(result.usedPageQuery).toBe(true);
+    expect(result.enobufs).toMatch(/ENOBUFS/);
+    expect(result.pagedTag).toBe(tag);
+    expect(result.maxBuffer).toBeGreaterThan(1024 * 1024);
   });
 });
 

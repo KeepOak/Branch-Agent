@@ -92,6 +92,44 @@ export function checkUIProof(changedFiles, prBody) {
   };
 }
 
+// Proof screenshots are hosted and linked in the PR body, never committed (AGENTS.md).
+// A proof-style folder at any depth: verifier/, proof/, proofs/, ui-proof/, pr-proof/, screenshots/, artifacts/.
+const PROOF_FOLDER = /^(?:verifier|proofs?|[\w-]+-proof|screenshots?|artifacts?)$/i;
+const PROOF_IMAGE = /\.(?:png|jpe?g|gif|webp)$/i;
+// Real app or design assets that live under a proof-style folder name. Inventory of main on 2026-10-19:
+// every committed image under such a folder is a proof screenshot (docs/proof, docs/ui-proof, proof/,
+// engine/.github/pr-proof), so nothing is allowlisted. Only added files are checked, so those stay.
+export const PROOF_IMAGE_ALLOWLIST = [];
+
+/** True for an image file inside a proof-style folder that is not an allowlisted asset path. */
+export function isCommittedProofImage(filePath) {
+  const normalized = String(filePath).replace(/\\/g, '/');
+  if (!PROOF_IMAGE.test(normalized)) return false;
+  if (PROOF_IMAGE_ALLOWLIST.some((prefix) => normalized.startsWith(prefix))) return false;
+  return normalized.split('/').slice(0, -1).some((segment) => PROOF_FOLDER.test(segment));
+}
+
+/** Fails when the PR adds proof screenshots to the repo. Pass only added (or renamed-to) paths. */
+export function checkCommittedProofImages(addedFiles) {
+  const images = addedFiles.filter(isCommittedProofImage);
+  if (images.length === 0) {
+    return { exitCode: 0, message: 'No committed proof screenshots added.' };
+  }
+  return {
+    exitCode: 1,
+    message: [
+      `This PR commits ${images.length} proof screenshot(s) to the repo:`,
+      ...images.map((file) => `  - ${file}`),
+      '',
+      'Proof screenshots are hosted and linked in the PR body, never committed.',
+      'Remove these files and host the screenshots instead, linked in the PR body:',
+      '  - attach them to the PR description (GitHub user-attachments), or',
+      '  - bots: push them to the repo\'s `evidence` branch under verifier/<PR number>/ and link the raw URLs,',
+      '    e.g. https://raw.githubusercontent.com/KeepOak/Branch-Agent/evidence/verifier/<PR number>/<name>.png',
+    ].join('\n'),
+  };
+}
+
 export function prBodyFromEvent(event) {
   return event?.pull_request?.body ?? '';
 }
@@ -112,6 +150,23 @@ function filesFromGit() {
     'git',
     ['diff', '--name-only', '--no-renames', base, 'HEAD'],
     { cwd: root, encoding: 'utf8', windowsHide: true },
+  ));
+}
+
+function addedFilesFromGit() {
+  const base = process.env.CHANGED_FILES_BASE || 'HEAD^1';
+  return changedFilesFromNameOnly(execFileSync(
+    'git',
+    ['diff', '--name-only', '--no-renames', '--diff-filter=A', base, 'HEAD'],
+    { cwd: root, encoding: 'utf8', windowsHide: true },
+  ));
+}
+
+function addedFilesFromGh(repo, number) {
+  return changedFilesFromNameOnly(execFileSync(
+    'gh',
+    ['api', `repos/${repo}/pulls/${number}/files`, '--paginate', '--jq', '.[] | select(.status == "added" or .status == "renamed") | .filename'],
+    { encoding: 'utf8', windowsHide: true },
   ));
 }
 
@@ -162,17 +217,23 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   }
   else if (!event?.pull_request && repo && number) body = bodyFromGh(repo, number);
   let files;
+  let added;
   try {
     files = filesFromGit();
+    added = addedFilesFromGit();
   } catch {
     if (!repo || !number) {
       console.error('Could not read changed files from git or gh api. Need a PR checkout or GITHUB_TOKEN.');
       process.exit(1);
     }
     files = filesFromGh(repo, number);
+    added = addedFilesFromGh(repo, number);
   }
-  const result = checkUIProof(files, body);
-  if (result.exitCode) console.error(result.message);
-  else console.log(result.message);
-  process.exit(result.exitCode);
+  let exitCode = 0;
+  for (const result of [checkUIProof(files, body), checkCommittedProofImages(added)]) {
+    if (result.exitCode) console.error(result.message);
+    else console.log(result.message);
+    exitCode ||= result.exitCode;
+  }
+  process.exit(exitCode);
 }

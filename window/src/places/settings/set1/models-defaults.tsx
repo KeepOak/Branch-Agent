@@ -1,8 +1,7 @@
 // Settings › Models › Defaults (§4.7.6): each connection's default model and thinking, which connection answers
 // what, and the fallback lists; plus the Defaults-only Advanced and Technical sections. Saves at once.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useState } from "react";
-import { shownWhy } from "../../../shell/shown-why";
+import { useId, useState } from "react";
 import { record, text, visible } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Ctl, Empty, Hint, LinkBtn, Pick, Sec, Seg, Switch, useSaveRunner, type Opt } from "../kit";
@@ -12,7 +11,8 @@ import { useLevel } from "../kit";
 import { showsInternals } from "../internals";
 
 const PREF = "branch.models.connectionDefaults";
-const NONE = "Branch has no setting for this yet.";
+/** Coming: a separate planning model is not in the engine yet. Survives shownWhy (not a dev note) and Ctl hides the row below Technical. */
+export const PLANNING_WHY = "Choosing a separate model for planning and hard problems comes in a later update.";
 
 /** Each connection's default model, kept with the person's preferences (users.prefs). */
 function useConnectionDefaults(m: ModelsCtx) {
@@ -70,7 +70,7 @@ function WhoAnswers({ m, conns, defaultOf }: { m: ModelsCtx; conns: Connection[]
         <Pick label="Reading pictures" value={image} options={[{ id: "", label: "Automatic" }, ...modelOpts(m.models, (x) => x.images)]} onChange={(v) => void m.cfg.set(m.shared("imageModel", "primary"), v || null)} />
       </Ctl>
       <Ctl title="Everyday answers" sub="Most conversations."><Seg label="Everyday answers" value={connOf(primary)} options={segs} onChange={(id) => setConn(["model", "primary"], id)} /></Ctl>
-      <Ctl title="Planning and hard problems" sub="When a task has many steps." off={NONE}><Seg label="Planning and hard problems" value={connOf(primary)} options={segs} onChange={() => undefined} /></Ctl>
+      <Ctl title="Planning and hard problems" sub="When a task has many steps." off={PLANNING_WHY}><Seg label="Planning and hard problems" value={connOf(primary)} options={segs} onChange={() => undefined} /></Ctl>
       <Ctl title="Quick and cheap jobs" sub="Sorting, tagging, short replies."><Seg label="Quick and cheap jobs" value={connOf(refOf(m.ownOrShared("utilityModel")))} options={segs} onChange={(id) => setConn(["utilityModel"], id)} /></Ctl>
       <Ctl title="Summaries" sub="Keeping long conversations short."><Seg label="Summaries" value={connOf(text(m.cfg.get(m.shared("compaction", "model")) ?? ""))} options={segs} onChange={(id) => { const c = conns.find((x) => x.id === id); if (c) void m.cfg.set(m.shared("compaction", "model"), defaultOf(c)); }} /></Ctl>
       <Ctl title="If the model fails" sub="When the default model can’t answer, try this one." help="When the default model can’t answer, try this one. Your next account is tried first." after={<TrunkFallbackNote m={m} />}>
@@ -80,10 +80,16 @@ function WhoAnswers({ m, conns, defaultOf }: { m: ModelsCtx; conns: Connection[]
   );
 }
 
+/** Coming (#1093): survives shownWhy; Ctl hides the row below Technical. Planning is #2037. */
+export const ADD_PICTURES_WHY = "Adding pictures and tools to any model comes in a later update.";
+export const HOW_TRUNKS_WHY = "Choosing how Trunks work together comes in a later update.";
+export const SUGGEST_PATTERN_WHY = "Letting a Trunk suggest a different pattern comes in a later update.";
+export const START_LEFT_OFF_WHY = "Starting where you left off comes in a later update.";
+
 export function AnyModelMore() {
   return (
     <Sec title="Any model, more" group="Any model">
-      <Ctl title="Add pictures and tools to any model" sub="Branch helps models that cannot see pictures or use tools." help="A model that can’t see pictures or call tools gets them through Branch." off={NONE}><Switch checked={false} label="Add pictures and tools to any model" onChange={() => undefined} /></Ctl>
+      <Ctl title="Add pictures and tools to any model" sub="Branch helps models that cannot see pictures or use tools." help="A model that can’t see pictures or call tools gets them through Branch." off={ADD_PICTURES_WHY}><Switch checked={false} label="Add pictures and tools to any model" onChange={() => undefined} /></Ctl>
     </Sec>
   );
 }
@@ -94,13 +100,15 @@ const PATTERNS = [
   ["parallel", "In parallel", "The same job split up, then gathered."], ["teams", "Teams", "Small groups, each with its own lead."],
 ];
 export function HowTrunksWork() {
+  // Mounted only at Technical (models-more.tsx). Coming why is visible so crawl/screen readers get a line.
+  const whyId = useId();
   return (
     <Sec title="How Trunks work together, by default" hint="For groups and big jobs." help="For groups and big jobs. A Trunk may suggest another pattern for one job; yours wins unless you agree. A group can use its own Group rules.">
-      <div className="pats-k" role="radiogroup" aria-label="How Trunks work together" title={shownWhy(NONE)}>
-        {PATTERNS.map(([id, name, sub]) => <button key={id} type="button" role="radio" aria-checked={id === "super"} className="pat-k" disabled><b>{name}</b><small>{sub}</small></button>)}
+      <p className="hint why-k" id={whyId}>{HOW_TRUNKS_WHY}</p>
+      <div className="pats-k" role="radiogroup" aria-label="How Trunks work together" aria-describedby={whyId}>
+        {PATTERNS.map(([id, name, sub]) => <button key={id} type="button" role="radio" aria-checked={id === "super"} className="pat-k" disabled aria-describedby={whyId}><b>{name}</b><small>{sub}</small></button>)}
       </div>
-      {shownWhy(NONE) ? <p className="hint">{shownWhy(NONE)}</p> : null}
-      <Ctl title="A Trunk may suggest a different pattern" sub="It asks first; nothing changes until you agree." off={NONE}><Switch checked label="A Trunk may suggest a different pattern" onChange={() => undefined} /></Ctl>
+      <Ctl title="A Trunk may suggest a different pattern" sub="It asks first; nothing changes until you agree." off={SUGGEST_PATTERN_WHY}><Switch checked label="A Trunk may suggest a different pattern" onChange={() => undefined} /></Ctl>
     </Sec>
   );
 }
@@ -112,7 +120,7 @@ export function NewConversations({ m }: { m: ModelsCtx }) {
   const write = (id: string) => void m.cfg.set(m.own("fastModeDefault"), id === "auto" ? "auto" : id === "on" ? true : id === "off" ? false : null);
   return (
     <Sec title="New conversations">
-      <Ctl title="Start where you left off" sub="The computer and project folder you picked last time for that Trunk." off={NONE}><Switch checked label="Start where you left off" onChange={() => undefined} /></Ctl>
+      <Ctl title="Start where you left off" sub="The computer and project folder you picked last time for that Trunk." off={START_LEFT_OFF_WHY}><Switch checked label="Start where you left off" onChange={() => undefined} /></Ctl>
       <Ctl title="Fast replies" sub="Fast lanes can cost more. Model’s own never turns one on by itself."><Seg label="Fast replies" value={value} options={FAST} onChange={write} /></Ctl>
     </Sec>
   );

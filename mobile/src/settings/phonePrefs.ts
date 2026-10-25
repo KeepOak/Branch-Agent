@@ -1,6 +1,8 @@
 // Phone Settings prefs from the r50 Android preview (phSettings + PG18).
 // Defaults match design/spec-v23: lock Off, notifications On, share When needed,
 // Talk On, push Off, screen awake On, wake word Off, speaker On, auto-connect On.
+// Lending is the exception: it starts Off with the camera Off, so nothing is lent until the person chooses it.
+// A saved choice always wins over these defaults.
 
 import type { KeyValueStore } from '../storage/keyValueStore';
 
@@ -75,8 +77,8 @@ export const PHONE_PREFS_DEFAULT: PhonePrefs = {
   textSize: '100%',
   mic: 'Phone’s default',
   notifKinds: [...NOTIF_KIND_DEFAULTS],
-  lendOn: true,
-  lend: { cam: true, loc: true, photos: false, notif: true },
+  lendOn: false,
+  lend: { cam: false, loc: true, photos: false, notif: true },
 };
 
 export function nextCycle(value: CyclePos): CyclePos {
@@ -131,11 +133,47 @@ export function parsePhonePrefs(raw: string | null | undefined): PhonePrefs {
   }
 }
 
+export function clonePhonePrefs(prefs: PhonePrefs): PhonePrefs {
+  return { ...prefs, notifKinds: [...prefs.notifKinds], lend: { ...prefs.lend } };
+}
+
+let livePrefs = clonePhonePrefs(PHONE_PREFS_DEFAULT);
+const liveListeners = new Set<() => void>();
+
+function emitLive(): void {
+  for (const listener of [...liveListeners]) listener();
+}
+
+/** The prefs the rest of the app reads. Settings writes here so toggles take effect at once. */
+export function getLivePhonePrefs(): PhonePrefs {
+  return livePrefs;
+}
+
+export function setLivePhonePrefs(prefs: PhonePrefs): void {
+  livePrefs = clonePhonePrefs(prefs);
+  emitLive();
+}
+
+export function subscribeLivePhonePrefs(listener: () => void): () => void {
+  liveListeners.add(listener);
+  return () => {
+    liveListeners.delete(listener);
+  };
+}
+
+export function resetLivePhonePrefs(): void {
+  livePrefs = clonePhonePrefs(PHONE_PREFS_DEFAULT);
+  liveListeners.clear();
+}
+
 export async function readPhonePrefs(store: KeyValueStore): Promise<PhonePrefs> {
-  return parsePhonePrefs(await store.get(PHONE_PREFS_KEY));
+  const prefs = parsePhonePrefs(await store.get(PHONE_PREFS_KEY));
+  setLivePhonePrefs(prefs);
+  return prefs;
 }
 
 export async function writePhonePrefs(store: KeyValueStore, prefs: PhonePrefs): Promise<void> {
+  setLivePhonePrefs(prefs);
   await store.set(PHONE_PREFS_KEY, JSON.stringify(prefs));
 }
 

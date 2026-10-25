@@ -76,6 +76,8 @@ export type FakeEngine = {
    * plugin.approval.request has nowhere else to show and the engine expires it at once (no-approval-route).
    */
   setWindowOpen: (open: boolean) => void;
+  /** The mentions.list items the engine reports from now on. */
+  setMentions: (rows: unknown[]) => void;
 };
 
 /** One pending approval as the engine lists it (approval-record-lookup.ts listVisiblePendingApprovalRequests). */
@@ -104,8 +106,11 @@ export const FAKE_ENGINE_METHODS = [
   'browser.request',
   'talk.session.create',
   'talk.session.close',
+  'tts.status',
+  'tts.setPersona',
   'users.self',
   'users.setDisplayName',
+  'mentions.list',
 ] as const;
 
 /** 1×1 PNG; tests and screenshots use the snapshot payload's width and height as the picture size. */
@@ -166,6 +171,7 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   const failures = new Map<string, { message: string; details?: unknown; code?: string }>();
   const histories = new Map<string, { messages: unknown[]; inFlightRun?: unknown }>();
   const approvals = { exec: [...(options.approvals?.exec ?? [])], plugin: [...(options.approvals?.plugin ?? [])] };
+  let mentions: unknown[] = [];
   /** The first decision recorded for each answered approval, so a later answer gets the engine's reply to a repeat. */
   const decided = new Map<string, string>();
   const settle = (kind: 'exec' | 'plugin', id: string, decision: string, resolvedBy: string | null): boolean => {
@@ -180,6 +186,11 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   };
   let windowOpen = true;
   let asked = 0;
+  const personas = [
+    { id: 'oak', label: 'Oak' },
+    { id: 'birch', label: 'Birch' },
+  ];
+  let persona = 'oak';
   const replies = new Map<string, { sessionKey: string; text: string; seq: number }>();
   const holds = new Map<string, Array<() => void>>();
   type Connection = {
@@ -308,19 +319,31 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
       }
       case 'talk.session.create': {
         const sessionId = `talk-${++asked}`;
+        const voice = personas.find((p) => p.id === persona)?.label ?? 'Oak';
         return {
           ok: true,
           payload: {
             sessionId,
             relaySessionId: sessionId,
             provider: 'local',
-            voice: 'Oak',
+            voice,
             audio: { inputEncoding: 'pcm16', outputEncoding: 'pcm16', inputSampleRateHz: 24000, outputSampleRateHz: 24000 },
           },
         };
       }
       case 'talk.session.close':
         return { ok: true, payload: { ok: true } };
+      case 'mentions.list':
+        return { ok: true, payload: { items: mentions } };
+      case 'tts.status':
+        return { ok: true, payload: { enabled: true, auto: 'always', persona, personas } };
+      case 'tts.setPersona': {
+        const next = String((params as { persona?: unknown } | null)?.persona ?? '').toLowerCase();
+        const found = personas.find((p) => p.id === next);
+        if (!found) return { ok: false, message: 'Invalid persona. Use a configured TTS persona id.' };
+        persona = found.id;
+        return { ok: true, payload: { persona: found.id } };
+      }
       case 'users.self':
         return { ok: true, payload: selfPayload() };
       case 'users.setDisplayName': {
@@ -414,6 +437,9 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
     pendingApprovals: (kind) => [...approvals[kind]],
     setWindowOpen: (open) => {
       windowOpen = open;
+    },
+    setMentions: (rows) => {
+      mentions = rows;
     },
     failMethod: (method, message, details, code) => {
       if (message === null) failures.delete(method);

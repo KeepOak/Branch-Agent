@@ -138,7 +138,7 @@ test('public doc template fails, example passes and no personal paths leak', () 
   assert.equal(check(blocks[0]).ok, false);
   assert.equal(check(blocks.at(-1)).ok, true);
   assert.doesNotMatch(doc, /\/workspace|\/home\/|\/Users\/|C:\\Users/);
-  assert.deepEqual(doc.match(/[\w.+-]+@[\w.-]+\.[a-z]+/gi), ['189563683+stabrea@users.noreply.github.com']);
+  assert.equal(doc.match(/[\w.+-]+@[\w.-]+\.[a-z]+/gi), null);
 });
 
 test('CLI fails or passes, writes summary, skips non-trunk and fails closed on unreadable events', () => {

@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe("classic composer when no model can answer", () => {
-  it("keeps the draft, disables Send, and names Connect a model to get answers", async () => {
+  it("keeps Send enabled, keeps the draft, and names Connect a model to get answers", async () => {
     const request = vi.fn(async (method: string) => {
       if (method === "agents.list") return { agents: [{ id: "main", name: "Oak" }], defaultId: "main" };
       if (method === "models.list") return { models: [] };
@@ -39,7 +39,7 @@ describe("classic composer when no model can answer", () => {
         box.dispatchEvent(new Event("input", { bubbles: true }));
       });
       const sendBtn = host.querySelector<HTMLButtonElement>('[aria-label="Send"]')!;
-      expect(sendBtn.disabled).toBe(true);
+      expect(sendBtn.disabled).toBe(false);
       await act(async () => box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
       expect(box.value).toBe("Keep this message");
       expect(onSend).not.toHaveBeenCalled();

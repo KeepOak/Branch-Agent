@@ -64,6 +64,11 @@ export type AgentRunClientContext = {
   bootstrapUserProfileId?: string;
   /** Capabilities declared by the gateway client that originated this run. */
   clientCaps?: string[];
+  /**
+   * Mode of the gateway client that originated this run ("cli", "webchat", ...).
+   * Trusted ingress sets it from the connection, not from the request body.
+   */
+  gatewayClientMode?: string;
   gatewayUiCommandTarget?: import("../../gateway/ui-command-target.types.js").GatewayUiCommandTarget;
   /** Host-admitted dashboard authoring without an originating inline renderer. */
   pinnedWidgetAuthoring?: boolean;
