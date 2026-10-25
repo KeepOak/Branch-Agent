@@ -296,12 +296,39 @@ describe("Settings sidebar rail", () => {
 });
 
 describe("Skip to the conversation", () => {
-  it("moves keyboard focus into the main area (C6-092)", async () => {
+  it("moves keyboard focus to the chat composer (C6-092)", async () => {
     const host = await show("agent:oak:main", [], [], false);
     const skip = host.querySelector<HTMLAnchorElement>("a.skip")!;
     const main = host.querySelector<HTMLElement>("main#main")!;
     expect(skip.textContent).toBe("Skip to the conversation");
-    expect(main.tabIndex).toBe(-1);
+    const composer = main.querySelector<HTMLTextAreaElement>(".composer textarea")!;
+    expect(composer).not.toBeNull();
+    skip.focus();
+    await act(async () => skip.click());
+    expect(document.activeElement).toBe(composer);
+  });
+
+  it("moves keyboard focus to the Settings heading (C6-092)", async () => {
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "general" }));
+    const host = await show("agent:oak:main", [], [], false);
+    const skip = host.querySelector<HTMLAnchorElement>("a.skip")!;
+    const heading = host.querySelector<HTMLElement>("main#main h1")!;
+    expect(heading).not.toBeNull();
+    expect(skip.textContent).toBe("Skip to the page");
+    skip.focus();
+    await act(async () => skip.click());
+    expect(document.activeElement).toBe(heading);
+    expect(heading.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("falls back to main when there is no composer or heading (C6-092)", async () => {
+    const host = await show("agent:oak:main", [], [], false);
+    const skip = host.querySelector<HTMLAnchorElement>("a.skip")!;
+    const main = host.querySelector<HTMLElement>("main#main")!;
+    main.querySelector(".composer")!.remove();
+    main.querySelectorAll("h1").forEach((heading) => heading.remove());
+    expect(main.querySelector(".composer, h1")).toBeNull();
+    expect(main.getAttribute("tabindex")).toBe("-1");
     skip.focus();
     await act(async () => skip.click());
     expect(document.activeElement).toBe(main);

@@ -317,13 +317,15 @@ function useEngineReads(session: SaplingSession) {
   };
 }
 
-/** The skip link moves keyboard focus into the main area. A bare "#main" jump leaves focus on the page in Chromium and
- *  Electron, so nothing visible happens; focusing the (tabIndex -1) main element does what the link says. */
-function skipToMain(e: MouseEvent<HTMLAnchorElement>) {
+/** §3.6: skip to the chat input or page heading, with main as the empty-page fallback. */
+function skipToMain(e: MouseEvent<HTMLAnchorElement>, chat: boolean) {
   const main = document.getElementById("main");
   if (!main) return;
   e.preventDefault();
-  main.focus();
+  const composer = chat ? main.querySelector<HTMLElement>('.composer textarea, .composer [contenteditable="true"]') : null;
+  const heading = main.querySelector<HTMLHeadingElement>("h1");
+  if (!composer && heading) heading.setAttribute("tabindex", "-1");
+  (composer ?? heading ?? main).focus();
 }
 
 /** The whole window once connected (DESIGN-SPEC §3): top bar, sidebar, main, status bar, menus and toasts. */
@@ -1597,7 +1599,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     <TrunkPebbleLooks.Provider value={pebbleLooks}>
     <TrunkEmojiFaces.Provider value={Object.fromEntries(trunks.list.map((t) => [t.name, t.emoji ?? ""]))}>
     <div className={frameClass} data-connection={ready ? "ready" : s.status.phase} data-route={route.kind} style={{ ["--side-w" as string]: `${dedicated ? 0 : sideWidth}px`, ...(stagePlace?.mode === "beside" ? { ["--stage-w" as string]: `${stagePlace.width}px` } : {}) }}>
-      <a className="skip" href="#main" onClick={skipToMain}>
+      <a className="skip" href="#main" onClick={(e) => skipToMain(e, route.kind === "chat")}>
         {route.kind === "chat" ? "Skip to the conversation" : "Skip to the page"}
       </a>
       <TopBar
