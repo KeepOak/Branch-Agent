@@ -15,7 +15,7 @@ import {
   readLivePullRequest,
 } from './live-pull-request.mjs';
 
-const filled = 'SELF-CHECK\nFiles: 3 (all expected: yes)\nTests: node --test example.test.mjs -> 5 passed, 0 failed';
+const filled = 'SELF-CHECK\nBase: origin/main abc1234\nFiles: 3 (all expected: yes)\nTests: node --test example.test.mjs -> 5 passed, 0 failed';
 const check = (body) => checkSelfCheck({ headRef: 'trunk/x', body });
 const problems = (body) => check(body).problems.join('\n');
 
@@ -28,8 +28,8 @@ test('filled fenced block passes and summary reports counts', () => {
 });
 
 test('heading and bullet label counts pass', () => {
-  assert.equal(check('## SELF-CHECK\n- Files (3): example.mjs\n- Tests: example -> 5 passed, 0 failed').ok, true);
-  assert.equal(check('**SELF-CHECK**\n* Files: 3\n* Tests: example -> 5 passed, 0 failed').ok, true);
+  assert.equal(check('## SELF-CHECK\n- Base: origin/main abc1234\n- Files (3): example.mjs\n- Tests: example -> 5 passed, 0 failed').ok, true);
+  assert.equal(check('**SELF-CHECK**\n* Base: origin/main abc1234\n* Files: 3\n* Tests: example -> 5 passed, 0 failed').ok, true);
 });
 
 test('last standalone header counts and boundaries stop the block', () => {
@@ -51,7 +51,7 @@ test('missing block gives exactly one documented problem', () => {
 });
 
 test('template placeholders and absent counts fail in rule order', () => {
-  const body = 'SELF-CHECK\nFiles: <n> (all expected: yes/no)\nTests: <commands> -> <n> passed, <n> failed';
+  const body = 'SELF-CHECK\nBase: origin/main abc1234\nFiles: <n> (all expected: yes/no)\nTests: <commands> -> <n> passed, <n> failed';
   const result = check(body);
   assert.equal(result.ok, false);
   assert.match(result.problems[0], /does not give a number/);
@@ -61,16 +61,16 @@ test('template placeholders and absent counts fail in rule order', () => {
   assert.match(result.problems[4], /Tests.*placeholder.*"<commands>"/);
   assert.ok(result.problems.every((sentence) => sentence.endsWith('(docs/SELF-CHECK.md).')));
   for (const token of ['yes/no', 'pass/fail', 'TBD', 'TODO', '<commands>']) {
-    assert.match(problems(`SELF-CHECK\nFiles: 1 ${token}\nTests: 1 passed, 0 failed ${token}`), /Files.*placeholder/);
-    assert.match(problems(`SELF-CHECK\nFiles: 1\nTests: 1 passed, 0 failed ${token}`), /Tests.*placeholder/);
+    assert.match(problems(`SELF-CHECK\nBase: origin/main abc1234\nFiles: 1 ${token}\nTests: 1 passed, 0 failed ${token}`), /Files.*placeholder/);
+    assert.match(problems(`SELF-CHECK\nBase: origin/main abc1234\nFiles: 1\nTests: 1 passed, 0 failed ${token}`), /Tests.*placeholder/);
   }
-  assert.match(problems('SELF-CHECK\nFiles: 1\nTests: TBD'), /placeholder/);
-  assert.match(problems('SELF-CHECK\nFiles: 1\nTests: x -> 12/12 passed'), /no failed count/);
-  assert.equal(check('SELF-CHECK\nFiles: 1\nTests: todo-test -> 1 passed, 0 failed').ok, true);
+  assert.match(problems('SELF-CHECK\nBase: origin/main abc1234\nFiles: 1\nTests: TBD'), /placeholder/);
+  assert.match(problems('SELF-CHECK\nBase: origin/main abc1234\nFiles: 1\nTests: x -> 12/12 passed'), /no failed count/);
+  assert.equal(check('SELF-CHECK\nBase: origin/main abc1234\nFiles: 1\nTests: todo-test -> 1 passed, 0 failed').ok, true);
 });
 
 test('missing Files and nonnumeric Files fail', () => {
-  const result = check('SELF-CHECK\nTests: 1 passed, 0 failed');
+  const result = check('SELF-CHECK\nBase: origin/main abc1234\nTests: 1 passed, 0 failed');
   assert.equal(result.problems.length, 1);
   assert.match(result.problems[0], /no Files line/);
   assert.match(problems(filled.replace('3 (all expected: yes)', 'manager.ts + test')), /does not give a number/);
@@ -78,23 +78,23 @@ test('missing Files and nonnumeric Files fail', () => {
 });
 
 test('missing Tests and zero passed fail', () => {
-  assert.match(problems('SELF-CHECK\nFiles: 1'), /no Tests line/);
-  assert.match(problems('SELF-CHECK\nFiles: 1\nTests: 0 passed, 0 failed'), /no tests passed/);
+  assert.match(problems('SELF-CHECK\nBase: origin/main abc1234\nFiles: 1'), /no Tests line/);
+  assert.match(problems('SELF-CHECK\nBase: origin/main abc1234\nFiles: 1\nTests: 0 passed, 0 failed'), /no tests passed/);
 });
 
 test('nonzero failures require a reason in their own semicolon part', () => {
-  assert.match(problems('SELF-CHECK\nFiles: 1\nTests: 3 passed, 1 failed'), /reports 1 failed without saying why/);
-  assert.equal(check('SELF-CHECK\nFiles: 1\nTests: -> 6 passed, 0 failed; same file on base -> 2 passed, 4 failed').ok, true);
-  assert.equal(check('SELF-CHECK\nFiles: 1\nTests: 3 passed, 1 failed (known failure: flaky upstream test)').ok, true);
-  assert.equal(check('SELF-CHECK\nFiles: 1\nTests: 3 passed, 1 failed known failure:').ok, false);
-  assert.equal(check('SELF-CHECK\nFiles: 1\nTests: on base 2 passed, 1 failed; 3 passed, 1 failed').ok, false);
+  assert.match(problems('SELF-CHECK\nBase: origin/main abc1234\nFiles: 1\nTests: 3 passed, 1 failed'), /reports 1 failed without saying why/);
+  assert.equal(check('SELF-CHECK\nBase: origin/main abc1234\nFiles: 1\nTests: -> 6 passed, 0 failed; same file on base -> 2 passed, 4 failed').ok, true);
+  assert.equal(check('SELF-CHECK\nBase: origin/main abc1234\nFiles: 1\nTests: 3 passed, 1 failed (known failure: flaky upstream test)').ok, true);
+  assert.equal(check('SELF-CHECK\nBase: origin/main abc1234\nFiles: 1\nTests: 3 passed, 1 failed known failure:').ok, false);
+  assert.equal(check('SELF-CHECK\nBase: origin/main abc1234\nFiles: 1\nTests: on base 2 passed, 1 failed; 3 passed, 1 failed').ok, false);
 });
 
 test('count variants and indented test continuations are accepted and summed', () => {
-  const result = check('SELF-CHECK\nFiles (2): a, b\nTests (commands):\n  first -> pass 2, failed: 0\n  second -> passed: 3, 0 fail\nTrailer and emails: ok');
+  const result = check('SELF-CHECK\nBase: origin/main abc1234\nFiles (2): a, b\nTests (commands):\n  first -> pass 2, failed: 0\n  second -> passed: 3, 0 fail\nTrailer and emails: ok');
   assert.equal(result.ok, true);
   assert.match(formatSelfCheckSummary(result), /Files 2, Tests 5 passed, 0 failed/);
-  assert.equal(check('SELF-CHECK\nFiles: 1\nTests: 1 pass, fail 0').ok, true);
+  assert.equal(check('SELF-CHECK\nBase: origin/main abc1234\nFiles: 1\nTests: 1 pass, fail 0').ok, true);
 });
 
 test('non-trunk branches skip without checking body', () => {
@@ -115,6 +115,54 @@ test('body edits on the same head change failure to success', () => {
 
 test('CRLF blocks pass', () => {
   assert.equal(check(filled.replaceAll('\n', '\r\n')).ok, true);
+});
+
+const withBase = (base) => `SELF-CHECK\nBase: ${base}\nFiles: 1\nTests: x -> 1 passed, 0 failed`;
+
+test('a missing Base line fails with the documented problem', () => {
+  const result = check('SELF-CHECK\nFiles: 1\nTests: x -> 1 passed, 0 failed');
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.problems, ['The SELF-CHECK block has no Base line. Edit the description and add "Base: <main sha you branched from>" (docs/SELF-CHECK.md).']);
+});
+
+test('a Base line with a template placeholder fails', () => {
+  const result = check(withBase('origin/main <sha it was branched from>'));
+  assert.equal(result.ok, false);
+  assert.equal(result.problems.length, 1);
+  assert.match(result.problems[0], /^The Base line still has a template placeholder \("<sha it was branched from>"\)\. .*\(docs\/SELF-CHECK\.md\)\.$/);
+  assert.match(problems(withBase('TBD')), /Base line still has a template placeholder \("TBD"\)/);
+});
+
+test('a Base line without a 7-40 character hex sha fails', () => {
+  for (const base of ['main', 'origin/main xyz', 'origin/main', 'origin/main abc123', `origin/main ${'a'.repeat(41)}`, 'origin/mainabc1234', 'origin/main abc1234z', '']) {
+    const result = check(withBase(base));
+    assert.equal(result.ok, false, base);
+    assert.equal(result.problems.length, 1, base);
+    assert.match(result.problems[0], /^The Base line does not give a commit sha\. .*\(docs\/SELF-CHECK\.md\)\.$/, base);
+  }
+});
+
+test('a Base line with a sha passes, bare or after a main ref, bulleted or indented', () => {
+  for (const base of ['origin/main abc1234', `origin/main ${'0123456789abcdef0123456789abcdef01234567'}`, 'keepoak/main ABC1234DEF', 'main abc1234', 'abc1234', 'origin/main abc1234 (fetched before branching)']) {
+    assert.equal(check(withBase(base)).ok, true, base);
+  }
+  assert.equal(check('SELF-CHECK\n- Base: origin/main abc1234\n- Files: 1\n- Tests: x -> 1 passed, 0 failed').ok, true);
+  assert.equal(check('SELF-CHECK\n  * Base: keepoak/main abc1234\nFiles: 1\nTests: x -> 1 passed, 0 failed').ok, true);
+});
+
+test('a Main base line and a lower-case base line are read as the Base line', () => {
+  assert.equal(check('SELF-CHECK\n- Main base: 0123456789abcdef0123456789abcdef01234567\n- Files: 1\n- Tests: x -> 1 passed, 0 failed').ok, true);
+  assert.equal(check('SELF-CHECK\nbase: origin/main abc1234\nFiles: 1\nTests: x -> 1 passed, 0 failed').ok, true);
+  assert.match(problems('SELF-CHECK\nMain base: origin/main <sha it was branched from>\nFiles: 1\nTests: x -> 1 passed, 0 failed'), /Base line still has a template placeholder/);
+  assert.match(problems('SELF-CHECK\nMAIN BASE: main\nFiles: 1\nTests: x -> 1 passed, 0 failed'), /Base line does not give a commit sha/);
+});
+
+test('Base problems come after Files problems and before Tests problems', () => {
+  const result = check('SELF-CHECK\nFiles: some\nBase: main\nTests: x -> 0 passed, 0 failed');
+  assert.equal(result.problems.length, 3);
+  assert.match(result.problems[0], /Files line does not give a number/);
+  assert.match(result.problems[1], /Base line does not give a commit sha/);
+  assert.match(result.problems[2], /no tests passed/);
 });
 
 test('untrusted body is text only and checker has no execution primitives', () => {
