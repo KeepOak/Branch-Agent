@@ -43,6 +43,9 @@ import {
   UPGRADE_SURVIVOR_PATHS_HELPER,
 } from "./upgrade-survivor-paths.test-support.js";
 
+// Shell snippets, executable shell fixtures and process-group supervision require POSIX.
+const itPosix = it.skipIf(process.platform === "win32");
+
 const pendingChildCompletions = new Set<Promise<unknown>>();
 const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
   afterEach(async () => {
@@ -55,7 +58,9 @@ const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
 const testNodeExecPath = resolveTestNodeExecPath();
 let receipts: FixtureReceiptChannel;
 beforeAll(async () => {
-  receipts = await openFixtureReceiptChannel();
+  if (process.platform !== "win32") {
+    receipts = await openFixtureReceiptChannel();
+  }
 });
 afterAll(async () => {
   await receipts?.close();
@@ -825,33 +830,35 @@ function expectInvalidDockerEnv(
 }
 
 describe("docker build helper", () => {
-  it.each(["0", "1"])("isolates helper snippets from shell hooks at SHLVL=%s", (shellLevel) => {
-    const home = tempDirs.make("branch-docker-shell-hooks-");
-    const marker = join(home, "hook-ran");
-    const hook = `printf 'unrequested hook\\n' >>${shellQuote(marker)}\nfalse\n`;
-    const hookNames = [
-      ".bash_profile",
-      ".bash_login",
-      ".profile",
-      ".bashrc",
-      ".bash_logout",
-      "bash-env",
-      "env",
-    ];
-    for (const name of hookNames) {
-      writeFileSync(join(home, name), hook);
-    }
-    const options = {
-      encoding: "utf8" as const,
-      env: {
-        ...process.env,
-        HOME: home,
-        SHLVL: shellLevel,
-        BASH_ENV: join(home, "bash-env"),
-        ENV: join(home, "env"),
-      },
-    };
-    const script = repoShell(home)`
+  itPosix.each(["0", "1"])(
+    "isolates helper snippets from shell hooks at SHLVL=%s",
+    (shellLevel) => {
+      const home = tempDirs.make("branch-docker-shell-hooks-");
+      const marker = join(home, "hook-ran");
+      const hook = `printf 'unrequested hook\\n' >>${shellQuote(marker)}\nfalse\n`;
+      const hookNames = [
+        ".bash_profile",
+        ".bash_login",
+        ".profile",
+        ".bashrc",
+        ".bash_logout",
+        "bash-env",
+        "env",
+      ];
+      for (const name of hookNames) {
+        writeFileSync(join(home, name), hook);
+      }
+      const options = {
+        encoding: "utf8" as const,
+        env: {
+          ...process.env,
+          HOME: home,
+          SHLVL: shellLevel,
+          BASH_ENV: join(home, "bash-env"),
+          ENV: join(home, "env"),
+        },
+      };
+      const script = repoShell(home)`
 source "$ROOT_DIR/scripts/lib/docker-e2e-logs.sh"
 printf '%s\\n' "$HOME"
 trap : INT
@@ -862,20 +869,21 @@ run_logged_print_heartbeat isolated-shell 30 printf 'fixture output\\n'
 test "$(trap -p INT TERM HUP)" = "$original_traps"
 exit 0
 `;
-    const expected = `${home}\nfixture output\n`;
+      const expected = `${home}\nfixture output\n`;
 
-    expect(execDockerSnippet(script, options)).toBe(expected);
-    const result = spawnDockerSnippet(script, options);
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toBe(expected);
-    expect(result.stderr).toBe("");
-    expect(existsSync(marker)).toBe(false);
-    for (const name of hookNames) {
-      expect(readFileSync(join(home, name), "utf8")).toBe(hook);
-    }
-  });
+      expect(execDockerSnippet(script, options)).toBe(expected);
+      const result = spawnDockerSnippet(script, options);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toBe(expected);
+      expect(result.stderr).toBe("");
+      expect(existsSync(marker)).toBe(false);
+      for (const name of hookNames) {
+        expect(readFileSync(join(home, name), "utf8")).toBe(hook);
+      }
+    },
+  );
 
-  it.each([
+  itPosix.each([
     {
       failure: "registry auth 5xx",
       log: [
@@ -948,22 +956,24 @@ ${exhausted ? "" : "! "}docker_build_resource_exhausted_failure "$LOG_PATH" || e
     expect(scenario).not.toMatch(/(?:from\s+|import\s*\(\s*)["'][.]{1,2}\/.*src\//u);
   });
 
-  it("cleans all sidecar modes without touching another run on the same Gateway workspace", () => {
-    const workDir = realpathSync(tempDirs.make("branch-sidecar-cleanup-"));
-    const binDir = join(workDir, "bin");
-    const scenarioRoot = join(workDir, "scenario");
-    const buildRoot = join(workDir, "build");
-    const containersPath = join(workDir, "containers.json");
-    const sessionKey = "agent:main:sandbox-browser-sidecar";
-    const workspaceHash = createHash("sha256")
-      .update("/home/appuser/.branch-e2e/workspace")
-      .digest("hex")
-      .slice(0, 32);
-    const unrelated = [
-      { name: "other-run", scopeKey: `${sessionKey}:other-run:rw:workspace:${workspaceHash}` },
-      { name: "other-workspace", scopeKey: `${sessionKey}:other-run:rw:workspace:other` },
-    ];
-    const seedContainers = `
+  itPosix(
+    "cleans all sidecar modes without touching another run on the same Gateway workspace",
+    () => {
+      const workDir = realpathSync(tempDirs.make("branch-sidecar-cleanup-"));
+      const binDir = join(workDir, "bin");
+      const scenarioRoot = join(workDir, "scenario");
+      const buildRoot = join(workDir, "build");
+      const containersPath = join(workDir, "containers.json");
+      const sessionKey = "agent:main:sandbox-browser-sidecar";
+      const workspaceHash = createHash("sha256")
+        .update("/home/appuser/.branch-e2e/workspace")
+        .digest("hex")
+        .slice(0, 32);
+      const unrelated = [
+        { name: "other-run", scopeKey: `${sessionKey}:other-run:rw:workspace:${workspaceHash}` },
+        { name: "other-workspace", scopeKey: `${sessionKey}:other-run:rw:workspace:other` },
+      ];
+      const seedContainers = `
 const sessionKey = ${JSON.stringify(sessionKey)} + ":" + process.argv[1];
 const containers = ["none", "ro", "rw"].flatMap((access) =>
   ["sandbox", "browser"].map((kind) => ({
@@ -976,9 +986,9 @@ require("node:fs").writeFileSync(${JSON.stringify(containersPath)}, JSON.stringi
   ...${JSON.stringify(unrelated)},
 ]));
 `;
-    writeExecutables(binDir, {
-      date: "#!/bin/sh\nprintf '1700000000\\n'\n",
-      mktemp: `#!/usr/bin/env node
+      writeExecutables(binDir, {
+        date: "#!/bin/sh\nprintf '1700000000\\n'\n",
+        mktemp: `#!/usr/bin/env node
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 const template = args.at(-1);
@@ -992,7 +1002,7 @@ if (target) {
   process.stdout.write(require("node:child_process").execFileSync("/usr/bin/mktemp", args));
 }
 `,
-      docker: `#!/usr/bin/env node
+        docker: `#!/usr/bin/env node
 const fs = require("node:fs");
 const file = ${JSON.stringify(containersPath)};
 const containers = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -1007,29 +1017,30 @@ if (args[0] === "ps") {
   fs.writeFileSync(file, JSON.stringify(containers.filter((container) => !args.slice(1).includes(container.name))));
 }
 `,
-    });
+      });
 
-    // exec preserves the shell PID used by RUN_ID; the fixed date supplies its
-    // other component without deriving expected labels from the cleanup filter.
-    const result = spawnDockerSnippet(
-      'node -e "$1" "$$-1700000000"\nexec /bin/bash "$2"',
-      {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          PATH: `${binDir}:${process.env.PATH ?? ""}`,
-          BRANCH_DOCKER_SOCKET: join(workDir, "missing.sock"),
+      // exec preserves the shell PID used by RUN_ID; the fixed date supplies its
+      // other component without deriving expected labels from the cleanup filter.
+      const result = spawnDockerSnippet(
+        'node -e "$1" "$$-1700000000"\nexec /bin/bash "$2"',
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${binDir}:${process.env.PATH ?? ""}`,
+            BRANCH_DOCKER_SOCKET: join(workDir, "missing.sock"),
+          },
         },
-      },
-      ["sidecar-cleanup", seedContainers, SANDBOX_BROWSER_SIDECAR_DOCKER_E2E_PATH],
-    );
+        ["sidecar-cleanup", seedContainers, SANDBOX_BROWSER_SIDECAR_DOCKER_E2E_PATH],
+      );
 
-    expect(result.status, result.stderr).toBe(1);
-    expect(result.stderr).toContain("Docker socket not found:");
-    expect(JSON.parse(readFileSync(containersPath, "utf8"))).toEqual(unrelated);
-    expect(existsSync(scenarioRoot)).toBe(false);
-    expect(existsSync(buildRoot)).toBe(false);
-  });
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain("Docker socket not found:");
+      expect(JSON.parse(readFileSync(containersPath, "utf8"))).toEqual(unrelated);
+      expect(existsSync(scenarioRoot)).toBe(false);
+      expect(existsSync(buildRoot)).toBe(false);
+    },
+  );
 
   it("gives cleanup-smoke builds enough Node heap while preserving explicit callers", () => {
     const cleanupRun = readFileSync(CLEANUP_SMOKE_RUN_PATH, "utf8");
@@ -1043,7 +1054,7 @@ if (args[0] === "ps") {
     );
   });
 
-  it.each([
+  itPosix.each([
     ["64kb", "cleanup output\n", 2],
     ["0008", "old-cleanup-output-recent\n", 0],
   ] as const)("validates cleanup-smoke log byte limit %s", (limit, log, status) => {
@@ -1098,7 +1109,7 @@ print_log_tail "$LOG_PATH"
     }
   });
 
-  it("runs cleanup smoke on the native ARM platform instead of pulling an amd64 tag", () => {
+  itPosix("runs cleanup smoke on the native ARM platform instead of pulling an amd64 tag", () => {
     expect(runCleanupDefaultPlatform({ CI: "true" }, "aarch64")).toBe("linux/arm64");
     expect(runCleanupDefaultPlatform({ GITHUB_ACTIONS: "true" }, "x86_64")).toBe("linux/amd64");
     expect(runCleanupDefaultPlatform({}, "arm64")).toBe("linux/arm64");
@@ -1161,7 +1172,7 @@ print_log_tail "$LOG_PATH"
     );
   });
 
-  it("resolves source and compiled candidate test-state entrypoints", () => {
+  itPosix("resolves source and compiled candidate test-state entrypoints", () => {
     const resolveEntrypoint = (rootDir: string) =>
       spawnDockerSnippet(
         `source "${DOCKER_E2E_IMAGE_HELPER_PATH}"; docker_e2e_test_state_entrypoint`,
@@ -1192,7 +1203,7 @@ print_log_tail "$LOG_PATH"
     expect(compiledResult.stdout.trim()).toBe(compiledEntrypoint);
   });
 
-  it("runs current TypeScript and frozen JavaScript Docker harness entrypoints", () => {
+  itPosix("runs current TypeScript and frozen JavaScript Docker harness entrypoints", () => {
     const fixtureRoot = tempDirs.make("branch-docker-script-entrypoint-");
     const scriptStem = join(fixtureRoot, "fixture");
     const runFixture = (value: string) =>
@@ -1234,7 +1245,7 @@ print_log_tail "$LOG_PATH"
     expect(missingResult.stderr).toContain("script entrypoint not found");
   });
 
-  it("rejects malformed Docker E2E resource limits before a suite starts", () => {
+  itPosix("rejects malformed Docker E2E resource limits before a suite starts", () => {
     const helper = readFileSync(DOCKER_E2E_IMAGE_HELPER_PATH, "utf8");
     const scripts = [
       readFileSync(ONBOARD_DOCKER_E2E_PATH, "utf8"),
@@ -1287,7 +1298,7 @@ print_log_tail "$LOG_PATH"
     expect(unsetIndex).toBeLessThan(script.indexOf("docker_e2e_run_with_harness"));
   });
 
-  it("wraps centralized Docker builds with the timeout helper", () => {
+  itPosix("wraps centralized Docker builds with the timeout helper", () => {
     const workDir = tempDirs.make("branch-docker-build-timeout-");
     writeExecutables(join(workDir, "bin"), {
       timeout: `#!/bin/bash
@@ -1324,10 +1335,12 @@ grep -q '^build --progress=plain --build-arg GITHUB_ACTIONS -t demo-image .$' "$
     execDockerSnippet(script);
   });
 
-  it("stops the tracked build command without retrying when interrupted", async ({ signal }) => {
-    const workDir = tempDirs.make("branch-docker-build-signal-");
-    writeExecutables(join(workDir, "bin"), {
-      docker: `#!/bin/bash
+  itPosix(
+    "stops the tracked build command without retrying when interrupted",
+    async ({ signal }) => {
+      const workDir = tempDirs.make("branch-docker-build-signal-");
+      writeExecutables(join(workDir, "bin"), {
+        docker: `#!/bin/bash
 set -euo pipefail
 count=0
 if [ -f "$TMPDIR/docker-count" ]; then
@@ -1345,10 +1358,10 @@ while true; do
   read -r -t 1 _ <> "$TMPDIR/docker.block" || true
 done
 `,
-    });
+      });
 
-    writeExecutables(workDir, {
-      "runner.sh": `#!/bin/bash
+      writeExecutables(workDir, {
+        "runner.sh": `#!/bin/bash
 set -euo pipefail
 ROOT_DIR=${shellQuote(process.cwd())}
 TMPDIR=${shellQuote(workDir)}
@@ -1358,62 +1371,63 @@ export BRANCH_DOCKER_BUILD_RETRIES=3
 source "$ROOT_DIR/scripts/lib/docker-build.sh"
 docker_build_run e2e-build -t demo-image .
 `,
-    });
+      });
 
-    const runInterruptedBuild = async (childSignal: NodeJS.Signals, expectedCode: number) => {
-      rmSync(join(workDir, "docker.pid"), { force: true });
-      rmSync(join(workDir, "docker.term"), { force: true });
-      rmSync(join(workDir, "docker.ready"), { force: true });
-      rmSync(join(workDir, "docker.block"), { force: true });
-      rmSync(join(workDir, "docker-count"), { force: true });
-      const runner = spawn(join(workDir, "runner.sh"), {
-        env: { ...process.env, TMPDIR: workDir },
-        stdio: ["ignore", "ignore", "ignore", "pipe"],
-      });
-      const exited = waitForProcessExit(runner);
-      const closed = ownChildCompletion(
-        new Promise<number | null>((resolve, reject) => {
-          runner.once("error", reject);
-          runner.once("close", resolve);
-        }),
-      );
-      const ready = new Promise<void>((resolve, reject) => {
-        runner.stdio[3]!.once("data", () => resolve());
-        runner.stdio[3]!.once("error", reject);
-      });
-      try {
-        const pidPath = join(workDir, "docker.pid");
-        // A builtin FD write leaves no foreground reporter that tree shutdown could
-        // kill first, making errexit bypass the fixture's own TERM trap.
-        await withinTest(
-          awaitGateBeforeSettlement(ready, exited, `file was not written: ${pidPath}`),
-          signal,
+      const runInterruptedBuild = async (childSignal: NodeJS.Signals, expectedCode: number) => {
+        rmSync(join(workDir, "docker.pid"), { force: true });
+        rmSync(join(workDir, "docker.term"), { force: true });
+        rmSync(join(workDir, "docker.ready"), { force: true });
+        rmSync(join(workDir, "docker.block"), { force: true });
+        rmSync(join(workDir, "docker-count"), { force: true });
+        const runner = spawn(join(workDir, "runner.sh"), {
+          env: { ...process.env, TMPDIR: workDir },
+          stdio: ["ignore", "ignore", "ignore", "pipe"],
+        });
+        const exited = waitForProcessExit(runner);
+        const closed = ownChildCompletion(
+          new Promise<number | null>((resolve, reject) => {
+            runner.once("error", reject);
+            runner.once("close", resolve);
+          }),
         );
-        expect(existsSync(join(workDir, "docker.ready"))).toBe(true);
-        const buildPid = Number.parseInt(readFileSync(pidPath, "utf8"), 10);
+        const ready = new Promise<void>((resolve, reject) => {
+          runner.stdio[3]!.once("data", () => resolve());
+          runner.stdio[3]!.once("error", reject);
+        });
+        try {
+          const pidPath = join(workDir, "docker.pid");
+          // A builtin FD write leaves no foreground reporter that tree shutdown could
+          // kill first, making errexit bypass the fixture's own TERM trap.
+          await withinTest(
+            awaitGateBeforeSettlement(ready, exited, `file was not written: ${pidPath}`),
+            signal,
+          );
+          expect(existsSync(join(workDir, "docker.ready"))).toBe(true);
+          const buildPid = Number.parseInt(readFileSync(pidPath, "utf8"), 10);
 
-        runner.kill(childSignal);
-        expect(await withinTest(closed, signal)).toBe(expectedCode);
-        expect(runner.signalCode).toBeNull();
-        // The timeout wrapper can exit first; the Docker fixture holds FD 3 until
-        // its TERM trap finishes, so runner close also joins that fixture's output.
-        expect(existsSync(join(workDir, "docker.term"))).toBe(true);
-        expect(readFileSync(join(workDir, "docker-count"), "utf8").trim()).toBe("1");
-        await waitForForeignProcessExit(buildPid, signal);
-        expect(isProcessRunning(buildPid)).toBe(false);
-      } finally {
-        if (runner.exitCode === null && runner.signalCode === null) {
-          runner.kill("SIGTERM");
+          runner.kill(childSignal);
+          expect(await withinTest(closed, signal)).toBe(expectedCode);
+          expect(runner.signalCode).toBeNull();
+          // The timeout wrapper can exit first; the Docker fixture holds FD 3 until
+          // its TERM trap finishes, so runner close also joins that fixture's output.
+          expect(existsSync(join(workDir, "docker.term"))).toBe(true);
+          expect(readFileSync(join(workDir, "docker-count"), "utf8").trim()).toBe("1");
+          await waitForForeignProcessExit(buildPid, signal);
+          expect(isProcessRunning(buildPid)).toBe(false);
+        } finally {
+          if (runner.exitCode === null && runner.signalCode === null) {
+            runner.kill("SIGTERM");
+          }
+          await closed;
         }
-        await closed;
-      }
-    };
+      };
 
-    await runInterruptedBuild("SIGTERM", 143);
-    await runInterruptedBuild("SIGINT", 130);
-  });
+      await runInterruptedBuild("SIGTERM", 143);
+      await runInterruptedBuild("SIGINT", 130);
+    },
+  );
 
-  it.each([
+  itPosix.each([
     ["HEARTBEAT_SECONDS", "heartbeat_seconds"],
     ["RETRIES", "retry_count"],
   ])("normalizes zero-padded Docker build %s", (envSuffix, helperSuffix) => {
@@ -1429,13 +1443,8 @@ source "$ROOT_DIR/scripts/lib/docker-build.sh"
     execDockerSnippet(script);
   });
 
-  it.each([
-    [
-      "retry count",
-      "BRANCH_DOCKER_BUILD_RETRIES",
-      "2x",
-      "invalid BRANCH_DOCKER_BUILD_RETRIES: 2x",
-    ],
+  itPosix.each([
+    ["retry count", "BRANCH_DOCKER_BUILD_RETRIES", "2x", "invalid BRANCH_DOCKER_BUILD_RETRIES: 2x"],
     [
       "heartbeat interval",
       "BRANCH_DOCKER_BUILD_HEARTBEAT_SECONDS",
@@ -1479,7 +1488,7 @@ docker_build_run e2e-build -t demo-image .
     },
   );
 
-  it.each([
+  itPosix.each([
     { mode: "build", timeout: "19s", envName: "BRANCH_DOCKER_BUILD_TIMEOUT", status: 1 },
     { mode: "command", timeout: "7s", envName: "DOCKER_COMMAND_TIMEOUT", status: 127 },
   ])(
@@ -1525,7 +1534,7 @@ diagnostic="$(<"$TMPDIR/${mode === "build" ? "stdout" : "stderr"}")"
     },
   );
 
-  it.for([
+  itPosix.for([
     {
       title: "keeps reused Docker image probes behind the timeout-aware helper",
       tempPrefix: "branch-docker-image-reuse-timeout-",
@@ -2025,7 +2034,7 @@ heartbeat_elapsed="\${BASH_REMATCH[1]}"
     await runDockerSnippet(script, signal);
   });
 
-  it("derives the browser CDP image from the shared functional image", () => {
+  itPosix("derives the browser CDP image from the shared functional image", () => {
     const workDir = tempDirs.make("branch-browser-cdp-shared-image-");
     writeExecutables(join(workDir, "bin"), {
       docker: `#!/usr/bin/env bash
@@ -2142,7 +2151,9 @@ fi
     expect(runner).toContain("failed to disable Playwright AI snapshot chunk");
   });
 
-  describe.each(process.platform === "darwin" ? ["/bin/bash", "bash"] : ["/bin/bash"])(
+  describe
+    .runIf(process.platform !== "win32")
+    .each(process.platform === "darwin" ? ["/bin/bash", "bash"] : ["/bin/bash"])(
     "%s EXIT-trap Docker status",
     (shell) => {
       const cases = [
@@ -2196,7 +2207,7 @@ exit ${entryStatus}
     },
   );
 
-  it("uses a Node watchdog for Docker commands when timeout is unavailable", () => {
+  itPosix("uses a Node watchdog for Docker commands when timeout is unavailable", () => {
     const workDir = tempDirs.make("branch-docker-node-timeout-");
     writeExecutables(join(workDir, "bin"), {
       node: `#!/bin/bash\nexec ${shellQuote(process.execPath)} "$@"\n`,
@@ -2225,7 +2236,7 @@ stderr="$(<"$TMPDIR/stderr")"
     execDockerSnippet(script);
   });
 
-  it("adds default Docker run resource limits without overriding explicit limits", () => {
+  itPosix("adds default Docker run resource limits without overriding explicit limits", () => {
     const workDir = tempDirs.make("branch-docker-resource-limits-");
     writeExecutables(join(workDir, "bin"), {
       timeout: `#!/bin/bash
@@ -2271,24 +2282,24 @@ BRANCH_DOCKER_E2E_DISABLE_RESOURCE_LIMITS=1 docker_e2e_docker_cmd run demo
     ["TERM", "143"],
     ["HUP", "129"],
   ] as const) {
-    it(`escalates Docker watchdog children that ignore parent SIG${shellSignal}`, async ({
-      signal,
-    }) => {
-      const workDir = tempDirs.make("branch-docker-node-signal-");
-      const reporter = writeFixtureReceiptReporter(workDir);
-      const readyPath = join(workDir, "ready");
-      writeExecutables(join(workDir, "bin"), {
-        node: `#!/bin/bash\nexec ${shellQuote(process.execPath)} "$@"\n`,
-        docker: `#!/bin/bash
+    itPosix(
+      `escalates Docker watchdog children that ignore parent SIG${shellSignal}`,
+      async ({ signal }) => {
+        const workDir = tempDirs.make("branch-docker-node-signal-");
+        const reporter = writeFixtureReceiptReporter(workDir);
+        const readyPath = join(workDir, "ready");
+        writeExecutables(join(workDir, "bin"), {
+          node: `#!/bin/bash\nexec ${shellQuote(process.execPath)} "$@"\n`,
+          docker: `#!/bin/bash
 trap "" TERM HUP
 printf "%s\\n" "$$" >"$TMPDIR/docker-pid"
 printf "%s\\n" "$PPID" >"$TMPDIR/watchdog-pid"
 ${shellQuote(process.execPath)} ${shellQuote(reporter)} ${shellQuote(readyPath)} ready
 while true; do /bin/sleep 1; done
 `,
-      });
+        });
 
-      const script = repoRootShell`
+        const script = repoRootShell`
 TMPDIR=${shellQuote(workDir)}
 export ROOT_DIR TMPDIR
 export PATH="$TMPDIR/bin"
@@ -2301,44 +2312,45 @@ docker_e2e_docker_cmd run demo
 
 `;
 
-      const runner = spawn("/bin/bash", ["--noprofile", "--norc", "-c", script], {
-        env: { ...process.env, BASH_ENV: "", ENV: "" },
-        stdio: "ignore",
-      });
-      const exited = waitForProcessExit(runner);
-      try {
-        await withinTest(
-          fixtureEventBeforeSettlement(
-            readyPath,
-            "ready",
-            exited,
-            "docker child PID was not recorded",
-          ),
-          signal,
-        );
-        const watchdogPid = Number(readFileSync(join(workDir, "watchdog-pid"), "utf8"));
-        const dockerPid = Number(readFileSync(join(workDir, "docker-pid"), "utf8"));
-        process.kill(watchdogPid, `SIG${shellSignal}`);
-        expect(await withinTest(exited, signal)).toBe(Number(expectedStatus));
-        await waitForForeignProcessExit(dockerPid, signal);
-      } finally {
-        for (const name of ["watchdog-pid", "docker-pid"]) {
-          const path = join(workDir, name);
-          if (existsSync(path)) {
-            try {
-              process.kill(Number(readFileSync(path, "utf8")), "SIGKILL");
-            } catch {}
+        const runner = spawn("/bin/bash", ["--noprofile", "--norc", "-c", script], {
+          env: { ...process.env, BASH_ENV: "", ENV: "" },
+          stdio: "ignore",
+        });
+        const exited = waitForProcessExit(runner);
+        try {
+          await withinTest(
+            fixtureEventBeforeSettlement(
+              readyPath,
+              "ready",
+              exited,
+              "docker child PID was not recorded",
+            ),
+            signal,
+          );
+          const watchdogPid = Number(readFileSync(join(workDir, "watchdog-pid"), "utf8"));
+          const dockerPid = Number(readFileSync(join(workDir, "docker-pid"), "utf8"));
+          process.kill(watchdogPid, `SIG${shellSignal}`);
+          expect(await withinTest(exited, signal)).toBe(Number(expectedStatus));
+          await waitForForeignProcessExit(dockerPid, signal);
+        } finally {
+          for (const name of ["watchdog-pid", "docker-pid"]) {
+            const path = join(workDir, name);
+            if (existsSync(path)) {
+              try {
+                process.kill(Number(readFileSync(path, "utf8")), "SIGKILL");
+              } catch {}
+            }
           }
+          if (runner.exitCode === null && runner.signalCode === null) {
+            runner.kill("SIGKILL");
+          }
+          await exited;
         }
-        if (runner.exitCode === null && runner.signalCode === null) {
-          runner.kill("SIGKILL");
-        }
-        await exited;
-      }
-    });
+      },
+    );
   }
 
-  it("uses gtimeout when timeout is unavailable", () => {
+  itPosix("uses gtimeout when timeout is unavailable", () => {
     const workDir = tempDirs.make("branch-docker-gtimeout-");
     writeExecutables(join(workDir, "bin"), {
       gtimeout: `#!/bin/bash
@@ -2390,7 +2402,7 @@ docker_e2e_docker_run_cmd run demo
     ]);
   });
 
-  it.each(
+  itPosix.each(
     (
       [
         {
@@ -2590,7 +2602,7 @@ docker_e2e_docker_run_cmd run demo
     expect(script).not.toContain('"$HOME/.branch/agents/main/agent/auth-profiles.json"');
   });
 
-  it("propagates frozen typed-onboarding ERR traps through nested helpers", () => {
+  itPosix("propagates frozen typed-onboarding ERR traps through nested helpers", () => {
     const runner = readFileSync(RELEASE_TYPED_ONBOARDING_DOCKER_E2E_PATH, "utf8");
     const invocation = runner.match(
       /-i "\$IMAGE_NAME" bash(?<flags>(?: +-[A-Za-z]+)*) scripts\/e2e\/lib\/release-typed-onboarding\/scenario\.sh/u,
@@ -2671,7 +2683,7 @@ outer
     }
   });
 
-  it("propagates HTTP probe failures through command substitution", () => {
+  itPosix("propagates HTTP probe failures through command substitution", () => {
     const source = readFileSync(UPGRADE_SURVIVOR_RUN_SCRIPT, "utf8");
     const probeStart = source.indexOf("probe_gateway_endpoint() {");
     const probe = source.slice(probeStart, source.indexOf("\nstart_gateway()", probeStart));
@@ -2706,7 +2718,7 @@ printf '%s\\n' "$seconds"
     }
   });
 
-  it("records an interrupted upgrade survivor phase as failed", async ({ signal }) => {
+  itPosix("records an interrupted upgrade survivor phase as failed", async ({ signal }) => {
     const workDir = tempDirs.make("branch-upgrade-survivor-signal-");
     const binDir = join(workDir, "bin");
     const markerPath = join(workDir, "npm-started");
@@ -2729,9 +2741,9 @@ exec "$@"
       env: {
         ...process.env,
         FAKE_NPM_MARKER: markerPath,
-        BRANCH_TEST_STATE_FUNCTION_B64: Buffer.from(
-          "branch_test_state_create() { :; }",
-        ).toString("base64"),
+        BRANCH_TEST_STATE_FUNCTION_B64: Buffer.from("branch_test_state_create() { :; }").toString(
+          "base64",
+        ),
         BRANCH_UPGRADE_SURVIVOR_BASELINE: "branch@2026.7.1-2",
         BRANCH_UPGRADE_SURVIVOR_CANDIDATE_SPEC: join(workDir, "unused.tgz"),
         BRANCH_UPGRADE_SURVIVOR_RUNTIME_ROOT: join(workDir, "runtime"),
@@ -2814,7 +2826,7 @@ exec "$@"
     );
   });
 
-  it("reuses the shared bare image for multi-node update targeted runs", () => {
+  itPosix("reuses the shared bare image for multi-node update targeted runs", () => {
     const workDir = tempDirs.make("branch-multi-node-shared-image-");
     writeFileSync(join(workDir, "branch-current.tgz"), "fake package");
     writeExecutables(join(workDir, "bin"), {
@@ -2945,7 +2957,7 @@ fi
     ]);
   });
 
-  it.skipIf(process.platform !== "linux").for(["published", "current"])(
+  itPosix.skipIf(process.platform !== "linux").for(["published", "current"])(
     "starts the %s auth probe under the manager that owns its restart and stop",
     { timeout: 60_000 },
     async (lane, { signal }) => {
@@ -3136,7 +3148,7 @@ branch_e2e_probe_tcp 127.0.0.1 18789 400`,
     },
   );
 
-  it("returns the gateway readiness failure when startup is called conditionally", () => {
+  itPosix("returns the gateway readiness failure when startup is called conditionally", () => {
     const workDir = tempDirs.make("survivor-start-failure-");
     writeExecutables(join(workDir, "bin"), { branch: "#!/bin/sh\nexit 17\n" });
     const source = readFileSync(UPGRADE_SURVIVOR_RUN_SCRIPT, "utf8");
@@ -3161,7 +3173,7 @@ exit "$start_status"
     expect(result.status, result.stdout + result.stderr).toBe(1);
   });
 
-  it("scopes candidate setup Doctor markers without creating legacy device identities", () => {
+  itPosix("scopes candidate setup Doctor markers without creating legacy device identities", () => {
     const workDir = tempDirs.make("branch-upgrade-survivor-doctor-env-");
     writeExecutables(join(workDir, "bin"), {
       branch: `#!/usr/bin/env bash
@@ -3240,7 +3252,7 @@ fi
     );
   });
 
-  it.each([
+  itPosix.each([
     ["doctor", 41],
     ["readiness", 42],
     ["service-env", 43],
@@ -3316,7 +3328,7 @@ fi
     },
   );
 
-  it("prefers restore failure and retains the authored config snapshot", () => {
+  itPosix("prefers restore failure and retains the authored config snapshot", () => {
     const workDir = tempDirs.make("branch-upgrade-survivor-restore-failure-");
     writeExecutables(join(workDir, "bin"), {
       branch: `#!/usr/bin/env bash
@@ -3679,7 +3691,7 @@ process.exit(78);
     },
   );
 
-  it.each([UPGRADE_SURVIVOR_RUN_SCRIPT, UPGRADE_SURVIVOR_DOCKER_E2E_PATH])(
+  itPosix.each([UPGRADE_SURVIVOR_RUN_SCRIPT, UPGRADE_SURVIVOR_DOCKER_E2E_PATH])(
     "scopes the passive preload to the original update invocation in %s",
     (scriptPath) => {
       const { workDir, artifacts, env } = survivorPostCoreFixture();
@@ -3782,7 +3794,7 @@ exit "$lane_exit"
     },
   );
 
-  it.each(["pid-only", "request-only", "replaced"])(
+  itPosix.each(["pid-only", "request-only", "replaced"])(
     "requires an update-owned service replacement after consent recovery (%s)",
     (mode) => {
       const workDir = tempDirs.make("branch-survivor-recovery-restart-");
@@ -4056,199 +4068,201 @@ writePluginInstallIndexForE2E(${JSON.stringify(index)}, { stateDir: ${JSON.strin
     }
   });
 
-  it("retains a failed service child and sanitizes diagnostics without executing the candidate", async ({
-    signal,
-  }) => {
-    const workDir = tempDirs.make("branch-survivor-diagnostics-");
-    const artifacts = join(workDir, "artifacts");
-    const state = join(workDir, "home", ".branch");
-    const unitDir = join(workDir, "home", ".config", "systemd", "user");
-    mkdirSync(artifacts);
-    mkdirSync(join(state, "logs"), { recursive: true });
-    mkdirSync(unitDir, { recursive: true });
-    mkdirSync(join(artifacts, "npm-prefix"));
-    const secret = ["sk-s", "urvivor-secret-should-never-be-uploaded"].join("");
-    const privateSentinel = "PRIVATE_CONFIG_AND_NPM_PREFIX_SENTINEL";
-    writeFileSync(join(state, "branch.json"), JSON.stringify({ privateSentinel }));
-    writeFileSync(join(state, "auth-profiles.json"), privateSentinel);
-    writeFileSync(join(artifacts, "npm-prefix", "credential"), privateSentinel);
-    writeFileSync(join(artifacts, "config-recipe.json"), privateSentinel);
-    writeFileSync(join(state, "gateway.systemd.env"), `API_KEY=${secret}\n`);
-    writeFileSync(join(state, "logs", "gateway-restart.log"), `restart: token=${secret}\n`);
-    writeFileSync(
-      join(unitDir, "branch-gateway.service"),
-      `[Service]\nExecStart=${testNodeExecPath} gateway --token ${secret}\nWorkingDirectory=/safe/service\nEnvironment="API_KEY=${secret}"\n`,
-    );
-    writeFileSync(join(artifacts, "doctor.log"), `doctor: token=${secret}\n`);
-    writeFileSync(join(artifacts, "update.err"), `post-core failure: token=${secret}\n`);
-    const logPath = join(artifacts, "systemctl-shim-gateway.log");
-    writeFileSync(`${logPath}.bootstrap.log`, `bootstrap: token=${secret}\n`);
-    const childPath = join(workDir, "child.mjs");
-    writeFileSync(
-      childPath,
-      `console.error("first startup boundary failure"); process.exit(78);\n`,
-    );
-    const supervisorPath = join(workDir, "supervisor.mjs");
-    writeFileSync(
-      supervisorPath,
-      extractUpgradeSurvivorSupervisor(
-        readFileSync(UPGRADE_SURVIVOR_UPDATE_RESTART_AUTH_PATH, "utf8"),
-      ),
-    );
-    const supervisor = spawn(process.execPath, [supervisorPath], {
-      env: {
-        ...process.env,
-        BRANCH_SYSTEMCTL_SHIM_DAEMON_LOG: logPath,
-        BRANCH_SYSTEMCTL_SHIM_MANAGER_ENV: "{}",
-        BRANCH_SYSTEMCTL_SHIM_MANAGER_SCRIPT: writeUpgradeSurvivorStopPolicy(workDir),
-        BRANCH_SYSTEMCTL_SHIM_EXEC_START: `${shellQuote(process.execPath)} ${shellQuote(childPath)}`,
-      },
-      stdio: "ignore",
-    });
-    const exited = waitForProcessExit(supervisor);
-    try {
-      expect(await withinTest(exited, signal)).toBe(0);
-    } finally {
-      if (supervisor.exitCode === null && supervisor.signalCode === null) {
-        supervisor.kill("SIGTERM");
+  itPosix(
+    "retains a failed service child and sanitizes diagnostics without executing the candidate",
+    async ({ signal }) => {
+      const workDir = tempDirs.make("branch-survivor-diagnostics-");
+      const artifacts = join(workDir, "artifacts");
+      const state = join(workDir, "home", ".branch");
+      const unitDir = join(workDir, "home", ".config", "systemd", "user");
+      mkdirSync(artifacts);
+      mkdirSync(join(state, "logs"), { recursive: true });
+      mkdirSync(unitDir, { recursive: true });
+      mkdirSync(join(artifacts, "npm-prefix"));
+      const secret = ["sk-s", "urvivor-secret-should-never-be-uploaded"].join("");
+      const privateSentinel = "PRIVATE_CONFIG_AND_NPM_PREFIX_SENTINEL";
+      writeFileSync(join(state, "branch.json"), JSON.stringify({ privateSentinel }));
+      writeFileSync(join(state, "auth-profiles.json"), privateSentinel);
+      writeFileSync(join(artifacts, "npm-prefix", "credential"), privateSentinel);
+      writeFileSync(join(artifacts, "config-recipe.json"), privateSentinel);
+      writeFileSync(join(state, "gateway.systemd.env"), `API_KEY=${secret}\n`);
+      writeFileSync(join(state, "logs", "gateway-restart.log"), `restart: token=${secret}\n`);
+      writeFileSync(
+        join(unitDir, "branch-gateway.service"),
+        `[Service]\nExecStart=${testNodeExecPath} gateway --token ${secret}\nWorkingDirectory=/safe/service\nEnvironment="API_KEY=${secret}"\n`,
+      );
+      writeFileSync(join(artifacts, "doctor.log"), `doctor: token=${secret}\n`);
+      writeFileSync(join(artifacts, "update.err"), `post-core failure: token=${secret}\n`);
+      const logPath = join(artifacts, "systemctl-shim-gateway.log");
+      writeFileSync(`${logPath}.bootstrap.log`, `bootstrap: token=${secret}\n`);
+      const childPath = join(workDir, "child.mjs");
+      writeFileSync(
+        childPath,
+        `console.error("first startup boundary failure"); process.exit(78);\n`,
+      );
+      const supervisorPath = join(workDir, "supervisor.mjs");
+      writeFileSync(
+        supervisorPath,
+        extractUpgradeSurvivorSupervisor(
+          readFileSync(UPGRADE_SURVIVOR_UPDATE_RESTART_AUTH_PATH, "utf8"),
+        ),
+      );
+      const supervisor = spawn(process.execPath, [supervisorPath], {
+        env: {
+          ...process.env,
+          BRANCH_SYSTEMCTL_SHIM_DAEMON_LOG: logPath,
+          BRANCH_SYSTEMCTL_SHIM_MANAGER_ENV: "{}",
+          BRANCH_SYSTEMCTL_SHIM_MANAGER_SCRIPT: writeUpgradeSurvivorStopPolicy(workDir),
+          BRANCH_SYSTEMCTL_SHIM_EXEC_START: `${shellQuote(process.execPath)} ${shellQuote(childPath)}`,
+        },
+        stdio: "ignore",
+      });
+      const exited = waitForProcessExit(supervisor);
+      try {
+        expect(await withinTest(exited, signal)).toBe(0);
+      } finally {
+        if (supervisor.exitCode === null && supervisor.signalCode === null) {
+          supervisor.kill("SIGTERM");
+        }
+        await exited;
       }
-      await exited;
-    }
-    const observation = JSON.parse(readFileSync(`${logPath}.exit.json`, "utf8"));
-    expect(observation.last).toMatchObject({ code: 78, signal: null });
-    const managerEnv = {
-      HOME: join(workDir, "home"),
-      BRANCH_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_DAEMON_LOG: logPath,
-      BRANCH_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_LOG: join(artifacts, "systemctl-shim.log"),
-      BRANCH_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_PID_FILE: join(workDir, "missing.pid"),
-    };
-    const shimPath = installUpgradeSurvivorSystemctlShim(workDir, managerEnv);
-    const shown = spawnSync("bash", [shimPath, ...SURVIVOR_SERVICE_SHOW_ARGS], {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        ...managerEnv,
-      },
-    });
-    expect(shown.status, shown.stderr).toBe(0);
-    expect(shown.stdout).toContain("ExecMainStatus=78");
-    const fixtureEnv = {
-      HOME: join(workDir, "home"),
-      BRANCH_STATE_DIR: state,
-      BRANCH_CONFIG_PATH: join(state, "branch.json"),
-      npm_config_prefix: join(artifacts, "npm-prefix"),
-    };
-    const candidate = join(artifacts, "npm-prefix", "lib", "node_modules", "branch");
-    mkdirSync(join(candidate, "dist", "plugin-sdk"), { recursive: true });
-    writeFileSync(join(candidate, "package.json"), '{"type":"module"}');
-    writeFileSync(
-      join(candidate, "dist", "plugin-sdk", "logging-core.js"),
-      'throw new Error("candidate redactor must not execute");',
-    );
-    const result = runSurvivorDiagnostics(
-      "capture",
-      artifacts,
-      ["update-candidate", "1"],
-      fixtureEnv,
-    );
-    expect(result.status, result.stderr).toBe(0);
-    const rawPath = join(artifacts, "diagnostics", "raw.json");
-    const raw = readFileSync(rawPath, "utf8");
-    expect(raw).toContain(secret);
-    expect(raw).not.toContain(privateSentinel);
-    const snapshot = JSON.parse(raw);
-    snapshot.config.contents = privateSentinel;
-    snapshot.logs["auth-profiles.json"] = privateSentinel;
-    snapshot.omissions["doctor.log"] = privateSentinel;
-    snapshot.extra = privateSentinel;
-    writeFileSync(rawPath, JSON.stringify(snapshot));
-    const uploaded = join(workDir, "public");
-    const published = runSurvivorDiagnostics("publish", artifacts, [uploaded], fixtureEnv);
-    expect(published.status, published.stderr).toBe(0);
-    expect(readdirSync(uploaded)).toEqual(["failure.json"]);
-    const text = readFileSync(join(uploaded, "failure.json"), "utf8");
-    expect(text).not.toContain(secret);
-    expect(text).not.toContain(privateSentinel);
-    const report = JSON.parse(text);
-    expect(report).toMatchObject({
-      phase: "update-candidate",
-      outcome: "failed",
-      exitStatus: 1,
-      signal: null,
-    });
-    expect(report.logs["systemctl-shim-gateway.log"]).toContain("first startup boundary failure");
-    expect(report.logs["systemctl-shim-gateway.log.bootstrap.log"]).toContain("bootstrap:");
-    expect(report.logs["doctor.log"]).toContain("doctor:");
-    expect(report.logs["update.err"]).toContain("post-core failure:");
-    expect(report.logs["gateway-restart.log"]).toContain("restart:");
-    expect(report.service.childExits).toEqual([
-      expect.objectContaining({ code: 78, signal: null }),
-      expect.objectContaining({ code: 78, signal: null }),
-    ]);
-    expect(report.service).toMatchObject({
-      WorkingDirectory: "/safe/service",
-      environmentKeys: ["API_KEY"],
-      environmentFileKeys: ["API_KEY"],
-    });
-    expect(report.service.ExecStart).toContain("node gateway --token");
-    expect(report.config.sha256).toMatch(/^[a-f0-9]{64}$/);
-  });
+      const observation = JSON.parse(readFileSync(`${logPath}.exit.json`, "utf8"));
+      expect(observation.last).toMatchObject({ code: 78, signal: null });
+      const managerEnv = {
+        HOME: join(workDir, "home"),
+        BRANCH_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_DAEMON_LOG: logPath,
+        BRANCH_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_LOG: join(artifacts, "systemctl-shim.log"),
+        BRANCH_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_PID_FILE: join(workDir, "missing.pid"),
+      };
+      const shimPath = installUpgradeSurvivorSystemctlShim(workDir, managerEnv);
+      const shown = spawnSync("bash", [shimPath, ...SURVIVOR_SERVICE_SHOW_ARGS], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ...managerEnv,
+        },
+      });
+      expect(shown.status, shown.stderr).toBe(0);
+      expect(shown.stdout).toContain("ExecMainStatus=78");
+      const fixtureEnv = {
+        HOME: join(workDir, "home"),
+        BRANCH_STATE_DIR: state,
+        BRANCH_CONFIG_PATH: join(state, "branch.json"),
+        npm_config_prefix: join(artifacts, "npm-prefix"),
+      };
+      const candidate = join(artifacts, "npm-prefix", "lib", "node_modules", "branch");
+      mkdirSync(join(candidate, "dist", "plugin-sdk"), { recursive: true });
+      writeFileSync(join(candidate, "package.json"), '{"type":"module"}');
+      writeFileSync(
+        join(candidate, "dist", "plugin-sdk", "logging-core.js"),
+        'throw new Error("candidate redactor must not execute");',
+      );
+      const result = runSurvivorDiagnostics(
+        "capture",
+        artifacts,
+        ["update-candidate", "1"],
+        fixtureEnv,
+      );
+      expect(result.status, result.stderr).toBe(0);
+      const rawPath = join(artifacts, "diagnostics", "raw.json");
+      const raw = readFileSync(rawPath, "utf8");
+      expect(raw).toContain(secret);
+      expect(raw).not.toContain(privateSentinel);
+      const snapshot = JSON.parse(raw);
+      snapshot.config.contents = privateSentinel;
+      snapshot.logs["auth-profiles.json"] = privateSentinel;
+      snapshot.omissions["doctor.log"] = privateSentinel;
+      snapshot.extra = privateSentinel;
+      writeFileSync(rawPath, JSON.stringify(snapshot));
+      const uploaded = join(workDir, "public");
+      const published = runSurvivorDiagnostics("publish", artifacts, [uploaded], fixtureEnv);
+      expect(published.status, published.stderr).toBe(0);
+      expect(readdirSync(uploaded)).toEqual(["failure.json"]);
+      const text = readFileSync(join(uploaded, "failure.json"), "utf8");
+      expect(text).not.toContain(secret);
+      expect(text).not.toContain(privateSentinel);
+      const report = JSON.parse(text);
+      expect(report).toMatchObject({
+        phase: "update-candidate",
+        outcome: "failed",
+        exitStatus: 1,
+        signal: null,
+      });
+      expect(report.logs["systemctl-shim-gateway.log"]).toContain("first startup boundary failure");
+      expect(report.logs["systemctl-shim-gateway.log.bootstrap.log"]).toContain("bootstrap:");
+      expect(report.logs["doctor.log"]).toContain("doctor:");
+      expect(report.logs["update.err"]).toContain("post-core failure:");
+      expect(report.logs["gateway-restart.log"]).toContain("restart:");
+      expect(report.service.childExits).toEqual([
+        expect.objectContaining({ code: 78, signal: null }),
+        expect.objectContaining({ code: 78, signal: null }),
+      ]);
+      expect(report.service).toMatchObject({
+        WorkingDirectory: "/safe/service",
+        environmentKeys: ["API_KEY"],
+        environmentFileKeys: ["API_KEY"],
+      });
+      expect(report.service.ExecStart).toContain("node gateway --token");
+      expect(report.config.sha256).toMatch(/^[a-f0-9]{64}$/);
+    },
+  );
 
-  it("retains supervisor bootstrap stderr without inventing a child exit", async ({ signal }) => {
-    const workDir = tempDirs.make("branch-survivor-bootstrap-");
-    const unitDir = join(workDir, ".config", "systemd", "user");
-    mkdirSync(unitDir, { recursive: true });
-    writeFileSync(
-      join(unitDir, "branch-gateway.service"),
-      `[Service]\nExecStart="${process.execPath}" unused\n`,
-    );
-    const binDir = join(workDir, "bin");
-    const reporter = writeFixtureReceiptReporter(workDir);
-    const readyPath = join(workDir, "bootstrap.ready");
-    writeExecutables(binDir, {
-      node: `#!/bin/sh
+  itPosix(
+    "retains supervisor bootstrap stderr without inventing a child exit",
+    async ({ signal }) => {
+      const workDir = tempDirs.make("branch-survivor-bootstrap-");
+      const unitDir = join(workDir, ".config", "systemd", "user");
+      mkdirSync(unitDir, { recursive: true });
+      writeFileSync(
+        join(unitDir, "branch-gateway.service"),
+        `[Service]\nExecStart="${process.execPath}" unused\n`,
+      );
+      const binDir = join(workDir, "bin");
+      const reporter = writeFixtureReceiptReporter(workDir);
+      const readyPath = join(workDir, "bootstrap.ready");
+      writeExecutables(binDir, {
+        node: `#!/bin/sh
 case "$1" in
   *.supervisor.mjs) echo supervisor-bootstrap-failure >&2; ${shellQuote(process.execPath)} ${shellQuote(reporter)} ${shellQuote(readyPath)} ready; exit 17 ;;
 esac
 exec ${shellQuote(process.execPath)} "$@"
 `,
-    });
-    const logPath = join(workDir, "gateway.log");
-    const fixtureEnv = {
-      ...process.env,
-      HOME: workDir,
-      BRANCH_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_DAEMON_LOG: logPath,
-      BRANCH_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_LOG: join(workDir, "systemctl.log"),
-      BRANCH_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_PID_FILE: join(workDir, "supervisor.pid"),
-    };
-    const shimPath = installUpgradeSurvivorSystemctlShim(workDir, fixtureEnv);
-    const started = spawnSync("bash", [shimPath, "--user", "start", "branch-gateway.service"], {
-      encoding: "utf8",
-      env: { ...fixtureEnv, PATH: `${binDir}:${process.env.PATH ?? ""}` },
-    });
-    expect(started.status, started.stderr).toBe(0);
-    const bootstrapPath = `${logPath}.bootstrap.log`;
-    await withinTest(receipts.waitFor(readyPath, "ready"), signal);
-    expect(readFileSync(bootstrapPath, "utf8")).toContain("supervisor-bootstrap-failure");
-    expect(existsSync(`${logPath}.exit.json`)).toBe(false);
-    const shown = spawnSync("bash", [shimPath, ...SURVIVOR_SERVICE_SHOW_ARGS], {
-      encoding: "utf8",
-      env: fixtureEnv,
-    });
-    expect(shown.status, shown.stderr).toBe(0);
-    expect(shown.stdout).not.toContain("ExecMainStatus=");
-  });
+      });
+      const logPath = join(workDir, "gateway.log");
+      const fixtureEnv = {
+        ...process.env,
+        HOME: workDir,
+        BRANCH_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_DAEMON_LOG: logPath,
+        BRANCH_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_LOG: join(workDir, "systemctl.log"),
+        BRANCH_UPGRADE_SURVIVOR_SYSTEMCTL_SHIM_PID_FILE: join(workDir, "supervisor.pid"),
+      };
+      const shimPath = installUpgradeSurvivorSystemctlShim(workDir, fixtureEnv);
+      const started = spawnSync("bash", [shimPath, "--user", "start", "branch-gateway.service"], {
+        encoding: "utf8",
+        env: { ...fixtureEnv, PATH: `${binDir}:${process.env.PATH ?? ""}` },
+      });
+      expect(started.status, started.stderr).toBe(0);
+      const bootstrapPath = `${logPath}.bootstrap.log`;
+      await withinTest(receipts.waitFor(readyPath, "ready"), signal);
+      expect(readFileSync(bootstrapPath, "utf8")).toContain("supervisor-bootstrap-failure");
+      expect(existsSync(`${logPath}.exit.json`)).toBe(false);
+      const shown = spawnSync("bash", [shimPath, ...SURVIVOR_SERVICE_SHOW_ARGS], {
+        encoding: "utf8",
+        env: fixtureEnv,
+      });
+      expect(shown.status, shown.stderr).toBe(0);
+      expect(shown.stdout).not.toContain("ExecMainStatus=");
+    },
+  );
 
-  it.each([UPGRADE_SURVIVOR_RUN_SCRIPT, UPGRADE_SURVIVOR_DOCKER_E2E_PATH])(
+  itPosix.each([UPGRADE_SURVIVOR_RUN_SCRIPT, UPGRADE_SURVIVOR_DOCKER_E2E_PATH])(
     "collects before cleanup without masking failure or breaking success in %s",
     (scriptPath) => {
       const source = readFileSync(scriptPath, "utf8");
       const setup =
         scriptPath === UPGRADE_SURVIVOR_RUN_SCRIPT
           ? source.split("\nphase storage-preflight storage_preflight")[0]
-          : extractUpgradeSurvivorPayload(source).split(
-              "\nbranch_e2e_eval_test_state_from_b64",
-            )[0];
+          : extractUpgradeSurvivorPayload(source).split("\nbranch_e2e_eval_test_state_from_b64")[0];
       for (const [exitCode, blocked, completed] of [
         [78, false, true],
         [78, true, true],
@@ -4343,7 +4357,7 @@ exit ${exitCode}
     },
   );
 
-  it.each([false, true])(
+  itPosix.each([false, true])(
     "publishes only on the host and preserves Docker outcomes (published baseline: %s)",
     (publishedBaseline) => {
       for (const [exitCode, capturePresent, summaryStatus] of [
@@ -4571,7 +4585,7 @@ exit 0
     },
   );
 
-  it("stops supervised gateway restarts after the systemd burst limit", async ({ signal }) => {
+  itPosix("stops supervised gateway restarts after the systemd burst limit", async ({ signal }) => {
     const workDir = tempDirs.make("branch-update-restart-supervisor-");
     const scripts = [readFileSync(UPGRADE_SURVIVOR_UPDATE_RESTART_AUTH_PATH, "utf8")];
 
@@ -4861,7 +4875,7 @@ if (starts === 1) {
     expect(publishedRunner).not.toContain('branch_e2e_print_log "$SYSTEMCTL_SHIM_DAEMON_LOG"');
   });
 
-  it("preserves caller-owned file descriptors around harness runs", () => {
+  itPosix("preserves caller-owned file descriptors around harness runs", () => {
     const workDir = tempDirs.make("branch-docker-harness-fd-");
     const script = String.raw`
 set -euo pipefail
@@ -4905,7 +4919,7 @@ grep -Fxq preserved "$TMPDIR/caller-fd"
     execDockerSnippet(script);
   });
 
-  it.each(
+  itPosix.each(
     (
       [
         ["release-upgrade-user-journey", "generated-success"],
@@ -5060,9 +5074,11 @@ throw new Error("unexpected fixture command: " + command + " " + JSON.stringify(
     expect(readFileSync(join(workDir, "sentinel"), "utf8")).toBe("keep unrelated file");
   });
 
-  it("preserves failing heredoc output and status through Docker E2E heartbeat logging", () => {
-    const workDir = tempDirs.make("branch-docker-e2e-log-failing-stdin-");
-    const script = repoShell(workDir)`
+  itPosix(
+    "preserves failing heredoc output and status through Docker E2E heartbeat logging",
+    () => {
+      const workDir = tempDirs.make("branch-docker-e2e-log-failing-stdin-");
+      const script = repoShell(workDir)`
 
 source "$ROOT_DIR/scripts/lib/docker-e2e-logs.sh"
 
@@ -5072,12 +5088,13 @@ exit 37
 SH
 `;
 
-    const result = spawnDockerSnippet(script);
+      const result = spawnDockerSnippet(script);
 
-    expect(result.status).toBe(37);
-    expect(result.stdout).toBe("captured failure output\n");
-    expect(result.stderr).toBe("");
-  });
+      expect(result.status).toBe(37);
+      expect(result.stdout).toBe("captured failure output\n");
+      expect(result.stderr).toBe("");
+    },
+  );
 
   it("copies the pnpm lockfile into the runtime image before normalizing its permissions", () => {
     const dockerfile = readFileSync("Dockerfile", "utf8");
@@ -5150,7 +5167,7 @@ export async function sha256File(file) {
     }
   });
 
-  it("builds and cleans package-lane images without touching shared image tags", () => {
+  itPosix("builds and cleans package-lane images without touching shared image tags", () => {
     const root = realpathSync(tempDirs.make("branch-package-image-owner-"));
     for (const file of [
       DOCKER_PACKAGE_INSTALL_E2E_PATH,
@@ -5238,7 +5255,7 @@ process.exit(73);
     }
   });
 
-  it.each(["invalid summary"])("cleans the direct binding runner after %s", (scenario) => {
+  itPosix.each(["invalid summary"])("cleans the direct binding runner after %s", (scenario) => {
     const fixture = containerCleanupFixture(scenario);
     const result = spawnSync("/bin/bash", [PLUGIN_BINDING_COMMAND_ESCAPE_DOCKER_E2E_PATH], {
       env: fixture.env,
@@ -5250,7 +5267,7 @@ process.exit(73);
     expectContainerCleanup(fixture, "branch-plugin-binding-command-escape-e2e-");
   });
 
-  it.for([
+  itPosix.for([
     ["SIGINT", 130],
     ["SIGTERM", 143],
     ["SIGHUP", 129],
@@ -5441,7 +5458,7 @@ process.exit(73);
     }
   });
 
-  it("selects one release-owned Windows helper mount", () => {
+  itPosix("selects one release-owned Windows helper mount", () => {
     const script = repoRootShell`
 export DOCKER_E2E_HARNESS_ROOT_DIR=/trusted-harness
 export DOCKER_E2E_WINDOWS_HELPERS_PATH=/selected/scripts/windows-cmd-helpers.mjs
@@ -5513,7 +5530,7 @@ done
     expect(result.stderr).toContain("health deadline elapsed");
   });
 
-  it("reports the installed doctor switch unit through the systemd manager", async () => {
+  itPosix("reports the installed doctor switch unit through the systemd manager", async () => {
     const home = tempDirs.make("branch-doctor-busctl-shim-");
     const serviceName = "branch-gateway.service";
     const unitPath = join(home, ".config", "systemd", "user", serviceName);
@@ -5587,113 +5604,118 @@ done
     expect((await readLoadedSystemdServiceRuntime(loadedEnv, 30_000)).status).toBe("unknown");
   });
 
-  it("distinguishes a missing named doctor switch unit from failed or unsupported inspection", async () => {
-    const home = tempDirs.make("branch-doctor-busctl-absence-");
-    const binDir = join(home, "bin");
-    const serviceName = "branch-gateway-fixture.service";
-    const unitPath = join(home, ".config/systemd/user", serviceName);
-    writeExecutables(binDir, {
-      // Bind fixture identity here: native manager children do not inherit Branch Agent selectors.
-      busctl: readFileSync(DOCTOR_SWITCH_BUSCTL_SHIM_PATH, "utf8").replace(
-        "process.env.BRANCH_SYSTEMD_UNIT",
-        JSON.stringify(serviceName),
-      ),
-      "systemd-exec-start.mjs": readFileSync(DOCTOR_SWITCH_SYSTEMD_EXEC_START_PATH, "utf8"),
-    });
-    const env = {
-      HOME: home,
-      PATH: `${binDir}:${process.env.PATH}`,
-      BRANCH_SYSTEMD_UNIT: "branch-gateway-fixture",
-      XDG_RUNTIME_DIR: join(home, "runtime"),
-      DBUS_SESSION_BUS_ADDRESS: `unix:path=${join(home, "runtime", "bus")}`,
-    };
-    expect(
-      await readSystemdServiceExecStart(env, { requireEffective: true, timeoutMs: 30_000 }),
-    ).toBeNull();
-    const loadArgs = [
-      "--user",
-      "--json=short",
-      "call",
-      "org.freedesktop.systemd1",
-      "/org/freedesktop/systemd1",
-      "org.freedesktop.systemd1.Manager",
-      "LoadUnit",
-      "s",
-      serviceName,
-    ];
-    const invoke = (args: string[]) =>
-      spawnSync(join(binDir, "busctl"), args, { env, encoding: "utf8" });
-    const managerVersion = invoke([
-      "--user",
-      "--auto-start=no",
-      "get-property",
-      "org.freedesktop.systemd1",
-      "/org/freedesktop/systemd1",
-      "org.freedesktop.systemd1.Manager",
-      "Version",
-    ]);
-    expect(managerVersion.status, managerVersion.stderr).toBe(0);
-    expect(managerVersion.stdout.trim()).toBe('s "252.39-1~deb12u2"');
-    const missing = invoke(loadArgs);
-    expect(missing.status).toBe(1);
-    expect(missing.stderr.trim()).toBe(`Call failed: Unit ${serviceName} not found.`);
-    for (const args of [
-      [...loadArgs, "extra"],
-      [...loadArgs.slice(0, -1), "../missing.service"],
-      [...loadArgs.slice(0, -1), "unrelated.service"],
-      ["--user", "--json=short", "list"],
-    ]) {
-      const unsupported = invoke(args);
-      expect(unsupported.status).toBe(1);
-      expect(unsupported.stderr).not.toContain("not found.");
-    }
-    mkdirSync(dirname(unitPath), { recursive: true });
-    writeFileSync(
-      unitPath,
-      "[Service]\nExecStart=/usr/bin/node /opt/profile/branch.mjs gateway\nEnvironment=OLD=stale\nEnvironment=\nEnvironment=KEEP=current REMOVE=value\nUnsetEnvironment=KEEP\nUnsetEnvironment=\nUnsetEnvironment=REMOVE\nEnvironmentFile=/missing/required.env\nEnvironmentFile=\n",
-    );
-    const command = await readSystemdServiceExecStart(env, {
-      requireEffective: true,
-      timeoutMs: 30_000,
-    });
-    expect(command?.sourcePath).toBe(unitPath);
-    expect(command?.environment).toEqual({ KEEP: "current" });
-    rmSync(unitPath);
-    mkdirSync(unitPath);
-    const unreadable = invoke(loadArgs);
-    expect(unreadable.status).toBe(1);
-    expect(unreadable.stderr).not.toContain("not found.");
-    const staleObject = invoke([
-      "--user",
-      "--json=short",
-      "get-property",
-      "org.freedesktop.systemd1",
-      "/org/freedesktop/systemd1/unit/branch_2dgateway_2dfixture_2eservice",
-      "org.freedesktop.systemd1.Unit",
-      "FragmentPath",
-      "DropInPaths",
-      "NeedDaemonReload",
-      "LoadState",
-    ]);
-    expect(staleObject.status).toBe(1);
-    expect(staleObject.stdout).not.toContain('"loaded"');
-  });
+  itPosix(
+    "distinguishes a missing named doctor switch unit from failed or unsupported inspection",
+    async () => {
+      const home = tempDirs.make("branch-doctor-busctl-absence-");
+      const binDir = join(home, "bin");
+      const serviceName = "branch-gateway-fixture.service";
+      const unitPath = join(home, ".config/systemd/user", serviceName);
+      writeExecutables(binDir, {
+        // Bind fixture identity here: native manager children do not inherit Branch Agent selectors.
+        busctl: readFileSync(DOCTOR_SWITCH_BUSCTL_SHIM_PATH, "utf8").replace(
+          "process.env.BRANCH_SYSTEMD_UNIT",
+          JSON.stringify(serviceName),
+        ),
+        "systemd-exec-start.mjs": readFileSync(DOCTOR_SWITCH_SYSTEMD_EXEC_START_PATH, "utf8"),
+      });
+      const env = {
+        HOME: home,
+        PATH: `${binDir}:${process.env.PATH}`,
+        BRANCH_SYSTEMD_UNIT: "branch-gateway-fixture",
+        XDG_RUNTIME_DIR: join(home, "runtime"),
+        DBUS_SESSION_BUS_ADDRESS: `unix:path=${join(home, "runtime", "bus")}`,
+      };
+      expect(
+        await readSystemdServiceExecStart(env, { requireEffective: true, timeoutMs: 30_000 }),
+      ).toBeNull();
+      const loadArgs = [
+        "--user",
+        "--json=short",
+        "call",
+        "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager",
+        "LoadUnit",
+        "s",
+        serviceName,
+      ];
+      const invoke = (args: string[]) =>
+        spawnSync(join(binDir, "busctl"), args, { env, encoding: "utf8" });
+      const managerVersion = invoke([
+        "--user",
+        "--auto-start=no",
+        "get-property",
+        "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager",
+        "Version",
+      ]);
+      expect(managerVersion.status, managerVersion.stderr).toBe(0);
+      expect(managerVersion.stdout.trim()).toBe('s "252.39-1~deb12u2"');
+      const missing = invoke(loadArgs);
+      expect(missing.status).toBe(1);
+      expect(missing.stderr.trim()).toBe(`Call failed: Unit ${serviceName} not found.`);
+      for (const args of [
+        [...loadArgs, "extra"],
+        [...loadArgs.slice(0, -1), "../missing.service"],
+        [...loadArgs.slice(0, -1), "unrelated.service"],
+        ["--user", "--json=short", "list"],
+      ]) {
+        const unsupported = invoke(args);
+        expect(unsupported.status).toBe(1);
+        expect(unsupported.stderr).not.toContain("not found.");
+      }
+      mkdirSync(dirname(unitPath), { recursive: true });
+      writeFileSync(
+        unitPath,
+        "[Service]\nExecStart=/usr/bin/node /opt/profile/branch.mjs gateway\nEnvironment=OLD=stale\nEnvironment=\nEnvironment=KEEP=current REMOVE=value\nUnsetEnvironment=KEEP\nUnsetEnvironment=\nUnsetEnvironment=REMOVE\nEnvironmentFile=/missing/required.env\nEnvironmentFile=\n",
+      );
+      const command = await readSystemdServiceExecStart(env, {
+        requireEffective: true,
+        timeoutMs: 30_000,
+      });
+      expect(command?.sourcePath).toBe(unitPath);
+      expect(command?.environment).toEqual({ KEEP: "current" });
+      rmSync(unitPath);
+      mkdirSync(unitPath);
+      const unreadable = invoke(loadArgs);
+      expect(unreadable.status).toBe(1);
+      expect(unreadable.stderr).not.toContain("not found.");
+      const staleObject = invoke([
+        "--user",
+        "--json=short",
+        "get-property",
+        "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1/unit/branch_2dgateway_2dfixture_2eservice",
+        "org.freedesktop.systemd1.Unit",
+        "FragmentPath",
+        "DropInPaths",
+        "NeedDaemonReload",
+        "LoadState",
+      ]);
+      expect(staleObject.status).toBe(1);
+      expect(staleObject.stdout).not.toContain('"loaded"');
+    },
+  );
 
-  it("mounts the selected Doctor contract and canonical-path shims from the same checkout", () => {
-    const workDir = tempDirs.make("branch-doctor-contract-mounts-");
-    const targetRoot = join(workDir, "selected target");
-    const contractPath = "scripts/e2e/lib/doctor-install-switch";
-    const shimNames = ["systemctl", "loginctl", "busctl", "systemd-exec-start.mjs"];
-    const targetContract = join(targetRoot, contractPath);
-    mkdirSync(join(targetContract, "shims"), { recursive: true });
-    copyFileSync(DOCTOR_SWITCH_SCENARIO_PATH, join(targetContract, "scenario.sh"));
-    for (const name of shimNames) {
-      copyFileSync(join(contractPath, "shims", name), join(targetContract, "shims", name));
-    }
-    writeFileSync(join(workDir, "branch-current.tgz"), "unused package transport fixture");
-    writeExecutables(join(workDir, "bin"), {
-      timeout: PASSTHROUGH_TIMEOUT_SCRIPT,
-      docker: `#!/bin/bash
+  itPosix(
+    "mounts the selected Doctor contract and canonical-path shims from the same checkout",
+    () => {
+      const workDir = tempDirs.make("branch-doctor-contract-mounts-");
+      const targetRoot = join(workDir, "selected target");
+      const contractPath = "scripts/e2e/lib/doctor-install-switch";
+      const shimNames = ["systemctl", "loginctl", "busctl", "systemd-exec-start.mjs"];
+      const targetContract = join(targetRoot, contractPath);
+      mkdirSync(join(targetContract, "shims"), { recursive: true });
+      copyFileSync(DOCTOR_SWITCH_SCENARIO_PATH, join(targetContract, "scenario.sh"));
+      for (const name of shimNames) {
+        copyFileSync(join(contractPath, "shims", name), join(targetContract, "shims", name));
+      }
+      writeFileSync(join(workDir, "branch-current.tgz"), "unused package transport fixture");
+      writeExecutables(join(workDir, "bin"), {
+        timeout: PASSTHROUGH_TIMEOUT_SCRIPT,
+        docker: `#!/bin/bash
 set -euo pipefail
 case "$1 \${2:-}" in
   "image inspect") exit 0 ;;
@@ -5701,8 +5723,8 @@ case "$1 \${2:-}" in
   *) exit 9 ;;
 esac
 `,
-    });
-    const script = repoShell(workDir)`
+      });
+      const script = repoShell(workDir)`
 export PATH="$TMPDIR/bin:$PATH"
 export BRANCH_SKIP_DOCKER_BUILD=1
 export BRANCH_DOCKER_E2E_IMAGE=doctor-contract-fixture
@@ -5711,34 +5733,33 @@ unset DOCKER_E2E_HARNESS_ROOT_DIR BRANCH_PREPUBLISH_PLUGIN_REGISTRY_DIR BRANCH_D
 export BRANCH_DOCKER_E2E_REPO_ROOT=${shellQuote(targetRoot)}
 bash "$ROOT_DIR/scripts/e2e/doctor-install-switch-docker.sh"
 `;
-    const result = spawnDockerSnippet(script, {
-      encoding: "utf8",
-    });
-    expect(result.status, result.stderr).toBe(0);
-    const args = readFileSync(join(workDir, "docker-run-args"), "utf8").split("\0");
-    const mounts = args.flatMap((arg, index) => (arg === "-v" ? [args[index + 1]] : []));
-    // Service inspection uses /usr/local/bin, outside the target directory overlay.
-    // Both views must select one fixture while shared helpers stay trusted.
-    expect(mounts.filter((mount) => mount?.includes(":/usr/local/bin/"))).toEqual(
-      shimNames.map(
-        (name) => `${targetRoot}/${contractPath}/shims/${name}:/usr/local/bin/${name}:ro`,
-      ),
-    );
-    expect(mounts).toContain(`${targetRoot}/${contractPath}:/app/${contractPath}:ro`);
-    expect(mounts).toContain(`${process.cwd()}/scripts/e2e:/app/scripts/e2e:ro`);
-    expect(mounts).toContain(`${process.cwd()}/scripts/lib:/app/scripts/lib:ro`);
-    expect(args).toContain("doctor-contract-fixture");
-    expect(args).toContain(`${contractPath}/scenario.sh`);
-  });
+      const result = spawnDockerSnippet(script, {
+        encoding: "utf8",
+      });
+      expect(result.status, result.stderr).toBe(0);
+      const args = readFileSync(join(workDir, "docker-run-args"), "utf8").split("\0");
+      const mounts = args.flatMap((arg, index) => (arg === "-v" ? [args[index + 1]] : []));
+      // Service inspection uses /usr/local/bin, outside the target directory overlay.
+      // Both views must select one fixture while shared helpers stay trusted.
+      expect(mounts.filter((mount) => mount?.includes(":/usr/local/bin/"))).toEqual(
+        shimNames.map(
+          (name) => `${targetRoot}/${contractPath}/shims/${name}:/usr/local/bin/${name}:ro`,
+        ),
+      );
+      expect(mounts).toContain(`${targetRoot}/${contractPath}:/app/${contractPath}:ro`);
+      expect(mounts).toContain(`${process.cwd()}/scripts/e2e:/app/scripts/e2e:ro`);
+      expect(mounts).toContain(`${process.cwd()}/scripts/lib:/app/scripts/lib:ro`);
+      expect(args).toContain("doctor-contract-fixture");
+      expect(args).toContain(`${contractPath}/scenario.sh`);
+    },
+  );
 
   it("passes installer tag env to bash, not curl", () => {
     const runner = readFileSync(INSTALL_E2E_RUNNER_PATH, "utf8");
     expect(runner).toContain('BRANCH_BETA=1 bash "$installer"');
     expect(runner).toContain('BRANCH_VERSION="$INSTALL_TAG" bash "$installer"');
     expect(runner).not.toContain('BRANCH_BETA=1 curl -fsSL "$INSTALL_URL" | bash');
-    expect(runner).not.toContain(
-      'BRANCH_VERSION="$INSTALL_TAG" curl -fsSL "$INSTALL_URL" | bash',
-    );
+    expect(runner).not.toContain('BRANCH_VERSION="$INSTALL_TAG" curl -fsSL "$INSTALL_URL" | bash');
   });
 
   it("keeps the plugin binding command escape Docker smoke focused", () => {
