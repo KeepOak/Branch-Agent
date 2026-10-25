@@ -102,6 +102,24 @@ it("opens this computer's live screen from the header even when no Trunk has a c
   expect(request.mock.calls.map(([method]) => method)).not.toContain("desktop.observe");
   expect(request.mock.calls.some(([method]) => method === "computer.invoke")).toBe(true);
   expect(request.mock.calls.some(([method]) => method === "sessions.move")).toBe(false);
+  expect(request.mock.calls.filter(([method]) => method === "config.patch")).toHaveLength(0);
+});
+
+it("asks for screen access from the header without changing the disabled setting", async () => {
+  const { session, request } = live({ placement: false });
+  await act(async () => root.render(<R1Window session={session} />));
+  await act(async () => header("Computer")!.click());
+  await flush();
+  expect(request.mock.calls.filter(([method]) => method === "config.patch")).toHaveLength(0);
+  const config = await session.engine.request<{ config: { plugins: { entries: { "cua-computer": { enabled: boolean } } } } }>("config.get", {});
+  expect(config.config.plugins.entries["cua-computer"].enabled).toBe(false);
+  const enable = [...host.querySelectorAll("button")].find((button) => button.textContent === "See the screen and use the mouse");
+  expect(enable).toBeDefined();
+  expect(host.querySelector("img.native-screen")).toBeNull();
+  await act(async () => enable!.click());
+  await flush();
+  expect(request.mock.calls.filter(([method]) => method === "config.patch")).toHaveLength(1);
+  expect(host.querySelector("img.native-screen")?.getAttribute("src")).toBe(`data:image/png;base64,${FRAME.base64}`);
 });
 
 it("opens a browser that can start and take an address from the header, with no Trunk pages open", async () => {

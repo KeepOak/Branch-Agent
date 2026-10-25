@@ -17,6 +17,7 @@ import { AddComputer } from "./AddComputer";
 import { shows, useLevel } from "../places-nav/level";
 import { configStore } from "../places/settings/config-store";
 import { NativeScreen } from "./NativeScreen";
+import type { ComputerStatus } from "./computer-status-problem";
 import { useTrunkHold } from "./trunk-hold";
 import { setTouchMode, useTouchMode } from "./touch-mode";
 import "./stage.css";
@@ -234,7 +235,7 @@ export function ComputerStage({
   const [enabling, setEnabling] = useState(false);
   const [enableError, setEnableError] = useState("");
   const [nativeLive, setNativeLive] = useState(false);
-  const [nativeSelected, setNativeSelected] = useState(ownerScreen);
+  const [nativeSelected, setNativeSelected] = useState(false);
   const target = useRef<HTMLDivElement>(null);
   const where = useWhere(engine, tick);
   useEffect(() => {
@@ -252,9 +253,10 @@ export function ComputerStage({
   // The header's computer button opens this PC (P5 / PR 229); a Trunk's placed computer stays in the tabs.
   const viewing = picked === "grid" ? null : picked ?? (ownerScreen ? "gateway" : current);
   const viewed = where.computers.find((c) => c.id === viewing);
+  const ownerNative = ownerScreen && viewing === "gateway" && !viewed?.desktop;
   const native = mode === "Computer" && nativeSelected && viewing === "gateway" && where.loaded && !viewed?.desktop;
-  const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && !native && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
-  const screenView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: COMPUTER_UNAVAILABLE, detail: where.error } : view;
+  const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && !native && !ownerNative && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
+  const screenView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: COMPUTER_UNAVAILABLE, detail: where.error } : ownerNative && !nativeSelected ? { phase: "empty" } : view;
   const slow = useSlow(mode === "Computer" && !native && picked !== "grid" && screenView.phase === "loading", `${tick}|${retry}|${viewing}`);
   const noComputer = where.loaded && !where.error && !viewing && where.computers.length === 0;
   const steps = planSteps(card);
@@ -281,21 +283,13 @@ export function ComputerStage({
     }, () => setEnableError("Couldn't turn on screen access. Open Computer settings and try again.")).finally(() => setEnabling(false));
   };
   useEffect(() => {
-    // Clicking the header Computer icon is the same choice as "See the screen": turn the driver on and show this PC.
+    // computer.status already distinguishes an enabled driver from one that is not configured.
+    // Opening the header is only a request to view; enabling control still needs the screen button.
     if (!ownerScreen || mode !== "Computer") return;
     let live = true;
-    setEnabling(true);
-    setEnableError("");
-    void configStore(engine).set("plugins.entries.cua-computer.enabled", true).then(() => {
-      if (!live) return;
-      setNativeSelected(true);
-      setPicked("gateway");
-      setRetry((value) => value + 1);
-    }, () => {
-      if (live) setEnableError("Couldn't turn on screen access. Open Computer settings and try again.");
-    }).finally(() => {
-      if (live) setEnabling(false);
-    });
+    void engine.request<ComputerStatus>("computer.status", {}).then((status) => {
+      if (live && (status.configured === true || status.available === true)) setNativeSelected(true);
+    }, () => undefined);
     return () => {
       live = false;
     };
@@ -348,7 +342,7 @@ export function ComputerStage({
           ) : (
             <button type="button" className="st7-pick" aria-haspopup="dialog" aria-expanded={picker !== null} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPicker(picker ? null : { x: r.left, y: r.bottom + 6 }); }}>
               <SIcon name="layers" small />
-              {native ? "This computer (viewing)" : where.loaded ? pickerLabel(where.computers, current) : "Computers"}
+              {native || (ownerScreen && viewing === "gateway") ? "This computer (viewing)" : where.loaded ? pickerLabel(where.computers, current) : "Computers"}
               <SIcon name="down" small />
             </button>
           )}

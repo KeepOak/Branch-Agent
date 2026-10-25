@@ -29,8 +29,8 @@ function asMac() {
 }
 const screenButton = () => [...document.querySelectorAll("button")].find((button) => button.textContent === "See the screen and use the mouse");
 const frame = { format: "png", base64: "iVBORw0KGgo=" };
-function fixture(snapshot: () => Promise<unknown> = async () => ({ payload: frame }), patchError = false, driver: { reason?: string } = {}) {
-  let enabled = false;
+function fixture(snapshot: () => Promise<unknown> = async () => ({ payload: frame }), patchError = false, driver: { reason?: string } = {}, initiallyEnabled = false) {
+  let enabled = initiallyEnabled;
   const request = vi.fn(async (method: string, params: unknown) => {
     if (method === "sessions.describe") return { session: { key: "agent:scout:one" } };
     if (method === "environments.list") return { environments: [{ id: "gateway", type: "local", status: "available" }] };
@@ -50,7 +50,7 @@ function fixture(snapshot: () => Promise<unknown> = async () => ({ payload: fram
     return {};
   });
   const engine = { request, sessionKey: "agent:scout:one", scopes: ["operator.admin"], onEvent: () => () => {} } as WindowEngine;
-  return { engine, request };
+  return { engine, request, isEnabled: () => enabled };
 }
 async function render(engine: WindowEngine, ownerScreen = false) {
   const host = document.createElement("div");
@@ -60,14 +60,42 @@ async function render(engine: WindowEngine, ownerScreen = false) {
 }
 describe("computer screen setup", () => {
   it("opens this computer's live screen from the header without a Trunk placement", async () => {
-    const { engine, request } = fixture();
+    const { engine, request } = fixture(undefined, false, {}, true);
     await render(engine, true);
+    expect(request.mock.calls.filter(([method]) => method === "config.patch")).toHaveLength(0);
     expect(document.querySelector("img.native-screen")?.getAttribute("src")).toBe(`data:image/png;base64,${frame.base64}`);
     expect(document.querySelector(".computer-stage")?.getAttribute("aria-label")).toBe("This computer");
     expect(request.mock.calls.map(([method]) => method)).not.toContain("desktop.observe");
     expect(request.mock.calls.some(([method]) => method === "computer.invoke")).toBe(true);
     expect(request.mock.calls.some(([method]) => method === "sessions.dispatch" || method === "sessions.move")).toBe(false);
     expect(screenButton()).toBeUndefined();
+  });
+  it("asks before enabling screen control from the header", async () => {
+    const { engine, request, isEnabled } = fixture();
+    await render(engine, true);
+    expect(request.mock.calls.filter(([method]) => method === "config.patch")).toHaveLength(0);
+    expect(isEnabled()).toBe(false);
+    expect(screenButton()).toBeDefined();
+    expect(document.querySelector("img.native-screen")).toBeNull();
+    expect(request.mock.calls.some(([method]) => method === "computer.invoke")).toBe(false);
+    await act(async () => screenButton()!.click());
+    expect(request.mock.calls.filter(([method]) => method === "config.patch")).toHaveLength(1);
+    expect(isEnabled()).toBe(true);
+    expect(document.querySelector("img.native-screen")?.getAttribute("src")).toBe(`data:image/png;base64,${frame.base64}`);
+    expect(screenButton()).toBeUndefined();
+  });
+  it("keeps the header consent prompt and alert visible after a failed save and retries the write", async () => {
+    const { engine, request, isEnabled } = fixture(undefined, true);
+    await render(engine, true);
+    await act(async () => screenButton()!.click());
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe("Couldn't turn on screen access. Open Computer settings and try again.");
+    expect(screenButton()?.disabled).toBe(false);
+    expect(isEnabled()).toBe(false);
+    expect(document.querySelector(".native-screen")).toBeNull();
+    expect(request.mock.calls.filter(([method]) => method === "config.patch")).toHaveLength(1);
+    await act(async () => screenButton()!.click());
+    expect(request.mock.calls.filter(([method]) => method === "config.patch")).toHaveLength(2);
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe("Couldn't turn on screen access. Open Computer settings and try again.");
   });
   it("offers one screen switch and never captures before it is chosen", async () => {
     const { engine, request } = fixture();
