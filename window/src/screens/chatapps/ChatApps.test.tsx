@@ -231,3 +231,24 @@ it("labels a connected card that isn't running with its state word, never Coming
   await act(async () => card.click());
   expect(manage).not.toHaveBeenCalled();
 });
+it("labels a running card with an issue or error with the pill's word, never Connected", async () => {
+  const cases = [
+    { name: "status issue", status: { channelAccounts: { telegram: [{ accountId: "default", configured: true, running: true }] }, statusIssues: [{ channel: "telegram", accountId: "default", kind: "runtime", message: "Bot token rejected" }] } },
+    { name: "last error", status: { channelAccounts: { telegram: [{ accountId: "default", configured: true, running: true, lastError: "Bot token rejected" }] } } },
+  ];
+  let first = true;
+  for (const { name, status } of cases) {
+    for (const canManage of [true, false]) {
+      if (!first) { await act(async () => root.unmount()); document.body.innerHTML = ""; }
+      first = false;
+      const { host } = await render(status, methods, ["operator.admin"], undefined, canManage);
+      const pill = host.querySelector(".r1-ca-connected [role=listitem]")!.textContent;
+      expect(pill, name).toContain("Offline");
+      const card = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find(b => b.querySelector("b")?.textContent === "Telegram")!;
+      // Manage available: the card's line; Manage unavailable: the card's action label.
+      const word = canManage ? card.querySelector(".r1-ca-text small")?.textContent : card.querySelector(".r1-ca-action")?.textContent;
+      expect(word, name).toBe("Offline");
+      expect(card.textContent, name).not.toContain("Connected");
+    }
+  }
+});

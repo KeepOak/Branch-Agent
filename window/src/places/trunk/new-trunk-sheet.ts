@@ -1,6 +1,7 @@
 // The New Trunk sheet (preview editTrunk look controls, then newTrunkC18's chat questions).
 // Colour and shape are the preview's pebble sets. Create sends them with the name; the chat asks the rest.
 import type { WindowEngine } from "../../connect/engine";
+import { errorWords } from "../../shell/plain-error";
 import { existingTrunkId } from "./api";
 import { COLOURS } from "./LookTab";
 
@@ -54,12 +55,26 @@ function refused(result: unknown): void {
   }
 }
 
+/** Names this window already sent to agents.create, per gateway address (trimmed, lowercased). Keyed by
+ *  `gatewayUrl`, not the engine handle: a reconnect rebuilds the handle, and the retry must still count as Create again. */
+const attemptedNames = new Map<string, Set<string>>();
+
 /** agents.create with the pebble the sheet shows. Eyes stay Round; the editor still changes them.
- *  Create again for a name that already exists returns that Trunk so the sheet can open it. */
+ *  Create again for a name this window already tried (the first reply may have been lost) returns that Trunk
+ *  so the sheet can open it. A name taken by an older Trunk throws, so the sheet asks for another name. */
 export async function createShapedTrunk(engine: WindowEngine, draft: NewTrunkDraft): Promise<string> {
   const name = draft.name.trim();
   if (!canCreateTrunk(name)) throw new Error("Give the Trunk a name.");
   if (!TRUNK_COLOURS.includes(draft.colour) || !TRUNK_SHAPES.includes(draft.shape)) throw new Error("Pick a colour and a shape.");
+  const key = name.toLowerCase();
+  const gateway = engine.gatewayUrl ?? "";
+  let tried = attemptedNames.get(gateway);
+  if (!tried) {
+    tried = new Set();
+    attemptedNames.set(gateway, tried);
+  }
+  const triedBefore = tried.has(key);
+  tried.add(key);
   try {
     const result = await engine.request("agents.create", {
       name,
@@ -73,6 +88,11 @@ export async function createShapedTrunk(engine: WindowEngine, draft: NewTrunkDra
     if (!id) throw new Error("The engine did not confirm that the Trunk was created.");
     return id;
   } catch (error) {
+    if (!triedBefore) {
+      // A clear "already exists" on a first try means an older Trunk has the name: forget it so Create again asks again.
+      if (/already exists/i.test(errorWords(error))) tried.delete(key);
+      throw error;
+    }
     const existing = await existingTrunkId(engine, name, error);
     if (existing) return existing;
     throw error;

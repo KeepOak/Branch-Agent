@@ -318,6 +318,17 @@ function useEngineReads(session: SaplingSession) {
   };
 }
 
+/** §3.6: skip to the chat input or page heading, with main as the empty-page fallback. */
+function skipToMain(e: MouseEvent<HTMLAnchorElement>, chat: boolean) {
+  const main = document.getElementById("main");
+  if (!main) return;
+  e.preventDefault();
+  const composer = chat ? main.querySelector<HTMLElement>('.composer textarea, .composer [contenteditable="true"]') : null;
+  const heading = main.querySelector<HTMLHeadingElement>("h1");
+  if (!composer && heading) heading.setAttribute("tabindex", "-1");
+  (composer ?? heading ?? main).focus();
+}
+
 /** The whole window once connected (DESIGN-SPEC §3): top bar, sidebar, main, status bar, menus and toasts. */
 export function WindowShell({ session, url }: { session: SaplingSession; url: string }) {
   const dedicated = new URLSearchParams(location.search).has("conversation");
@@ -1589,7 +1600,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     <TrunkPebbleLooks.Provider value={pebbleLooks}>
     <TrunkEmojiFaces.Provider value={Object.fromEntries(trunks.list.map((t) => [t.name, t.emoji ?? ""]))}>
     <div className={frameClass} data-connection={ready ? "ready" : s.status.phase} data-route={route.kind} style={{ ["--side-w" as string]: `${dedicated ? 0 : sideWidth}px`, ...(stagePlace?.mode === "beside" ? { ["--stage-w" as string]: `${stagePlace.width}px` } : {}) }}>
-      <a className="skip" href="#main">
+      <a className="skip" href="#main" onClick={(e) => skipToMain(e, route.kind === "chat")}>
         {route.kind === "chat" ? "Skip to the conversation" : "Skip to the page"}
       </a>
       <TopBar
@@ -1733,7 +1744,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       ) : null}
       {layout.focus || layout.hidden || settingsAutoRail || browserAutoRail ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
       {slideOpen ? <div className="slide-scrim" onClick={() => setSlideOpen(false)} /> : null}
-      <main className={mainClass} id="main">
+      <main className={mainClass} id="main" tabIndex={-1}>
         {lockdown.on ? <LockdownBanner onTurnOff={toggleLockdown} /> : null}
         {layout.focus ? (
           <button type="button" className="btn sm focus-exit" onClick={() => setLayout({ focus: false })}>
