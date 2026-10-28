@@ -35,7 +35,7 @@ export function entryForSeed(seed: Seed, entries: readonly Entry[]): Entry | nul
 type Props = { engine: WindowEngine; variant?: "place" | "settings"; /** The kind chip Seedbank opens on (Customize asks for one kind). */ initialKind?: KindId | "all" };
 
 export function Seedbank({ engine, variant = "place", initialKind = "all" }: Props) {
-  const [kind, setKind] = useState<KindId | "all">(initialKind);
+  const [selectedKind, setKind] = useState<KindId | "all">(initialKind);
   const [query, setQuery] = useState(""), [sort, setSort] = useState<Sort>("popular"), [cat, setCat] = useState("All");
   const [open, setOpen] = useState<Entry | null>(null), [paste, setPaste] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamFile | null>(null);
@@ -43,6 +43,7 @@ export function Seedbank({ engine, variant = "place", initialKind = "all" }: Pro
   const data = useSeedbank(engine, query);
   // Coming controls (Open on keepoak.com, Most stars, an Add that waits on the engine) show only at Technical.
   const comingShown = useLevelNow(engine) >= COMING_FROM;
+  const kind = !comingShown && selectedKind !== "all" && kindOf(selectedKind).coming ? "all" : selectedKind;
   const shown = useMemo(() => sortEntries(data.entries.filter(e => (kind === "all" || e.kind === kind) && matches(e, query)), sort), [data.entries, kind, query, sort]);
 
   const openTeam = (text: string, seedReason: string): string | null => {

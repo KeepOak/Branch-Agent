@@ -90,6 +90,26 @@ describe("Seedbank", () => {
     expect(buttons(host, "＋ Paste a seed")).toHaveLength(1);
   });
 
+  it.each([
+    ["regular", "toolsets"], ["regular", "clis"],
+    ["advanced", "toolsets"], ["advanced", "clis"],
+    ["technical", "toolsets"], ["technical", "clis"],
+  ] as const)("at %s, opening %s selects All unless Coming is shown", async (level, initialKind) => {
+    localStorage.setItem("branch.level", level);
+    const { engine } = engineOf([]);
+    const host = await render(engine, <Seedbank engine={engine} initialKind={initialKind} />);
+    const selected = host.querySelectorAll('.sb-chips [aria-selected="true"]');
+    expect(selected).toHaveLength(1);
+    if (level === "technical") {
+      expect(selected[0].textContent).toBe(initialKind === "toolsets" ? "Toolsets" : "Command-line tools");
+      expect(host.querySelector(`[data-coming-kind=${initialKind}]`)).not.toBeNull();
+    } else {
+      expect(selected[0].textContent).toBe("All");
+      expect([...host.querySelectorAll(".sb-results .sb-sec-h b")].map(el => el.textContent)).toEqual(["Agents", "Skills", "Connectors", "Plugins", "Themes & looks"]);
+      expect(host.querySelector('[data-testid="sb-row"]')).not.toBeNull();
+    }
+  });
+
   it("renders with an empty engine: the eight templates, every unwired control Coming, nothing undeclared", async () => {
     localStorage.setItem("branch.level", "technical");   // the Add pills' Coming reasons show only at Technical
     const { engine, request } = engineOf([]);
