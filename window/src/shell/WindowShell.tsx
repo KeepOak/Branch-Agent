@@ -70,6 +70,7 @@ import type { Roster } from "../places/trunk/model";
 import { creationProblem, readRoster } from "../places/trunk/model";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
+import { PairingPrompt } from "./pairing-prompt";
 import { guideMenuItems } from "./guide-menu";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
@@ -1908,6 +1909,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       }} /> : null}
       {overlay?.kind === "apps" ? <GetAppsDialog onClose={() => setOverlay(null)} onPair={() => setOverlay({ kind: "pair" })} /> : null}
       {overlay?.kind === "pair" ? <PairDialog engine={session.engine} close={() => setOverlay(null)} /> : null}
+      {!dedicated ? <PairingPrompt engine={session.engine} ready={ready} /> : null}
       {newProject ? <NewProjectDialog session={session} onDone={projects.reload} onClose={() => setNewProject(false)} /> : null}
       {keeping ? <KeepLastDialog onCancel={() => setKeeping(null)} onKeep={() => (setKeeping(null), void tidy({ session, list }, keeping, true))} /> : null}
       {deletingMany && deletingMany.length ? (
