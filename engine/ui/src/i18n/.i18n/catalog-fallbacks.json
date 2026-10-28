@@ -264,6 +264,28 @@
       "zh-CN",
       "zh-TW"
     ],
+    "appsPage.ctaReleases": [
+      "ar",
+      "de",
+      "es",
+      "fa",
+      "fr",
+      "hi",
+      "id",
+      "it",
+      "ja-JP",
+      "ko",
+      "nl",
+      "pl",
+      "pt-BR",
+      "ru",
+      "th",
+      "tr",
+      "uk",
+      "vi",
+      "zh-CN",
+      "zh-TW"
+    ],
     "appsPage.heroTitle": [
       "ar",
       "de",
@@ -7921,6 +7943,6 @@
       "zh-TW"
     ]
   },
-  "sourceHash": "2dcb7e71c33b994d4a1a40d1d69521db6d2373bbdc44e810a0438c77d9b8b6b2",
+  "sourceHash": "b2ae254e066941b9483f6cbd9bb861de816cb855978901fb04d77c7e868ecd7f",
   "version": 1
 }
