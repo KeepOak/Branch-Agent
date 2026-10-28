@@ -603,7 +603,7 @@ describe("triage --run", () => {
   });
 
   it.each([
-    { name: "collection failure", secret: ["sk-t", "est-triage-oracle-secret-1234567890"].join("") },
+    { name: "collection failure", secret: "sk-test-triage-oracle-secret-1234567890" },
     { name: "malformed JSON", result: { code: 0, termination: "exit", stdout: "not-json" } },
     { name: "missing findings", result: { code: 0, termination: "exit", stdout: "{}" } },
     {

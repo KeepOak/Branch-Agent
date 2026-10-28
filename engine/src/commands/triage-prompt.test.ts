@@ -139,7 +139,7 @@ describe("renderTriagePrompt", () => {
   });
 
   it("keeps the failed attempt ahead of healthy Doctor results and sanitizes its evidence", () => {
-    const secret = ["sk-t", "est-update-triage-secret-1234567890"].join("");
+    const secret = "sk-test-update-triage-secret-1234567890";
     const prompt = renderTriagePrompt({
       findings: [],
       bundle: { kind: "skipped" },

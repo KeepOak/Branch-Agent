@@ -265,7 +265,7 @@ describe("gateway chat.inject transcript writes", () => {
       prefix: "branch-chat-inject-redact-",
       sessionId: "sess-redact",
     });
-    const fakeApiKey = ["sk-p", "roj-FAKEKEYFORTESTINGONLY1234567890"].join("");
+    const fakeApiKey = "sk-proj-FAKEKEYFORTESTINGONLY1234567890";
     const updates: Array<{ message?: unknown; sessionKey?: string; agentId?: string }> = [];
     const unsubscribe = onSessionTranscriptUpdate((update) => updates.push(update));
 

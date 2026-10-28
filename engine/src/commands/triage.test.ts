@@ -675,7 +675,7 @@ describe("triageCommand", () => {
   });
 
   it("degrades to a sanitized prompt when the diagnostics export fails", async () => {
-    const secret = ["sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join("");
+    const secret = "sk-abcdefghijklmnopqrstuvwxyz123456";
     mocks.callGatewayFromCliWithTransport.mockResolvedValue({ ok: true });
     mocks.writeDiagnosticSupportExport.mockRejectedValue(
       new Error(
@@ -704,7 +704,7 @@ describe("triageCommand", () => {
   it.each(["json", "nonInteractive", "piped"] as const)(
     "preserves a failed update when Doctor and export fail in %s mode",
     async (mode) => {
-      const secret = ["sk-t", "est-update-triage-secret-1234567890"].join("");
+      const secret = "sk-test-update-triage-secret-1234567890";
       mocks.collectDoctorFindings.mockRejectedValue(
         new Error(`Doctor unavailable token=${secret}`),
       );
@@ -746,7 +746,7 @@ describe("triageCommand", () => {
 
   it("keeps the saved failed-update handoff usable after its temporary input is removed", async () => {
     const inputPath = path.join(stateDir, "temporary-update-result.json");
-    const secret = ["sk-t", "est-update-triage-secret-1234567890"].join("");
+    const secret = "sk-test-update-triage-secret-1234567890";
     await fs.writeFile(
       inputPath,
       JSON.stringify({ error: `Original update failed token=${secret}` }),
@@ -774,7 +774,7 @@ describe("triageCommand", () => {
     const { writeDiagnosticSupportExport } = await vi.importActual<
       typeof import("../logging/diagnostic-support-export.js")
     >("../logging/diagnostic-support-export.js");
-    const secret = ["sk-t", "est-triage-offline-secret-1234567890"].join("");
+    const secret = "sk-test-triage-offline-secret-1234567890";
     const configPath = path.join(stateDir, "branch.json");
     await fs.writeFile(configPath, JSON.stringify({ gateway: { auth: { token: secret } } }));
     mocks.callGatewayFromCliWithTransport.mockRejectedValue(new Error(`Offline token=${secret}`));

@@ -298,7 +298,7 @@ describe("controlUi.sessionPreview", () => {
   });
 
   it("returns bounded, redacted metadata for one session", async () => {
-    const secret = ["sk-t", "est-session-preview-secret-1234567890"].join("");
+    const secret = "sk-test-session-preview-secret-1234567890";
     const loadSessionPreview = vi.fn().mockReturnValue({
       sessionKey: "agent:main:research",
       title: `  ${"T".repeat(240)}  `,

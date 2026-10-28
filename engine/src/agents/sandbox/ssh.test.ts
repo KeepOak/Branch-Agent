@@ -104,14 +104,14 @@ describe("sandbox ssh helpers", () => {
       strictHostKeyChecking: true,
       updateHostKeys: false,
       identityData:
-        ["-----BEGIN ", "OPENSSH PRIVATE KEY-----\\nbGluZTE=\\r\\nbGluZTI=\\r\\n-----END OPENSSH PRIVATE KEY-----"].join(""),
+        "-----BEGIN OPENSSH PRIVATE KEY-----\\nbGluZTE=\\r\\nbGluZTI=\\r\\n-----END OPENSSH PRIVATE KEY-----",
       knownHostsData: "example.com ssh-ed25519 AAAATEST",
     });
     sessions.push(session);
 
     const configDir = session.configPath.slice(0, session.configPath.lastIndexOf("/"));
     expect(await fs.readFile(`${configDir}/identity`, "utf8")).toBe(
-      ["-----BEGIN ", "OPENSSH PRIVATE KEY-----\n"].join("") +
+      "-----BEGIN OPENSSH PRIVATE KEY-----\n" +
         "bGluZTE=\n" +
         "bGluZTI=\n" +
         "-----END OPENSSH PRIVATE KEY-----\n",
@@ -125,14 +125,14 @@ describe("sandbox ssh helpers", () => {
       strictHostKeyChecking: true,
       updateHostKeys: false,
       identityData:
-        ["-----BEGIN ", "OPENSSH PRIVATE KEY-----\nline-1\\nline-2\n-----END OPENSSH PRIVATE KEY-----"].join(""),
+        "-----BEGIN OPENSSH PRIVATE KEY-----\nline-1\\nline-2\n-----END OPENSSH PRIVATE KEY-----",
       knownHostsData: "example.com ssh-ed25519 AAAATEST",
     });
     sessions.push(session);
 
     const configDir = session.configPath.slice(0, session.configPath.lastIndexOf("/"));
     expect(await fs.readFile(`${configDir}/identity`, "utf8")).toBe(
-      ["-----BEGIN ", "OPENSSH PRIVATE KEY-----\n"].join("") +
+      "-----BEGIN OPENSSH PRIVATE KEY-----\n" +
         "line-1\n" +
         "line-2\n" +
         "-----END OPENSSH PRIVATE KEY-----\n",

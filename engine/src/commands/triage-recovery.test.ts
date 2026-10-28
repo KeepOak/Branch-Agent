@@ -58,7 +58,7 @@ const printOnlyModes = [
   { mode: "--non-interactive", json: false, nonInteractive: true, terminal: true },
   { mode: "non-TTY", json: false, nonInteractive: false, terminal: false },
 ] as const;
-const secret = ["sk-t", "est-triage-recovery-secret-1234567890"].join("");
+const secret = "sk-test-triage-recovery-secret-1234567890";
 
 function failedUpdate(root: string): UpdateRunResult {
   return {

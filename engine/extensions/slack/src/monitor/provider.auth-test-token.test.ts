@@ -158,7 +158,7 @@ describe("auth.test boot call", () => {
           channel_type: "channel",
         },
       },
-      { botToken: ["xoxp", "-user-token"].join("") },
+      { botToken: "xoxp-user-token" },
     );
 
     expect(replyMock).not.toHaveBeenCalled();

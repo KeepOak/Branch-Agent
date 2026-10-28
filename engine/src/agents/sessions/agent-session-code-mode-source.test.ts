@@ -83,7 +83,7 @@ describe("AgentSession runtime and transcript projections", () => {
     "function computeToken() { return 42; }\nconst API_TOKEN = computeToken(); return API_TOKEN;";
   const genericLiteral = "fixture-only-not-a-real-secret";
   const registeredLiteral = "fixture-registered-source-value";
-  const vendorLiteral = ["sk-f", "ixturesyntheticcredential1234567890"].join("");
+  const vendorLiteral = "sk-fixturesyntheticcredential1234567890";
   const customLiteral = "fixture-custom-source-value";
   const maskedSource = `const API_TOKEN = "${genericLiteral}"; const vendor = "${vendorLiteral}"; const registered = "${registeredLiteral}"; const custom = "${customLiteral}";\n${source.replaceAll("API_TOKEN", "OTHER_TOKEN")}`;
   const sourceCases = [
