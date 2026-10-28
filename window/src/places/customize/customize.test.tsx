@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import type { Level } from "../../places-nav/level";
+import { SettingsFrame } from "../../places-nav/SettingsFrame";
 import { CustomizePlace } from "./index";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span role="img" aria-label={label} /> }));
@@ -35,77 +36,46 @@ async function open(tab: string, fx: Record<string, unknown> = {}, level: Level 
   await act(async () => { await Promise.resolve(); });
   return request;
 }
-const button = (text: string, scope: ParentNode = host) => [...scope.querySelectorAll("button")].find(b => b.textContent?.trim() === text);
-const click = async (el: Element | null | undefined) => { expect(el).toBeTruthy(); await act(async () => { (el as HTMLElement).click(); }); await act(async () => { await Promise.resolve(); }); };
 
-describe("Customize › Chat apps", () => {
-  it("lists chat apps from the channel plugins and channels.status, without starting a probe", async () => {
-    const request = await open("Chat apps");
-    expect(request).toHaveBeenCalledWith("channels.status", { probe: false });
-    const cards = [...host.querySelectorAll(".cz-ch")].map(c => c.querySelector(".grow > b")?.textContent);
-    expect(cards).toEqual(["Telegram", "Discord", "Slack", "IRC"]);
-    expect(host.textContent).toContain("Configured · not running");
-    expect(host.textContent).toContain("Connected · reaches Branch");
-    expect((host.querySelector('input[aria-label="Search chat apps"]') as HTMLInputElement).placeholder).toBe("Search 4 chat apps");
-    await click(button("Work chat"));
-    expect(host.textContent).toContain("No chat apps yet.");
+describe("Customize's former tabs (#1049)", () => {
+  it("opens the Trunks page, not General, when Customize requests Trunks in Classic", async () => {
+    host = document.createElement("div"); document.body.append(host);
+    root = createRoot(host);
+    const engine = { request: async (method: string) => BASE[method] ?? {}, onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"] } as unknown as WindowEngine;
+    function ClassicHost() {
+      const [page, setPage] = useState<string | null>(null);
+      return page ? <SettingsFrame page={page} backName="Conversation" engine={engine} onPage={setPage} onBack={() => setPage(null)} />
+        : <CustomizePlace engine={engine} facts={{ running: 0, waiting: 0 }} openConversation={() => {}} openPlace={() => {}} openSettings={setPage} level={"regular" as Level} />;
+    }
+    await act(async () => { root!.render(<ClassicHost />); });
+    await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Trunks" } })); });
+    expect(host.querySelector("h1")?.textContent).toBe("Trunks");
+    expect(host.querySelector('[aria-label="Sapling: profile"]')).not.toBeNull();
+    expect(host.querySelector('[data-page="trunks"][aria-current="true"]')).not.toBeNull();
+    expect(host.querySelector('[data-page="general"][aria-current="true"]')).toBeNull();
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-level="advanced"]')!.click(); });
+    expect(host.querySelector("h1")?.textContent).toBe("Trunks");
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-level="regular"]')!.click(); });
+    expect(host.querySelector("h1")?.textContent).toBe("Trunks");
   });
-  it("starts, pauses and signs out an account, and switches an app's plugin on", async () => {
-    const request = await open("Chat apps");
-    await click([...host.querySelectorAll(".cz-ch")].find(c => c.textContent?.includes("Telegram")));
-    expect(host.querySelector('[data-testid="channel"]')?.getAttribute("aria-label")).toBe("Manage Telegram");
-    await click(button("Start"));
-    expect(request).toHaveBeenCalledWith("channels.start", { channel: "telegram", accountId: "default" });
-    await click(button("Disconnect"));
-    expect(request).toHaveBeenCalledWith("channels.logout", { channel: "telegram", accountId: "default" });
-    await click(button("Done"));
-    await click([...host.querySelectorAll(".cz-ch")].find(c => c.textContent?.includes("Discord")));
-    await click(button("Pause"));
-    expect(request).toHaveBeenCalledWith("channels.stop", { channel: "discord", accountId: "default" });
-    await click(button("Done"));
-    await click([...host.querySelectorAll(".cz-ch")].find(c => c.textContent?.includes("Slack")));
-    await click(button("Switch it on"));
-    expect(request).toHaveBeenCalledWith("plugins.setEnabled", { pluginId: "slack", enabled: true });
-  });
-  it("makes a pairing code from the phone tile", async () => {
-    const request = await open("Chat apps", { "device.pair.setupCode": { setupId: "s1", setupCode: "ABCD-EFGH", qrDataUrl: "data:image/png;base64,AA==", gatewayUrl: "ws://x", auth: "token", urlSource: "lan" } });
-    await click(button("Pair a phone"));
-    await click(button("Make the code"));
-    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { includeQr: true });
-    expect(host.querySelector("[data-testid=pair-setup-code] .copy-token-text")?.textContent).toBe("ABCD-EFGH");
-  });
-  it("Private #1103: a very long setup code and link each sit on one truncating line with their own Copy button", async () => {
-    const code = "eyJ1cmwiOiJ3c3M6Ly9" + "Q".repeat(300);
-    const link = "branch://join?code=" + code;
-    const writeText = vi.fn(async (_text: string) => undefined);
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    await open("Chat apps", { "device.pair.setupCode": { setupId: "s1", setupCode: code, qrDataUrl: "", joinUrl: link } });
-    await click(button("Pair a phone"));
-    await click(button("Make the code"));
-    const shown = document.querySelector<HTMLElement>("[data-testid=pair-setup-code] .copy-token-text")!;
-    expect(shown.textContent).toBe(code);
-    expect(shown.title).toBe(code);
-    expect(document.querySelector<HTMLElement>("[data-testid=pair-link] .copy-token-text")!.title).toBe(link);
-    await click(button("Copy pairing code", document.body));
-    expect(writeText).toHaveBeenCalledWith(code);
-    expect(button("Copied", document.body)).toBeTruthy();
-    await click(button("Copy link", document.body));
-    expect(writeText).toHaveBeenLastCalledWith(link);
+  it.each([["Chat apps", "chatapps"], ["Trunks", "trunks"]])("has no %s tab: asking for it opens Settings > %s", async (tab, page) => {
+    const openSettings = vi.fn();
+    host = document.createElement("div"); document.body.append(host);
+    root = createRoot(host);
+    const engine = { request: async (method: string) => BASE[method] ?? { ok: true }, onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"] } as unknown as WindowEngine;
+    await act(async () => { root!.render(<CustomizePlace engine={engine} facts={{ running: 0, waiting: 0 }} openConversation={() => {}} openPlace={() => {}} openSettings={openSettings} level={"regular" as Level} />); });
+    await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab } })); });
+    expect(openSettings).toHaveBeenCalledExactlyOnceWith(page);
+    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Tools"]);
+    expect(host.querySelector(".cz-chgrid")).toBeNull();
   });
 });
 
 describe("Customize tabs", () => {
-  it("shows the Trunk count on the Trunks tab, from agents.list", async () => {
-    await open("Trunks");
-    const trunksTab = host.querySelector('[aria-label="Customize"] [role="tab"]')!;
-    expect(trunksTab.textContent).toBe("Trunks");
-    expect(trunksTab.getAttribute("data-count")).toBe("2");
-    expect(trunksTab.getAttribute("aria-label")).toBe("Trunks, 2");
-  });
-  it("has only Trunks, Tools and Chat apps: Specialists and Everywhere moved to Settings (DA-55)", async () => {
+  it("has only Tools: Trunks, Specialists, Everywhere and Chat apps live in Settings (DA-55, #1049)", async () => {
     await open("Specialists");
-    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Trunks", "Tools", "Chat apps"]);
-    expect(host.querySelector('[aria-label="Customize"] [aria-selected="true"]')?.textContent).toBe("Trunks");
+    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Tools"]);
+    expect(host.querySelector('[aria-label="Customize"] [aria-selected="true"]')?.textContent).toBe("Tools");
     expect(host.querySelector('[data-testid="specialists"]')).toBeNull();
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Everywhere" } })); });
     expect(host.querySelector('[data-testid="everywhere"]')).toBeNull();

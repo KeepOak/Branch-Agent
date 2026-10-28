@@ -15,6 +15,7 @@ afterEach(async () => {
   if (root) await act(async () => root!.unmount());
   root = null;
   document.body.innerHTML = "";
+  localStorage.removeItem("branch.level");
 });
 
 async function open(fx: Record<string, unknown> = {}) {
@@ -42,6 +43,8 @@ const click = async (text: string) => {
     await Promise.resolve();
   });
 };
+
+const button = (text: string, scope: ParentNode = host) => [...scope.querySelectorAll("button")].find((el) => el.textContent?.trim() === text);
 
 describe("Pair a phone", () => {
   it("shows the pairing code the phone can type", async () => {
@@ -71,6 +74,26 @@ describe("Pair a phone", () => {
     expect(pairingConfirmCode("setup-123")).toBe("F2S4KP");
   });
 
+  it("Private #1103: a very long setup code and link each show in full with their own Copy button", async () => {
+    const code = "eyJ1cmwiOiJ3c3M6Ly9" + "Q".repeat(300);
+    const link = "branch://join?code=" + code;
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const request = await open({
+      "device.pair.setupCode": { setupId: "s1", setupCode: code, qrDataUrl: "", joinUrl: link },
+    });
+    await click("Make the code");
+    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { includeQr: true });
+    const shown = host.querySelector<HTMLElement>("[data-testid=pair-setup-code] .copy-token-text")!;
+    expect(shown.textContent).toBe(code);
+    expect(host.querySelector<HTMLElement>("[data-testid=pair-link] .copy-token-text")!.title).toBe(link);
+    await click("Copy pairing code");
+    expect(writeText).toHaveBeenCalledWith(code);
+    expect(button("Copied")).toBeTruthy();
+    await click("Copy link");
+    expect(writeText).toHaveBeenLastCalledWith(link);
+  });
+
   it("never shows a loopback or restart error", async () => {
     await open({
       "device.pair.setupCode": new Error(
@@ -78,7 +101,30 @@ describe("Pair a phone", () => {
       ),
     });
     await click("Make the code");
-    expect(host.textContent).toContain("Couldn’t make a pairing link. Try again.");
+    expect(host.textContent).toContain("Your phone can't reach this computer yet.");
     expect(host.textContent).not.toMatch(/loopback|restart the Gateway|publicOrigin/i);
+  });
+
+  const loopbackError = "Gateway is only bound to loopback. Set gateway.publicOrigin to your public HTTPS origin, configure plugins.entries.device-pair.config.publicUrl, enable tailscale serve, or set gateway.bind=lan.";
+
+  it("shows a plain loopback failure at Regular with one working retry action", async () => {
+    localStorage.setItem("branch.level", "regular");
+    const request = await open({ "device.pair.setupCode": new Error(loopbackError) });
+    await click("Make the code");
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("Your phone can't reach this computer yet.");
+    expect(host.innerHTML).not.toMatch(/publicOrigin|gateway\.bind|tailscale serve/i);
+    expect([...host.querySelectorAll(".dlg-f button")].map(button => button.textContent?.trim())).toEqual(["Cancel", "Try again"]);
+    request.mockResolvedValueOnce({ setupId: "retry-setup", setupCode: "retry-code", confirmCode: "ABC123" });
+    await click("Try again");
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(host.querySelector("[data-testid=pair-setup-code] .copy-token-text")?.textContent).toBe("retry-code");
+  });
+
+  it.each(["advanced", "technical"])("keeps the exact loopback engine words at %s", async level => {
+    localStorage.setItem("branch.level", level);
+    await open({ "device.pair.setupCode": new Error(loopbackError) });
+    await click("Make the code");
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe(loopbackError);
   });
 });

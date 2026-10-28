@@ -50,7 +50,7 @@ export function App() {
   const connect = (to: string, key: string) => {
     if (to !== url) sessionStorage.removeItem(RESIDENT_URL_KEY);
     saveTarget(to === LOCAL ? null : to);
-    setTyped(key.trim());
+    setTyped(key.trim() || null);
     setUrl(to);
     setElsewhere(false);
     setAttempt((n) => n + 1);

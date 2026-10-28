@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { buildLinuxDeb, debVersion, LINUX_DEB_DESKTOP, LINUX_DEB_LAUNCHER, readLinuxDeb } from "./linux-deb.mjs";
+import { PUBLIC_DOWNLOAD_NAMES } from "./release-inventory.mjs";
 import { APPIMAGE_DESKTOP_ENTRY, APPIMAGE_TOOLS, appImageToolArgs, appImageToolEnv, assembleAppDir, dmgArgs, fetchPinned, innoCompiler, innoSetupScript,
   installerName, layoutWindowsInstallRoot, main, numericVersion, parseArgs, WINDOWS_APP_ID, windowsInstallerFolderName, windowsLauncherScript } from "./release-installers.mjs";
+import { publicDownloadName } from "./release-inventory.mjs";
 import * as launcher from "./windows-launcher.mjs";
 
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -14,7 +17,131 @@ const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 test("installer names carry the release version and target", () => {
   assert.equal(installerName("0.4.4-build-56aed4e6d99d", "win32-x64"), "Branch-Agent-Setup-0.4.4-build-56aed4e6d99d-win32-x64.exe");
   assert.equal(installerName("0.4.4-build-56aed4e6d99d", "darwin-arm64"), "Branch-Agent-0.4.4-build-56aed4e6d99d-darwin-arm64.dmg");
+  assert.equal(installerName("0.4.4-build-56aed4e6d99d", "darwin-x64"), "Branch-Agent-0.4.4-build-56aed4e6d99d-darwin-x64.dmg");
   assert.equal(installerName("0.4.4-build-56aed4e6d99d", "linux-x64"), "Branch-Agent-0.4.4-build-56aed4e6d99d-linux-x64.AppImage");
+  assert.deepEqual(PUBLIC_DOWNLOAD_NAMES, {
+    "win32-x64": "Branch-Setup-Windows.exe",
+    "darwin-arm64": "Branch-macOS.dmg",
+    "darwin-x64": "Branch-macOS-Intel.dmg",
+    "linux-x64": "Branch-Linux.deb",
+  });
+});
+
+test("the README leads with one download link per operating system and keeps the command-line install under Advanced", () => {
+  const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
+  const advancedAt = readme.indexOf("## Advanced");
+  assert.ok(advancedAt > 0);
+  const download = readme.slice(0, advancedAt);
+  assert.ok(download.indexOf("## Download") < download.indexOf("Branch Agent is a desktop"));
+  for (const name of Object.values(PUBLIC_DOWNLOAD_NAMES)) {
+    assert.match(download, new RegExp(`https://github.com/KeepOak/Branch-Agent/releases/latest/download/${name.replace(/\./g, "\\.")}`));
+  }
+  assert.doesNotMatch(download, /curl -fsSL/);
+  const advanced = readme.slice(advancedAt);
+  assert.match(advanced, /curl -fsSL https:\/\/github\.com\/KeepOak\/Branch-Agent\/releases\/latest\/download\/install\.sh \| sh/);
+  assert.match(advanced, /irm https:\/\/github\.com\/KeepOak\/Branch-Agent\/releases\/latest\/download\/install\.ps1 \| iex/);
+  assert.match(advanced, /SHA256SUMS/);
+});
+
+test("the Linux deb installs an executable launcher and an application menu entry", () => {
+  assert.throws(() => debVersion("latest"), /Not a Debian package version/);
+  const root = mkdtempSync(join(tmpdir(), "branch-deb-"));
+  try {
+    const payload = join(root, "payload");
+    mkdirSync(join(payload, "resources"), { recursive: true });
+    writeFileSync(join(payload, "Branch Agent.bin"), "electron");
+    writeFileSync(join(payload, "branch-agent"), "#!/bin/sh\n");
+    writeFileSync(join(payload, "chrome-sandbox"), "sandbox");
+    writeFileSync(join(payload, "resources", "app.asar"), "asar");
+    const incomplete = join(root, "incomplete");
+    mkdirSync(incomplete);
+    assert.throws(() => buildLinuxDeb({ payload: incomplete, version: "0.4.4", out: join(root, "missing.deb") }), /no Branch Agent\.bin/);
+    const out = join(root, "Branch-Linux.deb");
+    buildLinuxDeb({ payload, version: "0.4.4-build-56aed4e6d99d", out });
+    const deb = readLinuxDeb(readFileSync(out));
+    assert.match(deb.control, /^Package: branch-agent$/m);
+    assert.match(deb.control, /^Version: 0\.4\.4-build-56aed4e6d99d$/m);
+    assert.match(deb.control, /^Architecture: amd64$/m);
+    const file = name => deb.files.find(entry => entry.name === name);
+    assert.equal(file("./opt/branch-agent/chrome-sandbox").mode, 0o4755);
+    assert.equal(file("./opt/branch-agent/branch-agent").mode, 0o755);
+    assert.equal(file("./opt/branch-agent/Branch Agent.bin").mode, 0o755);
+    assert.equal(file("./opt/branch-agent/resources/app.asar").mode, 0o644);
+    assert.equal(file("./usr/bin/branch-agent").data.toString("utf8"), LINUX_DEB_LAUNCHER);
+    assert.equal(file("./usr/bin/branch-agent").mode, 0o755);
+    assert.equal(file("./usr/share/applications/branch-agent.desktop").data.toString("utf8"), LINUX_DEB_DESKTOP);
+    assert.ok(file("./usr/share/icons/hicolor/512x512/apps/branch-agent.png").data.length > 0);
+    if (process.platform === "linux") {
+      const info = spawnSync("dpkg-deb", ["-I", out], { encoding: "utf8" });
+      const contents = spawnSync("dpkg-deb", ["-c", out], { encoding: "utf8" });
+      assert.equal(info.status, 0, info.stderr);
+      assert.match(info.stdout, /Package: branch-agent/);
+      assert.equal(contents.status, 0, contents.stderr);
+      assert.match(contents.stdout, /-rwsr-xr-x root\/root .+ \.\/opt\/branch-agent\/chrome-sandbox$/m);
+      assert.match(contents.stdout, /branch-agent\.desktop$/m);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test("the Linux deb PATH launcher seeds a user-owned live app a normal user can update", { skip: process.platform === "win32" }, () => {
+  const root = mkdtempSync(join(tmpdir(), "branch-deb-seed-"));
+  try {
+    const system = join(root, "opt", "branch-agent");
+    const home = join(root, "home");
+    mkdirSync(join(system, "resources"), { recursive: true });
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(system, "Branch Agent.bin"), "#!/bin/sh\nprintf 'bin:%s\\n' \"$1\"\n");
+    writeFileSync(join(system, "branch-agent"), "#!/bin/sh\nprintf 'started:%s\\n' \"$1\"\n");
+    writeFileSync(join(system, "chrome-sandbox"), "sandbox");
+    writeFileSync(join(system, "resources", "app.asar"), "old asar");
+    chmodSync(join(system, "Branch Agent.bin"), 0o755);
+    chmodSync(join(system, "branch-agent"), 0o755);
+    chmodSync(join(system, "resources", "app.asar"), 0o444);
+    chmodSync(join(system, "resources"), 0o555);
+    // Simulate a root-owned install: directories not writable by the launching user.
+    chmodSync(system, 0o555);
+    const launcher = join(root, "usr-bin-branch-agent");
+    writeFileSync(launcher, LINUX_DEB_LAUNCHER.replaceAll("/opt/branch-agent", system));
+    chmodSync(launcher, 0o755);
+    const env = { ...process.env, HOME: home, XDG_DATA_HOME: join(home, ".local", "share") };
+    delete env.APPIMAGE;
+    const first = spawnSync(launcher, ["ready"], { encoding: "utf8", env });
+    assert.equal(first.status, 0, first.stderr);
+    assert.equal(first.stdout.trim(), "started:ready");
+    const live = join(home, ".local", "share", "branch-agent", "app");
+    assert.equal(readFileSync(join(live, "resources", "app.asar"), "utf8"), "old asar");
+    assert.equal(statSync(live).uid, statSync(home).uid);
+    // User can place a replacement beside the live app (what the update helper does).
+    writeFileSync(join(live, "resources", "app.asar.incoming"), "new asar");
+    renameSync(join(live, "resources", "app.asar"), join(live, "resources", "app.asar.previous"));
+    renameSync(join(live, "resources", "app.asar.incoming"), join(live, "resources", "app.asar"));
+    assert.equal(readFileSync(join(live, "resources", "app.asar"), "utf8"), "new asar");
+    // A second launch must not overwrite the updated user copy from /opt.
+    const second = spawnSync(launcher, ["again"], { encoding: "utf8", env });
+    assert.equal(second.status, 0, second.stderr);
+    assert.equal(readFileSync(join(live, "resources", "app.asar"), "utf8"), "new asar");
+    // The system tree stays untouched and still refuses new siblings (helper bringBesideTarget).
+    assert.equal(readFileSync(join(system, "resources", "app.asar"), "utf8"), "old asar");
+    assert.throws(() => writeFileSync(join(system, "resources", "app.asar.incoming"), "nope"));
+    assert.match(LINUX_DEB_DESKTOP, /^Exec=\/usr\/bin\/branch-agent %U$/m);
+    assert.doesNotMatch(LINUX_DEB_LAUNCHER, /APPIMAGE/);
+  } finally {
+    try {
+      chmodSync(join(root, "opt", "branch-agent"), 0o755);
+      chmodSync(join(root, "opt", "branch-agent", "resources"), 0o755);
+      chmodSync(join(root, "opt", "branch-agent", "resources", "app.asar"), 0o644);
+    } catch { /* best effort before rm */ }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the Linux installer builds the deb before the AppImage consumes the package", () => {
+  const source = readFileSync(new URL("./release-installers.mjs", import.meta.url), "utf8");
+  const deb = source.indexOf("buildLinuxDeb(");
+  const appImage = source.lastIndexOf("assembleAppDir(");
+  assert.ok(deb !== -1 && appImage !== -1 && deb < appImage, "the deb is packed before assembleAppDir renames the package");
+  assert.match(source, /copyFileSync\(file, download\)/);
 });
 
 test("the Windows installer is per-user and leaves nothing the desktop updater swaps behind", () => {
@@ -113,6 +240,23 @@ test("appimagetool runs with the pinned runtime, no network and no FUSE", () => 
     ["--no-appstream", "--runtime-file", "/w/runtime-x86_64", "/w/Branch-Agent.AppDir", "/o/Branch-Agent-1.0.0-linux-x64.AppImage"]);
   const env = appImageToolEnv("1.0.0", { PATH: "/usr/bin" });
   assert.deepEqual(env, { PATH: "/usr/bin", ARCH: "x86_64", VERSION: "1.0.0", APPIMAGE_EXTRACT_AND_RUN: "1" });
+});
+
+test("the release workflow builds a darwin-x64 package beside darwin-arm64", () => {
+  const workflow = readFileSync(new URL("../../.github/workflows/component-release.yml", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const native = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
+  assert.match(native, /target: darwin-arm64/);
+  assert.match(native, /os: macos-15-intel\n\s+target: darwin-x64/);
+  assert.match(native, /target: darwin-x64\n\s+node_arch: x64/);
+  assert.match(native, /node_arch: x64/);
+  assert.equal(publicDownloadName("darwin-x64"), "Branch-macOS-Intel.dmg");
+  assert.match(readFileSync(new URL("./release-installers.mjs", import.meta.url), "utf8"), /copyFileSync\(file, download\)/);
+  assert.match(native, /architecture: \$\{\{ matrix\.node_arch \}\}/);
+  assert.match(native, /component-release-pnpm-\$\{\{ matrix\.target \}\}/);
+  assert.match(native, /component-release-electron-\$\{\{ matrix\.target \}\}/);
+  assert.match(native, /release-proof-\$\{BRANCH_RELEASE_TARGET\}\.json/);
+  assert.match(native, /if: startsWith\(matrix\.target, 'darwin-'\)/);
+  assert.doesNotMatch(native, /matrix\.target == 'darwin-x64' && secrets\.APPLE_/);
 });
 
 test("the release workflow builds the Linux AppImage as a required step", () => {

@@ -294,6 +294,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
     const openPlace = (event: Event) => {
       const request = placeRequest((event as CustomEvent).detail, PLACES.map(p => p.id));
       if (!request) return;
+      // Customize's old Trunks and Chat apps tabs live in Settings (#1049).
+      if (request.place === "customize" && request.tab === "Chat apps") { navigateTo.current({ kind: "settings", page: "chatapps" }); return; }
+      if (request.place === "customize" && request.tab === "Trunks") { navigateTo.current({ kind: "settings", page: "trunks" }); return; }
       navigateTo.current({ kind: "place", place: request.place });
       // A tab named with the request is told to the place once it shows.
       if (request.tab) {
@@ -303,6 +306,17 @@ export function R1Window({ session }: { session: SaplingSession }) {
     };
     window.addEventListener("branch:navigate-place", openPlace);
     return () => window.removeEventListener("branch:navigate-place", openPlace);
+  }, []);
+  // Empty-chat Connect a model (openConnectModel) and other surfaces that only know the Classic event.
+  useEffect(() => {
+    const openSettings = (event: Event) => {
+      const page = (event as CustomEvent<{ page?: string }>).detail?.page;
+      if (typeof page === "string" && /^[a-z][a-z0-9-]*$/.test(page)) {
+        navigateTo.current({ kind: "settings", page });
+      }
+    };
+    window.addEventListener("branch:navigate-settings", openSettings);
+    return () => window.removeEventListener("branch:navigate-settings", openSettings);
   }, []);
   // Settings › Updates & about › Show the welcome tour.
   useEffect(() => {

@@ -3,6 +3,7 @@ import { formatSize, pastedTitle, preparingLine, sizeProblem, toChatAttachments,
 import { caretOnEdge, step, userTexts } from "./drafts";
 import { replaceToken, skillTokenAt, tokenAt } from "./mention";
 import { blockedReason, FULL_ACCESS_BLOCKED, MODE_ROWS, nextMode, PLAN_FIRST_REASON } from "./mode";
+import { navPage } from "../screens/settings/nav";
 import { chipLabel, composerChipLabel, currentModelRef, currentThinking, groupModels, readModels, usableModelName } from "./model";
 import { chipWords, enqueue, moveUp, nextToSend, mark, remove, reword, type QueueItem } from "./queue";
 import { buildExtras, firstSendEcho, planSend, sendTooltip, shouldKeepFirstSendEcho } from "./sending";
@@ -16,7 +17,9 @@ describe("permission modes", () => {
   });
   it("says Full access does not include seeing the screen", () => {
     expect(MODE_ROWS[4].line).toMatch(/Does anything on this computer without asking: files, commands, the internet/);
-    expect(MODE_ROWS[4].line).toMatch(/separate switch in Settings › Computer & browser/);
+    expect(MODE_ROWS[4].line).toMatch(/separate switch in Settings › Browser & screen/);
+    expect(MODE_ROWS[4].line).toContain(`Settings › ${navPage("browser")?.title}.`);
+    expect(MODE_ROWS[4].line).not.toMatch(/Computer & browser/);
     expect(MODE_ROWS[4].line).not.toMatch(/Computer Control/);
   });
   it("blocks Full access for anyone but the owner, and Plan first as an engine gap", () => {

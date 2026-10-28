@@ -1,0 +1,4 @@
+<resources>
+  <string name="branch_lend_channel_name">Lending this phone</string>
+  <string name="branch_lend_channel_description">Shows while this phone is lent to Branch Agent, with a way to stop.</string>
+</resources>

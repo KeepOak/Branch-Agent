@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - 'desktop/**'
+      - 'scripts/check-packaged-no-key-plugin.mjs'
+      - 'scripts/check-packaged-no-key-plugin.test.mjs'
+      - 'engine/package.json'
       - 'engine/scripts/lib/available-memory.*'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
@@ -12,6 +15,9 @@ on:
     branches: [main]
     paths:
       - 'desktop/**'
+      - 'scripts/check-packaged-no-key-plugin.mjs'
+      - 'scripts/check-packaged-no-key-plugin.test.mjs'
+      - 'engine/package.json'
       - 'engine/scripts/lib/available-memory.*'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
@@ -70,7 +76,9 @@ jobs:
       - name: Check release publication order and public latest retries
         run: node --test scripts/publish-component-release.test.mjs
       - name: Check the installer builder and its signing hooks
-        run: node --test scripts/release-installers.test.mjs scripts/windows-launcher-icon.test.mjs scripts/release-signing.test.mjs
+        run: node --test scripts/release-installers.test.mjs scripts/install-layout.test.mjs scripts/windows-launcher-icon.test.mjs scripts/release-signing.test.mjs
+      - name: Check free update signing (latest.json and .sig)
+        run: node --test scripts/update-signing.test.mjs scripts/sign-release-updates.test.mjs
       - name: Check the one-line install scripts against a fixture release
         run: node --test scripts/install-scripts.test.mjs
       - name: Check desktop auto-update end to end on each platform's path
@@ -112,6 +120,10 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=256'
         run: node --experimental-test-module-mocks --test desktop/scripts/component-release-large-subtree.test.mjs
+      - name: Check Open in browser hands over only a one-time code
+        env:
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: node --test scripts/open-in-browser.test.mjs
       - name: Check the handoff deadlines shared with the engine
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
@@ -120,6 +132,10 @@ jobs:
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
         run: node --test scripts/plain-dialogs.test.mjs
+      - name: Check the first-launch install and its recovery page
+        env:
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: node --test scripts/first-launch-install.test.mjs
       - name: Check immutable release inventory and bootstrap targets
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
@@ -133,10 +149,20 @@ jobs:
       - name: Check the desktop log caps and rotation
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
-        run: node --test scripts/log-rotation.test.mjs
+        run: node --test scripts/log-rotation.test.mjs scripts/run-unlisted-tests.test.mjs
       - name: Check documentation merge command patterns
         working-directory: ${{ github.workspace }}
         run: node --test scripts/check-merge-command.test.mjs
+      - name: Check packaged engine exposes llama-cpp for no-key default
+        working-directory: ${{ github.workspace }}
+        run: node --test scripts/check-packaged-no-key-plugin.test.mjs
+      - name: Fail if engine package.json pack-excludes llama-cpp
+        working-directory: ${{ github.workspace }}
+        run: node scripts/check-packaged-no-key-plugin.mjs
+      - name: Run desktop tests not listed above
+        env:
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: node scripts/run-unlisted-tests.mjs
   mac-applications:
     name: macOS Applications install
     runs-on: macos-latest

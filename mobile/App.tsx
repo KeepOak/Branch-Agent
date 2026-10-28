@@ -1,9 +1,10 @@
-import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler, Linking, Platform } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { EventAlerts } from './src/alerts/eventAlerts';
+import { chatRowForAlert, isAgentSessionKey, type AlertRoute } from './src/alerts/route';
 import { ApprovalAlerts, type AppStateSource, type Notifier, type NotificationPermission } from './src/approvals/approvalAlerts';
 import { ApprovalInbox, trunkOf, type Approval, type ApprovalDecision } from './src/approvals/approvals';
 import { headline } from './src/approvals/approvalWords';
@@ -11,9 +12,9 @@ import { testApprovalsOn } from './src/approvals/testApproval';
 import { useTestApproval } from './src/approvals/useTestApproval';
 import { createExpoNotifier, noNotifier } from './src/approvals/expoNotifier';
 import { AgentList, type AgentRow } from './src/agents/agentList';
-import { appIdentity, type AppIdentity } from './src/build/appIdentity';
+import { appIdentity, installedAppVersion, type AppIdentity } from './src/build/appIdentity';
 import { Conversation } from './src/chat/conversation';
-import { ChatList, filterRows, type ChatRow } from './src/chats/chatList';
+import { ChatList, chatForNew, chatForTalk, type ChatRow } from './src/chats/chatList';
 import { ComputerList, computerName, type ComputerRow } from './src/computers/computerList';
 import { messageSearcher } from './src/chats/messageSearch';
 import { createDeviceSession } from './src/pairing/createDeviceSession';
@@ -41,6 +42,7 @@ import type { SettingsLevel } from './src/screens/settingsExtras';
 import { VoiceScreen } from './src/screens/VoiceScreen';
 import { applyKeepAwake, parseShareUrl, shouldKeepScreenAwake } from './src/settings/phoneEffects';
 import { resetThisPhone, takeShareToBranchAgent, writeOfflineChats, writeSavedAgents, writeWaitingMessages } from './src/settings/phoneLocal';
+import { useLendService } from './src/lending/useLendService';
 import { getLivePhonePrefs, readPhonePrefs, subscribeLivePhonePrefs } from './src/settings/phonePrefs';
 import { parseShowLevel, readShowLevel, settingsLevelOf, showLevelOf, writeShowLevel, type ShowLevel } from './src/settings/showLevel';
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
@@ -51,6 +53,9 @@ import { placesBarHeight, type Place } from './src/ui/PlacesBar';
 import { applyQuietJsUpdate } from './src/updates/ota';
 import { SettingsUpdateCard, UpdateBanner } from './src/updates/UpdateBanner';
 import { useApkUpdate } from './src/updates/useApkUpdate';
+import { routeForWidgetAction, type WidgetAction } from './src/widget/homeWidget';
+import { useHomeWidget } from './src/widget/useHomeWidget';
+import { useAssistLaunch } from './src/assistant/useAssistLaunch';
 
 // The splash stays up until the saved pairing has been read, so the first frame is the right screen.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -83,19 +88,6 @@ const CHATS: PairedRoute = { name: 'chats' };
 const HOME: PairedRoute = { name: 'home' };
 const SCAN: PairedRoute = { name: 'scan' };
 const CODE: PairedRoute = { name: 'code' };
-
-/** New chat from Home or Chats: the main conversation, else the first non-room chat. */
-function chatForNew(rows: ChatRow[]): ChatRow | undefined {
-  const shown = filterRows(rows, 'all', Date.now());
-  return shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
-}
-
-/** Talk from Home: the most recent chat, else the same pick New chat uses. */
-function chatForTalk(rows: ChatRow[]): ChatRow | undefined {
-  const shown = filterRows(rows, 'all', Date.now());
-  const recent = [...shown].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-  return recent ?? chatForNew(rows);
-}
 
 const deviceAppState: AppStateSource = {
   current: () => AppState.currentState,
@@ -211,10 +203,7 @@ function Shell({
   const theme = useTheme();
   const state = usePairingState(session);
   const update = useApkUpdate();
-  const installed = {
-    version: Constants.expoConfig?.version ?? '0.1.0',
-    versionCode: Constants.expoConfig?.android?.versionCode ?? 1,
-  };
+  const installed = installedAppVersion();
   const updateBanner = (
     <UpdateBanner state={update.state} onUpdate={update.startUpdate} onAllowInstalls={() => update.allowInstalls()} />
   );
@@ -252,11 +241,26 @@ function Shell({
     };
   }, [chats, agents, computers]);
 
-  // Approvals are followed for the whole session, on every screen, so a notification can go out while
-  // Branch is in the background and its buttons can answer.
+  // Approvals and the other engine events are followed for the whole session, on every screen, so a
+  // notification can go out while Branch is in the background and a tap can open the right place.
   const [inbox] = useState(() => new ApprovalInbox(session));
   const approvals = useSyncExternalStore(inbox.subscribe, inbox.getSnapshot);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
+  const eventsRef = useRef<EventAlerts | null>(null);
+  const chatsRef = useRef(chats);
+  chatsRef.current = chats;
+  const openAlert = (route: AlertRoute) => {
+    if (route.screen === 'chat') {
+      if (!isAgentSessionKey(route.sessionKey)) return;
+      setPairedRoute({ name: 'chat', row: chatRowForAlert(route.sessionKey, chatsRef.current.getSnapshot().rows) });
+      return;
+    }
+    if (route.screen === 'settings') {
+      setPairedRoute({ name: 'settings' });
+      return;
+    }
+    setPairedRoute({ name: 'approvals', focus: route.approvalId });
+  };
   const [prefs, setPrefs] = useState(getLivePhonePrefs);
   useEffect(() => subscribeLivePhonePrefs(() => setPrefs(getLivePhonePrefs())), []);
   useEffect(() => {
@@ -269,15 +273,27 @@ function Shell({
       live = false;
     };
   }, [store]);
+  useLendService({ paired: state.step === 'paired', online: state.step === 'paired' && state.online, prefs, store });
   useEffect(() => {
     inbox.attach();
-    const alerts = new ApprovalAlerts(inbox, notifier, appState, (focus) => setPairedRoute({ name: 'approvals', focus }), () => getLivePhonePrefs().tellMe);
+    const alerts = new ApprovalAlerts(inbox, notifier, appState, (focus) => setPairedRoute({ name: 'approvals', focus }), {
+      prefs: getLivePhonePrefs,
+      onRoute: openAlert,
+    });
+    const events = new EventAlerts(session, notifier, appState, getLivePhonePrefs);
+    eventsRef.current = events;
     alerts.attach();
+    events.attach();
     return () => {
+      eventsRef.current = null;
       alerts.dispose();
+      events.dispose();
       inbox.dispose();
     };
-  }, [inbox, notifier, appState]);
+  }, [inbox, notifier, appState, session]);
+  useEffect(() => {
+    void eventsRef.current?.notifyUpdate(update.state);
+  }, [update.state]);
   useEffect(() => {
     if (!store) return;
     return chats.subscribe(() => {
@@ -316,6 +332,11 @@ function Shell({
     const sub = Linking.addEventListener('url', ({ url }) => handle(url));
     return () => sub.remove();
   }, [store, pairedRoute, chatList, approvals.pending.length]);
+  useAssistLaunch({
+    paired: state.step === 'paired',
+    rows: chatList.rows,
+    onOpen: (next) => setPairedRoute(next.name === 'chat' ? { name: 'chat', row: next.row } : CHATS),
+  });
   useEffect(() => {
     if (state.step !== 'paired') return;
     let live = true;
@@ -377,6 +398,24 @@ function Shell({
     else if (place === 'inbox') setPairedRoute({ name: 'approvals' });
     else setPairedRoute({ name: 'more' });
   };
+  const onWidgetAction = useCallback(
+    (action: WidgetAction) => {
+      if (state.step !== 'paired') return;
+      const next = routeForWidgetAction(action, chatList.rows);
+      if (next.name === 'chat') setPairedRoute({ name: 'chat', row: next.row });
+      else if (next.name === 'voice') setPairedRoute({ name: 'voice', row: next.row });
+      else if (next.name === 'approvals') setPairedRoute({ name: 'approvals' });
+      else if (next.name === 'home') setPairedRoute(HOME);
+      else setPairedRoute(CHATS);
+    },
+    [state.step, chatList.rows],
+  );
+  useHomeWidget({
+    paired: state.step === 'paired',
+    approvals,
+    chats: chatList,
+    onAction: onWidgetAction,
+  });
 
   const begin = (setup: SetupPayload) => session.begin(setup);
   // A new pairing from Home replaces this computer only once a code is submitted (that is the confirm).
