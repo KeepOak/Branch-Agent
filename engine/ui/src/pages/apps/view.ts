@@ -1,16 +1,18 @@
 import { html, nothing, type TemplateResult } from "lit";
 import type { RouteId } from "../../app-route-paths.ts";
 import { inferControlUiPublicAssetPath } from "../../app/public-assets.ts";
-import { brandIcons } from "../../components/brand-icons.ts";
 import { icons } from "../../components/icons.ts";
 import { t } from "../../i18n/index.ts";
 import { registerAppsEnglish } from "../../i18n/locales/en-apps.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "../../lib/external-link.ts";
 import "../../styles/apps.css";
 import "../../components/native-chrome-setup.ts";
-import { COMMUNITY_DISCORD_URL } from "../../lib/product-links.ts";
 import { appsBrandIcons } from "./brand-icons.ts";
-import { BRANCH_DOWNLOAD_PAGES, type ReleaseDownloadId } from "./release-downloads.ts";
+import {
+  BRANCH_DOWNLOAD_PAGES,
+  RELEASES_PAGE,
+  type ReleaseDownloadId,
+} from "./release-downloads.ts";
 
 registerAppsEnglish();
 
@@ -52,8 +54,7 @@ const externalCta = (href: string, labelKey: string): AppCardCta => ({
 const releaseCta = (id: ReleaseDownloadId): AppCardCta =>
   externalCta(BRANCH_DOWNLOAD_PAGES[id], "appsPage.ctaDownload");
 const notOutYet: AppCardCta = { kind: "soon" };
-const docsCta = (path: string) =>
-  externalCta(`https://docs.openclaw.ai${path}`, "appsPage.ctaDocs");
+const releasesCta = externalCta(RELEASES_PAGE, "appsPage.ctaReleases");
 
 const APP_SECTIONS: readonly AppSection[] = [
   {
@@ -72,7 +73,7 @@ const APP_SECTIONS: readonly AppSection[] = [
         gradient: ["#34d399", "#047857"],
         icon: appsBrandIcons.android,
         copyKey: "appsPage.cards.android",
-        ctas: [releaseCta("android"), docsCta("/platforms/android")],
+        ctas: [releaseCta("android")],
       },
     ],
   },
@@ -86,7 +87,7 @@ const APP_SECTIONS: readonly AppSection[] = [
         icon: appsBrandIcons.watch,
         copyKey: "appsPage.cards.appleWatch",
         badge: "appsPage.badgeBundledIos",
-        ctas: [docsCta("/platforms/ios")],
+        ctas: [releasesCta],
       },
       {
         id: "wear-os",
@@ -94,7 +95,7 @@ const APP_SECTIONS: readonly AppSection[] = [
         icon: appsBrandIcons.watch,
         copyKey: "appsPage.cards.wearOs",
         badge: "appsPage.badgeBundledAndroid",
-        ctas: [docsCta("/platforms/android")],
+        ctas: [releasesCta],
       },
     ],
   },
@@ -107,21 +108,21 @@ const APP_SECTIONS: readonly AppSection[] = [
         gradient: ["#a855f7", "#6b21a8"],
         icon: appsBrandIcons.apple,
         copyKey: "appsPage.cards.macos",
-        ctas: [releaseCta("mac"), docsCta("/platforms/macos")],
+        ctas: [releaseCta("mac")],
       },
       {
         id: "windows",
         gradient: ["#818cf8", "#4338ca"],
         icon: appsBrandIcons.windows,
         copyKey: "appsPage.cards.windows",
-        ctas: [releaseCta("windows"), docsCta("/platforms/windows")],
+        ctas: [releaseCta("windows")],
       },
       {
         id: "linux",
         gradient: ["#fbbf24", "#b45309"],
         icon: appsBrandIcons.linux,
         copyKey: "appsPage.cards.linux",
-        ctas: [releaseCta("linux"), docsCta("/platforms/linux")],
+        ctas: [releaseCta("linux")],
       },
     ],
   },
@@ -141,22 +142,14 @@ const APP_SECTIONS: readonly AppSection[] = [
         gradient: ["#fb7185", "#9f1239"],
         icon: icons.plug,
         copyKey: "appsPage.cards.plugins",
-        ctas: [
-          { kind: "internal", routeId: "plugins", labelKey: "appsPage.ctaOpenPlugins" },
-          externalCta("https://clawhub.ai", "appsPage.ctaBrowseClawHub"),
-        ],
+        ctas: [{ kind: "internal", routeId: "plugins", labelKey: "appsPage.ctaOpenPlugins" }],
       },
     ],
   },
 ];
 
 const COMMUNITY_LINKS: ReadonlyArray<{ href: string; icon: TemplateResult; labelKey: string }> = [
-  {
-    href: COMMUNITY_DISCORD_URL,
-    icon: brandIcons.discord,
-    labelKey: "appsPage.linkDiscord",
-  },
-  { href: "https://docs.openclaw.ai", icon: icons.book, labelKey: "appsPage.linkDocs" },
+  { href: RELEASES_PAGE, icon: icons.book, labelKey: "appsPage.ctaReleases" },
 ];
 
 function renderCta(cta: AppCardCta, index: number, props: AppsProps) {
@@ -282,7 +275,8 @@ export function renderApps(props: AppsProps) {
         <h1 class="apps-hero__title">${t("appsPage.heroTitle")}</h1>
         <p class="apps-hero__tagline">${t("appsPage.heroTagline")}</p>
       </section>
-      ${sectionsFor(props.technical === true).map((section) => renderSection(section, props))} ${renderCommunity()}
+      ${sectionsFor(props.technical === true).map((section) => renderSection(section, props))}
+      ${renderCommunity()}
     </div>
   `;
 }
