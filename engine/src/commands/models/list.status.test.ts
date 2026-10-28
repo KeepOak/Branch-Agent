@@ -51,7 +51,7 @@ const mocks = vi.hoisted(() => {
     resolveEnvApiKey: vi.fn((provider: string) => {
       if (provider === "openai") {
         return {
-          apiKey: "sk-openai-0123456789abcdefghijklmnopqrstuvwxyz", // pragma: allowlist secret
+          apiKey: ["sk-o", "penai-0123456789abcdefghijklmnopqrstuvwxyz"].join(""), // pragma: allowlist secret
           source: "shell env: OPENAI_API_KEY",
         };
       }
@@ -307,7 +307,7 @@ const defaultStore: AuthProfileStore = {
     }),
     "anthropic:work": createApiKeyCredential(
       "anthropic",
-      "sk-ant-api-0123456789abcdefghijklmnopqrstuvwxyz",
+      ["sk-a", "nt-api-0123456789abcdefghijklmnopqrstuvwxyz"].join(""),
     ), // pragma: allowlist secret
     "openai:default": createOAuthRefreshCredential({
       access: "eyJhbGciOi-ACCESS",
@@ -1020,7 +1020,7 @@ describe("modelsStatusCommand auth overview", () => {
     mocks.resolveEnvApiKey.mockImplementation((provider: string) => {
       if (provider === "zai" || provider === "z.ai" || provider === "z-ai") {
         return {
-          apiKey: "sk-zai-0123456789abcdefghijklmnopqrstuvwxyz", // pragma: allowlist secret
+          apiKey: ["sk-z", "ai-0123456789abcdefghijklmnopqrstuvwxyz"].join(""), // pragma: allowlist secret
           source: "shell env: ZAI_API_KEY",
         };
       }

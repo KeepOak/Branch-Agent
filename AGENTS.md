@@ -67,6 +67,8 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 20. **One Connect-a-model path.** With no usable model: the reply area shows exactly "Connect a model to get answers" and one "Connect a model" button that opens Add an account (deduplicated plain names, free/local first, no reflow). The button must be readable on light and dark themes. Do not leave a control that looks clickable but opens nothing. GOD private #1092 supersedes the earlier #1797 send-disabled bar: Send is allowed; fixing the app follows GOD's current ruling, not the old disable-Send tests. Do not mass-rewrite those tests until the app flip lands.
 
+21. **No secret-shaped literals, even in tests.** Build fake API keys and PEM headers at runtime (for example `['s', 'k-', 'x'.repeat(40)].join('')`); preflight's secret-literal check fails added lines that match a provider key format, test files included.
+
 ## Common tasks
 
 ### Install dependencies
