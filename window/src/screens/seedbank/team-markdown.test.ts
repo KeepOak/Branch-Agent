@@ -59,7 +59,7 @@ describe("team Markdown", () => {
   });
 
   it("scrubs a whole private key block, not only its header", () => {
-    const pem = ["-----BEGIN ", "PRIVATE KEY-----\nMIIEvQIBADANBgkq\n-----END PRIVATE KEY-----"].join("");
+    const pem = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkq\n-----END PRIVATE KEY-----";
     const out = scrub(`before ${pem} after`);
     expect(out.text).toBe("before [removed secret] after");
     expect(out.removed).toBe(1);

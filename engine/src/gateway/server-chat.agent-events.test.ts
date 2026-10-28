@@ -1741,7 +1741,7 @@ describe("agent event handler", () => {
       abortedLastRun: false,
     });
     persistGatewaySessionLifecycleEventMock.mockRejectedValueOnce(
-      new Error(["disk full sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join("")),
+      new Error("disk full sk-abcdefghijklmnopqrstuvwxyz123456"),
     );
     const trackTrackedRunTerminalPersistence = vi.fn();
     const h = createHarness({

@@ -225,7 +225,7 @@ describe("Slack Web API routing", () => {
       }),
     );
     try {
-      const client = createSlackWebClient(["xoxb", "-empty-body-proof"].join(""), {
+      const client = createSlackWebClient("xoxb-empty-body-proof", {
         retryConfig: { retries: 0 },
         timeout: 1000,
       });
@@ -478,7 +478,7 @@ describe("Slack Web API routing", () => {
     try {
       process.env.SLACK_API_URL = `${server.baseUrl}/api/`;
 
-      const client = createSlackWebClient(["xoxb", "-route-proof"].join(""), {
+      const client = createSlackWebClient("xoxb-route-proof", {
         retryConfig: { retries: 0 },
         timeout: 1000,
       });
@@ -487,7 +487,7 @@ describe("Slack Web API routing", () => {
       expect(result.ok).toBe(true);
       expect(requests).toEqual([
         {
-          authorization: ["Bearer xoxb", "-route-proof"].join(""),
+          authorization: "Bearer xoxb-route-proof",
           method: "POST",
           url: "/api/auth.test",
         },
@@ -508,7 +508,7 @@ describe("Slack Web API routing", () => {
     try {
       process.env.SLACK_API_URL = `${envServer.baseUrl}/api/`;
 
-      const client = createSlackWebClient(["xoxb", "-route-proof"].join(""), {
+      const client = createSlackWebClient("xoxb-route-proof", {
         retryConfig: { retries: 0 },
         slackApiUrl: `${explicitServer.baseUrl}/api/`,
         timeout: 1000,
@@ -519,7 +519,7 @@ describe("Slack Web API routing", () => {
       expect(envRequests).toEqual([]);
       expect(explicitRequests).toEqual([
         {
-          authorization: ["Bearer xoxb", "-route-proof"].join(""),
+          authorization: "Bearer xoxb-route-proof",
           method: "POST",
           url: "/api/auth.test",
         },

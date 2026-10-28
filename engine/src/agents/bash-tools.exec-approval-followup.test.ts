@@ -304,7 +304,7 @@ describe("exec approval followup", () => {
   );
 
   it("redacts credentials before direct delivery", async () => {
-    const secret = ["sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join("");
+    const secret = "sk-abcdefghijklmnopqrstuvwxyz123456";
     await direct({
       turnSourceAccountId: "default",
       turnSourceThreadId: "456",

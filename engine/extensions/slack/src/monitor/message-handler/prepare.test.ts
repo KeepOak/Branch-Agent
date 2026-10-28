@@ -208,7 +208,7 @@ describe("slack prepareSlackMessage inbound contract", () => {
         ctx.resolveUserName = vi.fn().mockRejectedValue(new Error("users.info failed"));
       }
       if (outcome === "delivery failed") {
-        postEphemeral.mockRejectedValue(new Error(["invalid_auth xoxb", "-secret-value"].join("")));
+        postEphemeral.mockRejectedValue(new Error("invalid_auth xoxb-secret-value"));
       }
       const prepared = await prepareMessageWith(
         ctx,
@@ -238,7 +238,7 @@ describe("slack prepareSlackMessage inbound contract", () => {
       } else {
         expect(error).toHaveBeenCalledOnce();
         expect(error.mock.calls[0]?.[0]).toContain("slack allowlist denial notice failed");
-        expect(error.mock.calls[0]?.[0]).not.toContain(["xoxb", "-secret-value"].join(""));
+        expect(error.mock.calls[0]?.[0]).not.toContain("xoxb-secret-value");
       }
     },
   );

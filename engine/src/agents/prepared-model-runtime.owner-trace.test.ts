@@ -58,8 +58,8 @@ it("truncates a long failure message so one owner cannot flood the trace line", 
   expect(text).toBe(`builder-oak=failed(${"x".repeat(120)})`);
 });
 
-const FAKE_ANTHROPIC_KEY = ["sk-a", "nt-api03-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0123456789"].join("");
-const FAKE_GITHUB_TOKEN = ["ghp_", "FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0123"].join("");
+const FAKE_ANTHROPIC_KEY = "sk-ant-api03-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0123456789";
+const FAKE_GITHUB_TOKEN = "ghp_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0123";
 
 it("never puts an API key from a failure message into the owner-state trace", () => {
   const owners = new Map<string, PreparedModelRuntimeOwner>([

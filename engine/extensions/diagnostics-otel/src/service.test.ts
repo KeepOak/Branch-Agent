@@ -2708,7 +2708,7 @@ describe("diagnostics-otel service", () => {
       emitDiagnosticEventWithTrustedTraceContext({
         type: "log.record",
         level: "WARN",
-        message: ["Using API key sk-1", "234567890abcdef1234567890abcdef"].join(""),
+        message: "Using API key sk-1234567890abcdef1234567890abcdef",
         attributes: {
           token: "ghp_abcdefghijklmnopqrstuvwxyz123456", // pragma: allowlist secret
           subsystem: "diagnostic",
@@ -2724,7 +2724,7 @@ describe("diagnostics-otel service", () => {
       expect(record["service.name"]).toBe("rovogrove-branch");
       expect(record.severityText).toBe("WARN");
       expect(record.severityNumber).toBe(13);
-      expect(String(record.body)).not.toContain(["sk-1", "234567890abcdef1234567890abcdef"].join(""));
+      expect(String(record.body)).not.toContain("sk-1234567890abcdef1234567890abcdef");
       expect(String(record.body)).toContain("sk-123");
       expect(record.attributes).toMatchObject({
         "branch.log.level": "WARN",
@@ -2778,7 +2778,7 @@ describe("diagnostics-otel service", () => {
     attributes[PROTO_KEY] = "pollute";
     attributes["constructor"] = "pollute";
     attributes["prototype"] = "pollute";
-    attributes[["sk-1", "234567890abcdef1234567890abcdef"].join("")] = "secret-key"; // pragma: allowlist secret
+    attributes["sk-1234567890abcdef1234567890abcdef"] = "secret-key"; // pragma: allowlist secret
 
     emitDiagnosticEvent({
       type: "log.record",
@@ -2817,7 +2817,7 @@ describe("diagnostics-otel service", () => {
     expect(
       Object.hasOwn(
         emitCall.attributes,
-        ["branch.sk-1", "234567890abcdef1234567890abcdef"].join(""), // pragma: allowlist secret
+        "branch.sk-1234567890abcdef1234567890abcdef", // pragma: allowlist secret
       ),
     ).toBe(false);
     expectAbsent(
@@ -3810,7 +3810,7 @@ describe("diagnostics-otel service", () => {
       await startServiceFixture(["traces", "metrics"], { captureContent });
       emitTrustedModelCallCompletedWithContent({
         inputMessages: [
-          captureContent ? ["use key sk-1", "234567890abcdef1234567890abcdef"].join("") : "private user prompt",
+          captureContent ? "use key sk-1234567890abcdef1234567890abcdef" : "private user prompt",
         ], // pragma: allowlist secret
         outputMessages: [captureContent ? "model reply" : "private model reply"],
         systemPrompt: captureContent ? "system prompt" : "private system prompt",
@@ -3837,7 +3837,7 @@ describe("diagnostics-otel service", () => {
       if (captureContent) {
         expect(modelAttrs?.["branch.content.output_messages"]).toBe("model reply");
         expect(String(modelAttrs?.["branch.content.input_messages"])).not.toContain(
-          ["sk-1", "234567890abcdef1234567890abcdef"].join(""),
+          "sk-1234567890abcdef1234567890abcdef",
         ); // pragma: allowlist secret
         expect(toolAttrs?.["branch.content.tool_input"]).toBe("tool input");
         expect(toolAttrs?.["gen_ai.tool.call.arguments"]).toBe(

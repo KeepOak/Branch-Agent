@@ -680,7 +680,7 @@ describe("OpenAI-compatible embeddings HTTP API (e2e)", () => {
   );
 
   it("redacts credentials in actionable provider errors", async () => {
-    const credential = ["sk-t", "est-embedding-error-fixture-1234567890"].join("");
+    const credential = "sk-test-embedding-error-fixture-1234567890";
     embedBatchMock.mockRejectedValueOnce(new Error(`Incorrect API key provided: ${credential}`));
 
     const res = await postEmbeddings({ model: "branch/default", input: "hello" });

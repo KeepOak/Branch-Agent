@@ -27,7 +27,7 @@ const testAuthPrivateKey = generateKeyPairSync("ec", {
   namedCurve: "prime256v1",
 }).privateKey.export({ format: "pem", type: "pkcs8" });
 
-const testApnsServerKey = `-----BEGIN ${""}PRIVATE KEY-----`; // pragma: allowlist secret
+const testApnsServerKey = `-----BEGIN PRIVATE KEY-----`; // pragma: allowlist secret
 const testApnsServerKeyPem = `${testApnsServerKey}
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC1l/DDGxT//Ma2
 1EC7ON4lb+9IOrHHd437rv5DBhMt7ZXpzmfZuXyJWd/RI3ljiCcJeXwTYdzLsyaR

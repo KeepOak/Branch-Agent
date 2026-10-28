@@ -24,7 +24,7 @@ function replyPage(start: number, count: number, nextCursor = "") {
 }
 
 describe("resolveSlackThreadHistory", () => {
-  const client = new WebClient(["xoxb", "-test-token"].join(""));
+  const client = new WebClient("xoxb-test-token");
   const replies = vi.fn();
   const history = (options: Partial<Parameters<typeof resolveSlackThreadHistory>[0]> = {}) =>
     resolveSlackThreadHistory({

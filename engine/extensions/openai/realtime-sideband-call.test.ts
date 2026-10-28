@@ -124,7 +124,7 @@ describe("OpenAI Realtime sideband call wire", () => {
 
   it("redacts bounded provider error details", async () => {
     const onCallAllocated = vi.fn();
-    const leaked = ["sk-p", "roj-abcdefghijklmnopqrstuvwxyz1234567890"].join("");
+    const leaked = "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890";
     const fetchImpl = vi.fn(
       async () => new Response(`request rejected Authorization: Bearer ${leaked}`, { status: 403 }),
     );

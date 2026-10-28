@@ -105,7 +105,7 @@ describe("exec auto-review failure handling", () => {
   );
 
   it("redacts provider credentials before displaying a reviewer failure", async () => {
-    const secret = ["sk-p", "roj-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ"].join("");
+    const secret = "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ";
     const reviewer: ExecAutoReviewer = () => {
       throw new Error(`Authorization: Bearer ${secret}`);
     };

@@ -44,7 +44,7 @@ describe("Git backup media", () => {
     await fs.writeFile(path.join(media, "inbound-photo.jpg"), JPEG);
     await fs.writeFile(path.join(media, "report.pdf"), PDF);
     await fs.writeFile(path.join(media, "token.json"), '{"token":"SENTINEL-MEDIA-TOKEN"}');
-    await fs.writeFile(path.join(media, "key.pem"), ["-----BEGIN ", "PRIVATE KEY-----\nSENTINEL\n"].join(""));
+    await fs.writeFile(path.join(media, "key.pem"), "-----BEGIN PRIVATE KEY-----\nSENTINEL\n");
     await fs.writeFile(path.join(media, "notes.txt"), "api_key=SENTINEL");
     await fs.writeFile(path.join(media, "disguised.png"), "OPENAI_API_KEY=SENTINEL-DISGUISED");
     await fs.writeFile(path.join(media, "outgoing", "records", "r1.json"), '{"id":"r1"}');
