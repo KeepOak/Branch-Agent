@@ -27,12 +27,15 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); do
 
 it("asks first, lists what goes and what stays, then removes the app through the desktop", async () => {
   const removeApp = vi.fn(async () => undefined);
-  desktopWindow.branchDesktop = { controls: { get: async () => ({}), removalPlan: async () => PLAN, removeApp } };
+  const removalPlan = vi.fn(async () => PLAN);
+  desktopWindow.branchDesktop = { controls: { get: async () => ({}), removalPlan, removeApp } };
   await show();
+  expect(removalPlan).not.toHaveBeenCalled();
   expect(host.textContent).toContain("Remove the app, keep my data");
   const open = button("Remove the app…")!;
   expect(open.disabled).toBe(false);
   await act(async () => open.click());
+  expect(removalPlan).toHaveBeenCalledTimes(1);
   expect(removeApp).not.toHaveBeenCalled();
   expect(document.body.textContent).toContain("Remove the Branch app?");
   expect(lines("removal-removes")).toEqual(PLAN.removes);
@@ -49,10 +52,14 @@ it("asks first, lists what goes and what stays, then removes the app through the
 
 it("says why it can't, and offers no sheet, when this install has nothing to remove", async () => {
   const removeApp = vi.fn(async () => undefined);
-  desktopWindow.branchDesktop = { controls: { get: async () => ({}), removalPlan: async () => ({ ...PLAN, supported: false, reason: "Branch was installed by your package manager here. Remove it there; your data stays.", removes: [] }), removeApp } };
+  const removalPlan = vi.fn(async () => ({ ...PLAN, supported: false, reason: "Branch was installed by your package manager here. Remove it there; your data stays.", removes: [] }));
+  desktopWindow.branchDesktop = { controls: { get: async () => ({}), removalPlan, removeApp } };
   await show();
-  expect(button("Remove the app…")!.disabled).toBe(true);
+  expect(removalPlan).not.toHaveBeenCalled();
+  expect(button("Remove the app…")!.disabled).toBe(false);
   await act(async () => button("Remove the app…")!.click());
+  expect(removalPlan).toHaveBeenCalledTimes(1);
+  expect(button("Remove the app…")!.disabled).toBe(true);
   expect(document.body.textContent).not.toContain("Remove the Branch app?");
   expect(removeApp).not.toHaveBeenCalled();
 });

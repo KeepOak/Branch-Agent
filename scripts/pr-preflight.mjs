@@ -22,6 +22,7 @@ import {
   loadProtectedGatePaths,
 } from './merge-gate-trusted.mjs';
 import { checkWindowClean, scanTree } from './check-window-clean.mjs';
+import { loadUnlistedRunner, unlistedDesktopTargets } from './changed-test-coverage.mjs';
 
 const PERSONAL_PATTERNS = [
   /\/Users\/[A-Za-z0-9._-]+\//,
@@ -165,9 +166,12 @@ export function gateFileProblems({
 }
 
 // Desktop tests are covered by desktop-checks.yml, not by a named list. The gate's own coverage rule decides.
-export function desktopCoverageProblems({ files, desktopWorkflow }) {
+// When the desktop runner for unlisted tests is loaded, a file it would run counts too; its EXCLUDED files do not.
+export function desktopCoverageProblems({ files, desktopWorkflow, unlistedRunner = null }) {
   if (desktopWorkflow == null) return [];
-  const { uncovered } = coverageFromPrFiles(files, desktopWorkflow);
+  const present = files.filter((file) => file.status !== 'removed').map((file) => file.filename);
+  const extraDesktop = [...unlistedDesktopTargets(unlistedRunner, present, desktopWorkflow)];
+  const { uncovered } = coverageFromPrFiles(files, desktopWorkflow, [], '', '', extraDesktop);
   return uncovered.filter((file) => file.startsWith('desktop/')).map((file) => problem(
     'desktop-tests',
     `${file} is not run by desktop-checks.yml`,
@@ -372,7 +376,9 @@ export function runPreflight(input) {
       request: input.request, prNumber: input.prNumber, baselineGrew: input.baselineGrew,
       repoDir: input.repoDir,
     }),
-    ...desktopCoverageProblems({ files: input.files ?? [], desktopWorkflow: input.desktopWorkflow ?? null }),
+    ...desktopCoverageProblems({
+      files: input.files ?? [], desktopWorkflow: input.desktopWorkflow ?? null, unlistedRunner: input.unlistedRunner ?? null,
+    }),
     ...personalInfoProblems(input.addedLines ?? [], { changedFiles, denylist: input.denylist ?? privateNameDenylist(), branch: input.branch }),
     ...secretLiteralProblems(input.addedLines ?? []),
     ...bodyEmailProblems(body),
@@ -575,7 +581,8 @@ function apiInputFromEnv(env) {
 }
 
 // Exported so tests can drive the real CLI wiring against a temporary repository.
-export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv } = {}) {
+// unlistedRunner is the loaded desktop runner for unlisted tests, or null when the repo has none.
+export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv, unlistedRunner = null } = {}) {
   if (argv.includes('--ci')) {
     // CI reads the live body and its own inputs from the API under one job-wide budget.
     const budgetSeconds = preflightBudgetSeconds(env);
@@ -591,7 +598,7 @@ export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv
         text: [...ciSkippedLines(), `preflight could not read GitHub within its ${budgetSeconds}s budget (${reason}). This is not a preflight failure; re-run the check.`].join('\n'),
       };
     }
-    const problems = runPreflight({ ...input, cloudAgent: false, repoDir: cwd });
+    const problems = runPreflight({ ...input, cloudAgent: false, repoDir: cwd, unlistedRunner });
     return { exitCode: problems.length ? 1 : 0, text: [...ciSkippedLines(), formatProblems(problems)].join('\n') };
   }
   if (!argv.includes('--body')) {
@@ -602,13 +609,14 @@ export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv
   const scope = scopedChecks(input.changedFiles);
   input.windowResult = scope.window ? windowResultFor(cwd) : null;
   input.shardResult = scope.shard ? shardResultFor(cwd) : null;
+  input.unlistedRunner = unlistedRunner;
   const problems = runPreflight(input);
   return { exitCode: problems.length ? 1 : 0, text: formatProblems(problems) };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const result = runCli(process.argv.slice(2), repoRoot);
+  const result = runCli(process.argv.slice(2), repoRoot, process.env, { unlistedRunner: await loadUnlistedRunner(repoRoot) });
   console.log(result.text);
   process.exitCode = result.exitCode;
 }

@@ -36,10 +36,13 @@ import { pageFor } from "../nav";
 import { useLevel } from "../SettingsFrame";
 import { COMING_FROM } from "../rows";
 import { STALL_TEXT, stallAfter } from "../../../places/settings/stall";
+import { errorWords, plainError } from "../../../shell/plain-error";
 
 // One engine read shared by every row that shows it (the accounts list, Select accounts, Which goes next…): a change
 // made in one row reloads it once, and every row redraws. It reads again when a row first shows after none did.
-type Read = { data?: RecordValue; loading: boolean; error?: string };
+// A failure keeps its exact words (raw) beside the Settings sentence, so a row can spot a sign-in failure and show the
+// words again at Technical (Private #1089).
+type Read = { data?: RecordValue; loading: boolean; error?: string; raw?: string };
 class SharedRead {
   snap: Read = { loading: true };
   private subs = new Set<() => void>();
@@ -63,7 +66,7 @@ class SharedRead {
       stop();
       if (gen === this.gen) this.set({ data, loading: false });
       return true;
-    } catch (e) { stop(); if (gen === this.gen) this.set({ loading: false, error: errorText(e) }); return false; }
+    } catch (e) { stop(); if (gen === this.gen) this.set({ loading: false, error: errorText(e), raw: errorWords(e) }); return false; }
   }
   private set(next: Read) { this.snap = next; for (const fn of [...this.subs]) fn(); }
 }
@@ -264,7 +267,7 @@ export function AddAccount({ engine }: SlotControlProps) {
       )) : null}
     </div>
     <Failed text={failed} />
-    {add ? <AddAccountDialog clear engine={engine} start={add} caps={caps} providers={providers} agent={agent} onClose={(added) => { setAdd(null); if (added) void status.reload(); }} capsReady={capsReady} /> : null}
+    {add ? <AddAccountDialog clear engine={engine} start={add} caps={caps} providers={providers} agent={agent} onClose={(added) => { setAdd(null); if (added) { void status.reload(); void sharedRead(engine, "branch.setup.detect").reload(); } }} capsReady={capsReady} /> : null}
   </Kit>;
 }
 
@@ -472,12 +475,22 @@ export function AddOwnAccount({ engine }: SlotControlProps) {
   </Kit>;
 }
 
+/** A failed check that is a sign-in failure, the same test as Classic's coding-app rows (#1850). */
+const SIGN_IN_ERROR = /token expired|\b401\b|\b403\b|unauthori[sz]ed|forbidden/i;
+/** Codex signs in with a ChatGPT account: Add an account opens on it (sessionStorage and its event, as StatusLayer). */
+const CODEX_PROVIDER = "openai-codex";
+function openAddAccount(provider: string) {
+  sessionStorage.setItem("branch.openAddAccount", provider);
+  window.dispatchEvent(new Event("branch:open-add-account"));
+}
+
 /** A coding app on this computer as branch.setup.detect finds it; Codex's switch is plugins.entries.codex.enabled, the
  *  others follow their own sign-in (a greyed switch, as Classic). Claude Code shows its account from usage.status. */
 function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
   // §4.7.8: the switch reads on only when the app is ready, and is greyed until it is (preview's codingSecPE18).
   const detect = useRead(engine, "branch.setup.detect");
   const usage = useRead(engine, "usage.status");
+  const [level] = useLevel(engine);
   const { store, snap, config } = useConfigSnap(engine);
   const [failed, run] = useFailure();
   const f = foundState(app, detect.data);
@@ -488,14 +501,22 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
   const word = detect.error ? "Couldn’t check" : detect.loading ? "Looking…" : PILL[f.state][1];
   const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
   const pluginOn = app.plugin ? record(record(record(config.plugins).entries)[app.plugin]).enabled === true : f.state === "ready";
+  // A failed check (#1850): one plain sentence at Regular and Advanced, the exact words at Technical. A sign-in failure
+  // offers Sign in again for Codex (Add a ChatGPT account); Claude Code and Gemini CLI sign in in their own app.
+  const why = detect.error ? detect.raw ?? detect.error : undefined;
+  const signInFailed = Boolean(why && SIGN_IN_ERROR.test(why));
+  const signIn = signInFailed && app.plugin === "codex";
+  const failLine = !why ? "" : level >= 2 ? why : signInFailed && !signIn ? `Open ${app.name} on this computer and sign in there, then choose Check again.` : plainError(why, true);
   const sub = codex.prompt ? codex.prompt : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
   return <>
     <div className="r1s-item">
       <Logo id={app.brand} size={22} />
       <span className="r1s-item-t g-label" data-lines>
         <b>{word}{app.kind === "claude-cli" && claude?.accountEmail ? " · " + text(claude.accountEmail) : ""}</b>
-        <small>{detect.error ? visible(detect.error) : sub}</small>
-        {detect.error ? <button type="button" className="r1s-btn" onClick={() => void detect.reload()}>Try again</button> : null}
+        <small>{detect.error ? failLine : sub}</small>
+        {detect.error ? signIn
+          ? <button type="button" className="r1s-btn" onClick={() => openAddAccount(CODEX_PROVIDER)}>Sign in again</button>
+          : <button type="button" className="r1s-btn" onClick={() => void detect.reload()}>Check again</button> : null}
       </span>
       {codex.prompt ? (
         <span data-testid="codex-download-prompt">

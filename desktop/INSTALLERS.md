@@ -2,7 +2,7 @@
 
 ## One-line install (recommended)
 
-macOS (Apple silicon) and Linux (x64):
+macOS (Apple silicon and Intel) and Linux (x64):
 
 ```sh
 curl -fsSL https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.sh | sh
@@ -27,6 +27,7 @@ Both scripts:
 | Platform | Asset | Installs to |
 |---|---|---|
 | macOS arm64 | `branch-desktop-<version>-darwin-arm64.tar.gz` | `~/Applications/Branch Agent.app`. The script reports whether the app carries a code signature (Apple silicon needs at least an ad-hoc one). It refuses to replace an app signed with the release identity by an ad-hoc one. |
+| macOS x64 | `branch-desktop-<version>-darwin-x64.tar.gz` | The same `~/Applications/Branch Agent.app` path. `install.sh` reads `uname -m` and takes only this SHA256SUMS entry on an Intel Mac. |
 | Linux x64 | `Branch-Agent-<version>-linux-x64.AppImage` (never a tar.gz) | The AppImage itself at `~/.local/bin/branch-agent` (made executable) and `~/.local/share/applications/branch-agent.desktop`. A `~/.local/share/branch-agent` folder left by this script's earlier tar.gz design is removed; app data in `~/.local/share/BranchAgent` is never touched. |
 | Windows x64 | `Branch-Agent-Setup-<version>-win32-x64.exe` | `%LOCALAPPDATA%\Programs\Branch Agent`, through Inno Setup's per-user silent install (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER`). |
 
@@ -62,6 +63,7 @@ OS installer signatures go through `desktop/scripts/release-signing.mjs` and sta
 |---|---|---|
 | win32-x64 | `Branch-Agent-Setup-<version>-win32-x64.exe` (Inno Setup 6, per user, no admin prompt) | OS signature: not until the Azure names below are set. The staged Windows update payload is `branch-desktop-<version>-win32-x64.tar.gz` (desktopRuntime) and carries a free `.sig` in `latest.json`. The Setup `.exe` is first-run only; when present it also gets a sidecar `.sig`. |
 | darwin-arm64 | `Branch-Agent-<version>-darwin-arm64.dmg` (the app plus an Applications link) | No paid Developer ID by default (ad-hoc). Optional Apple names below re-sign with Developer ID. The desktop tar.gz is the macOS update payload and carries a free `.sig`. |
+| darwin-x64 | `Branch-Agent-<version>-darwin-x64.dmg` plus the stable `Branch-macOS-Intel.dmg` alias (the app plus an Applications link) | No OS signature: always ad-hoc. The Apple Developer ID secrets stay on the arm64 job; this target never stamps the self-signed release identity. |
 | linux-x64 | `Branch-Agent-<version>-linux-x64.AppImage` (per user; `install.sh` puts it at `~/.local/bin/branch-agent`). The same step also writes `Branch-Linux.deb`. | No OS signature. The AppImage is built with appimagetool 1.9.1 and the type2 runtime 20251108, both pinned by size and SHA-256 in `APPIMAGE_TOOLS` (`release-installers.mjs`) and checked before either runs. The AppImage is the Linux update payload and carries a free `.sig`. |
 
 ## Why per-user and where
@@ -81,7 +83,7 @@ Every file is checked before staging: the component's size and SHA-256 from the 
 
 | Platform | What's fetched | How it's swapped |
 |---|---|---|
-| macOS | The whole `.app` (the `branch-desktop-<version>-darwin-arm64.tar.gz` runtime component), because app.asar is sealed in the code signature | The bundle in `~/Applications` is renamed aside and the new one renamed in. Before staging, both signatures are read with codesign: an app signed with the pinned release identity is never replaced by an ad-hoc or unsigned one (`assertNoMacSigningDowngrade`), and that release is then not downloaded again. An ad-hoc install (a release that declares `signing: "adhoc"`) takes an ad-hoc or identity-signed update. |
+| macOS | The whole `.app` (`branch-desktop-<version>-darwin-arm64.tar.gz` or `branch-desktop-<version>-darwin-x64.tar.gz`, matching `process.arch`), because app.asar is sealed in the code signature | The bundle in `~/Applications` is renamed aside and the new one renamed in. Before staging, both signatures are read with codesign: an app signed with the pinned release identity is never replaced by an ad-hoc or unsigned one (`assertNoMacSigningDowngrade`), and that release is then not downloaded again. An ad-hoc install (a release that declares `signing: "adhoc"`) takes an ad-hoc or identity-signed update. The updater fetches `branch-release-darwin-<arch>.json` and checks that asset against SHA256SUMS. |
 | Linux (AppImage) | `Branch-Agent-<version>-linux-x64.AppImage`, checked against `SHA256SUMS` | Downloaded beside the running file as `<file>.update-<version>` (same folder, so the rename is atomic), made executable, then renamed over `$APPIMAGE` (normally `~/.local/bin/branch-agent`) and relaunched. The old file stays as `<file>.previous` for rollback. |
 | Linux (.deb) | `branch-desktop-app-<version>-linux-x64.tar.gz` (app.asar) or `branch-desktop-<version>-linux-x64.tar.gz` (whole app) when Electron changes | Same asar/runtime helper swap as Windows/macOS, against `~/.local/share/branch-agent/app` (seeded from `/opt/branch-agent` on first launch). Never writes under `/opt`; never fetches the AppImage. |
 | Windows | `branch-desktop-app-<version>-win32-x64.tar.gz` (app.asar alone), or `branch-desktop-<version>-win32-x64.tar.gz` (the whole app folder) when Electron changes | The folder in `%LOCALAPPDATA%\Programs\Branch Agent` is swapped as above. Inno Setup's per-user install puts the uninstaller beside it, so the swap doesn't strand it, and a later setup .exe still upgrades the same AppId. |

@@ -7,7 +7,15 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { coachCardPlace, overlaps, type Box } from "./walkthrough-place";
 import "./walkthrough.css";
 
-export type Card = { title: string; text: string; target: string | null; prep?: () => void; side?: boolean };
+export type Card = {
+  title: string;
+  text: string;
+  target: string | null;
+  prep?: () => void;
+  side?: boolean;
+  /** Lets this card's spotlight sit inside the sidebar; without it, a target there gets no hole. */
+  sidebarSpot?: boolean;
+};
 
 /** Shows the side panel (or hides it) through its top-bar button. */
 function sidePanel(open: boolean) {
@@ -112,8 +120,8 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
   const place = useCallback(() => {
     const target = boxOf(cards[i].target);
     const side = sidebarBox();
-    // A hole in the sidebar would dim and cover the rest of it. The card still sits beside the control.
-    setBox(target && side && overlaps(target, side) ? null : target);
+    // A hole in the sidebar would dim and cover the rest of it, unless the card opts in. The card still sits beside the control.
+    setBox(target && side && overlaps(target, side) && !cards[i].sidebarSpot ? null : target);
     setPos(coachCardPlace(
       target,
       { width: card.current?.offsetWidth || 340, height: card.current?.offsetHeight || 200 },

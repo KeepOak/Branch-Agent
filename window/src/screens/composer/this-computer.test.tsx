@@ -9,6 +9,7 @@ import type { WindowEngine } from "../../composer/engine";
 import { undeclaredControls } from "../../glass/coming-registry";
 import { RingPopover } from "./RingPopover";
 import { browserLine, computerLine } from "./ThisComputer";
+import { navPage } from "../settings/nav";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
@@ -57,7 +58,9 @@ it("starts Branch's browser with POST /start and reads it again", async () => {
 
 it("opens Settings › Browser & screen from the row and closes the popover", async () => {
   const { onOpen, onClose, row } = await mount(["computer.status", "browser.request"]);
-  await act(async () => buttonIn(row(), "Computer & browser settings")!.click());
+  expect(buttonIn(row(), `${navPage("browser")?.title} settings`)).toBeDefined();
+  expect(row().textContent).not.toContain("Computer & browser");
+  await act(async () => buttonIn(row(), "Browser & screen settings")!.click());
   expect(onClose).toHaveBeenCalled();
   expect(onOpen).toHaveBeenCalledWith("settings/browser");
 });

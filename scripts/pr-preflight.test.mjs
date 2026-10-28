@@ -24,6 +24,7 @@ import {
   branchNameProblems,
 } from './pr-preflight.mjs';
 import { gateApiBudget } from './merge-gate-trusted.mjs';
+import { loadUnlistedRunner } from './changed-test-coverage.mjs';
 
 const SHA = 'a'.repeat(40);
 const BRANCH = 'trunk/pr-preflight';
@@ -574,6 +575,62 @@ test('a desktop test that desktop-checks.yml does not run fails, and one it runs
   assert.deepEqual(checksOf(withoutRun), ['desktop-tests']);
   const withRun = runPreflight(withInput({ changedFiles: ['desktop/src/x.test.mjs'], files, desktopWorkflow: 'on:\n  pull_request:\njobs:\n  desktop:\n    runs-on: ubuntu-latest\n    steps:\n      - run: node --test desktop/src/x.test.mjs\n' }));
   assert.deepEqual(checksOf(withRun), []);
+});
+
+const STAND_IN_RUNNER = [
+  "import { existsSync, readdirSync, readFileSync } from 'node:fs';",
+  "import { join } from 'node:path';",
+  "export const EXCLUDED = [['scripts/excluded.test.mjs', 'needs a display']];",
+  'export function pickUnlistedTests({ desktopDir, workflowPath, excluded = EXCLUDED }) {',
+  "  const workflow = readFileSync(workflowPath, 'utf8');",
+  '  const skip = new Set(excluded.map(([file]) => file));',
+  "  const dir = join(desktopDir, 'scripts');",
+  '  if (!existsSync(dir)) return [];',
+  "  return readdirSync(dir).filter((name) => name.endsWith('.test.mjs')).map((name) => `scripts/${name}`)",
+  '    .filter((file) => !workflow.includes(file) && !skip.has(file));',
+  '}',
+  '',
+].join('\n');
+
+// A temporary repo root; with the stand-in runner written into it when asked. Never the real repo.
+function tempRepo(withRunner) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'unlisted-runner-'));
+  if (withRunner) {
+    mkdirSync(path.join(dir, 'desktop/scripts'), { recursive: true });
+    writeFileSync(path.join(dir, 'desktop/scripts/run-unlisted-tests.mjs'), STAND_IN_RUNNER);
+  }
+  return dir;
+}
+
+const UNNAMED_WORKFLOW = 'on:\n  pull_request:\njobs:\n  desktop:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n';
+
+async function preflightWithRunner(file, withRunner) {
+  const dir = tempRepo(withRunner);
+  try {
+    const unlistedRunner = await loadUnlistedRunner(dir);
+    assert.equal(unlistedRunner === null, !withRunner);
+    return runPreflight(withInput({
+      changedFiles: [file], files: [{ filename: file, status: 'added' }], desktopWorkflow: UNNAMED_WORKFLOW, unlistedRunner,
+    }));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('without the unlisted-tests runner file, a desktop test no step names still fails preflight', async () => {
+  const problems = await preflightWithRunner('desktop/scripts/new.test.mjs', false);
+  assert.deepEqual(checksOf(problems), ['desktop-tests']);
+  assert.equal(problems[0].message, 'desktop/scripts/new.test.mjs is not run by desktop-checks.yml');
+});
+
+test('with the unlisted-tests runner present, a desktop test it picks up passes preflight', async () => {
+  assert.deepEqual(await preflightWithRunner('desktop/scripts/new.test.mjs', true), []);
+});
+
+test('with the unlisted-tests runner present, a desktop test in its EXCLUDED list still fails preflight', async () => {
+  const problems = await preflightWithRunner('desktop/scripts/excluded.test.mjs', true);
+  assert.deepEqual(checksOf(problems), ['desktop-tests']);
+  assert.equal(problems[0].message, 'desktop/scripts/excluded.test.mjs is not run by desktop-checks.yml');
 });
 
 test('the slow local checks run only when their inputs changed', () => {

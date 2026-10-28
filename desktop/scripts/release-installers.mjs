@@ -4,7 +4,7 @@
 // (desktop/INSTALLERS.md, "Signing"): installers stay unsigned; latest.json carries a .sig per platform.
 //   node desktop/scripts/release-installers.mjs --assets <release-assets> --version <version> --target <target> --out <dir>
 // win32-x64: a per-user Inno Setup installer (no admin prompt; each update lands in a version folder under that root).
-// darwin-arm64: a .dmg holding the already-signed Branch Agent.app and an Applications link.
+// darwin-arm64 and darwin-x64: a .dmg holding the already-signed Branch Agent.app and an Applications link.
 // linux-x64: a per-user AppImage (install.sh and the in-app updater) plus Branch-Linux.deb, the downloadable package.
 // The component-release native job builds both by running this script; the versioned AppImage name is unchanged.
 import { spawnSync } from "node:child_process";
@@ -25,7 +25,7 @@ export { windowsLauncherScript };
 export const WINDOWS_APP_ID = "{{6F0B6A43-3C1E-4D8B-9A57-2E4B1C9D7F10}";
 /** The bundled Electron's floor (Electron 23 dropped Windows 7, 8 and 8.1). */
 export const WINDOWS_MIN_VERSION = "10.0";
-export const TARGETS = ["win32-x64", "darwin-arm64", "linux-x64"];
+export const TARGETS = ["win32-x64", "darwin-arm64", "darwin-x64", "linux-x64"];
 
 /**
  * appimagetool and the AppImage runtime it embeds, pinned by release, size and SHA-256. Each download is checked before
