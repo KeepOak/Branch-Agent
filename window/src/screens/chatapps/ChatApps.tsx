@@ -3,7 +3,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { canAll, useCapabilityVersion } from "../../connect/capabilities";
 import { Coming } from "../../glass/coming";
 import { ChatLogo } from "../../places/settings/set1/chatapps-logo";
-import { appOf, catalogue, trunksOf } from "../../places/settings/set1/chatapps-data";
+import { appOf, catalogue, trunksOf, type App } from "../../places/settings/set1/chatapps-data";
 import { appRoute, bindingsOf } from "../../places/settings/set1/chatapps-who";
 import { useResource } from "../../places/settings/hooks";
 import { PairDialog } from "../../places/customize/pairing";
@@ -30,6 +30,9 @@ export type ChatAppsProps = {
 };
 
 const ALSO = "Also in Branch";
+
+/** A connected card's word: Connected only while running and healthy, else the pill's word from appOf. */
+const cardWord = (state?: App) => state?.running && state.tone === "ok" ? "Connected" : state?.word;
 
 export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsProps) {
   const whyId = useId();
@@ -74,7 +77,7 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
     const { state, on, qr, needs, locked, enabled } = stateOf(app);
     const action = on ? onManage : onSetup;
     const reason = locked ? "Setting up " + app.name + " needs full access on this connection." : on ? "Managing " + app.name + " is unavailable in this view." : "Setting up " + app.name + " comes in a later update.";
-    const face = <><ChatLogo id={app.channel ?? app.id} name={app.name} size={32} /><span className="r1-ca-text"><b>{app.name}</b><small>{on ? (state?.running ? "Connected" : state?.word) : app.estimate}</small><small id={`${whyId}-${app.id}`} hidden={enabled}>{!enabled ? reason : null}</small></span><span className="r1-ca-action">{locked ? "Needs full access" : on && !enabled ? (state?.running ? "Connected" : state?.word) : !enabled ? "Coming" : on ? "Manage" : "Set up"}</span></>;
+    const face = <><ChatLogo id={app.channel ?? app.id} name={app.name} size={32} /><span className="r1-ca-text"><b>{app.name}</b><small>{on ? cardWord(state) : app.estimate}</small><small id={`${whyId}-${app.id}`} hidden={enabled}>{!enabled ? reason : null}</small></span><span className="r1-ca-action">{locked ? "Needs full access" : on && !enabled ? cardWord(state) : !enabled ? "Coming" : on ? "Manage" : "Set up"}</span></>;
     // Full access is this connection's scope, not a missing call: the card stays greyed with its reason and names its calls.
     if (locked) return <button key={app.id} type="button" className="r1-ca-card g-frost" aria-disabled="true" aria-describedby={`${whyId}-${app.id}`} title={reason} data-need={needs.join(" ")}>{face}</button>;
     // Every other card goes through <Coming> with the calls it makes (R1-10). web.login.* is never in the hello, so
