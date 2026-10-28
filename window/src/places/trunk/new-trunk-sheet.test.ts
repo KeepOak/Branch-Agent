@@ -3,10 +3,15 @@ import type { WindowEngine } from "../../connect/engine";
 import { creationProblem } from "./model";
 import { canCreateTrunk, createShapedTrunk, newTrunkReadyLine, OPEN_NEW_TRUNK_SHEET, openNewTrunkSheet, startingLook, TRUNK_COLOURS, TRUNK_SHAPES, type NewTrunkDraft } from "./new-trunk-sheet";
 
-function engineWith(result: unknown | ((method: string) => unknown)): { engine: WindowEngine; request: ReturnType<typeof vi.fn> } {
+let gatewaySeq = 0;
+
+function engineWith(
+  result: unknown | ((method: string) => unknown),
+  gatewayUrl = `ws://gateway-${(gatewaySeq += 1)}.test`,
+): { engine: WindowEngine; request: ReturnType<typeof vi.fn> } {
   const reply = typeof result === "function" ? result : (_method: string) => result;
   const request = vi.fn(async (method: string) => reply(method));
-  return { request, engine: { request, onEvent: () => () => undefined, sessionKey: null, scopes: [] } as unknown as WindowEngine };
+  return { request, engine: { request, onEvent: () => () => undefined, sessionKey: null, scopes: [], gatewayUrl } as unknown as WindowEngine };
 }
 
 const fern: NewTrunkDraft = { name: "  Fern  ", colour: "#B84A6B", shape: "Leaf" };
@@ -144,7 +149,23 @@ describe("New Trunk sheet", () => {
     expect(request).not.toHaveBeenCalledWith("agents.list", {});
   });
 
-  it("does not let a name tried on one engine open silently on another", async () => {
+  it("opens the Trunk when Create again runs on the new handle a reconnect built", async () => {
+    const gatewayUrl = "ws://reconnect.test";
+    const first = engineWith((method: string) => {
+      if (method === "agents.create") throw new Error("Connection closed before the reply arrived");
+      return {};
+    }, gatewayUrl);
+    await expect(createShapedTrunk(first.engine, fern)).rejects.toThrow("Connection closed before the reply arrived");
+    const second = engineWith((method: string) => {
+      if (method === "agents.create") return { ok: false, error: { message: 'agent "fern" already exists' } };
+      if (method === "agents.list") return { agents: [{ id: "fern", identity: { name: "Fern" } }] };
+      return {};
+    }, gatewayUrl);
+    await expect(createShapedTrunk(second.engine, fern)).resolves.toBe("fern");
+    expect(second.request).toHaveBeenCalledWith("agents.list", {});
+  });
+
+  it("does not let a name tried on one gateway open silently on another", async () => {
     const first = engineWith((method: string) => {
       if (method === "agents.create") throw new Error("Connection closed before the reply arrived");
       return {};

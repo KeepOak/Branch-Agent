@@ -55,8 +55,9 @@ function refused(result: unknown): void {
   }
 }
 
-/** Names this window already sent to agents.create, per engine (trimmed, lowercased). */
-const attemptedNames = new WeakMap<WindowEngine, Set<string>>();
+/** Names this window already sent to agents.create, per gateway address (trimmed, lowercased). Keyed by
+ *  `gatewayUrl`, not the engine handle: a reconnect rebuilds the handle, and the retry must still count as Create again. */
+const attemptedNames = new Map<string, Set<string>>();
 
 /** agents.create with the pebble the sheet shows. Eyes stay Round; the editor still changes them.
  *  Create again for a name this window already tried (the first reply may have been lost) returns that Trunk
@@ -66,10 +67,11 @@ export async function createShapedTrunk(engine: WindowEngine, draft: NewTrunkDra
   if (!canCreateTrunk(name)) throw new Error("Give the Trunk a name.");
   if (!TRUNK_COLOURS.includes(draft.colour) || !TRUNK_SHAPES.includes(draft.shape)) throw new Error("Pick a colour and a shape.");
   const key = name.toLowerCase();
-  let tried = attemptedNames.get(engine);
+  const gateway = engine.gatewayUrl ?? "";
+  let tried = attemptedNames.get(gateway);
   if (!tried) {
     tried = new Set();
-    attemptedNames.set(engine, tried);
+    attemptedNames.set(gateway, tried);
   }
   const triedBefore = tried.has(key);
   tried.add(key);
