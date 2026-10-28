@@ -3475,7 +3475,7 @@ fs.readFileSync = (file, ...args) => {
         testNodeExecPath,
         [
           "--import",
-          preload,
+          pathToFileURL(preload).href,
           "scripts/e2e/lib/upgrade-survivor/systemd-fixture.mjs",
           "record-caller",
           output,

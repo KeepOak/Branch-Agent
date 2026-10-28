@@ -167,7 +167,7 @@ it("emits the published failure metadata through the host CLI without changing i
     f,
     [
       "--import",
-      path.resolve("scripts/tsx.mjs"),
+      pathToFileURL(path.resolve("scripts/tsx.mjs")).href,
       path.resolve("scripts/upgrade-survivor-diagnostics.mjs"),
       "publish",
       f.artifacts,
