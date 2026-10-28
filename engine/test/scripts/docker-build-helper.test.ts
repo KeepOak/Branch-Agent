@@ -3495,7 +3495,7 @@ fs.readFileSync = (file, ...args) => {
     }
   });
 
-  it.each([
+  itPosix.each([
     ["error", 0, "update"],
     ["warning", 0, "--post-core"],
   ] as const)(
@@ -3861,7 +3861,7 @@ update_candidate 1
     },
   );
 
-  it.each(["sqlite", "historical"])(
+  itPosix.each(["sqlite", "historical"])(
     "observes or explicitly omits persisted plugin identity without changing source artifacts (%s)",
     (storage) => {
       const { workDir, artifacts, env } = survivorPostCoreFixture();
@@ -5310,7 +5310,7 @@ process.exit(73);
     },
   );
 
-  it("copies the complete bun harness closure into the package-install lane", () => {
+  itPosix("copies the complete bun harness closure into the package-install lane", () => {
     const packageRunner = readFileSync(DOCKER_PACKAGE_INSTALL_E2E_PATH, "utf8");
     const listMatch = /for harness_path in \\\n([^;]*); do/u.exec(packageRunner);
     expect(listMatch, "bun harness copy list").toBeTruthy();
