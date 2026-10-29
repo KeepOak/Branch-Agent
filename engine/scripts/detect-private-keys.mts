@@ -112,8 +112,17 @@ function isDirectRun(): boolean {
   if (!process.argv[1]) {
     return false;
   }
-  const normalize = (value: string) =>
-    process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
+  // Compare real paths: macOS tmpdir (/var -> /private/var) makes argv[1] and
+  // import.meta.url differ by a symlink, which silently skipped main().
+  const normalize = (value: string) => {
+    let resolved = path.resolve(value);
+    try {
+      resolved = fs.realpathSync(resolved);
+    } catch {
+      // Keep the lexical path when it cannot be resolved.
+    }
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  };
   return normalize(process.argv[1]) === normalize(fileURLToPath(import.meta.url));
 }
 
