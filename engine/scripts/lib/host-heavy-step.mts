@@ -97,6 +97,53 @@ function hasChildClaims(directory: string): boolean {
   }
 }
 
+function replaceOwner(ownerPath: string, raw: string): void {
+  const staging = `${ownerPath}.${process.pid}-${randomUUID()}.tmp`;
+  fs.writeFileSync(staging, raw, { flag: "wx" });
+  // Rename keeps every reader on a complete record, so waiters stay fail-closed.
+  fs.renameSync(staging, ownerPath);
+}
+
+/** An owner record names its admission: the parent's own record, or a child holding it for that parent. */
+function admittedBy(owner: unknown): unknown {
+  if (isRecord(owner) && typeof owner.admittedBy === "string") {
+    try {
+      return JSON.parse(owner.admittedBy);
+    } catch {
+      return undefined;
+    }
+  }
+  return owner;
+}
+
+/**
+ * A joined child in another process holds the slot while it runs, so owner.json names it rather
+ * than the long-lived parent that admitted it. The parent's exact bytes are restored when the
+ * child joins, which lets the parent's lock release unchanged.
+ */
+function adoptInheritedOwner(ownerPath: string, owner: unknown) {
+  if (!isRecord(owner) || owner.pid === process.pid) {
+    return undefined;
+  }
+  const raw = fs.readFileSync(ownerPath, "utf8");
+  if (JSON.stringify(JSON.parse(raw)) !== JSON.stringify(owner)) {
+    throw new Error("Heavy-step owner changed before child admission");
+  }
+  const restore = typeof owner.admittedBy === "string" ? owner.admittedBy : raw;
+  const record = `${JSON.stringify(
+    {
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      startIdentity: readDistArtifactStartIdentity(process.pid),
+      admittedBy: restore,
+    },
+    null,
+    2,
+  )}\n`;
+  replaceOwner(ownerPath, record);
+  return { record: JSON.stringify(JSON.parse(record)), restore };
+}
+
 /** Reuses dist-artifact ownership, including its dead/recycled-PID and child fences. */
 export async function acquireHostHeavyStep(
   kind: HeavyStepKind,
@@ -134,7 +181,7 @@ export async function acquireHostHeavyStep(
     owner &&
     isRecord(inherited) &&
     inherited.directory === directory &&
-    JSON.stringify(inherited.owner) === JSON.stringify(owner) &&
+    JSON.stringify(inherited.owner) === JSON.stringify(admittedBy(owner)) &&
     !canReclaimDistArtifactOwner(owner, directory)
   ) {
     // The parent owns admission until this joined script and its children finish.
@@ -144,6 +191,7 @@ export async function acquireHostHeavyStep(
       fs.rmSync(claim, { force: true });
       throw new Error("Heavy-step owner changed before child admission");
     }
+    let adopted: ReturnType<typeof adoptInheritedOwner>;
     try {
       // Reusing a slot must not skip a larger child step's memory requirement.
       const inheritedNeed = typeof inherited.need === "number" ? inherited.need : 0;
@@ -153,6 +201,7 @@ export async function acquireHostHeavyStep(
           await delay(500, undefined, { signal: options.signal });
         }
       }
+      adopted = adoptInheritedOwner(ownerPath, owner);
     } catch (error) {
       fs.rmSync(claim, { force: true });
       throw error;
@@ -161,6 +210,10 @@ export async function acquireHostHeavyStep(
       env,
       release: async (joined = true) => {
         if (joined) {
+          // Restore before dropping the claim so no moment names a finished child without a fence.
+          if (adopted && JSON.stringify(readOwner(ownerPath)) === adopted.record) {
+            replaceOwner(ownerPath, adopted.restore);
+          }
           fs.rmSync(claim, { force: true });
         }
       },

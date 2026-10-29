@@ -12,6 +12,7 @@ import type { WithDistArtifactOwnership } from "./runtime-artifact-contract.js";
 
 const DIST_ARTIFACT_LOCK_PATH = ".artifacts/dist-artifacts.lock";
 const LOCK_POLL_MS = 500;
+const DEFAULT_LOCK_MAX_AGE_MS = 2 * 60 * 60_000;
 type ArtifactOwner = { directory: string; unjoinedError?: Error };
 let inheritedOwner: ArtifactOwner | undefined;
 
@@ -48,6 +49,18 @@ function hasRecycledIdentity(record: Record<string, unknown>): boolean {
   return liveIdentity !== undefined && liveIdentity !== record.startIdentity;
 }
 
+/** Finite positive `BRANCH_DIST_ARTIFACT_LOCK_MAX_AGE_MS`, otherwise two hours. */
+export function resolveDistArtifactLockMaxAgeMs(env: NodeJS.ProcessEnv = process.env): number {
+  const configured = Number(env.BRANCH_DIST_ARTIFACT_LOCK_MAX_AGE_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_LOCK_MAX_AGE_MS;
+}
+
+/** A live long-lived holder cannot keep the lock forever; an unknown start time stays held. */
+function isPastMaxAge(record: Record<string, unknown>): boolean {
+  const started = typeof record.startedAt === "string" ? Date.parse(record.startedAt) : Number.NaN;
+  return Number.isFinite(started) && Date.now() - started > resolveDistArtifactLockMaxAgeMs();
+}
+
 /** Unjoined or claimed child work keeps the checkout owned even after its owner PID is reused. */
 function hasRetainedChildWork(directory: string): boolean {
   try {
@@ -74,7 +87,7 @@ export function canReclaimDistArtifactOwner(payload: unknown, directory?: string
     return true;
   }
   if (
-    hasRecycledIdentity(record) &&
+    (hasRecycledIdentity(record) || isPastMaxAge(record)) &&
     (directory === undefined || !hasRetainedChildWork(directory))
   ) {
     return true;
@@ -215,9 +228,12 @@ export async function acquireDistArtifactOwnership(
           timeoutMs: wait ? (signal ? LOCK_POLL_MS : Number.POSITIVE_INFINITY) : 0,
           retry: { minTimeout: LOCK_POLL_MS, maxTimeout: LOCK_POLL_MS, factor: 1 },
           staleRecovery: "remove-if-unchanged",
-          // Preserve legacy fail-closed recovery; only a proven recycled PID is new.
+          // Preserve legacy fail-closed recovery; only a proven recycled PID or an expired
+          // holder is new, and retained child work still fences both.
           shouldRemoveStaleLock: ({ payload }) =>
-            isRecord(payload) && hasRecycledIdentity(payload) && !hasRetainedChildWork(directory),
+            isRecord(payload) &&
+            (hasRecycledIdentity(payload) || isPastMaxAge(payload)) &&
+            !hasRetainedChildWork(directory),
           shouldReclaim: ({ payload }) => {
             owner = payload;
             if (canReclaimDistArtifactOwner(payload, directory)) {

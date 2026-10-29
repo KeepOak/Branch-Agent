@@ -10,6 +10,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import * as availableMemory from "../../scripts/lib/available-memory.mjs";
 import {
   acquireDistArtifactOwnership,
+  readDistArtifactStartIdentity,
+  releaseDistArtifactLock,
   resolveDistArtifactLockPath,
   withDistArtifactOwnership,
 } from "../../scripts/lib/dist-artifact-lock.mts";
@@ -732,4 +734,170 @@ it("host admission shares one FIFO slot across real processes in different workt
     }
     await Promise.all(children.map(({ closed }) => closed));
   }
+}, 45000);
+
+const writeOwner = (root: string, record: Record<string, unknown>, checkout = true) => {
+  const directory = resolveDistArtifactLockPath(root, checkout);
+  fs.mkdirSync(directory, { recursive: true });
+  const ownerPath = path.join(directory, "owner.json");
+  const bytes = JSON.stringify(record);
+  fs.writeFileSync(ownerPath, bytes);
+  return { directory, ownerPath, bytes };
+};
+const liveOwner = (ageMs: number) => ({
+  pid: process.pid,
+  startIdentity: readDistArtifactStartIdentity(process.pid),
+  startedAt: new Date(Date.now() - ageMs).toISOString(),
+});
+
+it("reclaims a fresh lock whose holder PID is dead through the release path", async () => {
+  const root = createRoot();
+  const exited = childProcesses.spawnSync(process.execPath, ["-e", ""], { windowsHide: true });
+  expect(exited.status).toBe(0);
+  const { ownerPath, bytes } = writeOwner(root, {
+    pid: exited.pid,
+    startIdentity: "dead",
+    startedAt: new Date().toISOString(),
+  });
+  // PID death alone still never removes a checkout lock inside acquisition.
+  await expect(acquireDistArtifactOwnership(root)).rejects.toThrow("retained by PID");
+  expect(fs.readFileSync(ownerPath, "utf8")).toBe(bytes);
+  await releaseDistArtifactLock(root);
+  const lock = await acquireDistArtifactOwnership(root);
+  try {
+    expect(JSON.parse(fs.readFileSync(ownerPath, "utf8")).pid).toBe(process.pid);
+  } finally {
+    await lock.release();
+  }
+});
+
+it("reclaims a live same-identity owner held past the maximum age", async () => {
+  const root = createRoot();
+  vi.stubEnv("BRANCH_DIST_ARTIFACT_LOCK_MAX_AGE_MS", "1000");
+  const { ownerPath, bytes } = writeOwner(root, liveOwner(60_000));
+  const lock = await acquireDistArtifactOwnership(root);
+  try {
+    const owner = JSON.parse(fs.readFileSync(ownerPath, "utf8"));
+    expect(owner.pid).toBe(process.pid);
+    expect(fs.readFileSync(ownerPath, "utf8")).not.toBe(bytes);
+    expect(Date.now() - Date.parse(owner.startedAt)).toBeLessThan(1000);
+  } finally {
+    await lock.release();
+  }
+});
+
+it("host admission takes a build slot held past the maximum age by a live parent", async () => {
+  const root = createRoot();
+  vi.stubEnv("BRANCH_DIST_ARTIFACT_LOCK_MAX_AGE_MS", "1000");
+  const { ownerPath, bytes } = writeOwner(root, liveOwner(60_000), false);
+  const handle = await acquireHostHeavyStep("build", {
+    env: { BRANCH_HEAVY_STEP_DIRECTORY: root, BRANCH_HEAVY_STEP_BUILD_MEMORY_MB: "0" },
+    signal: AbortSignal.timeout(5_000),
+    onWait: vi.fn(),
+  });
+  expect(fs.readFileSync(ownerPath, "utf8")).not.toBe(bytes);
+  await handle.release();
+  expect(fs.existsSync(ownerPath)).toBe(false);
+});
+
+it.for([
+  { name: "a fresh owner", age: 1000, maxAge: "60000" },
+  { name: "an invalid maximum age", age: 60_000, maxAge: "not-a-number" },
+  { name: "a zero maximum age", age: 60_000, maxAge: "0" },
+])("keeps a live same-identity owner with $name", async ({ age, maxAge }) => {
+  const root = createRoot();
+  vi.stubEnv("BRANCH_DIST_ARTIFACT_LOCK_MAX_AGE_MS", maxAge);
+  const { ownerPath, bytes } = writeOwner(root, liveOwner(age));
+  await expect(acquireDistArtifactOwnership(root)).rejects.toThrow("retained by PID");
+  expect(fs.readFileSync(ownerPath, "utf8")).toBe(bytes);
+});
+
+it("keeps a live owner whose start time cannot be read past any maximum age", async () => {
+  const root = createRoot();
+  vi.stubEnv("BRANCH_DIST_ARTIFACT_LOCK_MAX_AGE_MS", "1");
+  const { ownerPath, bytes } = writeOwner(root, { ...liveOwner(0), startedAt: "not-a-date" });
+  await expect(acquireDistArtifactOwnership(root)).rejects.toThrow("retained by PID");
+  expect(fs.readFileSync(ownerPath, "utf8")).toBe(bytes);
+});
+
+it.for(["unjoined", "child-4242"])(
+  "keeps an expired live owner while %s child work is retained",
+  async (fence) => {
+    const root = createRoot();
+    vi.stubEnv("BRANCH_DIST_ARTIFACT_LOCK_MAX_AGE_MS", "1000");
+    const { directory, ownerPath, bytes } = writeOwner(root, liveOwner(60_000));
+    fs.writeFileSync(path.join(directory, fence), "retained child fence");
+    await expect(acquireDistArtifactOwnership(root)).rejects.toThrow("retained by PID");
+    expect(fs.readFileSync(ownerPath, "utf8")).toBe(bytes);
+    expect(fs.existsSync(path.join(directory, fence))).toBe(true);
+  },
+);
+
+it("host admission names the inheriting build process as holder and restores its parent", async () => {
+  const root = createRoot();
+  const env = { BRANCH_HEAVY_STEP_DIRECTORY: root, BRANCH_HEAVY_STEP_BUILD_MEMORY_MB: "0" };
+  const parent = await acquireHostHeavyStep("build", { env });
+  const ownerPath = path.join(resolveDistArtifactLockPath(root, false), "owner.json");
+  const original = fs.readFileSync(ownerPath, "utf8");
+  const script = path.join(root, "inherit-child.mts");
+  const moduleUrl = new URL("../../scripts/lib/host-heavy-step.mts", import.meta.url).href;
+  fs.writeFileSync(
+    script,
+    `
+    import fs from "node:fs";
+    import { acquireHostHeavyStep } from ${JSON.stringify(moduleUrl)};
+    const ownerPath = ${JSON.stringify(ownerPath)};
+    const read = () => fs.readFileSync(ownerPath, "utf8");
+    const release = new Promise(resolve => process.once("message", resolve));
+    const handle = await acquireHostHeavyStep("typecheck", { onWait: () => process.exit(3) });
+    const held = read();
+    // A nested step in the holding process still inherits the same admission.
+    const nested = await acquireHostHeavyStep("test", { onWait: () => process.exit(4) });
+    await nested.release();
+    process.send({ held: JSON.parse(held), unchanged: read() === held });
+    await release;
+    await handle.release();
+    process.send({ restored: read() });
+    process.disconnect();
+  `,
+  );
+  const closed = createDeferred<number | null>();
+  const messages: Array<Record<string, unknown>> = [];
+  const child = childProcesses.spawn(
+    process.execPath,
+    ["--import", new URL("../../scripts/tsx.mjs", import.meta.url).href, script],
+    {
+      cwd: createRoot(),
+      windowsHide: true,
+      stdio: ["ignore", "ignore", "pipe", "ipc"],
+      env: {
+        ...process.env,
+        ...parent.env,
+        BRANCH_HEAVY_STEP_BINDING: "",
+        BRANCH_HEAVY_STEP_TYPECHECK_MEMORY_MB: "0",
+        BRANCH_HEAVY_STEP_TEST_MEMORY_MB: "0",
+      },
+    },
+  );
+  child.on("message", (message) => messages.push(message as Record<string, unknown>));
+  child.once("close", (code) => closed.resolve(code));
+  try {
+    await vi.waitFor(() => expect(messages[0]).toBeDefined(), { timeout: 10000 });
+    const held = messages[0]!.held as Record<string, unknown>;
+    expect(held.pid).toBe(child.pid);
+    expect(held.pid).not.toBe(process.pid);
+    expect(held.startIdentity).toBe(readDistArtifactStartIdentity(child.pid!));
+    expect(Date.parse(held.startedAt as string)).toBeGreaterThan(Date.now() - 60_000);
+    expect(messages[0]!.unchanged).toBe(true);
+    child.send("release");
+    expect(await closed.promise).toBe(0);
+    expect(messages[1]).toEqual({ restored: original });
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill();
+    }
+    await closed.promise;
+    await parent.release();
+  }
+  expect(fs.existsSync(ownerPath)).toBe(false);
 }, 45000);
