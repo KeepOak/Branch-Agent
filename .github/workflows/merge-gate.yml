@@ -393,7 +393,12 @@ jobs:
             pending=$(jq '([.[] | select(.status != "completed")] | length) + (if any(.[]; .name == "Analyze (actions)") then 0 else 1 end)' <<<"$runs")
             failed=$(jq -r '[.[] | select(.status == "completed" and (.conclusion | IN("success","skipped","neutral") | not)) | "\(.name): \(.conclusion)"] | .[]' <<<"$runs")
             if [ -n "$failed" ]; then
-              echo "Failed checks:"; echo "$failed"; exit 1
+              echo "Failed checks:"; echo "$failed"
+              # Explicit Named-macos refusal (#1999 landed while macos Named was red).
+              if grep -E '^Named feature tests on macos' <<<"$failed" >/dev/null; then
+                echo "::error::Named feature tests on macos-latest are red — refuse merge (policy after #1999)."
+              fi
+              exit 1
             fi
             if [ "$pending" -eq 0 ]; then
               echo "All $(jq length <<<"$runs") other checks passed."; exit 0
