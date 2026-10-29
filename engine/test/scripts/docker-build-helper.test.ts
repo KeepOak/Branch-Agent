@@ -1340,6 +1340,9 @@ grep -q '^build --progress=plain --build-arg GITHUB_ACTIONS -t demo-image .$' "$
     async ({ signal }) => {
       const workDir = tempDirs.make("branch-docker-build-signal-");
       writeExecutables(join(workDir, "bin"), {
+        // Pin a passthrough timeout so the host's timeout (or the Node watchdog
+        // on macOS without coreutils) cannot drop the fixture's ready FD 3.
+        timeout: PASSTHROUGH_TIMEOUT_SCRIPT,
         docker: `#!/bin/bash
 set -euo pipefail
 count=0
