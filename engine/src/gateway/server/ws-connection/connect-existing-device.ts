@@ -144,7 +144,18 @@ export async function authorizeExistingGatewayDevice(params: {
         requestedScopes: retryBootstrapOperatorScopes,
         allowedScopes: pairedScopes,
       });
-    if (!pairedAllowsHandoff && !(await requirePairing("scope-upgrade", paired))) {
+    // A node-only setup profile grants no operator access: a device asking for no more
+    // than that profile has nothing to upgrade. Anything beyond it still needs approval.
+    const { scopes: profileScopes, purpose } = retryBootstrapHandoffProfile;
+    const nodeOnlyHandoffCovered =
+      !retryBootstrapHandoffProfile.roles.includes("operator") &&
+      roleScopesAllow({
+        role,
+        requestedScopes: scopes,
+        allowedScopes: resolveBootstrapProfileScopesForRole(role, profileScopes, purpose),
+      });
+    const needsUpgrade = !pairedAllowsHandoff && !nodeOnlyHandoffCovered;
+    if (needsUpgrade && !(await requirePairing("scope-upgrade", paired))) {
       return { ok: false, handoffBootstrapProfile };
     }
     if (

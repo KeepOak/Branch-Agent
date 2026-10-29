@@ -240,3 +240,106 @@ test.each(["mobile", "node"] as const)("trusted-proxy %s pairing", async (profil
     started.envSnapshot.restore();
   }
 });
+
+test("trusted-proxy node pairing still asks before granting operator access", async () => {
+  const auth = {
+    mode: "trusted-proxy" as const,
+    trustedProxy: {
+      userHeader: "x-forwarded-user",
+      requiredHeaders: ["x-forwarded-proto"],
+      allowLoopback: true,
+    },
+  };
+  testState.gatewayAuth = auth;
+  await replaceConfigFile({
+    nextConfig: {
+      gateway: {
+        auth,
+        trustedProxies: ["127.0.0.1"],
+        controlUi: { allowedOrigins: [PROXY_HEADERS.origin] },
+      },
+    },
+    afterWrite: { mode: "auto" },
+  });
+  const started = await startServerWithClient(undefined, { auth, wsHeaders: PROXY_HEADERS });
+  const sockets = [started.ws];
+  const open = async (headers: Record<string, string>) => {
+    const socket = await openTrackedWs(started.port, headers);
+    sockets.push(socket);
+    return socket;
+  };
+  try {
+    const operator = await issueOperatorToken({
+      name: "setup-node-upgrade-admin",
+      approvedScopes: ["operator.admin"],
+      clientId: CONTROL_UI_CLIENT.id,
+      clientMode: CONTROL_UI_CLIENT.mode,
+    });
+    const admin = await open(PROXY_HEADERS);
+    await connectOk(admin, {
+      skipDefaultAuth: true,
+      client: CONTROL_UI_CLIENT,
+      deviceIdentityPath: operator.identityPath,
+      scopes: ["operator.admin"],
+    });
+    const setup = await rpcReq<DevicePairSetupCodeResult>(admin, "device.pair.setupCode", {
+      includeQr: false,
+      publicUrl: "wss://gateway.example.test",
+      bootstrapProfile: "node",
+    });
+    expect(setup.ok, JSON.stringify(setup.error)).toBe(true);
+    if (!setup.payload) {
+      throw new Error("missing setup result");
+    }
+    const { bootstrapToken } = decodePairingSetupCode(setup.payload.setupCode);
+    const node = loadDeviceIdentity("trusted-proxy-setup-node-upgrade");
+    const nodeClient = {
+      id: GATEWAY_CLIENT_NAMES.NODE_HOST,
+      version: "2026.9.1",
+      platform: "linux",
+      mode: "node" as const,
+    };
+    const nodeHeaders: Record<string, string> = { ...PROXY_HEADERS };
+    delete nodeHeaders["x-forwarded-user"];
+    const nodeConnect = {
+      skipDefaultAuth: true,
+      bootstrapToken,
+      role: "node",
+      scopes: [],
+      client: nodeClient,
+      deviceIdentityPath: node.identityPath,
+    };
+    const rejected = await connectReq(await open(nodeHeaders), nodeConnect);
+    expect(rejected.error?.details).toMatchObject({ reason: "not-paired", requestedRole: "node" });
+    const details = rejected.error?.details;
+    const requestId = isRecord(details) ? details.requestId : undefined;
+    expect((await rpcReq(admin, "device.pair.approve", { requestId })).ok).toBe(true);
+    const paired = await connectReq(await open(nodeHeaders), nodeConnect);
+    expect(paired.ok, JSON.stringify(paired.error)).toBe(true);
+    // Asking for nothing beyond the node-only profile opens no repair request.
+    expect((await listDevicePairing()).pending).toEqual([]);
+
+    // Asking for operator access the node-only profile never granted still needs a person.
+    const upgrade = await connectReq(await open(PROXY_HEADERS), {
+      skipDefaultAuth: true,
+      role: "operator",
+      scopes: ["operator.read"],
+      client: nodeClient,
+      deviceIdentityPath: node.identityPath,
+    });
+    expect(upgrade.ok).toBe(false);
+    expect(upgrade.error?.code).toBe("NOT_PAIRED");
+    expect((await listDevicePairing()).pending).toContainEqual(
+      expect.objectContaining({ deviceId: node.identity.deviceId, isRepair: true }),
+    );
+    const device = await getPairedDevice(node.identity.deviceId);
+    expect(device?.roles).toEqual(["node"]);
+    expect(device?.tokens?.operator).toBeUndefined();
+  } finally {
+    for (const socket of sockets) {
+      socket.close();
+    }
+    await started.server.close();
+    started.envSnapshot.restore();
+  }
+});
