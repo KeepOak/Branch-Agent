@@ -2,8 +2,9 @@ name: macOS checks for OS-specific changes
 
 # Pull requests run the feature checks on Linux and Windows only. macOS runs on main after each merge,
 # nightly, and here for pull requests that touch code whose behaviour differs by operating system:
-# process spawning, the daemon/service layer, platform-named files, installers, dependency locks and
-# the CI runners themselves. Desktop changes already run all three systems in desktop-checks.yml.
+# process spawning, the daemon/service layer, platform-named files, the macOS computer-use extension,
+# installers, dependency locks and the CI runners themselves. Desktop changes already run all three
+# systems in desktop-checks.yml.
 on:
   pull_request:
     paths:
@@ -20,7 +21,15 @@ on:
       # The engine handoff standby: detached processes, loopback port handover and lock timing differ by OS.
       - 'engine/src/cli/gateway-cli/standby*'
       - 'engine/src/infra/standby-port-placeholder*'
+      # The computer-use extension starts the macOS driver proxy; its proxy tests run only on macOS (#1948).
+      - 'engine/extensions/cua-computer/**'
       - 'engine/scripts/build-installers.mjs'
+      # Scripts and their tests: path filters previously omitted these, so #1999
+      # could land while Named feature macos was already red for detect-private-keys
+      # / docker-build-helper (and triage-target under engine/src).
+      - 'engine/scripts/**'
+      - 'engine/test/**'
+      - 'engine/src/**/*.test.ts'
       - 'engine/pnpm-lock.yaml'
       - 'window/pnpm-lock.yaml'
       - 'scripts/feature-batch-ci*.mjs'
@@ -71,6 +80,8 @@ jobs:
         # An empty macOS matrix fails this job, so the macOS feature jobs cannot be skipped.
         run: |
           full=$(node base/scripts/feature-batch-ci-matrix.mjs push --named-dir "$GITHUB_WORKSPACE/pr/scripts/feature-batch-ci-named")
+          # The planner prints matrix=... and max_parallel=...; keep only the matrix line for jq.
+          full=$(printf '%s\n' "$full" | grep -m1 '^matrix=')
           macos=$(printf '%s' "${full#matrix=}" | jq -c '{include: [.include[] | select(.os == "macos-latest")]}')
           count=$(printf '%s' "$macos" | jq '.include | length')
           if [ "$count" -lt 1 ]; then echo "macOS named matrix is empty; the macOS feature tests would be skipped" >&2; exit 1; fi

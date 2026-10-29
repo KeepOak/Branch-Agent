@@ -35,7 +35,7 @@ export function entryForSeed(seed: Seed, entries: readonly Entry[]): Entry | nul
 type Props = { engine: WindowEngine; variant?: "place" | "settings"; /** The kind chip Seedbank opens on (Customize asks for one kind). */ initialKind?: KindId | "all" };
 
 export function Seedbank({ engine, variant = "place", initialKind = "all" }: Props) {
-  const [kind, setKind] = useState<KindId | "all">(initialKind);
+  const [selectedKind, setKind] = useState<KindId | "all">(initialKind);
   const [query, setQuery] = useState(""), [sort, setSort] = useState<Sort>("popular"), [cat, setCat] = useState("All");
   const [open, setOpen] = useState<Entry | null>(null), [paste, setPaste] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamFile | null>(null);
@@ -43,6 +43,7 @@ export function Seedbank({ engine, variant = "place", initialKind = "all" }: Pro
   const data = useSeedbank(engine, query);
   // Coming controls (Open on keepoak.com, Most stars, an Add that waits on the engine) show only at Technical.
   const comingShown = useLevelNow(engine) >= COMING_FROM;
+  const kind = !comingShown && selectedKind !== "all" && kindOf(selectedKind).coming ? "all" : selectedKind;
   const shown = useMemo(() => sortEntries(data.entries.filter(e => (kind === "all" || e.kind === kind) && matches(e, query)), sort), [data.entries, kind, query, sort]);
 
   const openTeam = (text: string, seedReason: string): string | null => {
@@ -93,6 +94,7 @@ export function Seedbank({ engine, variant = "place", initialKind = "all" }: Pro
     {items.length ? grid(more ? items.slice(0, 4) : items) : <p className="sb-hint g-label">{data.loading ? "Loading…" : "Nothing here yet."}</p>}
   </div>;
   const comingSection = (id: KindId, brief: boolean) => {
+    if (!comingShown) return null;
     const k = kindOf(id);
     return <div className="sb-sec-list" key={id} data-coming-kind={id}>
       <div className="sb-sec-h"><b className="g-label">{k.label}</b><small className="g-label">Coming</small>{brief && id === "adapters" && <button type="button" className="sb-all" data-local="" onClick={() => setKind(id)}>View all</button>}</div>
@@ -142,7 +144,7 @@ export function Seedbank({ engine, variant = "place", initialKind = "all" }: Pro
     </div>
     <div className="sb-paste"><button type="button" className="sb-btn" data-local="" onClick={() => setPaste("")}>＋ Paste a seed</button><small className="g-label" data-lines>{SEED_WHAT} Paste one here, press ⌘V on this page, or drop a .seed file on the window.</small></div>
     <div className="sb-chips" role="tablist" aria-label="Kinds" data-local="">
-      {[{ id: "all" as const, label: "All" }, ...KINDS].map(k => <button key={k.id} type="button" role="tab" className="sb-chip" aria-selected={kind === k.id} title={"what" in k ? k.what : undefined} onClick={() => { setKind(k.id); setCat("All"); }}>{k.label}</button>)}
+      {[{ id: "all" as const, label: "All" }, ...KINDS.filter(k => comingShown || !k.coming)].map(k => <button key={k.id} type="button" role="tab" className="sb-chip" aria-selected={kind === k.id} title={"what" in k ? k.what : undefined} onClick={() => { setKind(k.id); setCat("All"); }}>{k.label}</button>)}
     </div>
     <label className="sb-search g-frost"><Icon name="search" size={16} /><input type="search" placeholder="Search by name or creator" aria-label="Search Seedbank by name or creator" autoComplete="off" data-local="" value={query} onChange={e => setQuery(e.target.value)} /></label>
     <div className="sb-sort" role="group" aria-label="Sort">

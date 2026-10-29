@@ -11,6 +11,8 @@ permissions:
   contents: read
   checks: read
   actions: read
+  issues: read
+  pull-requests: read
 
 concurrency:
   # Body edits keep the same SHA; do not cancel the wait already running for this PR.
@@ -22,6 +24,10 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      actions: read
+    outputs:
+      # 'true' only when skip-edited proved an earlier run of this PR, base and SHA really passed.
+      debounced: ${{ steps.debounce.outputs.skip }}
     runs-on: ubuntu-latest
     # Leave room for coverage checks after the bounded 10-minute rate-limit wait.
     timeout-minutes: 15
@@ -39,27 +45,67 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Skip heavy steps on a body-only edit
+        # A title/body edit (bots paste verdict markers) keeps the head SHA. Heavy steps are skipped only
+        # when an earlier run is proven: a completed, successful pull_request run of this workflow for
+        # this PR number, base ref and base SHA on this head, whose coverage, window and wait steps all
+        # concluded success (never skipped, so a debounced run is never trusted). An in-progress or
+        # failed earlier run, a base-branch change, an empty pull_requests list, or any API error runs
+        # everything (skip stays unset).
+        id: debounce
+        if: github.event.action == 'edited' && !github.event.changes.base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_GATE_ACTION: edited
+        run: node scripts/merge-gate-rate-limit.mjs skip-edited || true
       - name: Test the coverage check
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/changed-test-coverage.test.mjs
       - name: Test the trusted merge-gate helper
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/merge-gate-trusted.test.mjs
+      - name: Test the trusted merge-gate bound-run rule
+        if: steps.debounce.outputs.skip != 'true'
+        run: node --test scripts/merge-gate-trusted.bound-runs.test.mjs
       - name: Test the event-driven gate recheck planner
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/merge-gate-recheck.test.mjs
       - name: Test the local PR preflight
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/pr-preflight.test.mjs
+      - name: Test the pre-push named-test check
+        if: steps.debounce.outputs.skip != 'true'
+        run: node --test scripts/check-named-tests.test.mjs
       - name: Test the rate-limit wait helper
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
       - name: Test the core API budget logger
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/github-api-budget.test.mjs
+      - name: Test the release-freshness decision
+        if: steps.debounce.outputs.skip != 'true'
+        run: node --test scripts/release-freshness.test.mjs
       - name: Require every changed test to run in CI
-        run: node scripts/changed-test-coverage.mjs
+        if: steps.debounce.outputs.skip != 'true'
+        env:
+          # Read-only; used only to check that a gate-change-reviewed marker carries across a clean merge of main.
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/changed-test-coverage.mjs --all-tests
       - name: Check merge command patterns in documentation
+        if: steps.debounce.outputs.skip != 'true'
         run: node scripts/check-merge-command.mjs
       - name: Guard COPIED.csv and harvest lists
+        if: steps.debounce.outputs.skip != 'true'
         run: |
           node --test scripts/check-copied-csv.test.mjs scripts/feature-batch-ci-shard.test.mjs
           node scripts/check-copied-csv.mjs
       - name: Test UI screenshot proof check
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/check-ui-proof.test.mjs
       - name: Read the pull request once for the body checks
         # One live read for both checks below (each used to read the body itself). Fails closed on error.
@@ -78,6 +124,7 @@ jobs:
           PR_SNAPSHOT_FILE: ${{ runner.temp }}/pr-snapshot.json
         run: node scripts/check-ui-proof.mjs
       - name: Test the SELF-CHECK block check
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/check-self-check.test.mjs
       - name: Require a SELF-CHECK block on trunk/ pull requests
         env:
@@ -86,35 +133,80 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_SNAPSHOT_FILE: ${{ runner.temp }}/pr-snapshot.json
         run: node scripts/check-self-check.mjs
+      - name: Test the MERGE verdict check
+        run: node --test scripts/check-merge-verdict.test.mjs
+      - name: Require a MERGE verdict on the current head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          PR_SNAPSHOT_FILE: ${{ runner.temp }}/pr-snapshot.json
+        run: node scripts/check-merge-verdict.mjs
       - name: Test the window cleanliness check
+        if: steps.debounce.outputs.skip != 'true'
         run: node --test scripts/check-window-clean.test.mjs
       - name: Fail new window cleanliness violations
+        if: steps.debounce.outputs.skip != 'true'
         run: node scripts/check-window-clean.mjs
 
   merge-gate:
     needs: changed-test-coverage
     if: always()
+    # actions: write only lets a superseded run cancel itself (see the first step).
+    permissions:
+      contents: read
+      checks: read
+      actions: write
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - name: Require changed test coverage
         env:
           COVERAGE_RESULT: ${{ needs.changed-test-coverage.result }}
-        run: test "$COVERAGE_RESULT" = success
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$COVERAGE_RESULT" = success ]; then exit 0; fi
+          # `if: always()` keeps this job running after concurrency cancels the run, so a run
+          # superseded by a newer one would end red. When coverage was cancelled and a newer
+          # merge-gate run for this same head SHA exists and was not itself cancelled, cancel
+          # this run instead so it ends `cancelled` (never success) and the newer run decides.
+          # Anything else (failure, timeout, manual cancel, no newer run, API error) fails.
+          if [ "$COVERAGE_RESULT" = cancelled ]; then
+            newer=$(gh api "repos/$REPO/actions/runs?head_sha=$SHA&event=pull_request&per_page=100" \
+              --jq "[.workflow_runs[] | select((.path | startswith(\".github/workflows/merge-gate.yml\")) and .id > $RUN_ID and .conclusion != \"cancelled\")] | length" \
+              || echo 0)
+            if [ "${newer:-0}" -gt 0 ] 2>/dev/null; then
+              echo "::notice::Superseded by a newer merge-gate run for $SHA; cancelling this run."
+              gh run cancel "$RUN_ID" -R "$REPO" || true
+              sleep 120
+            fi
+          fi
+          echo "::error::changed-test-coverage result is $COVERAGE_RESULT"
+          exit 1
       - name: Check out the wait helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
           persist-credentials: false
+      - name: Reuse the verified earlier run
+        # Its wait step is left `skipped` below, which marks this run as debounced for later edits.
+        if: needs.changed-test-coverage.outputs.debounced == 'true'
+        run: echo "A completed earlier run for this PR, base and SHA passed every check; not waiting again."
       - name: Wait for the PR's other checks
+        if: needs.changed-test-coverage.outputs.debounced != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-          MERGE_GATE_ACTION: ${{ github.event.action }}
         run: |
           set -euo pipefail
           gh() {
@@ -124,14 +216,22 @@ jobs:
               command gh "$@"
             fi
           }
-          if [ "${MERGE_GATE_ACTION:-}" = edited ]; then
-            if node scripts/merge-gate-rate-limit.mjs skip-edited; then
-              echo "Skipping redundant edited merge-gate wait; another run for this SHA is in progress or succeeded."
-              exit 0
-            fi
-          fi
           # Give path-filtered workflows time to register their runs.
           sleep 30
+          # macOS named shards run only when os-specific paths change. If this PR's newest
+          # os-specific run failed on an earlier head and none ran on this head, that red
+          # never reaches the check list below (how #1999 landed). Refuse until it reruns green.
+          os_runs=$(gh api "repos/$REPO/actions/workflows/os-specific-checks.yml/runs?event=pull_request&branch=$HEAD_REF&per_page=20") || os_runs='{"workflow_runs":[]}'
+          os_red=$(jq -r --arg sha "$SHA" '
+            [(.workflow_runs // [])[]] | sort_by(.created_at) | last // empty
+            | select(.head_sha != $sha and .status == "completed"
+                and (.conclusion | IN("success","skipped","neutral") | not))
+            | "\(.head_sha[0:12]) \(.conclusion) \(.html_url)"' <<<"$os_runs")
+          if [ -n "$os_red" ]; then
+            echo "Named feature tests on macos-latest were last red on an earlier head: $os_red"
+            echo "Re-run os-specific-checks on this head (workflow_dispatch or a new push) before merging."
+            exit 1
+          fi
           # Workflow identity is immutable per check id. Fetch it only for
           # duplicate job names, and reuse it on later polls.
           attr_cache='{}'
@@ -151,7 +251,22 @@ jobs:
             combined=$(jq '{check_runs: [.[].check_runs[]]}' <<<"$pages")
             runs=$(jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted")]' <<<"$combined")
             # Skip the recheck workflow's own `recheck` check only when its run proves merge-gate-recheck.yml.
+            # Cancelled and skipped `recheck` checks go through the same proof: dropping them by conclusion
+            # alone would hide a foreign workflow's `recheck` and could go green.
+            # One head listing supplies paths so a burst of cancelled rechecks is not one GET each.
             # A failing or running `recheck` from any other workflow is still waited on.
+            run_paths='{}'
+            run_page=1
+            while :; do
+              payload=$(gh api "repos/$REPO/actions/runs?head_sha=$SHA&per_page=100&page=$run_page") || payload='{"workflow_runs":[]}'
+              run_paths=$(jq -c --argjson acc "$run_paths" '
+                $acc + ([(.workflow_runs // [])[] | select(.id != null) | {key: (.id|tostring), value: (.path // "")}] | from_entries)
+              ' <<<"$payload")
+              batch_len=$(jq '(.workflow_runs // []) | length' <<<"$payload")
+              [ "$batch_len" -lt 100 ] && break
+              run_page=$((run_page + 1))
+              [ "$run_page" -gt 10 ] && break
+            done
             recheck_paths='{}'
             while IFS= read -r check; do
               [ -z "$check" ] && continue
@@ -159,7 +274,10 @@ jobs:
               path=""
               run_id=$(jq -r '(.details_url // .html_url // "") | capture("/actions/runs/(?<id>[0-9]+)")? | .id // empty' <<<"$check")
               if [ -n "$run_id" ]; then
-                path=$(gh api "repos/$REPO/actions/runs/$run_id" | jq -r '.path // empty') || path=""
+                path=$(jq -r --arg id "$run_id" '.[$id] // empty' <<<"$run_paths")
+                if [ -z "$path" ]; then
+                  path=$(gh api "repos/$REPO/actions/runs/$run_id" | jq -r '.path // empty') || path=""
+                fi
               else
                 suite=$(jq -r '.check_suite.id // empty' <<<"$check")
                 if [ -n "$suite" ]; then
@@ -293,7 +411,12 @@ jobs:
             pending=$(jq '([.[] | select(.status != "completed")] | length) + (if any(.[]; .name == "Analyze (actions)") then 0 else 1 end)' <<<"$runs")
             failed=$(jq -r '[.[] | select(.status == "completed" and (.conclusion | IN("success","skipped","neutral") | not)) | "\(.name): \(.conclusion)"] | .[]' <<<"$runs")
             if [ -n "$failed" ]; then
-              echo "Failed checks:"; echo "$failed"; exit 1
+              echo "Failed checks:"; echo "$failed"
+              # Explicit Named-macos refusal (#1999 landed while macos Named was red).
+              if grep -E '^Named feature tests on macos' <<<"$failed" >/dev/null; then
+                echo "::error::Named feature tests on macos-latest are red — refuse merge (policy after #1999)."
+              fi
+              exit 1
             fi
             if [ "$pending" -eq 0 ]; then
               echo "All $(jq length <<<"$runs") other checks passed."; exit 0

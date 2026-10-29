@@ -118,13 +118,36 @@ describe("Settings four pages", () => {
     expect($$(".r1s-list .r1s-grp").map((g) => g.textContent)).toEqual(["You", "Your Trunks", "Talking", "Accounts & models", "Permissions & safety", "Computers", "Branch"]);
   });
 
-  it("draws Advanced links as plain rows, not pills", () => {
+  it("draws each nav row and each Also in row as the preview's boxed row with its page's icon", async () => {
+    await mount();
+    for (const b of hubs()) expect(b.querySelector(":scope > svg"), b.textContent ?? "").not.toBeNull();
+    const jumps = $$(".r1s-advanced .r1s-jump");
+    expect(jumps.length).toBeGreaterThan(0);
+    // Your card is your initial in the nav (MeButton), so its row has no icon; every other page has the preview's.
+    for (const b of jumps) expect(Boolean(b.querySelector(":scope > svg")), b.dataset.page).toBe(b.dataset.page !== "card");
+    await click(level("Advanced"));
+    for (const b of $$(".r1s-nav[data-page]").filter((n) => n.dataset.page !== "card")) expect(b.querySelector(":scope > svg"), b.dataset.page).not.toBeNull();
     const css = readFileSync("src/screens/settings/settings.css", "utf8");
     const jump = css.slice(css.indexOf(".r1s-jump {"), css.indexOf(".r1s-jump > span"));
-    expect(jump).toContain("width: 100%");
-    expect(jump).toContain("border-radius: 0");
-    expect(jump).not.toContain("999px");
+    expect(jump).toContain("border-radius: 11px");
+    const nav = css.slice(css.indexOf(".r1s-nav {"), css.indexOf(".r1s-nav > span"));
+    expect(nav).toContain("border-radius: 11px");
+    // The boxes are the Settings glass's control frost and outline: no rule strips them from the nav or the Also in rows.
     const glass = readFileSync("src/glass/glass.css", "utf8");
-    expect(glass).toMatch(/\.r1s-advanced \.r1s-jump \{[^}]*background: transparent[^}]*box-shadow: none[^}]*border-radius: 0/);
+    expect(glass).not.toMatch(/\.r1s-advanced \.r1s-jump \{[^}]*background: transparent/);
+    expect(glass).toMatch(/\.r1s-side\.g-clear :is\(button, a\[href\]\):not\(\.r1s-nav,/);
+  });
+
+  it("keeps a page's Also in list under its title, before the page's own settings, on every Regular page", async () => {
+    // The button crawl clicks a Regular page's controls in page order within its per-level cap, and the Also in rows show
+    // only at Regular: after a long page's settings they went unclicked (never-clicked on #1962).
+    await mount();
+    const order = () => [...host.querySelector(".r1s-page")!.children].map((el) => el.className.split(" ")[0]);
+    expect(order().indexOf("r1s-advanced")).toBeGreaterThan(-1);
+    expect(order().indexOf("r1s-advanced")).toBeLessThan(order().indexOf("r1s-col"));
+    await click(host.querySelector('.r1s-advanced [data-page="instructions"]')!);
+    expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Instructions & personality");
+    expect(order().indexOf("r1s-advanced")).toBeLessThan(order().indexOf("r1s-col"));
+    expect(host.querySelector('.r1s-advanced [data-page="instructions"]')?.getAttribute("aria-current")).toBe("true");
   });
 });

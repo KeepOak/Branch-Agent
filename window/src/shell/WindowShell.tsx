@@ -16,6 +16,7 @@ import { pendingApprovalsWithin } from "../connect/update-probe";
 import { useBranchVersion } from "../connect/branch-version";
 import { LOCAL_ADDRESS, readTargetName, saveTargetName } from "../setup/pre-connect-state";
 import { Thread } from "../thread/Thread";
+import { shortReason } from "../thread/format";
 import { PlaceView } from "../places-nav/PlaceView";
 import { handleOfficeNavigation } from "../places/office/navigation";
 import { SettingsFrame } from "../places-nav/SettingsFrame";
@@ -69,6 +70,7 @@ import type { Roster } from "../places/trunk/model";
 import { creationProblem, readRoster } from "../places/trunk/model";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
+import { PairingPrompt } from "./pairing-prompt";
 import { guideMenuItems } from "./guide-menu";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
@@ -314,6 +316,17 @@ function useEngineReads(session: SaplingSession) {
     gateway: useGatewayFacts(session, ready),
     person: usePersonName(session, ready),
   };
+}
+
+/** §3.6: skip to the chat input or page heading, with main as the empty-page fallback. */
+function skipToMain(e: MouseEvent<HTMLAnchorElement>, chat: boolean) {
+  const main = document.getElementById("main");
+  if (!main) return;
+  e.preventDefault();
+  const composer = chat ? main.querySelector<HTMLElement>('.composer textarea, .composer [contenteditable="true"]') : null;
+  const heading = main.querySelector<HTMLHeadingElement>("h1");
+  if (!composer && heading) heading.setAttribute("tabindex", "-1");
+  (composer ?? heading ?? main).focus();
 }
 
 /** The whole window once connected (DESIGN-SPEC §3): top bar, sidebar, main, status bar, menus and toasts. */
@@ -1498,7 +1511,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />
         </SplitFrame>}
-        notice={showingAll && allTopics?.error ? <p className="notice indent">Couldn't read all threads: {allTopics.error}</p> : showingAll && allTopics?.loading ? <p className="notice indent">Reading all threads…</p> : s.error && !isPreparationPending(s.error) && !isPreparationStalled(s.error) ? <p className="notice indent">{s.error}</p> : null}
+        notice={showingAll && allTopics?.error ? <p className="notice indent">Couldn't read all threads: {shortReason(allTopics.error)}</p> : showingAll && allTopics?.loading ? <p className="notice indent">Reading all threads…</p> : s.error && !isPreparationPending(s.error) && !isPreparationStalled(s.error) ? <p className="notice indent">{shortReason(s.error)}</p> : null}
         stage={stage ? (
           <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
         ) : null}
@@ -1587,7 +1600,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     <TrunkPebbleLooks.Provider value={pebbleLooks}>
     <TrunkEmojiFaces.Provider value={Object.fromEntries(trunks.list.map((t) => [t.name, t.emoji ?? ""]))}>
     <div className={frameClass} data-connection={ready ? "ready" : s.status.phase} data-route={route.kind} style={{ ["--side-w" as string]: `${dedicated ? 0 : sideWidth}px`, ...(stagePlace?.mode === "beside" ? { ["--stage-w" as string]: `${stagePlace.width}px` } : {}) }}>
-      <a className="skip" href="#main">
+      <a className="skip" href="#main" onClick={(e) => skipToMain(e, route.kind === "chat")}>
         {route.kind === "chat" ? "Skip to the conversation" : "Skip to the page"}
       </a>
       <TopBar
@@ -1731,7 +1744,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       ) : null}
       {layout.focus || layout.hidden || settingsAutoRail || browserAutoRail ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
       {slideOpen ? <div className="slide-scrim" onClick={() => setSlideOpen(false)} /> : null}
-      <main className={mainClass} id="main">
+      <main className={mainClass} id="main" tabIndex={-1}>
         {lockdown.on ? <LockdownBanner onTurnOff={toggleLockdown} /> : null}
         {layout.focus ? (
           <button type="button" className="btn sm focus-exit" onClick={() => setLayout({ focus: false })}>
@@ -1864,8 +1877,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             lockdownOn: lockdown.on,
             tryExamples: () => {
               startTryExamples(request);
-              openPlace("customize");
-              window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Trunks" } }));
+              openSettings("trunks");
             },
           })}
         />
@@ -1897,6 +1909,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       }} /> : null}
       {overlay?.kind === "apps" ? <GetAppsDialog onClose={() => setOverlay(null)} onPair={() => setOverlay({ kind: "pair" })} /> : null}
       {overlay?.kind === "pair" ? <PairDialog engine={session.engine} close={() => setOverlay(null)} /> : null}
+      {!dedicated ? <PairingPrompt engine={session.engine} ready={ready} /> : null}
       {newProject ? <NewProjectDialog session={session} onDone={projects.reload} onClose={() => setNewProject(false)} /> : null}
       {keeping ? <KeepLastDialog onCancel={() => setKeeping(null)} onKeep={() => (setKeeping(null), void tidy({ session, list }, keeping, true))} /> : null}
       {deletingMany && deletingMany.length ? (
@@ -1977,6 +1990,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onTalk={(handle) => {
             setSetupTalk(handle);
             if (handle && s.mainKey) { openConversation(s.mainKey); void session.open(s.mainKey); }
+          }}
+          onTalkConversation={(sessionKey) => {
+            firstRun.close();
+            openConversation(sessionKey);
+            void session.open(sessionKey);
           }}
           onClose={(finished) => {
             setSetupTalk(null);

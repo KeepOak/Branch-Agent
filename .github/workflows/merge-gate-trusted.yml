@@ -43,23 +43,31 @@ jobs:
           package-manager-cache: false
       - name: Test the commit email checker
         run: node --test scripts/check-commit-emails.test.mjs
+      - name: Fetch pull request history for the email fallback and the Final head check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          auth="http.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          git -c "$auth" fetch --no-tags --no-recurse-submodules --depth=2000 origin \
+            "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head"
+          # The email fallback's range starts at the PR base, not at the default-branch checkout.
+          git -c "$auth" fetch --no-tags --no-recurse-submodules --depth=2000 origin "$PR_BASE_SHA" \
+            || echo "::warning::could not fetch PR base commit; the git fallback will be unavailable"
+
       - name: Check pull request commit emails
+        # A rate limit waits inside MERGE_GATE_WAIT_SECONDS; if the reset is later, the emails are read from the
+        # PR history fetched above (no REST quota). A real 403 or 404 still fails.
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           MERGE_GATE_WAIT_SECONDS: '600'
         run: node scripts/check-commit-emails.mjs
-
-      - name: Fetch pull request history for the Final head check
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          git -c "http.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)" fetch --no-tags --no-recurse-submodules --depth=2000 origin \
-            "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head"
 
       - name: Preflight the pull request body, commits and files with the local checks
         # The body is read live from the API, never from the event payload. All of its API calls share one
@@ -95,6 +103,8 @@ jobs:
           package-manager-cache: false
       - name: Test the trusted gate helper
         run: node --test scripts/merge-gate-trusted.test.mjs
+      - name: Test the trusted gate bound-run rule
+        run: node --test scripts/merge-gate-trusted.bound-runs.test.mjs
       - name: Test the rate-limit wait helper
         run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
       - name: Read the core API budget before this job

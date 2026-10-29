@@ -1,4 +1,5 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import os from "node:os";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const fakes = vi.hoisted(() => ({
   connect: vi.fn(), save: vi.fn(), ensure: vi.fn(), hello: vi.fn(), stop: vi.fn(),
@@ -17,6 +18,30 @@ const { joinGraftFromWindow } = await import("./graft-join-ui.js");
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+const REAL_HOST = "real-host-should-not-show";
+const savedDisplayHostname = process.env.BRANCH_DISPLAY_HOSTNAME;
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  if (savedDisplayHostname === undefined) {
+    delete process.env.BRANCH_DISPLAY_HOSTNAME;
+  } else {
+    process.env.BRANCH_DISPLAY_HOSTNAME = savedDisplayHostname;
+  }
+});
+
+it.each([
+  ["no name", undefined],
+  ["a blank name", "   "],
+])("names this Branch with the display placeholder, not the real hostname, given %s", async (_label, name) => {
+  process.env.BRANCH_DISPLAY_HOSTNAME = "Tour Mac";
+  vi.spyOn(os, "hostname").mockReturnValue(REAL_HOST);
+  fakes.connect.mockResolvedValueOnce({ outcome: { ok: false, pendingRequestId: "req-2", message: "approval needed" } });
+  expect(await joinGraftFromWindow("code", name)).toEqual({ pending: true, requestId: "req-2" });
+  expect(fakes.connect).toHaveBeenCalledWith(expect.objectContaining({ name: "Tour Mac", displayName: "Tour Mac" }));
+  expect(JSON.stringify(fakes.connect.mock.calls)).not.toContain(REAL_HOST);
 });
 
 it("keeps a pending teammate approval retryable without saving a link", async () => {

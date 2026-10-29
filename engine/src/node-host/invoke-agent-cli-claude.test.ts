@@ -743,12 +743,21 @@ writeFileSync(${JSON.stringify(marker)}, readFileSync(process.argv[1], "utf8"));
         const executable = await executableScript(`
 const { spawn } = require("node:child_process");
 const prompt = process.argv[process.argv.indexOf("--append-system-prompt-file") + 1];
+// Hand fd 3 down only when the supervisor opened it; without the Linux subreaper
+// (macOS, empty BRANCH_SERVICE_MARKER) fd 3 is closed and inheriting it fails spawn (EBADF).
+let fd3 = "ignore";
+try { require("node:fs").fstatSync(3); fd3 = 3; } catch {}
 const child = spawn(process.execPath, ["--input-type=module", "-e",
   ${JSON.stringify(descendant)}, prompt
-], { stdio: ["ignore", "ignore", "ignore", 3] });
+], { stdio: ["ignore", "ignore", "ignore", fd3] });
 child.unref();
 process.stdout.write(JSON.stringify({ type: "result", result: prompt }) + "\\n");`);
-        await withEnvAsync({ BRANCH_SERVICE_MARKER: "" }, async () => {
+        // Linux: empty marker keeps these fixtures off the subreaper path, which
+        // reports identity-lost before the mock can certify extinction.
+        // Darwin: a service marker takes the process-group relay so the
+        // descendant inherits control fd 3 and the root can exit 0. An empty
+        // marker uses a detached child with no extra fds, so spawn(stdio 3) fails.
+        await withEnvAsync({ BRANCH_SERVICE_MARKER: process.platform === "darwin" ? "branch" : "" }, async () => {
           const calls: Array<{ method: string; params: unknown }> = [];
           const request = {
             argv: ["-p"],

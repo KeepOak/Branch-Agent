@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 // Private #1103 item 2: a long code or path ends in an ellipsis, keeps its whole value in the title, and Copy puts the
 // whole value on the clipboard with visible feedback (the button reads "Copied", the toast says "Copied.").
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -47,4 +49,15 @@ it("a refused clipboard says so and never claims Copied", async () => {
   await act(async () => { await Promise.resolve(); });
   expect(toast).toHaveBeenCalledWith("Couldn't copy: Not allowed");
   expect(host.querySelector("button")!.textContent).toBe("Copy");
+});
+
+it("wrap shows a hand-typed value in full across lines instead of an ellipsis", async () => {
+  await act(async () => root.render(<CopyToken value={LONG} wrap toast={() => undefined} />));
+  expect(host.querySelector(".copy-token")!.className).toBe("copy-token wrap");
+  expect(host.querySelector(".copy-token-text")!.textContent).toBe(LONG);
+  const css = readFileSync(resolve(__dirname, "copy-token.css"), "utf8");
+  const rule = css.match(/\.copy-token\.wrap \.copy-token-text \{([^}]*)\}/)?.[1] ?? "";
+  expect(rule).toContain("white-space: normal");
+  expect(rule).toContain("text-overflow: clip");
+  expect(rule).toContain("overflow: visible");
 });

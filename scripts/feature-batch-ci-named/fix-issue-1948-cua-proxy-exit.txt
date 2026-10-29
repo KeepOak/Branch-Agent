@@ -1,0 +1,2 @@
+engine:extensions/cua-computer/src/mac-broker-client.test.ts
+engine:extensions/cua-computer/src/mcp-driver-client.test.ts

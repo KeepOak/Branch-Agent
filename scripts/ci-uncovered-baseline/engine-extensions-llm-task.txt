@@ -1,0 +1,3 @@
+engine:extensions/llm-task/doctor-contract-api.test.ts
+engine:extensions/llm-task/index.test.ts
+engine:extensions/llm-task/src/llm-task-tool.test.ts

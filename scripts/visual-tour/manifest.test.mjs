@@ -11,10 +11,17 @@ test('screens loader accepts the committed tour and rejects unasserted clicks', 
   for (const id of ['canopy-now', 'inbox', 'customize-tools-skills', 'people', 'automations-board', 'row-menu', 'pane-memory', 'computer-stage', 'browser-stage']) {
     assert.ok(screens.some((screen) => screen.id === id), `missing ${id}`);
   }
-  assert.equal(screens.at(-1).id, 'browser-stage');
+  assert.equal(screens.at(-1).id, 'settings-trunks');
+  assert.deepEqual(screens.at(-1).route, { kind: 'settings', page: 'trunks' });
+  assert.deepEqual(screens.at(-1).steps, [{ action: 'assert', by: 'css', target: '.set-item[data-page=trunks][aria-current=true]' }]);
+  for (const id of ['settings-accounts', 'add-claude-account']) {
+    const entry = screens.find((screen) => screen.id === id).steps[1];
+    assert.equal(entry.target, '.set-destinations .set-item[data-page=trunks]');
+    assert.equal(entry.expect, '.set-sections .set-item[data-page=accounts]');
+  }
   // The tour matches text exactly, so the blank-browser assertion must be copy the view still renders.
   const browserCopy = await readFile(new URL('../../window/src/stage/BrowserView.tsx', import.meta.url), 'utf8');
-  const browserAssert = screens.at(-1).steps.at(-1);
+  const browserAssert = screens.find((screen) => screen.id === 'browser-stage').steps.at(-1);
   assert.equal(browserAssert.action, 'assert');
   assert.ok(browserCopy.includes(`"${browserAssert.target}"`), `BrowserView.tsx does not render "${browserAssert.target}"`);
   const rowMenu = screens.find((screen) => screen.id === 'row-menu');

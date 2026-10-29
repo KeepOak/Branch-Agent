@@ -1,0 +1,5 @@
+engine:extensions/slack-huddles/src/config.test.ts
+engine:extensions/slack-huddles/src/node-invoke-policy.test.ts
+engine:extensions/slack-huddles/src/transports/slack-huddles-platform-adapter.audio.test.ts
+engine:extensions/slack-huddles/src/transports/slack-huddles-platform-adapter.test.ts
+engine:extensions/slack-huddles/src/transports/slack-huddles-urls.test.ts
