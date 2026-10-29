@@ -30,12 +30,18 @@ for (const mode of ["stop", "restart", "graceful"] as const) {
           await import("../agents/main-session-recovery/main-session-restart-recovery.js");
         restartMarkers = vi.spyOn(recoveryModule, "markRestartAbortedMainSessions");
         const kernelModule = await import("./server-kernel.js");
-        const createKernel = kernelModule.createGatewayKernel;
+        const prepareKernel = kernelModule.prepareGatewayKernel;
         const capture = vi
-          .spyOn(kernelModule, "createGatewayKernel")
+          .spyOn(kernelModule, "prepareGatewayKernel")
           .mockImplementation(async (...args) => {
-            kernel = await createKernel(...args);
-            return kernel;
+            const prepared = await prepareKernel(...args);
+            return {
+              ...prepared,
+              async activate(...activateArgs) {
+                kernel = await prepared.activate(...activateArgs);
+                return kernel;
+              },
+            };
           });
         try {
           acquisition = startGatewayServerHarness();
