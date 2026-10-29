@@ -9,6 +9,7 @@ import { buildLinuxDeb, debVersion, LINUX_DEB_DESKTOP, LINUX_DEB_LAUNCHER, readL
 import { PUBLIC_DOWNLOAD_NAMES } from "./release-inventory.mjs";
 import { APPIMAGE_DESKTOP_ENTRY, APPIMAGE_TOOLS, appImageToolArgs, appImageToolEnv, assembleAppDir, dmgArgs, fetchPinned, innoCompiler, innoSetupScript,
   installerName, layoutWindowsInstallRoot, main, numericVersion, parseArgs, WINDOWS_APP_ID, windowsInstallerFolderName, windowsLauncherScript } from "./release-installers.mjs";
+import { publicDownloadName } from "./release-inventory.mjs";
 import * as launcher from "./windows-launcher.mjs";
 
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -16,10 +17,12 @@ const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 test("installer names carry the release version and target", () => {
   assert.equal(installerName("0.4.4-build-56aed4e6d99d", "win32-x64"), "Branch-Agent-Setup-0.4.4-build-56aed4e6d99d-win32-x64.exe");
   assert.equal(installerName("0.4.4-build-56aed4e6d99d", "darwin-arm64"), "Branch-Agent-0.4.4-build-56aed4e6d99d-darwin-arm64.dmg");
+  assert.equal(installerName("0.4.4-build-56aed4e6d99d", "darwin-x64"), "Branch-Agent-0.4.4-build-56aed4e6d99d-darwin-x64.dmg");
   assert.equal(installerName("0.4.4-build-56aed4e6d99d", "linux-x64"), "Branch-Agent-0.4.4-build-56aed4e6d99d-linux-x64.AppImage");
   assert.deepEqual(PUBLIC_DOWNLOAD_NAMES, {
     "win32-x64": "Branch-Setup-Windows.exe",
     "darwin-arm64": "Branch-macOS.dmg",
+    "darwin-x64": "Branch-macOS-Intel.dmg",
     "linux-x64": "Branch-Linux.deb",
   });
 });
@@ -237,6 +240,23 @@ test("appimagetool runs with the pinned runtime, no network and no FUSE", () => 
     ["--no-appstream", "--runtime-file", "/w/runtime-x86_64", "/w/Branch-Agent.AppDir", "/o/Branch-Agent-1.0.0-linux-x64.AppImage"]);
   const env = appImageToolEnv("1.0.0", { PATH: "/usr/bin" });
   assert.deepEqual(env, { PATH: "/usr/bin", ARCH: "x86_64", VERSION: "1.0.0", APPIMAGE_EXTRACT_AND_RUN: "1" });
+});
+
+test("the release workflow builds a darwin-x64 package beside darwin-arm64", () => {
+  const workflow = readFileSync(new URL("../../.github/workflows/component-release.yml", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const native = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
+  assert.match(native, /target: darwin-arm64/);
+  assert.match(native, /os: macos-15-intel\n\s+target: darwin-x64/);
+  assert.match(native, /target: darwin-x64\n\s+node_arch: x64/);
+  assert.match(native, /node_arch: x64/);
+  assert.equal(publicDownloadName("darwin-x64"), "Branch-macOS-Intel.dmg");
+  assert.match(readFileSync(new URL("./release-installers.mjs", import.meta.url), "utf8"), /copyFileSync\(file, download\)/);
+  assert.match(native, /architecture: \$\{\{ matrix\.node_arch \}\}/);
+  assert.match(native, /component-release-pnpm-\$\{\{ matrix\.target \}\}/);
+  assert.match(native, /component-release-electron-\$\{\{ matrix\.target \}\}/);
+  assert.match(native, /release-proof-\$\{BRANCH_RELEASE_TARGET\}\.json/);
+  assert.match(native, /if: startsWith\(matrix\.target, 'darwin-'\)/);
+  assert.doesNotMatch(native, /matrix\.target == 'darwin-x64' && secrets\.APPLE_/);
 });
 
 test("the release workflow builds the Linux AppImage as a required step", () => {

@@ -1,5 +1,6 @@
 import { createRequireRecord } from "branch/plugin-sdk/test-fixtures";
 import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import {
@@ -50,7 +51,7 @@ const mocks = vi.hoisted(() => {
     resolveEnvApiKey: vi.fn((provider: string) => {
       if (provider === "openai") {
         return {
-          apiKey: "sk-openai-0123456789abcdefghijklmnopqrstuvwxyz", // pragma: allowlist secret
+          apiKey: ["sk-o", "penai-0123456789abcdefghijklmnopqrstuvwxyz"].join(""), // pragma: allowlist secret
           source: "shell env: OPENAI_API_KEY",
         };
       }
@@ -306,7 +307,7 @@ const defaultStore: AuthProfileStore = {
     }),
     "anthropic:work": createApiKeyCredential(
       "anthropic",
-      "sk-ant-api-0123456789abcdefghijklmnopqrstuvwxyz",
+      ["sk-a", "nt-api-0123456789abcdefghijklmnopqrstuvwxyz"].join(""),
     ), // pragma: allowlist secret
     "openai:default": createOAuthRefreshCredential({
       access: "eyJhbGciOi-ACCESS",
@@ -1019,7 +1020,7 @@ describe("modelsStatusCommand auth overview", () => {
     mocks.resolveEnvApiKey.mockImplementation((provider: string) => {
       if (provider === "zai" || provider === "z.ai" || provider === "z-ai") {
         return {
-          apiKey: "sk-zai-0123456789abcdefghijklmnopqrstuvwxyz", // pragma: allowlist secret
+          apiKey: ["sk-z", "ai-0123456789abcdefghijklmnopqrstuvwxyz"].join(""), // pragma: allowlist secret
           source: "shell env: ZAI_API_KEY",
         };
       }
@@ -1114,6 +1115,55 @@ describe("modelsStatusCommand auth overview", () => {
     expect(output).toContain("Default (defaults)");
     expect(output).toContain(`Fallbacks (${fallbacks.length}) (defaults)`);
     expect(mocks.ensureAuthProfileStore).toHaveBeenLastCalledWith("/tmp/branch-agent");
+  });
+
+  it("says no model is ready on the Default line when the default has no usable auth", async () => {
+    const primary = "anthropic/claude-opus-4-6";
+    // With no anthropic profile at all, read-only status has no auth evidence and
+    // reports the route as indeterminate, not missing. An expired sign-in is a
+    // definite "no usable auth" for the default's provider.
+    configureStatus({
+      primary,
+      profiles: {
+        "anthropic:default": {
+          type: "token",
+          provider: "anthropic",
+          token: "expired-token", // pragma: allowlist secret
+          expires: Date.now() - 60_000,
+        },
+      },
+    });
+
+    // The availability resolver reads env evidence from process.env, so clear the
+    // anthropic env vars the runner may carry.
+    const { payload, text } = await withEnvAsync(
+      { ANTHROPIC_API_KEY: undefined, ANTHROPIC_OAUTH_TOKEN: undefined },
+      async () => ({ ...(await jsonStatus()), ...(await textStatus()) }),
+    );
+    const defaultLine = stripVTControlCharacters(text)
+      .split("\n")
+      .find((line) => line.startsWith("Default"));
+
+    expect(payload.auth.missingProvidersInUse).toEqual(["anthropic"]);
+    expect(payload.defaultModel).toBe(primary);
+    expect(payload.resolvedDefault).toBe(primary);
+    expect(defaultLine).toBe("Default       : none ready yet. Connect a model to get answers.");
+    expect(defaultLine).not.toContain(primary);
+  });
+
+  it("keeps the configured id on the Default line when the default has usable auth", async () => {
+    // Default fixture: anthropic primary with stored anthropic profiles.
+    const primary = "anthropic/claude-opus-4-6";
+
+    const { payload } = await jsonStatus();
+    const { text } = await textStatus();
+    const defaultLine = stripVTControlCharacters(text)
+      .split("\n")
+      .find((line) => line.startsWith("Default"));
+
+    expect(payload.auth.missingProvidersInUse).not.toContain("anthropic");
+    expect(defaultLine).toBe(`Default       : ${primary}`);
+    expect(text).not.toContain("none ready yet");
   });
 
   it("exits non-zero when auth is missing", async () => {

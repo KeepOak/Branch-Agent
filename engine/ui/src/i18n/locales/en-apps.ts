@@ -21,6 +21,7 @@ const enApps = {
     notOutYet: "Not out yet. Use the Android, Mac, Windows or Linux app for now.",
     ctaOpenMac: "Open in Mac app",
     ctaDocs: "Docs",
+    ctaReleases: "Releases",
     ctaSetupGuide: "Setup guide",
     ctaChromeWebStore: "Chrome Web Store",
     ctaOpenPlugins: "Open Plugins",

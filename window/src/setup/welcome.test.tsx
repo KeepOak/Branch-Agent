@@ -9,6 +9,7 @@ import { WelcomeHero } from "./SetupBrand";
 import { PreConnect } from "./PreConnect";
 import { SetupFlow } from "./SetupFlow";
 import { SETUP_LATER_TOAST, WELCOME_LEDE, WELCOME_LOCK } from "./steps-early";
+import { navPage } from "../screens/settings/nav";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -104,6 +105,8 @@ describe("pre-connect Welcome", () => {
     await act(async () => root?.render(<PreConnect local="ws://127.0.0.1:18789" address="wss://desk.example.test" state={{ kind: "pairing" }} busy={false} onConnect={() => {}} onRetry={() => {}} />));
     expect(host.querySelector('[data-testid="setup-pairing"]')).not.toBeNull();
     expect(host.textContent).toContain("Allow this window");
+    expect(host.textContent).toContain(`go to Settings › ${navPage("devices")?.title}.`);
+    expect(host.textContent).not.toContain("Computer & browser");
 
     await act(async () => root?.render(<PreConnect local="ws://127.0.0.1:18789" address="wss://desk.example.test" state={{ kind: "failed", code: "AUTH_TOKEN_MISMATCH", message: "unauthorized: gateway token mismatch" }} busy={false} onConnect={() => {}} onRetry={() => {}} />));
     expect(host.querySelector('[data-testid="setup-problem"]')).not.toBeNull();

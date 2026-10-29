@@ -1,4 +1,4 @@
-const RELEASES_PAGE = "https://github.com/KeepOak/Branch-Agent/releases";
+export const RELEASES_PAGE = "https://github.com/KeepOak/Branch-Agent/releases";
 
 /**
  * Branch's own download pages for Get the apps (Private #1103). Never a store listing.

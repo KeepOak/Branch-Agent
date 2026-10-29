@@ -2,6 +2,7 @@
 // order and names, one kind head with its count and "＋ Add", the "＋ Get more … in Community →" link under the list,
 // and the "For:" faces row above the kinds.
 import { useContext, type ReactNode } from "react";
+import { kindOf } from "../../screens/seedbank/catalog";
 import { shows } from "../../places-nav/level";
 import { TrunkFace } from "../trunk/TrunkFace";
 import { trunkName, type Trunk } from "../library/data";
@@ -38,10 +39,12 @@ export function addControl(ctx: ToolsCtx, kind: Kind): ReactNode {
 /** The kind's head (name, one line on what it is, the count, "＋ Add") and the link under its list. */
 export function KindHead({ ctx, kind, count, children }: { ctx: ToolsCtx; kind: Kind; count: string; children: ReactNode }) {
   const info = KIND_LIST.find(k => k.id === kind)!;
+  const level = useContext(CustomizeLevelContext);
+  const communityShown = !info.community || !kindOf(info.community).coming || shows(level, "technical");
   return <div className="t9-list" data-kind-list={kind}>
     <div className="cz-kindhead"><div><h2>{info.label}</h2><p>{info.line}</p></div><span className="cz-count">{count}</span>{addControl(ctx, kind)}</div>
     {children}
-    {ctx.toCommunity && <button type="button" className="cz-get" onClick={() => ctx.toCommunity?.(info.community)}>＋ Get more {info.label.toLowerCase()} in Community →</button>}
+    {ctx.toCommunity && communityShown && <button type="button" className="cz-get" onClick={() => ctx.toCommunity?.(info.community)}>＋ Get more {info.label.toLowerCase()} in Community →</button>}
   </div>;
 }
 

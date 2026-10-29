@@ -18,11 +18,13 @@ import {
   preflightBudgetSeconds,
   runPreflight,
   scopedChecks,
+  secretLiteralProblems,
   personalInfoProblems as machineDetailProblems,
   privateNameDenylist,
   branchNameProblems,
 } from './pr-preflight.mjs';
 import { gateApiBudget } from './merge-gate-trusted.mjs';
+import { loadUnlistedRunner } from './changed-test-coverage.mjs';
 
 const SHA = 'a'.repeat(40);
 const BRANCH = 'trunk/pr-preflight';
@@ -575,6 +577,62 @@ test('a desktop test that desktop-checks.yml does not run fails, and one it runs
   assert.deepEqual(checksOf(withRun), []);
 });
 
+const STAND_IN_RUNNER = [
+  "import { existsSync, readdirSync, readFileSync } from 'node:fs';",
+  "import { join } from 'node:path';",
+  "export const EXCLUDED = [['scripts/excluded.test.mjs', 'needs a display']];",
+  'export function pickUnlistedTests({ desktopDir, workflowPath, excluded = EXCLUDED }) {',
+  "  const workflow = readFileSync(workflowPath, 'utf8');",
+  '  const skip = new Set(excluded.map(([file]) => file));',
+  "  const dir = join(desktopDir, 'scripts');",
+  '  if (!existsSync(dir)) return [];',
+  "  return readdirSync(dir).filter((name) => name.endsWith('.test.mjs')).map((name) => `scripts/${name}`)",
+  '    .filter((file) => !workflow.includes(file) && !skip.has(file));',
+  '}',
+  '',
+].join('\n');
+
+// A temporary repo root; with the stand-in runner written into it when asked. Never the real repo.
+function tempRepo(withRunner) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'unlisted-runner-'));
+  if (withRunner) {
+    mkdirSync(path.join(dir, 'desktop/scripts'), { recursive: true });
+    writeFileSync(path.join(dir, 'desktop/scripts/run-unlisted-tests.mjs'), STAND_IN_RUNNER);
+  }
+  return dir;
+}
+
+const UNNAMED_WORKFLOW = 'on:\n  pull_request:\njobs:\n  desktop:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n';
+
+async function preflightWithRunner(file, withRunner) {
+  const dir = tempRepo(withRunner);
+  try {
+    const unlistedRunner = await loadUnlistedRunner(dir);
+    assert.equal(unlistedRunner === null, !withRunner);
+    return runPreflight(withInput({
+      changedFiles: [file], files: [{ filename: file, status: 'added' }], desktopWorkflow: UNNAMED_WORKFLOW, unlistedRunner,
+    }));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('without the unlisted-tests runner file, a desktop test no step names still fails preflight', async () => {
+  const problems = await preflightWithRunner('desktop/scripts/new.test.mjs', false);
+  assert.deepEqual(checksOf(problems), ['desktop-tests']);
+  assert.equal(problems[0].message, 'desktop/scripts/new.test.mjs is not run by desktop-checks.yml');
+});
+
+test('with the unlisted-tests runner present, a desktop test it picks up passes preflight', async () => {
+  assert.deepEqual(await preflightWithRunner('desktop/scripts/new.test.mjs', true), []);
+});
+
+test('with the unlisted-tests runner present, a desktop test in its EXCLUDED list still fails preflight', async () => {
+  const problems = await preflightWithRunner('desktop/scripts/excluded.test.mjs', true);
+  assert.deepEqual(checksOf(problems), ['desktop-tests']);
+  assert.equal(problems[0].message, 'desktop/scripts/excluded.test.mjs is not run by desktop-checks.yml');
+});
+
 test('the slow local checks run only when their inputs changed', () => {
   assert.deepEqual(scopedChecks(['docs/notes.md']), { window: false, shard: false });
   assert.deepEqual(scopedChecks(['window/src/a.tsx']), { window: true, shard: false });
@@ -637,6 +695,39 @@ test('the branch name is scanned for hostnames and private names', () => {
   assert.deepEqual(branchNameProblems('trunk/settings-fix', ['zorbix']), []);
   assert.deepEqual(branchNameProblems('HEAD', ['zorbix']), []);
   assert.equal(runPreflight(withInput({ branch: 'trunk/zorbix-fix', denylist: ['zorbix'] })).filter((p) => p.check === 'personal-info').length, 1);
+});
+
+// Fake keys are joined at runtime so this file never holds a secret-shaped literal.
+const fakeKeys = {
+  'github-token': ['gh', 'p_', 'A'.repeat(36)],
+  'github-fine-grained-token': ['github', '_pat_', 'B'.repeat(70)],
+  'openai-key': ['s', 'k-', 'C'.repeat(40)],
+  'anthropic-key': ['s', 'k-ant-', 'D'.repeat(40)],
+  'aws-access-key-id': ['AK', 'IA', 'E'.repeat(16)],
+  'slack-token': ['xo', 'xb-', '1234567890-abcdef'],
+  'stripe-live-key': ['s', 'k_live_', 'F'.repeat(24)],
+  'google-api-key': ['AI', 'za', 'G'.repeat(35)],
+  jwt: ['ey', 'JhbGciOiJIUzI1NiJ9.', 'ey', 'JzdWIiOiJmYWtlIn0.', 'c2lnbmF0dXJlZmFrZQ'],
+  'private-key-pem': ['-----BEGIN ', 'RSA PRIVATE', ' KEY-----'],
+};
+
+test('a secret-shaped literal in an added line fails with its rule and location, in test files too', () => {
+  for (const [rule, parts] of Object.entries(fakeKeys)) {
+    const value = parts.join('');
+    const problems = secretLiteralProblems([{ file: 'scripts/x.test.mjs', line: 4, text: `const k = '${value}';` }]);
+    assert.equal(problems.length, 1, rule);
+    assert.equal(problems[0].check, 'secret-literal');
+    assert.match(problems[0].message, new RegExp(`scripts/x\\.test\\.mjs:4 .*${rule}$`));
+    assert.ok(!problems[0].message.includes(value) && !problems[0].fix.includes(value), `${rule} value echoed`);
+    assert.match(problems[0].fix, /runtime/);
+  }
+});
+
+test('runPreflight reports secret literals, and short placeholders and runtime-built keys pass', () => {
+  const value = fakeKeys['openai-key'].join('');
+  assert.deepEqual(checksOf(runPreflight(withInput({ addedLines: [{ file: 'a.md', line: 1, text: value }] }))), ['secret-literal']);
+  const fine = ["'sk-test'", "'sk-ant-xxx'", "'ghp_example'", "'AKIAEXAMPLE'", "'xoxb-1'", "'eyJ.eyJ.x'", "'sk_test_' + 'x'.repeat(30)", "['s', 'k-', 'C'.repeat(40)].join('')"];
+  assert.deepEqual(secretLiteralProblems(fine.map((text, i) => ({ file: 'a.test.mjs', line: i + 1, text }))), []);
 });
 
 test('formatProblems prints one line per problem plus a count', () => {

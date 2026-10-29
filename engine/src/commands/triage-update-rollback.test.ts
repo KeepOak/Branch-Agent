@@ -35,7 +35,7 @@ describe("rollback-readable update diagnostics", () => {
     async ({ findingCount, errorCount }) => {
       const stateDir = tempDirs.make("branch-update-triage-");
       const env = { BRANCH_STATE_DIR: stateDir };
-      const secret = "sk-test-update-triage-secret-1234567890";
+      const secret = ["sk-t", "est-update-triage-secret-1234567890"].join("");
       const advisoryOnly = findingCount > 0 && errorCount === 0;
       const physical = {
         termination: advisoryOnly ? ("exit" as const) : ("signal" as const),

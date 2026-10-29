@@ -31,8 +31,8 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 
-function setup(currentKey = "agent:ledger:t1") {
-  const request = vi.fn(async (method: string) => (method === "contacts.topics" ? { topics } : method === "sessions.create" ? { key: "agent:ledger:t3" } : {}));
+function setup(currentKey = "agent:ledger:t1", listed: typeof topics = topics) {
+  const request = vi.fn(async (method: string) => (method === "contacts.topics" ? { topics: listed } : method === "sessions.create" ? { key: "agent:ledger:t3" } : {}));
   const session = { request, onGatewayEvent: () => () => undefined, engine: { request } } as unknown as SaplingSession;
   const list = { refresh: vi.fn(async () => undefined) } as unknown as ConversationList;
   const onOpen = vi.fn();
@@ -148,4 +148,32 @@ it("draws Tabs above the chat when that is the chosen layout", async () => {
   await flush();
   expect(column().childElementCount).toBe(0);
   expect(above().querySelector(".topicsT5.lay-tabs")).not.toBeNull();
+});
+
+it("draws the round + in Freedom Mode on a Trunk with no topics yet", async () => {
+  localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "free", width: 0, per: {} }));
+  const { Host } = setup("agent:ledger:main", []);
+  await act(async () => root.render(<Host />));
+  await flush();
+  expect(above().childElementCount).toBe(0);
+  const plus = column().querySelector<HTMLButtonElement>(".tpHeadT5 > .tpAddP17")!;
+  expect(plus.getAttribute("aria-label")).toBe("New topic");
+});
+
+it("draws the round + on a Trunk with no topics yet, and Create opens the new topic", async () => {
+  const { Host, request, onOpen } = setup("agent:ledger:main", []);
+  await act(async () => root.render(<Host />));
+  await flush();
+  expect(column().childElementCount).toBe(0);
+  const plus = above().querySelector<HTMLButtonElement>(".tpTabsT5 > .tpAddP17")!;
+  expect(plus.getAttribute("aria-label")).toBe("New topic");
+  expect(above().textContent).toContain("General");
+  await act(async () => plus.click());
+  const name = document.querySelector<HTMLInputElement>('input[placeholder="What is it about?"]')!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(name, "First topic"); name.dispatchEvent(new Event("input", { bubbles: true })); });
+  const create = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((b) => b.textContent === "Create")!;
+  await act(async () => create.click());
+  await flush();
+  expect(request).toHaveBeenCalledWith("sessions.create", { agentId: "ledger", parentSessionKey: "agent:ledger:main", label: "First topic", displayName: "First topic" });
+  expect(onOpen).toHaveBeenCalledWith("agent:ledger:t3");
 });

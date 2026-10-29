@@ -324,7 +324,7 @@ describe("setup flow", () => {
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={3} onClose={() => {}} onLocalModel={() => {}} />);
     expect(host.querySelector("h1, h2")?.textContent).toBe("Make it yours");
     expect(host.textContent).toContain("Full access");
-    expect(host.textContent).toContain("Seeing the screen and using the mouse is a separate switch in Settings › Computer & browser");
+    expect(host.textContent).toContain("Seeing the screen and using the mouse is a separate switch in Settings › Browser & screen");
   });
   it("Welcome Get started is enabled with no promise checkbox, and skips the Where screen", async () => {
     const { engine: e } = engine({});
@@ -636,7 +636,7 @@ describe("setup's Reach step", () => {
     await act(async () => byText(document.body, "Make the code").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(params(request, "device.pair.setupCode")).toHaveLength(1);
-    expect(document.body.textContent).toContain("THWBEN");
+    expect(document.body.textContent).toContain("ABCD-2345");
   });
 });
 
