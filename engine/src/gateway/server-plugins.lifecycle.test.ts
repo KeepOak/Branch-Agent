@@ -557,11 +557,11 @@ describe("gateway plugin instance bindings", () => {
       const kernelSpy = vi
         .spyOn(kernelModule, "prepareGatewayKernel")
         .mockImplementationOnce(async (...args) => {
-          const prepared = await prepareKernel(...args);
+          const preparedKernel = await prepareKernel(...args);
           return {
-            ...prepared,
+            ...preparedKernel,
             async activate(...activateArgs) {
-              const kernel = await prepared.activate(...activateArgs);
+              const kernel = await preparedKernel.activate(...activateArgs);
               const prepare = kernel.prepareAttachedPluginRuntime;
               return {
                 ...kernel,
