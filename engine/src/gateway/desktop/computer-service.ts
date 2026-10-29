@@ -81,6 +81,25 @@ type HostRuntime = {
   };
 };
 
+/** Match the provider's five-minute idle execution lifetime. */
+export const COMPUTER_EXECUTION_LINGER_MS = 300_000;
+/** A discovery-only managed desktop holds a virtual display, so it keeps the observer linger. */
+export const COMPUTER_MANAGED_DISCOVERY_LINGER_MS = 60_000;
+/**
+ * Every agent turn discovers the computer before building its tools. Starting the native
+ * host takes seconds, so a discovery-only native host stays warm across ordinary turn gaps.
+ */
+export const COMPUTER_NATIVE_DISCOVERY_LINGER_MS = 15 * 60_000;
+
+function computerIdleLingerMs(runtime: Pick<HostRuntime, "execution" | "desktopTarget">): number {
+  if (runtime.execution) {
+    return COMPUTER_EXECUTION_LINGER_MS;
+  }
+  return runtime.desktopTarget === "native"
+    ? COMPUTER_NATIVE_DISCOVERY_LINGER_MS
+    : COMPUTER_MANAGED_DISCOVERY_LINGER_MS;
+}
+
 /** Owns the Gateway transport, while registered providers retain native action semantics. */
 export function createGatewayComputerService(options: {
   getConfig(): BranchConfig;
@@ -179,11 +198,9 @@ export function createGatewayComputerService(options: {
     if (runtime.closed || runtime.execution?.requests.size) {
       return;
     }
-    // Match the provider's five-minute idle execution lifetime. Discovery alone
-    // retains the desktop only for the ordinary observer linger period.
     runtime.idleTimer = setTimeout(
       () => retireInBackground(runtime),
-      runtime.execution ? 300_000 : 60_000,
+      computerIdleLingerMs(runtime),
     );
     runtime.idleTimer.unref?.();
   };

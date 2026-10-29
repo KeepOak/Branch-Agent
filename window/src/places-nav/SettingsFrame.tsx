@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../connect/engine";
+import { TrunksTab } from "../places/customize/trunks";
+import { useResource as useTrunksResource, type Trunks } from "../places/library/data";
 import { SettingsPage, SETTINGS_ROWS } from "../places/settings";
 import { KitProvider, SetupLock, type Lv, type SaveReport } from "../places/settings/kit";
 import { configStore } from "../places/settings/config-store";
@@ -200,6 +202,13 @@ function useRowJump(page: string) {
   return setTarget;
 }
 
+/** Classic hosts Customize's former Trunks tab without changing R1's native page. */
+function ClassicTrunks({ engine, level, openSettings }: { engine: WindowEngine; level: Level; openSettings: (page: string) => void }) {
+  const trunks = useTrunksResource<Trunks>(engine, "agents.list");
+  return <><h1>Trunks</h1><div className="kp kp-customize"><TrunksTab engine={engine} level={level} trunks={trunks} openSettings={openSettings}
+    openPlace={(place) => window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place } }))} /></div></>;
+}
+
 /** The Settings frame (DESIGN-SPEC §4.7.0): the nav column with Back, search, "Settings for", page items, the save
  *  state and the level; one page on the right. */
 export function SettingsFrame({ page, backName, running, engine, onPage, onBack, onAsk, askName, heading, keepLevel }: Props) {
@@ -222,9 +231,9 @@ export function SettingsFrame({ page, backName, running, engine, onPage, onBack,
   const jump = useRowJump(page);
   // Before the engine says hello the scopes aren't known yet: nothing is greyed until they are.
   const maySetup = engine.scopes.length === 0 || engine.scopes.includes("operator.admin");
-  const wanted = pageAtLevel(page, level);
+  const wanted = page === "trunks" ? page : pageAtLevel(page, level);
   const shown = !maySetup && HIDDEN_PAGES.includes(wanted) ? "general" : wanted;
-  const groups = settingsGroups(level).map((g) => ({ ...g, pages: g.pages.filter((p) => maySetup || !HIDDEN_PAGES.includes(p.id)) }));
+  const groups = settingsGroups(level).map((g) => g.name === "Trunks" ? { ...g, pages: [{ id: "trunks", name: "Trunks" }, ...g.pages] } : g).map((g) => ({ ...g, pages: g.pages.filter((p) => maySetup || !HIDDEN_PAGES.includes(p.id)) }));
   const category = groups.find((g) => g.pages.some((p) => p.id === shown)) ?? groups[0];
   const scrollRef = useRef<HTMLDivElement>(null);
   const levelScroll = useRef<{ page: string; top: number } | null>(null);
@@ -237,7 +246,7 @@ export function SettingsFrame({ page, backName, running, engine, onPage, onBack,
   const models = useResource<RecordValue>(engine, "models.list", {});
   const hasModel = list(models.data?.models).some((m) => m.available !== false);
   const changeLevel = (l: Level) => {
-    const next = pageAtLevel(page, l);
+    const next = page === "trunks" ? page : pageAtLevel(page, l);
     levelScroll.current = next === shown && scrollRef.current ? { page: shown, top: scrollRef.current.scrollTop } : null;
     setLevel(l);
     saveLevel(l);
@@ -302,7 +311,7 @@ export function SettingsFrame({ page, backName, running, engine, onPage, onBack,
           ) : null}
           <KitProvider level={LV[level]} report={report} scope={LV[level] >= 1 ? scope : origin} ask={hasModel ? onAsk : undefined} askName={askName} pins={pins}>
             <SetupLock locked={!maySetup && SETUP_PAGES.includes(shown)}>
-              <SettingsPage running={running} page={shown} title={heading ?? pageName(shown)} level={level} engine={engine} openSettings={go} searchSection={searchRow?.page === shown ? searchRow.sec : undefined} />
+              {shown === "trunks" ? <ClassicTrunks engine={engine} level={level} openSettings={go} /> : <SettingsPage running={running} page={shown} title={heading ?? pageName(shown)} level={level} engine={engine} openSettings={go} searchSection={searchRow?.page === shown ? searchRow.sec : undefined} />}
             </SetupLock>
           </KitProvider>
         </div>

@@ -286,6 +286,28 @@
       "zh-CN",
       "zh-TW"
     ],
+    "appsPage.notOutYet": [
+      "ar",
+      "de",
+      "es",
+      "fa",
+      "fr",
+      "hi",
+      "id",
+      "it",
+      "ja-JP",
+      "ko",
+      "nl",
+      "pl",
+      "pt-BR",
+      "ru",
+      "th",
+      "tr",
+      "uk",
+      "vi",
+      "zh-CN",
+      "zh-TW"
+    ],
     "browser.navigationCheckFailed": [
       "ar",
       "de",
@@ -2839,6 +2861,50 @@
       "zh-TW"
     ],
     "configHints.mcp%2EsessionIdleTtlMs.help.v1-f3o54i-8b": [
+      "ar",
+      "de",
+      "es",
+      "fa",
+      "fr",
+      "hi",
+      "id",
+      "it",
+      "ja-JP",
+      "ko",
+      "nl",
+      "pl",
+      "pt-BR",
+      "ru",
+      "th",
+      "tr",
+      "uk",
+      "vi",
+      "zh-CN",
+      "zh-TW"
+    ],
+    "configHints.memory%2Esearch%2Efallback.help.v1-95yd6b-8k": [
+      "ar",
+      "de",
+      "es",
+      "fa",
+      "fr",
+      "hi",
+      "id",
+      "it",
+      "ja-JP",
+      "ko",
+      "nl",
+      "pl",
+      "pt-BR",
+      "ru",
+      "th",
+      "tr",
+      "uk",
+      "vi",
+      "zh-CN",
+      "zh-TW"
+    ],
+    "configHints.memory%2Esearch%2Eprovider.help.v1-sisit0-aa": [
       "ar",
       "de",
       "es",
@@ -7855,6 +7921,6 @@
       "zh-TW"
     ]
   },
-  "sourceHash": "b70c4b99e4f31caf88b8916b7f4ce07a6dce9defe4cf4e985470b5f7beb57822",
+  "sourceHash": "2dcb7e71c33b994d4a1a40d1d69521db6d2373bbdc44e810a0438c77d9b8b6b2",
   "version": 1
 }

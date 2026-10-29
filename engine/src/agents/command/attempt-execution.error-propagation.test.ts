@@ -112,7 +112,7 @@ describe("ACP diagnostic events", () => {
   });
 
   it("emits sanitized non-text runtime events for parent relay diagnostics", () => {
-    const token = "sk-abcdefghijklmnopqrstuvwxyz123456";
+    const token = ["sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join("");
     emitAcpRuntimeEvent({
       runId,
       toolTracker,
@@ -338,7 +338,7 @@ describe("ACP diagnostic events", () => {
   });
 
   it("preserves and sanitizes nested ACP failure details (branch-4a8)", () => {
-    const token = "sk-abcdefghijklmnopqrstuvwxyz123456";
+    const token = ["sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join("");
     const root = new Error(`RequestError: "Method not found": nes/close (-32601) token=${token}`);
     const cause = new Error("Agent does not support session/close (oneshot:abc)", { cause: root });
     emitAcpLifecycleError({

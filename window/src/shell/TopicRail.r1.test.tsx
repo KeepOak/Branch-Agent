@@ -51,10 +51,11 @@ describe("R1 thread rail", () => {
     await act(async () => plus.click());
     const name = document.querySelector<HTMLInputElement>("input[placeholder='What is it about?']")!;
     expect(name).toBeTruthy();
-    await t.press("Create");
-    expect(document.querySelector("[role='alert']")?.textContent).toBe("Give the topic a name.");
+    const create = [...document.querySelectorAll<HTMLButtonElement>("[role='dialog'] button")].find((b) => b.textContent === "Create")!;
+    expect(create.disabled).toBe(true);
     const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     await act(async () => { setValue.call(name, "Ski weekend"); name.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(create.disabled).toBe(false);
     await t.press("Create");
     expect(t.r1.onCreate).toHaveBeenCalledWith({ name: "Ski weekend", icon: "💬", colour: null });
   });

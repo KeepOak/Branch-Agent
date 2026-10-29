@@ -2,6 +2,7 @@
 // repeating with the same code after approval completes the join without holding a Gateway RPC open for minutes.
 import os from "node:os";
 import { getRuntimeConfig } from "../config/config.js";
+import { displayHostname } from "../infra/machine-name.js";
 import { listGatewayAgentsBasic } from "./agent-list.js";
 import { decodePairingSetupCode } from "../pairing/setup-code.js";
 import {
@@ -13,7 +14,7 @@ import {
 } from "../mcp/graft-join.js";
 import { ensureGraftLinks } from "../mcp/graft-link.js";
 
-export async function joinGraftFromWindow(code: string, name = os.hostname()): Promise<
+export async function joinGraftFromWindow(code: string, name = displayHostname(os.hostname())): Promise<
   | { pending: true; requestId: string }
   | { pending: false; link: GraftLink; scopes: string[] }
 > {
@@ -21,7 +22,7 @@ export async function joinGraftFromWindow(code: string, name = os.hostname()): P
   const link: GraftLink = {
     url: payload.url,
     ...(payload.tlsFingerprint ? { tlsFingerprint: payload.tlsFingerprint } : {}),
-    name: name.trim() || os.hostname(),
+    name: name.trim() || displayHostname(os.hostname()),
     joinedAt: Date.now(),
   };
   const first = await connectAsDevice({

@@ -44,6 +44,15 @@ describe('phone prefs', () => {
     expect(parsePhonePrefs(null).textSize).toBe('100%');
   });
 
+  it('starts with lending and the camera off, but keeps a saved choice to lend', () => {
+    expect(PHONE_PREFS_DEFAULT.lendOn).toBe(false);
+    expect(PHONE_PREFS_DEFAULT.lend.cam).toBe(false);
+    expect(parsePhonePrefs(null).lendOn).toBe(false);
+    const saved = parsePhonePrefs(JSON.stringify({ lendOn: true, lend: { cam: true, loc: false, photos: true, notif: false } }));
+    expect(saved.lendOn).toBe(true);
+    expect(saved.lend).toEqual({ cam: true, loc: false, photos: true, notif: false });
+  });
+
   it('round-trips through the store', async () => {
     const store = memoryStore();
     const next = { ...PHONE_PREFS_DEFAULT, wake: true, lock: 'on' as const, notifKinds: [...NOTIF_KIND_DEFAULTS], lend: { ...PHONE_PREFS_DEFAULT.lend } };
@@ -52,8 +61,11 @@ describe('phone prefs', () => {
   });
 
   it('names lent abilities the way the preview’s row does', () => {
-    expect(lendSummary(PHONE_PREFS_DEFAULT)).toBe('Camera, Location, Notifications, when a Trunk asks');
-    expect(lendSummary({ ...PHONE_PREFS_DEFAULT, lendOn: false })).toBe('Camera and location, when a Trunk asks');
+    expect(lendSummary(PHONE_PREFS_DEFAULT)).toBe('Camera and location, when a Trunk asks');
+    expect(lendSummary({ ...PHONE_PREFS_DEFAULT, lendOn: true })).toBe('Location, Notifications, when a Trunk asks');
+    expect(lendSummary({ ...PHONE_PREFS_DEFAULT, lendOn: true, lend: { ...PHONE_PREFS_DEFAULT.lend, cam: true } })).toBe(
+      'Camera, Location, Notifications, when a Trunk asks',
+    );
     expect(notifKindsValue(PHONE_PREFS_DEFAULT)).toBe('3 kinds');
   });
 });

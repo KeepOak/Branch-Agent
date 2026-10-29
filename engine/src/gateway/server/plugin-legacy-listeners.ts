@@ -4,6 +4,7 @@ import { runHttpConnectionRequest } from "../../infra/http-request-lifecycle.js"
 import { markPluginHttpLegacyListener } from "../../plugins/http-legacy-listener.js";
 import { onPluginHttpRoutesChanged } from "../../plugins/http-route-owner.js";
 import type { PluginHttpRouteRegistration, PluginRegistry } from "../../plugins/registry-types.js";
+import { isLoopbackHost } from "../net.js";
 
 type LegacyEndpoint = NonNullable<PluginHttpRouteRegistration["legacyListeners"]>[number];
 type LegacyListener = {
@@ -14,10 +15,28 @@ type LegacyListener = {
 };
 const endpointKey = ({ host, port }: LegacyEndpoint) => `${host ?? "<unspecified>"}:${port}`;
 
+/**
+ * The address a legacy compatibility port binds. These ports dispatch into the Gateway, so they
+ * must never be wider than the Gateway itself: with a loopback bind every legacy port is loopback,
+ * and an endpoint without a host uses the Gateway bind host instead of all interfaces.
+ */
+export function resolveLegacyListenerHost(
+  endpointHost: string | undefined,
+  gatewayBindHost: string,
+): string {
+  const requested = endpointHost?.trim();
+  if (!requested || isLoopbackHost(gatewayBindHost)) {
+    return gatewayBindHost;
+  }
+  return requested;
+}
+
 /** Compatibility ports share Gateway dispatch and the route owner's existing handoff leases. */
 export function startPluginLegacyListeners(params: {
   gatewayServer: Server;
   httpServers: Server[];
+  /** Resolved Gateway bind host (loopback by default). */
+  bindHost: string;
   getRegistry: () => PluginRegistry;
   warn: (message: string) => void;
 }): () => void {
@@ -139,7 +158,7 @@ export function startPluginLegacyListeners(params: {
       try {
         server.listen({
           port: endpoint.port,
-          host: endpoint.host,
+          host: resolveLegacyListenerHost(endpoint.host, params.bindHost),
           signal: controller.signal,
         });
       } catch (error) {

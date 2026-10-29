@@ -11,7 +11,7 @@ import { Seedbank } from "./index";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 window.matchMedia ??= ((query: string) => ({ matches: false, media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
+afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
 
 const engine = { features: { methods: [], events: [] }, request: vi.fn(async () => ({})), onEvent: () => () => {}, send: async () => {}, sessionKey: "agent:main:main", agentId: "main", scopes: ["operator.admin"] } as unknown as WindowEngine;
 async function render() {
@@ -31,6 +31,7 @@ describe("Seedbank explains its own words (B-070)", () => {
   });
 
   it("explains Grove layouts, graft setups and adapters on their chips and in the Coming sections", async () => {
+    localStorage.setItem("branch.level", "technical");
     const host = await render();
     expect(chip(host, "Grove layouts").getAttribute("title")).toMatch(/^A Grove layout is how your Grove office looks: rooms, desks, decor/);
     expect(chip(host, "Graft setups").getAttribute("title")).toMatch(/^A graft setup is how an outside agent, such as Claude Code, connects to Branch/);
