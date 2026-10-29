@@ -174,14 +174,17 @@ describe.each<Kind>(["classic", "glass"])("%s composer send after an account is 
     await vi.waitFor(() => expect(host.querySelector('[data-testid="composer"]')).not.toBeNull());
     await vi.waitFor(() => expect(listCalls(request)).toBeGreaterThan(0));
     await settle();
-    const afterLoad = refreshCalls(request);
+    // Re-read, not forced: a forced refresh announces chat.metadata.changed again (see #2091 r2).
+    const afterLoad = listCalls(request);
+    const forced = refreshCalls(request);
     await act(async () => announce({ event: "chat.metadata.changed", payload: { modelCatalogChanged: true } }));
     await settle();
-    expect(refreshCalls(request)).toBeGreaterThan(afterLoad);
-    const afterTrue = refreshCalls(request);
+    expect(listCalls(request)).toBeGreaterThan(afterLoad);
+    const afterTrue = listCalls(request);
     await act(async () => announce({ event: "chat.metadata.changed", payload: {} }));
     await settle();
-    expect(refreshCalls(request)).toBeGreaterThan(afterTrue);
+    expect(listCalls(request)).toBeGreaterThan(afterTrue);
+    expect(refreshCalls(request)).toBe(forced);
   });
 
   it("re-reads models.list when the window gets focus", async () => {
