@@ -8,6 +8,7 @@ import type {
   ProviderAuthContext,
 } from "branch/plugin-sdk/plugin-entry";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { plainFreeModelQuestion } from "../../../../window/src/composer/free-model-question.js";
 
 const mocks = vi.hoisted(() => ({
   ensureModel: vi.fn(),
@@ -820,6 +821,26 @@ describe("llama.cpp managed setup", () => {
     );
     expect(mocks.ensureModel).not.toHaveBeenCalledWith(expect.objectContaining({ download: true }));
   });
+
+  it.each([16, 64])(
+    "shows no format tag in the window question from real setup output at %i GiB",
+    async (memoryGiB) => {
+      vi.mocked(os.totalmem).mockReturnValue(memoryGiB * GIB);
+      const ctx = authContext(false);
+      await runLlamaCppSetup(ctx);
+
+      const [step] = vi.mocked(ctx.prompter.confirm).mock.calls[0]!;
+      expect(step.message).toMatch(/\((?:UD-)?Q4_K_M\)/);
+      const question = plainFreeModelQuestion(step);
+      expect(question).toBe(
+        memoryGiB === 16
+          ? "Download a free model (Qwen3.5 9B, 5.7 GB) so Branch can answer without an account?"
+          : "Download a free model (Qwen3.8 27B, 16.5 GB) so Branch can answer without an account?",
+      );
+      expect(question).not.toMatch(/Q4_K_M|\([^)]*\(/);
+      expect(mocks.ensureModel).not.toHaveBeenCalledWith(expect.objectContaining({ download: true }));
+    },
+  );
 
   it("writes one durable managed-server provider after preparation", async () => {
     const ctx = authContext(true);
