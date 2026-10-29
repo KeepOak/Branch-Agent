@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   mainPushShardCounts,
   pullRequestLinuxShardCount,
+  pullRequestWindowsTouchedShardCount,
   resolvedShardCounts,
   setNamedListDir,
 } from './feature-batch-ci-targets.mjs';
@@ -19,10 +20,15 @@ function shardRows(os, count) {
   return Array.from({ length: count }, (_, i) => ({ os, shard: `${i + 1}/${count}`, label: `${i + 1}/${count}`, scope: 'all' }));
 }
 
+// The touched Windows tests split across a fixed count: the plan checkout cannot see the PR's changed files.
+function touchedWindowsRows(count) {
+  return Array.from({ length: count }, (_, i) => ({ os: 'windows-latest', shard: `${i + 1}/${count}`, label: `touched ${i + 1}/${count}`, scope: 'touched' }));
+}
+
 export function featureBatchMatrix({ event, extraTests = [] } = {}) {
   const counts = resolvedShardCounts({ extraTests });
   if (event === 'pull_request') {
-    return { include: [...linuxRows(counts.pullRequestLinux, 'all'), { os: 'windows-latest', shard: '1/1', label: 'touched', scope: 'touched' }] };
+    return { include: [...linuxRows(counts.pullRequestLinux, 'all'), ...touchedWindowsRows(pullRequestWindowsTouchedShardCount)] };
   }
   return { include: [...shardRows('ubuntu-latest', counts.ubuntu), ...shardRows('windows-latest', counts.windows), ...shardRows('macos-latest', counts.macos)] };
 }
@@ -33,7 +39,7 @@ export function validateFeatureBatchMatrix(matrix, event) {
   if (include.length === 0) throw new Error('feature-batch matrix is empty; the feature tests would be skipped');
   const count = (os) => include.filter((row) => row.os === os).length;
   const floors = event === 'pull_request'
-    ? [['ubuntu-latest', pullRequestLinuxShardCount]]
+    ? [['ubuntu-latest', pullRequestLinuxShardCount], ['windows-latest', pullRequestWindowsTouchedShardCount]]
     : [['ubuntu-latest', mainPushShardCounts.ubuntu], ['windows-latest', mainPushShardCounts.windows], ['macos-latest', mainPushShardCounts.macos]];
   for (const [os, floor] of floors) {
     if (count(os) < floor) throw new Error(`feature-batch matrix has ${count(os)} ${os} shard(s), below the floor of ${floor}`);
