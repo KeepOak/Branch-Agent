@@ -112,8 +112,16 @@ function isDirectRun(): boolean {
   if (!process.argv[1]) {
     return false;
   }
-  const normalize = (value: string) =>
-    process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
+  // Resolve symlinks on both sides: macOS temp dirs live under /var, a symlink to
+  // /private/var, and import.meta.url carries the resolved path, so a plain
+  // path.resolve compare made the CLI silently skip main() and exit 0.
+  const normalize = (value: string) => {
+    let resolved = path.resolve(value);
+    try {
+      resolved = fs.realpathSync(resolved);
+    } catch {}
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  };
   return normalize(process.argv[1]) === normalize(fileURLToPath(import.meta.url));
 }
 
