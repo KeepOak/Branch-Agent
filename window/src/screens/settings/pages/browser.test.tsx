@@ -21,6 +21,7 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 
 const REGULAR = ["On a computer", "Using the screen", "The browser"];
 const ALL_CARDS = ["On a computer", "Using the screen", "The browser", "How it browses", "Sites", "Page cleaners", "What it hands to you", "Saved flows", "Your own browser", "Logbook"];
+const ADVANCED = ALL_CARDS.filter((title) => title !== "Sites" && title !== "Saved flows");
 const METHODS = ["config.get", "config.patch", "config.schema", "users.prefs.get", "plugins.list", "node.list", "computer.status"];
 function engineOf() {
   const request = vi.fn(async (method: string) => {
@@ -40,6 +41,21 @@ const cards = () => [...host.querySelectorAll<HTMLElement>("section.r1s-sec")].m
 const card = (t: string) => [...host.querySelectorAll<HTMLElement>("section.r1s-sec")].find((s) => s.getAttribute("aria-label") === t)!;
 
 describe("R1 Settings › Browser & screen is a native R1 page with the preview's cards", () => {
+  it.each(["Regular", "Advanced", "Technical"])("shows Sites and Saved flows only at Technical, at %s", async (level) => {
+    await act(async () => root.render(<SettingsFrame engine={engineOf()} page="browser" pages={R1_PAGES} />));
+    await settle();
+    await setLevel(level);
+    for (const id of ["browser.sites.coming", "browser.flows.coming"]) {
+      const row = host.querySelector(`[data-row="${id}"]`);
+      if (level === "Technical") {
+        expect(row).not.toBeNull();
+        expect(row?.getAttribute("data-coming")).toBeTruthy();
+        expect(row?.getAttribute("aria-disabled")).toBe("true");
+        expect(row?.getAttribute("data-lv")).toBe("Technical");
+      } else expect(row).toBeNull();
+    }
+  });
+
   it("draws the preview's cards in order at each level, with no Classic page", async () => {
     expect(PAGES.browser.cards).toEqual(ALL_CARDS);
     expect(R1_PAGES.browser?.component).toBeUndefined();
@@ -50,7 +66,7 @@ describe("R1 Settings › Browser & screen is a native R1 page with the preview'
     expect(cards()).toEqual(REGULAR);
     expect(card("On a computer").textContent).toContain("See the screen and use the mouse");
     await setLevel("Advanced");
-    expect(cards()).toEqual(ALL_CARDS);
+    expect(cards()).toEqual(ADVANCED);
     await setLevel("Technical");
     expect(cards()).toEqual(ALL_CARDS);
     expect(host.querySelector('[data-classic], .r1s-custom')).toBeNull();

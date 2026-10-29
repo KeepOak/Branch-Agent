@@ -5,8 +5,7 @@
 import type { SettingsPageProps } from "../../../places/settings/index";
 import { list } from "../../../places/settings/adapter";
 import { useConfig, useScope } from "../../../places/settings/kit";
-import { WEB_MORE } from "../../../places/settings/set2/advanced-more";
-import { Section } from "../../../places/settings/set2/advanced-more";
+import { Section, WEB_MORE } from "../../../places/settings/set2/advanced-more";
 import { lvOf, rec, useLive, type RecordValue } from "../../../places/settings/set2/common";
 import { BROWSER_BASIC, BROWSER_MORE, BROWSER_TECH } from "../../../places/settings/set2/computer-browser";
 import { PART_SECS as S, type SecSpec } from "../../../places/settings/set2/computer-more";
@@ -40,7 +39,7 @@ const PAGE = specPage("browser", [
 
 /** A card no Classic control does yet: Coming, in its own words (R1-10); the call it waits for stays in `need`. */
 const coming = (id: string, card: string, need: string): Row =>
-  ({ id, page: "browser", card, label: card, level: 1, control: "custom", source: { kind: "coming", need, reason: `${card} comes in a later update.` } });
+  ({ id, page: "browser", card, label: card, level: 2, control: "custom", source: { kind: "coming", need, reason: `${card} comes in a later update.` } });
 
 /** In the preview's card order: Sites after How it browses, Saved flows after What it hands to you. */
 const ORDER = ["On a computer", "Using the screen", "The browser", "How it browses", "Sites", "Page cleaners", "What it hands to you", "Saved flows", "Your own browser", "Logbook"];
