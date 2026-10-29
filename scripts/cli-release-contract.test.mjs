@@ -72,6 +72,8 @@ test('docs and workflow name the production CLI release contract', () => {
   assert.match(doc, /~\/Library\/Application Support\/BranchAgent/);
   assert.match(doc, /~\/\.local\/share\/BranchAgent/);
   assert.match(doc, /~\/\.local\/bin\/branch-agent/);
+  assert.match(read('desktop/INSTALLERS.md'), /~\/\.local\/bin\/branch-agent/);
+  assert.match(read('desktop/install/install.sh'), /branch-agent/);
   assert.match(read('desktop/scripts/release-installers.mjs'), /~\/\.local\/bin\/branch-agent/);
   assert.match(doc, /%LOCALAPPDATA%\\Programs\\Branch Agent/);
   assert.match(read('.github/workflows/merge-gate-recheck.yml'), /^\s+- CLI release checks$/m);
