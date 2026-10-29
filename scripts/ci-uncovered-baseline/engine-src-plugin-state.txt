@@ -1,0 +1,15 @@
+engine:src/plugin-state/plugin-blob-store.admission.test.ts
+engine:src/plugin-state/plugin-blob-store.eviction.test.ts
+engine:src/plugin-state/plugin-blob-store.readonly.test.ts
+engine:src/plugin-state/plugin-blob-store.test.ts
+engine:src/plugin-state/plugin-state-store.authority.test.ts
+engine:src/plugin-state/plugin-state-store.errors.test.ts
+engine:src/plugin-state/plugin-state-store.expiry.test.ts
+engine:src/plugin-state/plugin-state-store.import.test.ts
+engine:src/plugin-state/plugin-state-store.namespace-independence.test.ts
+engine:src/plugin-state/plugin-state-store.prepared.test.ts
+engine:src/plugin-state/plugin-state-store.retained.test.ts
+engine:src/plugin-state/plugin-state-store.retention.test.ts
+engine:src/plugin-state/plugin-state-store.runtime.test.ts
+engine:src/plugin-state/plugin-state-store.test.ts
+engine:src/plugin-state/plugin-state-worker.test.ts

@@ -1,0 +1,3 @@
+engine:extensions/byteplus/index.test.ts
+engine:extensions/byteplus/live.test.ts
+engine:extensions/byteplus/video-generation-provider.test.ts

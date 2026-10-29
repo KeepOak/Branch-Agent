@@ -1,0 +1,15 @@
+engine:extensions/llama-cpp/provider-policy-api.test.ts
+engine:extensions/llama-cpp/src/external-server/auth.test.ts
+engine:extensions/llama-cpp/src/external-server/discovery.test.ts
+engine:extensions/llama-cpp/src/external-server/endpoint.test.ts
+engine:extensions/llama-cpp/src/external-server/models.test.ts
+engine:extensions/llama-cpp/src/external-server/provider.test.ts
+engine:extensions/llama-cpp/src/external-server/setup.test.ts
+engine:extensions/llama-cpp/src/external-server/stream.test.ts
+engine:extensions/llama-cpp/src/hardware.test.ts
+engine:extensions/llama-cpp/src/llama-server-extract.test.ts
+engine:extensions/llama-cpp/src/llama-server-install.test.ts
+engine:extensions/llama-cpp/src/llama-server-vc-runtime.test.ts
+engine:extensions/llama-cpp/src/managed-server.test.ts
+engine:extensions/llama-cpp/src/model-catalog.test.ts
+engine:extensions/llama-cpp/src/setup.test.ts
