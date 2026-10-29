@@ -423,6 +423,21 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
                 : {}),
             },
             async (state) => {
+              // macOS: env selectors may keep /var/folders while fixtures use /private/var.
+              const canonPath = async (value: string): Promise<string> => {
+                try {
+                  return await fs.realpath(value);
+                } catch {
+                  const parent = path.dirname(value);
+                      return parent === value
+                        ? value
+                        : path.join(await canonPath(parent), path.basename(value));
+                }
+              };
+              const sameLoosePath = async (left: string, right: string) =>
+                (await canonPath(left)) === (await canonPath(right));
+              const samePath = async (left: string, right: string) =>
+                (await fs.realpath(left)) === (await fs.realpath(right));
               vi.spyOn(process, "cwd").mockReturnValue(state.workspaceDir);
               const executionRoot = automatic
                 ? state.path("owned installation")
@@ -587,10 +602,14 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
                     expect(process.env.BRANCH_UPDATE_PARENT_ALLOWS_GATEWAY_ACTIVATION).toBe("1");
                   } else {
                     expect(runStateDir).not.toBe(state.stateDir);
-                    expect(process.env.BRANCH_WORKSPACE_DIR).toBe(executionRoot);
+                    expect(
+                      await samePath(String(process.env.BRANCH_WORKSPACE_DIR), executionRoot),
+                    ).toBe(true);
                   }
                   const runConfig = opts.config;
-                  expect(runConfig.agents?.entries?.diagnostic?.workspace).toBe(executionRoot);
+                  expect(
+                    await samePath(String(runConfig.agents?.entries?.diagnostic?.workspace), executionRoot),
+                  ).toBe(true);
                   expect(runConfig.agents?.entries?.diagnostic?.model).toBe(
                     "fixture/diagnostic-model",
                   );
@@ -598,9 +617,12 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
                     const sessionStore = resolveSessionStorePathCore(runConfig.session?.store, {
                       agentId: String(opts.agentId),
                     });
-                    expect(sessionStore).toBe(
-                      path.join(runStateDir, "agents", "diagnostic", "sessions", "sessions.json"),
-                    );
+                    expect(
+                      await sameLoosePath(
+                        sessionStore,
+                        path.join(runStateDir, "agents", "diagnostic", "sessions", "sessions.json"),
+                      ),
+                    ).toBe(true);
                   }
                   expect(opts.sessionId).toEqual(expect.any(String));
                   // Exercise the same preparation and projection used by built-in exec;
@@ -653,13 +675,13 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
                 if (automatic) {
                   mocks.runEmbeddedAgent.mockImplementation(
                     async (opts: RunEmbeddedAgentParams) => {
-                      expect(opts.agentDir).toBe(agentDir);
+                      expect(await sameLoosePath(String(opts.agentDir), agentDir)).toBe(true);
                       expect(opts.authProfileId).toBe(profileId);
                       expect(opts.authProfileIdSource).toBe("user");
                       expect(opts.sessionPersistence).toBe("detached");
                       expect(opts.sessionManager?.getSessionTarget()).toBeUndefined();
-                      expect(opts.cwd).toBe(executionRoot);
-                      expect(opts.workspaceDir).toBe(executionRoot);
+                      expect(await samePath(String(opts.cwd), executionRoot)).toBe(true);
+                      expect(await samePath(String(opts.workspaceDir), executionRoot)).toBe(true);
                       expect(
                         auth.loadAuthProfileStoreForRuntime(opts.agentDir, {
                           readOnly: true,
@@ -738,7 +760,9 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
                   expect(mocks.agentCommand).toHaveBeenCalledOnce();
                   expect(execSpy).toHaveBeenCalledOnce();
                   expect(execSpy.mock.calls[0]?.[1].stateDir).toBeUndefined();
-                  expect(execSpy.mock.calls[0]?.[1].cwd).toBe(executionRoot);
+                  expect(
+                    await samePath(String(execSpy.mock.calls[0]?.[1].cwd), executionRoot),
+                  ).toBe(true);
                 }
                 expect(process.env.BRANCH_STATE_DIR).toBe(originalSelectors.stateDir);
                 expect(process.env.BRANCH_CONFIG_PATH).toBe(originalSelectors.configPath);
@@ -756,15 +780,35 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
 
                 // Assert after execution cleanup so failed turns preserve the
                 // installation and both shell/child target boundaries.
-                expect
-                  .soft(shellLookup, "shell must find the archive named in the model prompt")
-                  .toBe(`${archivePath}\npresent\n`);
-                expect
-                  .soft(
-                    childTarget,
-                    "child Branch Agent must select the original config and default workspace",
-                  )
-                  .toEqual(before);
+                {
+                  const [printedArchive, presence, ...rest] = shellLookup.split("\n");
+                  expect
+                    .soft(rest.filter(Boolean), "shell archive probe must be two lines")
+                    .toEqual([]);
+                  expect.soft(presence, "shell must find the archive named in the model prompt").toBe(
+                    "present",
+                  );
+                  expect
+                    .soft(
+                      await samePath(printedArchive ?? "", archivePath),
+                      "shell must expand BRANCH_STATE_DIR to the fixture archive",
+                    )
+                    .toBe(true);
+                }
+                {
+                  const canon = async (target: ChildTarget) => ({
+                    ...target,
+                    stateDir: await fs.realpath(target.stateDir),
+                    configPath: await fs.realpath(target.configPath),
+                    defaultWorkspaceDir: await fs.realpath(target.defaultWorkspaceDir),
+                  });
+                  expect
+                    .soft(
+                      await canon(childTarget!),
+                      "child Branch Agent must select the original config and default workspace",
+                    )
+                    .toEqual(await canon(before));
+                }
               } finally {
                 for (const [index, stream] of [process.stdin, process.stdout].entries()) {
                   const descriptor = terminalDescriptors[index];
