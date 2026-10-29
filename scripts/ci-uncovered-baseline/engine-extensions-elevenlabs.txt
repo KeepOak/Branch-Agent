@@ -1,0 +1,6 @@
+engine:extensions/elevenlabs/config-compat.test.ts
+engine:extensions/elevenlabs/media-understanding-provider.test.ts
+engine:extensions/elevenlabs/realtime-transcription-provider.test.ts
+engine:extensions/elevenlabs/shared.test.ts
+engine:extensions/elevenlabs/speech-provider.test.ts
+engine:extensions/elevenlabs/tts.test.ts

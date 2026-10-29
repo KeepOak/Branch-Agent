@@ -1,0 +1,9 @@
+engine:extensions/synology-chat/src/approval-auth.test.ts
+engine:extensions/synology-chat/src/channel.integration.test.ts
+engine:extensions/synology-chat/src/channel.pairing.test.ts
+engine:extensions/synology-chat/src/channel.test.ts
+engine:extensions/synology-chat/src/client.loopback.test.ts
+engine:extensions/synology-chat/src/core.test.ts
+engine:extensions/synology-chat/src/doctor.test.ts
+engine:extensions/synology-chat/src/outbound-media.test.ts
+engine:extensions/synology-chat/src/security-audit.test.ts
