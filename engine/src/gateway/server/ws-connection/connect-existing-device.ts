@@ -149,6 +149,7 @@ export async function authorizeExistingGatewayDevice(params: {
     const { scopes: profileScopes, purpose } = retryBootstrapHandoffProfile;
     const nodeOnlyHandoffCovered =
       !retryBootstrapHandoffProfile.roles.includes("operator") &&
+      // Guard: unreachable now (role-upgrade catches operator asks); kept if profile rules change.
       roleScopesAllow({
         role,
         requestedScopes: scopes,
