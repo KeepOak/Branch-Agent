@@ -53,6 +53,7 @@ const NAMES: Record<string, string> = {
   huggingface: "Hugging Face",
   "llama-cpp": "llama.cpp",
   lmstudio: "LM Studio",
+  vllm: "vLLM",
   ollama: "Ollama",
   "ollama-cloud": "Ollama Cloud",
   opencode: "OpenCode",

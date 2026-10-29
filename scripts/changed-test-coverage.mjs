@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { capabilityTests, harvestTests, namedTests } from './feature-batch-ci-targets.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { capabilityTests, harvestTests, namedE2eTests, namedTests } from './feature-batch-ci-targets.mjs';
 import { slices, windowSlices } from './feature-slice-ci-targets.mjs';
 import { priorityMemoryIntegration, priorityTests } from './priority-capabilities-ci-targets.mjs';
 
@@ -532,13 +533,13 @@ export function coverageTargets(
   handoffWorkflow = '',
   handoffConfig = '',
   lintBaselinesWorkflow = '',
-  { namedFor = namedTests } = {},
+  { namedFor = namedTests, namedE2eFor = namedE2eTests } = {},
 ) {
   const covered = pullRequestDesktopRunTargets(desktopWorkflow);
   for (const file of handoffRunTargets(handoffWorkflow, handoffConfig)) covered.add(file);
   for (const file of postMergeEngineRunTargets(lintBaselinesWorkflow)) covered.add(file);
   for (const lane of ['engine', 'window']) {
-    for (const file of [...namedFor(lane), ...harvestTests(lane)]) covered.add(`${lane}/${file}`);
+    for (const file of [...namedFor(lane), ...namedE2eFor(lane), ...harvestTests(lane)]) covered.add(`${lane}/${file}`);
   }
   for (const file of capabilityTests()) covered.add(`engine/${file}`);
   for (const slice of slices) {
@@ -552,6 +553,49 @@ export function coverageTargets(
   }
   for (const file of [...priorityTests, priorityMemoryIntegration]) covered.add(`engine/${file}`);
   return covered;
+}
+
+// The desktop runner for tests no workflow step names. It may not exist yet; without it nothing changes.
+export const UNLISTED_RUNNER = 'desktop/scripts/run-unlisted-tests.mjs';
+
+// Loads the runner from the given repo root only when its file is there. Returns null otherwise.
+export async function loadUnlistedRunner(repoRoot = root) {
+  const file = path.join(repoRoot, UNLISTED_RUNNER);
+  if (!existsSync(file)) return null;
+  const runner = await import(pathToFileURL(file).href);
+  if (typeof runner.pickUnlistedTests !== 'function') return null;
+  return { pickUnlistedTests: runner.pickUnlistedTests, EXCLUDED: Array.isArray(runner.EXCLUDED) ? runner.EXCLUDED : [] };
+}
+
+// Changed desktop tests the runner would run, as repo paths. The runner reads files from disk, so it is asked
+// about a scratch copy of the changed desktop tests and the workflow text; the checkout itself is never read.
+// Files in EXCLUDED never count.
+export function unlistedDesktopTargets(runner, changed, desktopWorkflow) {
+  const targets = new Set();
+  if (!runner || desktopWorkflow == null) return targets;
+  const files = [...new Set(changed)].filter((file) => file.startsWith('desktop/') && !file.split('/').includes('..'));
+  if (files.length === 0) return targets;
+  const excluded = new Set(runner.EXCLUDED.map((entry) => (Array.isArray(entry) ? entry[0] : entry)));
+  const scratch = mkdtempSync(path.join(tmpdir(), 'unlisted-tests-'));
+  try {
+    const desktopDir = path.join(scratch, 'desktop');
+    for (const file of files) {
+      const target = path.join(scratch, file);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, '');
+    }
+    const workflowPath = path.join(scratch, '.github/workflows/desktop-checks.yml');
+    mkdirSync(path.dirname(workflowPath), { recursive: true });
+    writeFileSync(workflowPath, String(desktopWorkflow));
+    for (const file of runner.pickUnlistedTests({ desktopDir, workflowPath })) {
+      if (excluded.has(file)) continue;
+      const repoPath = `desktop/${file}`;
+      if (files.includes(repoPath)) targets.add(repoPath);
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+  return targets;
 }
 
 export function additionFor(file) {
@@ -571,7 +615,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const handoffWorkflow = readFileSync(path.join(root, '.github/workflows/engine-handoff-checks.yml'), 'utf8');
   const handoffConfig = readFileSync(path.join(root, 'engine/test/vitest/vitest.desktop-handoff.config.ts'), 'utf8');
   const lintBaselinesWorkflow = readFileSync(path.join(root, '.github/workflows/engine-lint-baselines.yml'), 'utf8');
-  const uncovered = uncoveredTests(changed, coverageTargets(workflow, handoffWorkflow, handoffConfig, lintBaselinesWorkflow));
+  const covered = coverageTargets(workflow, handoffWorkflow, handoffConfig, lintBaselinesWorkflow);
+  for (const file of unlistedDesktopTargets(await loadUnlistedRunner(root), changed, workflow)) covered.add(file);
+  const uncovered = uncoveredTests(changed, covered);
   if (uncovered.length) {
     for (const file of uncovered) console.error(`Uncovered changed test: ${file}\n  Add: ${additionFor(file)}`);
     process.exitCode = 1;

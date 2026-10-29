@@ -47,20 +47,18 @@ const type = async (host: HTMLElement, text: string) => act(async () => {
 });
 
 describe("send when no model can answer", () => {
-  it("keeps the draft, disables Send, and shows the full Connect a model to get answers line", async () => {
+  it("keeps Send enabled, keeps the draft, and shows Connect a model to get answers", async () => {
     const { host, send } = await mount();
     await vi.waitFor(() => expect(host.querySelector('[data-testid="no-key-failed"]')?.textContent).toContain(CONNECT_MODEL_ANSWERS));
     await type(host, "Hello");
     const box = host.querySelector<HTMLTextAreaElement>('[data-testid="composer"]')!;
     const sendBtn = host.querySelector<HTMLButtonElement>('[aria-label="Send"]')!;
-    expect(sendBtn.disabled).toBe(true);
-    expect(sendBtn.title).toBe(CONNECT_MODEL_ANSWERS);
+    expect(sendBtn.disabled).toBe(false);
     await act(async () => box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
     expect(box.value).toBe("Hello");
     expect(send).not.toHaveBeenCalled();
-    const failed = host.querySelector('[data-testid="no-key-failed"]')!;
-    expect(failed.textContent).toContain(CONNECT_MODEL_ANSWERS);
-    expect(failed.textContent).not.toMatch(/\u2026|\.\.\./);
+    await vi.waitFor(() => expect(host.querySelector('[data-testid="connect-model"]')?.textContent).toContain(CONNECT_MODEL_ANSWERS));
+    expect(host.querySelector('[data-testid="connect-model"] button.connect-model-btn')?.textContent).toBe("Connect a model");
   });
 
   it("row names Connect a model to get answers as the one control", async () => {

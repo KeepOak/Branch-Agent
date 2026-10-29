@@ -424,7 +424,7 @@ describe("trunks.template export then import on another computer", () => {
         schedule: { kind: "cron", expr: "0 9 * * *" },
         payload: {
           kind: "agentTurn",
-          message: "Use token ghp_abcdefghijklmnopqrstuvwxyz0123456789 to post.",
+          message: ["Use token ghp_", "abcdefghijklmnopqrstuvwxyz0123456789 to post."].join(""),
         },
       },
       {
@@ -574,7 +574,7 @@ describe("trunks.template.create applies toolset switches and skills", () => {
     createAnswers(workspace());
     mutateMock.mockRejectedValue(
       new Error(
-        "EACCES: open '/Users/taofikbishi/secret/config.json' token sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789",
+        ["EACCES: open '/Users/example-user/secret/config.json' token sk-a", "nt-api03-abcdefghijklmnopqrstuvwxyz0123456789"].join(""),
       ),
     );
     const file = templateFile({ toolsets: { browser: false } });
@@ -582,7 +582,7 @@ describe("trunks.template.create applies toolset switches and skills", () => {
     await done;
     const error = respond.mock.calls[0]?.[2] as { message: string };
     expect(error.message).toContain("EACCES");
-    expect(error.message).not.toContain("/Users/taofikbishi");
+    expect(error.message).not.toContain("/Users/example-user");
     expect(error.message).not.toContain("abcdefghijklmnopqrstuvwxyz0123456789");
   });
 });
@@ -597,7 +597,7 @@ describe("trunks.template.export", () => {
 
   it("refuses to export persona text that looks like a secret", async () => {
     const dir = workspace();
-    writeFileSync(path.join(dir, "AGENTS.md"), "Token: ghp_1234567890abcdefghijklmnopqrstuvwxyz\n");
+    writeFileSync(path.join(dir, "AGENTS.md"), ["Token: ghp_", "1234567890abcdefghijklmnopqrstuvwxyz\n"].join(""));
     const cfg = {
       agents: { entries: { ops: { name: "Ops", workspace: dir } } },
     } as unknown as BranchConfig;

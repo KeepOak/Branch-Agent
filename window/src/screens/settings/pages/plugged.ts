@@ -11,6 +11,7 @@ import {
 import { classicSlot } from "./classic-host";
 import { CUSTOMIZE_PAGE } from "./customize-live";
 import { AUTOS_PAGE } from "./autos-live";
+import { MEMORY_PAGE } from "./memory-live";
 import { CARD_PAGE } from "./card-live";
 import { permissionsSlot } from "./permissions-approvals";
 import { privacySlot } from "./privacy-town";
@@ -93,6 +94,9 @@ export const R1_PAGES: PageSlots = {
   customize: CUSTOMIZE_PAGE,
   // Automations is a row page; where alerts go and the Edit windows are its own (autos-live.tsx).
   autos: AUTOS_PAGE,
+  // Memory & documents is a row page; meaning search, Last night, other-agents memory and Library rewrite are its own
+  // (memory-live.tsx).
+  memory: MEMORY_PAGE,
   // Instructions & personality: the preview's seven cards; Classic's file list and Just about you inside them.
   instructions: { rows: INSTRUCTIONS_ROWS, controls: { "instructions.you.file": AboutYou, "instructions.project.files": Files } },
   // Voice & calls: native R1 cards in the preview's order; Classic Voice draws behind its rows (voice-controls.tsx).

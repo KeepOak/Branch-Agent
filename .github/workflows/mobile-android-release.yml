@@ -9,11 +9,6 @@ on:
         description: Release tag to attach a signed APK to. Leave empty for an artifact-only build.
         required: false
         type: string
-  push:
-    branches: [main]
-    paths:
-      - 'mobile/**'
-      - '.github/workflows/mobile-android-release.yml'
 
 permissions:
   contents: read
@@ -294,6 +289,16 @@ jobs:
           VERSIONCODE_PATH: ${{ steps.stage.outputs.versioncode_path }}
           VERSIONCODE_NAME: ${{ steps.stage.outputs.versioncode_name }}
         run: node mobile/scripts/android-release.mjs --attach-release
+
+      # component-release.yml keeps the release as a draft until this APK is attached.
+      # Publishing is a no-op when the release is already published (release trigger,
+      # rerun, or the 30-minute watchdog got there first).
+      - name: Publish the release draft now that the APK is attached
+        if: steps.plan.outputs.attach_release == 'true' && needs.resolve-tag.outputs.should_attach == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.plan.outputs.release_tag }}
+        run: node desktop/scripts/publish-component-release.mjs publish-draft "$TAG"
 
       - name: Remove the keystore
         if: always()

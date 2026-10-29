@@ -4,6 +4,7 @@ import os from "node:os";
 import type { Command } from "commander";
 import type { BranchConfig } from "../config/types.branch.js";
 import { formatErrorMessage } from "../infra/errors.js";
+import { displayHostname } from "../infra/machine-name.js";
 import { defaultRuntime } from "../runtime.js";
 import { formatCliCommand } from "./command-format.js";
 import { callGatewayFromCli } from "./gateway-rpc.js";
@@ -111,6 +112,11 @@ async function withAddressCandidates(setupCode: string, bind: string, port: numb
 
 type JoinOpts = { name?: string; json?: boolean };
 
+/** The name this Branch joins a host under: the given name, else this computer's display name. */
+export function graftJoinName(name?: string): string {
+  return name?.trim() || displayHostname(os.hostname());
+}
+
 async function runJoin(code: string, opts: JoinOpts): Promise<void> {
   const [{ decodePairingSetupCode }, graft, { getRuntimeConfig }, { listGatewayAgentsBasic }] =
     await Promise.all([
@@ -120,7 +126,7 @@ async function runJoin(code: string, opts: JoinOpts): Promise<void> {
       import("../gateway/agent-list.js"),
     ]);
   const payload = decodePairingSetupCode(code.trim());
-  const name = opts.name?.trim() || os.hostname();
+  const name = graftJoinName(opts.name);
   const link = {
     url: payload.url,
     ...(payload.urls ? { urls: payload.urls } : {}),

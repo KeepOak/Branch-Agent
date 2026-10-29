@@ -19,7 +19,7 @@ import { isEngineMode, modeName, nextMode, type EngineMode } from "../../compose
 import { currentModelRef, currentThinking } from "../../composer/model";
 import type { OpenTarget } from "../../composer/nav";
 import { PhotoDialog, PictureDialog } from "../../composer/PhotoDialog";
-import { buildExtras, planSend, sendTooltip, type Reply } from "../../composer/sending";
+import { buildExtras, planSend, sendHoldReason, sendTooltip, type Reply } from "../../composer/sending";
 import { newPick, pickText, reconcilePicks, resolveSend, trimMessage, type Message, type SkillPick } from "../../composer/skill-picks";
 import { Drawer } from "../../composer/SlashDrawer";
 import { useBackground } from "../../composer/useBackground";
@@ -169,13 +169,34 @@ export function Composer(props: Props) {
   const thinking = currentThinking(row, conv.defaults);
   const noModel = hasNoModel(conv, currentRef);
   const waitingForFreeModel = noModel && !conv.noKeySettled && !conv.noKeyError;
-  const freeModelBlocked = noModel;
   const admin = isAdmin(engine.scopes ?? []);
   const mode: EngineMode | null = isEngineMode(row.permissionMode) ? row.permissionMode : null;
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;
   const queueMode = str(row.effectiveQueueMode);
   const trunkName = conv.trunk?.name || name;
   const conversationProblem = conv.error ?? (isPreparationPending(conv.modelsError) || conv.modelsError?.includes("is still starting up.") ? conv.modelsError : null);
+  const holdReason = sendHoldReason({
+    offline,
+    loadingModels: conv.modelsLoading && !conv.models.some((m) => m.available),
+    preparing: isPreparationPending(conversationProblem),
+    noModel,
+  });
+  // A held send leaves its reason in `problem`. Clear that one alert, and only that one, once send can go again or a
+  // send goes out, so the old Connect a model words do not stay after an account is added.
+  const heldProblem = useRef<string | null>(null);
+  const showHold = (why: string) => {
+    heldProblem.current = why;
+    setProblem(why);
+  };
+  const clearHold = useCallback(() => {
+    const held = heldProblem.current;
+    if (!held) return;
+    heldProblem.current = null;
+    setProblem((now) => (now === held ? null : now));
+  }, []);
+  useEffect(() => {
+    if (!holdReason) clearHold();
+  }, [holdReason, clearHold]);
 
   const drawer = useDrawer(engine, conv.trunks, current?.levels ?? [], useMemo(() => ({ think: thinking }), [thinking]));
   const [picks, setPicks] = useState<SkillPick[]>([]);
@@ -221,6 +242,7 @@ export function Composer(props: Props) {
     const text = resolveSend(message.text, message.picks, drawer.skills);
     try {
       await engine.request("chat.send", { ...buildExtras(text, draft.files, draft.people), sessionKey: key, message: text, idempotencyKey: crypto.randomUUID() });
+      clearHold();
       draft.clear();
       toast(`Sent to ${title}.`);
     } catch (error) {
@@ -236,9 +258,12 @@ export function Composer(props: Props) {
       return;
     }
     if (plan.kind === "stop") { onStop(); draft.clear(); return; }
-    if (offline) return;
-    if (freeModelBlocked && plan.kind !== "command") return;
-    if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
+    // GOD #1092: Send stays enabled. With nothing usable, keep the draft and show the one Connect path.
+    if (holdReason && plan.kind !== "command" && (plan.kind !== "background" || !isPreparationPending(conversationProblem))) {
+      showHold(holdReason);
+      if (!conv.modelsLoading) void conv.readModelList({ refresh: true });
+      return;
+    }
     if (plan.kind === "background") { void runBackground(plan.text); return; }
     if (topic && plan.kind === "send") { void sendToTopic(topic.key, topic.title); return; }
     if (plan.kind === "wait") {
@@ -249,6 +274,7 @@ export function Composer(props: Props) {
       props.onClearReply?.();
       if (plan.kind === "send" && plan.queueMode === "steer") toast(`Steered ${trunkName}. It picks this up at its next step.`);
     }
+    clearHold();
     history.record(draft.text.trim());
     draft.clear();
   };
@@ -376,12 +402,12 @@ export function Composer(props: Props) {
   };
   const hasDraft = hasText || draft.files.length > 0;
   const stopMode = working && !hasDraft;
-  const ready = hasDraft && !offline && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && !freeModelBlocked;
+  const ready = hasDraft && !offline && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem);
   const usage = tightest(props.limits);
   const context = contextUse(props.row?.totalTokens, props.row?.contextTokens);
   const runningCount = props.running.length;
   const summary = ringSummary(usage, runningCount, context);
-  const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : waitingForFreeModel ? FREE_MODEL_READY : noModel ? (conv.noKeyError ?? CONNECT_MODEL_ANSWERS) : working && hasDraft ? sendTooltip(queueMode) : undefined;
+  const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : waitingForFreeModel ? FREE_MODEL_READY : noModel ? (conv.noKeyError ?? CONNECT_MODEL_ANSWERS) : holdReason ?? (working && hasDraft ? sendTooltip(queueMode) : undefined);
   const placeholder = waitingForFreeModel ? FREE_MODEL_READY : noModel ? "Connect a model to start" : props.placeholder ?? `Message ${name}`;
   const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n) && !(props.startupShown && (isPreparationPending(n) || isPreparationStalled(n))));
 
