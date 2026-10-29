@@ -217,6 +217,41 @@ test('a shard over the Windows or macOS budget holds one engine file, which no s
   assert.ok(overBudgetShards('ubuntu', 2).length > 0);
 });
 
+test('no Windows or macOS shard holding a single engine file plans over the ten-minute budget', () => {
+  // A file never splits, so its whole weight has to fit one job, setup included.
+  // These still plan over it and are split by follow-up PRs, which drop them here.
+  // The four gateway files below were weighted from CI times by #2114 and also plan over it on Windows.
+  const splitPending = new Set([
+    'src/commands/doctor-config-flow.legacy-composition.test.ts',
+    'src/gateway/server-methods/sessions-reactions.test.ts',
+    'src/gateway/server.auth.control-ui.test.ts',
+    'src/gateway/server-startup-lifetime.test.ts',
+    'src/gateway/server.node-shutdown.test.ts',
+    'src/gateway/server.private-completion.test.ts',
+    'src/gateway/server.subagent-settle-replay.harness.test.ts',
+  ]);
+  const weighted = featureTestWeightKeys();
+  for (const file of splitPending) {
+    assert.ok(weighted.includes(file), `${file} is no longer weighted: drop it from splitPending`);
+  }
+  for (const os of ['windows', 'macos']) {
+    for (const file of weighted) {
+      if (splitPending.has(file)) continue;
+      const seconds = featureTestWeight(file) * runnerTestScale[os] + runnerSetupSeconds[os];
+      assert.ok(seconds <= shardBudgetSeconds, `${os}: ${file} alone plans ${seconds.toFixed(1)} s`);
+    }
+  }
+  const counts = resolvedShardCounts();
+  const engine = namedTests('engine');
+  for (const os of ['windows', 'macos']) {
+    const files = planShards(engine, counts[os]).files;
+    plannedJobSeconds(os, counts[os]).forEach((seconds, index) => {
+      if (files[index].length !== 1 || splitPending.has(files[index][0])) return;
+      assert.ok(seconds <= shardBudgetSeconds, `${os} shard ${index + 1} (${files[index][0]}) plans ${seconds.toFixed(1)} s`);
+    });
+  }
+});
+
 test('a malformed shard is an error, not a silent skip', () => {
   for (const bad of ['0/2', '3/2', '1', 'a/b', '1/0']) assert.throws(() => shardOf(bad));
 });

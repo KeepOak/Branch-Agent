@@ -745,11 +745,12 @@ export function shardOf(value = process.env.FEATURE_SHARD) {
 // Every named file at 10 s or more is listed, and no earlier key is dropped; the other named files ran under 10 s
 // and count unlistedFeatureTestSeconds. The 2026-10-14 table predates the ubuntu-latest image move (Oct 19): with it,
 // PR Linux shards planned at 596 s ran 5 to 15 minutes, and unlisted files of 150 to 270 s counted 5 s.
+// The cli-runner prepare parts have no CI history yet: each is its file's local vitest seconds times the split file's
+// CI median over its own local seconds on the same machine (295/69.1), so the parts keep the whole file's CI scale.
 // Refresh this table from CI logs when shard times drift.
 const featureTestWeights = {
   'src/gateway/server.private-completion.test.ts': 350,
   'src/gateway/server.subagent-settle-replay.harness.test.ts': 300,
-  'src/agents/cli-runner/prepare.test.ts': 295,
   'src/gateway/server.auth.control-ui.test.ts': 287,
   'src/gateway/server-startup-lifetime.test.ts': 280,
   'src/gateway/server.node-shutdown.test.ts': 280,
@@ -782,16 +783,22 @@ const featureTestWeights = {
   'src/gateway/server.auth.hello-order.test.ts': 69,
   'src/commands/doctor/shared/default-agent-role-materialization.write.test.ts': 68,
   'src/gateway/server-methods/update-report-run.test.ts': 68,
+  'src/agents/cli-runner/prepare.auth-profiles.test.ts': 67,
+  'src/agents/cli-runner/prepare.mcp-authority.test.ts': 65,
+  'src/agents/cli-runner/prepare.session-bindings.test.ts': 65,
   'src/cron/service.wake-now-real-heartbeat.test.ts': 64,
   'src/infra/heartbeat-runner.idle-trunk-gate.test.ts': 64,
+  'src/agents/cli-runner/prepare.prompt-hooks.test.ts': 63,
   'src/agents/tools/sessions-send-tool.admission.test.ts': 62,
   'src/commands/config-preflight-snapshot.test.ts': 62,
   'src/gateway/server.node-pairing-rate-limit.test.ts': 62,
   'src/agents/onboarding-trunk/onboarding-trunk-persistence.test.ts': 61,
   'src/gateway/server-methods/themes.test.ts': 61,
   'src/gateway/server.trunk-queue.test.ts': 60,
+  'src/agents/cli-runner/prepare.skills-sessions.test.ts': 60,
   'src/gateway/server.mcp-auth-login.test.ts': 56,
   'src/gateway/codex-runtime-fresh-install.test.ts': 53,
+  'src/agents/cli-runner/prepare.native-resume.test.ts': 53,
   'src/infra/heartbeat-inbox-fallback.idle-trunk.test.ts': 51,
   'src/cron/trigger-script.test.ts': 48,
   'src/gateway/server-methods/sessions-messages.test.ts': 47,
@@ -993,8 +1000,9 @@ export function shardBudgetFor() {
 }
 
 // Shards over budget that more shards could still split. A file never splits, so a shard holding one engine
-// file is as fast as it can be: on Windows and macOS cli-runner/prepare.test.ts alone is near ten minutes,
-// and its shard then holds only that file.
+// file is as fast as it can be. Files whose Windows or macOS job alone would pass ten minutes are split instead
+// (cli-runner/prepare so far; server.auth.control-ui, doctor-config-flow.legacy-composition and
+// sessions-reactions follow), and a test keeps it so.
 export function overBudgetShards(os, total, { extraTests = [] } = {}) {
   const budget = shardBudgetFor(os);
   const files = planShards([...namedTests('engine'), ...extraTests], total).files;
