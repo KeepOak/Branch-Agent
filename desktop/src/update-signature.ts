@@ -7,7 +7,8 @@
 //   signature "Ed" = legacy (ed25519 over raw file bytes)
 //   signature "ED" = hashed (ed25519 over BLAKE2b-512(file) only)
 //   global_signature = ed25519(signature[64] || trusted_comment)
-import { createHash, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
+import { createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
+import { digest } from "./digest";
 import { UPDATER_PUBKEY } from "./updater-pubkey";
 
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
@@ -91,7 +92,7 @@ export function assertUpdateSignature(bytes: Buffer, signature: string, pubkey: 
   const sig = parseSignature(signature);
   if (!sig.keyid.equals(trust.keyid)) throw new Error(INVALID_UPDATE_SIGNATURE);
   // Hashed: ed25519(BLAKE2b-512(file)) only — trusted comment is covered by the global sig, not here.
-  const message = sig.hashed ? createHash("blake2b512").update(bytes).digest() : bytes;
+  const message = sig.hashed ? digest("blake2b512", bytes) : bytes;
   if (!ed25519Check(trust.publicKey, message, sig.signature)) throw new Error(INVALID_UPDATE_SIGNATURE);
   // global_signature = ed25519(signature[64] || trusted_comment) — not the full 74-byte block.
   if (!ed25519Check(trust.publicKey, Buffer.concat([sig.signature, Buffer.from(sig.trustedComment)]), sig.globalSig)) {
@@ -103,7 +104,7 @@ export function assertUpdateSignature(bytes: Buffer, signature: string, pubkey: 
 export function minisignTestKey() {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const rawPublic = publicKey.export({ type: "spki", format: "der" }).subarray(-32);
-  const keyid = createHash("sha256").update(rawPublic).digest().subarray(0, 8);
+  const keyid = digest("sha256", rawPublic).subarray(0, 8);
   const pubFile = `untrusted comment: minisign public key: ${keyid.toString("hex").toUpperCase()}\n${Buffer.concat([PUBKEY_ALG, keyid, rawPublic]).toString("base64")}\n`;
   return {
     pubkey: Buffer.from(pubFile).toString("base64"),
@@ -112,7 +113,7 @@ export function minisignTestKey() {
     privateKey,
     sign(bytes: Buffer): string {
       const trusted = `timestamp:${Math.floor(Date.now() / 1000)}\tfile:payload\thashed`;
-      const hash = createHash("blake2b512").update(bytes).digest();
+      const hash = digest("blake2b512", bytes);
       const fileSig = sign(null, hash, privateKey);
       const block = Buffer.concat([SIG_HASHED, keyid, fileSig]);
       const globalSig = sign(null, Buffer.concat([fileSig, Buffer.from(trusted)]), privateKey);
