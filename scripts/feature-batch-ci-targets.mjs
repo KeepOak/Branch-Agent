@@ -749,6 +749,8 @@ export function shardOf(value = process.env.FEATURE_SHARD) {
 const featureTestWeights = {
   'src/agents/cli-runner/prepare.test.ts': 295,
   'src/gateway/server.auth.control-ui.test.ts': 287,
+  'src/gateway/server-startup-lifetime.test.ts': 280,
+  'src/gateway/server.node-shutdown.test.ts': 280,
   'src/commands/doctor-config-flow.legacy-composition.test.ts': 271,
   'src/gateway/server-methods/sessions-reactions.test.ts': 239,
   'src/gateway/server-kernel.phases.test.ts': 197,
