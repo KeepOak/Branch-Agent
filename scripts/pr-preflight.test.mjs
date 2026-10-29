@@ -978,6 +978,38 @@ test('CI input from clean API data passes', () => {
   assert.deepEqual(runPreflight({ ...input, body: BODY, protectedPaths: PROTECTED }), []);
 });
 
+const API_COMMITS = [{ sha: 'abc1234', commit: { message: 'feat: x', author: { email: NOREPLY }, committer: { email: NOREPLY, date: '2026-10-09T12:00:00Z' } } }];
+const namedTestsOf = (files, listText = null) => {
+  const input = inputFromApi({ headBranch: BRANCH, headSha: SHA, files, commits: API_COMMITS, listText });
+  return runPreflight({ ...input, body: BODY, protectedPaths: PROTECTED }).filter((p) => p.check === 'named-tests');
+};
+
+test('a PR that only deletes a test needs no named-test list, and other checks still see the deletion', () => {
+  const files = [{ filename: 'engine/src/x.test.ts', status: 'removed', changes: 3, patch: '@@ -1,3 +0,0 @@\n-a\n-b\n-c' }];
+  assert.deepEqual(namedTestsOf(files), []);
+  const input = inputFromApi({ headBranch: BRANCH, headSha: SHA, files, commits: API_COMMITS, listText: null });
+  assert.deepEqual(input.changedFiles, ['engine/src/x.test.ts']);
+});
+
+test('a renamed test needs only its new name in the named-test list', () => {
+  const files = [{ filename: 'engine/b.test.ts', previous_filename: 'engine/a.test.ts', status: 'renamed', changes: 0 }];
+  const problems = namedTestsOf(files);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0].fix, /lines: engine:b\.test\.ts$/);
+  assert.deepEqual(namedTestsOf(files, 'engine:b.test.ts\n'), []);
+});
+
+test('modified and added tests still need named-test lines next to a removed one', () => {
+  const files = [
+    { filename: 'engine/src/gone.test.ts', status: 'removed', changes: 1, patch: '@@ -1 +0,0 @@\n-x' },
+    { filename: 'engine/src/kept.test.ts', status: 'modified', changes: 1, patch: '@@ -1 +1 @@\n-x\n+y' },
+    { filename: 'window/src/new.test.tsx', status: 'added', changes: 1, patch: '@@ -0,0 +1 @@\n+x' },
+  ];
+  const problems = namedTestsOf(files, 'engine:src/kept.test.ts\n');
+  assert.deepEqual(problems.map((p) => p.message), [`${LIST} lacks window:src/new.test.tsx`]);
+  assert.match(namedTestsOf(files)[0].fix, /lines: engine:src\/kept\.test\.ts window:src\/new\.test\.tsx$/);
+});
+
 test('the CI preflight budget comes from PREFLIGHT_WAIT_SECONDS, with a safe default', () => {
   assert.equal(preflightBudgetSeconds({ PREFLIGHT_WAIT_SECONDS: '90' }), 90);
   assert.equal(preflightBudgetSeconds({}), 120);

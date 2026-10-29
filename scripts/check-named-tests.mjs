@@ -16,7 +16,8 @@ export function checkNamedTests({ cwd, base = 'origin/main' }) {
   const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
   const listPath = namedListPathFor(branch);
   const listAbs = path.join(cwd, listPath);
-  const changedFiles = git(['diff', '--name-only', `${base}...HEAD`], cwd).split('\n').filter(Boolean);
+  // Removed files cannot run, so they need no line; --diff-filter=d drops them and the old names of renames.
+  const changedFiles = git(['diff', '--name-only', '--diff-filter=d', `${base}...HEAD`], cwd).split('\n').filter(Boolean);
   const problems = namedListProblems({
     changedFiles,
     listText: existsSync(listAbs) ? readFileSync(listAbs, 'utf8') : null,
