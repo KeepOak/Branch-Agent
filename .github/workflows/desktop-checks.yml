@@ -76,7 +76,7 @@ jobs:
       - name: Check release publication order and public latest retries
         run: node --test scripts/publish-component-release.test.mjs
       - name: Check the installer builder and its signing hooks
-        run: node --test scripts/release-installers.test.mjs scripts/install-layout.test.mjs scripts/windows-launcher-icon.test.mjs scripts/release-signing.test.mjs
+        run: node --test scripts/release-installers.test.mjs scripts/install-layout.test.mjs scripts/windows-launcher-icon.test.mjs scripts/release-signing.test.mjs scripts/linux-deb-version.test.mjs
       - name: Check free update signing (latest.json and .sig)
         run: node --test scripts/update-signing.test.mjs scripts/sign-release-updates.test.mjs
       - name: Check the one-line install scripts against a fixture release
