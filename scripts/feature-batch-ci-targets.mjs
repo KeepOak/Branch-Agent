@@ -747,6 +747,8 @@ export function shardOf(value = process.env.FEATURE_SHARD) {
 // PR Linux shards planned at 596 s ran 5 to 15 minutes, and unlisted files of 150 to 270 s counted 5 s.
 // Refresh this table from CI logs when shard times drift.
 const featureTestWeights = {
+  'src/gateway/server.private-completion.test.ts': 350,
+  'src/gateway/server.subagent-settle-replay.harness.test.ts': 300,
   'src/agents/cli-runner/prepare.test.ts': 295,
   'src/gateway/server.auth.control-ui.test.ts': 287,
   'src/gateway/server-startup-lifetime.test.ts': 280,
@@ -949,8 +951,8 @@ export function shardTests(tests, shard, weights) {
   return planShards(tests, shard.total, weights).files[shard.index];
 }
 
-// Touched Windows shards run no Linux shard-1 checks, so they pack without the reserve and three or more
-// touched files never leave a shard empty.
+// Touched Windows shards run no Linux shard-1 checks, so they pack without the reserve and four or more
+// touched files (the smoke set alone is four) never leave a shard empty.
 export function touchedShardTests(tests, shard, weights) {
   return planShards(tests, shard.total, weights, { reserve: 0 }).files[shard.index];
 }
@@ -966,7 +968,7 @@ export function touchedShardTests(tests, shard, weights) {
 // same files on the 2026-10-12 main pushes (1.64 and 1.27); macOS keeps its earlier, higher 1.35.
 export const pullRequestLinuxShardCount = 10;
 // Pull requests run the touched Windows tests in this many fixed shards (one job ran past the cap with 18 files).
-export const pullRequestWindowsTouchedShardCount = 3;
+export const pullRequestWindowsTouchedShardCount = 4;
 export const mainPushShardCounts = { ubuntu: 7, windows: 11, macos: 10 };
 export const shardBudgetSeconds = 10 * 60;
 export const windowShardFileSeconds = 2;

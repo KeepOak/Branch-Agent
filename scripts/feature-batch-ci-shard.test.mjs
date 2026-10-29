@@ -64,8 +64,8 @@ test('the workflow takes its matrix from the planner, and every planned shard fi
   const pr = featureBatchMatrix({ event: 'pull_request' }).include;
   const labels = (rows, os) => rows.filter(row => row.os === os).map(row => row.label);
   assert.deepEqual(labels(pr, 'ubuntu-latest'), Array.from({ length: counts.pullRequestLinux }, (_, index) => `${index + 1}/${counts.pullRequestLinux}`));
-  assert.deepEqual(pr.filter(row => row.os === 'windows-latest').map(row => row.label), ['touched 1/3', 'touched 2/3', 'touched 3/3']);
-  assert.deepEqual(pr.filter(row => row.os === 'windows-latest').map(row => [row.shard, row.scope]), [['1/3', 'touched'], ['2/3', 'touched'], ['3/3', 'touched']]);
+  assert.deepEqual(pr.filter(row => row.os === 'windows-latest').map(row => row.label), ['touched 1/4', 'touched 2/4', 'touched 3/4', 'touched 4/4']);
+  assert.deepEqual(pr.filter(row => row.os === 'windows-latest').map(row => [row.shard, row.scope]), [['1/4', 'touched'], ['2/4', 'touched'], ['3/4', 'touched'], ['4/4', 'touched']]);
   assert.deepEqual(labels(push, 'ubuntu-latest'), Array.from({ length: counts.ubuntu }, (_, index) => `${index + 1}/${counts.ubuntu}`));
   assert.deepEqual(labels(push, 'windows-latest'), Array.from({ length: counts.windows }, (_, index) => `${index + 1}/${counts.windows}`));
   assert.deepEqual(labels(push, 'macos-latest'), Array.from({ length: counts.macos }, (_, index) => `${index + 1}/${counts.macos}`));
@@ -230,14 +230,14 @@ test('Windows PR scope runs touched named tests plus the smoke set, never unlist
   assert.deepEqual(touchedTests('window', ['engine/src/x.ts']), []);
 });
 
-test('the touched Windows tests split across touched n/3 with every file once and no empty shard', () => {
-  assert.equal(pullRequestWindowsTouchedShardCount, 3);
+test('the touched Windows tests split across touched n/4 with every file once and no empty shard', () => {
+  assert.equal(pullRequestWindowsTouchedShardCount, 4);
   const engine = namedTests('engine');
   const rows = featureBatchMatrix({ event: 'pull_request' }).include.filter(row => row.os === 'windows-latest');
   const extra = engine.filter(file => !windowsSmokeTests.engine.includes(file));
   for (const changed of [0, 1, 2, 14]) {
     const touched = touchedTests('engine', extra.slice(0, changed).map(file => `engine/${file}`));
-    assert.ok(touched.length >= 3, 'the smoke set alone fills three shards');
+    assert.ok(touched.length >= 4, 'the smoke set alone fills four shards');
     const parts = rows.map(row => touchedShardTests(touched, shardOf(row.shard)));
     assert.deepEqual(parts.flat().sort(), [...touched].sort(), `${touched.length} touched files: each runs exactly once`);
     assert.equal(new Set(parts.flat()).size, touched.length);
@@ -327,9 +327,9 @@ test('a feature-batch matrix below the shard floors fails closed', () => {
   const pr = featureBatchMatrix({ event: 'pull_request' });
   const prLinux = pr.include.filter((row) => row.os === 'ubuntu-latest');
   const prWindows = pr.include.filter((row) => row.os === 'windows-latest');
-  for (const keep of [0, 1, 2]) {
+  for (const keep of [0, 1, 2, 3]) {
     const fewerTouched = { include: [...prLinux, ...prWindows.slice(0, keep)] };
-    assert.throws(() => validateFeatureBatchMatrix(fewerTouched, 'pull_request'), /windows-latest shard\(s\), below the floor of 3/);
+    assert.throws(() => validateFeatureBatchMatrix(fewerTouched, 'pull_request'), /windows-latest shard\(s\), below the floor of 4/);
   }
   const fewerPrLinux = { include: [...prLinux.slice(0, pullRequestLinuxShardCount - 1), ...prWindows] };
   assert.throws(() => validateFeatureBatchMatrix(fewerPrLinux, 'pull_request'), /ubuntu-latest shard\(s\), below the floor/);
@@ -373,9 +373,9 @@ test('the plan job uses the default-branch planner when it exists, and only a re
   const literals = [...yaml.matchAll(/echo 'matrix=(\{.*?\})' >> "\$GITHUB_OUTPUT"/g)].map((m) => JSON.parse(m[1]));
   assert.equal(literals.length, 2, 'one fallback for pull requests, one for pushes');
   const [pr, push] = literals;
-  // The PR literal predates the three touched Windows rows and keeps one 1/1 touched row. It only runs while the
+  // The PR literal predates the four touched Windows rows and keeps one 1/1 touched row. It only runs while the
   // planner is missing from the default branch, so the planner's Windows floor rejects it; nothing else may.
-  assert.throws(() => validateFeatureBatchMatrix(pr, 'pull_request'), /1 windows-latest shard\(s\), below the floor of 3/);
+  assert.throws(() => validateFeatureBatchMatrix(pr, 'pull_request'), /1 windows-latest shard\(s\), below the floor of 4/);
   assert.deepEqual(pr.include.filter((row) => row.os === 'windows-latest'), [{ os: 'windows-latest', shard: '1/1', label: 'touched', scope: 'touched' }]);
   assert.doesNotThrow(() => validateFeatureBatchMatrix(push, 'push'));
   assert.equal(pr.include.filter((row) => row.os === 'ubuntu-latest').length, pullRequestLinuxShardCount);
