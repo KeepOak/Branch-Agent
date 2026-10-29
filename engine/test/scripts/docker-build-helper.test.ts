@@ -1340,18 +1340,6 @@ grep -q '^build --progress=plain --build-arg GITHUB_ACTIONS -t demo-image .$' "$
     async ({ signal }) => {
       const workDir = tempDirs.make("branch-docker-build-signal-");
       writeExecutables(join(workDir, "bin"), {
-        // macOS runners do not ship GNU timeout; without this stub docker_build_run
-        // exits before the fake docker can signal ready on FD 3.
-        timeout: `#!/bin/bash
-set -euo pipefail
-if [[ "${1:-}" == --kill-after=* ]]; then
-  shift
-fi
-if [[ "${1:-}" =~ ^[0-9]+[sm]?$ ]]; then
-  shift
-fi
-exec "$@"
-`,
         docker: `#!/bin/bash
 set -euo pipefail
 count=0
@@ -1365,7 +1353,9 @@ printf 'rpc error: code = Unavailable\\n'
 trap 'printf "term\\n" >"$TMPDIR/docker.term"; exit 0' TERM
 mkfifo "$TMPDIR/docker.block"
 printf 'ready\\n' >"$TMPDIR/docker.ready"
-printf 'ready\\n' >&3
+# FD 3 reaches this fixture only when the timeout wrapper passes it through;
+# the macOS Node watchdog inherits stdio 0-2 only, so the ready file is the fallback.
+{ printf 'ready\\n' >&3; } 2>/dev/null || true
 while true; do
   read -r -t 1 _ <> "$TMPDIR/docker.block" || true
 done
@@ -1402,10 +1392,20 @@ docker_build_run e2e-build -t demo-image .
             runner.once("close", resolve);
           }),
         );
-        const ready = new Promise<void>((resolve, reject) => {
+        const fdReady = new Promise<void>((resolve, reject) => {
           runner.stdio[3]!.once("data", () => resolve());
           runner.stdio[3]!.once("error", reject);
         });
+        // Without GNU timeout (macOS runners) the Node watchdog spawns the build with
+        // stdio "inherit", so FD 3 never reaches the fixture; its ready file still does.
+        const readyFile = join(workDir, "docker.ready");
+        const fileReady = (async () => {
+          while (!existsSync(readyFile)) {
+            await delay(10, undefined, { signal });
+          }
+        })();
+        fileReady.catch(() => undefined);
+        const ready = Promise.race([fdReady, fileReady]);
         try {
           const pidPath = join(workDir, "docker.pid");
           // A builtin FD write leaves no foreground reporter that tree shutdown could
@@ -1420,9 +1420,12 @@ docker_build_run e2e-build -t demo-image .
           runner.kill(childSignal);
           expect(await withinTest(closed, signal)).toBe(expectedCode);
           expect(runner.signalCode).toBeNull();
-          // The timeout wrapper can exit first; the Docker fixture holds FD 3 until
-          // its TERM trap finishes, so runner close also joins that fixture's output.
-          expect(existsSync(join(workDir, "docker.term"))).toBe(true);
+          // GNU timeout passes FD 3 so runner close joins the fixture's TERM trap; the
+          // Node watchdog does not, so wait for the trap's own evidence on that path.
+          const termPath = join(workDir, "docker.term");
+          while (!existsSync(termPath)) {
+            await delay(10, undefined, { signal });
+          }
           expect(readFileSync(join(workDir, "docker-count"), "utf8").trim()).toBe("1");
           await waitForForeignProcessExit(buildPid, signal);
           expect(isProcessRunning(buildPid)).toBe(false);
