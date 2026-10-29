@@ -510,6 +510,16 @@ export function evaluateTrustedGate({
   const errors = [];
   if (failed.length) {
     errors.push(`Failed checks: ${failed.map((run) => `${run.name}: ${run.conclusion}`).join(', ')}`);
+    const namedMacosFailed = failed.filter((run) =>
+      /^Named feature tests on macos(?:-latest)?\b/i.test(run.name),
+    );
+    if (namedMacosFailed.length) {
+      errors.push(
+        `Named feature macos red (refuse merge; policy after #1999): ${
+          namedMacosFailed.map((run) => `${run.name}: ${run.conclusion}`).join(', ')
+        }`,
+      );
+    }
   }
   if (foreignTrusted.length) {
     const details = foreignTrusted.map((run) => {
