@@ -1,0 +1,2 @@
+engine:src/session-cards/progress-card-channel-summary.test.ts
+engine:src/session-cards/progress-card-store.test.ts

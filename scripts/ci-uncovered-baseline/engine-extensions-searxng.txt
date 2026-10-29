@@ -1,0 +1,3 @@
+engine:extensions/searxng/src/searxng-client.test.ts
+engine:extensions/searxng/src/searxng-client.transport.test.ts
+engine:extensions/searxng/src/searxng-search-provider.test.ts

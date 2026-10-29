@@ -113,6 +113,12 @@ export function selfCheckProblems({ branch, headSha, body, repoDir }) {
 // Named-test list: every changed engine or window test file must appear in the branch's list, in any order.
 // Only one PR edits its own list, so order cannot cause merge conflicts. The shared engineTests and windowTests
 // arrays in feature-batch-ci-targets.mjs stay sorted; namedTests() checks those.
+// Only files that exist on the head can run, so removed files and the old names of renames are left out,
+// as the gate's coverage rule does. Takes PR files (or filesFromNameStatus output): { filename, status }.
+export function namedListCandidates(files) {
+  return (files ?? []).filter((f) => f.status !== 'removed').map((f) => f.filename);
+}
+
 export function namedListProblems({ changedFiles, listText, listPath }) {
   const wanted = changedFiles.filter((f) => ENGINE_OR_WINDOW_TEST.test(f)).map((f) => f.replace(/^(engine|window)\//, '$1:')).sort();
   if (wanted.length === 0) return [];
@@ -364,7 +370,7 @@ export function runPreflight(input) {
     ...dirtyTreeProblems(input.dirtyCount ?? 0),
     ...commitProblems(input.commits ?? [], { cloudAgent: input.cloudAgent === true }),
     ...selfCheckProblems({ branch: input.branch, headSha: input.headSha, body, repoDir: input.repoDir }),
-    ...namedListProblems({ changedFiles, listText: input.listText ?? null, listPath: input.listPath }),
+    ...namedListProblems({ changedFiles: input.namedListFiles ?? changedFiles, listText: input.listText ?? null, listPath: input.listPath }),
     ...priorArtProblems({ title: input.title, body }),
     ...uiProofProblems({ changedFiles, body }),
     ...proofImageProblems(input.files),
@@ -456,6 +462,7 @@ function gatherInputs({ argv, cwd }) {
     dirtyCount: git(['status', '--porcelain'], cwd).split('\n').filter(Boolean).length,
     commits: gitCommits(base, cwd),
     changedFiles: git(['diff', '--name-only', `${base}...HEAD`], cwd).split('\n').filter(Boolean),
+    namedListFiles: git(['diff', '--name-only', '--diff-filter=d', `${base}...HEAD`], cwd).split('\n').filter(Boolean),
     files: filesFromNameStatus(git(['diff', '--name-status', `${base}...HEAD`], cwd)),
     desktopWorkflow: readIfExists(path.join(cwd, '.github/workflows/desktop-checks.yml')),
     addedLines: gitAddedLines(base, cwd),
@@ -532,6 +539,7 @@ export function inputFromApi({
     commits: commits.map(commitFromApi),
     prCommits: commits,
     changedFiles: changedFilesFromPrFiles(files),
+    namedListFiles: namedListCandidates(files),
     addedLines: files.flatMap((f) => addedLinesFromPatch(f.filename, f.patch)),
     unverifiedFiles: unverifiedFileNames(files),
     listPath: namedListPathFor(headBranch),

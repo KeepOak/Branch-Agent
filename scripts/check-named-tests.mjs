@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { formatProblems, namedListPathFor, namedListProblems } from './pr-preflight.mjs';
+import { checkAllTests } from './changed-test-coverage.mjs';
 
 function git(args, cwd) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).trim();
@@ -16,13 +17,18 @@ export function checkNamedTests({ cwd, base = 'origin/main' }) {
   const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
   const listPath = namedListPathFor(branch);
   const listAbs = path.join(cwd, listPath);
-  const changedFiles = git(['diff', '--name-only', `${base}...HEAD`], cwd).split('\n').filter(Boolean);
+  // Removed files cannot run, so they need no line; --diff-filter=d drops them and the old names of renames.
+  const changedFiles = git(['diff', '--name-only', '--diff-filter=d', `${base}...HEAD`], cwd).split('\n').filter(Boolean);
   const problems = namedListProblems({
     changedFiles,
     listText: existsSync(listAbs) ? readFileSync(listAbs, 'utf8') : null,
     listPath,
   });
-  return { exitCode: problems.length ? 1 : 0, text: `named-test list: ${listPath}\n${formatProblems(problems)}` };
+  // Local inventory validation only: missing, dangling and uncovered entries still fail here. The
+  // gate-change-reviewed marker lives in the pull request body, so new entries are warnings locally and CI requires it.
+  const inventory = checkAllTests({ cwd, base, reviewMarkers: false });
+  return { exitCode: problems.length || inventory.exitCode ? 1 : 0,
+    text: `named-test list: ${listPath}\n${formatProblems(problems)}\n${inventory.text}` };
 }
 
 export function runCli(argv, cwd) {
