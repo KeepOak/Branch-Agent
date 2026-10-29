@@ -424,6 +424,18 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
             },
             async (state) => {
               // macOS: env selectors may keep /var/folders while fixtures use /private/var.
+              const canonPath = async (value: string): Promise<string> => {
+                try {
+                  return await fs.realpath(value);
+                } catch {
+                  const parent = path.dirname(value);
+                      return parent === value
+                        ? value
+                        : path.join(await canonPath(parent), path.basename(value));
+                }
+              };
+              const sameLoosePath = async (left: string, right: string) =>
+                (await canonPath(left)) === (await canonPath(right));
               const samePath = async (left: string, right: string) =>
                 (await fs.realpath(left)) === (await fs.realpath(right));
               vi.spyOn(process, "cwd").mockReturnValue(state.workspaceDir);
@@ -605,9 +617,12 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
                     const sessionStore = resolveSessionStorePathCore(runConfig.session?.store, {
                       agentId: String(opts.agentId),
                     });
-                    expect(sessionStore).toBe(
-                      path.join(runStateDir, "agents", "diagnostic", "sessions", "sessions.json"),
-                    );
+                    expect(
+                      await sameLoosePath(
+                        sessionStore,
+                        path.join(runStateDir, "agents", "diagnostic", "sessions", "sessions.json"),
+                      ),
+                    ).toBe(true);
                   }
                   expect(opts.sessionId).toEqual(expect.any(String));
                   // Exercise the same preparation and projection used by built-in exec;
@@ -660,7 +675,7 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
                 if (automatic) {
                   mocks.runEmbeddedAgent.mockImplementation(
                     async (opts: RunEmbeddedAgentParams) => {
-                      expect(opts.agentDir).toBe(agentDir);
+                      expect(await sameLoosePath(String(opts.agentDir), agentDir)).toBe(true);
                       expect(opts.authProfileId).toBe(profileId);
                       expect(opts.authProfileIdSource).toBe("user");
                       expect(opts.sessionPersistence).toBe("detached");
