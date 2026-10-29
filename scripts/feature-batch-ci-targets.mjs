@@ -951,8 +951,9 @@ export function shardTests(tests, shard, weights) {
   return planShards(tests, shard.total, weights).files[shard.index];
 }
 
-// Touched Windows shards run no Linux shard-1 checks, so they pack without the reserve and four or more
-// touched files (the smoke set alone is four) never leave a shard empty.
+// Touched Windows shards run no Linux shard-1 checks, so they pack without the reserve and three or more
+// touched files never leave a shard empty.
+// The touched count is now 4, because the smoke set alone is four files.
 export function touchedShardTests(tests, shard, weights) {
   return planShards(tests, shard.total, weights, { reserve: 0 }).files[shard.index];
 }
