@@ -39,7 +39,6 @@ const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50
 it("re-hosts exactly these Classic pages", () => {
   expect(REHOSTED).toEqual({
     who: "people", notifications: "notifications", instructions: "instructions",
-    coding: "computer-coding",
   });
 });
 
@@ -65,41 +64,6 @@ it("splits Classic Computer & browser between Browser & screen, Coding and Devic
   expect(parts[0]).toEqual(expect.arrayContaining(["The browser › The browser", "Using the screen › Using the screen", "Logbook › Logbook", "On a computer › See the screen and use the mouse"]));
   expect(parts[1]).toEqual(expect.arrayContaining(["Git › Git", "Code and commits › Code and commits", "Code › Remember the shell"]));
   expect(parts[2]).toEqual(expect.arrayContaining(["Cloud computers › Cloud computers", "Who is connected now › Who is connected now"]));
-});
-
-it("draws on Coding only sections Classic Computer & browser draws, in its order, and Coding apps from Accounts", async () => {
-  await act(async () => root.render(<KitProvider level={2} report={{ saving() {}, saved() {}, failed() {} }} scope={null}><SettingsPage page="computer" title="Classic" level="technical" engine={engine()} /></KitProvider>));
-  await settle();
-  const classic = drawn(host).sections;
-  for (const page of ["coding"] as const) {
-    await act(async () => root.render(<SettingsFrame engine={engine()} page={page} pages={R1_PAGES} />));
-    await settle();
-    const hosted = drawn(host.querySelector(`.r1s-custom[data-slot="${page}"] .r1s-classic`)!).sections;
-    const own = hosted.filter((sec) => sec !== "Coding apps on this computer");
-    expect(own.length, page).toBeGreaterThan(0);
-    expect(classic.filter((sec) => own.includes(sec)), page).toEqual(own);
-    expect(hosted.includes("Coding apps on this computer"), page).toBe(page === "coding");
-  }
-  expect(host.querySelector('[data-sec="Coding apps on this computer"]')!.textContent).toContain("Codex");
-});
-
-it("draws each Coding card no Classic control has yet as Coming, naming the call it waits for", async () => {
-  expect(COMING).toEqual({ coding: ["Commands", "Files"] });
-  for (const [page, cards] of Object.entries(COMING) as [keyof typeof COMING, readonly string[]][]) {
-    const classic = classicList(REHOSTED[page]);
-    for (const card of cards) {
-      expect(PAGES[page].cards, page).toContain(card);
-      expect(SETTINGS_ROWS.some((r) => classic.includes(r.page) && (r.sec === card || r.group === card)), `${page}: ${card}`).toBe(false);
-    }
-    await act(async () => root.render(<SettingsFrame engine={engine()} page={page} pages={R1_PAGES} />));
-    await settle();
-    const shown = [...host.querySelectorAll<HTMLElement>(`.r1s-custom[data-slot="${page}"] .r1s-classic-coming`)];
-    expect(shown.map((s) => s.getAttribute("aria-label"))).toEqual(cards);
-    for (const s of shown) expect(s.querySelector("[data-coming]")!.getAttribute("data-coming")).toBe(SECTION_COMING(s.getAttribute("aria-label")!));
-    for (const card of cards) {
-      expect(comingControls()).toContainEqual(expect.objectContaining({ where: `${PAGES[page].title} › ${card}`, need: [sectionNeed(page, card)] }));
-    }
-  }
 });
 
 it("adds each re-hosted page's Classic rows to the R1 table, so R1 search finds them on their R1 page", () => {

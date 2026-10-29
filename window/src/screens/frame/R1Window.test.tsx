@@ -16,7 +16,7 @@ vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as
 // page's own rows (and the other native pages'), and Chat apps.
 vi.mock("../settings/pages/plugged", async () => {
   const { REHOSTED, R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
-  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, learning: R1_PAGES.learning, signins: R1_PAGES.signins, models: R1_PAGES.models, permissions: R1_PAGES.permissions, privacy: R1_PAGES.privacy, browser: R1_PAGES.browser, updates: R1_PAGES.updates, chatapps: { component: () => null } } };
+  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, learning: R1_PAGES.learning, signins: R1_PAGES.signins, models: R1_PAGES.models, permissions: R1_PAGES.permissions, privacy: R1_PAGES.privacy, browser: R1_PAGES.browser, coding: R1_PAGES.coding, updates: R1_PAGES.updates, chatapps: { component: () => null } } };
 });
 vi.mock("../settings", () => ({
   SettingsFrame: ({ engine, page, pages, onPage }: { engine: { id?: string }; page?: string; pages?: Record<string, unknown>; onPage?: (page: string) => void }) => (
@@ -95,7 +95,7 @@ it("mounts R1 Settings with the live engine and its slots, and opens Chat apps i
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
   expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
-  expect(settings.dataset.pages).toBe("who,notifications,instructions,coding,history,devices,learning,signins,models,permissions,privacy,browser,updates,chatapps,goto,seedbank,features");
+  expect(settings.dataset.pages).toBe("who,notifications,instructions,history,devices,learning,signins,models,permissions,privacy,browser,coding,updates,chatapps,goto,seedbank,features");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
@@ -125,13 +125,11 @@ it("draws Sign-ins & keys as the R1 page, so Accounts › Add a key opens it in 
 });
 it("draws Settings › Browser & screen and Coding as R1 pages, not Classic General, with Computer & browser's controls", async () => {
   const { R1_PAGES, REHOSTED } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
-  expect(r1SettingsPage("browser", R1_PAGES)).toBe(true);
-  expect(R1_PAGES.browser?.component).toBeUndefined();
-  expect(R1_PAGES.browser?.rows?.length).toBeGreaterThan(0);
-  for (const page of ["coding"] as const) {
+  for (const page of ["browser", "coding"] as const) {
     expect(r1SettingsPage(page, R1_PAGES), page).toBe(true);
-    expect(typeof R1_PAGES[page]?.component, page).toBe("function");
-    expect(REHOSTED[page], page).toBe(`computer-${page}`);
+    expect(R1_PAGES[page]?.component, page).toBeUndefined();
+    expect(R1_PAGES[page]?.rows?.length, page).toBeGreaterThan(0);
+    expect(page in REHOSTED, page).toBe(false);
   }
 });
 it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so working settings never read Coming", async () => {

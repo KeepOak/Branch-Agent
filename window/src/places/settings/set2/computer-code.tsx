@@ -173,19 +173,24 @@ export const CODE_TECH: SecSpec = { t: "Code, technical", group: "Code", showHea
   sw("Needs the engine to let Branch edit its own files.")("Let Branch change its own code", "Branch may edit its own files and restart; some paths stay locked."),
 ] };
 
+export const COPIES_LINE = { copies: "Each task that tries an idea gets its own copy of the repository. See, restore or clean them up.", branches: "Separate copies of a repository that conversations work in." } as const;
+
 /** Separate copies (worktrees.*): see, restore, remove or clean them up. */
 function Copies({ c, mode }: { c: Ctx; mode: "copies" | "branches" }) {
+  const title = mode === "copies" ? "Separate copies" : "Branches Branch is keeping";
+  return <Ctl title={title} sub={COPIES_LINE[mode]}><CopiesButton c={c} mode={mode} /></Ctl>;
+}
+
+/** The button that opens the copies: "See 2", "None yet", or the error. The R1 Coding page draws it in its own row. */
+export function CopiesButton({ c, mode }: { c: Ctx; mode: "copies" | "branches" }) {
   const res = useLive<RecordValue>(c.engine, "worktrees.list", {}, ["worktrees"]);
   const [open, setOpen] = useState(false);
   const live = list(rec(res.data).worktrees).filter((w) => !w.removedAt);
   const title = mode === "copies" ? "Separate copies" : "Branches Branch is keeping";
-  const sub = mode === "copies" ? "Each task that tries an idea gets its own copy of the repository. See, restore or clean them up." : "Separate copies of a repository that conversations work in.";
-  return (
-    <Ctl title={title} sub={res.error || sub}>
-      <Btn sm disabled={!res.data} onClick={() => setOpen(true)}>{res.data ? (live.length ? `See ${live.length}` : "None yet") : "See"}</Btn>
-      {open ? <CopiesDialog c={c} title={title} mode={mode} res={res} onClose={() => setOpen(false)} /> : null}
-    </Ctl>
-  );
+  return <>
+    <Btn sm disabled={!res.data} title={res.error || undefined} onClick={() => setOpen(true)}>{res.data ? (live.length ? `See ${live.length}` : "None yet") : "See"}</Btn>
+    {open ? <CopiesDialog c={c} title={title} mode={mode} res={res} onClose={() => setOpen(false)} /> : null}
+  </>;
 }
 
 const OWNER: Record<string, string> = { manual: "You", canopy: "Canopy", session: "Conversation" };
