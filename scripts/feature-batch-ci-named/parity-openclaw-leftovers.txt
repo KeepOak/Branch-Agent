@@ -2,12 +2,9 @@ engine:src/config/zod-schema.community-invite.test.ts
 engine:src/gateway/control-ui-bootstrap-presentation.test.ts
 engine:ui/src/app/config.test.ts
 engine:ui/src/app/mount-fallback.test.ts
-engine:ui/src/components/community-invite-card.test.ts
-engine:ui/src/components/community-invite-state.test.ts
 engine:ui/src/e2e/about.e2e.test.ts
 engine:ui/src/e2e/chat-composer-websearch-kill-switch.real-gateway.e2e.test.ts
 engine:ui/src/e2e/command-palette-search.real-gateway.e2e.test.ts
-engine:ui/src/e2e/community-invite-showing.e2e.test.ts
 engine:ui/src/e2e/new-session-page.provisional-navigation.e2e.test.ts
 engine:ui/src/e2e/plugins-hub-navigation.e2e.test.ts
 engine:ui/src/e2e/usage-sessions-owner-attribution.e2e.test.ts
