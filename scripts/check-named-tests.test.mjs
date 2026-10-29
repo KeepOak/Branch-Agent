@@ -50,6 +50,25 @@ test('partial list prints only the missing lines; full list passes', () => {
   } finally { rmSync(r.dir, { recursive: true, force: true }); }
 });
 
+test('deleting a test passes without a list; a renamed test needs only its new name', () => {
+  const r = repo();
+  try {
+    r.write('engine/src/gone.test.ts', 'x\n');
+    r.write('engine/src/old.test.ts', 'a\nb\nc\nd\n');
+    r.git('add', '-A'); r.git('commit', '-qm', 'tests');
+    r.git('branch', '-qf', 'main');
+    r.git('rm', '-q', 'engine/src/gone.test.ts');
+    r.git('commit', '-qm', 'delete');
+    assert.equal(checkNamedTests({ cwd: r.dir, base: 'main' }).exitCode, 0);
+    r.git('mv', 'engine/src/old.test.ts', 'engine/src/new.test.ts');
+    r.git('commit', '-qm', 'rename');
+    const out = checkNamedTests({ cwd: r.dir, base: 'main' });
+    assert.equal(out.exitCode, 1);
+    assert.match(out.text, /lines: engine:src\/new\.test\.ts\. Fix|lines: engine:src\/new\.test\.ts$/m);
+    assert.doesNotMatch(out.text, /old\.test\.ts/);
+  } finally { rmSync(r.dir, { recursive: true, force: true }); }
+});
+
 test('no changed test files passes without a list', () => {
   const r = repo();
   try {
