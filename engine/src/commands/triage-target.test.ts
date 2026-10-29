@@ -595,7 +595,9 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
                     ).toBe(true);
                   }
                   const runConfig = opts.config;
-                  expect(runConfig.agents?.entries?.diagnostic?.workspace).toBe(executionRoot);
+                  expect(
+                    await samePath(String(runConfig.agents?.entries?.diagnostic?.workspace), executionRoot),
+                  ).toBe(true);
                   expect(runConfig.agents?.entries?.diagnostic?.model).toBe(
                     "fixture/diagnostic-model",
                   );
@@ -663,8 +665,8 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
                       expect(opts.authProfileIdSource).toBe("user");
                       expect(opts.sessionPersistence).toBe("detached");
                       expect(opts.sessionManager?.getSessionTarget()).toBeUndefined();
-                      expect(opts.cwd).toBe(executionRoot);
-                      expect(opts.workspaceDir).toBe(executionRoot);
+                      expect(await samePath(String(opts.cwd), executionRoot)).toBe(true);
+                      expect(await samePath(String(opts.workspaceDir), executionRoot)).toBe(true);
                       expect(
                         auth.loadAuthProfileStoreForRuntime(opts.agentDir, {
                           readOnly: true,
@@ -743,7 +745,9 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
                   expect(mocks.agentCommand).toHaveBeenCalledOnce();
                   expect(execSpy).toHaveBeenCalledOnce();
                   expect(execSpy.mock.calls[0]?.[1].stateDir).toBeUndefined();
-                  expect(execSpy.mock.calls[0]?.[1].cwd).toBe(executionRoot);
+                  expect(
+                    await samePath(String(execSpy.mock.calls[0]?.[1].cwd), executionRoot),
+                  ).toBe(true);
                 }
                 expect(process.env.BRANCH_STATE_DIR).toBe(originalSelectors.stateDir);
                 expect(process.env.BRANCH_CONFIG_PATH).toBe(originalSelectors.configPath);
