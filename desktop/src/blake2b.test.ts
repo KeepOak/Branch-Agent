@@ -3,7 +3,7 @@ import { createHash, generateKeyPairSync, randomBytes, sign, verify } from "node
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { blake2b512 } from "./blake2b.ts";
+import { blake2b512, blake2b512Pure } from "./blake2b.ts";
 
 test("pure BLAKE2b-512 matches the RFC 7693 'abc' vector", () => {
   assert.equal(
@@ -15,14 +15,36 @@ test("pure BLAKE2b-512 matches the RFC 7693 'abc' vector", () => {
 test("pure BLAKE2b-512 matches OpenSSL across block boundaries", () => {
   for (const n of [0, 1, 127, 128, 129, 255, 256, 257, 1000, 1 << 20]) {
     const data = randomBytes(n);
+    assert.equal(blake2b512Pure(data).toString("hex"), createHash("blake2b512").update(data).digest("hex"), `pure length ${n}`);
     assert.equal(blake2b512(data).toString("hex"), createHash("blake2b512").update(data).digest("hex"), `length ${n}`);
   }
+});
+
+test("pure 'abc' vector without native path", () => {
+  assert.equal(
+    blake2b512Pure(Buffer.from("abc")).toString("hex"),
+    "ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923",
+  );
+});
+
+// Regression guard for the #2108 review: the first pure-JS port used BigInt and
+// took ~9s for 16 MiB, freezing the Electron main thread during Digest. The
+// 32-bit-limb version runs ~0.6s on CI Node; 3s is a generous bound that
+// still fails loudly if a BigInt-style slow path comes back.
+test("pure BLAKE2b-512 hashes 16 MiB fast enough not to freeze the UI", () => {
+  const data = new Uint8Array(16 * 1024 * 1024);
+  for (let i = 0; i < data.length; i++) data[i] = (i * 31 + 7) & 0xff;
+  const start = performance.now();
+  const out = blake2b512Pure(data);
+  const ms = performance.now() - start;
+  assert.equal(out.toString("hex"), createHash("blake2b512").update(data).digest("hex"));
+  assert.ok(ms < 3000, `16 MiB took ${ms.toFixed(0)}ms (bound 3000ms)`);
 });
 
 test("hashed minisign round-trips without node:crypto BLAKE2b (Electron/BoringSSL-safe)", () => {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const payload = randomBytes(4096);
-  const sig = sign(null, blake2b512(payload), privateKey);
+  const sig = sign(null, blake2b512Pure(payload), privateKey);
   assert.ok(verify(null, blake2b512(payload), publicKey, sig));
   assert.ok(!verify(null, blake2b512(Buffer.concat([payload, Buffer.from("x")])), publicKey, sig));
 });
