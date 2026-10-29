@@ -55,16 +55,10 @@ let server: Awaited<ReturnType<typeof startTestGatewayServer>>;
 let kernel: Awaited<ReturnType<(typeof import("./server-kernel.js"))["createGatewayKernel"]>>;
 beforeAll(async () => {
   const module = await import("./server-kernel.js");
-  const prepareKernel = module.prepareGatewayKernel;
-  const capture = vi.spyOn(module, "prepareGatewayKernel").mockImplementation(async (...args) => {
-    const prepared = await prepareKernel(...args);
-    return {
-      ...prepared,
-      async activate(...activateArgs) {
-        kernel = await prepared.activate(...activateArgs);
-        return kernel;
-      },
-    };
+  const create = module.createGatewayKernel;
+  const capture = vi.spyOn(module, "createGatewayKernel").mockImplementation(async (...args) => {
+    kernel = await create(...args);
+    return kernel;
   });
   try {
     server = await startTestGatewayServer(await acquireTestPortBlock({ offsets: [0, 1, 2, 3, 4] }));

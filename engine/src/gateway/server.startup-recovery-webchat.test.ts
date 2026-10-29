@@ -192,19 +192,13 @@ it(
         plugins: { slots: { memory: "none" } },
       } satisfies BranchConfig;
       const kernelModule = await import("./server-kernel.js");
-      const prepareKernel = kernelModule.prepareGatewayKernel;
+      const createKernel = kernelModule.createGatewayKernel;
       const captureKernel = vi
-        .spyOn(kernelModule, "prepareGatewayKernel")
+        .spyOn(kernelModule, "createGatewayKernel")
         .mockImplementation(async (...args) => {
-          const prepared = await prepareKernel(...args);
-          return {
-            ...prepared,
-            async activate(...activateArgs) {
-              const kernel = await prepared.activate(...activateArgs);
-              gatewayContext = kernel.gatewayRequestContext;
-              return kernel;
-            },
-          };
+          const kernel = await createKernel(...args);
+          gatewayContext = kernel.gatewayRequestContext;
+          return kernel;
         });
       try {
         gateway = await startGatewayWithClient({

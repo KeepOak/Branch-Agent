@@ -10,7 +10,7 @@ import { createDeferred } from "../../test/helpers/promise.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
 import { getFreePort } from "../test-utils/ports.js";
-import { createGatewayKernel, prepareGatewayKernel } from "./server-kernel.js";
+import { createGatewayKernel } from "./server-kernel.js";
 import type { GatewayServer } from "./server-public.js";
 
 describe("createGatewayKernel", () => {
@@ -63,18 +63,12 @@ describe("createGatewayKernel", () => {
       let server: GatewayServer | undefined;
       let closing: Promise<unknown> | undefined;
       let cleanupComplete = false;
-      const prepareKernel = prepareGatewayKernel;
+      const createKernel = createGatewayKernel;
       const factory = vi
-        .spyOn(await import("./server-kernel.js"), "prepareGatewayKernel")
+        .spyOn(await import("./server-kernel.js"), "createGatewayKernel")
         .mockImplementation(async (...args) => {
-          const prepared = await prepareKernel(...args);
-          return {
-            ...prepared,
-            async activate(...activateArgs) {
-              kernel = await prepared.activate(...activateArgs);
-              return kernel;
-            },
-          };
+          kernel = await createKernel(...args);
+          return kernel;
         });
       const sidecar = {
         stop: vi.fn(async () => {

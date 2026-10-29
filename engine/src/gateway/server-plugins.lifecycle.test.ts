@@ -547,7 +547,7 @@ describe("gateway plugin instance bindings", () => {
     async () => {
       const { coordinator } = await prepareInstanceBindingTest();
       const kernelModule = await import("./server-kernel.js");
-      const prepareKernel = kernelModule.prepareGatewayKernel;
+      const createKernel = kernelModule.createGatewayKernel;
       const prepared = createDeferred();
       const release = createDeferred();
       const lifecycleEvents: Array<
@@ -555,23 +555,17 @@ describe("gateway plugin instance bindings", () => {
       > = [];
       coordinator.onLifecycleEvent = (event) => lifecycleEvents.push(event);
       const kernelSpy = vi
-        .spyOn(kernelModule, "prepareGatewayKernel")
+        .spyOn(kernelModule, "createGatewayKernel")
         .mockImplementationOnce(async (...args) => {
-          const preparedKernel = await prepareKernel(...args);
+          const kernel = await createKernel(...args);
+          const prepare = kernel.prepareAttachedPluginRuntime;
           return {
-            ...preparedKernel,
-            async activate(...activateArgs) {
-              const kernel = await preparedKernel.activate(...activateArgs);
-              const prepare = kernel.prepareAttachedPluginRuntime;
-              return {
-                ...kernel,
-                prepareAttachedPluginRuntime: async (...prepareArgs) => {
-                  const attachment = await prepare(...prepareArgs);
-                  prepared.resolve();
-                  await release.promise;
-                  return attachment;
-                },
-              };
+            ...kernel,
+            prepareAttachedPluginRuntime: async (...prepareArgs) => {
+              const attachment = await prepare(...prepareArgs);
+              prepared.resolve();
+              await release.promise;
+              return attachment;
             },
           };
         });

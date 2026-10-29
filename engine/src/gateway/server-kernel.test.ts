@@ -31,7 +31,7 @@ import { createBranchTestState } from "../test-utils/branch-test-state.js";
 import { getFreePort } from "../test-utils/ports.js";
 import { CLI_DEFAULT_OPERATOR_SCOPES } from "./method-scopes.js";
 import { dispatchGatewayRequestInProcess } from "./server-in-process-dispatch.js";
-import { createGatewayKernel, prepareGatewayKernel } from "./server-kernel.js";
+import { createGatewayKernel } from "./server-kernel.js";
 import type { GatewayClient } from "./server-methods/types.js";
 import { createSyntheticPluginRuntimeClient } from "./server-plugin-runtime-client.js";
 import type { GatewayHostLifecycle, GatewayServer } from "./server-public.js";
@@ -222,19 +222,13 @@ describe("createGatewayKernel", () => {
         };
         if (entry === "public") {
           const { startGatewayServerCore } = await import("./server-start.js");
-          const prepareKernel = prepareGatewayKernel;
+          const createKernel = createGatewayKernel;
           // Capture public startup's real owner without retaining the spy through shutdown.
           const factory = vi
-            .spyOn(await import("./server-kernel.js"), "prepareGatewayKernel")
+            .spyOn(await import("./server-kernel.js"), "createGatewayKernel")
             .mockImplementation(async (...args) => {
-              const prepared = await prepareKernel(...args);
-              return {
-                ...prepared,
-                async activate(...activateArgs) {
-                  kernel = await prepared.activate(...activateArgs);
-                  return kernel;
-                },
-              };
+              kernel = await createKernel(...args);
+              return kernel;
             });
           try {
             server = await startGatewayServerCore(port, options);

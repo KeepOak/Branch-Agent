@@ -171,18 +171,12 @@ beforeAll(async () => {
   process.env.BRANCH_GATEWAY_PORT = String(gatewayPort);
   process.env.BRANCH_GATEWAY_TOKEN = gatewayToken;
   const kernelModule = await import("./server-kernel.js");
-  const prepareKernel = kernelModule.prepareGatewayKernel;
+  const createKernel = kernelModule.createGatewayKernel;
   const captureKernel = vi
-    .spyOn(kernelModule, "prepareGatewayKernel")
+    .spyOn(kernelModule, "createGatewayKernel")
     .mockImplementation(async (...args) => {
-      const prepared = await prepareKernel(...args);
-      return {
-        ...prepared,
-        async activate(...activateArgs) {
-          kernel = await prepared.activate(...activateArgs);
-          return kernel;
-        },
-      };
+      kernel = await createKernel(...args);
+      return kernel;
     });
   try {
     server = await startTestGatewayServer(portClaim);

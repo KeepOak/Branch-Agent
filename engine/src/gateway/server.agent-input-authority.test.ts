@@ -48,18 +48,12 @@ describe("spawn input ownership transfer", () => {
     scope: "suite",
     setup: async () => {
       const module = await import("./server-kernel.js");
-      const prepareKernel = module.prepareGatewayKernel;
+      const create = module.createGatewayKernel;
       const capture = vi
-        .spyOn(module, "prepareGatewayKernel")
+        .spyOn(module, "createGatewayKernel")
         .mockImplementation(async (...args) => {
-          const prepared = await prepareKernel(...args);
-          return {
-            ...prepared,
-            async activate(...activateArgs) {
-              kernel = await prepared.activate(...activateArgs);
-              return kernel;
-            },
-          };
+          kernel = await create(...args);
+          return kernel;
         });
       try {
         harness = await startGatewayServerHarness();
@@ -593,18 +587,12 @@ describe("accepted input Gateway instance retirement", () => {
     scope: "suite",
     setup: async () => {
       const module = await import("./server-kernel.js");
-      const prepareKernel = module.prepareGatewayKernel;
+      const create = module.createGatewayKernel;
       const capture = vi
-        .spyOn(module, "prepareGatewayKernel")
+        .spyOn(module, "createGatewayKernel")
         .mockImplementation(async (...args) => {
-          const prepared = await prepareKernel(...args);
-          return {
-            ...prepared,
-            async activate(...activateArgs) {
-              kernel = await prepared.activate(...activateArgs);
-              return kernel;
-            },
-          };
+          kernel = await create(...args);
+          return kernel;
         });
       try {
         harness = await startGatewayServerHarness();
