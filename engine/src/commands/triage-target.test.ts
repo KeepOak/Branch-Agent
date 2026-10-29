@@ -423,6 +423,9 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
                 : {}),
             },
             async (state) => {
+              // macOS: env selectors may keep /var/folders while fixtures use /private/var.
+              const samePath = async (left: string, right: string) =>
+                (await fs.realpath(left)) === (await fs.realpath(right));
               vi.spyOn(process, "cwd").mockReturnValue(state.workspaceDir);
               const executionRoot = automatic
                 ? state.path("owned installation")
@@ -587,7 +590,9 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
                     expect(process.env.BRANCH_UPDATE_PARENT_ALLOWS_GATEWAY_ACTIVATION).toBe("1");
                   } else {
                     expect(runStateDir).not.toBe(state.stateDir);
-                    expect(process.env.BRANCH_WORKSPACE_DIR).toBe(executionRoot);
+                    expect(
+                      await samePath(String(process.env.BRANCH_WORKSPACE_DIR), executionRoot),
+                    ).toBe(true);
                   }
                   const runConfig = opts.config;
                   expect(runConfig.agents?.entries?.diagnostic?.workspace).toBe(executionRoot);
@@ -756,15 +761,35 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
 
                 // Assert after execution cleanup so failed turns preserve the
                 // installation and both shell/child target boundaries.
-                expect
-                  .soft(shellLookup, "shell must find the archive named in the model prompt")
-                  .toBe(`${archivePath}\npresent\n`);
-                expect
-                  .soft(
-                    childTarget,
-                    "child Branch Agent must select the original config and default workspace",
-                  )
-                  .toEqual(before);
+                {
+                  const [printedArchive, presence, ...rest] = shellLookup.split("\n");
+                  expect
+                    .soft(rest.filter(Boolean), "shell archive probe must be two lines")
+                    .toEqual([]);
+                  expect.soft(presence, "shell must find the archive named in the model prompt").toBe(
+                    "present",
+                  );
+                  expect
+                    .soft(
+                      await samePath(printedArchive ?? "", archivePath),
+                      "shell must expand BRANCH_STATE_DIR to the fixture archive",
+                    )
+                    .toBe(true);
+                }
+                {
+                  const canon = async (target: ChildTarget) => ({
+                    ...target,
+                    stateDir: await fs.realpath(target.stateDir),
+                    configPath: await fs.realpath(target.configPath),
+                    defaultWorkspaceDir: await fs.realpath(target.defaultWorkspaceDir),
+                  });
+                  expect
+                    .soft(
+                      await canon(childTarget!),
+                      "child Branch Agent must select the original config and default workspace",
+                    )
+                    .toEqual(await canon(before));
+                }
               } finally {
                 for (const [index, stream] of [process.stdin, process.stdout].entries()) {
                   const descriptor = terminalDescriptors[index];
