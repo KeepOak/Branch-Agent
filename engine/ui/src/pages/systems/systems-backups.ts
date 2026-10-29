@@ -24,7 +24,29 @@ function matchesSchedule(
   );
 }
 
-function renderTarget(target: BackupStatusResult["targets"][number], status: BackupStatusResult) {
+function renderFolderShared(controller: SystemsController) {
+  const folderSwitch = controller.defaultBackupFolderSwitch;
+  return html`<p class="systems-backup__error" data-error-code="folder-shared">
+    ${folderSwitch
+      ? t("systems.backups.folderShared", { folder: folderSwitch.folder })
+      : t("systems.backups.folderSharedNoDefault")}
+    ${folderSwitch
+      ? html`<button
+          class="systems-backups__check"
+          ?disabled=${controller.backupFolderSwitching || !controller.connected}
+          @click=${() => void controller.useDefaultBackupFolder()}
+        >
+          ${t(controller.backupFolderSwitching ? "systems.backups.switchingFolder" : "systems.backups.useDefaultFolder")}
+        </button>`
+      : nothing}
+  </p>`;
+}
+
+function renderTarget(
+  target: BackupStatusResult["targets"][number],
+  status: BackupStatusResult,
+  controller: SystemsController,
+) {
   const { latest, latestOk } = target;
   const pushFailed = target.kind === "git" && latest.status === "ok" && latest.pushFailed === true;
   const failed = latest.status === "failed" || pushFailed;
@@ -58,7 +80,8 @@ function renderTarget(target: BackupStatusResult["targets"][number], status: Bac
     </div>
     <div class="systems-backup__destination">${location?.displayTarget ?? target.target}</div>
     ${target.namespace === undefined ? nothing : html`<div class="systems-backup__meta">${t("systems.backups.namespace", { name: target.namespace })}</div>`}
-    ${failed ? html`<p class="systems-backup__error">${latest.error ?? t(pushFailed ? "systems.backups.pushFailureHint" : "systems.backups.failureHint")}</p>` : nothing}
+    ${failed && latest.errorCode === "folder-shared" ? renderFolderShared(controller) : nothing}
+    ${failed && latest.errorCode !== "folder-shared" ? html`<p class="systems-backup__error">${latest.error ?? t(pushFailed ? "systems.backups.pushFailureHint" : "systems.backups.failureHint")}</p>` : nothing}
   </li>`;
 }
 
@@ -91,7 +114,7 @@ export function renderSystemsBackups(controller: SystemsController) {
             ${
               status.targets.length
                 ? html`<ul class="systems-backups__targets">
-                    ${status.targets.map((target) => renderTarget(target, status))}
+                    ${status.targets.map((target) => renderTarget(target, status, controller))}
                   </ul>`
                 : html`<p class="systems-backups__hint">
                     ${t("systems.backups.empty")}
