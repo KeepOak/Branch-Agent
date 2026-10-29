@@ -4,7 +4,9 @@ engine:src/gateway/contacts/outside-agents.test.ts
 engine:src/gateway/graft-join-ui.test.ts
 engine:src/gateway/server-methods-list.test.ts
 engine:src/gateway/server-methods/contacts.graft.test.ts
-engine:src/gateway/server.auth.control-ui.test.ts
+engine:src/gateway/server.auth.control-ui.bootstrap-owner.test.ts
+engine:src/gateway/server.auth.control-ui.pairing-mobile.test.ts
+engine:src/gateway/server.auth.control-ui.trusted-proxy-device-token.test.ts
 engine:src/gateway/watch-node-http.test.ts
 engine:src/mcp/graft-join.test.ts
 engine:src/mcp/graft-link.test.ts

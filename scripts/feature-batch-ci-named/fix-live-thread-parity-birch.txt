@@ -1,2 +1,3 @@
-engine:src/gateway/server-methods/sessions-reactions.test.ts
+engine:src/gateway/server-methods/sessions-reactions.channel-mirror.test.ts
+engine:src/gateway/server-methods/sessions-reactions.commit.test.ts
 window:src/thread/actions.test.ts

@@ -1,14 +1,10 @@
 /**
- * Gateway Control UI auth pairing tests.
+ * Gateway Control UI auth pairing tests: pairing and mobile bootstrap suites.
  */
 import { describe } from "vitest";
-import { registerControlUiBootstrapLifecycleSuite } from "./server.auth.control-ui.bootstrap-lifecycle.suite.js";
-import { registerControlUiDeviceTokenSuite } from "./server.auth.control-ui.device-token.suite.js";
 import { registerControlUiMobileBootstrapSuite } from "./server.auth.control-ui.mobile-bootstrap.suite.js";
 import { registerControlUiMobileReconnectSuite } from "./server.auth.control-ui.mobile-reconnect.suite.js";
-import { registerControlUiOwnerBootstrapSuite } from "./server.auth.control-ui.owner-bootstrap.suite.js";
 import { registerControlUiPairingSuite } from "./server.auth.control-ui.pairing.suite.js";
-import { registerControlUiTrustedProxySuite } from "./server.auth.control-ui.trusted-proxy.suite.js";
 import { installGatewayTestHooks } from "./server.auth.test-helpers.js";
 
 installGatewayTestHooks({ scope: "suite" });
@@ -21,11 +17,7 @@ await Promise.all([
 ]);
 
 describe("gateway server auth/connect", () => {
-  registerControlUiTrustedProxySuite();
-  registerControlUiDeviceTokenSuite();
   registerControlUiPairingSuite();
   describe("mobile bootstrap", registerControlUiMobileBootstrapSuite);
   registerControlUiMobileReconnectSuite();
-  registerControlUiBootstrapLifecycleSuite();
-  registerControlUiOwnerBootstrapSuite();
 });

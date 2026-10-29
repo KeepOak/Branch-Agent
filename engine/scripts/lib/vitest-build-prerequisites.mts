@@ -279,7 +279,8 @@ const runtimeConsumers = [
   })),
   ...[
     "src/commands/doctor-agent-database-order.process.test.ts",
-    "src/commands/doctor-config-flow.legacy-composition.test.ts",
+    "src/commands/doctor-config-flow.legacy-composition.migration.test.ts",
+    "src/commands/doctor-config-flow.legacy-composition.upgrade.test.ts",
     "src/commands/doctor-config-preflight.test.ts",
     "src/commands/doctor-config-preflight.process.test.ts",
     "src/commands/doctor-config-preflight.refusal.process.test.ts",

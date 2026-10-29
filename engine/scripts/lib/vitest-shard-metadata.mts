@@ -174,7 +174,8 @@ const STRIPE_FILE_SECONDS_HINTS = new Map<string, number>([
   ["src/commands/backup-capture-privacy.test.ts", 33.1],
   ["src/commands/doctor-config-flow.billing-route.test.ts", 28.1],
   ["src/commands/doctor-config-flow.canvas-migration.test.ts", 44.5],
-  ["src/commands/doctor-config-flow.legacy-composition.test.ts", 69.6],
+  ["src/commands/doctor-config-flow.legacy-composition.migration.test.ts", 29.4],
+  ["src/commands/doctor-config-flow.legacy-composition.upgrade.test.ts", 40.2],
   ["src/commands/doctor-config-flow.test.ts", 21.1],
   ["src/commands/doctor-config-flow.workspace-persistence.test.ts", 22.5],
   ["src/commands/doctor-config-preflight.admission.process.test.ts", 23.7],
@@ -283,7 +284,12 @@ const STRIPE_FILE_SECONDS_HINTS = new Map<string, number>([
   ["src/agents/worktrees/run-lease.test.ts", 13],
   // Main runs 33537556582/33537739443/33543106647: median case-body sums.
   // Relative weights distribute files; complete generation spans own admission.
-  ["src/agents/cli-runner/prepare.test.ts", 42],
+  ["src/agents/cli-runner/prepare.auth-profiles.test.ts", 10.6],
+  ["src/agents/cli-runner/prepare.mcp-authority.test.ts", 5.7],
+  ["src/agents/cli-runner/prepare.native-resume.test.ts", 4.7],
+  ["src/agents/cli-runner/prepare.prompt-hooks.test.ts", 7.3],
+  ["src/agents/cli-runner/prepare.session-bindings.test.ts", 7.7],
+  ["src/agents/cli-runner/prepare.skills-sessions.test.ts", 6],
   ["src/agents/command/attempt-execution.cli.test.ts", 14],
   ["src/agents/harness/selection.test.ts", 10],
   ["src/agents/main-session-recovery/main-session-restart-recovery.test.ts", 17],

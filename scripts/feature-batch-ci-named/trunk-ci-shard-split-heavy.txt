@@ -1,0 +1,13 @@
+engine:src/agents/cli-runner/prepare.auth-profiles.test.ts
+engine:src/agents/cli-runner/prepare.mcp-authority.test.ts
+engine:src/agents/cli-runner/prepare.native-resume.test.ts
+engine:src/agents/cli-runner/prepare.prompt-hooks.test.ts
+engine:src/agents/cli-runner/prepare.session-bindings.test.ts
+engine:src/agents/cli-runner/prepare.skills-sessions.test.ts
+engine:src/commands/doctor-config-flow.legacy-composition.migration.test.ts
+engine:src/commands/doctor-config-flow.legacy-composition.upgrade.test.ts
+engine:src/gateway/server-methods/sessions-reactions.channel-mirror.test.ts
+engine:src/gateway/server-methods/sessions-reactions.commit.test.ts
+engine:src/gateway/server.auth.control-ui.bootstrap-owner.test.ts
+engine:src/gateway/server.auth.control-ui.pairing-mobile.test.ts
+engine:src/gateway/server.auth.control-ui.trusted-proxy-device-token.test.ts
