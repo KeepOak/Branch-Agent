@@ -185,13 +185,10 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
       if (event === "config.changed" || event === "agents.changed") readTrunkList().catch(() => undefined);
       // Same events the engine UI uses to invalidate models.list: a signed-in account or a config reload changes the
       // catalog. Usage-only metadata sets modelCatalogChanged false; skip those the way model-catalog-cache does.
-      if (
-        event === "config.changed"
-        || event === "agents.changed"
-        || (event === "chat.metadata.changed" && rec(payload).modelCatalogChanged !== false)
-      ) {
-        refreshModels();
-      }
+      if (event === "config.changed" || event === "agents.changed") refreshModels();
+      // A catalog change is already rebuilt on the engine side, so read it without forcing. A forced refresh announces
+      // itself as chat.metadata.changed again, and forcing here would loop.
+      if (event === "chat.metadata.changed" && rec(payload).modelCatalogChanged !== false) void readModelList();
     });
     const onFocus = () => {
       if (typeof document !== "undefined" && document.visibilityState && document.visibilityState !== "visible") return;

@@ -254,7 +254,8 @@ export function Composer(props: Props) {
       draft.clear();
       return;
     }
-    if (holdReason && plan.kind !== "command" && (plan.kind !== "background" || !isPreparationPending(conversationProblem))) {
+    // Offline holds everything, slash commands included; otherwise a command may go while models load.
+    if (holdReason && (props.offline || (plan.kind !== "command" && (plan.kind !== "background" || !isPreparationPending(conversationProblem))))) {
       showHold(holdReason);
       if (!conv.modelsLoading) void conv.readModelList({ refresh: true });
       return;
