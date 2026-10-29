@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestFileSecondsFor, harvestMatrix, harvestMaxShards, harvestShardBudgetSeconds, harvestShardFiles, harvestTestFiles, harvestTests, harvestUnlistedFileSeconds, planHarvestShards, mainPushShardCounts, namedTests, planShards, plannedJobSeconds, plannedSlowestSeconds, overBudgetShards, setNamedListDir, pullRequestLinuxShardCount, resolvedShardCounts, runnerSetupSeconds, runnerTestScale, shardBudgetFor, shardBudgetSeconds, shardCountFor, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
+import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestFileSecondsFor, harvestMatrix, harvestMaxShards, harvestShardBudgetSeconds, harvestShardFiles, harvestTestFiles, harvestTests, harvestUnlistedFileSeconds, planHarvestShards, mainPushShardCounts, namedTests, planShards, plannedJobSeconds, plannedSlowestSeconds, overBudgetShards, setNamedListDir, pullRequestLinuxShardCount, pullRequestWindowsTouchedShardCount, resolvedShardCounts, runnerSetupSeconds, runnerTestScale, shardBudgetFor, shardBudgetSeconds, shardCountFor, shardOf, shardTests, touchedHarvestTests, touchedShardTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
 import {
   REGISTRY_DOWNLOAD_ATTEMPTS, isTransientRegistryError, registryRetryWaitMs, withRegistryRetry,
 } from './feature-batch-ci-runtime.mjs';
@@ -64,7 +64,8 @@ test('the workflow takes its matrix from the planner, and every planned shard fi
   const pr = featureBatchMatrix({ event: 'pull_request' }).include;
   const labels = (rows, os) => rows.filter(row => row.os === os).map(row => row.label);
   assert.deepEqual(labels(pr, 'ubuntu-latest'), Array.from({ length: counts.pullRequestLinux }, (_, index) => `${index + 1}/${counts.pullRequestLinux}`));
-  assert.deepEqual(pr.filter(row => row.os === 'windows-latest').map(row => row.label), ['touched']);
+  assert.deepEqual(pr.filter(row => row.os === 'windows-latest').map(row => row.label), ['touched 1/3', 'touched 2/3', 'touched 3/3']);
+  assert.deepEqual(pr.filter(row => row.os === 'windows-latest').map(row => [row.shard, row.scope]), [['1/3', 'touched'], ['2/3', 'touched'], ['3/3', 'touched']]);
   assert.deepEqual(labels(push, 'ubuntu-latest'), Array.from({ length: counts.ubuntu }, (_, index) => `${index + 1}/${counts.ubuntu}`));
   assert.deepEqual(labels(push, 'windows-latest'), Array.from({ length: counts.windows }, (_, index) => `${index + 1}/${counts.windows}`));
   assert.deepEqual(labels(push, 'macos-latest'), Array.from({ length: counts.macos }, (_, index) => `${index + 1}/${counts.macos}`));
@@ -176,11 +177,25 @@ test('every planned Linux shard job, setup included, fits ten minutes', () => {
   }
 });
 
+test('every planned Linux shard job keeps ten percent headroom: 540 s, setup included', () => {
+  // Linux shards planned at the full 596 s ran up to 15m15s on Oct 29 2026 (#2117, #2114). Like Windows and macOS,
+  // Linux now plans to 90% of the budget so weight drift does not reach the 15-minute cap.
+  const budget = shardBudgetSeconds * 0.9;
+  assert.equal(budget, 540);
+  assert.equal(shardBudgetFor('ubuntu'), budget);
+  const counts = resolvedShardCounts();
+  for (const total of [counts.pullRequestLinux, counts.ubuntu]) {
+    for (const [index, seconds] of plannedJobSeconds('ubuntu', total).entries()) {
+      assert.ok(seconds <= budget, `ubuntu shard ${index + 1}/${total} plans ${seconds}s, over ${budget}s: add a weight for its slow file or a shard`);
+    }
+  }
+});
+
 test('the derived Linux count is the smallest that fits, with setup counted', () => {
   // The old PR floor of ten shards fit a 12-minute test-only budget; its jobs ran 11 to 15 minutes.
   const total = shardCountFor('ubuntu');
   const tests = Math.max(...expectedShardSeconds(total - 1, { typecheck: true }));
-  assert.ok(plannedSlowestSeconds('ubuntu', total - 1) > shardBudgetSeconds, 'one shard fewer would be over budget');
+  assert.ok(plannedSlowestSeconds('ubuntu', total - 1) > shardBudgetFor('ubuntu'), 'one shard fewer would be over budget');
   assert.equal(plannedSlowestSeconds('ubuntu', total - 1), tests + runnerSetupSeconds.ubuntu);
 });
 
@@ -213,6 +228,21 @@ test('Windows PR scope runs touched named tests plus the smoke set, never unlist
   assert.deepEqual([...picked].sort(), [...new Set([touched, ...windowsSmokeTests.engine])].sort());
   for (const file of windowsSmokeTests.engine) assert.ok(engine.includes(file), `${file} must be a named test`);
   assert.deepEqual(touchedTests('window', ['engine/src/x.ts']), []);
+});
+
+test('the touched Windows tests split across touched n/3 with every file once and no empty shard', () => {
+  assert.equal(pullRequestWindowsTouchedShardCount, 3);
+  const engine = namedTests('engine');
+  const rows = featureBatchMatrix({ event: 'pull_request' }).include.filter(row => row.os === 'windows-latest');
+  const extra = engine.filter(file => !windowsSmokeTests.engine.includes(file));
+  for (const changed of [0, 1, 2, 14]) {
+    const touched = touchedTests('engine', extra.slice(0, changed).map(file => `engine/${file}`));
+    assert.ok(touched.length >= 3, 'the smoke set alone fills three shards');
+    const parts = rows.map(row => touchedShardTests(touched, shardOf(row.shard)));
+    assert.deepEqual(parts.flat().sort(), [...touched].sort(), `${touched.length} touched files: each runs exactly once`);
+    assert.equal(new Set(parts.flat()).size, touched.length);
+    assert.ok(parts.every(part => part.length > 0), `${touched.length} touched files: no shard is empty`);
+  }
 });
 
 test('Harvest lists stay out of named tests and PRs select touched lists and test files', () => {
@@ -294,6 +324,16 @@ test('a feature-batch matrix below the shard floors fails closed', () => {
   const fewerLinux = { include: [...linux.slice(0, mainPushShardCounts.ubuntu - 1), ...real.include.filter((row) => row.os !== 'ubuntu-latest')] };
   assert.throws(() => validateFeatureBatchMatrix(fewerLinux, 'push'), /ubuntu-latest shard\(s\), below the floor/);
   assert.equal(validateFeatureBatchMatrix(real, 'push'), real);
+  const pr = featureBatchMatrix({ event: 'pull_request' });
+  const prLinux = pr.include.filter((row) => row.os === 'ubuntu-latest');
+  const prWindows = pr.include.filter((row) => row.os === 'windows-latest');
+  for (const keep of [0, 1, 2]) {
+    const fewerTouched = { include: [...prLinux, ...prWindows.slice(0, keep)] };
+    assert.throws(() => validateFeatureBatchMatrix(fewerTouched, 'pull_request'), /windows-latest shard\(s\), below the floor of 3/);
+  }
+  const fewerPrLinux = { include: [...prLinux.slice(0, pullRequestLinuxShardCount - 1), ...prWindows] };
+  assert.throws(() => validateFeatureBatchMatrix(fewerPrLinux, 'pull_request'), /ubuntu-latest shard\(s\), below the floor/);
+  assert.equal(validateFeatureBatchMatrix(pr, 'pull_request'), pr);
 });
 
 test('namedTests omit e2e files so a preflight listing cannot cover the handoff suite', () => {
@@ -333,7 +373,10 @@ test('the plan job uses the default-branch planner when it exists, and only a re
   const literals = [...yaml.matchAll(/echo 'matrix=(\{.*?\})' >> "\$GITHUB_OUTPUT"/g)].map((m) => JSON.parse(m[1]));
   assert.equal(literals.length, 2, 'one fallback for pull requests, one for pushes');
   const [pr, push] = literals;
-  assert.doesNotThrow(() => validateFeatureBatchMatrix(pr, 'pull_request'));
+  // The PR literal predates the three touched Windows rows and keeps one 1/1 touched row. It only runs while the
+  // planner is missing from the default branch, so the planner's Windows floor rejects it; nothing else may.
+  assert.throws(() => validateFeatureBatchMatrix(pr, 'pull_request'), /1 windows-latest shard\(s\), below the floor of 3/);
+  assert.deepEqual(pr.include.filter((row) => row.os === 'windows-latest'), [{ os: 'windows-latest', shard: '1/1', label: 'touched', scope: 'touched' }]);
   assert.doesNotThrow(() => validateFeatureBatchMatrix(push, 'push'));
   assert.equal(pr.include.filter((row) => row.os === 'ubuntu-latest').length, pullRequestLinuxShardCount);
   assert.equal(push.include.filter((row) => row.os === 'windows-latest').length, mainPushShardCounts.windows);
