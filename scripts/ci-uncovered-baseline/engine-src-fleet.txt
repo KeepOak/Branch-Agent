@@ -1,0 +1,6 @@
+engine:src/fleet/backup.runtime.test.ts
+engine:src/fleet/containers.runtime.test.ts
+engine:src/fleet/doctor.runtime.test.ts
+engine:src/fleet/registry-read.test.ts
+engine:src/fleet/registry.test.ts
+engine:src/fleet/service-support.runtime.test.ts

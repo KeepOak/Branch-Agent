@@ -1,0 +1,3 @@
+window:src/connect/agent-owner.test.ts
+window:src/connect/stream-order.test.ts
+window:src/connect/title-bar.test.ts

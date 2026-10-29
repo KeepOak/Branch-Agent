@@ -1,0 +1,3 @@
+engine:extensions/vercel-ai-gateway/index.test.ts
+engine:extensions/vercel-ai-gateway/provider-catalog.test.ts
+engine:extensions/vercel-ai-gateway/thinking.test.ts
