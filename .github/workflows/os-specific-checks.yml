@@ -24,6 +24,12 @@ on:
       # The computer-use extension starts the macOS driver proxy; its proxy tests run only on macOS (#1948).
       - 'engine/extensions/cua-computer/**'
       - 'engine/scripts/build-installers.mjs'
+      # Scripts and their tests: path filters previously omitted these, so #1999
+      # could land while Named feature macos was already red for detect-private-keys
+      # / docker-build-helper (and triage-target under engine/src).
+      - 'engine/scripts/**'
+      - 'engine/test/**'
+      - 'engine/src/**/*.test.ts'
       - 'engine/pnpm-lock.yaml'
       - 'window/pnpm-lock.yaml'
       - 'scripts/feature-batch-ci*.mjs'
