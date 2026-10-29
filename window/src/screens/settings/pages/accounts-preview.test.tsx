@@ -89,12 +89,13 @@ it("puts the finer account rows in Your own accounts at Advanced and the sign-in
     "Keep service settings in step on my devices", "Use a model from a hub for one run", "Region", "Install a service’s package when needed", "Each account keeps its own folder", "Point your coding apps at Branch"]) expect(sources).toContain(label);
 });
 
-it("sits on Regular's Usage page as its first page, with the other Usage pages under Advanced", async () => {
-  expect(regularHub("accounts")?.title).toBe("Usage");
+it("matches Regular's Accounts & usage nav, with related pages in the sidebar instead of the content", async () => {
+  expect(regularHub("accounts")?.title).toBe("Accounts & usage");
   expect(regularHub("accounts")?.pages[0].id).toBe("accounts");
   const { engine } = engineOf();
   await mount(engine, "regular");
-  expect(host.querySelector(".r1s-nav[aria-current=page]")?.getAttribute("data-hub")).toBe("Usage");
+  expect(host.querySelector(".r1s-nav[aria-current=page]")?.textContent).toBe("Accounts & usage");
   expect(host.querySelector(".r1s-head h1")?.textContent).toBe(PAGES.accounts.title);
-  expect([...host.querySelectorAll<HTMLElement>(".r1s-advanced [data-page]")].map((b) => b.dataset.page)).toEqual(regularHub("accounts")!.pages.slice(1).map((p) => p.id));
+  expect(host.querySelector(".r1s-page .r1s-advanced")).toBeNull();
+  expect([...host.querySelectorAll<HTMLElement>(".r1s-side .r1s-advanced [data-page]")].map((b) => b.dataset.page)).toEqual(regularHub("accounts")!.pages.slice(1).map((p) => p.id));
 });

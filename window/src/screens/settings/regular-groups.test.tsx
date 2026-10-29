@@ -54,15 +54,30 @@ const REGISTRY = ["accounts", "appearance", "autos", "browser", "card", "chatapp
 const REGULAR: Record<string, PageId[]> = {
   General: ["general", "card", "goto", "appearance", "notifications", "who", "trunks", "instructions", "customize", "seedbank", "memory", "autos", "voice", "chatapps"],
   Computer: ["devices", "browser", "coding", "remote", "permissions"],
-  Usage: ["accounts", "models", "privacy", "signins"],
+  "Accounts & usage": ["accounts", "models", "privacy", "signins"],
   // All features (the feature atlas, mostly Coming) shows only at Technical (Private #1093 item 4), so Updates doesn't link it.
   Updates: ["updates", "history", "learning"],
 };
 
 describe("Regular settings pages", () => {
-  it("shows exactly General, Computer, Usage and Updates, and each page keeps its pages under Advanced", async () => {
+  it("highlights Accounts & usage when opened directly or from the nav, without related pages in its content", async () => {
+    const engine = engineOf();
+    await act(async () => root.render(<SettingsFrame engine={engine} page="accounts" />));
+    const check = () => {
+      expect(host.querySelector(".r1s-nav[aria-current=page]")?.textContent).toBe("Accounts & usage");
+      expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Accounts & usage");
+      expect(host.querySelector(".r1s-page .r1s-advanced")).toBeNull();
+      expect($$(".r1s-side .r1s-advanced [data-page]").map((b) => b.dataset.page)).toEqual(["models", "privacy", "signins"]);
+    };
+    check();
+    await click(hubButton("General")!);
+    await click(hubButton("Accounts & usage")!);
+    check();
+  });
+
+  it("shows General, Computer, Accounts & usage and Updates, and keeps related pages reachable", async () => {
     await mount();
-    expect($$(".r1s-list .r1s-nav").map((b) => b.textContent)).toEqual(["General", "Computer", "Usage", "Updates"]);
+    expect($$(".r1s-list .r1s-nav").map((b) => b.textContent)).toEqual(["General", "Computer", "Accounts & usage", "Updates"]);
     expect($$(".r1s-grp[aria-expanded]")).toEqual([]);
     expect(host.querySelector("[data-page=appearance]")).not.toBeNull();
     expect(host.querySelector(".r1s-advanced [data-page=devices]")).toBeNull();

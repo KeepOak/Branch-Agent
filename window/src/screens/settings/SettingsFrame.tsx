@@ -340,6 +340,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
   const invalid = config && typeof config === "object" && config.valid === false ? configIssues(config.issues) : null;
   const levelLine = LEVELS[level].line;
   const Custom = slots[shownPage]?.component;
+  const accountLinksInNav = regularHub(shownPage)?.pages[0].id === "accounts";
 
   return (
     <div className="r1set g-clear" data-level={LEVEL_WORD[level]}>
@@ -357,6 +358,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
             <NavList engine={engine} level={level} narrow={narrow} shownPage={shownPage} onOpen={go} />
           )}
         </nav>
+        {level === 0 && accountLinksInNav && !q.trim() ? <HubAdvanced shownPage={shownPage} onOpen={go} /> : null}
       </aside>
       <div className="r1s-page" ref={scroller}>
         {/* Every page, row page or slot page, has the frame's title, lede and Learn more (preview s36Head, HANDOFF R1-06);
@@ -383,7 +385,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
             </div>
           ) : null}
         </header>
-        {level === 0 ? <HubAdvanced shownPage={shownPage} onOpen={go} /> : null}
+        {level === 0 && !accountLinksInNav ? <HubAdvanced shownPage={shownPage} onOpen={go} /> : null}
         {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} onAsk={props.onAsk} /></div> : <>
         <div className="r1s-col">
           {loadFailed ? <div className="r1s-notice g-frost" role="alert">Settings didn’t load · <Coming engine={engine} need="config.get"><button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></Coming></div> : null}

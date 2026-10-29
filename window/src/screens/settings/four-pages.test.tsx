@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Regular Settings is four pages (General, Computer, Usage, Updates). Every other page stays reachable
+// Regular Settings is four pages (General, Computer, Accounts & usage, Updates). Every other page stays reachable
 // under "Also in <page>" on its page. Developer stays on Technical. Advanced and Technical keep the full nav.
 import { readFileSync } from "node:fs";
 import { act } from "react";
@@ -54,9 +54,9 @@ const hub = (name: string) => hubs().find((b) => b.dataset.hub === name);
 const REGISTRY = Object.keys(PAGES).sort();
 
 describe("Settings four pages", () => {
-  it("renders General, Computer, Usage and Updates as pages", async () => {
+  it("renders General, Computer, Accounts & usage and Updates as pages", async () => {
     await mount();
-    expect(hubs().map((b) => b.textContent)).toEqual(["General", "Computer", "Usage", "Updates"]);
+    expect(hubs().map((b) => b.textContent)).toEqual(["General", "Computer", "Accounts & usage", "Updates"]);
     expect(hubs().every((b) => b.tagName === "BUTTON")).toBe(true);
     expect($$(".r1s-grp[aria-expanded]")).toEqual([]);
     expect(host.querySelector(".r1s-nav[aria-current=page]")?.textContent).toBe("General");

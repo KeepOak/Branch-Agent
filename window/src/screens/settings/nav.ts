@@ -156,7 +156,7 @@ function pagesOf(...ids: PageId[]): NavPage[] {
 export const REGULAR_GROUPS: NavGroup[] = [
   { title: "General", pages: pagesOf("general", "card", "goto", "appearance", "notifications", "who", "trunks", "instructions", "customize", "seedbank", "memory", "autos", "voice", "chatapps") },
   { title: "Computer", pages: pagesOf("devices", "browser", "coding", "remote", "permissions") },
-  { title: "Usage", pages: pagesOf("accounts", "models", "privacy", "signins") },
+  { title: "Accounts & usage", pages: pagesOf("accounts", "models", "privacy", "signins") },
   { title: "Updates", pages: pagesOf("updates", "history", "learning") },
 ];
 
