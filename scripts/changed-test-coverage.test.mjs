@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -497,12 +497,24 @@ test('full-tree: missing active slice entries fail, inactive slice entries only 
     missingEntries: ['engine/src/active.node-test.ts'], inactiveEntries: ['engine/src/inactive.node-test.ts'] });
   assert.equal(out.errors.length, 1);
   assert.equal(out.warnings.length, 1);
+  const several = coverage.evaluateTestInventory({ files: [], covered: new Set(),
+    inactiveEntries: ['engine/src/a.node-test.ts', 'engine/src/b.test.ts', 'window/src/c.test.tsx'] });
+  assert.deepEqual(several.errors, []);
+  assert.deepEqual(several.warnings, ['engine/src/a.node-test.ts', 'engine/src/b.test.ts', 'window/src/c.test.tsx']
+    .map(file => `Inactive feature slice names missing file: ${file}`));
 });
 
 test('full-tree: real repository inventory passes and reports inactive slice debt separately', () => {
   const out = coverage.checkAllTests();
   assert.equal(out.exitCode, 0, out.text);
-  assert.equal(out.warnings.length, 22);
+  assert.deepEqual(out.errors, []);
+  // The live debt count moves as slices land or retire, so only its kind is pinned, not its size.
+  const inactivePrefix = 'Inactive feature slice names missing file: ';
+  for (const line of out.warnings) {
+    assert.ok(line.startsWith(inactivePrefix), line);
+    assert.equal(existsSync(fileURLToPath(new URL('../' + line.slice(inactivePrefix.length), import.meta.url))), false, line);
+  }
+  assert.match(out.text, new RegExp(`0 error\\(s\\), ${out.warnings.length} warning\\(s\\)\\.$`));
   assert.ok(out.tests > 20000);
   assert.ok(out.localOnly > 1000);
 });
