@@ -92,7 +92,7 @@ jobs:
         run: node --test scripts/release-freshness.test.mjs
       - name: Require every changed test to run in CI
         if: steps.debounce.outputs.skip != 'true'
-        run: node scripts/changed-test-coverage.mjs
+        run: node scripts/changed-test-coverage.mjs --all-tests
       - name: Check merge command patterns in documentation
         if: steps.debounce.outputs.skip != 'true'
         run: node scripts/check-merge-command.mjs

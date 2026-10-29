@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { formatProblems, namedListPathFor, namedListProblems } from './pr-preflight.mjs';
+import { checkAllTests } from './changed-test-coverage.mjs';
 
 function git(args, cwd) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).trim();
@@ -23,7 +24,9 @@ export function checkNamedTests({ cwd, base = 'origin/main' }) {
     listText: existsSync(listAbs) ? readFileSync(listAbs, 'utf8') : null,
     listPath,
   });
-  return { exitCode: problems.length ? 1 : 0, text: `named-test list: ${listPath}\n${formatProblems(problems)}` };
+  const inventory = checkAllTests({ cwd, base });
+  return { exitCode: problems.length || inventory.exitCode ? 1 : 0,
+    text: `named-test list: ${listPath}\n${formatProblems(problems)}\n${inventory.text}` };
 }
 
 export function runCli(argv, cwd) {

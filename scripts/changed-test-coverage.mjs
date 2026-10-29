@@ -1,11 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { capabilityTests, harvestTests, namedE2eTests, namedTests } from './feature-batch-ci-targets.mjs';
 import { slices, windowSlices } from './feature-slice-ci-targets.mjs';
 import { priorityMemoryIntegration, priorityTests } from './priority-capabilities-ci-targets.mjs';
+import { pickUnlistedTests, EXCLUDED } from '../desktop/scripts/run-unlisted-tests.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const testFile = /^(engine|window|desktop)\/.+\.test\.(?:ts|tsx|mjs|mts)$/;
@@ -25,6 +27,7 @@ function stepHasFalseIf(lines, runIndex) {
 // when it belongs to an actual run line; mentions in comments, `if: false` steps, or unrelated
 // jobs do not count.
 export function desktopRunTargets(workflow) {
+  if (/^jobs:/m.test(workflow)) return workflowRunTargets(workflow);
   const targets = new Set();
   const lines = String(workflow).split(/\r?\n/);
   for (let i = 0; i < lines.length; i += 1) {
@@ -606,7 +609,172 @@ export function additionFor(file) {
   return `${lane}:${parts.join('/')}` + '  (scripts/feature-batch-ci-named/<branch-name>.txt)';
 }
 
+export const ALL_TEST_FILE = /\.(?:test|spec|node-test|native-tests)\.[^/.]+$/;
+export const BASELINE_DIR = 'scripts/ci-uncovered-baseline';
+export const LOCAL_ONLY_FILE = 'scripts/ci-local-only-tests.txt';
+
+function gitText(cwd, args) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 });
+}
+
+function readOptional(cwd, file) {
+  const absolute = path.join(cwd, file);
+  return existsSync(absolute) ? readFileSync(absolute, 'utf8') : '';
+}
+
+function textFiles(cwd, dir, suffix) {
+  const absolute = path.join(cwd, dir);
+  return existsSync(absolute) ? readdirSync(absolute).filter(file => suffix.test(file)).sort().map(file => `${dir}/${file}`) : [];
+}
+
+export function inventoryLines(text) {
+  return String(text).split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith('#'))
+    .map(line => line.replace(/^([^/:]+):/, '$1/'));
+}
+
+// Read only executable run blocks, not comments or path filters. Resolve workflow/job defaults
+// and step overrides before inspecting commands (notably desktop-checks' root-cwd steps).
+export function workflowRunTargets(workflow) {
+  const targets = new Set();
+  const lines = String(workflow).split(/\r?\n/);
+  const unquote = value => value.trim().replace(/^['"]|['"]$/g, '');
+  const directory = value => unquote(value).replace(/^\$\{\{\s*github\.workspace\s*\}\}\/?/, '');
+  let workflowDir = '', jobDir = '', jobDisabled = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^  [\w-]+:\s*$/.test(line) && lines.slice(0, i).some(item => /^jobs:/.test(item))) {
+      jobDir = workflowDir;
+      jobDisabled = false;
+    }
+    if (/^    if:/.test(line) && FALSE_IF.test(line)) jobDisabled = true;
+    const defaults = /^(\s*)working-directory:\s*(.+)$/.exec(line);
+    if (defaults && defaults[1].length <= 4) workflowDir = directory(defaults[2]);
+    if (defaults && defaults[1].length === 8 && !/^      - /m.test(lines.slice(Math.max(0, i - 2), i).join('\n'))) {
+      // Job defaults occur before steps. Step overrides are handled in the block below.
+      jobDir = directory(defaults[2]);
+    }
+    if (!/^      - /.test(line)) continue;
+    let end = i + 1;
+    while (end < lines.length && !/^      - |^    \S|^  \S|^\S/.test(lines[end])) end++;
+    const block = lines.slice(i, end);
+    if (jobDisabled || block.some(item => FALSE_IF.test(item))) { i = end - 1; continue; }
+    const override = block.map(item => /^\s+(?:- )?working-directory:\s*(.+)$/.exec(item)?.[1]).find(value => value != null);
+    let cwd = override == null ? jobDir : directory(override);
+    for (let j = 0; j < block.length; j++) {
+      const run = /^\s+(?:- )?run:\s*(.*)$/.exec(block[j]);
+      if (!run) continue;
+      const commands = /^[|>][-+]?\s*$/.test(run[1]) ? block.slice(j + 1).filter(item => /^          /.test(item)) : [run[1]];
+      for (let command of commands) {
+        command = command.trim();
+        if (command.startsWith('#')) continue;
+        const cd = /^cd\s+([\w./-]+)(?:\s*&&\s*|\s*$)/.exec(command);
+        if (cd) { cwd = path.posix.normalize(path.posix.join(cwd, cd[1])); command = command.slice(cd[0].length); }
+        if (!/^(?:node\b.*?\s--test\b|(?:pnpm(?: exec)? |npx )?vitest\s+run\b|node scripts\/run-vitest\.mjs run\b)/.test(command)) continue;
+        for (const match of command.matchAll(/(?:^|\s)['"]?([\w./*?-]+\.(?:test|spec|node-test|native-tests)\.[\w]+)['"]?(?=\s|$)/g)) {
+          if (cwd.includes('${{')) continue; // Dynamic directories cannot prove a static target.
+          targets.add(path.posix.normalize(path.posix.join(cwd, match[1])));
+        }
+      }
+      break;
+    }
+    i = end - 1;
+  }
+  return targets;
+}
+
+export function evaluateTestInventory({ files, covered, baseline = [], localOnly = [], baseBaseline = null,
+  baseLocalOnly = null, reviewed = false, missingEntries = [], inactiveEntries = [] }) {
+  const errors = [], warnings = [];
+  const present = new Set(files), debt = new Set(baseline), local = new Set(localOnly);
+  const globs = [...covered].filter(file => file.includes('*'));
+  const coveredFiles = new Set(files.filter(file => covered.has(file) || globs.some(glob => path.matchesGlob(file, glob))));
+  const tests = files.filter(file => ALL_TEST_FILE.test(file) && !file.startsWith('mobile/') &&
+    !file.startsWith('engine/.github/') && !file.startsWith('engine/test/fixtures/'));
+  let localCount = 0;
+  for (const file of tests) {
+    if (coveredFiles.has(file)) continue;
+    if (local.has(file) || /\.live\.test\.[^/]+$/.test(file)) { localCount++; continue; }
+    if (!debt.has(file)) errors.push(`Uncovered test: ${file}. Add it to a CI selector.`);
+  }
+  for (const file of debt) {
+    if (!present.has(file)) warnings.push(`Deleted baseline test: ${file}; delete that line.`);
+    else if (coveredFiles.has(file)) errors.push(`Baseline test now covered: ${file}; delete that line.`);
+  }
+  for (const [kind, current, before] of [['baseline', debt, baseBaseline], ['local-only', local, baseLocalOnly]]) {
+    if (before == null || reviewed) continue;
+    const old = new Set(before);
+    for (const file of current) if (!old.has(file)) errors.push(`New ${kind} entry: ${file}; requires gate-change-reviewed: <current head SHA>.`);
+  }
+  for (const file of missingEntries) errors.push(`CI selector names missing file: ${file}; delete that line.`);
+  for (const file of inactiveEntries) warnings.push(`Inactive feature slice names missing file: ${file}`);
+  return { errors, warnings, uncovered: tests.filter(file => !coveredFiles.has(file)), tests: tests.length, covered: tests.filter(file => coveredFiles.has(file)).length,
+    baseline: debt.size, localOnly: localCount };
+}
+
+// Own resolution for the full-tree gate; deliberately independent of pr-preflight/feature-batch-ci.
+export function checkAllTests({ cwd = root, base = null, body = '', head = '' } = {}) {
+  const files = gitText(cwd, ['ls-files', '-z']).split('\0').filter(Boolean);
+  const covered = new Set(), required = new Set(), inactive = new Set();
+  const workflows = textFiles(cwd, '.github/workflows', /\.ya?ml$/);
+  for (const file of workflows) for (const target of workflowRunTargets(readOptional(cwd, file))) covered.add(target);
+  for (const dir of ['scripts/feature-batch-ci-named', 'scripts/feature-batch-ci-harvest']) {
+    for (const list of textFiles(cwd, dir, /\.txt$/)) for (const file of inventoryLines(readOptional(cwd, list))) {
+      covered.add(file); required.add(file);
+    }
+  }
+  if (path.resolve(cwd) === root) {
+    const desktopWorkflow = readOptional(cwd, '.github/workflows/desktop-checks.yml');
+    if (/^\s*run:\s*node scripts\/run-unlisted-tests\.mjs\s*$/m.test(desktopWorkflow)) {
+      for (const file of pickUnlistedTests({ desktopDir: path.join(cwd, 'desktop'),
+        workflowPath: path.join(cwd, '.github/workflows/desktop-checks.yml'), excluded: EXCLUDED })) covered.add(`desktop/${file}`);
+    }
+    for (const file of coverageTargets(readOptional(cwd, '.github/workflows/desktop-checks.yml'),
+      readOptional(cwd, '.github/workflows/engine-handoff-checks.yml'),
+      readOptional(cwd, 'engine/test/vitest/vitest.desktop-handoff.config.ts'),
+      readOptional(cwd, '.github/workflows/engine-lint-baselines.yml'))) covered.add(file);
+    for (const lane of ['engine', 'window']) {
+      for (const file of [...namedTests(lane), ...namedE2eTests(lane), ...harvestTests(lane)]) required.add(`${lane}/${file}`);
+    }
+    for (const [lane, items] of [['engine', slices], ['window', windowSlices]]) for (const slice of items) {
+      const present = file => existsSync(path.join(cwd, lane, file));
+      const active = (slice.markers ?? slice.native).some(present) || slice.productionAnchors.some(anchor => {
+        if (typeof anchor === 'string') return present(anchor);
+        return present(anchor.file) && createHash('sha256').update(readFileSync(path.join(cwd, lane, anchor.file))).digest('hex') !== anchor.baselineSha256;
+      });
+      for (const file of [...slice.native, ...slice.vitest]) (active ? required : inactive).add(`${lane}/${file}`);
+      for (const followup of slice.followups ?? []) {
+        const entries = [...(followup.native ?? []), ...(followup.vitest ?? [])];
+        const registered = [...entries, ...(followup.strict ?? [])].some(present);
+        for (const file of entries) (registered ? required : inactive).add(`${lane}/${file}`);
+      }
+    }
+  }
+  const baseline = textFiles(cwd, BASELINE_DIR, /\.txt$/).flatMap(file => inventoryLines(readOptional(cwd, file)));
+  const localOnly = inventoryLines(readOptional(cwd, LOCAL_ONLY_FILE));
+  let baseBaseline = null, baseLocalOnly = null;
+  if (base) {
+    const baseFiles = gitText(cwd, ['ls-tree', '-r', '--name-only', base, '--', BASELINE_DIR, LOCAL_ONLY_FILE]).trim().split('\n').filter(Boolean);
+    baseBaseline = baseFiles.filter(file => file.startsWith(`${BASELINE_DIR}/`) && file.endsWith('.txt'))
+      .flatMap(file => inventoryLines(gitText(cwd, ['show', `${base}:${file}`])));
+    baseLocalOnly = baseFiles.includes(LOCAL_ONLY_FILE) ? inventoryLines(gitText(cwd, ['show', `${base}:${LOCAL_ONLY_FILE}`])) : [];
+  }
+  const reviewed = /^[a-f0-9]{40}$/.test(head) && String(body).split(/\r?\n/).includes(`gate-change-reviewed: ${head}`);
+  const result = evaluateTestInventory({ files, covered, baseline, localOnly, baseBaseline, baseLocalOnly, reviewed,
+    missingEntries: [...required].filter(file => !existsSync(path.join(cwd, file))),
+    inactiveEntries: [...inactive].filter(file => !existsSync(path.join(cwd, file)) && !required.has(file)) });
+  return { ...result, exitCode: result.errors.length ? 1 : 0, text: [...result.errors, ...result.warnings.map(line => `Warning: ${line}`),
+    `Full-tree test coverage: ${result.tests} tests; ${result.covered} covered; ${result.baseline} baseline entries; ${result.localOnly} local-only uncovered; ${result.errors.length} error(s), ${result.warnings.length} warning(s).`].join('\n') };
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (process.argv.includes('--all-tests')) {
+    const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : {};
+    const pr = event.pull_request;
+    const result = checkAllTests({ base: pr?.base?.sha ?? process.env.CHANGED_TEST_BASE ?? null,
+      head: pr?.head?.sha ?? '', body: pr?.body ?? '' });
+    console.log(result.text);
+    if (result.exitCode) process.exitCode = result.exitCode;
+  }
   const base = process.env.CHANGED_TEST_BASE || 'HEAD^1';
   const status = execFileSync('git', ['diff', '--name-status', '--no-renames', base, 'HEAD'],
     { cwd: root, encoding: 'utf8', windowsHide: true });

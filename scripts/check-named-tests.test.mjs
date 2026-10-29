@@ -55,12 +55,14 @@ test('deleting a test passes without a list; a renamed test needs only its new n
   try {
     r.write('engine/src/gone.test.ts', 'x\n');
     r.write('engine/src/old.test.ts', 'a\nb\nc\nd\n');
+    r.write('scripts/ci-uncovered-baseline/engine-src.txt', 'engine:src/old.test.ts\n');
     r.git('add', '-A'); r.git('commit', '-qm', 'tests');
     r.git('branch', '-qf', 'main');
     r.git('rm', '-q', 'engine/src/gone.test.ts');
     r.git('commit', '-qm', 'delete');
     assert.equal(checkNamedTests({ cwd: r.dir, base: 'main' }).exitCode, 0);
     r.git('mv', 'engine/src/old.test.ts', 'engine/src/new.test.ts');
+    r.git('rm', '-q', 'scripts/ci-uncovered-baseline/engine-src.txt');
     r.git('commit', '-qm', 'rename');
     const out = checkNamedTests({ cwd: r.dir, base: 'main' });
     assert.equal(out.exitCode, 1);
@@ -75,5 +77,18 @@ test('no changed test files passes without a list', () => {
     r.write('engine/src/a.ts', '');
     r.git('add', '-A'); r.git('commit', '-qm', 'src');
     assert.equal(checkNamedTests({ cwd: r.dir, base: 'main' }).exitCode, 0);
+  } finally { rmSync(r.dir, { recursive: true, force: true }); }
+});
+
+test('full-tree pre-push rejects an unchanged dangling named entry', () => {
+  const r = repo();
+  try {
+    r.write('scripts/feature-batch-ci-named/old.txt', 'engine:src/missing.test.ts\n');
+    r.git('add', '--', 'scripts/feature-batch-ci-named/old.txt');
+    r.git('commit', '-qm', 'list');
+    r.git('branch', '-qf', 'main');
+    const out = checkNamedTests({ cwd: r.dir, base: 'main' });
+    assert.equal(out.exitCode, 1);
+    assert.match(out.text, /CI selector names missing file: engine\/src\/missing.test.ts/);
   } finally { rmSync(r.dir, { recursive: true, force: true }); }
 });

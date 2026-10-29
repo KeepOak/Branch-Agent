@@ -3,6 +3,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import * as coverage from './changed-test-coverage.mjs';
 import {
   allowlistedDesktopRunTargets,
   changedTestPaths,
@@ -269,6 +272,160 @@ test('named e2e entries stay out of the unit named list that feeds the vitest sh
     assert.deepEqual(targets.namedTestFiles('engine'), ['src/foo.test.ts']);
     assert.deepEqual(targets.namedTestFiles('engine', undefined, { e2e: true }), ['ui/src/e2e/about.e2e.test.ts']);
   } finally {
-    targets.setNamedListDir(new URL('./feature-batch-ci-named/', import.meta.url).pathname);
+    targets.setNamedListDir(fileURLToPath(new URL('./feature-batch-ci-named/', import.meta.url)));
   }
+});
+
+function inventoryFixture() {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'test-inventory-'));
+  const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8', windowsHide: true, stdio: 'pipe' });
+  const write = (file, text = '') => {
+    mkdirSync(path.dirname(path.join(cwd, file)), { recursive: true });
+    writeFileSync(path.join(cwd, file), text);
+    git('add', '--', file);
+  };
+  git('init', '-q');
+  return { cwd, git, write, close: () => rmSync(cwd, { recursive: true, force: true }) };
+}
+
+test('full-tree: new uncovered test fails, then a named entry covers it', () => {
+  const r = inventoryFixture();
+  try {
+    r.write('engine/src/new.test.ts');
+    let out = coverage.checkAllTests({ cwd: r.cwd });
+    assert.equal(out.exitCode, 1);
+    assert.match(out.text, /Uncovered test: engine\/src\/new.test.ts/);
+    r.write('scripts/feature-batch-ci-named/new.txt', 'engine:src/new.test.ts\n');
+    out = coverage.checkAllTests({ cwd: r.cwd });
+    assert.equal(out.exitCode, 0, out.text);
+  } finally { r.close(); }
+});
+
+test('full-tree: new live test is local-only without a baseline entry', () => {
+  const r = inventoryFixture();
+  try {
+    r.write('engine/src/new.live.test.ts');
+    const out = coverage.checkAllTests({ cwd: r.cwd });
+    assert.equal(out.exitCode, 0, out.text);
+    assert.equal(out.localOnly, 1);
+    assert.equal(out.baseline, 0);
+  } finally { r.close(); }
+});
+
+test('full-tree: a covered baseline entry fails and must shrink', () => {
+  const r = inventoryFixture();
+  try {
+    r.write('engine/src/new.test.ts');
+    r.write('scripts/feature-batch-ci-named/new.txt', 'engine:src/new.test.ts\n');
+    r.write('scripts/ci-uncovered-baseline/engine-src-new.txt', 'engine:src/new.test.ts\n');
+    const out = coverage.checkAllTests({ cwd: r.cwd });
+    assert.equal(out.exitCode, 1);
+    assert.match(out.text, /Baseline test now covered:.*delete that line/);
+  } finally { r.close(); }
+});
+
+test('full-tree: deleted baseline entries only warn, and an unlisted deletion passes', () => {
+  const r = inventoryFixture();
+  try {
+    r.write('scripts/ci-uncovered-baseline/engine-src-gone.txt', 'engine:src/gone.test.ts\n');
+    const out = coverage.checkAllTests({ cwd: r.cwd });
+    assert.equal(out.exitCode, 0, out.text);
+    assert.match(out.text, /Warning: Deleted baseline test:.*delete that line/);
+    r.write('engine/src/unlisted.test.ts');
+    r.git('rm', '-f', '--', 'engine/src/unlisted.test.ts');
+    assert.equal(coverage.checkAllTests({ cwd: r.cwd }).exitCode, 0);
+  } finally { r.close(); }
+});
+
+test('full-tree: dangling named and harvest entries fail even with no changed tests', () => {
+  const r = inventoryFixture();
+  try {
+    for (const dir of ['feature-batch-ci-named', 'feature-batch-ci-harvest']) {
+      r.write(`scripts/${dir}/missing.txt`, `engine:src/${dir}.test.ts\n`);
+    }
+    const out = coverage.checkAllTests({ cwd: r.cwd });
+    assert.equal(out.exitCode, 1);
+    assert.equal(out.errors.filter(line => /CI selector names missing file/.test(line)).length, 2);
+  } finally { r.close(); }
+});
+
+test('full-tree: working-directory resolves desktop defaults and root overrides', () => {
+  const workflow = `on: [pull_request]
+jobs:
+  desktop:
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - run: node --test scripts/a.test.mjs
+      - name: root after run
+        run: node --test scripts/check-merge-command.test.mjs
+        working-directory: \${{ github.workspace }}
+      - name: root before run
+        working-directory: \${{ github.workspace }}
+        run: node --test scripts/check-packaged-no-key-plugin.test.mjs
+      - run: node --test scripts/disabled.test.mjs
+        if: false
+      - run: |
+          cd ../engine
+          node scripts/run-vitest.mjs run src/a.spec.ts
+  root:
+    steps:
+      - run: node --test scripts/root.node-test.mjs
+`;
+  assert.deepEqual([...coverage.workflowRunTargets(workflow)], ['desktop/scripts/a.test.mjs',
+    'scripts/check-merge-command.test.mjs', 'scripts/check-packaged-no-key-plugin.test.mjs',
+    'engine/src/a.spec.ts', 'scripts/root.node-test.mjs']);
+  const real = readFileSync(new URL('../.github/workflows/desktop-checks.yml', import.meta.url), 'utf8');
+  const targets = coverage.coverageTargets(real);
+  assert.ok(targets.has('scripts/check-merge-command.test.mjs'));
+  assert.ok(!targets.has('desktop/scripts/check-merge-command.test.mjs'));
+});
+
+test('full-tree: all four test suffixes count and only specified trees are excluded', () => {
+  const r = inventoryFixture();
+  try {
+    for (const file of ['engine/src/a.test.ts', 'window/src/a.spec.tsx', 'scripts/a.node-test.mjs',
+      'engine/src/a.native-tests.mts', 'engine/src/fixtures/still.test.ts', 'mobile/a.test.ts',
+      'engine/.github/a.test.ts', 'engine/test/fixtures/a.test.ts',
+      'scripts/ci-uncovered-baseline/engine-src-a.test.ts.txt', 'engine/src/not-a-test.test.ts.txt',
+      'engine/src/__snapshots__/a.test.ts.snap', 'engine/test/tsconfig/tsconfig.test.root.json']) r.write(file);
+    const out = coverage.checkAllTests({ cwd: r.cwd });
+    assert.equal(out.tests, 5);
+    assert.equal(out.errors.length, 5);
+  } finally { r.close(); }
+});
+
+test('full-tree: baseline and local-only additions require exact-head review; removals do not', () => {
+  const head = 'a'.repeat(40);
+  const input = { files: ['engine/src/a.test.ts'], covered: new Set(), baseline: ['engine/src/a.test.ts'],
+    localOnly: ['engine/src/local.test.ts'], baseBaseline: [], baseLocalOnly: [] };
+  assert.equal(coverage.evaluateTestInventory(input).errors.length, 2);
+  assert.equal(coverage.evaluateTestInventory({ ...input, reviewed: true }).errors.length, 0);
+  const r = inventoryFixture();
+  try {
+    r.write('scripts/ci-uncovered-baseline/a.txt', 'engine:src/a.test.ts\n');
+    r.git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'base');
+    r.write('scripts/ci-local-only-tests.txt', 'engine:src/local.test.ts\n');
+    assert.equal(coverage.checkAllTests({ cwd: r.cwd, base: 'HEAD', head, body: `gate-change-reviewed: ${'b'.repeat(40)}` }).exitCode, 1);
+    assert.equal(coverage.checkAllTests({ cwd: r.cwd, base: 'HEAD', head, body: `gate-change-reviewed: ${head}` }).exitCode, 0);
+    r.write('scripts/ci-local-only-tests.txt', '');
+    r.write('scripts/ci-uncovered-baseline/a.txt', '');
+    assert.equal(coverage.checkAllTests({ cwd: r.cwd, base: 'HEAD' }).exitCode, 0);
+  } finally { r.close(); }
+});
+
+test('full-tree: missing active slice entries fail, inactive slice entries only warn', () => {
+  const out = coverage.evaluateTestInventory({ files: [], covered: new Set(),
+    missingEntries: ['engine/src/active.node-test.ts'], inactiveEntries: ['engine/src/inactive.node-test.ts'] });
+  assert.equal(out.errors.length, 1);
+  assert.equal(out.warnings.length, 1);
+});
+
+test('full-tree: real repository inventory passes and reports inactive slice debt separately', () => {
+  const out = coverage.checkAllTests();
+  assert.equal(out.exitCode, 0, out.text);
+  assert.equal(out.warnings.length, 22);
+  assert.ok(out.tests > 20000);
+  assert.ok(out.localOnly > 1000);
 });
