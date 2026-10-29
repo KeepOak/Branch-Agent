@@ -7,6 +7,7 @@
 // darwin-arm64 and darwin-x64: a .dmg holding the already-signed Branch Agent.app and an Applications link.
 // linux-x64: a per-user AppImage (install.sh puts it at ~/.local/bin/branch-agent; also the in-app updater) plus Branch-Linux.deb, the downloadable package.
 // The component-release native job builds both by running this script; the versioned AppImage name is unchanged.
+// Linux AppImage installs to ~/.local/bin/branch-agent (see desktop/INSTALLERS.md and desktop/install/install.sh).
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
