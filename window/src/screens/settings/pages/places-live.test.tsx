@@ -37,8 +37,8 @@ it.each(["regular", "advanced"])("draws Go to at %s with only the places that wo
 });
 
 it("gives Customize the subtitle the preview's Go to page draws", () => {
-  // preview.html Go to list (const PLACES: ['customize', 'Customize', 'sliders', 'Trunks, tools, specialists, channels']).
-  expect(GOTO_TILES.find((t) => t.id === "customize")?.sub).toBe("Trunks, tools, specialists, channels");
+  // Customize page lede, also used by the Go to tile (const PLACES: ['customize', 'Customize', 'sliders', 'What your Trunks can do']).
+  expect(GOTO_TILES.find((t) => t.id === "customize")?.sub).toBe("What your Trunks can do");
 });
 
 it("draws Go to as the preview does at Technical: its line, then twelve tiles with their subtitles, badges for Inbox and People", async () => {
@@ -50,7 +50,7 @@ it("draws Go to as the preview does at Technical: its line, then twelve tiles wi
   const tiles = [...host.querySelectorAll<HTMLElement>(".r1s-tile")];
   expect(tiles.map((t) => [t.querySelector("b")?.firstChild?.textContent, t.querySelector("small")?.textContent])).toEqual([
     ["Overview", "Today at a glance"], ["Canopy", "Every Trunk’s work, side by side"], ["Inbox", "What needs you, what finished"], ["Automations", "What runs by itself"],
-    ["Library", "Files, memory and knowledge"], ["People", "Who your Trunks know"], ["Customize", "Trunks, tools, specialists, channels"], ["Harvest", "Everything your Trunks made"],
+    ["Library", "Files, memory and knowledge"], ["People", "Who your Trunks know"], ["Customize", "What your Trunks can do"], ["Harvest", "Everything your Trunks made"],
     ["Grove", "Your Trunks at their desks"], ["Seedbank", "Agents, skills, tools, plugins, connections"], ["Workshop", "Skill drafts your Trunks proposed"], ["This computer", "Computers, gateway and battery"],
   ]);
   expect(host.querySelector('[data-place="inbox"] .r1s-badge')?.textContent).toBe("17");

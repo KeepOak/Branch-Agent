@@ -72,7 +72,7 @@ export function ThisComputer({ engine, offline, onOpen }: { engine: WindowEngine
       {browser.data && browser.data.running !== true
         ? <Coming engine={engine} need="browser.request"><button type="button" className="r1c-quiet" disabled={busy} onClick={start}>{busy ? "Starting…" : "Start the browser"}</button></Coming>
         : null}
-      <button type="button" className="r1c-quiet" data-local="" onClick={() => onOpen("settings/browser")}>Computer & browser settings</button>
+      <button type="button" className="r1c-quiet" data-local="" onClick={() => onOpen("settings/browser")}>Browser & screen settings</button>
     </div>
   </section>;
 }

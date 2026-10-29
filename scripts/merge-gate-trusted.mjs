@@ -73,6 +73,7 @@ export const GATE_SCRIPTS = [
   'scripts/merge-gate-rate-limit.test.mjs',
   'scripts/merge-gate-recheck.mjs',
   'scripts/merge-gate-recheck.test.mjs',
+  'desktop/scripts/run-unlisted-tests.mjs',
 ];
 // Workflows whose jobs must actually run on a PR they apply to. A skipped job is missing here, not a pass.
 export const MUST_RUN_WORKFLOWS = new Set(['.github/workflows/feature-batch-checks.yml']);
@@ -187,12 +188,24 @@ function identityKey(run, workflow) {
   return JSON.stringify([run.app.id, workflow.path, workflow.event, run.name]);
 }
 
+// A run whose PR list is empty (GitHub often drops it after a rerun or a merge) is bound only when it ran on this
+// repo (not a fork) and on this PR's head branch; the same head SHA and identity key are still required. With no
+// repo or head branch to compare, this never binds (fail closed). A run with a PR list keeps the PR/base rule.
+function boundWithoutPrList(workflow, { repo, headBranch }) {
+  return Boolean(repo) && Boolean(headBranch)
+    && (workflow?.pullRequests ?? []).length === 0
+    && workflow?.headRepo != null && workflow.headRepo === repo
+    && workflow?.headBranch != null && workflow.headBranch === headBranch;
+}
+
 // supersedeStale is the trusted gate's opt-in: an older suite of the same app, workflow path, event and job
 // on the same head SHA that is not bound to this PR and base (for example a run from before the PR was
 // retargeted to main, or whose PR list the API no longer reports) is superseded by a newer bound suite that
-// fully succeeded. Such a stale run can never supersede anything itself.
+// fully succeeded. Such a stale run can never supersede anything itself. A run with an empty PR list counts
+// as bound only through boundWithoutPrList (same repo, same head branch).
 export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, {
   sha, prNumber, baseRef, supersedeStale = false,
+  headBranch = process.env.HEAD_BRANCH, repo = process.env.REPO,
 } = {}) {
   const drop = new Set();
   const groups = new Map();
@@ -207,8 +220,9 @@ export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, {
     if (!sameHead) continue;
     // Same app, workflow path, event, and job can supersede older suites only.
     const prs = workflow?.pullRequests ?? [];
-    const bound = prNumber && prs.some((pr) => Number(pr.number) === Number(prNumber))
-      && baseRef && prs.every((pr) => pr.base === baseRef);
+    const bound = (prNumber && prs.some((pr) => Number(pr.number) === Number(prNumber))
+      && baseRef && prs.every((pr) => pr.base === baseRef))
+      || boundWithoutPrList(workflow, { repo, headBranch });
     if (!bound) {
       if (supersedeStale) stale.push([run, identityKey(run, workflow)]);
       continue;
@@ -1448,6 +1462,8 @@ export function workflowFromActionsRun(run) {
     checkSuiteId: run.check_suite_id ?? null,
     headSha: run.head_sha ?? null,
     pullRequests: (run.pull_requests ?? []).map((pr) => ({ number: pr.number, base: pr.base?.ref })),
+    ...(run.head_branch != null && { headBranch: run.head_branch }),
+    ...(run.head_repository?.full_name != null && { headRepo: run.head_repository.full_name }),
   };
 }
 
@@ -1595,22 +1611,70 @@ export function fetchFileTextsBatch(repo, sha, token, paths, {
   }));
 }
 
-export function fetchNamedTestLists(repo, sha, token, api = ghApi) {
-  let entries;
+// The named lists, read in pages: ONE GraphQL request lists the folder (names and types only), then the kept
+// lists are read in sorted order, at most NAMED_LIST_PAGE_SIZE blobs per request, one page after another. A single
+// request for every blob text grew with each new list and came close to the request timeout. Fails closed: a
+// GraphQL error, a thrown error (rate limit, outage) or a kept list that is missing, truncated, binary or has no
+// text throws, naming the file or page, and nothing is returned. Only a missing folder (object null, no errors) is
+// empty. There is no per-file REST fallback.
+export const NAMED_LIST_PAGE_SIZE = 150;
+const NAMED_LIST_DIR = 'scripts/feature-batch-ci-named';
+
+function namedListsQuery(fields) {
+  return 'query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ' + fields + ' } }';
+}
+
+function namedListsRequest(graphql, token, query, variables, what, filesByAlias = new Map()) {
+  let payload;
   try {
-    entries = api(repo, token, `contents/scripts/feature-batch-ci-named?ref=${sha}`);
+    payload = graphql(token, query, variables);
   } catch (error) {
-    // Only "no directory" is empty. A rate limit or outage must not read as "no named lists" (fail closed).
-    if (isNotFoundError(error)) return [];
-    throw error;
+    throw new Error('named test lists: request failed reading ' + what + ': ' + (error?.message ?? String(error)), { cause: error });
   }
-  if (!Array.isArray(entries)) return [];
+  if (payload?.errors?.length) {
+    const messages = payload.errors.map((error) => {
+      const message = error?.message ?? String(error);
+      const alias = Array.isArray(error?.path) ? error.path.find((part) => filesByAlias.has(part)) : undefined;
+      return alias === undefined ? message : filesByAlias.get(alias) + ': ' + message;
+    }).join('; ');
+    throw new Error('named test lists: GraphQL error reading ' + what + ': ' + messages);
+  }
+  const repository = payload?.data?.repository;
+  if (!repository) throw new Error('named test lists: no repository in the GraphQL answer for ' + what);
+  return repository;
+}
+
+export function fetchNamedTestLists(repo, sha, token, { graphql = graphqlRequest } = {}) {
+  const dir = NAMED_LIST_DIR;
+  const [owner, name] = repo.split('/');
+  const variables = { owner, name };
+  const namesQuery = namedListsQuery('object(expression: ' + JSON.stringify(sha + ':' + dir) + ') { ... on Tree { entries { name type } } }');
+  const listing = namedListsRequest(graphql, token, namesQuery, variables, dir);
+  if (listing.object === null) return [];
+  const entries = listing.object?.entries;
+  if (!Array.isArray(entries)) throw new Error('named test lists: ' + dir + ' is not a folder in the GraphQL answer');
+  const names = entries
+    .filter((entry) => entry?.type === 'blob' && typeof entry.name === 'string'
+      && entry.name.endsWith('.txt') && entry.name !== 'README.txt')
+    .map((entry) => entry.name)
+    .sort();
   const extra = [];
-  for (const entry of entries) {
-    if (entry.type !== 'file' || !entry.name?.endsWith('.txt') || entry.name === 'README.txt') continue;
-    const text = fetchFileText(repo, sha, token, entry.path, api);
-    if (text == null) continue;
-    extra.push(...parseNamedTestList(text, entry.path));
+  for (let start = 0; start < names.length; start += NAMED_LIST_PAGE_SIZE) {
+    const paths = names.slice(start, start + NAMED_LIST_PAGE_SIZE).map((entryName) => dir + '/' + entryName);
+    const filesByAlias = new Map(paths.map((filePath, index) => ['f' + index, filePath]));
+    const fields = paths.map((filePath, index) => (
+      'f' + index + ': object(expression: ' + JSON.stringify(sha + ':' + filePath) + ') { ... on Blob { text isBinary isTruncated } }'
+    ));
+    const what = 'page ' + (start / NAMED_LIST_PAGE_SIZE + 1) + ' (' + paths[0] + ' to ' + paths[paths.length - 1] + ')';
+    const repository = namedListsRequest(graphql, token, namedListsQuery(fields.join(' ')), variables, what, filesByAlias);
+    paths.forEach((filePath, index) => {
+      const blob = repository['f' + index];
+      if (!blob || typeof blob.text !== 'string' || blob.isBinary !== false || blob.isTruncated !== false) {
+        const why = !blob ? 'no blob' : blob.isTruncated ? 'truncated' : blob.isBinary ? 'binary' : 'no text';
+        throw new Error('named test lists: ' + filePath + ' could not be read (' + why + ')');
+      }
+      extra.push(...parseNamedTestList(blob.text, filePath));
+    });
   }
   return extra;
 }

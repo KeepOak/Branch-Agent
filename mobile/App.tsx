@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler, Linking, Platform } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventAlerts } from './src/alerts/eventAlerts';
@@ -14,7 +14,7 @@ import { createExpoNotifier, noNotifier } from './src/approvals/expoNotifier';
 import { AgentList, type AgentRow } from './src/agents/agentList';
 import { appIdentity, installedAppVersion, type AppIdentity } from './src/build/appIdentity';
 import { Conversation } from './src/chat/conversation';
-import { ChatList, filterRows, type ChatRow } from './src/chats/chatList';
+import { ChatList, chatForNew, chatForTalk, type ChatRow } from './src/chats/chatList';
 import { ComputerList, computerName, type ComputerRow } from './src/computers/computerList';
 import { messageSearcher } from './src/chats/messageSearch';
 import { createDeviceSession } from './src/pairing/createDeviceSession';
@@ -42,6 +42,7 @@ import type { SettingsLevel } from './src/screens/settingsExtras';
 import { VoiceScreen } from './src/screens/VoiceScreen';
 import { applyKeepAwake, parseShareUrl, shouldKeepScreenAwake } from './src/settings/phoneEffects';
 import { resetThisPhone, takeShareToBranchAgent, writeOfflineChats, writeSavedAgents, writeWaitingMessages } from './src/settings/phoneLocal';
+import { useLendService } from './src/lending/useLendService';
 import { getLivePhonePrefs, readPhonePrefs, subscribeLivePhonePrefs } from './src/settings/phonePrefs';
 import { parseShowLevel, readShowLevel, settingsLevelOf, showLevelOf, writeShowLevel, type ShowLevel } from './src/settings/showLevel';
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
@@ -52,6 +53,9 @@ import { placesBarHeight, type Place } from './src/ui/PlacesBar';
 import { applyQuietJsUpdate } from './src/updates/ota';
 import { SettingsUpdateCard, UpdateBanner } from './src/updates/UpdateBanner';
 import { useApkUpdate } from './src/updates/useApkUpdate';
+import { routeForWidgetAction, type WidgetAction } from './src/widget/homeWidget';
+import { useHomeWidget } from './src/widget/useHomeWidget';
+import { useAssistLaunch } from './src/assistant/useAssistLaunch';
 
 // The splash stays up until the saved pairing has been read, so the first frame is the right screen.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -84,19 +88,6 @@ const CHATS: PairedRoute = { name: 'chats' };
 const HOME: PairedRoute = { name: 'home' };
 const SCAN: PairedRoute = { name: 'scan' };
 const CODE: PairedRoute = { name: 'code' };
-
-/** New chat from Home or Chats: the main conversation, else the first non-room chat. */
-function chatForNew(rows: ChatRow[]): ChatRow | undefined {
-  const shown = filterRows(rows, 'all', Date.now());
-  return shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
-}
-
-/** Talk from Home: the most recent chat, else the same pick New chat uses. */
-function chatForTalk(rows: ChatRow[]): ChatRow | undefined {
-  const shown = filterRows(rows, 'all', Date.now());
-  const recent = [...shown].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-  return recent ?? chatForNew(rows);
-}
 
 const deviceAppState: AppStateSource = {
   current: () => AppState.currentState,
@@ -282,6 +273,7 @@ function Shell({
       live = false;
     };
   }, [store]);
+  useLendService({ paired: state.step === 'paired', online: state.step === 'paired' && state.online, prefs, store });
   useEffect(() => {
     inbox.attach();
     const alerts = new ApprovalAlerts(inbox, notifier, appState, (focus) => setPairedRoute({ name: 'approvals', focus }), {
@@ -340,6 +332,11 @@ function Shell({
     const sub = Linking.addEventListener('url', ({ url }) => handle(url));
     return () => sub.remove();
   }, [store, pairedRoute, chatList, approvals.pending.length]);
+  useAssistLaunch({
+    paired: state.step === 'paired',
+    rows: chatList.rows,
+    onOpen: (next) => setPairedRoute(next.name === 'chat' ? { name: 'chat', row: next.row } : CHATS),
+  });
   useEffect(() => {
     if (state.step !== 'paired') return;
     let live = true;
@@ -401,6 +398,24 @@ function Shell({
     else if (place === 'inbox') setPairedRoute({ name: 'approvals' });
     else setPairedRoute({ name: 'more' });
   };
+  const onWidgetAction = useCallback(
+    (action: WidgetAction) => {
+      if (state.step !== 'paired') return;
+      const next = routeForWidgetAction(action, chatList.rows);
+      if (next.name === 'chat') setPairedRoute({ name: 'chat', row: next.row });
+      else if (next.name === 'voice') setPairedRoute({ name: 'voice', row: next.row });
+      else if (next.name === 'approvals') setPairedRoute({ name: 'approvals' });
+      else if (next.name === 'home') setPairedRoute(HOME);
+      else setPairedRoute(CHATS);
+    },
+    [state.step, chatList.rows],
+  );
+  useHomeWidget({
+    paired: state.step === 'paired',
+    approvals,
+    chats: chatList,
+    onAction: onWidgetAction,
+  });
 
   const begin = (setup: SetupPayload) => session.begin(setup);
   // A new pairing from Home replaces this computer only once a code is submitted (that is the confirm).

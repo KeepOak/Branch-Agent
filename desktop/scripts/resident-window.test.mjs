@@ -113,8 +113,8 @@ test('Dock activate restores the resident window without restarting its gateway 
   assert.equal((await readFile(join(root, 'desktop.log'), 'utf8')).match(/gateway started from/g).length, 1);
 }));
 test('tray Quit and session end perform normal owned-child shutdown', () => fixture(async ({ tray, window, pid }) => {
-  assert.ok(tray); tray.menu.find(item => item.label === 'Quit Branch').click();
-  assert.equal(window.destroyed, true); assert.equal(tray.destroyed, true);
+  assert.ok(tray); tray.menu.find(item => item.label === 'Quit').click();
+  await eventually(() => window.destroyed); assert.equal(tray.destroyed, true);
   await eventually(() => { try { process.kill(pid, 0); return false; } catch { return true; } });
 }));
 test('session-end quits instead of hiding a dying OS session', () => fixture(async ({ window, pid }) => {
@@ -182,6 +182,24 @@ test('usage-off setTrayUsage restores the darwin template and never branch-48.pn
     Module._load = originalLoad;
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('revealResidentWindow restores a hidden minimised window and stays quiet when hidden', () => {
+  const { revealResidentWindow } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'resident-window.js'));
+  const window = {
+    hidden: true, minimized: true, focused: false,
+    isDestroyed: () => false,
+    isMinimized() { return this.minimized; },
+    restore() { this.minimized = false; },
+    show() { this.hidden = false; },
+    focus() { this.focused = true; },
+  };
+  assert.equal(revealResidentWindow(window), true);
+  assert.equal(window.hidden, false);
+  assert.equal(window.minimized, false);
+  assert.equal(window.focused, true);
+  assert.equal(revealResidentWindow(window, true), false);
+  assert.equal(revealResidentWindow(null), false);
 });
 
 test('macOS and Linux keep the gateway resident after the window closes', () => {

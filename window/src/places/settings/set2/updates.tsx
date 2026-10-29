@@ -3,7 +3,7 @@
 // failure reports through update.report, and the parts that only the Branch app can do, greyed with why.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { CheckedAt, useCheckedAt } from "../checked-at";
-import { useEffect, useId, useState } from "react";
+import { Suspense, lazy, useEffect, useId, useRef, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, useHeadless, type RowEntry } from "../kit";
 import { list } from "../adapter";
@@ -20,7 +20,11 @@ import { LaterRows } from "../../../glass/LaterRows";
 import { clientOs } from "../../../connect/client-os";
 import { desktopControls, NEEDS_NEWER_APP, type AppRemovalPlan } from "../../../connect/desktop-controls";
 import { latestVersionLine, useMinuteClock } from "./version-line";
+import type { WindowEngine } from "../../../connect/engine";
 import "./updates.css";
+
+// Loaded on demand: a static import of customize/pairing closes an import cycle through the settings pages.
+const PairDialog = lazy(() => import("../../customize/pairing").then((m) => ({ default: m.PairDialog })));
 
 const UPDATE_EVENTS = ["update"];
 const OS: Record<string, string> = { win32: "Windows", darwin: "macOS", linux: "Linux" };
@@ -66,7 +70,7 @@ export function UpdatesPage(props: SettingsPageProps) {
  *  the Updating card is the app's own updater. */
 export function UpdatesBlock(props: SettingsPageProps & { part: "updating" | "devices" | "before" | "reports" | "editors" | "about" | "privacy" | "remove" }) {
   const { part } = props;
-  if (part === "devices") return <Devices lv={lvOf(props.level)} />;
+  if (part === "devices") return <Devices lv={lvOf(props.level)} engine={props.engine} />;
   if (part === "before") return <BeforeInstall />;
   if (part === "reports") return <Reports />;
   if (part === "editors") return <Editors gatewayUrl={props.engine.gatewayUrl} technical={showsInternals(props.level)} />;
@@ -108,7 +112,7 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
       {status.loading && !status.data ? <Hint>Checking…</Hint> : null}
       {status.data ? <Waiting {...props} data={data} version={version} /> : null}
       {status.data ? <Updating {...props} data={data} /> : null}
-      <Devices lv={lvOf(props.level)} />
+      <Devices lv={lvOf(props.level)} engine={props.engine} />
       <About />
       <RemoveBranch />
       <Reports />
@@ -310,16 +314,18 @@ function DeviceRow({ icon, title, sub, store, apk, whyId }: { icon: string; titl
   );
 }
 
-function Devices({ lv }: { lv: number }) {
+function Devices({ lv, engine }: { lv: number; engine: WindowEngine }) {
   const whyId = useId();
+  const [pairing, setPairing] = useState(false);
   return (
     <Sec title="Branch on your other devices">
       <Plist>
         {DEVICES.map(([icon, title, sub, store]) => <DeviceRow key={title} icon={icon} title={title} sub={sub} store={store} apk={title === "Android" && lv >= 1} whyId={whyId} />)}
       </Plist>
       <p className="hint" id={whyId}>{STORES_LINE}</p>
-      <Ctl title="Already have the app?" off="Pairing a phone needs the Branch phone app."><Btn sm>Pair your phone</Btn></Ctl>
+      <Ctl title="Already have the app?"><Btn sm onClick={() => setPairing(true)}>Pair your phone</Btn></Ctl>
       <Ctl title="Add more to Branch"><Btn sm onClick={() => openPlace("customize", "Plugins")}>Open Plugins</Btn><Btn sm ghost onClick={() => openPlace("customize", "Skills")}>Browse the skill library</Btn></Ctl>
+      {pairing && <Suspense fallback={null}><PairDialog engine={engine} close={() => setPairing(false)} /></Suspense>}
     </Sec>
   );
 }
@@ -384,19 +390,26 @@ export function RemoveAppKeepData() {
   const bridge = "bridge" in found ? found.bridge : undefined;
   const [plan, setPlan] = useState<AppRemovalPlan | null>(null);
   const [open, setOpen] = useState(false);
+  const pending = useRef<Promise<AppRemovalPlan | null> | null>(null);
   const call = useCall();
-  useEffect(() => {
-    if (!bridge?.removalPlan) return;
-    let live = true;
-    bridge.removalPlan().then((next) => { if (live) setPlan(next); }, () => { if (live) setPlan(null); });
-    return () => { live = false; };
-  }, [bridge]);
+  // Do not call removalPlan() on first mount: that reads login items (Sequoia App Data). Load on first use.
+  const loadPlan = () => {
+    if (!bridge?.removalPlan) return Promise.resolve(null);
+    if (plan) return Promise.resolve(plan);
+    pending.current ??= bridge.removalPlan().then(
+      (next) => { setPlan(next); return next; },
+      () => { pending.current = null; setPlan(null); return null; },
+    );
+    return pending.current;
+  };
   const why = "off" in found ? found.off : !bridge?.removalPlan || !bridge.removeApp ? NEEDS_NEWER_APP : plan && !plan.supported ? plan.reason : undefined;
   const remove = () => void call.run(async () => { await bridge?.removeApp?.(); }, () => "Branch is closing to finish removing the app.");
   return <>
+    <div onPointerDown={() => { void loadPlan(); }} onFocusCapture={() => { void loadPlan(); }}>
     <Ctl title="Remove the app, keep my data" sub="Your conversations, Trunks and settings stay. Install Branch again and it picks up where you left off." off={why}>
-      <Btn sm className="s2-dz" data-local="" disabled={!plan?.supported} onClick={() => setOpen(true)}>Remove the app…</Btn>
+      <Btn sm className="s2-dz" data-local="" disabled={Boolean(why)} onClick={() => void loadPlan().then((next) => { if (next?.supported) setOpen(true); })}>Remove the app…</Btn>
     </Ctl>
+    </div>
     {open && plan?.supported ? (
       <Dialog title="Remove the Branch app?" onClose={() => { if (!call.busy) setOpen(false); }} footer={<>
         <Btn ghost data-local="" disabled={call.busy} onClick={() => setOpen(false)}>Cancel</Btn>
