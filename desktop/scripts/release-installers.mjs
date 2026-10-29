@@ -5,7 +5,7 @@
 //   node desktop/scripts/release-installers.mjs --assets <release-assets> --version <version> --target <target> --out <dir>
 // win32-x64: a per-user Inno Setup installer (no admin prompt; each update lands in a version folder under that root).
 // darwin-arm64 and darwin-x64: a .dmg holding the already-signed Branch Agent.app and an Applications link.
-// linux-x64: a per-user AppImage (install.sh and the in-app updater) plus Branch-Linux.deb, the downloadable package.
+// linux-x64: a per-user AppImage (install.sh puts it at ~/.local/bin/branch-agent; also the in-app updater) plus Branch-Linux.deb, the downloadable package.
 // The component-release native job builds both by running this script; the versioned AppImage name is unchanged.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
