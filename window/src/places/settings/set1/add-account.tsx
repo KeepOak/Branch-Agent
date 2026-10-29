@@ -30,6 +30,12 @@ const FRESH_WORD: Record<string, string> = { ok: "Connected", static: "Connected
 const KIND_LABEL: Record<Kind, string> = { plan: "Your plan", key: "A key", local: "On this computer", custom: "Your own" };
 const KIND_SUB: Record<Kind, string> = { plan: "your plan", key: "a key", local: "on this computer", custom: "your own" };
 
+export function accountArticle(name: string): "a" | "an" {
+  // Leading initials use letter sounds: "el-em" (LM), but "gee" (GPU).
+  if (/^[A-Z]{2}/.test(name)) return /^[AEIOUFHLMNRSX]/.test(name) ? "an" : "a";
+  return /^(?:[aeiou]|xai)/i.test(name) ? "an" : "a";
+}
+
 /** Pasted sign-in secrets the engine's setup offers (branch.setup.detect manualProviders, e.g. Anthropic's
  *  setup-token), as plan sign-ins for a service with no browser sign-in. Keys stay under "A key". Adapted from
  *  engine/ui/src/pages/model-providers/login-providers.ts ("setup-secret" choices). */
@@ -193,7 +199,7 @@ export function AddAccountDialog({ engine, start, caps, providers, agent, onClos
   const [added, setAdded] = useState(false);
   const ids = providers.flatMap((p) => p.profiles.map((a) => a.profileId));
   const signedIn = () => { setAdded(true); if (step.n === 2) setStep({ n: 3, svc: step.svc, before: ids }); };
-  const title = step.n === 1 ? "Add an account" : step.n === 2 && step.svc.brand === "anthropic" && step.svc.kind === "plan" ? "Sign in with Claude" : `Add a ${step.svc.name} account`;
+  const title = step.n === 1 ? "Add an account" : step.n === 2 && step.svc.brand === "anthropic" && step.svc.kind === "plan" ? "Sign in with Claude" : `Add ${accountArticle(step.svc.name)} ${step.svc.name} account`;
   const waiting = !capsReady || (!detectReady && !pin.current);
   return (
     <Clear.Provider value={Boolean(clear)}><Dialog title={title} wide={step.n === 1} clear={clear} onClose={() => onClose(added)} testid="add-account" footer={<StepFoot step={step} onBack={() => setStep({ n: 1 })} onClose={() => onClose(added)} />}>

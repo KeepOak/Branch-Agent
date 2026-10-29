@@ -5,9 +5,9 @@ import { useId, useSyncExternalStore, useEffect, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { canAll } from "../../../connect/capabilities";
 import { list, record, visible } from "../../../places/settings/adapter";
-import { current, facts, isDesktopApp, normalizeDevice, subscribe, type DevicePrefs } from "../../../places/settings/set1/notifications-browser";
+import { current, deviceOff, facts, isDesktopApp, normalizeDevice, subscribe, type DevicePrefs } from "../../../places/settings/set1/notifications-browser";
 import { hourOpts, zoneOpts } from "../../../places/settings/set1/notifications";
-import { DEFAULT_PREFS, PREFS_KEY, normalizePrefs, type CategoryKey, type Detail, type NotifyPrefs, type Quiet } from "../../../places/settings/set1/notifications-prefs";
+import { DEFAULT_PREFS, PREFS_KEY, normalizePrefs, prefsOff, type CategoryKey, type Detail, type NotifyPrefs, type Quiet } from "../../../places/settings/set1/notifications-prefs";
 import { noticesHereOn, setNoticesHere } from "../../../shell/notify";
 import { Segmented, Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
@@ -117,8 +117,10 @@ const ON_OFF = [{ v: "def", label: "Use my default" }, { v: "on", label: "On" },
 const onOff = (v: boolean | undefined) => (v === undefined ? "def" : v ? "on" : "off");
 const fromOnOff = (v: string) => (v === "def" ? undefined : v === "on");
 /** A list choice that keeps the attributes <Coming> gives it (data-need), so the control stays declared. */
-const Select = ({ label, value, options, disabled, onChange, ...rest }: { label: string; value: string; options: { v: string; label: string }[]; disabled?: boolean; onChange: (v: string) => void }) =>
+const Select = ({ label, value, options, disabled, onChange, ...rest }: { label: string; value: string; options: { v: string; label: string }[]; disabled?: boolean; onChange: (v: string) => void; "aria-describedby"?: string }) =>
   <select className="r1s-inp" aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} {...rest}>{options.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}</select>;
+/** The one plain line a greyed control names with aria-describedby, saying why it is greyed (Private #1093). */
+const Why = ({ id, text }: { id: string; text?: string }) => (text ? <small id={id} className="r1s-note g-label" data-lines>{text}</small> : null);
 function useTrunks(engine: WindowEngine) {
   const agents = useRead(engine, "agents.list");
   return list(agents.data?.agents).map((a) => ({ id: String(a.id), name: visible(record(a.identity).name ?? a.name ?? a.id) }));
@@ -230,21 +232,28 @@ export function SendTest({ engine, row }: SlotControlProps) {
   </>;
 }
 
+/** Why the hours and time zone are greyed while quiet hours are off. */
+const QUIET_FIRST = "Turn on quiet hours to pick the hours and time zone.";
+
 /** Quiet hours: from, to, and on or off. */
 export function QuietHours({ engine, row }: SlotControlProps) {
   const p = usePrefs(engine);
   const [failed, run] = useFailure();
+  const whyId = useId();
   const q = p.prefs.quietHours;
   const setQ = (patch: Partial<Quiet>) => void run(() => p.change((c) => ({ ...c, quietHours: { ...c.quietHours, ...patch } })));
   const opts = (m: number) => hourOpts(m).map((o) => ({ v: o.id, label: o.label }));
+  const offWhy = p.off ? prefsOff(p) : undefined;
+  const why = offWhy ?? (q.enabled ? undefined : QUIET_FIRST);
   return <>
     <Needs engine={engine} need={PREFS} where={row.label ?? ""}>
       <span className="r1s-own-ctl r1s-acts">
-        <span className="g-label">From</span><Select label="From" value={String(q.startMinute)} options={opts(q.startMinute)} disabled={p.off || !q.enabled} onChange={(v) => setQ({ startMinute: Number(v) })} />
-        <span className="g-label">To</span><Select label="To" value={String(q.endMinute)} options={opts(q.endMinute)} disabled={p.off || !q.enabled} onChange={(v) => setQ({ endMinute: Number(v) })} />
-        <Toggle label={row.label ?? ""} on={q.enabled} disabled={p.off} onChange={(v) => setQ({ enabled: v })} />
+        <span className="g-label">From</span><Select label="From" value={String(q.startMinute)} options={opts(q.startMinute)} disabled={p.off || !q.enabled} aria-describedby={why ? whyId : undefined} onChange={(v) => setQ({ startMinute: Number(v) })} />
+        <span className="g-label">To</span><Select label="To" value={String(q.endMinute)} options={opts(q.endMinute)} disabled={p.off || !q.enabled} aria-describedby={why ? whyId : undefined} onChange={(v) => setQ({ endMinute: Number(v) })} />
+        <Toggle label={row.label ?? ""} on={q.enabled} disabled={p.off} aria-describedby={offWhy ? whyId : undefined} onChange={(v) => setQ({ enabled: v })} />
       </span>
     </Needs>
+    <Why id={whyId} text={why} />
     <Failed text={failed} />
   </>;
 }
@@ -253,67 +262,76 @@ export function QuietHours({ engine, row }: SlotControlProps) {
 export function QuietZone({ engine, row }: SlotControlProps) {
   const p = usePrefs(engine);
   const [failed, run] = useFailure();
+  const whyId = useId();
   const q = p.prefs.quietHours;
+  const why = (p.off ? prefsOff(p) : undefined) ?? (q.enabled ? undefined : QUIET_FIRST);
   return <>
     <Needs engine={engine} need={PREFS} where={row.label ?? ""}>
       <Select label={row.label ?? ""} value={q.timeZone} options={zoneOpts(q.timeZone).map((o) => ({ v: o.id, label: o.label }))} disabled={p.off || !q.enabled}
-        onChange={(v) => void run(() => p.change((c) => ({ ...c, quietHours: { ...c.quietHours, timeZone: v } })))} />
+        aria-describedby={why ? whyId : undefined} onChange={(v) => void run(() => p.change((c) => ({ ...c, quietHours: { ...c.quietHours, timeZone: v } })))} />
     </Needs>
+    <Why id={whyId} text={why} />
     <Failed text={failed} />
   </>;
 }
 
-/** This PC: this computer's own choices over your defaults. */
+/** Why This PC's rows are greyed in the Branch app, where this computer's notices follow your defaults. */
+const DEVICE_APP = "In the Branch app, this computer follows your defaults above.";
+const DEVICE_FIRST = "Turn on notifications on this computer first.";
+
+/** This PC: this computer's own choices over your defaults. `why` is the one line each greyed control names. */
 function useDevice(engine: WindowEngine) {
   const push = usePush(engine);
   const [failed, run] = useFailure();
+  const whyId = useId();
   const off = push.loading || !push.device || isDesktopApp();
+  const why = !off ? undefined : isDesktopApp() ? DEVICE_APP : (deviceOff(push) ?? DEVICE_FIRST);
   const set = (patch: Partial<DevicePrefs>) => void run(() => push.store.setDevice((d) => ({ ...d, ...patch })));
-  return { d: push.device ?? { enabled: true, label: "" }, off, set, failed };
+  return { d: push.device ?? { enabled: true, label: "" }, off, set, failed, why, whyId, describedBy: why ? whyId : undefined };
 }
 export function DeviceName({ engine, row }: SlotControlProps) {
-  const { d, off, set, failed } = useDevice(engine);
+  const { d, off, set, failed, why, whyId, describedBy } = useDevice(engine);
   const [text, setText] = useState(d.label);
   useEffect(() => setText(d.label), [d.label]);
   const commit = () => { if (text !== d.label) set({ label: text.slice(0, 80) }); };
   return <><Needs engine={engine} need={DEVICE} where={row.label ?? ""}>
-    <input className="r1s-inp" aria-label={row.label} value={text} disabled={off} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") commit(); }} />
-  </Needs><Failed text={failed} /></>;
+    <input className="r1s-inp" aria-label={row.label} value={text} disabled={off} aria-describedby={describedBy} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") commit(); }} />
+  </Needs><Why id={whyId} text={why} /><Failed text={failed} /></>;
 }
 export function DeviceLocked({ engine, row }: SlotControlProps) {
-  const { d, off, set, failed } = useDevice(engine);
+  const { d, off, set, failed, why, whyId, describedBy } = useDevice(engine);
   return <><Needs engine={engine} need={DEVICE} where={row.label ?? ""}>
-    <Select label={row.label ?? ""} value={d.detailLevel ?? "def"} options={[{ v: "def", label: "Use my default" }, ...DETAIL]} disabled={off} onChange={(v) => set({ detailLevel: v === "def" ? undefined : (v as Detail) })} />
-  </Needs><Failed text={failed} /></>;
+    <Select label={row.label ?? ""} value={d.detailLevel ?? "def"} options={[{ v: "def", label: "Use my default" }, ...DETAIL]} disabled={off} aria-describedby={describedBy} onChange={(v) => set({ detailLevel: v === "def" ? undefined : (v as Detail) })} />
+  </Needs><Why id={whyId} text={why} /><Failed text={failed} /></>;
 }
 export function DeviceQuiet({ engine, row }: SlotControlProps) {
-  const { d, off, set, failed } = useDevice(engine);
+  const { d, off, set, failed, why, whyId, describedBy } = useDevice(engine);
   const q = d.quietHours;
   return <><Needs engine={engine} need={DEVICE} where={row.label ?? ""}>
-    <Select label={row.label ?? ""} value={onOff(q?.enabled)} options={ON_OFF} disabled={off}
+    <Select label={row.label ?? ""} value={onOff(q?.enabled)} options={ON_OFF} disabled={off} aria-describedby={describedBy}
       onChange={(v) => set({ quietHours: v === "def" ? undefined : { startMinute: 22 * 60, endMinute: 7 * 60, timeZone: "UTC", ...q, enabled: v === "on" } })} />
-  </Needs><Failed text={failed} /></>;
+  </Needs><Why id={whyId} text={why} /><Failed text={failed} /></>;
 }
 export function DeviceTrunks({ engine, row }: SlotControlProps) {
-  const { d, off, set, failed } = useDevice(engine);
+  const { d, off, set, failed, why, whyId, describedBy } = useDevice(engine);
   const trunks = useTrunks(engine);
   const ids = d.agentIds;
   const value = ids === undefined ? "def" : ids.length === 0 ? "*" : ids.length === 1 ? ids[0] : "many";
   const options = [{ v: "def", label: "Use my default" }, { v: "*", label: "Every Trunk" }, ...trunks.map((t) => ({ v: t.id, label: t.name })), ...(value === "many" ? [{ v: "many", label: `${ids?.length ?? 0} Trunks` }] : [])];
   return <><Needs engine={engine} need={DEVICE} where={row.label ?? ""}>
-    <Select label={row.label ?? ""} value={value} options={options} disabled={off} onChange={(v) => { if (v !== "many") set({ agentIds: v === "def" ? undefined : v === "*" ? [] : [v] }); }} />
-  </Needs><Failed text={failed} /></>;
+    <Select label={row.label ?? ""} value={value} options={options} disabled={off} aria-describedby={describedBy} onChange={(v) => { if (v !== "many") set({ agentIds: v === "def" ? undefined : v === "*" ? [] : [v] }); }} />
+  </Needs><Why id={whyId} text={why} /><Failed text={failed} /></>;
 }
 export function DeviceCategory({ engine, row }: SlotControlProps) {
-  const { d, off, set, failed } = useDevice(engine);
+  const { d, off, set, failed, why, whyId, describedBy } = useDevice(engine);
   const key = row.id.split(".").pop() as CategoryKey;
   return <><Needs engine={engine} need={DEVICE} where={row.label ?? ""}>
-    <Select label={row.label ?? ""} value={onOff(d.categories?.[key])} options={ON_OFF} disabled={off} onChange={(v) => {
+    <Select label={row.label ?? ""} value={onOff(d.categories?.[key])} options={ON_OFF} disabled={off} aria-describedby={describedBy} onChange={(v) => {
       const cats = { ...d.categories }; const next = fromOnOff(v);
       if (next === undefined) delete cats[key]; else cats[key] = next;
       set({ categories: cats });
     }} />
-  </Needs><Failed text={failed} /></>;
+  </Needs><Why id={whyId} text={why} /><Failed text={failed} /></>;
 }
 
 /** Push to this browser: this browser's own Web Push subscription. */

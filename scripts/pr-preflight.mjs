@@ -22,11 +22,26 @@ import {
   loadProtectedGatePaths,
 } from './merge-gate-trusted.mjs';
 import { checkWindowClean, scanTree } from './check-window-clean.mjs';
+import { loadUnlistedRunner, unlistedDesktopTargets } from './changed-test-coverage.mjs';
 
 const PERSONAL_PATTERNS = [
   /\/Users\/[A-Za-z0-9._-]+\//,
   /[A-Za-z]:\\Users\\[A-Za-z0-9._-]+\\/,
   /\b[A-Za-z0-9._%+-]+@(gmail|outlook|hotmail|yahoo|icloud|proton)\.[a-z.]+\b/i,
+];
+// Provider key formats. Test files are scanned too: a literal fake key in a fixture still trips
+// GitHub secret scanning. Minimum lengths keep short placeholders such as sk-test passing.
+const SECRET_PATTERNS = [
+  ['github-token', /\bgh[pousr]_[A-Za-z0-9]{36,}\b/],
+  ['github-fine-grained-token', /\bgithub_pat_[A-Za-z0-9_]{22,}/],
+  ['anthropic-key', /\bsk-ant-[A-Za-z0-9_-]{32,}/],
+  ['openai-key', /\bsk-(?!ant-)(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}/],
+  ['aws-access-key-id', /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
+  ['slack-token', /\bxox[bpar]-[A-Za-z0-9-]{10,}/],
+  ['stripe-live-key', /\b(?:sk|rk)_live_[A-Za-z0-9]{24,}/],
+  ['google-api-key', /\bAIza[0-9A-Za-z_-]{35}/],
+  ['jwt', /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/],
+  ['private-key-pem', /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY( BLOCK)?-----/],
 ];
 // Test files carry synthetic fixtures (example addresses, sample paths) on purpose, so they are exempt.
 const FIXTURE_FILE = /\.test\.(mjs|ts|tsx)$/;
@@ -151,9 +166,12 @@ export function gateFileProblems({
 }
 
 // Desktop tests are covered by desktop-checks.yml, not by a named list. The gate's own coverage rule decides.
-export function desktopCoverageProblems({ files, desktopWorkflow }) {
+// When the desktop runner for unlisted tests is loaded, a file it would run counts too; its EXCLUDED files do not.
+export function desktopCoverageProblems({ files, desktopWorkflow, unlistedRunner = null }) {
   if (desktopWorkflow == null) return [];
-  const { uncovered } = coverageFromPrFiles(files, desktopWorkflow);
+  const present = files.filter((file) => file.status !== 'removed').map((file) => file.filename);
+  const extraDesktop = [...unlistedDesktopTargets(unlistedRunner, present, desktopWorkflow)];
+  const { uncovered } = coverageFromPrFiles(files, desktopWorkflow, [], '', '', extraDesktop);
   return uncovered.filter((file) => file.startsWith('desktop/')).map((file) => problem(
     'desktop-tests',
     `${file} is not run by desktop-checks.yml`,
@@ -291,6 +309,22 @@ export function personalInfoProblems(addedLines, { changedFiles = [], denylist =
   return [...branchNameProblems(branch, denylist), ...pathProblems, ...lineProblems];
 }
 
+// Never echo the matched value: the problem text lands in CI logs.
+export function secretLiteralProblems(addedLines) {
+  const problems = [];
+  for (const l of addedLines) {
+    const hit = SECRET_PATTERNS.find(([, re]) => re.test(l.text));
+    if (hit) {
+      problems.push(problem(
+        'secret-literal',
+        `${l.file}:${l.line} adds a literal that looks like a ${hit[0]}`,
+        'remove it; for a test fixture, build the fake key at runtime (for example by joining string parts)',
+      ));
+    }
+  }
+  return problems;
+}
+
 // Bodies are public prose, not test fixtures. Scan every domain and Markdown
 // context, but retain the GitHub noreply identity exemption used by the gates.
 export function bodyEmailProblems(body) {
@@ -342,8 +376,11 @@ export function runPreflight(input) {
       request: input.request, prNumber: input.prNumber, baselineGrew: input.baselineGrew,
       repoDir: input.repoDir,
     }),
-    ...desktopCoverageProblems({ files: input.files ?? [], desktopWorkflow: input.desktopWorkflow ?? null }),
+    ...desktopCoverageProblems({
+      files: input.files ?? [], desktopWorkflow: input.desktopWorkflow ?? null, unlistedRunner: input.unlistedRunner ?? null,
+    }),
     ...personalInfoProblems(input.addedLines ?? [], { changedFiles, denylist: input.denylist ?? privateNameDenylist(), branch: input.branch }),
+    ...secretLiteralProblems(input.addedLines ?? []),
     ...bodyEmailProblems(body),
     ...unverifiedPatchProblems(input.unverifiedFiles ?? []),
   ];
@@ -544,7 +581,8 @@ function apiInputFromEnv(env) {
 }
 
 // Exported so tests can drive the real CLI wiring against a temporary repository.
-export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv } = {}) {
+// unlistedRunner is the loaded desktop runner for unlisted tests, or null when the repo has none.
+export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv, unlistedRunner = null } = {}) {
   if (argv.includes('--ci')) {
     // CI reads the live body and its own inputs from the API under one job-wide budget.
     const budgetSeconds = preflightBudgetSeconds(env);
@@ -560,7 +598,7 @@ export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv
         text: [...ciSkippedLines(), `preflight could not read GitHub within its ${budgetSeconds}s budget (${reason}). This is not a preflight failure; re-run the check.`].join('\n'),
       };
     }
-    const problems = runPreflight({ ...input, cloudAgent: false, repoDir: cwd });
+    const problems = runPreflight({ ...input, cloudAgent: false, repoDir: cwd, unlistedRunner });
     return { exitCode: problems.length ? 1 : 0, text: [...ciSkippedLines(), formatProblems(problems)].join('\n') };
   }
   if (!argv.includes('--body')) {
@@ -571,13 +609,14 @@ export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv
   const scope = scopedChecks(input.changedFiles);
   input.windowResult = scope.window ? windowResultFor(cwd) : null;
   input.shardResult = scope.shard ? shardResultFor(cwd) : null;
+  input.unlistedRunner = unlistedRunner;
   const problems = runPreflight(input);
   return { exitCode: problems.length ? 1 : 0, text: formatProblems(problems) };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const result = runCli(process.argv.slice(2), repoRoot);
+  const result = runCli(process.argv.slice(2), repoRoot, process.env, { unlistedRunner: await loadUnlistedRunner(repoRoot) });
   console.log(result.text);
   process.exitCode = result.exitCode;
 }

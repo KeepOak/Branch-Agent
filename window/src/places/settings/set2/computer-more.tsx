@@ -442,7 +442,7 @@ function CheckDialog({ engine, lv, onClose }: { engine: WindowEngine; lv: Lv; on
         {st.loading ? <p>Checking this computer…</p>
           : st.error ? <p className="hint s2-err">{st.error === STALL_TEXT ? STALL_TEXT : CHECK_FAILED} <Btn sm onClick={again}>Try again</Btn></p>
           : <p>{checkLine(st.data)}</p>}
-        {!st.loading && !st.error ? <Kv rows={caps} /> : null}
+        {lv >= 2 && !st.loading && !st.error ? <Kv rows={caps} /> : null}
         {!st.loading ? <CheckedAt at={checked} /> : null}
       </div>
     </Dialog>

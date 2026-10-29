@@ -17,7 +17,7 @@ const NOW = "2026-10-09T12:00:00.000Z";
 
 test("redaction removes secrets and addresses but keeps ordinary text", () => {
   const out = redactDiagnosticText(
-    'token=abc123secretvalue authorization: Bearer eyJhbGciOi.payload.sig password "hunter2222" key sk-ABCDEFGHIJKLMNOPQRSTUV ghp_abcdefghijklmnopqrstuvwxyz0123456789 mail alice@example.com hash 0123456789abcdef0123456789abcdef0123456789abcdef and plain words stay',
+    ['token=abc123secretvalue authorization: Bearer eyJhbGciOi.payload.sig password "hunter2222" key sk-ABCDEFGHIJKLMNOPQRSTUV ghp_', 'abcdefghijklmnopqrstuvwxyz0123456789 mail alice@example.com hash 0123456789abcdef0123456789abcdef0123456789abcdef and plain words stay'].join(""),
   );
   assert.doesNotMatch(out, /abc123secretvalue|hunter2222|sk-ABCDEF|ghp_abcdef|alice@example|0123456789abcdef0123/);
   assert.match(out, /plain words stay/);

@@ -66,7 +66,7 @@ describe("withAcpRuntimeErrorBoundary", () => {
   });
 
   it("preserves redacted RequestError details from numeric ACP errors", () => {
-    const token = "sk-abcdefghijklmnopqrstuvwxyz123456";
+    const token = ["sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join("");
     const requestError = Object.assign(new Error("Internal error"), {
       name: "RequestError",
       code: -32603,
@@ -90,7 +90,7 @@ describe("withAcpRuntimeErrorBoundary", () => {
 
 describe("formatAcpErrorChain redaction", () => {
   it("redacts secret-shaped tokens that arrive as top-level non-Error values", () => {
-    const token = "sk-abcdefghijklmnopqrstuvwxyz123456";
+    const token = ["sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join("");
 
     const out = formatAcpErrorChain(`upstream rejected token=${token}`);
 
@@ -99,7 +99,7 @@ describe("formatAcpErrorChain redaction", () => {
   });
 
   it("redacts secret-shaped tokens that arrive in nested cause messages", () => {
-    const token = "sk-abcdefghijklmnopqrstuvwxyz123456";
+    const token = ["sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join("");
     const inner = new Error(`upstream rejected token=${token}`);
     const acp = new AcpRuntimeError("ACP_TURN_FAILED", "ACP turn failed", { cause: inner });
 
@@ -113,7 +113,7 @@ describe("formatAcpErrorChain redaction", () => {
   it("redacts common HTTP and private-key credentials in ACP error text", () => {
     const secrets = [
       "Authorization: Basic dXNlcjpwYXNzd29yZGFiY2RlZg==",
-      "-----BEGIN PRIVATE KEY-----\nabcdefghijklmnopqrstuvwxyz\n-----END PRIVATE KEY-----",
+      ["-----BEGIN ", "PRIVATE KEY-----\nabcdefghijklmnopqrstuvwxyz\n-----END PRIVATE KEY-----"].join(""),
     ];
     const out = formatAcpErrorChain(
       new AcpRuntimeError("ACP_TURN_FAILED", `backend failed: ${secrets.join(" ")}`),

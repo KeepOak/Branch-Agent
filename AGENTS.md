@@ -41,7 +41,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 10. **Self-test visible changes** in a scratch engine and window (browser or computer tools, or Playwright) and put screenshots in the PR. The `check-ui-proof` gate enforces this for `window/**` changes. Proof screenshots are hosted and linked in the PR body, never committed to the repo; the same gate fails a PR that adds images under `verifier/`, `proof/`, `screenshots/`, `artifacts/` or similar folders.
 
-11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. Cloud-agent commits must end with exactly `Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>` so the platform does not append a personal-email co-author line. Never force-push or rewrite pushed history on any branch, not even to change a commit message. GitHub ruleset 'No force-push on any branch' (all branches, no bypass) refuses it. Fix a bad commit with a new commit, or for a commit with a personal email, redo the work on a fresh branch from main as a new PR that supersedes the old one. PR body: what, why, exact test commands and pass counts.
+11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. Commits use a GitHub noreply author and committer and carry no `Co-authored-by` line (see SELF-CHECK.md). Never force-push or rewrite pushed history on any branch, not even to change a commit message. GitHub ruleset 'No force-push on any branch' (all branches, no bypass) refuses it. Fix a bad commit with a new commit, or for a commit with a personal email, redo the work on a fresh branch from main as a new PR that supersedes the old one. PR body: what, why, exact test commands and pass counts.
 
 12. **Merging:** Branch PR Closer merges by hand with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge:
     - `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`
@@ -66,6 +66,8 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 19. **Chat works with zero accounts.** A fresh install must reach a first reply without any sign-in or API key, using a free local default (managed `llama-cpp` when no Ollama/LM Studio is present). Packaged desktop and mobile engines must load the `llama-cpp` plugin. A release that omits it fails the packaging smoke (`scripts/check-packaged-no-key-plugin.mjs`). Never auto-start a multi-GB download without size + Cancel.
 
 20. **One Connect-a-model path.** With no usable model: the reply area shows exactly "Connect a model to get answers" and one "Connect a model" button that opens Add an account (deduplicated plain names, free/local first, no reflow). The button must be readable on light and dark themes. Do not leave a control that looks clickable but opens nothing. GOD private #1092 supersedes the earlier #1797 send-disabled bar: Send is allowed; fixing the app follows GOD's current ruling, not the old disable-Send tests. Do not mass-rewrite those tests until the app flip lands.
+
+21. **No secret-shaped literals, even in tests.** Build fake API keys and PEM headers at runtime (for example `['s', 'k-', 'x'.repeat(40)].join('')`); preflight's secret-literal check fails added lines that match a provider key format, test files included.
 
 ## Common tasks
 

@@ -22,6 +22,23 @@ export function showTrayStatus(tray: Tray | undefined, state: EngineLiveState): 
   if (tray) renderers.get(tray)?.(state);
 }
 
+type RevealableWindow = {
+  isDestroyed?: () => boolean;
+  isMinimized: () => boolean;
+  restore: () => void;
+  show: () => void;
+  focus: () => void;
+};
+
+/** Bring a hidden or minimised Branch window forward so a pairing prompt is visible. */
+export function revealResidentWindow(window: RevealableWindow | null | undefined, hidden = false): boolean {
+  if (hidden || !window || window.isDestroyed?.()) return false;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+  return true;
+}
+
 /** Where the app remembers that the one-time close notice was shown. */
 function closeNoticeFile(app: App): string | undefined {
   try {
@@ -48,10 +65,7 @@ export function keepWindowResident(
   resetQuitIntent();
   let quitting = false;
   const reveal = (): void => {
-    if (options.hidden) return;
-    if (window.isMinimized()) window.restore();
-    window.show();
-    window.focus();
+    revealResidentWindow(window, options.hidden);
   };
   const notice = createCloseNotice(options.hidden ? undefined : closeNoticeFile(app), () => {
     if (options.hidden) return false;

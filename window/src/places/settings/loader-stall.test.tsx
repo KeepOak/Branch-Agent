@@ -70,7 +70,7 @@ const CONFIG = { hash: "h", valid: true, config: {} };
 const kit = (node: ReactNode) => <KitProvider level={1} report={report} scope={null}>{node}</KitProvider>;
 
 describe("settings loaders that never answer", () => {
-  it("stops Coding apps on the deadline and checks again from Try again", async () => {
+  it("stops Coding apps on the deadline and checks again from Check again", async () => {
     const { engine, request } = engineFor(
       { "config.get": CONFIG, "usage.status": { providers: [] }, "branch.setup.detect": { candidates: [{ kind: "codex-cli", credentials: true }], unavailableCandidates: [] } },
       (method) => method === "branch.setup.detect",
@@ -84,7 +84,7 @@ describe("settings loaders that never answer", () => {
     expect(apps.textContent).not.toContain("Looking on this computer…");
     const before = request.mock.calls.filter(([method]) => method === "branch.setup.detect").length;
     hold = false;
-    await click(button("Try again", apps));
+    await click(button("Check again", apps));
     expect(request.mock.calls.filter(([method]) => method === "branch.setup.detect").length).toBeGreaterThan(before);
     expect(apps.textContent).toContain("Models ready");
   });

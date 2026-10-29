@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { readPairingConnectErrorDetails } from "../../packages/gateway-protocol/src/connect-error-details.js";
 import { resolveStateDir } from "../config/paths.js";
+import { displayHostname } from "../infra/machine-name.js";
 import type { OutsideAgentIdentity } from "./trunk-tools.js";
 import { listAgentEntries } from "../agents/agent-scope.js";
 
@@ -35,7 +36,7 @@ const slug = (value: string) =>
     .replace(/^-+|-+$/g, "");
 
 /** This Branch as its host sees it: an outside agent of kind "branch" named after this Branch. */
-export function graftBranchIdentity(name: string, where = os.hostname()): GraftIdentity {
+export function graftBranchIdentity(name: string, where = displayHostname(os.hostname())): GraftIdentity {
   // "Studio Laptop" -> branch-studio-laptop; "Branch B" -> branch-b (never "branch-branch-b").
   const rest = slug(name)
     .replace(/^branch(?:-|$)/, "")
