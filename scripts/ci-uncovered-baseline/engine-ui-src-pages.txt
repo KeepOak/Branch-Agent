@@ -1,4 +1,3 @@
-engine:ui/src/pages/about/view.test.ts
 engine:ui/src/pages/activity/activity-page.test.ts
 engine:ui/src/pages/activity/activity-pulse-window.node.test.ts
 engine:ui/src/pages/activity/current-work.test.ts
@@ -177,7 +176,6 @@ engine:ui/src/pages/chat/chat-pane-scroll-cache.test.ts
 engine:ui/src/pages/chat/chat-pane-session-access.test.ts
 engine:ui/src/pages/chat/chat-pane-session-controls.model.test.ts
 engine:ui/src/pages/chat/chat-pane-session-controls.permissions.test.ts
-engine:ui/src/pages/chat/chat-pane-session-controls.test.ts
 engine:ui/src/pages/chat/chat-pane-session-events.test.ts
 engine:ui/src/pages/chat/chat-pane-session-hydration.test.ts
 engine:ui/src/pages/chat/chat-pane-session-menu.test.ts

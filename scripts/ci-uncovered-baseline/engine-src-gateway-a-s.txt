@@ -103,7 +103,6 @@ engine:src/gateway/control-ui-asset-retention.publication.test.ts
 engine:src/gateway/control-ui-asset-retention.test.ts
 engine:src/gateway/control-ui-assistant-media-metadata.test.ts
 engine:src/gateway/control-ui-assistant-media-policy.test.ts
-engine:src/gateway/control-ui-bootstrap-presentation.test.ts
 engine:src/gateway/control-ui-conditional.http.test.ts
 engine:src/gateway/control-ui-contract.test.ts
 engine:src/gateway/control-ui-csp.test.ts

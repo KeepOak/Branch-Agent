@@ -289,7 +289,6 @@ engine:test/skills-proposal-manual-target.e2e.test.ts
 engine:test/status-shared-state-readonly.e2e.test.ts
 engine:test/subagent-requester-owner.e2e.test.ts
 engine:test/system-agent-managed-auth.e2e.test.ts
-engine:ui/src/e2e/about.e2e.test.ts
 engine:ui/src/e2e/activity-answer-candidates.e2e.test.ts
 engine:ui/src/e2e/activity-current-work.e2e.test.ts
 engine:ui/src/e2e/activity-polish.e2e.test.ts
@@ -382,7 +381,6 @@ engine:ui/src/e2e/chat-composer-outbox.e2e.test.ts
 engine:ui/src/e2e/chat-composer-picker-layout.e2e.test.ts
 engine:ui/src/e2e/chat-composer-pointer-activation.e2e.test.ts
 engine:ui/src/e2e/chat-composer-redesign.e2e.test.ts
-engine:ui/src/e2e/chat-composer-websearch-kill-switch.real-gateway.e2e.test.ts
 engine:ui/src/e2e/chat-content-copy.e2e.test.ts
 engine:ui/src/e2e/chat-context-attachment.e2e.test.ts
 engine:ui/src/e2e/chat-continue-in-terminal.e2e.test.ts
@@ -578,8 +576,6 @@ engine:ui/src/e2e/command-palette-create.e2e.test.ts
 engine:ui/src/e2e/command-palette-first-open.e2e.test.ts
 engine:ui/src/e2e/command-palette-images.e2e.test.ts
 engine:ui/src/e2e/command-palette-mentions.e2e.test.ts
-engine:ui/src/e2e/command-palette-search.real-gateway.e2e.test.ts
-engine:ui/src/e2e/community-invite-showing.e2e.test.ts
 engine:ui/src/e2e/composer-draft-store.e2e.test.ts
 engine:ui/src/e2e/composer-recovery-fences.e2e.test.ts
 engine:ui/src/e2e/composer-text-readability.e2e.test.ts
@@ -770,7 +766,6 @@ engine:ui/src/e2e/new-session-page.places-live.e2e.test.ts
 engine:ui/src/e2e/new-session-page.places.e2e.test.ts
 engine:ui/src/e2e/new-session-page.projects-places.e2e.test.ts
 engine:ui/src/e2e/new-session-page.prompt-attachments.e2e.test.ts
-engine:ui/src/e2e/new-session-page.provisional-navigation.e2e.test.ts
 engine:ui/src/e2e/new-session-page.responsive-welcome.e2e.test.ts
 engine:ui/src/e2e/new-session-page.saved-split.e2e.test.ts
 engine:ui/src/e2e/new-session-page.title.e2e.test.ts
@@ -787,7 +782,6 @@ engine:ui/src/e2e/plugin-tab-slugs.e2e.test.ts
 engine:ui/src/e2e/plugins-config-mutation.e2e.test.ts
 engine:ui/src/e2e/plugins-credentials.e2e.test.ts
 engine:ui/src/e2e/plugins-help.e2e.test.ts
-engine:ui/src/e2e/plugins-hub-navigation.e2e.test.ts
 engine:ui/src/e2e/plugins-request-ownership.e2e.test.ts
 engine:ui/src/e2e/plugins-schema-controls.e2e.test.ts
 engine:ui/src/e2e/plugins-settings-admin.e2e.test.ts
@@ -963,7 +957,6 @@ engine:ui/src/e2e/usage-known-zero-cost.e2e.test.ts
 engine:ui/src/e2e/usage-query-recovery.e2e.test.ts
 engine:ui/src/e2e/usage-reconnect.e2e.test.ts
 engine:ui/src/e2e/usage-session-unicode.e2e.test.ts
-engine:ui/src/e2e/usage-sessions-owner-attribution.e2e.test.ts
 engine:ui/src/e2e/usage-tool-count.e2e.test.ts
 engine:ui/src/e2e/warm-boot.e2e.test.ts
 engine:ui/src/e2e/worker-initial-setup.real-gateway.e2e.test.ts

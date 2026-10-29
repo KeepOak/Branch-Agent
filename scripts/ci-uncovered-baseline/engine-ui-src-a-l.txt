@@ -49,7 +49,6 @@ engine:ui/src/app/canvas-surface-lease.test.ts
 engine:ui/src/app/chat-attachment-handoff.test.ts
 engine:ui/src/app/chat-submissions.test.ts
 engine:ui/src/app/command-client-presentation.test.ts
-engine:ui/src/app/config.test.ts
 engine:ui/src/app/connection-bootstrap.test.ts
 engine:ui/src/app/context.test.ts
 engine:ui/src/app/control-ui-auth.test.ts
@@ -235,8 +234,6 @@ engine:ui/src/components/command-palette-session-search.test.ts
 engine:ui/src/components/command-palette-shortcuts.test.ts
 engine:ui/src/components/command-palette.metadata.test.ts
 engine:ui/src/components/command-palette.test.ts
-engine:ui/src/components/community-invite-card.test.ts
-engine:ui/src/components/community-invite-state.test.ts
 engine:ui/src/components/config-form-array-identity.test.ts
 engine:ui/src/components/config-form-copy-on-write.test.ts
 engine:ui/src/components/config-form.constraints.test.ts
