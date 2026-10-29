@@ -15,7 +15,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 window.matchMedia ??= ((query: string) => ({ matches: false, media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
 const FROSTED = ["g-chip", "g-ctl", "g-float"];
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
+afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
 
 function engineOf(methods: string[], handler: (method: string, params: unknown) => unknown = () => ({})) {
   const request = vi.fn(async (method: string, params?: unknown) => {
@@ -50,6 +50,7 @@ const TEMPLATES = { templates: [{ id: "home-desk", name: "Home Desk", descriptio
 
 describe("Seedbank follows the item 48 glass model", () => {
   it("draws the page clear, with every kind's sections, rows, cards and adapter tiles on pills", async () => {
+    localStorage.setItem("branch.level", "technical");
     const host = await render(engineOf([]));
     const sb = host.querySelector(".sb")!;
     expect(sb.classList).toContain("g-clear");

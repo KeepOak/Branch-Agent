@@ -75,6 +75,18 @@ export function useContacts(session: SaplingSession, ready: boolean): [Contact[]
     });
     return () => { off(); if (timer) clearTimeout(timer); refresh.cancel(); };
   }, [session, ready, refresh]);
+  // Trunks in the sidebar open by contact.threadKey. Warm those too: sessions.list's top eight may be
+  // child topics, so a Trunk click would otherwise always wait on a cold chat.history ("Opening…").
+  useEffect(() => {
+    if (!ready || !loaded || !contacts.length) return;
+    if (!("warmHistories" in session) || typeof session.warmHistories !== "function") return;
+    const keys = [...contacts]
+      .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+      .slice(0, 8)
+      .map((contact) => contact.threadKey)
+      .filter(Boolean);
+    session.warmHistories(keys);
+  }, [ready, loaded, contacts, session]);
   return [ready ? contacts : [], refresh, ready && loaded];
 }
 

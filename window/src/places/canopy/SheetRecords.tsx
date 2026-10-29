@@ -1,6 +1,7 @@
 // The card sheet's Activity tab (timeline; [A] proof, made, attachments, failed attempts, worker log, checks;
 // [T] worker rules) and Details tab [T], from the card's own engine record (CanopyCard.events / metadata).
 import { Fragment } from "react";
+import { plainError } from "../../shell/plain-error";
 import { shows } from "../../places-nav/level";
 import { rec, rows, str, type Row } from "../automations/runtime";
 import { statusName, meta } from "./cards-model";
@@ -48,7 +49,7 @@ export function ActivityTab({ ctx, c }: { ctx: Ctx; c: Row }) {
     <Sec title="Made">{made.length ? made.map(a => <p className="cn-cm" key={str(a.id)}>{str(a.label) || str(a.path) || str(a.url)}</p>) : none("Nothing made yet.")}</Sec>
     <Sec title="Attachments">{files.length ? files.map(f => <p className="cn-cm" key={str(f.id)}>{str(f.fileName)} <small className="cn-hint">{Math.ceil(Number(f.byteSize) / 1024)} KB</small>
       <button className="btn ghost sm" type="button" disabled={ctx.busy} onClick={() => void ctx.act(() => openAttachment(ctx, str(f.id)), `Opened ${str(f.fileName)}.`)}>Open</button></p>) : none("No attachments.")}</Sec>
-    <Sec title="Failed attempts">{failed.length ? failed.map(({ a, i }) => <p className="cn-cm" key={str(a.id)}><b>Attempt {i}</b> {when(a.endedAt || a.startedAt)}{str(a.model) ? ` · ${str(a.model)}` : ""} · <span className="cn-err">{str(a.error) || "Failed"}</span></p>) : none("None.")}</Sec>
+    <Sec title="Failed attempts">{failed.length ? failed.map(({ a, i }) => <p className="cn-cm" key={str(a.id)}><b>Attempt {i}</b> {when(a.endedAt || a.startedAt)}{str(a.model) ? ` · ${str(a.model)}` : ""} · <span className="cn-err">{plainError(str(a.error)) || "Failed"}</span></p>) : none("None.")}</Sec>
     <Sec title="Worker log">{logs.length ? <pre className="cn-log">{logs.map(l => `${when(l.createdAt)} ${str(l.message)}`).join("\n")}</pre> : none("Nothing logged yet.")}</Sec>
     <Sec title="Checks" extra={<button className="btn ghost sm" type="button" disabled={!ctx.write || ctx.busy} onClick={() => void ctx.act(() => ctx.engine.request("canopy.cards.diagnostics.refresh", {}), "Checked again.")}>Check again</button>}>
       {checks.length ? <ul className="cn-warns">{checks.map((d, i) => <li key={i}>{str(d.title)}{str(d.detail) ? ` · ${str(d.detail)}` : ""}</li>)}</ul> : none("No warnings.")}</Sec>

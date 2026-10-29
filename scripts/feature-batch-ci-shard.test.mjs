@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestFileSecondsFor, harvestMatrix, harvestMaxShards, harvestShardBudgetSeconds, harvestShardFiles, harvestTestFiles, harvestTests, harvestUnlistedFileSeconds, planHarvestShards, mainPushShardCounts, namedTests, planShards, plannedJobSeconds, plannedSlowestSeconds, overBudgetShards, setNamedListDir, pullRequestLinuxShardCount, resolvedShardCounts, runnerSetupSeconds, runnerTestScale, shardBudgetFor, shardBudgetSeconds, shardCountFor, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
-import { featureBatchMatrix, validateFeatureBatchMatrix } from './feature-batch-ci-matrix.mjs';
+import {
+  REGISTRY_DOWNLOAD_ATTEMPTS, isTransientRegistryError, registryRetryWaitMs, withRegistryRetry,
+} from './feature-batch-ci-runtime.mjs';
+import { featureBatchMatrix, featureBatchMaxParallel, mainPushMaxParallel, validateFeatureBatchMatrix } from './feature-batch-ci-matrix.mjs';
+import { execFileSync } from 'node:child_process';
+import { splitUiTests } from './feature-batch-ci-targets.mjs';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -87,12 +92,32 @@ test('the OS-specific macOS workflow takes its shard count from the planner, not
 
 test('pull requests start every planned shard in one wave; main pushes keep max-parallel 6', () => {
   const yaml = readFileSync(new URL('../.github/workflows/feature-batch-checks.yml', import.meta.url), 'utf8');
-  const cap = yaml.match(/max-parallel: \$\{\{ github\.event_name == 'pull_request' && (\d+) \|\| (\d+) \}\}/);
-  assert.ok(cap, 'feature-batch max-parallel must be set per event');
-  const [prCap, pushCap] = [Number(cap[1]), Number(cap[2])];
-  const pr = featureBatchMatrix({ event: 'pull_request' }).include;
-  assert.ok(prCap >= pr.length, `PR max-parallel ${prCap} is below the ${pr.length} planned PR jobs, so they would run in two waves`);
-  assert.equal(pushCap, 6);
+  // The cap is the planner's output, not a number in the workflow that can fall behind the matrix.
+  assert.match(yaml, /max_parallel: \$\{\{ steps\.plan\.outputs\.max_parallel \}\}/);
+  assert.match(yaml, /max-parallel: \$\{\{ fromJSON\(needs\.plan\.outputs\.max_parallel \|\|/);
+  assert.doesNotMatch(yaml, /max-parallel: \$\{\{ github\.event_name == 'pull_request' && \d+/);
+  const pr = featureBatchMatrix({ event: 'pull_request' });
+  assert.equal(featureBatchMaxParallel(pr, 'pull_request'), pr.include.length);
+  assert.equal(featureBatchMaxParallel(featureBatchMatrix({ event: 'push' }), 'push'), mainPushMaxParallel);
+  assert.equal(mainPushMaxParallel, 6);
+  // A named list that adds a Linux shard raises the cap with it (the #2001 case: 21 jobs against a fixed 20).
+  const grown = { include: [...pr.include, { os: 'ubuntu-latest', shard: 'x', label: 'x', scope: 'all' }] };
+  assert.equal(featureBatchMaxParallel(grown, 'pull_request'), pr.include.length + 1);
+  // The bootstrap matrices in the workflow print a cap that covers them.
+  const boot = [...yaml.matchAll(/echo 'matrix=(\{.*?\})' >> "\$GITHUB_OUTPUT"\n\s*echo 'max_parallel=(\d+)'/g)];
+  assert.equal(boot.length, 2);
+  assert.ok(Number(boot[0][2]) >= JSON.parse(boot[0][1]).include.length);
+  assert.equal(Number(boot[1][2]), 6);
+});
+
+test('the matrix CLI prints the matrix and its max_parallel', () => {
+  const script = fileURLToPath(new URL('./feature-batch-ci-matrix.mjs', import.meta.url));
+  for (const event of ['pull_request', 'push']) {
+    const out = execFileSync(process.execPath, [script, event], { encoding: 'utf8' });
+    const matrix = JSON.parse(out.match(/^matrix=(.*)$/m)[1]);
+    const cap = Number(out.match(/^max_parallel=(\d+)$/m)[1]);
+    assert.equal(cap, event === 'pull_request' ? matrix.include.length : 6);
+  }
 });
 
 test('macOS and Windows main-push shards keep ten percent budget headroom', () => {
@@ -271,6 +296,22 @@ test('a feature-batch matrix below the shard floors fails closed', () => {
   assert.equal(validateFeatureBatchMatrix(real, 'push'), real);
 });
 
+test('namedTests omit e2e files so a preflight listing cannot cover the handoff suite', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'named-e2e-'));
+  writeFileSync(
+    path.join(dir, 'pr-e2e.txt'),
+    'engine:test/gateway-desktop-handoff.e2e.test.ts\nengine:src/process/windows-hidden-launch.test.ts\n',
+  );
+  try {
+    setNamedListDir(dir);
+    const engine = namedTests('engine');
+    assert.equal(engine.includes('test/gateway-desktop-handoff.e2e.test.ts'), false);
+    assert.ok(engine.includes('src/process/windows-hidden-launch.test.ts'));
+  } finally {
+    setNamedListDir(fileURLToPath(new URL('./feature-batch-ci-named/', import.meta.url)));
+  }
+});
+
 test('the planner reads the PR named lists as data, from the directory it is given', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'named-lists-'));
   writeFileSync(path.join(dir, 'pr-added.txt'), 'engine:src/pr-added-data.test.ts\n');
@@ -298,4 +339,58 @@ test('the plan job uses the default-branch planner when it exists, and only a re
   assert.equal(push.include.filter((row) => row.os === 'windows-latest').length, mainPushShardCounts.windows);
   assert.equal(push.include.filter((row) => row.os === 'macos-latest').length, mainPushShardCounts.macos);
   assert.equal(push.include.filter((row) => row.os === 'ubuntu-latest').length, mainPushShardCounts.ubuntu);
+});
+
+test('registry 502s and timeouts are transient; 4xx and integrity mismatches fail closed', () => {
+  assert.equal(isTransientRegistryError(new Error('Download failed 502: https://registry.npmjs.org/pnpm/12.5.1')), true);
+  assert.equal(isTransientRegistryError(new Error('Download failed 503: https://registry.npmjs.org/pnpm/12.5.1')), true);
+  assert.equal(isTransientRegistryError(new Error('Download failed 504: https://registry.npmjs.org/pnpm/12.5.1')), true);
+  assert.equal(isTransientRegistryError(Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' })), true);
+  assert.equal(isTransientRegistryError(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })), true);
+  assert.equal(isTransientRegistryError(new Error('fetch failed')), true);
+  assert.equal(isTransientRegistryError(new Error('Download failed 404: https://registry.npmjs.org/missing/1.0.0')), false);
+  assert.equal(isTransientRegistryError(new Error('Download failed 401: https://registry.npmjs.org/pnpm/12.5.1')), false);
+  assert.equal(isTransientRegistryError(new Error('Registry/lock mismatch: pnpm@12.5.1')), false);
+  assert.equal(isTransientRegistryError(new Error('Downloaded tarball/lock mismatch: pnpm@12.5.1')), false);
+});
+
+test('registry download retries use backoff, then give up, and never retry a closed failure', async () => {
+  assert.deepEqual(
+    Array.from({ length: REGISTRY_DOWNLOAD_ATTEMPTS - 1 }, (_, attempt) => registryRetryWaitMs(attempt)),
+    [400, 800, 1600],
+  );
+  const waits = [];
+  let flaky = 0;
+  const recovered = await withRegistryRetry(async () => {
+    flaky += 1;
+    if (flaky < 3) throw new Error('Download failed 502: https://registry.npmjs.org/pnpm/12.5.1');
+    return 'ok';
+  }, { sleep: async (ms) => { waits.push(ms); }, log() {} });
+  assert.equal(recovered, 'ok');
+  assert.equal(flaky, 3);
+  assert.deepEqual(waits, [400, 800]);
+
+  let closed = 0;
+  await assert.rejects(withRegistryRetry(async () => {
+    closed += 1;
+    throw new Error('Download failed 404: https://registry.npmjs.org/missing/1.0.0');
+  }, { sleep: async () => { throw new Error('must not sleep on a closed failure'); }, log() {} }), /Download failed 404/);
+  assert.equal(closed, 1);
+
+  let exhausted = 0;
+  await assert.rejects(withRegistryRetry(async () => {
+    exhausted += 1;
+    throw new Error('Download failed 502: https://registry.npmjs.org/pnpm/12.5.1');
+  }, { sleep: async () => {}, log() {} }), /Download failed 502/);
+  assert.equal(exhausted, REGISTRY_DOWNLOAD_ATTEMPTS);
+});
+
+test('engine-lane Control UI files route to the UI vitest config, everything else stays on its lane config', () => {
+  const files = ['src/a.test.ts', 'ui/src/ui/markdown.test.ts', 'ui/src/pages/x.browser.test.ts', 'extensions/ui-thing/b.test.ts'];
+  assert.deepEqual(splitUiTests('engine', files), {
+    ui: ['src/ui/markdown.test.ts', 'src/pages/x.browser.test.ts'],
+    other: ['src/a.test.ts', 'extensions/ui-thing/b.test.ts'],
+  });
+  assert.deepEqual(splitUiTests('window', ['ui/src/x.test.ts']), { ui: [], other: ['ui/src/x.test.ts'] });
+  assert.deepEqual(splitUiTests('engine', []), { ui: [], other: [] });
 });

@@ -2,10 +2,10 @@
 // is open, device.pair.setupStatus says when a device used it.
 import { useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
-import { pairingConfirmCode } from "../../shared/pairing-confirm-code";
 import { CopyToken } from "../../shell/CopyToken";
 import { Dialog } from "../../shell/Dialog";
 import { errorText } from "../library/data";
+import { PAIRING_UNREACHABLE, plainError } from "../../shell/plain-error";
 import { rec, str } from "./common";
 
 type Access = "full" | "limited" | "node";
@@ -14,14 +14,12 @@ const ACCESS: { id: Access; name: string; line: string }[] = [
   { id: "limited", name: "Chat and approvals", line: "Its abilities, chat and approvals, without settings or updates." },
   { id: "node", name: "A computer that runs tasks", line: "Connect a computer as a place Trunks can run commands and use its abilities." },
 ];
-type Code = { setupId: string; setupCode: string; confirmCode: string; qr: string; joinUrl: string; expiresAtMs: number | null; downgraded: boolean };
+type Code = { setupId: string; setupCode: string; qr: string; joinUrl: string; expiresAtMs: number | null; downgraded: boolean };
 
+/** At Regular, Pair a phone keeps the phone sentence; shared plainError stays device-neutral for Add Computer. */
 function pairError(value: unknown): string {
-  const text = errorText(value);
-  if (/Gateway is only bound to loopback|PAIRING_GATEWAY_LOOPBACK|restart the Gateway/i.test(text)) {
-    return "Couldn’t make a pairing link. Try again.";
-  }
-  return text;
+  const plain = plainError(value);
+  return plain === PAIRING_UNREACHABLE ? "Your phone can't reach this computer yet." : plain;
 }
 
 // TODO(engine-lane): before the code, the artifact asks "Let your phone reach Branch?" when the Gateway only listens on
@@ -40,25 +38,29 @@ export function PairDialog({ engine, close }: { engine: WindowEngine; close: () 
       const r = rec(await engine.request("device.pair.setupCode", { includeQr: true, ...(access === "full" ? {} : { bootstrapProfile: access }), ...(access === "node" ? { joinUrl: true } : {}) }));
       const setupId = str(r.setupId);
       const setupCode = str(r.setupCode);
-      const confirm = str(r.confirmCode) || pairingConfirmCode(setupId || setupCode);
-      setCode({ setupId, setupCode, confirmCode: confirm, qr: str(r.qrDataUrl), joinUrl: str(r.joinUrl), expiresAtMs: typeof r.expiresAtMs === "number" ? r.expiresAtMs : null, downgraded: r.accessDowngraded === true });
+      setCode({ setupId, setupCode, qr: str(r.qrDataUrl), joinUrl: str(r.joinUrl), expiresAtMs: typeof r.expiresAtMs === "number" ? r.expiresAtMs : null, downgraded: r.accessDowngraded === true });
     } catch (e) { setError(pairError(e)); }
     finally { setBusy(false); }
   };
   usePairStatus(engine, code?.setupId ?? "", paired === null, setPaired);
   return <Dialog title="Pair a phone" onClose={close} testid="pair"
     footer={code ? <><button type="button" className="btn ghost" disabled={busy} onClick={() => void make()}>Make a new code</button><button type="button" className="btn pri" onClick={close}>Done</button></>
-      : <><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn pri" disabled={busy} onClick={() => void make()}>Make the code</button></>}>
+      : <><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn pri" disabled={busy} onClick={() => void make()}>{error ? "Try again" : "Make the code"}</button></>}>
     {!code ? <div className="cz-radios" role="radiogroup" aria-label="What it may do"><b>What it may do</b>{ACCESS.map(a => <label key={a.id} className="cz-radio"><input type="radio" name="pair-access" checked={access === a.id} onChange={() => setAccess(a.id)} /><span><b>{a.name}</b><small>{a.line}</small></span></label>)}</div>
       : <div className="cz-pair">
         {code.qr && <img src={code.qr} alt="Pairing code" width={180} height={180} />}
-        <ol><li>Open the Branch app on your phone.</li><li>Tap <b>Pair with a computer</b>.</li><li>Point the camera at this code.</li><li>Check that both screens show this code:<CopyToken value={code.confirmCode} label="Copy code" strong testid="pair-code" /></li></ol>
-        {code.joinUrl && <div className="cz-hint">Or open this link on that computer:<CopyToken value={code.joinUrl} label="Copy link" testid="pair-link" /></div>}
-        <p className="cz-hint">The Branch app connects by itself once it scans the code.{code.expiresAtMs ? ` The code works once and expires at ${new Date(code.expiresAtMs).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.` : ""}</p>
+        <ol>
+          <li>Open the Branch app on your phone.</li>
+          <li>Tap <b>Pair with a computer</b>.</li>
+          <li>Point the camera at this code.</li>
+          <li>Or type this pairing code on your phone:<CopyToken value={code.setupCode} label="Copy pairing code" wrap testid="pair-setup-code" /></li>
+        </ol>
+        {code.joinUrl && <div className="cz-hint">Or open this link on that computer:<CopyToken value={code.joinUrl} label="Copy link" wrap testid="pair-link" /></div>}
+        <p className="cz-hint">After it scans, this computer shows a short check code to match the phone.{code.expiresAtMs ? ` The pairing code works once and expires at ${new Date(code.expiresAtMs).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.` : ""}</p>
         {code.downgraded && <p className="cz-hint">Limited for safety: this address isn't private, so the code gives chat and approvals only.</p>}
         {paired && <p role="status" className="cz-ok">Paired with {paired}.</p>}
       </div>}
-    {error && <p role="alert" className="cz-error">{error}</p>}
+    {error && <p role="alert" className="cz-error">{plainError(error)}</p>}
   </Dialog>;
 }
 

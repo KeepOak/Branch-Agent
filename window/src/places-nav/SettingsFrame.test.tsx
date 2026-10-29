@@ -335,7 +335,7 @@ describe("DA-73 settings destinations", () => {
     await open(page);
     expect(document.querySelector(".set-nav [aria-current=true]")?.textContent).toBe("Trunks");
     const sections = [...document.querySelectorAll(".set-sections .set-item")].map((item) => item.textContent);
-    expect(sections).toEqual(["Instructions & personality", "Models & accounts", "Voice", "Chat apps", "Helpers"]);
+    expect(sections).toEqual(["Trunks", "Instructions & personality", "Models & accounts", "Voice", "Chat apps", "Helpers"]);
     expect(document.querySelector(".set-sections [aria-current=true]")?.textContent).toBe("Models & accounts");
     expect(document.querySelector("[role=tablist][aria-label=\"Models & accounts\"] [aria-selected=true]")?.textContent).toBe(page === "models" ? "Default" : page === "local" ? "Local" : "Accounts");
     expect(document.querySelectorAll(".set-col h1")).toHaveLength(1);

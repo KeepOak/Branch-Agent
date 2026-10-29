@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import {
   allowlistedDesktopRunTargets,
@@ -7,6 +9,8 @@ import {
   coverageTargets,
   desktopRunTargets,
   handoffRunTargets,
+  loadUnlistedRunner,
+  unlistedDesktopTargets,
   postMergeEngineRunTargets,
   pullRequestDesktopRunTargets,
   uncoveredTests,
@@ -77,7 +81,7 @@ test('the post-merge catalog-fallback test counts as covered only through its ex
   const desktop = readFileSync(new URL('../.github/workflows/desktop-checks.yml', import.meta.url), 'utf8');
   const file = 'engine/test/scripts/control-ui-i18n.generated.test.ts';
   // Hermetic: no named list from the repo, so the file is covered only by the post-merge run line.
-  const noNamedLists = { namedFor: () => [] };
+  const noNamedLists = { namedFor: () => [], namedE2eFor: () => [] };
   assert.deepEqual(uncoveredTests([file], coverageTargets(desktop, '', '', '', noNamedLists)), [file]);
   assert.deepEqual(uncoveredTests([file], coverageTargets(desktop, '', '', workflow, noNamedLists)), []);
 });
@@ -163,4 +167,108 @@ test('coverage includes actual slice, priority, Harvest and desktop CI targets',
   assert.deepEqual(uncoveredTests(changed, covered), []);
   assert.deepEqual(uncoveredTests(['engine/src/agents/agent-scope.test.ts'], covered),
     ['engine/src/agents/agent-scope.test.ts']);
+});
+
+const STAND_IN_RUNNER = [
+  "import { existsSync, readdirSync, readFileSync } from 'node:fs';",
+  "import { join } from 'node:path';",
+  "export const EXCLUDED = [['scripts/excluded.test.mjs', 'needs a display']];",
+  'export function pickUnlistedTests({ desktopDir, workflowPath, excluded = EXCLUDED }) {',
+  "  const workflow = readFileSync(workflowPath, 'utf8');",
+  '  const skip = new Set(excluded.map(([file]) => file));',
+  "  const dir = join(desktopDir, 'scripts');",
+  '  if (!existsSync(dir)) return [];',
+  "  return readdirSync(dir).filter((name) => name.endsWith('.test.mjs')).map((name) => `scripts/${name}`)",
+  '    .filter((file) => !workflow.includes(file) && !skip.has(file));',
+  '}',
+  '',
+].join('\n');
+
+// A temporary repo root; with the stand-in runner written into it when asked. Never the real repo.
+function tempRepo(withRunner) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'unlisted-runner-'));
+  if (withRunner) {
+    mkdirSync(path.join(dir, 'desktop/scripts'), { recursive: true });
+    writeFileSync(path.join(dir, 'desktop/scripts/run-unlisted-tests.mjs'), STAND_IN_RUNNER);
+  }
+  return dir;
+}
+
+const UNNAMED_WORKFLOW = 'on:\n  pull_request:\njobs:\n  desktop:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n';
+
+// The CLI's own steps: the gate's targets, plus what the runner (if the repo has it) would run.
+async function uncoveredWithRunner(file, withRunner) {
+  const dir = tempRepo(withRunner);
+  try {
+    const runner = await loadUnlistedRunner(dir);
+    assert.equal(runner === null, !withRunner);
+    const changed = changedTestPaths(`A\t${file}\n`);
+    const covered = coverageTargets(UNNAMED_WORKFLOW, '', '', '', { namedFor: () => [], namedE2eFor: () => [] });
+    for (const target of unlistedDesktopTargets(runner, changed, UNNAMED_WORKFLOW)) covered.add(target);
+    return uncoveredTests(changed, covered);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('without the unlisted-tests runner file, a desktop test no step names is still uncovered', async () => {
+  assert.deepEqual(await uncoveredWithRunner('desktop/scripts/new.test.mjs', false), ['desktop/scripts/new.test.mjs']);
+});
+
+test('with the unlisted-tests runner present, a desktop test it picks up is covered', async () => {
+  assert.deepEqual(await uncoveredWithRunner('desktop/scripts/new.test.mjs', true), []);
+});
+
+test('with the unlisted-tests runner present, a desktop test in its EXCLUDED list is still uncovered', async () => {
+  assert.deepEqual(await uncoveredWithRunner('desktop/scripts/excluded.test.mjs', true), ['desktop/scripts/excluded.test.mjs']);
+});
+
+test('a changed test that no CI job runs is still a coverage failure', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/desktop-checks.yml', import.meta.url), 'utf8');
+  const covered = coverageTargets(workflow);
+  const missing = 'window/src/not-in-ci.test.tsx';
+  assert.equal(covered.has(missing), false);
+  assert.deepEqual(uncoveredTests([missing], covered), [missing]);
+});
+
+test('a changed engine e2e test is covered only when the named e2e list (run by feature-batch-ci) has it', () => {
+  const file = 'engine/ui/src/e2e/about.e2e.test.ts';
+  const none = { namedFor: () => [], namedE2eFor: () => [] };
+  assert.deepEqual(uncoveredTests([file], coverageTargets('', '', '', '', none)), [file]);
+  const e2eListed = { namedFor: () => [], namedE2eFor: (lane) => (lane === 'engine' ? ['ui/src/e2e/about.e2e.test.ts'] : []) };
+  assert.deepEqual(uncoveredTests([file], coverageTargets('', '', '', '', e2eListed)), []);
+  assert.deepEqual(uncoveredTests(['engine/ui/src/e2e/other.e2e.test.ts'], coverageTargets('', '', '', '', e2eListed)),
+    ['engine/ui/src/e2e/other.e2e.test.ts']);
+});
+
+test('feature-batch-ci runs named e2e tests in runFeatureTests only, and preflight checks they exist', () => {
+  const src = readFileSync(new URL('./feature-batch-ci.mjs', import.meta.url), 'utf8');
+  const body = (name) => src.slice(src.indexOf(`function ${name}(`), src.indexOf('\n}\n', src.indexOf(`function ${name}(`)));
+  assert.doesNotMatch(body('validateScope'), /runNamedE2eTests/);
+  assert.match(body('validateScope'), /namedE2eTests\(lane\)\) await fs\.access/);
+  const run = body('runFeatureTests');
+  assert.ok(run.indexOf('runNamedE2eTests(env, shard)') > run.indexOf('const shard = shardOf()'));
+  // Only full-scope Linux shards run them (PR Linux shards always run); never the touched or non-Linux jobs.
+  assert.match(body('runNamedE2eTests'), /if \(!namedE2eScope\(\)\) return;/);
+  assert.match(src, /scope !== 'touched' && platform === 'linux'/);
+});
+
+test('named e2e entries stay out of the unit named list that feeds the vitest shards', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const targets = await import('./feature-batch-ci-targets.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'named-'));
+  writeFileSync(join(dir, 'x.txt'), [
+    'engine:ui/src/e2e/about.e2e.test.ts',
+    'engine:test/gateway-desktop-handoff.e2e.test.ts',
+    'engine:src/foo.test.ts',
+  ].join('\n'));
+  targets.setNamedListDir(dir);
+  try {
+    assert.deepEqual(targets.namedTestFiles('engine'), ['src/foo.test.ts']);
+    assert.deepEqual(targets.namedTestFiles('engine', undefined, { e2e: true }), ['ui/src/e2e/about.e2e.test.ts']);
+  } finally {
+    targets.setNamedListDir(new URL('./feature-batch-ci-named/', import.meta.url).pathname);
+  }
 });

@@ -5,6 +5,7 @@ import { replaceFileAtomicSync } from "@openclaw/fs-safe/atomic";
 import { expectDefined } from "@branch/normalization-core";
 import { normalizeLowercaseStringOrEmpty } from "@branch/normalization-core/string-coerce";
 import { CONFIG_DIR } from "../utils.js";
+import { displayHostname } from "./machine-name.js";
 
 const DNS_LABEL_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
 const MAX_DNS_NAME_LENGTH = 253;
@@ -144,7 +145,7 @@ export type WideAreaGatewayZoneOpts = {
 export function renderWideAreaGatewayZoneText(
   opts: WideAreaGatewayZoneOpts & { serial: number },
 ): string {
-  const hostname = os.hostname().split(".")[0] ?? "branch";
+  const hostname = displayHostname(os.hostname()).split(".")[0] ?? "branch";
   const hostLabel = dnsLabel(opts.hostLabel ?? hostname, "branch");
   const instanceLabel = dnsLabel(opts.instanceLabel ?? `${hostname}-gateway`, "branch-gw");
   const domain = normalizeWideAreaDomain(opts.domain) ?? "local.";

@@ -1,7 +1,7 @@
 // Interactive free local model setup: ask with size and Cancel, and never download until Yes.
 import { useEffect, useRef, useState } from "react";
 import { Coming } from "../glass/coming";
-import { useWizard } from "../places/settings/use-wizard";
+import { useWizard, type WizardStep } from "../places/settings/use-wizard";
 import type { WindowEngine } from "./engine";
 import { FREE_MODEL_FAILED, NO_KEY_DEFAULT_KIND } from "./no-key-default";
 
@@ -20,8 +20,30 @@ type Props = {
 
 function friendlyWizardError(message: string): string {
   if (/sign-in was cancelled/i.test(message)) return FREE_MODEL_CANCELLED;
-  if (/sign-in did not finish/i.test(message)) return FREE_MODEL_FAILED;
-  return message.trim() || FREE_MODEL_FAILED;
+  if (message === "A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster.") return message;
+  return FREE_MODEL_FAILED;
+}
+
+const PLAIN_QUESTION = "Download a free model so Branch can answer without an account?";
+
+export function plainFreeModelQuestion(step: Pick<WizardStep, "message">): string {
+  // Only extract the model fields from the engine's final question, never its recommendation.
+  const question = (step.message ?? "").trim().split(/\r?\n\s*\r?\n/).at(-1) ?? "";
+  const download = /^Download (.+?) \((\d+(?:\.\d+)?) GB\)(?:(?:, | and ).+runtime, then use this model)?\?$/.exec(question);
+  const cached = /(?:^|\. )Use cached (.+?)(?:, download any missing .+runtime files, then use this model\?| on Gateway host .+ with the verified CPU runtime\?)$/.exec(question);
+  const name = (download?.[1] ?? cached?.[1])?.trim();
+  if (!name || /runtime|\bCUDA\b|\bCPU\b|embedding|tool calls?|llama\.cpp|\b(?:metal|vulkan|backend|gateway|host)\b|[\r\n]/i.test(name)) return PLAIN_QUESTION;
+  return download
+    ? `Download a free model (${name}, ${download[2]} GB) so Branch can answer without an account?`
+    : `Use the free model ${name} that is already on this computer so Branch can answer without an account?`;
+}
+
+function plainFreeModelStep(step: WizardStep): string {
+  if (step.type === "confirm") return plainFreeModelQuestion(step);
+  if (step.title === "Setup skipped") return "Free model setup was skipped.";
+  // Keep numeric download progress, but not file, computer, or backend names.
+  const progress = /(\d+(?:\.\d+)?% \([\d.]+\/[\d.]+ GB, [\d.]+ MB\/s\))$/.exec(step.message ?? "");
+  return progress ? `Downloading… ${progress[1]}` : "Preparing your free model…";
 }
 
 export function FreeModelSetup({ engine, onReady, variant = "composer" }: Props) {
@@ -87,12 +109,7 @@ function FreeModelWizard({
   return (
     <div className={card} data-testid="free-model-setup" aria-live="polite">
       {w.view.phase === "starting" ? <p role="status">{FREE_MODEL_CHECKING}</p> : null}
-      {step ? (
-        <>
-          {step.title ? <b>{step.title}</b> : null}
-          {step.message ? <p data-lines="">{step.message}</p> : null}
-        </>
-      ) : null}
+      {step ? <p data-lines="">{plainFreeModelStep(step)}</p> : null}
       {w.view.phase === "error" ? <p role="alert" data-testid="no-key-failed">{friendlyWizardError(w.view.message)}</p> : null}
       <div className={acts}>
         {asking ? (

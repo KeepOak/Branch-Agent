@@ -77,6 +77,7 @@ export async function readCodexCliCredentialsAsync(
   const home = await fs.realpath(options.codexHome).catch(() => path.resolve(options.codexHome));
   const { CodexAppServerClient } = await import("../app-server/client.js");
   const {
+    resolveInstalledOnDemandCodexNativeCommand,
     resolveInstalledPathCodexCommand,
     resolveManagedCodexPackageEntrypoint,
     resolveManagedCodexNativeCommand,
@@ -84,10 +85,12 @@ export async function readCodexCliCredentialsAsync(
   const launcher = resolveManagedCodexPackageEntrypoint(
     path.dirname(fileURLToPath(import.meta.url)),
   );
-  // Release builds ship no Codex binary; the Codex installed on this computer reads the same storage.
+  // Release builds ship no Codex binary. Read the same storage from a bundled
+  // package, a codex on PATH, or the verified first-use download.
   const command =
     (launcher ? resolveManagedCodexNativeCommand(launcher) : undefined) ??
-    (await resolveInstalledPathCodexCommand());
+    (await resolveInstalledPathCodexCommand()) ??
+    (await resolveInstalledOnDemandCodexNativeCommand());
   if (!command) {
     return undefined;
   }

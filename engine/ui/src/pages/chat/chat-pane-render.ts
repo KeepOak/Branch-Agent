@@ -4,6 +4,7 @@ import { resolveControlUiAuthToken } from "../../app/control-ui-auth.ts";
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
 import { hasOperatorAdminAccess, hasOperatorWriteAccess } from "../../app/operator-access.ts";
 import { patchSettings } from "../../app/settings.ts";
+import { resolveOwnerDisplayName } from "../../app/user-identity.ts";
 import { readPresenceEntries, resolveCurrentSelfUser } from "../../app/user-profile.ts";
 import {
   markdownSessionPublicOrigin,
@@ -674,7 +675,7 @@ export class ChatPane extends ChatPaneLayoutRender {
         hello: this.context.gateway.snapshot.hello,
       }),
       userId: this.presentationUserId,
-      userName: selfUser?.name ?? state.userName,
+      userName: resolveOwnerDisplayName(selfUser, { name: state.userName }),
       userAvatar: selfUser?.avatarUrl ?? state.userAvatar,
       personActivity: personActivityRouting(this.context),
       mediaPolicyEpoch: state.mediaPolicyEpoch,

@@ -1,0 +1,2 @@
+window:src/screens/settings/pages/accounts-live-coding-apps.test.tsx
+window:src/shell/plain-error.test.tsx

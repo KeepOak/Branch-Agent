@@ -8,7 +8,7 @@ import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
-import { entriesOf, errorText, num, rec, trunkName, type FileEntry, type Trunk } from "./data";
+import { entriesOf, errorText, num, plainFailure, rec, trunkName, type FileEntry, type Trunk } from "./data";
 import { hitsOf } from "./memory";
 import { EmptyIcon, Grey, IcoTile, LibIcon, mapLimited, Row, Section, TypeBadge, when, type LibIconName } from "./parts";
 import { FileDialog } from "./reader";
@@ -38,7 +38,7 @@ async function listFolder(engine: WindowEngine, trunks: Trunk[], folder: Folder 
   // Load more asks only the Trunks that said they have more.
   const scope = Object.keys(offsets).length ? inFolder.filter(t => t.id in offsets) : inFolder;
   const answers = await mapLimited(scope, 4, t => engine.request<unknown>("agents.workspace.list", { agentId: t.id, path: folder?.path ?? "", offset: offsets[t.id] ?? 0 })
-    .then(w => ({ t, w, e: null as string | null }), e => ({ t, w: null, e: errorText(e) })));
+    .then(w => ({ t, w, e: null as string | null }), e => ({ t, w: null, e: plainFailure(errorText(e)) })));
   const docs: Doc[] = [], errors: string[] = [], more: Listing["more"] = [];
   for (const { t, w, e } of answers) {
     if (e) { errors.push(`${trunkName(t)}: ${e}`); continue; }
@@ -65,7 +65,7 @@ function useDocuments(engine: WindowEngine, trunks: Trunk[], folder: Folder | nu
     const appending = Object.keys(offsets).length > 0;
     void listFolder(engine, trunks, folder, offsets).then(
       next => { if (current) setState(s => ({ where, error: null, list: appending && s.where === where && s.list ? { ...next, docs: [...s.list.docs, ...next.docs] } : next })); },
-      e => { if (current) setState({ where, list: null, error: errorText(e) }); });
+      e => { if (current) setState({ where, list: null, error: plainFailure(errorText(e)) }); });
     return () => { current = false; };
   }, [engine, ids, where, offsetsKey, revision]); // trunks and folder are read through ids and where
   const mine = state.where === where ? state : { list: null, error: null };
@@ -88,12 +88,12 @@ export function DocumentsTab({ engine, level, trunks, defaultId, mainKey }: { en
   const files = docs.list?.docs.filter(d => d.kind !== "directory") ?? [];
   return <div className="lib-docs">
     <DocumentTools trunks={trunks} creation={creation} />
-    {creation.error && <p className="lib-bad" role="alert">{creation.error}</p>}
+    {creation.error && <p className="lib-bad" role="alert">{plainFailure(creation.error)}</p>}
     {creation.note && <p className="lib-hint" role="status">{creation.note}</p>}
     {folder && <button type="button" className="link lib-up" onClick={() => setFolder(null)}>‹ Documents</button>}
     {folder && <p className="lib-hint">{folder.trunk} · {folder.path}</p>}
-    {docs.error && <p className="lib-bad" role="alert">{docs.error}</p>}
-    {docs.list?.errors.map(e => <p key={e} className="lib-bad" role="alert">{e}</p>)}
+    {docs.error && <p className="lib-bad" role="alert">{plainFailure(docs.error)}</p>}
+    {docs.list?.errors.map(e => <p key={e} className="lib-bad" role="alert">{plainFailure(e)}</p>)}
     {!docs.list && !docs.error && <p className="lib-hint" role="status">Loading…</p>}
     {docs.list && !docs.list.docs.length && !docs.list.errors.length && <EmptyLine icon={<EmptyIcon name="file" />}>{folder ? "No documents." : "No documents yet. Trunks add what they read here; you can write one too."}</EmptyLine>}
     <div className="lib-plain" data-testid="document-list">
@@ -160,7 +160,7 @@ function TestWhatItFinds({ engine, trunks, files }: { engine: WindowEngine; trun
     if (!query.trim()) return;
     setBusy(true);
     const answers = await mapLimited(trunks, 4, t => engine.request<unknown>("memory.search", { agentId: t.id, query: query.trim() })
-      .then(r => ({ t, r, e: null as string | null }), err => ({ t, r: null, e: errorText(err) })));
+      .then(r => ({ t, r, e: null as string | null }), err => ({ t, r: null, e: plainFailure(errorText(err)) })));
     const passages = answers.flatMap(a => hitsOf(rec(a.r).results).map(p => ({ ...p, trunk: trunkName(a.t) }))).sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     setFound({ passages, errors: answers.flatMap(a => (a.e ? [`${trunkName(a.t)}: ${a.e}`] : [])) });
     setBusy(false);
@@ -170,7 +170,7 @@ function TestWhatItFinds({ engine, trunks, files }: { engine: WindowEngine; trun
     <form className="lib-form" onSubmit={find}><input className="inp" aria-label="A question to test" placeholder="who fixes the boiler?" value={query} onChange={e => setQuery(e.target.value)} /><button type="submit" className="btn sm" disabled={busy || !query.trim()}>Find</button></form>
     {!!files.length && <div className="lib-only"><span>Only these files:</span>{files.slice(0, 12).map(f => <label key={f.agentId + f.path} className="lib-chk"><input type="checkbox" checked={only.includes(f.path)} onChange={e => setOnly(o => (e.target.checked ? [...o, f.path] : o.filter(x => x !== f.path)))} />{f.name}</label>)}</div>}
     {busy && <p className="lib-hint" role="status">Finding…</p>}
-    {found?.errors.map(e => <p key={e} className="lib-bad" role="alert">{e}</p>)}
+    {found?.errors.map(e => <p key={e} className="lib-bad" role="alert">{plainFailure(e)}</p>)}
     {found && !busy && (shown.length ? <div className="lib-plain">{shown.map((p, i) => <Row key={p.path + i} icon="file" title={`${p.path} · lines ${p.startLine}–${p.endLine}`} line={`${p.trunk}${p.score !== undefined ? ` · score ${p.score.toFixed(2)}` : ""} · ${p.snippet}`} />)}</div>
       : <p className="lib-hint">No passages found for that question.</p>)}
   </Section>;

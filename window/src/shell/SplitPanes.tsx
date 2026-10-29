@@ -7,6 +7,7 @@ import { Pebble } from "../face/Pebble";
 import { Icon } from "./icons";
 import type { MenuItem } from "./Menu";
 import { TalkThread, useTalkThread } from "./TalkBeside";
+import { plainError } from "./plain-error";
 import "./split.css";
 
 export type Pane = { key: string | null; dir: "right" | "down" };
@@ -97,7 +98,7 @@ function ConversationPane({ n, k, p }: { n: number; k: string; p: Props }) {
       <div className="pane-sc">
         <TalkThread rows={thread.rows} name={trunk} running={thread.running} pending={pending} />
       </div>
-      {thread.error ? <p className="talk-error" role="alert">{thread.error}</p> : null}
+      {thread.error ? <p className="talk-error" role="alert">{plainError(thread.error)}</p> : null}
       <form className="pane-c" onSubmit={(e) => (e.preventDefault(), void send())}>
         <input className="inp" aria-label={`Message ${trunk}`} placeholder={`Message ${trunk}`} autoComplete="off" value={draft} onChange={(e) => setDraft(e.target.value)} />
         <button type="submit" className="btn sm primary" disabled={!draft.trim()}>Send</button>

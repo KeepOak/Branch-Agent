@@ -20,6 +20,7 @@ import { mcpAppRouteFromSearch, resolveMcpAppRouteServer } from "../../lib/mcp-a
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 import "../../components/mcp-app-catalog.ts";
+import { APPS_LEVEL_KEY, readAppsTechnical } from "./apps-level.ts";
 import { buildMacGatewayLaunchUrl } from "./gateway-launch.ts";
 import { renderApps } from "./view.ts";
 
@@ -47,6 +48,22 @@ class AppsPage extends BranchLightDomElement {
   constructor() {
     super();
     void new SubscriptionsController(this).watchStore(() => this.context?.gateway);
+  }
+
+  private readonly onLevelStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key === APPS_LEVEL_KEY) {
+      this.requestUpdate();
+    }
+  };
+
+  override connectedCallback() {
+    super.connectedCallback();
+    globalThis.addEventListener?.("storage", this.onLevelStorage);
+  }
+
+  override disconnectedCallback() {
+    globalThis.removeEventListener?.("storage", this.onLevelStorage);
+    super.disconnectedCallback();
   }
 
   private renderAppConversation(route: NonNullable<ReturnType<typeof mcpAppRouteFromSearch>>) {
@@ -154,6 +171,8 @@ class AppsPage extends BranchLightDomElement {
           onPairDevice: canPairDevice
             ? () => void this.context.overlays.openDevicePairSetup()
             : undefined,
+          // Same branch.level as the window Get the apps dialog (Verifier FIX on #2012).
+          technical: readAppsTechnical(),
         });
     return html`<section class="content-header" ${shellLayoutTraits({ toolbarHeader: true })}>
         <div><div class="page-title">${titleForRoute("apps")}</div></div>

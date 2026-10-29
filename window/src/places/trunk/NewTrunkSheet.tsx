@@ -4,8 +4,17 @@ import { useState } from "react";
 import { Face } from "../../face/Face";
 import { Dialog } from "../../shell/Dialog";
 import { Layer } from "./layer";
-import { canCreateTrunk, SHAPE_RADII, startingLook, TRUNK_COLOURS, TRUNK_SHAPES, type NewTrunkDraft, type TrunkColour, type TrunkShape } from "./new-trunk-sheet";
+import { canCreateTrunk, startingLook, TRUNK_COLOURS, TRUNK_SHAPES, type NewTrunkDraft, type TrunkColour, type TrunkShape } from "./new-trunk-sheet";
 import "./new-trunk-sheet.css";
+
+// Small swatches need clear silhouettes: the face's subtly different pebble radii look alike at this size.
+const SHAPE_PATHS: Record<TrunkShape, string> = {
+  Circle: "M20 4a16 16 0 1 0 0 32 16 16 0 1 0 0-32Z",
+  Stone: "M10 7 27 4Q31 4 33 9L37 23Q38 28 33 31L18 36Q12 38 8 32L3 21Q1 16 5 12Z",
+  Leaf: "M5 35Q-1 4 35 5Q36 36 5 35Z",
+  Acorn: "M18 2h4v5c8 1 14 6 14 13H4c0-7 6-12 14-13ZM7 23h26c-1 8-7 13-13 15C14 36 8 31 7 23Z",
+  Shield: "M4 5h32v13c0 10-8 16-16 20C12 34 4 28 4 18Z",
+};
 
 export function NewTrunkSheet({ count, busy, error, onClose, onCreate }: {
   count: number;
@@ -37,9 +46,10 @@ export function NewTrunkSheet({ count, busy, error, onClose, onCreate }: {
           <div className="nt-field">
             <span>Shape</span>
             <div className="nt-shapes" role="group" aria-label="Shape">
-              {TRUNK_SHAPES.map((item, index) => (
+              {TRUNK_SHAPES.map((item) => (
                 <button key={item} type="button" className="nt-shape" aria-label={item} aria-pressed={shape === item} disabled={busy} onClick={() => setShape(item)}>
-                  <span style={{ borderRadius: SHAPE_RADII[index], background: colour }} />
+                  <svg width="28" height="28" viewBox="0 0 40 40" fill={colour} aria-hidden="true"><path d={SHAPE_PATHS[item]} /></svg>
+                  <small>{item}</small>
                 </button>
               ))}
             </div>

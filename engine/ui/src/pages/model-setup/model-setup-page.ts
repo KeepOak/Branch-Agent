@@ -39,6 +39,7 @@ import {
   preparedModelPageState,
   updateModelSetupWizardDraft,
   mapActivationResult,
+  MODEL_SETUP_LOADING_STALL_MS,
   type ModelSetupActivationState,
   type ModelSetupPageState,
   type ModelSetupVerifyState,
@@ -94,6 +95,7 @@ export class ModelSetupPage extends BranchLightDomElement {
   private wizardMutationGeneration = 0;
   private wizardMutationActive = false;
   private wizardReturnFocus: HTMLElement | null = null;
+  private loadingStallTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly firstRun = new FirstRunSetup({
     context: () => this.context,
     routeData: () => this.routeData,
@@ -149,6 +151,12 @@ export class ModelSetupPage extends BranchLightDomElement {
     )
     .watchStore(
       () => this.context && this.agentSelection,
+      () => this.synchronizeGateway(this.context.gateway.snapshot),
+    )
+    // A roster that arrives without changing the (null) settings selection must still
+    // release the pending state and start detection.
+    .watchStore(
+      () => this.context?.agents,
       () => this.synchronizeGateway(this.context.gateway.snapshot),
     )
     .watchStore(() => this.firstRun);
@@ -225,6 +233,7 @@ export class ModelSetupPage extends BranchLightDomElement {
   private readonly verifyTask = createModelSetupVerifyTask(this);
 
   override disconnectedCallback() {
+    this.clearLoadingStall();
     this.firstRun.dispose();
     this.resetActivity();
     this.observedConnection = null;
@@ -250,6 +259,44 @@ export class ModelSetupPage extends BranchLightDomElement {
     }
     this.iconLoader.reconcile();
     this.firstRun.start();
+    this.reconcileLoadingStall();
+  }
+
+  private clearLoadingStall(): void {
+    if (this.loadingStallTimer) {
+      clearTimeout(this.loadingStallTimer);
+      this.loadingStallTimer = null;
+    }
+  }
+
+  /**
+   * "Checking this Gateway…" must never be permanent. If the page is loading but no
+   * detection request is running (setup cannot start, or the roster never arrives),
+   * surface a retryable error instead of grey placeholders forever (#1929).
+   */
+  private reconcileLoadingStall(): void {
+    const stalled =
+      this.pageState.phase === "loading" &&
+      this.detectionRequest === null &&
+      !this.wizard.hasAdmittedSession;
+    if (!stalled) {
+      this.clearLoadingStall();
+      return;
+    }
+    if (this.loadingStallTimer) {
+      return;
+    }
+    this.loadingStallTimer = setTimeout(() => {
+      this.loadingStallTimer = null;
+      if (
+        this.isConnected &&
+        this.pageState.phase === "loading" &&
+        this.detectionRequest === null &&
+        !this.wizard.hasAdmittedSession
+      ) {
+        this.pageState = { phase: "detect-error", message: t("modelSetup.errors.requestFailed") };
+      }
+    }, MODEL_SETUP_LOADING_STALL_MS);
   }
 
   private synchronizeGateway(snapshot: ApplicationContext["gateway"]["snapshot"]): void {
@@ -337,10 +384,23 @@ export class ModelSetupPage extends BranchLightDomElement {
     const snapshot = this.context.gateway.snapshot;
     return Boolean(
       client &&
-      (this.routeData?.firstRun === true || this.agentSelection.state.selectedId !== null) &&
+      this.hasSetupTarget() &&
       snapshot.phase === "connected" &&
       hasOperatorAdminAccess(snapshot.hello?.auth ?? null) &&
       isGatewayMethodAdvertised(snapshot, "branch.setup.detect") === true,
+    );
+  }
+
+  /**
+   * Settings selection only names configured agents. A fresh install whose roster holds
+   * just the system agent has none, yet chat works through the Gateway default, so setup
+   * probes that default (no agentId) instead of waiting forever for a selection (#1929).
+   */
+  private hasSetupTarget(): boolean {
+    return (
+      this.routeData?.firstRun === true ||
+      this.agentSelection.state.selectedId !== null ||
+      this.context.agents.state.agentsList !== null
     );
   }
 

@@ -26,6 +26,11 @@ jest.mock('expo-updates', () => ({
   checkForUpdateAsync: async () => ({ isAvailable: false }),
   fetchUpdateAsync: async () => ({ isNew: false }),
 }));
+// First-run is the pairing screen, which reads the camera permission. Jest has no camera.
+jest.mock('expo-camera', () => ({
+  CameraView: () => null,
+  useCameraPermissions: () => [{ granted: false, canAskAgain: true, status: 'undetermined' }, jest.fn()],
+}));
 // The composer imports these; Jest has no camera, library or document picker.
 jest.mock('expo-image-picker', () => ({
   launchCameraAsync: async () => ({ canceled: true, assets: [] }),

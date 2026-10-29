@@ -25,6 +25,7 @@ import {
   getWorkflowRun,
   listCatchUpLatchRuns,
   listCommitCheckRuns,
+  loadLatestReleaseIdentity,
   pushBackupShouldRelease,
   rerunFailedWorkflowJobs,
   resolveFailedReleaseChecks,
@@ -80,11 +81,15 @@ test("component-release workflow keeps the schedule and uses push as a 25-minute
   const windowAt = readiness.indexOf("more than 25 minutes old");
   const checksAt = readiness.indexOf("resolve-failed-checks");
   assert.ok(windowAt !== -1 && checksAt !== -1 && windowAt < checksAt);
+  assert.match(readiness, /load-latest-release --repo/);
+  assert.match(readiness, /Could not load the latest release at \$main_commit \(checks-unavailable\)/);
   assert.match(readiness, /resolve-failed-checks --sha/);
   assert.match(readiness, /\$decision_skip" == "true" && "\$failed_checks" == "0"/);
   assert.match(readiness, /Could not confirm checks at \$main_commit/);
   assert.match(readiness, /cooldown\|failed-checks\|checks-unavailable\|checks-over-cap/);
   assert.match(readiness, /decision_reason" == "checks-over-cap"/);
+  const decide = workflow.slice(workflow.indexOf("decide_scheduled()"), workflow.indexOf("\n          should_release="));
+  assert.doesNotMatch(decide, /merge-gate-rate-limit/);
 });
 
 test("failed publish catches up only while that commit is still Latest", () => {
@@ -228,6 +233,10 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
   assert.match(rehearsalJob, /\*component-release-readiness-check/);
   assert.match(identityJob, /needs: \[readiness, readiness-rehearsal\]/);
   assert.match(identityJob, /needs\.readiness-rehearsal\.outputs\.should_release == 'true'/);
+  assert.match(identityJob, /already_released: \$\{\{ steps\.identity\.outputs\.already_released \}\}/);
+  assert.match(identityJob, /Release v\$\{version\} already exists; skipping publish/);
+  assert.match(identityJob, /Existing release v\$\{version\} points at a different source commit/);
+  assert.match(identityJob, /draft" != "true"/);
 });
 
 test("workflow_dispatch force is ignored on any other event and does not skip downstream jobs", () => {
@@ -262,9 +271,9 @@ test("downstream release jobs require their build dependencies after always()", 
   const catchUp = workflow.slice(workflow.indexOf("\n  catch-up:"));
   const readinessJob = workflow.slice(workflow.indexOf("\n  readiness:"), workflow.indexOf("\n  readiness-rehearsal:"));
   const rehearsalJob = workflow.slice(workflow.indexOf("\n  readiness-rehearsal:"), workflow.indexOf("\n  identity:"));
-  assert.match(windowJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
+  assert.match(windowJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && needs\.identity\.outputs\.already_released != 'true' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
   assert.match(nativeJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && needs\.window\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
-  assert.match(publishJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && needs\.native\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
+  assert.match(publishJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && \(needs\.native\.result == 'success' \|\| needs\.identity\.outputs\.already_released == 'true'\) && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
   assert.match(catchUp, /needs\.publish\.result == 'success' \|\| needs\.publish\.result == 'failure' \|\| needs\.readiness\.outputs\.skip_reason == 'cooldown' \|\| needs\.readiness\.outputs\.skip_reason == 'failed-checks' \|\| needs\.readiness\.outputs\.skip_reason == 'checks-unavailable'/);
   assert.match(catchUp, /catch-up-after-failed-publish --latest "\$latest_commit"/);
   assert.match(readinessJob, /actions: write/);
@@ -278,7 +287,7 @@ test("downstream release jobs require their build dependencies after always()", 
 
 test("a separate job dispatches the Android APK workflow with the release tag", () => {
   const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  dispatch-android-apk:"));
-  const dispatchJob = workflow.slice(workflow.indexOf("\n  dispatch-android-apk:"), workflow.indexOf("\n  catch-up:"));
+  const dispatchJob = workflow.slice(workflow.indexOf("\n  dispatch-android-apk:"), workflow.indexOf("\n  apk-watchdog:"));
   assert.doesNotMatch(publishJob, /actions: write/);
   assert.match(publishJob, /contents: write/);
   assert.doesNotMatch(publishJob, /gh workflow run mobile-android-release\.yml/);
@@ -287,6 +296,10 @@ test("a separate job dispatches the Android APK workflow with the release tag", 
   assert.doesNotMatch(dispatchJob, /contents: write/);
   assert.match(dispatchJob, /needs: \[identity, publish\]/);
   assert.match(dispatchJob, /needs\.publish\.result == 'success'/);
+  // The skipped readiness-rehearsal job upstream makes the implicit success() false.
+  assert.match(dispatchJob, /if: always\(\) && !cancelled\(\) && /);
+  assert.match(dispatchJob, /needs\.identity\.result == 'success'/);
+  assert.match(dispatchJob, /needs\.identity\.outputs\.already_released != 'true'/);
   assert.match(dispatchJob, /github\.event_name != 'pull_request'/);
   assert.match(dispatchJob, /GH_TOKEN: \$\{\{ github\.token \}\}/);
   assert.match(dispatchJob, /gh workflow run mobile-android-release\.yml -f tag=v\$\{\{ needs\.identity\.outputs\.version \}\}/);
@@ -778,6 +791,35 @@ test("readiness check calls use one plain gh request, with no retry wrapper or w
   assert.ok(calls.some(args => args.includes("-X") && args.some(part => String(part).includes("rerun-failed-jobs"))));
 });
 
+test("every component-release job keeps an explicit timeout", () => {
+  const jobs = workflow.slice(workflow.indexOf("\njobs:\n"));
+  const names = [...jobs.matchAll(/^  ([a-z][a-z0-9-]*):$/gm)].map(match => match[1]);
+  assert.deepEqual(names, [
+    "readiness",
+    "readiness-rehearsal",
+    "identity",
+    "window",
+    "native",
+    "report",
+    "publish",
+    "dispatch-android-apk",
+    "apk-watchdog",
+    "catch-up",
+  ]);
+  for (const name of names) {
+    const start = workflow.indexOf(`\n  ${name}:`);
+    assert.ok(start !== -1, name);
+    const next = names[names.indexOf(name) + 1];
+    const block = next ? workflow.slice(start, workflow.indexOf(`\n  ${next}:`)) : workflow.slice(start);
+    assert.match(block, /^\s+timeout-minutes: \d+$/m, name);
+  }
+  const native = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
+  assert.match(native, /timeout-minutes: 35/);
+  const publish = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  dispatch-android-apk:"));
+  assert.match(publish, /timeout-minutes: 10/);
+  assert.match(publish, /already exists; skipping publish/);
+});
+
 test("native job caches npm, the pnpm store and Electron downloads without changing release timeouts", () => {
   const native = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
   assert.ok(native.length > 0);
@@ -785,8 +827,8 @@ test("native job caches npm, the pnpm store and Electron downloads without chang
   assert.match(native, /cache: npm/);
   assert.match(native, /cache-dependency-path: desktop\/package-lock\.json/);
   assert.match(native, /actions\/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9/);
-  assert.match(native, /component-release-pnpm-\$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-\$\{\{ hashFiles\('engine\/pnpm-lock\.yaml'\) \}\}/);
-  assert.match(native, /component-release-electron-\$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-\$\{\{ hashFiles\('desktop\/package-lock\.json'\) \}\}/);
+  assert.match(native, /component-release-pnpm-\$\{\{ matrix\.target \}\}-\$\{\{ hashFiles\('engine\/pnpm-lock\.yaml'\) \}\}/);
+  assert.match(native, /component-release-electron-\$\{\{ matrix\.target \}\}-\$\{\{ hashFiles\('desktop\/package-lock\.json'\) \}\}/);
   assert.match(native, /Library\/Caches\/electron/);
   assert.match(native, /Library\/Caches\/electron-builder/);
   assert.match(native, /PNPM_STORE_DIR: \$\{\{ github\.workspace \}\}\/\.cache\/pnpm-store/);
@@ -1018,4 +1060,145 @@ test("a failed check listing skips the release and is not retried", () => {
   assert.equal(decision.reason, "checks-unavailable");
   assert.deepEqual(decision.reran, []);
   assert.match(logs.join("\n"), /Could not list checks/);
+});
+
+function writeFakeGh(dir, source) {
+  const fakeGh = join(dir, "fake-gh.mjs");
+  writeFileSync(fakeGh, source);
+  return fakeGh;
+}
+
+function latestReleaseInvoke(dir, extraEnv = {}) {
+  const counter = join(dir, "attempts.txt");
+  writeFileSync(counter, "0");
+  return {
+    command: process.execPath,
+    argsPrefix: [writeFakeGh(dir, [
+      "import { readFileSync, writeFileSync } from \"node:fs\";",
+      "const file = process.env.RELEASE_GH_ATTEMPT_FILE;",
+      "const n = Number(readFileSync(file, \"utf8\") || \"0\") + 1;",
+      "writeFileSync(file, String(n));",
+      "const failUntil = Number(process.env.RELEASE_GH_FAIL_ATTEMPTS || \"0\");",
+      "if (n <= failUntil) {",
+      "  process.stderr.write(process.env.RELEASE_GH_ERROR || \"gh: API rate limit exceeded for installation (HTTP 403)\\n\");",
+      "  process.exit(1);",
+      "}",
+      "const args = process.argv.slice(2);",
+      "if (args.some((arg) => String(arg).includes(\"/releases/latest\"))) {",
+      "  process.stdout.write(\"v1.2.3\\t2026-10-08T08:35:00Z\\n\");",
+      "  process.exit(0);",
+      "}",
+      "if (args.some((arg) => /\\/commits\\//.test(arg))) {",
+      "  process.stdout.write(\"34f90ad9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n\");",
+      "  process.exit(0);",
+      "}",
+      "process.exit(2);",
+      "",
+    ].join("\n"))],
+    env: {
+      ...process.env,
+      RELEASE_GH_ATTEMPT_FILE: counter,
+      ...extraEnv,
+    },
+    sleep: () => {},
+    maxRetries: 2,
+    budgetSeconds: 60,
+    maxSleep: 1,
+    log: () => {},
+  };
+}
+
+function attemptCount(dir) {
+  return Number(readFileSync(join(dir, "attempts.txt"), "utf8") || "0");
+}
+
+test("rate-limited latest-release lookups past retries skip so catch-up can retry", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-latest-rate-limit-"));
+  try {
+    const logs = [];
+    const decision = loadLatestReleaseIdentity("KeepOak/Branch-Agent", {
+      ...latestReleaseInvoke(dir, { RELEASE_GH_FAIL_ATTEMPTS: "99" }),
+      log: message => logs.push(message),
+    });
+    assert.equal(decision.skip, true);
+    assert.equal(decision.reason, "checks-unavailable");
+    assert.equal(decision.latestCommit, "");
+    assert.ok(attemptCount(dir) >= 3);
+    assert.match(logs.join("\n"), /still rate limited after retries/);
+    const latch = decideSkipReasonCatchUp({
+      skipReason: decision.reason,
+      mainCommit: "34f90ad9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      workflowRuns: [],
+    });
+    assert.equal(latch.dispatch, true);
+    assert.match(latch.reason, /dispatching once/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a non-rate-limit latest-release gh error still fails closed", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-latest-other-error-"));
+  try {
+    assert.throws(
+      () => loadLatestReleaseIdentity("KeepOak/Branch-Agent", latestReleaseInvoke(dir, {
+        RELEASE_GH_FAIL_ATTEMPTS: "99",
+        RELEASE_GH_ERROR: "gh: Bad credentials (HTTP 401)\n",
+      })),
+      error => {
+        assert.match(String(error?.stderr ?? error?.message ?? error), /Bad credentials/);
+        return true;
+      },
+    );
+    assert.equal(attemptCount(dir), 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a 404 latest-release lookup proceeds as no previous release", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-latest-not-found-"));
+  try {
+    const decision = loadLatestReleaseIdentity("KeepOak/Branch-Agent", latestReleaseInvoke(dir, {
+      RELEASE_GH_FAIL_ATTEMPTS: "99",
+      RELEASE_GH_ERROR: "gh: Not Found (HTTP 404)\n",
+    }));
+    assert.equal(decision.skip, false);
+    assert.equal(decision.reason, "no-previous-release");
+    assert.equal(decision.latestRelease, "");
+    assert.equal(decision.latestCommit, "");
+    assert.equal(decision.publishedAt, "");
+    assert.equal(attemptCount(dir), 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a latest-release lookup proceeds after one rate-limited retry", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-latest-retry-ok-"));
+  try {
+    const decision = loadLatestReleaseIdentity("KeepOak/Branch-Agent", latestReleaseInvoke(dir, {
+      RELEASE_GH_FAIL_ATTEMPTS: "1",
+    }));
+    assert.equal(decision.skip, false);
+    assert.equal(decision.reason, "ok");
+    assert.equal(decision.latestRelease, "v1.2.3");
+    assert.equal(decision.latestCommit, "34f90ad9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    assert.equal(decision.publishedAt, "2026-10-08T08:35:00Z");
+    assert.equal(attemptCount(dir), 3);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+test("publish keeps the draft until Android attaches the APK, with a 30-minute watchdog", () => {
+  assert.match(workflow, /publish-component-release\.mjs "\$\{\{ runner\.temp \}\}\/release-assets".*--keep-draft$/m);
+  assert.match(workflow, /^  apk-watchdog:$/m);
+  assert.match(workflow, /publish-component-release\.mjs publish-draft "\$TAG"/);
+  const android = readFileSync(join(here, "../../.github/workflows/mobile-android-release.yml"), "utf8");
+  assert.ok(android.indexOf("publish-draft") > android.indexOf("--attach-release"));
+  const watchdog = workflow.slice(workflow.indexOf("\n  apk-watchdog:"), workflow.indexOf("\n  catch-up:"));
+  assert.match(watchdog, /needs: \[identity, publish\]/);
+  assert.match(watchdog, /seq 1 30/);
+  assert.match(watchdog, /exit 1/);
+  assert.match(workflow, /^  group: github-component-release-/m);
 });

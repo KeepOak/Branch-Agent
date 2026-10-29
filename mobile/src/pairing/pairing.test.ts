@@ -149,9 +149,16 @@ describe('pairing code', () => {
     for (const damaged of [`${text}x`, `${text.slice(0, 30)}k${text.slice(30)}`, `${text.slice(0, 30)}${text.slice(31)}`, `${text.slice(0, 30)}.${text.slice(30)}`, `oc-pair://${text}!`, `x${text}`]) {
       expect(() => decodeSetupCode(damaged, 1_000)).toThrow(new SetupCodeError('damaged'));
     }
-    for (const other of ['hello world', 'https://example.com/pair', '1234']) {
+    for (const other of ['hello world', 'https://example.com/pair', '12']) {
       expect(() => decodeSetupCode(other, 1_000)).toThrow(new SetupCodeError('invalid'));
     }
+  });
+
+  it('turns away the short check or confirm code with a matching-only reason', () => {
+    for (const short of ['F2S4KP', 'EST1', '4E5F', 'oc-pair://F2S4KP']) {
+      expect(() => decodeSetupCode(short, 1_000)).toThrow(new SetupCodeError('check-only'));
+    }
+    expect(decodeSetupCode(encode(payload), 1_000)).toEqual(payload);
   });
 
   it('says when a code has expired', () => {
@@ -503,5 +510,16 @@ describe('pairing with the computer', () => {
     await session.unpair();
     expect(session.getState()).toEqual({ step: 'unpaired' });
     expect(Object.keys(store.dump())).toEqual([DEVICE_IDENTITY_KEY]);
+  });
+
+  it('Reset unpairs and drops the device key; Forget keeps the key', async () => {
+    const { session, engine, store } = sessionWith();
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
+    engine.approve();
+    await until(session, (s) => s.step === 'paired' && s.online);
+    await session.reset();
+    expect(session.getState()).toEqual({ step: 'unpaired' });
+    expect(store.dump()).toEqual({});
+    session.dispose();
   });
 });

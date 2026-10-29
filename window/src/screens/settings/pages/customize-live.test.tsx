@@ -97,6 +97,23 @@ it("uses the preview's row words in each card", async () => {
   expect(labels("Another Branch")).toEqual(["Pair with Branch on another computer"]);
 });
 
+it("hides Coming Copy seed, Download and Share at Regular and Advanced", async () => {
+  const { engine } = engineOf();
+  const SEED = ["Copy seed", "Download", "Share"];
+  for (const level of ["regular", "advanced"] as const) {
+    await mount(engine, level);
+    const agents = [...host.querySelectorAll<HTMLElement>("[data-testid=connected-agent]")];
+    expect(agents.length, level).toBeGreaterThan(0);
+    for (const agent of agents) {
+      const labels = [...agent.querySelectorAll("button")].map((b) => b.textContent);
+      for (const name of SEED) expect(labels, `${level} ${name}`).not.toContain(name);
+      expect(labels).toEqual(expect.arrayContaining(["Permissions", "Revoke"]));
+      expect(agent.textContent).not.toMatch(/later update|coming/i);
+    }
+    await act(async () => root.unmount()); root = createRoot(host); forgetLookStore();
+  }
+});
+
 it("keeps every working Classic Connected agents control: the switch, each agent's rights and Revoke", async () => {
   const { engine, request } = engineOf();
   await mount(engine, "regular");
