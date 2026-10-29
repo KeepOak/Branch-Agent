@@ -114,7 +114,9 @@
 .r1s-swatch .sw6 { width: 120px; height: 68px; }
 .r1s-accs { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 @media (max-width: 760px) { .r1s-accs { max-width: 150px; justify-content: flex-end; } }
-/* The swatch's own colour wins over the shared glass pill fill (.g-clear button). */
+/* Why the #g48 ids (glass/glass.css explains the ladder): each swatch is a button on clear glass, so glass.css's pill rule
+   (.g-clear :is(button, …):not([data-solid], [role="switch"], #g48), one id) and its chosen-lift rule for a pressed or hovered
+   pill (:not([role="switch"], [data-solid], #g48#g48), two ids) would paint over it. Two ids keep the swatch's own colour. */
 .r1s-accs .r1s-acc:not(#g48):not(#g48b) { background: var(--c, var(--accent)); }
 .r1s-accs .r1s-acc-theme:not(#g48):not(#g48b) { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 .r1s-accs .r1s-acc-pick:not(#g48):not(#g48b) { background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); }
