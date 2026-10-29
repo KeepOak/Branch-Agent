@@ -82,6 +82,7 @@ export function DesktopUpdatesPage({ title, engine, level }: SettingsPageProps) 
         <Switch label="Apply updates automatically" checked={autoApply}
           disabled={auto.busy !== null} onChange={on => void auto.set("autoApplyUpdates", on)} />
       </Ctl>
+      {auto.state && auto.error ? <p className="hint s2-err" role="alert">{friendlyError(auto.error)}</p> : null}
       <Ctl title="Check for updates" sub={checkNote(busy === "check" ? "running" : checkEnded, checkedHere, data.status?.phase === "available", stagedWaiting)}><Btn sm disabled={busy !== ""} onClick={() => void run("check")}>{busy === "check" ? "Checking…" : busy ? "Working…" : "Check now"}</Btn></Ctl>
       {data.status?.phase === "available" ? <Ctl title="Update available"><Btn disabled={busy !== ""} onClick={() => void run("stage")}>Download update</Btn></Ctl> : null}
       {stagedWaiting && install ? <Ctl title="Staged update" sub="Applies in place. A safety copy is kept first, and nothing restarts.">
