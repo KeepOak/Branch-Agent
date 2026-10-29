@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { capabilityTests, namedE2eTests, namedTests, shardOf, shardTests, touchedTests } from './feature-batch-ci-targets.mjs';
+import { capabilityTests, namedE2eTests, namedTests, shardOf, shardTests, touchedShardTests, touchedTests } from './feature-batch-ci-targets.mjs';
 import { splitUiTests } from './feature-batch-ci-targets.mjs';
 import { runTargetedStrictChecks } from './feature-batch-ci-typecheck.mjs';
 import {
@@ -126,7 +126,7 @@ async function runFeatureTests(scratch) {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     const config = path.join(repoRoot, 'scripts', `feature-batch-ci-${lane}.config.mjs`);
     const selected = process.env.FEATURE_SCOPE === 'touched'
-      ? touchedTests(lane, await prChangedFiles()) : shardTests(namedTests(lane), shard);
+      ? touchedShardTests(touchedTests(lane, await prChangedFiles()), shard) : shardTests(namedTests(lane), shard);
     if (!selected.length) continue;
     console.log(`${lane}: ${selected.length} named test files in shard ${shard.index + 1}/${shard.total}`);
     // Control UI files (engine/ui) run under the UI package's own vitest config and root.
