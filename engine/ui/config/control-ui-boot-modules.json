@@ -1331,7 +1331,6 @@
   "ui/src/components/command-palette-contract.ts",
   "ui/src/components/command-palette-input.ts",
   "ui/src/components/community-invite-card.ts",
-  "ui/src/components/community-invite-state.ts",
   "ui/src/components/composer-menu.ts",
   "ui/src/components/config-form.numeric.ts",
   "ui/src/components/confirm-dialog.ts",
