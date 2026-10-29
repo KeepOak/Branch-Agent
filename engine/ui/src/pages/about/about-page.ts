@@ -7,12 +7,12 @@ import "../../components/modal-dialog.ts";
 import { BranchLightDomElement } from "../../lit/branch-element.ts";
 import { detectAboutPlatform, renderAbout } from "./view.ts";
 
-// Settings fallback when About was opened directly (no in-app page to go back to).
-const ABOUT_CLOSE_FALLBACK_ROUTE = "profile";
+// Settings page About returns to when its dialog closes.
+const ABOUT_CLOSE_ROUTE = "profile";
 
 /**
  * The About route draws the preview's small About Branch dialog over Settings
- * (spec-v23 `ACTS.about` via `openDlg`). Closing it returns to where it was opened from.
+ * (spec-v23 `ACTS.about` via `openDlg`). Closing it replaces the About route with Settings.
  */
 class AboutPage extends BranchLightDomElement {
   @consume({ context: applicationContext, subscribe: true })
@@ -26,13 +26,10 @@ class AboutPage extends BranchLightDomElement {
       return;
     }
     this.closing = true;
-    // Only app-owned pushes carry a history state object (app/browser.ts), so a
-    // null state means About was the first page: fall back to Settings instead.
-    if (globalThis.history.state !== null && globalThis.history.length > 1) {
-      globalThis.history.back();
-      return;
-    }
-    this.context.replace(ABOUT_CLOSE_FALLBACK_ROUTE);
+    // Replace like the credential cleanup does: history.back() could leave the app
+    // when About was opened directly, since a non-null history state or a native
+    // embed's initial blank entry does not prove an in-app page to go back to.
+    this.context.replace(ABOUT_CLOSE_ROUTE);
   };
 
   override render() {
