@@ -1340,6 +1340,18 @@ grep -q '^build --progress=plain --build-arg GITHUB_ACTIONS -t demo-image .$' "$
     async ({ signal }) => {
       const workDir = tempDirs.make("branch-docker-build-signal-");
       writeExecutables(join(workDir, "bin"), {
+        // macOS runners do not ship GNU timeout; without this stub docker_build_run
+        // exits before the fake docker can signal ready on FD 3.
+        timeout: `#!/bin/bash
+set -euo pipefail
+if [[ "${1:-}" == --kill-after=* ]]; then
+  shift
+fi
+if [[ "${1:-}" =~ ^[0-9]+[sm]?$ ]]; then
+  shift
+fi
+exec "$@"
+`,
         docker: `#!/bin/bash
 set -euo pipefail
 count=0
