@@ -390,7 +390,9 @@ describe.skipIf(process.platform === "win32")("embedded triage installation targ
     "keeps the $layout installation and $workspaceSelector workspace addressable ($route, fails=$fails)",
     async ({ layout, fails, workspaceSelector, automatic }) => {
       const previousSnapshot = getRuntimeConfigSnapshot();
-      const temporaryRoot = os.tmpdir();
+      // macOS os.tmpdir() is /var/folders/..., a symlink to /private/var; production
+      // resolves real paths, so the fixture root must be canonical too.
+      const temporaryRoot = await fs.realpath(os.tmpdir());
       // Clear inherited credentials and selectors through the tracked helper. Only
       // synthetic paths and a fake provider key reach the production env boundary.
       const syntheticEnv: Record<string, string | undefined> = Object.fromEntries(
