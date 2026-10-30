@@ -12,6 +12,7 @@ on:
     workflows:
       - Button crawl
       - Capability feature checks
+      - CLI release checks
       - CodeQL
       - Desktop checks
       - Engine build (PR)

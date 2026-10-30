@@ -46,6 +46,7 @@ export function Clis({ ctx }: { ctx: ToolsCtx }) {
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hint, setHint] = useState(false);
   const bins = readBins(ctx.skills.data);
   const q = ctx.query.trim().toLowerCase();
   const shown = bins.filter(b => !q || b.name.toLowerCase().includes(q));
@@ -54,11 +55,18 @@ export function Clis({ ctx }: { ctx: ToolsCtx }) {
     setBusy(true); setError(null);
     try { await allowCommand(ctx, path.trim()); setPath(""); } catch (e) { setError(plainError(e)); } finally { setBusy(false); }
   };
+  // The head's "＋ Add": adds what the path box holds, or says what to type there when it is empty.
+  const headAdd = () => {
+    if (path.trim()) { setHint(false); if (!busy) void add(); return; }
+    setHint(true);
+    document.getElementById("cz-clis-path")?.focus();
+  };
   return <>
-    <KindHead ctx={ctx} kind="Command-line tools" count={`${bins.filter(b => b.present).length} of ${bins.length} on`}>
+    <KindHead ctx={ctx} kind="Command-line tools" count={`${bins.filter(b => b.present).length} of ${bins.length} on`} onAdd={headAdd}>
       <TechnicalOnly><div className="cz-found"><b>Found on this computer</b><Grey reason="Finding programs on this computer comes in a later update.">Allow</Grey></div></TechnicalOnly>
-      <div className="cz-path"><input id="cz-clis-path" className="inp" value={path} onChange={e => setPath(e.target.value)} placeholder="Or add one by its path, like /usr/local/bin/rg" aria-label="Add a command-line tool by its path" />
+      <div className="cz-path"><input id="cz-clis-path" className="inp" value={path} onChange={e => { setPath(e.target.value); setHint(false); }} placeholder="Or add one by its path, like /usr/local/bin/rg" aria-label="Add a command-line tool by its path" aria-describedby={hint ? "cz-clis-hint" : undefined} />
         <button type="button" className="btn sm" disabled={busy || !path.trim()} onClick={() => void add()}>Add</button></div>
+      {hint && <p id="cz-clis-hint" role="status" className="cz-hint">Type the program’s path in the box first, like /usr/local/bin/rg.</p>}
       {error && <p role="alert" className="cz-error">{plainError(error)}</p>}
       <Status {...ctx.skills} />
       {ctx.skills.data != null && !shown.length && <EmptyLine icon={<Glyph name="terminal" size={22} />}>Nothing here for this Trunk.</EmptyLine>}

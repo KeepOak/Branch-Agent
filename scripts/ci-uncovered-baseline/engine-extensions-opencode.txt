@@ -1,0 +1,7 @@
+engine:extensions/opencode/index.test.ts
+engine:extensions/opencode/media-understanding-provider.test.ts
+engine:extensions/opencode/onboard.test.ts
+engine:extensions/opencode/provider-policy-api.test.ts
+engine:extensions/opencode/session-catalog.test.ts
+engine:extensions/opencode/session-upstream-activity.test.ts
+engine:extensions/opencode/stream.test.ts

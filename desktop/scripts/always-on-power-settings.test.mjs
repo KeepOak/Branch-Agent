@@ -17,7 +17,7 @@ const require = createRequire(import.meta.url);
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 const { createRunKeepAwake, sleepBlockerCommand, writePowerState, POWER_STATE_FILE, claimServiceKeepAwake, handOffKeepAwake, appHoldsSleepBlock, KEEP_AWAKE_OWNER_FILE, DESKTOP_KEEP_AWAKE_FRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, KEEP_AWAKE_LEASE_MS, TRAY_STATUS_WORKING_MS, TRAY_STATUS_MS } = require(join(dist, 'keep-awake.js'));
 const { createClosedWindowNotifier, readEngineLiveState, trayLabel, workNotices } = require(join(dist, 'tray-status.js'));
-const { engineLingerArgs, parseLingerAnswer, readEngineHealth } = require(join(dist, 'engine-service.js'));
+const { engineLingerArgs, parseLingerAnswer, readEngineHealth, readEngineWork } = require(join(dist, 'engine-service.js'));
 const { createDesktopControls } = require(join(dist, 'desktop-controls.js'));
 
 function tempDir(t) {
@@ -184,7 +184,11 @@ test('the tray and /health say degraded with the reason, never Ready, while an a
   health = { ok: true, status: 'live' };
   const ready = await readEngineLiveState({ engineUp: async () => true, health: () => readEngineHealth(port), window: async () => ({ pendingApprovals: 0, streaming: false, workingTrunks: 0 }) });
   assert.equal(trayLabel(ready), 'Ready');
+  assert.equal(await readEngineWork(port), undefined, 'live /health without run counts is unavailable');
+  health = { ok: true, status: 'live', activeRuns: 2, totalActive: 3, pendingReplies: 1 };
+  assert.deepEqual(await readEngineWork(port), { activeRuns: 2, totalActive: 3, pendingReplies: 1 });
   assert.deepEqual(await readEngineHealth(1), { answered: false });
+  assert.equal(await readEngineWork(1), undefined);
 });
 
 test('Linux "Keep working when nobody is signed in" goes through the engine linger path', async t => {

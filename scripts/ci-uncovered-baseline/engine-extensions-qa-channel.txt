@@ -1,0 +1,9 @@
+engine:extensions/qa-channel/setup-entry.test.ts
+engine:extensions/qa-channel/src/bus-client.test.ts
+engine:extensions/qa-channel/src/channel-actions.test.ts
+engine:extensions/qa-channel/src/channel-thread-routing.test.ts
+engine:extensions/qa-channel/src/channel.threading.test.ts
+engine:extensions/qa-channel/src/gateway.test.ts
+engine:extensions/qa-channel/src/inbound-preview-lifecycle.test.ts
+engine:extensions/qa-channel/src/inbound.dispatch-lifecycle.test.ts
+engine:extensions/qa-channel/src/inbound.preview-terminal.test.ts

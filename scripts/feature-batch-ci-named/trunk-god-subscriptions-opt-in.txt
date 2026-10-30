@@ -1,6 +1,11 @@
 engine:src/agents/runtime-plan/prepare-auth.test.ts
 engine:src/agents/embedded-agent-runner/run/failover-retry-controller.account-switch-auth.test.ts
-engine:src/agents/cli-runner/prepare.test.ts
+engine:src/agents/cli-runner/prepare.auth-profiles.test.ts
+engine:src/agents/cli-runner/prepare.mcp-authority.test.ts
+engine:src/agents/cli-runner/prepare.native-resume.test.ts
+engine:src/agents/cli-runner/prepare.prompt-hooks.test.ts
+engine:src/agents/cli-runner/prepare.session-bindings.test.ts
+engine:src/agents/cli-runner/prepare.skills-sessions.test.ts
 engine:src/gateway/sessions-patch.test.ts
 engine:src/gateway/server-methods/models-auth-status.test.ts
 engine:src/agents/embedded-agent-runner/run/attempt-recovery.rate-limit-switch.test.ts

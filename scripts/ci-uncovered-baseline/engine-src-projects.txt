@@ -1,0 +1,5 @@
+engine:src/projects/project-clone-registration.test.ts
+engine:src/projects/project-environment.test.ts
+engine:src/projects/project-registry.authority.test.ts
+engine:src/projects/project-registry.test.ts
+engine:src/projects/project-source-env.test.ts

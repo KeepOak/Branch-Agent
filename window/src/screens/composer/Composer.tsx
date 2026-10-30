@@ -259,7 +259,8 @@ export function Composer(props: Props) {
     }
     if (plan.kind === "stop") { onStop(); draft.clear(); return; }
     // GOD #1092: Send stays enabled. With nothing usable, keep the draft and show the one Connect path.
-    if (holdReason && plan.kind !== "command" && (plan.kind !== "background" || !isPreparationPending(conversationProblem))) {
+    // Offline holds everything, slash commands included; otherwise a command may go while models load.
+    if (holdReason && (offline || (plan.kind !== "command" && (plan.kind !== "background" || !isPreparationPending(conversationProblem))))) {
       showHold(holdReason);
       if (!conv.modelsLoading) void conv.readModelList({ refresh: true });
       return;
