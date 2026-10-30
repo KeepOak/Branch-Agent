@@ -83,6 +83,13 @@ describe("FreeModelSetup", () => {
     expect(plainFreeModelQuestion({ message: messages[1] })).toBe("Download a free model (Example Model 12B, 8.4 GB) so Branch can answer without an account?");
   });
 
+  it("shows the whole download, not only the model", async () => {
+    const message = "Runs on Gateway host fixture-device (darwin/arm64), using Apple Metal.\n\nDownload Qwen3.5 9B (Q4_K_M) (5.7 GB), the local embedding model (about 0.3 GB), and the verified METAL runtime, 6.0 GB in total, then use this model?";
+    const { host } = await mount({ next: [{ ...CONFIRM, step: { ...CONFIRM.step, message } }] });
+    expect(host.querySelector("p")?.textContent).toBe("Download a free model (Qwen3.5 9B, 6.0 GB) so Branch can answer without an account?");
+    expect(host.textContent).not.toMatch(banned);
+  });
+
   it.each(["Q4_K_M", "UD-Q4_K_M", "Q8_0", "IQ4_XS", "F16", "BF16"])("hides the %s format tag in cached and download names", (tag) => {
     expect(plainFreeModelQuestion({ message: `Download Example Model (${tag}) (5.7 GB)?` })).toBe("Download a free model (Example Model, 5.7 GB) so Branch can answer without an account?");
     expect(plainFreeModelQuestion({ message: `Use cached Example Model (${tag}), download any missing embedding and CPU runtime files, then use this model?` })).toBe("Use the free model Example Model that is already on this computer so Branch can answer without an account?");
