@@ -22,8 +22,26 @@ const RETRY_MS = 3_000;
 
 /** An outside identity a grafted Branch says hello as (contacts.outside.hello accepts kind and via). */
 export type GraftIdentity = OutsideAgentIdentity & { kind?: "branch" | "trunk"; via?: string };
-/** `url` is the address the link starts with; `urls` are the host's other addresses, tried in order when it fails. */
-export type GraftLink = { url: string; urls?: string[]; tlsFingerprint?: string; name: string; joinedAt: number };
+/**
+ * `url` is the address the link starts with; `urls` are the host's other addresses, tried in order when it fails.
+ * `hostName` is the host's mDNS name (`studio.local`), learned while connected; when the host gets a new LAN address
+ * the link finds it again by that name and saves the new `url` (#2100). `joinedUrl` is the address the link was
+ * joined with, kept once the link has moved, so the link stays the same link (graftLinkKey).
+ */
+export type GraftLink = {
+  url: string;
+  urls?: string[];
+  tlsFingerprint?: string;
+  name: string;
+  joinedAt: number;
+  hostName?: string;
+  joinedUrl?: string;
+};
+
+/** A saved link's lasting identity: the address it was joined with, even after the host moved. */
+export function graftLinkKey(link: GraftLink): string {
+  return link.joinedUrl ?? link.url;
+}
 export type ConnectOutcome =
   | { ok: true; deviceId?: string; scopes: string[] }
   | { ok: false; pendingRequestId?: string; message: string };
@@ -123,21 +141,41 @@ export function readGraftLinks(env?: NodeJS.ProcessEnv): GraftLink[] {
   }
 }
 
-/** Remember the host (its address only; the device token stays in the device-auth store). */
-export function saveGraftLink(link: GraftLink, env?: NodeJS.ProcessEnv): void {
+function writeGraftLinks(rows: GraftLink[], env?: NodeJS.ProcessEnv): void {
   const file = linksFile(env);
-  const rows = [link, ...readGraftLinks(env).filter((row) => row.url !== link.url)];
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(rows, null, 2)}\n`);
   fs.renameSync(tmp, file);
 }
 
+/** Remember the host (its address only; the device token stays in the device-auth store). */
+export function saveGraftLink(link: GraftLink, env?: NodeJS.ProcessEnv): void {
+  writeGraftLinks([link, ...readGraftLinks(env).filter((row) => row.url !== link.url)], env);
+}
+
+/**
+ * The link learned its host's name or followed the host to a new address: save it in place of the row saved at
+ * `fromUrl`. A host forgotten meanwhile (disconnected in Settings) stays forgotten.
+ */
+export function replaceGraftLink(fromUrl: string, link: GraftLink, env?: NodeJS.ProcessEnv): void {
+  const rows = readGraftLinks(env);
+  if (!rows.some((row) => row.url === fromUrl)) {
+    return;
+  }
+  writeGraftLinks(
+    rows
+      .filter((row) => row.url === fromUrl || row.url !== link.url)
+      .map((row) => (row.url === fromUrl ? link : row)),
+    env,
+  );
+}
+
 /** The saved host to connect to: the one named (by URL), else the only one. */
 export function resolveGraftLink(host: string, env?: NodeJS.ProcessEnv): GraftLink {
   const links = readGraftLinks(env);
   const match =
-    links.find((row) => row.url === host) ??
+    links.find((row) => row.url === host || row.joinedUrl === host || row.hostName === host) ??
     (host === "" && links.length === 1 ? links[0] : undefined);
   if (!match) {
     throw new Error(
@@ -248,10 +286,8 @@ export async function graftHostOptions(
 
 /** Forget a host that disconnected this Branch (its pairing is gone there). */
 export function forgetGraftLink(url: string, env?: NodeJS.ProcessEnv): void {
-  const file = linksFile(env);
-  const rows = readGraftLinks(env).filter((row) => row.url !== url);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(rows, null, 2)}\n`);
-  fs.renameSync(tmp, file);
+  writeGraftLinks(
+    readGraftLinks(env).filter((row) => row.url !== url),
+    env,
+  );
 }

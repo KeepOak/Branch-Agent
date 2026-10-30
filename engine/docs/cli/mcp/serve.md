@@ -369,7 +369,11 @@ scoped device. It uses the same setup-code pairing a phone uses.
 5. From then on the joining Branch's own gateway keeps the link. It reconnects
    by itself and says hello as the Branch and its Trunks every minute, so they
    stay online on the host. It also starts the link whenever the gateway starts
-   and a host is saved.
+   and a host is saved. While connected it learns the host's mDNS name (the
+   `lanHost` the host advertises unless `discovery.mdns.mode` is `off`). When
+   the router gives the host a new LAN address, the link finds the host by that
+   name, connects to the new address and saves it. It doesn't need a new setup
+   code.
 6. Settings › Grafts on the host shows the joining Branch as one row with a
    Branch badge, with its Trunks nested under it. Each Trunk is also a contact
    (`a2a:branch-studio-laptop--<trunk>`).
