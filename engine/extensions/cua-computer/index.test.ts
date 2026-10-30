@@ -177,8 +177,7 @@ describe("cua-computer plugin registration", () => {
     artifactMocks.verify.mockReturnValue({
       ok: false,
       code: "COMPUTER_DRIVER_PACKAGE_MISSING",
-      diagnostic:
-        "COMPUTER_DRIVER_PACKAGE_MISSING: native package absent. Fix: reinstall Branch.",
+      diagnostic: "COMPUTER_DRIVER_PACKAGE_MISSING: native package absent. Fix: reinstall Branch.",
       fixHint: "Reinstall Branch.",
     });
 
