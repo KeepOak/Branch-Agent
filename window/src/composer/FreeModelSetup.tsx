@@ -4,6 +4,7 @@ import { Coming } from "../glass/coming";
 import { useWizard, type WizardStep } from "../places/settings/use-wizard";
 import type { WindowEngine } from "./engine";
 import { plainFreeModelQuestion } from "./free-model-question";
+import { plainFreeModelSkip, skippedFreeModelReason } from "./free-model-skip";
 import { FREE_MODEL_FAILED, NO_KEY_DEFAULT_KIND } from "./no-key-default";
 
 export const FREE_MODEL_CANCELLED = "Setup cancelled. Chat stays open; connect a model when you want.";
@@ -27,7 +28,7 @@ function friendlyWizardError(message: string): string {
 
 function plainFreeModelStep(step: WizardStep): string {
   if (step.type === "confirm") return plainFreeModelQuestion(step);
-  if (step.title === "Setup skipped") return "Free model setup was skipped.";
+  if (step.title === "Setup skipped") return plainFreeModelSkip(step);
   // Keep numeric download progress, but not file, computer, or backend names.
   const progress = /(\d+(?:\.\d+)?% \([\d.]+\/[\d.]+ GB, [\d.]+ MB\/s\))$/.exec(step.message ?? "");
   return progress ? `Downloading… ${progress[1]}` : "Preparing your free model…";
@@ -97,7 +98,7 @@ function FreeModelWizard({
     <div className={card} data-testid="free-model-setup" aria-live="polite">
       {w.view.phase === "starting" ? <p role="status">{FREE_MODEL_CHECKING}</p> : null}
       {step ? <p data-lines="">{plainFreeModelStep(step)}</p> : null}
-      {w.view.phase === "error" ? <p role="alert" data-testid="no-key-failed">{friendlyWizardError(w.view.message)}</p> : null}
+      {w.view.phase === "error" ? <p role="alert" data-testid="no-key-failed">{skippedFreeModelReason(w.notes) ?? friendlyWizardError(w.view.message)}</p> : null}
       <div className={acts}>
         {asking ? (
           <Coming need={WIZARD_NEED} where="Download free local model" engine={engine}>

@@ -558,6 +558,19 @@ describe("llama.cpp managed setup", () => {
     expect(mocks.ensureModel).not.toHaveBeenCalledWith(expect.objectContaining({ download: true }));
   });
 
+  it("says in plain words first why setup skipped a computer that is too small", async () => {
+    vi.mocked(os.totalmem).mockReturnValue(4 * GIB);
+    const ctx = authContext(true);
+
+    await runLlamaCppSetup(ctx);
+
+    const [message, title] = vi.mocked(ctx.prompter.note).mock.calls.at(-1)!;
+    const [plain, details] = message.split("\n\n");
+    expect(title).toBe("Setup skipped");
+    expect(plain).toBe("This computer doesn’t have enough memory to run a free model.");
+    expect(details).toMatch(/memory budget/u);
+  });
+
   it("offers embedding-only setup for local memory below the chat RAM floor", async () => {
     vi.mocked(os.totalmem).mockReturnValue(4 * GIB);
     const ctx = authContext(true);
