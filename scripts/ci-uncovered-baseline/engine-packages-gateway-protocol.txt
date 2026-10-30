@@ -1,5 +1,4 @@
 engine:packages/gateway-protocol/src/approvals-validators.test.ts
-engine:packages/gateway-protocol/src/branch.schema.test.ts
 engine:packages/gateway-protocol/src/channels.schema.test.ts
 engine:packages/gateway-protocol/src/connect-error-details.test.ts
 engine:packages/gateway-protocol/src/cron-validators.test.ts

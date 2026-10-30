@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
-import type { GraftLink } from "./graft-join.js";
+import { graftLinkKey, type GraftLink } from "./graft-join.js";
 
 type Result = { reply?: string; error?: string };
 type Entry = { id: string; result: Result; acknowledgedAt?: number };
@@ -10,8 +10,10 @@ type Entry = { id: string; result: Result; acknowledgedAt?: number };
 export class GraftLinkResults {
   private readonly target: string;
   constructor(link: GraftLink) {
+    // Keyed by the link's join id (graftLinkKey), so results saved before the host moved still replay after, and a
+    // host later joined at the old address never sees them (#2100).
     const key = createHash("sha256")
-      .update(JSON.stringify([link.url, link.joinedAt]))
+      .update(JSON.stringify([graftLinkKey(link), link.joinedAt]))
       .digest("hex");
     this.target = path.join(resolveStateDir(), "graft", "results", `${key}.json`);
   }

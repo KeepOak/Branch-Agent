@@ -54,18 +54,20 @@ export function graftAddressCandidates(params: {
   return [...new Set(urls.filter((value): value is string => Boolean(value)))].slice(0, GRAFT_ADDRESS_LIMIT);
 }
 
-/** The setup code carries this Branch's own loopback address unless the owner opened the gateway to the network
- *  (gateway.bind other than loopback). Then it prefers the tailnet address: upstream's resolver picks the LAN
- *  address, which goes stale when the router reassigns it and strands every joined Branch. */
-export function graftInviteParams(
-  cfg: BranchConfig,
-  port: number,
-  interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = os.networkInterfaces(),
-): Record<string, unknown> {
+/** The address the setup code starts with. Loopback unless the owner opened the gateway to the network. For any
+ *  other bind the invite leaves publicUrl unset so the gateway's own resolver picks it: with gateway.bind=lan the
+ *  route-aware LAN address (the default-route interface, not a Docker bridge or VM adapter listed first), wss://
+ *  with the pinned certificate when TLS is on, or Tailscale Serve. Pairing rejects plain ws:// to a tailnet
+ *  address, so the invite never names one; the tailnet address still travels in the code's other addresses
+ *  (graftAddressCandidates). */
+function graftInviteUrl(cfg: BranchConfig, port: number): string | undefined {
   const bind = cfg.gateway?.bind ?? "loopback";
-  const tailnet = bind === "loopback" ? undefined : tailnetIPv4(interfaces);
-  const publicUrl =
-    bind === "loopback" ? `ws://127.0.0.1:${port}` : tailnet ? `ws://${tailnet}:${port}` : undefined;
+  return bind === "loopback" ? `ws://127.0.0.1:${port}` : undefined;
+}
+
+/** device.pair.setupCode params for a graft invite (see graftInviteUrl for the address). */
+export function graftInviteParams(cfg: BranchConfig, port: number): Record<string, unknown> {
+  const publicUrl = graftInviteUrl(cfg, port);
   return {
     includeQr: false,
     bootstrapProfile: "limited",

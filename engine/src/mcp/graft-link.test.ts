@@ -261,7 +261,7 @@ describe("the gateway's graft-link service", () => {
     const supervisor = new GraftLinkSupervisor({
       links: () => saved,
       createRunner: (l) => {
-        const runner = { link: l, state: "connecting", start: vi.fn(), stop: vi.fn() };
+        const runner = { link: l, url: l.url, state: "connecting", start: vi.fn(), stop: vi.fn() };
         runners.push(runner);
         return runner as never;
       },

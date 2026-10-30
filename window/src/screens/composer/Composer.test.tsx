@@ -11,6 +11,10 @@ import type { Limits } from "../../shell/status-data";
 import { Composer } from "./Composer";
 import { PlusMenu } from "./PlusMenu";
 
+/** The engine's real free model question (engine/extensions/llama-cpp/src/setup.free-model-question.test.ts). */
+const ENGINE_FREE_MODEL_STEP = { id: "download", ...(JSON.parse(readFileSync(resolve(process.cwd(), "../engine/test/fixtures/llama-cpp-free-model-questions.json"), "utf8")) as { model: [{ type: "confirm"; freeModel: { downloadBytes: number } }] }).model[0] };
+const ENGINE_FREE_MODEL_SIZE = (ENGINE_FREE_MODEL_STEP.freeModel.downloadBytes / 1e9).toFixed(1) + " GB";
+
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
 beforeEach(() => { vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} }); });
@@ -45,7 +49,7 @@ async function mount(opts: { methods?: string[]; models?: boolean; activate?: "h
       if (opts.activate === "fail") return { done: true, status: "error", error: "A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster." };
       if (opts.activate === "ok") return { done: true, status: "done" };
       if (opts.activate === "hang" || opts.models === false) {
-        return { done: false, step: { id: "download", type: "confirm", message: "Download Qwen3.5 9B (5.7 GB) and the verified runtime, then use this model?", initialValue: false } };
+        return { done: false, step: ENGINE_FREE_MODEL_STEP };
       }
       return { done: true, status: "done" };
     }
@@ -198,7 +202,7 @@ describe("R1-04 composer", () => {
   it("with no model connected keeps chat open and suggests connecting a model", async () => {
     const { host, opened, request } = await mount({ models: false, activate: "hang" });
     expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Connect a model to start");
-    expect(host.textContent).toContain("5.7 GB");
+    expect(host.textContent).toContain(ENGINE_FREE_MODEL_SIZE);
     expect(button("Cancel")).toBeTruthy();
     expect(request.mock.calls.filter(([method, params]) => method === "wizard.next" && (params as { answer?: { value?: unknown } })?.answer?.value === true)).toHaveLength(0);
     await act(async () => button("Connect a model to get answers")!.click());
@@ -253,7 +257,7 @@ describe("R1-04 composer", () => {
     document.body.innerHTML = "";
     const noModel = await mount({ models: false, activate: "hang", placeholder: "Message the group · @ to call a Trunk" });
     expect(noModel.host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Connect a model to start");
-    expect(noModel.host.textContent).toContain("5.7 GB");
+    expect(noModel.host.textContent).toContain(ENGINE_FREE_MODEL_SIZE);
     expect(button("Cancel")).toBeTruthy();
   });
 
