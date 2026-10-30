@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestFileSecondsFor, harvestMatrix, harvestMaxShards, harvestShardBudgetSeconds, harvestShardFiles, harvestTestFiles, harvestTests, harvestUnlistedFileSeconds, planHarvestShards, mainPushShardCounts, namedTests, planShards, plannedJobSeconds, plannedSlowestSeconds, overBudgetShards, setNamedListDir, pullRequestLinuxShardCount, pullRequestWindowsTouchedShardCount, resolvedShardCounts, runnerSetupSeconds, runnerTestScale, shardBudgetFor, shardBudgetSeconds, shardCountFor, shardOf, shardTests, touchedHarvestTests, touchedShardTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
+import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestFileSecondsFor, harvestMatrix, harvestMaxShards, harvestShardBudgetSeconds, harvestShardFiles, harvestTestFiles, harvestTests, harvestUnlistedFileSeconds, planHarvestShards, mainPushShardCounts, namedTests, planShards, plannedJobSeconds, plannedSlowestSeconds, overBudgetShards, setNamedListDir, pullRequestLinuxShardCount, pullRequestWindowsTouchedShardCount, resolvedShardCounts, runnerSetupSeconds, runnerTestScale, shardBudgetFor, shardBudgetSeconds, shardCountFor, shardOf, shardTests, touchedHarvestTests, touchedShardTests, touchedTests, touchedWindowsWeight, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
 import {
   REGISTRY_DOWNLOAD_ATTEMPTS, isTransientRegistryError, registryRetryWaitMs, withRegistryRetry,
 } from './feature-batch-ci-runtime.mjs';
@@ -277,6 +277,33 @@ test('the touched Windows tests split across touched n/4 with every file once an
     assert.deepEqual(parts.flat().sort(), [...touched].sort(), `${touched.length} touched files: each runs exactly once`);
     assert.equal(new Set(parts.flat()).size, touched.length);
     assert.ok(parts.every(part => part.length > 0), `${touched.length} touched files: no shard is empty`);
+  }
+});
+
+test('touched Windows shards pack by Windows seconds, so the PR #2126 gateway files fit three touched jobs', () => {
+  const settle = 'src/gateway/server.subagent-settle-replay.harness.test.ts';
+  const unmeasured = 'src/gateway/server.auth.control-ui.test.ts';
+  assert.equal(touchedWindowsWeight(settle), 520);
+  assert.equal(touchedWindowsWeight(unmeasured), featureTestWeight(unmeasured) * runnerTestScale.windows);
+  // The 18 touched files of PR #2126. With Linux weights, touched 2/3 held settle-replay (520 s on Windows) and
+  // ten files counted 5 s each, and ran past the 15-minute cap on five attempts.
+  const gateway = [
+    settle, 'src/gateway/server.private-completion.test.ts', 'src/gateway/server-startup-lifetime.test.ts',
+    'src/gateway/server.node-shutdown.test.ts', 'src/gateway/server.native-completion-authority.test.ts',
+    'src/gateway/server-close.memory.test.ts', 'src/gateway/server-close.metadata.test.ts',
+    'src/gateway/server.sessions.fixture-lifecycle.test.ts', 'src/gateway/server.chat-steer-direct-command.test.ts',
+    'src/gateway/server.requester-pause-authority.test.ts', 'src/gateway/server.request-lifetime.test.ts',
+    'src/gateway/server-plugins.activation-health.test.ts', 'src/gateway/server.agent-late-admission.test.ts',
+    'src/gateway/server-close.channel-pairing.test.ts',
+  ];
+  const touched = [...windowsSmokeTests.engine, ...gateway];
+  for (const total of [3, 4]) {
+    const parts = Array.from({ length: total }, (_, index) => touchedShardTests(touched, shardOf(`${index + 1}/${total}`)));
+    assert.deepEqual(parts.flat().sort(), [...touched].sort());
+    for (const part of parts) {
+      const seconds = part.reduce((sum, file) => sum + touchedWindowsWeight(file), 0) + runnerSetupSeconds.windows;
+      assert.ok(seconds < 15 * 60, `touched ${total}: ${part.join(', ')} plans ${Math.round(seconds)} s`);
+    }
   }
 });
 

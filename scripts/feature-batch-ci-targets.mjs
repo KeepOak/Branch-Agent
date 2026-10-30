@@ -768,8 +768,11 @@ const featureTestWeights = {
   'src/gateway/session-utils.test.ts': 118,
   'src/agents/subagents/registry/subagent-liveness.owner-integration.test.ts': 116,
   'src/cron/store/receipt-authority-owner.test.ts': 113,
+  'src/gateway/server-close.metadata.test.ts': 94,
   'src/gateway/server-methods/sessions-create-category.test.ts': 84,
   'src/gateway/watch-node-http.test.ts': 84,
+  'src/gateway/server.native-completion-authority.test.ts': 84,
+  'src/gateway/server-plugins.activation-health.test.ts': 82,
   'src/gateway/server/ws-connection.startup.test.ts': 81,
   'src/infra/heartbeat-runner.no-scratch-idle-gate.test.ts': 79,
   'src/infra/heartbeat-runner.exact-session-busy.test.ts': 78,
@@ -783,12 +786,14 @@ const featureTestWeights = {
   'src/gateway/server.auth.hello-order.test.ts': 69,
   'src/commands/doctor/shared/default-agent-role-materialization.write.test.ts': 68,
   'src/gateway/server-methods/update-report-run.test.ts': 68,
+  'src/gateway/server-close.memory.test.ts': 68,
   'src/agents/cli-runner/prepare.auth-profiles.test.ts': 67,
   'src/agents/cli-runner/prepare.mcp-authority.test.ts': 65,
   'src/agents/cli-runner/prepare.session-bindings.test.ts': 65,
   'src/cron/service.wake-now-real-heartbeat.test.ts': 64,
   'src/infra/heartbeat-runner.idle-trunk-gate.test.ts': 64,
   'src/agents/cli-runner/prepare.prompt-hooks.test.ts': 63,
+  'src/gateway/server.sessions.fixture-lifecycle.test.ts': 63,
   'src/agents/tools/sessions-send-tool.admission.test.ts': 62,
   'src/commands/config-preflight-snapshot.test.ts': 62,
   'src/gateway/server.node-pairing-rate-limit.test.ts': 62,
@@ -805,12 +810,15 @@ const featureTestWeights = {
   'src/gateway/server-worker-placement-startup-maintenance.test.ts': 47,
   'src/gateway/server.device-pair-setup.trusted-proxy.test.ts': 46,
   'test/scripts/docker-build-helper.test.ts': 46,
+  'src/gateway/server.request-lifetime.test.ts': 46,
   'src/gateway/embeddings-http.test.ts': 45,
   'src/agents/prepared-model-runtime.startup-replacement.test.ts': 44,
   'src/gateway/server.lockdown-owner.test.ts': 44,
   'src/config/sessions/startup-migration.acp.test.ts': 43,
   'src/infra/state-migrations.transcript-directives.test.ts': 43,
   'src/skills/workshop/store.test.ts': 43,
+  'src/gateway/server.chat-steer-direct-command.test.ts': 42,
+  'src/gateway/server.requester-pause-authority.test.ts': 41,
   'src/agents/branch-tools.session-status.gateway-model.test.ts': 38,
   'src/agents/mcp-oauth-refresh-issuer.test.ts': 38,
   'src/agents/trunk-characters.test.ts': 38,
@@ -861,11 +869,13 @@ const featureTestWeights = {
   'src/agents/branch-tools.session-status.test.ts': 17,
   'src/config/sessions/session-store-creation-witness.test.ts': 17,
   'src/infra/device-bootstrap-single-use.test.ts': 17,
+  'src/gateway/server.agent-late-admission.test.ts': 17,
   'src/agents/agent-tools.policy.test.ts': 16,
   'src/agents/runtime-plan/prepare-auth.test.ts': 16,
   'src/gateway/method-scopes.test.ts': 16,
   'src/infra/sqlite-readonly-location.snapshot-churn.test.ts': 16,
   'src/logging/diagnostic.test.ts': 16,
+  'src/gateway/server-close.channel-pairing.test.ts': 16,
   'src/agents/main-session-recovery/main-session-restart-recovery.pending-admission.test.ts': 15,
   'src/cli/capability-cli.test.ts': 15,
   'src/commands/backup-no-secrets.test.ts': 15,
@@ -958,11 +968,36 @@ export function shardTests(tests, shard, weights) {
   return planShards(tests, shard.total, weights).files[shard.index];
 }
 
+// Seconds per engine file on windows-latest touched jobs, for files whose Windows time is far from the Linux
+// weight times runnerTestScale.windows. Measured like featureTestWeights, from the PR #2126 touched jobs of run
+// 40993156446 (2026-10-30; the cancelled 2/3 jobs give the files they finished). With Linux weights the restart-heavy
+// settle-replay file (520 s on Windows) shared touched 2/3 with files counted 5 s, so the job ran out the 15-minute
+// cap on every attempt with no test hung (each file kept reporting results until the cancel).
+const windowsTouchedSeconds = {
+  'src/gateway/server.subagent-settle-replay.harness.test.ts': 520,
+  'src/gateway/server.private-completion.test.ts': 402,
+  'src/gateway/server-startup-lifetime.test.ts': 347,
+  'src/gateway/server.node-shutdown.test.ts': 119,
+  'src/gateway/server.native-completion-authority.test.ts': 98,
+  'src/gateway/server-close.memory.test.ts': 89,
+  'src/gateway/server-close.metadata.test.ts': 83,
+  'src/gateway/server.sessions.fixture-lifecycle.test.ts': 75,
+  'src/gateway/server.chat-steer-direct-command.test.ts': 54,
+  'src/gateway/server.requester-pause-authority.test.ts': 52,
+  'src/gateway/server.request-lifetime.test.ts': 46,
+};
+
+/** Windows seconds for a touched file: its measured Windows time, else its Linux weight at the Windows scale. */
+export function touchedWindowsWeight(file) {
+  return windowsTouchedSeconds[file] ?? featureTestWeight(file) * runnerTestScale.windows;
+}
+
 // Touched Windows shards run no Linux shard-1 checks, so they pack without the reserve and three or more
-// touched files never leave a shard empty.
+// touched files never leave a shard empty. They pack by Windows seconds (touchedWindowsWeight).
 // The touched count is now 4, because the smoke set alone is four files.
 export function touchedShardTests(tests, shard, weights) {
-  return planShards(tests, shard.total, weights, { reserve: 0 }).files[shard.index];
+  const windowsWeights = weights ?? new Map(tests.map(file => [file, touchedWindowsWeight(file)]));
+  return planShards(tests, shard.total, windowsWeights, { reserve: 0 }).files[shard.index];
 }
 
 // The shard counts below are floors. The matrix grows past them by the weight-derived count (shardCountFor).
