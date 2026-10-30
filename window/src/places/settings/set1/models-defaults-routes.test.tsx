@@ -5,6 +5,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
+import { R1_PAGES } from "../../../screens/settings/pages/plugged";
+import { SettingsFrame } from "../../../screens/settings/SettingsFrame";
 import { KitProvider, type SaveReport } from "../kit";
 import { ModelsPage } from "./models";
 
@@ -77,5 +79,33 @@ describe("Settings › Models › Default with no model (#1769)", () => {
     await act(async () => local!.click());
     expect(openSettings).toHaveBeenCalledWith("local");
     expect(sessionStorage.getItem("branch.openAddAccount")).toBeNull();
+  });
+
+  it("Use a model on this computer opens Local at Regular in the real Settings frame", async () => {
+    localStorage.setItem("branch.level", "regular");
+    vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    try {
+      const engine = { request: vi.fn(async () => ({})), onEvent: () => () => undefined, sessionKey: "s", agentId: "main", scopes: ["operator.admin"], features: { methods: [], events: [] } } as unknown as WindowEngine;
+      const onPage = vi.fn();
+      await act(async () => root.render(<SettingsFrame engine={engine} page="models" pages={R1_PAGES} onPage={onPage} />));
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="models"] .r1s-classic[data-classic="models"]')!;
+      expect(hosted).not.toBeNull();
+      const tab = (name: string) => [...hosted.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) => b.textContent === name)!;
+      expect(tab("Default").getAttribute("aria-selected")).toBe("true");
+      const local = button("Use a model on this computer");
+      expect(local).toBeTruthy();
+      expect(local!.disabled).toBe(false);
+      await act(async () => local!.click());
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      expect(tab("Local").getAttribute("aria-selected")).toBe("true");
+      expect(hosted.textContent).toContain("Models that run here, free and private.");
+      expect(button("Use a model on this computer")).toBeUndefined();
+      expect(onPage).not.toHaveBeenCalled();
+    } finally {
+      localStorage.clear();
+      vi.unstubAllGlobals();
+    }
   });
 });
