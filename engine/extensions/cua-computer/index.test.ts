@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import {
   validateJsonSchemaValue,
   type JsonSchemaObject,
@@ -22,6 +23,14 @@ const artifactMocks = vi.hoisted(() => ({
 
 vi.mock("./api.js", () => ({
   registerCuaDriverDoctorChecks: artifactMocks.registerDoctor,
+}));
+
+// Registration builds the image processor, which resolves the Branch temp root. On a
+// Windows host that pretends to be darwin, the POSIX temp-root checks cannot run, so
+// give registration the OS temp dir instead.
+vi.mock("branch/plugin-sdk/temp-path", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("branch/plugin-sdk/temp-path")>()),
+  resolvePreferredBranchTmpDir: () => os.tmpdir(),
 }));
 
 vi.mock("./src/driver-artifacts.js", () => ({
