@@ -1,0 +1,1 @@
+engine:src/entry.esm-resolve-fast-path.test.ts

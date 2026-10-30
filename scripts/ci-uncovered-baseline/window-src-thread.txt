@@ -1,0 +1,6 @@
+window:src/thread/approval-group.test.tsx
+window:src/thread/approval-keys.test.ts
+window:src/thread/browser-presentation.test.ts
+window:src/thread/prefs.test.tsx
+window:src/thread/questions.test.tsx
+window:src/thread/read-aloud.test.ts
