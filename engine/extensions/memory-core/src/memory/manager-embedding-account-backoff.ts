@@ -127,6 +127,20 @@ export class MemoryEmbeddingAccountBackoff {
     return this.isActive() ? "; " + this.describeWindow() : "";
   }
 
+  /**
+   * Error message for a search that has no keyword index to fall back to
+   * while the window is open, so it fails without asking the provider again.
+   */
+  describeSearchPause(): string {
+    const remainingMs = Math.max(0, (this.window?.until ?? 0) - this.now());
+    const minutes = Math.max(1, Math.ceil(remainingMs / 60_000));
+    return (
+      "memory search is unavailable: the embedding provider rejected the account " +
+      "(quota, billing or credentials) and there is no keyword index to search instead. " +
+      `Search tries the provider again in about ${minutes} min.`
+    );
+  }
+
   /** Describes the open window for its one warning. */
   describeWindow(): string {
     const minutes = Math.max(1, Math.round((this.window?.windowMs ?? 0) / 60_000));

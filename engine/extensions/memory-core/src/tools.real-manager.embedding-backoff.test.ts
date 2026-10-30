@@ -121,6 +121,39 @@ describe("memory_search real manager embedding account backoff", () => {
     expect(warningLines().filter((line) => line.includes("no credits remaining"))).toHaveLength(1);
   });
 
+  it("stops asking the rejected account when there is no keyword fallback", async () => {
+    const cfg = createConfig({ vectorEnabled: false });
+    cfg.memory = { ...cfg.memory, search: { ...cfg.memory?.search, cache: { enabled: false } } };
+    const manager = await indexedManager(cfg);
+    // Hybrid keyword search off, as on a SQLite build without FTS5.
+    const fts = Reflect.get(manager, "fts") as { enabled: boolean; available: boolean };
+    fts.enabled = false;
+    fts.available = false;
+    const quota = embeddingQuotaError();
+    let queryAttempts = 0;
+    provider.embedBatchPermanentFailure = quota;
+    provider.beforeEmbedQuery = async () => {
+      queryAttempts += 1;
+      throw quota;
+    };
+
+    // Keyword search is off, so the first failure has no keyword index to
+    // answer from and surfaces as is; it also opens the account window.
+    await expect(manager.search("alpha")).rejects.toThrow("no credits remaining");
+    const attemptsAfterFirst = queryAttempts;
+    expect(attemptsAfterFirst).toBeGreaterThan(0);
+
+    // Later searches fail fast with the window message instead of resending
+    // the query to the rejected account.
+    await expect(manager.search("alpha")).rejects.toThrow(
+      "the embedding provider rejected the account",
+    );
+    await expect(manager.search("alpha")).rejects.toThrow(
+      "tries the provider again in about 5 min",
+    );
+    expect(queryAttempts).toBe(attemptsAfterFirst);
+  });
+
   it("defers automatic syncs while the embedding quota is exhausted", async () => {
     const cfg = createConfig({ vectorEnabled: false });
     const manager = await indexedManager(cfg);

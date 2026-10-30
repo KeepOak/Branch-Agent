@@ -488,6 +488,12 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
         }
         return await finalizeKeywords(await loadKeywordResults());
       }
+      // With no keyword index to answer from (hybrid off, FTS unavailable or
+      // an explicit provider), the backoff still holds: fail the search
+      // instead of resending the query to the rejected account.
+      if (this.embeddingAccountBackoff.isActive()) {
+        throw new Error(this.embeddingAccountBackoff.describeSearchPause());
+      }
       let semanticProvider = this.provider;
       let semanticProviderRuntime = this.providerRuntime;
       let vectorProviderIdentity = {
