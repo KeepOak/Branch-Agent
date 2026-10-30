@@ -8,11 +8,10 @@ export function record(value: unknown): RecordValue { return value && typeof val
 export function list(value: unknown): RecordValue[] { return Array.isArray(value) ? value.map(record) : []; }
 export function at(value: unknown, path: string): unknown { return path.split(".").reduce<unknown>((v, key) => record(v)[key], value); }
 export function text(value: unknown): string { return value === undefined || value === null ? "Not set" : typeof value === "object" ? JSON.stringify(value) : String(value); }
-/** Engine wording Settings must keep so callers can detect or re-wrap it: a save conflict, a bare "disconnected" load
- *  error, a stale config hash (save-retry), an unknown method (Coming / visitor managed-copy), a validation "Expected …"
- *  line, or a connect dump that a lead sentence then runs through plainError (Remote Lately).
- *  Everything else goes through plainError (Private #1089). */
-const KEEP_ENGINE = /^(?:conflict|disconnected)$|changed since last load|changed since it was read|base hash|unknown method|Expected (?:number|string|boolean|object|array|integer)|UNAVAILABLE|E(?:CONNREFUSED|CONNRESET|CONNABORTED|HOSTUNREACH|NETUNREACH)|Failed to fetch|NetworkError|gateway (?:closed|not connected)|socket hang up/i;
+/** Engine wording Settings must keep so callers can detect it: a save conflict, a bare "disconnected" load
+ *  error, a stale config hash (save-retry), an unknown method (Coming / visitor managed-copy), or a validation "Expected …"
+ *  line. Everything else, a connect dump included, goes through plainError (Private #1089). */
+const KEEP_ENGINE = /^(?:conflict|disconnected)$|changed since last load|changed since it was read|base hash|unknown method|Expected (?:number|string|boolean|object|array|integer)/i;
 /** Engine failure words for Settings: Regular gets one plain sentence and a next step (Private #1089); Advanced and
  *  Technical keep the exact words. The words KEEP_ENGINE names pass through unchanged. */
 export function errorText(error: unknown): string {

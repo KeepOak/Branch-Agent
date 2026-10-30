@@ -97,10 +97,9 @@ describe("Settings set2 never shows a raw engine error at Regular", () => {
   });
 });
 
-// SectionDialog (Advanced and Technical settings, and the Customize editor): malformed JSON on Save keeps the parser's
-// reason and position at Advanced and Technical; Regular reads one plain next step instead.
+// SectionDialog (Technical Edit rows, and the Customize editor at Technical): malformed JSON on Save keeps the parser's
+// reason and position. Edit rows don't exist at Regular, so there is no Regular wording to test.
 const BAD_JSON = '{ "mode": "auto",, }';
-const NOT_JSON = "That isn’t valid JSON. Check the text and try again.";
 const parserWords = (() => { try { JSON.parse(BAD_JSON); return ""; } catch (error) { return (error as Error).message; } })();
 
 function sectionCtx(request: (method: string) => Promise<unknown>, set: (path: string, value: unknown) => Promise<void>) {
@@ -137,19 +136,11 @@ describe("Settings section editor: malformed JSON on Save", () => {
     expect(parserWords).toMatch(/position|line|column/i);
     const alert = await saveBadJson(2);
     expect(alert).toBe("That isn’t valid JSON: " + parserWords);
-    expect(alert).not.toBe(NOT_JSON);
   });
 
   it("shows the exact parser reason and position at Advanced", async () => {
     localStorage.setItem("branch.level", "advanced");
     const alert = await saveBadJson(1);
     expect(alert).toBe("That isn’t valid JSON: " + parserWords);
-  });
-
-  it("shows one plain next step at Regular", async () => {
-    const alert = await saveBadJson(0);
-    expect(alert).toBe(NOT_JSON);
-    expect(alert).not.toContain(parserWords);
-    expect(alert).not.toMatch(/position|column/i);
   });
 });

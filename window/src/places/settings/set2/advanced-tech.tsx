@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
-import { Btn, Ctl, Empty, Hint, Pill, Prow, Sec, useLevel, usePinsKit, type Lv } from "../kit";
+import { Btn, Ctl, Empty, Hint, Pill, Prow, Sec, usePinsKit, type Lv } from "../kit";
 import { Icon } from "../../../shell/icons";
 import { list } from "../adapter";
 import { plainError } from "../../../shell/plain-error";
@@ -203,15 +203,12 @@ function useFields(engine: WindowEngine) {
   return { fields, error: res.error, loading: res.loading && !res.data };
 }
 
-/** What Regular reads when the text isn't JSON; Advanced and Technical read the parser's own reason and position. */
-const NOT_JSON = "That isn’t valid JSON. Check the text and try again.";
-
 export function SectionDialog({ c, path, title, onClose }: { c: Ctx; path: string; title: string; onClose: () => void }) {
   const value = c.config.get(path);
   const [text, setText] = useState(JSON.stringify(value ?? {}, null, 2));
   const save = useCall();
-  const level = useLevel();
-  // The parser's exact words from the last Save, kept whole; only the line below picks the wording for the level.
+  // The parser's exact words from the last Save, kept whole. Edit rows open this only at Technical (and Customize's
+  // editor renders it at Technical), so the line below shows the parser's reason and position as is.
   const [badJson, setBadJson] = useState<string | null>(null);
   const { fields } = useFields(c.engine);
   const mine = fields.filter((f) => f.path === path || f.path.startsWith(`${path}.`));
@@ -231,7 +228,7 @@ export function SectionDialog({ c, path, title, onClose }: { c: Ctx; path: strin
     <Dialog title={title} wide onClose={onClose} footer={<><Btn onClick={onClose}>Cancel</Btn><Btn pri disabled={save.busy} onClick={go}>Save</Btn></>}>
       <p className="hint s2advanced-gap"><code>{path}</code> · saved as you see it; a key you remove goes back to the engine’s default.</p>
       <textarea className="inp s2advanced-json" rows={16} spellCheck={false} aria-label={`${title} settings`} value={text} onChange={(e) => setText(e.target.value)} />
-      {badJson && save.error ? <p className="hint s2-err" role="alert">{level >= 1 ? badJson : NOT_JSON}</p> : <CallLine call={save} />}
+      {badJson && save.error ? <p className="hint s2-err" role="alert">{badJson}</p> : <CallLine call={save} />}
       {mine.length ? <details className="s2advanced-snap"><summary>Every field ({mine.length})</summary><FieldList fields={mine} config={c.config} /></details> : null}
     </Dialog>
   );
