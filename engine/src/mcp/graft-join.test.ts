@@ -139,62 +139,55 @@ describe("branch graft join", () => {
     expect(graftInviteParams({ gateway: { bind: "loopback" } } as never, 41002).publicUrl).toBe(
       "ws://127.0.0.1:41002",
     );
-    expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 41002, {})).toEqual({
+    expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 41002)).toEqual({
       includeQr: false,
       bootstrapProfile: "limited",
     });
   });
 
-  it("invites with a reachable LAN address for plain ws:// when the host also has a tailnet address", () => {
-    const iface = (address: string) => [{ address, family: "IPv4", internal: false }];
-    const lanAndTailnet = { en0: iface("192.168.1.20"), utun3: iface("100.64.0.7") } as never;
-    // Pairing rejects plain ws:// to a tailnet address, so the code must name the LAN address.
-    expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 19031, lanAndTailnet)).toEqual({
-      includeQr: false,
-      bootstrapProfile: "limited",
-      publicUrl: "ws://192.168.1.20:19031",
-    });
-    expect(
-      graftInviteParams({ gateway: { bind: "loopback" } } as never, 19031, lanAndTailnet).publicUrl,
-    ).toBe("ws://127.0.0.1:19031");
-  });
-
-  it("issues a setup code for the LAN invite address, which a ws:// tailnet address does not get", async () => {
+  it("leaves the network address to the gateway's route-aware LAN pick, past a Docker bridge listed first", async () => {
     const { resolvePairingSetupFromConfig } = await import("../pairing/setup-code.js");
     const iface = (address: string) => [{ address, family: "IPv4", internal: false }];
-    const lanAndTailnet = { en0: iface("192.168.1.20"), utun3: iface("100.64.0.7") };
-    const cfg = { gateway: { bind: "lan", auth: { mode: "token", token: "graft-test-token" } } } as never;
+    // A Docker bridge (and a tailnet adapter) enumerate before the real LAN NIC; the default route is en0.
+    const dockerFirst = { docker0: iface("172.17.0.1"), utun3: iface("100.64.0.7"), en0: iface("192.168.1.20") };
+    const defaultRoute = async (argv: string[]) => ({
+      code: 0,
+      stdout:
+        argv[0] === "route"
+          ? "   route to: default\ninterface: en0\n"
+          : argv[0] === "ip"
+            ? "default via 192.168.1.1 dev en0 proto dhcp\n"
+            : JSON.stringify([{ InterfaceAlias: "en0", RouteMetric: 0, InterfaceMetric: 25 }]),
+    });
+    const cfg = {
+      gateway: { bind: "lan", port: 19031, auth: { mode: "token", token: "graft-test-token" } },
+    } as never;
     const resolve = (publicUrl: unknown) =>
       resolvePairingSetupFromConfig(cfg, {
         env: {},
-        publicUrl: publicUrl as string,
+        publicUrl: publicUrl as string | undefined,
         issuedBootstrap: { token: "bootstrap", expiresAtMs: Date.now() + 60_000, setupId: "setup-1" },
-        networkInterfaces: () => lanAndTailnet as never,
+        networkInterfaces: () => dockerFirst as never,
+        runCommandWithTimeout: defaultRoute,
       });
-    const invited = await resolve(graftInviteParams(cfg, 19031, lanAndTailnet as never).publicUrl);
+    const params = graftInviteParams(cfg, 19031);
+    expect(params.publicUrl).toBeUndefined();
+    const invited = await resolve(params.publicUrl);
     expect(invited.ok && invited.payload.url).toBe("ws://192.168.1.20:19031");
+    // Pairing rejects a plain ws:// tailnet address, which is why the invite never names one.
     const tailnet = await resolve("ws://100.64.0.7:19031");
     expect(tailnet.ok).toBe(false);
   });
 
   it("never puts a plain ws:// tailnet address in the invite", () => {
-    const iface = (address: string) => [{ address, family: "IPv4", internal: false }];
-    const tailnetOnly = { utun3: iface("100.64.0.7") } as never;
-    const lanAndTailnet = { en0: iface("10.0.0.9"), utun3: iface("100.64.0.7") } as never;
-    // Without a LAN address, or with gateway.bind=tailnet, the gateway's own resolver picks the URL
-    // (wss:// with TLS or Tailscale Serve) instead of a ws:// tailnet URL pairing would reject.
-    expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 19031, tailnetOnly)).toEqual({
-      includeQr: false,
-      bootstrapProfile: "limited",
-    });
-    expect(
-      graftInviteParams({ gateway: { bind: "tailnet" } } as never, 19031, lanAndTailnet).publicUrl,
-    ).toBeUndefined();
-    // With TLS on, the resolver issues wss:// and pins the gateway certificate.
-    expect(
-      graftInviteParams({ gateway: { bind: "lan", tls: { enabled: true } } } as never, 19031, lanAndTailnet)
-        .publicUrl,
-    ).toBeUndefined();
+    // Every non-loopback bind leaves the URL to the gateway's resolver (route-aware LAN, wss:// with TLS, or
+    // Tailscale Serve) instead of a ws:// tailnet URL pairing would reject.
+    for (const gateway of [{ bind: "lan" }, { bind: "tailnet" }, { bind: "lan", tls: { enabled: true } }]) {
+      expect(graftInviteParams({ gateway } as never, 19031)).toEqual({
+        includeQr: false,
+        bootstrapProfile: "limited",
+      });
+    }
   });
 
   it("lists the tailnet first, then the setup code's address, then private LAN addresses; Tailscale is optional", () => {
