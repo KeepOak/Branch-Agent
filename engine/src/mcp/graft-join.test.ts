@@ -122,7 +122,10 @@ describe("branch graft join", () => {
     );
     saveGraftLink({ url: "ws://127.0.0.1:41001", name: "B", joinedAt: 1 }, env);
     saveGraftLink({ url: "ws://127.0.0.1:41001", name: "B2", joinedAt: 2 }, env);
-    expect(readGraftLinks(env)).toEqual([{ url: "ws://127.0.0.1:41001", name: "B2", joinedAt: 2 }]);
+    // Each join gets its own link id (graftLinkKey), written once at join time.
+    expect(readGraftLinks(env)).toEqual([
+      { url: "ws://127.0.0.1:41001", name: "B2", joinedAt: 2, id: expect.any(String) },
+    ]);
     expect(resolveGraftLink("", env).name).toBe("B2");
     expect(resolveGraftLink("ws://127.0.0.1:41001", env).name).toBe("B2");
     expect(() => resolveGraftLink("ws://10.0.0.5:18789", env)).toThrow(
