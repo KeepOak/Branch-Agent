@@ -1,6 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { isCompactionReplayCheckpoint } from "@branch/ai/transports";
-import { setReplyPayloadMetadata } from "../../../auto-reply/reply-payload.js";
+import {
+  copyReplyPayloadMetadata,
+  setReplyPayloadMetadata,
+} from "../../../auto-reply/reply-payload.js";
 import { SILENT_REPLY_TOKEN } from "../../../auto-reply/tokens.js";
 import { freezeDiagnosticTraceContext } from "../../../infra/diagnostic-trace-context.js";
 import { formatErrorMessage } from "../../../infra/errors.js";
@@ -28,7 +31,6 @@ import type {
 import { copyAttemptDeliveryState } from "./attempt-delivery-state.js";
 import {
   hasAttemptTerminalState,
-  resolveCurrentAttemptAssistant,
   shouldContinueInteractiveAcceptedSessionSpawns,
 } from "./attempt-terminal-evidence.js";
 import {
@@ -37,14 +39,13 @@ import {
 } from "./auth-profile-success.js";
 import type { EmbeddedRunContextRecoveryState } from "./context-recovery-state.js";
 import { resolveFinalAssistantVisibleText } from "./helpers.js";
-import { countSettledTurnDeliveryPayloads } from "./incomplete-turn-classification.js";
 import {
   DEFAULT_EMPTY_RESPONSE_RETRY_LIMIT,
   DEFAULT_REASONING_ONLY_RETRY_LIMIT,
   resolveEmptyResponseRetryInstruction,
   resolveReasoningOnlyRetryInstruction,
   resolveSettledToolBatchEvidence,
-  resolveSettledToolTerminalContinuationInstruction,
+  SETTLED_TOOL_ENDED_WITHOUT_FINAL_ERROR,
   shouldTreatEmptyAssistantReplyAsSilent,
 } from "./incomplete-turn-recovery.js";
 import {
@@ -98,71 +99,11 @@ export function createTerminalToolPresentationTracker() {
   };
 }
 
+export { resolveSettledTurnFinalizationRequest } from "./settled-turn-finalization-request.js";
+
 type TerminalResolution =
   | { action: "retry" }
   | { action: "complete"; result: EmbeddedAgentRunResult };
-
-export function resolveSettledTurnFinalizationRequest(input: {
-  runParams: TerminalRunParams;
-  attempt: EmbeddedRunAttemptResult;
-  activeErrorContext: { provider: string; model: string };
-  modelApi: string | undefined;
-  executionContract: string | undefined;
-  payloadsWithToolMedia: EmbeddedAgentRunResult["payloads"];
-  recoveredFinalAssistantPayloadsAfterPromptTimeout?: EmbeddedAgentRunResult["payloads"];
-  hasTerminalToolPresentation: boolean;
-  terminalState: EmbeddedRunTerminalState;
-  settledTurnFinalizationAvailable: boolean;
-  replyDeliveryState?: ReplyDeliveryState;
-}): string | null {
-  const terminalAssistant = resolveCurrentAttemptAssistant(input.attempt);
-  if (
-    !input.settledTurnFinalizationAvailable ||
-    isTerminalAssistantError(terminalAssistant) ||
-    resolveSourceReplyDelivery(input.attempt, input.replyDeliveryState) !== "missing"
-  ) {
-    return null;
-  }
-  const terminalAborted = isEmbeddedRunTerminalAbort(input.terminalState.outcome);
-  const terminalTimedOut = isEmbeddedRunTerminalTimeout(input.terminalState.outcome);
-  // Generated errors and pre-tool commentary are fallback surfaces, not authored answers.
-  const preparedPayloadCount = countSettledTurnDeliveryPayloads({
-    payloads: input.payloadsWithToolMedia,
-    attempt: input.attempt,
-  });
-  const silentToolResultReplyPayload = resolveSilentToolResultReplyPayload({
-    isCronTrigger: input.runParams.trigger === "cron",
-    payloadCount: preparedPayloadCount,
-    aborted: terminalAborted,
-    timedOut: terminalTimedOut,
-    attempt: input.attempt,
-  });
-  const payloadCount = input.recoveredFinalAssistantPayloadsAfterPromptTimeout
-    ? input.recoveredFinalAssistantPayloadsAfterPromptTimeout.length
-    : preparedPayloadCount || (silentToolResultReplyPayload ? 1 : 0);
-  const emptyAssistantReplyIsSilent = shouldTreatEmptyAssistantReplyAsSilent({
-    terminalReplyExpectation: resolveReplyExpectation(input.runParams),
-    payloadCount,
-    aborted: terminalAborted,
-    timedOut: terminalTimedOut,
-    attempt: input.attempt,
-  });
-  if (emptyAssistantReplyIsSilent) {
-    return null;
-  }
-  return resolveSettledToolTerminalContinuationInstruction({
-    provider: input.activeErrorContext.provider,
-    modelId: input.activeErrorContext.model,
-    modelApi: input.modelApi,
-    executionContract: input.executionContract,
-    allowEmptyStopContinuation: resolveReplyExpectation(input.runParams) === "required",
-    payloadCount,
-    hasTerminalToolPresentation: input.hasTerminalToolPresentation,
-    aborted: terminalAborted,
-    timedOut: terminalTimedOut,
-    attempt: input.attempt,
-  });
-}
 
 export async function resolveEmbeddedRunTerminal(input: {
   runParams: TerminalRunParams;
@@ -221,6 +162,8 @@ export async function resolveEmbeddedRunTerminal(input: {
     | "completed-empty"
     | "failed"
     | "silent-fallback";
+  /** Isolated finalization ran and the host fallback stands in for the missing final. */
+  settledTurnEndedWithoutFinal?: boolean;
   pluginHarnessOwnsTransport: boolean;
   pluginHarnessOwnsAuthBootstrap: boolean;
   reportedModelRef: { provider: string; model: string };
@@ -398,6 +341,29 @@ export async function resolveEmbeddedRunTerminal(input: {
   // Invisible retries return above; visible and terminal paths release this retained constraint.
   sessionPromptState.clearCompactionContinuation();
 
+  // The model stopped after settled tools and the one-more-time finalization
+  // still wrote nothing. The host fallback must not report the run as finished:
+  // a required reply ends visibly as "ended without a final" (#847).
+  if (
+    input.settledTurnEndedWithoutFinal === true &&
+    resolveReplyExpectation(runParams) === "required" &&
+    !terminalAborted &&
+    !terminalTimedOut
+  ) {
+    log.warn(
+      `settled tools ended without a final message: runId=${runParams.runId} sessionId=${runParams.sessionId} ` +
+        `provider=${input.activeErrorContext.provider}/${input.activeErrorContext.model} — marking run ended without a final`,
+    );
+    return completeEmbeddedRun({
+      ...input,
+      payloadCount,
+      payloadsForTerminalPath: payloadsForTerminalPath?.map((payload) =>
+        copyReplyPayloadMetadata(payload, { ...payload, isError: true }),
+      ),
+      endedWithoutFinal: true,
+    });
+  }
+
   if (reasoningOnlyRetriesExhausted && !input.finalAssistantVisibleText) {
     const incompletePayloadText = "⚠️ Agent couldn't generate a response. Please try again.";
     log.warn(
@@ -489,6 +455,7 @@ async function completeEmbeddedRun(
     incompleteTurnText?: string;
     incompleteTurnFallbackSafe?: boolean;
     terminalToolPresentation?: string;
+    endedWithoutFinal?: boolean;
   },
 ): Promise<TerminalResolution> {
   const terminalAborted = isEmbeddedRunTerminalAbort(input.terminalState.outcome);
@@ -496,15 +463,18 @@ async function completeEmbeddedRun(
   // Warning suppression is presentation only: an unrecovered terminal failure
   // must retain error metadata and must not enter successful auth/trace bookkeeping.
   const error =
+    input.endedWithoutFinal === true ||
     input.incompleteTurnText !== undefined ||
     classifyAgentRunTerminalOutcome(input.terminalState.outcome) === "failure"
       ? {
           kind: "incomplete_turn" as const,
-          message: formatErrorMessage(
-            projectAgentRunAttemptTerminal(input.attempt.terminal).promptError ??
-              input.terminalState.outcome.error ??
-              "Agent couldn't generate a response.",
-          ),
+          message: input.endedWithoutFinal
+            ? SETTLED_TOOL_ENDED_WITHOUT_FINAL_ERROR
+            : formatErrorMessage(
+                projectAgentRunAttemptTerminal(input.attempt.terminal).promptError ??
+                  input.terminalState.outcome.error ??
+                  "Agent couldn't generate a response.",
+              ),
           fallbackSafe: input.incompleteTurnFallbackSafe ?? false,
           terminalPresentation: input.terminalToolPresentation !== undefined,
         }
