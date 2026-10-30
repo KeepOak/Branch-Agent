@@ -29,7 +29,7 @@ export function ModelsPage({ tab = "defaults", ...props }: SettingsPageProps & {
           {scopeName}’s own settings. Rows that apply to everyone are the same for every Trunk.
         </p>
       ) : null}
-      {tab === "defaults" ? <DefaultsTab m={m} /> : null}
+      {tab === "defaults" ? <DefaultsTab m={m} openSettings={props.openSettings} /> : null}
       {tab === "second" ? <SecondTab m={m} /> : null}
       {tab === "media" ? <MediaTab m={m} /> : null}
       {lv >= 1 ? <ModelsSections m={m} tab={tab} openSettings={props.openSettings} /> : null}
