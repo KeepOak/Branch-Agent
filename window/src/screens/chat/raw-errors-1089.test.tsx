@@ -36,10 +36,37 @@ describe("a failed run never shows the engine's raw words at Regular (Private #1
     expect(line).toBe(`Researcher couldn’t finish: ${plain}`);
   });
 
-  it("a run that failed for want of Codex shows main's Connect a model notice, not the error name", async () => {
-    await runError("CodexNotInstalledError: Codex is not installed.");
-    expect(host.querySelector('[data-testid="connect-model"]')).not.toBeNull();
+  // #589: a fresh install with a connected ChatGPT account but no Codex. Connect a model sent the user to Add an
+  // account for an account that was already there; the thread now says Codex is missing and opens Settings › Accounts.
+  it.each([
+    "CodexNotInstalledError: Codex is not installed.",
+    "CodexNotInstalledError: Install and sign in to Codex on this computer, then check again.",
+  ])("a run that failed for want of Codex (%j) says Codex is missing, not Connect a model", async (raw) => {
+    sessionStorage.clear();
+    await runError(raw);
+    const notice = host.querySelector('[data-testid="codex-missing"]');
+    expect(notice?.querySelector("p")?.textContent).toBe("Codex isn’t on this computer yet. Your ChatGPT account is connected, but its models need Codex to answer. Set up Codex in Settings › Accounts, then try again.");
+    expect(host.querySelector('[data-testid="connect-model"]')).toBeNull();
     expect(host.textContent ?? "").not.toMatch(RAW);
+    expect(host.textContent ?? "").not.toMatch(/Connect a model/);
+    const pages: unknown[] = [];
+    const seen = (event: Event) => pages.push((event as CustomEvent<{ page?: string }>).detail?.page);
+    const added = vi.fn();
+    window.addEventListener("branch:navigate-settings", seen);
+    window.addEventListener("branch:open-add-account", added);
+    const button = [...(notice?.querySelectorAll("button") ?? [])].find((b) => b.textContent === "Set up Codex") as HTMLButtonElement;
+    await act(async () => button.click());
+    window.removeEventListener("branch:navigate-settings", seen);
+    window.removeEventListener("branch:open-add-account", added);
+    expect(pages).toEqual(["accounts"]);
+    expect(added).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("branch.openAddAccount")).toBeNull();
+  });
+
+  it("a run with no account at all still shows Connect a model", async () => {
+    await runError('No API key found for provider "openai".');
+    expect(host.querySelector('[data-testid="connect-model"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="codex-missing"]')).toBeNull();
   });
 
   it("offers the engine's words (Details, Copy error) only at Technical", async () => {
