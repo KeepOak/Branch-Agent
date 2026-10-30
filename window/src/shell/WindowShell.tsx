@@ -64,6 +64,7 @@ import { Face } from "../face/Face";
 import { TalkSetup, type TalkHandle } from "../setup/TalkSetup";
 import { NewTrunkCard, type NewTrunk } from "./NewTrunkFlow";
 import { createTrunk, waitForTrunk } from "../places/trunk/api";
+import { openNewTrunkConversation } from "../places/trunk/new-trunk-open";
 import { RemoveTrunkDialog, TRUNK_REMOVED_EVENT } from "../places/trunk/RemoveTrunk";
 import { NewTrunkPreview, type TrunkChoice } from "../places/trunk/NewTrunkPreview";
 import type { Roster } from "../places/trunk/model";
@@ -900,26 +901,28 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     if (makingTrunkRef.current || !newTrunkRoster) return;
     makingTrunkRef.current = true;
     setMakingTrunk(true);
-    let created = false;
+    let agentId: string;
     try {
-      const agentId = await createTrunk(session.engine, choice.name, choice.avatar);
-      created = true;
-      // The persisted receipt completes Make Trunk. Opening its contact is separate
-      // and must never leave a saved choice available for another create.
-      setNewTrunkRoster(null);
-      notify(`${choice.name} is made.`);
-      await waitForTrunk(session.engine, agentId);
-      const key = await actions.create(agentId);
-      if (!key) return;
-      setNewTrunkFlow({ agentId, sessionKey: key, name: choice.name });
-      openConversation(key);
+      agentId = await createTrunk(session.engine, choice.name, choice.avatar);
     } catch (e) {
-      if (created) notify(`${choice.name} is made. Open it from the Trunks list.`);
-      else notify(creationProblem(e), { tone: "bad" });
+      notify(creationProblem(e), { tone: "bad" });
+      return;
     } finally {
       makingTrunkRef.current = false;
       setMakingTrunk(false);
     }
+    // The persisted receipt completes Make Trunk. Opening its contact is separate
+    // and must never leave a saved choice available for another create.
+    setNewTrunkRoster(null);
+    // Same as + › New Trunk (#479): one plain message with Try again if the conversation can't open, no engine words.
+    await openNewTrunkConversation(choice.name, {
+      ready: () => waitForTrunk(session.engine, agentId),
+      open: () => actions.create(agentId, { quiet: true }),
+      show: (key) => {
+        setNewTrunkFlow({ agentId, sessionKey: key, name: choice.name });
+        openConversation(key);
+      },
+    });
   };
 
   const contacts = projectContact([...contactRows.map((contact) => contact.kind === "outside" && groupRooms.peerOnline.has(contact.id.slice(4)) ? { ...contact, offline: groupRooms.peerOnline.get(contact.id.slice(4)) === false } : contact), ...groupRooms.rooms.map((room) => roomContact(room, contactRows)).filter((c): c is NonNullable<typeof c> => Boolean(c))], lists.rows);
