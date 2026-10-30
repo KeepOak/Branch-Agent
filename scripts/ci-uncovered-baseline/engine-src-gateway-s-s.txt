@@ -551,7 +551,6 @@ engine:src/gateway/server-plugin-runtime-generation.test.ts
 engine:src/gateway/server-plugin-subagent-runtime.fallback-transport.test.ts
 engine:src/gateway/server-plugin-subagent-runtime.overrides.test.ts
 engine:src/gateway/server-plugin-subagent-runtime.test.ts
-engine:src/gateway/server-plugins.activation-health.test.ts
 engine:src/gateway/server-plugins.lifecycle.channels.test.ts
 engine:src/gateway/server-plugins.lifecycle.readers.test.ts
 engine:src/gateway/server-plugins.lifecycle.test.ts
@@ -619,7 +618,6 @@ engine:src/gateway/server-startup-copied-auth-secretref.test.ts
 engine:src/gateway/server-startup-early.test.ts
 engine:src/gateway/server-startup-handler-prewarm.test.ts
 engine:src/gateway/server-startup-legacy-pairing.test.ts
-engine:src/gateway/server-startup-lifetime.test.ts
 engine:src/gateway/server-startup-log.test.ts
 engine:src/gateway/server-startup-minimal-boot.test.ts
 engine:src/gateway/server-startup-plugin-quarantine.test.ts
@@ -669,7 +667,6 @@ engine:src/gateway/server.agent-artifact-apis.test.ts
 engine:src/gateway/server.agent-database-recreation-product-proof.test.ts
 engine:src/gateway/server.agent-execution-shutdown.test.ts
 engine:src/gateway/server.agent-input-authority.test.ts
-engine:src/gateway/server.agent-late-admission.test.ts
 engine:src/gateway/server.agent-metadata-read-authority.test.ts
 engine:src/gateway/server.agent-runtime-authority-proof.test.ts
 engine:src/gateway/server.agent.deleted-agent-gateway.test.ts

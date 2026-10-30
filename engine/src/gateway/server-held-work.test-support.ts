@@ -9,29 +9,35 @@ export async function observeGatewayConnectionWork(releases: Promise<void>[] = [
   let signal: AbortSignal | undefined;
   let restoreRegistration: (() => void) | undefined;
   const kernelModule = await import("./server-kernel.js");
-  const createKernel = kernelModule.createGatewayKernel;
+  const prepareKernel = kernelModule.prepareGatewayKernel;
   const factory = vi
-    .spyOn(kernelModule, "createGatewayKernel")
+    .spyOn(kernelModule, "prepareGatewayKernel")
     .mockImplementationOnce(async (...args) => {
-      const kernel = await createKernel(...args);
-      signal = kernel.connectionWork.signal;
-      const register = kernel.connectionWork.registerConnection.bind(kernel.connectionWork);
-      const registration = vi
-        .spyOn(kernel.connectionWork, "registerConnection")
-        .mockImplementation((close) => {
-          const key = Symbol("gateway connection");
-          const released = createDeferredCore();
-          connections.add(key);
-          releases.push(released.promise);
-          const release = register(close);
-          return () => {
-            release();
-            connections.delete(key);
-            released.resolve();
-          };
-        });
-      restoreRegistration = () => registration.mockRestore();
-      return kernel;
+      const prepared = await prepareKernel(...args);
+      return {
+        ...prepared,
+        async activate(...activateArgs) {
+          const kernel = await prepared.activate(...activateArgs);
+          signal = kernel.connectionWork.signal;
+          const register = kernel.connectionWork.registerConnection.bind(kernel.connectionWork);
+          const registration = vi
+            .spyOn(kernel.connectionWork, "registerConnection")
+            .mockImplementation((close) => {
+              const key = Symbol("gateway connection");
+              const released = createDeferredCore();
+              connections.add(key);
+              releases.push(released.promise);
+              const release = register(close);
+              return () => {
+                release();
+                connections.delete(key);
+                released.resolve();
+              };
+            });
+          restoreRegistration = () => registration.mockRestore();
+          return kernel;
+        },
+      };
     });
   return {
     get signal() {

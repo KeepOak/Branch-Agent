@@ -6,7 +6,6 @@ engine:src/gateway/server.chat-membership-authority.product.test.ts
 engine:src/gateway/server.chat-metadata-boundary.test.ts
 engine:src/gateway/server.chat-queued-followup.test.ts
 engine:src/gateway/server.chat-recovered-output.test.ts
-engine:src/gateway/server.chat-steer-direct-command.test.ts
 engine:src/gateway/server.chat.acp-completion.test.ts
 engine:src/gateway/server.chat.canonical-publication.test.ts
 engine:src/gateway/server.chat.cli-history.test.ts
@@ -50,7 +49,6 @@ engine:src/gateway/server.message-buffer-caption.test.ts
 engine:src/gateway/server.models-auth-order.test.ts
 engine:src/gateway/server.models-native-retirement.test.ts
 engine:src/gateway/server.models-voicewake-misc.test.ts
-engine:src/gateway/server.native-completion-authority.test.ts
 engine:src/gateway/server.native-hook-request-lifetime.test.ts
 engine:src/gateway/server.node-chat-subscriptions.test.ts
 engine:src/gateway/server.node-invoke-approval-bypass.test.ts
@@ -58,7 +56,6 @@ engine:src/gateway/server.node-pairing-authz.test.ts
 engine:src/gateway/server.node-pairing-auto-approve.test.ts
 engine:src/gateway/server.node-pairing-ssh-verify.test.ts
 engine:src/gateway/server.node-result-close.test.ts
-engine:src/gateway/server.node-shutdown.test.ts
 engine:src/gateway/server.node-version-mismatch.test.ts
 engine:src/gateway/server.operator-observer-lifetime.test.ts
 engine:src/gateway/server.operator-presentation-lifetime.test.ts
@@ -72,12 +69,9 @@ engine:src/gateway/server.plugins-install-authority.test.ts
 engine:src/gateway/server.portals.session.test.ts
 engine:src/gateway/server.preauth-bootstrap-token-rate-limit.test.ts
 engine:src/gateway/server.preauth-hardening.test.ts
-engine:src/gateway/server.private-completion.test.ts
 engine:src/gateway/server.public-worker-ingress.test.ts
 engine:src/gateway/server.push-web-authz.test.ts
 engine:src/gateway/server.qa-lab-rpc-replay.test.ts
-engine:src/gateway/server.request-lifetime.test.ts
-engine:src/gateway/server.requester-pause-authority.test.ts
 engine:src/gateway/server.roles-allowlist-update.test.ts
 engine:src/gateway/server.rpc-wire-contracts.test.ts
 engine:src/gateway/server.sessions-send-owner-continuation.test.ts
@@ -125,7 +119,6 @@ engine:src/gateway/server.sessions.effort-scopes.test.ts
 engine:src/gateway/server.sessions.exec-binding-rpc.test.ts
 engine:src/gateway/server.sessions.face.test.ts
 engine:src/gateway/server.sessions.fast-mode-compat.test.ts
-engine:src/gateway/server.sessions.fixture-lifecycle.test.ts
 engine:src/gateway/server.sessions.inbound-worktree-writer.test.ts
 engine:src/gateway/server.sessions.list-changed.test.ts
 engine:src/gateway/server.sessions.list-explicit-ownership.test.ts
@@ -172,7 +165,6 @@ engine:src/gateway/server.startup-matrix-migration.integration.test.ts
 engine:src/gateway/server.startup-recovery-webchat.test.ts
 engine:src/gateway/server.startup-websocket-race.test.ts
 engine:src/gateway/server.state-owner.test.ts
-engine:src/gateway/server.subagent-settle-replay.harness.test.ts
 engine:src/gateway/server.talk-config.test.ts
 engine:src/gateway/server.talk-consult-history.test.ts
 engine:src/gateway/server.talk-runtime.test.ts

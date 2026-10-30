@@ -446,14 +446,11 @@ engine:src/gateway/server-close.acp-restart.test.ts
 engine:src/gateway/server-close.agent-databases.test.ts
 engine:src/gateway/server-close.auth-usage.test.ts
 engine:src/gateway/server-close.board.test.ts
-engine:src/gateway/server-close.channel-pairing.test.ts
 engine:src/gateway/server-close.cleanup-scope.test.ts
 engine:src/gateway/server-close.cron-authority.test.ts
 engine:src/gateway/server-close.incognito-manager.test.ts
 engine:src/gateway/server-close.incognito-pending-history.test.ts
 engine:src/gateway/server-close.media-provenance.test.ts
-engine:src/gateway/server-close.memory.test.ts
-engine:src/gateway/server-close.metadata.test.ts
 engine:src/gateway/server-close.model-accounts.test.ts
 engine:src/gateway/server-close.model-acquisition.test.ts
 engine:src/gateway/server-close.model-cache.test.ts
