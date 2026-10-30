@@ -31,7 +31,7 @@ export function useAct(refresh: () => Promise<void>) {
       await refresh();
       return true;
     } catch (e) {
-      notify(plainError(errorText(e), true), { tone: "bad" });
+      notify(plainError(errorText(e)), { tone: "bad" });
       return false;
     }
   };

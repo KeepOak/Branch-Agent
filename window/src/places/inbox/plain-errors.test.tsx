@@ -24,25 +24,28 @@ function engine(values: Record<string, unknown> = {}, reject = false): WindowEng
 }
 async function mount(node: ReactNode) { const host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(async () => root!.render(node)); return host; }
 function safe() { expect(document.body.textContent).toContain(PLAIN); expect(document.body.textContent).not.toContain(RAW); expect(document.querySelector("details")).toBeNull(); }
+/** Advanced and Technical keep the failure's exact words (#1814 level contract). */
+function exact() { expect(document.body.textContent).toContain(RAW); expect(document.body.textContent).not.toContain(PLAIN); }
 async function click(text: string) { const button = [...document.querySelectorAll("button")].find(b => b.textContent?.trim() === text)!; expect(button).toBeTruthy(); await act(async () => button.click()); }
 
-describe.each(["regular", "advanced"] as Level[])("plain inbox failures at %s", level => {
+describe.each(["regular", "advanced", "technical"] as Level[])("inbox failures at %s", level => {
+  const regular = level === "regular", check = regular ? safe : exact;
   it("index.tsx: partial Inbox reads and history errors", async () => {
     localStorage.setItem("branch.level", level);
-    await mount(<InboxPlace engine={engine({}, true)} level={level} facts={{ running: 0, waiting: 0 }} openConversation={noop} openPlace={noop} />); safe();
-    await click("History"); safe();
+    await mount(<InboxPlace engine={engine({}, true)} level={level} facts={{ running: 0, waiting: 0 }} openConversation={noop} openPlace={noop} />); check();
+    await click("History"); check();
   });
   it("NeedsYou.tsx: channel and automation status cards", async () => {
     localStorage.setItem("branch.level", level);
     const e = engine({ "channels.status": { channelLabels: { telegram: "Telegram" }, channelAccounts: { telegram: [{ accountId: "default", configured: true, running: false, lastError: RAW }] } }, "cron.list": { jobs: [{ id: "job", name: "Morning brief", state: { lastRunStatus: "error", lastError: RAW } }] } });
-    await mount(<NeedsYou data={await loadNeeds(e)} engine={e} level={level} busy={false} act={async () => true} loading={false} openConversation={noop} openPlace={noop} />); safe();
+    await mount(<NeedsYou data={await loadNeeds(e)} engine={e} level={level} busy={false} act={async () => true} loading={false} openConversation={noop} openPlace={noop} />); check();
     expect(document.querySelectorAll(".ib-card").length).toBeGreaterThanOrEqual(2);
   });
   it("NeedsYou.tsx: full access request failure toast", async () => {
     localStorage.setItem("branch.level", level);
     const e = { ...engine(), scopes: ["operator.read"], requestScopeUpgrade: vi.fn(async () => { throw new Error(RAW); }) };
     await mount(<NeedsYou data={await loadNeeds(e)} engine={e} level={level} busy={false} act={async () => true} loading={false} openConversation={noop} openPlace={noop} />);
-    await click("Ask for full access"); expect(getToasts().at(-1)?.text).toBe(PLAIN);
+    await click("Ask for full access"); expect(getToasts().at(-1)?.text).toBe(regular ? PLAIN : RAW);
   });
   it("NeedsYou.tsx: empty full access failure still offers a next step", async () => {
     localStorage.setItem("branch.level", level);
@@ -50,18 +53,21 @@ describe.each(["regular", "advanced"] as Level[])("plain inbox failures at %s", 
     await mount(<NeedsYou data={await loadNeeds(e)} engine={e} level={level} busy={false} act={async () => true} loading={false} openConversation={noop} openPlace={noop} />);
     await click("Ask for full access"); expect(getToasts().at(-1)?.text).toBe("Couldn’t ask for full access. Try again.");
   });
-  it("Rows.tsx: keeps failure feedback with the card text", async () => { localStorage.setItem("branch.level", level); await mount(<StatusCard icon="clock" title="Failed" sub="Morning brief" extra={<Failure error={RAW} level={level} />} />); safe(); expect(document.querySelector(".ib-grow")?.textContent).toContain(PLAIN); });
+  it("Rows.tsx: keeps failure feedback with the card text", async () => { localStorage.setItem("branch.level", level); await mount(<StatusCard icon="clock" title="Failed" sub="Morning brief" extra={<Failure error={RAW} level={level} />} />); check(); expect(document.querySelector(".ib-grow")?.textContent).toContain(regular ? PLAIN : RAW); });
   it("data.ts: distinguishes failed actions from successful notices", async () => {
     localStorage.setItem("branch.level", level);
     const e = engine(); const load = async () => ({});
     function Actions() { const state = usePlaceData(e, load); return <><button onClick={() => void state.act(async () => { throw new Error("503"); }, "Saved")}>Fail</button><button onClick={() => void state.act(async () => ({}), "Answered")}>Answer</button><Failure error={state.notice} notice={!state.noticeIsError} level={level} /></>; }
-    await mount(<Actions />); await click("Fail"); expect(document.body.textContent).not.toContain("503"); expect(document.body.textContent).toContain("That didn’t work. Try again."); await click("Answer"); expect(document.body.textContent).toContain("Answered"); expect(document.body.textContent).not.toContain(PLAIN);
+    await mount(<Actions />); await click("Fail");
+    if (regular) { expect(document.body.textContent).not.toContain("503"); expect(document.body.textContent).toContain("That didn’t work. Try again."); }
+    else { expect(document.body.textContent).toContain("503"); expect(document.body.textContent).not.toContain("That didn’t work. Try again."); }
+    await click("Answer"); expect(document.body.textContent).toContain("Answered"); expect(document.body.textContent).not.toContain(PLAIN);
   });
   it("Inspect.tsx: request failure", async () => {
-    localStorage.setItem("branch.level", level); await mount(<Inspect engine={engine({}, true)} title="Morning brief" at={new Date()} runId="run" close={noop} />); safe();
+    localStorage.setItem("branch.level", level); await mount(<Inspect engine={engine({}, true)} title="Morning brief" at={new Date()} runId="run" close={noop} />); check();
   });
   it("Every.tsx: working copy request failure", async () => {
     localStorage.setItem("branch.level", level); await mount(<Every engine={engine({}, true)} data={{ sessions: [], runs: [], profiles: [], self: "", agents: { defaultId: "", list: [] }, errors: [] }} level={level} open={noop} />);
-    await click("Working copies"); safe();
+    await click("Working copies"); check();
   });
 });
