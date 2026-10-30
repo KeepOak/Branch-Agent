@@ -1,4 +1,3 @@
-engine:extensions/cua-computer/index.test.ts
 engine:extensions/cua-computer/src/actions.test.ts
 engine:extensions/cua-computer/src/browser-actions.test.ts
 engine:extensions/cua-computer/src/commands.modifiers.test.ts
