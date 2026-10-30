@@ -29,6 +29,7 @@ import {
   createDoctorCliRuntime,
   createSourceRuntime,
   doctorCliEntrypoint,
+  ISOLATED_DOCTOR_CHILD_TIMEOUT_MS,
   readCanonicalPluginState,
   repairCronStoreInProcess,
   runDoctorCli,
@@ -49,10 +50,6 @@ afterAll(() => tempDirs.cleanup());
 
 const DOCTOR_CHILD_TIMEOUT_MS = 60_000;
 const LEGACY_APPROVAL_CHILD_TIMEOUT_MS = 45_000;
-// Isolated children run Doctor and startup preflight in one process and cold-compile the state-migration
-// graph through tsx. The retired-Codex case needs about 16 s locally but about 62 s on macOS CI runners,
-// where its first Doctor pass alone took about 41 s and a 60 s budget killed the child (#1230, #1967).
-const ISOLATED_DOCTOR_CHILD_TIMEOUT_MS = 120_000;
 
 // An in-process repair keeps running after a Vitest timeout, under its swapped process.env and holding the
 // global plugin-lifecycle lease. The next case then saw "plugin lifecycle lease ... was lost" (#1877, macOS

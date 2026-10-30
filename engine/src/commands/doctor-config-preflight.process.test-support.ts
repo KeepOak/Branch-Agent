@@ -18,6 +18,10 @@ import {
 import { resolveTestNodeExecPath } from "../test-utils/node-process.js";
 
 const execFileAsync = promisify(execFile);
+// A child that runs Doctor and startup preflight in one process cold-compiles the state-migration graph
+// through tsx: about 15 s locally, but past 60 s on macOS CI runners, where a 60 s budget killed it
+// (#1230 retired-Codex case, #1496 Doctor-repaired reference case, #1967).
+export const ISOLATED_DOCTOR_CHILD_TIMEOUT_MS = 120_000;
 const isolatedRuntimeNodeExecPath = resolveTestNodeExecPath();
 const ENGINE_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 // The fixture owns its package assets; resolving linked source back to the checkout
