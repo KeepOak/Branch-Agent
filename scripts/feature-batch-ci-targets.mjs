@@ -971,7 +971,7 @@ export function touchedShardTests(tests, shard, weights) {
 // same files on the 2026-10-12 main pushes (1.64 and 1.27); macOS keeps its earlier, higher 1.35.
 export const pullRequestLinuxShardCount = 10;
 // Pull requests run the touched Windows tests in this many fixed shards (one job ran past the cap with 18 files).
-export const pullRequestWindowsTouchedShardCount = 3;
+export const pullRequestWindowsTouchedShardCount = 4;
 export const mainPushShardCounts = { ubuntu: 7, windows: 11, macos: 10 };
 export const shardBudgetSeconds = 10 * 60;
 export const windowShardFileSeconds = 2;
