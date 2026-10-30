@@ -54,18 +54,46 @@ export function graftAddressCandidates(params: {
   return [...new Set(urls.filter((value): value is string => Boolean(value)))].slice(0, GRAFT_ADDRESS_LIMIT);
 }
 
-/** The setup code carries this Branch's own loopback address unless the owner opened the gateway to the network
- *  (gateway.bind other than loopback). Then it prefers the tailnet address: upstream's resolver picks the LAN
- *  address, which goes stale when the router reassigns it and strands every joined Branch. */
+function privateLanIPv4(interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]>): string | undefined {
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries ?? []) {
+      const isIPv4 = entry.family === "IPv4" || (entry.family as unknown) === 4;
+      if (isIPv4 && !entry.internal && isPrivateIPv4(entry.address)) {
+        return entry.address;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** The address the setup code starts with. Loopback unless the owner opened the gateway to the network. Pairing
+ *  accepts plain ws:// only to a loopback or private LAN address and rejects it to a tailnet address, so with
+ *  gateway.bind=lan (and no TLS) the code names this computer's LAN address. Otherwise (TLS on, gateway.bind=tailnet,
+ *  no LAN address) the gateway's own resolver picks it: wss:// with the pinned certificate, or Tailscale Serve. The
+ *  tailnet address still travels in the code's other addresses (graftAddressCandidates). */
+function graftInviteUrl(
+  cfg: BranchConfig,
+  port: number,
+  interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]>,
+): string | undefined {
+  const bind = cfg.gateway?.bind ?? "loopback";
+  if (bind === "loopback") {
+    return `ws://127.0.0.1:${port}`;
+  }
+  if (bind !== "lan" || cfg.gateway?.tls?.enabled === true) {
+    return undefined;
+  }
+  const lan = privateLanIPv4(interfaces);
+  return lan ? `ws://${lan}:${port}` : undefined;
+}
+
+/** device.pair.setupCode params for a graft invite (see graftInviteUrl for the address). */
 export function graftInviteParams(
   cfg: BranchConfig,
   port: number,
   interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = os.networkInterfaces(),
 ): Record<string, unknown> {
-  const bind = cfg.gateway?.bind ?? "loopback";
-  const tailnet = bind === "loopback" ? undefined : tailnetIPv4(interfaces);
-  const publicUrl =
-    bind === "loopback" ? `ws://127.0.0.1:${port}` : tailnet ? `ws://${tailnet}:${port}` : undefined;
+  const publicUrl = graftInviteUrl(cfg, port, interfaces);
   return {
     includeQr: false,
     bootstrapProfile: "limited",

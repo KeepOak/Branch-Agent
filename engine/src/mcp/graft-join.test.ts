@@ -145,17 +145,56 @@ describe("branch graft join", () => {
     });
   });
 
-  it("invites with the stable tailnet address when the gateway is on the network", () => {
-    const tailnetOnly = { utun3: [{ address: "100.64.0.7", family: "IPv4", internal: false }] } as never;
-    // A LAN address changes when the router reassigns it; the tailnet address does not.
+  it("invites with a reachable LAN address for plain ws:// when the host also has a tailnet address", () => {
+    const iface = (address: string) => [{ address, family: "IPv4", internal: false }];
+    const lanAndTailnet = { en0: iface("192.168.1.20"), utun3: iface("100.64.0.7") } as never;
+    // Pairing rejects plain ws:// to a tailnet address, so the code must name the LAN address.
+    expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 19031, lanAndTailnet)).toEqual({
+      includeQr: false,
+      bootstrapProfile: "limited",
+      publicUrl: "ws://192.168.1.20:19031",
+    });
+    expect(
+      graftInviteParams({ gateway: { bind: "loopback" } } as never, 19031, lanAndTailnet).publicUrl,
+    ).toBe("ws://127.0.0.1:19031");
+  });
+
+  it("issues a setup code for the LAN invite address, which a ws:// tailnet address does not get", async () => {
+    const { resolvePairingSetupFromConfig } = await import("../pairing/setup-code.js");
+    const iface = (address: string) => [{ address, family: "IPv4", internal: false }];
+    const lanAndTailnet = { en0: iface("192.168.1.20"), utun3: iface("100.64.0.7") };
+    const cfg = { gateway: { bind: "lan", auth: { mode: "token", token: "graft-test-token" } } } as never;
+    const resolve = (publicUrl: unknown) =>
+      resolvePairingSetupFromConfig(cfg, {
+        env: {},
+        publicUrl: publicUrl as string,
+        issuedBootstrap: { token: "bootstrap", expiresAtMs: Date.now() + 60_000, setupId: "setup-1" },
+        networkInterfaces: () => lanAndTailnet as never,
+      });
+    const invited = await resolve(graftInviteParams(cfg, 19031, lanAndTailnet as never).publicUrl);
+    expect(invited.ok && invited.payload.url).toBe("ws://192.168.1.20:19031");
+    const tailnet = await resolve("ws://100.64.0.7:19031");
+    expect(tailnet.ok).toBe(false);
+  });
+
+  it("never puts a plain ws:// tailnet address in the invite", () => {
+    const iface = (address: string) => [{ address, family: "IPv4", internal: false }];
+    const tailnetOnly = { utun3: iface("100.64.0.7") } as never;
+    const lanAndTailnet = { en0: iface("10.0.0.9"), utun3: iface("100.64.0.7") } as never;
+    // Without a LAN address, or with gateway.bind=tailnet, the gateway's own resolver picks the URL
+    // (wss:// with TLS or Tailscale Serve) instead of a ws:// tailnet URL pairing would reject.
     expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 19031, tailnetOnly)).toEqual({
       includeQr: false,
       bootstrapProfile: "limited",
-      publicUrl: "ws://100.64.0.7:19031",
     });
     expect(
-      graftInviteParams({ gateway: { bind: "loopback" } } as never, 19031, tailnetOnly).publicUrl,
-    ).toBe("ws://127.0.0.1:19031");
+      graftInviteParams({ gateway: { bind: "tailnet" } } as never, 19031, lanAndTailnet).publicUrl,
+    ).toBeUndefined();
+    // With TLS on, the resolver issues wss:// and pins the gateway certificate.
+    expect(
+      graftInviteParams({ gateway: { bind: "lan", tls: { enabled: true } } } as never, 19031, lanAndTailnet)
+        .publicUrl,
+    ).toBeUndefined();
   });
 
   it("lists the tailnet first, then the setup code's address, then private LAN addresses; Tailscale is optional", () => {
