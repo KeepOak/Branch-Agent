@@ -37,10 +37,12 @@ function embeddingQuotaError() {
 }
 
 // Kept apart from tools.real-manager.test.ts: these few real-manager cases
-// fit the Windows touched-test lane, which the larger file does not.
+// fit the Windows touched-test lane, which the larger file does not. One
+// state root serves the whole file to keep per-case setup and cleanup light.
 describe("memory_search real manager embedding account backoff", () => {
   const fixture: ManagerIndexFixture = createManagerIndexFixture({
     getMemorySearchManager,
+    stateLifetime: "file",
     closeAllMemorySearchManagers,
   });
   const { provider, createConfig } = fixture;
@@ -59,6 +61,13 @@ describe("memory_search real manager embedding account backoff", () => {
     const manager = await fixture.getFreshManager(cfg, "cli");
     await manager.sync({ reason: "cli", force: true });
     return manager;
+  }
+
+  async function settleSearchMaintenance(manager: object) {
+    const active = Reflect.get(manager, "activeBackgroundSearchSyncs") as Set<Promise<void>>;
+    while (active.size > 0) {
+      await Promise.all(Array.from(active));
+    }
   }
 
   function warningLines(): string[] {
@@ -133,8 +142,46 @@ describe("memory_search real manager embedding account backoff", () => {
     await manager.sync({ reason: "watch" });
     await manager.sync({ reason: "interval" });
     expect(batchAttempts).toBe(attemptsAfterFailure);
+    // The dirty manager's search maintenance waits out the window as well.
     await expect(manager.search("alpha")).resolves.toEqual([
       expect.objectContaining({ path: memoryPath }),
     ]);
+    await settleSearchMaintenance(manager);
+    expect(batchAttempts).toBe(attemptsAfterFailure);
+  });
+
+  it("keeps the backoff opened by a closed search maintenance manager", async () => {
+    const cfg = createConfig({ vectorEnabled: false });
+    await (await indexedManager(cfg)).close();
+    await fs.writeFile(
+      path.join(fixture.paths.workspace, "memory", "2026-01-14.md"),
+      "Yak notes written while the quota is exhausted.\n",
+    );
+    const manager = await fixture.getFreshManager(cfg);
+    let batchAttempts = 0;
+    let releaseBatch = () => {};
+    const firstSearchReturned = new Promise<void>((resolve) => {
+      releaseBatch = () => resolve();
+    });
+    provider.embedBatchPermanentFailure = embeddingQuotaError();
+    provider.beforeEmbedBatch = async () => {
+      batchAttempts += 1;
+      await firstSearchReturned;
+    };
+
+    // The query succeeds; only the detached maintenance pass, which runs on
+    // its own transient manager, sees the quota failure.
+    await manager.search("alpha");
+    releaseBatch();
+    await settleSearchMaintenance(manager);
+    const attemptsAfterFirst = batchAttempts;
+    expect(attemptsAfterFirst).toBeGreaterThan(0);
+
+    await expect(manager.search("alpha")).resolves.toEqual([
+      expect.objectContaining({ path: memoryPath }),
+    ]);
+    await manager.search("alpha");
+    await settleSearchMaintenance(manager);
+    expect(batchAttempts).toBe(attemptsAfterFirst);
   });
 });

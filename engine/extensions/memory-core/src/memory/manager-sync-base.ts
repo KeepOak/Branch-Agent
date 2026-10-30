@@ -132,8 +132,10 @@ export abstract class MemoryManagerSyncBase extends MemoryManagerDatabaseContext
   protected sessionPendingFiles = new Set<string>();
   protected sessionPendingTargets = new Map<string, MemorySessionSyncTarget>();
   // Quota and credential failures pause automatic embedding work and log once
-  // per window instead of once per watch or transcript event.
-  protected readonly embeddingAccountBackoff = new MemoryEmbeddingAccountBackoff();
+  // per window instead of once per watch or transcript event. Search
+  // maintenance managers adopt their source's instance, so the window outlives
+  // each transient manager.
+  protected embeddingAccountBackoff = new MemoryEmbeddingAccountBackoff();
   // Index identity mismatches served from the keyword index are reported once
   // per manager with the repair command, not on every search.
   protected readonly reportedIndexIdentityMismatches = new Set<string>();
