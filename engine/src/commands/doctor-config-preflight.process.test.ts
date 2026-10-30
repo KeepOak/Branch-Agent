@@ -49,6 +49,10 @@ afterAll(() => tempDirs.cleanup());
 
 const DOCTOR_CHILD_TIMEOUT_MS = 60_000;
 const LEGACY_APPROVAL_CHILD_TIMEOUT_MS = 45_000;
+// Isolated children run Doctor and startup preflight in one process and cold-compile the state-migration
+// graph through tsx. The retired-Codex case needs about 16 s locally but about 62 s on macOS CI runners,
+// where its first Doctor pass alone took about 41 s and a 60 s budget killed the child (#1230, #1967).
+const ISOLATED_DOCTOR_CHILD_TIMEOUT_MS = 120_000;
 
 // An in-process repair keeps running after a Vitest timeout, under its swapped process.env and holding the
 // global plugin-lifecycle lease. The next case then saw "plugin lifecycle lease ... was lost" (#1877, macOS
@@ -662,7 +666,9 @@ describe.skipIf(windowsTouched)("Doctor repair followed by gateway readiness", (
       }));
     `;
 
-    const result = await runIsolatedModuleScript(env, script, { timeoutMs: 60_000 });
+    const result = await runIsolatedModuleScript(env, script, {
+      timeoutMs: ISOLATED_DOCTOR_CHILD_TIMEOUT_MS,
+    });
     const output = `${result.stderr}\n${result.stdout}`;
     const resultLine = result.stdout.split("\n").find((line) => line.startsWith("__RESULT__"));
 
@@ -679,7 +685,7 @@ describe.skipIf(windowsTouched)("Doctor repair followed by gateway readiness", (
       pluginState: { value_json: '{"ok":false}', created_at: 4_000 },
     });
     expect(hasActiveStartupMigrationLease({ env })).toBe(false);
-  }, 75_000);
+  }, getCliProcessTestTimeout(ISOLATED_DOCTOR_CHILD_TIMEOUT_MS));
 
   it("leaves retired Codex idle settings to Doctor and preserves connection config", async () => {
     const root = await fs.promises.realpath(
@@ -814,10 +820,12 @@ describe.skipIf(windowsTouched)("Doctor repair followed by gateway readiness", (
       console.log("__READY__");
     `;
 
-    const result = await runIsolatedModuleScript(env, script, { timeoutMs: 60_000 });
+    const result = await runIsolatedModuleScript(env, script, {
+      timeoutMs: ISOLATED_DOCTOR_CHILD_TIMEOUT_MS,
+    });
     expect(result.stdout, `${result.stderr}\n${result.stdout}`).toContain("__READY__");
     expect(hasActiveStartupMigrationLease({ env })).toBe(false);
-  }, 75_000);
+  }, getCliProcessTestTimeout(ISOLATED_DOCTOR_CHILD_TIMEOUT_MS));
 
   it("reaches readiness while preserving a legacy agent database without an owner", () => {
     const root = fs.realpathSync(tempDirs.createTempDir("branch-ownerless-agent-ready-"));
