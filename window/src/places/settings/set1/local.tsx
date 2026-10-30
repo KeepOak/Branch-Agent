@@ -101,7 +101,7 @@ export function LocalBlock(props: SettingsPageProps & { part: "hardware" | "reco
   const local = list(models.data?.models).filter((m) => m.local === true);
   const found = foundRuntimes(detect.data, local);
   const done = () => { setSetup(null); void detect.reload(); void models.reload(); };
-  if (props.part === "hardware") return <Hardware loading={info.loading} error={info.error} retry={info.reload} hw={hw} runtimes={detect.loading ? undefined : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} />;
+  if (props.part === "hardware") return <Hardware loading={info.loading} error={info.error} retry={info.reload} hw={hw} runtimes={detect.loading ? undefined : detect.error ? null : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} />;
   if (props.part === "runtimes") return <Runtimes engine={props.engine} hw={hw} detect={detect} models={models} found={found} />;
   return <>
     <Recommended loading={detect.loading || models.loading} error={detect.error ?? models.error} retry={() => { void detect.reload(); void models.reload(); }} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} primary={primary} onUse={(ref) => { void cfg.set(modelPath, ref); }} maySetup={maySetup} />
@@ -115,7 +115,8 @@ const LAYERS = SVG("M12 3l9 5-9 5-9-5zM3 13l9 5 9-5");
 const TERM = SVG("M4 5h16v14H4zM7 9l3 3-3 3M12 15h5");
 export const DOWNLOAD = SVG("M12 4v11M7 10l5 5 5-5M5 20h14");
 
-type HwProps = { loading: boolean; error?: string; retry?: () => void; hw: Hw; runtimes?: string[] };
+/** runtimes: undefined while the check runs, null when it did not answer, else the runtimes found. */
+type HwProps = { loading: boolean; error?: string; retry?: () => void; hw: Hw; runtimes?: string[] | null };
 function Hardware({ loading, error, retry, hw, runtimes }: HwProps) {
   if (loading) return <div className="hw-k scan-k" role="status"><span className="spin-k" /><b>Looking at this computer…</b><small>Memory, graphics card, free space and which runtimes are installed.</small></div>;
   if (error) return <Status tone="bad" title="Branch couldn’t look at this computer" action={retry ? <Btn sm onClick={retry}>Try again</Btn> : undefined}>{visible(error)}</Status>;
@@ -124,7 +125,7 @@ function Hardware({ loading, error, retry, hw, runtimes }: HwProps) {
     [LAYERS, "Memory", hw.ramGb ? `${hw.ramGb} GB` : undefined],
     [<Icon key="g" name="monitor" small />, "Graphics", undefined, NO_GPU],
     [<Icon key="f" name="folder" small />, "Free space", hw.diskGb !== undefined ? `${hw.diskGb} GB` : undefined],
-    [TERM, "Runtime", runtimes === undefined ? "Looking…" : runtimes.length ? runtimes.join(", ") : "None found"],
+    [TERM, "Runtime", runtimes === undefined ? "Looking…" : runtimes === null ? "Couldn’t check" : runtimes.length ? runtimes.join(", ") : "None found"],
   ];
   return (
     <div className="hw-k">

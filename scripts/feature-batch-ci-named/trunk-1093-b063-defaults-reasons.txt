@@ -1,0 +1,2 @@
+window:src/screens/settings/pages/trunks-live-reasons.test.tsx
+window:src/screens/settings/pages/trunks-live.test.tsx

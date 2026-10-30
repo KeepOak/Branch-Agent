@@ -1,0 +1,4 @@
+window:src/composer/voice.test.ts
+window:src/places/library/document-editor.test.tsx
+window:src/screens/composer/dictate-off.test.tsx
+window:src/shell/plain-address.test.ts

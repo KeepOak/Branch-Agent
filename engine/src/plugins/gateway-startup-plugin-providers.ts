@@ -209,8 +209,22 @@ export function collectConfiguredVoiceProviderIds(
 }
 
 // Explicit memory provider startup pulls plugin-owned providers into Gateway
-// boot. Missing/"auto" stays lazy, and "none" disables provider-backed embeddings.
+// boot. Unset and "auto" resolve to on-device local embeddings. "none" disables
+// provider-backed embeddings. Paid remotes are never started unless configured,
+// including from a ChatGPT or OAuth login.
 const MEMORY_EMBEDDING_PROVIDER_STARTUP_SKIP_IDS: ReadonlySet<string> = new Set(["auto", "none"]);
+const PAID_REMOTE_MEMORY_EMBEDDING_PROVIDERS = new Set([
+  "openai",
+  "gemini",
+  "google",
+  "voyage",
+  "mistral",
+  "bedrock",
+  "amazon-bedrock",
+  "deepinfra",
+  "github-copilot",
+  "anthropic",
+]);
 
 function normalizeExplicitMemoryEmbeddingProviderId(value: unknown): string | undefined {
   const normalized = normalizeOptionalLowercaseString(value);
@@ -281,7 +295,7 @@ function resolveEffectiveMemoryEmbeddingProviderEntries(
     return [];
   }
   const rawProvider = normalizeOptionalLowercaseString(override?.provider ?? defaults?.provider);
-  const effectiveProvider = rawProvider === "auto" || !rawProvider ? "openai" : rawProvider;
+  const effectiveProvider = rawProvider === "auto" || !rawProvider ? "local" : rawProvider;
   if (effectiveProvider === "none") {
     return [];
   }
@@ -289,14 +303,19 @@ function resolveEffectiveMemoryEmbeddingProviderEntries(
     configuredId: string;
     source: MemoryEmbeddingStartupProviderSource;
   }> = [];
-  const provider = normalizeExplicitMemoryEmbeddingProviderId(rawProvider);
+  const provider = normalizeExplicitMemoryEmbeddingProviderId(rawProvider) ?? effectiveProvider;
   if (provider) {
     entries.push({ configuredId: provider, source: "provider" });
   }
   const fallback = normalizeExplicitMemoryEmbeddingProviderId(
     override?.fallback ?? defaults?.fallback ?? "none",
   );
-  if (fallback && fallback !== effectiveProvider) {
+  const providerWasChosen = Boolean(rawProvider) && rawProvider !== "auto";
+  if (
+    fallback &&
+    fallback !== effectiveProvider &&
+    (providerWasChosen || !PAID_REMOTE_MEMORY_EMBEDDING_PROVIDERS.has(fallback))
+  ) {
     entries.push({ configuredId: fallback, source: "fallback" });
   }
   return entries;

@@ -3,6 +3,7 @@
 // Instead of that raw error the tab says what is missing and switches the plugin on through plugins.setEnabled,
 // with the engine's capability review when it asks for one.
 import { EmptyLine } from "../../places-nav/PlaceFrame";
+import { plainError } from "../../shell/plain-error";
 import { ConsentDialog, usePluginAction } from "../customize/catalog";
 import { Glyph } from "./glyphs";
 import type { Ctx } from "./ui";
@@ -21,7 +22,7 @@ export function CardsOff({ ctx, refresh }: { ctx: Ctx; refresh: () => void }) {
         {action.busy ? "Switching on…" : "Switch on Canopy"}</button>
     </div>
     {reason ? <p className="cn-hint cn-center">{reason}</p> : null}
-    {action.error ? <p role="alert" className="cn-err">{action.error}</p> : null}
+    {action.error ? <p role="alert" className="cn-err">{plainError(action.error)}</p> : null}
     <ConsentDialog action={action} done={refresh} />
   </>;
 }

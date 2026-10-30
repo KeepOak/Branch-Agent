@@ -86,7 +86,7 @@ describe("R1 Settings, the Coming contract", () => {
     // It opens every Settings page at Technical; each native page adds its rows, so it needs more than the 5 s default.
   }, 20_000);
 
-  it("hides Coming rows and all-Coming sections at Regular, and shows them with their reason from Advanced", async () => {
+  it("hides Coming rows and all-Coming sections at Regular and Advanced, and shows them with their reason at Technical", async () => {
     const { engine } = engineOf(CALLS);
     const rows: Row[] = [
       { id: "general.writing.works", page: "general", card: "Writing", label: "Works today", level: 0, control: "toggle", source: { kind: "device", key: "x.works" } },
@@ -102,8 +102,15 @@ describe("R1 Settings, the Coming contract", () => {
     expect(host.querySelector('[data-row="general.writing.works"]')).not.toBeNull();
     expect(host.querySelector('[data-row="general.writing.later"]')).toBeNull();
     expect(host.textContent).not.toContain("later update");
-    // Advanced: the Coming rows and the sections with no rows yet show, each with its reason.
+    // Advanced: still only what works (Private #1093 item 4).
     await click([...host.querySelectorAll(".r1s-level button")].find((b) => b.textContent === "Advanced")!);
+    expect(host.querySelector(".r1set")?.getAttribute("data-level")).toBe("advanced");
+    expect(cards()).toEqual(["Writing"]);
+    expect(host.querySelector('[data-row="general.writing.later"]')).toBeNull();
+    expect(host.querySelector("p.r1s-quiet")).toBeNull();
+    expect(host.textContent).not.toContain("later update");
+    // Technical: the Coming rows and the sections with no rows yet show, each with its reason.
+    await click([...host.querySelectorAll(".r1s-level button")].find((b) => b.textContent === "Technical")!);
     // A section with no rows yet is one quiet line, not an empty card.
     expect(cards()).toEqual(expect.arrayContaining(["Writing", "Keyboard"]));
     expect(cards()).not.toContain("Starting up");

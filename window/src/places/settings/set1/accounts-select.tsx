@@ -1,11 +1,13 @@
 // Accounts › Order (Advanced): "Select accounts", then move the ticked accounts to the top (models.authOrderSet per
 // service, since each service keeps its own order) or sign out of them (models.authLogout per service).
 import type { WindowEngine } from "../../../connect/engine";
-import { Btn, useSaveRunner } from "../kit";
+import { Btn, useLevel, useSaveRunner } from "../kit";
 import type { Account } from "./accounts";
 import "./accounts.css";
 
-export const PAUSE_OFF = "Branch can’t pause an account yet.";
+/** Pausing and renaming an account wait for the engine: Coming, so their controls show at Technical only (Private #1093). */
+export const PAUSE_OFF = "Pausing an account comes in a later update.";
+export const RENAME_LATER = "Renaming an account comes in a later update.";
 export const key = (acc: Account) => `${acc.p.provider}/${acc.a.profileId}`;
 
 /** Move to the top: each service's ticked accounts first, in its own order (models.authOrderSet per service). */
@@ -37,6 +39,7 @@ export function SelectBox({ acc, name, picked, onPick }: { acc: Account; name: s
 type BulkProps = { engine: WindowEngine; all: Account[]; picked: string[]; agent: { agentId?: string }; reload: () => Promise<unknown>; done: () => void };
 export function BulkBar({ engine, all, picked, agent, reload, done }: BulkProps) {
   const save = useSaveRunner();
+  const technical = useLevel() >= 2;
   const chosen = all.filter((acc) => picked.includes(key(acc)));
   const providers = [...new Set(chosen.map((acc) => acc.p))];
   const leaving = chosen.filter((acc) => acc.a.logoutSupported);
@@ -50,7 +53,7 @@ export function BulkBar({ engine, all, picked, agent, reload, done }: BulkProps)
       <b>{n ? `${n} selected` : "Tick the accounts"}</b>
       <span className="grow" />
       <Btn ghost sm disabled={!n || locked} title={locked ? "The order is set in the settings file." : undefined} onClick={toTop}>Move to the top</Btn>
-      <Btn ghost sm disabled title={PAUSE_OFF}>Pause</Btn>
+      {technical ? <Btn ghost sm disabled title={PAUSE_OFF}>Pause</Btn> : null}
       <Btn ghost sm className="danger-acc" disabled={!leaving.length} title={n && !leaving.length ? "These sign-ins can’t be removed from here." : undefined} onClick={signOut}>Sign out</Btn>
     </div>
   );

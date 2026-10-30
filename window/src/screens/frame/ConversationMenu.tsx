@@ -52,6 +52,8 @@ export type ConversationMenuProps = {
   onOpen: (key: string) => void;
   mainKey: string | null;
   onPlace: (place: PlaceId) => void;
+  /** Opens a Settings page (Edit Trunk opens Settings › Trunks). */
+  onSettings?: (page: string) => void;
   /** In a group chat, its rules (rooms/useShellRoom): the Group rules row. */
   room?: ShellRoom["menu"];
   /** Parity row 4: opens the re-hosted Changes view (diff and pull request box) for this conversation's checkout. */
@@ -91,7 +93,7 @@ export function ConversationMenu(p: ConversationMenuProps) {
     run: {
       pin: () => { if (row) void actions.pin(row); },
       rename: () => setOpen({ kind: "rename" }),
-      editTrunk: () => p.onPlace("customize"),
+      editTrunk: () => (p.onSettings ? p.onSettings("trunks") : p.onPlace("customize")),
       snooze: (until) => { if (row) void actions.snooze(row, until); },
       archive: () => { if (row) void actions.archive(row); },
       restore: () => { if (row) void actions.restore(row); },
@@ -110,7 +112,7 @@ export function ConversationMenu(p: ConversationMenuProps) {
       remove: () => { if (!row) return; if (askBeforeDelete()) setOpen({ kind: "delete" }); else removeRow(row); },
     },
   });
-  const rows = p.onChanges ? [...items, { label: "Changes and pull request", icon: <Icon name="pr" size={15} />, need: p.changesNeed, why: "This engine can’t show this conversation’s changes.", onSelect: p.onChanges }] : items;
+  const rows = p.onChanges ? [...items, { label: "Changes", icon: <Icon name="pr" size={15} />, need: p.changesNeed, why: "This engine can’t show this conversation’s changes.", onSelect: p.onChanges }] : items;
   const dialog = !open || !target ? null
     : open.kind === "rename" && row ? <RenameDialog name={p.name} onClose={close} onSave={(label) => { close(); void actions.rename(row, label); }} />
     : open.kind === "delete" && row ? <ConfirmDelete clear row={row} onCancel={close} onDelete={() => { close(); removeRow(row); }} />

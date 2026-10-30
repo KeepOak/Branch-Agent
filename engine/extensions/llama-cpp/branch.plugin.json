@@ -4,7 +4,7 @@
   "name": "llama.cpp Provider",
   "description": "Managed and external llama.cpp servers for GGUF chat and embeddings.",
   "activation": {
-    "onStartup": false
+    "onStartup": true
   },
   "enabledByDefault": true,
   "autoEnableWhenConfiguredProviders": ["llama-cpp"],

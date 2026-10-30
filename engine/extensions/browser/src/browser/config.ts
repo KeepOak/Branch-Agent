@@ -485,7 +485,7 @@ export function resolveProfile(
 }
 
 export function resolveManagedBrowserHeadlessMode(
-  resolved: ResolvedBrowserConfig,
+  _resolved: ResolvedBrowserConfig,
   profile: ResolvedBrowserProfile,
   params: ManagedBrowserHeadlessOptions = {},
 ): ManagedBrowserHeadlessMode {

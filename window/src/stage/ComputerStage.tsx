@@ -1,6 +1,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BrowserView, NO_MARKUP, type BrowserPhase } from "./BrowserView";
+import { NO_MARKUP, type BrowserPhase } from "./BrowserView";
+import { BrowserPanes } from "./BrowserPanes";
 import { profileLine, recordedBrowserTabs, routeOf } from "./browser-route";
 import { readLevel } from "../places-nav/SettingsFrame";
 import type { Block } from "../thread/model";
@@ -16,6 +17,9 @@ import { AddComputer } from "./AddComputer";
 import { shows, useLevel } from "../places-nav/level";
 import { configStore } from "../places/settings/config-store";
 import { NativeScreen } from "./NativeScreen";
+import type { ComputerStatus } from "./computer-status-problem";
+import { useTrunkHold } from "./trunk-hold";
+import { setTouchMode, useTouchMode } from "./touch-mode";
 import "./stage.css";
 
 export type StageMode = "Computer" | "Browser";
@@ -104,6 +108,8 @@ type ScreenProps = {
   onChoose: () => void;
   onConnect: () => void;
   controlling: boolean;
+  /** The line on the screen while you drive it. */
+  driving: string;
   /** Connecting has gone on for SLOW_CONNECT_MS. */
   slow: boolean;
   /** Whether this conversation has a computer it is trying to reach. */
@@ -128,7 +134,7 @@ function screenWords(view: DesktopView, name: string, slow: boolean, placed: boo
   return { head: "It can't see a screen or use a mouse." };
 }
 
-function Screen({ view, target, name, onRetry, onChoose, onConnect, controlling, slow, placed, noComputer, onEnable, enabling, enableError }: ScreenProps) {
+function Screen({ view, target, name, onRetry, onChoose, onConnect, controlling, driving, slow, placed, noComputer, onEnable, enabling, enableError }: ScreenProps) {
   const words = screenWords(view, name, slow, placed, noComputer);
   const loading = view.phase === "loading";
   const level = useLevel();
@@ -138,7 +144,7 @@ function Screen({ view, target, name, onRetry, onChoose, onConnect, controlling,
     <div className="st7-wrap">
       <div className={controlling ? "st7-screen live-st ctl-st" : "st7-screen live-st"}>
         <div className="stage-screen" ref={target} />
-        {controlling && view.phase === "connected" ? <span className="drive-st">You're driving</span> : null}
+        {controlling && view.phase === "connected" ? <span className="drive-st">{driving}</span> : null}
         {view.phase !== "connected" ? (
           <div className="stage-empty">
             <SIcon name="monitor" />
@@ -204,6 +210,8 @@ type Props = {
   initialComputer?: string | null;
   /** Opens already taken over ("Take over" on the conversation's computer card). */
   initialControl?: boolean;
+  /** Header Computer: this PC's live screen, even when no Trunk has a computer open (P5, PR 229). */
+  ownerScreen?: boolean;
 };
 
 /** What the small window over the conversation shows: a computer's screen, or the browser (the preview's S.pip.kind). */
@@ -211,12 +219,14 @@ export type PipTarget = { kind: "computer" | "browser"; id: string; name: string
 
 /** A conversation's computer and browser, full size beside the one main conversation and composer. */
 export function ComputerStage({
-  engine, gatewayUrl, name, mode, blocks = [], running = false, card = null, onMode, onClose, onChooseComputer, onPip, initialComputer = null, initialControl = false }: Props) {
+  engine, gatewayUrl, name, mode, blocks = [], running = false, card = null, onMode, onClose, onChooseComputer, onPip, initialComputer = null, initialControl = false, ownerScreen = false }: Props) {
   const [control, setControl] = useState(initialControl);
+  // Where the browser's Your | Trunk's browser switch draws: a slot in the header (#1103).
+  const [paneSlot, setPaneSlot] = useState<HTMLElement | null>(null);
   const level = useLevel();
   const [retry, setRetry] = useState(0);
   const [tick, setTick] = useState(0);
-  const [picked, setPicked] = useState<string | "grid" | null>(initialComputer);
+  const [picked, setPicked] = useState<string | "grid" | null>(initialComputer ?? (ownerScreen ? "gateway" : null));
   const [picker, setPicker] = useState<MenuAnchor | null>(null);
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[]; label: string } | null>(null);
   const [adding, setAdding] = useState(false);
@@ -239,17 +249,25 @@ export function ComputerStage({
   useEffect(() => listenComputerControl((next) => setControl((cur) => (cur === next ? cur : next))), []);
   useEffect(() => () => announceComputerControl(false), []);
   const current = placementComputer(where.placement);
-  const screens = where.computers.filter((c) => c.desktop || c.id === current);
-  const viewing = picked === "grid" ? null : picked ?? current;
+  const screens = where.computers.filter((c) => c.desktop || c.id === current || (ownerScreen && c.id === "gateway"));
+  // The header's computer button opens this PC (P5 / PR 229); a Trunk's placed computer stays in the tabs.
+  const viewing = picked === "grid" ? null : picked ?? (ownerScreen ? "gateway" : current);
   const viewed = where.computers.find((c) => c.id === viewing);
+  const ownerNative = ownerScreen && viewing === "gateway" && !viewed?.desktop;
   const native = mode === "Computer" && nativeSelected && viewing === "gateway" && where.loaded && !viewed?.desktop;
-  const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && !native && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
-  const screenView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: COMPUTER_UNAVAILABLE, detail: where.error } : view;
+  const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && !native && !ownerNative && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
+  const screenView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: COMPUTER_UNAVAILABLE, detail: where.error } : ownerNative && !nativeSelected ? { phase: "empty" } : view;
   const slow = useSlow(mode === "Computer" && !native && picked !== "grid" && screenView.phase === "loading", `${tick}|${retry}|${viewing}`);
   const noComputer = where.loaded && !where.error && !viewing && where.computers.length === 0;
   const steps = planSteps(card);
   const browser = mode === "Browser";
-  const controlling = browser ? control : view.phase === "connected" && view.controlling === true;
+  // The browser and this computer's own screen are yours the moment you take over; a desktop is yours once the
+  // Gateway confirms control (desktop.observe), which also refuses the Trunk's computer input while you have it.
+  const controlling = browser || native ? control : view.phase === "connected" && view.controlling === true;
+  const hold = useTrunkHold(engine, controlling);
+  const touchMode = useTouchMode();
+  const desktopHeld = !browser && !native && controlling;
+  const driving = hold.paused || desktopHeld ? `You’re driving · ${name} is paused` : "You’re driving";
   const connected = browser ? browserPhase === "connected" : native ? nativeLive : view.phase === "connected";
   const browserLine = useMemo(() => profileLine(routeOf(recordedBrowserTabs(blocks))), [blocks]);
   const pill = stagePill(running, controlling, steps);
@@ -264,6 +282,18 @@ export function ComputerStage({
       setRetry((value) => value + 1);
     }, () => setEnableError("Couldn't turn on screen access. Open Computer settings and try again.")).finally(() => setEnabling(false));
   };
+  useEffect(() => {
+    // computer.status already distinguishes an enabled driver from one that is not configured.
+    // Opening the header is only a request to view; enabling control still needs the screen button.
+    if (!ownerScreen || mode !== "Computer") return;
+    let live = true;
+    void engine.request<ComputerStatus>("computer.status", {}).then((status) => {
+      if (live && (status.configured === true || status.available === true)) setNativeSelected(true);
+    }, () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [ownerScreen, mode, engine]);
   const stop = () => {
     setStopError("");
     engine.request("sessions.abort", { key: engine.sessionKey }).catch((e: unknown) => setStopError(e instanceof Error ? e.message : String(e)));
@@ -284,9 +314,15 @@ export function ComputerStage({
     setMenu({
       at,
       label: "More for this view",
-      items: [{ label: "Disconnect", run: () => onClose(), disabled: connected ? undefined : "Nothing is connected." }],
+      items: [
+        { kind: "head", label: "On a touch screen" },
+        { label: "Touch", sub: "Tap where you want to click", checked: touchMode === "touch", radio: true, run: () => setTouchMode("touch") },
+        { label: "Trackpad", sub: "Move the pointer with one finger, tap to click", checked: touchMode === "trackpad", radio: true, run: () => setTouchMode("trackpad") },
+        { kind: "sep" },
+        { label: "Disconnect", run: () => onClose(), disabled: connected ? undefined : "Nothing is connected." },
+      ],
     });
-  const title = `${name}’s ${browser ? "browser" : "computer"}`;
+  const title = browser ? `${name}’s browser` : ownerScreen ? "This computer" : `${name}’s computer`;
   return (
     <section className="stage7 computer-stage" aria-label={title}>
       <div className="st7-top">
@@ -306,15 +342,26 @@ export function ComputerStage({
           ) : (
             <button type="button" className="st7-pick" aria-haspopup="dialog" aria-expanded={picker !== null} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPicker(picker ? null : { x: r.left, y: r.bottom + 6 }); }}>
               <SIcon name="layers" small />
-              {native ? "This computer (viewing)" : where.loaded ? pickerLabel(where.computers, current) : "Computers"}
+              {native || (ownerScreen && viewing === "gateway") ? "This computer (viewing)" : where.loaded ? pickerLabel(where.computers, current) : "Computers"}
               <SIcon name="down" small />
             </button>
           )}
         </span>
-        <span className={`pill ${pill.kind}`}>
+        <span className={`stage-status-st ${pill.kind}`}>
           <i />
           {pill.text}
         </span>
+        {/* #1103: the Computer | Browser switch and, on the browser, the Your | Trunk's browser switch sit in this header
+            instead of two bars of their own above the page. */}
+        <span className="st7-sw" role="group" aria-label="Show">
+          {(["Computer", "Browser"] as const).map((m) => (
+            <button type="button" key={m} aria-pressed={mode === m} onClick={() => { setControl(false); onMode(m); }}>
+              <SIcon name={m === "Computer" ? "monitor" : "globe"} small />
+              {m}
+            </button>
+          ))}
+        </span>
+        {browser ? <span className="st7-hslot" ref={setPaneSlot} /> : null}
         <span className="tb-grow" />
         {controlling ? (
           <button type="button" className="btn pri sm" onClick={() => setControl(false)}>
@@ -322,7 +369,7 @@ export function ComputerStage({
           </button>
         ) : (
           <>
-            {connected && !native ? (
+            {connected ? (
               <button type="button" className="btn pri sm" onClick={() => setControl(true)}>
                 Take over
               </button>
@@ -350,17 +397,8 @@ export function ComputerStage({
           <SIcon name="more" />
         </button>
       </div>
-      <div className="st7-mode">
-        <span className="st7-sw" role="group" aria-label="Show">
-          {(["Computer", "Browser"] as const).map((m) => (
-            <button type="button" key={m} aria-pressed={mode === m} onClick={() => { setControl(false); onMode(m); }}>
-              <SIcon name={m === "Computer" ? "monitor" : "globe"} small />
-              {m}
-            </button>
-          ))}
-        </span>
-      </div>
       {stopError ? <p className="stage-error-st" role="alert">{stopError}</p> : null}
+      {hold.error ? <p className="stage-error-st" role="alert">{hold.error}</p> : null}
       {!browser && where.error && viewing ? <p className="stage-error-st" role="alert">{COMPUTER_UNAVAILABLE} <button type="button" className="btn sm" onClick={() => setTick((value) => value + 1)}>Try again</button>{shows(level, "technical") ? <small className="stage-detail"> {where.error}</small> : null}</p> : null}
       {!browser && screens.length > 1 ? (
         <div className="st7-tabs" role="tablist" aria-label="Its computers">
@@ -378,16 +416,18 @@ export function ComputerStage({
         </div>
       ) : null}
       {browser ? (
-        <BrowserView
+        <BrowserPanes
           engine={engine}
           gatewayUrl={gatewayUrl}
           blocks={blocks}
           name={name}
           running={running}
           control={control}
+          driving={driving}
           onControl={setControl}
           level={readLevel()}
           onState={onBrowserState}
+          switchSlot={paneSlot}
         />
       ) : (
       <div className="st7-body">
@@ -400,9 +440,9 @@ export function ComputerStage({
             </div>
           </div>
         ) : native ? (
-          <NativeScreen engine={engine} retry={retry} onLive={setNativeLive} onRetry={() => setRetry((value) => value + 1)} />
+          <NativeScreen engine={engine} retry={retry} control={control} driving={driving} onLive={setNativeLive} onRetry={() => setRetry((value) => value + 1)} />
         ) : (
-          <Screen view={screenView} target={target} name={name} controlling={controlling} slow={slow} placed={Boolean(viewing)} noComputer={noComputer} onConnect={() => setAdding(true)} onRetry={() => { setRetry((v) => v + 1); if (where.error || slow) setTick((v) => v + 1); }} onChoose={onChooseComputer} onEnable={where.loaded && !where.error && (!viewing || viewing === "gateway") ? enableScreen : undefined} enabling={enabling} enableError={enableError} />
+          <Screen view={screenView} target={target} name={name} controlling={controlling} driving={driving} slow={slow} placed={Boolean(viewing)} noComputer={noComputer} onConnect={() => setAdding(true)} onRetry={() => { setRetry((v) => v + 1); if (where.error || slow) setTick((v) => v + 1); }} onChoose={onChooseComputer} onEnable={where.loaded && !where.error && (!viewing || viewing === "gateway") ? enableScreen : undefined} enabling={enabling} enableError={enableError} />
         )}
       </div>
       )}

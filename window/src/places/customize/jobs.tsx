@@ -2,9 +2,18 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { RequestGeneration, errorText } from "../library/data";
+import { plainError } from "../../shell/plain-error";
 import { JOBS, createJob } from "./jobs-data";
 import { NewTrunkPreview, type TrunkChoice } from "../trunk/NewTrunkPreview";
 import { creationProblem, readRoster, type Roster } from "../trunk/model";
+/** What a failed job reads as. The engine's words and the new Trunk's id go to the log, never into the line
+ *  (Private #1089). */
+function jobProblem(job: typeof JOBS[number], error: unknown): string {
+  console.warn("job setup failed:", errorText(error));
+  return /but its job instructions were not saved/i.test(errorText(error))
+    ? `${job.name} was created, but its job instructions weren’t saved. Open Edit to finish setting it up.`
+    : creationProblem(error);
+}
 export function Jobs({ engine, reload }: { engine: WindowEngine; reload: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,10 +33,10 @@ export function Jobs({ engine, reload }: { engine: WindowEngine; reload: () => v
     pending.current = true; setBusy(job.name); setError(null); setReceipt(null);
     const current = generation.current.next();
     try { await createJob(engine, job, current, choice.avatar, choice.name); if (current()) { setChoiceJob(null); setReceipt(`${job.name} is ready. ${choice.name} is your new Trunk.`); reload(); } }
-    catch (error) { if (current()) { setError(creationProblem(error)); reload(); } }
+    catch (error) { if (current()) { setError(plainError(jobProblem(job, error))); reload(); } }
     finally { if (current()) { pending.current = false; setBusy(null); } }
   }
-  return <section><h2 className="kp-section-title">Start from a job</h2>{error && <p role="alert" className="kp-error">{error}</p>}{receipt && <p role="status">{receipt}</p>}<div className="kp-jobs">{JOBS.map(job => <section className="kp-tile" key={job.name}><div className="kp-tile-heading"><JobPebble color={job.color} shape={job.shape} /><b>{job.name}</b></div><p>{job.description}</p><button type="button" className="btn sm" aria-label={"Use this job: " + job.name} disabled={busy !== null} onClick={() => { const current = generation.current.next(); void engine.request("agents.list", {}).then((value) => { if (current()) { setRoster(readRoster(value)); setChoiceJob(job); } }, (reason) => { if (current()) setError(errorText(reason)); }); }}>{busy === job.name ? "Creating…" : "Use this job"}</button></section>)}</div>{choiceJob && roster && <NewTrunkPreview roster={roster} busy={busy !== null} onClose={() => setChoiceJob(null)} onConfirm={(choice) => void createFromJob(choiceJob, choice)} />}</section>;
+  return <section><h2 className="kp-section-title">Start from a job</h2>{error && <p role="alert" className="kp-error">{plainError(error)}</p>}{receipt && <p role="status">{receipt}</p>}<div className="kp-jobs">{JOBS.map(job => <section className="kp-tile" key={job.name}><div className="kp-tile-heading"><JobPebble color={job.color} shape={job.shape} /><b>{job.name}</b></div><p>{job.description}</p><button type="button" className="btn sm" aria-label={"Use this job: " + job.name} disabled={busy !== null} onClick={() => { const current = generation.current.next(); void engine.request("agents.list", {}).then((value) => { if (current()) { setRoster(readRoster(value)); setChoiceJob(job); } }, (reason) => { if (current()) { console.warn("agents.list failed:", errorText(reason)); setError("Couldn’t read your Trunks. Try again."); } }); }}>{busy === job.name ? "Creating…" : "Use this job"}</button></section>)}</div>{choiceJob && roster && <NewTrunkPreview roster={roster} busy={busy !== null} onClose={() => setChoiceJob(null)} onConfirm={(choice) => void createFromJob(choiceJob, choice)} />}</section>;
 }
 
 /** A job's pebble (preview .av.pbl18 on the job tiles): its colour in its shape, two eyes. It is not a Trunk yet. */

@@ -1,0 +1,3 @@
+engine:extensions/microsoft-foundry/image-generation-provider.test.ts
+engine:extensions/microsoft-foundry/index.test.ts
+engine:extensions/microsoft-foundry/onboard.connection.test.ts

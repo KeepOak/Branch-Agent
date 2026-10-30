@@ -18,6 +18,11 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# EAS local credentials (signing lives in EAS / CI secrets, never in the repo)
+/credentials.json
+/credentials/
+
+
 # Metro
 .metro-health-check*
 

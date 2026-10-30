@@ -1,0 +1,1 @@
+window:src/screens/sidebar/raw-preview.test.tsx

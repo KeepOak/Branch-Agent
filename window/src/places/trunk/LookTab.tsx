@@ -1,5 +1,6 @@
 // Trunk editor › Look (preview 12-look picker, 15 emoji face, 30-trunks §4.4.3): the looks with real art, an emoji face,
-// Name, What it's for, and the pebble's Colour, Shape and Eyes.
+// Name, What it's for, and the pebble's Colour, Shape and Eyes. Each set of choices is a named group of toggle buttons, the
+// chosen one pressed, so the choice already made reads as chosen and not as a button that does nothing.
 import { useState } from "react";
 import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
@@ -31,7 +32,7 @@ export function useNewLooks(): Set<string> {
 
 function Gallery({ draft, set, fresh }: { draft: Draft; set: (d: Partial<Draft>) => void; fresh: Set<string> }) {
   return (
-    <div className="tk-looks">
+    <div className="tk-looks" role="group" aria-label="Looks">
       {LOOKS.map((l) => (
         <button key={l.id} type="button" className={fresh.has(l.id) ? "tk-look new" : "tk-look"} aria-pressed={draft.look === l.id} aria-label={fresh.has(l.id) ? `${l.name}, new` : l.name} onClick={() => set({ look: l.id, ...(l.id === "classic" ? {} : { emoji: "" }) })}>
           {l.still ? <img src={l.still} alt="" draggable={false} /> : <span className="tk-peb-demo"><Face size={56} pebbleLook={draft} /></span>}
@@ -62,15 +63,15 @@ function PebbleFields({ draft, set }: { draft: Draft; set: (d: Partial<Draft>) =
     <>
       <div className="tk-field">
         <span className="tk-label">Colour</span>
-        <div className="tk-swatches">{COLOURS.map((c) => <button key={c} type="button" className="tk-swatch" style={{ background: c }} aria-label={`Colour ${c}`} aria-pressed={draft.colour === c} onClick={() => set({ colour: c })} />)}</div>
+        <div className="tk-swatches" role="group" aria-label="Colour">{COLOURS.map((c) => <button key={c} type="button" className="tk-swatch" style={{ background: c }} aria-label={`Colour ${c}`} aria-pressed={draft.colour === c} onClick={() => set({ colour: c })} />)}</div>
       </div>
       {classic && <div className="tk-field">
         <span className="tk-label">Shape</span>
-        <div className="tk-shapes">{SHAPES.map((s, i) => <button key={s} type="button" className="tk-shape" aria-label={s} title={s} aria-pressed={draft.shape === s} onClick={() => set({ shape: s })}><span style={{ borderRadius: RADII[i], background: draft.colour }} /></button>)}</div>
+        <div className="tk-shapes" role="group" aria-label="Shape">{SHAPES.map((s, i) => <button key={s} type="button" className="tk-shape" aria-label={s} title={s} aria-pressed={draft.shape === s} onClick={() => set({ shape: s })}><span style={{ borderRadius: RADII[i], background: draft.colour }} /></button>)}</div>
       </div>}
       {classic && <div className="tk-field">
         <span className="tk-label">Eyes</span>
-        <span className="tk-seg">{EYES.map((e) => <button key={e} type="button" aria-pressed={draft.eyes === e} onClick={() => set({ eyes: e })}>{e}</button>)}</span>
+        <span className="tk-seg" role="group" aria-label="Eyes">{EYES.map((e) => <button key={e} type="button" aria-pressed={draft.eyes === e} onClick={() => set({ eyes: e })}>{e}</button>)}</span>
       </div>}
     </>
   );

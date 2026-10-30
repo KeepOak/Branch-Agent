@@ -24,8 +24,11 @@ export function memoryStore(initial: Record<string, string> = {}): KeyValueStore
 }
 
 /**
- * The phone's Keychain (iOS) or Keystore-backed storage (Android) through expo-secure-store. The web
- * preview has no secure enclave, so it keeps the same keys in the page's localStorage.
+ * The phone's Keychain (iOS) or Keystore-backed storage (Android) through expo-secure-store. That is
+ * persistent app data, not cache: an APK update that installs over this app (`adb install -r` or the
+ * in-app installer) leaves it in place. Pairing, the device key and the engine token belong here,
+ * never in the download cache. The web preview has no secure enclave, so it keeps the same
+ * keys in the page's localStorage.
  */
 export function deviceStore(): KeyValueStore {
   if (Platform.OS === 'web') {

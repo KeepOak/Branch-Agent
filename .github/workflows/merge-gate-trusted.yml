@@ -33,7 +33,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
-          fetch-depth: 1
+          # Final head needs main's recent history, not only the tip commit.
+          fetch-depth: 2000
           persist-credentials: false
       - name: Set up reviewed Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -42,12 +43,29 @@ jobs:
           package-manager-cache: false
       - name: Test the commit email checker
         run: node --test scripts/check-commit-emails.test.mjs
+      - name: Fetch pull request history for the email fallback and the Final head check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          auth="http.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          git -c "$auth" fetch --no-tags --no-recurse-submodules --depth=2000 origin \
+            "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head"
+          # The email fallback's range starts at the PR base, not at the default-branch checkout.
+          git -c "$auth" fetch --no-tags --no-recurse-submodules --depth=2000 origin "$PR_BASE_SHA" \
+            || echo "::warning::could not fetch PR base commit; the git fallback will be unavailable"
+
       - name: Check pull request commit emails
+        # A rate limit waits inside MERGE_GATE_WAIT_SECONDS; if the reset is later, the emails are read from the
+        # PR history fetched above (no REST quota). A real 403 or 404 still fails.
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           MERGE_GATE_WAIT_SECONDS: '600'
         run: node scripts/check-commit-emails.mjs
 
@@ -85,6 +103,8 @@ jobs:
           package-manager-cache: false
       - name: Test the trusted gate helper
         run: node --test scripts/merge-gate-trusted.test.mjs
+      - name: Test the trusted gate bound-run rule
+        run: node --test scripts/merge-gate-trusted.bound-runs.test.mjs
       - name: Test the rate-limit wait helper
         run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
       - name: Read the core API budget before this job

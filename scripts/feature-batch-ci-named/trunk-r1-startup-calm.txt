@@ -1,0 +1,4 @@
+window:src/connect/session-startup-code.test.ts
+window:src/screens/chat/ChatView.test.tsx
+window:src/screens/composer/Composer.startup.test.tsx
+window:src/screens/frame/R1Window.startup.test.tsx

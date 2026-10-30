@@ -2,6 +2,7 @@
 // [A] Running on its own, more, Reminders and [A] How they're doing. A part with no engine store is drawn
 // greyed with its reason; nothing here shows sample rows.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { Failure } from "./Failure";
 import { useState, type ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import { Glyph, type GlyphName } from "./glyphs";
@@ -86,7 +87,7 @@ export function HowTheyreDoing({ jobs, runs }: { jobs: Row[]; runs: Map<string, 
     {list.map(({ j, r }) => {
       const ok = r.filter(x => x.status === "ok").length, times = r.map(x => Number(x.durationMs) || 0).filter(Boolean);
       const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : 0, err = r.find(x => x.status === "error");
-      return <div className="au-tool" key={str(j.id)}><span className="au-grow"><b>{jobName(j)}</b><small>{ok} of {r.length} worked{avg ? ` · about ${dur(avg)} a run` : ""}{err && r[0] === err && str(err.error) ? ` · last error: ${str(err.error)}` : ""}</small></span></div>;
+      return <div className="au-tool" key={str(j.id)}><span className="au-grow"><b>{jobName(j)}</b><div>{ok} of {r.length} worked{avg ? ` · about ${dur(avg)} a run` : ""}{err && r[0] === err && str(err.error) ? <> · <Failure error={str(err.error)} /></> : null}</div></span></div>;
     })}
   </Section>;
 }

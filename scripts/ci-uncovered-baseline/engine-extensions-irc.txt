@@ -1,0 +1,15 @@
+engine:extensions/irc/doctor-contract-api.test.ts
+engine:extensions/irc/runtime-api.test.ts
+engine:extensions/irc/src/accounts.test.ts
+engine:extensions/irc/src/channel.test.ts
+engine:extensions/irc/src/config-schema.test.ts
+engine:extensions/irc/src/connect-options.test.ts
+engine:extensions/irc/src/doctor.test.ts
+engine:extensions/irc/src/inbound.behavior.test.ts
+engine:extensions/irc/src/irc-ingress.test.ts
+engine:extensions/irc/src/normalize.test.ts
+engine:extensions/irc/src/policy.test.ts
+engine:extensions/irc/src/probe.test.ts
+engine:extensions/irc/src/send.rendering.test.ts
+engine:extensions/irc/src/send.test.ts
+engine:extensions/irc/src/setup.test.ts

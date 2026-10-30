@@ -1,0 +1,2 @@
+engine:extensions/pixverse/index.test.ts
+engine:extensions/pixverse/video-generation-provider.test.ts

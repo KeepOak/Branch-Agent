@@ -72,7 +72,14 @@ try {
     $process = Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru
     if ($process.ExitCode -ne 0) { Exit-Install "the setup exited with code $($process.ExitCode)." }
 
-    $installed = Join-Path $env:LOCALAPPDATA 'Programs\Branch Agent\Branch Agent.exe'
+    $root = Join-Path $env:LOCALAPPDATA 'Programs\Branch Agent'
+    $pointer = Join-Path $root 'current.txt'
+    if (Test-Path -LiteralPath $pointer) {
+        $ver = (Get-Content -LiteralPath $pointer -TotalCount 1).Trim()
+        $installed = Join-Path (Join-Path $root $ver) 'Branch Agent.exe'
+    } else {
+        $installed = Join-Path $root 'Branch Agent.exe'
+    }
     Write-Output "Installed $installed"
     Write-Output ''
     Write-Output 'Next: open Branch Agent from the Start menu.'
