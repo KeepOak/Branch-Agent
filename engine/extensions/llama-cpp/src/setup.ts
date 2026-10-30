@@ -39,6 +39,7 @@ import {
   type ManagedLlamaServer,
 } from "./managed-server.js";
 import { recommendLlamaCppModel, resolveLlamaCppModelCandidates } from "./model-catalog.js";
+import { formatLlamaCppSkipNote } from "./skip-reasons.js";
 
 const BYTES_PER_GB = 1_000_000_000;
 const BYTES_PER_MB = 1_000_000;
@@ -90,24 +91,26 @@ function describeEmbeddingDownload(isDefault: boolean): string {
 }
 
 /**
- * The whole download a chat setup answer starts: the model, the default search model
+ * The whole download a setup answer starts: the model, the default search model
  * unless cached, and the runtime unless installed. A configured search model has no
  * known size, so no total is claimed for it.
  */
-function describeDownloadTotal(
+function downloadTotalBytes(
   modelBytes: number,
   embeddingIsDefault: boolean,
   embeddingCached: boolean,
   runtimeBytes: number,
-): string {
+): number | undefined {
   if (!embeddingIsDefault) {
-    return "";
+    return undefined;
   }
-  const total =
-    modelBytes +
-    (embeddingCached ? 0 : DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_SIZE_BYTES) +
-    runtimeBytes;
-  return ", " + (total / BYTES_PER_GB).toFixed(1) + " GB in total";
+  return (
+    modelBytes + (embeddingCached ? 0 : DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_SIZE_BYTES) + runtimeBytes
+  );
+}
+
+function describeDownloadTotal(total: number | undefined): string {
+  return total === undefined ? "" : ", " + (total / BYTES_PER_GB).toFixed(1) + " GB in total";
 }
 
 function readPrimaryModel(config: ProviderAppGuidedSetupContext["config"]): string | undefined {
@@ -333,6 +336,7 @@ async function resolveSetupPlan(
       !(await ctx.prompter.confirm({
         message: `${runtimeNote} Use cached ${plainModelName(candidate.model.name)} on Gateway host ${os.hostname()} with the verified CPU runtime?`,
         initialValue: false,
+        freeModel: { kind: "cached-model", modelName: plainModelName(candidate.model.name) },
       }))
     ) {
       return undefined;
@@ -367,6 +371,7 @@ async function resolveSetupPlan(
     embedding: cachedEmbedding,
     runtime: runtimeInstalled,
   });
+  const runtimeBytes = runtimeInstalled ? 0 : llamaServerDownloadBytes(asset);
   if (recommendation.kind === "recommended") {
     const { recipe } = recommendation;
     const cachedPath = cachedModels.get(recipe.model.id);
@@ -386,19 +391,35 @@ async function resolveSetupPlan(
     ]
       .filter(Boolean)
       .join("\n");
+    const modelName = plainModelName(recipe.model.name);
+    const totalBytes = downloadTotalBytes(
+      cachedPath ? 0 : recipe.sizeBytes,
+      embeddingModelIsDefault,
+      cachedEmbedding,
+      runtimeBytes,
+    );
     const consent = await ctx.prompter.confirm({
       message: `${recommendationSummary}\n\n${
         cachedPath
-          ? `Use cached ${plainModelName(recipe.model.name)}, download any missing embedding and ${asset.backend.toUpperCase()} runtime files, then use this model?`
-          : `Download ${plainModelName(recipe.model.name)} (${(recipe.sizeBytes / BYTES_PER_GB).toFixed(1)} GB), ${describeEmbeddingDownload(embeddingModelIsDefault)}, and the verified ${asset.backend.toUpperCase()} runtime${describeDownloadTotal(recipe.sizeBytes, embeddingModelIsDefault, cachedEmbedding, runtimeInstalled ? 0 : llamaServerDownloadBytes(asset))}, then use this model?`
+          ? `Use cached ${modelName}, download any missing embedding and ${asset.backend.toUpperCase()} runtime files, then use this model?`
+          : `Download ${modelName} (${(recipe.sizeBytes / BYTES_PER_GB).toFixed(1)} GB), ${describeEmbeddingDownload(embeddingModelIsDefault)}, and the verified ${asset.backend.toUpperCase()} runtime${describeDownloadTotal(totalBytes)}, then use this model?`
       }`,
       initialValue: false,
+      // Clients word the question from these facts, not from the message above.
+      freeModel: {
+        kind: cachedPath ? "cached-model" : "model",
+        modelName,
+        ...(totalBytes === undefined ? {} : { downloadBytes: totalBytes }),
+      },
     });
     if (consent) {
       return { kind: "chat", candidate, cachedPath };
     }
   } else if (!localMemoryIntent) {
-    await ctx.prompter.note(recommendation.reason, "Setup skipped");
+    await ctx.prompter.note(
+      formatLlamaCppSkipNote(recommendation.plainReason, recommendation.reason),
+      "Setup skipped",
+    );
     return undefined;
   }
 
@@ -412,9 +433,19 @@ async function resolveSetupPlan(
   }
 
   if (localMemoryIntent) {
+    const searchOnlyBytes = downloadTotalBytes(
+      0,
+      embeddingModelIsDefault,
+      cachedEmbedding,
+      runtimeBytes,
+    );
     const consent = await ctx.prompter.confirm({
       message: `${runtimeNote ? `${runtimeNote} ` : ""}Install a verified ${asset.backend.toUpperCase()} llama.cpp server on Gateway host ${os.hostname()} and download only ${describeEmbeddingDownload(embeddingModelIsDefault)}? Your chat model will stay unchanged.`,
       initialValue: false,
+      freeModel: {
+        kind: "search-model-only",
+        ...(searchOnlyBytes === undefined ? {} : { downloadBytes: searchOnlyBytes }),
+      },
     });
     if (consent) {
       return { kind: "embedding-only" };
