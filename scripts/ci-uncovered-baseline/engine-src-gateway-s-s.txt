@@ -124,7 +124,6 @@ engine:src/gateway/server-methods/chat-send-projection-rebuild.test.ts
 engine:src/gateway/server-methods/chat-send-reply-context.test.ts
 engine:src/gateway/server-methods/chat-send-reply-dispatch.test.ts
 engine:src/gateway/server-methods/chat-send-request.test.ts
-engine:src/gateway/server-methods/chat-send-retry.test.ts
 engine:src/gateway/server-methods/chat-send-session-binding.test.ts
 engine:src/gateway/server-methods/chat-send-steering-custody.test.ts
 engine:src/gateway/server-methods/chat-send-synthetic-repair.integration.test.ts
