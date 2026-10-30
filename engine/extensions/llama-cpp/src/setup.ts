@@ -76,6 +76,13 @@ function formatDownloadProgress(
   return `Downloading ${label}… ${percent}% (${downloadedGb}/${totalGb} GB, ${rateMb} MB/s)`;
 }
 
+// The quantization tag names the downloaded file, not the model people choose.
+const MODEL_FILE_FORMAT_TAG = /\s*\((?:UD-)?(?:I?Q\d(?:_[A-Z0-9]+)*|BF16|F(?:16|32))\)$/i;
+
+function plainModelName(name: string): string {
+  return name.replace(MODEL_FILE_FORMAT_TAG, "").trim() || name;
+}
+
 function describeEmbeddingDownload(isDefault: boolean): string {
   return isDefault
     ? "the local embedding model (about 0.3 GB)"
@@ -324,7 +331,7 @@ async function resolveSetupPlan(
     if (
       runtimeNote &&
       !(await ctx.prompter.confirm({
-        message: `${runtimeNote} Use cached ${candidate.model.name} on Gateway host ${os.hostname()} with the verified CPU runtime?`,
+        message: `${runtimeNote} Use cached ${plainModelName(candidate.model.name)} on Gateway host ${os.hostname()} with the verified CPU runtime?`,
         initialValue: false,
       }))
     ) {
@@ -382,8 +389,8 @@ async function resolveSetupPlan(
     const consent = await ctx.prompter.confirm({
       message: `${recommendationSummary}\n\n${
         cachedPath
-          ? `Use cached ${recipe.model.name}, download any missing embedding and ${asset.backend.toUpperCase()} runtime files, then use this model?`
-          : `Download ${recipe.model.name} (${(recipe.sizeBytes / BYTES_PER_GB).toFixed(1)} GB), ${describeEmbeddingDownload(embeddingModelIsDefault)}, and the verified ${asset.backend.toUpperCase()} runtime${describeDownloadTotal(recipe.sizeBytes, embeddingModelIsDefault, cachedEmbedding, runtimeInstalled ? 0 : llamaServerDownloadBytes(asset))}, then use this model?`
+          ? `Use cached ${plainModelName(recipe.model.name)}, download any missing embedding and ${asset.backend.toUpperCase()} runtime files, then use this model?`
+          : `Download ${plainModelName(recipe.model.name)} (${(recipe.sizeBytes / BYTES_PER_GB).toFixed(1)} GB), ${describeEmbeddingDownload(embeddingModelIsDefault)}, and the verified ${asset.backend.toUpperCase()} runtime${describeDownloadTotal(recipe.sizeBytes, embeddingModelIsDefault, cachedEmbedding, runtimeInstalled ? 0 : llamaServerDownloadBytes(asset))}, then use this model?`
       }`,
       initialValue: false,
     });
@@ -492,7 +499,9 @@ export async function runLlamaCppSetup(
           download: true,
           signal: ctx.signal,
           onProgress: (status) =>
-            progress.update(formatDownloadProgress(plan.candidate.model.name, status)),
+            progress.update(
+              formatDownloadProgress(plainModelName(plan.candidate.model.name), status),
+            ),
         }));
       const configuredContext = plan.candidate.model.params?.contextSize;
       chatModel = {
