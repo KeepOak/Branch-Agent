@@ -144,9 +144,7 @@ export abstract class MemoryManagerSyncBase extends MemoryManagerDatabaseContext
   /** Logs a detached sync failure; account failures log once per backoff window. */
   protected reportBackgroundSyncFailure(reason: string, err: unknown): void {
     if (this.embeddingAccountBackoff.claimLog(err)) {
-      const suffix = this.embeddingAccountBackoff.isActive()
-        ? `; ${this.embeddingAccountBackoff.describeWindow()}`
-        : "";
+      const suffix = this.embeddingAccountBackoff.warningSuffix();
       log.warn(`memory sync failed (${reason}): ${String(err)}${suffix}`);
       return;
     }

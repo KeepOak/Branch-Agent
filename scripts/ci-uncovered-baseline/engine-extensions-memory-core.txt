@@ -43,7 +43,6 @@ engine:extensions/memory-core/src/memory/manager-chunk-writer.test.ts
 engine:extensions/memory-core/src/memory/manager-close-observation-lifecycle.test.ts
 engine:extensions/memory-core/src/memory/manager-db.test.ts
 engine:extensions/memory-core/src/memory/manager-embedding-cache.test.ts
-engine:extensions/memory-core/src/memory/manager-embedding-ops.retry.test.ts
 engine:extensions/memory-core/src/memory/manager-embedding-policy.test.ts
 engine:extensions/memory-core/src/memory/manager-index-generation-lease.async.test.ts
 engine:extensions/memory-core/src/memory/manager-index-generation-lease.test.ts

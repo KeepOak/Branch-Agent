@@ -574,8 +574,11 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
           ) {
             this.assertRequiredProviderAvailable("search");
             if (this.embeddingAccountBackoff.claimLog(err)) {
+              // A query failure can open the window before any background sync
+              // fails, so this warning carries the window description too.
+              const suffix = this.embeddingAccountBackoff.warningSuffix();
               log.warn(
-                `memory search: embeddings unavailable; using keyword-only results: ${message}`,
+                `memory search: embeddings unavailable; using keyword-only results: ${message}${suffix}`,
               );
             }
             return await finalizeKeywords(keywordResults);

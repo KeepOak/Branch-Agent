@@ -118,7 +118,16 @@ export class MemoryEmbeddingAccountBackoff {
     return true;
   }
 
-  /** Suffix for the one warning logged per window. */
+  /**
+   * Suffix for the one warning logged per window, or "" when no window is
+   * open. Every caller that consumes the window's log claim appends it, so
+   * the single warning always says what is paused and for how long.
+   */
+  warningSuffix(): string {
+    return this.isActive() ? "; " + this.describeWindow() : "";
+  }
+
+  /** Describes the open window for its one warning. */
   describeWindow(): string {
     const minutes = Math.max(1, Math.round((this.window?.windowMs ?? 0) / 60_000));
     return (

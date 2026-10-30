@@ -96,5 +96,19 @@ describe("memory embedding account backoff", () => {
     expect(backoff.claimLog(transient)).toBe(true);
     expect(backoff.claimLog(transient)).toBe(true);
     expect(backoff.isActive()).toBe(false);
+    expect(backoff.warningSuffix()).toBe("");
+  });
+
+  it("describes the window for the first warning when a query failure opens it", () => {
+    const { state, now } = clock();
+    const backoff = new MemoryEmbeddingAccountBackoff(now);
+    // embedQueryWithRetry records the failure first; the search path then
+    // claims the window's only warning for the same error.
+    backoff.recordFailure(quotaError());
+    expect(backoff.claimLog(quotaError())).toBe(true);
+    expect(backoff.warningSuffix()).toContain("automatic memory indexing pauses for 5 min");
+    expect(backoff.claimLog(quotaError())).toBe(false);
+    state.now += MEMORY_EMBEDDING_ACCOUNT_BACKOFF_INITIAL_MS;
+    expect(backoff.warningSuffix()).toBe("");
   });
 });
