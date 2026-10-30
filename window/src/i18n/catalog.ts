@@ -40,7 +40,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "المظهر",
   "Tools": "الأدوات",
   "Updates": "التحديثات",
-  "Usage": "الاستخدام",
   "Writing": "جارٍ الكتابة",
   "You": "أنت"
  },
@@ -84,7 +83,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Design",
   "Tools": "Werkzeuge",
   "Updates": "Aktualisierungen",
-  "Usage": "Nutzung",
   "Writing": "Wird geschrieben",
   "You": "Sie"
  },
@@ -128,7 +126,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Tema",
   "Tools": "Herramientas",
   "Updates": "Actualizaciones",
-  "Usage": "Uso",
   "Writing": "Escribiendo",
   "You": "Tú"
  },
@@ -172,7 +169,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "پوسته",
   "Tools": "ابزارها",
   "Updates": "به‌روزرسانی‌ها",
-  "Usage": "مصرف",
   "Writing": "در حال نوشتن",
   "You": "شما"
  },
@@ -216,7 +212,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Thème",
   "Tools": "Outils",
   "Updates": "Mises à jour",
-  "Usage": "Utilisation",
   "Writing": "Écriture en cours",
   "You": "Vous"
  },
@@ -260,7 +255,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "थीम",
   "Tools": "टूल",
   "Updates": "अपडेट",
-  "Usage": "उपयोग",
   "Writing": "लिखा जा रहा है",
   "You": "आप"
  },
@@ -304,7 +298,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Tema",
   "Tools": "Alat",
   "Updates": "Pembaruan",
-  "Usage": "Penggunaan",
   "Writing": "Menulis",
   "You": "Anda"
  },
@@ -348,7 +341,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Tema",
   "Tools": "Strumenti",
   "Updates": "Aggiornamenti",
-  "Usage": "Utilizzo",
   "Writing": "Scrittura in corso",
   "You": "Tu"
  },
@@ -392,7 +384,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "テーマ",
   "Tools": "ツール",
   "Updates": "アップデート",
-  "Usage": "使用状況",
   "Writing": "書き込み中",
   "You": "あなた"
  },
@@ -436,7 +427,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "테마",
   "Tools": "도구",
   "Updates": "업데이트",
-  "Usage": "사용량",
   "Writing": "작성 중",
   "You": "나"
  },
@@ -480,7 +470,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Thema",
   "Tools": "Tools",
   "Updates": "Updates",
-  "Usage": "Gebruik",
   "Writing": "Schrijven",
   "You": "Jij"
  },
@@ -524,7 +513,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Motyw",
   "Tools": "Narzędzia",
   "Updates": "Aktualizacje",
-  "Usage": "Użycie",
   "Writing": "Zapisywanie",
   "You": "Ty"
  },
@@ -568,7 +556,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Tema",
   "Tools": "Ferramentas",
   "Updates": "Atualizações",
-  "Usage": "Uso",
   "Writing": "Escrevendo",
   "You": "Você"
  },
@@ -612,7 +599,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Тема",
   "Tools": "Инструменты",
   "Updates": "Обновления",
-  "Usage": "Использование",
   "Writing": "Запись",
   "You": "Вы"
  },
@@ -656,7 +642,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "ธีม",
   "Tools": "เครื่องมือ",
   "Updates": "การอัปเดต",
-  "Usage": "การใช้งาน",
   "Writing": "กำลังเขียน",
   "You": "คุณ"
  },
@@ -700,7 +685,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Tema",
   "Tools": "Araçlar",
   "Updates": "Güncellemeler",
-  "Usage": "Kullanım",
   "Writing": "Yazılıyor",
   "You": "Siz"
  },
@@ -744,7 +728,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Тема",
   "Tools": "Інструменти",
   "Updates": "Оновлення",
-  "Usage": "Використання",
   "Writing": "Записування",
   "You": "Ви"
  },
@@ -788,7 +771,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Chủ đề",
   "Tools": "Công cụ",
   "Updates": "Bản cập nhật",
-  "Usage": "Mức sử dụng",
   "Writing": "Đang ghi",
   "You": "Bạn"
  },
@@ -832,7 +814,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "主题",
   "Tools": "工具",
   "Updates": "更新",
-  "Usage": "用量",
   "Writing": "正在写入",
   "You": "你"
  },
@@ -876,7 +857,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "主題",
   "Tools": "工具",
   "Updates": "更新",
-  "Usage": "用量",
   "Writing": "正在寫入",
   "You": "你"
  }

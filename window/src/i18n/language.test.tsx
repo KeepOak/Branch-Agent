@@ -41,7 +41,7 @@ describe("Settings › Appearance › Language", () => {
     expect(language()).toBe("de");
     expect(document.documentElement.lang).toBe("de");
     expect(t("General")).toBe("Allgemein");
-    expect(t("Usage")).toBe("Nutzung");
+    expect(t("Accounts & usage")).toBe("Konten & Nutzung");
     expect(t("Show agents’ work")).toBe("Show agents’ work");
     expect(t("Branch")).toBe("Branch");
     setLanguage("xx");
