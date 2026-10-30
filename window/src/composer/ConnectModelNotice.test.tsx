@@ -21,6 +21,7 @@ describe("ConnectModelNotice", () => {
       expect(host.textContent).toContain(CONNECT_MODEL_ANSWERS);
       const buttons = [...host.querySelectorAll("button")];
       expect(buttons.map((b) => b.textContent)).toEqual([CONNECT_MODEL_ACTION]);
+      expect(buttons[0]!.className).toContain("connect-model-btn");
       await act(async () => buttons[0]!.click());
       expect(onOpen).toHaveBeenCalledExactlyOnceWith("settings/accounts/add");
     } finally {

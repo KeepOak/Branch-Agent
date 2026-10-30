@@ -89,12 +89,26 @@ it("puts the finer account rows in Your own accounts at Advanced and the sign-in
     "Keep service settings in step on my devices", "Use a model from a hub for one run", "Region", "Install a service’s package when needed", "Each account keeps its own folder", "Point your coding apps at Branch"]) expect(sources).toContain(label);
 });
 
-it("sits on Regular's Usage page as its first page, with the other Usage pages under Advanced", async () => {
-  expect(regularHub("accounts")?.title).toBe("Usage");
+it("sits on Regular's Accounts & usage page as its first page, with the other pages under it in the nav", async () => {
+  expect(regularHub("accounts")?.title).toBe("Accounts & usage");
   expect(regularHub("accounts")?.pages[0].id).toBe("accounts");
   const { engine } = engineOf();
   await mount(engine, "regular");
-  expect(host.querySelector(".r1s-nav[aria-current=page]")?.getAttribute("data-hub")).toBe("Usage");
+  expect(host.querySelector(".r1s-nav[aria-current=page]")?.getAttribute("data-hub")).toBe("Accounts & usage");
   expect(host.querySelector(".r1s-head h1")?.textContent).toBe(PAGES.accounts.title);
   expect([...host.querySelectorAll<HTMLElement>(".r1s-advanced [data-page]")].map((b) => b.dataset.page)).toEqual(regularHub("accounts")!.pages.slice(1).map((p) => p.id));
+});
+
+it("lights the page that opened and draws no list of other pages in its content (#1769 point 2)", async () => {
+  const { engine } = engineOf();
+  await mount(engine, "regular");
+  expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Accounts & usage");
+  // The nav row lit is named for the page that opened, not a different word.
+  expect(host.querySelector(".r1s-nav[aria-current=page]")?.textContent).toBe("Accounts & usage");
+  // The other pages (Models, Privacy & data, Sign-ins & keys) are nav rows under it, not a list in the page.
+  const page = host.querySelector(".r1s-page")!;
+  expect(page.querySelector(".r1s-advanced")).toBeNull();
+  for (const name of ["Models", "Privacy & data", "Sign-ins & keys"]) expect([...page.querySelectorAll("button")].map((b) => b.textContent)).not.toContain(name);
+  const also = host.querySelector(".r1s-side .r1s-list .r1s-advanced");
+  expect([...(also?.querySelectorAll<HTMLElement>("[data-page]") ?? [])].map((b) => b.textContent)).toEqual(["Models", "Privacy & data", "Sign-ins & keys"]);
 });

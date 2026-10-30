@@ -18,11 +18,11 @@ export function InboxRow({ lead, title, sub, extra, unread, children, testid }: 
   );
 }
 
-export function StatusCard({ icon, lead, title, sub, tone, children }: { icon: Glyph; lead?: ReactNode; title: string; sub: string; tone?: "warn" | "bad"; children?: ReactNode }) {
+export function StatusCard({ icon, lead, title, sub, tone, children, extra }: { icon: Glyph; lead?: ReactNode; title: string; sub: string; tone?: "warn" | "bad"; children?: ReactNode; extra?: ReactNode }) {
   return (
     <div className={tone ? `ib-card ${tone}` : "ib-card"} role="status">
       {lead ?? <Tile icon={icon} />}
-      <span className="ib-grow"><b>{title}</b><small>{sub}</small></span>
+      <div className="ib-grow"><b>{title}</b><small>{sub}</small>{extra}</div>
       {children ? <span className="ib-acts">{children}</span> : null}
     </div>
   );

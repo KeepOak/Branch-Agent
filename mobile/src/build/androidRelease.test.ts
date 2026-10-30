@@ -503,7 +503,7 @@ describe('the mobile Android release workflow', () => {
             tagGets += 1;
             throw tag404;
           }
-          return JSON.stringify(listPages);
+          return JSON.stringify(listPages[0]);
         },
       });
       const attachCalls = [];
@@ -521,7 +521,10 @@ describe('the mobile Android release workflow', () => {
         run: (file, args) => {
           attachCalls.push([file, args]);
           if (String(args[1] ?? '').includes('/releases/tags/')) throw tag404;
-          if (args.includes('--paginate')) return JSON.stringify(listPages);
+          // Avoid /\/…/ regexes inside this template literal (they become // comments).
+          if (String(args[1] ?? '').includes('/releases?per_page=')) {
+            return JSON.stringify(listPages[0]);
+          }
           return '';
         },
       });
@@ -612,7 +615,7 @@ describe('the mobile Android release workflow', () => {
       'branch-android-0.4.4-build-14e1361bed24.apk.versioncode.8',
     ]);
     expect(result.attached.stale).toEqual(['branch-android-0.4.4-build-14e1361bed24.apk.versioncode.5']);
-    expect(result.attachCalls.some((call: string[]) => call[1].includes('--paginate'))).toBe(true);
+    expect(result.attachCalls.some((call: string[]) => /\/releases\?per_page=100&page=/.test(String(call[1] ?? '')))).toBe(true);
     expect(result.attachCalls.some((call: string[]) => call[1].includes('--method') && call[1].includes('POST'))).toBe(true);
     expect(result.attachCalls.some((call: string[]) => call[1].includes('--method') && call[1].includes('DELETE'))).toBe(true);
     expect(result.attachCalls.some((call: string[]) => call[1].includes('release') && call[1].includes('upload'))).toBe(false);
@@ -780,7 +783,9 @@ describe('attach retries GitHub rate limits', () => {
             if (tagGets === 1) throw limited;
             throw miss;
           }
-          if (args.includes('--paginate')) return JSON.stringify([[${JSON.stringify(release)}]]);
+          if (String(args[1] ?? '').includes('/releases?per_page=')) {
+            return JSON.stringify([${JSON.stringify(release)}]);
+          }
           return '';
         },
       });
@@ -788,7 +793,7 @@ describe('attach retries GitHub rate limits', () => {
         uploaded: attached.uploaded,
         sleeps,
         tagGets,
-        listed: calls.some((args) => args.includes('--paginate')),
+        listed: calls.some((args) => String(args[1] ?? '').includes('/releases?per_page=')),
         posted: calls.some((args) => args.includes('--method') && args.includes('POST')),
       }));`);
     expect(result.uploaded).toEqual([
@@ -964,6 +969,80 @@ describe('attach retries GitHub rate limits', () => {
     expect(result.retryAfter).toBe('12');
     expect(result.reset).toBe('1700000120');
     expect(result.include).toBe(true);
+  });
+});
+
+describe('findGithubRelease survives large release catalogues', () => {
+  it('pages releases after a tags 404 and does not rely on --paginate --slurp', async () => {
+    const tag = 'v0.4.4-build-aaaaaaaaaaaa';
+    const result = callModule(`import { findGithubRelease, findGithubReleaseInPages, GH_EXEC_MAX_BUFFER } from ${JSON.stringify(helper)};
+      const calls = [];
+      const release = {
+        tag_name: ${JSON.stringify(tag)},
+        upload_url: 'https://uploads.github.com/repos/KeepOak/Branch-Agent/releases/1/assets{?name,label}',
+        assets: [],
+      };
+      const tag404 = new Error('HTTP 404: Not Found');
+      tag404.stderr = 'gh: Not Found (HTTP 404)';
+      const found = await findGithubRelease({
+        tag: ${JSON.stringify(tag)},
+        repository: 'KeepOak/Branch-Agent',
+        wait: { intervalMs: 1, maxAttempts: 2, backoff: 2 },
+        sleep: async () => {},
+        run: (file, args) => {
+          calls.push(args.slice());
+          const path = String(args[1] ?? '');
+          if (path.includes('/releases/tags/')) throw tag404;
+          if (path.includes('page=1')) return JSON.stringify([release]);
+          if (path.includes('/releases')) return JSON.stringify([]);
+          throw new Error('unexpected gh args ' + JSON.stringify(args));
+        },
+      });
+      let enobufs = null;
+      try {
+        await findGithubRelease({
+          tag: ${JSON.stringify(tag)},
+          repository: 'KeepOak/Branch-Agent',
+          wait: { intervalMs: 1, maxAttempts: 1, backoff: 2 },
+          sleep: async () => {},
+          run: (file, args) => {
+            const path = String(args[1] ?? '');
+            if (path.includes('/releases/tags/')) {
+              const err = new Error('HTTP 404: Not Found');
+              err.stderr = 'gh: Not Found (HTTP 404)';
+              throw err;
+            }
+            const err = new Error('spawnSync gh ENOBUFS');
+            err.code = 'ENOBUFS';
+            throw err;
+          },
+        });
+      } catch (error) {
+        enobufs = String(error && error.message);
+      }
+      const paged = findGithubReleaseInPages({
+        tag: ${JSON.stringify(tag)},
+        repository: 'KeepOak/Branch-Agent',
+        run: (file, args) => {
+          const path = String(args[1] ?? '');
+          if (path.includes('page=1')) return JSON.stringify([release]);
+          return JSON.stringify([]);
+        },
+      });
+      console.log(JSON.stringify({
+        foundTag: found.tag_name,
+        usedPaginateSlurp: calls.some((a) => a.includes('--paginate') || a.includes('--slurp')),
+        usedPageQuery: calls.some((a) => /page=1/.test(String(a[1] ?? ''))),
+        enobufs,
+        pagedTag: paged && paged.tag_name,
+        maxBuffer: GH_EXEC_MAX_BUFFER,
+      }));`);
+    expect(result.foundTag).toBe(tag);
+    expect(result.usedPaginateSlurp).toBe(false);
+    expect(result.usedPageQuery).toBe(true);
+    expect(result.enobufs).toMatch(/ENOBUFS/);
+    expect(result.pagedTag).toBe(tag);
+    expect(result.maxBuffer).toBeGreaterThan(1024 * 1024);
   });
 });
 

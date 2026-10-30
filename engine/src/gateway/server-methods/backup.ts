@@ -11,6 +11,7 @@ import {
   validateBackupScheduleSetParams,
   validateBackupStatusParams,
 } from "../../../packages/gateway-protocol/src/index.js";
+import { presentBackupRun } from "../../commands/backup-failure-presentation.js";
 import { prepareBackupDestination, readBackupRemote } from "../../commands/backup-destination.js";
 import { resolveStateDir } from "../../config/paths.js";
 import {
@@ -61,7 +62,12 @@ export const backupHandlers: GatewayRequestHandlers = {
       ]);
       const result: BackupStatusResult = {
         suggestedFolder: suggestedBackupFolder(),
-        targets: summarizeBackupTargets(runs),
+        // Raw refusals (paths, account IDs) stay in the backup job's log; the page gets plain status.
+        targets: summarizeBackupTargets(runs).map((target) => ({
+          ...target,
+          latest: presentBackupRun(target.latest),
+          ...(target.latestOk ? { latestOk: presentBackupRun(target.latestOk) } : {}),
+        })),
         schedules: await withRemotes(summarizeBackupSchedules(jobs)),
         locations: listStorageLocations(
           context.getRuntimeConfig(),

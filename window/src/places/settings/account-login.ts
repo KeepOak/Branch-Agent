@@ -15,6 +15,8 @@ export type WizardStep = {
   executor?: "gateway" | "client";
   externalUrl?: string;
   deviceCode?: { code: string; expiresInMinutes?: number; message?: string };
+  /** Structured free local model question; the window words it from these fields. */
+  freeModel?: { kind: "model" | "cached-model" | "search-model-only"; modelName?: string; downloadBytes?: number };
 };
 export type WizardResult = { done: boolean; step?: WizardStep; status?: "running" | "done" | "cancelled" | "error"; error?: string };
 export type WizardAnswer = { stepId: string; value?: unknown };

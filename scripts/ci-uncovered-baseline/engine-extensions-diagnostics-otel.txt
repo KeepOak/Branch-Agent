@@ -1,0 +1,12 @@
+engine:extensions/diagnostics-otel/src/service-disabled.integration.test.ts
+engine:extensions/diagnostics-otel/src/service-exporter-health.integration.test.ts
+engine:extensions/diagnostics-otel/src/service-exporter-health.test.ts
+engine:extensions/diagnostics-otel/src/service-node-sdk-parity.test.ts
+engine:extensions/diagnostics-otel/src/service.agent-attribution.test.ts
+engine:extensions/diagnostics-otel/src/service.commentary.test.ts
+engine:extensions/diagnostics-otel/src/service.event-loop.test.ts
+engine:extensions/diagnostics-otel/src/service.gateway-rpc.test.ts
+engine:extensions/diagnostics-otel/src/service.otlp-export.test.ts
+engine:extensions/diagnostics-otel/src/service.plugin-usage-attribution.test.ts
+engine:extensions/diagnostics-otel/src/service.restart.test.ts
+engine:extensions/diagnostics-otel/src/service.test.ts

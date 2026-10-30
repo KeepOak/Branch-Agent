@@ -1,0 +1,10 @@
+engine:src/status/agent-runtime-label.test.ts
+engine:src/status/codex-synthetic-usage.test.ts
+engine:src/status/status-message.test.ts
+engine:src/status/status-model-auth.test.ts
+engine:src/status/status-model-endpoint.test.ts
+engine:src/status/status-plugin-health.installed.test.ts
+engine:src/status/status-plugin-health.runtime.test.ts
+engine:src/status/status-plugin-health.test.ts
+engine:src/status/status-text.model.test.ts
+engine:src/status/status-text.test.ts

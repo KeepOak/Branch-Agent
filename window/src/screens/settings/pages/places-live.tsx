@@ -25,7 +25,7 @@ export const GOTO_TILES: { id: string; name: string; sub: string; place?: PlaceI
   { id: "automations", name: "Automations", sub: "What runs by itself", place: "automations" },
   { id: "library", name: "Library", sub: "Files, memory and knowledge", place: "library" },
   { id: "people", name: "People", sub: "Who your Trunks know", place: "people" },
-  { id: "customize", name: "Customize", sub: "Trunks, tools, specialists, channels", place: "customize" },
+  { id: "customize", name: "Customize", sub: "What your Trunks can do", place: "customize" },
   { id: "harvest", name: "Harvest", sub: "Everything your Trunks made" },
   { id: "grove", name: "Grove", sub: "Your Trunks at their desks", place: "office" },
   { id: "seedbank", name: "Seedbank", sub: "Agents, skills, tools, plugins, connections", place: "seedbank" },

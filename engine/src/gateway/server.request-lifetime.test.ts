@@ -322,28 +322,34 @@ describe("public Gateway close request lifetime", () => {
     try {
       // Observe the real owner after the fixture's mock registration has loaded.
       const kernelModule = await import("./server-kernel.js");
-      const createKernel = kernelModule.createGatewayKernel;
-      vi.spyOn(kernelModule, "createGatewayKernel").mockImplementationOnce(async (...args) => {
-        const kernel = await createKernel(...args);
-        const register = kernel.connectionWork.registerConnection.bind(kernel.connectionWork);
-        vi.spyOn(kernel.connectionWork, "registerConnection").mockImplementation((close) => {
-          const releaseConnection = register(close);
-          return () => {
-            releaseConnection();
-            connectionReleased.resolve();
-          };
-        });
-        const drain = kernel.connectionWork.drain.bind(kernel.connectionWork);
-        vi.spyOn(kernel.connectionWork, "drain").mockImplementation(async () => {
-          await drain();
-          drainFinished = true;
-        });
-        kernel.registerGatewayLifetimeSidecars({
-          stop: () => {
-            order.push("dependencies stopped");
+      const prepareKernel = kernelModule.prepareGatewayKernel;
+      vi.spyOn(kernelModule, "prepareGatewayKernel").mockImplementationOnce(async (...args) => {
+        const prepared = await prepareKernel(...args);
+        return {
+          ...prepared,
+          async activate(...activateArgs) {
+            const kernel = await prepared.activate(...activateArgs);
+            const register = kernel.connectionWork.registerConnection.bind(kernel.connectionWork);
+            vi.spyOn(kernel.connectionWork, "registerConnection").mockImplementation((close) => {
+              const releaseConnection = register(close);
+              return () => {
+                releaseConnection();
+                connectionReleased.resolve();
+              };
+            });
+            const drain = kernel.connectionWork.drain.bind(kernel.connectionWork);
+            vi.spyOn(kernel.connectionWork, "drain").mockImplementation(async () => {
+              await drain();
+              drainFinished = true;
+            });
+            kernel.registerGatewayLifetimeSidecars({
+              stop: () => {
+                order.push("dependencies stopped");
+              },
+            });
+            return kernel;
           },
-        });
-        return kernel;
+        };
       });
       gateway = await createGatewaySuiteHarness({
         serverOptions: { bind: "loopback", auth: { mode: "none" } },

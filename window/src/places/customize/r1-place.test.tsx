@@ -192,6 +192,32 @@ describe("Customize (R1): the place", () => {
     expect(host.querySelector<HTMLInputElement>("#cz-clis-path")?.placeholder).toBe("Or add one by its path, like /usr/local/bin/rg");
     expect(button("Add", host)).toBeTruthy();
   });
+  it("asks for a path inline when the head's ＋ Add is pressed with the path box empty (#2103)", async () => {
+    await open("regular");
+    await click(host.querySelector('[data-kind="Command-line tools"]'));
+    await click(host.querySelector('[data-kind-list="Command-line tools"] .cz-kindhead .cz-add'));
+    const input = host.querySelector<HTMLInputElement>("#cz-clis-path")!;
+    expect(document.activeElement).toBe(input);
+    const hint = host.querySelector("#cz-clis-hint");
+    expect(hint?.textContent).toBe("Type the program’s path in the box first, like /usr/local/bin/rg.");
+    expect(input.getAttribute("aria-describedby")).toBe("cz-clis-hint");
+    expect(lastRequest.mock.calls.some(([m]) => m === "exec.approvals.set")).toBe(false);
+  });
+  it("adds the CLI from the path box when the head's ＋ Add is pressed with a path typed (#2103)", async () => {
+    await open("regular");
+    await click(host.querySelector('[data-kind="Command-line tools"]'));
+    const input = host.querySelector<HTMLInputElement>("#cz-clis-path")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, " /usr/local/bin/rg ");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await click(host.querySelector('[data-kind-list="Command-line tools"] .cz-kindhead .cz-add'));
+    await act(async () => { await Promise.resolve(); });
+    const set = lastRequest.mock.calls.find(([m]) => m === "exec.approvals.set");
+    expect(set?.[1]).toEqual({ file: { version: 1, agents: { "*": { allowlist: [{ pattern: "/usr/local/bin/rg" }] } } }, baseHash: "e1" });
+    expect(host.querySelector<HTMLInputElement>("#cz-clis-path")?.value).toBe("");
+    expect(host.querySelector("#cz-clis-hint")).toBeNull();
+  });
   it("lists the three connector actions above Reload connectors", async () => {
     await open("regular", undefined, { "config.get": { hash: "h1", sourceConfig: { mcp: { servers: { gh: { url: "https://x.test" } } } }, runtimeConfig: { mcp: { servers: { gh: { url: "https://x.test" } } } } } });
     await click(host.querySelector('[data-kind="Connectors"]'));
