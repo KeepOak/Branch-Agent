@@ -40,9 +40,9 @@ describe("TeamApprovalCard", () => {
     );
 
     expect(el.textContent).toContain("Builder Scout");
-    expect(el.textContent).toContain("Nothing is created until you approve.");
+    expect(el.textContent).toContain("Nothing happens until you approve it here.");
     const approve = el.querySelector<HTMLButtonElement>('[data-testid="team-approve"]');
-    expect(approve?.textContent).toBe("Approve team");
+    expect(approve?.textContent).toBe("Approve");
     act(() => approve?.click());
     expect(onApprove).toHaveBeenCalledTimes(1);
   });

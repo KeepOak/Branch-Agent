@@ -1,6 +1,7 @@
 // Overview (DESIGN-SPEC §4.6.1; preview renderOverview + 40-places + 41-placesap p10-overview).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { plainError } from "../../shell/plain-error";
 import { activityLabel } from "../../shell/activity-label";
 import { shownWhy } from "../../shell/shown-why";
 import { useLockdown } from "../../shell/use-lockdown";
@@ -24,7 +25,8 @@ export const PAUSE_ALL_GAP = "Pause all Trunks comes in a later update.";
 const MILESTONES_GAP = "Milestones comes in a later update.";
 
 function ResourceStatus({ resource, label, retry }: { resource: Resource; label: string; retry: () => void }) {
-  if (resource.error) return <div className="ov-error" role="alert"><p>Couldn't load {label}. {resource.error}</p><button type="button" className="btn sm" onClick={retry}>Try again</button></div>;
+  // No engine sentence, code, stack or path at Regular (Private #1089).
+  if (resource.error) return <div className="ov-error" role="alert"><p>Couldn't load {label}. {plainError(resource.error)}</p><button type="button" className="btn sm" onClick={retry}>Try again</button></div>;
   return resource.loading && resource.value === undefined ? <p className="ov-hint" role="status">Loading…</p> : null;
 }
 function Tile({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {

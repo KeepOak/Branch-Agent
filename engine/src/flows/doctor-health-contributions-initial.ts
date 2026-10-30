@@ -77,11 +77,14 @@ export function resolveInitialDoctorHealthContributions(params: {
       healthChecks: {
         description: "Agent databases with mismatched ownership are isolated until repaired.",
         async detect(ctx: DoctorHealthCheckContext) {
-          const { evaluateAgentDatabaseAdmissions } =
+          const { agentDatabaseRefusalsNeedingRepair, evaluateAgentDatabaseAdmissions } =
             await import("../state/agent-database-admission.js");
-          const refusals =
+          // A pending inspection finishes on its own after the listener binds, so warning about it
+          // sends users to run doctor --fix on installs that recover by themselves (#1971).
+          const refusals = agentDatabaseRefusalsNeedingRepair(
             ctx.agentDatabaseRefusals ??
-            (await evaluateAgentDatabaseAdmissions(ctx.cfg, { env: ctx.env }));
+              (await evaluateAgentDatabaseAdmissions(ctx.cfg, { env: ctx.env })),
+          );
           return refusals.map((refusal) => ({
             checkId: "core/doctor/agent-database-admission",
             severity: "warning" as const,

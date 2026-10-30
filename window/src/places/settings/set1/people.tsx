@@ -2,6 +2,8 @@
 // the chosen person's card, Each person, and at Advanced the records. Reads users.list,
 // users.self, system-presence and gateway.roles; the card's actions and your own name and picture save through
 // users.setRole, device.pair.setupCode, device.token.revoke, users.setDisplayName and users.setAvatar.
+// Visitors (invite, revoke, list and the access policy) use visitor.invite, visitor.revoke, visitor.list
+// and visitor.policy. The Gateway holds the access token; People never asks for it.
 import { useRef, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { list, record, visible, type RecordValue } from "../adapter";
@@ -13,6 +15,7 @@ import { PersonCard } from "./people-card";
 import { InviteDialog } from "../../people/person-dialogs";
 import { usePicture, type Picture } from "./people-mine";
 import { EachPerson, Records } from "./people-more";
+import { VisitorAccess } from "./visitor-access";
 import "./people.css";
 
 export type People = {
@@ -23,15 +26,17 @@ export type People = {
 const LEDE = "Everyone who uses Branch, on this computer or their own.";
 const HELP = "Everyone who uses Branch: on this computer, on their own devices, and your keepoak.com team. The same list as People › People in the People place.";
 
-export function PeoplePage(props: SettingsPageProps) {
-  const lv = useLevel();
+/** The list of everyone who uses Branch with the chosen person's card and Invite someone, as the preview draws them at
+ *  the top of Who uses Branch (R1 pages/who.ts). */
+export function PeopleBlock(props: SettingsPageProps) {
   const ctx = usePeople(props);
+  const lv = useLevel();
   const [selId, setSel] = useState<string | null>(null);
   const [invite, setInvite] = useState(false);
   const sel = ctx.people.find((p) => p.id === selId) ?? ctx.self ?? ctx.people[0] ?? null;
   return (
-    <Page title={props.title} lede={LEDE} help={HELP}>
-      {ctx.error ? <Status tone="bad" title="Branch couldn’t read who uses it">{visible(ctx.error)}</Status> : null}
+    <>
+      {ctx.error ? <Status tone="bad" title={`Couldn’t read: ${visible(ctx.error)}`} /> : null}
       <div className="t10-pp">
         <div className="plist-pp">
           {ctx.self ? <ProfileHead ctx={ctx} me={ctx.self} /> : null}
@@ -41,9 +46,33 @@ export function PeoplePage(props: SettingsPageProps) {
         {sel ? <PersonCard key={sel.id} ctx={ctx} p={sel} /> : null}
       </div>
       <Hint>Separation on one computer, not separate accounts. Each person’s conversations and memory are their own.</Hint>
+      {invite ? <InviteDialog engine={props.engine} technical={lv >= 2} onClose={() => { setInvite(false); void ctx.reload(); }} /> : null}
+    </>
+  );
+}
+
+export function PeoplePage(props: SettingsPageProps) {
+  const lv = useLevel();
+  const ctx = usePeople(props);
+  const [selId, setSel] = useState<string | null>(null);
+  const [invite, setInvite] = useState(false);
+  const sel = ctx.people.find((p) => p.id === selId) ?? ctx.self ?? ctx.people[0] ?? null;
+  return (
+    <Page title={props.title} lede={LEDE} help={HELP}>
+      {ctx.error ? <Status tone="bad" title={`Couldn’t read: ${visible(ctx.error)}`} /> : null}
+      <div className="t10-pp">
+        <div className="plist-pp">
+          {ctx.self ? <ProfileHead ctx={ctx} me={ctx.self} /> : null}
+          <PersonList ctx={ctx} sel={sel} onSel={setSel} loading={ctx.loading} />
+          <Btn pri className="invite-pp" onClick={() => setInvite(true)}><Icon name="plus" small />Invite someone</Btn>
+        </div>
+        {sel ? <PersonCard key={sel.id} ctx={ctx} p={sel} /> : null}
+      </div>
+      <Hint>Separation on one computer, not separate accounts. Each person’s conversations and memory are their own.</Hint>
+      <VisitorAccess engine={props.engine} admin={ctx.admin} />
       <EachPerson roles={ctx.roles} />
       {lv >= 1 ? <Records engine={props.engine} trunks={ctx.trunks} /> : null}
-      {invite ? <InviteDialog engine={props.engine} onClose={() => { setInvite(false); void ctx.reload(); }} /> : null}
+      {invite ? <InviteDialog engine={props.engine} technical={lv >= 2} onClose={() => { setInvite(false); void ctx.reload(); }} /> : null}
     </Page>
   );
 }
@@ -127,6 +156,7 @@ function PersonItem({ ctx, p, current, onSel }: { ctx: People; p: Profile; curre
 const row = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "people", title, sec, group: sec, lv }));
 export const PEOPLE_ROWS: RowEntry[] = [
   ...row("You", 0, ["Your own instructions", "Your own accounts"]),
+  ...row("Visitors", 0, ["Access policy", "Invite a visitor"]),
   ...row("Each person", 0, ["Ask for a PIN when switching person", "Keep conversations separate", "Open People"]),
   ...row("Records", 1, ["Signed household records"]),
 ];

@@ -1,0 +1,2 @@
+engine:extensions/parallel/src/parallel-mcp-envelope.test.ts
+engine:extensions/parallel/src/parallel-web-search-provider.test.ts

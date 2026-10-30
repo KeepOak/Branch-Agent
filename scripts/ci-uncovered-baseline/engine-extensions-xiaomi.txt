@@ -1,0 +1,3 @@
+engine:extensions/xiaomi/index.test.ts
+engine:extensions/xiaomi/onboard.test.ts
+engine:extensions/xiaomi/speech-provider.test.ts

@@ -133,6 +133,12 @@ export function resolveExecPolicyForMode(mode: ExecMode): {
   throw new Error(`Unsupported exec mode: ${String(exhaustiveMode)}`);
 }
 
+/** Config-side default when nothing is saved: Ask first, never Full access. */
+export const DEFAULT_REQUESTED_EXEC_MODE: ExecMode = "ask";
+export const DEFAULT_REQUESTED_POLICY = resolveExecPolicyForMode(DEFAULT_REQUESTED_EXEC_MODE);
+export const DEFAULT_REQUESTED_SECURITY: ExecSecurity = DEFAULT_REQUESTED_POLICY.security;
+export const DEFAULT_REQUESTED_ASK: ExecAsk = DEFAULT_REQUESTED_POLICY.ask;
+
 export function resolveExecModePolicy(params: {
   mode?: ExecMode | null;
   security: ExecSecurity;

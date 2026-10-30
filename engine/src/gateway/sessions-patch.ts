@@ -15,6 +15,7 @@ import {
 } from "../agents/agent-scope.js";
 import {
   isApiKeyAuthProfile,
+  isSubscriptionsOnly,
   SUBSCRIPTION_ONLY_SIGN_IN_MESSAGE,
 } from "../agents/auth-profiles/subscription-only.js";
 import {
@@ -598,8 +599,9 @@ function* projectSessionPatchSteps(
         }
         params.personalModelSelection.assertCurrent();
       }
-      // Agents may only move a session onto a subscription sign-in, never an API key.
+      // With subscriptionsOnly, agents may only move a session onto a subscription sign-in, never an API key.
       if (
+        isSubscriptionsOnly(cfg) &&
         selection.profile &&
         (statusModelPatch || isAgentSessionModelPatchOrigin()) &&
         isApiKeyAuthProfile({

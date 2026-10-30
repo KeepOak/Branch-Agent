@@ -1,9 +1,12 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { explainFinalHeadDrift } from './final-head-history.mjs';
 import { liveContext, readLivePullRequest, snapshotFromEnv } from './live-pull-request.mjs';
 
 export const SELF_CHECK_DOC = 'docs/SELF-CHECK.md';
+
+const defaultRepoDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export function isTrunkBranch(ref) {
   return typeof ref === 'string' && ref.startsWith('trunk/');
@@ -37,19 +40,22 @@ export function findSelfCheckBlock(body) {
 
 function entries(block) {
   let files = null;
+  let base = null;
   let tests = null;
   let testIndent = null;
   for (const line of block) {
     const file = line.match(/^\s*(?:[-*]\s+)?Files(?:\s*\((\d+)\))?:\s*(.*)$/);
+    const baseLine = line.match(/^\s*(?:[-*]\s+)?(?:Main\s+)?Base:\s*(.*)$/i);
     const test = line.match(/^\s*(?:[-*]\s+)?Tests[^:]*:\s*(.*)$/);
     if (file) files = { labelCount: file[1], value: file[2] };
+    if (baseLine) base = baseLine[1];
     if (test) {
       tests = line;
       testIndent = line.match(/^\s*/)[0].length;
     } else if (testIndent !== null && line.match(/^\s*/)[0].length > testIndent) tests += `\n${line}`;
     else testIndent = null;
   }
-  return { files, tests };
+  return { files, base, tests };
 }
 
 function counts(text, kind) {
@@ -62,27 +68,43 @@ function placeholder(text) {
   return text.match(/<[^>\n]*>|yes\/no|pass\/fail|\b(?:TBD|TODO)\b/)?.[0];
 }
 
-export function checkSelfCheck({ headRef, body, headSha }) {
+export function checkSelfCheck({ headRef, body, headSha, repoDir = defaultRepoDir }) {
   if (!isTrunkBranch(headRef)) return { ok: true, skipped: true, problems: [] };
   const problems = [];
   const problem = (sentence) => problems.push(`${sentence} (${SELF_CHECK_DOC}).`);
   const block = findSelfCheckBlock(body);
   // With a known head, the block must name it. A body without a Final head line cannot be checked, so it fails.
+  // A later merge of main does not make the line stale: the named sha stays an ancestor, and each commit
+  // after it only brings main in.
   const finalHead = /Final head:\s*([0-9a-f]{40})/i.exec(body ?? '');
   if (headSha && !finalHead) {
     problem(`The SELF-CHECK block has no Final head line, so it cannot be checked against the current head ${headSha.slice(0, 9)}. Edit the description and add "Final head: ${headSha}"`);
   } else if (headSha && finalHead[1].toLowerCase() !== headSha.toLowerCase()) {
-    problem(`The SELF-CHECK Final head ${finalHead[1].slice(0, 9)} is not the current head ${headSha.slice(0, 9)}. Edit the description and set Final head to the current head`);
+    const drift = explainFinalHeadDrift({ repoDir, namedSha: finalHead[1], headSha });
+    if (!drift.ok) {
+      if (!drift.known) {
+        problem(`The SELF-CHECK Final head ${finalHead[1].slice(0, 9)} is not the current head ${headSha.slice(0, 9)}. Edit the description and set Final head to the current head`);
+      } else {
+        problem(`The SELF-CHECK ${drift.message}`);
+      }
+    }
   }
   if (block === null) {
     return { ok: false, skipped: false, problems: [`The pull request description has no SELF-CHECK block. Edit the description and paste the Trunk's SELF-CHECK block (format: ${SELF_CHECK_DOC}).`] };
   }
-  const { files, tests } = entries(block);
+  const { files, base, tests } = entries(block);
   if (!files) problem('The SELF-CHECK block has no Files line. Edit the description and add "Files: <count> (...)" from the Trunk\'s report');
   else {
     if (!files.labelCount && !/^\d+(?=\s|$)/.test(files.value)) problem('The Files line does not give a number of files. Edit the description and put the real count after "Files:"');
     const token = placeholder(files.value);
     if (token) problem(`The Files line still has a template placeholder ("${token}"). Edit the description and replace it with the real value`);
+  }
+  // Base: the main sha the branch started from, optionally after a ref such as origin/main. Not checked against git.
+  if (base === null) problem('The SELF-CHECK block has no Base line. Edit the description and add "Base: <main sha you branched from>"');
+  else {
+    const token = placeholder(base);
+    if (token) problem(`The Base line still has a template placeholder ("${token}"). Edit the description and replace it with the main sha you branched from`);
+    else if (!/(?:^|\s)[0-9a-f]{7,40}(?=\s|$)/i.test(base)) problem('The Base line does not give a commit sha. Edit the description and put the main sha you branched from (7 to 40 hex characters) after "Base:"');
   }
   if (tests === null) problem('The SELF-CHECK block has no Tests line. Edit the description and add the test commands with their real counts, e.g. "-> 12 passed, 0 failed"');
   else {

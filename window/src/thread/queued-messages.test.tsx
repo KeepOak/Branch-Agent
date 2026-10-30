@@ -4,8 +4,9 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CONNECT_MODEL_ACTION, CONNECT_MODEL_ANSWERS, friendlyModelError } from "../composer/connect-model";
 import { mergeQueued } from "../connect/session";
-import { loadLine, nextToSend, saveLine } from "../composer/queue";
+import { addNotSent, loadLine, nextToSend, saveLine } from "../composer/queue";
 import { QueuedMessages, useOwnWaitingLine } from "./QueuedMessages";
 
 const KEY = "agent:lead:main";
@@ -67,6 +68,15 @@ describe("waiting messages in the thread", () => {
     ]);
     expect(host.querySelector('[data-testid="not-sent"]')).toBeNull();
     expect(nextToSend(loadLine(localStorage, KEY))).toBeUndefined();
+  });
+
+  it("after addNotSent of a no-model failure, shows Connect a model instead of the Not sent card", async () => {
+    addNotSent(localStorage, KEY, { id: "n1", text: "Hello", error: friendlyModelError("CodexNotInstalledError: Install and sign in to Codex on this computer, then check again.") });
+    await act(async () => root.render(<QueuedMessages queued={[]} own={loadLine(localStorage, KEY)} sessionKey={KEY} />));
+    expect(host.querySelector('[data-testid="connect-model"]')?.textContent).toContain(CONNECT_MODEL_ANSWERS);
+    expect(host.querySelector('[data-testid="connect-model"] button')?.textContent).toBe(CONNECT_MODEL_ACTION);
+    expect(host.querySelector('[data-testid="not-sent"]')).toBeNull();
+    expect(host.textContent).toContain("Hello");
   });
 
   it("marks a picked-up post Delivered", async () => {

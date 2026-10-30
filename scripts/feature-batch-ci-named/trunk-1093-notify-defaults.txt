@@ -1,0 +1,2 @@
+window:src/places/settings/set1/notifications-on-look.test.tsx
+window:src/screens/settings/glass48.test.tsx

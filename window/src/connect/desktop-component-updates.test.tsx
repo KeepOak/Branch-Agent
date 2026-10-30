@@ -181,7 +181,7 @@ it("Updates & about shows the running build and hides a leftover older staged sh
   expect(host.textContent).toContain("Branch 0.4.4 on this computer");
   expect(host.textContent).toContain("Branch 0.4.4. The window refreshes itself");
   expect(host.textContent).not.toContain("c27f2be2");
-  expect(host.textContent).toContain("Updates apply in place.");
+  expect(host.textContent).toContain("You’re on the latest version, checked");
   expect(host.textContent).not.toContain("applying when your Trunks finish");
   expect(host.textContent).not.toContain("An update is ready");
   await act(async () => root.render(<UpdatesPage page="updates" title="Updates & about" level="technical" engine={engine} />));

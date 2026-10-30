@@ -1,0 +1,2 @@
+window:src/screens/onboarding/Onboarding.test.tsx
+window:src/screens/onboarding/wire-977.test.tsx

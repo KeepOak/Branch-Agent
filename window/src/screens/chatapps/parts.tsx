@@ -13,6 +13,7 @@ import { useRow, type Row } from "../settings";
 import { Segmented, Toggle } from "../settings/RowView";
 import { CHAT_APPS, type ChatApp } from "./catalogue";
 import { NEEDS_KEY } from "./rows";
+import { plainError } from "../../shell/plain-error";
 
 export type Cfg = { get: (path: string) => unknown; set: (path: string, value: unknown) => Promise<boolean>; ready: boolean; error: string };
 
@@ -62,7 +63,8 @@ export function comingRow(id: string, label: string, reason: string, help?: stri
 }
 
 export const Hint = ({ children }: { children: ReactNode }) => <p className="r1-ca-hint g-label" data-lines>{children}</p>;
-export const Alert = ({ text }: { text?: string }) => (text ? <p role="alert" className="g-label" data-lines>{visible(text)}</p> : null);
+// No engine sentence, code, stack or path in a chat app's failure line at Regular (Private #1089).
+export const Alert = ({ text }: { text?: string }) => (text ? <p role="alert" className="g-label" data-lines>{plainError(visible(text))}</p> : null);
 export const Pill = ({ tone, children }: { tone: string; children: ReactNode }) => <span className="r1-ca-pill g-label" data-tone={tone}>{children}</span>;
 export const toneOf = (t: string) => (t === "ok" ? "ok" : t === "work" ? "work" : "bad");
 

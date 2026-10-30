@@ -6,3 +6,5 @@ export const BROWSER_REQUEST_GATEWAY_METHOD = "browser.request" as const;
 export const SESSION_BROWSER_REQUEST_GATEWAY_METHOD = "browser.dashboard.request" as const;
 export const BROWSER_REQUEST_GATEWAY_SCOPE = "operator.admin" as const;
 export const BROWSER_REQUEST_GATEWAY_SCOPES = [BROWSER_REQUEST_GATEWAY_SCOPE] as const;
+export const BROWSER_GUEST_HOST_GATEWAY_METHOD = "browser.guest.host" as const;
+export const BROWSER_GUEST_RESPOND_GATEWAY_METHOD = "browser.guest.respond" as const;

@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { SIcon } from "../stage-icons";
+import { plainError } from "../../shell/plain-error";
 
 type FileEntry = { path: string; name: string; kind?: "modified" | "read"; missing?: boolean; content?: string; contentEncoding?: string; hash?: string; previewKind?: string };
 type BrowseEntry = { path: string; name: string; kind: "file" | "directory"; sessionKind?: "modified" | "read" | "mixed" };
 type Listing = { files: FileEntry[]; root?: string; entries: BrowseEntry[]; truncated?: boolean };
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const errorText = (e: unknown): string => plainError(e);
 const KIND: Record<string, string> = { modified: "Changed", read: "Read", mixed: "Changed" };
 const NO_MADE = "The engine marks files as changed or read; it doesn't keep which ones it made.";
 

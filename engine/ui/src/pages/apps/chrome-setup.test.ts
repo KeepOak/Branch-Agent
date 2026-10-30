@@ -37,7 +37,7 @@ async function mount(
   nativeDeviceSettings: ApplicationContext["nativeDeviceSettings"] = defaultCapability,
 ) {
   const host = createApplicationContextProvider({ nativeDeviceSettings } as ApplicationContext);
-  render(renderApps({ onNavigate: vi.fn() }), host);
+  render(renderApps({ onNavigate: vi.fn(), technical: true }), host);
   document.body.append(host);
   const setup = host.querySelector<SetupElement>("branch-native-chrome-setup")!;
   await setup.updateComplete;
@@ -103,13 +103,12 @@ describe("Apps local Chrome setup", () => {
     expect(setup.textContent).toContain("does not mean eligible tabs");
     expect(post.mock.calls).toEqual(["inspect", "install", "verify"].map((action) => [{ action }]));
   });
-  it("keeps only Store and docs in an ordinary browser", async () => {
+  it("says the extension is not out yet, with no store link, in an ordinary browser", async () => {
     const { card, setup } = await mount();
     expect(setup.querySelector("button")).toBeNull();
-    expect([...card.querySelectorAll("a")].map((a) => a.href)).toEqual([
-      "https://chromewebstore.google.com/detail/branch/kcdjddhmeafeomebliikmbpblkmkfoig",
-      "https://docs.openclaw.ai/tools/chrome-extension",
-    ]);
+    expect(card.textContent).toContain("Not out yet. Use the Android, Mac, Windows or Linux app for now.");
+    expect([...card.querySelectorAll("a")]).toEqual([]);
+    expect(card.querySelector("button")).toBeNull();
   });
   it.each([0, 1])("recognizes an installed extension with %i enabled profiles", async (enabled) => {
     bridge(async () =>

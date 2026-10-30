@@ -1,0 +1,1 @@
+window:src/screens/approvals/banner-addresses.test.tsx

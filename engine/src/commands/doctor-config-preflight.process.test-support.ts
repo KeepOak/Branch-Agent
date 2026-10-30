@@ -2,8 +2,13 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { expect } from "vitest";
 import { runCliProcessChild } from "../cli/cli-process-child.test-helpers.js";
+import { loadCronJobsStoreWithConfigJobsReadOnly, loadCronQuarantinedJobs } from "../cron/store.js";
+import { isTruthyEnvValue } from "../infra/env.js";
+import { resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
 import { removeCanonicalValidationFromHistoricalAgentFixture } from "../state/branch-agent-db.test-support.js";
 import { seedBranchAgentSchemaV21 } from "../state/branch-agent-schema-v21.test-support.js";
 import {
@@ -13,7 +18,12 @@ import {
 import { resolveTestNodeExecPath } from "../test-utils/node-process.js";
 
 const execFileAsync = promisify(execFile);
+// A child that runs Doctor and startup preflight in one process cold-compiles the state-migration graph
+// through tsx: about 15 s locally, but past 60 s on macOS CI runners, where a 60 s budget killed it
+// (#1230 retired-Codex case, #1496 Doctor-repaired reference case, #1967).
+export const ISOLATED_DOCTOR_CHILD_TIMEOUT_MS = 120_000;
 const isolatedRuntimeNodeExecPath = resolveTestNodeExecPath();
+const ENGINE_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 // The fixture owns its package assets; resolving linked source back to the checkout
 // makes Doctor repair that checkout instead, including building its Control UI.
 // Dependency realpaths still own their transitive packages under isolated installs.
@@ -77,6 +87,18 @@ export function runSourceRuntime(
   });
 }
 
+// Opt-in timing for slow child runs: with BRANCH_GATEWAY_STARTUP_TRACE=1 (the repo's startup trace switch, which
+// already times every Doctor preflight step), the child also reports when its script starts (after node and tsx boot) and when it
+// exits, so a CI log separates node + tsx compile time from Doctor work. Off by default.
+function withStartupTraceMarker(env: NodeJS.ProcessEnv, script: string): string {
+  if (!isTruthyEnvValue(env.BRANCH_GATEWAY_STARTUP_TRACE)) {
+    return script;
+  }
+  const mark = (label: string) =>
+    `process.stderr.write("[doctor-test] ${label} total=" + performance.now().toFixed(1) + "ms\\n");`;
+  return `${mark("script-start")}\nprocess.once("exit", () => { ${mark("exit")} });\n${script}`;
+}
+
 export function runIsolatedModuleScript(
   env: NodeJS.ProcessEnv,
   script: string,
@@ -90,7 +112,7 @@ export function runIsolatedModuleScript(
       "tsx",
       "--input-type=module",
       "--eval",
-      script,
+      withStartupTraceMarker(env, script),
     ],
     {
       cwd: options.runtimeRoot ?? path.resolve("."),
@@ -107,7 +129,7 @@ export function createSourceRuntime(root: string): string {
   fs.mkdirSync(path.join(runtimeRoot, "dist"), { recursive: true });
   for (const dirname of ["node_modules", "packages", "scripts", "src"]) {
     fs.symlinkSync(
-      path.resolve(dirname),
+      path.join(ENGINE_ROOT, dirname),
       path.join(runtimeRoot, dirname),
       process.platform === "win32" ? "junction" : "dir",
     );
@@ -126,7 +148,7 @@ export function createSourceRuntime(root: string): string {
     "package.json",
     "tsconfig.json",
   ]) {
-    fs.copyFileSync(path.resolve(filename), path.join(runtimeRoot, filename));
+    fs.copyFileSync(path.join(ENGINE_ROOT, filename), path.join(runtimeRoot, filename));
   }
   fs.writeFileSync(
     path.join(runtimeRoot, "dist", "build-info.json"),
@@ -138,9 +160,53 @@ export function createSourceRuntime(root: string): string {
   return runtimeRoot;
 }
 
+export function createDoctorCliRuntime(root: string): { source: boolean; root: string } {
+  const resolvedEntry = fileURLToPath(
+    resolveRuntimeWorkerUrl({
+      currentModuleUrl: import.meta.url,
+      sourceWorkerName: "../entry",
+      distWorkerPath: "entry.js",
+    }),
+  );
+  const distEntry = fileURLToPath(new URL("../../dist/entry.js", import.meta.url));
+  const builtEntry =
+    resolvedEntry.endsWith(".js") && fs.existsSync(resolvedEntry)
+      ? resolvedEntry
+      : fs.existsSync(distEntry)
+        ? distEntry
+        : undefined;
+  return builtEntry
+    ? { source: false, root: createBuiltRuntime(root, path.dirname(builtEntry)) }
+    : { source: true, root: createSourceRuntime(root) };
+}
+
+export function runDoctorCli(
+  runtime: { source: boolean; root: string },
+  env: NodeJS.ProcessEnv,
+  args: string[],
+  timeout: number,
+  options: Pick<Parameters<typeof runCliProcessChild>[0], "maxBuffer" | "onTestFinished"> = {},
+) {
+  return runtime.source
+    ? runSourceRuntime(
+        runtime.root,
+        env,
+        [path.join(runtime.root, "src", "entry.ts"), ...args],
+        timeout,
+        options.maxBuffer,
+      )
+    : runBuiltRuntime(runtime.root, env, args, timeout, options);
+}
+
+export function doctorCliEntrypoint(runtime: { source: boolean; root: string }): string[] {
+  return runtime.source
+    ? [...ISOLATED_RUNTIME_NODE_ARGS, "--import", "tsx", path.join(runtime.root, "src", "entry.ts")]
+    : [...ISOLATED_RUNTIME_NODE_ARGS, path.join(runtime.root, "dist", "entry.js")];
+}
+
 export function createBuiltRuntime(
   root: string,
-  sourceDist = path.resolve("dist"),
+  sourceDist = path.join(ENGINE_ROOT, "dist"),
   options: { copyDirectories?: boolean; emptyExtensions?: boolean } = {},
 ): string {
   const runtimeRoot = createSourceRuntime(root);
@@ -218,6 +284,124 @@ export function seedPluginStateSidecar(stateDir: string, canonicalCreatedAt: num
   } finally {
     sidecar.close();
   }
+}
+
+export async function repairCronStoreInProcess(configPath: string) {
+  const { prepareDoctorContext, withDoctorConfigMaintenance } = await import(
+    "./doctor-config-flow.test-support.js"
+  );
+  const { runInitialConfigWriteHealth } = await import(
+    "../flows/doctor-health-contribution-runners.config.js"
+  );
+  const { runLegacyCronHealth } = await import(
+    "../flows/doctor-health-contribution-runners.state.js"
+  );
+  try {
+    await withDoctorConfigMaintenance(async () => {
+      const ctx = await prepareDoctorContext(configPath);
+      await runInitialConfigWriteHealth(ctx);
+      await runLegacyCronHealth(ctx);
+    });
+  } finally {
+    closeBranchStateDatabaseForTest();
+  }
+}
+
+export function seedRetiredCronJobs(databasePath: string, storePath: string) {
+  const job = {
+    name: "SQLite automation",
+    enabled: true,
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    schedule: { kind: "cron", expr: "0 9 * * *" },
+    sessionTarget: "main",
+    wakeMode: "now",
+    payload: { kind: "systemEvent", text: "tick" },
+    state: {},
+  };
+  const jobs = [
+    { ...job, id: "valid-job" },
+    { ...job, id: "invalid-state-job", state: { nextRunAtMs: -1 } },
+    { ...job, id: "invalid-trigger-job", trigger: { script: [] } },
+  ];
+  const database = new DatabaseSync(databasePath);
+  try {
+    // Raw rows preserve corruption that the current store writer rejects.
+    const insert = database.prepare(`
+      INSERT INTO cron_jobs (
+        store_key, job_id, name, enabled, payload_kind, job_json, state_json,
+        runtime_updated_at_ms, sort_order, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const [index, { state, updatedAtMs, ...definition }] of jobs.entries()) {
+      insert.run(
+        storePath,
+        definition.id,
+        definition.name,
+        1,
+        definition.payload.kind,
+        JSON.stringify({ ...definition, state: {} }),
+        JSON.stringify(state),
+        updatedAtMs,
+        index,
+        updatedAtMs,
+      );
+    }
+  } finally {
+    database.close();
+  }
+}
+
+export function readCanonicalPluginState(stateDir: string) {
+  const database = new DatabaseSync(path.join(stateDir, "state", "branch.sqlite"), {
+    readOnly: true,
+  });
+  try {
+    return database
+      .prepare(
+        "SELECT value_json, created_at FROM plugin_state_entries WHERE plugin_id = 'discord' AND namespace = 'components' AND entry_key = 'interaction:1'",
+      )
+      .get();
+  } finally {
+    database.close();
+  }
+}
+
+export function assertDoctorCronBackup(databasePath: string) {
+  const backupNames = fs
+    .readdirSync(path.dirname(databasePath))
+    .filter((name) => name.startsWith("branch.sqlite.doctor-cron-") && name.endsWith(".bak"));
+  expect(backupNames.length).toBeGreaterThan(0);
+  const backup = new DatabaseSync(
+    path.join(path.dirname(databasePath), backupNames.toSorted()[0]!),
+    { readOnly: true },
+  );
+  try {
+    expect(backup.prepare("SELECT job_id FROM cron_jobs ORDER BY sort_order").all()).toEqual([
+      { job_id: "valid-job" },
+      { job_id: "invalid-state-job" },
+      { job_id: "invalid-trigger-job" },
+    ]);
+  } finally {
+    backup.close();
+  }
+}
+
+export async function assertRepairedCronStore(storePath: string, env: NodeJS.ProcessEnv) {
+  const loaded = await loadCronJobsStoreWithConfigJobsReadOnly(storePath, env);
+  expect(loaded.store.jobs.map((entry) => entry.id)).toContain("valid-job");
+  // SQLite config decoding quarantines the trigger before Doctor validates runtime state.
+  expect(
+    (await loadCronQuarantinedJobs(storePath, env)).map((entry) => ({
+      sourceIndex: entry.sourceIndex,
+      reason: entry.reason,
+      id: entry.job?.id,
+    })),
+  ).toEqual([
+    { sourceIndex: 2, reason: "invalid-trigger", id: "invalid-trigger-job" },
+    { sourceIndex: 1, reason: "invalid-state", id: "invalid-state-job" },
+  ]);
+  expect(fs.existsSync(storePath)).toBe(false);
 }
 
 export function seedV17AdditiveRepairDatabase(

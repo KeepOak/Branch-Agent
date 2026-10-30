@@ -21,7 +21,7 @@ export function OwnAccounts({ engine }: { engine: WindowEngine }) {
   });
   return (
     <Sec personal title="Your own accounts" hint="Accounts only you use." help="Accounts only you use. New conversations you start prefer the one you pick; the household’s order still applies when it runs out. This isn’t a billing promise.">
-      {own.error ? <p className="hint">{visible(own.error)}</p> : null}
+      {own.error ? <p className="hint" role="alert">{visible(own.error)} <Btn sm onClick={() => void own.reload()}>Try again</Btn></p> : null}
       {mine.length ? (
         <Plist>
           {mine.map((a) => (

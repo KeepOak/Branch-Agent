@@ -1,0 +1,1 @@
+window:src/places/settings/loader-stall.test.tsx

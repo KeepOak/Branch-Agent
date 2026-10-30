@@ -800,6 +800,18 @@
           - "extensions/groq/**"
           - "docs/providers/groq.md"
           - "docs/plugins/reference/groq.md"
+"extensions: harvest":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "extensions/harvest/**"
+"extensions: google-search":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "extensions/google-search/**"
+"extensions: traversaal":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "extensions/traversaal/**"
 "extensions: alibaba":
   - changed-files:
       - any-glob-to-any-file:

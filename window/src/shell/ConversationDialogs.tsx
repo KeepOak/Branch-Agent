@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Dialog } from "./Dialog";
+import { plainError } from "../shell/plain-error";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
-const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const reason = (e: unknown): string => plainError(e);
 
 /** Runs an engine call from a dialog button: busy while it runs, its error under the body, closed when it works. */
 function useRun(onDone: () => void) {

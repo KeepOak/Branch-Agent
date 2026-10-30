@@ -2,6 +2,7 @@
 // sessions.list and refreshed on every sessions.changed event, the way OpenClaw's ui/src/lib/sessions does.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { agentIdOf } from "./session";
+import { isStartupUnavailable } from "./preparation-status";
 import type { RoomPick } from "../rooms/RoomFaces";
 
 export type Conversation = {
@@ -75,6 +76,8 @@ export type ConversationsSnapshot = {
   rows: Conversation[];
   loaded: boolean;
   error: string | null;
+  /** `error` is the engine's structured startup refusal (preparation-status isStartupUnavailable), not a failure. */
+  startup?: boolean;
 };
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
@@ -210,6 +213,7 @@ export class ConversationList {
   getSnapshot = (): ConversationsSnapshot => this.snapshot;
 
   private set(patch: Partial<ConversationsSnapshot>): void {
+    if (patch.error !== undefined && patch.startup === undefined) patch = { ...patch, startup: false };
     this.snapshot = { ...this.snapshot, ...patch };
     for (const listener of this.listeners) {
       listener();
@@ -226,7 +230,7 @@ export class ConversationList {
       const result = rec(await this.request("sessions.subscribe", LIST_PARAMS));
       await this.apply(result.list);
     } catch (error) {
-      this.set({ loaded: false, error: error instanceof Error ? error.message : String(error) });
+      this.set({ loaded: false, error: error instanceof Error ? error.message : String(error), startup: isStartupUnavailable(error) });
     }
   }
 
@@ -265,7 +269,7 @@ export class ConversationList {
         do {
           this.again = false;
           try { await this.apply(await this.request("sessions.list", LIST_PARAMS)); }
-          catch (error) { this.set({ error: error instanceof Error ? error.message : String(error) }); }
+          catch (error) { this.set({ error: error instanceof Error ? error.message : String(error), startup: isStartupUnavailable(error) }); }
         } while (this.again);
       } finally { this.inFlight = null; }
     };
