@@ -41,7 +41,7 @@ describe("Settings › Appearance › Language", () => {
     expect(language()).toBe("de");
     expect(document.documentElement.lang).toBe("de");
     expect(t("General")).toBe("Allgemein");
-    expect(t("Usage")).toBe("Nutzung");
+    expect(t("Accounts & usage")).toBe("Konten & Nutzung");
     expect(t("Show agents’ work")).toBe("Show agents’ work");
     expect(t("Branch")).toBe("Branch");
     setLanguage("xx");
@@ -58,7 +58,7 @@ describe("Settings › Appearance › Language", () => {
 
   it("the Settings titles follow the person's language", async () => {
     await mount(engineOf({ lang: "de" }).engine);
-    expect(nav()).toEqual(["Allgemein", t("Computer"), "Nutzung", t("Updates")]);
+    expect(nav()).toEqual(["Allgemein", t("Computer"), "Konten & Nutzung", t("Updates")]);
     expect(host.querySelector("h1")?.textContent).toBe("Allgemein");
     expect([...host.querySelectorAll(".r1s-sec h2")].map((h) => h.textContent)).toContain("Show agents’ work");
   });

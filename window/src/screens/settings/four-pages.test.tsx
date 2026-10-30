@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Regular Settings is four pages (General, Computer, Usage, Updates). Every other page stays reachable
+// Regular Settings is four pages (General, Computer, Accounts & usage, Updates). Every other page stays reachable
 // under "Also in <page>" on its page. Developer stays on Technical. Advanced and Technical keep the full nav.
 import { readFileSync } from "node:fs";
 import { act } from "react";
@@ -54,9 +54,9 @@ const hub = (name: string) => hubs().find((b) => b.dataset.hub === name);
 const REGISTRY = Object.keys(PAGES).sort();
 
 describe("Settings four pages", () => {
-  it("renders General, Computer, Usage and Updates as pages", async () => {
+  it("renders General, Computer, Accounts & usage and Updates as pages", async () => {
     await mount();
-    expect(hubs().map((b) => b.textContent)).toEqual(["General", "Computer", "Usage", "Updates"]);
+    expect(hubs().map((b) => b.textContent)).toEqual(["General", "Computer", "Accounts & usage", "Updates"]);
     expect(hubs().every((b) => b.tagName === "BUTTON")).toBe(true);
     expect($$(".r1s-grp[aria-expanded]")).toEqual([]);
     expect(host.querySelector(".r1s-nav[aria-current=page]")?.textContent).toBe("General");
@@ -138,16 +138,20 @@ describe("Settings four pages", () => {
     expect(glass).toMatch(/\.r1s-side\.g-clear :is\(button, a\[href\]\):not\(\.r1s-nav,/);
   });
 
-  it("keeps a page's Also in list under its title, before the page's own settings, on every Regular page", async () => {
-    // The button crawl clicks a Regular page's controls in page order within its per-level cap, and the Also in rows show
-    // only at Regular: after a long page's settings they went unclicked (never-clicked on #1962).
+  it("keeps a page's Also in list in the Settings nav, under its page's row, not in the page's content", async () => {
+    // A page shows only its own settings (#1769 point 2). In the nav (.r1s-side) the button crawl counts the Also in rows
+    // as the Settings nav, not as page controls past a long page's cap (never-clicked on #1962).
     await mount();
-    const order = () => [...host.querySelector(".r1s-page")!.children].map((el) => el.className.split(" ")[0]);
-    expect(order().indexOf("r1s-advanced")).toBeGreaterThan(-1);
-    expect(order().indexOf("r1s-advanced")).toBeLessThan(order().indexOf("r1s-col"));
+    const also = () => host.querySelector(".r1s-side .r1s-list .r1s-advanced");
+    expect(host.querySelector(".r1s-page .r1s-advanced")).toBeNull();
+    expect(also()?.previousElementSibling?.getAttribute("aria-current")).toBe("page");
+    expect(also()?.previousElementSibling?.getAttribute("data-hub")).toBe("General");
     await click(host.querySelector('.r1s-advanced [data-page="instructions"]')!);
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Instructions & personality");
-    expect(order().indexOf("r1s-advanced")).toBeLessThan(order().indexOf("r1s-col"));
+    expect(host.querySelector(".r1s-page .r1s-advanced")).toBeNull();
     expect(host.querySelector('.r1s-advanced [data-page="instructions"]')?.getAttribute("aria-current")).toBe("true");
+    await click(hub("Computer")!);
+    expect(also()?.previousElementSibling?.getAttribute("data-hub")).toBe("Computer");
+    expect($$(".r1s-advanced")).toHaveLength(1);
   });
 });
