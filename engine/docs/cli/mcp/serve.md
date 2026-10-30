@@ -374,6 +374,15 @@ scoped device. It uses the same setup-code pairing a phone uses.
    the router gives the host a new LAN address, the link finds the host by that
    name, connects to the new address and saves it. It doesn't need a new setup
    code.
+
+   A machine on the network that answers to the host's name gets no reusable
+   credential. The device token is only accepted together with a fresh
+   signature from the joining Branch's device key over the host's one-time
+   challenge, and the key never leaves the joining Branch. A pinned `wss://`
+   link checks its certificate at the new address too. Plain `ws://` still
+   trusts the network, as it does at a fixed address: something that can
+   intercept it can relay a live session. Use `wss://` when the network isn't
+   trusted.
 6. Settings › Grafts on the host shows the joining Branch as one row with a
    Branch badge, with its Trunks nested under it. Each Trunk is also a contact
    (`a2a:branch-studio-laptop--<trunk>`).

@@ -6,6 +6,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { findGraftHostAddresses, learnGraftHostName, movedGraftUrl } from "./graft-host-lookup.js";
 import {
+  graftLinkKey,
   readGraftLinks,
   replaceGraftLink,
   resolveGraftLink,
@@ -82,15 +83,15 @@ function runnerFor(link: GraftLink, hostAt: () => string[]) {
     log: (line) => lines.push(line),
     findHost,
     learnHostName: async (url) => (url === OLD ? "studio.local" : undefined),
-    save: (fromUrl, next) => replaceGraftLink(fromUrl, next),
+    save: (next) => replaceGraftLink(next),
   });
   return { runner, made, lines, findHost };
 }
 
 describe("a graft link whose host got a new DHCP address (#2100)", () => {
   it("finds the host by its name, moves to the new address and saves it, with no new setup code", async () => {
-    const joined: GraftLink = { url: OLD, name: "Branch B", joinedAt: 1 };
-    saveGraftLink(joined);
+    const joined = saveGraftLink({ url: OLD, name: "Branch B", joinedAt: 1 });
+    expect(joined.id).toEqual(expect.any(String));
     let hostIp = "192.168.1.20";
     const { runner, made, lines } = runnerFor(joined, () => [hostIp]);
     runner.start();
@@ -174,11 +175,10 @@ describe("a graft link whose host got a new DHCP address (#2100)", () => {
   });
 
   it("still finds the moved link by the address it was joined with, and keeps its saved results", () => {
-    const joined: GraftLink = { url: OLD, name: "Branch B", joinedAt: 7 };
-    saveGraftLink(joined);
+    const joined = saveGraftLink({ url: OLD, name: "Branch B", joinedAt: 7 });
     new GraftLinkResults(joined).save("job-1", { reply: "done before the move" });
     const moved = { ...joined, url: NEW, hostName: "studio.local", joinedUrl: OLD };
-    replaceGraftLink(OLD, moved);
+    replaceGraftLink(moved);
     expect(resolveGraftLink(OLD)).toEqual(moved);
     expect(resolveGraftLink("studio.local")).toEqual(moved);
     expect(new GraftLinkResults(moved).pending()).toEqual({
@@ -188,8 +188,53 @@ describe("a graft link whose host got a new DHCP address (#2100)", () => {
   });
 
   it("never brings back a host that was forgotten while the link was moving", () => {
-    replaceGraftLink(OLD, { url: NEW, name: "Branch B", joinedAt: 1, joinedUrl: OLD });
+    replaceGraftLink({ id: "gone", url: NEW, name: "Branch B", joinedAt: 1, joinedUrl: OLD });
     expect(readGraftLinks()).toEqual([]);
+  });
+
+  it("gives a host joined later at a moved link's old address its own link, runner and results", () => {
+    // Host A was joined at OLD and moved to NEW; host C is then joined at OLD (A's joinedUrl, C's url).
+    const a = saveGraftLink({ url: OLD, name: "Branch B", joinedAt: 1 });
+    new GraftLinkResults(a).save("job-a", { reply: "for host A" });
+    const movedA = { ...a, url: NEW, hostName: "studio.local", joinedUrl: OLD };
+    replaceGraftLink(movedA);
+    const c = saveGraftLink({ url: OLD, name: "Branch B", joinedAt: 1 });
+    expect(c.id).not.toBe(a.id);
+    expect(readGraftLinks()).toEqual([c, movedA]);
+
+    const created: { url: string; state: string; start: () => void; stop: () => void }[] = [];
+    const supervisor = new GraftLinkSupervisor({
+      links: () => readGraftLinks(),
+      createRunner: (link) => {
+        const runner = { url: link.url, state: "connected", start: vi.fn(), stop: vi.fn() };
+        created.push(runner);
+        return runner as never;
+      },
+    });
+    supervisor.sync();
+    supervisor.sync();
+    expect(created.map((runner) => runner.url).toSorted()).toEqual([OLD, NEW].toSorted());
+    expect(created.every((runner) => runner.start.mock.calls.length === 1)).toBe(true);
+    expect(created.some((runner) => runner.stop.mock.calls.length > 0)).toBe(false);
+    expect(supervisor.states()).toEqual({ [OLD]: "connected", [NEW]: "connected" });
+    supervisor.stop();
+
+    // Each link keeps its own saved results, even with the same joinedAt.
+    expect(new GraftLinkResults(movedA).pending()?.id).toBe("job-a");
+    expect(new GraftLinkResults(c).pending()).toBeUndefined();
+    // The old address names the host joined there now; the moved host is still found by its name.
+    expect(resolveGraftLink(OLD)).toEqual(c);
+    expect(resolveGraftLink("studio.local")).toEqual(movedA);
+    // A moving runner saves over its own row only, never over the host now at its old address.
+    replaceGraftLink({ ...movedA, hostName: "studio.local" });
+    expect(readGraftLinks()).toEqual([c, movedA]);
+  });
+
+  it("keys a link saved before join ids by the address it was joined with", () => {
+    const legacy: GraftLink = { url: NEW, name: "Branch B", joinedAt: 1, joinedUrl: OLD };
+    expect(graftLinkKey(legacy)).toBe(OLD);
+    expect(graftLinkKey({ url: OLD, name: "Branch B", joinedAt: 1 })).toBe(OLD);
+    expect(graftLinkKey({ ...legacy, id: "join-1" })).toBe("join-1");
   });
 });
 

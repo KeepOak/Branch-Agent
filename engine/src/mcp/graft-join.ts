@@ -5,6 +5,7 @@
 // for a Branch on the same computer unless gateway.nodes.pairing.autoApproveLocal is false; otherwise
 // `branch devices approve <id>`), and hands back a device token this Branch keeps. `branch graft --host <url>`
 // then works with the host as that device.
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -26,9 +27,11 @@ export type GraftIdentity = OutsideAgentIdentity & { kind?: "branch" | "trunk"; 
  * `url` is the address the link starts with; `urls` are the host's other addresses, tried in order when it fails.
  * `hostName` is the host's mDNS name (`<host>.local`), learned while connected; when the host gets a new LAN address
  * the link finds it again by that name and saves the new `url` (#2100). `joinedUrl` is the address the link was
- * joined with, kept once the link has moved, so the link stays the same link (graftLinkKey).
+ * joined with, kept once the link has moved. `id` is written once at join time and never changes, so a moved link
+ * stays the same link and a host later joined at the moved link's old address is a different one (graftLinkKey).
  */
 export type GraftLink = {
+  id?: string;
   url: string;
   urls?: string[];
   tlsFingerprint?: string;
@@ -38,9 +41,12 @@ export type GraftLink = {
   joinedUrl?: string;
 };
 
-/** A saved link's lasting identity: the address it was joined with, even after the host moved. */
+/**
+ * A saved link's lasting identity: its join id, the same after the host moved and different for every join. A link
+ * saved before join ids existed falls back to the address it was joined with.
+ */
 export function graftLinkKey(link: GraftLink): string {
-  return link.joinedUrl ?? link.url;
+  return link.id ?? link.joinedUrl ?? link.url;
 }
 export type ConnectOutcome =
   | { ok: true; deviceId?: string; scopes: string[] }
@@ -149,33 +155,44 @@ function writeGraftLinks(rows: GraftLink[], env?: NodeJS.ProcessEnv): void {
   fs.renameSync(tmp, file);
 }
 
-/** Remember the host (its address only; the device token stays in the device-auth store). */
-export function saveGraftLink(link: GraftLink, env?: NodeJS.ProcessEnv): void {
-  writeGraftLinks([link, ...readGraftLinks(env).filter((row) => row.url !== link.url)], env);
+/**
+ * Remember a joined host (its address only; the device token stays in the device-auth store) under a new join id.
+ * A host joined again at the same address replaces its old row.
+ */
+export function saveGraftLink(link: GraftLink, env?: NodeJS.ProcessEnv): GraftLink {
+  const saved = link.id ? link : { ...link, id: randomUUID() };
+  writeGraftLinks([saved, ...readGraftLinks(env).filter((row) => row.url !== saved.url)], env);
+  return saved;
 }
 
 /**
- * The link learned its host's name or followed the host to a new address: save it in place of the row saved at
- * `fromUrl`. A host forgotten meanwhile (disconnected in Settings) stays forgotten.
+ * The link learned its host's name or followed the host to a new address: save it in place of its own row (same
+ * graftLinkKey). A host forgotten meanwhile (disconnected in Settings) stays forgotten.
  */
-export function replaceGraftLink(fromUrl: string, link: GraftLink, env?: NodeJS.ProcessEnv): void {
+export function replaceGraftLink(link: GraftLink, env?: NodeJS.ProcessEnv): void {
+  const key = graftLinkKey(link);
   const rows = readGraftLinks(env);
-  if (!rows.some((row) => row.url === fromUrl)) {
+  if (!rows.some((row) => graftLinkKey(row) === key)) {
     return;
   }
   writeGraftLinks(
     rows
-      .filter((row) => row.url === fromUrl || row.url !== link.url)
-      .map((row) => (row.url === fromUrl ? link : row)),
+      .filter((row) => graftLinkKey(row) === key || row.url !== link.url)
+      .map((row) => (graftLinkKey(row) === key ? link : row)),
     env,
   );
 }
 
-/** The saved host to connect to: the one named (by URL), else the only one. */
+/**
+ * The saved host to connect to: the one named (by its current URL first, then the URL it was joined with, then its
+ * host name), else the only one.
+ */
 export function resolveGraftLink(host: string, env?: NodeJS.ProcessEnv): GraftLink {
   const links = readGraftLinks(env);
   const match =
-    links.find((row) => row.url === host || row.joinedUrl === host || row.hostName === host) ??
+    links.find((row) => row.url === host) ??
+    links.find((row) => row.joinedUrl === host) ??
+    links.find((row) => row.hostName === host) ??
     (host === "" && links.length === 1 ? links[0] : undefined);
   if (!match) {
     throw new Error(

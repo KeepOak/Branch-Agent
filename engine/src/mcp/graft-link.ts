@@ -117,8 +117,8 @@ export class GraftLinkRunner {
       findHost?: (hostName: string, port: number) => Promise<string[]>;
       /** The host's mDNS name, learned while connected, for a link saved without one. */
       learnHostName?: (url: string) => Promise<string | undefined>;
-      /** Save the link (a learned name or the host's new address) in place of the row saved at fromUrl. */
-      save?: (fromUrl: string, link: GraftLink) => void;
+      /** Save the link (a learned name or the host's new address) in place of its own row (graftLinkKey). */
+      save?: (link: GraftLink) => void;
     },
   ) {
     this.link = deps.link;
@@ -217,9 +217,8 @@ export class GraftLinkRunner {
   }
 
   private update(next: GraftLink): void {
-    const fromUrl = this.link.url;
     this.link = next;
-    this.deps.save?.(fromUrl, next);
+    this.deps.save?.(next);
   }
 
   /** A link saved without its host's name learns it once connected, so it can find the host after a move. */
@@ -257,7 +256,7 @@ export class GraftLinkRunner {
       if (!next || this.state !== "connecting" || this.link !== from) {
         return;
       }
-      this.update({ ...from, url: next, joinedUrl: graftLinkKey(from) });
+      this.update({ ...from, url: next, joinedUrl: from.joinedUrl ?? from.url });
       this.addressIndex = 0;
       this.lastConnectFailureLogAt = Number.NEGATIVE_INFINITY;
       this.client?.stop();
@@ -392,8 +391,9 @@ export class GraftLinkRunner {
 
 /**
  * Keep one link per saved host; a host saved later (`branch graft join` while the gateway runs) starts within a
- * poll, and a link whose host disconnected this Branch is dropped. Links are keyed by graftLinkKey, so a link that
- * followed its host to a new address keeps running.
+ * poll, and a link whose host disconnected this Branch is dropped. Links are keyed by graftLinkKey (the join id), so a
+ * link that followed its host to a new address keeps running, and a host later joined at that link's old address
+ * gets its own runner.
  */
 export class GraftLinkSupervisor {
   private readonly runners = new Map<string, GraftLinkRunner>();
@@ -501,7 +501,7 @@ export function startGraftLinks(log: (line: string) => void): GraftLinkSuperviso
         log,
         findHost: (hostName, port) => findGraftHostAddresses(hostName, port),
         learnHostName: (url) => learnGraftHostName(url),
-        save: (fromUrl, next) => replaceGraftLink(fromUrl, next),
+        save: (next) => replaceGraftLink(next),
         handleWork: async (job) => {
           const [{ callGateway }, { waitForAgentRunReply }] = await Promise.all([
             import("../gateway/call.js"),
