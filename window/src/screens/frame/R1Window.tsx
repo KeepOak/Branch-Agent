@@ -17,6 +17,7 @@ import { conversationActions } from "../../shell/conversation-actions";
 import { NewTrunkSheet } from "../../places/trunk/NewTrunkSheet";
 import { createShapedTrunk, newTrunkReadyLine, OPEN_NEW_TRUNK_SHEET, type NewTrunkDraft } from "../../places/trunk/new-trunk-sheet";
 import { waitForTrunk } from "../../places/trunk/api";
+import { openNewTrunkConversation } from "../../places/trunk/new-trunk-open";
 import { creationProblem } from "../../places/trunk/model";
 import { notify } from "../../shell/notify";
 import { useLimits } from "../../shell/use-status";
@@ -412,17 +413,21 @@ export function R1Window({ session }: { session: SaplingSession }) {
     makingTrunk.current = true;
     setNewTrunkBusy(true);
     setNewTrunkError(null);
-    try {
-      const agentId = await createShapedTrunk(engine, draft);
-      await waitForTrunk(engine, agentId);
-      const sessionKey = await trunkActions.create(agentId);
-      setNewTrunkOpen(false);
-      if (!sessionKey) return;
-      const name = draft.name.trim();
-      setNewTrunkFlow({ agentId, sessionKey, name, avatar: "classic", colour: draft.colour, shape: draft.shape });
-      openConversation(sessionKey);
-    } catch (e) { setNewTrunkError(creationProblem(e)); }
+    let agentId: string;
+    try { agentId = await createShapedTrunk(engine, draft); }
+    catch (e) { setNewTrunkError(creationProblem(e)); return; }
     finally { makingTrunk.current = false; setNewTrunkBusy(false); }
+    // The Trunk exists: the sheet closes even if its conversation can't open (#479). That says so, with Try again.
+    setNewTrunkOpen(false);
+    const name = draft.name.trim();
+    await openNewTrunkConversation(name, {
+      ready: () => waitForTrunk(engine, agentId),
+      open: () => trunkActions.create(agentId, { quiet: true }),
+      show: (sessionKey) => {
+        setNewTrunkFlow({ agentId, sessionKey, name, avatar: "classic", colour: draft.colour, shape: draft.shape });
+        openConversation(sessionKey);
+      },
+    });
   };
   // Customize's Use: the command goes into the default Trunk's composer as a draft, and the conversation opens.
   const promptKey = session.getSnapshot().mainKey;
