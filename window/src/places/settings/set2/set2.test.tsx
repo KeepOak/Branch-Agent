@@ -37,13 +37,16 @@ const READY = { sentinel: null, updateAvailable: { currentVersion: "1.0.0", late
 const RUNNING = { sessions: [{ key: "agent:main:a", agentId: "main", hasActiveRun: true, activeRunIds: ["r1"] }, { key: "agent:main:b", agentId: "main", hasActiveRun: false }] };
 
 describe("Settings › Updates & about", () => {
-  it("shows the browser search address, with its host and port, only at Technical", async () => {
+  it("shows the editors card (all add-ons that wait for a later update) and the browser search address only at Technical", async () => {
     const { engine } = engineWith({ "update.status": READY });
     const withAddress = { ...engine, gatewayUrl: "ws://127.0.0.1:19031" } as WindowEngine;
     await show("updates", withAddress, "advanced");
-    expect(document.body.textContent).toContain("Search with Branch from your browser");
+    // Regular and Advanced show only what works today (Private #1093 item 4).
+    expect(document.body.textContent).not.toContain("Search with Branch from your browser");
+    expect(document.body.textContent).not.toMatch(/\d+ more comes? in a later update/);
     expect(document.body.textContent).not.toContain("127.0.0.1:19031/?q=%s");
     await show("updates", withAddress, "technical");
+    expect(document.body.textContent).toContain("Search with Branch from your browser");
     expect(document.body.textContent).toContain("http://127.0.0.1:19031/?q=%s");
   });
 
@@ -72,7 +75,7 @@ describe("Settings › Updates & about", () => {
   it("says it is up to date when the engine reports no update", async () => {
     const { engine } = engineWith({ "update.status": { ...READY, updateAvailable: null }, status: { runtimeVersion: "1.0.0" } });
     await show("updates", engine);
-    expect(document.body.textContent).toContain("Branch is up to date.");
+    expect(document.body.textContent).toContain("You’re on the latest version");
     expect(document.body.textContent).not.toContain("Install when idle");
   });
   it("installs without a dialog or stopping running work", async () => {

@@ -156,20 +156,14 @@
 .cz-pats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .cz-pat { display: grid; gap: 4px; align-content: start; padding: 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--raise); text-align: left; }
 .cz-pat:disabled { opacity: 1; }
+/* The place's 32px pill height (places.css .kp button) would clip a pattern card. */
+.kp .cz-pats button.cz-pat { height: auto; padding: 12px; border-radius: 14px; }
 .cz-pat b { font-size: 13px; font-weight: 700; margin-top: 6px; }
 .cz-pat small { font-size: 12px; color: var(--ink-3); line-height: 1.4; }
 .cz-pat[aria-checked="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
 .cz-pat svg line { stroke: var(--ink-3); stroke-width: 1.4; }
 .cz-pat svg circle { fill: var(--raise); stroke: var(--ink-3); stroke-width: 1.4; }
 .cz-pat svg circle.lead { fill: var(--ok-tint); stroke: var(--ok); }
-.cz-chgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
-.cz-ch { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--raise); text-align: left; min-width: 0; transition: transform 120ms; }
-.cz-ch:hover { transform: translateY(-1px); }
-.cz-ch.on { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
-.cz-ch .grow { display: grid; min-width: 0; flex: 1; }
-.cz-ch b { font-size: 13.5px; font-weight: 600; }
-.cz-ch small { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cz-ch-dot { position: absolute; right: 10px; top: 10px; }
 .cz-grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 10px; }
 .cz-tile-card { display: grid; gap: 8px; align-content: start; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--raise); }
 .cz-tile-card p { margin: 0; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
@@ -177,9 +171,6 @@
 .cz-tile-h b { font-weight: 600; }
 .cz-tile-acts { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
 .cz-tile-acts > .btn:only-child { margin-right: auto; }
-.cz-phone { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
-.cz-phone .grow { display: grid; gap: 2px; flex: 1; min-width: 0; }
-.cz-phone small { color: var(--ink-3); font-size: 12.5px; }
 .cz-account { display: grid; gap: 6px; }
 .cz-account .cz-line .pill { margin-left: auto; }
 .cz-danger { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--line)); }
@@ -189,9 +180,15 @@
 .cz-radio { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
 .cz-radio span { display: grid; gap: 2px; }
 .cz-radio small { color: var(--ink-3); font-size: 12.5px; }
-.cz-pair { display: grid; gap: 10px; justify-items: start; }
+/* Private #1103 item 2: one column that never grows past the dialog; prose wraps, codes end in an ellipsis with Copy. */
+.cz-pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
+.cz-pair > * { min-width: 0; overflow-wrap: anywhere; }
 .cz-pair img { border-radius: 12px; background: #fff; padding: 8px; }
-.cz-pair ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13px; }
+.cz-pair > img { justify-self: start; }
+.cz-pair ol { margin: 0; padding-left: 20px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; font-size: 13px; }
+.cz-pair li { min-width: 0; }
+.cz-pair .copy-token { margin-top: 4px; }
+.cz-pair [data-testid="pair-code"] .copy-token-text { font: 600 28px/1.1 var(--mono); letter-spacing: 0.18em; color: var(--ink); }
 .cz-ok { margin: 0; color: var(--ok); font-size: 13px; }
 /* "Trunks 5": the count rides on the tab as a smaller, quieter number */
 .kp-tabs button[data-count]::after { content: attr(data-count); margin-left: 4px; font: 600 11px var(--mono); opacity: .6; }
@@ -206,8 +203,8 @@
 /* a connector's brand mark (preview .logo) */
 .cz-brand { display: inline-grid; place-items: center; flex: none; overflow: hidden; border-radius: 28%; }
 .cz-brand svg { display: block; }
-.cz-ch .logo, .cz-prov-h .logo { display: inline-grid; place-items: center; flex: none; overflow: hidden; border-radius: 28%; }
-.cz-ch .logo svg, .cz-prov-h .logo svg { display: block; }
+.cz-prov-h .logo { display: inline-grid; place-items: center; flex: none; overflow: hidden; border-radius: 28%; }
+.cz-prov-h .logo svg { display: block; }
 
 /* Get plugins and skills: one row per plugin or skill, tags and actions on the right. */
 .get-rows { display: grid; gap: 8px; }
@@ -224,3 +221,41 @@
 .cz-r1 [data-coming]::after { content: "Works in the app"; margin-left: 6px; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--fill-2); color: var(--ink-3); }
 /* Customize (R1) Prompts: the count and the add button share one row above the list. */
 .cz-head-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* Customize (R1): the title row, the "For:" faces row and the kind head, drawn as the preview does (preview 44908-45060). */
+.cz-titlerow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 4px 0 10px; }
+.cz-titlerow h1 { margin: 0; }
+.cz-search-title { display: flex; align-items: center; gap: 8px; min-width: 240px; padding: 6px 10px; border-radius: 999px; background: var(--fill); }
+.cz-search-title input { border: 0; background: transparent; color: inherit; font: inherit; width: 100%; outline: none; }
+.cz-for { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; }
+.cz-for-l { font-size: 12px; color: var(--ink-3); }
+.cz-faces { display: flex; gap: 6px; flex-wrap: wrap; }
+.cz-face { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px 4px 4px; border-radius: 999px; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.cz-face[aria-pressed="true"] { background: var(--fill-2); }
+.cz-face-all .cz-all { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 999px; font-size: 11px; background: var(--fill-2); }
+.cz-kindhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.cz-kindhead > div { flex: 1 1 200px; min-width: 0; }
+.cz-kindhead h2 { margin: 0; font-size: 16px; }
+.cz-kindhead p { margin: 2px 0 0; font-size: 12px; color: var(--ink-3); }
+.cz-get { margin-top: 10px; align-self: flex-start; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 12.5px; cursor: pointer; }
+.cz-acts-top { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.cz-tabs { display: flex; gap: 4px; margin: 4px 0 8px; }
+.cz-tabs button { border: 0; background: transparent; color: inherit; font: inherit; padding: 4px 10px; border-radius: 999px; cursor: pointer; }
+.cz-tabs button[aria-selected="true"] { background: var(--fill-2); }
+.cz-scope { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+.cz-shown { font-size: 12px; color: var(--ink-3); margin: 6px 0; }
+.cz-grp { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); margin: 10px 0 4px; }
+.cz-bundles { margin: 6px 0 10px; }
+.cz-bundle { cursor: default; }
+.cz-rowline { display: flex; align-items: center; gap: 8px; }
+.cz-rowline > .t9-item { flex: 1 1 auto; }
+.cz-tag { font-size: 10.5px; padding: 1px 6px; border-radius: 999px; background: var(--fill-2); color: var(--ink-3); }
+.cz-bottom { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.cz-none { font-size: 13px; color: var(--ink-3); }
+.cz-tech { margin-top: 12px; }
+.cz-h3 { font-size: 13px; margin: 12px 0 6px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.cz-found, .cz-path { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+.cz-path .inp { flex: 1 1 220px; min-width: 0; }
+.cz-prompts { display: flex; flex-direction: column; gap: 6px; }
+.cz-seg-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.cz-defaults { margin-top: 16px; }

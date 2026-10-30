@@ -2,10 +2,12 @@
 // PhoneGateway, saves the computer's address once the engine approves this phone, and reconnects to it
 // on the next launch with the device token the engine issued.
 import { ConnectErrorDetailCodes, type GatewayBrowserDeviceIdentity, type HelloOk } from '@branch/gateway-client/browser';
+import { DEVICE_IDENTITY_KEY } from '../connect/deviceIdentity';
 import type { KeyValueStore } from '../storage/keyValueStore';
 import { createDeviceTokenStore } from '../connect/deviceTokenStore';
 import { OPERATOR_ROLE, PhoneGateway, phoneClient, type GatewayStatus, type PhoneGatewayOptions, type PhoneReconnect, type Platform } from '../connect/phoneGateway';
-import { isGatewayUrl, type SetupPayload } from './setupCode';
+import { pairingRelayKey, type PairingRandomBytes } from './relayFrames';
+import { isGatewayUrl, isRelayPairingUrl, type SetupPayload } from './setupCode';
 
 export const PAIRING_RECORD_KEY = 'branch.pairing.v1';
 
@@ -36,6 +38,7 @@ export type PairingDeps = {
   createSocket?: PhoneGatewayOptions['createSocket'];
   pairingRetryMs?: number;
   reconnect?: PhoneReconnect;
+  randomBytes?: PairingRandomBytes;
 };
 
 type PairingRecord = { version: 1; url: string; pairedAtMs: number };
@@ -134,7 +137,7 @@ export class PairingSession implements EngineLink {
     return () => this.listeners.delete(listener);
   }
 
-  /** On launch: reconnect to the computer this phone paired with, or show the welcome. */
+  /** On launch: reconnect to the computer this phone paired with, or show pairing. */
   async restore(): Promise<void> {
     const record = this.readRecord(await this.deps.store.get(PAIRING_RECORD_KEY));
     this.paired = record;
@@ -152,8 +155,13 @@ export class PairingSession implements EngineLink {
     this.paired = null;
     this.setup = setup;
     this.asked = false;
+    const key = pairingRelayKey(setup.relayKey);
+    if ((isRelayPairingUrl(setup.url) || setup.relayKey) && !key) {
+      this.set({ step: 'failed', url: setup.url, message: NEUTRAL_FAILURE_MESSAGE });
+      return;
+    }
     this.set({ step: 'connecting', url: setup.url });
-    this.connect(setup.url, setup.bootstrapToken);
+    this.connect(setup.url, setup.bootstrapToken, setup.relayKey);
   }
 
   /** Whether the code this pairing started from has run out by its own expiry time. */
@@ -162,7 +170,7 @@ export class PairingSession implements EngineLink {
     return expires !== undefined && expires <= this.now();
   }
 
-  /** Stops a pairing that hasn't finished and goes back to the welcome. */
+  /** Stops a pairing that hasn't finished and goes back to pairing. */
   cancel(): void {
     this.stopGateway();
     this.setup = null;
@@ -193,6 +201,15 @@ export class PairingSession implements EngineLink {
     }
     await this.deps.store.remove(PAIRING_RECORD_KEY);
     this.set({ step: 'unpaired' });
+  }
+
+  /**
+   * Reset this phone: unpair, then drop this phone's device key. Forget uses unpair only, so a later
+   * pairing can keep the same key.
+   */
+  async reset(): Promise<void> {
+    await this.unpair();
+    await this.deps.store.remove(DEVICE_IDENTITY_KEY);
   }
 
   dispose(): void {
@@ -227,12 +244,14 @@ export class PairingSession implements EngineLink {
     return () => this.connectedListeners.delete(listener);
   }
 
-  private connect(url: string, bootstrapToken?: string): void {
+  private connect(url: string, bootstrapToken?: string, relayKey?: string): void {
     const gateway = new PhoneGateway({
       url,
       platform: this.deps.platform,
       appVersion: this.deps.appVersion,
       bootstrapToken,
+      ...(relayKey ? { relayKey } : {}),
+      ...(this.deps.randomBytes ? { randomBytes: this.deps.randomBytes } : {}),
       loadIdentity: this.deps.loadIdentity,
       tokenStore: createDeviceTokenStore(this.deps.store, url),
       createRequestId: this.deps.createRequestId,

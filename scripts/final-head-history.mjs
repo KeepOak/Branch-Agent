@@ -4,6 +4,9 @@
 // whose other parents are on the current base (origin/main, or the pull request base
 // when this checkout is GitHub's merge commit), and its tree must be that merge alone.
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 const SHA = /^[0-9a-f]{40}$/i;
 
@@ -15,10 +18,37 @@ export function isFullSha(value) {
   return typeof value === 'string' && SHA.test(value);
 }
 
+// commit-tree (the extra-parent fold) exits when the runner has no user.email.
+// This identity is not a person. The empty HOME and XDG dir exist only while git runs,
+// so a runner gitconfig or attributes file cannot change the merge result.
+const GATE_GIT_IDENTITY = {
+  GIT_AUTHOR_NAME: 'merge-gate',
+  GIT_AUTHOR_EMAIL: 'merge-gate@invalid',
+  GIT_COMMITTER_NAME: 'merge-gate',
+  GIT_COMMITTER_EMAIL: 'merge-gate@invalid',
+  GIT_CONFIG_NOSYSTEM: '1',
+  GIT_CONFIG_GLOBAL: '/dev/null',
+};
+
+function gateGitChild() {
+  const home = mkdtempSync(path.join(tmpdir(), 'merge-gate-home-'));
+  return {
+    home,
+    env: {
+      ...process.env,
+      ...GATE_GIT_IDENTITY,
+      HOME: home,
+      XDG_CONFIG_HOME: home,
+    },
+  };
+}
+
 function tryGit(repoDir, args) {
+  const child = gateGitChild();
   try {
     const stdout = execFileSync('git', ['-C', repoDir, '-c', 'commit.gpgsign=false', ...args], {
       encoding: 'utf8',
+      env: child.env,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -30,6 +60,8 @@ function tryGit(repoDir, args) {
       stdout: String(error?.stdout ?? ''),
       stderr: String(error?.stderr ?? ''),
     };
+  } finally {
+    rmSync(child.home, { recursive: true, force: true });
   }
 }
 
@@ -100,6 +132,16 @@ function mergeTree(repoDir, left, right) {
   return matches ? matches[matches.length - 1].toLowerCase() : null;
 }
 
+// True when `sha`'s tree equals a clean merge of `parents`, false when it does not,
+// null when this checkout cannot prove it (missing objects, conflicts, or no merge result).
+export function commitTreeMatchesCleanMerge(repoDir, sha, parents) {
+  if (!repoDir || !isFullSha(sha) || !Array.isArray(parents) || parents.length < 2) return null;
+  const expected = cleanMergeTree(repoDir, parents);
+  const actual = commitTree(repoDir, sha);
+  if (!expected || !actual) return null;
+  return expected === actual;
+}
+
 // Tree of a clean merge of every parent, folding extra parents through a dangling commit.
 function cleanMergeTree(repoDir, parents) {
   let current = parents[0];
@@ -155,9 +197,7 @@ export function explainFinalHeadDrift({ repoDir, namedSha, headSha } = {}) {
         return failure(`Final head ${short(named)} is not the current head ${short(head)} because ${short(sha)} merges something other than main`);
       }
     }
-    const expected = cleanMergeTree(repoDir, parents);
-    const actual = commitTree(repoDir, sha);
-    if (!expected || !actual || expected !== actual) {
+    if (commitTreeMatchesCleanMerge(repoDir, sha, parents) !== true) {
       return failure(`Final head ${short(named)} is not the current head ${short(head)} because ${short(sha)} changes files beyond the merge of main`);
     }
   }

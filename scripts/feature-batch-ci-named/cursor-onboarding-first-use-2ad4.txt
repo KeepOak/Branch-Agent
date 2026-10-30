@@ -1,0 +1,8 @@
+window:src/composer/ModeMenu.plan-first.test.tsx
+window:src/composer/composer-logic.test.ts
+window:src/screens/chat/examples-greeting.test.tsx
+window:src/screens/find/FindAnything.test.tsx
+window:src/screens/onboarding/Onboarding.test.tsx
+window:src/screens/onboarding/session-name.test.ts
+window:src/shell/palette-rows.test.ts
+window:src/shell/walkthrough-place.test.tsx

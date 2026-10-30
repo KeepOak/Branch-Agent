@@ -174,6 +174,21 @@ describe("Settings › Models", () => {
     expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
   });
 
+  it("gives Double-check and Media a plain reason, and never names an unusable model", async () => {
+    const request = vi.fn(async (method: string) => method === "config.get"
+      ? { hash: "h", valid: true, config: { agents: { defaults: { mediaModels: { image: "openai/gpt-6-astra" } } } } }
+      : method === "models.authStatus" ? { providers: [] } : { models: [] });
+    await render({ request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine);
+    await click("Double-check");
+    const second = host.querySelector('[data-row="Ask a second model on hard questions"]');
+    expect(second?.classList.contains("off-k")).toBe(true);
+    expect(second?.textContent).toContain("Connect a model first.");
+    await click("Media");
+    expect(host.querySelector('[data-row="Make pictures"]')?.textContent).toContain("Connect a model first.");
+    expect(host.querySelector('[data-row="Make short videos"]')?.textContent).toContain("Connect a model first.");
+    expect(host.textContent).not.toMatch(/gpt-6-astra/i);
+  });
+
   it("calls the unconfigured xAI service by its product name", async () => {
     const request = vi.fn(async (method: string) => method === "config.get" ? { hash: "h", valid: true, config: {} } : method === "models.authStatus" ? {
       providers: [], providerCapabilities: [{ provider: "xai", loginOptions: [{ featured: true }] }],

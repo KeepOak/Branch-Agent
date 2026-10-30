@@ -17,6 +17,7 @@ import { AddComputer } from "./AddComputer";
 import { shows, useLevel } from "../places-nav/level";
 import { configStore } from "../places/settings/config-store";
 import { NativeScreen } from "./NativeScreen";
+import type { ComputerStatus } from "./computer-status-problem";
 import { useTrunkHold } from "./trunk-hold";
 import { setTouchMode, useTouchMode } from "./touch-mode";
 import "./stage.css";
@@ -209,6 +210,8 @@ type Props = {
   initialComputer?: string | null;
   /** Opens already taken over ("Take over" on the conversation's computer card). */
   initialControl?: boolean;
+  /** Header Computer: this PC's live screen, even when no Trunk has a computer open (P5, PR 229). */
+  ownerScreen?: boolean;
 };
 
 /** What the small window over the conversation shows: a computer's screen, or the browser (the preview's S.pip.kind). */
@@ -216,12 +219,14 @@ export type PipTarget = { kind: "computer" | "browser"; id: string; name: string
 
 /** A conversation's computer and browser, full size beside the one main conversation and composer. */
 export function ComputerStage({
-  engine, gatewayUrl, name, mode, blocks = [], running = false, card = null, onMode, onClose, onChooseComputer, onPip, initialComputer = null, initialControl = false }: Props) {
+  engine, gatewayUrl, name, mode, blocks = [], running = false, card = null, onMode, onClose, onChooseComputer, onPip, initialComputer = null, initialControl = false, ownerScreen = false }: Props) {
   const [control, setControl] = useState(initialControl);
+  // Where the browser's Your | Trunk's browser switch draws: a slot in the header (#1103).
+  const [paneSlot, setPaneSlot] = useState<HTMLElement | null>(null);
   const level = useLevel();
   const [retry, setRetry] = useState(0);
   const [tick, setTick] = useState(0);
-  const [picked, setPicked] = useState<string | "grid" | null>(initialComputer);
+  const [picked, setPicked] = useState<string | "grid" | null>(initialComputer ?? (ownerScreen ? "gateway" : null));
   const [picker, setPicker] = useState<MenuAnchor | null>(null);
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[]; label: string } | null>(null);
   const [adding, setAdding] = useState(false);
@@ -244,12 +249,14 @@ export function ComputerStage({
   useEffect(() => listenComputerControl((next) => setControl((cur) => (cur === next ? cur : next))), []);
   useEffect(() => () => announceComputerControl(false), []);
   const current = placementComputer(where.placement);
-  const screens = where.computers.filter((c) => c.desktop || c.id === current);
-  const viewing = picked === "grid" ? null : picked ?? current;
+  const screens = where.computers.filter((c) => c.desktop || c.id === current || (ownerScreen && c.id === "gateway"));
+  // The header's computer button opens this PC (P5 / PR 229); a Trunk's placed computer stays in the tabs.
+  const viewing = picked === "grid" ? null : picked ?? (ownerScreen ? "gateway" : current);
   const viewed = where.computers.find((c) => c.id === viewing);
+  const ownerNative = ownerScreen && viewing === "gateway" && !viewed?.desktop;
   const native = mode === "Computer" && nativeSelected && viewing === "gateway" && where.loaded && !viewed?.desktop;
-  const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && !native && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
-  const screenView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: COMPUTER_UNAVAILABLE, detail: where.error } : view;
+  const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && !native && !ownerNative && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
+  const screenView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: COMPUTER_UNAVAILABLE, detail: where.error } : ownerNative && !nativeSelected ? { phase: "empty" } : view;
   const slow = useSlow(mode === "Computer" && !native && picked !== "grid" && screenView.phase === "loading", `${tick}|${retry}|${viewing}`);
   const noComputer = where.loaded && !where.error && !viewing && where.computers.length === 0;
   const steps = planSteps(card);
@@ -275,6 +282,18 @@ export function ComputerStage({
       setRetry((value) => value + 1);
     }, () => setEnableError("Couldn't turn on screen access. Open Computer settings and try again.")).finally(() => setEnabling(false));
   };
+  useEffect(() => {
+    // computer.status already distinguishes an enabled driver from one that is not configured.
+    // Opening the header is only a request to view; enabling control still needs the screen button.
+    if (!ownerScreen || mode !== "Computer") return;
+    let live = true;
+    void engine.request<ComputerStatus>("computer.status", {}).then((status) => {
+      if (live && (status.configured === true || status.available === true)) setNativeSelected(true);
+    }, () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [ownerScreen, mode, engine]);
   const stop = () => {
     setStopError("");
     engine.request("sessions.abort", { key: engine.sessionKey }).catch((e: unknown) => setStopError(e instanceof Error ? e.message : String(e)));
@@ -303,7 +322,7 @@ export function ComputerStage({
         { label: "Disconnect", run: () => onClose(), disabled: connected ? undefined : "Nothing is connected." },
       ],
     });
-  const title = `${name}’s ${browser ? "browser" : "computer"}`;
+  const title = browser ? `${name}’s browser` : ownerScreen ? "This computer" : `${name}’s computer`;
   return (
     <section className="stage7 computer-stage" aria-label={title}>
       <div className="st7-top">
@@ -323,7 +342,7 @@ export function ComputerStage({
           ) : (
             <button type="button" className="st7-pick" aria-haspopup="dialog" aria-expanded={picker !== null} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPicker(picker ? null : { x: r.left, y: r.bottom + 6 }); }}>
               <SIcon name="layers" small />
-              {native ? "This computer (viewing)" : where.loaded ? pickerLabel(where.computers, current) : "Computers"}
+              {native || (ownerScreen && viewing === "gateway") ? "This computer (viewing)" : where.loaded ? pickerLabel(where.computers, current) : "Computers"}
               <SIcon name="down" small />
             </button>
           )}
@@ -332,6 +351,17 @@ export function ComputerStage({
           <i />
           {pill.text}
         </span>
+        {/* #1103: the Computer | Browser switch and, on the browser, the Your | Trunk's browser switch sit in this header
+            instead of two bars of their own above the page. */}
+        <span className="st7-sw" role="group" aria-label="Show">
+          {(["Computer", "Browser"] as const).map((m) => (
+            <button type="button" key={m} aria-pressed={mode === m} onClick={() => { setControl(false); onMode(m); }}>
+              <SIcon name={m === "Computer" ? "monitor" : "globe"} small />
+              {m}
+            </button>
+          ))}
+        </span>
+        {browser ? <span className="st7-hslot" ref={setPaneSlot} /> : null}
         <span className="tb-grow" />
         {controlling ? (
           <button type="button" className="btn pri sm" onClick={() => setControl(false)}>
@@ -367,16 +397,6 @@ export function ComputerStage({
           <SIcon name="more" />
         </button>
       </div>
-      <div className="st7-mode">
-        <span className="st7-sw" role="group" aria-label="Show">
-          {(["Computer", "Browser"] as const).map((m) => (
-            <button type="button" key={m} aria-pressed={mode === m} onClick={() => { setControl(false); onMode(m); }}>
-              <SIcon name={m === "Computer" ? "monitor" : "globe"} small />
-              {m}
-            </button>
-          ))}
-        </span>
-      </div>
       {stopError ? <p className="stage-error-st" role="alert">{stopError}</p> : null}
       {hold.error ? <p className="stage-error-st" role="alert">{hold.error}</p> : null}
       {!browser && where.error && viewing ? <p className="stage-error-st" role="alert">{COMPUTER_UNAVAILABLE} <button type="button" className="btn sm" onClick={() => setTick((value) => value + 1)}>Try again</button>{shows(level, "technical") ? <small className="stage-detail"> {where.error}</small> : null}</p> : null}
@@ -407,6 +427,7 @@ export function ComputerStage({
           onControl={setControl}
           level={readLevel()}
           onState={onBrowserState}
+          switchSlot={paneSlot}
         />
       ) : (
       <div className="st7-body">

@@ -27,7 +27,7 @@ export function newMenuItems(c: Ctx): MenuItem[] {
       run: () => c.newWith(trunk.id), testid: `new-with-${trunk.id}`,
     })) },
     { label: "New Trunk", hint: "random character", run: c.newTrunk, testid: "new-trunk" },
-    { label: "From a job…", sub: "Start from a template in Seedbank", run: () => { requestCustomize({ mode: "community" }); c.openPlace("customize"); }, testid: "new-trunk-from-job" },
+    { label: "Start from a template", sub: "Templates in Seedbank", run: () => { requestCustomize({ mode: "community" }); c.openPlace("customize"); }, testid: "new-trunk-from-job" },
     { label: "Have Branch make a Trunk", run: c.makeTrunk, testid: "new-make-trunk" },
     { label: "New group chat", hint: "people, Trunks, agents", run: openNewGroupChat, testid: "new-group-chat" },
     { label: "New automation", run: () => c.openPlace("automations"), testid: "new-automation" },

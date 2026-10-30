@@ -7,6 +7,7 @@ import { Dialog } from "../../thread/Dialog";
 import { shortReason, stepExitCode, stepInputLines, stepKind, stepLabel, stepOutputFilename, workedForLine, workingLine } from "../../thread/format";
 import { StepKindIcon } from "../../thread/icons";
 import { Icon } from "../../shell/icons";
+import { CopyToken } from "../../shell/CopyToken";
 import { fullOutput, type Block } from "../../thread/model";
 import { shows, useLevel } from "../../places-nav/level";
 import { stepCount, stepsLine, type WorkMode } from "./chat-logic";
@@ -102,13 +103,13 @@ function StepRow({ step, mode, showDetail }: { step: Step; mode: WorkMode; showD
     <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary data-local="">
         {step.status === "running" ? <span className="r1c-spin" aria-hidden="true" /> : <StepKindIcon kind={stepKind(step.tool)} size={14} />}
-        <span className="r1c-step-title">{title}{sub ? <span className="r1c-step-sub"> · {sub}</span> : null}</span>
+        <span className="r1c-step-title" title={sub ? title + " · " + sub : title}>{title}{sub ? <span className="r1c-step-sub"> · {sub}</span> : null}</span>
         {failed ? <span className="r1c-bad-dot" aria-label={step.status === "denied" ? "Not allowed" : "Failed"} /> : null}
         <span className="r1c-rt" aria-hidden="true"><Icon name="chev" size={13} /></span>
       </summary>
       <div className="r1c-step-detail">
         {input.length ? <div className="r1c-step-input" data-testid="step-input">{input.map((l, i) => <div key={i}>{l}</div>)}</div> : null}
-        {step.changes?.map((c) => <div key={c.path} className="r1c-step-file"><code>{c.path}</code> <b className="r1c-add">+{c.added}</b> <b className="r1c-del">−{c.removed}</b></div>)}
+        {step.changes?.map((c) => <div key={c.path} className="r1c-step-file"><CopyToken value={c.path} label="Copy path" toast={toast} /><b className="r1c-add">+{c.added}</b> <b className="r1c-del">−{c.removed}</b></div>)}
         {whole ? <div className="r1c-out" data-testid="step-output">
           <pre>{whole}</pre>
           <span className="r1c-out-icons">

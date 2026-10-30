@@ -63,9 +63,12 @@ function planCliResult(env: NodeJS.Dict<string>) {
 
 describe('Android release version and signing plan', () => {
   it('uses the workflow run number as versionCode so each release is newer than the last', () => {
-    expect(call('versionCode', { tag: 'v12', runNumber: 3 })).toBe(3);
+    expect(call('LAST_SHIPPED_VERSION_CODE')).toBe(5);
+    expect(call('versionCode', { tag: 'v12', runNumber: 3 })).toBe(6);
+    expect(call('versionCode', { tag: 'v0.4.4', runNumber: 5 })).toBe(6);
     expect(call('versionCode', { tag: 'v0.4.4', runNumber: 99 })).toBe(99);
     expect(call('versionCode', { tag: 'v0.4.4-build-d0c144af53a8', runNumber: 77 })).toBe(77);
+    expect(call('versionCode', { runNumber: 6 })).toBeGreaterThan(5);
     expect(call('versionCode', { runNumber: 10 })).toBeGreaterThan(call('versionCode', { runNumber: 9 }));
     expect(call('releaseVersion', { tag: 'v0.4.4-build-d0c144af53a8', runNumber: 77 })).toBe('0.4.4-build-d0c144af53a8');
     expect(call('releaseVersion', { runNumber: 8, fallbackVersion: '0.1.0' })).toBe('0.1.0');
@@ -93,8 +96,9 @@ describe('Android release version and signing plan', () => {
     expect(signed.attachRelease).toBe(true);
     expect(signed.apkName).toBe('branch-android-0.4.4-build-abc.apk');
     expect(signed.sha256Name).toBe('branch-android-0.4.4-build-abc.apk.sha256');
-    expect(signed.versioncodeName).toBe('branch-android-0.4.4-build-abc.apk.versioncode.4');
-    expect(signed.versionCode).toBe(4);
+    expect(signed.versioncodeName).toBe('branch-android-0.4.4-build-abc.apk.versioncode.6');
+    expect(signed.versionCode).toBe(6);
+    expect(signed.versionCode).toBeGreaterThan(call('LAST_SHIPPED_VERSION_CODE'));
     expect(unsigned.sha256Name).toBe('');
     expect(unsigned.versioncodeName).toBe('');
   });
@@ -113,6 +117,8 @@ describe('Android release version and signing plan', () => {
     expect(args).toContain('-Pandroid.injected.version.code=4');
     expect(args).toContain('-Pandroid.injected.signing.store.type=PKCS12');
     expect(args).toContain('-Pandroid.injected.signing.store.file=/tmp/android-release.p12');
+    expect(args).toContain('-Pandroid.injected.signing.v1-enabled=true');
+    expect(args).toContain('-Pandroid.injected.signing.v2-enabled=true');
     const signingEnv = call('gradleSigningEnv', env);
     expect(signingEnv[call('GRADLE_SIGNING_STORE_PASSWORD_ENV')]).toBe('store-secret');
     expect(signingEnv[call('GRADLE_SIGNING_KEY_PASSWORD_ENV')]).toBe('key-secret');
@@ -131,6 +137,8 @@ describe('Android release version and signing plan', () => {
     const args: string[] = call('gradleAssembleArgs', env);
     expect(args).toContain('-Pandroid.injected.signing.store.file=/tmp/android-release.p12');
     expect(args).toContain('-Pandroid.injected.signing.store.type=PKCS12');
+    expect(args).toContain('-Pandroid.injected.signing.v1-enabled=true');
+    expect(args).toContain('-Pandroid.injected.signing.v2-enabled=true');
     expect(call('gradleSigningEnv', env)[call('GRADLE_SIGNING_STORE_PASSWORD_ENV')]).toBe('store-secret');
     expect(call('signingReady', env)).toBe(false);
     expect(call('gradleSigningReady', env)).toBe(true);
@@ -240,11 +248,12 @@ describe('Android release version and signing plan', () => {
 });
 
 describe('the mobile Android release workflow', () => {
-  it('builds on a published release, a manual run, or a main push, and never touches the merge gate', () => {
+  it('builds only on a published release or a manual run, has no push trigger, and never touches the merge gate', () => {
     expect(workflow).toMatch(/release:\s*\n\s*types:\s*\[[^\]]*published/);
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toMatch(/workflow_dispatch:[\s\S]*?inputs:[\s\S]*?\btag:/);
-    expect(workflow).toMatch(/push:\s*\n\s*branches:\s*\[main\]/);
+    // #1923 removed the main push trigger so Android no longer pre-creates desktop releases.
+    expect(workflow).not.toMatch(/^\s+push:/m);
     expect(workflow).toContain('npm run build:android');
     expect(workflow).not.toMatch(/merge-gate/);
     expect(workflow).not.toMatch(/^\s+pull_request:/m);
@@ -280,8 +289,9 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('scripts/android-release.mjs');
     expect(workflow).toContain('apk_name');
     expect(workflow).toMatch(/if: steps\.plan\.outputs\.attach_release == 'true'/);
-    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*gh release upload/);
-    expect(workflow).not.toMatch(/gh release upload[\s\S]*attach_release == 'false'/);
+    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*--attach-release/);
+    expect(workflow).toContain('--attach-release');
+    expect(workflow).not.toMatch(/--attach-release[\s\S]*attach_release == 'false'/);
     expect(workflow).toContain('timeout-minutes:');
     expect(workflow).toContain('persist-credentials: false');
   });
@@ -291,7 +301,7 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('SHA256_NAME');
     expect(workflow).toContain('${APK_NAME}.sha256');
     expect(workflow).toMatch(/--sha256[\s\S]*Verify APK signature/);
-    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*SHA256_PATH[\s\S]*gh release upload/);
+    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*SHA256_PATH[\s\S]*--attach-release/);
     expect(workflow).not.toMatch(/--sha256[\s\S]*attach_release == 'false'/);
   });
 
@@ -302,11 +312,11 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('VERSIONCODE_NAME');
     expect(workflow).toContain('ANDROID_VERSION_CODE');
     expect(workflow).toMatch(/Stage the APK[\s\S]*ANDROID_VERSION_CODE[\s\S]*SIGNED" == "true"[\s\S]*--sha256/);
-    expect(workflow).toMatch(/Verify APK signature[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
+    expect(workflow).toMatch(/Verify APK signature[\s\S]*VERSIONCODE_PATH[\s\S]*--attach-release/);
     expect(workflow).toMatch(/apksigner verify --print-certs[\s\S]*actions\/upload-artifact/);
-    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
+    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*VERSIONCODE_PATH[\s\S]*--attach-release/);
     expect(workflow).toContain('${APK_NAME}.versioncode.');
-    expect(workflow).not.toMatch(/-unsigned\.apk[\s\S]*gh release upload/);
+    expect(workflow).not.toMatch(/-unsigned\.apk[\s\S]*--attach-release/);
   });
 
   it('verifies the APK certificate fingerprint matches the expected release key SHA-256', () => {
@@ -380,61 +390,659 @@ describe('the mobile Android release workflow', () => {
       { tag_name: 'v0.4.4' },
       { tag_name: tag },
     ], sha)).toBe(tag);
+    const preferred = callModule(`import { resolveReleaseTag } from ${JSON.stringify(helper)};
+      const found = await resolveReleaseTag({
+        eventName: 'push',
+        commitSha: ${JSON.stringify(sha)},
+        sourceVersion: '0.4.4',
+        listReleases: async () => [
+          { tag_name: 'v0.4.4-build-991a4851ae42' },
+          { tag_name: ${JSON.stringify(tag)} },
+        ],
+        createRelease: async () => { throw new Error('must not create when the commit tag exists'); },
+      });
+      console.log(JSON.stringify(found));`);
+    expect(preferred).toEqual({ tag, shouldAttach: true });
     expect(workflow).toContain('--resolve-tag');
     expect(workflow).toContain('needs.resolve-tag.outputs.should_attach');
   });
 
-  it('polls several minutes for the matching release tag and fails clearly if it never appears', () => {
-    const sha = '9a15209115dcf73df922980ae50f762c4fa8d986';
-    const tag = 'v0.4.4-build-9a15209115dc';
-    const found = callModule(`import { resolveReleaseTag, pushReleaseWaitMs, missingPushReleaseError } from ${JSON.stringify(helper)};
-      const listed = [];
-      const waits = [];
-      const found = await resolveReleaseTag({
+  it('on push attaches to the latest build tag when this commit has none, and creates one if none exist', () => {
+    const sha = '14e1361bed24b65ac135e87de8edd99f1cb840d4';
+    const latest = 'v0.4.4-build-991a4851ae42';
+    const created = 'v0.4.4-build-14e1361bed24';
+    const dispatchTag = 'v0.4.4-build-9a15209115dc';
+    const result = callModule(`import {
+      resolveReleaseTag, buildReleaseTag, pickLatestBuildReleaseTag, desktopSourceVersionFromRepo,
+      createGithubRelease, releaseAlreadyExists, staleVersionCodeAssetNames, versionCodeFileName,
+      LAST_SHIPPED_VERSION_CODE, missingPushReleaseVersionError,
+      findGithubRelease, attachSignedApkAssets, githubReleaseLookupMiss, missingAttachReleaseError,
+      releaseAssetUploadUrl, RELEASE_LOOKUP_WAIT,
+    } from ${JSON.stringify(helper)};
+      const createdCalls = [];
+      const latestPath = await resolveReleaseTag({
         eventName: 'push',
         commitSha: ${JSON.stringify(sha)},
-        wait: { intervalMs: 20000, maxAttempts: 24 },
+        sourceVersion: '0.4.4',
+        listReleases: async () => [
+          { tag_name: 'v0.4.4' },
+          { tag_name: ${JSON.stringify(latest)} },
+          { tag_name: 'v0.4.3-build-aaaaaaaaaaaa' },
+        ],
+        createRelease: async (args) => { createdCalls.push(args); },
+      });
+      const createdPath = await resolveReleaseTag({
+        eventName: 'push',
+        commitSha: ${JSON.stringify(sha)},
+        sourceVersion: '0.4.4',
+        listReleases: async () => [],
+        createRelease: async (args) => { createdCalls.push(args); },
+      });
+      const retried = [];
+      const waits = [];
+      const afterRetry = await resolveReleaseTag({
+        eventName: 'push',
+        commitSha: ${JSON.stringify(sha)},
+        sourceVersion: '0.4.4',
+        wait: { intervalMs: 15, maxAttempts: 3 },
         listReleases: async () => {
-          listed.push(listed.length + 1);
-          if (listed.length < 3) return [{ tag_name: 'v0.4.3-build-aaaaaaaaaaaa' }];
-          return [{ tag_name: ${JSON.stringify(tag)} }];
+          retried.push(retried.length + 1);
+          if (retried.length < 2) throw new Error('rate limited');
+          return [{ tag_name: ${JSON.stringify(latest)} }];
         },
         sleep: async (ms) => { waits.push(ms); },
+        createRelease: async (args) => { createdCalls.push(args); },
       });
-      let missing = null;
+      let missingVersion = null;
       try {
         await resolveReleaseTag({
           eventName: 'push',
           commitSha: ${JSON.stringify(sha)},
-          wait: { intervalMs: 15000, maxAttempts: 3 },
-          listReleases: async () => [{ tag_name: 'v0.4.4' }],
+          sourceVersion: '',
+          listReleases: async () => [],
           sleep: async () => {},
         });
       } catch (error) {
-        missing = String(error.message);
+        missingVersion = String(error.message);
       }
-      const release = await resolveReleaseTag({ eventName: 'release', releaseTag: ${JSON.stringify(tag)} });
-      const dispatch = await resolveReleaseTag({ eventName: 'workflow_dispatch', releaseTag: ${JSON.stringify(tag)} });
+      const ghCalls = [];
+      createGithubRelease({
+        tag: ${JSON.stringify(created)},
+        commitSha: ${JSON.stringify(sha)},
+        repository: 'KeepOak/Branch-Agent',
+        run: (file, args) => { ghCalls.push([file, args]); return ''; },
+      });
+      createGithubRelease({
+        tag: ${JSON.stringify(created)},
+        commitSha: ${JSON.stringify(sha)},
+        repository: 'KeepOak/Branch-Agent',
+        run: () => { const err = new Error('HTTP 422: already exists'); err.stderr = 'already exists'; throw err; },
+      });
+      const apkName = 'branch-android-0.4.4-build-991a4851ae42.apk';
+      const keep = versionCodeFileName(apkName, 8);
+      const release = await resolveReleaseTag({ eventName: 'release', releaseTag: ${JSON.stringify(dispatchTag)} });
+      const dispatch = await resolveReleaseTag({ eventName: 'workflow_dispatch', releaseTag: ${JSON.stringify(dispatchTag)} });
       const artifactOnly = await resolveReleaseTag({ eventName: 'workflow_dispatch', releaseTag: '' });
+      const miss = { stderr: 'gh: Not Found (HTTP 404)\\nrelease not found' };
+      const tag404 = new Error('HTTP 404: Not Found');
+      tag404.stderr = 'gh: Not Found (HTTP 404)';
+      let tagGets = 0;
+      const listPages = [[{
+        tag_name: ${JSON.stringify(created)},
+        upload_url: 'https://uploads.github.com/repos/KeepOak/Branch-Agent/releases/9/assets{?name,label}',
+        assets: [{ id: 7, name: versionCodeFileName('branch-android-0.4.4-build-14e1361bed24.apk', 5) }],
+      }]];
+      const foundAfter404 = await findGithubRelease({
+        tag: ${JSON.stringify(created)},
+        repository: 'KeepOak/Branch-Agent',
+        wait: { intervalMs: 15, maxAttempts: 3, backoff: 2 },
+        sleep: async (ms) => { waits.push(ms); },
+        run: (file, args) => {
+          ghCalls.push([file, args]);
+          if (String(args[1] ?? '').includes('/releases/tags/')) {
+            tagGets += 1;
+            throw tag404;
+          }
+          return JSON.stringify(listPages[0]);
+        },
+      });
+      const attachCalls = [];
+      const attached = await attachSignedApkAssets({
+        tag: ${JSON.stringify(created)},
+        apkPath: '/tmp/apk.apk',
+        apkName: 'branch-android-0.4.4-build-14e1361bed24.apk',
+        sha256Path: '/tmp/apk.apk.sha256',
+        sha256Name: 'branch-android-0.4.4-build-14e1361bed24.apk.sha256',
+        versioncodePath: '/tmp/apk.apk.versioncode.8',
+        versioncodeName: versionCodeFileName('branch-android-0.4.4-build-14e1361bed24.apk', 8),
+        repository: 'KeepOak/Branch-Agent',
+        wait: { intervalMs: 1, maxAttempts: 2, backoff: 2 },
+        sleep: async () => {},
+        run: (file, args) => {
+          attachCalls.push([file, args]);
+          if (String(args[1] ?? '').includes('/releases/tags/')) throw tag404;
+          // Avoid /\/…/ regexes inside this template literal (they become // comments).
+          if (String(args[1] ?? '').includes('/releases?per_page=')) {
+            return JSON.stringify(listPages[0]);
+          }
+          return '';
+        },
+      });
+      let missingRelease = null;
+      try {
+        await findGithubRelease({
+          tag: ${JSON.stringify(created)},
+          repository: 'KeepOak/Branch-Agent',
+          wait: { intervalMs: 4, maxAttempts: 2, backoff: 2 },
+          sleep: async () => {},
+          run: () => { throw tag404; },
+        });
+      } catch (error) {
+        missingRelease = String(error.message);
+      }
+      const lookupWaits = [];
+      let delayedGets = 0;
+      const foundAfterWait = await findGithubRelease({
+        tag: ${JSON.stringify(created)},
+        repository: 'KeepOak/Branch-Agent',
+        wait: { intervalMs: 10, maxAttempts: 3, backoff: 2 },
+        sleep: async (ms) => { lookupWaits.push(ms); },
+        run: (file, args) => {
+          if (String(args[1] ?? '').includes('/releases/tags/')) {
+            delayedGets += 1;
+            if (delayedGets < 2) throw tag404;
+            return JSON.stringify({
+              tag_name: ${JSON.stringify(created)},
+              upload_url: 'https://uploads.github.com/repos/KeepOak/Branch-Agent/releases/9/assets{?name,label}',
+              assets: [],
+            });
+          }
+          return JSON.stringify([[]]);
+        },
+      });
       console.log(JSON.stringify({
-        found, listed, waits,
-        waitMs: pushReleaseWaitMs(),
-        missing,
-        expectedMissing: missingPushReleaseError(${JSON.stringify(sha)}, { intervalMs: 15000, maxAttempts: 3 }),
+        latestPath, createdPath, afterRetry, createdCalls, retried, waits, missingVersion,
+        expectedMissing: missingPushReleaseVersionError(${JSON.stringify(sha)}),
+        constructed: buildReleaseTag('0.4.4', ${JSON.stringify(sha)}),
+        latestPick: pickLatestBuildReleaseTag([{ tag_name: ${JSON.stringify(latest)} }]),
+        desktopVersion: desktopSourceVersionFromRepo(),
+        ghCalls, already: releaseAlreadyExists({ stderr: 'already exists' }),
+        stale: staleVersionCodeAssetNames([
+          apkName, keep, versionCodeFileName(apkName, 5), 'SHA256SUMS',
+        ], apkName, keep),
         release, dispatch, artifactOnly,
+        lastShipped: LAST_SHIPPED_VERSION_CODE,
+        foundAfter404, tagGets, attached, attachCalls,
+        miss: githubReleaseLookupMiss(miss),
+        missingRelease,
+        expectedMissingRelease: missingAttachReleaseError(${JSON.stringify(created)}, { intervalMs: 4, maxAttempts: 2, backoff: 2 }),
+        uploadUrl: releaseAssetUploadUrl({
+          upload_url: 'https://uploads.github.com/repos/KeepOak/Branch-Agent/releases/9/assets{?name,label}',
+        }, 'branch-android-0.4.4-build-14e1361bed24.apk'),
+        lookupWait: RELEASE_LOOKUP_WAIT,
+        foundAfterWait, lookupWaits, delayedGets,
       }));`);
-    expect(found.found).toEqual({ tag, shouldAttach: true });
-    expect(found.listed).toEqual([1, 2, 3]);
-    expect(found.waits).toEqual([20_000, 20_000]);
-    expect(found.waitMs).toBeGreaterThanOrEqual(5 * 60 * 1000);
-    expect(found.waitMs).toBeLessThanOrEqual(15 * 60 * 1000);
+    expect(result.latestPath).toEqual({ tag: latest, shouldAttach: true });
+    expect(result.createdPath).toEqual({ tag: created, shouldAttach: true });
+    expect(result.afterRetry).toEqual({ tag: latest, shouldAttach: true });
+    expect(result.createdCalls).toEqual([{ tag: created, commitSha: sha }]);
+    expect(result.retried).toEqual([1, 2]);
+    expect(result.waits).toEqual([15]);
+    expect(result.constructed).toBe(created);
+    expect(result.latestPick).toBe(latest);
+    expect(result.desktopVersion).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(result.missingVersion).toBe(result.expectedMissing);
+    expect(result.ghCalls[0][0]).toBe('gh');
+    expect(result.ghCalls[0][1]).toEqual(expect.arrayContaining([
+      'release', 'create', created, '--latest=false', '--target', sha,
+    ]));
+    expect(result.already).toBe(true);
+    expect(result.stale).toEqual(['branch-android-0.4.4-build-991a4851ae42.apk.versioncode.5']);
+    expect(result.release).toEqual({ tag: dispatchTag, shouldAttach: true });
+    expect(result.dispatch).toEqual({ tag: dispatchTag, shouldAttach: true });
+    expect(result.artifactOnly).toEqual({ tag: '', shouldAttach: false });
+    expect(result.lastShipped).toBe(5);
+    expect(result.foundAfter404.tag_name).toBe(created);
+    expect(result.tagGets).toBe(1);
+    expect(result.miss).toBe(true);
+    expect(result.missingRelease).toBe(result.expectedMissingRelease);
+    expect(result.uploadUrl).toContain('https://uploads.github.com/repos/KeepOak/Branch-Agent/releases/9/assets');
+    expect(result.uploadUrl).toContain('name=branch-android-0.4.4-build-14e1361bed24.apk');
+    expect(result.lookupWait.maxAttempts).toBeGreaterThan(1);
+    expect(result.attached.uploaded).toEqual([
+      'branch-android-0.4.4-build-14e1361bed24.apk',
+      'branch-android-0.4.4-build-14e1361bed24.apk.sha256',
+      'branch-android-0.4.4-build-14e1361bed24.apk.versioncode.8',
+    ]);
+    expect(result.attached.stale).toEqual(['branch-android-0.4.4-build-14e1361bed24.apk.versioncode.5']);
+    expect(result.attachCalls.some((call: string[]) => /\/releases\?per_page=100&page=/.test(String(call[1] ?? '')))).toBe(true);
+    expect(result.attachCalls.some((call: string[]) => call[1].includes('--method') && call[1].includes('POST'))).toBe(true);
+    expect(result.attachCalls.some((call: string[]) => call[1].includes('--method') && call[1].includes('DELETE'))).toBe(true);
+    expect(result.attachCalls.some((call: string[]) => call[1].includes('release') && call[1].includes('upload'))).toBe(false);
+    expect(result.foundAfterWait.tag_name).toBe(created);
+    expect(result.delayedGets).toBe(2);
+    expect(result.lookupWaits).toEqual([10]);
+    expect(workflow).toMatch(/apk:[\s\S]*permissions:\n\s+contents: write/);
     expect(workflow).toMatch(/resolve-tag:[\s\S]*timeout-minutes: 12/);
-    expect(found.missing).toBe(found.expectedMissing);
-    expect(found.missing).toMatch(/vX\.Y\.Z-build-9a15209115dc/);
-    expect(found.missing).toMatch(/after 45s/);
-    expect(found.release).toEqual({ tag, shouldAttach: true });
-    expect(found.dispatch).toEqual({ tag, shouldAttach: true });
-    expect(found.artifactOnly).toEqual({ tag: '', shouldAttach: false });
+    expect(workflow).toMatch(/resolve-tag:\n(?:.*\n)*?\s+permissions:\n\s+contents: write/);
+    expect(workflow).toContain('--attach-release');
+    expect(workflow).toContain('contents: write');
+    expect(workflow).not.toMatch(/resolve-tag:[\s\S]*?contents: read/);
+  });
+});
+
+describe('attach retries GitHub rate limits', () => {
+  const tag = 'v0.4.4-build-4d5f6600eca9';
+  const apkName = 'branch-android-0.4.4-build-4d5f6600eca9.apk';
+  const runId = '39158317998';
+  const release = {
+    tag_name: tag,
+    upload_url: 'https://uploads.github.com/repos/KeepOak/Branch-Agent/releases/9/assets{?name,label}',
+    assets: [],
+  };
+  const files = {
+    tag,
+    apkPath: '/tmp/apk.apk',
+    apkName,
+    sha256Path: '/tmp/apk.apk.sha256',
+    sha256Name: `${apkName}.sha256`,
+    versioncodePath: '/tmp/apk.apk.versioncode.8',
+    versioncodeName: `${apkName}.versioncode.8`,
+    artifactName: 'branch-android-0.4.4-build-4d5f6600eca9',
+    runId,
+    repository: 'KeepOak/Branch-Agent',
+  };
+
+  it('treats an installation 403 as a rate limit, not a missing release', () => {
+    const result = callModule(`import {
+      githubReleaseLookupMiss, isRateLimitError, attachRateLimitGaveUpError, apkWorkflowArtifactName,
+      ATTACH_RATE_LIMIT_BUDGET_SECONDS, MAX_RATE_LIMIT_SLEEP_SECONDS,
+    } from ${JSON.stringify(helper)};
+      const err = new Error('Command failed: gh api repos/KeepOak/Branch-Agent/releases/tags/${tag}');
+      err.stderr = 'gh: API rate limit exceeded for installation ID 1 (HTTP 403)';
+      console.log(JSON.stringify({
+        miss: githubReleaseLookupMiss(err),
+        rate: isRateLimitError(err),
+        artifact: apkWorkflowArtifactName(${JSON.stringify(apkName)}),
+        gaveUp: attachRateLimitGaveUpError({
+          apkName: ${JSON.stringify(apkName)},
+          runId: ${JSON.stringify(runId)},
+        }),
+        budget: ATTACH_RATE_LIMIT_BUDGET_SECONDS,
+        maxSleep: MAX_RATE_LIMIT_SLEEP_SECONDS,
+      }));`);
+    expect(result.miss).toBe(false);
+    expect(result.rate).toBe(true);
+    expect(result.artifact).toBe(files.artifactName);
+    expect(result.budget).toBe(600);
+    expect(result.maxSleep).toBe(120);
+    expect(result.gaveUp).toContain(`APK artifact ${files.artifactName}`);
+    expect(result.gaveUp).toContain(`run ${runId}`);
+    expect(result.gaveUp).toMatch(/Download that workflow artifact and attach it to the release by hand/);
+    expect(result.gaveUp).not.toMatch(/HTTP 403|x-ratelimit|Retry-After/i);
+  });
+
+  it('waits for x-ratelimit-reset then attaches without listing releases', () => {
+    const result = callModule(`import { attachSignedApkAssets } from ${JSON.stringify(helper)};
+      const start = 1_700_000_000_000;
+      let now = start;
+      const sleeps = [];
+      const calls = [];
+      let tagGets = 0;
+      const err = new Error('gh: API rate limit exceeded for installation (HTTP 403)');
+      err.stderr = 'gh: API rate limit exceeded for installation (HTTP 403)';
+      err.httpStatus = 403;
+      err.headers = { 'x-ratelimit-reset': String(start / 1000 + 40), 'x-ratelimit-remaining': '0' };
+      const attached = await attachSignedApkAssets({
+        ...${JSON.stringify(files)},
+        wait: { intervalMs: 1, maxAttempts: 2, backoff: 2 },
+        sleep: async () => { throw new Error('must not use 404 backoff for a rate limit'); },
+        now: () => now,
+        startedAt: start,
+        rateLimitSleep: (seconds) => { sleeps.push(seconds); now += seconds * 1000; },
+        log: () => {},
+        random: () => 0.5,
+        run: (_file, args) => {
+          calls.push(args);
+          if (String(args[1] ?? '').includes('/releases/tags/')) {
+            tagGets += 1;
+            if (tagGets === 1) throw err;
+            return JSON.stringify(${JSON.stringify(release)});
+          }
+          return '';
+        },
+      });
+      console.log(JSON.stringify({ attached, sleeps, tagGets, listed: calls.some((args) => args.includes('--paginate')) }));`);
+    expect(result.attached.uploaded).toEqual([
+      apkName,
+      `${apkName}.sha256`,
+      `${apkName}.versioncode.8`,
+    ]);
+    expect(result.tagGets).toBe(2);
+    expect(result.sleeps).toEqual([55]);
+    expect(result.listed).toBe(false);
+  });
+
+  it('prefers Retry-After over x-ratelimit-reset', () => {
+    const result = callModule(`import { attachSignedApkAssets } from ${JSON.stringify(helper)};
+      const start = 1_700_000_000_000;
+      let now = start;
+      const sleeps = [];
+      let tagGets = 0;
+      const err = new Error('HTTP 429');
+      err.httpStatus = 429;
+      err.headers = { 'retry-after': '17', 'x-ratelimit-reset': String(start / 1000 + 90) };
+      const attached = await attachSignedApkAssets({
+        ...${JSON.stringify(files)},
+        wait: { intervalMs: 1, maxAttempts: 2, backoff: 2 },
+        sleep: async () => {},
+        now: () => now,
+        startedAt: start,
+        rateLimitSleep: (seconds) => { sleeps.push(seconds); now += seconds * 1000; },
+        log: () => {},
+        run: (_file, args) => {
+          if (String(args[1] ?? '').includes('/releases/tags/')) {
+            tagGets += 1;
+            if (tagGets === 1) throw err;
+            return JSON.stringify(${JSON.stringify(release)});
+          }
+          return '';
+        },
+      });
+      console.log(JSON.stringify({ ok: attached.uploaded.length === 3, sleeps, tagGets }));`);
+    expect(result.ok).toBe(true);
+    expect(result.sleeps).toEqual([17]);
+    expect(result.tagGets).toBe(2);
+  });
+
+  it('still attaches through the list fallback when GET-by-tag 404s after a rate-limit wait', () => {
+    const result = callModule(`import { attachSignedApkAssets } from ${JSON.stringify(helper)};
+      const start = 1_700_000_000_000;
+      let now = start;
+      const sleeps = [];
+      const calls = [];
+      let tagGets = 0;
+      const limited = new Error('gh: API rate limit exceeded for installation (HTTP 403)');
+      limited.stderr = 'gh: API rate limit exceeded for installation (HTTP 403)';
+      limited.httpStatus = 403;
+      limited.headers = { 'retry-after': '9' };
+      const miss = new Error('HTTP 404: Not Found');
+      miss.stderr = 'gh: Not Found (HTTP 404)';
+      const attached = await attachSignedApkAssets({
+        ...${JSON.stringify(files)},
+        wait: { intervalMs: 1, maxAttempts: 2, backoff: 2 },
+        sleep: async () => {},
+        now: () => now,
+        startedAt: start,
+        rateLimitSleep: (seconds) => { sleeps.push(seconds); now += seconds * 1000; },
+        log: () => {},
+        run: (_file, args) => {
+          calls.push(args);
+          if (String(args[1] ?? '').includes('/releases/tags/')) {
+            tagGets += 1;
+            if (tagGets === 1) throw limited;
+            throw miss;
+          }
+          if (String(args[1] ?? '').includes('/releases?per_page=')) {
+            return JSON.stringify([${JSON.stringify(release)}]);
+          }
+          return '';
+        },
+      });
+      console.log(JSON.stringify({
+        uploaded: attached.uploaded,
+        sleeps,
+        tagGets,
+        listed: calls.some((args) => String(args[1] ?? '').includes('/releases?per_page=')),
+        posted: calls.some((args) => args.includes('--method') && args.includes('POST')),
+      }));`);
+    expect(result.uploaded).toEqual([
+      apkName,
+      `${apkName}.sha256`,
+      `${apkName}.versioncode.8`,
+    ]);
+    expect(result.sleeps).toEqual([9]);
+    expect(result.tagGets).toBe(2);
+    expect(result.listed).toBe(true);
+    expect(result.posted).toBe(true);
+  });
+
+  it('fails closed with the artifact name and run when the reset outlasts the step budget', () => {
+    const result = callModule(`import { attachSignedApkAssets, attachRateLimitGaveUpError } from ${JSON.stringify(helper)};
+      const start = 1_700_000_000_000;
+      let now = start;
+      const sleeps = [];
+      let calls = 0;
+      const err = new Error('gh: API rate limit exceeded for installation (HTTP 403)');
+      err.stderr = 'gh: API rate limit exceeded for installation (HTTP 403)';
+      err.httpStatus = 403;
+      err.headers = { 'x-ratelimit-reset': String(start / 1000 + 3_000), 'x-ratelimit-remaining': '0' };
+      let message = null;
+      try {
+        await attachSignedApkAssets({
+          ...${JSON.stringify(files)},
+          wait: { intervalMs: 1, maxAttempts: 2, backoff: 2 },
+          sleep: async () => {},
+          now: () => now,
+          startedAt: start,
+          budgetSeconds: 100,
+          maxSleep: 100,
+          rateLimitSleep: (seconds) => { sleeps.push(seconds); now += seconds * 1000; },
+          log: () => {},
+          random: () => 0.5,
+          run: () => { calls += 1; throw err; },
+        });
+      } catch (error) {
+        message = String(error.message);
+      }
+      console.log(JSON.stringify({
+        message,
+        expected: attachRateLimitGaveUpError({
+          apkName: ${JSON.stringify(apkName)},
+          artifactName: ${JSON.stringify(files.artifactName)},
+          runId: ${JSON.stringify(runId)},
+          budgetSeconds: 100,
+        }),
+        sleeps,
+        waited: sleeps.reduce((sum, seconds) => sum + seconds, 0),
+        calls,
+      }));`);
+    expect(result.message).toBe(result.expected);
+    expect(result.message).toContain(`APK artifact ${files.artifactName}`);
+    expect(result.message).toContain(`run ${runId}`);
+    expect(result.calls).toBe(1);
+    expect(result.waited).toBe(0);
+    expect(result.sleeps).toEqual([]);
+  });
+
+  it('retries a rate-limited upload POST after waiting for reset', () => {
+    const result = callModule(`import { attachSignedApkAssets } from ${JSON.stringify(helper)};
+      const start = 1_700_000_000_000;
+      let now = start;
+      const sleeps = [];
+      const calls = [];
+      let tagGets = 0;
+      let posts = 0;
+      const err = new Error('gh: API rate limit exceeded for installation (HTTP 403)');
+      err.stderr = 'gh: API rate limit exceeded for installation (HTTP 403)';
+      err.httpStatus = 403;
+      err.headers = { 'x-ratelimit-reset': String(start / 1000 + 20), 'x-ratelimit-remaining': '0' };
+      const attached = await attachSignedApkAssets({
+        ...${JSON.stringify(files)},
+        wait: { intervalMs: 1, maxAttempts: 2, backoff: 2 },
+        sleep: async () => { throw new Error('must not use 404 backoff for a rate limit'); },
+        now: () => now,
+        startedAt: start,
+        rateLimitSleep: (seconds) => { sleeps.push(seconds); now += seconds * 1000; },
+        log: () => {},
+        random: () => 0.5,
+        run: (_file, args) => {
+          calls.push(args);
+          if (String(args[1] ?? '').includes('/releases/tags/')) {
+            tagGets += 1;
+            return JSON.stringify(${JSON.stringify(release)});
+          }
+          if (args.includes('--method') && args.includes('POST')) {
+            posts += 1;
+            if (posts === 1) throw err;
+            return '';
+          }
+          return '';
+        },
+      });
+      console.log(JSON.stringify({
+        uploaded: attached.uploaded,
+        sleeps,
+        tagGets,
+        posts,
+        listed: calls.some((args) => args.includes('--paginate')),
+      }));`);
+    expect(result.uploaded).toEqual([
+      apkName,
+      `${apkName}.sha256`,
+      `${apkName}.versioncode.8`,
+    ]);
+    expect(result.tagGets).toBe(1);
+    expect(result.posts).toBe(4);
+    expect(result.sleeps).toEqual([35]);
+    expect(result.listed).toBe(false);
+  });
+
+  it('does not retry a generic 403 and does not call rate_limit', () => {
+    const result = callModule(`import { attachSignedApkAssets } from ${JSON.stringify(helper)};
+      const sleeps = [];
+      let fetches = 0;
+      const err = new Error('HTTP 403');
+      err.httpStatus = 403;
+      err.headers = { 'x-ratelimit-remaining': '12' };
+      err.body = '{"message":"Resource not accessible by integration"}';
+      let message = null;
+      try {
+        await attachSignedApkAssets({
+          ...${JSON.stringify(files)},
+          wait: { intervalMs: 1, maxAttempts: 2, backoff: 2 },
+          sleep: async () => {},
+          rateLimitSleep: (seconds) => sleeps.push(seconds),
+          fetchRateLimit: () => { fetches += 1; return { resources: { core: { remaining: 0, reset: 99 } } }; },
+          log: () => {},
+          run: () => { throw err; },
+        });
+      } catch (error) {
+        message = String(error.message);
+      }
+      console.log(JSON.stringify({ message, sleeps, fetches }));`);
+    expect(result.message).toMatch(/HTTP 403/);
+    expect(result.message).not.toMatch(/APK artifact/);
+    expect(result.sleeps).toEqual([]);
+    expect(result.fetches).toBe(0);
+  });
+
+  it('parses Retry-After and x-ratelimit-reset from gh api --include output', () => {
+    const result = callModule(`import { runGithubApi, isRateLimitError } from ${JSON.stringify(helper)};
+      let captured = null;
+      try {
+        runGithubApi('gh', ['api', 'repos/KeepOak/Branch-Agent/releases/tags/${tag}'], {
+          exec: (_file, args) => {
+            captured = args;
+            const error = new Error('Command failed: gh api -i repos/KeepOak/Branch-Agent/releases/tags/${tag}');
+            error.stderr = 'gh: API rate limit exceeded for installation (HTTP 403)';
+            error.stdout = [
+              'HTTP/2 403',
+              'Retry-After: 12',
+              'X-RateLimit-Reset: 1700000120',
+              'X-RateLimit-Remaining: 0',
+              '',
+              '{"message":"API rate limit exceeded for installation"}',
+            ].join('\\n');
+            throw error;
+          },
+        });
+      } catch (error) {
+        console.log(JSON.stringify({
+          rate: isRateLimitError(error),
+          retryAfter: error.headers?.['retry-after'],
+          reset: error.headers?.['x-ratelimit-reset'],
+          include: captured?.includes('-i'),
+        }));
+      }`);
+    expect(result.rate).toBe(true);
+    expect(result.retryAfter).toBe('12');
+    expect(result.reset).toBe('1700000120');
+    expect(result.include).toBe(true);
+  });
+});
+
+describe('findGithubRelease survives large release catalogues', () => {
+  it('pages releases after a tags 404 and does not rely on --paginate --slurp', async () => {
+    const tag = 'v0.4.4-build-aaaaaaaaaaaa';
+    const result = callModule(`import { findGithubRelease, findGithubReleaseInPages, GH_EXEC_MAX_BUFFER } from ${JSON.stringify(helper)};
+      const calls = [];
+      const release = {
+        tag_name: ${JSON.stringify(tag)},
+        upload_url: 'https://uploads.github.com/repos/KeepOak/Branch-Agent/releases/1/assets{?name,label}',
+        assets: [],
+      };
+      const tag404 = new Error('HTTP 404: Not Found');
+      tag404.stderr = 'gh: Not Found (HTTP 404)';
+      const found = await findGithubRelease({
+        tag: ${JSON.stringify(tag)},
+        repository: 'KeepOak/Branch-Agent',
+        wait: { intervalMs: 1, maxAttempts: 2, backoff: 2 },
+        sleep: async () => {},
+        run: (file, args) => {
+          calls.push(args.slice());
+          const path = String(args[1] ?? '');
+          if (path.includes('/releases/tags/')) throw tag404;
+          if (path.includes('page=1')) return JSON.stringify([release]);
+          if (path.includes('/releases')) return JSON.stringify([]);
+          throw new Error('unexpected gh args ' + JSON.stringify(args));
+        },
+      });
+      let enobufs = null;
+      try {
+        await findGithubRelease({
+          tag: ${JSON.stringify(tag)},
+          repository: 'KeepOak/Branch-Agent',
+          wait: { intervalMs: 1, maxAttempts: 1, backoff: 2 },
+          sleep: async () => {},
+          run: (file, args) => {
+            const path = String(args[1] ?? '');
+            if (path.includes('/releases/tags/')) {
+              const err = new Error('HTTP 404: Not Found');
+              err.stderr = 'gh: Not Found (HTTP 404)';
+              throw err;
+            }
+            const err = new Error('spawnSync gh ENOBUFS');
+            err.code = 'ENOBUFS';
+            throw err;
+          },
+        });
+      } catch (error) {
+        enobufs = String(error && error.message);
+      }
+      const paged = findGithubReleaseInPages({
+        tag: ${JSON.stringify(tag)},
+        repository: 'KeepOak/Branch-Agent',
+        run: (file, args) => {
+          const path = String(args[1] ?? '');
+          if (path.includes('page=1')) return JSON.stringify([release]);
+          return JSON.stringify([]);
+        },
+      });
+      console.log(JSON.stringify({
+        foundTag: found.tag_name,
+        usedPaginateSlurp: calls.some((a) => a.includes('--paginate') || a.includes('--slurp')),
+        usedPageQuery: calls.some((a) => /page=1/.test(String(a[1] ?? ''))),
+        enobufs,
+        pagedTag: paged && paged.tag_name,
+        maxBuffer: GH_EXEC_MAX_BUFFER,
+      }));`);
+    expect(result.foundTag).toBe(tag);
+    expect(result.usedPaginateSlurp).toBe(false);
+    expect(result.usedPageQuery).toBe(true);
+    expect(result.enobufs).toMatch(/ENOBUFS/);
+    expect(result.pagedTag).toBe(tag);
+    expect(result.maxBuffer).toBeGreaterThan(1024 * 1024);
   });
 });
 

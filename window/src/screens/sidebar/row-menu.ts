@@ -1,11 +1,12 @@
 // The row menu for a Trunk row and a pinned face (preview POPS.rowmenu, the same menu for `.pinTileT5`).
 // One column, in the preview's order. Tiles stay empty: the preview's menu is not a tile grid.
-// An entry either runs its action or is greyed. One this window cannot show a result for says
-// "<label> comes in a later update." A pinned face adds Replace with a different Trunk….
+// An entry either runs its action or is greyed. Unfinished Coming rows ("<label> comes in a later
+// update.") show only at Technical; Regular and Advanced hide them. A pinned face adds Replace with a different Trunk….
 import type { Conversation } from "../../connect/conversations";
 import { snoozeChoices, snoozeTime, wakeWords, type Actions } from "../../shell/conversation-actions";
 import type { Contact } from "../../shell/contacts-model";
 import { menuIcon } from "../../shell/menu-icons";
+import { isComingWhy } from "../../shell/shown-why";
 import type { MenuEntry } from "../../glass/Menu";
 import type { SideRow } from "./model";
 
@@ -21,6 +22,8 @@ export type RowMenuContext = {
   archiveRoom: (contact: Contact) => void;
   unarchiveRoom: (contact: Contact) => void;
   rename: (row: SideRow) => void;
+  /** A Trunk row's Rename: a name box over the list, never a trip to People (walkthrough B-093, B-094). */
+  renameTrunk: (agentId: string, row: SideRow) => void;
   moveToProject: (key: string, projectId: string) => void;
   moveToGroup: (key: string, name: string) => void;
   newConversation: (agentId: string) => void;
@@ -31,8 +34,10 @@ export type RowMenuContext = {
   ask: (key: string) => void;
   editTrunk: (agentId: string) => void;
   tidy: (row: Conversation) => void;
-  /** Advanced and Technical: Tidy up also offers Keep only the last 400 lines, and the advanced-only rows show. */
+  /** Advanced and Technical: Tidy up also offers Keep only the last 400 lines. */
   advanced?: boolean;
+  /** Technical shows unfinished Coming rows; Regular and Advanced hide them (Private #1093 item 4, #1874). */
+  technical?: boolean;
   keepLast?: (row: Conversation) => void;
   removeTrunk: (agentId: string, name: string) => void;
   confirmDelete: (row: Conversation) => void;
@@ -63,6 +68,7 @@ export const NEED = {
   /** The group catalog to pick from, then the conversation's category (a new name joins the catalog). */
   groupMove: ["sessions.groups.list", "sessions.patch"],
   pause: "agents.update",
+  renameTrunk: "agents.update",
   removeTrunk: "agents.delete",
   ask: "chat.send",
   tidy: "sessions.compact",
@@ -75,6 +81,15 @@ const icon = (name: Parameters<typeof menuIcon>[0]) => menuIcon(name);
 const present = (entries: (MenuEntry | null)[]): MenuEntry[] => entries.filter((entry): entry is MenuEntry => entry !== null);
 const later = (label: string) => `${label} comes in a later update.`;
 const agentOf = (row: SideRow) => row.row?.agentId ?? (row.contact?.kind === "trunk" ? row.contact.id.slice("trunk:".length) : undefined);
+
+/** Regular and Advanced keep only what works today: drop Coming placeholders (and the same lines in a submenu). */
+function live(entries: MenuEntry[], technical: boolean): MenuEntry[] {
+  return entries.flatMap((entry) => {
+    if (!technical && isComingWhy(entry.off)) return [];
+    if (!entry.submenu) return [entry];
+    return [{ ...entry, submenu: live(entry.submenu, technical) }];
+  });
+}
 
 /** The first row of a group carries the preview's divider. */
 function grouped(entries: (MenuEntry | null)[]): MenuEntry[] {
@@ -122,14 +137,16 @@ export function rowMenu(row: SideRow, c: RowMenuContext): { tiles: MenuEntry[]; 
     ? { label: "Move to project", icon: icon("folder"), submenu: c.projects.map(project => ({ label: project.name, need: NEED.patch, onSelect: () => c.moveToProject(key, project.id) })) }
     : { label: "Move to project", icon: icon("folder"), off: NO_PROJECTS };
   const archive = archiveRow(row, thread, c);
-  const done: MenuEntry | null = row.kind === "group" ? null : { label: "Mark done", icon: icon("check"), off: later("Mark done"), need: NEED.patch };
+  const done: MenuEntry | null = row.kind === "group" ? null : thread
+    ? { label: thread.done ? "Mark not done" : "Mark done", icon: icon("check"), need: NEED.patch, onSelect: () => void c.actions.setDone(thread, !thread.done) }
+    : { label: "Mark done", icon: icon("check"), off: FIRST_MESSAGE };
   const primary = grouped([
     snoozeRow(row, thread, c),
     archive ? done : null,
     archive,
     projects,
-    c.advanced ? { label: "Assign to…", icon: icon("users"), off: later("Assign to…") } : null,
-    c.advanced ? { label: "Icon and colour", letter: "i", icon: icon("spark"), off: later("Icon and colour") } : null,
+    c.technical ? { label: "Assign to…", icon: icon("users"), off: later("Assign to…") } : null,
+    c.technical ? { label: "Icon and colour", letter: "i", icon: icon("spark"), off: later("Icon and colour") } : null,
     thread ? { label: "Tidy up…", icon: icon("spark"), submenu: present([
       { label: "Tidy up this conversation", need: NEED.tidy, onSelect: () => c.tidy(thread) },
       c.advanced ? { label: "Keep only the last 400 lines…", need: NEED.tidy, onSelect: () => c.keepLast?.(thread) } : null,
@@ -153,16 +170,16 @@ export function rowMenu(row: SideRow, c: RowMenuContext): { tiles: MenuEntry[]; 
   const rows = present([
     { label: "Open", icon: icon("chat"), local: true, onSelect: () => c.open(key) },
     unread,
-    c.advanced ? { label: "Hide from Involving me", icon: icon("eye"), off: later("Hide from Involving me") } : null,
+    c.technical ? { label: "Hide from Involving me", icon: icon("eye"), off: later("Hide from Involving me") } : null,
     pin,
     row.kind === "group" ? null : thread
       ? { label: "Move to group…", icon: icon("users"), need: NEED.groupMove, onSelect: () => c.moveToGroup(key, row.name) }
       : { label: "Move to group…", icon: icon("users"), off: FIRST_MESSAGE },
-    trunk && agentId ? { label: "Rename", letter: "r", icon: icon("edit"), local: true, onSelect: () => c.editTrunk(agentId) } : { label: "Rename", letter: "r", icon: icon("edit"), need: NEED.patch, onSelect: () => c.rename(row) },
+    trunk && agentId ? { label: "Rename", letter: "r", icon: icon("edit"), need: NEED.renameTrunk, onSelect: () => c.renameTrunk(agentId, row) } : { label: "Rename", letter: "r", icon: icon("edit"), need: NEED.patch, onSelect: () => c.rename(row) },
     c.ownWindowOff
       ? { label: "Open in its own window", icon: icon("panel"), off: c.ownWindowOff }
       : { label: "Open in its own window", icon: icon("panel"), local: true, onSelect: () => c.ownWindow(key) },
-    c.advanced ? { label: "Open folder in", icon: icon("folder"), off: later("Open folder in") } : null,
+    c.technical ? { label: "Open folder in", icon: icon("folder"), off: later("Open folder in") } : null,
     thread
       ? { label: "Copy into a new conversation", letter: "f", icon: icon("copy"), need: NEED.copy, hint: thread.working ? "From the last finished reply" : undefined, onSelect: () => void c.actions.copyConversation(thread, c.open) }
       : { label: "Copy into a new conversation", letter: "f", icon: icon("copy"), off: FIRST_MESSAGE },
@@ -177,5 +194,5 @@ export function rowMenu(row: SideRow, c: RowMenuContext): { tiles: MenuEntry[]; 
     archive ? null : done,
     ...tail,
   ]);
-  return { tiles: [], rows };
+  return { tiles: [], rows: live(rows, Boolean(c.technical)) };
 }

@@ -1,21 +1,31 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  CATCH_UP_LATCH_PAGE_SIZE,
   CATCH_UP_MAX_WAIT_MS,
+  CATCH_UP_RUN_NAME,
   CATCH_UP_WINDOW_BUFFER_MS,
   CHECK_RUN_PAGE_CAP,
   CHECK_RUN_PAGE_SIZE,
   CHECK_RUN_TOTAL_CAP,
+  JOB_LOG_FETCH_CAP,
   PUSH_BACKUP_MIN_AGE_MS,
+  blockingCheckRuns,
   catchUpAfterFailedPublish,
+  catchUpLatchRunsPath,
   decideCatchUp,
+  decideSkipReasonCatchUp,
   failedCheckRuns,
+  getJobLog,
   getWorkflowRun,
+  listCatchUpLatchRuns,
   listCommitCheckRuns,
+  loadLatestReleaseIdentity,
   pushBackupShouldRelease,
   rerunFailedWorkflowJobs,
   resolveFailedReleaseChecks,
@@ -71,9 +81,15 @@ test("component-release workflow keeps the schedule and uses push as a 25-minute
   const windowAt = readiness.indexOf("more than 25 minutes old");
   const checksAt = readiness.indexOf("resolve-failed-checks");
   assert.ok(windowAt !== -1 && checksAt !== -1 && windowAt < checksAt);
+  assert.match(readiness, /load-latest-release --repo/);
+  assert.match(readiness, /Could not load the latest release at \$main_commit \(checks-unavailable\)/);
   assert.match(readiness, /resolve-failed-checks --sha/);
   assert.match(readiness, /\$decision_skip" == "true" && "\$failed_checks" == "0"/);
   assert.match(readiness, /Could not confirm checks at \$main_commit/);
+  assert.match(readiness, /cooldown\|failed-checks\|checks-unavailable\|checks-over-cap/);
+  assert.match(readiness, /decision_reason" == "checks-over-cap"/);
+  const decide = workflow.slice(workflow.indexOf("decide_scheduled()"), workflow.indexOf("\n          should_release="));
+  assert.doesNotMatch(decide, /merge-gate-rate-limit/);
 });
 
 test("failed publish catches up only while that commit is still Latest", () => {
@@ -185,6 +201,8 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
   assert.match(catchUp, /always\(\) && !cancelled\(\)/);
   assert.match(catchUp, /needs\.publish\.result == 'success' \|\| needs\.publish\.result == 'failure'/);
   assert.match(catchUp, /needs\.readiness\.outputs\.skip_reason == 'cooldown'/);
+  assert.match(catchUp, /needs\.readiness\.outputs\.skip_reason == 'failed-checks'/);
+  assert.match(catchUp, /needs\.readiness\.outputs\.skip_reason == 'checks-unavailable'/);
   assert.match(catchUp, /catch-up-after-failed-publish/);
   assert.match(catchUp, /github\.event_name != 'pull_request'/);
   assert.match(catchUp, /group: github-component-release-catch-up\n\s+cancel-in-progress: true/);
@@ -192,7 +210,10 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
   assert.match(catchUp, /timeout-minutes: 30/);
   assert.match(catchUp, /max_sleep_seconds=\$\(\(26 \* 60\)\)/);
   assert.match(catchUp, /decide-catch-up/);
-  assert.match(catchUp, /gh workflow run component-release\.yml --ref main/);
+  assert.match(catchUp, /gh workflow run component-release\.yml --ref main -f catch_up=true/);
+  assert.match(catchUp, /decide-skip-catch-up/);
+  assert.match(catchUp, /head_sha=\$\{main_commit\}&event=workflow_dispatch&per_page=20/);
+  assert.doesNotMatch(catchUp, /skip_reason == 'checks-over-cap'/);
   assert.match(catchUp, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
   assert.doesNotMatch(catchUp, /check-runs/);
   assert.doesNotMatch(catchUp, /contents: write/);
@@ -212,6 +233,35 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
   assert.match(rehearsalJob, /\*component-release-readiness-check/);
   assert.match(identityJob, /needs: \[readiness, readiness-rehearsal\]/);
   assert.match(identityJob, /needs\.readiness-rehearsal\.outputs\.should_release == 'true'/);
+  assert.match(identityJob, /already_released: \$\{\{ steps\.identity\.outputs\.already_released \}\}/);
+  assert.match(identityJob, /Release v\$\{version\} already exists; skipping publish/);
+  assert.match(identityJob, /Existing release v\$\{version\} points at a different source commit/);
+  assert.match(identityJob, /draft" != "true"/);
+});
+
+test("workflow_dispatch force is ignored on any other event and does not skip downstream jobs", () => {
+  const dispatch = workflow.slice(workflow.indexOf("workflow_dispatch:"), workflow.indexOf("\npermissions:"));
+  assert.match(dispatch, /dry_run:/);
+  assert.match(dispatch, /force:/);
+  assert.match(dispatch, /catch_up:/);
+  assert.match(dispatch, /default: false\n        type: boolean/);
+  assert.match(workflow, /run-name: \$\{.*inputs\.catch_up && 'component-release-catch-up'/);
+  const readinessJob = workflow.slice(workflow.indexOf("\n  readiness:"), workflow.indexOf("\n  readiness-rehearsal:"));
+  const rehearsalJob = workflow.slice(workflow.indexOf("\n  readiness-rehearsal:"), workflow.indexOf("\n  identity:"));
+  assert.match(readinessJob, /FORCE_RELEASE: \$\{.*github\.event_name == 'workflow_dispatch' && inputs\.force/);
+  assert.match(rehearsalJob, /FORCE_RELEASE: \$\{.*github\.event_name == 'workflow_dispatch' && inputs\.force/);
+  const readiness = workflow.slice(workflow.indexOf("decide_scheduled()"), workflow.indexOf("\n  identity:"));
+  assert.match(readiness, /GITHUB_EVENT_NAME" == "workflow_dispatch" && "\$\{FORCE_RELEASE:-\}" == "true"/);
+  assert.match(readiness, /Forced workflow_dispatch release of \$main_commit; skipping the failed-checks gate/);
+  const windowJob = workflow.slice(workflow.indexOf("\n  window:"), workflow.indexOf("\n  native:"));
+  const nativeJob = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
+  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  dispatch-android-apk:"));
+  assert.doesNotMatch(windowJob, /inputs\.force/);
+  assert.doesNotMatch(nativeJob, /inputs\.force/);
+  assert.doesNotMatch(publishJob, /inputs\.force/);
+  assert.match(windowJob, /inputs\.dry_run/);
+  assert.match(nativeJob, /inputs\.dry_run/);
+  assert.match(publishJob, /inputs\.dry_run/);
 });
 
 test("downstream release jobs require their build dependencies after always()", () => {
@@ -221,10 +271,10 @@ test("downstream release jobs require their build dependencies after always()", 
   const catchUp = workflow.slice(workflow.indexOf("\n  catch-up:"));
   const readinessJob = workflow.slice(workflow.indexOf("\n  readiness:"), workflow.indexOf("\n  readiness-rehearsal:"));
   const rehearsalJob = workflow.slice(workflow.indexOf("\n  readiness-rehearsal:"), workflow.indexOf("\n  identity:"));
-  assert.match(windowJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
+  assert.match(windowJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && needs\.identity\.outputs\.already_released != 'true' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
   assert.match(nativeJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && needs\.window\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
-  assert.match(publishJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && needs\.native\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
-  assert.match(catchUp, /needs\.publish\.result == 'success' \|\| needs\.publish\.result == 'failure' \|\| needs\.readiness\.outputs\.skip_reason == 'cooldown'/);
+  assert.match(publishJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && \(needs\.native\.result == 'success' \|\| needs\.identity\.outputs\.already_released == 'true'\) && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
+  assert.match(catchUp, /needs\.publish\.result == 'success' \|\| needs\.publish\.result == 'failure' \|\| needs\.readiness\.outputs\.skip_reason == 'cooldown' \|\| needs\.readiness\.outputs\.skip_reason == 'failed-checks' \|\| needs\.readiness\.outputs\.skip_reason == 'checks-unavailable'/);
   assert.match(catchUp, /catch-up-after-failed-publish --latest "\$latest_commit"/);
   assert.match(readinessJob, /actions: write/);
   assert.match(readinessJob, /github\.event_name != 'pull_request'/);
@@ -237,7 +287,7 @@ test("downstream release jobs require their build dependencies after always()", 
 
 test("a separate job dispatches the Android APK workflow with the release tag", () => {
   const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  dispatch-android-apk:"));
-  const dispatchJob = workflow.slice(workflow.indexOf("\n  dispatch-android-apk:"), workflow.indexOf("\n  catch-up:"));
+  const dispatchJob = workflow.slice(workflow.indexOf("\n  dispatch-android-apk:"), workflow.indexOf("\n  apk-watchdog:"));
   assert.doesNotMatch(publishJob, /actions: write/);
   assert.match(publishJob, /contents: write/);
   assert.doesNotMatch(publishJob, /gh workflow run mobile-android-release\.yml/);
@@ -246,6 +296,10 @@ test("a separate job dispatches the Android APK workflow with the release tag", 
   assert.doesNotMatch(dispatchJob, /contents: write/);
   assert.match(dispatchJob, /needs: \[identity, publish\]/);
   assert.match(dispatchJob, /needs\.publish\.result == 'success'/);
+  // The skipped readiness-rehearsal job upstream makes the implicit success() false.
+  assert.match(dispatchJob, /if: always\(\) && !cancelled\(\) && /);
+  assert.match(dispatchJob, /needs\.identity\.result == 'success'/);
+  assert.match(dispatchJob, /needs\.identity\.outputs\.already_released != 'true'/);
   assert.match(dispatchJob, /github\.event_name != 'pull_request'/);
   assert.match(dispatchJob, /GH_TOKEN: \$\{\{ github\.token \}\}/);
   assert.match(dispatchJob, /gh workflow run mobile-android-release\.yml -f tag=v\$\{\{ needs\.identity\.outputs\.version \}\}/);
@@ -401,6 +455,296 @@ test("pending Analyze with no failure does not block", () => {
   assert.deepEqual(reads, []);
 });
 
+test("recheck failures do not block a release", () => {
+  const reran = [];
+  const checks = [
+    { id: 201, name: "recheck", conclusion: "failure", status: "completed", started_at: "2026-10-17T19:00:00Z" },
+    { id: 202, name: "recheck", conclusion: "failure", status: "completed", started_at: "2026-10-17T19:01:00Z" },
+  ];
+  const { decision } = resolveFailedChecks({
+    listCheckRuns: () => checks,
+    readWorkflowRun: () => {
+      throw new Error("recheck should not load a workflow run");
+    },
+    rerunFailedJobs: id => reran.push(id),
+  });
+  assert.equal(blockingCheckRuns(checks).length, 0);
+  assert.equal(failedCheckRuns(checks).length, 0);
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+  assert.equal(decision.reason, "no-failed-checks");
+  assert.deepEqual(reran, []);
+});
+
+test("a workflow_run check for another pull-request head does not block", () => {
+  const checks = [{
+    id: 203,
+    name: "Merge gate",
+    conclusion: "failure",
+    status: "completed",
+    started_at: "2026-10-17T19:00:00Z",
+    event: "workflow_run",
+  }];
+  assert.equal(blockingCheckRuns(checks).length, 0);
+  const { decision } = resolveFailedChecks({
+    listCheckRuns: () => checks,
+    readWorkflowRun: () => ({ id: 88, event: "workflow_run", run_attempt: 1, status: "completed", conclusion: "failure" }),
+    rerunFailedJobs: () => {
+      throw new Error("workflow_run checks should not be rerun");
+    },
+  });
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+});
+
+test("a newer successful run of the same check supersedes an older failure", () => {
+  const checks = [
+    failedCapabilityCheck({ id: 11, startedAt: "2026-10-08T09:00:00Z" }),
+    failedCapabilityCheck({ id: 12, startedAt: "2026-10-08T09:01:00Z", conclusion: "success" }),
+  ];
+  assert.equal(blockingCheckRuns(checks).length, 0);
+  const { decision } = resolveFailedChecks({
+    listCheckRuns: () => checks,
+    readWorkflowRun: () => {
+      throw new Error("a passing newest run should not load a workflow run");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a passing newest run should not rerun");
+    },
+  });
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+  assert.equal(decision.reason, "no-failed-checks");
+});
+
+test("a genuine newest-run failure of a push check still blocks", () => {
+  const checks = [failedCapabilityCheck()];
+  assert.equal(blockingCheckRuns(checks).length, 1);
+  const { decision } = resolveFailedChecks({
+    allowRerun: false,
+    listCheckRuns: () => checks,
+    readWorkflowRun: () => {
+      throw new Error("rehearsal should not load workflow runs");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a counted failure should not rerun in rehearsal");
+    },
+  });
+  assert.equal(decision.skip, true);
+  assert.equal(decision.failedCount, 1);
+  assert.equal(decision.reason, "failed-checks");
+});
+
+function trackNonMergeCheck({
+  id = 117528834505,
+  jobId = 39944449648,
+  output = { title: "Process completed with exit code 1.", summary: "" },
+} = {}) {
+  return {
+    id,
+    name: "Track non-merge-commit landing",
+    conclusion: "failure",
+    status: "completed",
+    started_at: "2026-10-17T19:57:00Z",
+    output,
+    details_url: `https://github.com/KeepOak/Branch-Agent/actions/runs/39075575277/job/${jobId}`,
+  };
+}
+
+const RATE_LIMIT_JOB_LOG = [
+  "2026-10-17T19:57:12.001Z ##[error]HTTP 403: API rate limit exceeded for installation ID 1",
+  "Process completed with exit code 1.",
+].join("\n");
+
+const ASSERTION_JOB_LOG = [
+  "AssertionError: expected 1 to equal 2",
+  "    at Test.fn (scripts/detect-non-merge-commit.test.mjs:10:10)",
+  "Process completed with exit code 1.",
+].join("\n");
+
+test("a GitHub rate-limit failure in check output does not block", () => {
+  const checks = [{
+    id: 20,
+    name: "Track non-merge-commit landing",
+    conclusion: "failure",
+    status: "completed",
+    started_at: "2026-10-17T19:57:00Z",
+    output: {
+      title: "API rate limit exceeded",
+      summary: "API rate limit exceeded for installation",
+    },
+  }];
+  assert.equal(blockingCheckRuns(checks).length, 0);
+  const { decision } = resolveFailedChecks({
+    listCheckRuns: () => checks,
+    readWorkflowRun: () => {
+      throw new Error("a rate-limit-only failure should not load a workflow run");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a rate-limit-only failure should not rerun");
+    },
+  });
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+});
+
+test("getJobLog reads a rate-limit Actions log that contains escape sequences", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-job-log-"));
+  const fakeGh = join(dir, "fake-gh.mjs");
+  const log = "\u001b[31m##[error]HTTP 403: API rate limit exceeded for installation ID 1\u001b[0m\n";
+  writeFileSync(fakeGh, [
+    "const args = process.argv.slice(2);",
+    "const logs = args.some((arg) => /\\/actions\\/jobs\\/\\d+\\/logs$/.test(arg));",
+    "if (!logs) process.exit(2);",
+    "if (!args.includes('--allow-escape-sequences')) process.exit(1);",
+    `process.stdout.write(${JSON.stringify(log)});`,
+    "",
+  ].join("\n"));
+  const invoke = { command: process.execPath, argsPrefix: [fakeGh] };
+  const missingFlag = {
+    gh: args => execFileSync(process.execPath, [fakeGh, ...args.filter(arg => arg !== "--allow-escape-sequences")], {
+      encoding: "utf8",
+      windowsHide: true,
+    }),
+  };
+  try {
+    const text = getJobLog("KeepOak/Branch-Agent", 117528834505, invoke);
+    assert.match(text, /API rate limit exceeded/);
+    const checks = [trackNonMergeCheck({ output: { title: "", summary: "" } })];
+    assert.equal(blockingCheckRuns(checks, {
+      readJobLog: jobId => getJobLog("KeepOak/Branch-Agent", jobId, invoke),
+    }).length, 0);
+    assert.throws(() => getJobLog("KeepOak/Branch-Agent", 117528834505, missingFlag));
+    const blocked = blockingCheckRuns(checks, {
+      readJobLog: jobId => getJobLog("KeepOak/Branch-Agent", jobId, missingFlag),
+    });
+    assert.equal(blocked.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an Actions job with empty check output and a rate-limit log does not block", () => {
+  const fetched = [];
+  const checks = [trackNonMergeCheck({ output: { title: "", summary: "" } })];
+  const readJobLog = jobId => {
+    fetched.push(jobId);
+    return RATE_LIMIT_JOB_LOG;
+  };
+  assert.equal(blockingCheckRuns(checks, { readJobLog }).length, 0);
+  assert.deepEqual(fetched, [39944449648]);
+  const { decision } = resolveFailedChecks({
+    listCheckRuns: () => checks,
+    readJobLog,
+    readWorkflowRun: () => {
+      throw new Error("a rate-limit job log should not load a workflow run");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a rate-limit job log should not rerun");
+    },
+  });
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+});
+
+test("an Actions job whose check output is exit code 1 and whose log is a rate limit does not block", () => {
+  const checks = [trackNonMergeCheck()];
+  const { decision } = resolveFailedChecks({
+    listCheckRuns: () => checks,
+    readJobLog: () => RATE_LIMIT_JOB_LOG,
+    readWorkflowRun: () => {
+      throw new Error("a rate-limit job log should not load a workflow run");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a rate-limit job log should not rerun");
+    },
+  });
+  assert.equal(blockingCheckRuns(checks, { readJobLog: () => RATE_LIMIT_JOB_LOG }).length, 0);
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+});
+
+test("an Actions job log with a real assertion failure still blocks", () => {
+  const checks = [trackNonMergeCheck()];
+  assert.equal(blockingCheckRuns(checks, { readJobLog: () => ASSERTION_JOB_LOG }).length, 1);
+  const { decision } = resolveFailedChecks({
+    allowRerun: false,
+    listCheckRuns: () => checks,
+    readJobLog: () => ASSERTION_JOB_LOG,
+    readWorkflowRun: () => {
+      throw new Error("rehearsal should not load workflow runs");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a genuine job-log failure should not rerun in rehearsal");
+    },
+  });
+  assert.equal(decision.skip, true);
+  assert.equal(decision.failedCount, 1);
+  assert.equal(decision.reason, "failed-checks");
+});
+
+test("a failed Actions job log fetch is treated as a real failure", () => {
+  const checks = [trackNonMergeCheck({ output: { title: "", summary: "" } })];
+  const readJobLog = () => {
+    throw new Error("API rate limit exceeded for installation");
+  };
+  assert.equal(blockingCheckRuns(checks, { readJobLog }).length, 1);
+  const { decision } = resolveFailedChecks({
+    allowRerun: false,
+    listCheckRuns: () => checks,
+    readJobLog,
+    readWorkflowRun: () => {
+      throw new Error("rehearsal should not load workflow runs");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a failed log fetch should not rerun in rehearsal");
+    },
+  });
+  assert.equal(decision.skip, true);
+  assert.equal(decision.failedCount, 1);
+  assert.equal(decision.reason, "failed-checks");
+});
+
+test("job log fetches stop at the cap and leftover failures stay blocking", () => {
+  assert.equal(JOB_LOG_FETCH_CAP, 10);
+  const fetched = [];
+  const checks = Array.from({ length: JOB_LOG_FETCH_CAP + 1 }, (_, index) => trackNonMergeCheck({
+    id: 117528834505 + index,
+    jobId: 39944449648 + index,
+    output: { title: "Process completed with exit code 1.", summary: "" },
+  }));
+  const blocking = blockingCheckRuns(checks, {
+    readJobLog: jobId => {
+      fetched.push(jobId);
+      return RATE_LIMIT_JOB_LOG;
+    },
+  });
+  assert.equal(fetched.length, JOB_LOG_FETCH_CAP);
+  assert.equal(blocking.length, 1);
+  assert.equal(blocking[0].id, checks[JOB_LOG_FETCH_CAP].id);
+});
+
+test("a genuine failure without rate-limit output still blocks", () => {
+  const checks = [{
+    ...failedCapabilityCheck(),
+    output: { title: "AssertionError", summary: "expected 1 to equal 2" },
+  }];
+  assert.equal(blockingCheckRuns(checks).length, 1);
+  const { decision } = resolveFailedChecks({
+    allowRerun: false,
+    listCheckRuns: () => checks,
+    readWorkflowRun: () => {
+      throw new Error("rehearsal should not load workflow runs");
+    },
+    rerunFailedJobs: () => {
+      throw new Error("a genuine failure should not rerun in rehearsal");
+    },
+  });
+  assert.equal(decision.skip, true);
+  assert.equal(decision.failedCount, 1);
+  assert.equal(decision.reason, "failed-checks");
+});
+
 test("readiness proceeds without rerunning when there are no failed checks", () => {
   const reran = [];
   const reads = [];
@@ -447,6 +791,35 @@ test("readiness check calls use one plain gh request, with no retry wrapper or w
   assert.ok(calls.some(args => args.includes("-X") && args.some(part => String(part).includes("rerun-failed-jobs"))));
 });
 
+test("every component-release job keeps an explicit timeout", () => {
+  const jobs = workflow.slice(workflow.indexOf("\njobs:\n"));
+  const names = [...jobs.matchAll(/^  ([a-z][a-z0-9-]*):$/gm)].map(match => match[1]);
+  assert.deepEqual(names, [
+    "readiness",
+    "readiness-rehearsal",
+    "identity",
+    "window",
+    "native",
+    "report",
+    "publish",
+    "dispatch-android-apk",
+    "apk-watchdog",
+    "catch-up",
+  ]);
+  for (const name of names) {
+    const start = workflow.indexOf(`\n  ${name}:`);
+    assert.ok(start !== -1, name);
+    const next = names[names.indexOf(name) + 1];
+    const block = next ? workflow.slice(start, workflow.indexOf(`\n  ${next}:`)) : workflow.slice(start);
+    assert.match(block, /^\s+timeout-minutes: \d+$/m, name);
+  }
+  const native = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
+  assert.match(native, /timeout-minutes: 35/);
+  const publish = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  dispatch-android-apk:"));
+  assert.match(publish, /timeout-minutes: 10/);
+  assert.match(publish, /already exists; skipping publish/);
+});
+
 test("native job caches npm, the pnpm store and Electron downloads without changing release timeouts", () => {
   const native = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
   assert.ok(native.length > 0);
@@ -454,8 +827,8 @@ test("native job caches npm, the pnpm store and Electron downloads without chang
   assert.match(native, /cache: npm/);
   assert.match(native, /cache-dependency-path: desktop\/package-lock\.json/);
   assert.match(native, /actions\/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9/);
-  assert.match(native, /component-release-pnpm-\$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-\$\{\{ hashFiles\('engine\/pnpm-lock\.yaml'\) \}\}/);
-  assert.match(native, /component-release-electron-\$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-\$\{\{ hashFiles\('desktop\/package-lock\.json'\) \}\}/);
+  assert.match(native, /component-release-pnpm-\$\{\{ matrix\.target \}\}-\$\{\{ hashFiles\('engine\/pnpm-lock\.yaml'\) \}\}/);
+  assert.match(native, /component-release-electron-\$\{\{ matrix\.target \}\}-\$\{\{ hashFiles\('desktop\/package-lock\.json'\) \}\}/);
   assert.match(native, /Library\/Caches\/electron/);
   assert.match(native, /Library\/Caches\/electron-builder/);
   assert.match(native, /PNPM_STORE_DIR: \$\{\{ github\.workspace \}\}\/\.cache\/pnpm-store/);
@@ -559,6 +932,122 @@ test("more than 300 check runs skips the release and does not request another pa
   assert.match(logs.join("\n"), /exceed 300/);
 });
 
+test("catch-up after failed-checks dispatches once per main head SHA", () => {
+  const sha = "94ba4df41aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const next = "4373e741cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const marked = { head_sha: sha, display_title: CATCH_UP_RUN_NAME, name: CATCH_UP_RUN_NAME };
+  const first = decideSkipReasonCatchUp({
+    skipReason: "failed-checks",
+    mainCommit: sha,
+    workflowRuns: [],
+  });
+  assert.equal(first.dispatch, true);
+  const second = decideSkipReasonCatchUp({
+    skipReason: "failed-checks",
+    mainCommit: sha,
+    workflowRuns: [marked],
+  });
+  assert.equal(second.dispatch, false);
+  assert.match(second.reason, /already dispatched/);
+  const unavailable = decideSkipReasonCatchUp({
+    skipReason: "checks-unavailable",
+    mainCommit: sha,
+    workflowRuns: [marked],
+  });
+  assert.equal(unavailable.dispatch, false);
+  const freshHead = decideSkipReasonCatchUp({
+    skipReason: "failed-checks",
+    mainCommit: next,
+    workflowRuns: [marked],
+  });
+  assert.equal(freshHead.dispatch, true);
+  const overCap = decideSkipReasonCatchUp({
+    skipReason: "checks-over-cap",
+    mainCommit: sha,
+    workflowRuns: [],
+  });
+  assert.equal(overCap.dispatch, false);
+  assert.match(overCap.reason, /exceed the cap/);
+  const run = args => JSON.parse(execFileSync(process.execPath, [helper, "decide-skip-catch-up", ...args], {
+    encoding: "utf8",
+    windowsHide: true,
+  }));
+  const cliBlocked = run([
+    "--main", sha,
+    "--reason", "failed-checks",
+    "--runs", JSON.stringify({ workflow_runs: [marked] }),
+  ]);
+  assert.equal(cliBlocked.dispatch, false);
+  const cliFresh = run([
+    "--main", next,
+    "--reason", "checks-unavailable",
+    "--runs", JSON.stringify({ workflow_runs: [marked] }),
+  ]);
+  assert.equal(cliFresh.dispatch, true);
+  const cliOverCap = run([
+    "--main", sha,
+    "--reason", "checks-over-cap",
+    "--runs", JSON.stringify({ workflow_runs: [] }),
+  ]);
+  assert.equal(cliOverCap.dispatch, false);
+});
+
+test("catch-up latch still finds the dispatch when more than 20 newer push runs share the SHA", () => {
+  const sha = "94ba4df41aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const marked = {
+    id: 1,
+    head_sha: sha,
+    event: "workflow_dispatch",
+    display_title: CATCH_UP_RUN_NAME,
+    name: CATCH_UP_RUN_NAME,
+  };
+  const pushRuns = Array.from({ length: CATCH_UP_LATCH_PAGE_SIZE + 1 }, (_, index) => ({
+    id: 100 + index,
+    head_sha: sha,
+    event: "push",
+    display_title: "GitHub component release",
+    name: "GitHub component release",
+  }));
+  const allRuns = [...pushRuns, marked];
+  const calls = [];
+  const gh = args => {
+    calls.push(args);
+    assert.equal(args[0], "api");
+    const request = String(args[1] ?? "");
+    const query = new URLSearchParams(request.slice(request.indexOf("?") + 1));
+    const event = query.get("event");
+    const head = query.get("head_sha");
+    const pageSize = Number(query.get("per_page") ?? CATCH_UP_LATCH_PAGE_SIZE);
+    const matched = allRuns.filter(run => (
+      (head == null || run.head_sha === head) && (event == null || run.event === event)
+    ));
+    return JSON.stringify({
+      total_count: matched.length,
+      workflow_runs: matched.slice(0, pageSize),
+    });
+  };
+  assert.equal(CATCH_UP_LATCH_PAGE_SIZE, 20);
+  assert.match(catchUpLatchRunsPath("KeepOak/Branch-Agent", sha), /head_sha=/);
+  assert.match(catchUpLatchRunsPath("KeepOak/Branch-Agent", sha), /event=workflow_dispatch/);
+  assert.match(workflow, /head_sha=\$\{main_commit\}&event=workflow_dispatch&per_page=20/);
+  const listed = listCatchUpLatchRuns("KeepOak/Branch-Agent", sha, { gh });
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].display_title, CATCH_UP_RUN_NAME);
+  assert.equal(decideSkipReasonCatchUp({
+    skipReason: "failed-checks",
+    mainCommit: sha,
+    workflowRuns: listed,
+  }).dispatch, false);
+  const unfiltered = allRuns.slice(0, CATCH_UP_LATCH_PAGE_SIZE);
+  assert.equal(unfiltered.some(run => run.display_title === CATCH_UP_RUN_NAME), false);
+  assert.equal(decideSkipReasonCatchUp({
+    skipReason: "failed-checks",
+    mainCommit: sha,
+    workflowRuns: unfiltered,
+  }).dispatch, true);
+  assert.equal(calls.length, 1);
+});
+
 test("a failed check listing skips the release and is not retried", () => {
   let calls = 0;
   const gh = () => {
@@ -571,4 +1060,145 @@ test("a failed check listing skips the release and is not retried", () => {
   assert.equal(decision.reason, "checks-unavailable");
   assert.deepEqual(decision.reran, []);
   assert.match(logs.join("\n"), /Could not list checks/);
+});
+
+function writeFakeGh(dir, source) {
+  const fakeGh = join(dir, "fake-gh.mjs");
+  writeFileSync(fakeGh, source);
+  return fakeGh;
+}
+
+function latestReleaseInvoke(dir, extraEnv = {}) {
+  const counter = join(dir, "attempts.txt");
+  writeFileSync(counter, "0");
+  return {
+    command: process.execPath,
+    argsPrefix: [writeFakeGh(dir, [
+      "import { readFileSync, writeFileSync } from \"node:fs\";",
+      "const file = process.env.RELEASE_GH_ATTEMPT_FILE;",
+      "const n = Number(readFileSync(file, \"utf8\") || \"0\") + 1;",
+      "writeFileSync(file, String(n));",
+      "const failUntil = Number(process.env.RELEASE_GH_FAIL_ATTEMPTS || \"0\");",
+      "if (n <= failUntil) {",
+      "  process.stderr.write(process.env.RELEASE_GH_ERROR || \"gh: API rate limit exceeded for installation (HTTP 403)\\n\");",
+      "  process.exit(1);",
+      "}",
+      "const args = process.argv.slice(2);",
+      "if (args.some((arg) => String(arg).includes(\"/releases/latest\"))) {",
+      "  process.stdout.write(\"v1.2.3\\t2026-10-08T08:35:00Z\\n\");",
+      "  process.exit(0);",
+      "}",
+      "if (args.some((arg) => /\\/commits\\//.test(arg))) {",
+      "  process.stdout.write(\"34f90ad9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n\");",
+      "  process.exit(0);",
+      "}",
+      "process.exit(2);",
+      "",
+    ].join("\n"))],
+    env: {
+      ...process.env,
+      RELEASE_GH_ATTEMPT_FILE: counter,
+      ...extraEnv,
+    },
+    sleep: () => {},
+    maxRetries: 2,
+    budgetSeconds: 60,
+    maxSleep: 1,
+    log: () => {},
+  };
+}
+
+function attemptCount(dir) {
+  return Number(readFileSync(join(dir, "attempts.txt"), "utf8") || "0");
+}
+
+test("rate-limited latest-release lookups past retries skip so catch-up can retry", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-latest-rate-limit-"));
+  try {
+    const logs = [];
+    const decision = loadLatestReleaseIdentity("KeepOak/Branch-Agent", {
+      ...latestReleaseInvoke(dir, { RELEASE_GH_FAIL_ATTEMPTS: "99" }),
+      log: message => logs.push(message),
+    });
+    assert.equal(decision.skip, true);
+    assert.equal(decision.reason, "checks-unavailable");
+    assert.equal(decision.latestCommit, "");
+    assert.ok(attemptCount(dir) >= 3);
+    assert.match(logs.join("\n"), /still rate limited after retries/);
+    const latch = decideSkipReasonCatchUp({
+      skipReason: decision.reason,
+      mainCommit: "34f90ad9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      workflowRuns: [],
+    });
+    assert.equal(latch.dispatch, true);
+    assert.match(latch.reason, /dispatching once/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a non-rate-limit latest-release gh error still fails closed", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-latest-other-error-"));
+  try {
+    assert.throws(
+      () => loadLatestReleaseIdentity("KeepOak/Branch-Agent", latestReleaseInvoke(dir, {
+        RELEASE_GH_FAIL_ATTEMPTS: "99",
+        RELEASE_GH_ERROR: "gh: Bad credentials (HTTP 401)\n",
+      })),
+      error => {
+        assert.match(String(error?.stderr ?? error?.message ?? error), /Bad credentials/);
+        return true;
+      },
+    );
+    assert.equal(attemptCount(dir), 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a 404 latest-release lookup proceeds as no previous release", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-latest-not-found-"));
+  try {
+    const decision = loadLatestReleaseIdentity("KeepOak/Branch-Agent", latestReleaseInvoke(dir, {
+      RELEASE_GH_FAIL_ATTEMPTS: "99",
+      RELEASE_GH_ERROR: "gh: Not Found (HTTP 404)\n",
+    }));
+    assert.equal(decision.skip, false);
+    assert.equal(decision.reason, "no-previous-release");
+    assert.equal(decision.latestRelease, "");
+    assert.equal(decision.latestCommit, "");
+    assert.equal(decision.publishedAt, "");
+    assert.equal(attemptCount(dir), 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a latest-release lookup proceeds after one rate-limited retry", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-latest-retry-ok-"));
+  try {
+    const decision = loadLatestReleaseIdentity("KeepOak/Branch-Agent", latestReleaseInvoke(dir, {
+      RELEASE_GH_FAIL_ATTEMPTS: "1",
+    }));
+    assert.equal(decision.skip, false);
+    assert.equal(decision.reason, "ok");
+    assert.equal(decision.latestRelease, "v1.2.3");
+    assert.equal(decision.latestCommit, "34f90ad9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    assert.equal(decision.publishedAt, "2026-10-08T08:35:00Z");
+    assert.equal(attemptCount(dir), 3);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+test("publish keeps the draft until Android attaches the APK, with a 30-minute watchdog", () => {
+  assert.match(workflow, /publish-component-release\.mjs "\$\{\{ runner\.temp \}\}\/release-assets".*--keep-draft$/m);
+  assert.match(workflow, /^  apk-watchdog:$/m);
+  assert.match(workflow, /publish-component-release\.mjs publish-draft "\$TAG"/);
+  const android = readFileSync(join(here, "../../.github/workflows/mobile-android-release.yml"), "utf8");
+  assert.ok(android.indexOf("publish-draft") > android.indexOf("--attach-release"));
+  const watchdog = workflow.slice(workflow.indexOf("\n  apk-watchdog:"), workflow.indexOf("\n  catch-up:"));
+  assert.match(watchdog, /needs: \[identity, publish\]/);
+  assert.match(watchdog, /seq 1 30/);
+  assert.match(watchdog, /exit 1/);
+  assert.match(workflow, /^  group: github-component-release-/m);
 });

@@ -2,6 +2,7 @@ import { View } from 'react-native';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { plainError } from '../ui/plainError';
 import { NEEDS_PERMISSION_MESSAGE } from './updateFlow';
 import type { UpdateFlowState } from './updateFlow';
 
@@ -24,7 +25,7 @@ function copy(state: UpdateFlowState): { title: string; body: string; action?: '
     case 'error':
       return {
         title: 'Couldn’t update',
-        body: state.message,
+        body: plainError(state.message),
         action: state.offer ? 'update' : undefined,
       };
     default:
@@ -37,7 +38,7 @@ function ProgressBar({ value }: { value: number }) {
   const pct = Math.max(0, Math.min(100, Math.round(value * 100)));
   return (
     <View testID="update-progress" accessibilityValue={{ now: pct, min: 0, max: 100 }} style={{ height: 4, backgroundColor: color.fill, borderRadius: radius.pill, overflow: 'hidden' }}>
-      <View style={{ width: `${pct}%`, height: 4, backgroundColor: color.accent }} />
+      <View style={{ width: `${pct}%`, height: 4, backgroundColor: color.ink }} />
     </View>
   );
 }
@@ -52,17 +53,20 @@ export function UpdateBanner({
   onUpdate: () => void;
   onAllowInstalls: () => void;
 }) {
-  const { color, space, radius } = useTheme();
+  const { color, space, radius, layout } = useTheme();
   const shown = copy(state);
   if (!shown) return null;
   const progress = progressOf(state);
   const busy = state.status === 'downloading' || state.status === 'verifying' || state.status === 'installing';
+  const failed = state.status === 'error';
   return (
     <View
       testID="update-banner"
       style={{
         marginTop: space.sm,
-        backgroundColor: state.status === 'error' ? color.badTint : color.accentTint,
+        backgroundColor: failed ? color.fill : color.accentTint,
+        borderColor: failed ? color.line : 'transparent',
+        borderWidth: failed ? layout.hairline : 0,
         borderRadius: radius.md,
         padding: space.md,
         gap: space.sm,
@@ -148,11 +152,11 @@ export function SettingsUpdateCard({
       {apkUpdates ? (
         <View style={{ marginTop: space.md, gap: space.sm }}>
           {state.status === 'needsPermission' ? (
-            <Button title="Allow installs" kind="primary" onPress={onAllowInstalls} testID="update-allow-installs" />
+            <Button title="Allow installs" kind="ink" onPress={onAllowInstalls} testID="update-allow-installs" />
           ) : state.status === 'available' || (state.status === 'error' && state.offer) ? (
-            <Button title="Update" kind="primary" onPress={onUpdate} busy={busy} testID="update-button" />
+            <Button title="Update" kind="ink" onPress={onUpdate} busy={busy} testID="update-button" />
           ) : null}
-          <Button title="Check for update" kind="secondary" onPress={onCheck} busy={checking} disabled={busy} testID="update-check" />
+          <Button title="Check for update" kind="inkSecondary" onPress={onCheck} busy={checking} disabled={busy} testID="update-check" />
         </View>
       ) : null}
     </View>

@@ -17,6 +17,7 @@ import { conversationActions } from "../../shell/conversation-actions";
 import { NewTrunkSheet } from "../../places/trunk/NewTrunkSheet";
 import { createShapedTrunk, newTrunkReadyLine, OPEN_NEW_TRUNK_SHEET, type NewTrunkDraft } from "../../places/trunk/new-trunk-sheet";
 import { waitForTrunk } from "../../places/trunk/api";
+import { openNewTrunkConversation } from "../../places/trunk/new-trunk-open";
 import { creationProblem } from "../../places/trunk/model";
 import { notify } from "../../shell/notify";
 import { useLimits } from "../../shell/use-status";
@@ -25,14 +26,15 @@ import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
 import { PlaceView } from "../../places-nav/PlaceView";
 import { placeRequest } from "../../places-nav/place-request";
-import { PLACES, loadRoute, parseRoute, placeTitle, saveRoute, windowTitle, type PlaceId, type Route } from "../../places-nav/routes";
+import { PLACES, loadRoute, parseRoute, placeTitle, saveRoute, windowTitle, type Route } from "../../places-nav/routes";
 import { SettingsFrame as ClassicSettingsFrame } from "../../places-nav/SettingsFrame";
 import { PAGES as R1_PAGE_SPECS, r1PageFor } from "../settings/nav";
 import { SettingsFrame } from "../settings";
 import { R1_PAGES } from "../settings/pages/plugged";
 import { placePages } from "../settings/pages/places-live";
 import { useSettingsSearch } from "./settings-search";
-import { ROWS } from "../settings/rows";
+import { COMING_FROM, ROWS } from "../settings/rows";
+import { useLevelNow } from "../settings/level-now";
 import { mergeRows, type PageSlots } from "../settings/slots";
 import type { Row } from "../settings/rows";
 import { lookStore } from "../../places/settings/set1/appearance-store";
@@ -46,6 +48,7 @@ import { displayTrunkTitle } from "../../connect/trunk-name";
 import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
 import { helloOk } from "../onboarding/model";
+import { EXAMPLES_READY_EVENT } from "../onboarding/try-examples";
 import { DEFAULT_TRUNK_WHY, TEMPLATE_TRUNK_WHY } from "../chat/examples-greeting";
 import { ThreadExtras } from "./ThreadExtras";
 import { WhatsNewHost } from "../updates/WhatsNewHost";
@@ -93,28 +96,16 @@ const KEEP_CLASSIC: ReadonlySet<string> = new Set<string>();
  * Classic page whose sections it has, so it never falls back to Classic General. A row goes when its R1 page lands.
  */
 export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
-  card: "people", // Your card: the person's own card on Classic People
   trunks: "advanced", // Trunks, Trunks' model and Trunks and other agents
   browser: "computer", // Computer & browser: the screen and the browser
   coding: "computer", // Computer & browser: code and commits, repositories
 };
 
-/**
- * Settings pages that are a place: Automations and Memory & documents open the place that has their controls
- * (Memory & documents opens Library on its Memory tab). Customize is an R1 Settings page of its own.
- */
-export const SETTINGS_PLACE: Readonly<Record<string, { place: PlaceId; tab?: string }>> = {
-  autos: { place: "automations" },
-  memory: { place: "library", tab: "memory" },
-};
-
-/** The route a link, a saved route or a nav item really opens: a Settings page that is a place (by its id or an old id
- *  for it) opens that place. An old id for Customize opens the R1 Customize page. Every other route is itself. */
+/** The route a link, a saved route or a nav item really opens: an old id for Customize opens the R1 Customize page.
+ *  Every other route is itself. */
 export function resolveRoute(route: Route): Route {
   if (route.kind !== "settings") return route;
   const page = r1PageFor(route.page);
-  const target = SETTINGS_PLACE[page];
-  if (target) return { kind: "place", place: target.place };
   if (page === "customize" && route.page !== "customize") return { kind: "settings", page: "customize" };
   return route;
 }
@@ -127,19 +118,14 @@ export function r1Route(route: Route): Route {
   return { kind: "place", place: "customize" };
 }
 
-/** The tab a Settings page that is a place opens on, told to the place after it shows (as WindowShell does). */
-function openPlaceTab(route: Route): void {
-  const target = route.kind === "settings" ? SETTINGS_PLACE[r1PageFor(route.page)] : undefined;
-  if (target?.tab) setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: target.place, tab: target.tab } })), 0);
-}
-
 /**
  * R1 Settings draws a page only once it has rows or its own slot and nothing working is left behind in Classic. Every
  * other page keeps the Classic page, which still works, until its port lands (R1 README rule 6).
  */
 export function r1SettingsPage(page: string, pages: PageSlots = R1_PAGES, rows: readonly Row[] = mergeRows(ROWS, pages)): boolean {
   if (KEEP_CLASSIC.has(page)) return false;
-  return Boolean((pages as Record<string, { component?: unknown } | undefined>)[page]?.component) || rows.some(row => row.page === page);
+  const slot = (pages as Record<string, { component?: unknown; cards?: Record<string, unknown> } | undefined>)[page];
+  return Boolean(slot?.component) || Object.keys(slot?.cards ?? {}).length > 0 || rows.some(row => row.page === page);
 }
 
 /**
@@ -194,6 +180,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
   // The re-hosted Classic computer stage (parity row 1): which side is open, and the small window it shrinks to.
   const [stage, setStage] = useState<StageMode | null>(null);
   const [pip, setPip] = useState<PipTarget | null>(null);
+  // Header Computer/Browser: this PC's screen and Branch's own browser, whether or not a Trunk has something open (P5/P6).
+  const [ownerScreen, setOwnerScreen] = useState(false);
   // The re-hosted Classic helpers view (parity row 3): open for one conversation; each chip press scrolls to its helpers.
   const [helpersView, setHelpersView] = useState<{ key: string | null; focus: number } | null>(null);
   const helpersOpen = helpersView !== null && helpersView.key === snapshot.sessionKey;
@@ -201,11 +189,22 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const [pane, setPane] = useState<PaneTab | null>(null);
   // The header button that opened the stage; closing the stage hands focus back to it.
   const stageOpener = useRef<string | null>(null);
-  const toggleStage = (mode: StageMode) => { setPip(null); setChanges(false); stageOpener.current = mode; setStage(open => open === mode ? null : mode); };
+  const toggleStage = (mode: StageMode, owner = false) => {
+    setPip(null);
+    setChanges(false);
+    stageOpener.current = mode;
+    if (stage === mode) {
+      setStage(null);
+      setOwnerScreen(false);
+    } else {
+      setOwnerScreen(owner);
+      setStage(mode);
+    }
+  };
   // The re-hosted Classic Changes view and pull request box (parity row 4), opened from •••; it takes the stage's place.
   const [changes, setChanges] = useState(false);
   const closeChanges = useCallback(() => setChanges(false), []);
-  const closeStage = useCallback(() => setStage(null), []);
+  const closeStage = useCallback(() => { setStage(null); setOwnerScreen(false); }, []);
   const [history, setHistory] = useState({ index: 0, count: 1 });
   const entries = useRef<Route[]>([route]);
   const search = useRef<HTMLInputElement>(null);
@@ -253,7 +252,6 @@ export function R1Window({ session }: { session: SaplingSession }) {
   }, [applyRoute]);
   const navigate = (asked: Route) => {
     const next = r1Route(asked);
-    openPlaceTab(asked);
     if (JSON.stringify(next) === JSON.stringify(route)) return;
     const index = history.index + 1;
     entries.current = [...entries.current.slice(0, index), next];
@@ -285,6 +283,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
     return () => { live = false; off(); };
   }, [graftedKey, ready, session]);
   useEffect(() => { if (ready) void lookStore(engine).load(); }, [ready, engine]);
+  // Coming controls show only at Technical (rows.ts COMING_FROM, Private #1093 item 4): off a conversation the header's
+  // pill and tools have nothing to open yet, so below Technical they are not drawn.
+  const comingShown = useLevelNow(engine) >= COMING_FROM;
   // Re-hosted Classic Settings pages open a place with branch:navigate-place (Classic WindowShell's event): R1 opens it here.
   const navigateTo = useRef(navigate);
   useEffect(() => { navigateTo.current = navigate; });
@@ -307,8 +308,11 @@ export function R1Window({ session }: { session: SaplingSession }) {
     const openPlace = (event: Event) => {
       const request = placeRequest((event as CustomEvent).detail, PLACES.map(p => p.id));
       if (!request) return;
+      // Customize's old Trunks and Chat apps tabs live in Settings (#1049).
+      if (request.place === "customize" && request.tab === "Chat apps") { navigateTo.current({ kind: "settings", page: "chatapps" }); return; }
+      if (request.place === "customize" && request.tab === "Trunks") { navigateTo.current({ kind: "settings", page: "trunks" }); return; }
       navigateTo.current({ kind: "place", place: request.place });
-      // A tab named with the request is told to the place once it shows, as openPlaceTab does for Settings pages.
+      // A tab named with the request is told to the place once it shows.
       if (request.tab) {
         const tab = request.tab;
         setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: request.place, tab } })), 0);
@@ -317,11 +321,33 @@ export function R1Window({ session }: { session: SaplingSession }) {
     window.addEventListener("branch:navigate-place", openPlace);
     return () => window.removeEventListener("branch:navigate-place", openPlace);
   }, []);
+  // Empty-chat Connect a model (openConnectModel) and other surfaces that only know the Classic event.
+  useEffect(() => {
+    const openSettings = (event: Event) => {
+      const page = (event as CustomEvent<{ page?: string }>).detail?.page;
+      if (typeof page === "string" && /^[a-z][a-z0-9-]*$/.test(page)) {
+        navigateTo.current({ kind: "settings", page });
+      }
+    };
+    window.addEventListener("branch:navigate-settings", openSettings);
+    return () => window.removeEventListener("branch:navigate-settings", openSettings);
+  }, []);
   // Settings › Updates & about › Show the welcome tour.
   useEffect(() => {
     const openTour = () => setTour("full");
     window.addEventListener("branch:welcome-tour", openTour);
     return () => window.removeEventListener("branch:welcome-tour", openTour);
+  }, []);
+  // The Trunks page's "Open the conversation" (the same examples greeting onboarding leaves behind).
+  useEffect(() => {
+    const openExamples = (event: Event) => {
+      const sessionKey = (event as CustomEvent<{ sessionKey?: unknown }>).detail?.sessionKey;
+      if (typeof sessionKey !== "string" || !sessionKey) return;
+      setExamples({ key: sessionKey, why: DEFAULT_TRUNK_WHY });
+      navigateTo.current({ kind: "chat", key: sessionKey });
+    };
+    window.addEventListener(EXAMPLES_READY_EVENT, openExamples);
+    return () => window.removeEventListener(EXAMPLES_READY_EVENT, openExamples);
   }, []);
   // Escape closes the stage unless a menu, dialog, picker or popover is open: those take Escape first.
   const stageShown = Boolean(stage) && route.kind === "chat";
@@ -354,12 +380,14 @@ export function R1Window({ session }: { session: SaplingSession }) {
       const tab = paneKeyFor(event, mac, keys);
       if (tab === "Browser" || tab === "Computer") {
         if (availability(engine, tab === "Browser" ? "browser.request" : "computer.status") === "no") return;
-        event.preventDefault(); setPip(null); setStage(open => open === tab ? null : tab);
+        event.preventDefault(); setPip(null); setChanges(false);
+        if (stage === tab) { setStage(null); setOwnerScreen(false); }
+        else { setOwnerScreen(true); setStage(tab); }
       } else if (tab) { event.preventDefault(); setPane(open => open === tab ? null : tab); }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [ready, route.kind, engine]);
+  }, [ready, route.kind, engine, stage]);
   useEffect(() => {
     document.title = windowTitle(route.kind === "chat" ? name : route.kind === "settings" ? "Settings" : placeTitle(route.place), waiting.size, !ready);
   }, [route, name, waiting.size, ready]);
@@ -385,17 +413,21 @@ export function R1Window({ session }: { session: SaplingSession }) {
     makingTrunk.current = true;
     setNewTrunkBusy(true);
     setNewTrunkError(null);
-    try {
-      const agentId = await createShapedTrunk(engine, draft);
-      await waitForTrunk(engine, agentId);
-      const sessionKey = await trunkActions.create(agentId);
-      setNewTrunkOpen(false);
-      if (!sessionKey) return;
-      const name = draft.name.trim();
-      setNewTrunkFlow({ agentId, sessionKey, name, avatar: "classic", colour: draft.colour, shape: draft.shape });
-      openConversation(sessionKey);
-    } catch (e) { setNewTrunkError(creationProblem(e)); }
+    let agentId: string;
+    try { agentId = await createShapedTrunk(engine, draft); }
+    catch (e) { setNewTrunkError(creationProblem(e)); return; }
     finally { makingTrunk.current = false; setNewTrunkBusy(false); }
+    // The Trunk exists: the sheet closes even if its conversation can't open (#479). That says so, with Try again.
+    setNewTrunkOpen(false);
+    const name = draft.name.trim();
+    await openNewTrunkConversation(name, {
+      ready: () => waitForTrunk(engine, agentId),
+      open: () => trunkActions.create(agentId, { quiet: true }),
+      show: (sessionKey) => {
+        setNewTrunkFlow({ agentId, sessionKey, name, avatar: "classic", colour: draft.colour, shape: draft.shape });
+        openConversation(sessionKey);
+      },
+    });
   };
   // Customize's Use: the command goes into the default Trunk's composer as a draft, and the conversation opens.
   const promptKey = session.getSnapshot().mainKey;
@@ -449,7 +481,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const startup = ready && snapshot.error ? snapshot.startup ?? null : null;
   const startupName = trunks.list.find(trunk => trunk.id === agentIdOf(snapshot.sessionKey ?? ""))?.name || speaker;
   const main = route.kind === "settings" && !r1SettingsPage(route.page, settingsPages) ? <ClassicSettingsFrame keepLevel page={CLASSIC_PAGE[route.page] ?? route.page} heading={(R1_PAGE_SPECS as Record<string, { title: string } | undefined>)[r1PageFor(route.page)]?.title} backName={name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={settingsPages} places={SETTINGS_PLACES} {...settingsSearch} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : graftedKey ? <GraftedEmpty name={name} state={graftedNone?.key === graftedKey ? (graftedNone.error ? "error" : "none") : "looking"} /> : route.kind === "place" ? <PlaceView place={route.place} r1 usePrompt={usePromptText} engine={engine} createTrunk={() => void newTrunk()} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : changes ? <R1Changes key={snapshot.sessionKey ?? "none"} engine={engine} name={name} onClose={closeChanges} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
-    onMode={setStage} onClose={closeStage} onChooseComputer={() => navigate({ kind: "settings", page: "devices" })} onPip={small => { setPip(small); setStage(null); }} /> : <>{threads.above}<ChatView
+    ownerScreen={ownerScreen} onMode={setStage} onClose={closeStage} onChooseComputer={() => navigate({ kind: "settings", page: "devices" })} onPip={small => { setPip(small); setStage(null); setOwnerScreen(false); }} /> : <>{threads.above}<ChatView
     startupWaiting={Boolean(startup)} name={speaker} history={threads.history ?? snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
     engine={engine} sessionKey={snapshot.sessionKey} examplesWhy={examples?.key === snapshot.sessionKey ? examples.why : undefined} onAnswer={(id, answer) => void session.answer(id, answer)} asks={approvals.asks} onAsk={(id, reply) => void approvals.answer(id, reply)} lockdown={lockdown.on} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
     onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo} onOpenHelpers={() => setHelpersView(open => ({ key: snapshot.sessionKey, focus: (open?.focus ?? 0) + 1 }))} room={room.thread}
@@ -510,12 +542,13 @@ export function R1Window({ session }: { session: SaplingSession }) {
       title: route.kind === "chat" ? name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: room.header && chat ? room.header.faces(24) : graftedKey || graftedContactOf(snapshot.sessionKey) ? <GraftedFace name={name} size={24} /> : <Face size={24} label={name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => { setPane(null); setAgentOpen(open => !open); } : undefined,
       right: route.kind === "chat" ? [
-        { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t show a computer.", pressed: stageShown && stage === "Computer", onClick: tools ? () => toggleStage("Computer") : undefined },
-        { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t show a browser.", pressed: stageShown && stage === "Browser", onClick: tools ? () => toggleStage("Browser") : undefined },
+        { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t show a computer.", pressed: stageShown && stage === "Computer", onClick: tools ? () => toggleStage("Computer", true) : undefined },
+        { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t show a browser.", pressed: stageShown && stage === "Browser", onClick: tools ? () => toggleStage("Browser", true) : undefined },
         { label: "Side panel", icon: <Icon name="panel" />, need: PANE_TAB_NEEDS[DEFAULT_PANE_TAB], coming: "This engine can’t show the side panel.", onClick: tools ? () => { setAgentOpen(false); setPane(open => open ? null : DEFAULT_PANE_TAB); } : undefined },
         // ••• opens this window's conversation menu; each of its rows declares its own call.
         { label: "More", icon: <Icon name="more" />, onClick: tools ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },
-      ] : talk.item ? [talk.item, ...DEFAULT_TOOLS] : undefined,
+      ] : talk.item ? [talk.item, ...(comingShown ? DEFAULT_TOOLS : [])] : comingShown ? undefined : [],
+      hidden: route.kind !== "chat" && !comingShown,
       canBack: history.index > 0, canForward: history.index < history.count - 1, onBack: () => { if (history.index > 0) window.history.back(); }, onForward: () => { if (history.index < history.count - 1) window.history.forward(); },
     }} composer={chat ? <><ThreadExtras session={session} ready={ready} name={speaker} row={current ?? null} history={snapshot.history} ended={snapshot.ended}
       empty={snapshot.historyReady !== false && !snapshot.history.length && !snapshot.pendingUser && !snapshot.liveRunId} onOpen={openConversation} />{newTrunkFlow && newTrunkFlow.sessionKey === snapshot.sessionKey ? <NewTrunkCard engine={engine} flow={newTrunkFlow} onDone={(name) => { setNewTrunkFlow(null); notify(newTrunkReadyLine(name)); }} onChangeLook={() => { navigate({ kind: "place", place: "people" }); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: newTrunkFlow.agentId, view: "edit" } })); }} /> : null}<Composer startupShown={Boolean(startup)} name={speaker} placeholder={room.placeholder} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} working={Boolean(snapshot.liveRunId)} offline={!ready} limits={limits} row={current} topics={topics} running={running} mainKey={snapshot.mainKey?.split(":").slice(2).join(":") || "main"}

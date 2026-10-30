@@ -1,0 +1,13 @@
+window:src/places-nav/PlaceView.test.tsx
+window:src/places/customize/customize.test.tsx
+window:src/places/customize/get-capabilities.test.tsx
+window:src/places/customize/place-tab.test.tsx
+window:src/places/customize/r1-place.test.tsx
+window:src/places/customize/tools.test.tsx
+window:src/places/dev-notes-sweep.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/seedbank/Seedbank.test.tsx
+window:src/screens/settings/pages/customize-live.test.tsx
+window:src/shell/guide.test.tsx
+window:src/shell/new-menu.test.ts
+window:src/shell/palette-find.test.tsx

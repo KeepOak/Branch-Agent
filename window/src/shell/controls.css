@@ -111,6 +111,9 @@
 .skip:focus {
   top: 8px;
 }
+#main:focus {
+  outline: none;
+}
 .focus-exit {
   position: absolute;
   left: 50%;

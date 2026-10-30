@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 // Wraps a target's verified desktop package (branch-desktop-<version>-<target>.tar.gz) in an installer a person can
-// double-click. Signing goes through release-signing.mjs and stays off until the owner adds its secrets
-// (desktop/INSTALLERS.md, "Left for the owner"); until then the installers are built unsigned and the log says so.
+// double-click. OS signing stays off (no paid certs). Updates use the free Tauri/minisign key
+// (desktop/INSTALLERS.md, "Signing"): installers stay unsigned; latest.json carries a .sig per platform.
 //   node desktop/scripts/release-installers.mjs --assets <release-assets> --version <version> --target <target> --out <dir>
 // win32-x64: a per-user Inno Setup installer (no admin prompt; each update lands in a version folder under that root).
-// darwin-arm64: a .dmg holding the already-signed Branch Agent.app and an Applications link.
-// linux-x64: a per-user AppImage (install.sh puts it at ~/.local/bin/branch-agent), built with a pinned appimagetool.
+// darwin-arm64 and darwin-x64: a .dmg holding the already-signed Branch Agent.app and an Applications link.
+// linux-x64: a per-user AppImage (install.sh puts it at ~/.local/bin/branch-agent; also the in-app updater) plus Branch-Linux.deb, the downloadable package.
+// The component-release native job builds both by running this script; the versioned AppImage name is unchanged.
+// Linux AppImage installs to ~/.local/bin/branch-agent (see desktop/INSTALLERS.md and desktop/install/install.sh).
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { installerAssetName, recordInstaller } from "./release-inventory.mjs";
+import { buildLinuxDeb } from "./linux-deb.mjs";
+import { installerAssetName, publicDownloadName, recordInstaller } from "./release-inventory.mjs";
 import { createSigner, statusLine } from "./release-signing.mjs";
 import { WINDOWS_APP_USER_MODEL_ID, WINDOWS_LAUNCHER, WINDOWS_LAUNCHER_EXE, WINDOWS_LAUNCHER_RESOURCE, WINDOWS_LAUNCHER_REVISION,
   WINDOWS_LAUNCHER_REVISION_FILE, WINDOWS_POINTER, windowsLauncherScript } from "./windows-launcher.mjs";
@@ -23,7 +26,7 @@ export { windowsLauncherScript };
 export const WINDOWS_APP_ID = "{{6F0B6A43-3C1E-4D8B-9A57-2E4B1C9D7F10}";
 /** The bundled Electron's floor (Electron 23 dropped Windows 7, 8 and 8.1). */
 export const WINDOWS_MIN_VERSION = "10.0";
-export const TARGETS = ["win32-x64", "darwin-arm64", "linux-x64"];
+export const TARGETS = ["win32-x64", "darwin-arm64", "darwin-x64", "linux-x64"];
 
 /**
  * appimagetool and the AppImage runtime it embeds, pinned by release, size and SHA-256. Each download is checked before
@@ -123,15 +126,139 @@ export function layoutWindowsInstallRoot({ payload, root, version, signApp = () 
   return folder;
 }
 
+/** The data folder the app uses on Windows (config.ts defaultDataDirectory) and the old dev copy package.ps1 wrote into it. */
+export const WINDOWS_DATA_DIR = "{localappdata}\\BranchAgent";
+export const WINDOWS_DEV_COPY = `${WINDOWS_DATA_DIR}\\dist`;
+
+/**
+ * Pascal [Code] for the installer. PrepareToInstall runs only after the user has confirmed the install (and in a
+ * silent install), never when Setup opens, so cancelling Setup leaves every running Branch alone. It closes only the
+ * processes whose executable is under the old dev copy <data>\dist\ (matched by full image path, case-insensitive,
+ * and stopped by process id, never by name), asking first and then forcing, so the installed copy under {app} is
+ * never touched here; CloseApplications handles {app} the usual way. CurStepChanged(ssPostInstall) then renames
+ * <data>\dist to dist.migrated-<stamp>: the app folder only, never the data folder, and reversible by renaming it back.
+ * engine-current.txt is rewritten first when it points inside dist, and restored if the rename fails, so startup
+ * never follows a pointer into a folder that moved.
+ */
+export function innoMigrationCode() {
+  return [
+    "[Code]",
+    "function StartsWithText(const Value, Prefix: String): Boolean;",
+    "begin",
+    "  Result := CompareText(Copy(Value, 1, Length(Prefix)), Prefix) = 0;",
+    "end;",
+    "",
+    "function StopDevCopyProcesses(const Force: Boolean): Integer;",
+    "var",
+    "  Dist, ExePath, Args: String;",
+    "  Locator, Service, Procs, Proc: Variant;",
+    "  I, Pid, ResultCode: Integer;",
+    "begin",
+    "  Result := 0;",
+    `  Dist := ExpandConstant('${WINDOWS_DEV_COPY}');`,
+    "  try",
+    "    Locator := CreateOleObject('WbemScripting.SWbemLocator');",
+    "    Service := Locator.ConnectServer('.', 'root\\CIMV2');",
+    "    Procs := Service.ExecQuery('SELECT ProcessId, ExecutablePath FROM Win32_Process');",
+    "    for I := 0 to Procs.Count - 1 do",
+    "    begin",
+    "      Proc := Procs.ItemIndex(I);",
+    "      if not VarIsNull(Proc.ExecutablePath) then",
+    "      begin",
+    "        ExePath := Proc.ExecutablePath;",
+    "        if StartsWithText(ExePath, Dist + '\\') then",
+    "        begin",
+    "          Pid := Proc.ProcessId;",
+    "          Args := '/PID ' + IntToStr(Pid);",
+    "          if Force then Args := '/F ' + Args;",
+    "          Log('Branch: closing old dev copy process ' + IntToStr(Pid) + ' (' + ExePath + ')');",
+    "          Exec(ExpandConstant('{sys}\\taskkill.exe'), Args, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);",
+    "          Result := Result + 1;",
+    "        end;",
+    "      end;",
+    "    end;",
+    "  except",
+    "    Log('Branch: could not list running processes; the old dev copy is left running: ' + GetExceptionMessage);",
+    "  end;",
+    "end;",
+    "",
+    "procedure CloseDevCopy();",
+    "begin",
+    "  if StopDevCopyProcesses(False) > 0 then",
+    "  begin",
+    "    Sleep(3000);",
+    "    StopDevCopyProcesses(True);",
+    "  end;",
+    "end;",
+    "",
+    "function PrepareToInstall(var NeedsRestart: Boolean): String;",
+    "begin",
+    "  CloseDevCopy();",
+    "  Result := '';",
+    "end;",
+    "",
+    "procedure MigrateDevCopy();",
+    "var",
+    "  Dist, Moved, PointerFile, Original, Updated: String;",
+    "  Lines, NewLines: TArrayOfString;",
+    "  Rewrote: Boolean;",
+    "begin",
+    `  Dist := ExpandConstant('${WINDOWS_DEV_COPY}');`,
+    "  if not DirExists(Dist) then Exit;",
+    "  Moved := Dist + '.migrated-' + GetDateTimeString('yyyymmdd-hhnnss', '-', '-');",
+    `  PointerFile := ExpandConstant('${WINDOWS_DATA_DIR}\\engine-current.txt');`,
+    "  Rewrote := False;",
+    "  Original := '';",
+    "  if FileExists(PointerFile) and LoadStringsFromFile(PointerFile, Lines) and (GetArrayLength(Lines) > 0) then",
+    "  begin",
+    "    Original := Trim(Lines[0]);",
+    "    Updated := '';",
+    "    if CompareText(Original, Dist) = 0 then Updated := Moved",
+    "    else if StartsWithText(Original, Dist + '\\') then Updated := Moved + Copy(Original, Length(Dist) + 1, MaxInt);",
+    "    if Updated <> '' then",
+    "    begin",
+    "      SetArrayLength(NewLines, 1);",
+    "      NewLines[0] := Updated;",
+    "      if not SaveStringsToUTF8FileWithoutBOM(PointerFile, NewLines, False) then",
+    "      begin",
+    "        Log('Branch: engine-current.txt points inside the old dev copy and could not be rewritten; leaving it in place');",
+    "        Exit;",
+    "      end;",
+    "      Rewrote := True;",
+    "    end;",
+    "  end;",
+    "  if RenameFile(Dist, Moved) then",
+    "    Log('Branch: moved the old dev copy to ' + Moved)",
+    "  else",
+    "  begin",
+    "    Log('Branch: could not move the old dev copy (a file is in use); leaving it in place');",
+    "    if Rewrote then",
+    "    begin",
+    "      SetArrayLength(NewLines, 1);",
+    "      NewLines[0] := Original;",
+    "      SaveStringsToUTF8FileWithoutBOM(PointerFile, NewLines, False);",
+    "    end;",
+    "  end;",
+    "end;",
+    "",
+    "procedure CurStepChanged(CurStep: TSetupStep);",
+    "begin",
+    "  if CurStep = ssPostInstall then MigrateDevCopy();",
+    "end;",
+    "",
+  ];
+}
+
 /**
  * Per-user install under %LOCALAPPDATA%\Programs. Each build lives in a version folder; current.txt is the pointer
  * the launcher reads. Shortcuts open the launcher at the root, which outlives every version folder, and carry the
- * app's AppUserModelID so a pinned window opens it too. The uninstaller lives outside {app} so leftover
- * {app}.previous from older swaps still goes.
+ * app's AppUserModelID so a pinned window opens it too. Start in is the user folder, not {app}: a process
+ * whose working folder is the install directory blocks a later swap (#1777, #787). The uninstaller lives
+ * outside {app} so leftover {app}.previous from older swaps still goes.
  */
 export function innoSetupScript({ version, source, out }) {
   const exe = `{app}\\${WINDOWS_LAUNCHER_EXE}`;
-  const shortcut = `Filename: "${exe}"; WorkingDir: "{app}"; AppUserModelID: "${WINDOWS_APP_USER_MODEL_ID}"`;
+  const shortcut = `Filename: "${exe}"; WorkingDir: "{%USERPROFILE}"; AppUserModelID: "${WINDOWS_APP_USER_MODEL_ID}"`;
   return [
     "[Setup]",
     `AppId=${WINDOWS_APP_ID}`,
@@ -157,6 +284,13 @@ export function innoSetupScript({ version, source, out }) {
     `OutputDir=${out}`,
     `OutputBaseFilename=${installerName(version, "win32-x64").replace(/\.exe$/, "")}`,
     "",
+    "[InstallDelete]",
+    // Shortcuts an old dev copy left behind (scripts/shortcuts.ps1); [Icons] recreates the ones that open {app}.
+    'Type: files; Name: "{autoprograms}\\Branch Agent.lnk"',
+    'Type: files; Name: "{autodesktop}\\Branch Agent.lnk"',
+    'Type: files; Name: "{userprograms}\\Branch Agent.lnk"',
+    'Type: files; Name: "{userdesktop}\\Branch Agent.lnk"',
+    "",
     "[Tasks]",
     'Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked',
     "",
@@ -168,12 +302,13 @@ export function innoSetupScript({ version, source, out }) {
     `Name: "{autodesktop}\\Branch Agent"; ${shortcut}; Tasks: desktopicon`,
     "",
     "[Run]",
-    `Filename: "${exe}"; Description: "Open Branch Agent"; Flags: nowait postinstall skipifsilent`,
+    `Filename: "${exe}"; Description: "Open Branch Agent"; WorkingDir: "{%USERPROFILE}"; Flags: nowait postinstall skipifsilent`,
     "",
     "[UninstallDelete]",
     'Type: filesandordirs; Name: "{app}"',
     'Type: filesandordirs; Name: "{app}.previous"',
     "",
+    ...innoMigrationCode(),
   ].join("\r\n");
 }
 
@@ -216,6 +351,8 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
     mkdirSync(payload);
     run(process.platform === "win32" ? join(process.env.SYSTEMROOT ?? "C:\\Windows", "System32", "tar.exe") : "tar", ["-xzf", archive, "-C", payload]);
     const file = resolve(out, installerName(version, target));
+    const download = resolve(out, publicDownloadName(target));
+    const files = [];
     if (target === "win32-x64") {
       if (!existsSync(join(payload, "Branch Agent.exe"))) throw new Error("The Windows package has no Branch Agent.exe at its root");
       signer.signApp(join(payload, "Branch Agent.exe"));
@@ -225,6 +362,9 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
       writeFileSync(script, "\ufeff" + innoSetupScript({ version, source: root, out: resolve(out) }));
       run(innoCompiler(), ["/Qp", script]);
     } else if (target === "linux-x64") {
+      // The AppImage step renames the package away. The deb has to be packed first, from the same tree.
+      buildLinuxDeb({ payload, version, out: download });
+      files.push(download);
       const appDir = assembleAppDir(payload, join(work, "Branch-Agent.AppDir"));
       const tool = await fetchPinned(APPIMAGE_TOOLS.appimagetool, work, request);
       const runtime = await fetchPinned(APPIMAGE_TOOLS.runtime, work, request);
@@ -239,7 +379,13 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
     if (!existsSync(file)) throw new Error(`The installer was not written: ${file}`);
     const signed = signer.signInstaller(file);
     console.log(`${signed ? "signed" : "unsigned"} installer: ${file}`);
-    return file;
+    if (target !== "linux-x64") {
+      copyFileSync(file, download);
+      files.push(download);
+    }
+    if (!existsSync(download)) throw new Error(`The download was not written: ${download}`);
+    console.log(`download: ${download}`);
+    return [file, ...files];
   } finally {
     signer.dispose();
     rmSync(work, { recursive: true, force: true });
@@ -248,8 +394,11 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const file = await main();
-    // The target's release proof lists the installer, so publish attaches it and checks its bytes.
-    if (file) { const { assets, target } = parseArgs(process.argv.slice(2)); await recordInstaller(assets, target, file); }
+    const files = await main();
+    // The target's release proof lists each installer, so publish attaches them and checks their bytes.
+    if (files?.length) {
+      const { assets, target } = parseArgs(process.argv.slice(2));
+      for (const file of files) await recordInstaller(assets, target, file);
+    }
   } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exit(1); }
 }

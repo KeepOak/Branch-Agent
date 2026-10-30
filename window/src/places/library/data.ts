@@ -4,11 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { trunkDisplayName } from "../../connect/trunk-name";
 import { STALL_TEXT, stallAfter } from "../settings/stall";
+import { plainError } from "../../shell/plain-error";
 export type Trunk = { id: string; name?: string; identity?: { name?: string; emoji?: string; theme?: string; avatar?: string; avatarUrl?: string }; createdVia?: string; workspace?: string; model?: { primary?: string } };
 export type Trunks = { agents: Trunk[]; defaultId: string; mainKey: string };
 export type FileEntry = { name: string; path: string; kind?: "file" | "directory"; size?: number; missing?: boolean; hash?: string; content?: string; encoding?: string; mimeType?: string };
 export function trunkName(t: Trunk) { return trunkDisplayName(t); }
 export function errorText(error: unknown) { return error instanceof Error ? error.message : String(error); }
+/** A failure as a person reads it, through plainError() (Private #1089). A leading "Error:" goes first, so plainError() never
+ *  keeps it as a screen's own lead ("Error: Branch can’t reach…"). */
+export function plainFailure(error: string) { return plainError(error.replace(/^\s*(?:Uncaught\s+)?Error:\s*/, "")); }
 /** A generation belongs to one screen/selection. Late results never replace a new selection. */
 export class RequestGeneration {
   private generation = 0;

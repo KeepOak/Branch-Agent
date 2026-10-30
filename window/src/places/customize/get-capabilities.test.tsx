@@ -126,7 +126,7 @@ describe("Get capabilities", () => {
   });
 
   it("keeps local rows when the catalogue fails", async () => {
-    await open({ ...FIXTURE, "plugins.catalog.browse": new Error("offline") });
+    await open({ ...FIXTURE, "plugins.catalog.browse": new Error("The plugin catalogue is offline right now.") });
     await tab("Plugins");
     expect(rowNamed("Slack")?.dataset.tag).toBe("Installed");
     expect(host.querySelector('[role="alert"]')?.textContent).toContain("offline");

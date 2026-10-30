@@ -6,7 +6,7 @@ import { createFakeSession } from '../testing/fakeSession';
 import { contrastRatio } from './contrast';
 import { parseThemePreference, THEME_PREFERENCE_KEY } from './preference';
 import { ThemeProvider, useTheme, useThemePreference } from './ThemeProvider';
-import { palettes, themeFor, type ColorScheme } from './tokens';
+import { pairingTheme, palettes, themeFor, type ColorScheme } from './tokens';
 
 const schemes: ColorScheme[] = ['light', 'dark'];
 const hex = /^#[0-9a-f]{6}$/i;
@@ -26,25 +26,37 @@ describe('theme tokens', () => {
     expect(contrastRatio(c.onAccent, c.accent)).toBeGreaterThanOrEqual(4.5);
   });
 
+  it.each(schemes)('keeps pairing %s text readable after swapping indigo for ink', scheme => {
+    const pairing = pairingTheme(themeFor(scheme)).color;
+    for (const ink of [pairing.ink, pairing.ink2, pairing.ink3, pairing.accentInk]) {
+      for (const surface of [pairing.bg, pairing.grouped, pairing.raise]) {
+        expect(contrastRatio(ink, surface)).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+    expect(contrastRatio(pairing.onAccent, pairing.accent)).toBeGreaterThanOrEqual(4.5);
+    expect(pairing.accent).toBe(palettes[scheme].ink);
+  });
+
   it.each(schemes)('uses plain #rrggbb for every solid %s colour', scheme => {
-    const { scrim, ...solid } = palettes[scheme];
+    const { scrim, glass, ...solid } = palettes[scheme];
     expect(scrim).toMatch(/^rgba\(/);
+    expect(glass).toMatch(/^rgba\(/);
     for (const value of Object.values(solid)) expect(value).toMatch(hex);
   });
 });
 
 describe('app shell', () => {
-  it.each(schemes)('draws the welcome screen from the %s tokens', async scheme => {
+  it.each(schemes)('draws the pairing screen from the %s tokens', async scheme => {
     await render(<App scheme={scheme} session={createFakeSession().session} />);
-    const theme = themeFor(scheme);
-    expect(await screen.findByRole('header')).toHaveTextContent('Branch');
-    expect(StyleSheet.flatten(screen.getByTestId('welcome-screen').props.style).backgroundColor).toBe(
+    const theme = pairingTheme(themeFor(scheme));
+    expect(await screen.findByRole('header')).toHaveTextContent('Connect to your Branch');
+    expect(StyleSheet.flatten(screen.getByTestId('camera-permission').props.style).backgroundColor).toBe(
       theme.color.grouped,
     );
-    expect(StyleSheet.flatten(screen.getByTestId('pairing-steps').props.style).backgroundColor).toBe(
+    expect(StyleSheet.flatten(screen.getByTestId('pairing-nearby').props.style).backgroundColor).toBe(
       theme.color.raise,
     );
-    expect(screen.getByRole('button', { name: 'Pair with your computer' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeOnTheScreen();
   });
 });
 

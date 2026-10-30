@@ -102,8 +102,9 @@
    the edge fade says there is more. Controls on the canvas keep their frosted chip (.g-frost and the .g-clear control rule
    below). The Smart glass layer at the end of this file carries the rules; its :root:not(#sg...) ids outrank the #g48 ids
    so no rule needs !important. Reduce transparency makes the glass solid. ===== */
+/* Connect a model keeps its solid --btn/--on-btn pair instead of the generic control frost and hover paint. */
 .g-clear:not(#g48) { background: transparent; background-image: none; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; border-color: transparent; }
-:is(.g-frost, .g-label):not(#g48), .g-clear :is(button, a[href], select, textarea, input:not([type="checkbox"], [type="radio"], [type="range"], [type="hidden"])):not([data-solid], [role="switch"], #g48) {
+:is(.g-frost, .g-label):not(#g48), .g-clear :is(button, a[href], select, textarea, input:not([type="checkbox"], [type="radio"], [type="range"], [type="hidden"])):not([data-solid], .connect-model-btn, [role="switch"], #g48) {
   background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
   box-shadow: inset 0 0 0 1px var(--gp-edge); border-color: transparent; color: var(--ink);
   --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); --mute17c: var(--gp-ink-2); }
@@ -112,10 +113,10 @@
 /* ...and the chosen one in a group of choices on one pill (a segmented switch) takes the light lift over it */
 :is(.g-frost, .g-label) :is(button, a[href]):is([aria-selected="true"], [aria-pressed="true"]):not(#g48#g48#g48) { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
 /* the chosen one in a group, and a hovered control: a light lift over the same frost, outline kept */
-:is(.g-frost, .g-clear :is(button, a[href])):is([aria-current="true"], [aria-current="step"], [aria-current="page"], [aria-selected="true"], [aria-pressed="true"], :hover:not(:disabled, [aria-disabled="true"])):not([role="switch"], [data-solid], #g48#g48) {
+:is(.g-frost, .g-clear :is(button, a[href])):is([aria-current="true"], [aria-current="step"], [aria-current="page"], [aria-selected="true"], [aria-pressed="true"], :hover:not(:disabled, [aria-disabled="true"])):not([role="switch"], [data-solid], .connect-model-btn, #g48#g48) {
   box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
-/* a switch that is off sits on the same frost; one that is on keeps its accent fill */
-.g-clear [role="switch"]:not([aria-checked="true"]):not(#g48) { background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); }
+/* a switch that is off sits on the same frost; one that is on keeps its accent fill (a native checkbox switch says it with :checked) */
+.g-clear [role="switch"]:not([aria-checked="true"], :checked):not(#g48) { background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); }
 /* a clear dialog's title hugs its words; the close button stays at the end */
 .dlg.g-clear .dlg-h > h2 { flex: 0 1 auto; margin-right: auto; }
 :root[data-transparency="reduce"] .g-clear:not(#g48#g48) { background: var(--bg); }
@@ -131,6 +132,13 @@
   box-shadow: inset 0 0 0 .5px var(--gw-edge), inset 0 1px 0 var(--gw-hi), var(--gw-dlg-sh); }
 .scrim > .dlg.g-clear :is(.g-label, .g-label[data-lines]):not(#g48) { width: auto; max-width: none; padding: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 :root[data-transparency="reduce"] .scrim > .dlg.g-clear:not(#g48#g48) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+/* Seedbank's Add and item sheets (preview: openDlg, .scrim > .dlg) sit on the same window glass, so nothing from the page shows
+   through their words (#1095). Their text keeps its outlined pills (item 48). */
+.sb-sheet-wrap > .sb-sheet.g-clear:not(#g48) { background: color-mix(in srgb, var(--bg) 74%, transparent); background-image: none; border-color: transparent;
+  -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+  box-shadow: inset 0 0 0 .5px var(--gw-edge), inset 0 1px 0 var(--gw-hi), var(--gw-dlg-sh); }
+:root[data-transparency="reduce"] .sb-sheet-wrap > .sb-sheet.g-clear:not(#g48#g48) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .sb-sheet-wrap > .sb-sheet.g-clear:not(#g48#g48) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 @media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .scrim > .dlg.g-clear:not(#g48#g48) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 
 /* ===== Smart glass layer (see the header above). Generated selectors are scoped under :root:not(#sg#sg#sg#sg) so they win over
@@ -174,9 +182,9 @@
 :root:not(#sg#sg#sg#sg) .r1-topic-host .tpTabT5.curT5 { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
 :root:not(#sg#sg#sg#sg) .r1s-sec.g-clear:not(#g48#g48#g48) { background: var(--sg-panel); border-radius: 18px; padding: 18px 20px;
   box-shadow: inset 0 0 0 .5px var(--sg-line); }
-:root:not(#sg#sg#sg#sg) .r1s-side.g-clear :is(button, a[href]):not([aria-current="page"], [aria-current="true"], :hover, #g48#g48#g48) { background: transparent; box-shadow: none; }
-/* Advanced links on a Regular settings page are a list of rows. Words sit on the page, never on a frosted chip. */
-:root:not(#sg#sg#sg#sg) .r1s-advanced .r1s-jump { background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; border-radius: 0; }
+/* The nav column's other controls sit on its glass; its page rows, like a Regular page's "Also in" rows, keep the control
+   frost and outline as boxed rows (preview item 36 .s36Nav with item 48's boxed rows; settings.css .r1s-nav). */
+:root:not(#sg#sg#sg#sg) .r1s-side.g-clear :is(button, a[href]):not(.r1s-nav, .r1s-jump, [aria-current="page"], [aria-current="true"], :hover, #g48#g48#g48) { background: transparent; box-shadow: none; }
 :root:not(#sg#sg#sg#sg) :is(.r1c-txt, .r1c-from, .r1c-time):not(#g48#g48#g48) { background: none; box-shadow: none;
   backdrop-filter: none; -webkit-backdrop-filter: none; border: 0; }
 :root:not(#sg#sg#sg#sg) .r1c-txt:not(#g48#g48#g48) { padding: 0; border-radius: 0; }
@@ -192,8 +200,8 @@
 :root:not(#sg#sg#sg#sg) .r1-topic-host :is(.tpLayT5, .tpAddP17) { width: 30px; padding: 0; justify-content: center; }
 :root:not(#sg#sg#sg#sg) .r1-topic-host :is(.tpLayT5, .tpAddP17) svg { width: 16px; height: 16px; flex: none; }
 :root:not(#sg#sg#sg#sg) .code-head :is(button):not(#g48#g48#g48) { box-shadow: none; border: 0; }
-:root:not(#sg#sg#sg#sg) .r1-content .r1c :is(button, summary):not([role=switch], [data-solid], .r1c-steps > summary, #g48#g48#g48) { box-shadow: none; background: color-mix(in srgb, var(--ink) 7%, transparent); }
-:root:not(#sg#sg#sg#sg) .r1-content .r1c :is(button, summary):hover:not([role=switch], [data-solid], #g48#g48#g48) { background: color-mix(in srgb, var(--ink) 12%, transparent); }
+:root:not(#sg#sg#sg#sg) .r1-content .r1c :is(button, summary):not([role=switch], [data-solid], .connect-model-btn, .r1c-steps > summary, #g48#g48#g48) { box-shadow: none; background: color-mix(in srgb, var(--ink) 7%, transparent); }
+:root:not(#sg#sg#sg#sg) .r1-content .r1c :is(button, summary):hover:not([role=switch], [data-solid], .connect-model-btn, #g48#g48#g48) { background: color-mix(in srgb, var(--ink) 12%, transparent); }
 :root:not(#sg#sg#sg#sg) .r1-topic-host > .topicsT5 { background: color-mix(in srgb, var(--bg) 88%, transparent); }
 :root:not(#sg#sg#sg#sg) :is(.r1-header, .r1-head, .r1-conversation > header) :is(.g-pill, .g-capsule) { background: color-mix(in srgb, var(--bg) 86%, transparent); }
 :root:not(#sg#sg#sg#sg) .r1-conversation .g-pill { background: color-mix(in srgb, var(--bg) 86%, transparent); }
@@ -204,13 +212,13 @@
 @media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]):not(#sg#sg#sg#sg) :is(.g-popover, .g-float, .r1-topic-host > .topicsT5) { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; } }
 
 /* ===== Smart glass, batch 3 (owner, 2026-10-15). Classic popovers re-hosted in R1 (.pop.menu, .pop.panel: Threads show
-   as, Filter and sort) were clear or 90% and let the transcript read through; they are the same glass sheet as .g-popover,
-   with plain rows. A soft scrim under the window header fades transcript lines out before they reach the title pill. ===== */
-:root:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) { background: color-mix(in srgb, var(--bg) 94%, var(--ink) 3%); backdrop-filter: var(--sg-blur); -webkit-backdrop-filter: var(--sg-blur);
-  border: 0; border-radius: 16px; box-shadow: inset 0 0 0 .5px var(--sg-edge), inset 0 1px 0 var(--sg-hi), var(--sg-shadow); }
+   as, Filter and sort). spec-v23 `.pop` is a solid --raise sheet with `--pop` edge and shadow; mixing --bg (clear in the
+   conversation) let the transcript read through when blur is missing (#1874). Rows stay plain. ===== */
+:root:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) { background: var(--raise); backdrop-filter: none; -webkit-backdrop-filter: none;
+  border: 0; border-radius: var(--r-menu); box-shadow: var(--pop); }
 :root:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) :is(button, a[href], [role=menuitem]):not([role=switch], [data-solid]) { background: transparent; box-shadow: none; }
-:root:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) :is(button, a[href], [role=menuitem]):is(:hover, :focus-visible, [aria-checked="true"], [aria-current="true"]):not([role=switch]) { background: color-mix(in srgb, var(--ink) 9%, transparent); }
-:root[data-transparency="reduce"]:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) :is(button, a[href], [role=menuitem]):is(:hover, :focus-visible, [aria-checked="true"], [aria-current="true"]):not([role=switch]) { background: var(--wash17); }
+:root[data-transparency="reduce"]:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) { background: var(--raise); backdrop-filter: none; -webkit-backdrop-filter: none; }
 /* Threads as a column (the side list): one rounded glass panel, plain header words, plain rows. The pill shape above is for
    the tab bar; on a column it stretched into a tall capsule with a box around every row (owner, 2026-10-15). */
 :root:not(#sg#sg#sg#sg) .r1-topic-host > .topicsT5.lay-column { border-radius: 18px; padding: 6px; align-items: stretch; }

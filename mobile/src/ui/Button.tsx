@@ -2,9 +2,9 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 
-type Kind = 'primary' | 'secondary' | 'plain' | 'destructive';
+type Kind = 'primary' | 'secondary' | 'plain' | 'destructive' | 'ink' | 'inkSecondary';
 
-/** One button style for the whole app: filled accent, quiet fill, text-only, or red for undoable loss. */
+/** One button style for the whole app: filled accent, quiet fill, text-only, red for undoable loss, or black-and-white. */
 export function Button({
   title,
   onPress,
@@ -21,8 +21,20 @@ export function Button({
   testID?: string;
 }) {
   const { color, radius, layout, space } = useTheme();
-  const fill = kind === 'primary' ? color.accent : kind === 'secondary' ? color.accentTint : kind === 'destructive' ? color.badTint : 'transparent';
-  const tone = kind === 'primary' ? 'onAccent' : kind === 'destructive' ? 'bad' : 'accentInk';
+  const fill =
+    kind === 'primary'
+      ? color.accent
+      : kind === 'ink'
+        ? color.ink
+        : kind === 'secondary'
+          ? color.accentTint
+          : kind === 'inkSecondary'
+            ? color.fill
+            : kind === 'destructive'
+              ? color.badTint
+              : 'transparent';
+  const tone = kind === 'primary' ? 'onAccent' : kind === 'destructive' ? 'bad' : kind === 'ink' ? 'ink' : kind === 'inkSecondary' ? 'ink' : 'accentInk';
+  const labelColor = kind === 'ink' ? color.raise : undefined;
   const off = disabled || busy;
   return (
     <Pressable
@@ -43,8 +55,8 @@ export function Button({
       ]}
     >
       <View style={styles.row}>
-        {busy ? <ActivityIndicator color={color[tone]} style={{ marginRight: space.sm }} /> : null}
-        <ThemedText variant="headline" tone={tone}>
+        {busy ? <ActivityIndicator color={labelColor ?? color[tone]} style={{ marginRight: space.sm }} /> : null}
+        <ThemedText variant="headline" tone={tone} style={labelColor ? { color: labelColor } : undefined}>
           {title}
         </ThemedText>
       </View>

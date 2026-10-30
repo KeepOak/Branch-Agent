@@ -3,6 +3,7 @@ import { resolveCanonicalMainSessionKey } from "../../config/sessions/main-sessi
 import type { SessionEntrySummary } from "../../config/sessions/session-accessor.js";
 import type { SessionScope } from "../../config/sessions/types.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
+import { classifyContactTopicKind } from "./topic-kinds.js";
 
 export type ContactAgent = { id: string; name: string; iconUrl?: string };
 export type OutsidePeer = {
@@ -63,6 +64,19 @@ export function contactIdForSession(row: SessionEntrySummary): string | undefine
   return `trunk:${parsed.agentId}`;
 }
 
+/**
+ * A topic the window can open from this contact row. Parent and contact-anchor
+ * children stay openable even when the rest prefix is a hidden kind. Other keys
+ * follow CONTACT_TOPIC_SESSION_KINDS; leftover script-made rest stays on disk
+ * and is not listed or counted as unread.
+ */
+export function isOpenableContactTopic(row: SessionEntrySummary, threadKey: string): boolean {
+  if (row.entry.parentSessionKey === threadKey || row.entry.contactAnchor?.threadKey === threadKey) {
+    return true;
+  }
+  return classifyContactTopicKind(row.sessionKey).visibility === "openable";
+}
+
 function topicTitle(row: SessionEntrySummary, preview: string, derivedTitle?: string): string {
   const outsideDm = row.sessionKey.match(/:([^:]+):direct:([^:]+)$/);
   return (
@@ -105,7 +119,10 @@ export function projectContacts(input: ContactProjectionInput): {
     const thread = byKey.get(threadKey);
     const contactId = `trunk:${agentId}`;
     const children = visibleSessions.filter(
-      (row) => row.sessionKey !== threadKey && contactIdForSession(row) === contactId,
+      (row) =>
+        row.sessionKey !== threadKey &&
+        contactIdForSession(row) === contactId &&
+        isOpenableContactTopic(row, threadKey),
     );
     const projectedTopics = children.map((row): Topic => {
       const entry = row.entry;

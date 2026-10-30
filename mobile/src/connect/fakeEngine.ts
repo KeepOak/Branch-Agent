@@ -76,6 +76,8 @@ export type FakeEngine = {
    * plugin.approval.request has nowhere else to show and the engine expires it at once (no-approval-route).
    */
   setWindowOpen: (open: boolean) => void;
+  /** The mentions.list items the engine reports from now on. */
+  setMentions: (rows: unknown[]) => void;
 };
 
 /** One pending approval as the engine lists it (approval-record-lookup.ts listVisiblePendingApprovalRequests). */
@@ -97,7 +99,23 @@ export const FAKE_ENGINE_METHODS = [
   'plugin.approval.list',
   'exec.approval.resolve',
   'plugin.approval.resolve',
+  'computer.status',
+  'computer.invoke',
+  'sessions.describe',
+  'sessions.goal.update',
+  'browser.request',
+  'talk.session.create',
+  'talk.session.close',
+  'tts.status',
+  'tts.setPersona',
+  'users.self',
+  'users.setDisplayName',
+  'mentions.list',
 ] as const;
+
+/** 1×1 PNG; tests and screenshots use the snapshot payload's width and height as the picture size. */
+export const FAKE_SCREEN_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 export type FakeEngineOptions = {
   version?: string;
@@ -113,6 +131,8 @@ export type FakeEngineOptions = {
   methods?: readonly string[];
   /** hello.policy.attachments; null leaves it off. */
   attachmentPolicy?: { maxBytes: number; maxImageBytes: number } | null;
+  /** users.self profile. A local owner connection with no name is "Owner". */
+  self?: { id?: string; displayName?: string | null; emails?: string[]; role?: string; hasAvatar?: boolean };
 };
 
 export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
@@ -121,6 +141,22 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   const deviceToken = options.deviceToken ?? 'device-token-1';
   const methods = options.methods ?? FAKE_ENGINE_METHODS;
   const attachmentPolicy = options.attachmentPolicy === undefined ? { maxBytes: 20 * 1024 * 1024, maxImageBytes: 6 * 1024 * 1024 } : options.attachmentPolicy;
+  let self = {
+    id: options.self?.id ?? 'gateway-owner',
+    displayName: options.self?.displayName === undefined ? 'Owner' : options.self.displayName,
+    emails: options.self?.emails ?? [],
+    role: options.self?.role,
+    hasAvatar: options.self?.hasAvatar === true,
+  };
+  const selfPayload = () => ({
+    profile: {
+      id: self.id,
+      displayName: self.displayName,
+      emails: self.emails,
+      hasAvatar: self.hasAvatar,
+      ...(self.role ? { role: self.role } : {}),
+    },
+  });
   let decision: 'pending' | 'approved' = 'pending';
   /** The pairing code's record was removed (Deny, run out, used): nothing brings it back. */
   let codeGone = false;
@@ -128,10 +164,14 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   let refusal: { code: string; message: string } | null = null;
   let sessions = options.sessions ?? [];
   let environments = options.environments ?? [];
+  const goals = new Map<string, { id: string; status: string }>();
+  let browserTabs: Array<{ targetId: string; title: string; url: string; type: string }> = [];
+  let tabSeq = 0;
   const agents = options.agents ?? { defaultId: 'main', mainKey: 'main', scope: 'per-sender', agents: [{ id: 'main', name: 'Branch Agent' }] };
   const failures = new Map<string, { message: string; details?: unknown; code?: string }>();
   const histories = new Map<string, { messages: unknown[]; inFlightRun?: unknown }>();
   const approvals = { exec: [...(options.approvals?.exec ?? [])], plugin: [...(options.approvals?.plugin ?? [])] };
+  let mentions: unknown[] = [];
   /** The first decision recorded for each answered approval, so a later answer gets the engine's reply to a repeat. */
   const decided = new Map<string, string>();
   const settle = (kind: 'exec' | 'plugin', id: string, decision: string, resolvedBy: string | null): boolean => {
@@ -146,6 +186,11 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   };
   let windowOpen = true;
   let asked = 0;
+  const personas = [
+    { id: 'oak', label: 'Oak' },
+    { id: 'birch', label: 'Birch' },
+  ];
+  let persona = 'oak';
   const replies = new Map<string, { sessionKey: string; text: string; seq: number }>();
   const holds = new Map<string, Array<() => void>>();
   type Connection = {
@@ -223,6 +268,92 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
         return { ok: true, payload: approvals.exec };
       case 'plugin.approval.list':
         return { ok: true, payload: approvals.plugin };
+      case 'sessions.describe': {
+        const key = String((params as { key?: unknown } | null)?.key ?? '');
+        const row = (sessions as Array<Record<string, unknown>>).find((s) => s.key === key) ?? { key };
+        const stored = goals.get(key);
+        const inferred = row.hasActiveRun === true && !stored ? { id: `goal-${key}`, status: 'active' } : stored;
+        return { ok: true, payload: { session: { ...row, ...(inferred ? { goal: inferred } : {}) } } };
+      }
+      case 'sessions.goal.update': {
+        const p = (params ?? {}) as { sessionKey?: string; goalId?: string; action?: string };
+        const key = String(p.sessionKey ?? '');
+        const id = String(p.goalId ?? '');
+        if (p.action === 'pause' || p.action === 'resume') goals.set(key, { id, status: p.action === 'pause' ? 'paused' : 'active' });
+        return { ok: true, payload: { ok: true } };
+      }
+      case 'browser.request': {
+        const p = (params ?? {}) as { path?: string; body?: Record<string, unknown> };
+        const path = String(p.path ?? '');
+        const body = p.body ?? {};
+        if (path === '/') return { ok: true, payload: { running: true } };
+        if (path === '/tabs') return { ok: true, payload: { tabs: browserTabs } };
+        if (path === '/tabs/open') {
+          const url = String(body.url ?? 'about:blank');
+          const id = `tab-${++tabSeq}`;
+          browserTabs = [...browserTabs, { targetId: id, title: url === 'about:blank' ? 'New tab' : url, url, type: 'page' }];
+          return { ok: true, payload: { targetId: id } };
+        }
+        if (path === '/navigate') {
+          const id = String(body.targetId ?? '');
+          const url = String(body.url ?? '');
+          browserTabs = browserTabs.map((t) => (t.targetId === id ? { ...t, url, title: url } : t));
+          return { ok: true, payload: { ok: true } };
+        }
+        if (path === '/act') return { ok: true, payload: { ok: true } };
+        return { ok: true, payload: {} };
+      }
+      case 'computer.status':
+        return { ok: true, payload: { available: true, configured: true, computerUse: { provider: { generation: 'driver-one' } } } };
+      case 'computer.invoke': {
+        const command = String((params as { command?: unknown } | null)?.command ?? '');
+        if (command === 'screen.snapshot') {
+          return {
+            ok: true,
+            payload: {
+              payload: { format: 'png', base64: FAKE_SCREEN_PNG, displayFrameId: 'frame-1', width: 1280, height: 800 },
+            },
+          };
+        }
+        return { ok: true, payload: { payload: { ok: true } } };
+      }
+      case 'talk.session.create': {
+        const sessionId = `talk-${++asked}`;
+        const voice = personas.find((p) => p.id === persona)?.label ?? 'Oak';
+        return {
+          ok: true,
+          payload: {
+            sessionId,
+            relaySessionId: sessionId,
+            provider: 'local',
+            voice,
+            audio: { inputEncoding: 'pcm16', outputEncoding: 'pcm16', inputSampleRateHz: 24000, outputSampleRateHz: 24000 },
+          },
+        };
+      }
+      case 'talk.session.close':
+        return { ok: true, payload: { ok: true } };
+      case 'mentions.list':
+        return { ok: true, payload: { items: mentions } };
+      case 'tts.status':
+        return { ok: true, payload: { enabled: true, auto: 'always', persona, personas } };
+      case 'tts.setPersona': {
+        const next = String((params as { persona?: unknown } | null)?.persona ?? '').toLowerCase();
+        const found = personas.find((p) => p.id === next);
+        if (!found) return { ok: false, message: 'Invalid persona. Use a configured TTS persona id.' };
+        persona = found.id;
+        return { ok: true, payload: { persona: found.id } };
+      }
+      case 'users.self':
+        return { ok: true, payload: selfPayload() };
+      case 'users.setDisplayName': {
+        const p = (params ?? {}) as { profileId?: unknown; displayName?: unknown };
+        if (p.profileId !== self.id) return { ok: false, message: 'profile not found' };
+        const next = typeof p.displayName === 'string' ? p.displayName.trim() : '';
+        if (!next) return { ok: false, message: 'display name is required' };
+        self = { ...self, displayName: next.slice(0, 256) };
+        return { ok: true, payload: selfPayload() };
+      }
       case 'exec.approval.resolve':
       case 'plugin.approval.resolve': {
         const { id, decision } = (params ?? {}) as { id?: string; decision?: string };
@@ -306,6 +437,9 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
     pendingApprovals: (kind) => [...approvals[kind]],
     setWindowOpen: (open) => {
       windowOpen = open;
+    },
+    setMentions: (rows) => {
+      mentions = rows;
     },
     failMethod: (method, message, details, code) => {
       if (message === null) failures.delete(method);

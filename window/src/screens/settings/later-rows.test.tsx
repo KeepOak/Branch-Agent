@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// Later-update rows: Regular never shows them; Advanced folds each section's later-update rows into one line that
-// opens them, so the rows never sit beside live controls as if they worked.
+// Later-update rows: Regular and Advanced never show them (Private #1093 item 4); Technical folds each section's
+// later-update rows into one line that opens them, so the rows never sit beside live controls as if they worked.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,26 +26,32 @@ function engine(): WindowEngine {
   });
   return { request, onEvent: () => () => undefined, sessionKey: "s", scopes: ["operator.admin"] } as unknown as WindowEngine;
 }
-async function mount(level: "regular" | "advanced") {
+const LABEL = { regular: "Regular", advanced: "Advanced", technical: "Technical" } as const;
+async function mount(level: keyof typeof LABEL) {
   await act(async () => root.render(<SettingsFrame engine={engine()} page="general" />));
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-  const button = [...host.querySelectorAll<HTMLButtonElement>(".r1s-level button")].find((b) => b.textContent === (level === "regular" ? "Regular" : "Advanced"));
+  const button = [...host.querySelectorAll<HTMLButtonElement>(".r1s-level button")].find((b) => b.textContent === LABEL[level]);
   await act(async () => { button?.click(); await new Promise((r) => setTimeout(r, 0)); });
 }
 
-describe("later-update rows fold at Advanced", () => {
+describe("later-update rows fold at Technical", () => {
   it("names the count in one plain line", () => {
     expect(laterLine(1)).toBe("1 more comes in a later update");
     expect(laterLine(12)).toBe("12 more come in a later update");
   });
 
-  it("Regular shows no later-update rows and no fold line", async () => {
+  it("Regular and Advanced show no later-update rows and no fold line", async () => {
     await mount("regular");
     expect(host.querySelector("[data-later-rows]")).toBeNull();
+    expect(host.textContent).not.toMatch(/\d+ more comes? in a later update/);
+    await mount("advanced");
+    expect(host.querySelector(".r1set")?.getAttribute("data-level")).toBe("advanced");
+    expect(host.querySelector("[data-later-rows]")).toBeNull();
+    expect(host.textContent).not.toMatch(/\d+ more comes? in a later update/);
   });
 
-  it("Advanced folds each section's later-update rows into one line that opens them", async () => {
-    await mount("advanced");
+  it("Technical folds each section's later-update rows into one line that opens them", async () => {
+    await mount("technical");
     const folds = [...host.querySelectorAll<HTMLElement>("[data-later-rows]")];
     expect(folds.length).toBeGreaterThan(0);
     for (const fold of folds) {
@@ -66,7 +72,7 @@ describe("later-update rows fold at Advanced", () => {
   });
 
   it("a live row never sits inside the fold", async () => {
-    await mount("advanced");
+    await mount("technical");
     for (const fold of host.querySelectorAll<HTMLElement>("[data-later-rows]")) {
       const rows = [...fold.querySelectorAll<HTMLElement>("[data-row]")];
       expect(rows.length).toBe(rows.filter((row) => row.dataset.coming !== undefined).length);
@@ -76,7 +82,7 @@ describe("later-update rows fold at Advanced", () => {
 
 describe("the editors and notes card", () => {
   it("is one later-update line, and its add-on rows open under it", async () => {
-    await act(async () => root.render(<UpdatesBlock page="updates" title="Updates & about" level="advanced" engine={engine()} part="editors" />));
+    await act(async () => root.render(<UpdatesBlock page="updates" title="Updates & about" level="technical" engine={engine()} part="editors" />));
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     const fold = host.querySelector<HTMLElement>("[data-later-rows]");
     expect(fold).toBeTruthy();

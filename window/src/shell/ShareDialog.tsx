@@ -10,6 +10,7 @@ import { Coming } from "../glass/coming";
 import { configStore } from "../places/settings/config-store";
 import { Dialog } from "./Dialog";
 import { publishedVisibility } from "../connect/safe-visibility";
+import { plainError } from "../shell/plain-error";
 import {
   PAIRED_SHARE_ENABLED_PATH,
   PAIRED_SHARE_GROUPS_PATH,
@@ -27,7 +28,8 @@ import {
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
-const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const reason = (e: unknown): string => plainError(e);
 
 type Visibility = "shared" | "read-only" | "suggest" | "draft";
 type Identity = { id: string; name: string };

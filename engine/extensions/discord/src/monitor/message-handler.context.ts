@@ -156,7 +156,7 @@ export async function buildDiscordMessageProcessContext(params: {
       guildName: data.guild?.name,
       channelName: channelInfo?.name,
       channelTopic: channelInfo?.topic,
-      threadName,
+      threadName: threadName ?? undefined,
     });
   const discordContextPrompt = isGuildMessage
     ? appendDiscordContext(

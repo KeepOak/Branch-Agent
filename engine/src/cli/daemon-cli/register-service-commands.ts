@@ -177,6 +177,29 @@ export function addGatewayServiceCommands(parent: Command, opts?: { statusDescri
       });
     });
 
+  parent
+    .command("install-background-service")
+    .description("Install the background gateway service after an explicit user click")
+    .option("--json", "Output JSON", false)
+    .action(async (cmdOpts, command) => {
+      const { runInstallBackgroundService } = await import("./install-background-service.js");
+      await runInstallBackgroundService({ json: resolveJsonOption(cmdOpts, command) });
+    });
+
+  parent
+    .command("supervise-app-child", { hidden: true })
+    .description("Watch a gateway child started when the background service is missing")
+    .requiredOption("--port <port>", "Gateway port")
+    .option("--owner-pid <pid>", "Stop when this Branch process exits")
+    .action(async (cmdOpts) => {
+      const { runAppChildSupervisor } = await import("./app-child-supervisor.js");
+      const ownerPid = Number(cmdOpts.ownerPid);
+      await runAppChildSupervisor({
+        port: Number(cmdOpts.port),
+        ...(Number.isSafeInteger(ownerPid) && ownerPid > 1 ? { ownerPid } : {}),
+      });
+    });
+
   for (const [name, description, action] of [
     ["uninstall", "Uninstall", "runDaemonUninstall"],
     ["start", "Start", "runDaemonStart"],

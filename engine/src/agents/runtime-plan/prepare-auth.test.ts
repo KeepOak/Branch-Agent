@@ -7,7 +7,10 @@ import {
   createApiKeyCredential,
   createOAuthRefreshCredential,
 } from "../auth-profiles/credential-fixtures.test-support.js";
-import { createOAuthRefreshFence } from "../auth-profiles/oauth-refresh-marker.js";
+import {
+  createFailedOAuthRefreshFence,
+  createOAuthRefreshFence,
+} from "../auth-profiles/oauth-refresh-marker.js";
 import { resolveAgentHarnessPreparedAuthSupport } from "../harness/support.js";
 import { getApiKeyForModelCore } from "../model-auth.js";
 import {
@@ -413,6 +416,68 @@ describe("prepareAgentRuntimeAuthPlan", () => {
         .filter((attempt) => attempt.kind === "profile")
         .map((attempt) => attempt.profileId),
     ).toEqual([pendingProfileId, backupProfileId]);
+  });
+
+  it("falls back to the next ordered sign-in when a user-pinned OAuth refresh has failed", () => {
+    const pinnedProfileId = "xai:pinned";
+    const backupProfileId = "xai:backup";
+    const failed = createFailedOAuthRefreshFence(
+      createOAuthRefreshFence({
+        profileId: pinnedProfileId,
+        credential: createOAuthRefreshCredential({
+          provider: "xai",
+          access: "expired-access",
+          expires: 1,
+        }),
+      }),
+    );
+
+    const prepared = prepareAuthFixture({
+      provider: "xai",
+      modelId: "grok-4",
+      env: {},
+      authProfileStore: authStore(
+        {
+          [pinnedProfileId]: failed,
+          [backupProfileId]: createApiKeyCredential("xai", "backup-key"),
+        },
+        { xai: [pinnedProfileId, backupProfileId] },
+      ),
+      sessionAuthProfileId: pinnedProfileId,
+      sessionAuthProfileSource: "user",
+    });
+
+    const profileAttempts = prepared.attempts.filter((attempt) => attempt.kind === "profile");
+    expect(profileAttempts.map((attempt) => attempt.profileId)).toEqual([backupProfileId]);
+    expect(profileAttempts.map((attempt) => attempt.plan.forwardedAuthProfileSource)).toEqual([
+      "auto",
+    ]);
+    expect(prepared.plan.forwardedAuthProfileId).toBe(backupProfileId);
+  });
+
+  it("explains a failed pinned refresh instead of calling it unconfigured when nothing else is eligible", () => {
+    const pinnedProfileId = "xai:pinned";
+    const failed = createFailedOAuthRefreshFence(
+      createOAuthRefreshFence({
+        profileId: pinnedProfileId,
+        credential: createOAuthRefreshCredential({
+          provider: "xai",
+          access: "expired-access",
+          expires: 1,
+        }),
+      }),
+    );
+
+    expect(() =>
+      prepareAuthFixture({
+        provider: "xai",
+        modelId: "grok-4",
+        env: {},
+        authProfileStore: authStore({ [pinnedProfileId]: failed }, { xai: [pinnedProfileId] }),
+        sessionAuthProfileId: pinnedProfileId,
+        sessionAuthProfileSource: "user",
+      }),
+    ).toThrow(/expired.*reconnect/iu);
   });
 
   it("defers an ambiguous route when native Codex owns auth", () => {

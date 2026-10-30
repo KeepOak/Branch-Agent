@@ -13,6 +13,7 @@
     "**/dist/**",
     "**/*.test.ts",
     "**/*.test.tsx",
+    "**/*.test.mts",
     "**/*test-helpers.ts",
     "**/*test-harness.ts",
     "**/*test-support.ts",

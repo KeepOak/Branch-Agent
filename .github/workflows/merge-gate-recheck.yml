@@ -12,6 +12,7 @@ on:
     workflows:
       - Button crawl
       - Capability feature checks
+      - CLI release checks
       - CodeQL
       - Desktop checks
       - Engine build (PR)
@@ -22,7 +23,6 @@ on:
       - Gate files fresh
       - GitHub component release
       - Harvest checks
-      - Local worker measurement
       - macOS checks for OS-specific changes
       - Merge gate
       - Merge gate trusted
@@ -40,39 +40,60 @@ on:
 permissions:
   actions: write
 
+# Workflow-level so a queued run never starts a runner. Job-level still created a runner, then cancelled
+# it after the 30s settle. The `run`/`skip` suffix matches the job `if`, so a skipped conclusion cannot
+# cancel a settling recheck. Group by the triggering head SHA: a late completion on an older SHA must
+# not cancel the current head's recheck (a PR-only group with cancel-in-progress did that and stuck the PR).
+# A completion on main never rechecks (no PR gate to rerun); it lands in the `skip` group and the job `if` skips it.
+concurrency:
+  group: merge-gate-recheck-${{ github.event.workflow_run.head_sha }}-${{ github.event.workflow_run.head_branch }}-${{ github.event.workflow_run.head_branch != 'main' && (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'pull_request_target') && (github.event.workflow_run.name == 'Merge gate' || github.event.workflow_run.name == 'Merge gate trusted' || github.event.workflow_run.conclusion == 'success') && (github.event.workflow_run.name != 'Merge gate' || github.event.workflow_run.run_attempt < 2 || github.event.workflow_run.conclusion == 'success') && 'run' || 'skip' }}
+  cancel-in-progress: true
+
 jobs:
   recheck:
     # The recheck's own completion must not start another recheck (it would loop). A content check that did not
-    # succeed never needs a listing (the script skips it), so it does not start this job. Concurrency is set on
-    # the job, not the workflow: a skipped job never joins the group, so it cannot cancel a recheck that is settling.
-    if: (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'pull_request_target') && github.event.workflow_run.name != 'Merge gate recheck' && (github.event.workflow_run.name == 'Merge gate' || github.event.workflow_run.name == 'Merge gate trusted' || github.event.workflow_run.conclusion == 'success')
-    # One recheck per head at a time; a newer event supersedes an older one, which sees the same or newer runs.
-    concurrency:
-      group: merge-gate-recheck-${{ github.event.workflow_run.head_sha }}
-      cancel-in-progress: true
+    # succeed never needs a listing (the script skips it), so it does not start this job. A Merge gate attempt
+    # that was itself a rerun and did not succeed cannot rerun either gate (trusted waits for ordinary to pass).
+    if: github.event.workflow_run.head_branch != 'main' && (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'pull_request_target') && github.event.workflow_run.name != 'Merge gate recheck' && (github.event.workflow_run.name == 'Merge gate' || github.event.workflow_run.name == 'Merge gate trusted' || github.event.workflow_run.conclusion == 'success') && (github.event.workflow_run.name != 'Merge gate' || github.event.workflow_run.run_attempt < 2 || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # 15-minute cap (AGENTS.md rule 13). The 10-minute rate-limit wait and 30s settle share this job.
+    timeout-minutes: 15
     steps:
+      - name: Let a burst of completions settle
+        # First step on purpose: the concurrency group cancels the run still waiting here when a newer
+        # completion for this SHA arrives. Cancelled jobs then never checkout and never list runs.
+        run: sleep 30
       - name: Check out the default branch only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           persist-credentials: false
-      - name: Set up reviewed Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '24.19.0'
-          package-manager-cache: false
+      # Prefer the runner toolcache's Node 24.19.0 (the version setup-node used to pin). Do not call
+      # actions/setup-node: it talks to api.github.com with GITHUB_TOKEN (node-versions manifest) and
+      # was 403ing during the 20:32–21:00 UTC burst after #1898.
+      - name: Use pinned Node 24 from the runner toolcache
+        run: |
+          set -euo pipefail
+          pinned=/opt/hostedtoolcache/node/24.19.0/x64
+          if [ -x "$pinned/bin/node" ]; then
+            echo "$pinned/bin" >> "$GITHUB_PATH"
+            echo "Using $($pinned/bin/node --version) from the runner toolcache"
+            exit 0
+          fi
+          node_dir=$(ls -d /opt/hostedtoolcache/node/24.*/x64 2>/dev/null | sort -V | tail -n 1 || true)
+          if [ -n "${node_dir:-}" ] && [ -x "$node_dir/bin/node" ]; then
+            echo "$node_dir/bin" >> "$GITHUB_PATH"
+            echo "Using $($node_dir/bin/node --version) from the runner toolcache (24.19.0 was not installed)"
+            exit 0
+          fi
+          echo "runner image is missing Node 24 in the toolcache" >&2
+          exit 1
       - name: Read the core API budget before this job
         env:
           GH_TOKEN: ${{ github.token }}
           BUDGET_LABEL: merge-gate-recheck
         run: node scripts/github-api-budget.mjs before
-      - name: Let a burst of completions settle
-        # The concurrency group above cancels the run still waiting here when a newer completion for this SHA
-        # arrives. A burst of N completions therefore reaches the listing once, not N times.
-        run: sleep 30
       - name: Rerun each merge gate that ended unsuccessfully for this commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -82,6 +103,12 @@ jobs:
           TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           TRIGGER_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           TRIGGER_NAME: ${{ github.event.workflow_run.name }}
+          # Associated PRs from the event. Empty is not proof the head moved; the script then lists runs.
+          # Never calls GET /commits/{sha}/pulls (that call 403ed the 20:32–21:00 UTC survivors).
+          PULLS_JSON: ${{ toJSON(github.event.workflow_run.pull_requests) }}
+          # Rate-limit waits for the listing and rerun (separate from the 30s settle). A 403/429 waits
+          # here, then fails closed when this budget runs out. Does not change the recheck plan.
+          MERGE_GATE_API_WAIT_SECONDS: '600'
         run: node scripts/merge-gate-recheck.mjs
       - name: Log the core API budget this job used
         if: always()

@@ -560,16 +560,6 @@ export const en: TranslationMap & {
     retry: "Retry",
     stylesFailed: "Styles failed to load, so the page may look broken.",
   },
-  communityInvite: {
-    title: "Pull up a chair.",
-    body: "There’s a place for you in the AI future. Join the Community on Reddit, Discord, and X.",
-    join: "Join",
-    follow: "Follow",
-    joinPlatform: "Join the Branch Agent community on {platform}",
-    followPlatform: "Follow Branch Agent on {platform}",
-    dismissForever: "Dismiss and don't show again",
-    dismissFailed: "Invitation dismissed, but your preference couldn't be saved.",
-  },
   updates: {
     adminRequired: "Administrator access is required to change update settings or start an update.",
     campaign: {
@@ -669,8 +659,7 @@ export const en: TranslationMap & {
     failureReasons: {
       dirty: "Commit or stash changes, then retry.",
       noUpstream: "Set an upstream branch, then retry.",
-      notGitInstall:
-        "Not a git checkout. Run `branch update` from the CLI for a global reinstall.",
+      notGitInstall: "Not a git checkout. Run `branch update` from the CLI for a global reinstall.",
       notBranchRoot:
         "Run the update from a Branch Agent checkout or use the CLI global reinstall path.",
       depsInstallFailed: "Dependency install failed. Fix the install error and retry.",
@@ -1815,7 +1804,7 @@ export const en: TranslationMap & {
     usage: "API usage and costs.",
     cron: "Scheduled tasks and recurring agent runs.",
     skills: "Manage your agent skills",
-    plugins: "Extend your Grove with tools",
+    plugins: "Packs of skills, servers and tools",
     skillWorkshop:
       "The skills your agent uses now, suggestions waiting for review, and past decisions.",
     devices: "Paired devices, pairing approvals, and exec bindings.",
@@ -2186,17 +2175,17 @@ export const en: TranslationMap & {
     workerDesktop: {},
   },
   aboutPage: {
+    title: "About Branch",
     productName: "Branch Agent",
-    tagline: "Your personal AI assistant, running on your own devices.",
-    waveHello: "Wave hello to Clawd",
-    linksLabel: "Community and resources",
-    linkWebsite: "Website",
-    linkDocs: "Docs",
-    linkGitHub: "GitHub",
-    linkDiscord: "Discord",
-    linkX: "X (Twitter)",
-    linkChangelog: "Changelog",
-    license: "© 2026 OpenClaw Foundation — MIT License.",
+    tagline: "Your own assistant, on your own computer.",
+    byline: "By KeepOak",
+    linksLabel: "Branch links",
+    linkWebsite: "keepoak.com",
+    linkDocs: "Handbook",
+    linkChangelog: "What’s new",
+    linkLicences: "Open-source licences",
+    license: "© 2026 KeepOak",
+    buildDetails: "Build details",
     artifactTitle: "Control UI",
     artifactSubtitle: "Identity embedded when this browser artifact was built.",
     artifactDetails: "Control UI build details",

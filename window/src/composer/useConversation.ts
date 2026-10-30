@@ -5,6 +5,7 @@ import { agentOf, errorText, list, rec, str, type Rec, type WindowEngine } from 
 import { readModels, type ModelChoice } from "./model";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { trunkDisplayName } from "../connect/trunk-name";
+import { retryNoKeyDefault } from "./no-key-default";
 
 export type Trunk = { id: string; name: string; defaultMode: string; theme: string; model: string };
 
@@ -20,6 +21,10 @@ export type Conversation = {
   modelsLoading: boolean;
   modelsError: string | null;
   error: string | null;
+  /** Plain words when a free local model could not be set up. Null unless a silent retry failed. */
+  noKeyError: string | null;
+  /** True unless a silent free-model retry is in flight. Setup itself is the interactive wizard. */
+  noKeySettled: boolean;
 };
 
 const EMPTY: Conversation = {
@@ -33,6 +38,8 @@ const EMPTY: Conversation = {
   modelsLoading: false,
   modelsError: null,
   error: null,
+  noKeyError: null,
+  noKeySettled: true,
 };
 
 /** No model set up: the engine names no default model, or none it names is connected (models.list has none usable). */
@@ -78,14 +85,37 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
     }
   }, [engine, key, draftAgentId]);
 
-  const readModelList = useCallback(async () => {
+  const readModelList = useCallback(async (opts?: { refresh?: boolean }) => {
     if (!engine || !key) return;
     setState((s) => ({ ...s, modelsLoading: true }));
     try {
-      const result = await engine.request("models.list", { sessionKey: key, includeDetails: true });
-      if (live.current === key) setState((s) => ({ ...s, models: readModels(result), modelsLoaded: true, modelsLoading: false, modelsError: null }));
+      const result = await engine.request("models.list", {
+        sessionKey: key,
+        includeDetails: true,
+        ...(opts?.refresh ? { refresh: true } : {}),
+      });
+      const models = readModels(result);
+      const available = models.some((m) => m.available);
+      if (live.current === key) {
+        setState((s) => ({
+          ...s,
+          models,
+          modelsLoaded: true,
+          modelsLoading: false,
+          modelsError: null,
+          ...(available ? { noKeyError: null, noKeySettled: true } : {}),
+        }));
+      }
     } catch (error) {
-      if (live.current === key) setState((s) => ({ ...s, modelsLoading: false, modelsError: errorText(error) }));
+      if (live.current === key) {
+        setState((s) => (
+          // A failed refresh must keep the last good catalog. Writing modelsError here makes
+          // hasNoModel false and unmounts FreeModelSetup, which cancels the ask-before-download wizard.
+          s.modelsLoaded
+            ? { ...s, modelsLoading: false }
+            : { ...s, modelsLoading: false, modelsError: errorText(error) }
+        ));
+      }
     }
   }, [engine, key]);
 
@@ -128,17 +158,50 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
     return () => clearTimeout(retry);
   }, [load, state.error, state.modelsError, retryGeneration, draftAgentId, engine?.agentId]);
 
+  const retryNoKey = useCallback(async () => {
+    if (!engine || !key) return;
+    setState((s) => ({ ...s, noKeyError: null, noKeySettled: false }));
+    const result = await retryNoKeyDefault(engine);
+    if (live.current !== key) return;
+    if (result.ok) {
+      setState((s) => ({ ...s, noKeyError: null, noKeySettled: true }));
+      await readModelList();
+    } else {
+      setState((s) => ({ ...s, noKeyError: result.error, noKeySettled: true }));
+    }
+  }, [engine, key, readModelList]);
+
   useEffect(() => {
     if (!engine || !key) return;
-    return engine.onEvent(({ event, payload }) => {
+    const refreshModels = () => {
+      void readModelList({ refresh: true });
+    };
+    const offEvent = engine.onEvent(({ event, payload }) => {
       if ((event === "sessions.changed" && touches(payload, key)) || (event === "chat" && str(rec(payload).state) === "final")) {
         readRow().catch((error: unknown) => setState((s) => ({ ...s, error: errorText(error) })));
       }
       // A saved config (setup's "How much it may do", Settings › Permissions) changes what each Trunk's default mode resolves
       // to. The engine announces every committed write as config.changed; the chip reads the Trunk list, so it re-reads it here.
       if (event === "config.changed" || event === "agents.changed") readTrunkList().catch(() => undefined);
+      // Same events the engine UI uses to invalidate models.list: a signed-in account or a config reload changes the
+      // catalog. Usage-only metadata sets modelCatalogChanged false; skip those the way model-catalog-cache does.
+      if (event === "config.changed" || event === "agents.changed") refreshModels();
+      // A catalog change is already rebuilt on the engine side, so read it without forcing. A forced refresh announces
+      // itself as chat.metadata.changed again, and forcing here would loop.
+      if (event === "chat.metadata.changed" && rec(payload).modelCatalogChanged !== false) void readModelList();
     });
-  }, [engine, key, readRow, readTrunkList]);
+    const onFocus = () => {
+      if (typeof document !== "undefined" && document.visibilityState && document.visibilityState !== "visible") return;
+      refreshModels();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      offEvent();
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [engine, key, readRow, readTrunkList, readModelList]);
 
   /** sessions.patch on this conversation, then the row read back. Returns the engine's error words, or null. */
   const patch = useCallback(
@@ -166,5 +229,5 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
 
   const trunkId = draftAgentId ?? engine?.agentId ?? agentOf(key) ?? state.defaultTrunkId;
   const trunk = state.trunks.find((t) => t.id === trunkId);
-  return { ...state, key, trunk, trunkId, patch, reload: load, readModelList };
+  return { ...state, key, trunk, trunkId, patch, reload: load, readModelList, retryNoKey };
 }

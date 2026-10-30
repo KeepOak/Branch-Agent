@@ -119,7 +119,8 @@ Bundled components (credits folded in from the former THIRD_PARTY_NOTICES.md)
 - devicon (engine/ui/public/cloud-provider-icons/), Copyright (c) 2015 konpa,
   MIT License. third_party/devicon/LICENSE.
 
-- Simple Icons (engine/ui/public/cloud-provider-icons/), CC0 1.0 Universal.
+- Simple Icons (engine/ui/public/cloud-provider-icons/ and the app logos in
+  window/src/places/customize/app-logos.tsx), CC0 1.0 Universal.
   third_party/simple-icons/LICENSE.
 - Micro 5 font (window/src/places/office/pixel/ font assets), Copyright 2023 The
   Soft Type Project Authors, SIL Open Font License 1.1. Upstream

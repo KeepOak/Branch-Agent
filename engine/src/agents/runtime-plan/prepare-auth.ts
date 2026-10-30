@@ -12,6 +12,7 @@ import type {
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
 import { isPendingOAuthRefreshFence } from "../auth-profiles/oauth-refresh-marker.js";
 import {
+  type AuthProfileEligibilityReasonCode,
   prependAuthProfilePin,
   resolveAuthProfileEligibility,
   resolveAuthProfileOrderWithMetadata,
@@ -202,6 +203,27 @@ function resolveProfile(
   };
 }
 
+const PIN_PROVIDER_MISMATCH_REASONS = new Set<AuthProfileEligibilityReasonCode>([
+  "profile_missing",
+  "provider_mismatch",
+  "mode_mismatch",
+]);
+
+/** Pin-specific copy: missing/wrong-provider stays "not configured"; expiry tells the person to reconnect. */
+function describeIneligibleUserPinnedAuthProfile(params: {
+  profileId: string;
+  provider: string;
+  reasonCode?: AuthProfileEligibilityReasonCode;
+}): string {
+  if (params.reasonCode === "expired") {
+    return `Auth profile "${params.profileId}" expired. Sign in again to reconnect it.`;
+  }
+  if (!params.reasonCode || PIN_PROVIDER_MISMATCH_REASONS.has(params.reasonCode)) {
+    return `Auth profile "${params.profileId}" is not configured for ${params.provider}.`;
+  }
+  return `Auth profile "${params.profileId}" is unavailable. Sign in again to reconnect it or use another sign-in.`;
+}
+
 /** Applies terminal provider-entry credential policy before route selection. */
 function resolvePreparedProviderEntryApiKeyProfileReference(
   params: PrepareAgentRuntimeAuthPlanParams & { store: AuthProfileStore },
@@ -261,6 +283,8 @@ export function prepareAgentRuntimeAuth(
   }
   const store = params.authProfileStore;
   const authProfileSelectionProvider = harnessOwnsOpenAIAuth ? "openai" : params.provider;
+  let skipIneligibleUserPin = false;
+  let ineligibleUserPinReason: AuthProfileEligibilityReasonCode | undefined;
   if (userPinnedProfileId) {
     const eligibility = store
       ? resolveAuthProfileEligibility({
@@ -271,7 +295,7 @@ export function prepareAgentRuntimeAuth(
           profileId: userPinnedProfileId,
           includePendingOAuthRefresh: true,
         })
-      : { eligible: false };
+      : { eligible: false, reasonCode: "profile_missing" as const };
     if (!eligibility.eligible) {
       if (
         !store?.profiles[userPinnedProfileId] &&
@@ -283,11 +307,25 @@ export function prepareAgentRuntimeAuth(
           modelId: params.modelId,
         });
       }
-      throw new Error(
-        `Auth profile "${userPinnedProfileId}" is not configured for ${authProfileSelectionProvider}.`,
-      );
+      ineligibleUserPinReason = eligibility.reasonCode;
+      // A pin is a retry preference. Missing and wrong-provider pins stay errors;
+      // an expired or fenced sign-in is skipped so the ordered siblings can run.
+      if (
+        PIN_PROVIDER_MISMATCH_REASONS.has(eligibility.reasonCode) ||
+        params.allowAuthProfileFallback === false
+      ) {
+        throw new Error(
+          describeIneligibleUserPinnedAuthProfile({
+            profileId: userPinnedProfileId,
+            provider: authProfileSelectionProvider,
+            reasonCode: eligibility.reasonCode,
+          }),
+        );
+      }
+      skipIneligibleUserPin = true;
     }
   }
+  const activeUserPinnedProfileId = skipIneligibleUserPin ? undefined : userPinnedProfileId;
 
   const configuredProvider = resolveMergedModelProviderConfig(params.config, params.provider);
   const configuredAuthMode =
@@ -353,7 +391,10 @@ export function prepareAgentRuntimeAuth(
           readinessMode: "read-only",
           includePendingOAuthRefresh: true,
         });
-  const pinnedAutomaticOrder = prependAuthProfilePin(resolvedAutomaticOrder, userPinnedProfileId);
+  const pinnedAutomaticOrder = prependAuthProfilePin(
+    resolvedAutomaticOrder,
+    activeUserPinnedProfileId,
+  );
   // With subscriptionsOnly, stored API-key sign-ins are not automatic candidates. A user pin is an
   // explicit choice and stays, as does any config-bound or keyless profile.
   const automaticOrderResolution =
@@ -470,14 +511,29 @@ export function prepareAgentRuntimeAuth(
   const sourcePlan = buildProviderModelAuthSourcePlan({
     ...(ownership ? { ownership } : {}),
     profiles: resolvedOrderedProfileIds.map((profileId) => resolveProfile(params, profileId)),
-    ...(userPinnedProfileId || providerPreferredProfileId
-      ? { preferredProfileId: userPinnedProfileId ?? providerPreferredProfileId }
+    ...(activeUserPinnedProfileId || providerPreferredProfileId
+      ? { preferredProfileId: activeUserPinnedProfileId ?? providerPreferredProfileId }
       : {}),
     explicitOrder: automaticOrderResolution.hasExplicitOrder,
-    preserveProfilePriority: Boolean(userPinnedProfileId),
+    preserveProfilePriority: Boolean(activeUserPinnedProfileId),
     ...(fallbackDirectSource ? { fallback: fallbackDirectSource } : {}),
     allowCooldown: params.allowTransientCooldownProbe,
   });
+  if (
+    skipIneligibleUserPin &&
+    userPinnedProfileId &&
+    sourcePlan.kind === "automatic" &&
+    (sourcePlan.profiles.kind === "empty" || sourcePlan.profiles.kind === "all-unavailable") &&
+    !sourcePlan.fallback
+  ) {
+    throw new Error(
+      describeIneligibleUserPinnedAuthProfile({
+        profileId: userPinnedProfileId,
+        provider: authProfileSelectionProvider,
+        reasonCode: ineligibleUserPinReason,
+      }),
+    );
+  }
   const pinnedSource =
     sourcePlan.kind === "required"
       ? sourcePlan.source

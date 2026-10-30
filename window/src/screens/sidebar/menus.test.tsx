@@ -59,7 +59,7 @@ async function render(methods = ALL) {
   await act(async () => root.render(<CapabilityProvider engine={engine}><Sidebar {...props} /></CapabilityProvider>));
   await act(async () => undefined);
   await act(async () => undefined);
-  return { request, onPlace: props.onPlace };
+  return { request, onPlace: props.onPlace, onOpen: props.onOpen };
 }
 const click = async (node: Element | null) => act(async () => { (node as HTMLElement).click(); });
 const key = async (node: Element | null, init: KeyboardEventInit) => act(async () => { (node as HTMLElement).dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init })); });
@@ -71,13 +71,26 @@ const ledgerFace = () => host.querySelector<HTMLButtonElement>('.r1sb-pins [data
 const calls = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter(([name]) => name === method).map(([, params]) => params);
 
 describe("R1 sidebar right-click menus", () => {
+  it.each(["regular", "advanced"] as const)("hides unfinished Coming lines from the Trunk ••• menu at %s (#1874)", async (level) => {
+    localStorage.setItem("branch.level", level);
+    await render();
+    await click(host.querySelector('[aria-label="More for Scout"]'));
+    const menu = document.querySelector(".g-menu")!;
+    expect(menu.textContent).not.toMatch(/later update|coming/i);
+    for (const label of ["Hide from Involving me", "Open folder in", "Assign to…", "Icon and colour", "Archive", "Pause"]) {
+      expect(rowLabels(), label).not.toContain(label);
+    }
+    await click(entry("Copy"));
+    expect(document.querySelector(".g-menu")!.textContent).not.toMatch(/later update|coming/i);
+  });
+
   it("opens the preview's row menu on a Trunk row, exactly these items in this order", async () => {
     await render();
     await act(async () => { scoutRow().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); });
     expect(tileLabels()).toEqual([]);
-    expect(rowLabels()).toEqual(["Open", "Mark as unread", "Pin to top", "Move to group…", "Rename", "Open in its own window", "Copy into a new conversation", "Copy", "Snooze", "Mark done", "Archive", "Move to project", "Tidy up…", "New conversation with Scout", "What can Scout do?", "Pause", "Edit Trunk…", "Delete…", "Remove…"]);
+    expect(rowLabels()).toEqual(["Open", "Mark as unread", "Pin to top", "Move to group…", "Rename", "Open in its own window", "Copy into a new conversation", "Copy", "Snooze", "Mark done", "Move to project", "Tidy up…", "New conversation with Scout", "What can Scout do?", "Edit Trunk…", "Delete…", "Remove…"]);
     await click(entry("Copy"));
-    expect(rowLabels()).toEqual(["Copy", "Link to this conversation", "Link with a preview card", "Conversation as Markdown", "Conversation ID"]);
+    expect(rowLabels()).toEqual(["Copy", "Link to this conversation", "Conversation as Markdown", "Conversation ID"]);
     expect(undeclaredControls(document)).toEqual([]);
   });
 
@@ -85,7 +98,7 @@ describe("R1 sidebar right-click menus", () => {
     await render();
     await act(async () => { ledgerFace().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); });
     expect(tileLabels()).toEqual([]);
-    expect(rowLabels()).toEqual(["Open", "Mark as unread", "Unpin", "Move to group…", "Rename", "Open in its own window", "Copy into a new conversation", "Copy", "Snooze", "Mark done", "Archive", "Move to project", "Tidy up…", "New conversation with Ledger", "What can Ledger do?", "Pause", "Edit Trunk…", "Replace with a different Trunk…", "Delete…", "Remove…"]);
+    expect(rowLabels()).toEqual(["Open", "Mark as unread", "Unpin", "Move to group…", "Rename", "Open in its own window", "Copy into a new conversation", "Copy", "Snooze", "Mark done", "Move to project", "Tidy up…", "New conversation with Ledger", "What can Ledger do?", "Edit Trunk…", "Replace with a different Trunk…", "Delete…", "Remove…"]);
   });
 
   it("runs the existing actions: Pin, Unread, Copy › Conversation ID and Rename", async () => {
@@ -101,13 +114,29 @@ describe("R1 sidebar right-click menus", () => {
     await click(entry("Conversation ID"));
     expect(writeText).toHaveBeenCalledWith("agent:scout:main");
     await click(host.querySelector('[aria-label="More for Scout"]'));
-    // A Trunk's Rename is its Edit Trunk page (the name lives on the Trunk, not the conversation).
+    // A Trunk's Rename is a name box over the list (the name lives on the Trunk): never a trip to People (walkthrough B-093, B-094).
     const opened = vi.fn();
     window.addEventListener("branch:open-trunk", opened);
     await click(entry("Rename"));
     window.removeEventListener("branch:open-trunk", opened);
-    expect(onPlace).toHaveBeenCalledWith("people");
-    expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({ agentId: "scout", view: "edit" });
+    expect(onPlace).not.toHaveBeenCalled();
+    expect(opened).not.toHaveBeenCalled();
+    const name = document.querySelector<HTMLInputElement>('[data-testid="rename"] input')!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    await act(async () => { setValue.call(name, "Scouty"); name.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click([...document.querySelectorAll<HTMLButtonElement>('[data-testid="rename"] button')].find(button => button.textContent === "Rename")!);
+    expect(calls(request, "agents.update")).toEqual([{ agentId: "scout", name: "Scouty" }]);
+    expect(document.querySelector('[data-testid="rename"]')).toBeNull();
+  });
+
+  it("New conversation with a Trunk makes a new, empty thread under it and opens it (walkthrough B-091)", async () => {
+    const { request, onOpen } = await render();
+    request.mockImplementation(async (method: string) => method === "sessions.create" ? { key: "agent:scout:dashboard:4f1c" } : DATA[method] ?? {});
+    await click(host.querySelector('[aria-label="More for Scout"]'));
+    await click(entry("New conversation with Scout"));
+    await act(async () => undefined);
+    expect(calls(request, "sessions.create")).toEqual([{ agentId: "scout", parentSessionKey: "agent:scout:main" }]);
+    expect(onOpen).toHaveBeenCalledWith("agent:scout:dashboard:4f1c");
   });
 
   it("asks before Delete conversation… deletes, and deletes only on yes", async () => {

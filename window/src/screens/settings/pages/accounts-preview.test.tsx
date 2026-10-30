@@ -53,7 +53,8 @@ it("draws the preview's cards at each level, Usage by account and Linked account
   expect(cards()).toEqual(["Usage by account", "Linked accounts", "Order Branch uses them in", "When one runs out", "Your own accounts", "Coding apps on this computer"]);
   await remount();
   await mount(engine, "advanced");
-  expect(cards()).toEqual(["Usage by account", "Linked accounts", "Order Branch uses them in", "When one runs out", "Your own accounts", "Coding apps on this computer", "Terms"]);
+  // Terms waits for a later update: it shows with every Coming row, at Technical (Private #1093 item 4).
+  expect(cards()).toEqual(["Usage by account", "Linked accounts", "Order Branch uses them in", "When one runs out", "Your own accounts", "Coding apps on this computer"]);
   await remount();
   await mount(engine, "technical");
   expect(cards()).toEqual(CARDS);
@@ -68,15 +69,19 @@ it("draws Usage by account here: what Branch spent, each account, and the previe
   const usageRows = ROWS.filter((r) => r.page === "accounts" && r.card === "Usage by account" && !r.bare).map((r) => r.label);
   expect(usageRows).toEqual(["The ring bottom right", "Offer to save progress at 95%", "Asking a service what is left", "Show usage in the tray"]);
   expect(labels("Usage by account")).toEqual(["The ring bottom right", "Offer to save progress at 95%", "Show usage in the tray"]);
-  expect(labels("Linked accounts")).toEqual(["GitHub", "Gmail", "Google Calendar", "Google Drive"]);
+  // Gmail, Google Calendar, Google Drive and keepoak.com wait for a later update (their Link and Connect buttons are
+  // Coming): Regular and Advanced show only GitHub, which works (Private #1093).
+  expect(labels("Linked accounts")).toEqual(["GitHub"]);
   // The GitHub access expiry is a value on the GitHub row, as the preview shows it, not a row of its own.
   expect(host.querySelector('[data-row="accounts.github.expires"]')).toBeNull();
-  expect(labels("Your own accounts")).toContain("Your keepoak.com account");
+  expect(labels("Your own accounts")).not.toContain("Your keepoak.com account");
 });
 
 it("puts the finer account rows in Your own accounts at Advanced and the sign-in rows at Technical", async () => {
   await mount(engineOf().engine, "technical");
   expect(labels("Usage by account")).toContain("Asking a service what is left");
+  expect(labels("Linked accounts")).toEqual(expect.arrayContaining(["GitHub", "Gmail", "Google Calendar", "Google Drive"]));
+  expect(labels("Your own accounts")).toContain("Your keepoak.com account");
   const own = labels("Your own accounts");
   for (const label of ["Which account each Trunk uses", "Helpers keep their account", "Pick by what the task needs", "Fallback keys", "Resting now", "Which sign-in each request used", "Organisation", "A customer’s ChatGPT plan on a KeepOak computer"]) expect(own).toContain(label);
   const sources = labels("Where each sign-in comes from");
@@ -84,12 +89,26 @@ it("puts the finer account rows in Your own accounts at Advanced and the sign-in
     "Keep service settings in step on my devices", "Use a model from a hub for one run", "Region", "Install a service’s package when needed", "Each account keeps its own folder", "Point your coding apps at Branch"]) expect(sources).toContain(label);
 });
 
-it("sits on Regular's Usage page as its first page, with the other Usage pages under Advanced", async () => {
-  expect(regularHub("accounts")?.title).toBe("Usage");
+it("sits on Regular's Accounts & usage page as its first page, with the other pages under it in the nav", async () => {
+  expect(regularHub("accounts")?.title).toBe("Accounts & usage");
   expect(regularHub("accounts")?.pages[0].id).toBe("accounts");
   const { engine } = engineOf();
   await mount(engine, "regular");
-  expect(host.querySelector(".r1s-nav[aria-current=page]")?.getAttribute("data-hub")).toBe("Usage");
+  expect(host.querySelector(".r1s-nav[aria-current=page]")?.getAttribute("data-hub")).toBe("Accounts & usage");
   expect(host.querySelector(".r1s-head h1")?.textContent).toBe(PAGES.accounts.title);
   expect([...host.querySelectorAll<HTMLElement>(".r1s-advanced [data-page]")].map((b) => b.dataset.page)).toEqual(regularHub("accounts")!.pages.slice(1).map((p) => p.id));
+});
+
+it("lights the page that opened and draws no list of other pages in its content (#1769 point 2)", async () => {
+  const { engine } = engineOf();
+  await mount(engine, "regular");
+  expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Accounts & usage");
+  // The nav row lit is named for the page that opened, not a different word.
+  expect(host.querySelector(".r1s-nav[aria-current=page]")?.textContent).toBe("Accounts & usage");
+  // The other pages (Models, Privacy & data, Sign-ins & keys) are nav rows under it, not a list in the page.
+  const page = host.querySelector(".r1s-page")!;
+  expect(page.querySelector(".r1s-advanced")).toBeNull();
+  for (const name of ["Models", "Privacy & data", "Sign-ins & keys"]) expect([...page.querySelectorAll("button")].map((b) => b.textContent)).not.toContain(name);
+  const also = host.querySelector(".r1s-side .r1s-list .r1s-advanced");
+  expect([...(also?.querySelectorAll<HTMLElement>("[data-page]") ?? [])].map((b) => b.textContent)).toEqual(["Models", "Privacy & data", "Sign-ins & keys"]);
 });

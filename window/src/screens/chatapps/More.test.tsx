@@ -212,8 +212,14 @@ it("#1049: draws the preview's Your phone tile after the app groups, and Pair a 
   expect(document.querySelector('[data-testid="pair"]')).not.toBeNull();
 });
 
-it("drops the per-tile set-up times, and folds the apps that don't work yet into one More chat apps row", async () => {
-  const { host } = await render("regular");
+it("drops the per-tile set-up times, and folds the apps that don't work yet into one More chat apps row at Technical", async () => {
+  // Regular and Advanced show only what works today: no fold of catalogue-only apps (Private #1093 item 4).
+  for (const level of ["regular", "advanced"] as const) {
+    const shown = await render(level);
+    expect(shown.host.querySelector("[data-later-rows]"), level).toBeNull();
+    await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = "";
+  }
+  const { host } = await render("technical");
   const cards = [...host.querySelectorAll<HTMLElement>(".r1-ca-card")];
   expect(cards.some((c) => /About \d+ minutes?/.test(c.textContent ?? ""))).toBe(false);
   const fold = host.querySelector<HTMLElement>("[data-later-rows]");

@@ -8,10 +8,13 @@ import { Jobs } from "./jobs";
 import { Icon } from "../../shell/icons";
 import { openNewGroupChat } from "../../rooms/NewGroupChat";
 import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
+import { menuAtLevel } from "../../shell/menu-level";
 import { notify } from "../../shell/notify";
 import { whoItKnowsItems } from "../../shell/who-it-knows-menu";
+import { Coming } from "../../glass/coming";
 import { shows } from "../../places-nav/level";
 import type { PlaceProps } from "../../places-nav/PlaceFrame";
+import { EXAMPLES_READY_EVENT, EXAMPLES_REASON, examplesConversationKey, examplesHint, startTryExamples, TRY_EXAMPLES_METHOD, useTryExamples } from "../../screens/onboarding/try-examples";
 import type { useResource, Trunks } from "../library/data";
 import { Status } from "../library/ui";
 import { RequestGeneration } from "../library/data";
@@ -70,6 +73,7 @@ function TrunkRowView({ row, roster, open, menu, knows, settings }: { row: Trunk
 export function TrunksTab(props: Props) {
   const { engine, level, trunks, openSettings } = props;
   const roster = trunks.data ? readRoster(trunks.data) : null;
+  const examples = useTryExamples();
   const [open, setOpen] = useState<Open>(null);
   const [menu, setMenu] = useState<{ at: MenuAnchor; row: TrunkRow } | null>(null);
   const [known, setKnown] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
@@ -126,7 +130,24 @@ export function TrunksTab(props: Props) {
     <div className="tk-toolbar">
       <button type="button" className="btn pri" disabled={busy || !roster || !write} title={write ? undefined : WRITE_WHY} onClick={() => setAdding(true)}><Icon name="plus" small />{busy ? "Making…" : "A new Trunk"}</button>
       <button type="button" className="btn" onClick={() => openNewGroupChat()}><Icon name="users" small />New group chat</button>
+      {/* Coming (the engine lacks the call) shows only at Technical, as every Coming control does (Private #1093 item 7b). */}
+      <Coming engine={engine} need={TRY_EXAMPLES_METHOD} reason={EXAMPLES_REASON} where="Try it with examples" hidden={!shows(level, "technical")}>
+        <button type="button" className="btn" disabled={examples.status === "busy"} onClick={() => startTryExamples((method, params) => engine.request(method, params))}><Icon name="spark" small />{examples.status === "busy" ? "Loading examples…" : "Try it with examples"}</button>
+      </Coming>
     </div>
+    {examples.status === "error" ? <p role="alert" className="tk-error">{examples.message}</p> : null}
+    {examples.status === "ready" ? (
+      <div className="tk-examples" aria-label="Example Trunks">
+        <p className="tk-hint">{examplesHint(examples.examples.length)}</p>
+        {examples.examples.length ? <div className="tk-list">{examples.examples.map((item) => (
+          <div className="tk-example" key={item.id}><span className="tk-grow"><b>{item.name}</b>{item.pitch ? <small>{item.pitch}</small> : null}</span></div>
+        ))}</div> : null}
+        {roster?.defaultId ? <button type="button" className="btn sm" data-local="" onClick={() => {
+          const sessionKey = examplesConversationKey(roster.defaultId, roster.mainKey);
+          if (sessionKey) window.dispatchEvent(new CustomEvent(EXAMPLES_READY_EVENT, { detail: { sessionKey } }));
+        }}>Open the conversation</button> : null}
+      </div>
+    ) : null}
     <Status {...trunks} />
     {error && !adding && <p role="alert" className="tk-error">{error}</p>}
     {roster && <div className="tk-list">{roster.agents.map((row) => <TrunkRowView key={row.id} row={row} roster={roster} open={setOpen} menu={showMenu} knows={(e, trunk) => void showKnown(e, trunk)} settings={Boolean(props.settings)} />)}</div>}
@@ -139,7 +160,7 @@ export function TrunksTab(props: Props) {
       </div>
     ) : <Jobs engine={engine} reload={trunks.reload} />}
     {shows(level, "technical") && <TrunkDefaults engine={engine} heading={!props.settings} />}
-    {menu && roster && <Menu at={menu.at} label={`${menu.row.name} menu`} onClose={() => setMenu(null)} items={props.settings ? settingsMenu(props, roster, menu.row, setOpen, setError, () => void knownAt(menu.at, menu.row)) : rowMenu(props, roster, menu.row, setOpen, setError)} />}
+    {menu && roster && <Menu at={menu.at} label={`${menu.row.name} menu`} onClose={() => setMenu(null)} items={menuAtLevel(props.settings ? settingsMenu(props, roster, menu.row, setOpen, setError, () => void knownAt(menu.at, menu.row)) : rowMenu(props, roster, menu.row, setOpen, setError), shows(level, "technical"), Object.values(TRUNK_MENU_COMING))} />}
     {known && <Menu at={known.at} label="Who it knows" testid="who-it-knows" onClose={() => setKnown(null)} items={known.items} />}
     {open?.kind === "profile" && <TrunkProfile engine={engine} agentId={open.id} level={level} openSettings={openSettings} openPlace={props.openPlace} openConversation={props.openConversation} onClose={() => { setOpen(null); trunks.reload(); }} />}
     {open?.kind === "edit" && <TrunkEditor engine={engine} agentId={open.id} level={level} openSettings={openSettings} onClose={() => setOpen(null)} onSaved={trunks.reload} />}

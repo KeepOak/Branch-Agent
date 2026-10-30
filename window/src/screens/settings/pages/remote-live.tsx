@@ -10,6 +10,8 @@ import { AUTH, COLORS, DEFAULT_PORT, ago, channelNames, localAddress, pct, risky
 import { Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { copyAndSay } from "../../../shell/clipboard";
+import { plainError, PLAIN_FAILURE } from "../../../shell/plain-error";
 import { SCRIPT_CODE } from "./remote";
 
 const Line = ({ children, bad }: { children: ReactNode; bad?: boolean }) => <small className={"r1s-msg g-label" + (bad ? " r1s-bad" : "")} role={bad ? "status" : undefined} data-lines>{children}</small>;
@@ -62,6 +64,18 @@ export function BrowserPage({ engine, row }: SlotControlProps) {
   </>;
 }
 
+/** "The gateway isn’t answering." and what plainError() makes of the engine's words (Private #1089): at Regular a plain
+ *  next step, never the raw text (ECONNREFUSED, an address, a stack); Advanced and Technical keep the exact words. A
+ *  leading "Error:" goes first, so plainError() never keeps it as a lead of its own. useLive already ran errorText →
+ *  plainError, so `error` may already be plain; normalize a leftover "Lead: plain" colon to a period. */
+function notAnswering(error: string): string {
+  const lead = "The gateway isn’t answering";
+  const body = error.replace(/^\s*(?:Uncaught\s+)?Error:\s*/, "");
+  let said = plainError(`${lead}: ${body}`);
+  if (said.startsWith(`${lead}: `)) said = `${lead}. ${said.slice(lead.length + 2)}`;
+  return said === `${lead}. ${PLAIN_FAILURE}` ? `${lead}. Try again in a moment.` : said;
+}
+
 /** Lately: the gateway's state, when it started, its last health check and the connected apps. */
 export function Lately({ engine, row }: SlotControlProps) {
   const health = useLive<RecordValue>(engine, "health", { probe: false }, ["health"]);
@@ -76,7 +90,7 @@ export function Lately({ engine, row }: SlotControlProps) {
   return (
     <Needs engine={engine} need={["health", "system.info"]} where={row.label ?? ""}>
       <div className="r1s-own-ctl">
-        {health.error ? <Line bad>{`The gateway isn’t answering. ${health.error}`}</Line>
+        {health.error ? <Line bad>{notAnswering(health.error)}</Line>
           : h.ok || h.ts ? <Line>{`On.${up ? ` Up ${up}.` : ""}${chats.length ? ` ${chats.join(", ")} keep${chats.length === 1 ? "s" : ""} working when the window is closed.` : ""}`}</Line> : null}
         <ul className="r1s-items">
           {started ? <li className="r1s-item"><span className="r1s-item-t g-label">Started</span><small className="g-label">{when(started)}</small></li> : null}
@@ -205,6 +219,6 @@ export function ScriptCode({ row }: SlotControlProps) {
   const [copied, setCopied] = useState(false);
   return <span className="r1s-own-ctl" data-local="">
     <code className="r1s-val">{code}</code>
-    <Btn onClick={() => void navigator.clipboard?.writeText(code).then(() => setCopied(true), () => undefined)}>{copied ? "Copied" : "Copy"}</Btn>
+    <Btn onClick={() => void copyAndSay(code).then(setCopied)}>{copied ? "Copied" : "Copy"}</Btn>
   </span>;
 }

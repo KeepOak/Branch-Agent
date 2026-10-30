@@ -1,5 +1,18 @@
 // The library's own test double: real safe-area insets need a native layout pass.
 jest.mock('react-native-safe-area-context', () => require('react-native-safe-area-context/jest/mock').default);
+// expo-crypto's native module is missing in Jest, and the generated mock returns null from
+// getRandomValues. Pairing nonces and device keys need real random bytes.
+jest.mock('expo-crypto', () => {
+  const { randomBytes, randomFillSync, randomUUID } = require('node:crypto') as typeof import('node:crypto');
+  return {
+    getRandomBytes: (count: number) => new Uint8Array(randomBytes(count)),
+    getRandomValues: <T extends Uint8Array>(typedArray: T) => {
+      randomFillSync(typedArray);
+      return typedArray;
+    },
+    randomUUID: () => randomUUID(),
+  };
+});
 // expo-notifications registers for push tokens on import and has no native side in Jest (see the file).
 jest.mock('expo-notifications', () => require('./src/testing/expoNotificationsMock').expoNotificationsMock());
 jest.mock('expo-file-system/legacy', () => ({
@@ -13,6 +26,11 @@ jest.mock('expo-updates', () => ({
   checkForUpdateAsync: async () => ({ isAvailable: false }),
   fetchUpdateAsync: async () => ({ isNew: false }),
 }));
+// First-run is the pairing screen, which reads the camera permission. Jest has no camera.
+jest.mock('expo-camera', () => ({
+  CameraView: () => null,
+  useCameraPermissions: () => [{ granted: false, canAskAgain: true, status: 'undetermined' }, jest.fn()],
+}));
 // The composer imports these; Jest has no camera, library or document picker.
 jest.mock('expo-image-picker', () => ({
   launchCameraAsync: async () => ({ canceled: true, assets: [] }),
@@ -23,3 +41,8 @@ jest.mock('expo-image-picker', () => ({
 jest.mock('expo-document-picker', () => ({
   getDocumentAsync: async () => ({ canceled: true, assets: [] }),
 }));
+{
+  const Crypto = require('expo-crypto') as typeof import('expo-crypto');
+  const { setPairingRandomBytes } = require('./src/pairing/relayFrames') as typeof import('./src/pairing/relayFrames');
+  setPairingRandomBytes((count) => Crypto.getRandomBytes(count));
+}

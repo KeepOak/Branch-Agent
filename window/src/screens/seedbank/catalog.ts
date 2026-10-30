@@ -12,21 +12,28 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
 export type KindId = "agents" | "groves" | "graftsets" | "skills" | "mcp" | "plugins" | "clis" | "toolsets" | "looks" | "adapters";
-export type Kind = { id: KindId; label: string; one: string; coming?: string };
+/** `what` says in plain words what a kind's own Branch word means (seed, Grove, graft, adapter), for its chip and its section. */
+export type Kind = { id: KindId; label: string; one: string; coming?: string; what?: string };
+
+/** What a seed is, in plain words, beside ＋ Paste a seed (B-070: "seed" was never explained). */
+export const SEED_WHAT = "A seed is a short link or a .seed file that shares one thing from Seedbank.";
 
 /** The kind chips, exactly the preview's (preview.html mkKinds: All · Agents · … · Adapters). A kind with `coming` has no
  *  engine call yet. Features that are not Seedbank items are Coming rows in their own screens, never a kind here (#1049). */
 export const KINDS: readonly Kind[] = [
   { id: "agents", label: "Agents", one: "agent" },
-  { id: "groves", label: "Grove layouts", one: "Grove layout", coming: "Grove layouts arrive in Seedbank in a later update." },
-  { id: "graftsets", label: "Graft setups", one: "graft setup", coming: "Graft setups arrive in Seedbank in a later update." },
+  { id: "groves", label: "Grove layouts", one: "Grove layout", coming: "Grove layouts arrive in Seedbank in a later update.",
+    what: "A Grove layout is how your Grove office looks: rooms, desks, decor, pets placed and the scene. Never your agents or their chats." },
+  { id: "graftsets", label: "Graft setups", one: "graft setup", coming: "Graft setups arrive in Seedbank in a later update.",
+    what: "A graft setup is how an outside agent, such as Claude Code, connects to Branch: its connect line, with the token left out, and what it may reach." },
   { id: "skills", label: "Skills", one: "skill" },
   { id: "mcp", label: "Connectors", one: "connector" },
   { id: "plugins", label: "Plugins", one: "plugin" },
   { id: "clis", label: "Command-line tools", one: "command-line tool", coming: "Adding command-line tools from Seedbank comes in a later update." },
   { id: "toolsets", label: "Toolsets", one: "toolset", coming: "Toolsets arrive in Seedbank in a later update." },
   { id: "looks", label: "Themes & looks", one: "theme" },
-  { id: "adapters", label: "Adapters", one: "adapter", coming: "Adapters arrive after release." },
+  { id: "adapters", label: "Adapters", one: "adapter", coming: "Adapters arrive after release.",
+    what: "An adapter changes how one part of Branch behaves: swap how Telegram replies, or the whole window." },
 ];
 export const kindOf = (id: KindId): Kind => KINDS.find(kind => kind.id === id)!;
 

@@ -98,9 +98,14 @@ describe("R1 Settings › Learning & self-updates is a native R1 page with the p
     expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(regular.map(([title]) => title));
   });
 
-  it("shows all ten preview cards at Advanced, in order, with Classic's extra working rows listed", async () => {
+  it("shows the working cards at Advanced and all ten preview cards at Technical, in order, with Classic's extra working rows listed", async () => {
     await mount();
     await setLevel("Advanced");
+    // Four cards are all later-update rows: they show with every Coming row, at Technical (Private #1093 item 4).
+    const waiting = ["What it may fix by itself", "Keeping a change", "Extras fetched when first used", "Settings you can talk to"];
+    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS.filter((c) => !waiting.includes(c)));
+    expect(host.querySelector("[data-later-rows]")).toBeNull();
+    await setLevel("Technical");
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
     for (const [title, extra] of Object.entries(EXTRA)) for (const label of extra) expect(labels(card(title)), title).toContain(label);
     // The live rows come first; the Gardener later-update rows fold under their own line at the end of the card.

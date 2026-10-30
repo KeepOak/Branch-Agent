@@ -1,5 +1,6 @@
 // Settings nav and page structure, ported from the approved R1 preview (item 36: NAV and PG). Page ids are the new
 // ids; OLD_IDS sends the preview's and Classic's old ids to their new page so old deep links still land.
+import type { IconName } from "../../shell/icons";
 
 /** How much to show: 0 Regular, 1 Advanced, 2 Technical. */
 export type Level = 0 | 1 | 2;
@@ -34,13 +35,14 @@ export type PageId =
   | "features"
   | "developer";
 
-export type NavPage = { id: PageId; title: string; icon: string; minLevel?: Level };
+/** A page's nav row: its icon is the preview's (item 36 NAV). Your card has none: its row is your initial (MeButton). */
+export type NavPage = { id: PageId; title: string; icon?: IconName; minLevel?: Level };
 export type NavGroup = { title: string; pages: NavPage[] };
 
 /** The two rows above the groups. */
 export const TOP_PAGES: NavPage[] = [
-  { id: "card", title: "Your card", icon: "person" },
-  { id: "goto", title: "Go to", icon: "compass" },
+  { id: "card", title: "Your card" },
+  { id: "goto", title: "Go to", icon: "home" },
 ];
 /** Sub-line under Go to. */
 export const GOTO_SUB = "Overview, Canopy, Inbox…";
@@ -83,7 +85,8 @@ export const NAV: NavGroup[] = [
     { id: "history", title: "History & backups", icon: "retry" },
     { id: "learning", title: "Learning & self-updates", icon: "leaf" },
     { id: "updates", title: "Updates & about", icon: "up" },
-    { id: "features", title: "All features", icon: "star" },
+    // The atlas is mostly what Branch plans: it shows with everything else that is Coming, at Technical (rows.ts COMING_FROM).
+    { id: "features", title: "All features", icon: "star", minLevel: 2 },
     { id: "developer", title: "Developer", icon: "term", minLevel: 2 },
   ] },
 ];
@@ -99,7 +102,7 @@ export const PAGES: Record<PageId, PageSpec> = {
   notifications: { title: "Notifications", lede: "When Branch tells you something, and how.", cards: ["Tell me when…", "Quiet", "When work stalls", "Live activity", "Kinds of notice", "Sorting", "This PC", "Send events to a web address", "Web Push"] },
   who: { title: "Who uses Branch", lede: "The people who use Branch on this computer, and how they sign in.", cards: ["People", "Records", "Signing in to Branch"] },
   trunks: { title: "Trunks", lede: "Your Trunks, groups and grafted agents: make one the default, change it, package it or remove it.", cards: ["", "Defaults for every Trunk", "Trunks’ own databases"] },
-  instructions: { title: "Instructions & personality", lede: "What every Trunk knows about you, and how it writes.", cards: ["Just about you", "Project instructions", "Kits", "How replies are written", "Prompts behind quick actions", "What goes with every message", "Rules"] },
+  instructions: { title: "Instructions & personality", lede: "What every Trunk knows about you, and how it writes.", cards: ["", "Just about you", "Project instructions", "Kits", "How replies are written", "Prompts behind quick actions", "What goes with every message", "Rules"] },
   customize: { title: "Customize", lede: "Toolsets, connectors, skills, plugins, command-line tools, agents and prompts, for every Trunk or one.", cards: ["", "Saved prompts", "Tools and skills", "Skills", "Plugins", "Helpers and other agents", "What it can do", "Allow", "Connected agents", "Connect an agent", "Another Branch"] },
   seedbank: { title: "Seedbank", lede: "Agents, skills, connectors, plugins, command-line tools and toolsets shared by people who use Branch.", cards: [""] },
   memory: { title: "Memory & documents", lede: "What Trunks remember, what they read, and your Library.", cards: ["Memory", "Recall and memory files", "Documents it reads", "Library"] },
@@ -147,17 +150,18 @@ function pagesOf(...ids: PageId[]): NavPage[] {
   return ids.map((id) => BY_ID.get(id)!);
 }
 
-/** Regular's four pages. Every page except Developer lives in one of them.
- *  Developer stays on Technical, inside NAV's Branch group. The first page in a group is what that
- *  Regular page shows. The others stay reachable under an Advanced section on that page. */
+/** Regular's four pages. Every page except Developer and All features lives in one of them.
+ *  Developer and All features stay on Technical, inside NAV's Branch group. The first page in a group is what that
+ *  Regular page shows. The others stay reachable under an Also in list beside that page's nav row. The Usage page is
+ *  named for its first page, Accounts & usage, so the row lit is the page that opened (#1769 point 2). */
 export const REGULAR_GROUPS: NavGroup[] = [
   { title: "General", pages: pagesOf("general", "card", "goto", "appearance", "notifications", "who", "trunks", "instructions", "customize", "seedbank", "memory", "autos", "voice", "chatapps") },
   { title: "Computer", pages: pagesOf("devices", "browser", "coding", "remote", "permissions") },
-  { title: "Usage", pages: pagesOf("accounts", "models", "privacy", "signins") },
-  { title: "Updates", pages: pagesOf("updates", "history", "learning", "features") },
+  { title: "Accounts & usage", pages: pagesOf("accounts", "models", "privacy", "signins") },
+  { title: "Updates", pages: pagesOf("updates", "history", "learning") },
 ];
 
-/** The Regular page a settings page belongs to, or none (Developer). */
+/** The Regular page a settings page belongs to, or none (Developer, All features). */
 export function regularHub(id: PageId): NavGroup | undefined {
   return REGULAR_GROUPS.find((g) => g.pages.some((p) => p.id === id));
 }
@@ -172,7 +176,7 @@ export function navAt(level: Level): { top: NavPage[]; groups: NavGroup[] } {
 
 /** A page's nav entry. */
 export const navPage = (id: PageId): NavPage | undefined => ALL_PAGES.find((p) => p.id === id);
-/** Whether a page is in the nav at this level (Developer needs Technical). */
+/** Whether a page is in the nav at this level (Developer and All features need Technical). */
 export const pageShown = (id: PageId, level: Level): boolean => (navPage(id)?.minLevel ?? 0) <= level;
 
 /** The "How much to show" choices and the line under the control for each. */

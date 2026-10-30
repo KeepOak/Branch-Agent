@@ -1,6 +1,6 @@
 // Everything R1-05 shows outside the conversation that asks: the Lockdown notice under the header, the Live-Activity
 // drop while a conversation is on screen, and banners with Yes / No / Open elsewhere in the app. The conversation that
-// asks shows its own card (AskCard through the thread's renderApproval slot), so it is left out here.
+// asks shows its own card (AskCard in ChatView), so it is left out here.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { availability, requestOrComing } from "../../connect/capabilities";
@@ -10,9 +10,10 @@ import { Icon } from "../../shell/icons";
 import { LOCKDOWN_WHY } from "./AskCard";
 import { AskDrop } from "./AskDrop";
 import { Banners, type BannerItem } from "./Banners";
-import { RESOLVE_OF, type Reply } from "./model";
+import { askIsHere, RESOLVE_OF, type Reply } from "./model";
 import type { MoreBanners } from "./ProblemBanners";
 import { useAsks, useLockdown, type AskState } from "./useAsks";
+import { plainError } from "../../shell/plain-error";
 
 /** What useAsks returns: the live list of asks and the answer call. */
 export type AsksApi = { asks: AskState[]; waiting: AskState[]; answer: (id: string, reply: Reply) => Promise<void> };
@@ -29,7 +30,7 @@ export function LockNotice({ onTurnOff }: { onTurnOff: () => void }) {
     <div className="r1-lock" role="status" data-testid="r1-lock">
       <Icon name="shield" /><span>{error ?? LOCKDOWN_LINE}</span>
       <Coming need="config.patch" reason="Turning Lockdown off here comes in a later update.">
-        <button type="button" onClick={() => { setError(null); Promise.resolve(onTurnOff()).catch((e: unknown) => setError(`Lockdown is still on: ${e instanceof Error ? e.message : String(e)}`)); }}>Turn it off</button>
+        <button type="button" onClick={() => { setError(null); Promise.resolve(onTurnOff()).catch((e: unknown) => setError(plainError(`Lockdown is still on: ${e instanceof Error ? e.message : String(e)}`))); }}>Turn it off</button>
       </Coming>
     </div>,
     host,
@@ -78,7 +79,7 @@ export function ApprovalsLayer({ engine, ready = true, sessionKey, view, nameOf:
   const lock = useLockdown(engine, ready);
   const own = useAsks(ready && !approvals ? engine : null, lock.on);
   const { waiting, answer } = approvals ?? own;
-  const away = waiting.filter((s) => !sessionKey || s.ask.sessionKey !== sessionKey);
+  const away = waiting.filter((s) => !askIsHere(s.ask, sessionKey));
   const looked = useTrunkNames(ready ? engine : null, !given && away.length > 0);
   const nameOf = given ?? looked;
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());

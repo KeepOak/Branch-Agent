@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Go to and All features follow the approved preview (#1049, section D Go to / All features): Go to draws the preview's
-// line and its twelve tiles, each with its subtitle (Harvest, Workshop and This computer are Coming, so they show only from
-// Advanced), with the Inbox and People badges; All features draws its "Everything Branch does…" line above the atlas.
+// line and its twelve tiles, each with its subtitle (Harvest, Workshop and This computer are Coming, so they show only at
+// Technical, Private #1093 item 4), with the Inbox and People badges; All features draws its "Everything Branch does…" line above the atlas.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -27,8 +27,8 @@ const drawGoTo = async (level: string, go = vi.fn()) => {
   return [...host.querySelectorAll<HTMLElement>(".r1s-tile")];
 };
 
-it("draws Go to at Regular with only the places that work today: no Coming tiles", async () => {
-  const tiles = await drawGoTo("regular");
+it.each(["regular", "advanced"])("draws Go to at %s with only the places that work today: no Coming tiles", async (level) => {
+  const tiles = await drawGoTo(level);
   expect(host.querySelector(".r1s-lede")?.textContent).toBe(GOTO_LEDE);
   expect(tiles.map((t) => t.querySelector("b")?.firstChild?.textContent)).toEqual(["Overview", "Canopy", "Inbox", "Automations", "Library", "People", "Customize", "Grove", "Seedbank"]);
   for (const id of COMING) expect(host.querySelector(`[data-tile="${id}"]`), id).toBeNull();
@@ -37,20 +37,20 @@ it("draws Go to at Regular with only the places that work today: no Coming tiles
 });
 
 it("gives Customize the subtitle the preview's Go to page draws", () => {
-  // preview.html Go to list (const PLACES: ['customize', 'Customize', 'sliders', 'Trunks, tools, specialists, channels']).
-  expect(GOTO_TILES.find((t) => t.id === "customize")?.sub).toBe("Trunks, tools, specialists, channels");
+  // Customize page lede, also used by the Go to tile (const PLACES: ['customize', 'Customize', 'sliders', 'What your Trunks can do']).
+  expect(GOTO_TILES.find((t) => t.id === "customize")?.sub).toBe("What your Trunks can do");
 });
 
-it("draws Go to as the preview does from Advanced: its line, then twelve tiles with their subtitles, badges for Inbox and People", async () => {
+it("draws Go to as the preview does at Technical: its line, then twelve tiles with their subtitles, badges for Inbox and People", async () => {
   const go = vi.fn();
-  await drawGoTo("advanced", go);
+  await drawGoTo("technical", go);
   expect(host.querySelector("h1")).toBeNull();
   expect(host.querySelector(".r1s-lede")?.textContent).toBe(GOTO_LEDE);
   expect(GOTO_LEDE).toBe("Every page in Branch, in one place. Each also opens from Ctrl K.");
   const tiles = [...host.querySelectorAll<HTMLElement>(".r1s-tile")];
   expect(tiles.map((t) => [t.querySelector("b")?.firstChild?.textContent, t.querySelector("small")?.textContent])).toEqual([
     ["Overview", "Today at a glance"], ["Canopy", "Every Trunk’s work, side by side"], ["Inbox", "What needs you, what finished"], ["Automations", "What runs by itself"],
-    ["Library", "Files, memory and knowledge"], ["People", "Who your Trunks know"], ["Customize", "Trunks, tools, specialists, channels"], ["Harvest", "Everything your Trunks made"],
+    ["Library", "Files, memory and knowledge"], ["People", "Who your Trunks know"], ["Customize", "What your Trunks can do"], ["Harvest", "Everything your Trunks made"],
     ["Grove", "Your Trunks at their desks"], ["Seedbank", "Agents, skills, tools, plugins, connections"], ["Workshop", "Skill drafts your Trunks proposed"], ["This computer", "Computers, gateway and battery"],
   ]);
   expect(host.querySelector('[data-place="inbox"] .r1s-badge')?.textContent).toBe("17");

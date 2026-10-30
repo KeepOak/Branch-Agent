@@ -53,6 +53,7 @@ function frostedClasses(scope: Element) { return FROSTED.flatMap(c => [...scope.
 describe("Chat apps follow the item 48 glass model", () => {
   it("draws the page and its panel as clear glass, with every card, heading and line of text on a frosted pill", async () => {
     const engine = engineOf(["channels.status", "channels.pairing.list", "channels.pairing.approve", "channels.pairing.dismiss", "wizard.start", "wizard.next", "wizard.cancel", "config.get", "config.patch"]);
+    localStorage.setItem("branch.level", "technical"); // every catalogue card shows at Technical (Private #1093 item 4)
     const host = await mount(<ChatApps engine={engine} onSetup={() => {}} onManage={() => {}} renderAccess={() => <p className="g-label">Access</p>} />);
     expect(host.querySelector(".r1-chatapps")!.classList).toContain("g-clear");
     expect(host.querySelector(".r1-ca-surface")!.classList).toContain("g-clear");
