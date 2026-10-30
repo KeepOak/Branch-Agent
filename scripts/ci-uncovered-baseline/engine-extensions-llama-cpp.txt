@@ -12,4 +12,3 @@ engine:extensions/llama-cpp/src/llama-server-install.test.ts
 engine:extensions/llama-cpp/src/llama-server-vc-runtime.test.ts
 engine:extensions/llama-cpp/src/managed-server.test.ts
 engine:extensions/llama-cpp/src/model-catalog.test.ts
-engine:extensions/llama-cpp/src/setup.test.ts

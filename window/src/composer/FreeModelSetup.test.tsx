@@ -2,8 +2,9 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { plainFreeModelQuestion } from "./free-model-question";
 import type { WindowEngine } from "./engine";
-import { FREE_MODEL_CANCELLED, FreeModelSetup, plainFreeModelQuestion, type FreeModelSetupVariant } from "./FreeModelSetup";
+import { FREE_MODEL_CANCELLED, FreeModelSetup, type FreeModelSetupVariant } from "./FreeModelSetup";
 import { FREE_MODEL_FAILED, NO_KEY_DEFAULT_KIND } from "./no-key-default";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -68,7 +69,7 @@ describe("FreeModelSetup", () => {
 
   it.each(["composer", "onboarding"] as const)("asks the plain download question in %s", async (variant) => {
     const { host } = await mount({ next: [CONFIRM], variant });
-    expect(host.querySelector("p")?.textContent).toBe("Download a free model (Qwen3.5 9B (Q4_K_M), 5.7 GB) so Branch can answer without an account?");
+    expect(host.querySelector("p")?.textContent).toBe("Download a free model (Qwen3.5 9B, 5.7 GB) so Branch can answer without an account?");
     expect(button("Yes")).toBeTruthy();
     expect(button("Cancel")).toBeTruthy();
   });
@@ -80,6 +81,15 @@ describe("FreeModelSetup", () => {
 
   it("uses the model's own size, not the embedding size", () => {
     expect(plainFreeModelQuestion({ message: messages[1] })).toBe("Download a free model (Example Model 12B, 8.4 GB) so Branch can answer without an account?");
+  });
+
+  it.each(["Q4_K_M", "UD-Q4_K_M", "Q8_0", "IQ4_XS", "F16", "BF16"])("hides the %s format tag in cached and download names", (tag) => {
+    expect(plainFreeModelQuestion({ message: `Download Example Model (${tag}) (5.7 GB)?` })).toBe("Download a free model (Example Model, 5.7 GB) so Branch can answer without an account?");
+    expect(plainFreeModelQuestion({ message: `Use cached Example Model (${tag}), download any missing embedding and CPU runtime files, then use this model?` })).toBe("Use the free model Example Model that is already on this computer so Branch can answer without an account?");
+  });
+
+  it("keeps non-format words in the model name", () => {
+    expect(plainFreeModelQuestion({ message: "Download Example Model (Instruct) (5.7 GB)?" })).toBe("Download a free model (Example Model (Instruct), 5.7 GB) so Branch can answer without an account?");
   });
 
   it.each([
