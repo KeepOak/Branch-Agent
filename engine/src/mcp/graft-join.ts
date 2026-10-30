@@ -24,7 +24,7 @@ const RETRY_MS = 3_000;
 export type GraftIdentity = OutsideAgentIdentity & { kind?: "branch" | "trunk"; via?: string };
 /**
  * `url` is the address the link starts with; `urls` are the host's other addresses, tried in order when it fails.
- * `hostName` is the host's mDNS name (`studio.local`), learned while connected; when the host gets a new LAN address
+ * `hostName` is the host's mDNS name (`<host>.local`), learned while connected; when the host gets a new LAN address
  * the link finds it again by that name and saves the new `url` (#2100). `joinedUrl` is the address the link was
  * joined with, kept once the link has moved, so the link stays the same link (graftLinkKey).
  */

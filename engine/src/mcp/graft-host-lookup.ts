@@ -1,5 +1,5 @@
 // A graft link finds its host again by name when the router hands the host a new LAN address (#2100). The host's
-// gateway advertises itself over mDNS (Bonjour) with its lanHost name (studio.local, extensions/bonjour). While the
+// gateway advertises itself over mDNS (Bonjour) with its lanHost name (<host>.local, extensions/bonjour). While the
 // link is connected it learns that name once (the beacon on the link's port whose address is the link's own) and
 // saves it with the link; when the saved address stops answering it looks the name up and moves to the host's new
 // address, with no new setup code.
