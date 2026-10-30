@@ -29,10 +29,10 @@ function useConnectionDefaults(m: ModelsCtx) {
   return { pick, set };
 }
 
-export function DefaultsTab({ m }: { m: ModelsCtx }) {
+export function DefaultsTab({ m, openSettings }: { m: ModelsCtx; openSettings?: (page: string) => void }) {
   const conns = connectionsOf(m.models, m.providers);
   const defs = useConnectionDefaults(m);
-  if (!conns.length) return <Empty>No model set up. Add an account so your Trunks have a model to answer with.</Empty>;
+  if (!conns.length) return <NoModelYet openSettings={openSettings} />;
   return (
     <>
       <Sec title="Each connection’s default">
@@ -41,6 +41,23 @@ export function DefaultsTab({ m }: { m: ModelsCtx }) {
       <WhoAnswers m={m} conns={conns} defaultOf={defs.pick} />
       <AnyModelMore />
     </>
+  );
+}
+
+/** No model yet (#1769, #553): both ways to get one, each with the button that opens it. */
+function NoModelYet({ openSettings }: { openSettings?: (page: string) => void }) {
+  const addAccount = () => {
+    sessionStorage.setItem("branch.openAddAccount", "1");
+    openSettings?.("accounts");
+  };
+  return (
+    <Empty>
+      No model set up yet. Add an account to use a service like Claude or ChatGPT, or use a model on this computer: free, private, and no account needed.
+      <span className="acts">
+        <Btn pri disabled={!openSettings} onClick={addAccount}>Add an account</Btn>
+        <Btn disabled={!openSettings} onClick={() => openSettings?.("local")}>Use a model on this computer</Btn>
+      </span>
+    </Empty>
   );
 }
 
