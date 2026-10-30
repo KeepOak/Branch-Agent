@@ -3,6 +3,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrokerChild } from "../process/spawn-broker/child.js";
+import { runWithSpawnBroker } from "../process/spawn-broker/context.js";
+import { SpawnBrokerError } from "../process/spawn-broker/protocol.js";
 import { captureSqliteReadOnlyWorkerScope } from "./sqlite-readonly-worker-context.js";
 import {
   createSqliteReadOnlyWorkerSession,
@@ -354,5 +356,69 @@ describe("SQLite read-only worker baseline", () => {
     await session.closed;
     await delay(0);
     expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(before);
+  });
+
+  it("waits for a slot before starting the native fallback after a broker refusal", async () => {
+    const busy = [];
+    for (let index = 0; index < SQLITE_READONLY_HARD_MAX_SESSIONS - 1; index += 1) {
+      busy.push(busySession());
+    }
+    let brokered: BrokerChild | undefined;
+    const owner = {
+      spawn: vi.fn((command: string, args: string[]) => {
+        brokered = new BrokerChild(1, [command, ...args], async () => {});
+        return brokered;
+      }),
+      waitForCleanup: vi.fn(async () => {}),
+    };
+    const reading = runWithSpawnBroker(owner as never, () =>
+      runSqliteReadOnlyWorker("/fixture/auth.sqlite", {
+        mode: "auth-profile-rows",
+        source: "canonical",
+        expectedIdentity: "fixture-identity",
+        env: {},
+      }),
+    );
+    let settled = false;
+    void reading.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await vi.waitFor(() => {
+      expect(owner.spawn).toHaveBeenCalledOnce();
+    });
+    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(SQLITE_READONLY_HARD_MAX_SESSIONS);
+    // Another caller queues for a slot before the broker refuses the request.
+    const queued = waitForSqliteReadOnlyWorkerSlot();
+    brokered?.markNotStarted();
+    brokered?.fail(new SpawnBrokerError("Spawn broker request capacity exceeded"));
+    // The refused session's slot goes to the queued caller, which takes it.
+    createSession(await queued);
+    const native = new MockChild();
+    mock.spawn.mockImplementationOnce(() => native);
+    const spawnsBefore = mock.spawn.mock.calls.length;
+    await delay(10);
+    // The native fallback waits for its own slot instead of failing at the ceiling.
+    expect(settled).toBe(false);
+    expect(mock.spawn).toHaveBeenCalledTimes(spawnsBefore);
+    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(SQLITE_READONLY_HARD_MAX_SESSIONS);
+    // A busy pooled session finishes; it is closed and its slot goes to the fallback.
+    finish(at(busy, 0).child);
+    await at(busy, 0).read;
+    await delay(0);
+    at(busy, 0).child.emit("close", 0, null);
+    await vi.waitFor(() => {
+      expect(mock.spawn).toHaveBeenCalledTimes(spawnsBefore + 1);
+      expect(native.send).toHaveBeenCalled();
+    });
+    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(SQLITE_READONLY_HARD_MAX_SESSIONS);
+    native.emit("close", 0, null);
+    const failure = await reading.catch((error: unknown) => error);
+    expect(failure).not.toBeInstanceOf(SqliteReadOnlyWorkerBusyError);
+    expect(String(failure)).toContain("exited with code 0");
   });
 });

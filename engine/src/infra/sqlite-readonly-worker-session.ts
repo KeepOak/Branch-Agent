@@ -223,7 +223,8 @@ export function isSameSqliteReadOnlyWorkerLaunch(
 type SqliteReadOnlyWorkerSession = {
   readonly closed: Promise<void>;
   readonly notStarted: boolean;
-  createNativeReplacement: () => SqliteReadOnlyWorkerSession;
+  /** Pass a slot from waitForSqliteReadOnlyWorkerSlot; the refused session already freed its own. */
+  createNativeReplacement: (slot: SqliteReadOnlyWorkerSlot) => SqliteReadOnlyWorkerSession;
   isRetired: () => boolean;
   compatible: (launch: SqliteReadOnlyWorkerLaunch) => boolean;
   run: (
@@ -469,10 +470,11 @@ export function createSqliteReadOnlyWorkerSession(
     get notStarted() {
       return child instanceof BrokerChild ? child.notStarted : nativeClosed && !spawned;
     },
-    createNativeReplacement() {
+    createNativeReplacement(slot: SqliteReadOnlyWorkerSlot) {
       return runInDetachedAsyncContext(() =>
         createSqliteReadOnlyWorkerSession({
           ...host,
+          slot,
           env,
           cwd,
           argv,

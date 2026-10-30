@@ -12,6 +12,7 @@ import {
   setRuntimeConfigAppliedHash,
 } from "../../config/runtime-snapshot.js";
 import { defaultRuntime } from "../../runtime.js";
+import { closeBranchStateDatabaseAsync } from "../../state/branch-state-db-cache.js";
 import { SystemAgentChatEngine } from "../../system-agent/chat-engine.js";
 import { SystemAgentInferenceUnavailableError } from "../../system-agent/inference-error.js";
 import { detectSetupInference } from "../../system-agent/setup-inference-detect.js";
@@ -43,6 +44,12 @@ const {
   makeVerifiedEngine,
   seededSession,
 } = useSystemAgentGatewayTestFixture();
+
+// Hooks run in reverse order, so this closes the shared state database before the
+// fixture removes its temp dirs. Windows cannot delete a directory with an open SQLite file.
+afterEach(async () => {
+  await closeBranchStateDatabaseAsync();
+});
 
 function makeWizardContext() {
   const wizardSessions = new Map<string, WizardSession>();

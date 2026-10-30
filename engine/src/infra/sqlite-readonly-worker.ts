@@ -547,8 +547,11 @@ async function runSqliteScopedReadWorker(
     if ("error" in outcome) {
       if (worker.notStarted && hasErrnoCode(outcome.error, "ERR_SPAWN_BROKER_UNAVAILABLE")) {
         options.signal?.throwIfAborted();
+        // The refused session gave its slot back on close, and a queued caller may have
+        // taken it. Wait for a slot like any new session instead of failing at the ceiling.
+        const replacementSlot = await waitForSqliteReadOnlyWorkerSlot(options.signal);
         // A confirmed refusal has no child to replay. Preserve the captured launch context.
-        worker = worker.createNativeReplacement();
+        worker = worker.createNativeReplacement(replacementSlot);
         continue;
       }
       throw outcome.error;
