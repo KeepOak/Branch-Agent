@@ -13,6 +13,7 @@ import { readChatApps, recordSetup, testModel } from "./use-setup-engine";
 import { matchPlatformLabel } from "./steps-later";
 import type { TalkHandle } from "./TalkSetup";
 import { WindowShell } from "../shell/WindowShell";
+import { dismiss, getToasts } from "../shell/notify";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -21,6 +22,8 @@ afterEach(async () => {
   root = undefined;
   document.body.innerHTML = "";
   sessionStorage.clear();
+  // Kept toasts (New Trunk's "couldn't open" with Try again) are module state; one left over would sit in front of the next test's toast.
+  for (const toast of getToasts()) dismiss(toast.id);
 });
 async function show(node: React.ReactNode) {
   const host = document.body.appendChild(document.createElement("div"));
@@ -153,7 +156,9 @@ describe("setup flow", () => {
     expect(params(request, "agents.create")).toHaveLength(1);
     expect(document.querySelector('[data-testid="new-trunk-preview"]')).toBeNull();
     expect(document.querySelector('[role="alert"]')).toBeNull();
-    expect(document.body.textContent).toContain("is made.");
+    // The roster stays unreadable after the receipt, so the conversation can't open (#479): one plain message, no second create.
+    expect(document.body.textContent).toContain("is ready, but its conversation couldn’t open.");
+    expect(document.body.textContent).not.toContain("Roster temporarily unavailable");
   });
 
   it("shows the shared reserved-name wording from WindowShell New Trunk", async () => {

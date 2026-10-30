@@ -29,6 +29,7 @@ import {
   createDoctorCliRuntime,
   createSourceRuntime,
   doctorCliEntrypoint,
+  ISOLATED_DOCTOR_CHILD_TIMEOUT_MS,
   readCanonicalPluginState,
   repairCronStoreInProcess,
   runDoctorCli,
@@ -662,7 +663,9 @@ describe.skipIf(windowsTouched)("Doctor repair followed by gateway readiness", (
       }));
     `;
 
-    const result = await runIsolatedModuleScript(env, script, { timeoutMs: 60_000 });
+    const result = await runIsolatedModuleScript(env, script, {
+      timeoutMs: ISOLATED_DOCTOR_CHILD_TIMEOUT_MS,
+    });
     const output = `${result.stderr}\n${result.stdout}`;
     const resultLine = result.stdout.split("\n").find((line) => line.startsWith("__RESULT__"));
 
@@ -679,7 +682,7 @@ describe.skipIf(windowsTouched)("Doctor repair followed by gateway readiness", (
       pluginState: { value_json: '{"ok":false}', created_at: 4_000 },
     });
     expect(hasActiveStartupMigrationLease({ env })).toBe(false);
-  }, 75_000);
+  }, getCliProcessTestTimeout(ISOLATED_DOCTOR_CHILD_TIMEOUT_MS));
 
   it("leaves retired Codex idle settings to Doctor and preserves connection config", async () => {
     const root = await fs.promises.realpath(
@@ -814,10 +817,12 @@ describe.skipIf(windowsTouched)("Doctor repair followed by gateway readiness", (
       console.log("__READY__");
     `;
 
-    const result = await runIsolatedModuleScript(env, script, { timeoutMs: 60_000 });
+    const result = await runIsolatedModuleScript(env, script, {
+      timeoutMs: ISOLATED_DOCTOR_CHILD_TIMEOUT_MS,
+    });
     expect(result.stdout, `${result.stderr}\n${result.stdout}`).toContain("__READY__");
     expect(hasActiveStartupMigrationLease({ env })).toBe(false);
-  }, 75_000);
+  }, getCliProcessTestTimeout(ISOLATED_DOCTOR_CHILD_TIMEOUT_MS));
 
   it("reaches readiness while preserving a legacy agent database without an owner", () => {
     const root = fs.realpathSync(tempDirs.createTempDir("branch-ownerless-agent-ready-"));
