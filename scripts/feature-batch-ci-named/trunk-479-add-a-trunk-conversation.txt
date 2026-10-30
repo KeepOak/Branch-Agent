@@ -1,0 +1,3 @@
+window:src/shell/WindowShell.new-trunk.test.tsx
+window:src/places/trunk/new-trunk-open.test.ts
+window:src/shell/conversation-actions.test.ts
