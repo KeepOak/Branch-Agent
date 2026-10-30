@@ -12,6 +12,9 @@ import { hasErrnoCode } from "../infra/errno.js";
 export function createGatewayFixtureFork(
   registerCleanup: (cleanup: () => Promise<void>) => unknown,
   maxBytes = 4 * 1024 * 1024,
+  // A fork transforms the Gateway graph cold. Callers on slow runners pass a larger budget
+  // and a test timeout above it, so the managed command still settles inside the test.
+  timeoutMs = 90_000,
 ) {
   const lifetime = createFixtureLifetime();
   registerCleanup(() => lifetime.cleanup());
@@ -97,7 +100,7 @@ export default defineConfig({
           ],
           cwd: repoRoot,
           signal: context.signal,
-          timeoutMs: 90_000,
+          timeoutMs,
           maxBytes,
           env: {
             PATH: process.env.PATH,

@@ -66,7 +66,10 @@ vi.mock("./server.js", async (importOriginal) => ({
 
 const { afterAll, afterEach, beforeEach, expect, test } =
   await vi.importActual<typeof import("vitest")>("vitest");
-const runGatewayFixtureFork = createGatewayFixtureFork(afterAll);
+// The forked Gateway run took 83.6 s on macOS CI and ran past the old 90 s budget on Windows
+// (touched 2/4 of PR #2126). Give it room, with the test timeout above the fork budget.
+const forkTimeoutMs = 180_000;
+const runGatewayFixtureFork = createGatewayFixtureFork(afterAll, undefined, forkTimeoutMs);
 await import("./server.sessions.create.worktrees.test.js");
 const consumerHooks = { setup: hooks.setup.splice(0), cleanup: hooks.cleanup.splice(0) };
 const sessions = await import("./test/server-sessions.test-helpers.js");
@@ -555,24 +558,28 @@ test("observes retained Gateway owners through fixture teardown", async () => {
 `;
 }
 
-test("retains fixture state and fences successors after a required Gateway close failure", (context) =>
-  runGatewayFixtureFork(context, retainedGatewayFixtureSource, (journal, text) => {
-    const retained = { home: true, state: true, sessions: true, selectorsIntact: true };
-    expect(journal, text).toMatchObject({
-      close: { rejected: true, faultPreserved: true },
-      caseReset: { rejected: true },
-      cleanup: { rejected: true, faultPreserved: true },
-      repeatedCleanup: { rejected: true, faultPreserved: true },
-      suiteSetup: { rejected: true },
-      connectionCleanupFinished: true,
-      stopCalls: 0,
-      harnessRetained: true,
-      successorCaseStarted: false,
-      successorSuiteStarted: false,
-      afterClose: retained,
-      afterCaseReset: retained,
-      afterCleanup: retained,
-      afterModuleReset: retained,
-      producer: { ...retained, phase: "after-cleanup", writeSucceeded: true },
-    });
-  }));
+test(
+  "retains fixture state and fences successors after a required Gateway close failure",
+  (context) =>
+    runGatewayFixtureFork(context, retainedGatewayFixtureSource, (journal, text) => {
+      const retained = { home: true, state: true, sessions: true, selectorsIntact: true };
+      expect(journal, text).toMatchObject({
+        close: { rejected: true, faultPreserved: true },
+        caseReset: { rejected: true },
+        cleanup: { rejected: true, faultPreserved: true },
+        repeatedCleanup: { rejected: true, faultPreserved: true },
+        suiteSetup: { rejected: true },
+        connectionCleanupFinished: true,
+        stopCalls: 0,
+        harnessRetained: true,
+        successorCaseStarted: false,
+        successorSuiteStarted: false,
+        afterClose: retained,
+        afterCaseReset: retained,
+        afterCleanup: retained,
+        afterModuleReset: retained,
+        producer: { ...retained, phase: "after-cleanup", writeSucceeded: true },
+      });
+    }),
+  forkTimeoutMs + 60_000,
+);

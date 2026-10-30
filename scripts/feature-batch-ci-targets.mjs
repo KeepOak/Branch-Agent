@@ -973,17 +973,21 @@ export function shardTests(tests, shard, weights) {
 // 40993156446 (2026-10-30; the cancelled 2/3 jobs give the files they finished). With Linux weights the restart-heavy
 // settle-replay file (520 s on Windows) shared touched 2/3 with files counted 5 s, so the job ran out the 15-minute
 // cap on every attempt with no test hung (each file kept reporting results until the cancel).
+// Refreshed from the touched n/4 jobs of run 41050620079 (2026-10-30), where touched 2/4 still ran out the cap:
+// private-completion took 638 s there, not 402. Each value is the larger of the two runs. fixture-lifecycle's fork
+// case ran past its 90 s budget there, so it counts that budget's raise (180 s) instead of its measured 103 s.
 const windowsTouchedSeconds = {
+  'src/gateway/server.private-completion.test.ts': 638,
   'src/gateway/server.subagent-settle-replay.harness.test.ts': 520,
-  'src/gateway/server.private-completion.test.ts': 402,
-  'src/gateway/server-startup-lifetime.test.ts': 347,
+  'src/gateway/server-startup-lifetime.test.ts': 386,
+  'src/gateway/server.native-completion-authority.test.ts': 219,
+  'src/gateway/server.sessions.fixture-lifecycle.test.ts': 180,
+  'src/gateway/server-close.metadata.test.ts': 141,
+  'src/gateway/server-plugins.activation-health.test.ts': 139,
   'src/gateway/server.node-shutdown.test.ts': 119,
-  'src/gateway/server.native-completion-authority.test.ts': 98,
-  'src/gateway/server-close.memory.test.ts': 89,
-  'src/gateway/server-close.metadata.test.ts': 83,
-  'src/gateway/server.sessions.fixture-lifecycle.test.ts': 75,
-  'src/gateway/server.chat-steer-direct-command.test.ts': 54,
-  'src/gateway/server.requester-pause-authority.test.ts': 52,
+  'src/gateway/server-close.memory.test.ts': 106,
+  'src/gateway/server.chat-steer-direct-command.test.ts': 98,
+  'src/gateway/server.requester-pause-authority.test.ts': 83,
   'src/gateway/server.request-lifetime.test.ts': 46,
 };
 

@@ -280,10 +280,11 @@ test('the touched Windows tests split across touched n/4 with every file once an
   }
 });
 
-test('touched Windows shards pack by Windows seconds, so the PR #2126 gateway files fit three touched jobs', () => {
+test('touched Windows shards pack by Windows seconds, so the PR #2126 gateway files fit the touched jobs', () => {
   const settle = 'src/gateway/server.subagent-settle-replay.harness.test.ts';
   const unmeasured = 'src/gateway/server.auth.control-ui.test.ts';
   assert.equal(touchedWindowsWeight(settle), 520);
+  assert.equal(touchedWindowsWeight('src/gateway/server.private-completion.test.ts'), 638);
   assert.equal(touchedWindowsWeight(unmeasured), featureTestWeight(unmeasured) * runnerTestScale.windows);
   // The 18 touched files of PR #2126. With Linux weights, touched 2/3 held settle-replay (520 s on Windows) and
   // ten files counted 5 s each, and ran past the 15-minute cap on five attempts.
@@ -297,7 +298,10 @@ test('touched Windows shards pack by Windows seconds, so the PR #2126 gateway fi
     'src/gateway/server-close.channel-pairing.test.ts',
   ];
   const touched = [...windowsSmokeTests.engine, ...gateway];
-  for (const total of [3, 4]) {
+  // Measured on Windows (run 41050620079) these files take about 2,780 s, more than three jobs hold under the cap,
+  // so only the current touched count (pullRequestWindowsTouchedShardCount) is planned here.
+  assert.equal(pullRequestWindowsTouchedShardCount, 4);
+  for (const total of [pullRequestWindowsTouchedShardCount]) {
     const parts = Array.from({ length: total }, (_, index) => touchedShardTests(touched, shardOf(`${index + 1}/${total}`)));
     assert.deepEqual(parts.flat().sort(), [...touched].sort());
     for (const part of parts) {
