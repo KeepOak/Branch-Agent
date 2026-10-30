@@ -23,26 +23,27 @@ export const KIND_LIST: { id: Kind; label: string; line: string; community?: Com
   { id: "Prompts", label: "Prompts", line: "Saved prompts you can drop into any conversation." },
 ];
 
-/** The "＋ Add" in a kind's head. R1 sends Connectors, Skills and Plugins to Community; Classic keeps its dialogs. */
-export function addControl(ctx: ToolsCtx, kind: Kind): ReactNode {
+/** The "＋ Add" in a kind's head. R1 sends Connectors, Skills and Plugins to Community; Classic keeps its dialogs.
+ *  A kind whose list adds in place (Command-line tools) passes onAdd, which R1 runs instead. */
+export function addControl(ctx: ToolsCtx, kind: Kind, onAdd?: () => void): ReactNode {
   const r1 = Boolean(ctx.toCommunity);
   const community = KIND_LIST.find(k => k.id === kind)?.community;
   const add = (onClick: () => void) => <button type="button" className="btn pri sm cz-add" onClick={onClick}>＋ Add</button>;
   if (kind === "Toolsets") return <Grey className="btn pri sm" reason="Making a new toolset from here comes in a later update.">＋ Add</Grey>;
   if (kind === "Prompts") return <Grey className="btn pri sm" reason="Saving a new prompt from here comes in a later update.">＋ Add</Grey>;
-  if (kind === "Command-line tools") return add(() => (r1 ? document.getElementById("cz-clis-path")?.focus() : ctx.openAdd?.(kind)));
+  if (kind === "Command-line tools") return add(() => (r1 ? (onAdd ? onAdd() : document.getElementById("cz-clis-path")?.focus()) : ctx.openAdd?.(kind)));
   if (kind === "Agents") return add(() => ctx.openAdd?.(kind));
   if (r1 && community) return add(() => ctx.toCommunity?.(community));
   return add(() => ctx.openAdd?.(kind));
 }
 
 /** The kind's head (name, one line on what it is, the count, "＋ Add") and the link under its list. */
-export function KindHead({ ctx, kind, count, children }: { ctx: ToolsCtx; kind: Kind; count: string; children: ReactNode }) {
+export function KindHead({ ctx, kind, count, onAdd, children }: { ctx: ToolsCtx; kind: Kind; count: string; onAdd?: () => void; children: ReactNode }) {
   const info = KIND_LIST.find(k => k.id === kind)!;
   const level = useContext(CustomizeLevelContext);
   const communityShown = !info.community || !kindOf(info.community).coming || shows(level, "technical");
   return <div className="t9-list" data-kind-list={kind}>
-    <div className="cz-kindhead"><div><h2>{info.label}</h2><p>{info.line}</p></div><span className="cz-count">{count}</span>{addControl(ctx, kind)}</div>
+    <div className="cz-kindhead"><div><h2>{info.label}</h2><p>{info.line}</p></div><span className="cz-count">{count}</span>{addControl(ctx, kind, onAdd)}</div>
     {children}
     {ctx.toCommunity && communityShown && <button type="button" className="cz-get" onClick={() => ctx.toCommunity?.(info.community)}>＋ Get more {info.label.toLowerCase()} in Community →</button>}
   </div>;
