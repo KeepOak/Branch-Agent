@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { formatLlamaCppSkipNote, LLAMA_CPP_SKIP_REASONS } from "../../../engine/extensions/llama-cpp/src/skip-reasons";
 import { plainFreeModelQuestion } from "./free-model-question";
 import type { WindowEngine } from "./engine";
 import { FREE_MODEL_CANCELLED, FreeModelSetup, type FreeModelSetupVariant } from "./FreeModelSetup";
@@ -131,6 +132,18 @@ describe("FreeModelSetup", () => {
     await act(async () => button("Try again")!.click());
     expect(request.mock.calls.filter(([method]) => method === "branch.setup.activate.start")).toHaveLength(2);
     expect(host.textContent).toContain("Download a free model (");
+  });
+
+  it.each(Object.values(LLAMA_CPP_SKIP_REASONS))("says why free model setup was skipped: %s", async (reason) => {
+    // The engine's own skip note: its plain reason, then technical details the window must hide.
+    const message = formatLlamaCppSkipNote(reason, messages[4]!);
+    const { host } = await mount({ next: [
+      { done: false, step: { id: "skipped", type: "note", title: "Setup skipped", message } },
+      { done: true, status: "error", error: messages[4] },
+    ] });
+    expect(host.querySelector("[data-testid=no-key-failed]")?.textContent).toBe(`Free model setup was skipped. ${reason}`);
+    expect(host.textContent).not.toMatch(banned);
+    expect(button("Try again")).toBeTruthy();
   });
 
   it("does not send Yes until the owner agrees, and shows the size with Cancel", async () => {

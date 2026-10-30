@@ -37,6 +37,7 @@ import {
   type ManagedLlamaServer,
 } from "./managed-server.js";
 import { recommendLlamaCppModel, resolveLlamaCppModelCandidates } from "./model-catalog.js";
+import { formatLlamaCppSkipNote } from "./skip-reasons.js";
 
 const BYTES_PER_GB = 1_000_000_000;
 const BYTES_PER_MB = 1_000_000;
@@ -374,7 +375,10 @@ async function resolveSetupPlan(
       return { kind: "chat", candidate, cachedPath };
     }
   } else if (!localMemoryIntent) {
-    await ctx.prompter.note(recommendation.reason, "Setup skipped");
+    await ctx.prompter.note(
+      formatLlamaCppSkipNote(recommendation.plainReason, recommendation.reason),
+      "Setup skipped",
+    );
     return undefined;
   }
 
