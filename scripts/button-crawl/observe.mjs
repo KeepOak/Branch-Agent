@@ -25,6 +25,8 @@ export const GATED_PROBLEMS = [
   'row-actions-inconsistent',
   'inconsistent-open',
   'internal-name-shown',
+  // A visible greyed control with no visible line saying why, at Regular or Advanced (disabled-reason.mjs).
+  'disabled-without-reason',
 ];
 
 const GATED = new Set(GATED_PROBLEMS);

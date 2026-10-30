@@ -305,7 +305,8 @@ describe("SettingsFrame header on slot pages (#1049)", () => {
       const sheet = host.querySelector(".r1s-help")!;
       expect(sheet.getAttribute("aria-label")).toBe(`About ${PAGES[id].title}`);
       expect([...sheet.querySelectorAll("li button")].map((b) => b.textContent)).toEqual([...sections]);
-      expect([...sheet.querySelectorAll(".r1s-btn")].map((b) => b.textContent)).toContain("Ask a Trunk");
+      // With no host to ask, Ask a Trunk is Coming, and below Technical a Coming control is not drawn (Private #1093 item 7).
+      expect([...sheet.querySelectorAll(".r1s-btn")].map((b) => b.textContent)).not.toContain("Ask a Trunk");
       await act(async () => learn.click());
     }
   });

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { FlatList, Modal, Platform, Pressable, RefreshControl, ScrollView, TextInput, View } from 'react-native';
+import { Modal, Platform, Pressable, RefreshControl, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { matchingActions, runAction, type ActionHit } from '../chats/chatActions';
 import {
@@ -24,7 +24,12 @@ import { laterUpdate, levelRank, type ExperienceLevel } from '../settings/level'
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { NoScrollbarFlatList as FlatList, NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
+import { FadeScrollView } from '../ui/ScrollFade';
+import { CHIP_FADE } from '../ui/scrollEdges';
 import { OfflineBanner } from '../ui/OfflineBanner';
+import { statusBandHeight } from '../ui/PlacesBar';
+import { plainError } from '../ui/plainError';
 import { useNow } from '../ui/useNow';
 
 const AVATAR = 52;
@@ -249,12 +254,14 @@ function FilterChips({
   const android = look === 'android';
   return (
     <View testID="chat-filters" style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, marginHorizontal: -layout.screenInset, paddingRight: layout.screenInset }}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
+      <FadeScrollView
+        axis="x"
+        color={color.bg}
+        fadeSize={CHIP_FADE}
+        testID="chat-filters-scroll"
         accessibilityRole="tablist"
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: layout.screenInset, gap: space.sm }}
+        contentContainerStyle={{ paddingHorizontal: layout.screenInset, gap: space.sm, flexGrow: 0 }}
       >
         {CHAT_FILTERS.filter(([id]) => id === 'all' || id === value || counts[id] > 0).map(([id, label]) => {
           const on = id === value;
@@ -276,15 +283,17 @@ function FilterChips({
                 borderColor: color.line,
                 backgroundColor: on ? color.ink : android ? 'transparent' : color.fill,
                 opacity: pressed ? 0.7 : 1,
+                flexShrink: 0,
+                flexGrow: 0,
               })}
             >
-              <ThemedText variant="subhead" style={{ fontWeight: on ? '600' : '400', color: on ? color.bg : color.ink }}>
+              <ThemedText variant="subhead" numberOfLines={1} style={{ fontWeight: on ? '600' : '400', color: on ? color.bg : color.ink }}>
                 {label}
               </ThemedText>
             </Pressable>
           );
         })}
-      </ScrollView>
+      </FadeScrollView>
       <Pressable
         testID="chats-filter"
         accessibilityRole="button"
@@ -320,7 +329,6 @@ function PinnedRow({ pins, onOpen }: { pins: ChatRow[]; onOpen?: (row: ChatRow) 
       testID="pinned-trunks"
       accessibilityRole="list"
       accessibilityLabel="Pinned Trunks"
-      showsHorizontalScrollIndicator={false}
       style={{ marginHorizontal: -layout.screenInset }}
       contentContainerStyle={{ paddingHorizontal: layout.screenInset, paddingTop: space.sm, paddingBottom: space.md, gap: 14 }}
     >
@@ -485,7 +493,7 @@ function RadioRow({ label, selected, onPress, testID }: { label: string; selecte
   );
 }
 
-/** The paired home: every chat with your Trunks, newest first, live from the computer. */
+/** The paired chats list: every chat with your Trunks, newest first, live from the computer. */
 export function ChatsScreen({
   list,
   online,
@@ -493,6 +501,7 @@ export function ChatsScreen({
   onComputer,
   onAgents,
   onSettings,
+  onMore,
   onOpen,
   onNewChat,
   searchMessages,
@@ -502,6 +511,7 @@ export function ChatsScreen({
   updateBanner,
   level = 'regular',
   look = Platform.OS === 'ios' ? 'ios' : 'android',
+  bottomExtra = 0,
 }: {
   list: ChatListSnapshot;
   online: boolean;
@@ -512,6 +522,8 @@ export function ChatsScreen({
   onAgents?: () => void;
   /** Opens Settings. */
   onSettings?: () => void;
+  /** Opens More. */
+  onMore?: () => void;
   /** Opens a chat. */
   onOpen?: (row: ChatRow) => void;
   /** Starts or carries on a conversation (the preview's New chat). */
@@ -530,6 +542,8 @@ export function ChatsScreen({
   level?: ExperienceLevel;
   /** Android uses the preview's app bar, chips and New chat FAB. */
   look?: 'ios' | 'android';
+  /** Extra list padding above a floating Places bar. */
+  bottomExtra?: number;
 }) {
   const { color, space, radius, layout, type } = useTheme();
   // The list can stay open for hours: a render every half minute moves rows from "Now" to a time, and from
@@ -610,7 +624,7 @@ export function ChatsScreen({
   );
 
   const header = (
-    <View style={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
+    <View style={{ paddingTop: statusBandHeight(look, insets.top) + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
       <View style={{ flexDirection: 'row', justifyContent: onNeedsYou ? 'space-between' : 'flex-end', alignItems: 'center' }}>
         {onNeedsYou ? (
           <Pressable
@@ -632,6 +646,18 @@ export function ChatsScreen({
           </Pressable>
         ) : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          {onMore ? (
+            <Pressable
+              testID="more-button"
+              accessibilityRole="button"
+              accessibilityLabel="More"
+              onPress={onMore}
+              hitSlop={8}
+              style={({ pressed }) => ({ minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
+            >
+              <ThemedText variant="body">More</ThemedText>
+            </Pressable>
+          ) : null}
           {onSettings ? (
             <Pressable
               testID="settings-button"
@@ -808,7 +834,7 @@ export function ChatsScreen({
   if (!list.loaded && !list.error) empty = <Skeleton />;
   else if (!list.loaded && list.error)
     empty = online ? (
-      <Note testID="chats-error" title="Couldn’t load your chats" body={list.error} action={{ title: 'Try again', onPress: () => void refresh() }} />
+      <Note testID="chats-error" title="Couldn’t load your chats" body={plainError(list.error)} action={{ title: 'Try again', onPress: () => void refresh() }} />
     ) : (
       <Note testID="chats-waiting" title="Waiting for your computer" body="Your chats show up here as soon as this phone reaches it." />
     );
@@ -838,11 +864,9 @@ export function ChatsScreen({
         ItemSeparatorComponent={({ leadingItem }: { leadingItem?: Item }) =>
           leadingItem && leadingItem.kind !== 'header' ? <View style={{ height: layout.hairline, backgroundColor: color.line, marginLeft: layout.screenInset + AVATAR + space.md }} /> : null
         }
-        contentContainerStyle={{ paddingBottom: insets.bottom + space.xl + (android && onNewChat ? 72 : 0) }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + space.xl + bottomExtra + (android && onNewChat ? 72 : 0) }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
-        showsHorizontalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={color.ink3} colors={[color.ink]} />}
       />
       {android && onNewChat ? newChat : null}

@@ -79,8 +79,12 @@ export function hasForwardedRequestHeaders(req?: IncomingMessage): boolean {
 
 /** Return whether a request is a clean loopback request without forwarded identity headers. */
 export function isLocalDirectRequest(req?: IncomingMessage): boolean {
+  const pairingRemote = firstHeaderValue(req?.headers?.["x-branch-pairing-remote"])?.trim();
   return Boolean(
-    req && !hasForwardedRequestHeaders(req) && isLoopbackAddress(req.socket?.remoteAddress),
+    req &&
+      !hasForwardedRequestHeaders(req) &&
+      isLoopbackAddress(req.socket?.remoteAddress) &&
+      !pairingRemote,
   );
 }
 

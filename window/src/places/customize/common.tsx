@@ -9,7 +9,8 @@ import { COMING_REASON } from "../../glass/coming-registry";
 import { shows, type Level } from "../../places-nav/level";
 import type { WindowEngine } from "../../connect/engine";
 import { list, rec, str, type Rec } from "../../composer/engine";
-import { errorText, trunkName, type Trunk } from "../library/data";
+import { trunkName, type Trunk } from "../library/data";
+import { plainError } from "../../shell/plain-error";
 
 export { list, rec, str, type Rec };
 
@@ -40,7 +41,7 @@ export function useConfig(engine: WindowEngine) {
       if (live.current) setState({ data, loading: false, error: null });
       return data;
     } catch (error) {
-      if (live.current) setState({ data: null, loading: false, error: errorText(error) });
+      if (live.current) setState({ data: null, loading: false, error: plainError(error) });
       return null;
     }
   }, [engine]);
@@ -62,7 +63,7 @@ export function useConfig(engine: WindowEngine) {
       await load();
       return true;
     } catch (error) {
-      if (live.current) setWriteError(errorText(error));
+      if (live.current) setWriteError(plainError(error));
       return false;
     } finally {
       pending.current = false;

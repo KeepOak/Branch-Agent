@@ -1,47 +1,75 @@
 // Setup steps 1–3 (DESIGN-SPEC §4.8.1.1–§4.8.1.3): Welcome, Where Branch runs and Models. Welcome and Where also
 // run before the window is connected (the plain pre-connect screens); Models needs the engine.
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { brandOf, Logo } from "../places/settings/set1/service";
 import { Icon, type IconName } from "../shell/icons";
-import type { Candidate, Detected, TestResult, Where } from "./setup-model";
+import { SETUP_LATER_TOAST, WHERE_PLACES, whereWord, type Candidate, type Detected, type TestResult, type Where } from "./setup-model";
 import { shownWhy } from "../shell/shown-why";
 
-export const WELCOME_SAFETY_TITLE = "How Branch stays safe";
-export const WELCOME_SAFETY_LINES = [
-  "It asks before it sends, deletes, spends or installs anything.",
-  "Your conversations and keys stay on your computers.",
-  "You can take over, stop it, or roll back any change.",
-] as const;
-export const WELCOME_PROMISE = "I understand Branch can act on this computer when I allow it";
+export const WELCOME_LEDE = "Agents that work on your computer: Trunks that each take one job off your plate.";
+export const WELCOME_LOCK = "It asks before it sends, deletes, spends or installs anything.";
+export { SETUP_LATER_TOAST };
 
-export function WelcomeBody({ promise, onPromise }: { promise: boolean; onPromise: (v: boolean) => void }) {
+export function WelcomeBody({ where, onChangeWhere }: { where: Where; onChangeWhere: () => void }) {
   return (
-    <div className="ob-trust">
-      <b>{WELCOME_SAFETY_TITLE}</b>
-      <ul className="may6">
-        {WELCOME_SAFETY_LINES.map((line) => (
-          <li key={line}>
-            <span className="i" aria-hidden="true">
-              <Icon name="check" size={13} />
-            </span>
-            {line}
-          </li>
-        ))}
-      </ul>
-      <label className="chk">
-        <input type="checkbox" data-testid="setup-promise" checked={promise} onChange={(e) => onPromise(e.target.checked)} />
-        {WELCOME_PROMISE}
-      </label>
+    <>
+      <p className="ob-promise">
+        <Icon name="lock" size={15} />
+        <span>{WELCOME_LOCK}</span>
+      </p>
+      <p className="ob-where">
+        Runs on <b>{whereWord(where)}</b>
+        {" · "}
+        <button type="button" className="link" data-testid="setup-where-change" onClick={onChangeWhere}>
+          Change
+        </button>
+      </p>
+    </>
+  );
+}
+
+/** "Where Branch runs": a small glass sheet over the card. */
+export function WhereSheet({ where, onPick, onClose }: { where: Where; onPick: (w: Where) => void; onClose: () => void }) {
+  const first = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    first.current?.focus({ preventScroll: true });
+  }, []);
+  return (
+    <div
+      className="ob-sheet-layer"
+      data-testid="setup-where-sheet"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+    >
+      <div className="ob-sheet" role="dialog" aria-modal="true" aria-label="Where Branch runs">
+        <h2>Where Branch runs</h2>
+        <div className="ob-sheet-modes" role="radiogroup" aria-label="Where Branch runs">
+          {WHERE_PLACES.map((w, i) => (
+            <button key={w.id} type="button" ref={i === 0 ? first : undefined} className="ob-mode" role="radio" aria-checked={where === w.id} data-testid={`setup-pick-${w.id}`} onClick={() => onPick(w.id)}>
+              <Icon name={w.icon} size={15} />
+              <span>
+                <b>{w.name}</b>
+                <small>{w.line}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+        <p className="ob-hint">Restoring from a backup lives in Settings › History & backups.</p>
+        <div className="ob-sheet-foot">
+          <button type="button" className="btn pri" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
-const WHERE: { id: Where; icon: IconName; name: string; line: string; off?: string }[] = [
-  { id: "this", icon: "monitor", name: "This computer", line: "Recommended. Private, free, fast." },
-  { id: "remote", icon: "key", name: "Another computer", line: "Over Tailscale or SSH: a home server or a desk PC." },
-  { id: "keepoak", icon: "globe", name: "A KeepOak computer", line: "In the cloud, always on. Needs a keepoak.com account.", off: "Needs a keepoak.com account." },
-  { id: "later", icon: "clock", name: "Decide later", line: "Start here and move it any time." },
-];
+const WHERE: { id: Where; icon: IconName; name: string; line: string; off?: string }[] = WHERE_PLACES.map((w) => ({ id: w.id, icon: w.icon, name: w.name, line: w.line }));
 
 /** Cards like §4.8.1.2: one pressed at a time; a card the engine can't back yet is greyed with its reason. */
 export function ChoiceCards<T extends string | number>({ items, value, onPick }: { items: { id: T; icon: IconName; name: string; line: string; off?: string }[]; value: T | null; onPick: (v: T) => void }) {
@@ -70,25 +98,29 @@ export function WhereBody({ where, onWhere, remote }: { where: Where; onWhere: (
 }
 
 /** "Another computer: how to reach it" (§4.8.1.2 parity adds): its address and gateway key, then Connect. */
-export function RemoteForm({ address, onConnect, busy, problem }: { address: string; onConnect: (url: string, key: string) => void; busy: boolean; problem: string | null }) {
+export function RemoteForm({ address, onConnect, busy, problem, formId, hideSubmit, hideAddress }: { address: string; onConnect: (url: string, key: string) => void; busy: boolean; problem: string | null; formId?: string; hideSubmit?: boolean; hideAddress?: boolean }) {
   const [url, setUrl] = useState(address);
   const [key, setKey] = useState("");
   const valid = /^wss?:\/\/\S+$/.test(url.trim());
   return (
-    <form className="ob-remote" onSubmit={(e) => (e.preventDefault(), valid && onConnect(url.trim(), key))}>
-      <label className="fld">
-        <span>Its address</span>
-        <input className="inp" data-testid="setup-address" value={url} placeholder="wss://desk-pc.tailnet.ts.net" onChange={(e) => setUrl(e.target.value)} />
-        <small className="hint">Use wss:// when it sits behind HTTPS or Tailscale Serve.</small>
-      </label>
+    <form id={formId} className="ob-remote" onSubmit={(e) => (e.preventDefault(), valid && (!hideAddress || key.trim()) && onConnect(url.trim(), key))}>
+      {hideAddress ? null : (
+        <label className="fld">
+          <span>Its address</span>
+          <input className="inp" data-testid="setup-address" value={url} placeholder="wss://desk-pc.tailnet.ts.net" onChange={(e) => setUrl(e.target.value)} />
+          <small className="hint">Use wss:// when it sits behind HTTPS or Tailscale Serve.</small>
+        </label>
+      )}
       <label className="fld">
         <span>Its gateway key</span>
-        <input className="inp" type="password" autoComplete="off" data-testid="setup-key" value={key} onChange={(e) => setKey(e.target.value)} />
+        <input className="inp" type="password" autoComplete="off" data-testid="setup-key" value={key} required={hideAddress} onChange={(e) => setKey(e.target.value)} />
       </label>
       {problem ? <p className="ob-problem" role="alert">{problem}</p> : null}
-      <button type="submit" className="btn pri sm" data-testid="setup-connect" disabled={!valid || busy}>
-        {busy ? "Connecting…" : "Connect"}
-      </button>
+      {hideSubmit ? null : (
+        <button type="submit" className="btn pri sm" data-testid="setup-connect" disabled={!valid || busy}>
+          {busy ? "Connecting…" : "Connect"}
+        </button>
+      )}
     </form>
   );
 }
@@ -149,7 +181,7 @@ export function ModelsBody(p: ModelsProps) {
       </div>
       {p.detected && !rows.length ? (
         <p className="hint">
-          Nothing found on this computer yet. A free local model will be set up so you can chat without an account. Connecting an account makes answers smarter and faster. Or{" "}
+          Nothing found on this computer yet. Connect a model to get answers. Connecting an account makes answers smarter and faster. Or{" "}
           <button type="button" className="link" onClick={p.onLocal}>
             install a model on this computer
           </button>

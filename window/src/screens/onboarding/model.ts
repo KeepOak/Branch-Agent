@@ -89,6 +89,8 @@ export type OnboardingState = {
   examples: boolean;
 };
 export const clampStep = (step: number) => Math.max(0, Math.min(LAST_STEP, Math.trunc(step) || 0));
+/** One click moves one step. A second click that still thinks it is on `from` stays put. */
+export const advanceFrom = (current: number, from: number): number => (current === from ? clampStep(from + 1) : current);
 export const freshState = (step = 0): OnboardingState => ({ step: clampStep(step), where: "here", off: [], hello: null, mode: "ask", name: "", text: "", pick: [], tpl: [], examples: false });
 
 export const helloOk = (hello: Hello): boolean => typeof hello === "object" && hello !== null && hello.ok;

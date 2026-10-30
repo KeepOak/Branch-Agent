@@ -219,7 +219,7 @@ describe("how a run ends", () => {
     fake.historyError = "chat.history timed out";
     await emit("session.message", { sessionKey: KEY });
     await settle();
-    expect(session.getSnapshot().error).toBe("chat.history timed out");
+    expect(session.getSnapshot().error).toBe("Couldn't load this conversation: chat.history timed out");
     fake.historyError = null;
     await emit("session.message", { sessionKey: KEY });
     await settle();

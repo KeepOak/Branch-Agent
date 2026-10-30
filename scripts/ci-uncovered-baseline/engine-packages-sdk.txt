@@ -1,0 +1,10 @@
+engine:packages/sdk/src/chat-stream.test.ts
+engine:packages/sdk/src/event-hub.test.ts
+engine:packages/sdk/src/index.test.ts
+engine:packages/sdk/src/normalize.test.ts
+engine:packages/sdk/src/package.e2e.test-support.test.ts
+engine:packages/sdk/src/run-event-replay.recovery.test.ts
+engine:packages/sdk/src/run-events-terminal.test.ts
+engine:packages/sdk/src/run-reconnect.websocket.test.ts
+engine:packages/sdk/src/transport.test.ts
+engine:packages/sdk/src/transport.websocket.test.ts

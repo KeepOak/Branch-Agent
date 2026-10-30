@@ -1,0 +1,3 @@
+engine:extensions/inworld/speech-provider.test.ts
+engine:extensions/inworld/tts.test.ts
+engine:extensions/inworld/voices-timeout.test.ts

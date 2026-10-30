@@ -1,0 +1,14 @@
+engine:extensions/canvas/doctor-contract-api.test.ts
+engine:extensions/canvas/index.test.ts
+engine:extensions/canvas/scripts/bundle-a2ui.test.ts
+engine:extensions/canvas/scripts/copy-a2ui.test.ts
+engine:extensions/canvas/scripts/pnpm-runner.test.ts
+engine:extensions/canvas/src/a2ui-jsonl.test.ts
+engine:extensions/canvas/src/board-widget.test.ts
+engine:extensions/canvas/src/cli.test.ts
+engine:extensions/canvas/src/config-migration.test.ts
+engine:extensions/canvas/src/config.test.ts
+engine:extensions/canvas/src/host/a2ui.test.ts
+engine:extensions/canvas/src/host/file-resolver.test.ts
+engine:extensions/canvas/src/tool.test.ts
+engine:extensions/canvas/src/widget-presenter.test.ts

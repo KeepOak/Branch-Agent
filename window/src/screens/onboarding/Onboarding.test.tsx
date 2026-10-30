@@ -7,15 +7,20 @@ import type { WindowEngine } from "../../connect/engine";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { readDetected } from "../../setup/setup-model";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { answeredBy, canSayHello, freshState, greeting, MODES, picked, PLAN_FIRST_REASON, primary, STEPS, suggest, togglePick } from "./model";
 import { Onboarding } from "./Onboarding";
 import { recalledSessionName, rememberSessionName } from "./session-name";
+
+/** The engine's real free model question (engine/extensions/llama-cpp/src/setup.free-model-question.test.ts). */
+const ENGINE_FREE_MODEL_STEP = { id: "download", ...(JSON.parse(readFileSync(resolve(process.cwd(), "../engine/test/fixtures/llama-cpp-free-model-questions.json"), "utf8")) as { model: [{ type: "confirm"; freeModel: { downloadBytes: number } }] }).model[0] };
+const ENGINE_FREE_MODEL_SIZE = (ENGINE_FREE_MODEL_STEP.freeModel.downloadBytes / 1e9).toFixed(1) + " GB";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; rememberSessionName(""); });
 
-const ALL = ["branch.setup.detect", "branch.setup.verify", "branch.setup.activate", "models.authStatus", "config.get", "config.patch", "trunks.template.list", "trunks.template.create", "agents.list", "chat.send"];
+const ALL = ["branch.setup.detect", "branch.setup.verify", "branch.setup.activate", "branch.setup.activate.start", "wizard.next", "wizard.cancel", "models.authStatus", "config.get", "config.patch", "trunks.template.list", "trunks.template.create", "agents.list", "chat.send"];
 type Answers = Record<string, unknown | ((params: unknown) => unknown)>;
 function fakeEngine(answers: Answers, methods = ALL) {
   const request = vi.fn(async (method: string, params?: unknown) => {
@@ -145,14 +150,26 @@ describe("Onboarding", () => {
   });
 
   it("says when no model is on this computer and offers Add one; examples are Coming", async () => {
-    const { engine, request } = fakeEngine({ "branch.setup.detect": { candidates: [] } });
+    const { engine, request } = fakeEngine({
+      "branch.setup.detect": { candidates: [] },
+      "branch.setup.activate.start": {},
+      "wizard.next": {
+        done: false,
+        step: ENGINE_FREE_MODEL_STEP,
+      },
+    });
     const { host } = await show(engine, { startAt: 1 });
     await flush();
-    expect(host.textContent).toContain("No models on this computer yet. A free local model will be set up so you can chat without an account.");
+    expect(host.textContent).toContain("No models on this computer yet. Connect a model to get answers.");
+    expect(host.textContent).not.toMatch(/will be set up/i);
+    expect(host.textContent).toContain(ENGINE_FREE_MODEL_SIZE);
     expect(button(host, "Add one")).toBeTruthy();
+    expect(button(host, "Cancel")).toBeTruthy();
     expect(button(host, "Say hello")).toBeUndefined();
     expect(button(host, "Try it with examples").getAttribute("aria-disabled")).toBe("true");
-    expect(calls(request, "branch.setup.activate")).toEqual([{ kind: "no-key-default", agentId: "main" }]);
+    expect(calls(request, "branch.setup.activate")).toEqual([]);
+    expect(calls(request, "branch.setup.activate.start")).toEqual([expect.objectContaining({ kind: "no-key-default", agentId: "main" })]);
+    expect(request.mock.calls.filter(([method, params]) => method === "wizard.next" && (params as { answer?: { value?: unknown } })?.answer?.value === true)).toHaveLength(0);
   });
 
   it("saves Ask first as tools.exec.mode and never offers Full access; Plan first is Coming", async () => {

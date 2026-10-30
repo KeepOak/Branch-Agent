@@ -890,7 +890,7 @@ against the current SQLite owners before the import can rename profiles.
     | `agents.defaults.silentReply.internal`, `surfaces.*.silentReply.internal`          | removed (only external channel groups may opt into silent replies)          |
     | top-level `memorySearch`, `agents.defaults.memorySearch`                                         | `memory.search`                                                             |
     | `agents.entries.*.memorySearch`                                                                     | `agents.entries.*.memory.search`                                               |
-    | `memorySearch.provider: "auto"`                                                                  | `"openai"`                                                                    |
+    | `memorySearch.provider: "auto"`                                                                  | `"local"` (drops a leftover `text-embedding-*` model name)                    |
     | `plugins.openai-codex` policy ids                                                                | `plugins.openai`                                                             |
     | `tools.web.x_search.apiKey`                                                                      | `plugins.entries.xai.config.webSearch.apiKey`                               |
     | `session.maintenance.rotateBytes`                                 | removed (deprecated)                                                        |

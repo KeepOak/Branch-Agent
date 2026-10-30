@@ -36,5 +36,6 @@ it("shows why Plan first is off", async () => {
   expect(plan).toBeTruthy();
   expect(plan!.disabled).toBe(true);
   expect(plan!.textContent).toContain(PLAN_FIRST_REASON);
-  expect(plan!.querySelector("small")?.textContent).toBe(PLAN_FIRST_REASON);
+  expect(plan!.querySelector("small")?.textContent).toBe("Plan first comes in a later update.");
+  expect(plan!.textContent).not.toMatch(/Update Branch/i);
 });

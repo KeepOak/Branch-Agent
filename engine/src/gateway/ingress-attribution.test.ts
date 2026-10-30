@@ -29,6 +29,20 @@ function request(params?: {
 }
 
 describe("gateway ingress attribution", () => {
+  it("does not treat a pairing-proxy peer as local", async () => {
+    const attribution = prepareGatewayIngressAttribution({
+      req: {
+        socket: { remoteAddress: "127.0.0.1" },
+        headers: { "x-branch-pairing-remote": "192.168.1.50" },
+      } as IncomingMessage,
+    });
+
+    expect(attribution).toMatchObject({
+      kind: "direct-remote",
+      clientIp: "192.168.1.50",
+    });
+  });
+
   it("keeps clean headerless loopback on the ordinary listener local", async () => {
     const attribution = prepareGatewayIngressAttribution({ req: request() });
 

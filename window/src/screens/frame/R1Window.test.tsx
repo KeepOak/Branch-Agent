@@ -18,7 +18,7 @@ vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as
 // page's own rows, Chat apps, and Your card (a page that draws only its own card).
 vi.mock("../settings/pages/plugged", async () => {
   const { REHOSTED, R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
-  return { R1_PAGES: { card: { cards: { "Your card": { component: () => null } } }, ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, who: R1_PAGES.who, instructions: R1_PAGES.instructions, learning: R1_PAGES.learning, remote: R1_PAGES.remote, signins: R1_PAGES.signins, updates: R1_PAGES.updates, voice: R1_PAGES.voice, developer: R1_PAGES.developer, chatapps: { component: () => null } } };
+  return { R1_PAGES: { card: { cards: { "Your card": { component: () => null } } }, ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, notifications: R1_PAGES.notifications, who: R1_PAGES.who, instructions: R1_PAGES.instructions, learning: R1_PAGES.learning, remote: R1_PAGES.remote, signins: R1_PAGES.signins, updates: R1_PAGES.updates, voice: R1_PAGES.voice, developer: R1_PAGES.developer, chatapps: { component: () => null }, trunks: { component: () => null } } };
 });
 vi.mock("../settings", () => ({
   SettingsFrame: ({ engine, page, pages, onPage }: { engine: { id?: string }; page?: string; pages?: Record<string, unknown>; onPage?: (page: string) => void }) => (
@@ -98,7 +98,7 @@ it("mounts R1 Settings with the live engine and its slots, and opens Chat apps i
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
   expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
-  expect(settings.dataset.pages).toBe("card,notifications,models,permissions,privacy,browser,coding,history,devices,who,instructions,learning,remote,signins,updates,voice,developer,chatapps,goto,seedbank,features");
+  expect(settings.dataset.pages).toBe("card,models,permissions,privacy,browser,coding,history,devices,notifications,who,instructions,learning,remote,signins,updates,voice,developer,chatapps,trunks,goto,seedbank,features");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
@@ -162,14 +162,13 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
   }
   // An R1 page must be the page asked for; a Classic page must be one Classic draws as itself, and General only for General.
   const ownPage = (id: string, kind: string, page: string) => kind === "r1" ? page === id
-    : kind === "place" ? id === "memory"
     : classic.has(page) && pageAtLevel(page, levelFor(page, "regular")) === page && (page !== "general" || id === "general");
   const wrong = ids.filter((id) => !ownPage(id, ...(opened[id].split(":") as [string, string])));
   expect(wrong.map((id) => `${id} → ${opened[id]}`)).toEqual([]);
   expect(opened).toEqual({
     card: "r1:card", goto: "r1:goto",
     general: "r1:general", appearance: "r1:appearance", notifications: "r1:notifications", who: "r1:who",
-    trunks: "classic:advanced", instructions: "r1:instructions", customize: "r1:customize", seedbank: "r1:seedbank", memory: "place:library", autos: "r1:autos",
+    trunks: "r1:trunks", instructions: "r1:instructions", customize: "r1:customize", seedbank: "r1:seedbank", memory: "r1:memory", autos: "r1:autos",
     voice: "r1:voice", chatapps: "r1:chatapps",
     accounts: "r1:accounts", models: "r1:models",
     permissions: "r1:permissions", signins: "r1:signins", privacy: "r1:privacy",
@@ -177,31 +176,24 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
     history: "r1:history", learning: "r1:learning", updates: "r1:updates", features: "r1:features", developer: "r1:developer",
   });
 });
-it("opens Settings › Memory & documents as its place, and Customize and Automations as their R1 pages", async () => {
+it("opens Settings › Memory & documents, Customize and Automations as their R1 pages, never Classic Advanced", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
   expect(resolveRoute({ kind: "settings", page: "customize" })).toEqual({ kind: "settings", page: "customize" });
   expect(resolveRoute({ kind: "settings", page: "autos" })).toEqual({ kind: "settings", page: "autos" });
-  expect(resolveRoute({ kind: "settings", page: "memory" })).toEqual({ kind: "place", place: "library" });
+  expect(resolveRoute({ kind: "settings", page: "memory" })).toEqual({ kind: "settings", page: "memory" });
   // Old ids for Customize still land on the R1 page; every other page stays a Settings page.
   for (const old of ["graftsT5", "czP17"]) expect(resolveRoute({ kind: "settings", page: old })).toEqual({ kind: "settings", page: "customize" });
   expect(resolveRoute({ kind: "settings", page: "voice" })).toEqual({ kind: "settings", page: "voice" });
   for (const page of ["customize", "memory", "autos"]) expect(CLASSIC_PAGE[page], page).toBeUndefined();
-  // From the Settings nav: the frame asks for the page, the window opens the place, and Library is told its Memory tab.
   localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "voice" }));
-  const tabs: unknown[] = [];
-  const onTab = (e: Event) => tabs.push((e as CustomEvent).detail);
-  window.addEventListener("branch:place-tab", onTab);
-  try {
-    await act(async () => root.render(<R1Window session={session} />));
-    const memory = [...host.querySelectorAll("button")].find((b) => b.textContent === "Memory & documents")!;
-    await act(async () => { memory.click(); await new Promise((r) => setTimeout(r, 0)); });
-    expect(host.querySelector('[data-testid="r1-settings"]')).toBeNull();
-    expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
-    expect(host.querySelector<HTMLElement>('[data-testid="place"]')?.dataset.place).toBe("library");
-    expect(tabs).toEqual([{ place: "library", tab: "memory" }]);
-    expect(JSON.parse(localStorage.getItem("branch.route") ?? "null")).toEqual({ kind: "place", place: "library" });
-  } finally { window.removeEventListener("branch:place-tab", onTab); }
+  await act(async () => root.render(<R1Window session={session} />));
+  const memory = [...host.querySelectorAll("button")].find((b) => b.textContent === "Memory & documents")!;
+  await act(async () => { memory.click(); await new Promise((r) => setTimeout(r, 0)); });
+  expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
+  expect(host.querySelector('[data-testid="place"]')).toBeNull();
+  expect(host.querySelector<HTMLElement>('[data-testid="r1-settings"]')?.dataset.page).toBe("memory");
+  expect(JSON.parse(localStorage.getItem("branch.route") ?? "null")).toEqual({ kind: "settings", page: "memory" });
 });
 it("sends a page to R1 Settings only when the row table or a slot covers it and Classic has nothing more", () => {
   expect(r1SettingsPage("general")).toBe(true);
@@ -233,6 +225,16 @@ it("opens the place a re-hosted Classic page asks for (branch:navigate-place), a
   await act(async () => { window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "people" } })); });
   expect(window.history.state.r1Route).toEqual({ kind: "place", place: "people" });
   expect(host.textContent).toContain("Place content");
+});
+it.each([["Chat apps", "chatapps"], ["Trunks", "trunks"]])("opens Settings for Customize's old %s tab", async (tab, page) => {
+  const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "models" }));
+  await act(async () => root.render(<R1Window session={session} />));
+  await act(async () => { window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "customize", tab } })); });
+  expect(window.history.state.r1Route).toEqual({ kind: "settings", page });
+  expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
+  expect(host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!.dataset.page).toBe(page);
 });
 
 it("the conversation menu's View › \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {

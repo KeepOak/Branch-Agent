@@ -10,6 +10,7 @@ import {
   resolveEmbeddingProviderFallbackRemote,
   resolveEmbeddingProviderIndexIdentity,
 } from "./embeddings.js";
+import { LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE } from "./local-embedding-provider.js";
 
 const mockEmbeddingRegistry = vi.hoisted(() => ({
   genericAdapters: [] as EmbeddingProviderAdapter[],
@@ -146,26 +147,52 @@ describe("createEmbeddingProvider", () => {
     });
   });
 
-  it("normalizes legacy auto mode to OpenAI", async () => {
-    registerTestMemoryAdapter(createMissingCredentialsAdapter({ id: "bedrock" }));
+  function registerLocalAdapter(
+    create: MemoryEmbeddingProviderAdapter["create"] = async () => ({
+      provider: {
+        id: "local",
+        model: "embeddinggemma-300m",
+        embed: async () => [1],
+        embedBatch: async (texts) => texts.map(() => [1]),
+      },
+    }),
+  ) {
+    registerTestMemoryAdapter({
+      id: "local",
+      transport: "local",
+      defaultModel: "embeddinggemma-300m",
+      create,
+    });
+  }
+
+  function registerOpenAiAdapter(create: MemoryEmbeddingProviderAdapter["create"]) {
     registerTestMemoryAdapter({
       id: "openai",
       transport: "remote",
       autoSelectPriority: 20,
-      create: async () => ({
-        provider: {
-          id: "openai",
-          model: "text-embedding-3-small",
-          embed: async () => [1],
-          embedBatch: async (texts) => texts.map(() => [1]),
-        },
-      }),
+      defaultModel: "text-embedding-3-small",
+      create,
     });
+  }
+
+  it("defaults auto mode to local embeddings", async () => {
+    registerTestMemoryAdapter(createMissingCredentialsAdapter({ id: "bedrock" }));
+    const openaiCreate = vi.fn<MemoryEmbeddingProviderAdapter["create"]>(async () => ({
+      provider: {
+        id: "openai",
+        model: "text-embedding-3-small",
+        embed: async () => [1],
+        embedBatch: async (texts) => texts.map(() => [1]),
+      },
+    }));
+    registerOpenAiAdapter(openaiCreate);
+    registerLocalAdapter();
 
     const result = await createEmbeddingProvider(createOptions("auto"));
 
-    expect(result.provider?.id).toBe("openai");
-    expect(result.requestedProvider).toBe("openai");
+    expect(result.provider?.id).toBe("local");
+    expect(result.requestedProvider).toBe("local");
+    expect(openaiCreate).not.toHaveBeenCalled();
   });
 
   it("still throws missing credentials for an explicit provider request", async () => {
@@ -336,24 +363,22 @@ describe("createEmbeddingProvider", () => {
 
   it("does not run priority-based auto-selection after a skippable setup failure", async () => {
     registerTestMemoryAdapter(createMissingCredentialsAdapter({ autoSelectPriority: 10 }));
-    registerTestMemoryAdapter({
-      id: "openai",
-      transport: "remote",
-      autoSelectPriority: 20,
-      create: async () => ({
-        provider: {
-          id: "openai",
-          model: "text-embedding-3-small",
-          embed: async () => [1],
-          embedBatch: async (texts) => texts.map(() => [1]),
-        },
-      }),
-    });
+    const openaiCreate = vi.fn<MemoryEmbeddingProviderAdapter["create"]>(async () => ({
+      provider: {
+        id: "openai",
+        model: "text-embedding-3-small",
+        embed: async () => [1],
+        embedBatch: async (texts) => texts.map(() => [1]),
+      },
+    }));
+    registerOpenAiAdapter(openaiCreate);
+    registerLocalAdapter();
 
     const result = await createEmbeddingProvider(createOptions("auto"));
 
-    expect(result.provider?.id).toBe("openai");
-    expect(result.requestedProvider).toBe("openai");
+    expect(result.provider?.id).toBe("local");
+    expect(result.requestedProvider).toBe("local");
+    expect(openaiCreate).not.toHaveBeenCalled();
   });
 
   it("uses a generic embedding provider when no memory-specific provider exists", async () => {
@@ -459,10 +484,56 @@ describe("createEmbeddingProvider", () => {
     await expect(result.provider?.embed("hello", { inputType: "query" })).resolves.toEqual([0]);
   });
 
-  it("reports the llama.cpp plugin install command when local is unregistered", async () => {
+  it("says plainly when no local embedding model is available", async () => {
     await expect(createEmbeddingProvider(createOptions("local"))).rejects.toThrow(
-      "branch plugins install @branch/llama-cpp-provider",
+      LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE,
     );
+    await expect(createEmbeddingProvider(createOptions("auto"))).rejects.toThrow(
+      LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE,
+    );
+  });
+
+  it("does not fall back to a paid OpenAI provider when a key is present but not chosen", async () => {
+    const openaiCreate = vi.fn<MemoryEmbeddingProviderAdapter["create"]>(async () => ({
+      provider: {
+        id: "openai",
+        model: "text-embedding-3-small",
+        embed: async () => [1],
+        embedBatch: async (texts) => texts.map(() => [1]),
+      },
+    }));
+    registerOpenAiAdapter(openaiCreate);
+    const localCreate = vi.fn<MemoryEmbeddingProviderAdapter["create"]>(async () => {
+      throw new Error("managed llama-server is not configured");
+    });
+    registerLocalAdapter(localCreate);
+
+    const options = {
+      ...createOptions("auto"),
+      fallback: "openai",
+      config: {
+        ...createOptions("auto").config,
+        models: {
+          providers: {
+            openai: {
+              apiKey: "sk-test-not-for-memory",
+              models: [],
+            },
+          },
+        },
+        auth: {
+          profiles: {
+            "openai:codex": { provider: "openai", mode: "oauth" },
+          },
+        },
+      } as BranchConfig,
+    };
+
+    await expect(createEmbeddingProvider(options)).rejects.toThrow(
+      LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE,
+    );
+    expect(localCreate).toHaveBeenCalledOnce();
+    expect(openaiCreate).not.toHaveBeenCalled();
   });
 
   it("does not auto-select generic providers by priority policy", async () => {
@@ -492,7 +563,7 @@ describe("createEmbeddingProvider", () => {
     });
 
     await expect(createEmbeddingProvider(createOptions("auto"))).rejects.toThrow(
-      "Unknown memory embedding provider: openai",
+      LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE,
     );
   });
 

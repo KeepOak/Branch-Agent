@@ -53,8 +53,8 @@ describe('computers screen', () => {
     await renderList({ rows: [], loaded: true, error: null });
     expect(screen.getByTestId('computers-empty')).toBeOnTheScreen();
     const onRefresh = jest.fn(async () => undefined);
-    await renderList({ rows: [], loaded: false, error: 'environments unavailable' }, true, { onRefresh });
-    expect(screen.getByTestId('computers-error')).toHaveTextContent(/environments unavailable/);
+    await renderList({ rows: [], loaded: false, error: "Can't reach Branch. Check your connection." }, true, { onRefresh });
+    expect(screen.getByTestId('computers-error')).toHaveTextContent(/Can't reach Branch/);
     await fireEvent.press(screen.getByTestId('computers-error-action'));
     expect(onRefresh).toHaveBeenCalledTimes(1);
     await renderList({ rows: [], loaded: false, error: 'not connected' }, false);

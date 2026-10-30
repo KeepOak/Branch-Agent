@@ -2,7 +2,7 @@
 // `window.branchDesktop` is for window code that reads it; until the window does, this also fills the window's
 // token form (test ids gateway-token / connect, as in window/scripts/step2-flow.mjs). On loopback the engine
 // pairs the window silently, so nothing needs approving.
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webFrame } from "electron";
 
 interface DesktopInfo {
   gatewayUrl: string;
@@ -58,6 +58,7 @@ if (info) {
   contextBridge.exposeInMainWorld("branchDesktop", {
     gatewayUrl: info.gatewayUrl, getGatewayUrl: () => gatewayUrl, gatewayToken: info.gatewayToken,
     openConversation: (key: string) => ipcRenderer.invoke("branch-desktop:open-conversation", key),
+    showWindow: () => ipcRenderer.invoke("branch-desktop:show-window"),
     browserGuest: {
       // A sandboxed preload cannot import modules, so the loopback test is repeated here (see browser-guest-policy.ts).
       local: isLoopbackUrl(info.gatewayUrl),
@@ -92,6 +93,8 @@ if (info) {
       return () => ipcRenderer.removeListener("branch-desktop:open-main-route", handler);
     },
     clipboard: { writeText: (text: string) => ipcRenderer.invoke("branch-desktop:clipboard:write-text", text) },
+    /** Settings › Appearance › Interface scale (Private #1100): the page's own zoom, so menus stay where they belong. */
+    zoom: { set: (factor: number) => { if (Number.isFinite(factor) && factor >= 0.5 && factor <= 2) webFrame.setZoomFactor(factor); } },
     componentUpdates: {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
       check: () => ipcRenderer.invoke("branch-desktop:component-update:check"),
@@ -147,6 +150,12 @@ if (info) {
         ipcRenderer.on("branch-desktop:open-usage", handler);
         return () => { ipcRenderer.removeListener("branch-desktop:open-usage", handler); };
       },
+    },
+    // This computer's microphone, camera, location and notification permissions (os-permissions.ts).
+    permissions: {
+      get: () => ipcRenderer.invoke("branch-desktop:permissions:get"),
+      request: (name: string) => ipcRenderer.invoke("branch-desktop:permissions:request", name),
+      open: (name: string) => ipcRenderer.invoke("branch-desktop:permissions:open", name),
     },
   });
   window.addEventListener("DOMContentLoaded", () => {

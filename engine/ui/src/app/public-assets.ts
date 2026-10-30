@@ -13,7 +13,8 @@ type ControlUiPublicAsset =
   | `cloud-provider-icons/${string}.svg`
   | `file-icons/${string}.svg`
   | `app-art/${string}.webp`
-  | `community-art/${string}.webp`;
+  | `community-art/${string}.webp`
+  | `brand/${string}.png`;
 
 export function controlUiPublicAssetPath(
   asset: ControlUiPublicAsset,

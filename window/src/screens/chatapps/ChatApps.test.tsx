@@ -12,19 +12,20 @@ let root: Root;
 afterEach(async () => { if (root) await act(async () => root.unmount()); document.body.innerHTML = ""; });
 // The gateway never advertises web.login.*, so the fixture doesn't either.
 const methods = ["channels.status", "channels.pairing.list", "channels.pairing.approve", "wizard.start", "wizard.next", "wizard.cancel"];
-async function render(status = {}, available = methods, scopes = ["operator.admin"], renderAccess?: (app: { id: string }) => ReactNode) {
+async function render(status = {}, available = methods, scopes = ["operator.admin"], renderAccess?: (app: { id: string }) => ReactNode, canManage = true) {
   const request = vi.fn(async (method: string) => method === "channels.status" ? status : { accounts: [], requests: [], limits: { ttlMs: 3600000, pendingPerAccount: 3 } });
   const engine = { request, onEvent: () => () => {}, sessionKey: null, scopes, features: { methods: available, events: [] } } as WindowEngine;
   const setup = vi.fn(), manage = vi.fn();
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root.render(<ChatApps engine={engine} onSetup={setup} onManage={manage} renderAccess={renderAccess} />));
+  await act(async () => root.render(<ChatApps engine={engine} onSetup={setup} onManage={canManage ? manage : undefined} renderAccess={renderAccess} />));
   return { host, request, setup, manage };
 }
 it("shows only the R1 four at Regular and Advanced, and all 74 real catalogue entries at Technical (Private #1093 item 4)", async () => {
   for (const level of ["regular", "advanced"]) {
     localStorage.setItem("branch.level", level);
     const shown = await render();
-    expect([...shown.host.querySelectorAll(".r1-ca-card")].map(c => c.querySelector("b")?.textContent), level).toEqual(["Telegram", "Discord", "WhatsApp (your number)", "Slack"]);
+    // WhatsApp (your number) is Coming on this engine (its channel isn't listed), and Coming waits for Technical (item 7).
+    expect([...shown.host.querySelectorAll(".r1-ca-card")].map(c => c.querySelector("b")?.textContent), level).toEqual(["Telegram", "Discord", "Slack"]);
     expect(shown.host.querySelector("[data-later-rows]"), level).toBeNull();
     expect(shown.host.querySelector<HTMLInputElement>('input[aria-label="Search chat apps"]')!.placeholder).toBe("Search chat apps");
     await act(async () => root.unmount()); shown.host.remove();
@@ -46,7 +47,10 @@ it("shows only the R1 four at Regular and Advanced, and all 74 real catalogue en
 });
 it("does not advertise setup when the gateway lacks the methods", async () => {
   const regular = await render({}, ["channels.status"]);
-  expect([...regular.host.querySelectorAll('.r1-ca-card[aria-disabled="true"]')]).toHaveLength(4);
+  // Every card is Coming on this engine: below Technical none is drawn, and neither is the empty Every chat app list.
+  expect(regular.host.querySelectorAll(".r1-ca-card")).toHaveLength(0);
+  expect(regular.host.querySelector("#r1-ca-all")).toBeNull();
+  expect(regular.host.querySelector('[aria-label="Your phone"]')).toBeNull();
   await act(async () => root.unmount()); regular.host.remove();
   localStorage.setItem("branch.level", "technical");
   const { host, setup } = await render({}, ["channels.status"]);
@@ -60,6 +64,10 @@ it("uses live account health and opens Manage for a configured app", async () =>
   const card = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find(b => b.textContent?.includes("Telegram"))!;
   expect(card.textContent).toContain("Connected");
   expect(card.textContent).toContain("Manage");
+  expect(card.hasAttribute("aria-describedby")).toBe(false);
+  const open = host.querySelector<HTMLButtonElement>(".r1-ca-connected button")!;
+  expect(open.disabled).toBe(false);
+  expect(open.hasAttribute("aria-describedby")).toBe(false);
   await act(async () => card.click());
   expect(manage).toHaveBeenCalledWith(expect.objectContaining({ id: "telegram" }));
 });
@@ -150,4 +158,97 @@ it("explains Who answers instead of leaving an empty card when no app is connect
   const linked = await render({ channelAccounts: { telegram: [{ accountId: "default", configured: true, running: true }] } }, methods, ["operator.admin"], access);
   expect(linked.host.querySelector('[aria-label="Who answers and who may message"]')!.textContent).toContain("Access for telegram");
   expect(linked.host.textContent).not.toContain("No chat app is connected yet.");
+});
+
+function describedReason(control: Element) {
+  const id = control.getAttribute("aria-describedby");
+  expect(id, control.textContent ?? "control").toBeTruthy();
+  const reason = document.getElementById(id!);
+  expect(reason?.textContent?.trim()).toBeTruthy();
+  expect(reason?.closest("[hidden], [aria-hidden=true]")).toBeNull();
+  return reason!.textContent;
+}
+it("describes every greyed Chat apps card when setup calls are missing", async () => {
+  localStorage.setItem("branch.level", "technical");
+  const { host, setup } = await render({}, ["channels.status"]);
+  localStorage.removeItem("branch.level");
+  await act(async () => host.querySelector<HTMLButtonElement>("[data-later-rows] > button")!.click());
+  const cards = host.querySelectorAll<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]');
+  expect(cards).toHaveLength(74);
+  for (const card of cards) {
+    expect(describedReason(card)).toContain("comes in a later update.");
+    await act(async () => card.click());
+  }
+  expect(setup).not.toHaveBeenCalled();
+});
+it("describes locked Chat apps cards with the full access requirement", async () => {
+  const { host, setup } = await render({}, methods, ["operator.read"]);
+  const cards = [...host.querySelectorAll<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]')]
+    .filter(card => card.querySelector(".r1-ca-action")?.textContent === "Needs full access");
+  expect(cards).toHaveLength(3);
+  expect(cards.map(c => c.querySelector("b")?.textContent)).toEqual(["Telegram", "Discord", "Slack"]);
+  for (const card of cards) {
+    expect(describedReason(card)).toContain("needs full access on this connection.");
+    await act(async () => card.click());
+  }
+  expect(setup).not.toHaveBeenCalled();
+});
+it("counts WhatsApp (your number) as needing full access once the engine lists WhatsApp", async () => {
+  const { host, setup } = await render({ channelOrder: ["telegram", "whatsapp"] }, methods, ["operator.read"]);
+  const cards = [...host.querySelectorAll<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]')]
+    .filter(card => card.querySelector(".r1-ca-action")?.textContent === "Needs full access");
+  // Cards render by group: Messaging (Telegram, Discord, WhatsApp (your number)) before Work (Slack).
+  expect(cards.map(c => c.querySelector("b")?.textContent)).toEqual(["Telegram", "Discord", "WhatsApp (your number)", "Slack"]);
+  for (const card of cards) {
+    expect(describedReason(card)).toContain("needs full access on this connection.");
+    await act(async () => card.click());
+  }
+  expect(setup).not.toHaveBeenCalled();
+});
+it("describes disabled Open and Manage without enabling either action", async () => {
+  const { host, manage } = await render({ channelAccounts: { telegram: [{ accountId: "default", configured: true, running: true }] } }, methods, ["operator.admin"], undefined, false);
+  const open = host.querySelector<HTMLButtonElement>(".r1-ca-connected button")!;
+  expect(open.disabled).toBe(true);
+  expect(describedReason(open)).toBe("Managing Telegram is unavailable in this view.");
+  const card = host.querySelector<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]')!;
+  expect(describedReason(card)).toBe("Managing Telegram is unavailable in this view.");
+  expect(card.querySelector(".r1-ca-action")?.textContent).toBe("Connected");
+  expect(card.querySelector(".r1-ca-action")?.textContent).not.toBe("Coming");
+  await act(async () => { open.click(); card.click(); });
+  expect(manage).not.toHaveBeenCalled();
+});
+it("labels a connected card that isn't running with its state word, never Coming, when Manage is unavailable", async () => {
+  const { host, manage } = await render({ channelAccounts: { telegram: [{ accountId: "default", configured: true, running: false }] } }, methods, ["operator.admin"], undefined, false);
+  // The connected list's pill and the card's action share appOf's word: not running reads Offline.
+  expect(host.querySelector(".r1-ca-connected [role=listitem]")!.textContent).toContain("Offline");
+  const card = host.querySelector<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]')!;
+  expect(card.querySelector("b")?.textContent).toBe("Telegram");
+  const label = card.querySelector(".r1-ca-action")?.textContent;
+  expect(label).toBe("Offline");
+  expect(label).not.toBe("Coming");
+  expect(label).not.toBe("Connected");
+  expect(describedReason(card)).toBe("Managing Telegram is unavailable in this view.");
+  await act(async () => card.click());
+  expect(manage).not.toHaveBeenCalled();
+});
+it("labels a running card with an issue or error with the pill's word, never Connected", async () => {
+  const cases = [
+    { name: "status issue", status: { channelAccounts: { telegram: [{ accountId: "default", configured: true, running: true }] }, statusIssues: [{ channel: "telegram", accountId: "default", kind: "runtime", message: "Bot token rejected" }] } },
+    { name: "last error", status: { channelAccounts: { telegram: [{ accountId: "default", configured: true, running: true, lastError: "Bot token rejected" }] } } },
+  ];
+  let first = true;
+  for (const { name, status } of cases) {
+    for (const canManage of [true, false]) {
+      if (!first) { await act(async () => root.unmount()); document.body.innerHTML = ""; }
+      first = false;
+      const { host } = await render(status, methods, ["operator.admin"], undefined, canManage);
+      const pill = host.querySelector(".r1-ca-connected [role=listitem]")!.textContent;
+      expect(pill, name).toContain("Offline");
+      const card = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find(b => b.querySelector("b")?.textContent === "Telegram")!;
+      // Manage available: the card's line; Manage unavailable: the card's action label.
+      const word = canManage ? card.querySelector(".r1-ca-text small")?.textContent : card.querySelector(".r1-ca-action")?.textContent;
+      expect(word, name).toBe("Offline");
+      expect(card.textContent, name).not.toContain("Connected");
+    }
+  }
 });

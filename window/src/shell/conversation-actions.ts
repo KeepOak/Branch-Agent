@@ -187,8 +187,9 @@ export function conversationActions(request: Request, list: ConversationList, op
       notify(failed.length ? `Couldn't delete ${failed.join(", ")}.` : `Deleted ${rows.length} conversations.`, failed.length ? { tone: "bad" } : undefined);
       await list.refresh();
     },
-    /** Adopt the Trunk's canonical contact so the shell can retain its durable list row. */
-    async create(agentId?: string): Promise<string | null> {
+    /** Adopt the Trunk's canonical contact so the shell can retain its durable list row.
+     *  `quiet`: the caller says what failed itself (New Trunk's own message with Try again), so no toast here. */
+    async create(agentId?: string, options: { quiet?: boolean } = {}): Promise<string | null> {
       const backoff = new PreparationRetry();
       const createOnce = async (): Promise<string> => {
         const roster = (await request("agents.list", {})) as { defaultId?: unknown; mainKey?: unknown };
@@ -221,7 +222,7 @@ export function conversationActions(request: Request, list: ConversationList, op
           }
         }
       } catch (e) {
-        notify(`Couldn't start a conversation: ${reason(e)}.`, { tone: "bad" });
+        if (!options.quiet) notify(`Couldn't start a conversation: ${reason(e)}.`, { tone: "bad" });
         return null;
       }
     },
