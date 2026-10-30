@@ -4,7 +4,6 @@ engine:src/wizard/clack-prompter.test.ts
 engine:src/wizard/command-choice.test.ts
 engine:src/wizard/i18n/index.test.ts
 engine:src/wizard/navigation-prompter.test.ts
-engine:src/wizard/session.test.ts
 engine:src/wizard/setup.app-recommendations.test.ts
 engine:src/wizard/setup.completion.test.ts
 engine:src/wizard/setup.default-agent.test.ts

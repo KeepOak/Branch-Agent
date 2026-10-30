@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,18 +9,18 @@ import { plainFreeModelQuestion } from "./free-model-question";
 import type { WindowEngine } from "./engine";
 import { FREE_MODEL_CANCELLED, FreeModelSetup, type FreeModelSetupVariant } from "./FreeModelSetup";
 import { FREE_MODEL_FAILED, NO_KEY_DEFAULT_KIND } from "./no-key-default";
+import type { WizardStep } from "../places/settings/account-login";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const CONFIRM = {
-  done: false,
-  step: {
-    id: "download",
-    type: "confirm",
-    message: "Download Qwen3.5 9B (Q4_K_M) (5.7 GB), the local embedding model (about 0.3 GB), and the verified CPU runtime, then use this model?",
-    initialValue: false,
-  },
-};
+/** Questions the engine's real llama.cpp setup asked over the wizard protocol (engine/extensions/llama-cpp/src/setup.free-model-question.test.ts). */
+const ENGINE_QUESTIONS = JSON.parse(readFileSync(resolve(process.cwd(), "../engine/test/fixtures/llama-cpp-free-model-questions.json"), "utf8")) as Record<string, Omit<WizardStep, "id">[]>;
+const engineStep = (name: string, index = 0): WizardStep => ({ id: name + "-" + index, ...ENGINE_QUESTIONS[name]![index]! });
+const gb = (bytes = 0) => (bytes / 1e9).toFixed(1) + " GB";
+const FULL = engineStep("model");
+const FULL_SIZE = gb(FULL.freeModel?.downloadBytes);
+const FULL_QUESTION = "Download a free model (" + FULL.freeModel?.modelName + ", " + FULL_SIZE + ") so Branch can answer without an account?";
+const CONFIRM = { done: false, step: FULL };
 const PROGRESS = {
   done: false,
   step: { id: "progress", type: "progress", message: "Downloading Qwen3.5 9B… 20% (1.1/5.7 GB, 38 MB/s)" },
@@ -70,41 +72,44 @@ describe("FreeModelSetup", () => {
 
   it.each(["composer", "onboarding"] as const)("asks the plain download question in %s", async (variant) => {
     const { host } = await mount({ next: [CONFIRM], variant });
-    expect(host.querySelector("p")?.textContent).toBe("Download a free model (Qwen3.5 9B, 5.7 GB) so Branch can answer without an account?");
+    expect(host.querySelector("p")?.textContent).toBe(FULL_QUESTION);
     expect(button("Yes")).toBeTruthy();
     expect(button("Cancel")).toBeTruthy();
   });
 
-  it.each(messages)("extracts no technical wording or computer name from %s", async (message) => {
-    const { host } = await mount({ next: [{ ...CONFIRM, step: { ...CONFIRM.step, title: `llama.cpp on ${computer}`, message } }] });
+  const engineSteps = Object.keys(ENGINE_QUESTIONS).flatMap((name) => ENGINE_QUESTIONS[name]!.map((_, index) => engineStep(name, index)));
+
+  it.each(engineSteps.map((step) => [step.id, step] as const))("shows no technical wording or computer name for the engine's %s question", async (_, step) => {
+    expect(step.message).toMatch(/runtime|gateway-host/);
+    const { host } = await mount({ next: [{ done: false, step }] });
     expect(host.textContent).not.toMatch(banned);
+    expect(host.textContent).not.toContain("gateway-host");
   });
 
-  it("uses the model's own size, not the embedding size", () => {
-    expect(plainFreeModelQuestion({ message: messages[1] })).toBe("Download a free model (Example Model 12B, 8.4 GB) so Branch can answer without an account?");
+  it.each(engineSteps.map((step) => [step.id, step] as const))("words the engine's %s question from its fields, not its text", (_, step) => {
+    expect(plainFreeModelQuestion(step)).toBe(plainFreeModelQuestion({ ...step, message: "" }));
   });
 
-  it("shows the whole download, not only the model", async () => {
-    const message = "Runs on Gateway host fixture-device (darwin/arm64), using Apple Metal.\n\nDownload Qwen3.5 9B (Q4_K_M) (5.7 GB), the local embedding model (about 0.3 GB), and the verified METAL runtime, 6.0 GB in total, then use this model?";
-    const { host } = await mount({ next: [{ ...CONFIRM, step: { ...CONFIRM.step, message } }] });
-    expect(host.querySelector("p")?.textContent).toBe("Download a free model (Qwen3.5 9B, 6.0 GB) so Branch can answer without an account?");
-    expect(host.textContent).not.toMatch(banned);
+  it("shows the whole download, not only the model", () => {
+    const withSearchModel = FULL.freeModel?.downloadBytes ?? 0;
+    const searchModelCached = engineStep("modelWithSearchModelCached");
+    expect(withSearchModel).toBeGreaterThan(searchModelCached.freeModel?.downloadBytes ?? 0);
+    expect(plainFreeModelQuestion(FULL)).toBe(FULL_QUESTION);
+    expect(plainFreeModelQuestion(searchModelCached)).toBe("Download a free model (" + FULL.freeModel?.modelName + ", " + gb(searchModelCached.freeModel?.downloadBytes) + ") so Branch can answer without an account?");
   });
 
-  it.each(["Q4_K_M", "UD-Q4_K_M", "Q8_0", "IQ4_XS", "F16", "BF16"])("hides the %s format tag in cached and download names", (tag) => {
-    expect(plainFreeModelQuestion({ message: `Download Example Model (${tag}) (5.7 GB)?` })).toBe("Download a free model (Example Model, 5.7 GB) so Branch can answer without an account?");
-    expect(plainFreeModelQuestion({ message: `Use cached Example Model (${tag}), download any missing embedding and CPU runtime files, then use this model?` })).toBe("Use the free model Example Model that is already on this computer so Branch can answer without an account?");
+  it("names the model without its file format tag", () => {
+    for (const step of [FULL, engineStep("cachedModel")]) expect(step.freeModel?.modelName).not.toMatch(/\((?:UD-)?I?Q\d|BF16|F16|F32\)/i);
+    expect(plainFreeModelQuestion(engineStep("cachedModel"))).toBe("Use the free model " + engineStep("cachedModel").freeModel?.modelName + " that is already on this computer so Branch can answer without an account?");
   });
 
-  it("keeps non-format words in the model name", () => {
-    expect(plainFreeModelQuestion({ message: "Download Example Model (Instruct) (5.7 GB)?" })).toBe("Download a free model (Example Model (Instruct), 5.7 GB) so Branch can answer without an account?");
-  });
-
-  it.each([
-    "Download Qwen3.5 9B (5.7 GB)?",
-    "Download Qwen3.5 9B (5.7 GB) and the verified runtime, then use this model?",
-  ])("keeps the size from the earlier wizard question: %s", (message) => {
-    expect(plainFreeModelQuestion({ message })).toBe("Download a free model (Qwen3.5 9B, 5.7 GB) so Branch can answer without an account?");
+  it.each(["searchModelOnly", "declinedThenSearchModelOnly"])("asks its own sized question when the engine offers only the search model (%s)", async (name) => {
+    const steps = ENGINE_QUESTIONS[name]!;
+    const step = engineStep(name, steps.length - 1);
+    const question = "Download only the small model that lets Branch search memories by meaning (" + gb(step.freeModel?.downloadBytes) + ")? Your chat model stays the same.";
+    const { host } = await mount({ next: [{ done: false, step }] });
+    expect(host.querySelector("p")?.textContent).toBe(question);
+    expect(button("Yes")).toBeTruthy();
   });
 
   it("keeps the established free model failure wording", async () => {
@@ -114,11 +119,7 @@ describe("FreeModelSetup", () => {
     expect(button("Try again")).toBeTruthy();
   });
 
-  it.each(messages.slice(2, 4))("asks to use the cached model without inventing a size: %s", (message) => {
-    expect(plainFreeModelQuestion({ message })).toBe("Use the free model Example Model 12B that is already on this computer so Branch can answer without an account?");
-  });
-
-  it.each([undefined, "", messages[4], "Download CPU backend (2.0 GB), embedding, and the verified CPU runtime, then use this model?"])("uses a plain fallback for %s", (message) => {
+  it.each([undefined, "", ...messages])("uses a plain fallback when the engine sends no question fields: %s", (message) => {
     expect(plainFreeModelQuestion({ message })).toBe("Download a free model so Branch can answer without an account?");
   });
 
@@ -155,7 +156,7 @@ describe("FreeModelSetup", () => {
 
   it("does not send Yes until the owner agrees, and shows the size with Cancel", async () => {
     const { host, request } = await mount({ next: [CONFIRM] });
-    expect(host.textContent).toContain("5.7 GB");
+    expect(host.textContent).toContain(FULL_SIZE);
     expect(button("Cancel")).toBeTruthy();
     expect(button("Yes")).toBeTruthy();
     expect(request.mock.calls.some(([method]) => method === "branch.setup.activate")).toBe(false);
