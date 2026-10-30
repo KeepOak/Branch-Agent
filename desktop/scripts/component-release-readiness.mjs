@@ -1,7 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mergeCheckRunPages, PASS_CONCLUSIONS } from "../../scripts/merge-gate-rate-limit.mjs";
+import {
+  httpStatusOf,
+  isRateLimitError,
+  mergeCheckRunPages,
+  PASS_CONCLUSIONS,
+  waitOptionsFromEnv,
+  withRateLimitRetry,
+} from "../../scripts/merge-gate-rate-limit.mjs";
 import { actionsRunIdFromCheckRun, RECHECK_CHECK } from "../../scripts/merge-gate-trusted.mjs";
 
 export const WORKFLOW_RUN_EVENT = "workflow_run";
@@ -185,17 +192,120 @@ export function actionsJobIdFromCheckRun(checkRun) {
   return fromUrl ? Number(fromUrl[1]) : null;
 }
 
-export function getJobLog(repo, jobId, { command = "gh", argsPrefix = [], gh } = {}) {
-  // gh 2.102.0 exits 1 with an empty body when an Actions log has ANSI escapes.
-  const built = ["api", "--allow-escape-sequences", `repos/${repo}/actions/jobs/${jobId}/logs`];
-  if (typeof gh === "function") {
-    return String(gh(built) ?? "");
-  }
-  return String(execFileSync(command, [...argsPrefix, ...built], {
+function invokeGh(args, { command = "gh", argsPrefix = [], gh, env = process.env } = {}) {
+  if (typeof gh === "function") return String(gh(args) ?? "");
+  return String(execFileSync(command, [...argsPrefix, ...args], {
     encoding: "utf8",
     windowsHide: true,
-    env: process.env,
+    env,
   }) ?? "");
+}
+
+export function getJobLog(repo, jobId, { command = "gh", argsPrefix = [], gh, env } = {}) {
+  // gh 2.102.0 exits 1 with an empty body when an Actions log has ANSI escapes.
+  const built = ["api", "--allow-escape-sequences", `repos/${repo}/actions/jobs/${jobId}/logs`];
+  return invokeGh(built, { command, argsPrefix, gh, env });
+}
+
+function sleepSeconds(seconds) {
+  const ms = Math.max(0, Number(seconds) || 0) * 1000;
+  if (ms <= 0) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function invokeGhWithRetry(args, options = {}) {
+  const {
+    sleep = sleepSeconds,
+    now = Date.now,
+    maxRetries,
+    budgetSeconds,
+    maxSleep,
+    random = Math.random,
+    log,
+    startedAt,
+    ...invoke
+  } = options;
+  const wait = waitOptionsFromEnv();
+  return withRateLimitRetry(() => invokeGh(args, invoke), {
+    sleep,
+    now,
+    startedAt: startedAt ?? wait.startedAt,
+    budgetSeconds: budgetSeconds ?? wait.budgetSeconds,
+    maxRetries: maxRetries ?? Number.POSITIVE_INFINITY,
+    maxSleep: maxSleep ?? wait.maxSleep,
+    random,
+    log,
+  });
+}
+
+function parseLatestReleaseMeta(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text) return { latestRelease: "", publishedAt: "" };
+  const tab = text.indexOf("\t");
+  if (tab === -1) return { latestRelease: text, publishedAt: "" };
+  return { latestRelease: text.slice(0, tab), publishedAt: text.slice(tab + 1) };
+}
+
+function rateLimitedSkip(log, detail) {
+  log?.(`GitHub API still rate limited after retries (${detail}); skipping this release`);
+  return {
+    skip: true,
+    reason: "checks-unavailable",
+    latestRelease: "",
+    latestCommit: "",
+    publishedAt: "",
+  };
+}
+
+// Latest-release identity for decide_scheduled. Rate-limit after retries is a
+// skip so catch-up can retry this head. Any other gh error still fails closed.
+export function loadLatestReleaseIdentity(repo, options = {}) {
+  const log = options.log;
+  let latestMeta;
+  try {
+    latestMeta = invokeGhWithRetry(
+      ["api", `repos/${repo}/releases/latest`, "--jq", "[.tag_name,.published_at] | @tsv"],
+      options,
+    );
+  } catch (error) {
+    if (isRateLimitError(error)) return rateLimitedSkip(log, "releases/latest");
+    if (httpStatusOf(error) === 404) {
+      return {
+        skip: false,
+        reason: "no-previous-release",
+        latestRelease: "",
+        latestCommit: "",
+        publishedAt: "",
+      };
+    }
+    throw error;
+  }
+  const { latestRelease, publishedAt } = parseLatestReleaseMeta(latestMeta);
+  if (!latestRelease) {
+    return {
+      skip: false,
+      reason: "no-previous-release",
+      latestRelease: "",
+      latestCommit: "",
+      publishedAt: "",
+    };
+  }
+  try {
+    const latestCommit = String(invokeGhWithRetry(
+      ["api", `repos/${repo}/commits/${latestRelease}`, "--jq", ".sha"],
+      options,
+    ) ?? "").trim();
+    return {
+      skip: false,
+      reason: "ok",
+      latestRelease,
+      latestCommit,
+      publishedAt,
+    };
+  } catch (error) {
+    if (isRateLimitError(error)) return rateLimitedSkip(log, `commits/${latestRelease}`);
+    throw error;
+  }
 }
 
 export function catchUpLatchRunsPath(repo, sha) {
@@ -445,6 +555,28 @@ export function resolveFailedReleaseChecks({
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (process.argv[2] === "load-latest-release") {
+    try {
+      const decision = loadLatestReleaseIdentity(
+        argValue(process.argv, "--repo") || process.env.GITHUB_REPOSITORY || "KeepOak/Branch-Agent",
+        { log: console.error },
+      );
+      process.stdout.write(`${JSON.stringify({
+        skip: decision.skip,
+        reason: decision.reason,
+        latestRelease: decision.latestRelease,
+        latestCommit: decision.latestCommit,
+        publishedAt: decision.publishedAt,
+      })}\n`);
+      process.exit(0);
+    } catch (error) {
+      const errText = error?.stderr != null && String(error.stderr).length > 0
+        ? String(error.stderr)
+        : `${error?.message ?? error}\n`;
+      process.stderr.write(errText.endsWith("\n") ? errText : `${errText}\n`);
+      process.exit(error?.status ?? 1);
+    }
+  }
   if (process.argv[2] === "catch-up-after-failed-publish") {
     const decision = catchUpAfterFailedPublish({
       latestCommit: argValue(process.argv, "--latest"),

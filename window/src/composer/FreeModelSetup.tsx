@@ -1,8 +1,10 @@
 // Interactive free local model setup: ask with size and Cancel, and never download until Yes.
 import { useEffect, useRef, useState } from "react";
 import { Coming } from "../glass/coming";
-import { useWizard } from "../places/settings/use-wizard";
+import { useWizard, type WizardStep } from "../places/settings/use-wizard";
 import type { WindowEngine } from "./engine";
+import { plainFreeModelQuestion } from "./free-model-question";
+import { plainFreeModelSkip, skippedFreeModelReason } from "./free-model-skip";
 import { FREE_MODEL_FAILED, NO_KEY_DEFAULT_KIND } from "./no-key-default";
 
 export const FREE_MODEL_CANCELLED = "Setup cancelled. Chat stays open; connect a model when you want.";
@@ -20,8 +22,16 @@ type Props = {
 
 function friendlyWizardError(message: string): string {
   if (/sign-in was cancelled/i.test(message)) return FREE_MODEL_CANCELLED;
-  if (/sign-in did not finish/i.test(message)) return FREE_MODEL_FAILED;
-  return message.trim() || FREE_MODEL_FAILED;
+  if (message === "A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster.") return message;
+  return FREE_MODEL_FAILED;
+}
+
+function plainFreeModelStep(step: WizardStep): string {
+  if (step.type === "confirm") return plainFreeModelQuestion(step);
+  if (step.title === "Setup skipped") return plainFreeModelSkip(step);
+  // Keep numeric download progress, but not file, computer, or backend names.
+  const progress = /(\d+(?:\.\d+)?% \([\d.]+\/[\d.]+ GB, [\d.]+ MB\/s\))$/.exec(step.message ?? "");
+  return progress ? `Downloading… ${progress[1]}` : "Preparing your free model…";
 }
 
 export function FreeModelSetup({ engine, onReady, variant = "composer" }: Props) {
@@ -87,13 +97,8 @@ function FreeModelWizard({
   return (
     <div className={card} data-testid="free-model-setup" aria-live="polite">
       {w.view.phase === "starting" ? <p role="status">{FREE_MODEL_CHECKING}</p> : null}
-      {step ? (
-        <>
-          {step.title ? <b>{step.title}</b> : null}
-          {step.message ? <p data-lines="">{step.message}</p> : null}
-        </>
-      ) : null}
-      {w.view.phase === "error" ? <p role="alert" data-testid="no-key-failed">{friendlyWizardError(w.view.message)}</p> : null}
+      {step ? <p data-lines="">{plainFreeModelStep(step)}</p> : null}
+      {w.view.phase === "error" ? <p role="alert" data-testid="no-key-failed">{skippedFreeModelReason(w.notes) ?? friendlyWizardError(w.view.message)}</p> : null}
       <div className={acts}>
         {asking ? (
           <Coming need={WIZARD_NEED} where="Download free local model" engine={engine}>

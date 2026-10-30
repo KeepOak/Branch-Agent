@@ -106,7 +106,7 @@ export function assertGatewayRuntimeSecurityConfig(
   }
   if (!isLoopbackHost(bindHost) && !hasSharedSecret && authMode !== "trusted-proxy") {
     throw new GatewayEffectiveConfigConflictError(
-      `refusing to bind gateway to ${bindHost}:${params.port} without auth (set gateway.auth.token/password, or set BRANCH_GATEWAY_TOKEN/BRANCH_GATEWAY_PASSWORD; legacy CLAWDBOT_* and MOLTBOT_* environment variables are ignored)`,
+      `refusing to bind gateway to ${bindHost}:${params.port} without auth (set gateway.auth.token/password, or set BRANCH_GATEWAY_TOKEN/BRANCH_GATEWAY_PASSWORD; legacy CLAWDBOT_* and MOLTBOT_* environment variables are ignored), or set gateway.bind=loopback`,
     );
   }
   if (

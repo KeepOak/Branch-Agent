@@ -1,0 +1,6 @@
+engine:extensions/codex/src/app-server/installed-codex.test.ts
+engine:extensions/codex/src/app-server/on-demand.test.ts
+window:src/composer/ModelAccessInfo.test.tsx
+window:src/screens/chat/ChatView.test.tsx
+window:src/screens/settings/pages/accounts-live.test.tsx
+window:src/thread/model.test.ts

@@ -213,7 +213,7 @@ describe("Inbox › Needs you", () => {
     const { host } = await render();
     const row = [...host.querySelectorAll(".ib-row")].find(r => r.textContent?.includes("Phone wants to connect"))!;
     await click(btn(row, "Allow")[0]);
-    expect(host.querySelector(".dlg")?.textContent).toContain("Check code: D1");
+    expect(host.querySelector("[data-testid=pair-check-code] .pair-check-value")?.textContent).toBe("D1");
     expect(host.querySelector(".dlg")?.textContent).toContain("What it asks to do");
   });
   it("answers and skips a Trunk's question", async () => {

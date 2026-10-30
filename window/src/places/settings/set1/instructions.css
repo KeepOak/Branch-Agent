@@ -1,20 +1,24 @@
 /* Settings › Instructions & personality and its file editor: the preview's .chip6 owners, .if-name file tags, the
-   file rows (base mock pass 8), the editor (.ifed18e, 50-settings) and Just about you (51-set1p). Theme tokens only. */
+   file rows (base mock pass 8, drawn as in item 36 + item 48: an outlined tag, then what the file is in a boxed row,
+   with no rule lines between rows), the editor (.ifed18e, 50-settings) and Just about you (51-set1p). Theme tokens
+   only; the boxes use the window's control frost and outline (--gp-*), so Reduce transparency makes them solid. */
 .set-col .if-whose { display: grid; gap: 6px; margin-top: 6px; }
-.set-col .if-lbl { font: 600 12px/1.3 var(--sans); color: var(--ink-3); }
-.set-col .if-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.set-col .if-chips .chip6 { height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--raise); font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
-.set-col .if-chips .chip6[aria-pressed="true"] { background: var(--btn); border-color: var(--btn); color: var(--on-btn); }
+.set-col .if-lbl { justify-self: start; font: 500 12px/1.3 var(--sans); color: var(--ink-2); }
+.set-col .if-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.set-col .if-chips .chip6 { height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid transparent; background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); font-size: 12.5px; color: var(--gp-ink-2); cursor: pointer; }
+.set-col .if-chips .chip6[aria-pressed="true"] { background: var(--btn); border-color: var(--btn); box-shadow: var(--gk-sh-sel); color: var(--on-btn); }
 
 .set-col .if-files { margin-top: 8px; }
-.set-col .if-name { flex: none; min-width: 112px; padding: 3px 7px; border-radius: 6px; background: var(--fill); font: 12.5px var(--mono); color: var(--ink); text-align: center; }
+.set-col .rows > .prow.if-row { flex-wrap: nowrap; border-bottom: 0; }
+.set-col .rows > .prow.if-row + .prow.if-row { margin-top: 2px; }
+.set-col .if-name { flex: none; min-width: 112px; padding: 2px 9px; border-radius: 999px; background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); font: 12.5px var(--mono); color: var(--ink); text-align: center; }
 .set-col .prow.if-row b { font-weight: 500; }
-.set-col .prow.if-row .grow { min-width: 160px; }
+.set-col .prow.if-row .grow { min-width: 160px; padding: 2px 9px; border-radius: 22px; background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); --ink-3: var(--gp-ink-2); }
 .set-col .prow.if-row small.if-path { font: 11.5px var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
 .set-col .prow.if-row small.why-k { color: var(--ink-3); font-style: italic; }
 .set-col .prow.if-row.off-k > :not(.grow) { opacity: 0.5; }
 .set-col .if-add { margin-top: 8px; }
-.set-col .if-files + .hint, .set-col .if-add + .hint { margin-top: 12px; }
+.set-col .if-files + .hint, .set-col .if-add + .hint { margin-top: 14px; }
 .set-col .ctl > .if-under { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
 .set-col .ctl.off-k > .if-under { opacity: 0.5; }
 .set-col .ctl > .if-under .inp { flex: 1 1 160px; }

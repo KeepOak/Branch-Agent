@@ -10,9 +10,9 @@ export type CallEvents = {
   onCaption: (role: 'user' | 'assistant', text: string) => void;
 };
 
-/** Why the engine said no, in the phone's words. Never the engine's raw text at Regular. */
-export function voiceError(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+/** Why the engine said no, in the phone's words. Never the engine's raw text. */
+export function voiceError(_e: unknown): string {
+  return CALL_UNAVAILABLE;
 }
 
 export const CALL_UNAVAILABLE = 'Live voice isn’t available right now.';
@@ -114,7 +114,7 @@ export class VoiceCall {
       this.on.onCaption(p.role, str(p.text));
       this.on.onState(p.role === 'assistant' ? 'speaking' : 'listening');
     } else if (type === 'toolCall') this.on.onState('thinking');
-    else if (type === 'error') this.on.onState('error', str(p.message) || 'The voice service stopped.');
+    else if (type === 'error') this.on.onState('error', 'The voice service stopped.');
     else if (type === 'close') void this.end();
   }
 }

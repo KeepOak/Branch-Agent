@@ -1,0 +1,2 @@
+engine:extensions/cloudflare/s3-backend.test.ts
+engine:extensions/cloudflare/settings.test.ts

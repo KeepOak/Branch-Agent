@@ -2,6 +2,7 @@
 export const CATALOG: Record<string, Record<string, string>> = {
  "ar": {
   "About": "حول",
+  "Accounts & usage": "الحسابات والاستخدام",
   "Appearance": "المظهر",
   "Approvals": "الموافقات",
   "Attachments": "المرفقات",
@@ -39,12 +40,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "المظهر",
   "Tools": "الأدوات",
   "Updates": "التحديثات",
-  "Usage": "الاستخدام",
   "Writing": "جارٍ الكتابة",
   "You": "أنت"
  },
  "de": {
   "About": "Über",
+  "Accounts & usage": "Konten & Nutzung",
   "Appearance": "Darstellung",
   "Approvals": "Genehmigungen",
   "Attachments": "Anhänge",
@@ -82,12 +83,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Design",
   "Tools": "Werkzeuge",
   "Updates": "Aktualisierungen",
-  "Usage": "Nutzung",
   "Writing": "Wird geschrieben",
   "You": "Sie"
  },
  "es": {
   "About": "Acerca de",
+  "Accounts & usage": "Cuentas y uso",
   "Appearance": "Apariencia",
   "Approvals": "Aprobaciones",
   "Attachments": "Archivos adjuntos",
@@ -125,12 +126,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Tema",
   "Tools": "Herramientas",
   "Updates": "Actualizaciones",
-  "Usage": "Uso",
   "Writing": "Escribiendo",
   "You": "Tú"
  },
  "fa": {
   "About": "درباره",
+  "Accounts & usage": "حساب‌ها و مصرف",
   "Appearance": "ظاهر",
   "Approvals": "تأییدها",
   "Attachments": "پیوست‌ها",
@@ -168,12 +169,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "پوسته",
   "Tools": "ابزارها",
   "Updates": "به‌روزرسانی‌ها",
-  "Usage": "مصرف",
   "Writing": "در حال نوشتن",
   "You": "شما"
  },
  "fr": {
   "About": "À propos",
+  "Accounts & usage": "Comptes et utilisation",
   "Appearance": "Apparence",
   "Approvals": "Approbations",
   "Attachments": "Pièces jointes",
@@ -211,12 +212,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Thème",
   "Tools": "Outils",
   "Updates": "Mises à jour",
-  "Usage": "Utilisation",
   "Writing": "Écriture en cours",
   "You": "Vous"
  },
  "hi": {
   "About": "परिचय",
+  "Accounts & usage": "खाते और उपयोग",
   "Appearance": "दिखावट",
   "Approvals": "स्वीकृतियाँ",
   "Attachments": "अटैचमेंट",
@@ -254,12 +255,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "थीम",
   "Tools": "टूल",
   "Updates": "अपडेट",
-  "Usage": "उपयोग",
   "Writing": "लिखा जा रहा है",
   "You": "आप"
  },
  "id": {
   "About": "Tentang",
+  "Accounts & usage": "Akun & penggunaan",
   "Appearance": "Tampilan",
   "Approvals": "Persetujuan",
   "Attachments": "Lampiran",
@@ -297,12 +298,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Tema",
   "Tools": "Alat",
   "Updates": "Pembaruan",
-  "Usage": "Penggunaan",
   "Writing": "Menulis",
   "You": "Anda"
  },
  "it": {
   "About": "Informazioni",
+  "Accounts & usage": "Account e utilizzo",
   "Appearance": "Aspetto",
   "Approvals": "Approvazioni",
   "Attachments": "Allegati",
@@ -340,12 +341,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Tema",
   "Tools": "Strumenti",
   "Updates": "Aggiornamenti",
-  "Usage": "Utilizzo",
   "Writing": "Scrittura in corso",
   "You": "Tu"
  },
  "ja-JP": {
   "About": "このアプリについて",
+  "Accounts & usage": "アカウントと使用状況",
   "Appearance": "外観",
   "Approvals": "承認",
   "Attachments": "添付ファイル",
@@ -383,12 +384,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "テーマ",
   "Tools": "ツール",
   "Updates": "アップデート",
-  "Usage": "使用状況",
   "Writing": "書き込み中",
   "You": "あなた"
  },
  "ko": {
   "About": "소개",
+  "Accounts & usage": "계정 및 사용량",
   "Appearance": "모양",
   "Approvals": "승인",
   "Attachments": "첨부 파일",
@@ -426,12 +427,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "테마",
   "Tools": "도구",
   "Updates": "업데이트",
-  "Usage": "사용량",
   "Writing": "작성 중",
   "You": "나"
  },
  "nl": {
   "About": "Over",
+  "Accounts & usage": "Accounts & gebruik",
   "Appearance": "Weergave",
   "Approvals": "Goedkeuringen",
   "Attachments": "Bijlagen",
@@ -469,12 +470,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Thema",
   "Tools": "Tools",
   "Updates": "Updates",
-  "Usage": "Gebruik",
   "Writing": "Schrijven",
   "You": "Jij"
  },
  "pl": {
   "About": "O aplikacji",
+  "Accounts & usage": "Konta i użycie",
   "Appearance": "Wygląd",
   "Approvals": "Zatwierdzenia",
   "Attachments": "Załączniki",
@@ -512,12 +513,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Motyw",
   "Tools": "Narzędzia",
   "Updates": "Aktualizacje",
-  "Usage": "Użycie",
   "Writing": "Zapisywanie",
   "You": "Ty"
  },
  "pt-BR": {
   "About": "Sobre",
+  "Accounts & usage": "Contas e uso",
   "Appearance": "Aparência",
   "Approvals": "Aprovações",
   "Attachments": "Anexos",
@@ -555,12 +556,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Tema",
   "Tools": "Ferramentas",
   "Updates": "Atualizações",
-  "Usage": "Uso",
   "Writing": "Escrevendo",
   "You": "Você"
  },
  "ru": {
   "About": "О программе",
+  "Accounts & usage": "Аккаунты и использование",
   "Appearance": "Внешний вид",
   "Approvals": "Одобрения",
   "Attachments": "Вложения",
@@ -598,12 +599,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Тема",
   "Tools": "Инструменты",
   "Updates": "Обновления",
-  "Usage": "Использование",
   "Writing": "Запись",
   "You": "Вы"
  },
  "th": {
   "About": "เกี่ยวกับ",
+  "Accounts & usage": "บัญชีและการใช้งาน",
   "Appearance": "รูปลักษณ์",
   "Approvals": "การอนุมัติ",
   "Attachments": "ไฟล์แนบ",
@@ -641,12 +642,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "ธีม",
   "Tools": "เครื่องมือ",
   "Updates": "การอัปเดต",
-  "Usage": "การใช้งาน",
   "Writing": "กำลังเขียน",
   "You": "คุณ"
  },
  "tr": {
   "About": "Hakkında",
+  "Accounts & usage": "Hesaplar ve kullanım",
   "Appearance": "Görünüm",
   "Approvals": "Onaylar",
   "Attachments": "Ekler",
@@ -684,12 +685,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Tema",
   "Tools": "Araçlar",
   "Updates": "Güncellemeler",
-  "Usage": "Kullanım",
   "Writing": "Yazılıyor",
   "You": "Siz"
  },
  "uk": {
   "About": "Про програму",
+  "Accounts & usage": "Облікові записи та використання",
   "Appearance": "Зовнішній вигляд",
   "Approvals": "Схвалення",
   "Attachments": "Вкладення",
@@ -727,12 +728,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Тема",
   "Tools": "Інструменти",
   "Updates": "Оновлення",
-  "Usage": "Використання",
   "Writing": "Записування",
   "You": "Ви"
  },
  "vi": {
   "About": "Giới thiệu",
+  "Accounts & usage": "Tài khoản & mức sử dụng",
   "Appearance": "Giao diện",
   "Approvals": "Phê duyệt",
   "Attachments": "Tệp đính kèm",
@@ -770,12 +771,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "Chủ đề",
   "Tools": "Công cụ",
   "Updates": "Bản cập nhật",
-  "Usage": "Mức sử dụng",
   "Writing": "Đang ghi",
   "You": "Bạn"
  },
  "zh-CN": {
   "About": "关于",
+  "Accounts & usage": "账户和用量",
   "Appearance": "外观",
   "Approvals": "审批",
   "Attachments": "附件",
@@ -813,12 +814,12 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "主题",
   "Tools": "工具",
   "Updates": "更新",
-  "Usage": "用量",
   "Writing": "正在写入",
   "You": "你"
  },
  "zh-TW": {
   "About": "關於",
+  "Accounts & usage": "帳戶與用量",
   "Appearance": "外觀",
   "Approvals": "核准",
   "Attachments": "附件",
@@ -856,7 +857,6 @@ export const CATALOG: Record<string, Record<string, string>> = {
   "Theme": "主題",
   "Tools": "工具",
   "Updates": "更新",
-  "Usage": "用量",
   "Writing": "正在寫入",
   "You": "你"
  }

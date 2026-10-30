@@ -62,7 +62,8 @@ const enLogin = {
         passwordTitle: "This Gateway expects its password",
         summary:
           "The Gateway at {host} is reachable, but it needs a matching token or password before this browser can connect.",
-        stepPaste: "Paste the token from branch gateway auth-token --show into Gateway secret.",
+        stepPaste:
+          "Easiest: choose Open in browser from the Branch desktop app (its tray or menu-bar icon) to sign in here. Or paste the token from branch gateway auth-token --show into Gateway secret.",
         stepPassword: "Type the configured Gateway password into Gateway secret.",
         stepGenerate:
           "If no token is configured, run branch doctor --generate-gateway-token on the gateway host.",

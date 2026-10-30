@@ -30,3 +30,25 @@ it("offers a persistent node service after pairing a computer", async () => {
     vi.useRealTimers();
   }
 });
+
+
+it("shows a device-neutral loopback failure when pairing another computer", async () => {
+  localStorage.setItem("branch.level", "regular");
+  const loopbackError = "Gateway is only bound to loopback. Set gateway.publicOrigin to your public HTTPS origin, configure plugins.entries.device-pair.config.publicUrl, enable tailscale serve, or set gateway.bind=lan.";
+  const request = vi.fn(async (method: string) => {
+    if (method === "device.pair.setupCode") throw new Error(loopbackError);
+    return {};
+  });
+  const host = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<AddComputer engine={{ request } as unknown as WindowEngine} onClose={() => undefined} onAdded={() => undefined} />));
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("Another computer with Branch"))!.click());
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("That device can't reach this computer yet.");
+    expect(host.textContent).not.toMatch(/Your phone|publicOrigin|gateway\.bind|tailscale serve/i);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    localStorage.removeItem("branch.level");
+  }
+});

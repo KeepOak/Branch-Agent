@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Regular Settings is four pages (General, Computer, Usage, Updates). Every other page stays reachable
+// Regular Settings is four pages (General, Computer, Accounts & usage, Updates). Every other page stays reachable
 // under "Also in <page>" on its page. Developer stays on Technical. Advanced and Technical keep the full nav.
 import { readFileSync } from "node:fs";
 import { act } from "react";
@@ -54,9 +54,9 @@ const hub = (name: string) => hubs().find((b) => b.dataset.hub === name);
 const REGISTRY = Object.keys(PAGES).sort();
 
 describe("Settings four pages", () => {
-  it("renders General, Computer, Usage and Updates as pages", async () => {
+  it("renders General, Computer, Accounts & usage and Updates as pages", async () => {
     await mount();
-    expect(hubs().map((b) => b.textContent)).toEqual(["General", "Computer", "Usage", "Updates"]);
+    expect(hubs().map((b) => b.textContent)).toEqual(["General", "Computer", "Accounts & usage", "Updates"]);
     expect(hubs().every((b) => b.tagName === "BUTTON")).toBe(true);
     expect($$(".r1s-grp[aria-expanded]")).toEqual([]);
     expect(host.querySelector(".r1s-nav[aria-current=page]")?.textContent).toBe("General");
@@ -118,13 +118,40 @@ describe("Settings four pages", () => {
     expect($$(".r1s-list .r1s-grp").map((g) => g.textContent)).toEqual(["You", "Your Trunks", "Talking", "Accounts & models", "Permissions & safety", "Computers", "Branch"]);
   });
 
-  it("draws Advanced links as plain rows, not pills", () => {
+  it("draws each nav row and each Also in row as the preview's boxed row with its page's icon", async () => {
+    await mount();
+    for (const b of hubs()) expect(b.querySelector(":scope > svg"), b.textContent ?? "").not.toBeNull();
+    const jumps = $$(".r1s-advanced .r1s-jump");
+    expect(jumps.length).toBeGreaterThan(0);
+    // Your card is your initial in the nav (MeButton), so its row has no icon; every other page has the preview's.
+    for (const b of jumps) expect(Boolean(b.querySelector(":scope > svg")), b.dataset.page).toBe(b.dataset.page !== "card");
+    await click(level("Advanced"));
+    for (const b of $$(".r1s-nav[data-page]").filter((n) => n.dataset.page !== "card")) expect(b.querySelector(":scope > svg"), b.dataset.page).not.toBeNull();
     const css = readFileSync("src/screens/settings/settings.css", "utf8");
     const jump = css.slice(css.indexOf(".r1s-jump {"), css.indexOf(".r1s-jump > span"));
-    expect(jump).toContain("width: 100%");
-    expect(jump).toContain("border-radius: 0");
-    expect(jump).not.toContain("999px");
+    expect(jump).toContain("border-radius: 11px");
+    const nav = css.slice(css.indexOf(".r1s-nav {"), css.indexOf(".r1s-nav > span"));
+    expect(nav).toContain("border-radius: 11px");
+    // The boxes are the Settings glass's control frost and outline: no rule strips them from the nav or the Also in rows.
     const glass = readFileSync("src/glass/glass.css", "utf8");
-    expect(glass).toMatch(/\.r1s-advanced \.r1s-jump \{[^}]*background: transparent[^}]*box-shadow: none[^}]*border-radius: 0/);
+    expect(glass).not.toMatch(/\.r1s-advanced \.r1s-jump \{[^}]*background: transparent/);
+    expect(glass).toMatch(/\.r1s-side\.g-clear :is\(button, a\[href\]\):not\(\.r1s-nav,/);
+  });
+
+  it("keeps a page's Also in list in the Settings nav, under its page's row, not in the page's content", async () => {
+    // A page shows only its own settings (#1769 point 2). In the nav (.r1s-side) the button crawl counts the Also in rows
+    // as the Settings nav, not as page controls past a long page's cap (never-clicked on #1962).
+    await mount();
+    const also = () => host.querySelector(".r1s-side .r1s-list .r1s-advanced");
+    expect(host.querySelector(".r1s-page .r1s-advanced")).toBeNull();
+    expect(also()?.previousElementSibling?.getAttribute("aria-current")).toBe("page");
+    expect(also()?.previousElementSibling?.getAttribute("data-hub")).toBe("General");
+    await click(host.querySelector('.r1s-advanced [data-page="instructions"]')!);
+    expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Instructions & personality");
+    expect(host.querySelector(".r1s-page .r1s-advanced")).toBeNull();
+    expect(host.querySelector('.r1s-advanced [data-page="instructions"]')?.getAttribute("aria-current")).toBe("true");
+    await click(hub("Computer")!);
+    expect(also()?.previousElementSibling?.getAttribute("data-hub")).toBe("Computer");
+    expect($$(".r1s-advanced")).toHaveLength(1);
   });
 });

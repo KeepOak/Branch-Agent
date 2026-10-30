@@ -204,12 +204,89 @@ describe("Settings › Advanced", () => {
     expect(row("Other engine events").textContent).toContain("boot");
   });
 
+  it("defaults meaning search to on this computer", async () => {
+    const { engine } = engineWith(CONFIG);
+    await show(engine);
+    expect((row("Meaning search uses").querySelector("select") as HTMLSelectElement).value).toBe("local");
+    expect(row("Meaning search uses").textContent).toContain("On this computer");
+  });
+
   it("meaning search Test probes the embeddings", async () => {
     const { engine, request } = engineWith({ ...CONFIG, "doctor.memory.status": (p: Record<string, unknown>) => (p.probe ? { provider: "openai", embedding: { ok: true, checked: true } } : { provider: "openai", embedding: { ok: false, checked: false } }) });
     await show(engine);
     expect(row("Meaning search").textContent).toContain("Not checked yet");
     await click(button("Test", row("Meaning search")));
     expect(request).toHaveBeenCalledWith("doctor.memory.status", { agentId: "main", probe: true });
+    expect(row("Meaning search").textContent).toContain("Working");
+  });
+
+  it("Get the model starts llama.cpp setup for the memory embedding model", async () => {
+    const off = { provider: "local", embedding: { ok: false, checked: true, error: "Search by meaning is off until this computer has the small model that powers it. Branch still finds memories by matching words." } };
+    const question = "Download the small model that lets Branch search memories by meaning (about 0.3 GB, plus a small helper program)? Your chat model stays the same. If you skip this, Branch still finds memories by matching words.";
+    const { engine, request } = engineWith({ ...CONFIG, "doctor.memory.status": off, "branch.setup.prepare.start": {}, "wizard.next": { done: false, step: { id: "ask", type: "confirm", message: question } } });
+    await show(engine, "advanced");
+    const meaning = row("Meaning search");
+    expect(meaning.textContent).toContain("About 0.3 GB");
+    expect(meaning.textContent).toContain("Get the model");
+    await click(button("Get the model", meaning));
+    expect(patches(request)).toEqual([]);
+    const start = request.mock.calls.find(([m]) => m === "branch.setup.prepare.start") as unknown as [string, Record<string, unknown>];
+    expect(start[1]).toMatchObject({ authChoice: "llama-cpp-memory", agentId: "main" });
+    expect(typeof start[1].sessionId).toBe("string");
+    const dlg = document.querySelector('[data-testid="local-setup"]') as HTMLElement;
+    expect(dlg).not.toBeNull();
+    expect(dlg.textContent).toContain("about 0.3 GB");
+    expect(dlg.textContent).toContain("Your chat model stays the same");
+    expect(dlg.textContent).toContain(question);
+    expect(dlg.textContent).not.toMatch(/verified CPU|llama\.cpp server|runtime|branch doctor|Gateway host/i);
+  });
+
+  it("Get the model decline shows no success text and changes no config", async () => {
+    const off = { provider: "local", embedding: { ok: false, checked: true, error: "Search by meaning is off until this computer has the small model that powers it. Branch still finds memories by matching words." } };
+    const question = "Download the small model that lets Branch search memories by meaning (about 0.3 GB, plus a small helper program)? Your chat model stays the same. If you skip this, Branch still finds memories by matching words.";
+    const skipped = "Nothing was downloaded. Branch still finds memories by matching words.";
+    const { engine, request } = engineWith({
+      ...CONFIG,
+      "doctor.memory.status": off,
+      "branch.setup.prepare.start": {},
+      "wizard.next": (p: Record<string, unknown>) => {
+        const answer = (p.answer && typeof p.answer === "object" ? p.answer : {}) as Record<string, unknown>;
+        if (answer.value === false) return { done: false, step: { id: "skip", type: "note", message: skipped } };
+        if (answer.stepId === "skip") return { done: true, status: "done" };
+        return { done: false, step: { id: "ask", type: "confirm", message: question } };
+      },
+    });
+    await show(engine, "advanced");
+    await click(button("Get the model", row("Meaning search")));
+    await click(button("No", document.querySelector('[data-testid="local-setup"]') as HTMLElement));
+    const dlg = document.querySelector('[data-testid="local-setup"]') as HTMLElement;
+    expect(dlg.textContent).toContain(skipped);
+    expect(dlg.textContent).not.toContain("The meaning-search model is on this computer.");
+    expect(button("Try again", dlg)).toBeTruthy();
+    expect(patches(request)).toEqual([]);
+  });
+
+  it("Get the model success then Test shows meaning search working", async () => {
+    const off = { provider: "local", embedding: { ok: false, checked: true, error: "Search by meaning is off until this computer has the small model that powers it. Branch still finds memories by matching words." } };
+    const question = "Download the small model that lets Branch search memories by meaning (about 0.3 GB, plus a small helper program)? Your chat model stays the same. If you skip this, Branch still finds memories by matching words.";
+    const { engine, request } = engineWith({
+      ...CONFIG,
+      "doctor.memory.status": (p: Record<string, unknown>) => (p.probe ? { provider: "local", embedding: { ok: true, checked: true } } : off),
+      "branch.setup.prepare.start": {},
+      "wizard.next": (p: Record<string, unknown>) => {
+        const answer = (p.answer && typeof p.answer === "object" ? p.answer : {}) as Record<string, unknown>;
+        if (answer.value === true) return { done: true, status: "done" };
+        return { done: false, step: { id: "ask", type: "confirm", message: question } };
+      },
+    });
+    await show(engine, "advanced");
+    await click(button("Get the model", row("Meaning search")));
+    await click(button("Yes", document.querySelector('[data-testid="local-setup"]') as HTMLElement));
+    const dlg = document.querySelector('[data-testid="local-setup"]') as HTMLElement;
+    expect(dlg.textContent).toContain("The meaning-search model is on this computer.");
+    await click(dlg.querySelector('[aria-label="Close"]') as HTMLElement);
+    expect(request).toHaveBeenCalledWith("doctor.memory.status", { agentId: "main", probe: true });
+    expect(row("Meaning search").textContent).toContain("Meaning search is working.");
     expect(row("Meaning search").textContent).toContain("Working");
   });
 

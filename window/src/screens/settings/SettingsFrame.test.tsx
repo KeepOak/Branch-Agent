@@ -52,7 +52,7 @@ const level = (name: string) => [...$$(".r1s-level button")].find((b) => b.textC
 describe("SettingsFrame", () => {
   it("draws the four Settings pages in order with search and How much to show at the top", async () => {
     await mount(engineOf().engine);
-    expect($$(".r1s-list .r1s-nav").map((g) => g.textContent)).toEqual(["General", "Computer", "Usage", "Updates"]);
+    expect($$(".r1s-list .r1s-nav").map((g) => g.textContent)).toEqual(["General", "Computer", "Accounts & usage", "Updates"]);
     expect($$(".r1s-grp[aria-expanded]")).toEqual([]);
     expect($<HTMLInputElement>(".r1s-search input").placeholder).toBe("Search settings");
     expect($(".r1s-level small").textContent).toBe("The essentials, in plain words.");
@@ -305,7 +305,8 @@ describe("SettingsFrame header on slot pages (#1049)", () => {
       const sheet = host.querySelector(".r1s-help")!;
       expect(sheet.getAttribute("aria-label")).toBe(`About ${PAGES[id].title}`);
       expect([...sheet.querySelectorAll("li button")].map((b) => b.textContent)).toEqual([...sections]);
-      expect([...sheet.querySelectorAll(".r1s-btn")].map((b) => b.textContent)).toContain("Ask a Trunk");
+      // With no host to ask, Ask a Trunk is Coming, and below Technical a Coming control is not drawn (Private #1093 item 7).
+      expect([...sheet.querySelectorAll(".r1s-btn")].map((b) => b.textContent)).not.toContain("Ask a Trunk");
       await act(async () => learn.click());
     }
   });

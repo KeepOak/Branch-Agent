@@ -7,7 +7,8 @@ import type { WindowEngine } from "../../connect/engine";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
-import { errorText, useResource } from "../library/data";
+import { useResource } from "../library/data";
+import { plainError } from "../../shell/plain-error";
 import { Status } from "../library/ui";
 import { Grey, list, Logo, rec, str, type Rec } from "./common";
 import { shownWhy } from "../../shell/shown-why";
@@ -35,8 +36,8 @@ export function usePluginAction(engine: WindowEngine) {
       setConsent(null); done();
     } catch (e) {
       const details = rec(rec(e).details);
-      if (str(details.capabilityConsentCode) && str(details.reviewToken)) setConsent({ method, params, token: str(details.reviewToken), message: errorText(e) });
-      else setError(errorText(e));
+      if (str(details.capabilityConsentCode) && str(details.reviewToken)) setConsent({ method, params, token: str(details.reviewToken), message: plainError(e) });
+      else setError(plainError(e));
     } finally { setBusy(null); }
   }
   return { busy, error, consent, run, dismiss: () => setConsent(null) };
@@ -47,7 +48,7 @@ export function ConsentDialog({ action, done }: { action: PluginAction; done: ()
   const c = action.consent;
   if (!c) return null;
   return <Dialog title="Let it do more?" onClose={action.dismiss} footer={<><button type="button" className="btn ghost" onClick={action.dismiss}>Not now</button><button type="button" className="btn pri" disabled={!!action.busy} onClick={() => void action.run("consent", c.method, { ...c.params, acknowledgeCapabilities: { reviewToken: c.token } }, done)}>Allow</button></>}>
-    <p className="dlg-p">{c.message}</p>
+    <p className="dlg-p">{plainError(c.message)}</p>
   </Dialog>;
 }
 
@@ -73,8 +74,8 @@ export function CatalogDialog({ mode, engine, close, ownServer, done }: { mode: 
     <div className="cz-top"><label className="cz-search"><Icon name="search" small /><input type="search" aria-label={mode === "connector" ? "Search connectors" : "Search plugins"} placeholder={mode === "connector" ? "Search connectors" : "Search plugins"} value={query} onChange={e => setQuery(e.target.value)} /></label>
       {mode === "connector" && <><Grey reason="Searching the public registry comes in a later update.">Public registry</Grey><Grey reason="Bringing connectors in from other apps comes in a later update.">Bring in from other apps</Grey></>}</div>
     <div className="cz-tabs" role="tablist" aria-label="Groups">{tabs.map(t => <button key={t.id} type="button" role="tab" aria-selected={filter === t.id} onClick={() => setFilter(t.id)}>{t.name}</button>)}</div>
-    <Status {...browse} />{remote && <p className="cz-hint">{remote}</p>}
-    {action.error && <p role="alert" className="cz-error">{action.error}</p>}
+    <Status {...browse} />{remote && <p className="cz-hint">{plainError(remote)}</p>}
+    {action.error && <p role="alert" className="cz-error">{plainError(action.error)}</p>}
     {browse.data != null && !items.length && <EmptyLine icon={<Icon name="search" />}>{mode === "connector" ? "Nothing matches. Add your own server below." : "No plugins found. Try another search or filter."}</EmptyLine>}
     {groupItems(items, filter === "all" ? cats : []).map(g => <section key={g.id} className="cz-grp-sec">{g.name && <h3 className="cz-grp">{g.name} <span>{g.items.length}</span></h3>}
       <div className="cz-provs">{g.items.map(i => <CatalogCard key={i.id} item={i} app={mode === "connector"} busy={action.busy === i.id} install={() => install(i)} />)}</div></section>)}

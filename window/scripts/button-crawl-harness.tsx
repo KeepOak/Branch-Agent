@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { Contact } from '@branch/gateway-protocol';
 import { historyToBlocks } from '../src/thread/history';
 import { WindowShell } from '../src/shell/WindowShell';
-import { R1Window, SETTINGS_PLACE } from '../src/screens/frame/R1Window';
+import { R1Window } from '../src/screens/frame/R1Window';
 import { PAGES as R1_PAGES_SPEC, pageShown, type PageId, type Level } from '../src/screens/settings/nav';
 import { dismiss, getToasts } from '../src/shell/notify';
 import { PLACES, type Route } from '../src/places-nav/routes';
@@ -15,6 +15,7 @@ import '../src/shell/shell.css';
 import '../src/shell/frame.css';
 import '../src/shell/controls.css';
 import { createCrawlCapture } from './button-crawl-capture';
+import { disabledWithoutReason } from './button-crawl-reason';
 import { applyApprovalsSet, applyConfigPatch, applyOutsideSet, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshOutside, freshPrefs, freshVoice, voiceProviders, voiceStatus, type CrawlApprovals, type CrawlConfig, type CrawlOutside, type CrawlPrefs, type CrawlVoice } from './button-crawl-state';
 
 type Call = { method: string; ok: boolean; error?: string };
@@ -78,12 +79,10 @@ const SELECTOR = [
   '[role="tab"]', '[role="switch"]', 'input[type="checkbox"]', '.chip', '.ib',
 ].join(',');
 
-// Every R1 Settings page at each level it is shown at. A page that is a place (Customize, Automations, Memory &
-// documents) opens that place, so the place screens cover it and it is not repeated here.
+// Every R1 Settings page at each level it is shown at.
 const LEVEL_WORD_LIST: LevelWord[] = ['regular', 'advanced', 'technical'];
 function r1SettingsScreens() {
   return Object.keys(R1_PAGES_SPEC)
-    .filter((page) => !(page in SETTINGS_PLACE))
     .flatMap((page) => LEVEL_WORD_LIST
       .filter((word) => pageShown(page as PageId, LEVEL_OF[word]))
       .map((word) => ({ page, level: word })));
@@ -363,7 +362,7 @@ function collect(overlay = false) {
   const root = overlay ? document.querySelector('[role="menu"], [role="dialog"], [role="alertdialog"]') : document;
   if (!root) return [];
   const seen = new Map<string, number>();
-  const elements: { name: string; href: string; disabled: boolean; selected: boolean; occurrence: number; region: string }[] = [];
+  const elements: { name: string; href: string; disabled: boolean; noReason: boolean; selected: boolean; occurrence: number; region: string }[] = [];
   for (const el of root.querySelectorAll(SELECTOR)) {
     if (!visible(el)) continue;
     const region = regionOf(el);
@@ -378,6 +377,8 @@ function collect(overlay = false) {
       name,
       href: el instanceof HTMLAnchorElement ? el.href : '',
       disabled: control.disabled === true || el.getAttribute('aria-disabled') === 'true',
+      // Greyed with no visible line that says why (button-crawl-reason.ts); a tooltip alone does not count.
+      noReason: disabledWithoutReason(el, visible),
       // A tab, or a radio option that is already the chosen value, has nothing to change: clicking it is a no-op
       // by design, so the crawl skips it ("already-selected") instead of calling it dead.
       // A menu's radio choice that is already chosen (a scope, a sort) has nothing to change, like a tab that is open.

@@ -1,28 +1,12 @@
 import { Platform } from 'react-native';
+import { voiceChrome } from '../theme/tokens';
 
 /**
  * Voice chrome: black and white by default, with the desktop window's type, glass and radii
  * (window/src/theme/tokens.css --fs-*, --gc-/--gf-/--gk-*, --r1-17…--r-pill). Local to Voice so
- * other phone screens keep their own tokens.
+ * other phone screens keep their own tokens. Colours live in tokens.ts.
  */
-export const voice = {
-  bg: '#000000',
-  ink: '#ffffff',
-  ink2: '#c8c8c8',
-  ink3: '#9a9a9a',
-  /** Control glass fill, B&W stand-in for dark --gc-fill. */
-  gcFill: 'rgba(255,255,255,0.12)',
-  gcEdge: 'rgba(255,255,255,0.14)',
-  gcHi: 'rgba(255,255,255,0.12)',
-  /** Floating glass fill, B&W stand-in for dark --gf-fill. */
-  gfFill: 'rgba(255,255,255,0.12)',
-  gfEdge: 'rgba(255,255,255,0.09)',
-  /** Chip glass: --gk-chip / --gk-on. */
-  gkChip: 'rgba(255,255,255,0.055)',
-  gkOn: 'rgba(255,255,255,0.13)',
-  ring: 'rgba(255,255,255,0.35)',
-  scrim: 'rgba(0,0,0,0.45)',
-} as const;
+export const voice = voiceChrome;
 
 /** Desktop type sizes (--fs-11 … --fs-26). */
 export const voiceType = {

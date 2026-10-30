@@ -21,7 +21,7 @@ import { NO_ROUTE, type OpenTarget } from "./nav";
 import { PhotoDialog, PictureDialog } from "./PhotoDialog";
 import { PlugMenu } from "./PlugMenu";
 import { PlusMenu } from "./PlusMenu";
-import { buildExtras, planSend, sendTooltip, type Reply } from "./sending";
+import { buildExtras, planSend, sendHoldReason, sendTooltip, type Reply } from "./sending";
 import { Drawer } from "./SlashDrawer";
 import { useBackground } from "./useBackground";
 import { CONNECT_MODEL_ANSWERS } from "./connect-model";
@@ -154,13 +154,34 @@ export function Composer(props: Props) {
   // No model set up: the engine names a default model but none is connected (models.list has none usable), or none at all.
   const noModel = hasNoModel(conv, currentRef);
   const waitingForFreeModel = noModel && !conv.noKeySettled && !conv.noKeyError;
-  const freeModelBlocked = noModel;
   const admin = isAdmin(engine?.scopes ?? []);
   const mode: EngineMode | null = isEngineMode(row.permissionMode) ? row.permissionMode : null;
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;
   const queueMode = str(row.effectiveQueueMode);
   const trunkName = conv.trunk?.name || name;
   const conversationProblem = conv.error ?? (isPreparationPending(conv.modelsError) || conv.modelsError?.includes("is still starting up.") ? conv.modelsError : null);
+  const holdReason = sendHoldReason({
+    offline: Boolean(props.offline),
+    loadingModels: conv.modelsLoading && !conv.models.some((m) => m.available),
+    preparing: isPreparationPending(conversationProblem),
+    noModel,
+  });
+  // A held send leaves its reason in `problem`. Clear that one alert, and only that one, once send can go again or a
+  // send goes out, so the old Connect a model words do not stay after an account is added.
+  const heldProblem = useRef<string | null>(null);
+  const showHold = (why: string) => {
+    heldProblem.current = why;
+    setProblem(why);
+  };
+  const clearHold = useCallback(() => {
+    const held = heldProblem.current;
+    if (!held) return;
+    heldProblem.current = null;
+    setProblem((now) => (now === held ? null : now));
+  }, []);
+  useEffect(() => {
+    if (!holdReason) clearHold();
+  }, [holdReason, clearHold]);
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
 
   const levels = current?.levels ?? [];
@@ -233,15 +254,22 @@ export function Composer(props: Props) {
       draft.clear();
       return;
     }
-    if (freeModelBlocked && plan.kind !== "command") return;
-    if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
+    // Offline holds everything, slash commands included; otherwise a command may go while models load.
+    if (holdReason && (props.offline || (plan.kind !== "command" && (plan.kind !== "background" || !isPreparationPending(conversationProblem))))) {
+      showHold(holdReason);
+      if (!conv.modelsLoading) void conv.readModelList({ refresh: true });
+      return;
+    }
     if (plan.kind === "background") {
       void runBackground(plan.text);
       return;
     }
     if (props.draftAgentId) {
       void Promise.resolve(sendMessage(draftMessage(), { files: draft.files, people: draft.people, replyTo: props.replyTo })).then((created) => {
-        if (created) draft.clear();
+        if (created) {
+          clearHold();
+          draft.clear();
+        }
       });
       return;
     }
@@ -252,6 +280,7 @@ export function Composer(props: Props) {
       sendMessage(draftMessage(), { files: draft.files, people: draft.people, queue: plan.kind === "send" ? plan.queueMode : undefined, replyTo: props.replyTo });
       if (plan.kind === "send" && plan.queueMode === "steer") toast(`Steered ${trunkName}. It picks this up at its next step.`);
     }
+    clearHold();
     history.record(draft.text.trim());
     draft.clear();
     props.onClearReply?.();
@@ -419,7 +448,7 @@ export function Composer(props: Props) {
   const hasDraft = draft.text.trim().length > 0 || draft.files.length > 0;
   const stopMode = working && !hasDraft;
   // Sessions and history arrive before the engine finishes starting; sending waits for this Trunk.
-  const ready = hasDraft && !disabled && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && !freeModelBlocked;
+  const ready = hasDraft && !disabled && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem);
   // The session row's estimatedCostUsd is the latest run, not the conversation total.
   const [usageCost, setUsageCost] = useState<{ key: string; value: number } | null>(null);
   useEffect(() => {
@@ -593,7 +622,7 @@ export function Composer(props: Props) {
           type="submit"
           className={stopMode ? "send stop" : ready ? "send ready" : "send"}
           aria-label={stopMode ? "Stop" : "Send"}
-          title={working && hasDraft ? sendTooltip(queueMode) : undefined}
+          title={holdReason ?? (working && hasDraft ? sendTooltip(queueMode) : undefined)}
           disabled={!stopMode && !ready}
         >
           {stopMode ? <StopMark /> : <Icon name="up" stroke={2.2} />}

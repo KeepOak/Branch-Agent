@@ -1,0 +1,7 @@
+engine:src/trajectory/command-export.test.ts
+engine:src/trajectory/export.test.ts
+engine:src/trajectory/metadata.test.ts
+engine:src/trajectory/runtime-store-writer.test.ts
+engine:src/trajectory/runtime-store.sqlite.test.ts
+engine:src/trajectory/runtime.test.ts
+engine:src/trajectory/runtime.tool-definitions.test.ts

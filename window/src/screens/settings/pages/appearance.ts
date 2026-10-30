@@ -65,6 +65,8 @@ export const APPEARANCE_ROWS: Row[] = [
   slot("appearance.background.preview", "Background", "Preview", [], { help: "Hold it to see the background on its own." }),
 
   // Reading
+  fromClassic("appearance.reading.scale", "Reading", "scale"),
+  fromClassic("appearance.reading.chat-size", "Reading", "chatSize"),
   fromClassic("appearance.reading.size", "Reading", "size"),
   fromClassic("appearance.reading.messages", "Reading", "msgLook"),
   fromClassic("appearance.reading.direction", "Reading", "dir"),

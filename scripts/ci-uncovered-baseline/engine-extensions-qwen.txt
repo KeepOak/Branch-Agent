@@ -1,0 +1,8 @@
+engine:extensions/qwen/failover.test.ts
+engine:extensions/qwen/index.test.ts
+engine:extensions/qwen/media-understanding-provider.test.ts
+engine:extensions/qwen/onboard.test.ts
+engine:extensions/qwen/provider-catalog.test.ts
+engine:extensions/qwen/provider-discovery.contract.test.ts
+engine:extensions/qwen/stream.test.ts
+engine:extensions/qwen/video-generation-provider.test.ts

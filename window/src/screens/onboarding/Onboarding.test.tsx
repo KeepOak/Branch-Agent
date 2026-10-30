@@ -7,9 +7,14 @@ import type { WindowEngine } from "../../connect/engine";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { readDetected } from "../../setup/setup-model";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { answeredBy, canSayHello, freshState, greeting, MODES, picked, PLAN_FIRST_REASON, primary, STEPS, suggest, togglePick } from "./model";
 import { Onboarding } from "./Onboarding";
 import { recalledSessionName, rememberSessionName } from "./session-name";
+
+/** The engine's real free model question (engine/extensions/llama-cpp/src/setup.free-model-question.test.ts). */
+const ENGINE_FREE_MODEL_STEP = { id: "download", ...(JSON.parse(readFileSync(resolve(process.cwd(), "../engine/test/fixtures/llama-cpp-free-model-questions.json"), "utf8")) as { model: [{ type: "confirm"; freeModel: { downloadBytes: number } }] }).model[0] };
+const ENGINE_FREE_MODEL_SIZE = (ENGINE_FREE_MODEL_STEP.freeModel.downloadBytes / 1e9).toFixed(1) + " GB";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
@@ -150,19 +155,14 @@ describe("Onboarding", () => {
       "branch.setup.activate.start": {},
       "wizard.next": {
         done: false,
-        step: {
-          id: "download",
-          type: "confirm",
-          message: "Download Qwen3.5 9B (5.7 GB), the local embedding model (about 0.3 GB), and the verified CPU runtime, then use this model?",
-          initialValue: false,
-        },
+        step: ENGINE_FREE_MODEL_STEP,
       },
     });
     const { host } = await show(engine, { startAt: 1 });
     await flush();
     expect(host.textContent).toContain("No models on this computer yet. Connect a model to get answers.");
     expect(host.textContent).not.toMatch(/will be set up/i);
-    expect(host.textContent).toContain("5.7 GB");
+    expect(host.textContent).toContain(ENGINE_FREE_MODEL_SIZE);
     expect(button(host, "Add one")).toBeTruthy();
     expect(button(host, "Cancel")).toBeTruthy();
     expect(button(host, "Say hello")).toBeUndefined();

@@ -1,21 +1,21 @@
 // The R1 conversation (card #808, HANDOFF R1-03): history from chat.history and the live run from the engine's
 // agent/chat stream (connect/session.ts orders it with connect/stream-order.ts), drawn in the approved preview's look:
 // bubbles, the 3-button hover bar, calm steps, thin notices and time dividers. Every message action goes through
-// thread/useMessageActions (engine calls) or shows Coming. Classic pieces this card doesn't restyle (approval cards,
-// the plan card, helpers, the waiting line, find and the turn rail) are imported, not copied, so nothing that works
-// today is lost.
+// thread/useMessageActions (engine calls) or shows Coming. Classic pieces this card doesn't restyle (the plan card,
+// helpers, the waiting line, find and the turn rail) are imported, not copied, so nothing that works
+// today is lost. Approvals and questions use the R1 AskCard, not the Classic card.
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { CapabilityProvider, useCan, useCapabilityEngine } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
 import type { QueuedMessage, RunEnd, SteeredNote } from "../../connect/session";
-import { ConnectModelNotice } from "../../composer/ConnectModelNotice";
-import { isNoUsableModelError } from "../../composer/connect-model";
+import { CodexMissingNotice, ConnectModelNotice } from "../../composer/ConnectModelNotice";
+import { isCodexMissingError, isNoUsableModelError } from "../../composer/connect-model";
 import { currentModelRef } from "../../composer/model";
 import { hasNoModel, useConversation } from "../../composer/useConversation";
 import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
 import { resolveApproval } from "../../thread/actions";
-import { AskCard, AskGroup, Decided, askOfApproval, settledOfApproval, useAskGroup, type AskState, type Reply } from "../approvals";
+import { AskCard, AskGroup, Decided, askIsHere, askOfApproval, settledOfApproval, useAskGroup, type AskState, type Reply } from "../approvals";
 import { EXAMPLES_GREETING_KEY, useExamplesHistory } from "./examples-greeting";
 import { ComputerActivityCard } from "../../thread/ComputerActivityCard";
 import { turnDoneLines } from "../../thread/computer-card";
@@ -35,7 +35,9 @@ import { suggestionsFor } from "../../thread/suggestions";
 import { useApprovalDetails, useHelpers, useReactions } from "../../thread/useEngineData";
 import { useMessageActions, type MessageChanges, type ReplyTarget } from "../../thread/useMessageActions";
 import { Icon } from "../../shell/icons";
+import { isLockBusyMessage } from "../../shell/plain-error";
 import { shows, useLevel } from "../../places-nav/level";
+import { CODEX_CANCEL_METHOD, CODEX_DOWNLOAD_METHOD } from "../../places/settings/set1/codex-get";
 import { answerBelowWorkingLine, blockTime, dividerPositions, entriesOf, useWorkMode, type Entry, type WorkMode } from "./chat-logic";
 import { HoverBar } from "./HoverBar";
 import { NoticeLine, TimeDivider, WorkingLine } from "./lines";
@@ -226,14 +228,21 @@ export function ChatView(props: ChatViewProps) {
     else if (decision !== "allow-always") props.onAnswer(id, decision);
   }, [details, engine, props, toast]);
   // What waits in this conversation: two or more approvals group into one card at the foot (preview ask2); the rest get
-  // their own card at the foot too, unless their approval block already draws it.
-  const here = asks.filter((s) => s.status !== "settled" && Boolean(props.sessionKey) && s.ask.sessionKey === props.sessionKey);
+  // their own card at the foot too, unless their approval block already draws it. A question with no session of its own
+  // is answered here, not as a drop (Classic docks it on the open conversation). Answered asks with no history block
+  // stay as the decided pill, the way the preview's choiceCard stays after a pick.
+  const here = asks.filter((s) => s.status !== "settled" && askIsHere(s.ask, props.sessionKey));
   const members = useAskGroup(props.sessionKey ?? null, here);
   const grouped = new Set(members);
   const blockIds = new Set(all.flatMap((b) => (b.kind === "approval" ? [b.approval.id] : [])));
   const loose = here.filter((s) => !blockIds.has(s.ask.id) && !grouped.has(s.ask.id));
+  const decided = asks.filter((s) => s.status === "settled" && askIsHere(s.ask, props.sessionKey) && !blockIds.has(s.ask.id) && !grouped.has(s.ask.id));
   const waitingHere = here.length > 0 || all.some((b) => b.kind === "approval" && b.approval.state === "pending");
-  const answerAsk = (id: string, reply: Reply) => props.onAsk?.(id, reply);
+  const answerAsk = (id: string, reply: Reply) => {
+    if (askCards.has(id)) { props.onAsk?.(id, reply); return; }
+    if (reply === "allow-once" || reply === "deny") props.onAnswer(id, reply);
+    else if (reply === "allow-always") answer(id, "allow-always");
+  };
   const { actionsFor, dialog, changes } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, applyReaction: apply, selfId: props.room ? props.room.selfId : null });
   const root = useRef<HTMLDivElement>(null);
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
@@ -281,6 +290,7 @@ export function ChatView(props: ChatViewProps) {
 
   const view: View = { all, name, running, live, actionsFor, changes, reactions, apply, asks: askCards, grouped, answerAsk, lockdown: Boolean(props.lockdown), times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast, room: props.room, continueKey, onContinue };
   const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status"), history.length)) : [];
+  const codexProgress = live.some((b) => b.kind === "notice" && (b.codex?.state === "downloading" || b.codex?.state === "confirm"));
   // The run's token count (the engine's usage block), as Classic's live-run header shows it; once something visible arrives.
   const usage = running ? live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage") : undefined;
   // Regular: one quiet working line. It is the steps disclosure when the run has steps, and it stays above the answer.
@@ -308,14 +318,15 @@ export function ChatView(props: ChatViewProps) {
         {props.room ? <RoomLine history={history} room={props.room} ownName={name} /> : null}
         {pendingUser ? <UserBubble block={{ kind: "user", key: "pending", text: pendingUser }} /> : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="delivered" />
-        {running && quiet && !waitingHere && !inlineSteps ? <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><WorkingLine label={workText} /></div></div> : null}
+        {running && quiet && !waitingHere && !inlineSteps && !codexProgress ? <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><WorkingLine label={workText} /></div></div> : null}
         {running ? shownLive.map((entry, i) => <EntryView key={entry.type === "item" ? entry.item.block.key : entry.key} entry={entry} view={view} live working={inlineSteps && i === lastSteps ? workText : undefined} />) : null}
-        {running && !quiet && !waitingHere ? <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><WorkingLine label={workText} /></div></div> : null}
+        {running && !quiet && !waitingHere && !codexProgress ? <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><WorkingLine label={workText} /></div></div> : null}
         {running && liveShows && usage?.total ? <NoticeLine text={usage.total.toLocaleString() + " tokens so far"} testid="live-usage" /> : null}
         {running ? (props.steered ?? []).map((note) => <NoticeLine key={note.runId} text={"You steered " + name + ": “" + note.text + "”. It takes this at its next step."} testid="steered-note" />) : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
         {members.length ? <AskGroup members={members.flatMap((id) => askCards.get(id) ?? [])} name={name} lockdown={props.lockdown} onAnswer={answerAsk} /> : null}
         {loose.map((s) => <AskCard key={s.ask.id} state={s} name={name} onAnswer={answerAsk} lockdown={props.lockdown} scopes={engine?.scopes} />)}
+        {decided.map((s) => <AskCard key={s.ask.id} state={s} name={name} onAnswer={answerAsk} lockdown={props.lockdown} scopes={engine?.scopes} />)}
         {helperChip}
         {suggestions.length ? <div className="r1c-chips r1c-suggest" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
           {suggestions.map((text) => <Coming key={text} need="chat.send"><button type="button" className="r1c-chip" title={"Send “" + text + "” as your reply"} onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}>{"“" + text + "”"}</button></Coming>)}
@@ -329,9 +340,9 @@ export function ChatView(props: ChatViewProps) {
 }
 
 /** "Couldn't finish": the plain reason at every level; the engine's own words (Details, Copy error) only at Technical
- *  (Private #1089). */
+ *  (Private #1089). A Gateway lock never shows its class name, even in Details. */
 function RunError({ name, message, toast }: { name: string; message: string; toast: View["toast"] }) {
-  const technical = shows(useLevel(), "technical");
+  const technical = shows(useLevel(), "technical") && !isLockBusyMessage(message);
   return <NoticeLine tone="bad" text={name + " couldn’t finish: " + shortReason(message)} details={technical ? message : undefined} links={technical ? [{ label: "Copy error", onClick: () => void copyText(message, toast) }] : []} testid="run-error" />;
 }
 
@@ -381,16 +392,38 @@ function postedFace(block: Extract<Block, { kind: "text" }>, view: View): ReactN
   return <Face size={28} label={view.room.trunkName(sender.agentId)} priority={100} />;
 }
 
-/** An approval in the conversation: its R1 card while the engine has it (approvals/useAsks), else its decided line. */
+/** An approval in the conversation: its R1 card while it waits (from useAsks, or from this block until that list
+ *  arrives), else its decided line. Never the Classic ApprovalCard. */
 function ApprovalBlock({ block, view }: { block: Extract<Block, { kind: "approval" }>; view: View }) {
   const state = view.asks.get(block.approval.id);
   const ask = askOfApproval(block.approval);
   if (view.grouped.has(block.approval.id)) return null;
   let card: ReactNode = null;
   if (state) card = <AskCard state={state} name={view.name} onAnswer={view.answerAsk} lockdown={view.lockdown} scopes={view.engine?.scopes} />;
-  else if (ask && block.approval.state !== "pending") card = <Decided ask={ask} how={settledOfApproval(block.approval)} name={view.name} />;
+  else if (ask && block.approval.state === "pending") card = <AskCard state={{ ask, status: "waiting" }} name={view.name} onAnswer={view.answerAsk} lockdown={view.lockdown} scopes={view.engine?.scopes} />;
+  else if (ask) card = <Decided ask={ask} how={settledOfApproval(block.approval)} name={view.name} />;
   if (!card) return null;
   return <div className="r1c-row r1c-b" data-block-key={block.key}><div className="r1c-gut" /><div className="r1c-body">{card}</div></div>;
+}
+
+function CodexTurnNotice({ block, engine }: { block: Extract<Block, { kind: "notice" }>; engine?: WindowEngine }) {
+  const codex = block.codex;
+  const [retryAsk, setRetryAsk] = useState(false);
+  if (!codex) return <NoticeLine text={block.text} />;
+  if (codex.state === "downloading") return <NoticeLine text={block.text} testid="codex-download" />;
+  if (codex.state === "cancelled") return <NoticeLine text="Cancelled" testid="codex-cancelled" />;
+  const asking = codex.state === "confirm" || (codex.state === "failed" && retryAsk);
+  if (asking) {
+    const message = codex.state === "confirm" ? block.text : (codex.ask || block.text);
+    return <NoticeLine text={message} testid="codex-download-prompt" links={[
+      { label: "Yes", onClick: () => { setRetryAsk(false); void engine?.request(CODEX_DOWNLOAD_METHOD, { confirmed: true }); }, need: CODEX_DOWNLOAD_METHOD, reason: "This engine can’t download Codex." },
+      { label: "Cancel", onClick: () => { setRetryAsk(false); void engine?.request(CODEX_CANCEL_METHOD, {}); } },
+    ]} />;
+  }
+  if (codex.state === "failed") {
+    return <NoticeLine tone="bad" text={block.text} testid="codex-failed" links={[{ label: "Try again", onClick: () => setRetryAsk(true), need: CODEX_DOWNLOAD_METHOD, reason: "This engine can’t download Codex." }]} />;
+  }
+  return <NoticeLine text={block.text} />;
 }
 
 function EntryView({ entry, view, live, working }: { entry: Entry; view: View; live: boolean; working?: string }) {
@@ -442,10 +475,12 @@ function EntryView({ entry, view, live, working }: { entry: Entry; view: View; l
       return <NoticeLine text="Response stopped" testid="run-stopped"
         links={block.key === view.continueKey && view.onContinue ? [{ label: "Continue", onClick: view.onContinue, ...CONTINUE }] : []} />;
     case "error":
+      if (isCodexMissingError(block.message)) return wrap(<CodexMissingNotice />);
       return isNoUsableModelError(block.message)
         ? wrap(<ConnectModelNotice />)
         : <RunError name={view.name} message={block.message} toast={view.toast} />;
     case "notice":
+      if (block.codex) return <CodexTurnNotice block={block} engine={view.engine} />;
       return <NoticeLine text={block.text} links={block.topicKey && view.onOpenSession ? [{ label: "Open", onClick: () => view.onOpenSession?.(block.topicKey!) }] : []} />;
     case "steer":
       return <NoticeLine text={"You steered " + view.name + ": “" + block.text + "”."} testid="steered-note" />;

@@ -1,0 +1,2 @@
+engine:extensions/novita/index.test.ts
+engine:extensions/novita/video-generation-provider.test.ts

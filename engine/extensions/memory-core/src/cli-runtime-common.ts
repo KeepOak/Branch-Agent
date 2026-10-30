@@ -163,6 +163,11 @@ export async function withMemoryCommand(params: {
   acquireLocalService?: MemoryCoreAcquireLocalService;
   /** Refuse instead of answering from the sidecar index when another plugin owns the slot. */
   requiresMemorySlot?: boolean;
+  /**
+   * Bounds the manager close for an agent (ms). Status sets this for agents whose work timed
+   * out, because close waits for that abandoned work and would otherwise hold the command open.
+   */
+  closeTimeoutMsFor?: (agentId: string) => number | undefined;
   run: (context: { manager: MemoryManager; cfg: BranchConfig; agentId: string }) => Promise<void>;
 }): Promise<BranchConfig> {
   const { config: cfg, diagnostics } = await loadMemoryCommandConfig(
@@ -211,7 +216,26 @@ export async function withMemoryCommand(params: {
       onCloseError: (err) =>
         defaultRuntime.error(`Memory manager close failed: ${formatErrorMessage(err)}`),
       close: async (manager) => {
-        await manager.close?.();
+        const closing = Promise.resolve(manager.close?.());
+        const closeTimeoutMs = params.closeTimeoutMsFor?.(agentId);
+        if (closeTimeoutMs === undefined) {
+          await closing;
+          return;
+        }
+        closing.catch(() => {});
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const closed = await Promise.race([
+          closing.then(() => true),
+          new Promise<false>((resolve) => {
+            timer = setTimeout(() => resolve(false), closeTimeoutMs);
+            timer.unref?.();
+          }),
+        ]).finally(() => clearTimeout(timer));
+        if (!closed) {
+          defaultRuntime.error(
+            `${params.commandName}: agent "${agentId}" is still busy after its timeout; not waiting for it to close.`,
+          );
+        }
       },
       run: async (manager) => params.run({ manager, cfg, agentId }),
     });

@@ -1768,13 +1768,14 @@ describe("legacy memory search config migrate", () => {
     expect(res.config).not.toHaveProperty("memorySearch");
     expect(res.config?.memory?.search).toEqual({
       enabled: true,
-      provider: "openai",
-      model: "text-embedding-3-small",
+      provider: "local",
       query: { maxResults: 9 },
       store: { fts: { tokenizer: "trigram" }, vector: { enabled: false } },
     });
     expect(res.changes).toEqual(
       expect.arrayContaining([
+        'Moved memory.search.provider from legacy "auto" to "local".',
+        'Removed memory.search.model ("text-embedding-3-small") so local embeddings use their default model.',
         "Removed memory.search.chunkSize (memory.search.chunking.tokens already set).",
         "Moved memory.search.chunkOverlap → memory.search.chunking.overlap.",
         "Removed memory.search.maxResults (memory.search.query.maxResults already set).",
@@ -1809,9 +1810,9 @@ describe("legacy memory search config migrate", () => {
       expect.arrayContaining(["agents.defaults.memorySearch", "agents", "agents.list"]),
     );
     const res = migrateLegacyConfigForTest(raw);
-    expect(res.config?.memory?.search).toEqual({ provider: "openai", query: { maxResults: 5 } });
+    expect(res.config?.memory?.search).toEqual({ provider: "local", query: { maxResults: 5 } });
     expect(res.config?.agents?.entries?.local?.memory?.search).toEqual({
-      provider: "openai",
+      provider: "local",
       store: { vector: { enabled: true } },
     });
     expect(res.config?.agents?.entries?.custom?.memory?.search).toEqual({
