@@ -615,7 +615,6 @@ engine:src/infra/run-node.runtime-postbuild.test.ts
 engine:src/infra/run-node.test.ts
 engine:src/infra/runtime-guard.test.ts
 engine:src/infra/runtime-status.test.ts
-engine:src/infra/runtime-worker-url.test.ts
 engine:src/infra/safe-package-install.test.ts
 engine:src/infra/scp-host.test.ts
 engine:src/infra/secret-file.test.ts
