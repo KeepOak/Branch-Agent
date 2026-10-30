@@ -445,10 +445,16 @@ async function observeFailure(run) {
 
 test("observes retained Gateway owners through fixture teardown", async () => {
   let kernel;
-  const createKernel = kernelModule.createGatewayKernel;
-  const factory = vi.spyOn(kernelModule, "createGatewayKernel").mockImplementation(async (...args) => {
-    kernel = await createKernel(...args);
-    return kernel;
+  const prepareKernel = kernelModule.prepareGatewayKernel;
+  const factory = vi.spyOn(kernelModule, "prepareGatewayKernel").mockImplementation(async (...args) => {
+    const prepared = await prepareKernel(...args);
+    return {
+      ...prepared,
+      async activate(...activateArgs) {
+        kernel = await prepared.activate(...activateArgs);
+        return kernel;
+      },
+    };
   });
   const fixtureApi = sessions.setupGatewaySessionsTestHarness();
   const fixture = takeHooks();

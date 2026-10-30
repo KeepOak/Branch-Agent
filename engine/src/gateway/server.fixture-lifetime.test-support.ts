@@ -285,10 +285,16 @@ test("observes startup cleanup ownership through fixture teardown", async () => 
       }));
     });
     restorers.push(() => factory.mockRestore());
-    const createKernel = kernelModule.createGatewayKernel;
-    const kernelSpy = vi.spyOn(kernelModule, "createGatewayKernel").mockImplementation((...args) => {
-      kernelStart = own(createKernel(...args));
-      return kernelStart;
+    const prepareKernel = kernelModule.prepareGatewayKernel;
+    const kernelSpy = vi.spyOn(kernelModule, "prepareGatewayKernel").mockImplementation(async (...args) => {
+      const prepared = await prepareKernel(...args);
+      return {
+        ...prepared,
+        activate(...activateArgs) {
+          kernelStart = own(prepared.activate(...activateArgs));
+          return kernelStart;
+        },
+      };
     });
     restorers.push(() => kernelSpy.mockRestore());
     const listen = listenModule.listenGatewayHttpServer;
