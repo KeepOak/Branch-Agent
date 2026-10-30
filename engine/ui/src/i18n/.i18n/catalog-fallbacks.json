@@ -4840,6 +4840,28 @@
       "zh-CN",
       "zh-TW"
     ],
+    "custodian.openAccounts": [
+      "ar",
+      "de",
+      "es",
+      "fa",
+      "fr",
+      "hi",
+      "id",
+      "it",
+      "ja-JP",
+      "ko",
+      "nl",
+      "pl",
+      "pt-BR",
+      "ru",
+      "th",
+      "tr",
+      "uk",
+      "vi",
+      "zh-CN",
+      "zh-TW"
+    ],
     "custodian.panel.close": [
       "ar",
       "de",
@@ -8251,6 +8273,6 @@
       "zh-TW"
     ]
   },
-  "sourceHash": "9651f28cdba488cafa50519e7e8632b770ec9ec6d926feef1c57c649fbe1e49e",
+  "sourceHash": "ecd62eeebe291093495b074e6786e93d586680ff9b5bc2b610ef6cb8230f7c64",
   "version": 1
 }
