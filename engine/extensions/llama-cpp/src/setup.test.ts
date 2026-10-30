@@ -8,7 +8,6 @@ import type {
   ProviderAuthContext,
 } from "branch/plugin-sdk/plugin-entry";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { plainFreeModelQuestion } from "../../../../window/src/composer/free-model-question.js";
 
 const mocks = vi.hoisted(() => ({
   ensureModel: vi.fn(),
@@ -339,7 +338,7 @@ describe("llama.cpp managed setup", () => {
     expect(result.defaultModel).toBe(`llama-cpp/${recipe.model.id}`);
     expect(ctx.prompter.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: expect.stringContaining(`Use cached ${recipe.model.name}`),
+        message: expect.stringContaining("Use cached Gemma 4 E2B, download"),
       }),
     );
     expect(mocks.prepareServer).toHaveBeenCalledWith(
@@ -365,7 +364,7 @@ describe("llama.cpp managed setup", () => {
     );
     expect(ctx.prompter.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: expect.stringContaining(`${recipe.model.name} (16.5 GB)`),
+        message: expect.stringContaining("Download Qwen3.8 27B (16.5 GB), "),
       }),
     );
     expect(result.defaultModel).toBe(`llama-cpp/${recipe.model.id}`);
@@ -822,25 +821,20 @@ describe("llama.cpp managed setup", () => {
     expect(mocks.ensureModel).not.toHaveBeenCalledWith(expect.objectContaining({ download: true }));
   });
 
-  it.each([16, 64])(
-    "shows no format tag in the window question from real setup output at %i GiB",
-    async (memoryGiB) => {
-      vi.mocked(os.totalmem).mockReturnValue(memoryGiB * GIB);
-      const ctx = authContext(false);
-      await runLlamaCppSetup(ctx);
+  it.each([
+    [16, "Download Qwen3.5 9B (5.7 GB), "],
+    [64, "Download Qwen3.8 27B (16.5 GB), "],
+  ])("asks without the file format tag at %i GiB", async (memoryGiB, download) => {
+    vi.mocked(os.totalmem).mockReturnValue(memoryGiB * GIB);
+    const ctx = authContext(false);
+    await runLlamaCppSetup(ctx);
 
-      const [step] = vi.mocked(ctx.prompter.confirm).mock.calls[0]!;
-      expect(step.message).toMatch(/\((?:UD-)?Q4_K_M\)/);
-      const question = plainFreeModelQuestion(step);
-      expect(question).toBe(
-        memoryGiB === 16
-          ? "Download a free model (Qwen3.5 9B, 5.7 GB) so Branch can answer without an account?"
-          : "Download a free model (Qwen3.8 27B, 16.5 GB) so Branch can answer without an account?",
-      );
-      expect(question).not.toMatch(/Q4_K_M|\([^)]*\(/);
-      expect(mocks.ensureModel).not.toHaveBeenCalledWith(expect.objectContaining({ download: true }));
-    },
-  );
+    const [step] = vi.mocked(ctx.prompter.confirm).mock.calls[0]!;
+    const question = step.message.split("\n\n").at(-1) ?? "";
+    expect(question.startsWith(download)).toBe(true);
+    expect(question).not.toMatch(/Q4_K_M|\([^)]*\(/);
+    expect(mocks.ensureModel).not.toHaveBeenCalledWith(expect.objectContaining({ download: true }));
+  });
 
   it("writes one durable managed-server provider after preparation", async () => {
     const ctx = authContext(true);
