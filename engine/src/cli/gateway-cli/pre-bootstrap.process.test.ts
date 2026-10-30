@@ -5,8 +5,10 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import {
   createSourceRuntime,
+  ISOLATED_DOCTOR_CHILD_TIMEOUT_MS,
   runIsolatedModuleScript,
 } from "../../commands/doctor-config-preflight.process.test-support.js";
+import { getCliProcessTestTimeout } from "../cli-process-child.test-helpers.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterAll);
 const runtimeParent = fs.realpathSync(tempDirs.make("branch-selection-runtime-"));
@@ -35,6 +37,9 @@ function stateManifest(root: string): Record<string, string> {
 
 describe("Gateway config selection before migration admission", () => {
   it("accepts a Doctor-repaired escaped reference and refuses later config drift", async () => {
+    // Doctor and startup preflight share one child here. The Vitest timeout below stays a literal so the
+    // formatter keeps this layout; this keeps it in step with the child budget.
+    expect(getCliProcessTestTimeout(ISOLATED_DOCTOR_CHILD_TIMEOUT_MS)).toBe(132_000);
     const root = fs.realpathSync(tempDirs.make("branch-startup-reference-repair-"));
     const runtimeRoot = createSourceRuntime(runtimeParent);
     const stateDir = path.join(root, "state");
@@ -95,7 +100,7 @@ describe("Gateway config selection before migration admission", () => {
         authoredApiKey: raw.memory.search.remote.apiKey,
       }));
       `,
-      { runtimeRoot, timeoutMs: 60_000 },
+      { runtimeRoot, timeoutMs: ISOLATED_DOCTOR_CHILD_TIMEOUT_MS },
     );
     const output = `${result.stdout}\n${result.stderr}`;
     const line = result.stdout.split("\n").find((entry) => entry.startsWith("__RESULT__"));
@@ -108,7 +113,7 @@ describe("Gateway config selection before migration admission", () => {
       authoredApiKey: apiKey,
     });
     expect(fs.readFileSync(`${configPath}.bak`, "utf8")).toBe(original);
-  }, 75_000);
+  }, 132_000);
 
   it("admits a standby whose config changed only by Lockdown, and still refuses other drift", async () => {
     const root = fs.realpathSync(tempDirs.make("branch-startup-lockdown-"));
