@@ -2,6 +2,7 @@
 export const CATALOG: Record<string, Record<string, string>> = {
  "ar": {
   "About": "حول",
+  "Accounts & usage": "الحسابات والاستخدام",
   "Appearance": "المظهر",
   "Approvals": "الموافقات",
   "Attachments": "المرفقات",
@@ -45,6 +46,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "de": {
   "About": "Über",
+  "Accounts & usage": "Konten & Nutzung",
   "Appearance": "Darstellung",
   "Approvals": "Genehmigungen",
   "Attachments": "Anhänge",
@@ -88,6 +90,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "es": {
   "About": "Acerca de",
+  "Accounts & usage": "Cuentas y uso",
   "Appearance": "Apariencia",
   "Approvals": "Aprobaciones",
   "Attachments": "Archivos adjuntos",
@@ -131,6 +134,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "fa": {
   "About": "درباره",
+  "Accounts & usage": "حساب‌ها و مصرف",
   "Appearance": "ظاهر",
   "Approvals": "تأییدها",
   "Attachments": "پیوست‌ها",
@@ -174,6 +178,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "fr": {
   "About": "À propos",
+  "Accounts & usage": "Comptes et utilisation",
   "Appearance": "Apparence",
   "Approvals": "Approbations",
   "Attachments": "Pièces jointes",
@@ -217,6 +222,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "hi": {
   "About": "परिचय",
+  "Accounts & usage": "खाते और उपयोग",
   "Appearance": "दिखावट",
   "Approvals": "स्वीकृतियाँ",
   "Attachments": "अटैचमेंट",
@@ -260,6 +266,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "id": {
   "About": "Tentang",
+  "Accounts & usage": "Akun & penggunaan",
   "Appearance": "Tampilan",
   "Approvals": "Persetujuan",
   "Attachments": "Lampiran",
@@ -303,6 +310,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "it": {
   "About": "Informazioni",
+  "Accounts & usage": "Account e utilizzo",
   "Appearance": "Aspetto",
   "Approvals": "Approvazioni",
   "Attachments": "Allegati",
@@ -346,6 +354,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "ja-JP": {
   "About": "このアプリについて",
+  "Accounts & usage": "アカウントと使用状況",
   "Appearance": "外観",
   "Approvals": "承認",
   "Attachments": "添付ファイル",
@@ -389,6 +398,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "ko": {
   "About": "소개",
+  "Accounts & usage": "계정 및 사용량",
   "Appearance": "모양",
   "Approvals": "승인",
   "Attachments": "첨부 파일",
@@ -432,6 +442,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "nl": {
   "About": "Over",
+  "Accounts & usage": "Accounts & gebruik",
   "Appearance": "Weergave",
   "Approvals": "Goedkeuringen",
   "Attachments": "Bijlagen",
@@ -475,6 +486,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "pl": {
   "About": "O aplikacji",
+  "Accounts & usage": "Konta i użycie",
   "Appearance": "Wygląd",
   "Approvals": "Zatwierdzenia",
   "Attachments": "Załączniki",
@@ -518,6 +530,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "pt-BR": {
   "About": "Sobre",
+  "Accounts & usage": "Contas e uso",
   "Appearance": "Aparência",
   "Approvals": "Aprovações",
   "Attachments": "Anexos",
@@ -561,6 +574,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "ru": {
   "About": "О программе",
+  "Accounts & usage": "Аккаунты и использование",
   "Appearance": "Внешний вид",
   "Approvals": "Одобрения",
   "Attachments": "Вложения",
@@ -604,6 +618,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "th": {
   "About": "เกี่ยวกับ",
+  "Accounts & usage": "บัญชีและการใช้งาน",
   "Appearance": "รูปลักษณ์",
   "Approvals": "การอนุมัติ",
   "Attachments": "ไฟล์แนบ",
@@ -647,6 +662,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "tr": {
   "About": "Hakkında",
+  "Accounts & usage": "Hesaplar ve kullanım",
   "Appearance": "Görünüm",
   "Approvals": "Onaylar",
   "Attachments": "Ekler",
@@ -690,6 +706,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "uk": {
   "About": "Про програму",
+  "Accounts & usage": "Облікові записи та використання",
   "Appearance": "Зовнішній вигляд",
   "Approvals": "Схвалення",
   "Attachments": "Вкладення",
@@ -733,6 +750,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "vi": {
   "About": "Giới thiệu",
+  "Accounts & usage": "Tài khoản & mức sử dụng",
   "Appearance": "Giao diện",
   "Approvals": "Phê duyệt",
   "Attachments": "Tệp đính kèm",
@@ -776,6 +794,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "zh-CN": {
   "About": "关于",
+  "Accounts & usage": "账户和用量",
   "Appearance": "外观",
   "Approvals": "审批",
   "Attachments": "附件",
@@ -819,6 +838,7 @@ export const CATALOG: Record<string, Record<string, string>> = {
  },
  "zh-TW": {
   "About": "關於",
+  "Accounts & usage": "帳戶與用量",
   "Appearance": "外觀",
   "Approvals": "核准",
   "Attachments": "附件",
