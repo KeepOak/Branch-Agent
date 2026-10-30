@@ -8,8 +8,8 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { CapabilityProvider, useCan, useCapabilityEngine } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
 import type { QueuedMessage, RunEnd, SteeredNote } from "../../connect/session";
-import { ConnectModelNotice } from "../../composer/ConnectModelNotice";
-import { isNoUsableModelError } from "../../composer/connect-model";
+import { CodexMissingNotice, ConnectModelNotice } from "../../composer/ConnectModelNotice";
+import { isCodexMissingError, isNoUsableModelError } from "../../composer/connect-model";
 import { currentModelRef } from "../../composer/model";
 import { hasNoModel, useConversation } from "../../composer/useConversation";
 import { Face } from "../../face/Face";
@@ -475,6 +475,7 @@ function EntryView({ entry, view, live, working }: { entry: Entry; view: View; l
       return <NoticeLine text="Response stopped" testid="run-stopped"
         links={block.key === view.continueKey && view.onContinue ? [{ label: "Continue", onClick: view.onContinue, ...CONTINUE }] : []} />;
     case "error":
+      if (isCodexMissingError(block.message)) return wrap(<CodexMissingNotice />);
       return isNoUsableModelError(block.message)
         ? wrap(<ConnectModelNotice />)
         : <RunError name={view.name} message={block.message} toast={view.toast} />;
