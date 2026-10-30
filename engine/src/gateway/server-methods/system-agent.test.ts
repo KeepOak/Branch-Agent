@@ -130,6 +130,8 @@ describe("branch.setup", () => {
           isRemoteProviderAuth: isLocalClient !== true,
         }),
       );
+      // Setup admission is process-wide: the next case is busy until this one settles.
+      await setupAdmission.whenAdmittedWizardSessionSettled(session);
     },
   );
 
@@ -201,10 +203,7 @@ describe("branch.setup", () => {
 
   it.each([
     ["branch.setup.activate.start" as const, { sessionId: "busy-activation", kind: "codex-cli" }],
-    [
-      "branch.setup.auth.start" as const,
-      { sessionId: "busy-auth", authChoice: "github-copilot" },
-    ],
+    ["branch.setup.auth.start" as const, { sessionId: "busy-auth", authChoice: "github-copilot" }],
     ["branch.setup.prepare.start" as const, { sessionId: "busy-prepare", authChoice: "ollama" }],
   ])("rejects %s before creating a wizard session when setup is busy", async (method, params) => {
     const ownerStarted = createDeferred();

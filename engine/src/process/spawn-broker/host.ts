@@ -94,12 +94,14 @@ export class SpawnBrokerHost {
       cleanup.force();
     }
   };
-  private idleTimer: NodeJS.Timeout | undefined;
+  /** Read and written by host-idle.ts through the idle-host view. */
+  idleTimer: NodeJS.Timeout | undefined;
   private parking = false;
   private parked = false;
   private parkPromise: Promise<void> | undefined;
   private readonly lazyStart: boolean;
-  private readonly idleTimeoutMs: number;
+  /** Read by host-idle.ts through the idle-host view. */
+  readonly idleTimeoutMs: number;
   private readonly maxConcurrent: number;
 
   constructor(

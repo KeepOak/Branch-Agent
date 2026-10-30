@@ -76,7 +76,6 @@ engine:packages/gateway-protocol/src/sessions-reset-schema.test.ts
 engine:packages/gateway-protocol/src/sessions-search.test.ts
 engine:packages/gateway-protocol/src/svg-image.test.ts
 engine:packages/gateway-protocol/src/system-agent-context.test.ts
-engine:packages/gateway-protocol/src/system-agent-error-details.test.ts
 engine:packages/gateway-protocol/src/talk-config.contract.test.ts
 engine:packages/gateway-protocol/src/theme.test.ts
 engine:packages/gateway-protocol/src/transcripts.test.ts

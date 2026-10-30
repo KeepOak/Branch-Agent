@@ -1,5 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import { createDeferredCore, type Deferred } from "../../shared/deferred.js";
+import { runInDetachedAsyncContext } from "../../shared/detached-async-context.js";
 import { GRACEFUL_CANCEL_TIMEOUT_MS } from "../supervisor/cancellation-policy.js";
 import type { BrokerRequest } from "./protocol.js";
 import type { BrokerResourceRequest } from "./resource-protocol.js";
@@ -49,10 +50,13 @@ export function scheduleSpawnBrokerIdlePark(host: SpawnBrokerIdleHost): void {
   ) {
     return;
   }
-  host.idleTimer = setTimeout(() => {
-    host.idleTimer = undefined;
-    void parkSpawnBrokerIfIdle(host);
-  }, host.idleTimeoutMs);
+  // A context-free timer: the idle deadline must not retain the last caller's async state.
+  host.idleTimer = runInDetachedAsyncContext(() =>
+    setTimeout(() => {
+      host.idleTimer = undefined;
+      void parkSpawnBrokerIfIdle(host);
+    }, host.idleTimeoutMs),
+  );
   host.idleTimer.unref();
 }
 
@@ -65,7 +69,13 @@ export function ensureSpawnBrokerStarted(host: SpawnBrokerIdleHost): void {
 }
 
 export async function parkSpawnBrokerIfIdle(host: SpawnBrokerIdleHost): Promise<void> {
-  if (host.closing || host.parking || !host.available || !host.process || !isSpawnBrokerIdle(host)) {
+  if (
+    host.closing ||
+    host.parking ||
+    !host.available ||
+    !host.process ||
+    !isSpawnBrokerIdle(host)
+  ) {
     return;
   }
   host.parking = true;
@@ -79,11 +89,14 @@ export async function parkSpawnBrokerIfIdle(host: SpawnBrokerIdleHost): Promise<
       if (child.exitCode !== null || child.signalCode !== null) {
         return;
       }
+      // Like close(): only a native-resource broker keeps IPC open until EOF. An explicit
+      // disconnect can suppress Node's close event, so the plain broker waits for exit.
       const exited =
-        host.brokerClosed ??
-        new Promise<void>((resolve) => {
-          child.once("exit", () => resolve());
-        });
+        host.resourceClaims && host.brokerClosed
+          ? host.brokerClosed
+          : new Promise<void>((resolve) => {
+              child.once("exit", () => resolve());
+            });
       const timer = setTimeout(() => child.kill("SIGKILL"), GRACEFUL_CANCEL_TIMEOUT_MS + 2000);
       try {
         if (host.resourceClaims && send) {

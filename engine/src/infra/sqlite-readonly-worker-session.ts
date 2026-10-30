@@ -39,8 +39,9 @@ export type SqliteReadOnlyWorkerLaunch = {
  * - past 8, the least-recently-used idle session is evicted first;
  * - when all are busy, overflow sessions are admitted up to
  *   SQLITE_READONLY_HARD_MAX_SESSIONS (16) total and close as soon as their work ends;
- * - a closing (evicted, overflow or failed) session keeps its slot until its child closes,
- *   so the 16 ceiling bounds real processes, not just pooled bookkeeping;
+ * - a closing (evicted, overflow or failed) session keeps its slot until its child closes
+ *   and any broker-owned native cleanup settles, so the 16 ceiling bounds real processes,
+ *   not just pooled bookkeeping;
  * - at 16, async callers wait up to SQLITE_READONLY_SLOT_WAIT_MS for a slot
  *   (waitForSqliteReadOnlyWorkerSlot), then fail with SqliteReadOnlyWorkerBusyError.
  *   Each freed slot is reserved for exactly one waiter, first come first served.
@@ -277,10 +278,6 @@ export function createSqliteReadOnlyWorkerSession(
     },
   };
   liveSessions.set(child, liveEntry);
-  child.once("close", () => {
-    liveSessions.delete(child);
-    notifySlotWaiters();
-  });
   let retired = false;
   let sequence = 0;
   let pendingOperation: Promise<SqliteReadOnlyWorkerValue> | undefined;
@@ -300,19 +297,32 @@ export function createSqliteReadOnlyWorkerSession(
       }
     | undefined;
   const { promise: closeSignal, resolve: resolveClosed } = createDeferredCore();
-  // Broker loss retains group cleanup later in the same turn as proxy close.
-  const closed = closeSignal.then(() => {
-    if (
-      transport.kind === "broker" &&
-      child instanceof BrokerChild &&
-      !child.notStarted &&
-      child.exitCode === null &&
-      child.signalCode === null
-    ) {
-      return transport.owner.waitForCleanup();
+  // A brokered proxy that closes without an observed exit (broker loss) leaves the native
+  // child to broker-owned cleanup, retained later in the same turn as proxy close.
+  const awaitsBrokerCleanup = () =>
+    transport.kind === "broker" &&
+    child instanceof BrokerChild &&
+    !child.notStarted &&
+    child.exitCode === null &&
+    child.signalCode === null;
+  const closed = closeSignal.then(() =>
+    transport.kind === "broker" && awaitsBrokerCleanup()
+      ? transport.owner.waitForCleanup()
+      : undefined,
+  );
+  // The slot follows the full close, cleanup included, so the ceiling bounds real
+  // processes. A child that exited (every native child) frees it on its close event.
+  const releaseSlot = () => {
+    if (liveSessions.delete(child)) {
+      notifySlotWaiters();
     }
-    return undefined;
+  };
+  child.once("close", () => {
+    if (!awaitsBrokerCleanup()) {
+      releaseSlot();
+    }
   });
+  void closed.then(releaseSlot, releaseSlot);
   const retire = (error?: unknown) => {
     retired = true;
     if (pending && error !== undefined) {

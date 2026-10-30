@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { BrokerChild } from "../process/spawn-broker/child.js";
 import { captureSqliteReadOnlyWorkerScope } from "./sqlite-readonly-worker-context.js";
 import {
   createSqliteReadOnlyWorkerSession,
@@ -321,5 +322,37 @@ describe("SQLite read-only worker baseline", () => {
     const run = owner.run(() => captureSqliteReadOnlyWorkerScope());
     await owner.close();
     expect(() => run(() => undefined)).toThrow("scope closed");
+  });
+  it("keeps a brokered session's slot until broker-owned native cleanup settles", async () => {
+    let finishCleanup = () => {};
+    const cleanup = new Promise<void>((resolve) => {
+      finishCleanup = resolve;
+    });
+    const child = new BrokerChild(1, [process.execPath], async () => {});
+    const owner = { spawn: vi.fn(() => child), waitForCleanup: vi.fn(() => cleanup) };
+    const before = countLiveSqliteReadOnlyWorkerSessions();
+    const session = createSqliteReadOnlyWorkerSession({
+      env: {},
+      cwd: "/fixture",
+      transport: { kind: "broker", owner: owner as never },
+      argv: ["--fixture-readonly-session"],
+      retainLifetime: false,
+      requestArgs: (pathname, options) => [options.mode, pathname],
+      readBudget: () => ({ timeoutMs: 60_000, size: "fixture" }),
+      deadlineOwnedByCaller: () => true,
+      timeoutError: () => new Error("fixture budget expired"),
+      closeTimeoutMs: 60_000,
+    });
+    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(before + 1);
+    // Broker loss: the proxy closes at once while the native child is still being reaped.
+    child.fail(new Error("Spawn broker exited; command outcome is unavailable"));
+    await delay(0);
+    expect(session.isRetired()).toBe(true);
+    expect(owner.waitForCleanup).toHaveBeenCalledOnce();
+    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(before + 1);
+    finishCleanup();
+    await session.closed;
+    await delay(0);
+    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(before);
   });
 });

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { ChildProcess, type MessageOptions, type SendHandle } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,8 +11,14 @@ vi.mock("node:child_process", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:child_process")>()),
   spawn: native.spawn,
 }));
+// fileURLToPath needs a drive letter on Windows; the module is never loaded.
+const syntheticRoot = process.platform === "win32" ? "file:///C:/synthetic" : "file:///synthetic";
 vi.mock("../../infra/runtime-worker-url.js", () => ({
-  resolveRuntimeWorkerUrl: () => new URL("file:///synthetic/spawn-broker.js"),
+  resolveRuntimeWorkerUrl: () =>
+    new URL(
+      (process.platform === "win32" ? "file:///C:/synthetic" : "file:///synthetic") +
+        "/spawn-broker.js",
+    ),
   resolveRuntimeWorkerArgv: () => ["synthetic-spawn-broker"],
 }));
 vi.mock("./cleanup.js", () => ({
@@ -30,10 +37,11 @@ afterEach(async () => {
   }
 });
 
-function mockBrokerChild(pid: number) {
+function mockBrokerChild(pid: number, options: { closeAfterDisconnect?: boolean } = {}) {
   const worker = new ChildProcess();
   let connected = true;
   let exited = false;
+  let disconnected = false;
   const exit = () => {
     if (exited) {
       return;
@@ -41,7 +49,10 @@ function mockBrokerChild(pid: number) {
     exited = true;
     connected = false;
     worker.emit("exit", 0, null);
-    worker.emit("close", 0, null);
+    // Like Node: an explicit parent disconnect can suppress the close event.
+    if (!disconnected || options.closeAfterDisconnect !== false) {
+      worker.emit("close", 0, null);
+    }
   };
   const send = vi.fn(
     (
@@ -61,6 +72,7 @@ function mockBrokerChild(pid: number) {
     disconnect: {
       value: () => {
         connected = false;
+        disconnected = true;
         worker.emit("disconnect");
         exit();
       },
@@ -157,7 +169,7 @@ describe("spawn broker baseline workers", () => {
     });
     const capturedAt = Date.now();
     const lease = host.captureNativeResource(
-      { moduleUrl: "file:///synthetic/resource.mjs", ownerPort: false },
+      { moduleUrl: syntheticRoot + "/resource.mjs", ownerPort: false },
       { message: vi.fn(), failed: vi.fn() },
     );
     try {
@@ -183,5 +195,57 @@ describe("spawn broker baseline workers", () => {
       first.worker.kill();
       second.worker.kill();
     }
+  });
+
+  it("parks a plain broker whose explicit disconnect suppresses close", async () => {
+    const pids = [51007, 51008];
+    native.spawn.mockImplementation(() => {
+      const pid = pids.shift();
+      if (pid === undefined) {
+        throw new Error("unexpected extra broker spawn");
+      }
+      const { worker } = mockBrokerChild(pid, { closeAfterDisconnect: false });
+      queueMicrotask(() => {
+        worker.emit("message", { type: "ready", pid });
+      });
+      return worker;
+    });
+    const host = attachHost(createSpawnBrokerHost({ idleTimeoutMs: 20 }));
+    await host.ready();
+    expect(host.pid).toBe(51007);
+
+    // The Gateway broker parks by disconnecting; its exit, not close, ends the park.
+    await vi.waitFor(() => {
+      expect(Reflect.get(host, "parked")).toBe(true);
+      expect(Reflect.get(host, "parking")).toBe(false);
+    });
+    expect(host.pid).toBeUndefined();
+
+    // The next use starts a replacement instead of waiting behind the stalled park.
+    await host.ready();
+    expect(host.pid).toBe(51008);
+    expect(native.spawn).toHaveBeenCalledTimes(2);
+  });
+
+  it("creates the idle timer outside the caller's async context", async () => {
+    const { worker } = mockBrokerChild(51009);
+    native.spawn.mockReturnValueOnce(worker);
+    const request = new AsyncLocalStorage<{ request: string }>();
+    const idleTimeoutMs = 43_210;
+    const stores: unknown[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((handler: () => void, ms?: number) => {
+      if (ms === idleTimeoutMs) {
+        stores.push(request.getStore() ?? "detached");
+      }
+      return realSetTimeout(handler, ms);
+    }) as typeof setTimeout);
+    const host = attachHost(createSpawnBrokerHost({ idleTimeoutMs }));
+    await request.run({ request: "caller" }, async () => {
+      // Readiness arrives on the caller's turn and arms the idle timer there.
+      worker.emit("message", { type: "ready", pid: 51009 });
+      await host.ready();
+    });
+    expect(stores).toEqual(["detached"]);
   });
 });
