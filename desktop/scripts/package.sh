@@ -8,7 +8,15 @@ set -euo pipefail
 D="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$D"
 node scripts/build.mjs
-OUT="${BRANCH_DESKTOP_OUT:-$(node -p 'require("path").join(require("./dist/config.js").defaultDataDirectory(),"dist")')}"
+DATA_DIST="$(node -p 'require("path").join(require("./dist/config.js").defaultDataDirectory(),"dist")')"
+# A dev build goes to a temp folder, never <data>/dist: a copy there runs beside the installed app and shares its
+# data folder (the setup .exe moves an old one aside). Install real builds with the setup .exe.
+OUT="${BRANCH_DESKTOP_OUT:-${TMPDIR:-/tmp}/branch-desktop-dist}"
+case "$OUT/" in
+  "$DATA_DIST"/*)
+    echo "Refusing to package into the app data folder ($DATA_DIST); set BRANCH_DESKTOP_OUT elsewhere." >&2
+    exit 1 ;;
+esac
 VERSION="$(node -p 'require("./package.json").version')"
 TARGET="$OUT/v$VERSION"
 if [ -e "$TARGET" ]; then
@@ -18,7 +26,8 @@ fi
 # An existing base executable may be retained when explicitly configured.
 # The folder and package.json always carry the current app version.
 EXE_VERSION="$VERSION"
-BASE_EXE="${BRANCH_DESKTOP_BASE_EXE:-$OUT/v0.2.0/Branch Agent-win32-x64/Branch Agent.exe}"
+# The approved exe is only read; older checkouts kept it in the data folder.
+BASE_EXE="${BRANCH_DESKTOP_BASE_EXE:-$DATA_DIST/v0.2.0/Branch Agent-win32-x64/Branch Agent.exe}"
 TEMP_ROOT="$(cd "${TMPDIR:-/tmp}" && pwd)"
 STAGE="$(mktemp -d "$TEMP_ROOT/branch-desktop-stage.XXXXXX")"
 cleanup() { case "$STAGE" in "$TEMP_ROOT"/branch-desktop-stage.*) rm -rf -- "$STAGE" ;; *) exit 1 ;; esac; }

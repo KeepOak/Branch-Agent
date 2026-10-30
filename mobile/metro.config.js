@@ -3,8 +3,10 @@ const path = require('node:path');
 const { getDefaultConfig } = require('expo/metro-config');
 const { engineCyclePattern, packagesRoot, resolveEngineModule } = require('./engine-modules');
 
+const windowStage = path.resolve(__dirname, '..', 'window', 'src', 'stage');
+
 const config = getDefaultConfig(__dirname);
-config.watchFolders = [...(config.watchFolders ?? []), packagesRoot];
+config.watchFolders = [...(config.watchFolders ?? []), packagesRoot, windowStage];
 // Babel helpers injected into compiled engine files resolve from this app's node_modules.
 config.resolver.nodeModulesPaths = [path.join(__dirname, 'node_modules')];
 // The engine's packages are a dependency like node_modules, which Metro already leaves out of its

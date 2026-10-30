@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { useResource } from "./hooks";
-import { STALL_MS, STALL_TEXT, stallAfter } from "./stall";
+import { STALL_MS, STALL_TEXT, stallAfter, stalledRead } from "./stall";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -46,5 +46,15 @@ describe("settings reads that never answer", () => {
 
   it("uses a window well above a normal engine answer", () => {
     expect(STALL_MS).toBeGreaterThanOrEqual(10_000);
+  });
+});
+
+describe("stalledRead", () => {
+  it("rejects with the stall line when the read never answers, and passes a normal answer through", async () => {
+    const silent = stalledRead(new Promise<never>(() => undefined));
+    const outcome = silent.then(() => "answered", (error: Error) => error.message);
+    vi.advanceTimersByTime(STALL_MS);
+    expect(await outcome).toBe(STALL_TEXT);
+    await expect(stalledRead(Promise.resolve(7))).resolves.toBe(7);
   });
 });

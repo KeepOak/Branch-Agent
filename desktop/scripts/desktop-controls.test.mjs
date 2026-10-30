@@ -1,16 +1,16 @@
 // Desktop controls bridge: every OS call is a fake, so nothing on this computer changes.
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { execFileSync, spawnSync } from "node:child_process";
+import { chmod, copyFile, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 if (!dist) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to current strict-compiled source");
-const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, DOWNLOAD_PAGES,
-  branchPosixShim, branchCommandOwner, posixBranchCommand, BRANCH_COMMAND_MARKER, LEGACY_BRANCH_COMMAND_MARKER } =
+const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, releaseDownloadUrl, RELEASE_DOWNLOADS, RELEASE_PAGES,
+  branchPosixShim, branchCommandOwner, posixBranchCommand, BRANCH_COMMAND_MARKER, LEGACY_BRANCH_COMMAND_MARKER, appRemoval, appRemovalPlan, APP_REMOVAL_KEEPS } =
   await import(pathToFileURL(join(dist, "desktop-controls.js")));
 
 async function fixture(run) {
@@ -90,14 +90,95 @@ test("tray ring follows the usage only while the setting is on", async () => fix
   assert.deepEqual(calls, [["tray", 42, false], ["tray", 42, true], ["tray", 100, true]]);
 }));
 
-test("Get it opens only the known download pages", async () => fixture(async ({ deps, calls }) => {
-  const controls = createDesktopControls(deps);
+test("Get it opens the four Branch release assets; iPhone and the extension are not listed", async () => fixture(async ({ deps, calls }) => {
+  const version = "0.4.4-build-2d76db0056f8";
+  const file = (name) => ({ name, browser_download_url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${name}` });
+  const releases = async () => [
+    { assets: [
+      file(`Branch-Agent-${version}-darwin-arm64.dmg`),
+      file(`Branch-Agent-Setup-${version}-win32-x64.exe`),
+      file(`Branch-Agent-${version}-linux-x64.AppImage`),
+      { name: "Branch-macOS.dmg", browser_download_url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-macOS.dmg" },
+      { name: "Branch-Setup-Windows.exe", browser_download_url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-Setup-Windows.exe" },
+      { name: "Branch-Linux.deb", browser_download_url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-Linux.deb" },
+      { name: "Branch-Agent-1-darwin-arm64.dmg", browser_download_url: "https://evil.example/Branch-Agent-1-darwin-arm64.dmg" },
+    ]},
+    { assets: [
+      file(`branch-android-${version}-unsigned.apk`),
+      { name: `branch-android-${version}.apk.sha256`, browser_download_url: file(`branch-android-${version}.apk.sha256`).browser_download_url },
+      file(`branch-android-${version}.apk`),
+    ]},
+  ];
+  const controls = createDesktopControls({ ...deps, releases });
   await controls.openDownload("windows");
-  await controls.openDownload("iphone");
+  await controls.openDownload("mac");
+  await controls.openDownload("linux");
+  await controls.openDownload("android");
+  assert.deepEqual(Object.keys(RELEASE_DOWNLOADS), ["mac", "windows", "linux", "android"]);
+  await assert.rejects(controls.openDownload("iphone"), /No download page/);
+  await assert.rejects(controls.openDownload("extension"), /No download page/);
   await assert.rejects(controls.openDownload("https://example.com"), /No download page/);
   await assert.rejects(controls.openDownload("__proto__"), /No download page/);
-  assert.deepEqual(calls, [["open", "https://github.com/KeepOak/Branch-Agent/releases/latest"], ["open", DOWNLOAD_PAGES.iphone]]);
-  for (const url of Object.values(DOWNLOAD_PAGES)) assert.match(url, /^https:\/\//);
+  // Stable OS names (#1842) win when both are on the newest release; Android still uses the signed APK.
+  assert.deepEqual(calls, [
+    ["open", "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-Setup-Windows.exe"],
+    ["open", "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-macOS.dmg"],
+    ["open", "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-Linux.deb"],
+    ["open", `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/branch-android-${version}.apk`],
+  ]);
+}));
+
+test("Get it prefers stable OS download names over versioned ones on the same release", () => {
+  const version = "0.4.4-build-2d76db0056f8";
+  const file = (name) => ({ name, browser_download_url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${name}` });
+  const listings = [{ assets: [
+    file(`Branch-Agent-${version}-darwin-arm64.dmg`),
+    file(`Branch-Agent-Setup-${version}-win32-x64.exe`),
+    file(`Branch-Agent-${version}-linux-x64.AppImage`),
+    { name: "Branch-macOS.dmg", browser_download_url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-macOS.dmg" },
+    { name: "Branch-Setup-Windows.exe", browser_download_url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-Setup-Windows.exe" },
+    { name: "Branch-Linux.deb", browser_download_url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-Linux.deb" },
+  ]}];
+  assert.equal(releaseDownloadUrl("mac", listings), "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-macOS.dmg");
+  assert.equal(releaseDownloadUrl("windows", listings), "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-Setup-Windows.exe");
+  assert.equal(releaseDownloadUrl("linux", listings), "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-Linux.deb");
+});
+
+test("a release asset on another host is not a Branch download", () => {
+  const trusted = "https://github.com/KeepOak/Branch-Agent/releases/download/v1/Branch-Agent-1-darwin-arm64.dmg";
+  assert.equal(releaseDownloadUrl("mac", [{ assets: [
+    { name: "Branch-Agent-1-darwin-arm64.dmg", browser_download_url: "https://evil.example/Branch-Agent-1-darwin-arm64.dmg" },
+    { name: "Branch-Agent-1-darwin-arm64.dmg", browser_download_url: trusted },
+  ]}]), trusted);
+  assert.equal(releaseDownloadUrl("android", [{ assets: [
+    { name: "branch-android-1-unsigned.apk", browser_download_url: "https://github.com/KeepOak/Branch-Agent/releases/download/v1/branch-android-1-unsigned.apk" },
+  ]}]), undefined);
+});
+
+test("Get it picks the newest published release and skips drafts and prereleases", () => {
+  const dmg = (v) => ({ name: `Branch-Agent-${v}-darwin-arm64.dmg`, browser_download_url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${v}/Branch-Agent-${v}-darwin-arm64.dmg` });
+  const listings = [
+    { published_at: "2026-10-17T12:00:00Z", assets: [dmg("1")] },
+    { published_at: "2026-10-17T18:00:00Z", assets: [dmg("2")] },
+    { published_at: "2026-10-17T19:00:00Z", prerelease: true, assets: [dmg("3")] },
+    { published_at: "2026-10-17T20:00:00Z", draft: true, assets: [dmg("4")] },
+  ];
+  assert.equal(releaseDownloadUrl("mac", listings), dmg("2").browser_download_url);
+});
+
+test("Get it falls back to Branch's own release page, never a store, when no asset can be read", async () => fixture(async ({ deps, calls }) => {
+  assert.deepEqual(RELEASE_PAGES, {
+    mac: "https://github.com/KeepOak/Branch-Agent/releases/latest",
+    windows: "https://github.com/KeepOak/Branch-Agent/releases/latest",
+    linux: "https://github.com/KeepOak/Branch-Agent/releases/latest",
+    android: "https://github.com/KeepOak/Branch-Agent/releases",
+  });
+  const offline = createDesktopControls({ ...deps, releases: async () => { throw new Error("rate limited"); } });
+  await offline.openDownload("mac");
+  const noApk = createDesktopControls({ ...deps, releases: async () => [{ assets: [{ name: "Branch-Agent-1-linux-x64.AppImage", browser_download_url: "https://github.com/KeepOak/Branch-Agent/releases/download/v1/Branch-Agent-1-linux-x64.AppImage" }] }] });
+  await noApk.openDownload("android");
+  assert.deepEqual(calls, [["open", RELEASE_PAGES.mac], ["open", RELEASE_PAGES.android]]);
+  for (const [, url] of calls) assert.match(url, /^https:\/\/github\.com\/KeepOak\/Branch-Agent\/releases(\/latest)?$/);
 }));
 
 test("unknown controls and non-boolean values are refused", async () => fixture(async ({ deps }) => {
@@ -123,6 +204,74 @@ test("IPC answers only the owned served window", async () => fixture(async ({ de
   assert.deepEqual(calls, [["login", true], ["tray", 50, false]]);
 }));
 
+// Private #1102: "Remove the app, keep my data" removes only what the installer put down, never the data folder.
+test("app removal finds the install each platform's installer made, and says why when there is none", () => {
+  const has = (...paths) => (path) => paths.includes(path);
+  const win = join("C:", "Users", "o", "AppData", "Local");
+  const uninstaller = join(win, "Programs", "Branch Agent Uninstall", "unins000.exe");
+  assert.deepEqual(appRemoval({ platform: "win32", execPath: "x", packaged: true, localAppData: win, exists: has(uninstaller) }), { kind: "windows", uninstaller });
+  assert.equal(appRemoval({ platform: "win32", execPath: "x", packaged: true, localAppData: win, exists: has() }).kind, "none");
+  const bundle = "/Users/o/Applications/Branch Agent.app";
+  assert.deepEqual(appRemoval({ platform: "darwin", execPath: `${bundle}/Contents/MacOS/Branch Agent`, packaged: true, exists: has() }), { kind: "mac", bundles: [bundle] });
+  const aside = join("/Users/o/Applications", ".Branch.previous");
+  assert.deepEqual(appRemoval({ platform: "darwin", execPath: `${bundle}/Contents/MacOS/Branch Agent`, packaged: true, exists: has(aside) }).bundles, [bundle, aside]);
+  assert.deepEqual(appRemoval({ platform: "linux", execPath: "/tmp/.mount/branch", packaged: true, appImage: "/home/o/.local/bin/branch-agent", exists: has("/home/o/.local/bin/branch-agent.previous") }),
+    { kind: "appimage", files: ["/home/o/.local/bin/branch-agent", "/home/o/.local/bin/branch-agent.previous"] });
+  assert.match(appRemoval({ platform: "linux", execPath: "/usr/lib/branch/branch", packaged: true, exists: has() }).reason, /package manager/);
+  assert.match(appRemoval({ platform: "win32", execPath: "x", packaged: false, localAppData: win, exists: has(uninstaller) }).reason, /source folder/);
+});
+
+test("the removal plan names what goes and keeps conversations, Trunks and settings", () => {
+  const plan = appRemovalPlan({ kind: "windows", uninstaller: "u" }, { dataDir: "D", startsAtLogin: true, branchOnPath: true, service: true });
+  assert.equal(plan.supported, true);
+  assert.deepEqual(plan.removes, ["The Branch app, with its Start menu and desktop shortcuts", "Branch’s background service, so nothing keeps running", "Starting Branch when you sign in", "The branch command in your terminal"]);
+  assert.deepEqual(plan.keeps, ["Your conversations", "Your Trunks and what they remember", "Your settings and connected accounts"]);
+  assert.deepEqual(plan.keeps, APP_REMOVAL_KEEPS);
+  assert.equal(plan.dataDir, "D");
+  assert.deepEqual(appRemovalPlan({ kind: "mac", bundles: ["b"] }, { dataDir: "D", startsAtLogin: false, branchOnPath: false, service: false }).removes, ["The Branch app (it goes to the Trash)"]);
+  const none = appRemovalPlan({ kind: "none", reason: "why" }, { dataDir: "D", startsAtLogin: true, branchOnPath: true, service: true });
+  assert.deepEqual([none.supported, none.reason, none.removes], [false, "why", []]);
+});
+
+test("Remove the app takes the service, login item and command first, then the app, then quits; the data folder stays", async () => fixture(async ({ root, deps, calls, state }) => {
+  const dataDir = join(root, "data");
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(join(dataDir, "conversation.jsonl"), "kept\n");
+  state.login = true; state.onPath = true;
+  const removal = { kind: "appimage", files: [join(root, "branch-agent")] };
+  const controls = createDesktopControls({ ...deps, removeApp: { dataDir, removal: () => removal,
+    service: async () => { calls.push(["service-uninstall"]); },
+    launch: async (r) => { calls.push(["launch", r.kind]); }, quit: () => calls.push(["quit"]) } });
+  const plan = await controls.removalPlan();
+  assert.equal(plan.supported, true);
+  assert.equal(plan.removes.length, 4);
+  await controls.removeApp();
+  assert.deepEqual(calls, [["service-uninstall"], ["login", false], ["cli-uninstall"], ["launch", "appimage"], ["quit"]]);
+  assert.equal(await readFile(join(dataDir, "conversation.jsonl"), "utf8"), "kept\n");
+  const none = createDesktopControls({ ...deps, removeApp: { dataDir, removal: () => ({ kind: "none", reason: "Not installed here." }), launch: async () => calls.push(["launch"]), quit: () => calls.push(["quit"]) } });
+  await assert.rejects(none.removeApp(), /Not installed here/);
+  assert.equal((await createDesktopControls(deps).removalPlan()).supported, false);
+  await assert.rejects(createDesktopControls(deps).removeApp(), /newer Branch app/);
+  assert.equal(calls.filter(([c]) => c === "quit").length, 1);
+}));
+
+test("removal IPC answers only the owned served window", async () => fixture(async ({ deps, calls }) => {
+  const handlers = new Map();
+  const ipc = { handle: (c, f) => handlers.set(c, f), on: () => undefined };
+  const frame = { url: "http://127.0.0.1:19032/" };
+  const owner = { getURL: () => frame.url, mainFrame: frame };
+  const removeApp = { dataDir: "D", removal: () => ({ kind: "mac", bundles: ["b"] }), launch: async () => calls.push(["launch"]), quit: () => calls.push(["quit"]) };
+  registerDesktopControlsIpc(ipc, () => owner, "http://127.0.0.1:19032/", createDesktopControls({ ...deps, removeApp }));
+  const strangerFrame = { url: "https://elsewhere.test/" };
+  const stranger = { sender: { getURL: () => strangerFrame.url, mainFrame: strangerFrame }, senderFrame: strangerFrame };
+  await assert.rejects(handlers.get("branch-desktop:controls:remove-app")(stranger), /owned served window/);
+  await assert.rejects(handlers.get("branch-desktop:controls:removal-plan")(stranger), /owned served window/);
+  assert.deepEqual(calls, []);
+  assert.equal((await handlers.get("branch-desktop:controls:removal-plan")({ sender: owner, senderFrame: frame })).supported, true);
+  await handlers.get("branch-desktop:controls:remove-app")({ sender: owner, senderFrame: frame });
+  assert.deepEqual(calls, [["launch"], ["quit"]]);
+}));
+
 test("ring bitmap draws the share left as an arc over a faint track", () => {
   const size = 32, px = (img, x, y) => [...img.subarray((y * size + x) * 4, (y * size + x) * 4 + 4)];
   const half = ringBitmap(50, size);
@@ -135,13 +284,18 @@ test("ring bitmap draws the share left as an arc over a faint track", () => {
 
 test("branch shim reads the published engine and token at run time", () => {
   const shim = branchShim({ dataDir: "C:\\Data", engineDir: "C:\\App\\engine", nodePath: "C:\\App\\node.exe", gatewayPort: 19031 });
-  assert.ok(shim.includes('set /p ENGINE=<"%BRANCH_DATA%\\engine-current.txt"'));
+  assert.ok(shim.includes('call :read_engine "%BRANCH_DATA%\\engine-current.txt"'));
   // The engine that runs, not a staged one still waiting to be applied.
-  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('set /p ENGINE=<"%BRANCH_DATA%\\engine-running.txt"'));
+  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('call :read_engine "%BRANCH_DATA%\\engine-running.txt"'));
   assert.ok(shim.includes('set /p BRANCH_GATEWAY_TOKEN=<"%BRANCH_DATA%\\gateway-token"'));
   // The configured port is the default; the live port an update moved the engine to wins.
   assert.ok(shim.indexOf('set "BRANCH_GATEWAY_PORT=19031"') < shim.indexOf('set /p BRANCH_GATEWAY_PORT=<"%BRANCH_DATA%\\gateway-port"'));
   assert.ok(shim.includes('"C:\\App\\node.exe" "%ENGINE%\\branch.mjs" %*'));
+  assert.ok(shim.includes('"%BRANCH_DATA%\\gateway.pid"'));
+  assert.ok(shim.includes(":read_live_engine"));
+  assert.ok(shim.includes("EXPECTPORT"), "live pid is accepted only on the recorded gateway port");
+  assert.match(shim, /branch\\.mjs[\s\S]*gateway/);
+  assert.ok(shim.includes("^\\d+$"), "PowerShell refuses a non-digit pid or port before the WQL query");
   assert.doesNotMatch(shim, /[0-9a-f]{64}/);
 });
 
@@ -150,16 +304,261 @@ test("Git Bash shim reads the same files, drops CR and passes arguments through"
   assert.ok(shim.startsWith("#!/bin/sh\n"));
   assert.ok(shim.includes("data='C:/Data'\\''s'"));
   assert.ok(shim.includes("tr -d '\\r'"));
-  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('if [ -f "$data/engine-running.txt" ]'));
+  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('read_engine "$data/engine-running.txt"'));
   // An empty read (never expected: the desktop renames the file into place) keeps the configured port.
   assert.ok(shim.includes(`if [ -f "$data/gateway-port" ]; then live=$(head -n 1 "$data/gateway-port" | tr -d '\\r'); if [ -n "$live" ]; then BRANCH_GATEWAY_PORT=$live; fi; fi`));
-  assert.ok(shim.indexOf("BRANCH_GATEWAY_PORT=19031") < shim.indexOf("$data/gateway-port"));
+  assert.ok(shim.indexOf("BRANCH_GATEWAY_PORT=19031") < shim.indexOf("BRANCH_GATEWAY_PORT=$live"));
   // As the cmd shim: a long-running `branch mcp serve` finds the desktop's gateway-port again after an update.
   assert.ok(shim.includes("BRANCH_DATA='C:\\Data'\\''s'"));
   assert.match(shim, /export BRANCH_DATA /);
   assert.ok(shim.includes(`exec 'C:/App/node.exe' "$engine/branch.mjs" "$@"`));
+  assert.ok(shim.includes("$data/gateway.pid"));
+  assert.ok(shim.includes("read_live_engine"));
+  assert.ok(shim.includes('ps -o args= -p "$pid"'), "macOS reads the live command line from ps when /proc is absent");
+  assert.ok(shim.includes('ps -o command= -p "$pid"'), "Linux/Git Bash ps may only expose command=, not args=");
+  assert.ok(shim.includes(`tr '\\0' ' '`), "Git Bash reconstructs a ps-like line from /proc when ps -o is empty");
+  assert.ok(shim.includes(`tr -d '\"'`), "quoted Windows/Git Bash paths must not break the /branch.mjs gateway glob");
+  assert.ok(shim.includes("/branch.mjs gateway"), "live pid must have gateway immediately after branch.mjs");
+  assert.ok(shim.includes("BRANCH_SHIM_FORCE_PS"), "tests can skip /proc and exercise the ps parser");
+  assert.ok(shim.includes("*[!0-9]*"), "pid and port must be digits before they are interpolated");
+  assert.ok(shim.includes('rest=${rest#* }'), "a spaced node path is stripped one word at a time");
+  assert.ok(shim.includes("parse_live_cmdline()"), "macOS /bin/sh (bash 3.2) cannot parse case/;; inside $(...)");
+  assert.match(shim, /--port\\ "\$expect"/, "the port glob quotes expect so a non-digit value cannot widen the match");
+  assert.match(shim, /powershell\.exe[^\n]*-Command '/, "PowerShell is single-quoted so [\\\\/] keeps its backslash");
+  assert.ok(shim.includes("[\\\\/]"), "the PowerShell path class still matches a backslash after sh quoting");
   assert.doesNotMatch(shim, /\r/);
+  const sh = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
+  const syntax = spawnSync(sh, ["-n", "-c", shim], { windowsHide: true, encoding: "utf8" });
+  assert.equal(syntax.status, 0, syntax.stderr);
 });
+
+async function spacedNodeBinary(root) {
+  const dir = join(root, "Branch Agent.app", "Contents", "Resources", "node");
+  await mkdir(dir, { recursive: true });
+  if (process.platform === "win32") {
+    const dest = join(dir, "node.exe");
+    await copyFile(process.execPath, dest);
+    return dest;
+  }
+  const dest = join(dir, "node");
+  await writeFile(dest, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} "$@"\n`);
+  await chmod(dest, 0o755);
+  return dest;
+}
+
+function stopPid(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  try {
+    if (process.platform === "win32") {
+      execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 5_000 });
+    } else {
+      process.kill(pid, "SIGKILL");
+    }
+  } catch { /* already gone */ }
+}
+
+async function waitPidGone(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  const end = Date.now() + 5_000;
+  while (Date.now() < end) {
+    try { process.kill(pid, 0); } catch (error) {
+      if (error.code !== "EPERM") return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+}
+
+/** Windows locks a copied node.exe until that process has fully exited. */
+async function removeTree(dir) {
+  const end = Date.now() + 5_000;
+  for (;;) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (!["EPERM", "EBUSY", "EACCES", "ENOTEMPTY"].includes(error.code) || Date.now() > end) throw error;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  }
+}
+
+async function cliFixture(run) {
+  const root = await mkdtemp(join(tmpdir(), "branch-cli-"));
+  const dataDir = join(root, "data"), engineDir = join(root, "bundled engine");
+  await mkdir(dataDir); await mkdir(engineDir);
+  const engine = async name => {
+    const dir = join(root, name); await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "branch.mjs"), `if (process.argv.includes("--hold") || process.argv[2] === "gateway") setInterval(() => {}, 1000); else console.log(JSON.stringify({engine:${JSON.stringify(name)},args:process.argv.slice(2)}));`);
+    return dir;
+  };
+  await engine("bundled engine");
+  const options = { dataDir, engineDir, nodePath: process.execPath, gatewayPort: 19045 };
+  const execute = async (kind, extraEnv) => {
+    const cmd = kind === "cmd", file = join(root, cmd ? "branch.cmd" : "branch");
+    await writeFile(file, cmd ? branchShim(options) : branchShShim(options));
+    const shell = cmd ? process.env.ComSpec : process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
+    return spawnSync(shell, cmd ? ["/d", "/c", file, "status", "quoted arg"] : [file, "status", "quoted arg"],
+      { windowsHide: true, encoding: "utf8", env: extraEnv ? { ...process.env, ...extraEnv } : undefined });
+  };
+  try { await run({ root, dataDir, engineDir, engine, execute }); } finally { await removeTree(root); }
+}
+
+for (const kind of process.platform === "win32" ? ["cmd", "sh"] : ["sh"]) {
+  test(`${kind} branch command ignores stale running engine and uses valid published engine`, async () => cliFixture(async f => {
+    const current = await f.engine("published engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), current + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), join(f.dataDir, "missing") + "\r\n");
+    const result = await f.execute(kind);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), { engine: "published engine", args: ["status", "quoted arg"] });
+  }));
+
+  test(`${kind} branch command ignores stale and empty pointers and uses bundled engine`, async () => cliFixture(async f => {
+    for (const current of ["", join(f.dataDir, "missing")]) {
+      for (const running of ["", join(f.dataDir, "missing")]) {
+        await writeFile(join(f.dataDir, "engine-current.txt"), current + "\r\n");
+        await writeFile(join(f.dataDir, "engine-running.txt"), running + "\r\n");
+        const result = await f.execute(kind);
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(JSON.parse(result.stdout).engine, "bundled engine");
+      }
+    }
+  }));
+
+  test(`${kind} branch command prefers valid running engine`, async () => cliFixture(async f => {
+    await writeFile(join(f.dataDir, "engine-current.txt"), await f.engine("published engine"));
+    await writeFile(join(f.dataDir, "engine-running.txt"), await f.engine("running engine"));
+    const result = await f.execute(kind);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).engine, "running engine");
+  }));
+
+  test(`${kind} branch command reports missing engines before launching node`, async () => cliFixture(async f => {
+    await rm(join(f.engineDir, "branch.mjs"));
+    const result = await f.execute(kind);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Branch Agent engine is unavailable.*Open Branch Agent/);
+    assert.doesNotMatch(result.stderr, /MODULE_NOT_FOUND/);
+  }));
+
+  test(`${kind} branch command reports unreadable pointer without falling back`, async () => cliFixture(async f => {
+    await mkdir(join(f.dataDir, "engine-running.txt"));
+    const result = await f.execute(kind);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Cannot read Branch Agent engine pointer.*check.*permissions/i);
+    assert.equal(result.stdout, "");
+  }));
+
+  test(`${kind} branch command uses the live engine process when the pointer names a different valid engine`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    const live = await f.engine("live engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "gateway-port"), "19045\r\n");
+    const child = spawn(process.execPath, [join(live, "branch.mjs"), "gateway", "--port", "19045"], { windowsHide: true, stdio: "ignore" });
+    try {
+      assert.ok(Number.isInteger(child.pid) && child.pid > 0);
+      await writeFile(join(f.dataDir, "gateway.pid"), String(child.pid) + "\r\n");
+      const result = await f.execute(kind);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).engine, "live engine");
+    } finally { stopPid(child.pid); }
+  }));
+
+  test(`${kind} branch command keeps the pointer engine when gateway.pid is a non-gateway branch.mjs`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    const other = await f.engine("other engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "gateway-port"), "19045\r\n");
+    const child = spawn(process.execPath, [join(other, "branch.mjs"), "--hold"], { windowsHide: true, stdio: "ignore" });
+    try {
+      assert.ok(Number.isInteger(child.pid) && child.pid > 0);
+      await writeFile(join(f.dataDir, "gateway.pid"), String(child.pid) + "\r\n");
+      const result = await f.execute(kind);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).engine, "pointer engine");
+    } finally { stopPid(child.pid); }
+  }));
+
+  test(`${kind} branch command uses a live gateway whose engine path contains spaces`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    const live = await f.engine("engine dir with spaces");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "gateway-port"), "19045\r\n");
+    const child = spawn(process.execPath, [join(live, "branch.mjs"), "gateway", "--port", "19045"], { windowsHide: true, stdio: "ignore" });
+    try {
+      assert.ok(Number.isInteger(child.pid) && child.pid > 0);
+      await writeFile(join(f.dataDir, "gateway.pid"), String(child.pid) + "\r\n");
+      const result = await f.execute(kind);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).engine, "engine dir with spaces");
+    } finally { stopPid(child.pid); }
+  }));
+
+  test(`${kind} branch command keeps the pointer engine when gateway.pid is dead`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    const live = await f.engine("live engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    const child = spawn(process.execPath, [join(live, "branch.mjs"), "--hold"], { windowsHide: true, stdio: "ignore" });
+    const pid = child.pid;
+    stopPid(pid);
+    const end = Date.now() + 5_000;
+    while (Date.now() < end) {
+      try { process.kill(pid, 0); } catch { break; }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    await writeFile(join(f.dataDir, "gateway.pid"), String(pid) + "\r\n");
+    const result = await f.execute(kind);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).engine, "pointer engine");
+  }));
+
+  test(`${kind} branch command keeps the pointer engine when gateway.pid is not digits`, async () => cliFixture(async f => {
+    const named = await f.engine("pointer engine");
+    await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+    await writeFile(join(f.dataDir, "gateway.pid"), "not-a-pid\r\n");
+    const result = await f.execute(kind);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).engine, "pointer engine");
+  }));
+
+  if (kind === "sh") {
+    // macOS: real ps -o args=. Linux: a ps without -o args= (as Git Bash), so the shim space-joins
+    // /proc cmdline and walks a spaced node path. Windows: gateway.pid is a native pid that MSYS ps
+    // and /proc never list, so Git Bash reaches it through the PowerShell lookup.
+    test("sh branch command finds a live gateway via ps when the node path contains spaces", async () => cliFixture(async f => {
+      const named = await f.engine("pointer engine");
+      const live = await f.engine("live engine");
+      await writeFile(join(f.dataDir, "engine-current.txt"), named + "\r\n");
+      await writeFile(join(f.dataDir, "engine-running.txt"), named + "\r\n");
+      await writeFile(join(f.dataDir, "gateway-port"), "19045\r\n");
+      const nodePath = await spacedNodeBinary(f.root);
+      const child = spawn(nodePath, [join(live, "branch.mjs"), "gateway", "--port", "19045"], { windowsHide: true, stdio: "ignore" });
+      try {
+        assert.ok(Number.isInteger(child.pid) && child.pid > 0);
+        await writeFile(join(f.dataDir, "gateway.pid"), String(child.pid) + "\r\n");
+        let env = { BRANCH_SHIM_FORCE_PS: "1" };
+        if (process.platform === "win32") env = undefined;
+        else if (process.platform === "linux") {
+          const bin = join(f.root, "no-ps-args"); await mkdir(bin);
+          await writeFile(join(bin, "ps"), "#!/bin/sh\nexit 1\n"); await chmod(join(bin, "ps"), 0o755);
+          env.PATH = `${bin}:${process.env.PATH}`;
+        }
+        const result = await f.execute("sh", env);
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(JSON.parse(result.stdout).engine, "live engine");
+      } finally {
+        stopPid(child.pid);
+        await waitPidGone(child.pid);
+      }
+    }));
+  }
+}
+
 /** A packaged install as it ships now: the app code is sealed in app.asar (no Resources/app/dist/cli.js), node sits
  *  beside it, and the engine the app runs is the unpacked copy named in the data folder's engine-*.txt files. */
 async function packagedLayout(root) {
@@ -328,3 +727,23 @@ test("a full disk keeps a changed setting in memory, shows the disk-full banner 
     assert.deepEqual(seen, [true, false], "the banner goes away once a save lands");
   } finally { stop(); }
 }));
+
+test("tools find the engine on its live port from gateway-port, not the configured 19031 (Private #1054)", async () => {
+  const helper = fileURLToPath(new URL("./live-gateway-port.mjs", import.meta.url));
+  const { liveGatewayPort, CONFIGURED_GATEWAY_PORT } = await import(pathToFileURL(helper));
+  const data = await mkdtemp(join(tmpdir(), "branch-gateway-port-"));
+  try {
+    assert.equal(CONFIGURED_GATEWAY_PORT, 19031);
+    assert.equal(liveGatewayPort(data), 19031, "an app that never wrote gateway-port keeps the configured port");
+    await writeFile(join(data, "gateway-port"), "57072\r\n");
+    assert.equal(liveGatewayPort(data), 57072);
+    assert.equal(execFileSync(process.execPath, [helper, data], { encoding: "utf8", windowsHide: true }).trim(), "57072");
+    await writeFile(join(data, "gateway-port"), "not a port\n");
+    assert.equal(liveGatewayPort(data), 19031);
+    const script = await readFile(new URL("./publish-window.sh", import.meta.url), "utf8");
+    assert.doesNotMatch(script, /19031/u, "publish-window.sh hard-codes the configured port");
+    assert.match(script, /PORT="\$\{3:-\$\(node "\$\(dirname "\$0"\)\/live-gateway-port\.mjs" "\$DATA"\)\}"/u);
+  } finally {
+    await rm(data, { recursive: true, force: true });
+  }
+});

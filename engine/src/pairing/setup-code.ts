@@ -39,6 +39,12 @@ import {
   resolveTailnetHostWithRunner,
   resolveTailscalePublishedHost,
 } from "../shared/tailscale-status.js";
+import { pairingConfirmCode } from "./confirm-code.js";
+import {
+  PAIRING_UNREACHABLE_ERROR,
+  resolveConfiguredPairingRelayUrl,
+  type PairingReachability,
+} from "./pairing-reachability.js";
 
 type PairingSetupPayload = {
   url: string;
@@ -46,6 +52,8 @@ type PairingSetupPayload = {
   bootstrapToken: string;
   expiresAtMs?: number;
   tlsFingerprint?: string;
+  confirmCode?: string;
+  relayKey?: string;
 };
 
 const PAIRING_SETUP_MAX_URLS = 8;
@@ -81,6 +89,10 @@ type ResolvePairingSetupOptions = {
   networkInterfaces?: () => ReturnType<typeof os.networkInterfaces>;
   localTlsFingerprint?: string;
   loadLocalTlsFingerprint?: () => Promise<string | undefined>;
+  openReachability?: (plan: {
+    localGatewayUrl: string;
+    relayUrl?: string;
+  }) => Promise<PairingReachability | { error: string }>;
 };
 
 export function resolveConfiguredPairingPublicUrl(config: BranchConfig): string | undefined {
@@ -98,6 +110,8 @@ type PairingSetupResolution =
       accessDowngraded: boolean;
       setupId: string;
       expiresAtMs: number;
+      confirmCode: string;
+      reachability?: PairingReachability;
     }
   | {
       ok: false;
@@ -254,7 +268,8 @@ function parseNormalizedGatewayUrl(raw: string, pathMode: PairingUrlPathMode): s
     const port = parsed.port ? `:${parsed.port}` : "";
     const contextPath =
       pathMode === "origin-only" || parsed.pathname === "/" ? "" : parsed.pathname;
-    return `${resolvedScheme}://${host}${port}${contextPath}`;
+    const search = pathMode === "origin-only" ? "" : parsed.search;
+    return `${resolvedScheme}://${host}${port}${contextPath}${search}`;
   } catch {
     return null;
   }
@@ -469,12 +484,30 @@ export function decodePairingSetupCode(
     throw new Error("Invalid pairing setup payload.");
   }
 
+  const confirmCode =
+    typeof decoded.confirmCode === "string" && /^[0-9A-HJKMNP-TV-Z]{6}$/u.test(decoded.confirmCode)
+      ? decoded.confirmCode
+      : undefined;
+  if (decoded.confirmCode !== undefined && !confirmCode) {
+    throw new Error("Invalid pairing setup payload.");
+  }
+
+  const relayKey =
+    typeof decoded.relayKey === "string" && /^[A-Za-z0-9_-]+$/u.test(decoded.relayKey)
+      ? decoded.relayKey
+      : undefined;
+  if (decoded.relayKey !== undefined && !relayKey) {
+    throw new Error("Invalid pairing setup payload.");
+  }
+
   return {
     url,
     ...(urls ? { urls } : {}),
     bootstrapToken,
     ...(expiresAtMs !== undefined ? { expiresAtMs } : {}),
     ...(tlsFingerprint ? { tlsFingerprint } : {}),
+    ...(confirmCode ? { confirmCode } : {}),
+    ...(relayKey ? { relayKey } : {}),
   };
 }
 
@@ -511,8 +544,32 @@ export async function resolvePairingSetupFromConfig(
     networkInterfaces: options.networkInterfaces ?? os.networkInterfaces,
   });
 
+  let reachability: PairingReachability | undefined;
+  if (!urlResult.url && urlResult.error === PAIRING_GATEWAY_LOOPBACK_ERROR && options.openReachability) {
+    const port = resolveGatewayPort(cfgForAuth, env);
+    const localGatewayUrl = `ws://127.0.0.1:${port}`;
+    const reached = await options.openReachability({
+      localGatewayUrl,
+      relayUrl: resolveConfiguredPairingRelayUrl({
+        configRelayUrl: cfgForAuth.plugins?.entries?.["device-pair"]?.config?.["relayUrl"],
+        env,
+      }),
+    });
+    if ("error" in reached) {
+      return { ok: false, error: reached.error || PAIRING_UNREACHABLE_ERROR };
+    }
+    urlResult.url = reached.url;
+    urlResult.source = reached.source;
+    reachability = reached;
+  }
+
+  const failAfterReachability = async (error: string): Promise<PairingSetupResolution> => {
+    await reachability?.close().catch(() => undefined);
+    return { ok: false, error };
+  };
+
   if (!urlResult.url) {
-    return { ok: false, error: urlResult.error ?? "Gateway URL unavailable." };
+    return await failAfterReachability(urlResult.error ?? "Gateway URL unavailable.");
   }
   // Mobile dashboards use the paired endpoint path as their Control UI mount.
   // Explicit overrides, remote endpoints, and configured proxy paths stay authoritative.
@@ -526,7 +583,7 @@ export async function resolvePairingSetupFromConfig(
   }
   const mobilePairingUrlError = validateMobilePairingUrl(urlResult.url, urlResult.source);
   if (mobilePairingUrlError) {
-    return { ok: false, error: mobilePairingUrlError };
+    return await failAfterReachability(mobilePairingUrlError);
   }
 
   const requestedBootstrapProfile =
@@ -551,7 +608,7 @@ export async function resolvePairingSetupFromConfig(
     ? normalizeTlsFingerprint(directGatewayTlsFingerprintRaw)
     : undefined;
   if (directGatewayTlsFingerprintRaw !== undefined && !directGatewayTlsFingerprint) {
-    return { ok: false, error: "Gateway TLS fingerprint is invalid." };
+    return await failAfterReachability("Gateway TLS fingerprint is invalid.");
   }
   const issued =
     options.issuedBootstrap ??
@@ -566,6 +623,8 @@ export async function resolvePairingSetupFromConfig(
       url: urlResult.url,
       bootstrapToken: issued.token,
       expiresAtMs: issued.expiresAtMs,
+      confirmCode: pairingConfirmCode(issued.setupId),
+      ...(reachability?.relayKey ? { relayKey: reachability.relayKey } : {}),
       ...(directGatewayTlsFingerprint ? { tlsFingerprint: directGatewayTlsFingerprint } : {}),
     },
     authLabel: authLabel.label,
@@ -574,5 +633,7 @@ export async function resolvePairingSetupFromConfig(
     accessDowngraded,
     setupId: issued.setupId,
     expiresAtMs: issued.expiresAtMs,
+    confirmCode: pairingConfirmCode(issued.setupId),
+    ...(reachability ? { reachability } : {}),
   };
 }

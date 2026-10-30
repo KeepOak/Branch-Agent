@@ -12,3 +12,5 @@ if (compile.status !== 0) process.exit(compile.status ?? 1);
 // Package the one canonical implementation; the shell cannot rely on an engine install.
 copyFileSync(new URL("../../engine/scripts/lib/available-memory.mjs", import.meta.url),
   new URL("../dist/available-memory-core.mjs", import.meta.url));
+// One Windows launcher source for the installer (which imports it from scripts/) and the app and update helper.
+copyFileSync(new URL("./windows-launcher.mjs", import.meta.url), new URL("../dist/windows-launcher.mjs", import.meta.url));

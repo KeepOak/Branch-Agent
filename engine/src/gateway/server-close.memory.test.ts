@@ -28,7 +28,7 @@ import { openBranchStateDatabase } from "../state/branch-state-db.js";
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
 import { getFreePort } from "../test-utils/ports.js";
 import { createGatewayMemoryCloseRegistryFactory } from "./server-close.memory.test-support.js";
-import { createGatewayKernel } from "./server-kernel.js";
+import { createGatewayKernel, prepareGatewayKernel } from "./server-kernel.js";
 import type { GatewayServer } from "./server-public.js";
 import { startGatewayServerCore } from "./server-start.js";
 
@@ -104,15 +104,21 @@ it("joins accepted Memory sync through Gateway close without reopening its execu
       },
     });
     setActivePluginRegistry(memory.registry);
-    const create = createGatewayKernel;
+    const prepareKernel = prepareGatewayKernel;
     const factory = vi
-      .spyOn(await import("./server-kernel.js"), "createGatewayKernel")
+      .spyOn(await import("./server-kernel.js"), "prepareGatewayKernel")
       .mockImplementation(async (...args) => {
-        const kernel = await create(...args);
-        kernel.scheduler.signal.addEventListener("abort", () => closePreludeEntered.resolve(), {
-          once: true,
-        });
-        return kernel;
+        const prepared = await prepareKernel(...args);
+        return {
+          ...prepared,
+          async activate(...activateArgs) {
+            const kernel = await prepared.activate(...activateArgs);
+            kernel.scheduler.signal.addEventListener("abort", () => closePreludeEntered.resolve(), {
+              once: true,
+            });
+            return kernel;
+          },
+        };
       });
     try {
       server = await startGatewayServerCore(port, {
@@ -230,7 +236,7 @@ it("drains memory before stalled connection cleanup while preserving terminal cl
   const fixture = await createFixture("gateway-memory-close-failure");
   const kernels: Awaited<ReturnType<typeof createGatewayKernel>>[] = [];
   const servers: GatewayServer[] = [];
-  const create = createGatewayKernel;
+  const prepareKernel = prepareGatewayKernel;
   let refuse = true;
   const memoryFailure = new Error("synthetic memory close refused");
   const completed: string[] = [];
@@ -267,11 +273,17 @@ it("drains memory before stalled connection cleanup while preserving terminal cl
       });
       setActivePluginRegistry(owner.registry);
       const factory = vi
-        .spyOn(await import("./server-kernel.js"), "createGatewayKernel")
+        .spyOn(await import("./server-kernel.js"), "prepareGatewayKernel")
         .mockImplementation(async (...args) => {
-          const kernel = await create(...args);
-          kernels.push(kernel);
-          return kernel;
+          const prepared = await prepareKernel(...args);
+          return {
+            ...prepared,
+            async activate(...activateArgs) {
+              const kernel = await prepared.activate(...activateArgs);
+              kernels.push(kernel);
+              return kernel;
+            },
+          };
         });
       let server: GatewayServer;
       try {

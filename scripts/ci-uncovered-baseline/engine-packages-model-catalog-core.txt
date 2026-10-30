@@ -1,0 +1,7 @@
+engine:packages/model-catalog-core/src/configured-model-refs.test.ts
+engine:packages/model-catalog-core/src/model-catalog-normalize.test.ts
+engine:packages/model-catalog-core/src/model-catalog-pricing.test.ts
+engine:packages/model-catalog-core/src/model-catalog-refs.test.ts
+engine:packages/model-catalog-core/src/provider-model-id-normalization.test.ts
+engine:packages/model-catalog-core/src/provider-model-id-normalize.test.ts
+engine:packages/model-catalog-core/src/remote-catalog-bundle.test.ts

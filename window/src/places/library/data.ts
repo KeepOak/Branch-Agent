@@ -3,11 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { trunkDisplayName } from "../../connect/trunk-name";
+import { STALL_TEXT, stallAfter } from "../settings/stall";
+import { plainError } from "../../shell/plain-error";
 export type Trunk = { id: string; name?: string; identity?: { name?: string; emoji?: string; theme?: string; avatar?: string; avatarUrl?: string }; createdVia?: string; workspace?: string; model?: { primary?: string } };
 export type Trunks = { agents: Trunk[]; defaultId: string; mainKey: string };
 export type FileEntry = { name: string; path: string; kind?: "file" | "directory"; size?: number; missing?: boolean; hash?: string; content?: string; encoding?: string; mimeType?: string };
 export function trunkName(t: Trunk) { return trunkDisplayName(t); }
 export function errorText(error: unknown) { return error instanceof Error ? error.message : String(error); }
+/** A failure as a person reads it, through plainError() (Private #1089). A leading "Error:" goes first, so plainError() never
+ *  keeps it as a screen's own lead ("Error: Branch can’t reach…"). */
+export function plainFailure(error: string) { return plainError(error.replace(/^\s*(?:Uncaught\s+)?Error:\s*/, "")); }
 /** A generation belongs to one screen/selection. Late results never replace a new selection. */
 export class RequestGeneration {
   private generation = 0;
@@ -21,11 +26,17 @@ export function useResource<T>(engine: WindowEngine, method: string | null, para
   const reload = useCallback(() => setRevision(n => n + 1), []);
   useEffect(() => {
     let current = true;
+    let stop: () => void = () => undefined;
     setState({ data: null, loading: !!method, error: null });
-    if (method) void engine.request<T>(method, JSON.parse(key)).then(data => {
-      if (current) setState({ data, loading: false, error: null });
-    }, error => { if (current) setState({ data: null, loading: false, error: errorText(error) }); });
-    return () => { current = false; };
+    if (method) {
+      // No answer by the stall deadline says so; a late answer still replaces that line.
+      stop = stallAfter(() => { if (current) setState(s => (s.data === null ? { data: null, loading: false, error: STALL_TEXT } : s)); });
+      void engine.request<T>(method, JSON.parse(key)).then(data => {
+        stop();
+        if (current) setState({ data, loading: false, error: null });
+      }, error => { stop(); if (current) setState({ data: null, loading: false, error: errorText(error) }); });
+    }
+    return () => { current = false; stop(); };
   }, [engine, method, key, revision]);
   return { ...state, reload };
 }

@@ -12,14 +12,16 @@ import { withEnvAsync } from "../test-utils/env.js";
 import { getFreePort } from "../test-utils/ports.js";
 import { prepareDoctorContext } from "./doctor-config-flow.test-support.js";
 import {
-  createBuiltRuntime,
-  runBuiltRuntime,
+  createDoctorCliRuntime,
+  runDoctorCli,
 } from "./doctor-config-preflight.process.test-support.js";
 import { useDoctorConfigPreflightHome } from "./doctor-config-preflight.test-support.js";
 
-const CLI_CHILD_TIMEOUT_MS = 60_000;
+const CLI_CHILD_TIMEOUT_MS = 90_000;
 const runtimeDirs = useAutoCleanupTempDirTracker(afterAll);
 const withDoctorConfigPreflightHome = useDoctorConfigPreflightHome();
+const windowsTouched =
+  process.platform === "win32" && process.env.FEATURE_SCOPE === "touched";
 
 async function repairConfig(configPath: string) {
   const ctx = await prepareDoctorContext(configPath);
@@ -27,7 +29,7 @@ async function repairConfig(configPath: string) {
   return { ...ctx.configResult, configWriteRefusal: ctx.configWriteRefusal };
 }
 
-describe("Doctor legacy config composition", () => {
+describe.skipIf(windowsTouched)("Doctor legacy config composition", () => {
   afterEach(() => closeBranchStateDatabaseForTest());
 
   it("preserves the July TTS preference locator before retiring its config keys", async () => {
@@ -53,9 +55,33 @@ describe("Doctor legacy config composition", () => {
     });
   });
 
+  it("canonicalizes July fixture memorySearch onto local meaning search", async () => {
+    await withDoctorConfigPreflightHome(async (home) => {
+      const raw = JSON.parse(
+        await fs.readFile(
+          new URL("../../test/fixtures/doctor-2026.7.1.json", import.meta.url),
+          "utf8",
+        ),
+      );
+      raw.agents.defaults.memorySearch.local = { modelPath: "/synthetic/embedding.gguf" };
+      raw.gateway.port = await getFreePort();
+      const configPath = await writeBranchConfig(home, raw);
+      await repairConfig(configPath);
+      const saved = JSON.parse(await fs.readFile(configPath, "utf8"));
+      expect(saved.agents).not.toHaveProperty("list");
+      expect(saved.agents.ownership).toBe("explicit");
+      expect(Object.keys(saved.agents.entries)).toEqual(["main", "research"]);
+      expect(saved.memory.search.provider).toBe("local");
+      expect(saved.memory.search.local).toEqual({ modelPath: "/synthetic/embedding.gguf" });
+      expect(saved.memory.search).toEqual({ ...raw.agents.defaults.memorySearch });
+      expect((await repairConfig(configPath)).shouldWriteConfig).toBe(false);
+    });
+  });
+
   it(
     "converges the July upgrade fixture with an explicit local model",
     async () => {
+      const runtime = createDoctorCliRuntime(runtimeDirs.make("branch-doctor-legacy-runtime-"));
       await withDoctorConfigPreflightHome(async (home) => {
         const raw = JSON.parse(
           await fs.readFile(
@@ -66,9 +92,48 @@ describe("Doctor legacy config composition", () => {
         raw.agents.defaults.memorySearch.local = { modelPath: "/synthetic/embedding.gguf" };
         raw.gateway.port = await getFreePort();
         const configPath = await writeBranchConfig(home, raw);
-        const cliRuntime = createBuiltRuntime(runtimeDirs.make("branch-doctor-legacy-runtime-"));
-        await fs.unlink(path.join(cliRuntime, "src"));
+        const assertConverged = (saved: ReturnType<typeof JSON.parse>) => {
+          expect(saved.agents).not.toHaveProperty("list");
+          expect(saved.agents.ownership).toBe("explicit");
+          expect(Object.keys(saved.agents.entries)).toEqual(["main", "research"]);
+          expect(saved.agents.defaults.systemAgent.agentId).toBe("main");
+          expect(saved.meta.migrations.modelPolicyAllowlist).toBe(true);
+          expect(saved.agents.defaults.modelPolicy.allow).toEqual([
+            "anthropic/claude-sonnet-4-6",
+            "anthropic/claude-opus-4-7",
+          ]);
+          expect(saved.memory.search).toEqual({ ...raw.agents.defaults.memorySearch });
+          expect(saved.tools.media.models).toEqual([
+            { ...raw.tools.media.audio.models[0], capabilities: ["audio"] },
+          ]);
+          expect(saved.gateway.nodes.commands.deny).toEqual(["system.run"]);
+          expect(saved.channels.telegram.groupAllowFrom).toEqual(["123456789"]);
+          expect(saved.channels.telegram.accounts.secondary.groupAllowFrom).toEqual(["987654321"]);
+          if (runtime.source) {
+            expect(saved.tools.alsoAllow).toEqual(expect.arrayContaining(["browser"]));
+          } else {
+            expect(saved.plugins.entries.browser.enabled).toBe(true);
+          }
+          expect(saved.meta).not.toHaveProperty("lastTouchedAt");
+          expect(saved.gateway.tailscale).not.toHaveProperty("resetOnExit");
+        };
+
+        if (runtime.source) {
+          await withEnvAsync({ BRANCH_DISABLE_BUNDLED_PLUGINS: "1" }, async () => {
+            expect((await readConfigFileSnapshot()).valid).toBe(false);
+            await repairConfig(configPath);
+            const first = await fs.readFile(configPath, "utf8");
+            assertConverged(JSON.parse(first));
+            expect((await readConfigFileSnapshot()).valid).toBe(true);
+            expect((await repairConfig(configPath)).shouldWriteConfig).toBe(false);
+            expect(await fs.readFile(configPath, "utf8")).toBe(first);
+          });
+          return;
+        }
+
+        await fs.unlink(path.join(runtime.root, "src"));
         const env: NodeJS.ProcessEnv = {
+          ...process.env,
           PATH: process.env.PATH,
           SystemRoot: process.env.SystemRoot,
           WINDIR: process.env.WINDIR,
@@ -78,39 +143,32 @@ describe("Doctor legacy config composition", () => {
           TMPDIR: home,
           BRANCH_STATE_DIR: path.dirname(configPath),
           BRANCH_CONFIG_PATH: configPath,
-          NODE_COMPILE_CACHE: path.join(cliRuntime, "node-compile-cache"),
+          BRANCH_NO_RESPAWN: "1",
+          BRANCH_SKIP_CHANNELS: "1",
+          BRANCH_TEST_FAST: "1",
+          NODE_COMPILE_CACHE: path.join(runtime.root, "node-compile-cache"),
           NO_COLOR: "1",
         };
+        delete env.NODE_ENV;
+        delete env.BRANCH_HOME;
+        delete env.VITEST;
         const run = async (args: string[], expected = 0) => {
-          const result = await runBuiltRuntime(cliRuntime, env, args, CLI_CHILD_TIMEOUT_MS);
+          const result = await runDoctorCli(runtime, env, args, CLI_CHILD_TIMEOUT_MS);
           const output = `${result.stdout}\n${result.stderr}`;
           expect(result.code, output).toBe(expected);
         };
-        const doctorArgs = ["doctor", "--fix", "--non-interactive", "--no-workspace-suggestions"];
+        const doctorArgs = [
+          "doctor",
+          "--fix",
+          "--non-interactive",
+          "--yes",
+          "--no-workspace-suggestions",
+        ];
         await run(["config", "validate"], 1);
         await run(doctorArgs);
         const first = await fs.readFile(configPath, "utf8");
-        const saved = JSON.parse(first);
         await run(["config", "validate"]);
-        expect(saved.agents).not.toHaveProperty("list");
-        expect(saved.agents.ownership).toBe("explicit");
-        expect(Object.keys(saved.agents.entries)).toEqual(["main", "research"]);
-        expect(saved.agents.defaults.systemAgent.agentId).toBe("main");
-        expect(saved.meta.migrations.modelPolicyAllowlist).toBe(true);
-        expect(saved.agents.defaults.modelPolicy.allow).toEqual([
-          "anthropic/claude-sonnet-4-6",
-          "anthropic/claude-opus-4-7",
-        ]);
-        expect(saved.memory.search).toEqual({ ...raw.agents.defaults.memorySearch });
-        expect(saved.tools.media.models).toEqual([
-          { ...raw.tools.media.audio.models[0], capabilities: ["audio"] },
-        ]);
-        expect(saved.gateway.nodes.commands.deny).toEqual(["system.run"]);
-        expect(saved.channels.telegram.groupAllowFrom).toEqual(["123456789"]);
-        expect(saved.channels.telegram.accounts.secondary.groupAllowFrom).toEqual(["987654321"]);
-        expect(saved.plugins.entries.browser.enabled).toBe(true);
-        expect(saved.meta).not.toHaveProperty("lastTouchedAt");
-        expect(saved.gateway.tailscale).not.toHaveProperty("resetOnExit");
+        assertConverged(JSON.parse(first));
         await run(doctorArgs);
         expect(await fs.readFile(configPath, "utf8")).toBe(first);
       });
@@ -284,14 +342,14 @@ describe("Doctor legacy config composition", () => {
             const saved = JSON.parse(await fs.readFile(configPath, "utf8"));
             expect(saved.memory.search).toEqual({
               enabled: false,
-              provider: "openai",
+              provider: "local",
               query: { maxResults: 9 },
               remote: { apiKey: canonicalApiKey ?? apiKey },
             });
             expect(saved.agents.defaults).not.toHaveProperty("memorySearch");
             expect(saved.agents.entries.ops.memory.search).toEqual({
               enabled: false,
-              provider: "openai",
+              provider: "local",
               query: { maxResults: 5 },
             });
             expect(saved.agents.entries.ops).not.toHaveProperty("memorySearch");

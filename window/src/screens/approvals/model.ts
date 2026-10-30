@@ -4,14 +4,14 @@
 // Classic card's helpers (thread/ApprovalCard actionWords / actionFields, thread/approval-trust maskCommand).
 import { actionFields, actionWords } from "../../thread/ApprovalCard";
 import { maskCommand } from "../../thread/approval-trust";
-import type { ApprovalDecision } from "../../thread/model";
+import type { Approval, ApprovalDecision } from "../../thread/model";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const EVERY: ApprovalDecision[] = ["allow-once", "allow-always", "deny"];
 
 export type AskKind = "exec" | "plugin" | "question";
-export type AskOption = { label: string; value: string };
+export type AskOption = { label: string; value: string; description?: string };
 export type AskQuestion = { questionId: string; header: string; question: string; options: AskOption[]; multi: boolean; free: boolean; secret: boolean };
 /** The #728 safety layer's seam: exec.approval.resolve and plugin.approval.resolve take an optional reviewer. */
 export type AskReviewer = { channel: string; accountId: string; senderId: string };
@@ -79,7 +79,9 @@ function readQuestion(p: Record<string, unknown>): Ask | null {
   const id = str(p.id);
   if (!id || (p.status !== undefined && p.status !== "pending")) return null;
   const questions: AskQuestion[] = (Array.isArray(p.questions) ? p.questions : []).map(rec).filter((q) => str(q.questionId) && str(q.question)).map((q) => {
-    const options = (Array.isArray(q.options) ? q.options : []).map(rec).filter((o) => str(o.label)).map((o) => ({ label: str(o.label), value: str(o.value) || str(o.label) }));
+    const options = (Array.isArray(q.options) ? q.options : []).map(rec).filter((o) => str(o.label)).map((o) => ({
+      label: str(o.label), value: str(o.value) || str(o.label), ...(str(o.description) ? { description: str(o.description) } : {}),
+    }));
     return { questionId: str(q.questionId), header: str(q.header), question: str(q.question), options, multi: q.multiSelect === true, free: !options.length || q.isOther === true, secret: q.isSecret === true };
   });
   if (!questions.length) return null;
@@ -88,6 +90,13 @@ function readQuestion(p: Record<string, unknown>): Ask | null {
     ...where(str(p.sessionKey), str(p.agentId)),
     words: { yes: "Reply", no: "Skip", done: "Answered", refused: "Skipped" }, questions,
   };
+}
+
+/** True when this ask belongs in the open conversation: same session, or a question that named none. */
+export function askIsHere(ask: Pick<Ask, "kind" | "sessionKey">, sessionKey: string | null | undefined): boolean {
+  if (!sessionKey) return false;
+  if (ask.sessionKey === sessionKey) return true;
+  return ask.kind === "question" && !ask.sessionKey;
 }
 
 /** Reads one `*.requested` event payload or list item. */
@@ -120,6 +129,17 @@ export function callFor(ask: Ask, reply: Reply): { method: string; params: Recor
 
 export type Settled = ApprovalDecision | "answered" | "skipped" | "elsewhere" | "expired";
 export const settledBy = (reply: Reply): Settled => (reply === "skip" ? "skipped" : typeof reply === "object" ? "answered" : reply);
+
+/** A thread approval block as an exec Ask, for the decided line of an approval the engine no longer lists. */
+export function askOfApproval(approval: Approval): Ask | null {
+  return readExec({ id: approval.id, request: { command: approval.command, cwd: approval.cwd, host: approval.host } });
+}
+
+/** How a thread approval block ended, for its decided line. */
+export function settledOfApproval(approval: Approval): Settled {
+  if (approval.state === "denied") return "deny";
+  return approval.always ? "allow-always" : "allow-once";
+}
 
 /** The decided pill: "✓ Sent", "✕ Declined", "Answered elsewhere". */
 export function settledText(ask: Ask, how: Settled, name: string): { text: string; tone: "ok" | "bad" | "idle" } {

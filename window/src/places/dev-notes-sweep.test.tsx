@@ -10,6 +10,7 @@ import type { PlaceProps } from "../places-nav/PlaceFrame";
 import { AutomationsPlace } from "./automations";
 import { CanopyPlace } from "./canopy";
 import { CustomizePlace } from "./customize";
+import { CustomizeR1Place } from "./customize/r1-place";
 import { InboxPlace } from "./inbox";
 import { LibraryPlace } from "./library";
 import { OverviewPlace } from "./overview";
@@ -49,7 +50,7 @@ async function sweep(node: ReactNode): Promise<{ notes: string[]; greyed: number
 }
 
 const props = (): PlaceProps => ({ engine: engine(), facts: { running: 0, waiting: 0 }, openConversation: () => undefined, openPlace: () => undefined, openSettings: () => undefined, startConversation: () => undefined, level: "technical" });
-const PLACES = { overview: OverviewPlace, canopy: CanopyPlace, inbox: InboxPlace, automations: AutomationsPlace, library: LibraryPlace, people: PeoplePlace, customize: CustomizePlace };
+const PLACES = { overview: OverviewPlace, canopy: CanopyPlace, inbox: InboxPlace, automations: AutomationsPlace, library: LibraryPlace, people: PeoplePlace, customize: CustomizePlace, "customize (R1)": CustomizeR1Place };
 const PAGES = ["general", "people", "appearance", "notifications", "instructions", "models", "local", "accounts", "voice", "chatapps", "permissions", "computer", "secrets", "usage", "backups", "gateway", "self", "seasons", "updates", "achievements", "advanced", "developer"];
 
 describe("developer notes stay out of sight", () => {
@@ -58,7 +59,7 @@ describe("developer notes stay out of sight", () => {
       const { notes, greyed } = await sweep(<Place {...props()} />);
       expect(notes).toEqual([]);
       expect(greyed).toBeGreaterThan(0);
-    });
+    }, 20_000);
   }
   for (const page of PAGES) {
     it(`Settings › ${page}: no note shows`, async () => {

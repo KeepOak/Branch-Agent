@@ -1,0 +1,4 @@
+window:src/composer/composer-logic.test.ts
+window:src/screens/composer/this-computer.test.tsx
+window:src/setup/setup.test.tsx
+window:src/setup/welcome.test.tsx

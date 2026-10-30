@@ -6,6 +6,8 @@ import { gatewayPresentationScope } from "../app/gateway-presentation-scope.ts";
 import type { NativeGateway, NativeGatewaysSnapshot } from "../app/native-gateways.runtime.ts";
 import { isHomePanelAvailable } from "../app/panel-availability.ts";
 import { controlUiPublicAssetPath } from "../app/public-assets.ts";
+import { loadLocalUserIdentity } from "../app/settings.ts";
+import { OWNER_AVATAR_ID, resolveOwnerDisplayName } from "../app/user-identity.ts";
 import { CONTROL_UI_BUILD_INFO } from "../build-info.ts";
 import { t } from "../i18n/index.ts";
 import { normalizeAgentLabel, resolveAgentTextAvatar } from "../lib/agents/display.ts";
@@ -354,9 +356,9 @@ export function renderAppSidebarFooterBar(host: AppSidebarRenderHost) {
   const selfUser = host.sessionDataContext
     ? gatewayPresentationScope(host.sessionDataContext.gateway).displayUser
     : null;
-  const selfLabel = selfUser?.name ?? selfUser?.email ?? t("nav.owner");
+  const selfLabel = resolveOwnerDisplayName(selfUser, loadLocalUserIdentity()) ?? t("nav.owner");
   const avatarUser = {
-    id: "owner",
+    id: OWNER_AVATAR_ID,
     ...selfUser,
     name: selfLabel,
     watchedSessions: [],

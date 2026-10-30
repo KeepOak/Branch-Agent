@@ -83,6 +83,7 @@ const okResolution = {
   accessDowngraded: false,
   setupId: "setup-123",
   expiresAtMs: 123_456,
+  confirmCode: "F2S4KP",
 };
 
 describe("device.pair.setupCode", () => {
@@ -116,6 +117,7 @@ describe("device.pair.setupCode", () => {
       setupId: "setup-123",
       expiresAtMs: 123_456,
       setupCode: "SETUP-CODE-XYZ",
+      confirmCode: "F2S4KP",
       qrDataUrl: "data:image/png;base64,qr",
       gatewayUrl: "wss://gw.example:8443",
       gatewayUrls: ["wss://gw.example:8443", "ws://192.168.1.20:18789"],
@@ -127,8 +129,35 @@ describe("device.pair.setupCode", () => {
     expect(JSON.stringify(payload)).not.toContain("boot-123");
     expect(mocks.resolvePairingSetupFromConfig).toHaveBeenCalledWith(
       expect.any(Object),
-      expect.objectContaining({ localTlsFingerprint: "sha256:gateway-leaf" }),
+      expect.objectContaining({
+        localTlsFingerprint: "sha256:gateway-leaf",
+        openReachability: expect.any(Function),
+      }),
     );
+  });
+
+  it("holds a relay session for the setup id until it is closed", async () => {
+    const close = vi.fn(async () => undefined);
+    mocks.resolvePairingSetupFromConfig.mockResolvedValue({
+      ...okResolution,
+      reachability: {
+        url: "wss://relay.example/v1/pair/abc",
+        source: "pairing.relay",
+        relayKey: "dGVzdC1rZXk",
+        close,
+      },
+    });
+    mocks.encodePairingSetupCode.mockReturnValue("SETUP-CODE-XYZ");
+    mocks.renderQrPngDataUrl.mockResolvedValue("data:image/png;base64,qr");
+
+    const respond = await runSetupCode({});
+    expect(respond.mock.calls[0]?.[0]).toBe(true);
+    expect(respond.mock.calls[0]?.[1]).toMatchObject({ confirmCode: "F2S4KP" });
+    expect(close).not.toHaveBeenCalled();
+
+    const { closePairingReachability } = await import("../../pairing/pairing-reachability.js");
+    await closePairingReachability("setup-123");
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it("reports when plaintext transport limits a requested full-access code", async () => {

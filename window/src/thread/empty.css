@@ -4,6 +4,8 @@
   font-size: 13px;
   color: var(--ink-3);
 }
+.empty-connect { display: grid; justify-items: center; gap: 10px; }
+.empty-connect p { margin: 0; font-size: 13px; color: var(--ink-3); }
 .thread .starters {
   display: flex;
   overflow-x: auto;
@@ -75,4 +77,29 @@
   display: flex;
   justify-content: flex-end;
   padding: 0 12px 10px;
+}
+
+/* Connect a model: solid primary that stays readable on light and dark (never ink on 7% white). */
+.empty-connect .connect-model-btn,
+.connect-model-btn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--btn);
+  background: var(--btn);
+  color: var(--on-btn);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.empty-connect .connect-model-btn:hover,
+.connect-model-btn:hover {
+  filter: brightness(1.06);
+}
+.empty-connect .connect-model-acts {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
 }

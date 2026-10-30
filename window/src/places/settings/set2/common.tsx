@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Btn, Ctl } from "../kit";
+import { copyAndSay } from "../../../shell/clipboard";
 import { errorText, record, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import "./set2.css";
@@ -84,11 +85,11 @@ export function str(value: unknown): string {
 }
 export function rec(value: unknown): RecordValue { return record(value); }
 
-/** Copies text to the clipboard; says so in the button for a moment. */
+/** Copies text to the clipboard; says so with a toast and in the button for a moment (B-069). */
 export function CopyBtn({ text, label = "Copy" }: { text: string; label?: string }) {
   const [done, setDone] = useState<"" | "ok" | "no">("");
   useEffect(() => { if (!done) return; const t = setTimeout(() => setDone(""), 1600); return () => clearTimeout(t); }, [done]);
-  const copy = () => { navigator.clipboard.writeText(text).then(() => setDone("ok"), () => setDone("no")); };
+  const copy = () => void copyAndSay(text).then((ok) => setDone(ok ? "ok" : "no"));
   return <Btn sm ghost onClick={copy}>{done === "ok" ? "Copied" : done === "no" ? "Couldn’t copy" : label}</Btn>;
 }
 

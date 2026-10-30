@@ -1,0 +1,6 @@
+window:src/places/trunk/TeamApprovalCard.test.tsx
+window:src/screens/frame/R1Window.changes.test.tsx
+window:src/screens/frame/R1Window.character.test.tsx
+window:src/screens/frame/R1Window.helpers.test.tsx
+window:src/stage/BrowserView.test.tsx
+window:src/stage/pane/pane-model.test.ts

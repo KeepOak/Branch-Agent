@@ -38,6 +38,7 @@ import { useSelection } from "../../shell/sidebar-state";
 import { KeepLastDialog, tidy } from "../../shell/StatusLayer";
 import { usePinOrder } from "../../shell/use-pin-order";
 import { batchEntries } from "./batch";
+import { createEmptyThread } from "./new-thread";
 import { useUpdate } from "../../shell/use-status";
 import { readThemeChoice, setThemeChoice, type ThemeChoice } from "../../theme/theme";
 import { FIND_EVENT } from "../../thread/FindBar";
@@ -45,12 +46,14 @@ import { filterFacts, filterSideRows, R1FilterSort, readR1Prefs, saveR1Prefs, so
 import { buildSections, contactRows, personRows, type Folder, type Person, type SideRow } from "./model";
 import { FolderChip, icons, PinnedGrid, SectionHead, SideRowView, TopCapsules, type RowHandlers } from "./parts";
 import { orderPins, pinKey } from "./pin-order";
-import { NEED, rowMenu } from "./row-menu";
+import { FIRST_MESSAGE, NEED, rowMenu } from "./row-menu";
+import { Face } from "../../face/Face";
 import { QUICK_ASK_EVENT, QUICK_ASK_NEED } from "../quickask/QuickAskHost";
 import "./sidebar.css";
+import { plainError } from "../../shell/plain-error";
 
 export type SidebarProps = {
-  /** + › New Trunk: a random character and name, its conversation, and the two questions (R1Window). */
+  /** + › New Trunk: the sheet for a name and a face, then the chat questions (R1Window). */
   onNewTrunk: () => void;
   session: SaplingSession;
   ready: boolean;
@@ -145,7 +148,7 @@ export function Sidebar(p: SidebarProps) {
   const [menu, setMenu] = useState<SideRow | null>(null), menuAnchor = useRef<HTMLElement | null>(null);
   const [plusOpen, setPlusOpen] = useState(false), plusRef = useRef<HTMLButtonElement>(null);
   const [personOpen, setPersonOpen] = useState(false), meRef = useRef<HTMLButtonElement>(null);
-  const [dialog, setDialog] = useState<null | { kind: "rename"; row: SideRow } | { kind: "group"; key: string; name: string } | { kind: "studio" } | { kind: "delete"; row: Conversation } | { kind: "deleteMany"; rows: Conversation[] } | { kind: "keep"; row: Conversation } | { kind: "remove"; agentId: string; name: string } | { kind: "shortcuts" | "apps" | "pair" }>(null);
+  const [dialog, setDialog] = useState<null | { kind: "rename"; row: SideRow; trunkId?: string } | { kind: "group"; key: string; name: string } | { kind: "studio" } | { kind: "delete"; row: Conversation } | { kind: "deleteMany"; rows: Conversation[] } | { kind: "keep"; row: Conversation } | { kind: "remove"; agentId: string; name: string } | { kind: "replace"; row: SideRow } | { kind: "shortcuts" | "apps" | "pair" }>(null);
   const [batchOpen, setBatchOpen] = useState(false), batchAnchor = useRef<HTMLElement | null>(null);
   const [theme, setTheme] = useState<ThemeChoice>(readThemeChoice);
 
@@ -169,7 +172,21 @@ export function Sidebar(p: SidebarProps) {
   const anyWaiting = [...p.waiting.values()].some(count => count > 0);
   const binsOpen = archivedOpen || narrow || prefs.status === "archived";
 
-  const openRow = (row: SideRow) => { if (row.key) p.onOpen(row.key); else p.onSettings("people"); };
+  const openRow = (row: SideRow) => {
+    if (!row.key) {
+      p.onSettings("people");
+      return;
+    }
+    const contact = row.contact;
+    // Opening the row clears topics the person can read from it. Hand-marked unread on the
+    // main thread (unreadTopics === 0) stays for useMarkRead.
+    if (contact && contact.unreadTopics > 0) {
+      void markContactRead(contact, request).then(refreshContacts, (error: unknown) =>
+        notify(`Couldn't mark ${contact.name} read: ${reason(error)}.`, { tone: "bad" }),
+      );
+    }
+    p.onOpen(row.key);
+  };
   // Select several (Classic shell/sidebar-state.ts): Alt+Click picks a row, Shift+Click extends, a plain click or Escape
   // clears. The rows go in the order they show; the Trunks' own conversations can't be picked, as in Classic.
   const shownRows = [...sections.pinned, ...sections.trunks, ...sections.people, ...sections.groups, ...sections.grafted, ...(binsOpen ? sections.archived : [])];
@@ -195,7 +212,27 @@ export function Sidebar(p: SidebarProps) {
     );
   };
   const newTrunk = () => p.onNewTrunk();
-  const newConversation = (agentId: string) => void actions.create(agentId).then(key => { if (key) p.onOpen(key); });
+  // A new, empty thread under the Trunk (preview newConv): its row shows in the Trunk's threads at once, before anything is sent.
+  const newConversation = (agentId: string) => {
+    const parentKey = contacts.find(contact => contact.id === `trunk:${agentId}`)?.threadKey ?? `agent:${agentId}:${p.mainKey?.split(":").slice(2).join(":") || "main"}`;
+    void createEmptyThread(request, agentId, parentKey).then(async key => {
+      await p.list.refresh();
+      p.onOpen(key);
+      notify(`New conversation with ${trunkName(agentId)}.`);
+    }, () => notify(`Couldn’t start a conversation with ${trunkName(agentId)}. Try again.`, { tone: "bad" }));
+  };
+  // Replace with a different Trunk (a pinned face's menu): pin the picked Trunk, give it this pin's place in the saved
+  // order, then unpin this one, through the same calls Pin and Unpin make.
+  const swapPin = async (old: SideRow, next: Contact) => {
+    if (!old.contact) return;
+    const nextKey = next.threadKey;
+    await pinContact(next, p.sessions, actions, request, () => undefined);
+    if (pinOrder.canSave) {
+      const visible = orderPins(sections.pinned, pinOrder.order).filter(row => !row.isDefault).map(pinKey);
+      await pinOrder.move({ source: nextKey, target: pinKey(old), zone: "before" }, [...visible.filter(key => key !== nextKey), nextKey]);
+    }
+    await pinContact(old.contact, p.sessions, actions, request, refreshContacts);
+  };
 
   const menuItems = menu ? rowMenu(menu, {
     now, actions, projects, ownWindowOff: ownWindowUnavailable(), open: p.onOpen,
@@ -204,6 +241,7 @@ export function Sidebar(p: SidebarProps) {
     archiveRoom: contact => void session.request("rooms.archive", { roomId: contact.roomId }).then(() => rooms.reload(), (error: unknown) => notify(`Couldn't archive ${contact.name}: ${reason(error)}`, { tone: "bad" })),
     unarchiveRoom: contact => void session.request("rooms.archive", { roomId: contact.roomId, archived: false }).then(() => rooms.reload(), (error: unknown) => notify(`Couldn't unarchive ${contact.name}: ${reason(error)}`, { tone: "bad" })),
     rename: row => setDialog({ kind: "rename", row }),
+    renameTrunk: (agentId, row) => setDialog({ kind: "rename", row, trunkId: agentId }),
     moveToGroup: (key, name) => setDialog({ kind: "group", key, name }),
     moveToProject: (key, projectId) => void moveContactToProject(session, key, projectId).then(refreshContacts, (error: unknown) => notify(`Couldn't move it: ${reason(error)}`, { tone: "bad" })),
     newConversation,
@@ -215,16 +253,18 @@ export function Sidebar(p: SidebarProps) {
     editTrunk: (agentId: string) => { p.onPlace("people"); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId, view: "edit" } })); },
     tidy: row => void tidy({ session, list: p.list }, row, false),
     advanced: readLevel() !== "regular",
+    technical: readLevel() === "technical",
     keepLast: row => setDialog({ kind: "keep", row }),
     removeTrunk: (agentId, name) => setDialog({ kind: "remove", agentId, name }),
     confirmDelete: row => (askBeforeDelete() ? setDialog({ kind: "delete", row }) : void actions.remove(row).then(refreshContacts)),
+    replacePin: row => setDialog({ kind: "replace", row }),
   }) : null;
   const ordered = [...trunks.list].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
   const plusRows: MenuEntry[] = [
     { label: "New conversation", icon: menuIcon("chat"), submenu: ordered.length
       ? ordered.map(trunk => ({ label: `with ${trunk.name}${trunk.isDefault ? " (default)" : ""}`, need: NEED.create, onSelect: () => newConversation(trunk.id) }))
       : [{ label: "with a Trunk", off: "Make a Trunk first." }] },
-    { label: "New Trunk", icon: menuIcon("plus"), hint: "random character", need: ["agents.create", NEED.create], onSelect: () => void newTrunk() },
+    { label: "New Trunk", icon: menuIcon("plus"), hint: "name and face", need: ["agents.create", NEED.create], onSelect: () => void newTrunk() },
     { label: "New group", icon: menuIcon("users"), need: "rooms.create", onSelect: () => openNewGroupChat() },
     // Branch's own assistant proposes the Trunk (branch.chat, "new-agent") and makes it only once you say yes.
     { label: "Have Branch make a Trunk", icon: menuIcon("spark"), need: "branch.chat", onSelect: () => setDialog({ kind: "studio" }) },
@@ -274,13 +314,13 @@ export function Sidebar(p: SidebarProps) {
 
   return <div className="r1sb" data-searching={query ? "" : undefined} data-fold-open={foldOpen || undefined}>
     <div className="r1sb-top">
-      {query ? null : <FolderChip rows={rows} folder={folder} onFolder={setFolder} open={foldOpen} onOpen={setFoldOpen} />}
+      {query ? null : <FolderChip engine={session.engine} rows={rows} folder={folder} onFolder={setFolder} open={foldOpen} onOpen={setFoldOpen} />}
       <TopCapsules query={query} onQuery={setQuery} searchRef={p.searchRef} onSettings={() => p.onSettings("general")} onGrove={() => p.onPlace("office")}
-        plusRef={plusRef} onPlus={() => setPlusOpen(open => !open)} plusDot={anyWaiting} />
+        plusRef={plusRef} onPlus={() => setPlusOpen(open => !open)} plusDot={anyWaiting} engine={engine} />
       {query ? null : <R1FilterSort prefs={prefs} facts={filterFacts(rows, trunks.list, listPeople, readLevel(), prefs, now)} onChange={changePrefs} onSettings={p.onSettings} />}
     </div>
     <nav className="r1sb-list" aria-label="Conversations">
-      {p.error ? <p className="r1sb-error" role="alert">{p.error}</p> : null}
+      {p.error ? <p className="r1sb-error" role="alert">{plainError(p.error)}</p> : null}
       {results}
       {searching ? null : <>
       {sections.pinned.length ? <section className="r1sb-sec" data-section="pinned"><SectionHead label="Pinned" /><PinnedGrid rows={orderPins(sections.pinned, pinOrder.order)} currentKey={p.currentKey} handlers={handlers}
@@ -338,7 +378,15 @@ export function Sidebar(p: SidebarProps) {
     {/* The dialogs draw over the whole window: inside the sidebar, its frosted backdrop would hold the fixed scrim to the
         sidebar's own box, and a dialog would open squeezed into the list. */}
     {dialog ? createPortal(<>
-    {dialog?.kind === "rename" ? <RenameDialog row={dialog.row} onClose={() => setDialog(null)} onSave={label => { if (dialog.row.row) void actions.rename(dialog.row.row, label).then(refreshContacts); setDialog(null); }} /> : null}
+    {dialog?.kind === "rename" ? <RenameDialog row={dialog.row} need={dialog.trunkId ? NEED.renameTrunk : NEED.patch} onClose={() => setDialog(null)} onSave={label => {
+      const agentId = dialog.trunkId, name = label.trim();
+      setDialog(null);
+      if (agentId) {
+        if (name && name !== dialog.row.name) void request("agents.update", { agentId, name }).then(refreshContacts, () => notify("Couldn’t save it. Try again.", { tone: "bad" }));
+        return;
+      }
+      if (dialog.row.row) void actions.rename(dialog.row.row, label).then(refreshContacts);
+    }} /> : null}
     {dialog?.kind === "group" ? <GroupDialog request={request} name={dialog.name} onClose={() => setDialog(null)} onMove={group => {
       const key = dialog.key;
       setDialog(null);
@@ -348,6 +396,11 @@ export function Sidebar(p: SidebarProps) {
     {dialog?.kind === "delete" ? <ConfirmDelete clear row={dialog.row} onCancel={() => setDialog(null)} onDelete={() => { const row = dialog.row; setDialog(null); void actions.remove(row).then(refreshContacts); }} /> : null}
     {dialog?.kind === "deleteMany" && dialog.rows.length ? <ConfirmDelete clear row={dialog.rows[0]} count={dialog.rows.length} onCancel={() => setDialog(null)} onDelete={() => { const rows = dialog.rows; setDialog(null); void actions.removeMany(rows).then(() => { selection.clear(); refreshContacts(); }); }} /> : null}
     {dialog?.kind === "keep" ? <KeepLastDialog onCancel={() => setDialog(null)} onKeep={() => { const row = dialog.row; setDialog(null); void tidy({ session, list: p.list }, row, true); }} /> : null}
+    {dialog?.kind === "replace" ? <ReplacePinDialog row={dialog.row} contacts={contacts} onClose={() => setDialog(null)} onPick={next => {
+      const row = dialog.row;
+      setDialog(null);
+      void swapPin(row, next).catch((error: unknown) => notify(`Couldn't replace ${row.name}: ${reason(error)}.`, { tone: "bad" }));
+    }} /> : null}
     {dialog?.kind === "remove" ? <RemoveTrunkDialog clear engine={engine} agentId={dialog.agentId} name={dialog.name} onClose={() => setDialog(null)} /> : null}
     {dialog?.kind === "shortcuts" ? <ShortcutsDialog onClose={() => setDialog(null)} defaultName={trunks.list.find(trunk => trunk.isDefault)?.name} /> : null}
     {dialog?.kind === "apps" ? <GetAppsDialog onClose={() => setDialog(null)} onPair={() => setDialog({ kind: "pair" })} /> : null}
@@ -383,11 +436,30 @@ function GroupDialog({ request, name, onClose, onMove }: { request: <T>(method: 
   </Dialog>;
 }
 
-function RenameDialog({ row, onClose, onSave }: { row: SideRow; onClose: () => void; onSave: (label: string) => void }) {
+/** Replace with a different Trunk: the Trunks not pinned yet, each with its face. One with no conversation yet can't be
+ *  pinned, so it says why, as the Pin tile does. */
+function ReplacePinDialog({ row, contacts, onClose, onPick }: { row: SideRow; contacts: readonly Contact[]; onClose: () => void; onPick: (next: Contact) => void }) {
+  const choices = contacts.filter(contact => contact.kind === "trunk" && !contact.pinnedAt && !contact.archivedAt && contact.id !== row.id);
+  return <Dialog title={`Replace ${row.name}`} onClose={onClose} testid="replace-pin" clear footer={<button type="button" className="btn ghost" data-local="" onClick={onClose}>Cancel</button>}>
+    {choices.length ? <div className="r1sb-swap" role="group" aria-label="Trunks">
+      {choices.map(choice => {
+        const face = <span className="r1sb-swap-face" aria-hidden="true"><Face size={32} label={choice.name} /></span>;
+        if (!choice.thread) return <button key={choice.id} type="button" className="r1sb-swap-pick" data-local="" disabled title={FIRST_MESSAGE}>
+          {face}<span className="r1sb-swap-name">{choice.name}<small>{FIRST_MESSAGE}</small></span>
+        </button>;
+        return <Coming key={choice.id} need={NEED.replace} where={`Replace › ${choice.name}`}>
+          <button type="button" className="r1sb-swap-pick" onClick={() => onPick(choice)}>{face}<span className="r1sb-swap-name">{choice.name}</span></button>
+        </Coming>;
+      })}
+    </div> : <p className="r1sb-swap-none">Every Trunk is pinned already.</p>}
+  </Dialog>;
+}
+
+function RenameDialog({ row, need, onClose, onSave }: { row: SideRow; need: string; onClose: () => void; onSave: (label: string) => void }) {
   const [value, setValue] = useState(row.name);
   return <Dialog title={`Rename ${row.name}`} onClose={onClose} testid="rename" clear footer={<>
     <button type="button" className="btn ghost" data-local="" onClick={onClose}>Cancel</button>
-    <Coming need={NEED.patch}><button type="button" className="btn" data-solid="" onClick={() => onSave(value)}>Rename</button></Coming>
+    <Coming need={need}><button type="button" className="btn" data-solid="" onClick={() => onSave(value)}>Rename</button></Coming>
   </>}>
     <input className="inp" data-local="" aria-label="Name" value={value} autoFocus onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === "Enter") onSave(value); }} />
   </Dialog>;

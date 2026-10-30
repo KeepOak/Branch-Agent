@@ -37,9 +37,17 @@ type WizardTextParams = {
   navigation?: WizardPromptNavigation;
 };
 
+/** Structured facts of a free local model question; mirrors the gateway step field. */
+export type WizardFreeModelQuestion = {
+  kind: "model" | "cached-model" | "search-model-only";
+  modelName?: string;
+  downloadBytes?: number;
+};
+
 type WizardConfirmParams = {
   message: string;
   initialValue?: boolean;
+  freeModel?: WizardFreeModelQuestion;
   layout?: "inline" | "vertical";
   navigation?: WizardPromptNavigation;
 };

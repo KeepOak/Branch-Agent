@@ -5,6 +5,7 @@
  * server types and helpers without paying the full startup dependency graph.
  */
 import { measureGatewayBootstrapStep } from "../cli/startup-trace.js";
+import { isGatewayServiceEnv } from "../daemon/constants.js";
 import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js";
 import type { GatewayServer, GatewayServerOptions } from "./server-public.js";
 import { GatewayStartupCleanupError, rethrowGatewayStartupError } from "./server-shutdown.js";
@@ -53,9 +54,22 @@ export async function startGatewayServer(
     detachOwner = () => signal?.removeEventListener("abort", onOwnerLost);
     signal?.throwIfAborted();
     const server = await startGatewayServerWithRuntime(port, { ...opts, gatewayStateOwner });
+    let stopServiceKeepAwake: (() => void) | undefined;
+    if (isGatewayServiceEnv(process.env) && Boolean(process.env.BRANCH_HOME?.trim())) {
+      try {
+        const { maybeStartServiceKeepAwake } = await import("../infra/service-keep-awake.js");
+        stopServiceKeepAwake = maybeStartServiceKeepAwake(process.env, (line) => log.info(line))?.stop;
+      } catch (error) {
+        log.error(
+          `service keep awake did not start: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
     let closing: Promise<void> | undefined;
     const closeServer: GatewayServer["close"] = (closeOptions) => {
       detachOwner?.();
+      stopServiceKeepAwake?.();
+      stopServiceKeepAwake = undefined;
       return (closing ??= (async () => {
         await server.close(closeOptions);
         // A failed join retains ownership: another starter must not enter over live work.

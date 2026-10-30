@@ -5,6 +5,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
+import { displayHostname } from "../infra/machine-name.js";
 import type { OutsideAgentIdentity } from "./trunk-tools.js";
 
 export const HELLO_INTERVAL_MS = 60_000;
@@ -37,7 +38,7 @@ const slug = (value: string) =>
 /** The connected MCP client as an outside agent: name, version, this computer and its working folder. */
 export function outsideAgentFromClient(
   client: { name?: string; title?: string; version?: string } | undefined,
-  where: string = os.hostname(),
+  where: string = displayHostname(os.hostname()),
   cwd: string = process.cwd(),
 ): OutsideAgentIdentity | undefined {
   const name = client ? displayName(client) : "";

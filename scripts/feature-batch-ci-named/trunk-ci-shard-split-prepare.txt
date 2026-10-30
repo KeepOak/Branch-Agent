@@ -1,0 +1,6 @@
+engine:src/agents/cli-runner/prepare.auth-profiles.test.ts
+engine:src/agents/cli-runner/prepare.mcp-authority.test.ts
+engine:src/agents/cli-runner/prepare.native-resume.test.ts
+engine:src/agents/cli-runner/prepare.prompt-hooks.test.ts
+engine:src/agents/cli-runner/prepare.session-bindings.test.ts
+engine:src/agents/cli-runner/prepare.skills-sessions.test.ts

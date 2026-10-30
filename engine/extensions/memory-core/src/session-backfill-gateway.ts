@@ -128,11 +128,11 @@ export function registerSessionBackfillGatewayMethods(api: BranchPluginApi): voi
           return;
         }
         try {
-          const context = resolveExecutionContext(api, request.agentId);
+          const executionContext = resolveExecutionContext(api, request.agentId);
           const { executeSessionBackfillBatch } = await loadSessionBackfillGatewayRuntime();
           const { result, continuation } = await executeSessionBackfillBatch({
             ...request,
-            ...context,
+            ...executionContext,
             ...(apply ? { apply: true } : {}),
             ...(rollback ? { rollback: true } : {}),
           });

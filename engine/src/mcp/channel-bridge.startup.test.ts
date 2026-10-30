@@ -97,6 +97,8 @@ vi.mock("../../packages/gateway-protocol/src/client-info.js", () => ({
 }));
 
 const { BranchChannelBridge } = await import("./channel-bridge.js");
+const { MCP_GATEWAY_CLOSE_BEFORE_READY_RETRIES, MCP_GATEWAY_UNREACHABLE } =
+  await import("./gateway-start-copy.js");
 
 describe("BranchChannelBridge startup", () => {
   beforeEach(() => {
@@ -160,6 +162,53 @@ describe("BranchChannelBridge startup", () => {
     onHelloOk();
 
     await expect(started).resolves.toBeUndefined();
+    await bridge.close();
+  });
+
+  it("retries a close before ready and finishes start on the next hello", async () => {
+    mockState.autoHello = false;
+    const bridge = new BranchChannelBridge({} as never, {
+      claudeChannelMode: "off",
+      verbose: false,
+    });
+    const started = bridge.start();
+    await vi.waitFor(() => {
+      expect(mockState.clientOptions).not.toBeNull();
+    });
+    const onClose = mockState.clientOptions?.onClose;
+    const onHelloOk = mockState.clientOptions?.onHelloOk;
+    if (typeof onClose !== "function" || typeof onHelloOk !== "function") {
+      throw new Error("Expected Gateway close and hello callbacks");
+    }
+    onClose(1000, ".");
+    onHelloOk();
+    await expect(started).resolves.toBeUndefined();
+    await bridge.close();
+  });
+
+  it("gives a plain unreachable message after repeated closes before ready", async () => {
+    mockState.autoHello = false;
+    const bridge = new BranchChannelBridge({} as never, {
+      claudeChannelMode: "off",
+      verbose: false,
+    });
+    const started = bridge.start();
+    await vi.waitFor(() => {
+      expect(mockState.clientOptions).not.toBeNull();
+    });
+    const onClose = mockState.clientOptions?.onClose;
+    const onConnectError = mockState.clientOptions?.onConnectError;
+    if (typeof onClose !== "function") {
+      throw new Error("Expected Gateway close callback");
+    }
+    for (let attempt = 0; attempt <= MCP_GATEWAY_CLOSE_BEFORE_READY_RETRIES; attempt += 1) {
+      if (attempt > 0 && typeof onConnectError === "function") {
+        onConnectError(new Error("gateway closed (1000): ."));
+      }
+      onClose(1000, ".");
+    }
+    await expect(started).rejects.toThrow(MCP_GATEWAY_UNREACHABLE);
+    await expect(started).rejects.not.toThrow(/closed before ready|require-rpc|\(1000\)/);
     await bridge.close();
   });
 });

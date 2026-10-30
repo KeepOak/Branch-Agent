@@ -4,9 +4,9 @@
 // into <state dir>/tools/computer-use/<version>-darwin-<arch>/. The app checks that copy against the engine's own
 // pins (its cua-computer package.json) before it loads the SDK or runs the driver, and refuses anything else.
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { createConnection, createServer, type Server } from "node:net";
+import { createServer, type Server } from "node:net";
 import { dirname, join } from "node:path";
 
 /** The SDK's typed errors carry the reason (e.g. the rejected environment name) in `inner`; String() keeps only the variant. */
@@ -117,6 +117,23 @@ export const DRIVER_NOT_PACKAGED = "";
 export const DRIVER_NEEDS_PERMISSION = "macOS asks you to allow this once, in System Settings.";
 export const DRIVER_START_FAILED = "";
 
+/** The driver's own MCP front: the engine speaks MCP JSON-RPC, while the embedded daemon's private socket speaks the
+ *  driver's internal protocol (it answers `initialize` with {"ok":false,"error":"Unknown method: initialize"}). Each
+ *  admitted engine connection gets one `cua-driver mcp --embedded --socket <daemon>` proxy, like Windows and Linux. */
+export function mcpProxyArgs(socketPath: string): string[] {
+  return ["mcp", "--embedded", "--socket", socketPath];
+}
+
+/** The proxy's environment: this app's, without driver overrides, with telemetry and update checks off. */
+export function mcpProxyEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (key.startsWith("CUA_DRIVER_") || key === "CUA_TELEMETRY_ENABLED" || key.startsWith("BRANCH_CUA_")) continue;
+    out[key] = value;
+  }
+  return { ...out, CUA_DRIVER_RS_TELEMETRY_ENABLED: "false", CUA_DRIVER_RS_UPDATE_CHECK: "false" };
+}
+
 export class MacComputerDriver {
   /** Why the last start gave no endpoint; cleared once the driver is ready. */
   reason?: string;
@@ -147,6 +164,7 @@ export class MacComputerDriver {
     private readonly stateDir: () => string | undefined = () => undefined,
     private readonly arch: string = process.arch,
     private readonly exitPollMs = 2_000,
+    private readonly spawnProxy: typeof spawn = spawn,
   ) {}
 
   /** Cheap: whether a driver is there to start (bundled, or a finished download), without checking digests. */
@@ -255,9 +273,9 @@ export class MacComputerDriver {
       const secret = randomBytes(32).toString("hex");
       const proxy = createServer(client => {
         let pending = Buffer.alloc(0);
-        const reject = () => client.destroy();
+        const reject = (): void => { client.destroy(); };
         client.setTimeout(5_000, reject);
-        client.on("data", function authenticate(chunk) {
+        const authenticate = (chunk: Buffer): void => {
           pending = Buffer.concat([pending, chunk]);
           const newline = pending.indexOf(10);
           if (newline > 4_096 || newline < 0 && pending.length > 4_096) return reject();
@@ -267,13 +285,22 @@ export class MacComputerDriver {
           const expected = Buffer.from(secret);
           if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return reject();
           client.setTimeout(0);
-          const driver = createConnection(connection.socketPath);
-          driver.on("error", reject);
-          client.on("error", () => driver.destroy());
-          client.on("close", () => driver.destroy());
-          if (pending.length > newline + 1) driver.write(pending.subarray(newline + 1));
-          client.pipe(driver).pipe(client);
-        });
+          // Private #1103 item 5: piping the engine's MCP straight into the daemon socket failed every capture with
+          // "CUA MCP proxy returned an invalid JSON-RPC version". The driver's MCP proxy translates for it.
+          const mcp = this.spawnProxy(binary, mcpProxyArgs(connection.socketPath), {
+            env: mcpProxyEnvironment(), stdio: ["pipe", "pipe", "ignore"], windowsHide: true,
+          });
+          const stop = () => { if (mcp.exitCode === null && mcp.signalCode === null) mcp.kill(); };
+          mcp.on("error", error => { this.log(`Mac computer driver MCP proxy: ${String(error)}`); reject(); });
+          mcp.on("exit", () => client.destroy());
+          mcp.stdin!.on("error", () => client.destroy());
+          client.on("error", stop);
+          client.on("close", stop);
+          if (pending.length > newline + 1) mcp.stdin!.write(pending.subarray(newline + 1));
+          client.pipe(mcp.stdin!);
+          mcp.stdout!.pipe(client);
+        };
+        client.on("data", authenticate);
       });
       await new Promise<void>((resolve, reject) => {
         proxy.once("error", reject);
