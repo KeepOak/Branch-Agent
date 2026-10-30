@@ -1,0 +1,1 @@
+engine:extensions/plugin-entry.cli-laziness.test.ts

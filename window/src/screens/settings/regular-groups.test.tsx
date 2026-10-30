@@ -54,15 +54,15 @@ const REGISTRY = ["accounts", "appearance", "autos", "browser", "card", "chatapp
 const REGULAR: Record<string, PageId[]> = {
   General: ["general", "card", "goto", "appearance", "notifications", "who", "trunks", "instructions", "customize", "seedbank", "memory", "autos", "voice", "chatapps"],
   Computer: ["devices", "browser", "coding", "remote", "permissions"],
-  Usage: ["accounts", "models", "privacy", "signins"],
+  "Accounts & usage": ["accounts", "models", "privacy", "signins"],
   // All features (the feature atlas, mostly Coming) shows only at Technical (Private #1093 item 4), so Updates doesn't link it.
   Updates: ["updates", "history", "learning"],
 };
 
 describe("Regular settings pages", () => {
-  it("shows exactly General, Computer, Usage and Updates, and each page keeps its pages under Advanced", async () => {
+  it("shows exactly General, Computer, Accounts & usage and Updates, and each page keeps its pages under Advanced", async () => {
     await mount();
-    expect($$(".r1s-list .r1s-nav").map((b) => b.textContent)).toEqual(["General", "Computer", "Usage", "Updates"]);
+    expect($$(".r1s-list .r1s-nav").map((b) => b.textContent)).toEqual(["General", "Computer", "Accounts & usage", "Updates"]);
     expect($$(".r1s-grp[aria-expanded]")).toEqual([]);
     expect(host.querySelector("[data-page=appearance]")).not.toBeNull();
     expect(host.querySelector(".r1s-advanced [data-page=devices]")).toBeNull();

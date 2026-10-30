@@ -17,13 +17,17 @@ export type SetupPayload = {
  * Why a code was turned away. `damaged` is a Branch code that no longer reads, such as one with a character
  * added or lost in copying; `invalid` is anything else.
  */
-export type SetupCodeProblem = 'invalid' | 'damaged' | 'expired';
+export type SetupCodeProblem = 'invalid' | 'damaged' | 'expired' | 'check-only';
 
 const MESSAGES: Record<SetupCodeProblem, string> = {
   invalid: 'Invalid pairing setup code.',
   damaged: 'Damaged pairing setup code.',
   expired: 'Pairing setup code has expired.',
+  'check-only': 'That short code is only for matching the computer.',
 };
+
+/** The six-character confirm code and four-character check code are for matching screens, not for connecting. */
+const CHECK_ONLY = /^(?:[0-9A-HJKMNP-TV-Z]{6}|[0-9A-Za-z]{4})$/i;
 
 export class SetupCodeError extends Error {
   constructor(readonly kind: SetupCodeProblem) {
@@ -93,6 +97,7 @@ export function decodeSetupCode(input: string, nowMs: number = Date.now()): Setu
   // Text that has the prefix or a code's opening but no longer reads is a damaged copy, not some other text.
   const unreadable = () => new SetupCodeError(prefixed || code.includes(OBJECT_START) ? 'damaged' : 'invalid');
   if (!code || !CODE.test(code)) throw unreadable();
+  if (CHECK_ONLY.test(code)) throw new SetupCodeError('check-only');
 
   let decoded: unknown;
   try {

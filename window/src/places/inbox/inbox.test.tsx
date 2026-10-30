@@ -167,7 +167,8 @@ describe("Inbox › Needs you", () => {
   it("draws the status cards from the engine and greys what it cannot back", async () => {
     const { host, request } = await render({ scopes: ["operator.read", "operator.approvals", "operator.pairing", "operator.questions", "operator.write"] });
     const text = host.textContent ?? "";
-    expect(text).toContain("Telegram stopped: token revoked");
+    const channelCard = [...host.querySelectorAll(".ib-card")].find(card => card.querySelector("b")?.textContent === "Telegram stopped");
+    expect(channelCard?.textContent).toContain("token revoked");
     expect(text).toContain("Receipts sweep failed");
     expect(text).toContain("Your Claude sign-in expired");
     expect(btn(host, "Ask for full access")[0]).toMatchObject({ disabled: true, title: FULL_ACCESS_GAP });
@@ -212,7 +213,7 @@ describe("Inbox › Needs you", () => {
     const { host } = await render();
     const row = [...host.querySelectorAll(".ib-row")].find(r => r.textContent?.includes("Phone wants to connect"))!;
     await click(btn(row, "Allow")[0]);
-    expect(host.querySelector(".dlg")?.textContent).toContain("Check code: D1");
+    expect(host.querySelector("[data-testid=pair-check-code] .pair-check-value")?.textContent).toBe("D1");
     expect(host.querySelector(".dlg")?.textContent).toContain("What it asks to do");
   });
   it("answers and skips a Trunk's question", async () => {

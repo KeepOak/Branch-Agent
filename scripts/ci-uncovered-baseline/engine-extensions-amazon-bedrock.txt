@@ -1,0 +1,14 @@
+engine:extensions/amazon-bedrock/aws-credential-refresh.test.ts
+engine:extensions/amazon-bedrock/config-compat.test.ts
+engine:extensions/amazon-bedrock/control-plane.test.ts
+engine:extensions/amazon-bedrock/discovery.test.ts
+engine:extensions/amazon-bedrock/embedding-provider.test.ts
+engine:extensions/amazon-bedrock/index.test.ts
+engine:extensions/amazon-bedrock/lazy-import.test.ts
+engine:extensions/amazon-bedrock/memory-embedding-adapter.test.ts
+engine:extensions/amazon-bedrock/provider-policy-api.test.ts
+engine:extensions/amazon-bedrock/register.sync.runtime.test.ts
+engine:extensions/amazon-bedrock/stream.runtime.accounting-replay.test.ts
+engine:extensions/amazon-bedrock/stream.runtime.lifecycle.test.ts
+engine:extensions/amazon-bedrock/stream.runtime.preview.test.ts
+engine:extensions/amazon-bedrock/stream.runtime.test.ts

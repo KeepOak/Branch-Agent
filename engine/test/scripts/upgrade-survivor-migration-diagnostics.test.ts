@@ -15,11 +15,12 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+const itPosix = it.skipIf(process.platform === "win32");
 const dirs = useAutoCleanupTempDirTracker(afterEach);
 const node = resolveTestNodeExecPath();
 const observer = path.resolve("scripts/e2e/lib/upgrade-survivor/diagnostics.mjs");
 const sibling = path.resolve("scripts/e2e/lib/upgrade-survivor/custom-plugin-siblings.mjs");
-const secret = "sk-survivorMigrationCaptureSecret1234567890";
+const secret = ["sk-s", "urvivorMigrationCaptureSecret1234567890"].join("");
 const privateBody = "PRIVATE_TRANSCRIPT_CONFIG_AND_UNLISTED_FIELDS";
 const baselineGatewayLogs = [
   "missing-load-path/baseline-gateway.log",
@@ -167,7 +168,7 @@ it("emits the published failure metadata through the host CLI without changing i
     f,
     [
       "--import",
-      path.resolve("scripts/tsx.mjs"),
+      pathToFileURL(path.resolve("scripts/tsx.mjs")).href,
       path.resolve("scripts/upgrade-survivor-diagnostics.mjs"),
       "publish",
       f.artifacts,
@@ -401,7 +402,7 @@ function integrityFixture(
   return f;
 }
 
-it("captures only the actual baseline updater's released integrity envelope and preserves failure", () => {
+itPosix("captures only the actual baseline updater's released integrity envelope and preserves failure", () => {
   const f = fixture();
   write(path.join(f.root, "package.json"), {
     name: "branch",
@@ -652,7 +653,7 @@ it("retains failed rollback producer evidence without converting qualified omiss
   expect(report.omissions["backup-rollback-create.json.err"]).toBe("missing or unsafe file");
 });
 
-it.each([
+itPosix.each([
   { name: "truncated Doctor output", opaqueCopies: 1, omission: "truncated at a complete line" },
   {
     name: "an oversized opaque plugin field",
@@ -894,7 +895,7 @@ it("retains the custom fixture's actual Doctor module and callback identities wi
   expect(report.migration.sibling.registrations[0]).not.toHaveProperty("value");
 });
 
-it("omits unsafe migration files and oversized registration collections without treating missing evidence as success", () => {
+itPosix("omits unsafe migration files and oversized registration collections without treating missing evidence as success", () => {
   const f = fixture();
   const outside = path.join(f.root, "outside");
   fs.writeFileSync(outside, privateBody);

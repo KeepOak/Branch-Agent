@@ -3,7 +3,7 @@
 // from the row table (rows.ts) and draw through RowView; a section with no rows in the table yet is Coming (R1-10). A
 // page can instead draw its own component (slots.ts, such as Chat apps); nav, search and the level stay the frame's. A
 // row page can also draw some rows with its own control (slots.ts controls, such as Appearance's theme gallery).
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { configStore } from "../../places/settings/config-store";
@@ -15,7 +15,8 @@ import { lookStore } from "../../places/settings/set1/appearance-store";
 import { pinsOf } from "../../places/settings/pins";
 import { t, useLanguage } from "../../i18n/language";
 import { GOTO_SUB, LEVELS, PAGES, REGULAR_GROUPS, navAt, pageFor, pageShown, regularHub, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
-import { COMING_FROM, ROWS, cardRows, comingRow, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
+import { COMING_FROM, ROWS, cardRows, comingRow, pageFirstLevel, rowHelp, rowLabel, rowLevel, rowsFor, type Row, type UiHints } from "./rows";
+import { Icon } from "../../shell/icons";
 import { LaterRows } from "../../glass/LaterRows";
 import { RowView, Segmented } from "./RowView";
 import { mergeRows, type PageSlots, type SlotControl } from "./slots";
@@ -94,10 +95,22 @@ function useNarrowNav(): boolean {
   return narrow;
 }
 
+/** A page's row, as the preview's s36Nav: the page's icon, its title (and Go to's sub-line and chevron, as s36Go), in a
+ *  boxed row. The Settings nav and a Regular page's "Also in" list draw the same row. */
+function PageRow({ page, sub }: { page: NavPage; sub?: string }) {
+  return (
+    <>
+      {page.icon ? <Icon name={page.icon} small /> : null}
+      <span>{t(page.title)}</span>
+      {sub ? <><small>{sub}</small><Icon name="chev" small /></> : null}
+    </>
+  );
+}
+
 function NavButton({ page, current, onOpen, sub, hub }: { page: NavPage; current: boolean; onOpen: () => void; sub?: string; hub?: string }) {
   return (
     <button type="button" className="r1s-nav" data-local="" aria-current={current ? "page" : undefined} data-page={page.id} data-hub={hub} onClick={onOpen}>
-      <span>{t(page.title)}</span>{sub ? <small>{sub}</small> : null}
+      <PageRow page={page} sub={sub} />
     </button>
   );
 }
@@ -127,7 +140,13 @@ function NavList({ engine, level, narrow, shownPage, onOpen }: { engine: WindowE
         {REGULAR_GROUPS.map((g) => {
           const landing = g.pages[0];
           const current = g.pages.some((p) => p.id === shownPage);
-          return <NavButton key={g.title} page={{ ...landing, title: g.title }} current={current} onOpen={() => onOpen(landing.id)} hub={g.title} />;
+          // The open page's other pages sit in the nav under its row, not in the page's content (#1769 point 2).
+          return (
+            <Fragment key={g.title}>
+              <NavButton page={{ ...landing, title: g.title }} current={current} onOpen={() => onOpen(landing.id)} hub={g.title} />
+              {current ? <HubAdvanced shownPage={shownPage} onOpen={onOpen} /> : null}
+            </Fragment>
+          );
         })}
       </>
     );
@@ -151,8 +170,10 @@ function NavList({ engine, level, narrow, shownPage, onOpen }: { engine: WindowE
   );
 }
 
-/** The other settings pages that belong to the open Regular page, under "Also in <page>" on that page. Not "Advanced":
- *  at Regular that word names a level the person hasn't chosen, so it read as a stray heading (#1093 item 6). */
+/** The other settings pages that belong to the open Regular page, under "Also in <page>" below its nav row (#1769
+ *  point 2: in the page's content they read as a stray list, with a nav row named for another page lit). Not "Advanced":
+ *  at Regular that word names a level the person hasn't chosen, so it read as a stray heading (#1093 item 6). Each is
+ *  the nav's own boxed row with its icon (preview s36Nav). */
 function HubAdvanced({ shownPage, onOpen }: { shownPage: PageId; onOpen: (id: PageId) => void }) {
   const hub = regularHub(shownPage);
   if (!hub) return null;
@@ -164,7 +185,7 @@ function HubAdvanced({ shownPage, onOpen }: { shownPage: PageId; onOpen: (id: Pa
       <div className="r1s-jumps">
         {rest.map((p) => (
           <button key={p.id} type="button" className="r1s-jump" data-page={p.id} aria-current={shownPage === p.id ? "true" : undefined} onClick={() => onOpen(p.id)}>
-            <span>{t(p.title)}</span>{p.id === "goto" ? <small>{GOTO_SUB}</small> : null}
+            <PageRow page={p} sub={p.id === "goto" ? GOTO_SUB : undefined} />
           </button>
         ))}
       </div>
@@ -254,7 +275,8 @@ export function SettingsFrame(props: SettingsFrameProps) {
   useLanguage(); // Settings › Appearance › Language: the titles below follow it (Private #1100)
   const narrow = useNarrowNav();
   const slots = props.pages ?? NO_SLOTS;
-  const rows = useMemo(() => mergeRows(props.rows ?? ROWS, slots), [props.rows, slots]);
+  // A row that exists only while more than one person uses Branch goes on a one-person Branch (rows.ts sharedOnly).
+  const rows = useMemo(() => rowsFor(mergeRows(props.rows ?? ROWS, slots), engine.sharedGateway), [props.rows, slots, engine.sharedGateway]);
   const [level, setLevel] = useLevel(engine);
   const { hints } = useSchemaHints(engine);
   const [page, setPage] = useState<PageId>(() => pageFor(props.page));
@@ -368,7 +390,6 @@ export function SettingsFrame(props: SettingsFrameProps) {
             </div>
           ) : null}
         </header>
-        {level === 0 ? <HubAdvanced shownPage={shownPage} onOpen={go} /> : null}
         {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} onAsk={props.onAsk} /></div> : <>
         <div className="r1s-col">
           {loadFailed ? <div className="r1s-notice g-frost" role="alert">Settings didn’t load · <Coming engine={engine} need="config.get"><button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></Coming></div> : null}

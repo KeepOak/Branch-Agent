@@ -41,6 +41,9 @@ export function ModelsAccountsPage(props: SettingsPageProps) {
     setSelection({ page: props.page, route, tab: route === "models" ? id : selection.tab });
     props.openSettings?.(route);
   };
+  // Models › Default's "Use a model on this computer" (#1769) opens the Local tab right here, as the tab itself does:
+  // the R1 frame keeps Local in place and has no page of its own for it, so a page change alone would do nothing.
+  const openFromModels = (id: string) => (id === "local" ? choose(id) : props.openSettings?.(id));
   const pageProps = { ...props, title: "Models & accounts" };
   return (
     <>
@@ -50,7 +53,7 @@ export function ModelsAccountsPage(props: SettingsPageProps) {
       ) : shown === "local" ? (
         <LocalPage {...pageProps} />
       ) : (
-        <ModelsPage {...pageProps} tab={shown} />
+        <ModelsPage {...pageProps} tab={shown} openSettings={props.openSettings ? openFromModels : undefined} />
       )}
     </>
   );

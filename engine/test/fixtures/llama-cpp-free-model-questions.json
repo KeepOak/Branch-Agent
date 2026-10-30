@@ -1,0 +1,76 @@
+{
+  "model": [
+    {
+      "type": "confirm",
+      "message": "Runs on Gateway host gateway-host (darwin/arm64), using Apple Metal.\n16 GiB RAM; 100 GiB free disk.\nQwen3.5 9B (Q4_K_M) fits the 12 GiB Metal unified memory budget with a 64K context. Runtime verification checks the actual model before activation.\nBranch Agent will check a real tool call before making this your default model.\n\nDownload Qwen3.5 9B (5.7 GB), the local embedding model (about 0.3 GB), and the verified METAL runtime, 6.0 GB in total, then use this model?",
+      "initialValue": false,
+      "executor": "client",
+      "freeModel": {
+        "kind": "model",
+        "modelName": "Qwen3.5 9B",
+        "downloadBytes": 6020222716
+      }
+    }
+  ],
+  "modelWithSearchModelCached": [
+    {
+      "type": "confirm",
+      "message": "Runs on Gateway host gateway-host (darwin/arm64), using Apple Metal.\n16 GiB RAM; 100 GiB free disk.\nQwen3.5 9B (Q4_K_M) fits the 12 GiB Metal unified memory budget with a 64K context. Runtime verification checks the actual model before activation.\nBranch Agent will check a real tool call before making this your default model.\n\nDownload Qwen3.5 9B (5.7 GB), the local embedding model (about 0.3 GB), and the verified METAL runtime, 5.7 GB in total, then use this model?",
+      "initialValue": false,
+      "executor": "client",
+      "freeModel": {
+        "kind": "model",
+        "modelName": "Qwen3.5 9B",
+        "downloadBytes": 5691645660
+      }
+    }
+  ],
+  "cachedModel": [
+    {
+      "type": "confirm",
+      "message": "Runs on Gateway host gateway-host (darwin/arm64), using Apple Metal.\n8 GiB RAM; 3 GiB free disk.\nGemma 4 E2B (Q4_K_M) fits the 6 GiB Metal unified memory budget with a 64K context. Runtime verification checks the actual model before activation.\nBranch Agent will check a real tool call before making this your default model.\n\nUse cached Gemma 4 E2B, download any missing embedding and METAL runtime files, then use this model?",
+      "initialValue": false,
+      "executor": "client",
+      "freeModel": {
+        "kind": "cached-model",
+        "modelName": "Gemma 4 E2B",
+        "downloadBytes": 339700252
+      }
+    }
+  ],
+  "declinedThenSearchModelOnly": [
+    {
+      "type": "confirm",
+      "message": "Runs on Gateway host gateway-host (darwin/arm64), using Apple Metal.\n16 GiB RAM; 100 GiB free disk.\nQwen3.5 9B (Q4_K_M) fits the 12 GiB Metal unified memory budget with a 64K context. Runtime verification checks the actual model before activation.\nBranch Agent will check a real tool call before making this your default model.\n\nDownload Qwen3.5 9B (5.7 GB), the local embedding model (about 0.3 GB), and the verified METAL runtime, 6.0 GB in total, then use this model?",
+      "initialValue": false,
+      "executor": "client",
+      "freeModel": {
+        "kind": "model",
+        "modelName": "Qwen3.5 9B",
+        "downloadBytes": 6020222716
+      }
+    },
+    {
+      "type": "confirm",
+      "message": "Install a verified METAL llama.cpp server on Gateway host gateway-host and download only the local embedding model (about 0.3 GB)? Your chat model will stay unchanged.",
+      "initialValue": false,
+      "executor": "client",
+      "freeModel": {
+        "kind": "search-model-only",
+        "downloadBytes": 339700252
+      }
+    }
+  ],
+  "searchModelOnly": [
+    {
+      "type": "confirm",
+      "message": "Install a verified METAL llama.cpp server on Gateway host gateway-host and download only the local embedding model (about 0.3 GB)? Your chat model will stay unchanged.",
+      "initialValue": false,
+      "executor": "client",
+      "freeModel": {
+        "kind": "search-model-only",
+        "downloadBytes": 339700252
+      }
+    }
+  ]
+}

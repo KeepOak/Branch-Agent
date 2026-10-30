@@ -36,10 +36,37 @@ describe("a failed run never shows the engine's raw words at Regular (Private #1
     expect(line).toBe(`Researcher couldn’t finish: ${plain}`);
   });
 
-  it("a run that failed for want of Codex shows main's Connect a model notice, not the error name", async () => {
-    await runError("CodexNotInstalledError: Codex is not installed.");
-    expect(host.querySelector('[data-testid="connect-model"]')).not.toBeNull();
+  // Issue 589: a fresh install with a connected ChatGPT account but no Codex. Connect a model sent the user to Add an
+  // account for an account that was already there; the thread now says Codex is missing and opens Settings › Accounts.
+  it.each([
+    "CodexNotInstalledError: Codex is not installed.",
+    "CodexNotInstalledError: Install and sign in to Codex on this computer, then check again.",
+  ])("a run that failed for want of Codex (%j) says Codex is missing, not Connect a model", async (raw) => {
+    sessionStorage.clear();
+    await runError(raw);
+    const notice = host.querySelector('[data-testid="codex-missing"]');
+    expect(notice?.querySelector("p")?.textContent).toBe("Codex isn’t on this computer yet. Your ChatGPT account is connected, but its models need Codex to answer. Set up Codex in Settings › Accounts, then try again.");
+    expect(host.querySelector('[data-testid="connect-model"]')).toBeNull();
     expect(host.textContent ?? "").not.toMatch(RAW);
+    expect(host.textContent ?? "").not.toMatch(/Connect a model/);
+    const pages: unknown[] = [];
+    const seen = (event: Event) => pages.push((event as CustomEvent<{ page?: string }>).detail?.page);
+    const added = vi.fn();
+    window.addEventListener("branch:navigate-settings", seen);
+    window.addEventListener("branch:open-add-account", added);
+    const button = [...(notice?.querySelectorAll("button") ?? [])].find((b) => b.textContent === "Set up Codex") as HTMLButtonElement;
+    await act(async () => button.click());
+    window.removeEventListener("branch:navigate-settings", seen);
+    window.removeEventListener("branch:open-add-account", added);
+    expect(pages).toEqual(["accounts"]);
+    expect(added).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("branch.openAddAccount")).toBeNull();
+  });
+
+  it("a run with no account at all still shows Connect a model", async () => {
+    await runError('No API key found for provider "openai".');
+    expect(host.querySelector('[data-testid="connect-model"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="codex-missing"]')).toBeNull();
   });
 
   it("offers the engine's words (Details, Copy error) only at Technical", async () => {
@@ -79,5 +106,40 @@ describe("a failed run never shows the engine's raw words at Regular (Private #1
   it("Advanced keeps the engine's first sentence", async () => {
     localStorage.setItem("branch.level", "advanced");
     expect(await runError("unknown method: logbook.status")).toBe("Researcher couldn’t finish: unknown method: logbook.status");
+  });
+
+  it.each(["", "advanced", "technical"])("never names GatewayLockError on a failed run at %j", async (level) => {
+    if (level) localStorage.setItem("branch.level", level);
+    const raw = "GatewayLockError: failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
+    const line = await runError(raw);
+    expect(line).toBe("Researcher couldn’t finish: Branch is busy right now. Try again in a moment.");
+    expect(line).not.toMatch(/GatewayLockError/);
+    expect(host.textContent ?? "").not.toMatch(/GatewayLockError/);
+  });
+
+  it.each(["", "advanced", "technical"])("maps main's unchanged engine handoff log through the run-error line at %j", async (level) => {
+    if (level) localStorage.setItem("branch.level", level);
+    const raw = "desktop handoff recovery failed: GatewayLockError: failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
+    const line = await runError(raw);
+    expect(line).toBe("Researcher couldn’t finish: Branch is busy right now. Try again in a moment.");
+    expect(line).not.toMatch(/GatewayLockError/);
+    expect(host.textContent ?? "").not.toMatch(/GatewayLockError/);
+  });
+
+  it.each(["", "advanced", "technical"])("maps String(GatewayLockError) from main's engine path through the run-error line at %j", async (level) => {
+    if (level) localStorage.setItem("branch.level", level);
+    class GatewayLockError extends Error {
+      constructor(message: string, cause?: unknown) {
+        super(message, cause === undefined ? undefined : { cause });
+        this.name = "GatewayLockError";
+      }
+    }
+    const error = new GatewayLockError("failed to acquire gateway state ownership");
+    for (const raw of [String(error), `desktop handoff recovery failed: ${String(error)}`, error.message]) {
+      const line = await runError(raw);
+      expect(line).toBe("Researcher couldn’t finish: Branch is busy right now. Try again in a moment.");
+      expect(line).not.toMatch(/GatewayLockError/);
+      expect(host.textContent ?? "").not.toMatch(/GatewayLockError/);
+    }
   });
 });

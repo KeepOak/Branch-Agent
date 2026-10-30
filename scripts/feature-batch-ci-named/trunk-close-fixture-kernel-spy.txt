@@ -1,0 +1,14 @@
+engine:src/gateway/server-close.channel-pairing.test.ts
+engine:src/gateway/server-close.memory.test.ts
+engine:src/gateway/server-close.metadata.test.ts
+engine:src/gateway/server-plugins.activation-health.test.ts
+engine:src/gateway/server-startup-lifetime.test.ts
+engine:src/gateway/server.agent-late-admission.test.ts
+engine:src/gateway/server.chat-steer-direct-command.test.ts
+engine:src/gateway/server.native-completion-authority.test.ts
+engine:src/gateway/server.node-shutdown.test.ts
+engine:src/gateway/server.private-completion.test.ts
+engine:src/gateway/server.request-lifetime.test.ts
+engine:src/gateway/server.requester-pause-authority.test.ts
+engine:src/gateway/server.sessions.fixture-lifecycle.test.ts
+engine:src/gateway/server.subagent-settle-replay.harness.test.ts

@@ -1,0 +1,2 @@
+engine:extensions/synthetic/onboard.test.ts
+engine:extensions/synthetic/provider-catalog.test.ts

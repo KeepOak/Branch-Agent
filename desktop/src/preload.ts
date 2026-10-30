@@ -58,6 +58,7 @@ if (info) {
   contextBridge.exposeInMainWorld("branchDesktop", {
     gatewayUrl: info.gatewayUrl, getGatewayUrl: () => gatewayUrl, gatewayToken: info.gatewayToken,
     openConversation: (key: string) => ipcRenderer.invoke("branch-desktop:open-conversation", key),
+    showWindow: () => ipcRenderer.invoke("branch-desktop:show-window"),
     browserGuest: {
       // A sandboxed preload cannot import modules, so the loopback test is repeated here (see browser-guest-policy.ts).
       local: isLoopbackUrl(info.gatewayUrl),

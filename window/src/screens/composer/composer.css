@@ -53,6 +53,13 @@
 .r1c .r1c-connect { display: grid; justify-items: center; gap: 8px; margin: 0 auto 8px; }
 .r1c .r1c-connect p { margin: 0; font-size: var(--fs-13); color: var(--ink-2); }
 .r1c .connect-model-acts, .c-nomodel .connect-model-acts { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; }
+
+.r1c .connect-model-btn, .c-nomodel .connect-model-btn {
+  height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--btn);
+  background: var(--btn); color: var(--on-btn); font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.r1c .connect-model-btn:hover, .c-nomodel .connect-model-btn:hover { filter: brightness(1.06); }
+
 /* Improve my draft's Undo, inside its note (#977). */
 .r1c-undo { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
 

@@ -5,10 +5,11 @@ import type { WindowEngine } from "../connect/engine";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { listReactions, readReactions, toChips, type Reaction } from "./actions";
 import type { ApprovalDecision } from "./model";
+import { errorWords } from "../shell/plain-error";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
-const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+const errorText = (e: unknown): string => errorWords(e);
 
 /** What `exec.approval.requested` says about one approval beyond the command (engine/ui/src/app/exec-approval.ts). */
 export type ApprovalDetails = {

@@ -1,9 +1,13 @@
 // Setup opens by itself on first run (DESIGN-SPEC §4.8.1 "When it opens"): 700 ms after the window is ready, when the
 // engine's config has no setup record (wizard.lastRunAt) and nothing else is on top. A completed setup with no
 // usable Trunks also reopens at the first-Trunk step so the window cannot strand a person without a contact.
+// Opening the window at /onboarding or /welcome always shows the first-run Welcome ("Hi, I'm Branch.").
 import { useEffect, useRef, useState } from "react";
+import type { WindowEngine } from "../connect/engine";
 import type { SaplingSession } from "../connect/session";
-import { needsFirstContact, RUN_SETUP_AGAIN, setupDone } from "./setup-model";
+import { askedForFirstRun, clearFirstRunPath } from "./first-run-path";
+import { freshChoices, needsFirstContact, RUN_SETUP_AGAIN, SETUP_LATER_KEY, setupDone } from "./setup-model";
+import { recordSetup } from "./use-setup-engine";
 
 /** The step setup is open at, or null; `open(step)` reopens it by hand (Guide › Set up Branch, Replay the first run). */
 export function useFirstRun(session: Pick<SaplingSession, "request">, ready: boolean, busy: () => boolean, usableTrunks: number | null = null, inSettings = false) {
@@ -12,7 +16,34 @@ export function useFirstRun(session: Pick<SaplingSession, "request">, ready: boo
   const [isFirstRun, setIsFirstRun] = useState(false);
   const closed = useRef(false);
   const returningFromLocalModel = useRef(false);
-  useEffect(() => { closed.current = false; returningFromLocalModel.current = false; }, [session]);
+  const skipLater = useRef((() => {
+    try {
+      return sessionStorage.getItem(SETUP_LATER_KEY) === "1";
+    } catch {
+      return false;
+    }
+  })());
+  useEffect(() => {
+    closed.current = false;
+    returningFromLocalModel.current = false;
+    try {
+      skipLater.current = sessionStorage.getItem(SETUP_LATER_KEY) === "1";
+    } catch {
+      skipLater.current = false;
+    }
+  }, [session]);
+  useEffect(() => {
+    if (!ready || !skipLater.current) return;
+    skipLater.current = false;
+    closed.current = true;
+    setStep(null);
+    try {
+      sessionStorage.removeItem(SETUP_LATER_KEY);
+    } catch {
+      /* the record below still stops setup reopening when the write lands */
+    }
+    void recordSetup({ request: session.request } as WindowEngine, { ...freshChoices("system"), promise: true }, "", null).catch(() => undefined);
+  }, [session, ready]);
   useEffect(() => {
     if (!returningFromLocalModel.current || inSettings || usableTrunks === null) return;
     returningFromLocalModel.current = false;
@@ -29,16 +60,18 @@ export function useFirstRun(session: Pick<SaplingSession, "request">, ready: boo
     let timer: ReturnType<typeof setTimeout> | undefined;
     session.request("config.get", {}).then(
       (config) => {
-        if (live) { setRequiresContact(needsFirstContact(config)); setIsFirstRun(!setupDone(config)); }
-        if (live && (setupDone(config) ? usableTrunks === 0 : true)) {
-          const retryOverlay = setupDone(config);
+        const asked = askedForFirstRun();
+        if (live) { setRequiresContact(needsFirstContact(config)); setIsFirstRun(asked || !setupDone(config)); }
+        if (live && (asked || (setupDone(config) ? usableTrunks === 0 : true))) {
+          const retryOverlay = !asked && setupDone(config);
           const target = retryOverlay ? 4 : 0;
           const openWhenClear = () => {
-            if (!live || closed.current) return;
+            if (!live || closed.current || skipLater.current) return;
             if (busy()) {
-              if (retryOverlay) timer = setTimeout(openWhenClear, 700);
+              if (retryOverlay || asked) timer = setTimeout(openWhenClear, 700);
               return;
             }
+            if (asked) clearFirstRunPath();
             setStep((current) => current ?? target);
           };
           timer = setTimeout(openWhenClear, 700);

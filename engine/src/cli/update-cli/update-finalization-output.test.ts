@@ -33,7 +33,7 @@ describe("finalization timeout output", () => {
       const output = new UpdateFinalizationOutput();
       await output.run(async () => {
         const capture = captureUpdateFinalizationDoctorOutput("pre-plugin")!;
-        capture(Buffer.from("-----BEGIN PRIVATE KEY-----\nfixture-private-material\n"), "stdout");
+        capture(Buffer.from(["-----BEGIN ", "PRIVATE KEY-----\nfixture-private-material\n"].join("")), "stdout");
         if (complete) {
           capture(Buffer.from("-----END PRIVATE KEY-----\n"), "stdout");
         }

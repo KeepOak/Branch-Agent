@@ -8,8 +8,8 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { CapabilityProvider, useCan, useCapabilityEngine } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
 import type { QueuedMessage, RunEnd, SteeredNote } from "../../connect/session";
-import { ConnectModelNotice } from "../../composer/ConnectModelNotice";
-import { isNoUsableModelError } from "../../composer/connect-model";
+import { CodexMissingNotice, ConnectModelNotice } from "../../composer/ConnectModelNotice";
+import { isCodexMissingError, isNoUsableModelError } from "../../composer/connect-model";
 import { currentModelRef } from "../../composer/model";
 import { hasNoModel, useConversation } from "../../composer/useConversation";
 import { Face } from "../../face/Face";
@@ -35,6 +35,7 @@ import { suggestionsFor } from "../../thread/suggestions";
 import { useApprovalDetails, useHelpers, useReactions } from "../../thread/useEngineData";
 import { useMessageActions, type MessageChanges, type ReplyTarget } from "../../thread/useMessageActions";
 import { Icon } from "../../shell/icons";
+import { isLockBusyMessage } from "../../shell/plain-error";
 import { shows, useLevel } from "../../places-nav/level";
 import { CODEX_CANCEL_METHOD, CODEX_DOWNLOAD_METHOD } from "../../places/settings/set1/codex-get";
 import { answerBelowWorkingLine, blockTime, dividerPositions, entriesOf, useWorkMode, type Entry, type WorkMode } from "./chat-logic";
@@ -339,9 +340,9 @@ export function ChatView(props: ChatViewProps) {
 }
 
 /** "Couldn't finish": the plain reason at every level; the engine's own words (Details, Copy error) only at Technical
- *  (Private #1089). */
+ *  (Private #1089). A Gateway lock never shows its class name, even in Details. */
 function RunError({ name, message, toast }: { name: string; message: string; toast: View["toast"] }) {
-  const technical = shows(useLevel(), "technical");
+  const technical = shows(useLevel(), "technical") && !isLockBusyMessage(message);
   return <NoticeLine tone="bad" text={name + " couldn’t finish: " + shortReason(message)} details={technical ? message : undefined} links={technical ? [{ label: "Copy error", onClick: () => void copyText(message, toast) }] : []} testid="run-error" />;
 }
 
@@ -474,6 +475,7 @@ function EntryView({ entry, view, live, working }: { entry: Entry; view: View; l
       return <NoticeLine text="Response stopped" testid="run-stopped"
         links={block.key === view.continueKey && view.onContinue ? [{ label: "Continue", onClick: view.onContinue, ...CONTINUE }] : []} />;
     case "error":
+      if (isCodexMissingError(block.message)) return wrap(<CodexMissingNotice />);
       return isNoUsableModelError(block.message)
         ? wrap(<ConnectModelNotice />)
         : <RunError name={view.name} message={block.message} toast={view.toast} />;

@@ -1,0 +1,4 @@
+engine:extensions/kilocode/implicit-provider.test.ts
+engine:extensions/kilocode/index.test.ts
+engine:extensions/kilocode/onboard.test.ts
+engine:extensions/kilocode/provider-models.test.ts

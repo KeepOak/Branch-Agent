@@ -25,6 +25,7 @@ import {
 import { buildStatusUpdateRows } from "./status-update-restart.ts";
 import { logGatewayConnectionDetails } from "./status.gateway-connection.ts";
 import { createStatusGatewayProbeBudget } from "./status.gateway-probe-budget.js";
+import { withStatusStateSnapshot } from "./status.state-snapshot.js";
 
 /** Extracts device-pairing recovery context from structured gateway errors or legacy message text. */
 function resolvePairingRecoveryContext(params: {
@@ -118,6 +119,14 @@ export async function statusCommand(
     return;
   }
 
+  await withStatusStateSnapshot(() => textStatusCommand(opts, runtime, probeBudget));
+}
+
+async function textStatusCommand(
+  opts: Parameters<typeof statusCommand>[0],
+  runtime: RuntimeEnv,
+  probeBudget: ReturnType<typeof createStatusGatewayProbeBudget>,
+) {
   const scan = await import("./status.scan.js")
     .then(({ scanStatus }) => scanStatus({ ...probeBudget, deep: opts.deep }))
     .catch((error: unknown) => reportStatusScanFailure(error, runtime, opts.timeoutMs));

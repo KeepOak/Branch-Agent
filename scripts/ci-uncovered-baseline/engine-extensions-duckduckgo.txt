@@ -1,0 +1,3 @@
+engine:extensions/duckduckgo/src/ddg-search-provider.cache.test.ts
+engine:extensions/duckduckgo/src/ddg-search-provider.results.test.ts
+engine:extensions/duckduckgo/src/ddg-search-provider.test.ts

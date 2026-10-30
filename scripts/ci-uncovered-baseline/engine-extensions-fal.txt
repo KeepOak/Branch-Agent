@@ -1,0 +1,5 @@
+engine:extensions/fal/image-generation-provider.gpt-image-25.test.ts
+engine:extensions/fal/image-generation-provider.test.ts
+engine:extensions/fal/music-generation-provider.test.ts
+engine:extensions/fal/onboard.test.ts
+engine:extensions/fal/video-generation-provider.test.ts
