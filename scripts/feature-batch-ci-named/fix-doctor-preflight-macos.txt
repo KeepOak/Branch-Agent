@@ -1,0 +1,3 @@
+engine:src/cli/gateway-cli/pre-bootstrap.process.test.ts
+engine:src/commands/doctor-config-preflight.process.test.ts
+engine:src/infra/runtime-worker-url.test.ts
