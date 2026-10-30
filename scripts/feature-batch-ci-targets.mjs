@@ -739,132 +739,179 @@ export function shardOf(value = process.env.FEATURE_SHARD) {
   return { index: n - 1, total };
 }
 
-// Seconds per named engine file on ubuntu-latest: the median over 531 named-feature jobs (35 workflow runs,
-// main pushes and pull requests, 2026-10-14) of the time from the previous file's last result line to this file's last result
-// line, so import, setup and tests all count (files run one at a time). Every named file at 10 s or more is listed;
-// the other named files averaged under 3 s and count unlistedFeatureTestSeconds. The 2026-10-12 table listed
-// 100 files; the named lists grew since, and shards were cancelled at the 15-minute cap.
+// Seconds per named engine file on ubuntu-latest: the median over 62 named-feature Linux jobs (3 workflow runs on
+// 2026-10-29: pull requests #2117 and #2114 and the newest complete main push) of the time from the previous file's
+// last result line to this file's last result line, so import, setup and tests all count (files run one at a time).
+// Every named file at 10 s or more is listed, and no earlier key is dropped; the other named files ran under 10 s
+// and count unlistedFeatureTestSeconds. The 2026-10-14 table predates the ubuntu-latest image move (Oct 19): with it,
+// PR Linux shards planned at 596 s ran 5 to 15 minutes, and unlisted files of 150 to 270 s counted 5 s.
+// The cli-runner prepare parts have no CI history yet: each is its file's local vitest seconds times the split file's
+// CI median over its own local seconds on the same machine (295/69.1), so the parts keep the whole file's CI scale.
 // Refresh this table from CI logs when shard times drift.
 const featureTestWeights = {
-  'src/agents/cli-runner/prepare.test.ts': 351,
-  'src/gateway/server.auth.control-ui.test.ts': 284,
+  'src/gateway/server.auth.control-ui.test.ts': 287,
+  'src/commands/doctor-config-flow.legacy-composition.test.ts': 271,
   'src/gateway/server-methods/sessions-reactions.test.ts': 239,
-  'src/gateway/server-kernel.phases.test.ts': 220,
-  'src/skills/workshop/experience-review.apply.test.ts': 210,
-  'src/commands/startup-config-preflight.recovery.test.ts': 167,
-  'src/cron/session-registry-maintenance.test.ts': 165,
-  'src/infra/device-bootstrap.test.ts': 152,
-  'src/cron/service.heartbeat-busy-poll.test.ts': 137,
-  'src/infra/heartbeat-runner.exact-session-busy.test.ts': 124,
-  'src/gateway/server-methods/sessions-create-category.test.ts': 123,
-  'src/cli/gateway-cli/pre-bootstrap.process.test.ts': 120,
-  'src/agents/subagents/registry/subagent-liveness.owner-integration.test.ts': 117,
-  'src/cron/store/receipt-authority-owner.test.ts': 107,
-  'src/agents/embedded-agent-runner/run/attempt-prompt-submit.test.ts': 97,
-  'src/gateway/server-methods/update-report-run.test.ts': 82,
-  'src/gateway/watch-node-http.test.ts': 82,
-  'src/gateway/server/ws-connection.startup.test.ts': 79,
-  'src/commands/doctor/shared/default-agent-role-materialization.write.test.ts': 75,
-  'src/infra/telemetry.test.ts': 75,
-  'src/infra/heartbeat-runner.no-scratch-idle-gate.test.ts': 74,
-  'src/fleet/service-upgrade.runtime.test.ts': 72,
-  'src/agents/command/attempt-execution.cli.test.ts': 70,
-  'src/fleet/service-removal.runtime.test.ts': 70,
-  'src/gateway/server.trunk-queue.test.ts': 66,
+  'src/gateway/server-kernel.phases.test.ts': 197,
+  'src/skills/workshop/experience-review.apply.test.ts': 178,
+  'src/commands/startup-config-preflight.recovery.test.ts': 172,
+  'src/commands/doctor-config-preflight.process.test.ts': 155,
+  'src/cron/service.heartbeat-busy-poll.test.ts': 154,
+  'src/commands/doctor-config-flow.workspace-persistence.test.ts': 153,
+  'src/cron/session-registry-maintenance.test.ts': 142,
+  'src/cli/gateway-cli/pre-bootstrap.process.test.ts': 123,
+  'src/infra/device-bootstrap.test.ts': 120,
+  'src/gateway/session-utils.test.ts': 118,
+  'src/agents/subagents/registry/subagent-liveness.owner-integration.test.ts': 116,
+  'src/cron/store/receipt-authority-owner.test.ts': 113,
+  'src/gateway/server-methods/sessions-create-category.test.ts': 84,
+  'src/gateway/watch-node-http.test.ts': 84,
+  'src/gateway/server/ws-connection.startup.test.ts': 81,
+  'src/infra/heartbeat-runner.no-scratch-idle-gate.test.ts': 79,
+  'src/infra/heartbeat-runner.exact-session-busy.test.ts': 78,
+  'src/agents/embedded-agent-runner/run/attempt-prompt-submit.test.ts': 76,
+  'src/infra/telemetry.test.ts': 76,
+  'src/gateway/server-reload-handlers.test.ts': 75,
+  'src/agents/command/attempt-execution.cli.test.ts': 74,
+  'src/fleet/service-removal.runtime.test.ts': 71,
+  'src/fleet/service-upgrade.runtime.test.ts': 71,
+  'extensions/anthropic/auth.runtime.browser.test.ts': 70,
+  'src/gateway/server.auth.hello-order.test.ts': 69,
+  'src/commands/doctor/shared/default-agent-role-materialization.write.test.ts': 68,
+  'src/gateway/server-methods/update-report-run.test.ts': 68,
+  'src/agents/cli-runner/prepare.auth-profiles.test.ts': 67,
+  'src/agents/cli-runner/prepare.mcp-authority.test.ts': 65,
+  'src/agents/cli-runner/prepare.session-bindings.test.ts': 65,
   'src/cron/service.wake-now-real-heartbeat.test.ts': 64,
-  'src/infra/heartbeat-runner.idle-trunk-gate.test.ts': 63,
-  'src/agents/branch-tools.session-status.gateway-model.test.ts': 58,
-  'src/gateway/server-worker-placement-startup-maintenance.test.ts': 58,
-  'src/agents/main-session-recovery/main-session-restart-recovery.parallel-startup.test.ts': 57,
-  'src/commands/config-preflight-snapshot.test.ts': 57,
-  'src/agents/tools/sessions-send-tool.admission.test.ts': 54,
-  'src/gateway/server.lockdown-owner.test.ts': 53,
-  'src/infra/heartbeat-inbox-fallback.idle-trunk.test.ts': 53,
-  'src/config/sessions/startup-migration.quarantine.test.ts': 50,
-  'src/gateway/event-web-push.test.ts': 48,
-  'extensions/codex/src/app-server/run-attempt.model-choice.test.ts': 47,
+  'src/infra/heartbeat-runner.idle-trunk-gate.test.ts': 64,
+  'src/agents/cli-runner/prepare.prompt-hooks.test.ts': 63,
+  'src/agents/tools/sessions-send-tool.admission.test.ts': 62,
+  'src/commands/config-preflight-snapshot.test.ts': 62,
+  'src/gateway/server.node-pairing-rate-limit.test.ts': 62,
+  'src/agents/onboarding-trunk/onboarding-trunk-persistence.test.ts': 61,
+  'src/gateway/server-methods/themes.test.ts': 61,
+  'src/gateway/server.trunk-queue.test.ts': 60,
+  'src/agents/cli-runner/prepare.skills-sessions.test.ts': 60,
+  'src/gateway/server.mcp-auth-login.test.ts': 56,
+  'src/gateway/codex-runtime-fresh-install.test.ts': 53,
+  'src/agents/cli-runner/prepare.native-resume.test.ts': 53,
+  'src/infra/heartbeat-inbox-fallback.idle-trunk.test.ts': 51,
+  'src/cron/trigger-script.test.ts': 48,
   'src/gateway/server-methods/sessions-messages.test.ts': 47,
-  'extensions/codex/src/app-server/shared-client.test.ts': 43,
-  'src/agents/prepared-model-runtime.startup-replacement.test.ts': 42,
-  'src/config/sessions/startup-migration.acp.test.ts': 42,
-  'src/gateway/sessions-patch.test.ts': 42,
-  'src/skills/workshop/store.test.ts': 42,
-  'src/infra/heartbeat-inbox-fallback.test.ts': 41,
-  'src/agents/main-session-recovery/main-session-handoff-retry.test.ts': 40,
-  'src/gateway/session-handoff-lease-orphan-recovery.test.ts': 39,
-  'src/gateway/server-agent-database-startup.multi-agent.test.ts': 37,
-  'extensions/anthropic/index.test.ts': 35,
-  'src/agents/trunk-characters.test.ts': 35,
-  'src/gateway/server.sessions.create.contact-anchor.test.ts': 33,
-  'test/scripts/tsdown-config.test.ts': 33,
+  'src/gateway/server-worker-placement-startup-maintenance.test.ts': 47,
+  'src/gateway/server.device-pair-setup.trusted-proxy.test.ts': 46,
+  'test/scripts/docker-build-helper.test.ts': 46,
+  'src/gateway/embeddings-http.test.ts': 45,
+  'src/agents/prepared-model-runtime.startup-replacement.test.ts': 44,
+  'src/gateway/server.lockdown-owner.test.ts': 44,
+  'src/config/sessions/startup-migration.acp.test.ts': 43,
+  'src/infra/state-migrations.transcript-directives.test.ts': 43,
+  'src/skills/workshop/store.test.ts': 43,
+  'src/agents/branch-tools.session-status.gateway-model.test.ts': 38,
+  'src/agents/mcp-oauth-refresh-issuer.test.ts': 38,
+  'src/agents/trunk-characters.test.ts': 38,
+  'src/config/sessions/startup-migration.quarantine.test.ts': 38,
+  'extensions/codex/src/app-server/shared-client.test.ts': 36,
+  'src/gateway/event-web-push.test.ts': 36,
+  'src/gateway/server-agent-database-startup.multi-agent.test.ts': 36,
+  'src/gateway/session-handoff-lease-orphan-recovery.test.ts': 36,
+  'src/agents/first-run-greeting.test.ts': 35,
+  'src/agents/main-session-recovery/main-session-restart-recovery.parallel-startup.test.ts': 35,
+  'src/commands/triage-target.test.ts': 35,
+  'test/scripts/tsdown-config.test.ts': 34,
   'src/agents/tools/sessions-send-operation-key.test.ts': 32,
-  'src/config/sessions/session-history-eviction.archived.test.ts': 32,
-  'src/agents/first-run-greeting.test.ts': 31,
-  'src/commands/doctor-session-row-repair.test.ts': 29,
-  'src/gateway/control-ui-assistant-media-cors.http.test.ts': 29,
-  'src/gateway/sessions-patch.done.test.ts': 28,
-  'extensions/memory-core/src/memory/manager-search-keyword-fallback.test.ts': 27,
-  'src/agents/tools/sessions-tool.model-approval.test.ts': 27,
-  'src/cron/trigger-script.test.ts': 27,
-  'src/agents/embedded-agent-runner/provider-capacity-failover.test.ts': 26,
-  'src/cron/isolated-agent/run.session-read.test.ts': 26,
-  'src/gateway/server-reload-managed-context.test.ts': 26,
-  'extensions/memory-core/src/memory/manager-search-upgrade.test.ts': 25,
-  'src/gateway/server-methods/backup-settings.test.ts': 25,
+  'src/gateway/server-reload-managed-context.test.ts': 32,
+  'src/gateway/sessions-patch.test.ts': 32,
+  'extensions/codex/src/app-server/run-attempt.model-choice.test.ts': 30,
+  'src/gateway/sessions-patch.done.test.ts': 30,
+  'src/agents/run-journal.test.ts': 27,
+  'src/gateway/server.sessions.create.contact-anchor.test.ts': 27,
+  'src/agents/tools/message-tool-execution.test.ts': 26,
+  'src/config/sessions/session-history-eviction.archived.test.ts': 26,
+  'src/gateway/server-methods/backup-settings.test.ts': 26,
   'src/gateway/session-startup-handoff-recovery.test.ts': 25,
-  'extensions/browser/src/browser-tool.test.ts': 24,
+  'src/infra/device-pairing.test.ts': 25,
+  'extensions/memory-core/src/memory/manager-local-unavailable-keyword.test.ts': 24,
   'src/agents/cli-runner.model-choice.test.ts': 24,
-  'src/agents/run-journal.test.ts': 24,
-  'src/gateway/server-startup-node-capabilities.test.ts': 24,
-  'src/gateway/server-methods/chat-history.segments.test.ts': 23,
-  'test/bundled-plugin-relative-imports.test.ts': 23,
-  'extensions/codex/src/app-server/native-process-authority.test.ts': 21,
-  'src/agents/agent-tools.before-tool-call.decision.test.ts': 21,
-  'src/agents/tools/message-tool.app-reaction.test.ts': 21,
-  'extensions/browser/src/browser/chrome.internal.test.ts': 19,
-  'src/agents/tools/message-tool-execution.test.ts': 19,
+  'src/cron/isolated-agent/run.session-read.test.ts': 23,
+  'src/gateway/server.logs-tail.test.ts': 23,
+  'src/infra/heartbeat-inbox-fallback.test.ts': 23,
+  'src/agents/tools/sessions-tool.model-approval.test.ts': 22,
+  'extensions/memory-core/src/memory/manager-search-upgrade.test.ts': 21,
+  'src/agents/main-session-recovery/main-session-handoff-retry.test.ts': 21,
+  'src/commands/doctor-session-row-repair.test.ts': 21,
+  'src/gateway/server-methods/chat-history.segments.test.ts': 21,
+  'src/gateway/server-startup-node-capabilities.test.ts': 21,
+  'src/node-host/invoke-agent-cli-claude.test.ts': 21,
+  'src/agents/tools/message-tool.app-reaction.test.ts': 20,
+  'src/agents/sessions/session-manager-context-fence-concurrency.test.ts': 19,
+  'src/commands/doctor-agent-database-admission.test.ts': 19,
   'src/cron/service/restart-recovery.behaviour.test.ts': 19,
-  'src/gateway/rooms/mentions-rule.test.ts': 19,
-  'src/gateway/server-methods/session-change-event.test.ts': 19,
-  'test/scripts/control-ui-i18n.test.ts': 19,
-  'src/agents/agent-tools.policy.test.ts': 18,
-  'src/agents/model-auth.profiles.test.ts': 18,
-  'src/infra/device-pairing.test.ts': 18,
+  'src/gateway/server-methods/session-change-event.test.ts': 18,
   'src/process/session-handoff-leases.test.ts': 18,
   'src/state/agent-database-startup.bounded-retry.test.ts': 18,
-  'src/auto-reply/reply/reply-turn-admission.first-message.test.ts': 17,
-  'src/fleet/service.runtime.test.ts': 17,
-  'src/gateway/server-reload-hot.agent-roster.test.ts': 17,
+  'test/bundled-plugin-relative-imports.test.ts': 18,
+  'extensions/codex/src/app-server/event-projector.command-output.test.ts': 17,
+  'extensions/memory-core/src/memory/manager-search-keyword-fallback.test.ts': 17,
+  'extensions/memory-core/src/rings-consolidation.test.ts': 17,
+  'src/agents/branch-tools.session-status.test.ts': 17,
+  'src/config/sessions/session-store-creation-witness.test.ts': 17,
   'src/infra/device-bootstrap-single-use.test.ts': 17,
-  'extensions/codex/src/app-server/auth-profile-usage.test.ts': 16,
-  'extensions/codex/src/app-server/event-projector.command-output.test.ts': 16,
-  'src/commands/backup-no-secrets.test.ts': 16,
+  'src/agents/agent-tools.policy.test.ts': 16,
+  'src/agents/runtime-plan/prepare-auth.test.ts': 16,
+  'src/gateway/method-scopes.test.ts': 16,
+  'src/infra/sqlite-readonly-location.snapshot-churn.test.ts': 16,
+  'src/logging/diagnostic.test.ts': 16,
   'src/agents/main-session-recovery/main-session-restart-recovery.pending-admission.test.ts': 15,
-  'src/cli/gateway-cli/run.option-collisions.test.ts': 15,
-  'src/infra/sqlite-readonly-location.snapshot-churn.test.ts': 15,
-  'extensions/browser/src/browser/pw-page-markdown.test.ts': 14,
-  'src/agents/lockdown-entrypoints.test.ts': 14,
-  'src/agents/sessions/session-manager-context-fence-concurrency.test.ts': 14,
+  'src/cli/capability-cli.test.ts': 15,
+  'src/commands/backup-no-secrets.test.ts': 15,
+  'src/gateway/control-ui-assistant-media-cors.http.test.ts': 15,
+  'src/infra/sqlite-readonly-location.test.ts': 15,
+  'src/mcp/ui-tools.test.ts': 15,
+  'extensions/codex/src/app-server/auth-profile-usage.test.ts': 14,
   'src/commands/doctor-session-sqlite.failure-reports.test.ts': 14,
-  'src/flows/doctor-health.update.test.ts': 14,
-  'src/infra/sqlite-readonly-location.test.ts': 14,
-  'extensions/browser/index.test.ts': 13,
-  'extensions/memory-core/src/rings-consolidation.test.ts': 13,
-  'src/agents/sessions/tools/read.test.ts': 12,
-  'src/agents/tools/skill-workshop-tool.args.test.ts': 12,
-  'src/commands/models/auth.test.ts': 12,
-  'src/gateway/agent-turn/agent-run-admission-revalidation.runtime-race.test.ts': 12,
-  'src/gateway/dev-agent-startup.test.ts': 12,
-  'extensions/codex/src/app-server/event-projector.failure-reason.test.ts': 11,
-  'extensions/discord/src/monitor/message-handler.context.test.ts': 11,
+  'extensions/browser/src/browser/chrome-mcp.test.ts': 13,
+  'extensions/codex/src/app-server/config.test.ts': 13,
+  'src/agents/embedded-agent-runner/provider-capacity-failover.test.ts': 13,
+  'src/agents/lockdown-entrypoints.test.ts': 13,
+  'src/agents/tools/skill-workshop-tool.args.test.ts': 13,
+  'src/auto-reply/reply/reply-turn-admission.first-message.test.ts': 13,
+  'src/flows/doctor-health.update.test.ts': 13,
+  'src/node-host/invoke.test.ts': 13,
+  'extensions/browser/src/browser/pw-page-markdown.test.ts': 12,
+  'extensions/codex/src/app-server/event-projector.failure-reason.test.ts': 12,
+  'src/auto-reply/reply/commands-handlers.registration.test.ts': 12,
+  'src/cron/service.heartbeat-payload.test.ts': 12,
+  'src/gateway/server-methods/chat-history-phase-timing.handler.test.ts': 12,
+  'src/gateway/server-reload-hot.agent-roster.test.ts': 12,
+  'test/scripts/control-ui-i18n.test.ts': 12,
+  'extensions/codex/src/app-server/windows-shell-guidance.test.ts': 11,
   'src/agents/embedded-agent-runner/run-orchestrator.superseded-setup.test.ts': 11,
-  'src/cron/service.heartbeat-payload.test.ts': 11,
   'src/cron/service/timer.lockdown.test.ts': 11,
-  'src/gateway/control-ui-assistant-media-filename.http.test.ts': 11,
-  'src/gateway/server-methods-list.test.ts': 11,
-  'src/gateway/server-methods/chat-history-phase-timing.handler.test.ts': 11,
-  'src/gateway/rooms/methods.test.ts': 10,
+  'src/fleet/service.runtime.test.ts': 11,
+  'src/gateway/rooms/mentions-rule.test.ts': 11,
+  'extensions/codex/src/app-server/native-process-authority.test.ts': 10,
+  'src/cli/gateway-cli/run.option-collisions.test.ts': 10,
+  'src/commands/doctor/shared/legacy-config-migrate.test.ts': 10,
+  'src/gateway/server-methods/model-choice-approval.test.ts': 10,
   'src/infra/gateway-state-owner.heartbeat.test.ts': 10,
+  'src/infra/state-migrations.transcript-directives.lease.test.ts': 10,
+  'test/scripts/bench-gateway-concurrency.test.ts': 10,
+  'test/scripts/vitest-worker-cache.test.ts': 10,
+  'extensions/discord/src/monitor/message-handler.context.test.ts': 9,
+  'src/gateway/dev-agent-startup.test.ts': 9,
+  'extensions/anthropic/index.test.ts': 8,
+  'extensions/browser/index.test.ts': 8,
+  'extensions/browser/src/browser/chrome.internal.test.ts': 8,
+  'src/agents/model-auth.profiles.test.ts': 8,
+  'src/agents/sessions/tools/read.test.ts': 8,
+  'src/gateway/rooms/methods.test.ts': 8,
+  'extensions/browser/src/browser-tool.test.ts': 7,
+  'src/agents/agent-tools.before-tool-call.decision.test.ts': 7,
+  'src/commands/models/auth.test.ts': 7,
+  'src/gateway/control-ui-assistant-media-filename.http.test.ts': 7,
+  'src/gateway/agent-turn/agent-run-admission-revalidation.runtime-race.test.ts': 5,
+  'src/gateway/server-methods-list.test.ts': 4,
 };
 export const unlistedFeatureTestSeconds = 5;
 // Linux shard 1 also runs the strict typecheck and the native protocol check (~1 minute).
@@ -880,14 +927,14 @@ export function featureTestWeightKeys() {
 }
 
 /** Longest-file-first packing. `loads` include the shard-1 reserve; `files` keep list order. */
-export function planShards(tests, total, weights = featureTestWeights) {
+export function planShards(tests, total, weights = featureTestWeights, { reserve = firstShardReserveSeconds } = {}) {
   if (total <= 1) {
     return {
       files: [tests.slice()],
       loads: [tests.reduce((sum, file) => sum + featureTestWeight(file, weights), 0)],
     };
   }
-  const loads = Array.from({ length: total }, (_, index) => index === 0 ? firstShardReserveSeconds : 0);
+  const loads = Array.from({ length: total }, (_, index) => index === 0 ? reserve : 0);
   const ranked = tests.map((file, index) => ({ file, index, weight: featureTestWeight(file, weights) }));
   ranked.sort((a, b) => b.weight - a.weight || a.index - b.index);
   const buckets = Array.from({ length: total }, () => []);
@@ -907,6 +954,12 @@ export function shardTests(tests, shard, weights) {
   return planShards(tests, shard.total, weights).files[shard.index];
 }
 
+// Touched Windows shards run no Linux shard-1 checks, so they pack without the reserve and three or more
+// touched files never leave a shard empty.
+export function touchedShardTests(tests, shard, weights) {
+  return planShards(tests, shard.total, weights, { reserve: 0 }).files[shard.index];
+}
+
 // The shard counts below are floors. The matrix grows past them by the weight-derived count (shardCountFor).
 // The budget is the whole job: runner setup (checkout, frozen install, build artifacts), the engine and window
 // tests, and the Linux shard-1 checks. A 12-minute test-only budget left out about 80 s of Linux setup (150 s
@@ -917,6 +970,8 @@ export function shardTests(tests, shard, weights) {
 // 97 s plus the job tail, Windows 164 s, macOS 152 s). Windows and macOS scales are each runner's engine seconds over Linux seconds for the
 // same files on the 2026-10-12 main pushes (1.64 and 1.27); macOS keeps its earlier, higher 1.35.
 export const pullRequestLinuxShardCount = 10;
+// Pull requests run the touched Windows tests in this many fixed shards (one job ran past the cap with 18 files).
+export const pullRequestWindowsTouchedShardCount = 4;
 export const mainPushShardCounts = { ubuntu: 7, windows: 11, macos: 10 };
 export const shardBudgetSeconds = 10 * 60;
 export const windowShardFileSeconds = 2;
@@ -933,14 +988,16 @@ export function plannedJobSeconds(os, total, { extraTests = [] } = {}) {
     .map(seconds => seconds + runnerSetupSeconds[os]);
 }
 
-// Headroom: Windows and macOS keep ten percent under the budget (the Linux shard 1 keeps the full budget).
-export function shardBudgetFor(os) {
-  return os === 'ubuntu' ? shardBudgetSeconds : shardBudgetSeconds * 0.9;
+// Headroom: every OS keeps ten percent under the budget, so the OS argument no longer changes it. Linux used to
+// plan to the full 600 s, and real jobs for those plans ran up to 15 minutes once the weights drifted.
+export function shardBudgetFor() {
+  return shardBudgetSeconds * 0.9;
 }
 
 // Shards over budget that more shards could still split. A file never splits, so a shard holding one engine
-// file is as fast as it can be: on Windows and macOS cli-runner/prepare.test.ts alone is near ten minutes,
-// and its shard then holds only that file.
+// file is as fast as it can be. Files whose Windows or macOS job alone would pass ten minutes are split instead
+// (cli-runner/prepare so far; server.auth.control-ui, doctor-config-flow.legacy-composition and
+// sessions-reactions follow), and a test keeps it so.
 export function overBudgetShards(os, total, { extraTests = [] } = {}) {
   const budget = shardBudgetFor(os);
   const files = planShards([...namedTests('engine'), ...extraTests], total).files;

@@ -23,6 +23,9 @@ export function setupCodeProblem(error: unknown): string {
   const kind = error instanceof SetupCodeError ? error.kind : 'invalid';
   if (kind === 'expired') return 'This code has expired. Make a new one on your computer.';
   if (kind === 'damaged') return 'This code looks damaged. Copy it again from Branch on your computer.';
+  if (kind === 'check-only') {
+    return 'That short code is only for matching the computer. Type or paste the pairing code shown under the QR code.';
+  }
   return 'That isn’t a Branch pairing code. Use the code from Pair a phone in Branch on your computer.';
 }
 

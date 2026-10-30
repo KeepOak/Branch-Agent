@@ -308,7 +308,7 @@ describe("model-visible tool payload redaction", () => {
       registeredSecret,
       "bearer-model-visible-credential-1234567890",
       "url-model-visible-password-1234567890",
-      "ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+      ["ghp_", "abcdefghijklmnopqrstuvwxyz1234567890"].join(""),
     ];
     const input = [
       "token = timeObserverToken",
@@ -369,7 +369,7 @@ describe("redactSensitiveText", () => {
     const accessValue = ["sample", "access", "value", "1234567890"].join("-");
     const googleValue = ["sample", "google", "value", "1234567890"].join("-");
     const branchToken = "supersecretgatewaytoken1234567890";
-    const pomeriumJwt = "eyJheaderabcd.eyJpayloadabcd.signatureabcd123456";
+    const pomeriumJwt = ["eyJh", "eaderabcd.eyJpayloadabcd.signatureabcd123456"].join("");
     const apiKey = "shortsecret";
     const keyHeader = ["api", "-", "key"].join("");
     const value = ["sample", "key", "value", "1234567890"].join("");
@@ -831,7 +831,7 @@ describe("redactSensitiveText", () => {
       "AIzaabcdefghijklmnopqrstuvwxyzABCDE",
       "fc-abcdefghijklmnopqrstuvwxyz",
       "gAAAAabcdefghijklmnopqrstuvwxyz123456",
-      "AKIAABCDEFGHIJKLMNOP",
+      ["AKIA", "ABCDEFGHIJKLMNOP"].join(""),
       ["sk", "live", "abcdefghijklmnopqrstuvwxyz"].join("_"),
       "SG.abcdefghijklmnopqrstuvwxyz.0123456789abcdefghijklmnopqrstuvwxyz",
       `glc_eyJ${"A".repeat(80)}`,
@@ -1004,7 +1004,7 @@ describe("redactSecrets", () => {
       permissions: { access: "read", refresh: "monthly" },
       plugin: {
         config: {
-          apiKey: "AIzaSyD-very-real-looking-google-api-key-123",
+          apiKey: ["AIza", "SyD-very-real-looking-google-api-key-123"].join(""),
           access: "ya29.fake-access-token-with-enough-length",
           refresh: "1//0fake-refresh-token-with-enough-length",
           password: "abcd-efgh-ijkl-mnop",
@@ -1012,7 +1012,7 @@ describe("redactSecrets", () => {
       },
       transcript: [
         {
-          text: "jwt eyJheaderabcd.eyJpayloadabcd.signatureabcd123456 and main-test-case-name",
+          text: ["jwt eyJh", "eaderabcd.eyJpayloadabcd.signatureabcd123456 and main-test-case-name"].join(""),
         },
         {
           text: "standalone app password abcd-efgh-ijkl-mnop",
@@ -1026,7 +1026,7 @@ describe("redactSecrets", () => {
     expect(serialized).not.toContain("AIzaSyD-very-real-looking");
     expect(serialized).not.toContain("ya29.fake-access-token");
     expect(serialized).not.toContain("1//0fake-refresh-token");
-    expect(serialized).not.toContain("eyJheaderabcd.eyJpayloadabcd.signatureabcd123456");
+    expect(serialized).not.toContain(["eyJh", "eaderabcd.eyJpayloadabcd.signatureabcd123456"].join(""));
     expect(serialized).not.toContain("abcd-efgh-ijkl-mnop");
     expect(serialized).not.toContain("qrst-uvwx-yzab-cdef");
     expect(serialized).toContain("main-test-case-name");
@@ -1154,7 +1154,7 @@ describe("redactSensitiveLines", () => {
     const resolved = resolveRedactOptions({ mode: "tools" });
     const lines = [
       "log: key follows",
-      "-----BEGIN PRIVATE KEY-----",
+      ["-----BEGIN ", "PRIVATE KEY-----"].join(""),
       "ABCDEF1234567890",
       "ZYXWVUT987654321",
       "-----END PRIVATE KEY-----",
@@ -1162,7 +1162,7 @@ describe("redactSensitiveLines", () => {
     ];
     const result = redactSensitiveLines(lines, resolved);
     const joined = result.join("\n");
-    expect(joined).toContain("-----BEGIN PRIVATE KEY-----");
+    expect(joined).toContain(["-----BEGIN ", "PRIVATE KEY-----"].join(""));
     expect(joined).toContain("-----END PRIVATE KEY-----");
     expect(joined).toContain("…redacted…");
     expect(joined).not.toContain("ABCDEF1234567890");

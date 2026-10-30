@@ -168,7 +168,7 @@ describe("trunk templates", () => {
 
   it("refuses export when persona text looks like a secret, and never names the value", async () => {
     const workspace = mkdtempSync(path.join(os.tmpdir(), "trunk-template-secret-"));
-    writeFileSync(path.join(workspace, "AGENTS.md"), "# Ops\nToken: ghp_1234567890abcdefghijklmnopqrstuvwxyz\n");
+    writeFileSync(path.join(workspace, "AGENTS.md"), ["# Ops\nToken: ghp_", "1234567890abcdefghijklmnopqrstuvwxyz\n"].join(""));
     const cfg = { agents: { entries: { ops: { name: "Ops", workspace } } } } as unknown as BranchConfig;
     const result = await exportTrunkTemplate({ cfg, agentId: "ops", env: {} });
     expect(result.ok).toBe(false);
@@ -239,9 +239,9 @@ describe("trunk templates", () => {
   });
 
   it("redacts PEM private key blocks and headers", () => {
-    const block = "-----BEGIN RSA PRIVATE KEY-----\nMIIEabc\n-----END RSA PRIVATE KEY-----";
+    const block = ["-----BEGIN ", "RSA PRIVATE KEY-----\nMIIEabc\n-----END RSA PRIVATE KEY-----"].join("");
     expect(redactPersonaText(block, {})).toBe("<redacted key>");
-    expect(redactPersonaText("-----BEGIN PRIVATE KEY-----", {})).toBe("<redacted key header>");
+    expect(redactPersonaText(["-----BEGIN ", "PRIVATE KEY-----"].join(""), {})).toBe("<redacted key header>");
   });
 
   it("accepts a plain model family token and drops anything else with a warning", () => {
@@ -278,7 +278,7 @@ describe("trunk templates", () => {
 
   it("refuses export when persona text contains a private key block", async () => {
     const workspace = mkdtempSync(path.join(os.tmpdir(), "trunk-template-pem-"));
-    writeFileSync(path.join(workspace, "SOUL.md"), "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n");
+    writeFileSync(path.join(workspace, "SOUL.md"), ["-----BEGIN ", "OPENSSH PRIVATE KEY-----\nabc\n"].join(""));
     const cfg = { agents: { entries: { ops: { name: "Ops", workspace } } } } as unknown as BranchConfig;
     const result = await exportTrunkTemplate({ cfg, agentId: "ops", env: {} });
     expect(result.ok).toBe(false);
@@ -351,7 +351,7 @@ describe("trunk template routines, connections and links", () => {
         { name: "Digest", schedule: { kind: "cron", expr: "0 7 * * *" }, payload: { kind: "agentTurn", message: "Read /home/someone/notes.md" } },
         { name: "Watcher", schedule: { kind: "cron", expr: "*/5 * * * *" }, payload: { kind: "agentTurn", message: "Check." }, trigger: { script: "x" } },
         { name: "Health", declarationKey: "system:health", schedule: { kind: "cron", expr: "0 * * * *" }, payload: { kind: "agentTurn", message: "Check." } },
-        { name: "Key", schedule: { kind: "cron", expr: "0 9 * * *" }, payload: { kind: "agentTurn", message: "Use sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789" } },
+        { name: "Key", schedule: { kind: "cron", expr: "0 9 * * *" }, payload: { kind: "agentTurn", message: ["Use sk-a", "nt-api03-abcdefghijklmnopqrstuvwxyz0123456789"].join("") } },
       ],
       {},
     );

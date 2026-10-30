@@ -25,7 +25,7 @@ const presentation = {
   status: 401,
   summary: "refresh rejected error-access",
 };
-const access = "sk-oauthreviewredaction1234567890zzzz";
+const access = ["sk-o", "authreviewredaction1234567890zzzz"].join("");
 const refresh = "ya29.oauthreviewredaction1234567890yyyy";
 
 describe("OAuthManagerRefreshError", () => {

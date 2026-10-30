@@ -1,0 +1,4 @@
+engine:src/chat/canvas-render.test.ts
+engine:src/chat/message-client-source.test.ts
+engine:src/chat/tool-call-grouping.test.ts
+engine:src/chat/work-context.test.ts

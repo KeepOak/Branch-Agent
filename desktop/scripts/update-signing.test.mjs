@@ -29,11 +29,13 @@ test("update-signature.ts matches upstream minisign Ed/ED wire format", () => {
   assert.match(src, /const SIG_HASHED = Buffer\.from\("ED"\)/);
   assert.match(src, /const SIG_LEGACY = Buffer\.from\("Ed"\)/);
   // Hashed message is BLAKE2b-512(file) only — never hash||trustedComment.
-  assert.match(src, /sig\.hashed \? createHash\("blake2b512"\)\.update\(bytes\)\.digest\(\) : bytes/);
+  assert.match(src, /sig\.hashed \? digest\("blake2b512", bytes\) : bytes/);
+  // BLAKE2b goes through the Electron-safe digest() helper, never node:crypto directly (#2104).
+  assert.doesNotMatch(src, /createHash\(/);
   // Global signature covers signature[64] || trusted_comment — not the 74-byte block.
   assert.match(src, /Buffer\.concat\(\[sig\.signature, Buffer\.from\(sig\.trustedComment\)\]\)/);
   assert.doesNotMatch(src, /const HASHED = Buffer\.from\("Ed"\)/);
-  assert.doesNotMatch(src, /Buffer\.concat\(\[createHash\("blake2b512"\)\.update\(bytes\)\.digest\(\), Buffer\.from\(sig\.trustedComment\)\]\)/);
+  assert.doesNotMatch(src, /Buffer\.concat\(\[digest\("blake2b512", bytes\), Buffer\.from\(sig\.trustedComment\)\]\)/);
   assert.doesNotMatch(src, /Buffer\.concat\(\[sig\.block,/);
   assert.doesNotMatch(src, /Buffer\.concat\(\[hash, Buffer\.from\(trusted\)\]\)/);
 });

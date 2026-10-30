@@ -10,22 +10,37 @@ import { join } from "node:path";
 export type StandbyResult = "ready" | "exited" | "slow";
 
 /** What the engine is doing when an update wants to restart its service: the activity auto-apply reads. */
-export interface ServiceWork { activeRuns: number; pendingApprovals: number; streaming: boolean }
+export interface ServiceWork {
+  activeRuns: number;
+  /** `null`: the window was silent and nothing has proven there are no pending approvals. */
+  pendingApprovals: number | null;
+  streaming: boolean;
+  /** `null`: the window was silent and nothing has proven there are no unsaved drafts. Omitted by older callers. */
+  unsavedDraftFiles?: boolean | null;
+}
 
 /** The plain refusal an update gives while Trunk work runs (the owner's Update click shows it as is). */
 export const TRUNKS_STILL_WORKING = "Trunks are still working. Update when they finish.";
+/** Apply now / service restart must not treat a silent window as idle when drafts or approvals are unknown. */
+export const WINDOW_IDLE_UNKNOWN = "The window did not report pending approvals or unsaved drafts";
 
 /**
  * Private #1038's idle rule, applied to the service: a restart never cuts off running Trunk work. Idle means no
  * active run of any kind (main session, helper, queue job or cron run), no pending approval and no streaming reply.
+ * Unknown approvals or drafts are not idle: never drain or restart until a window or persisted snapshot proves none.
  */
 export function serviceWorkRefusal(work: ServiceWork): string | undefined {
-  return work.activeRuns > 0 || work.pendingApprovals > 0 || work.streaming ? TRUNKS_STILL_WORKING : undefined;
+  if (work.activeRuns > 0 || work.streaming) return TRUNKS_STILL_WORKING;
+  if (work.pendingApprovals === null || work.unsavedDraftFiles === null) return WINDOW_IDLE_UNKNOWN;
+  return work.pendingApprovals > 0 || work.unsavedDraftFiles ? TRUNKS_STILL_WORKING : undefined;
 }
 
 /** desktop.log names what blocked the update, in the words auto-apply uses ("waiting for 2 active runs, 0 approvals"). */
 export function serviceWorkLine(work: ServiceWork): string {
-  return `waiting for ${work.activeRuns} active runs, ${work.pendingApprovals} approvals${work.streaming ? ", streaming reply" : ""}`;
+  const approvals = work.pendingApprovals === null ? "unknown" : String(work.pendingApprovals);
+  const drafts = work.unsavedDraftFiles === null ? ", unknown draft files"
+    : work.unsavedDraftFiles ? ", unsaved draft files" : "";
+  return `waiting for ${work.activeRuns} active runs, ${approvals} approvals${work.streaming ? ", streaming reply" : ""}${drafts}`;
 }
 
 export interface ServiceUpdateSteps {

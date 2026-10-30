@@ -1,0 +1,4 @@
+engine:extensions/deepgram/audio-flux.test.ts
+engine:extensions/deepgram/audio.test.ts
+engine:extensions/deepgram/realtime-transcription-provider.cold.test.ts
+engine:extensions/deepgram/realtime-transcription-provider.test.ts

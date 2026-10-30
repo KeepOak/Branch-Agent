@@ -9,21 +9,7 @@ import { renderApps } from "./view.ts";
 
 const LATEST = "https://github.com/KeepOak/Branch-Agent/releases/latest";
 const RELEASES = "https://github.com/KeepOak/Branch-Agent/releases";
-const EXPECTED_EXTERNAL_HREFS = [
-  RELEASES,
-  "https://docs.openclaw.ai/platforms/android",
-  "https://docs.openclaw.ai/platforms/ios",
-  "https://docs.openclaw.ai/platforms/android",
-  LATEST,
-  "https://docs.openclaw.ai/platforms/macos",
-  LATEST,
-  "https://docs.openclaw.ai/platforms/windows",
-  LATEST,
-  "https://docs.openclaw.ai/platforms/linux",
-  "https://clawhub.ai",
-  "https://discord.gg/clawd",
-  "https://docs.openclaw.ai",
-];
+const EXPECTED_EXTERNAL_HREFS = [RELEASES, RELEASES, RELEASES, LATEST, LATEST, LATEST, RELEASES];
 const NOT_OUT_YET = "Not out yet. Use the Android, Mac, Windows or Linux app for now.";
 
 describe("renderApps", () => {
@@ -43,7 +29,12 @@ describe("renderApps", () => {
   }
 
   it("sends every Download to Branch's own release pages, never a store listing", () => {
-    expect(BRANCH_DOWNLOAD_PAGES).toEqual({ mac: LATEST, windows: LATEST, linux: LATEST, android: RELEASES });
+    expect(BRANCH_DOWNLOAD_PAGES).toEqual({
+      mac: LATEST,
+      windows: LATEST,
+      linux: LATEST,
+      android: RELEASES,
+    });
     for (const url of Object.values(BRANCH_DOWNLOAD_PAGES)) {
       expect(new URL(url).hostname).toBe("github.com");
       expect(new URL(url).pathname).toMatch(/^\/KeepOak\/Branch-Agent\/releases(\/latest)?$/);

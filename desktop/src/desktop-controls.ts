@@ -237,8 +237,10 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
       await deps.linger.set(on);
       linger = Promise.resolve(on);
     } else if (name === "keepWorking" || name === "keepAwake" || name === "keepAwakeOnBattery" || name === "trayUsage" || name === "autoApplyUpdates" || name === "agentControl") {
+      // A failed save (other than a full disk, which keeps the new value on purpose) puts the old value back and says why.
+      const previous = saved;
       saved = { ...saved, [name]: on };
-      save();
+      try { save(); } catch (error) { saved = previous; throw error; }
       if (name === "trayUsage") deps.tray.usage(lastLeft, on);
       deps.onChange?.({ ...saved });
     } else throw new Error(`Unknown desktop control: ${String(name)}`);

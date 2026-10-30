@@ -212,6 +212,43 @@ it("describes disabled Open and Manage without enabling either action", async ()
   expect(describedReason(open)).toBe("Managing Telegram is unavailable in this view.");
   const card = host.querySelector<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]')!;
   expect(describedReason(card)).toBe("Managing Telegram is unavailable in this view.");
+  expect(card.querySelector(".r1-ca-action")?.textContent).toBe("Connected");
+  expect(card.querySelector(".r1-ca-action")?.textContent).not.toBe("Coming");
   await act(async () => { open.click(); card.click(); });
   expect(manage).not.toHaveBeenCalled();
+});
+it("labels a connected card that isn't running with its state word, never Coming, when Manage is unavailable", async () => {
+  const { host, manage } = await render({ channelAccounts: { telegram: [{ accountId: "default", configured: true, running: false }] } }, methods, ["operator.admin"], undefined, false);
+  // The connected list's pill and the card's action share appOf's word: not running reads Offline.
+  expect(host.querySelector(".r1-ca-connected [role=listitem]")!.textContent).toContain("Offline");
+  const card = host.querySelector<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]')!;
+  expect(card.querySelector("b")?.textContent).toBe("Telegram");
+  const label = card.querySelector(".r1-ca-action")?.textContent;
+  expect(label).toBe("Offline");
+  expect(label).not.toBe("Coming");
+  expect(label).not.toBe("Connected");
+  expect(describedReason(card)).toBe("Managing Telegram is unavailable in this view.");
+  await act(async () => card.click());
+  expect(manage).not.toHaveBeenCalled();
+});
+it("labels a running card with an issue or error with the pill's word, never Connected", async () => {
+  const cases = [
+    { name: "status issue", status: { channelAccounts: { telegram: [{ accountId: "default", configured: true, running: true }] }, statusIssues: [{ channel: "telegram", accountId: "default", kind: "runtime", message: "Bot token rejected" }] } },
+    { name: "last error", status: { channelAccounts: { telegram: [{ accountId: "default", configured: true, running: true, lastError: "Bot token rejected" }] } } },
+  ];
+  let first = true;
+  for (const { name, status } of cases) {
+    for (const canManage of [true, false]) {
+      if (!first) { await act(async () => root.unmount()); document.body.innerHTML = ""; }
+      first = false;
+      const { host } = await render(status, methods, ["operator.admin"], undefined, canManage);
+      const pill = host.querySelector(".r1-ca-connected [role=listitem]")!.textContent;
+      expect(pill, name).toContain("Offline");
+      const card = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find(b => b.querySelector("b")?.textContent === "Telegram")!;
+      // Manage available: the card's line; Manage unavailable: the card's action label.
+      const word = canManage ? card.querySelector(".r1-ca-text small")?.textContent : card.querySelector(".r1-ca-action")?.textContent;
+      expect(word, name).toBe("Offline");
+      expect(card.textContent, name).not.toContain("Connected");
+    }
+  }
 });

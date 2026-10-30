@@ -31,7 +31,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 5. **List new test files for CI** in `scripts/feature-batch-ci-named/<branch-name>.txt` (`engine:<path>` or `window:<path>`, one per line, in any order; only the shared `engineTests` and `windowTests` arrays in `scripts/feature-batch-ci-targets.mjs` must stay sorted). For desktop tests, add a `node --test` step to `.github/workflows/desktop-checks.yml`.
    Before every push, run `node scripts/check-named-tests.mjs` (add `--base <ref>` if not `origin/main`). It uses preflight's own rule and prints the expected list file and each missing line.
 
-6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors. If engine lint reports raw-copy baseline drift, regenerate with `cd engine && pnpm ui:i18n:baseline` and commit `engine/ui/src/i18n/.i18n/raw-copy-baseline.json`. Do not commit `catalog-fallbacks.json` on a source PR; post-merge locale refresh owns that file.
+6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors. If engine lint reports raw-copy baseline drift, regenerate with `cd engine && pnpm ui:i18n:baseline` and commit `engine/ui/src/i18n/.i18n/raw-copy-baseline.json`. If the `Control UI catalog fallbacks (PR)` check fails, regenerate with `cd engine && node --import ./scripts/tsx.mjs --input-type=module -e "const m = await import('./scripts/control-ui-i18n-verify.ts'); await m.syncControlUiCatalogFallbackBaseline({ checkOnly: false, write: true });"` and commit `engine/ui/src/i18n/.i18n/catalog-fallbacks.json` on the same PR.
 
 7. **Type-check before pushing:** `pnpm -C window typecheck` for window changes; `node scripts/strict-typecheck.mjs` from the repo root (or `cd engine && node ../scripts/strict-typecheck.mjs`) for engine changes (about 6 GB).
 
@@ -66,6 +66,8 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 19. **Chat works with zero accounts.** A fresh install must reach a first reply without any sign-in or API key, using a free local default (managed `llama-cpp` when no Ollama/LM Studio is present). Packaged desktop and mobile engines must load the `llama-cpp` plugin. A release that omits it fails the packaging smoke (`scripts/check-packaged-no-key-plugin.mjs`). Never auto-start a multi-GB download without size + Cancel.
 
 20. **One Connect-a-model path.** With no usable model: the reply area shows exactly "Connect a model to get answers" and one "Connect a model" button that opens Add an account (deduplicated plain names, free/local first, no reflow). The button must be readable on light and dark themes. Do not leave a control that looks clickable but opens nothing. GOD private #1092 supersedes the earlier #1797 send-disabled bar: Send is allowed; fixing the app follows GOD's current ruling, not the old disable-Send tests. Do not mass-rewrite those tests until the app flip lands.
+
+21. **No secret-shaped literals, even in tests.** Build fake API keys and PEM headers at runtime (for example `['s', 'k-', 'x'.repeat(40)].join('')`); preflight's secret-literal check fails added lines that match a provider key format, test files included.
 
 ## Common tasks
 

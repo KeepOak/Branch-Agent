@@ -73,6 +73,7 @@ export const GATE_SCRIPTS = [
   'scripts/merge-gate-rate-limit.test.mjs',
   'scripts/merge-gate-recheck.mjs',
   'scripts/merge-gate-recheck.test.mjs',
+  'desktop/scripts/run-unlisted-tests.mjs',
 ];
 // Workflows whose jobs must actually run on a PR they apply to. A skipped job is missing here, not a pass.
 export const MUST_RUN_WORKFLOWS = new Set(['.github/workflows/feature-batch-checks.yml']);
@@ -509,6 +510,16 @@ export function evaluateTrustedGate({
   const errors = [];
   if (failed.length) {
     errors.push(`Failed checks: ${failed.map((run) => `${run.name}: ${run.conclusion}`).join(', ')}`);
+    const namedMacosFailed = failed.filter((run) =>
+      /^Named feature tests on macos(?:-latest)?\b/i.test(run.name),
+    );
+    if (namedMacosFailed.length) {
+      errors.push(
+        `Named feature macos red (refuse merge; policy after #1999): ${
+          namedMacosFailed.map((run) => `${run.name}: ${run.conclusion}`).join(', ')
+        }`,
+      );
+    }
   }
   if (foreignTrusted.length) {
     const details = foreignTrusted.map((run) => {

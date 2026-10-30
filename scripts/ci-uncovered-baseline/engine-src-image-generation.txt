@@ -1,0 +1,7 @@
+engine:src/image-generation/capabilities.test.ts
+engine:src/image-generation/image-assets.test.ts
+engine:src/image-generation/live-test-helpers.test.ts
+engine:src/image-generation/openai-compatible-image-provider.test.ts
+engine:src/image-generation/runtime.output-capabilities.test.ts
+engine:src/image-generation/runtime.resources.test.ts
+engine:src/image-generation/runtime.test.ts

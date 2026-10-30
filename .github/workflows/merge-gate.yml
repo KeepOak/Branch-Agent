@@ -92,7 +92,10 @@ jobs:
         run: node --test scripts/release-freshness.test.mjs
       - name: Require every changed test to run in CI
         if: steps.debounce.outputs.skip != 'true'
-        run: node scripts/changed-test-coverage.mjs
+        env:
+          # Read-only; used only to check that a gate-change-reviewed marker carries across a clean merge of main.
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/changed-test-coverage.mjs --all-tests
       - name: Check merge command patterns in documentation
         if: steps.debounce.outputs.skip != 'true'
         run: node scripts/check-merge-command.mjs
@@ -202,6 +205,7 @@ jobs:
           SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -214,6 +218,20 @@ jobs:
           }
           # Give path-filtered workflows time to register their runs.
           sleep 30
+          # macOS named shards run only when os-specific paths change. If this PR's newest
+          # os-specific run failed on an earlier head and none ran on this head, that red
+          # never reaches the check list below (how #1999 landed). Refuse until it reruns green.
+          os_runs=$(gh api "repos/$REPO/actions/workflows/os-specific-checks.yml/runs?event=pull_request&branch=$HEAD_REF&per_page=20") || os_runs='{"workflow_runs":[]}'
+          os_red=$(jq -r --arg sha "$SHA" '
+            [(.workflow_runs // [])[]] | sort_by(.created_at) | last // empty
+            | select(.head_sha != $sha and .status == "completed"
+                and (.conclusion | IN("success","skipped","neutral") | not))
+            | "\(.head_sha[0:12]) \(.conclusion) \(.html_url)"' <<<"$os_runs")
+          if [ -n "$os_red" ]; then
+            echo "Named feature tests on macos-latest were last red on an earlier head: $os_red"
+            echo "Re-run os-specific-checks on this head (workflow_dispatch or a new push) before merging."
+            exit 1
+          fi
           # Workflow identity is immutable per check id. Fetch it only for
           # duplicate job names, and reuse it on later polls.
           attr_cache='{}'
@@ -393,7 +411,12 @@ jobs:
             pending=$(jq '([.[] | select(.status != "completed")] | length) + (if any(.[]; .name == "Analyze (actions)") then 0 else 1 end)' <<<"$runs")
             failed=$(jq -r '[.[] | select(.status == "completed" and (.conclusion | IN("success","skipped","neutral") | not)) | "\(.name): \(.conclusion)"] | .[]' <<<"$runs")
             if [ -n "$failed" ]; then
-              echo "Failed checks:"; echo "$failed"; exit 1
+              echo "Failed checks:"; echo "$failed"
+              # Explicit Named-macos refusal (#1999 landed while macos Named was red).
+              if grep -E '^Named feature tests on macos' <<<"$failed" >/dev/null; then
+                echo "::error::Named feature tests on macos-latest are red — refuse merge (policy after #1999)."
+              fi
+              exit 1
             fi
             if [ "$pending" -eq 0 ]; then
               echo "All $(jq length <<<"$runs") other checks passed."; exit 0
