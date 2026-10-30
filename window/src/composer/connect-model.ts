@@ -23,7 +23,7 @@ export function inferenceProblem(error: unknown): string | null {
   return isNoUsableModelError(message) ? CONNECT_MODEL_ANSWERS : null;
 }
 
-/** #589: a ChatGPT model is connected, but Codex, which runs its turns, isn't on this computer. Add an account
+/** Issue 589: a ChatGPT model is connected, but Codex, which runs its turns, isn't on this computer. Add an account
  *  can't fix that, so the thread names what's missing and opens Settings › Accounts, where the Codex row offers
  *  Get Codex or Check again. */
 export const CODEX_MISSING = "Codex isn’t on this computer yet. Your ChatGPT account is connected, but its models need Codex to answer. Set up Codex in Settings › Accounts, then try again.";

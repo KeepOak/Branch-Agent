@@ -1,7 +1,7 @@
 import type { OpenTarget } from "./nav";
 import { CODEX_MISSING, CODEX_MISSING_ACTION, CONNECT_MODEL_ACTION, CONNECT_MODEL_ANSWERS, openCodexSetup, openConnectModel } from "./connect-model";
 
-/** A connected ChatGPT model that can't answer because Codex is missing (#589): one plain line, one button. */
+/** A connected ChatGPT model that can't answer because Codex is missing (issue 589): one plain line, one button. */
 export function CodexMissingNotice({ onOpen, className }: { onOpen?: (target: OpenTarget) => void; className?: string }) {
   const go = () => {
     if (onOpen) onOpen("settings/accounts");

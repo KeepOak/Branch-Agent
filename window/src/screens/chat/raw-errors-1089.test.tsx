@@ -36,7 +36,7 @@ describe("a failed run never shows the engine's raw words at Regular (Private #1
     expect(line).toBe(`Researcher couldn’t finish: ${plain}`);
   });
 
-  // #589: a fresh install with a connected ChatGPT account but no Codex. Connect a model sent the user to Add an
+  // Issue 589: a fresh install with a connected ChatGPT account but no Codex. Connect a model sent the user to Add an
   // account for an account that was already there; the thread now says Codex is missing and opens Settings › Accounts.
   it.each([
     "CodexNotInstalledError: Codex is not installed.",
