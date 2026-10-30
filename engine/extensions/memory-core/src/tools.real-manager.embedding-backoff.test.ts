@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { BranchConfig } from "branch/plugin-sdk/memory-core-host-runtime-core";
 import { clearMemoryPluginState } from "branch/plugin-sdk/memory-host-core";
+import { openBranchAgentDatabase } from "branch/plugin-sdk/sqlite-runtime-testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createManagerIndexFixture,
@@ -180,6 +181,41 @@ describe("memory_search real manager embedding account backoff", () => {
       expect.objectContaining({ path: memoryPath }),
     ]);
     await settleSearchMaintenance(manager);
+    expect(batchAttempts).toBe(attemptsAfterFailure);
+  });
+
+  it("waits out the backoff before repairing a missing index identity on search", async () => {
+    const cfg = createConfig({ vectorEnabled: false });
+    const manager = await indexedManager(cfg);
+    let batchAttempts = 0;
+    provider.embedBatchPermanentFailure = embeddingQuotaError();
+    provider.beforeEmbedBatch = async () => {
+      batchAttempts += 1;
+    };
+    await fs.writeFile(
+      path.join(fixture.paths.workspace, "memory", "2026-01-15.md"),
+      "Ibex notes written while the quota is exhausted.\n",
+    );
+    await expect(manager.sync({ reason: "cli", force: true })).rejects.toThrow(
+      "no credits remaining",
+    );
+    const attemptsAfterFailure = batchAttempts;
+    expect(attemptsAfterFailure).toBeGreaterThan(0);
+
+    // A lost identity row makes search repair the index directly.
+    openBranchAgentDatabase({ agentId: "main" }).db.exec(
+      "DELETE FROM memory_index_meta WHERE key = 'memory_index_meta_v1'",
+    );
+    expect(manager.status().custom?.indexIdentity).toMatchObject({ status: "missing" });
+    const syncAdmitted = vi.spyOn(
+      manager as unknown as { syncAdmitted: (params?: { reason?: string }) => Promise<void> },
+      "syncAdmitted",
+    );
+
+    await manager.search("alpha");
+    await manager.search("alpha");
+    await settleSearchMaintenance(manager);
+    expect(syncAdmitted.mock.calls.filter(([params]) => params?.reason === "search")).toEqual([]);
     expect(batchAttempts).toBe(attemptsAfterFailure);
   });
 

@@ -279,8 +279,12 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
               indexState,
             });
       const indexIdentity = refreshSearchIdentity();
+      // Identity repair re-embeds the index, so it waits out an open account
+      // backoff like the other automatic syncs; the search below then answers
+      // from what the published identity still allows.
       const shouldRepairIdentity =
         hasIndexedContent &&
+        !this.embeddingAccountBackoff.isActive() &&
         (indexIdentity.status === "missing" ||
           (searchSyncEnabled &&
             indexIdentity.status === "mismatched" &&
