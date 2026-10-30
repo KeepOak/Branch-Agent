@@ -14,6 +14,7 @@ import type {
 import { buildLlamaCppAuthProfileRemovalPatch } from "./auth-config.js";
 import {
   DEFAULT_LLAMA_CPP_EMBEDDING_MODEL,
+  DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_SIZE_BYTES,
   DEFAULT_LLAMA_CPP_MODEL_CACHE_FILE,
   DEFAULT_LLAMA_CPP_MODEL_ID,
   LLAMA_CPP_PROVIDER_ID,
@@ -26,6 +27,7 @@ import {
 } from "./defaults.js";
 import { detectLlamaCppHardware, formatLlamaCppMemory, type LlamaCppHardware } from "./hardware.js";
 import {
+  llamaServerDownloadBytes,
   resolveManagedLlamaServerPaths,
   selectLlamaServerAsset,
   type LlamaServerAsset,
@@ -52,8 +54,7 @@ type LlamaCppSetupPlan =
 
 const MEMORY_DOWNLOAD_QUESTION =
   "Download the small model that lets Branch search memories by meaning (about 0.3 GB, plus a small helper program)? Your chat model stays the same. If you skip this, Branch still finds memories by matching words.";
-const MEMORY_SKIPPED =
-  "Nothing was downloaded. Branch still finds memories by matching words.";
+const MEMORY_SKIPPED = "Nothing was downloaded. Branch still finds memories by matching words.";
 const MEMORY_EXISTING_EXTERNAL =
   "This computer already has a local model server. Branch still finds memories by matching words. Try again if you want meaning search on that server.";
 const MEMORY_CONFLICT =
@@ -79,6 +80,27 @@ function describeEmbeddingDownload(isDefault: boolean): string {
   return isDefault
     ? "the local embedding model (about 0.3 GB)"
     : "your configured local embedding model";
+}
+
+/**
+ * The whole download a chat setup answer starts: the model, the default search model
+ * unless cached, and the runtime unless installed. A configured search model has no
+ * known size, so no total is claimed for it.
+ */
+function describeDownloadTotal(
+  modelBytes: number,
+  embeddingIsDefault: boolean,
+  embeddingCached: boolean,
+  runtimeBytes: number,
+): string {
+  if (!embeddingIsDefault) {
+    return "";
+  }
+  const total =
+    modelBytes +
+    (embeddingCached ? 0 : DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_SIZE_BYTES) +
+    runtimeBytes;
+  return ", " + (total / BYTES_PER_GB).toFixed(1) + " GB in total";
 }
 
 function readPrimaryModel(config: ProviderAppGuidedSetupContext["config"]): string | undefined {
@@ -331,11 +353,12 @@ async function resolveSetupPlan(
   const cachedEmbedding =
     embeddingModelIsDefault &&
     Boolean(await resolveCachedArtifact(DEFAULT_LLAMA_CPP_EMBEDDING_MODEL, cacheDir, ctx.signal));
+  // An existing pinned command is validated by the installer; it will not be downloaded again.
+  const runtimeInstalled = await isFile(resolveManagedLlamaServerPaths(asset).command);
   const recommendation = recommendLlamaCppModel(hardware, asset.backend, {
     modelIds: new Set(cachedModels.keys()),
     embedding: cachedEmbedding,
-    // An existing pinned command is validated by the installer; it will not be downloaded again.
-    runtime: await isFile(resolveManagedLlamaServerPaths(asset).command),
+    runtime: runtimeInstalled,
   });
   if (recommendation.kind === "recommended") {
     const { recipe } = recommendation;
@@ -360,7 +383,7 @@ async function resolveSetupPlan(
       message: `${recommendationSummary}\n\n${
         cachedPath
           ? `Use cached ${recipe.model.name}, download any missing embedding and ${asset.backend.toUpperCase()} runtime files, then use this model?`
-          : `Download ${recipe.model.name} (${(recipe.sizeBytes / BYTES_PER_GB).toFixed(1)} GB), ${describeEmbeddingDownload(embeddingModelIsDefault)}, and the verified ${asset.backend.toUpperCase()} runtime, then use this model?`
+          : `Download ${recipe.model.name} (${(recipe.sizeBytes / BYTES_PER_GB).toFixed(1)} GB), ${describeEmbeddingDownload(embeddingModelIsDefault)}, and the verified ${asset.backend.toUpperCase()} runtime${describeDownloadTotal(recipe.sizeBytes, embeddingModelIsDefault, cachedEmbedding, runtimeInstalled ? 0 : llamaServerDownloadBytes(asset))}, then use this model?`
       }`,
       initialValue: false,
     });
@@ -395,7 +418,9 @@ async function resolveSetupPlan(
   return undefined;
 }
 
-export async function runLlamaCppMemorySetup(ctx: ProviderAuthContext): Promise<ProviderAuthResult> {
+export async function runLlamaCppMemorySetup(
+  ctx: ProviderAuthContext,
+): Promise<ProviderAuthResult> {
   return await runLlamaCppSetup(ctx, { memoryOnly: true });
 }
 

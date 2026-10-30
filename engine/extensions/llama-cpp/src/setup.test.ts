@@ -36,6 +36,7 @@ vi.mock("./managed-server.js", async (importOriginal) => ({
 
 import {
   DEFAULT_LLAMA_CPP_EMBEDDING_MODEL,
+  DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_SIZE_BYTES,
   DEFAULT_LLAMA_CPP_MODEL_CACHE_FILE,
   DEFAULT_LLAMA_CPP_MODEL_ID,
   DEFAULT_LLAMA_CPP_MODEL_SHA256,
@@ -95,6 +96,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await fs.rm(tempRoot, { recursive: true, force: true });
 });
 
@@ -383,6 +385,40 @@ describe("llama.cpp managed setup", () => {
         asset: expect.objectContaining({ backend: "metal" }),
       }),
     );
+  });
+
+  it.each([
+    { label: "nothing is cached", embeddingCached: false },
+    { label: "the search model is cached", embeddingCached: true },
+  ])("asks with the whole download size when $label", async ({ embeddingCached }) => {
+    // A fresh state dir: no runtime is installed, so its published archive is downloaded.
+    vi.stubEnv("BRANCH_STATE_DIR", path.join(tempRoot, "state"));
+    mocks.ensureModel.mockImplementation(async ({ source, download }) => {
+      if (!download && !(embeddingCached && source === DEFAULT_LLAMA_CPP_EMBEDDING_MODEL)) {
+        throw new Error("not cached");
+      }
+      return path.join(tempRoot, "artifact.gguf");
+    });
+    const ctx = authContext(false);
+    const recipe = resolveLlamaCppModelCandidates(await mocks.hardware(), "metal").recipes[0]!;
+
+    await runLlamaCppSetup(ctx);
+
+    // Published size of llama-b10809-bin-macos-arm64.tar.gz.
+    const runtimeBytes = 11_123_196;
+    const total =
+      recipe.sizeBytes +
+      (embeddingCached ? 0 : DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_SIZE_BYTES) +
+      runtimeBytes;
+    const [step] = vi.mocked(ctx.prompter.confirm).mock.calls[0]!;
+    const question = step.message.split("\n\n").at(-1) ?? "";
+    expect(question).toContain(`(${(recipe.sizeBytes / 1e9).toFixed(1)} GB)`);
+    expect(question).toMatch(
+      new RegExp(
+        `runtime, ${(total / 1e9).toFixed(1).replace(".", "[.]")} GB in total, then use this model[?]$`,
+      ),
+    );
+    expect(mocks.ensureModel).not.toHaveBeenCalledWith(expect.objectContaining({ download: true }));
   });
 
   it("makes CPU execution explicit when the NVIDIA host lacks a verified CUDA build", async () => {
