@@ -3,7 +3,10 @@ import { setTimeout as delay } from "node:timers/promises";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { captureSqliteReadOnlyWorkerScope } from "./sqlite-readonly-worker-context.js";
-import { createSqliteReadOnlyWorkerSession } from "./sqlite-readonly-worker-session.js";
+import {
+  createSqliteReadOnlyWorkerSession,
+  type SqliteReadOnlyWorkerSlot,
+} from "./sqlite-readonly-worker-session.js";
 import {
   SQLITE_READONLY_HARD_MAX_SESSIONS,
   SQLITE_READONLY_MAX_LIVE_SESSIONS,
@@ -31,13 +34,16 @@ vi.mock("node:child_process", async (importOriginal) => ({
   spawn: mock.spawn,
 }));
 
-const sessions: Array<{ session: ReturnType<typeof createSqliteReadOnlyWorkerSession>; child: MockChild }> =
-  [];
+const sessions: Array<{
+  session: ReturnType<typeof createSqliteReadOnlyWorkerSession>;
+  child: MockChild;
+}> = [];
 
-function createSession() {
+function createSession(slot?: SqliteReadOnlyWorkerSlot) {
   const child = new MockChild();
   mock.spawn.mockImplementationOnce(() => child);
   const session = createSqliteReadOnlyWorkerSession({
+    slot,
     env: {},
     cwd: "/fixture",
     transport: { kind: "native" },
@@ -52,6 +58,14 @@ function createSession() {
   });
   sessions.push({ session, child });
   return { session, child };
+}
+
+function at<T>(items: T[], index: number): T {
+  const item = items[index];
+  if (item === undefined) {
+    throw new Error("Expected a fixture session at that index");
+  }
+  return item;
 }
 
 function busySession() {
@@ -115,7 +129,7 @@ describe("SQLite read-only worker baseline", () => {
       created.push(createSession());
     }
     // Touch the first session so the second becomes least recently used.
-    const first = created[0];
+    const first = at(created, 0);
     const read = first.session.run("/fixture/a.sqlite", { mode: "sync" });
     first.child.emit("message", {
       id: requestId(first.child),
@@ -125,11 +139,106 @@ describe("SQLite read-only worker baseline", () => {
     expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(SQLITE_READONLY_MAX_LIVE_SESSIONS);
 
     expect(() => createSession()).not.toThrow();
-    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(SQLITE_READONLY_MAX_LIVE_SESSIONS);
-    expect(created[1].child.send).toHaveBeenCalledWith("close", expect.any(Function));
-    expect(created[1].session.isRetired()).toBe(true);
+    expect(at(created, 1).child.send).toHaveBeenCalledWith("close", expect.any(Function));
+    expect(at(created, 1).session.isRetired()).toBe(true);
     expect(first.child.send).not.toHaveBeenCalledWith("close", expect.any(Function));
     expect(first.session.isRetired()).toBe(false);
+    // The evicted child still holds its slot until it actually closes.
+    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(SQLITE_READONLY_MAX_LIVE_SESSIONS + 1);
+    at(created, 1).child.emit("close", 0, null);
+    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(SQLITE_READONLY_MAX_LIVE_SESSIONS);
+  });
+
+  it("keeps evicted sessions counted against the ceiling until their children close", () => {
+    const idle = [];
+    for (let index = 0; index < SQLITE_READONLY_MAX_LIVE_SESSIONS; index += 1) {
+      idle.push(createSession());
+    }
+    // Each replacement evicts one idle session whose child is slow to exit.
+    for (let index = 0; index < SQLITE_READONLY_MAX_LIVE_SESSIONS; index += 1) {
+      busySession();
+    }
+    expect(idle.every(({ session }) => session.isRetired())).toBe(true);
+    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(SQLITE_READONLY_HARD_MAX_SESSIONS);
+    // Eight replacements plus eight overflow sessions would be 24 live processes.
+    expect(() => createSession()).toThrow(SqliteReadOnlyWorkerBusyError);
+    mock.spawn.mockReset();
+    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(SQLITE_READONLY_HARD_MAX_SESSIONS);
+    at(idle, 0).child.emit("close", 0, null);
+    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(SQLITE_READONLY_HARD_MAX_SESSIONS - 1);
+    expect(() => createSession()).not.toThrow();
+    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(SQLITE_READONLY_HARD_MAX_SESSIONS);
+  });
+
+  it("hands one freed slot to exactly one waiter and keeps the others waiting", async () => {
+    const busy = [];
+    for (let index = 0; index < SQLITE_READONLY_HARD_MAX_SESSIONS; index += 1) {
+      busy.push(busySession());
+    }
+    const outcomes: string[] = [];
+    const firstWait = waitForSqliteReadOnlyWorkerSlot();
+    const secondWait = waitForSqliteReadOnlyWorkerSlot();
+    void secondWait.then(
+      () => outcomes.push("second-granted"),
+      () => outcomes.push("second-failed"),
+    );
+    // One busy session finishes: it becomes idle and is closed for the first waiter.
+    finish(at(busy, 0).child);
+    await at(busy, 0).read;
+    await delay(0);
+    expect(at(busy, 0).child.send).toHaveBeenCalledWith("close", expect.any(Function));
+    at(busy, 0).child.emit("close", 0, null);
+    // The freed slot is reserved: an unrelated synchronous caller cannot take it.
+    expect(() => createSession()).toThrow(SqliteReadOnlyWorkerBusyError);
+    mock.spawn.mockReset();
+    const firstSlot = await firstWait;
+    expect(() => createSession(firstSlot)).not.toThrow();
+    await delay(10);
+    expect(outcomes).toEqual([]);
+    finish(at(busy, 1).child);
+    await at(busy, 1).read;
+    await delay(0);
+    at(busy, 1).child.emit("close", 0, null);
+    const secondSlot = await secondWait;
+    expect(outcomes).toEqual(["second-granted"]);
+    expect(() => createSession(secondSlot)).not.toThrow();
+    expect(countLiveSqliteReadOnlyWorkerSessions()).toBe(SQLITE_READONLY_HARD_MAX_SESSIONS);
+  });
+
+  it("joins every overlapping idle close before scope close returns", async () => {
+    const first = new MockChild();
+    const second = new MockChild();
+    mock.spawn.mockImplementationOnce(() => first).mockImplementationOnce(() => second);
+    const scope = createSqliteReadOnlyWorkerScope({ idleTimeoutMs: 10 });
+    const readOnce = async (child: MockChild) => {
+      const result = scope.run(() =>
+        runSqliteReadOnlyWorker("/fixture/source.sqlite", { mode: "sync" }),
+      );
+      await vi.waitFor(() => {
+        expect(child.send.mock.calls.length).toBeGreaterThan(0);
+      });
+      finish(child);
+      await expect(result).resolves.toBe("/x");
+    };
+    await readOnce(first);
+    // The first idle close hangs: its child has not exited yet.
+    await vi.waitFor(() => {
+      expect(first.send).toHaveBeenCalledWith("close", expect.any(Function));
+    });
+    await readOnce(second);
+    await vi.waitFor(() => {
+      expect(second.send).toHaveBeenCalledWith("close", expect.any(Function));
+    });
+    let closed = false;
+    const closing = scope.close().then(() => {
+      closed = true;
+    });
+    second.emit("close", 0, null);
+    await delay(10);
+    expect(closed).toBe(false);
+    first.emit("close", 0, null);
+    await closing;
+    expect(closed).toBe(true);
   });
 
   it("admits an overflow session when all eight are busy and closes it right after use", async () => {
@@ -167,18 +276,21 @@ describe("SQLite read-only worker baseline", () => {
     for (let index = 0; index < SQLITE_READONLY_HARD_MAX_SESSIONS; index += 1) {
       busy.push(busySession());
     }
-    let admitted = false;
-    const waiting = waitForSqliteReadOnlyWorkerSlot().then(() => {
-      admitted = true;
+    let admitted: SqliteReadOnlyWorkerSlot | undefined;
+    const waiting = waitForSqliteReadOnlyWorkerSlot().then((slot) => {
+      admitted = slot;
     });
     await delay(10);
-    expect(admitted).toBe(false);
-    // A pooled session finishing its read becomes idle and therefore evictable.
-    finish(busy[0].child);
-    await busy[0].read;
+    expect(admitted).toBeUndefined();
+    // A pooled session finishing its read becomes idle; it is closed to free its slot.
+    finish(at(busy, 0).child);
+    await at(busy, 0).read;
+    await delay(0);
+    expect(admitted).toBeUndefined();
+    at(busy, 0).child.emit("close", 0, null);
     await waiting;
-    expect(admitted).toBe(true);
-    expect(() => createSession()).not.toThrow();
+    expect(admitted).toBeDefined();
+    expect(() => createSession(admitted)).not.toThrow();
     expect(countLiveSqliteReadOnlyWorkerSessions()).toBeLessThanOrEqual(16);
   });
 

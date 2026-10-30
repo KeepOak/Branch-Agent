@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 import { serialize } from "node:v8";
 import { toErrorObject } from "@branch/normalization-core/error-coercion";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
-import { hiddenWindowsOptions } from "../windows-hidden-options.js";
 import {
   resolveRuntimeWorkerArgv,
   resolveRuntimeWorkerUrl,
@@ -16,6 +15,7 @@ import {
 import { createDeferredCore } from "../../shared/deferred.js";
 import type { SpawnInitiation } from "../spawn-initiation.js";
 import { GRACEFUL_CANCEL_TIMEOUT_MS } from "../supervisor/cancellation-policy.js";
+import { hiddenWindowsOptions } from "../windows-hidden-options.js";
 import { BrokerChild } from "./child.js";
 import { terminateBrokerProcessGroup, terminateLostBrokerChild } from "./cleanup.js";
 import type { BrokerExecaOptions } from "./execa-protocol.js";
@@ -194,12 +194,23 @@ export class SpawnBrokerHost {
     ) {
       throw new SpawnBrokerError("Native resource broker is unavailable or at capacity");
     }
+    // While parking, the retiring broker rejects new attachments. Bind the claim to the
+    // replacement's generation instead, start it once parking ends, and give the attachment
+    // a deadline that covers the park's bounded shutdown plus the replacement's startup.
+    const parking = this.parking && this.parkPromise !== undefined;
+    if (parking) {
+      void this.parkPromise?.then(() => this.ensureStarted());
+    }
     return this.resourceClaims.capture(
       {
         ...input,
         ...this.resourceAuthority,
-        generation: this.generation - 1,
-        startupDeadline: this.available ? undefined : this.startupDeadline,
+        generation: parking ? this.generation : this.generation - 1,
+        startupDeadline: parking
+          ? Date.now() + GRACEFUL_CANCEL_TIMEOUT_MS + 2000 + SPAWN_BROKER_STARTUP_TIMEOUT_MS
+          : this.available
+            ? undefined
+            : this.startupDeadline,
         id: ++this.sequence,
       },
       callbacks,
@@ -301,11 +312,7 @@ export class SpawnBrokerHost {
     message: Extract<BrokerRequest, { type: "spawn" | "prepare-spawn" | "spawn-execa" }>,
     initiateSpawn?: SpawnInitiation,
   ): SpawnBrokerRequest {
-    return admitSpawnBrokerRequest(
-      this as unknown as SpawnBrokerAdmitHost,
-      message,
-      initiateSpawn,
-    );
+    return admitSpawnBrokerRequest(this as unknown as SpawnBrokerAdmitHost, message, initiateSpawn);
   }
 
   private retire(id: number, request: SpawnBrokerRequest): void {

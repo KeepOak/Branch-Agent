@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSpawnBrokerHost, type SpawnBrokerHost } from "./host.js";
 import { SPAWN_BROKER_MAX_CONCURRENT } from "./protocol.js";
+import { SPAWN_BROKER_STARTUP_TIMEOUT_MS } from "./resource-protocol.js";
 
 const native = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock("node:child_process", async (importOriginal) => ({
@@ -141,5 +142,46 @@ describe("spawn broker baseline workers", () => {
     expect(second.notStarted).toBe(true);
     expect(first.notStarted).toBe(false);
     expect(SPAWN_BROKER_MAX_CONCURRENT).toBe(256);
+  });
+
+  it("binds a native capture made while parking to the replacement broker", async () => {
+    const first = mockBrokerChild(51005);
+    const second = mockBrokerChild(51006);
+    native.spawn.mockReturnValueOnce(first.worker).mockReturnValueOnce(second.worker);
+    const host = attachHost(createSpawnBrokerHost({ nativeResources: true, idleTimeoutMs: 10 }));
+    first.worker.emit("message", { type: "ready", pid: 51005 });
+    await host.ready();
+    // Parking waits for the retiring broker to exit after its shutdown request.
+    await vi.waitFor(() => {
+      expect(Reflect.get(host, "parking")).toBe(true);
+    });
+    const capturedAt = Date.now();
+    const lease = host.captureNativeResource(
+      { moduleUrl: "file:///synthetic/resource.mjs", ownerPort: false },
+      { message: vi.fn(), failed: vi.fn() },
+    );
+    try {
+      // Generation 0 is the retiring broker; the attachment must target its replacement.
+      expect(lease.attachment.generation).toBe(1);
+      expect(lease.attachment.startupDeadline).toBeGreaterThan(
+        capturedAt + SPAWN_BROKER_STARTUP_TIMEOUT_MS,
+      );
+      first.worker.kill();
+      await vi.waitFor(() => {
+        expect(native.spawn).toHaveBeenCalledTimes(2);
+      });
+      expect(second.send.mock.calls[0]?.[0]).toMatchObject({
+        type: "bootstrap",
+        nativeResource: { generation: 1 },
+      });
+      second.worker.emit("message", { type: "ready", pid: 51006 });
+      await host.ready();
+      expect(host.pid).toBe(51006);
+    } finally {
+      lease.abandonUnattached();
+      // Exit both mock brokers so host close does not wait for the kill fallback.
+      first.worker.kill();
+      second.worker.kill();
+    }
   });
 });

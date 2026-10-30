@@ -46,6 +46,7 @@ import {
   waitForSqliteReadOnlyWorkerSlot,
   isSameSqliteReadOnlyWorkerLaunch,
   type SqliteReadOnlyWorkerLaunch,
+  type SqliteReadOnlyWorkerSlot,
 } from "./sqlite-readonly-worker-session.js";
 
 export { SQLITE_READONLY_WORKER_IDLE_TIMEOUT_MS };
@@ -183,10 +184,7 @@ export function createSqliteReadOnlyWorkerScope(options?: {
         scope.idleClosing = undefined;
         const closed = [
           ...idleClosed,
-          ...(await Promise.allSettled([
-            scope.worker?.close(),
-            scope.readWorker?.session.close(),
-          ])),
+          ...(await Promise.allSettled([scope.worker?.close(), scope.readWorker?.session.close()])),
         ];
         scope.worker = undefined;
         scope.readWorker = undefined;
@@ -217,18 +215,26 @@ function scheduleSqliteReadOnlyWorkerScopeIdle(scope: SqliteReadOnlyWorkerScope)
   if (!scope.worker && !scope.readWorker) {
     return;
   }
-  scope.idleTimer = setTimeout(() => {
-    scope.idleTimer = undefined;
-    if (!scope.active || scope.pending.size > 0 || scope.busy) {
-      return;
-    }
-    const worker = scope.worker;
-    const readWorker = scope.readWorker;
-    scope.worker = undefined;
-    scope.readWorker = undefined;
-    // Owner close() joins this so shutdown never returns while idle children still exit.
-    scope.idleClosing = Promise.allSettled([worker?.close(), readWorker?.session.close()]);
-  }, scope.idleTimeoutMs);
+  // A context-free timer: the idle deadline must not keep the last caller's async state alive.
+  scope.idleTimer = runInDetachedAsyncContext(() =>
+    setTimeout(() => {
+      scope.idleTimer = undefined;
+      if (!scope.active || scope.pending.size > 0 || scope.busy) {
+        return;
+      }
+      const worker = scope.worker;
+      const readWorker = scope.readWorker;
+      scope.worker = undefined;
+      scope.readWorker = undefined;
+      // Owner close() joins every idle close so shutdown never returns while idle children
+      // still exit; a later idle cycle chains onto, never replaces, an earlier pending close.
+      const previous = scope.idleClosing;
+      const current = Promise.allSettled([worker?.close(), readWorker?.session.close()]);
+      scope.idleClosing = previous
+        ? Promise.all([previous, current]).then(([earlier, later]) => [...earlier, ...later])
+        : current;
+    }, scope.idleTimeoutMs),
+  );
   scope.idleTimer.unref();
 }
 
@@ -321,6 +327,7 @@ export function createScopedSqliteReadOnlyWorker(
   launch: ReturnType<typeof captureSqliteReadOnlyWorkerLaunch> & {
     retainLifetime?: boolean;
     retainOnOperationError?: boolean;
+    slot?: SqliteReadOnlyWorkerSlot;
   },
 ): ReturnType<typeof createSqliteReadOnlyWorkerSession> {
   const workerUrl = resolveRuntimeWorkerUrl(runtimeProcessEntrypoints.sqliteReadOnly);
@@ -440,8 +447,8 @@ export function runSqliteReadOnlyWorker(
             await scope.worker?.close();
             scopedOptions.signal.throwIfAborted();
             // Bounded async wait for a pool slot; creation follows synchronously.
-            await waitForSqliteReadOnlyWorkerSlot(scopedOptions.signal);
-            scope.worker = createScopedSqliteReadOnlyWorker(launch);
+            const slot = await waitForSqliteReadOnlyWorkerSlot(scopedOptions.signal);
+            scope.worker = createScopedSqliteReadOnlyWorker({ ...launch, slot });
           }
           return await scope.worker.run(pathname, scopedOptions);
         } finally {
@@ -496,11 +503,11 @@ async function runSqliteScopedReadWorker(
     scope.readWorker = undefined;
     options.signal?.throwIfAborted();
   }
-  if (!scope?.readWorker) {
-    // Bounded async wait for a pool slot; creation follows synchronously.
-    await waitForSqliteReadOnlyWorkerSlot(options.signal);
-  }
-  let worker = scope?.readWorker?.session ?? createScopedSqliteReadOnlyWorker(launch);
+  // Bounded async wait for a pool slot; creation follows synchronously.
+  const slot = scope?.readWorker
+    ? undefined
+    : await waitForSqliteReadOnlyWorkerSlot(options.signal);
+  let worker = scope?.readWorker?.session ?? createScopedSqliteReadOnlyWorker({ ...launch, slot });
   while (true) {
     if (scope) {
       // A confirmed native replacement still belongs to this captured broker request.
