@@ -1,11 +1,89 @@
+import { randomUUID } from "node:crypto";
 import { statfsSync } from "node:fs";
 
 /** Holds a staged release until the renderer's gateway snapshot stays idle long enough. */
 export interface UpdateActivity {
   activeRuns: number;
-  pendingApprovals: number;
+  /** `null`: the window was silent and nothing has proven the count; that is not idle. */
+  pendingApprovals: number | null;
   streaming: boolean;
+  /** `null`: the window was silent and nothing has proven there are no unsaved drafts; that is not idle. */
+  unsavedDraftFiles: boolean | null;
+}
+
+/** Counts a live window or a trusted persisted snapshot can prove. */
+export interface WindowIdleCounts {
+  pendingApprovals: number;
   unsavedDraftFiles: boolean;
+}
+
+/** Last proven window idle fields, written when a window answers the activity probe. */
+export interface WindowIdleSnapshot extends WindowIdleCounts {
+  /** Unix milliseconds when the window answered. */
+  at: number;
+  /** The desktop process that took the snapshot; a new launch is a new session. */
+  sessionId: string;
+}
+
+/** Under the desktop data dir: the last window snapshot that proved approvals and drafts. */
+export const WINDOW_IDLE_FILE = "update-window-idle.json";
+/** A snapshot older than this, or from another launch, is unknown (not idle). */
+export const WINDOW_IDLE_MAX_AGE_MS = 2 * 60 * 1000;
+
+/** Tests pin the session with BRANCH_DESKTOP_WINDOW_IDLE_SESSION; otherwise each launch is a new id. */
+export function windowIdleSessionId(env: NodeJS.ProcessEnv = process.env): string {
+  const pinned = env.BRANCH_DESKTOP_WINDOW_IDLE_SESSION;
+  return typeof pinned === "string" && pinned.trim() ? pinned.trim() : randomUUID();
+}
+
+/** A probe snapshot, or `undefined` when the file is missing or not a proven count. */
+export function parseWindowIdleSnapshot(value: unknown): WindowIdleSnapshot | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const rec = value as { pendingApprovals?: unknown; unsavedDraftFiles?: unknown; at?: unknown; sessionId?: unknown };
+  if (typeof rec.pendingApprovals !== "number" || !Number.isInteger(rec.pendingApprovals) || rec.pendingApprovals < 0) return undefined;
+  if (typeof rec.unsavedDraftFiles !== "boolean") return undefined;
+  if (typeof rec.at !== "number" || !Number.isInteger(rec.at) || rec.at < 0) return undefined;
+  if (typeof rec.sessionId !== "string" || rec.sessionId.length === 0) return undefined;
+  return { pendingApprovals: rec.pendingApprovals, unsavedDraftFiles: rec.unsavedDraftFiles, at: rec.at, sessionId: rec.sessionId };
+}
+
+/** Proof only in this app session and only while younger than WINDOW_IDLE_MAX_AGE_MS. Anything else is unknown. */
+export function trustedWindowIdleSnapshot(
+  snapshot: WindowIdleSnapshot | undefined,
+  sessionId: string,
+  now: number,
+  maxAgeMs = WINDOW_IDLE_MAX_AGE_MS,
+): WindowIdleSnapshot | undefined {
+  if (!snapshot) return undefined;
+  if (snapshot.sessionId !== sessionId) return undefined;
+  const age = now - snapshot.at;
+  if (!Number.isFinite(age) || age < 0 || age >= maxAgeMs) return undefined;
+  return snapshot;
+}
+
+/**
+ * Live window wins. Else a persisted snapshot that `trustedWindowIdleSnapshot` already accepted. Else unknown:
+ * pending approvals and unsaved drafts are `null`, which blocks idle, drain and restart.
+ */
+export function windowIdleFields(
+  window?: WindowIdleCounts,
+  persisted?: WindowIdleCounts,
+): { pendingApprovals: number | null; unsavedDraftFiles: boolean | null } {
+  const source = window ?? persisted;
+  if (!source) return { pendingApprovals: null, unsavedDraftFiles: null };
+  return { pendingApprovals: source.pendingApprovals, unsavedDraftFiles: source.unsavedDraftFiles };
+}
+
+/** A turn is streaming, an approval waits, a draft is unsaved, or either count is unknown. */
+export function turnWaiting(activity: UpdateActivity): boolean {
+  return Boolean(activity.streaming) || activity.pendingApprovals !== 0 || activity.unsavedDraftFiles !== false;
+}
+
+function waitingLine(activity: UpdateActivity, extra = ""): string {
+  const approvals = activity.pendingApprovals === null ? "unknown" : String(activity.pendingApprovals);
+  const drafts = activity.unsavedDraftFiles === null ? ", unknown draft files"
+    : activity.unsavedDraftFiles ? ", unsaved draft files" : "";
+  return `waiting for ${activity.activeRuns} active runs, ${approvals} approvals${activity.streaming ? ", streaming reply" : ""}${drafts}${extra}`;
 }
 
 export const AUTO_APPLY_POLL_MS = 30_000;
@@ -25,6 +103,8 @@ export const AUTO_APPLY_CHECK_BACKOFF_MAX_MS = 5 * 60_000;
 export const AUTO_APPLY_SILENT_IDLE_AFTER = 3;
 /** An update pending this long applies at the next gap, without waiting for the Trunk-work batch (Private #1047). */
 export const AUTO_APPLY_PENDING_CAP_MS = 6 * 60 * 60_000;
+/** After a failed standby handoff, drain even with active runs once this long has passed (#834). The gap still holds. */
+export const AUTO_APPLY_HANDOFF_FAIL_DRAIN_MS = 30 * 60 * 1000;
 
 /**
  * Private #951 cadence: on a machine running Trunk work, updates are batched. One applies at most this often, and only
@@ -76,7 +156,8 @@ export function readUpdateHealth(dataDir: string, availableMemoryBytes: number, 
   if (diskFree === undefined) {
     const disk = statfsSync(dataDir);
     diskFree = disk.blocks > 0 ? disk.bavail / disk.blocks : 1;
-    diskFreeBytes = pinnedBytes(env.BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES) ?? disk.bavail * disk.bsize;
+    // On Windows, bavail counts available clusters and bsize is bytes per cluster.
+    diskFreeBytes = pinnedBytes(env.BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES) ?? Number(disk.bavail) * Number(disk.bsize);
   }
   let memoryFree = pinned(env.BRANCH_DESKTOP_UPDATE_FREE_MEMORY);
   let memoryFreeBytes: number | undefined;
@@ -98,7 +179,7 @@ export function updateHealthRefusal(health: UpdateHealth, updateBytes = 0): stri
   const gb = (bytes: number) => `${(bytes / GIB).toFixed(1)} GB`;
   if (health.diskFreeBytes !== undefined) {
     const floor = updateDiskFloor(updateBytes);
-    if (health.diskFreeBytes < floor) return `low disk: ${gb(health.diskFreeBytes)} free, under ${gb(floor)}`;
+    if (health.diskFreeBytes < floor) return `low disk: ${gb(health.diskFreeBytes)} free, the update needs about ${gb(floor)}`;
   } else if (health.diskFree < UPDATE_MIN_FREE_DISK) return `low disk: ${percent(health.diskFree)} free, under ${percent(UPDATE_MIN_FREE_DISK)}`;
   if (health.memoryFreeBytes !== undefined) {
     if (health.memoryFreeBytes < UPDATE_MIN_FREE_MEMORY_BYTES) return `low memory: ${gb(health.memoryFreeBytes)} free, under ${gb(UPDATE_MIN_FREE_MEMORY_BYTES)}`;
@@ -159,14 +240,16 @@ export function createAutoApplyUpdate(options: {
   let lastSampleAt: number | undefined;
   /** When the held version was first seen pending; the cap counts from here. */
   let pendingSince: number | undefined;
+  /** When the current version's standby handoff last failed; the 30-minute drain counts from here (#834). */
+  let handoffFailedAt: number | undefined;
   /** The version whose pending-over-cap line is already in the log, so each tick does not repeat it. */
   let cappedNoted: string | undefined;
   const now = options.now ?? Date.now;
+  const retryIn = (): string => `retrying in ${Math.max(1, Math.round(AUTO_APPLY_POLL_MS / 1000))}s`;
   const decision = (line: string) => {
     if (line !== lastDecision) { options.log(`auto-apply: ${line}`); lastDecision = line; }
   };
-  /** A turn is streaming, an approval waits, or a draft is unsaved: the gap rule holds the update off. */
-  const turnWaiting = (activity: UpdateActivity) => Boolean(activity.streaming || activity.pendingApprovals || activity.unsavedDraftFiles);
+  const defer = (line: string) => decision(`${line}; ${retryIn()}`);
   /** Every activity read notes a run in flight, which marks this machine as running Trunk work. */
   let silentNoted = false;
   const readActivity = async (): Promise<UpdateActivity> => {
@@ -215,11 +298,13 @@ export function createAutoApplyUpdate(options: {
         // pending, so releases that keep coming every few hours cannot postpone the update forever.
         if (!version) pendingSince = undefined;
         else if (heldVersion === undefined) pendingSince = now();
+        handoffFailedAt = undefined;
         heldVersion = version ?? undefined;
       }
       if (!version || !options.enabled() || appliedVersion === version) {
         idleSince = undefined;
-        if (version) decision("off; awaiting Restart");
+        // A staged update waiting for Restart still polls: the GitHub checker is separate and must keep its schedule.
+        if (version) defer("off; awaiting Restart");
         // Nothing to apply: still notice Trunk work now and then, so the next update knows how to land.
         if (!options.trunkWork && options.activeRuns && (lastSampleAt === undefined || now() - lastSampleAt >= TRUNK_WORK_SAMPLE_MS)) {
           await noteRuns().catch(() => undefined);
@@ -237,7 +322,7 @@ export function createAutoApplyUpdate(options: {
       const refusal = health && updateHealthRefusal(health);
       if (refusal) {
         idleSince = undefined;
-        decision(`not starting ${version}: ${refusal}`);
+        defer(`not starting ${version}: ${refusal}`);
         return;
       }
       const security = await options.securityFix?.(version) ?? false;
@@ -252,7 +337,7 @@ export function createAutoApplyUpdate(options: {
       const batched = !security && !capped && runningTrunkWork();
       if (batched && lastAppliedAt !== undefined && now() - lastAppliedAt < TRUNK_UPDATE_MIN_INTERVAL_MS) {
         idleSince = undefined;
-        decision(`batching ${version} with Trunk work; the last update applied under an hour ago`);
+        defer(`batching ${version} with Trunk work; the last update applied under an hour ago`);
         return;
       }
       const relaunch = await options.relaunchesApp?.(version) ?? false;
@@ -269,6 +354,7 @@ export function createAutoApplyUpdate(options: {
           // No standby (typical on a low-memory Mac): drain after idle, without a toast or back-off.
           restarting = false;
           failedVersion = version;
+          handoffFailedAt ??= now();
           decision(`handoff unavailable; falling back to idle drain for ${version}`);
         }
       }
@@ -277,12 +363,12 @@ export function createAutoApplyUpdate(options: {
       const activity = await readActivity();
       if (busy(activity)) {
         idleSince = undefined;
-        decision(`waiting for ${activity.activeRuns} active runs, ${activity.pendingApprovals} approvals${activity.streaming ? ", streaming reply" : ""}${activity.unsavedDraftFiles ? ", unsaved draft files" : ""}${batched ? `; deferring ${version} until a gap in Trunk work` : ""}`);
+        defer(waitingLine(activity, batched ? `; deferring ${version} until a gap in Trunk work` : ""));
         return;
       }
       idleSince ??= now();
       if (now() - idleSince < AUTO_APPLY_GAP_MS) {
-        decision(`idle hold for ${version}`);
+        defer(`idle hold for ${version}`);
         return;
       }
       // A fresh gateway snapshot closes the gap after the hold timer and before relaunch.
@@ -296,7 +382,7 @@ export function createAutoApplyUpdate(options: {
       }
       if (busy(final) || !options.enabled()) {
         idleSince = undefined;
-        decision(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals`);
+        defer(waitingLine(final));
         return;
       }
       // The handoff keeps running work alive, so it lands at a gap whatever Trunks are doing.
@@ -304,19 +390,21 @@ export function createAutoApplyUpdate(options: {
         restarting = true;
         decision(`idle; handing off to ${version}`);
         try { await options.restart(version, true); await applied(version); }
-        catch { failedVersion = version; decision(`handoff unavailable; falling back to idle drain for ${version}`); }
+        catch { failedVersion = version; handoffFailedAt ??= now(); decision(`handoff unavailable; falling back to idle drain for ${version}`); }
         finally { restarting = false; }
         return;
       }
-      // Without a handoff, a drain protects running work only on an idle engine, or once the update is over the cap:
-      // then it drains at this gap, and the engine finishes its runs before it stops.
-      if (final.activeRuns && !capped) {
-        decision(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals; no standby to hand off to for ${version}`);
+      // Without a handoff, a drain protects running work only on an idle engine, or once the update is over the cap
+      // or a failed standby has waited 30 minutes (#834): then it drains at this gap, and the engine finishes its runs.
+      const handoffDrainReady = failedVersion === version && handoffFailedAt !== undefined
+        && now() - handoffFailedAt >= AUTO_APPLY_HANDOFF_FAIL_DRAIN_MS;
+      if (final.activeRuns && !capped && !handoffDrainReady) {
+        defer(`${waitingLine(final)}; no standby to hand off to for ${version}`);
         return;
       }
       restarting = true;
       decision(final.activeRuns ? `draining at a gap for ${version}; ${final.activeRuns} runs finish first` : `restarting for ${version}`);
-      try { await options.restart(version, false, capped && final.activeRuns > 0); await applied(version); restarting = false; }
+      try { await options.restart(version, false, (capped || handoffDrainReady) && final.activeRuns > 0); await applied(version); restarting = false; }
       catch (error) {
         restarting = false;
         retryAfter = now() + AUTO_APPLY_RETRY_MS;

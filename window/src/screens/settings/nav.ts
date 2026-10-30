@@ -152,11 +152,12 @@ function pagesOf(...ids: PageId[]): NavPage[] {
 
 /** Regular's four pages. Every page except Developer and All features lives in one of them.
  *  Developer and All features stay on Technical, inside NAV's Branch group. The first page in a group is what that
- *  Regular page shows. The others stay reachable under an Advanced section on that page. */
+ *  Regular page shows. The others stay reachable under an Also in list beside that page's nav row. The Usage page is
+ *  named for its first page, Accounts & usage, so the row lit is the page that opened (#1769 point 2). */
 export const REGULAR_GROUPS: NavGroup[] = [
   { title: "General", pages: pagesOf("general", "card", "goto", "appearance", "notifications", "who", "trunks", "instructions", "customize", "seedbank", "memory", "autos", "voice", "chatapps") },
   { title: "Computer", pages: pagesOf("devices", "browser", "coding", "remote", "permissions") },
-  { title: "Usage", pages: pagesOf("accounts", "models", "privacy", "signins") },
+  { title: "Accounts & usage", pages: pagesOf("accounts", "models", "privacy", "signins") },
   { title: "Updates", pages: pagesOf("updates", "history", "learning") },
 ];
 

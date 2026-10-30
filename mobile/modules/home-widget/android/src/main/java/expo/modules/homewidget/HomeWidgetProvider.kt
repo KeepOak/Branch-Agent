@@ -33,11 +33,16 @@ class HomeWidgetProvider : AppWidgetProvider() {
       provider.onUpdate(context, manager, ids)
     }
 
-    fun clickIntent(context: Context, action: String, requestCode: Int): PendingIntent {
+    fun launchIntent(context: Context, action: String): Intent {
       val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
         ?: Intent(Intent.ACTION_MAIN).setPackage(context.packageName).addCategory(Intent.CATEGORY_LAUNCHER)
       launch.putExtra(HomeWidgetLaunch.EXTRA_ACTION, action)
       launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+      return launch
+    }
+
+    fun clickIntent(context: Context, action: String, requestCode: Int): PendingIntent {
+      val launch = launchIntent(context, action)
       val flags = PendingIntent.FLAG_UPDATE_CURRENT or
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
       return PendingIntent.getActivity(context, requestCode, launch, flags)

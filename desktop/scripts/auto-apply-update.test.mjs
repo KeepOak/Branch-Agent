@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
+import fs, { statfsSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
-const { createAutoApplyUpdate, readUpdateHealth, updateHealthRefusal, AUTO_APPLY_POLL_MS, AUTO_APPLY_GAP_MS, AUTO_APPLY_RETRY_MS,
-  TRUNK_UPDATE_MIN_INTERVAL_MS, TRUNK_WORK_SAMPLE_MS, UPDATE_MIN_FREE_DISK_BYTES, UPDATE_MIN_FREE_MEMORY_BYTES, AUTO_APPLY_SILENT_IDLE_AFTER, updateDiskFloor, AUTO_APPLY_PENDING_CAP_MS, AUTO_APPLY_CHECK_BACKOFF_MAX_MS } = await import(
+const { createAutoApplyUpdate, readUpdateHealth, updateHealthRefusal, parseWindowIdleSnapshot, turnWaiting, trustedWindowIdleSnapshot,
+  windowIdleFields, windowIdleSessionId, AUTO_APPLY_POLL_MS, AUTO_APPLY_GAP_MS, AUTO_APPLY_RETRY_MS,
+  TRUNK_UPDATE_MIN_INTERVAL_MS, TRUNK_WORK_SAMPLE_MS, UPDATE_MIN_FREE_DISK_BYTES, UPDATE_MIN_FREE_MEMORY_BYTES, AUTO_APPLY_SILENT_IDLE_AFTER,
+  updateDiskFloor, AUTO_APPLY_PENDING_CAP_MS, AUTO_APPLY_CHECK_BACKOFF_MAX_MS, AUTO_APPLY_HANDOFF_FAIL_DRAIN_MS,
+  WINDOW_IDLE_MAX_AGE_MS } = await import(
   pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "auto-apply-update.js"))
 );
 const { COMPONENT_UPDATE_CHECK_MS } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js")));
@@ -45,7 +50,7 @@ test("active runs, approvals, streams, and file drafts reset the idle hold", asy
   await f.controller.tick();
   f.setActivity({ activeRuns: 2 }); f.advance(AUTO_APPLY_GAP_MS); await f.controller.tick();
   assert.deepEqual(f.restarts, []);
-  assert.ok(f.logs.some(line => line.includes("waiting for 2 active runs")));
+  assert.ok(f.logs.some(line => line.includes("waiting for 2 active runs") && line.includes("retrying in 30s")));
   f.setActivity({ activeRuns: 0, pendingApprovals: 1 }); await f.controller.tick();
   f.setActivity({ pendingApprovals: 0, streaming: true }); await f.controller.tick();
   f.setActivity({ streaming: false, unsavedDraftFiles: true }); await f.controller.tick();
@@ -61,6 +66,69 @@ test("setting off preserves manual Restart and rejected releases are not retried
   f.setEnabled(true); f.setVersion(null); await f.controller.tick();
   f.advance(AUTO_APPLY_GAP_MS); await f.controller.tick();
   assert.deepEqual(f.restarts, []);
+});
+
+async function flushAutoApply() {
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+}
+
+test("awaiting Restart still schedules the next check", async () => {
+  const logs = [];
+  let polls = 0;
+  let tickFn;
+  const controller = createAutoApplyUpdate({
+    pendingVersion: async () => { polls++; return "0.4.5"; },
+    enabled: () => false,
+    activity: async () => ({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    restart: async () => {},
+    log: line => logs.push(line),
+    interval: fn => { tickFn = fn; return 1; },
+    clear: () => {},
+  });
+  controller.start();
+  await flushAutoApply();
+  assert.ok(logs.some(line => line.includes("off; awaiting Restart") && line.includes("retrying in 30s")), logs.join("\n"));
+  assert.equal(typeof tickFn, "function", "the next check is scheduled while awaiting Restart");
+  const before = polls;
+  tickFn();
+  await flushAutoApply();
+  assert.ok(polls > before, `the scheduled check ran while awaiting Restart, got ${polls}`);
+  controller.stop();
+});
+
+test("after applying a build, awaiting Restart still schedules the next check", async () => {
+  // Mac log: a build applied at 08:01 UTC, then `auto-apply: off; awaiting Restart`, then ten hours of silence.
+  const logs = [];
+  const restarts = [];
+  let polls = 0;
+  let tickFn;
+  let now = 0;
+  const controller = createAutoApplyUpdate({
+    pendingVersion: async () => { polls++; return "0.4.5"; },
+    enabled: () => true,
+    activity: async () => ({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    restart: async version => { restarts.push(version); },
+    log: line => logs.push(line),
+    now: () => now,
+    interval: fn => { tickFn = fn; return 1; },
+    clear: () => {},
+  });
+  await controller.tick();
+  now += AUTO_APPLY_GAP_MS - 1;
+  await controller.tick();
+  assert.deepEqual(restarts, []);
+  now += 1;
+  await controller.tick();
+  assert.deepEqual(restarts, ["0.4.5"], "the build applied in place");
+  controller.start();
+  await flushAutoApply();
+  assert.ok(logs.some(line => line.includes("off; awaiting Restart") && line.includes("retrying in 30s")), logs.join("\n"));
+  assert.equal(typeof tickFn, "function", "the next check is scheduled in the awaiting-Restart state");
+  const before = polls;
+  tickFn();
+  await flushAutoApply();
+  assert.ok(polls > before, `the next check ran after applying, in the awaiting-Restart state, got ${polls}`);
+  controller.stop();
 });
 
 test("staged idle is rechecked every 30 seconds and releases every ten minutes", () => {
@@ -110,6 +178,114 @@ test("failed flagged handoff falls back after idle and notifies once per version
   assert.deepEqual(failures, ["next", "later"]);
 });
 
+test("windowIdleFields: a silent window is unknown unless a persisted snapshot proves the counts", () => {
+  assert.deepEqual(windowIdleFields(undefined), { pendingApprovals: null, unsavedDraftFiles: null });
+  assert.deepEqual(windowIdleFields(undefined, { pendingApprovals: 0, unsavedDraftFiles: true }),
+    { pendingApprovals: 0, unsavedDraftFiles: true });
+  assert.deepEqual(windowIdleFields(undefined, { pendingApprovals: 2, unsavedDraftFiles: false }),
+    { pendingApprovals: 2, unsavedDraftFiles: false });
+  assert.deepEqual(windowIdleFields({ pendingApprovals: 0, unsavedDraftFiles: false }, { pendingApprovals: 9, unsavedDraftFiles: true }),
+    { pendingApprovals: 0, unsavedDraftFiles: false }, "a live window wins over a stale snapshot");
+  assert.equal(turnWaiting({ activeRuns: 0, pendingApprovals: null, streaming: false, unsavedDraftFiles: false }), true);
+  assert.equal(turnWaiting({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: null }), true);
+  assert.equal(turnWaiting({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }), false);
+  const fresh = { pendingApprovals: 1, unsavedDraftFiles: true, at: 10, sessionId: "this" };
+  assert.deepEqual(parseWindowIdleSnapshot(fresh), fresh);
+  assert.equal(parseWindowIdleSnapshot({ pendingApprovals: 1, unsavedDraftFiles: true }), undefined);
+  assert.equal(parseWindowIdleSnapshot({ pendingApprovals: -1, unsavedDraftFiles: false, at: 0, sessionId: "this" }), undefined);
+  assert.equal(parseWindowIdleSnapshot({ pendingApprovals: 0 }), undefined);
+  assert.equal(WINDOW_IDLE_MAX_AGE_MS, 2 * 60 * 1000);
+  assert.equal(windowIdleSessionId({ BRANCH_DESKTOP_WINDOW_IDLE_SESSION: " pinned " }), "pinned");
+  assert.notEqual(windowIdleSessionId({}), windowIdleSessionId({}));
+  assert.ok(trustedWindowIdleSnapshot(fresh, "this", 10));
+  assert.ok(trustedWindowIdleSnapshot(fresh, "this", 10 + WINDOW_IDLE_MAX_AGE_MS - 1));
+  assert.equal(trustedWindowIdleSnapshot(fresh, "this", 10 + WINDOW_IDLE_MAX_AGE_MS), undefined);
+  assert.equal(trustedWindowIdleSnapshot(fresh, "this", 9), undefined, "a future timestamp is not proof");
+  assert.equal(trustedWindowIdleSnapshot(fresh, "other", 10), undefined);
+});
+
+/** Failed handoff, then the 30-minute drain clock, with a silent window's idle fields. */
+async function drainAfterFailedHandoff(persisted) {
+  let now = 0; const attempts = []; const drains = []; const logs = [];
+  const idle = windowIdleFields(undefined, persisted);
+  const controller = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true,
+    seamlessHandoff: () => true, trunkWork: () => false,
+    activity: async () => ({ activeRuns: 1, streaming: false, ...idle }),
+    restart: async (_version, handoffOnly, drain) => {
+      attempts.push(handoffOnly);
+      if (drain) drains.push("next");
+      if (handoffOnly) throw new Error("standby failed");
+    },
+    log: line => logs.push(line), now: () => now });
+  await controller.tick();
+  now += AUTO_APPLY_GAP_MS; await controller.tick();
+  now += AUTO_APPLY_HANDOFF_FAIL_DRAIN_MS; await controller.tick();
+  return { attempts, drains, logs };
+}
+
+test("a silent window with an unsaved draft blocks the drain", async () => {
+  const f = await drainAfterFailedHandoff({ pendingApprovals: 0, unsavedDraftFiles: true });
+  assert.deepEqual(f.attempts, [true], "drained while an unsaved draft was only known from the persisted snapshot");
+  assert.deepEqual(f.drains, []);
+  assert.ok(f.logs.some(line => line.includes("unsaved draft files")), f.logs.join("\n"));
+});
+
+test("a silent window with a pending approval blocks the drain", async () => {
+  const f = await drainAfterFailedHandoff({ pendingApprovals: 1, unsavedDraftFiles: false });
+  assert.deepEqual(f.attempts, [true], "drained while a pending approval was only known from the persisted snapshot");
+  assert.deepEqual(f.drains, []);
+  assert.ok(f.logs.some(line => line.includes("waiting for 1 active runs, 1 approvals")), f.logs.join("\n"));
+});
+
+test("a silent window with proven-zero state still allows the drain", async () => {
+  const f = await drainAfterFailedHandoff({ pendingApprovals: 0, unsavedDraftFiles: false });
+  assert.deepEqual(f.attempts, [true, false]);
+  assert.deepEqual(f.drains, ["next"]);
+});
+
+test("a silent window with no proven snapshot blocks the drain", async () => {
+  const f = await drainAfterFailedHandoff(undefined);
+  assert.deepEqual(f.attempts, [true], "treated unknown approvals and drafts as zero and drained");
+  assert.deepEqual(f.drains, []);
+  assert.ok(f.logs.some(line => line.includes("unknown approvals") && line.includes("unknown draft files")), f.logs.join("\n"));
+});
+
+test("a stale proven-zero snapshot blocks the drain", async () => {
+  const snapshot = { pendingApprovals: 0, unsavedDraftFiles: false, at: 0, sessionId: "this" };
+  const f = await drainAfterFailedHandoff(trustedWindowIdleSnapshot(snapshot, "this", WINDOW_IDLE_MAX_AGE_MS));
+  assert.deepEqual(f.attempts, [true], "trusted an hours-old proven-zero snapshot and drained");
+  assert.deepEqual(f.drains, []);
+  assert.ok(f.logs.some(line => line.includes("unknown approvals") && line.includes("unknown draft files")), f.logs.join("\n"));
+});
+
+test("a previous-session snapshot blocks the drain", async () => {
+  const snapshot = { pendingApprovals: 0, unsavedDraftFiles: false, at: 0, sessionId: "previous" };
+  const f = await drainAfterFailedHandoff(trustedWindowIdleSnapshot(snapshot, "this", 0));
+  assert.deepEqual(f.attempts, [true], "trusted a previous launch's proven-zero snapshot and drained");
+  assert.deepEqual(f.drains, []);
+  assert.ok(f.logs.some(line => line.includes("unknown approvals") && line.includes("unknown draft files")), f.logs.join("\n"));
+});
+
+test("failed flagged handoff drains after 30 minutes even with active runs", async () => {
+  let now = 0; const attempts = []; const drains = [];
+  const controller = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true,
+    seamlessHandoff: () => true, trunkWork: () => false,
+    activity: async () => ({ activeRuns: 1, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    restart: async (_version, handoffOnly, drain) => {
+      attempts.push(handoffOnly);
+      if (drain) drains.push("next");
+      if (handoffOnly) throw new Error("standby failed");
+    },
+    log: () => {}, now: () => now });
+  await controller.tick();
+  assert.deepEqual(attempts, [true]);
+  now += AUTO_APPLY_GAP_MS; await controller.tick();
+  assert.deepEqual(attempts, [true], "the idle wait still holds at the gap");
+  now += AUTO_APPLY_HANDOFF_FAIL_DRAIN_MS; await controller.tick();
+  assert.deepEqual(attempts, [true, false]);
+  assert.deepEqual(drains, ["next"]);
+});
+
 test("failed flagged handoff falls back after idle without notifying or waiting the retry back-off", async () => {
   let now = 0; const attempts = []; const failures = [];
   const controller = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true,
@@ -133,7 +309,7 @@ test("failed flagged handoff falls back after idle without notifying or waiting 
 /** A seamless-handoff machine with an injectable clock, activity, health and security flag (Private #951). */
 function cadence({ security = false, handoff = true } = {}) {
   const state = { now: 0, version: "next", activity: { activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false },
-    health: { diskFree: 0.5, memoryFree: 0.5 }, security };
+    health: { diskFreeBytes: 87_000_000_000, memoryFree: 0.5 }, security };
   const restarts = [], drains = [], logs = [];
   const controller = createAutoApplyUpdate({ pendingVersion: async () => state.version, enabled: () => true, seamlessHandoff: () => handoff,
     activity: async () => state.activity, activeRuns: async () => state.activity.activeRuns, health: () => state.health, securityFix: async () => state.security,
@@ -218,26 +394,72 @@ test("Trunk work seen while nothing is pending batches the next update", async (
   assert.deepEqual(f.restarts, [["next", true]]);
 });
 
-for (const [name, health, reason] of [["low-disk", { diskFree: 0.09, memoryFree: 0.5 }, /low disk: 9% free, under 10%/],
-  ["low-RAM", { diskFree: 0.5, memoryFree: 0.19 }, /low memory: 19% free, under 20%/]]) {
+for (const [name, health, reason] of [["low-disk", { diskFreeBytes: 1.5 * 1024 ** 3, memoryFree: 0.5 }, /low disk: 1\.5 GB free, the update needs about 2\.0 GB/],
+  ["low-RAM", { diskFreeBytes: 87_000_000_000, memoryFree: 0.19 }, /low memory: 19% free, under 20%/]]) {
   test(`a ${name} host refuses to start an update, a security fix included`, async () => {
     const f = cadence({ security: true });
     f.state.health = health;
     await f.tick(); f.state.now += AUTO_APPLY_GAP_MS * 2; await f.tick(); await f.tick();
     assert.deepEqual(f.restarts, []);
     assert.ok(f.logs.some(line => reason.test(line)), f.logs.join("\n"));
-    f.state.health = { diskFree: 0.5, memoryFree: 0.5 }; await f.tick();
+    f.state.health = { diskFreeBytes: 87_000_000_000, memoryFree: 0.5 }; await f.tick();
     assert.deepEqual(f.restarts, [["next", true]]);
   });
 }
 
 test("update health reads the data volume and RAM, and tests can pin either", () => {
   assert.equal(updateHealthRefusal({ diskFree: 0.10, memoryFree: 0.20 }), undefined);
+  assert.match(updateHealthRefusal({ diskFree: 0.09, memoryFree: 0.5 }), /low disk: 9% free, under 10%/);
+  assert.equal(updateHealthRefusal({ diskFree: 0.01, diskFreeBytes: UPDATE_MIN_FREE_DISK_BYTES, memoryFree: 0.20 }), undefined);
+  assert.match(updateHealthRefusal({ diskFree: 0.5, diskFreeBytes: UPDATE_MIN_FREE_DISK_BYTES - 1, memoryFree: 0.5 }), /low disk:/);
   const real = readUpdateHealth(process.cwd(), 4, 16, {});
-  assert.ok(real.diskFree > 0 && real.diskFree <= 1);
+  const disk = statfsSync(process.cwd());
+  assert.ok(Number.isFinite(real.diskFreeBytes) && real.diskFreeBytes >= 0);
+  assert.ok(real.diskFreeBytes <= disk.blocks * disk.bsize);
   assert.equal(real.memoryFree, 0.25);
   assert.deepEqual(readUpdateHealth(process.cwd(), 4, 16, { BRANCH_DESKTOP_UPDATE_FREE_DISK: "0.05", BRANCH_DESKTOP_UPDATE_FREE_MEMORY: "0.1" }),
     { diskFree: 0.05, memoryFree: 0.1 });
+  const pinned = readUpdateHealth(process.cwd(), 4, 16, { BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES: "3200000000", BRANCH_DESKTOP_UPDATE_FREE_MEMORY: "0.1" });
+  assert.equal(pinned.diskFreeBytes, 3_200_000_000);
+  assert.equal(pinned.memoryFree, 0.1);
+  assert.equal(readUpdateHealth(process.cwd(), 4, 16, { BRANCH_DESKTOP_UPDATE_FREE_DISK_BYTES: "0" }).diskFreeBytes, 0);
+});
+
+test("87 GB free on a roughly 950 GB drive lets a staged update apply", async (t) => {
+  const f = cadence();
+  const disk = t.mock.method(fs, "statfsSync", () => ({ bavail: 87_000_000, blocks: 950_000_000, bsize: 1000 }));
+  syncBuiltinESMExports();
+  try {
+    f.state.health = readUpdateHealth("unused", 8 * 1024 ** 3, 16 * 1024 ** 3, {});
+  } finally {
+    disk.mock.restore();
+    syncBuiltinESMExports();
+  }
+  await f.tick(); f.state.now += AUTO_APPLY_GAP_MS; await f.tick();
+  assert.deepEqual(f.restarts, [["next", true]]);
+});
+
+test("Windows cluster units: 87 GB free of ~950 GB (under 10%) still allows an update", async (t) => {
+  const f = cadence();
+  const cluster = 4096;
+  const freeClusters = 21_240_234;
+  const totalClusters = 231_933_594;
+  const disk = t.mock.method(fs, "statfsSync", dir => {
+    assert.equal(dir, "data-dir");
+    return { bavail: freeClusters, blocks: totalClusters, bsize: cluster };
+  });
+  syncBuiltinESMExports();
+  try {
+    f.state.health = readUpdateHealth("data-dir", 8 * 1024 ** 3, 16 * 1024 ** 3, {});
+  } finally {
+    disk.mock.restore();
+    syncBuiltinESMExports();
+  }
+  assert.ok(freeClusters / totalClusters < 0.10, "this volume is under the old 10% rule");
+  assert.equal(f.state.health.diskFreeBytes, freeClusters * cluster);
+  assert.equal(updateHealthRefusal(f.state.health), undefined);
+  await f.tick(); f.state.now += AUTO_APPLY_GAP_MS; await f.tick();
+  assert.deepEqual(f.restarts, [["next", true]]);
 });
 
 test("a pending update that keeps being replaced by newer releases still lands once it has waited the cap", async () => {
@@ -446,10 +668,10 @@ const GB = 1024 ** 3;
 test("the disk guard is an absolute floor: a big drive at 9% free still updates", () => {
   // 89.6 GB free on a 952 GB drive is 9.4%: the old percentage rule blocked it forever.
   assert.equal(updateHealthRefusal({ diskFree: 0.094, memoryFree: 0.5, diskFreeBytes: 89.6 * GB, memoryFreeBytes: 8 * GB }), undefined);
-  assert.match(updateHealthRefusal({ diskFree: 0.5, memoryFree: 0.5, diskFreeBytes: 1.5 * GB, memoryFreeBytes: 8 * GB }), /low disk: 1\.5 GB free, under 2\.0 GB/);
+  assert.match(updateHealthRefusal({ diskFree: 0.5, memoryFree: 0.5, diskFreeBytes: 1.5 * GB, memoryFreeBytes: 8 * GB }), /low disk: 1\.5 GB free, the update needs about 2\.0 GB/);
   assert.equal(updateDiskFloor(), UPDATE_MIN_FREE_DISK_BYTES);
   assert.equal(updateDiskFloor(1 * GB), 3 * GB, "three times a large update's size");
-  assert.match(updateHealthRefusal({ diskFree: 0.5, memoryFree: 0.5, diskFreeBytes: 2.5 * GB, memoryFreeBytes: 8 * GB }, 1 * GB), /under 3\.0 GB/);
+  assert.match(updateHealthRefusal({ diskFree: 0.5, memoryFree: 0.5, diskFreeBytes: 2.5 * GB, memoryFreeBytes: 8 * GB }, 1 * GB), /the update needs about 3\.0 GB/);
 });
 
 test("the memory guard is an absolute floor: 17% of a large RAM still updates", () => {

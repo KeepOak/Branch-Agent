@@ -24,6 +24,12 @@ on:
       # The computer-use extension starts the macOS driver proxy; its proxy tests run only on macOS (#1948).
       - 'engine/extensions/cua-computer/**'
       - 'engine/scripts/build-installers.mjs'
+      # Scripts and their tests: path filters previously omitted these, so #1999
+      # could land while Named feature macos was already red for detect-private-keys
+      # / docker-build-helper (and triage-target under engine/src).
+      - 'engine/scripts/**'
+      - 'engine/test/**'
+      - 'engine/src/**/*.test.ts'
       - 'engine/pnpm-lock.yaml'
       - 'window/pnpm-lock.yaml'
       - 'scripts/feature-batch-ci*.mjs'
@@ -74,6 +80,8 @@ jobs:
         # An empty macOS matrix fails this job, so the macOS feature jobs cannot be skipped.
         run: |
           full=$(node base/scripts/feature-batch-ci-matrix.mjs push --named-dir "$GITHUB_WORKSPACE/pr/scripts/feature-batch-ci-named")
+          # The planner prints matrix=... and max_parallel=...; keep only the matrix line for jq.
+          full=$(printf '%s\n' "$full" | grep -m1 '^matrix=')
           macos=$(printf '%s' "${full#matrix=}" | jq -c '{include: [.include[] | select(.os == "macos-latest")]}')
           count=$(printf '%s' "$macos" | jq '.include | length')
           if [ "$count" -lt 1 ]; then echo "macOS named matrix is empty; the macOS feature tests would be skipped" >&2; exit 1; fi

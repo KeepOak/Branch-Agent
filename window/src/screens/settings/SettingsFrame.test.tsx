@@ -52,7 +52,7 @@ const level = (name: string) => [...$$(".r1s-level button")].find((b) => b.textC
 describe("SettingsFrame", () => {
   it("draws the four Settings pages in order with search and How much to show at the top", async () => {
     await mount(engineOf().engine);
-    expect($$(".r1s-list .r1s-nav").map((g) => g.textContent)).toEqual(["General", "Computer", "Usage", "Updates"]);
+    expect($$(".r1s-list .r1s-nav").map((g) => g.textContent)).toEqual(["General", "Computer", "Accounts & usage", "Updates"]);
     expect($$(".r1s-grp[aria-expanded]")).toEqual([]);
     expect($<HTMLInputElement>(".r1s-search input").placeholder).toBe("Search settings");
     expect($(".r1s-level small").textContent).toBe("The essentials, in plain words.");

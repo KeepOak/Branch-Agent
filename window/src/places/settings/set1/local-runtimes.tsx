@@ -2,7 +2,7 @@
 // branch.setup.detect candidate or a local model of it), else "Look for it", which runs detection again and reports in
 // place. At Advanced, "Share with your other computers" under a found Ollama is the Ollama plugin's node-inference
 // switch. A runtime the engine reports as inside WSL and unreachable asks before changing WSL's networking.
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
@@ -13,7 +13,8 @@ import type { Hw } from "./local";
 import { shownWhy } from "../../../shell/shown-why";
 
 type Runtime = { id: string; name: string; mark: string; note: string; off?: string };
-const NO_PROBE = "Branch can’t look for this runtime yet. Add it in Accounts as your own service.";
+/** LocalAI / Jan: the engine has no probe yet. Survives shownWhy (not a DEV_NOTES / Coming string); grey Look for it shows this line. */
+export const NO_PROBE = "Branch can’t look for this runtime yet. Add it in Accounts as your own service.";
 export const RUNTIMES: Runtime[] = [
   { id: "ollama", mark: "OL", name: "Ollama", note: "Runs on this computer, so nothing leaves it and nothing is charged. Install Ollama and run `ollama serve`. No key needed." },
   { id: "lmstudio", mark: "LS", name: "LM Studio", note: "Runs on this computer. Load a model in LM Studio and start its server. Any non-empty key works." },
@@ -55,8 +56,13 @@ export function Runtimes({ engine, hw, detect, models, found }: Props) {
       <div className="rows rt-k">
         {RUNTIMES.map((r) => {
           const on = found.has(r.id);
+          const sub = !on && r.off
+            ? (shownWhy(r.off) ?? r.note)
+            : !on && looked.has(r.id)
+              ? reasonFor(r, detect.data) ?? NOT_FOUND
+              : r.note;
           return [
-            <Prow key={r.id} icon={<Logo id={r.id} name={r.mark} size={30} />} title={r.name} sub={!on && looked.has(r.id) ? reasonFor(r, detect.data) ?? NOT_FOUND : r.note}>
+            <Prow key={r.id} icon={<Logo id={r.id} name={r.mark} size={30} />} title={r.name} sub={sub}>
               <RuntimeRight r={r} on={on} loading={detect.loading} failed={Boolean(detect.error)} looked={looked.has(r.id)} onLook={() => lookFor(r)} />
             </Prow>,
             on && r.id === "ollama" && lv >= 1 ? <ShareRow key="share" engine={engine} /> : null,
@@ -70,10 +76,20 @@ export function Runtimes({ engine, hw, detect, models, found }: Props) {
 
 type RightProps = { r: Runtime; on: boolean; loading: boolean; failed: boolean; looked: boolean; onLook: () => void };
 function RuntimeRight({ r, on, loading, failed, looked, onLook }: RightProps) {
+  const whyId = useId();
   if (on) return <Pill tone="ok">Found</Pill>;
   if (loading) return <Pill tone="idle">Looking…</Pill>;
   if (failed) return <><Pill tone="idle">Couldn’t check</Pill><Btn ghost sm onClick={onLook}>Try again</Btn></>;
-  if (r.off) return <Btn ghost sm disabled title={shownWhy(r.off)}>Look for it</Btn>;
+  if (r.off) {
+    // Private #1093: grey Look for it must name why in a visible line (title/tooltip alone does not count).
+    const why = shownWhy(r.off);
+    return (
+      <>
+        <Btn ghost sm disabled title={why} aria-describedby={why ? whyId : undefined}>Look for it</Btn>
+        {why ? <small id={whyId} className="why-k">{why}</small> : null}
+      </>
+    );
+  }
   return <>{looked ? <Pill tone="idle">Not found</Pill> : null}<Btn ghost sm onClick={onLook}>{looked ? "Look again" : "Look for it"}</Btn></>;
 }
 

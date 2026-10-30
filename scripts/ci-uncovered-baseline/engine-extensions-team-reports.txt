@@ -1,0 +1,15 @@
+engine:extensions/team-reports/index.test.ts
+engine:extensions/team-reports/src/cli.test.ts
+engine:extensions/team-reports/src/config.test.ts
+engine:extensions/team-reports/src/render/site.test.ts
+engine:extensions/team-reports/src/render/theme.test.ts
+engine:extensions/team-reports/src/roster.test.ts
+engine:extensions/team-reports/src/run-worker.test.ts
+engine:extensions/team-reports/src/scheduler.test.ts
+engine:extensions/team-reports/src/sources/discord/index.test.ts
+engine:extensions/team-reports/src/sources/github/index.test.ts
+engine:extensions/team-reports/src/sources/github/transport.test.ts
+engine:extensions/team-reports/src/store-read-budget.test.ts
+engine:extensions/team-reports/src/store.test.ts
+engine:extensions/team-reports/src/summaries.test.ts
+engine:extensions/team-reports/src/work-sessions.test.ts

@@ -31,7 +31,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 5. **List new test files for CI** in `scripts/feature-batch-ci-named/<branch-name>.txt` (`engine:<path>` or `window:<path>`, one per line, in any order; only the shared `engineTests` and `windowTests` arrays in `scripts/feature-batch-ci-targets.mjs` must stay sorted). For desktop tests, add a `node --test` step to `.github/workflows/desktop-checks.yml`.
    Before every push, run `node scripts/check-named-tests.mjs` (add `--base <ref>` if not `origin/main`). It uses preflight's own rule and prints the expected list file and each missing line.
 
-6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors. If engine lint reports raw-copy baseline drift, regenerate with `cd engine && pnpm ui:i18n:baseline` and commit `engine/ui/src/i18n/.i18n/raw-copy-baseline.json`. Do not commit `catalog-fallbacks.json` on a source PR; post-merge locale refresh owns that file.
+6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors. If engine lint reports raw-copy baseline drift, regenerate with `cd engine && pnpm ui:i18n:baseline` and commit `engine/ui/src/i18n/.i18n/raw-copy-baseline.json`. If the `Control UI catalog fallbacks (PR)` check fails, regenerate with `cd engine && node --import ./scripts/tsx.mjs --input-type=module -e "const m = await import('./scripts/control-ui-i18n-verify.ts'); await m.syncControlUiCatalogFallbackBaseline({ checkOnly: false, write: true });"` and commit `engine/ui/src/i18n/.i18n/catalog-fallbacks.json` on the same PR.
 
 7. **Type-check before pushing:** `pnpm -C window typecheck` for window changes; `node scripts/strict-typecheck.mjs` from the repo root (or `cd engine && node ../scripts/strict-typecheck.mjs`) for engine changes (about 6 GB).
 
@@ -41,7 +41,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 10. **Self-test visible changes** in a scratch engine and window (browser or computer tools, or Playwright) and put screenshots in the PR. The `check-ui-proof` gate enforces this for `window/**` changes. Proof screenshots are hosted and linked in the PR body, never committed to the repo; the same gate fails a PR that adds images under `verifier/`, `proof/`, `screenshots/`, `artifacts/` or similar folders.
 
-11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. Cloud-agent commits must end with exactly `Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>` so the platform does not append a personal-email co-author line. Never force-push or rewrite pushed history on any branch, not even to change a commit message. GitHub ruleset 'No force-push on any branch' (all branches, no bypass) refuses it. Fix a bad commit with a new commit, or for a commit with a personal email, redo the work on a fresh branch from main as a new PR that supersedes the old one. PR body: what, why, exact test commands and pass counts.
+11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. Commits use a GitHub noreply author and committer and carry no `Co-authored-by` line (see SELF-CHECK.md). Never force-push or rewrite pushed history on any branch, not even to change a commit message. GitHub ruleset 'No force-push on any branch' (all branches, no bypass) refuses it. Fix a bad commit with a new commit, or for a commit with a personal email, redo the work on a fresh branch from main as a new PR that supersedes the old one. PR body: what, why, exact test commands and pass counts.
 
 12. **Merging:** Branch PR Closer merges by hand with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge:
     - `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`
@@ -62,6 +62,12 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
     PR body checklist: for a `fix`, `perf` or `refactor` title, the body has a `Prior art: <what you checked>` line or a `## Prior art` section with content under it, naming the upstream project, peer agents, or the old code it replaces, or `Prior art: none found: <what you checked>`. Empty, `n/a`, bare `none` and an unfilled placeholder fail `commit-emails`.
 
 17. **No personal machine details.** Never put machine names, hostnames, personal paths, account emails or secrets in the public repo, its pull requests or issues. The personal-info PR scan fails when the title, body or added lines include them; editing the description re-runs it.
+
+19. **Chat works with zero accounts.** A fresh install must reach a first reply without any sign-in or API key, using a free local default (managed `llama-cpp` when no Ollama/LM Studio is present). Packaged desktop and mobile engines must load the `llama-cpp` plugin. A release that omits it fails the packaging smoke (`scripts/check-packaged-no-key-plugin.mjs`). Never auto-start a multi-GB download without size + Cancel.
+
+20. **One Connect-a-model path.** With no usable model: the reply area shows exactly "Connect a model to get answers" and one "Connect a model" button that opens Add an account (deduplicated plain names, free/local first, no reflow). The button must be readable on light and dark themes. Do not leave a control that looks clickable but opens nothing. GOD private #1092 supersedes the earlier #1797 send-disabled bar: Send is allowed; fixing the app follows GOD's current ruling, not the old disable-Send tests. Do not mass-rewrite those tests until the app flip lands.
+
+21. **No secret-shaped literals, even in tests.** Build fake API keys and PEM headers at runtime (for example `['s', 'k-', 'x'.repeat(40)].join('')`); preflight's secret-literal check fails added lines that match a provider key format, test files included.
 
 ## Common tasks
 

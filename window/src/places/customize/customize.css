@@ -164,14 +164,6 @@
 .cz-pat svg line { stroke: var(--ink-3); stroke-width: 1.4; }
 .cz-pat svg circle { fill: var(--raise); stroke: var(--ink-3); stroke-width: 1.4; }
 .cz-pat svg circle.lead { fill: var(--ok-tint); stroke: var(--ok); }
-.cz-chgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
-.cz-ch { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--raise); text-align: left; min-width: 0; transition: transform 120ms; }
-.cz-ch:hover { transform: translateY(-1px); }
-.cz-ch.on { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
-.cz-ch .grow { display: grid; min-width: 0; flex: 1; }
-.cz-ch b { font-size: 13.5px; font-weight: 600; }
-.cz-ch small { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cz-ch-dot { position: absolute; right: 10px; top: 10px; }
 .cz-grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 10px; }
 .cz-tile-card { display: grid; gap: 8px; align-content: start; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--raise); }
 .cz-tile-card p { margin: 0; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
@@ -179,9 +171,6 @@
 .cz-tile-h b { font-weight: 600; }
 .cz-tile-acts { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
 .cz-tile-acts > .btn:only-child { margin-right: auto; }
-.cz-phone { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
-.cz-phone .grow { display: grid; gap: 2px; flex: 1; min-width: 0; }
-.cz-phone small { color: var(--ink-3); font-size: 12.5px; }
 .cz-account { display: grid; gap: 6px; }
 .cz-account .cz-line .pill { margin-left: auto; }
 .cz-danger { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--line)); }
@@ -214,8 +203,8 @@
 /* a connector's brand mark (preview .logo) */
 .cz-brand { display: inline-grid; place-items: center; flex: none; overflow: hidden; border-radius: 28%; }
 .cz-brand svg { display: block; }
-.cz-ch .logo, .cz-prov-h .logo { display: inline-grid; place-items: center; flex: none; overflow: hidden; border-radius: 28%; }
-.cz-ch .logo svg, .cz-prov-h .logo svg { display: block; }
+.cz-prov-h .logo { display: inline-grid; place-items: center; flex: none; overflow: hidden; border-radius: 28%; }
+.cz-prov-h .logo svg { display: block; }
 
 /* Get plugins and skills: one row per plugin or skill, tags and actions on the right. */
 .get-rows { display: grid; gap: 8px; }

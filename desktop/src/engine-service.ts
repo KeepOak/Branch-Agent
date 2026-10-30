@@ -106,6 +106,19 @@ export async function readEngineHealth(port: number, timeoutMs = 2_000): Promise
   } catch { return { answered: false }; }
 }
 
+/** The engine's own run counts from /health, when it reports them. Absence means activity is unavailable. */
+export async function readEngineWork(port: number, timeoutMs = 2_000): Promise<{ activeRuns: number; totalActive: number; pendingReplies: number } | undefined> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(timeoutMs) });
+    const body = await res.json().catch(() => ({})) as { activeRuns?: unknown; totalActive?: unknown; pendingReplies?: unknown };
+    const count = (value: unknown): number | undefined =>
+      typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
+    const runs = count(body.activeRuns) ?? count(body.totalActive);
+    if (runs === undefined) return undefined;
+    return { activeRuns: runs, totalActive: count(body.totalActive) ?? runs, pendingReplies: count(body.pendingReplies) ?? 0 };
+  } catch { return undefined; }
+}
+
 /** Polls `probe` until it answers or `timeoutMs` passes. */
 export async function waitForEngineAnswer(probe: () => Promise<boolean>, timeoutMs: number, intervalMs = 500): Promise<boolean> {
   const end = Date.now() + timeoutMs;

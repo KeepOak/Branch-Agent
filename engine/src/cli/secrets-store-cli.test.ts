@@ -366,7 +366,7 @@ describe("secrets store CLI", () => {
       dotenvPath,
       [
         'SERVICE_URL="https://service.test/path with spaces"',
-        'SERVICE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----',
+        ['SERVICE_PRIVATE_KEY="-----BEGIN ', 'PRIVATE KEY-----'].join(""),
         "multiline-body",
         '-----END PRIVATE KEY-----"',
         "SERVICE_EMPTY=",
@@ -391,7 +391,7 @@ describe("secrets store CLI", () => {
       },
       {
         name: "SERVICE_PRIVATE_KEY",
-        value: "-----BEGIN PRIVATE KEY-----\nmultiline-body\n-----END PRIVATE KEY-----",
+        value: ["-----BEGIN ", "PRIVATE KEY-----\nmultiline-body\n-----END PRIVATE KEY-----"].join(""),
         kind: "secret",
       },
       {

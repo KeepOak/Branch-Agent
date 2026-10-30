@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { graftAddressCandidates, graftInviteParams, tailnetIPv4 } from "../cli/graft-cli.js";
+import { graftAddressCandidates, graftInviteParams, graftJoinName, tailnetIPv4 } from "../cli/graft-cli.js";
 import {
   graftBranchIdentity,
   graftTrunkIdentity,
@@ -122,7 +122,10 @@ describe("branch graft join", () => {
     );
     saveGraftLink({ url: "ws://127.0.0.1:41001", name: "B", joinedAt: 1 }, env);
     saveGraftLink({ url: "ws://127.0.0.1:41001", name: "B2", joinedAt: 2 }, env);
-    expect(readGraftLinks(env)).toEqual([{ url: "ws://127.0.0.1:41001", name: "B2", joinedAt: 2 }]);
+    // Each join gets its own link id (graftLinkKey), written once at join time.
+    expect(readGraftLinks(env)).toEqual([
+      { url: "ws://127.0.0.1:41001", name: "B2", joinedAt: 2, id: expect.any(String) },
+    ]);
     expect(resolveGraftLink("", env).name).toBe("B2");
     expect(resolveGraftLink("ws://127.0.0.1:41001", env).name).toBe("B2");
     expect(() => resolveGraftLink("ws://10.0.0.5:18789", env)).toThrow(
@@ -139,23 +142,55 @@ describe("branch graft join", () => {
     expect(graftInviteParams({ gateway: { bind: "loopback" } } as never, 41002).publicUrl).toBe(
       "ws://127.0.0.1:41002",
     );
-    expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 41002, {})).toEqual({
+    expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 41002)).toEqual({
       includeQr: false,
       bootstrapProfile: "limited",
     });
   });
 
-  it("invites with the stable tailnet address when the gateway is on the network", () => {
-    const tailnetOnly = { utun3: [{ address: "100.64.0.7", family: "IPv4", internal: false }] } as never;
-    // A LAN address changes when the router reassigns it; the tailnet address does not.
-    expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 19031, tailnetOnly)).toEqual({
-      includeQr: false,
-      bootstrapProfile: "limited",
-      publicUrl: "ws://100.64.0.7:19031",
+  it("leaves the network address to the gateway's route-aware LAN pick, past a Docker bridge listed first", async () => {
+    const { resolvePairingSetupFromConfig } = await import("../pairing/setup-code.js");
+    const iface = (address: string) => [{ address, family: "IPv4", internal: false }];
+    // A Docker bridge (and a tailnet adapter) enumerate before the real LAN NIC; the default route is en0.
+    const dockerFirst = { docker0: iface("172.17.0.1"), utun3: iface("100.64.0.7"), en0: iface("192.168.1.20") };
+    const defaultRoute = async (argv: string[]) => ({
+      code: 0,
+      stdout:
+        argv[0] === "route"
+          ? "   route to: default\ninterface: en0\n"
+          : argv[0] === "ip"
+            ? "default via 192.168.1.1 dev en0 proto dhcp\n"
+            : JSON.stringify([{ InterfaceAlias: "en0", RouteMetric: 0, InterfaceMetric: 25 }]),
     });
-    expect(
-      graftInviteParams({ gateway: { bind: "loopback" } } as never, 19031, tailnetOnly).publicUrl,
-    ).toBe("ws://127.0.0.1:19031");
+    const cfg = {
+      gateway: { bind: "lan", port: 19031, auth: { mode: "token", token: "graft-test-token" } },
+    } as never;
+    const resolve = (publicUrl: unknown) =>
+      resolvePairingSetupFromConfig(cfg, {
+        env: {},
+        publicUrl: publicUrl as string | undefined,
+        issuedBootstrap: { token: "bootstrap", expiresAtMs: Date.now() + 60_000, setupId: "setup-1" },
+        networkInterfaces: () => dockerFirst as never,
+        runCommandWithTimeout: defaultRoute,
+      });
+    const params = graftInviteParams(cfg, 19031);
+    expect(params.publicUrl).toBeUndefined();
+    const invited = await resolve(params.publicUrl);
+    expect(invited.ok && invited.payload.url).toBe("ws://192.168.1.20:19031");
+    // Pairing rejects a plain ws:// tailnet address, which is why the invite never names one.
+    const tailnet = await resolve("ws://100.64.0.7:19031");
+    expect(tailnet.ok).toBe(false);
+  });
+
+  it("never puts a plain ws:// tailnet address in the invite", () => {
+    // Every non-loopback bind leaves the URL to the gateway's resolver (route-aware LAN, wss:// with TLS, or
+    // Tailscale Serve) instead of a ws:// tailnet URL pairing would reject.
+    for (const gateway of [{ bind: "lan" }, { bind: "tailnet" }, { bind: "lan", tls: { enabled: true } }]) {
+      expect(graftInviteParams({ gateway } as never, 19031)).toEqual({
+        includeQr: false,
+        bootstrapProfile: "limited",
+      });
+    }
   });
 
   it("lists the tailnet first, then the setup code's address, then private LAN addresses; Tailscale is optional", () => {
@@ -185,5 +220,46 @@ describe("branch graft join", () => {
       }),
     ).toBe("100.64.0.7");
     expect(tailnetIPv4({ en0: [entry("100.63.0.1")], en1: [entry("100.128.0.1")] })).toBeUndefined();
+  });
+});
+
+describe("graft identity without a computer name", () => {
+  const REAL_HOST = "real-host-sentinel";
+  const PLACEHOLDER = "Tour Mac";
+  const savedDisplayHostname = process.env.BRANCH_DISPLAY_HOSTNAME;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (savedDisplayHostname === undefined) {
+      delete process.env.BRANCH_DISPLAY_HOSTNAME;
+    } else {
+      process.env.BRANCH_DISPLAY_HOSTNAME = savedDisplayHostname;
+    }
+  });
+
+  it("defaults where to the display placeholder, never the real hostname, and keeps the id", () => {
+    process.env.BRANCH_DISPLAY_HOSTNAME = PLACEHOLDER;
+    vi.spyOn(os, "hostname").mockReturnValue(REAL_HOST);
+    const branch = graftBranchIdentity("Studio Laptop");
+    expect(branch.where).toBe(PLACEHOLDER);
+    expect(JSON.stringify(branch)).not.toContain(REAL_HOST);
+    expect(branch.id).toBe(graftBranchIdentity("Studio Laptop", "studio").id);
+    expect(branch.id).toBe("branch-studio-laptop");
+  });
+
+  it("joins under the display placeholder when no name is given, never the real hostname", () => {
+    process.env.BRANCH_DISPLAY_HOSTNAME = PLACEHOLDER;
+    vi.spyOn(os, "hostname").mockReturnValue(REAL_HOST);
+    expect(graftJoinName()).toBe(PLACEHOLDER);
+    expect(graftJoinName("   ")).toBe(PLACEHOLDER);
+    expect(graftJoinName(" Studio Laptop ")).toBe("Studio Laptop");
+    expect(graftJoinName()).not.toContain(REAL_HOST);
+  });
+
+  it("keeps the real hostname when no display name is set", () => {
+    delete process.env.BRANCH_DISPLAY_HOSTNAME;
+    vi.spyOn(os, "hostname").mockReturnValue(REAL_HOST);
+    expect(graftJoinName()).toBe(REAL_HOST);
+    expect(graftBranchIdentity("Studio Laptop").where).toBe(REAL_HOST);
   });
 });

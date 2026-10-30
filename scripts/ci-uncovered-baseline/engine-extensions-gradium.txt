@@ -1,0 +1,2 @@
+engine:extensions/gradium/speech-provider.test.ts
+engine:extensions/gradium/tts.test.ts

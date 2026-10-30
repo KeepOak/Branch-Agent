@@ -147,19 +147,16 @@ async function expectHeaderCopy(page: Page, active: "plugins" | "skills" | "skil
   const expected = {
     plugins: {
       title: "Plugins",
-      subtitle: "Extend your Grove with tools",
-      docs: "https://docs.openclaw.ai/plugins/manage-plugins",
+      subtitle: "Packs of skills, servers and tools",
     },
     skills: {
       title: "Skills",
       subtitle: "Manage your agent skills",
-      docs: "https://docs.openclaw.ai/tools/skills",
     },
     "skill-workshop": {
       title: "Skill workshop",
       subtitle:
         "The skills your agent uses now, suggestions waiting for review, and past decisions.",
-      docs: "https://docs.openclaw.ai/tools/skill-workshop",
     },
   }[active];
   const header = page.locator(".plugins-hub-header");
@@ -184,9 +181,7 @@ async function expectHeaderCopy(page: Page, active: "plugins" | "skills" | "skil
     )
     .toEqual({ visibleTitle: true, leftAligned: true, tabsBelowIntro: true });
   expect(await header.locator(".page-subtitle").textContent()).toContain(expected.subtitle);
-  expect(await header.getByRole("link", { name: "Learn more" }).getAttribute("href")).toBe(
-    expected.docs,
-  );
+  expect(await header.getByRole("link", { name: "Learn more" }).count()).toBe(0);
 }
 
 async function installButtonPresentation(page: Page) {

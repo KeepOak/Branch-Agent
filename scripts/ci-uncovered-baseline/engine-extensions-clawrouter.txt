@@ -1,0 +1,4 @@
+engine:extensions/clawrouter/index.test.ts
+engine:extensions/clawrouter/provider-catalog.test.ts
+engine:extensions/clawrouter/tool-schemas.test.ts
+engine:extensions/clawrouter/usage.test.ts

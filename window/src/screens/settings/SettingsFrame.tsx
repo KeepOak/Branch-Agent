@@ -3,7 +3,7 @@
 // from the row table (rows.ts) and draw through RowView; a section with no rows in the table yet is Coming (R1-10). A
 // page can instead draw its own component (slots.ts, such as Chat apps); nav, search and the level stay the frame's. A
 // row page can also draw some rows with its own control (slots.ts controls, such as Appearance's theme gallery).
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { configStore } from "../../places/settings/config-store";
@@ -140,7 +140,13 @@ function NavList({ engine, level, narrow, shownPage, onOpen }: { engine: WindowE
         {REGULAR_GROUPS.map((g) => {
           const landing = g.pages[0];
           const current = g.pages.some((p) => p.id === shownPage);
-          return <NavButton key={g.title} page={{ ...landing, title: g.title }} current={current} onOpen={() => onOpen(landing.id)} hub={g.title} />;
+          // The open page's other pages sit in the nav under its row, not in the page's content (#1769 point 2).
+          return (
+            <Fragment key={g.title}>
+              <NavButton page={{ ...landing, title: g.title }} current={current} onOpen={() => onOpen(landing.id)} hub={g.title} />
+              {current ? <HubAdvanced shownPage={shownPage} onOpen={onOpen} /> : null}
+            </Fragment>
+          );
         })}
       </>
     );
@@ -164,7 +170,8 @@ function NavList({ engine, level, narrow, shownPage, onOpen }: { engine: WindowE
   );
 }
 
-/** The other settings pages that belong to the open Regular page, under "Also in <page>" on that page. Not "Advanced":
+/** The other settings pages that belong to the open Regular page, under "Also in <page>" below its nav row (#1769
+ *  point 2: in the page's content they read as a stray list, with a nav row named for another page lit). Not "Advanced":
  *  at Regular that word names a level the person hasn't chosen, so it read as a stray heading (#1093 item 6). Each is
  *  the nav's own boxed row with its icon (preview s36Nav). */
 function HubAdvanced({ shownPage, onOpen }: { shownPage: PageId; onOpen: (id: PageId) => void }) {
@@ -383,7 +390,6 @@ export function SettingsFrame(props: SettingsFrameProps) {
             </div>
           ) : null}
         </header>
-        {level === 0 ? <HubAdvanced shownPage={shownPage} onOpen={go} /> : null}
         {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} onAsk={props.onAsk} /></div> : <>
         <div className="r1s-col">
           {loadFailed ? <div className="r1s-notice g-frost" role="alert">Settings didn’t load · <Coming engine={engine} need="config.get"><button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></Coming></div> : null}
