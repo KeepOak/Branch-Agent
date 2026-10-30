@@ -2045,6 +2045,7 @@ export const en: TranslationMap & {
     sessionRestarted:
       "{error} Branch Agent started a fresh session; earlier messages remain for context.",
     unsupportedGateway: "Update the Gateway to continue setup with Branch.",
+    openAccounts: "Open Accounts",
     panel: {
       title: "Branch Agent",
       toggle: "Toggle Ask Branch Agent",
