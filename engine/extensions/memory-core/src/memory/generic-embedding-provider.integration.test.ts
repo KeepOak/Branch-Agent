@@ -13,6 +13,7 @@ import { createEmbeddingProvider } from "./embeddings.js";
 import { LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE } from "./local-embedding-provider.js";
 import type { IndexedMemoryChunk } from "./manager-chunk-writer.js";
 import { MemoryIndexDatabase } from "./manager-database-context.js";
+import { MemoryEmbeddingAccountBackoff } from "./manager-embedding-account-backoff.js";
 import { MemoryManagerEmbeddingOps } from "./manager-embedding-ops.js";
 import type { MemoryIndexWorkItem, MemorySemanticProviderGeneration } from "./manager-sync-ops.js";
 
@@ -261,6 +262,7 @@ function createMemoryEmbeddingOwner(generation: MemorySemanticProviderGeneration
     providerRuntime: generation.runtime,
     publishedDatabase: generation.database,
     syncProviderGeneration: generation,
+    embeddingAccountBackoff: new MemoryEmbeddingAccountBackoff(),
     cache: { enabled: false },
     settings: { sync: {} },
     markLocalEmbeddingProviderDegraded: () => {},

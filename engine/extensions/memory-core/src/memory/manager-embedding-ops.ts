@@ -352,7 +352,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
       cacheCandidate: cacheCandidates?.[index],
     }));
     try {
-      return await this.withProviderUse(
+      const embeddings = await this.withProviderUse(
         provider,
         async () =>
           await runMemoryEmbeddingBatchRetryWithSplit({
@@ -410,7 +410,10 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
             },
           }),
       );
+      this.embeddingAccountBackoff.recordSuccess();
+      return embeddings;
     } catch (err) {
+      this.embeddingAccountBackoff.recordFailure(err);
       if (!structured) {
         log.debug("memory embeddings: batch failed", {
           provider: provider.id,
@@ -471,7 +474,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
       throw new Error("Cannot embed query in FTS-only mode (no embedding provider)");
     }
     try {
-      return await this.withProviderUse(
+      const embedding = await this.withProviderUse(
         provider,
         async () =>
           await runMemoryEmbeddingRetryLoop({
@@ -501,7 +504,12 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
             },
           }),
       );
+      this.embeddingAccountBackoff.recordSuccess();
+      return embedding;
     } catch (err) {
+      if (!signal?.aborted) {
+        this.embeddingAccountBackoff.recordFailure(err);
+      }
       throw createMemoryEmbeddingOperationError({
         operation: "query",
         providerId: provider.id,

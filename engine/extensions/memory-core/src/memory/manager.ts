@@ -222,6 +222,9 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     super(params.maintenanceSource?.automaticRebuildNotice);
     this.managerRegistry = params.managerRegistry;
     const source = params.maintenanceSource;
+    if (source) {
+      this.embeddingAccountBackoff = source.embeddingAccountBackoff;
+    }
     const effectiveSettings = resolveEffectiveMemorySearchSettings(params.settings);
     const dbPath = params.databaseOptions.path;
     this.cacheKey = params.cacheKey;
@@ -324,6 +327,11 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     if (this.closing || this.closed) {
       return;
     }
+    // Callers mark their work dirty before syncing, so a deferred pass is
+    // picked up by the first automatic or search sync after the window.
+    if (this.shouldDeferAutomaticSyncForEmbeddingBackoff(params?.reason)) {
+      return;
+    }
     // Close must drain accepted syncs through provider initialization and final writes.
     return await this.withManagerOperation(async () => {
       if (hasTargetedSessionSyncParams(params) && this.sessionSyncQueue.hasPending) {
@@ -338,6 +346,11 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
   protected async syncPublishedIndexInBackground(params: { reason: string }): Promise<void> {
     if (this.syncing) {
       return await this.syncing;
+    }
+    // Search maintenance waits out the account backoff like other automatic
+    // syncs; the dirty generation stays here for the first search after it.
+    if (this.embeddingAccountBackoff.isActive()) {
+      return;
     }
     await this.syncOutcomes.track(() =>
       runMemorySearchMaintenance({
