@@ -258,7 +258,9 @@ export function createCodexAttemptNotificationController(
     await handleNotification(notification);
   };
   const drainNotificationQueue = async () => {
-    await resourceState.turnRoute?.drain();
+    // Output the app-server delivered before its client closed still belongs to
+    // this turn's transcript, even while the prompt row is still being written.
+    await resourceState.turnRoute?.drainReceived();
   };
   return {
     waitForActiveNativeTurnCompletion,
