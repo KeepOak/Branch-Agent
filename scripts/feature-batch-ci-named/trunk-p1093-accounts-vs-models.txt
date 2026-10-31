@@ -1,0 +1,1 @@
+window:src/screens/settings/pages/accounts-models-agree.test.tsx

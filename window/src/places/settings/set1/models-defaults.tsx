@@ -29,8 +29,23 @@ function useConnectionDefaults(m: ModelsCtx) {
   return { pick, set };
 }
 
+/** Coding apps whose sign-in on this computer gives the engine models for chats (models.list) with no account in
+ *  models.authStatus. Accounts shows them under Coding apps, so Models counts them too instead of saying no model. */
+const APP_RUNTIMES: Readonly<Record<string, string>> = { "claude-cli": "Claude Code", "google-gemini-cli": "Gemini CLI" };
+type Conn = Connection & { app?: boolean };
+function connectionsWithApps(models: ModelsCtx["models"], providers: ModelsCtx["providers"]): Conn[] {
+  const conns: Conn[] = connectionsOf(models, providers);
+  for (const [id, name] of Object.entries(APP_RUNTIMES)) {
+    const own = models.filter((x) => !x.local && x.available && x.provider === id);
+    if (!own.length || conns.some((c) => c.id === id)) continue;
+    const at = conns.findIndex((c) => c.local);
+    conns.splice(at < 0 ? conns.length : at, 0, { id, name, local: false, accounts: 0, models: own, app: true });
+  }
+  return conns;
+}
+
 export function DefaultsTab({ m, openSettings }: { m: ModelsCtx; openSettings?: (page: string) => void }) {
-  const conns = connectionsOf(m.models, m.providers);
+  const conns = connectionsWithApps(m.models, m.providers);
   const defs = useConnectionDefaults(m);
   if (!conns.length) return <NoModelYet openSettings={openSettings} />;
   return (
@@ -61,12 +76,12 @@ function NoModelYet({ openSettings }: { openSettings?: (page: string) => void })
   );
 }
 
-function ConnectionRow({ m, c, value, onModel }: { m: ModelsCtx; c: Connection; value: string; onModel: (ref: string) => void }) {
+function ConnectionRow({ m, c, value, onModel }: { m: ModelsCtx; c: Conn; value: string; onModel: (ref: string) => void }) {
   const model = c.models.find((x) => x.ref === value);
   const technical = showsInternals(useLevel());
   const think = model ? text(m.cfg.get(m.own("models", model.ref, "params", "thinking")) ?? model.thinkingDefault ?? "") : "";
   return (
-    <Ctl id={c.name} title={c.name} icon={<Logo id={c.local ? "local" : c.id} name={c.name} size={22} />} sub={c.local ? "On this computer · free and private" : `${c.accounts} ${c.accounts === 1 ? "account" : "accounts"}`}>
+    <Ctl id={c.name} title={c.name} icon={<Logo id={c.local ? "local" : c.id} name={c.name} size={22} />} sub={c.local ? "On this computer · free and private" : c.app ? `Signed in with ${c.name} on this computer` : `${c.accounts} ${c.accounts === 1 ? "account" : "accounts"}`}>
       <Pick label={`${c.name} default model`} value={value} options={modelOpts(c.models)} onChange={onModel} />
       {model && model.thinking.length ? <Seg label={`${c.name} thinking`} value={think} options={plainThinking(model.thinking, technical)} onChange={(v) => void m.cfg.set(m.own("models", model.ref, "params", "thinking"), v)} /> : null}
     </Ctl>

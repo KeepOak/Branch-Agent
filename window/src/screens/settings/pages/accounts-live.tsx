@@ -484,6 +484,9 @@ function openAddAccount(provider: string) {
   window.dispatchEvent(new Event("branch:open-add-account"));
 }
 
+/** The engine's model runtime for a coding app whose sign-in can answer chats; Codex is a plugin with its own switch. */
+const RUNTIME: Readonly<Record<string, string>> = { "claude-cli": "claude-cli", "gemini-cli": "google-gemini-cli" };
+
 /** A coding app on this computer as branch.setup.detect finds it; Codex's switch is plugins.entries.codex.enabled, the
  *  others follow their own sign-in (a greyed switch, as Classic). Claude Code shows its account from usage.status. */
 function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
@@ -498,7 +501,11 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
   const codex = useCodexDownload(engine, offer);
   const getting = offer ? codex.view : undefined;
   const usable = f.state === "ready" || getting?.ready === true;
-  const word = detect.error ? "Couldn’t check" : detect.loading ? "Looking…" : PILL[f.state][1];
+  // Models reads models.list: a ready app with no model there for chats is a coding app only, not "Models ready".
+  const models = useRead(engine, "models.list", { includeDetails: true });
+  const runtime = RUNTIME[app.kind];
+  const appOnly = Boolean(runtime) && f.state === "ready" && models.data !== undefined && !list(models.data.models).some((m) => m.provider === runtime && m.available !== false);
+  const word = detect.error ? "Couldn’t check" : detect.loading ? "Looking…" : appOnly ? "Connected" : PILL[f.state][1];
   const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
   const pluginOn = app.plugin ? record(record(record(config.plugins).entries)[app.plugin]).enabled === true : f.state === "ready";
   // A failed check (#1850): one plain sentence at Regular and Advanced, the exact words at Technical. A sign-in failure
@@ -507,7 +514,7 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
   const signInFailed = Boolean(why && SIGN_IN_ERROR.test(why));
   const signIn = signInFailed && app.plugin === "codex";
   const failLine = !why ? "" : level >= 2 ? why : signInFailed && !signIn ? `Open ${app.name} on this computer and sign in there, then choose Check again.` : plainError(why, true);
-  const sub = codex.prompt ? codex.prompt : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
+  const sub = codex.prompt ? codex.prompt : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detect.loading ? "Looking on this computer…" : appOnly ? `${app.name} is a coding app on this computer, not a model for chats.` : appSub(app, f, pluginOn);
   return <>
     <div className="r1s-item">
       <Logo id={app.brand} size={22} />
