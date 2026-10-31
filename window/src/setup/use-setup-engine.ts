@@ -1,6 +1,6 @@
 // What setup reads from and writes to the engine (DESIGN-SPEC §4.8.1): detect, test, chat apps, the health check,
 // and the setup record. Every result shown comes from one of these calls; nothing finishes on a timer.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { createJob, JOBS as JOB_FILES } from "../places/customize/jobs-data";
 import { saveConfig, type ConfigSnapshot } from "../places/settings/adapter";
@@ -17,15 +17,19 @@ const modelProblem = (error: string) => /no agent model|branch onboard|not confi
 export function useDetected(engine: WindowEngine) {
   const [detected, setDetected] = useState<Detected | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const looking = useRef(0);
   const load = useCallback(() => {
     setError(null);
+    looking.current += 1;
     engine.request("branch.setup.detect", engine.agentId ? { agentId: engine.agentId } : {}).then(
       (r) => setDetected(readDetected(r)),
       () => setError("Couldn’t look for models. Try again."),
-    );
+    ).finally(() => { looking.current -= 1; });
   }, [engine]);
   useEffect(load, [load]);
-  return { detected, error, reload: load };
+  // refresh looks again only when no detect is already running (Your models re-checks on window focus, #589).
+  const refresh = useCallback(() => { if (!looking.current) load(); }, [load]);
+  return { detected, error, reload: load, refresh };
 }
 
 /** The real config (config.get), read once, as what setup already knows about this Branch. */

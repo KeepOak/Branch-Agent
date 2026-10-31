@@ -5,7 +5,9 @@
 // A switched-on ChatGPT connection answers through Codex, which Branch doesn't ship (#589): until Codex is ready, the
 // step offers the same Get Codex question as Settings › Accounts (codex-get), and Say hello asks it first. That only
 // applies when the ChatGPT row is what Say hello would test (helloTarget), not when a working model is already set up.
-import { useState } from "react";
+// A sign-in made outside the window (a ChatGPT/Codex login in a browser or terminal) shows up when the window comes
+// back into focus: the step looks again once per return, keeping the rows, switches and Say hello result (#589).
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "../../composer/icons";
 import { Coming } from "../../glass/coming";
@@ -20,11 +22,37 @@ import { helloTarget, testModel, useDetected } from "../../setup/use-setup-engin
 import { answeredBy, canSayHello, codexNeededLine, EXAMPLES_REASON, needsCodex, toggle, WAITS_FOR, type Example, type Hello } from "./model";
 import { examplesErrorText, examplesHint, loadExampleTrunks } from "./try-examples";
 
+/** Calls refresh once each time the window comes back (focus, or the page turning visible again) after it was left
+ *  (blur, or hidden). Nothing while hold is set: Say hello is running or the Add an account dialog is open. */
+function useLookAgainOnReturn(refresh: () => void, hold: boolean) {
+  const latest = useRef({ refresh, hold });
+  useEffect(() => { latest.current = { refresh, hold }; });
+  useEffect(() => {
+    let away = false;
+    const leave = () => { away = true; };
+    const back = () => {
+      if (!away || document.visibilityState === "hidden") return;
+      away = false;
+      if (!latest.current.hold) latest.current.refresh();
+    };
+    const visibility = () => (document.visibilityState === "hidden" ? leave() : back());
+    window.addEventListener("blur", leave);
+    window.addEventListener("focus", back);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      window.removeEventListener("blur", leave);
+      window.removeEventListener("focus", back);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, []);
+}
+
 type Props = { engine: WindowEngine; off: string[]; onOff: (off: string[]) => void; hello: Hello; onHello: (h: Hello) => void; onExamples?: (on: boolean) => void };
 
 export function Models({ engine, off, onOff, hello, onHello, onExamples }: Props) {
-  const { detected, error, reload } = useDetected(engine);
+  const { detected, error, reload, refresh } = useDetected(engine);
   const [adding, setAdding] = useState(false);
+  useLookAgainOnReturn(refresh, hello === "busy" || adding);
   const [examples, setExamples] = useState<Example[] | "busy" | null>(null), [examplesError, setExamplesError] = useState<string | null>(null);
   const tryExamples = () => {
     if (examples === "busy") return;
