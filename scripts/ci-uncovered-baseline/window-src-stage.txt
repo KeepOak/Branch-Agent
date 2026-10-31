@@ -1,4 +1,3 @@
 window:src/stage/browser-screencast-client.test.ts
-window:src/stage/computers.test.ts
 window:src/stage/pane/dashboard-live.test.tsx
 window:src/stage/pane/dashboard.test.ts
