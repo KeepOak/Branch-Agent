@@ -6,7 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { makeComponentRelease } from "./make-component-release.mjs";
 import { fileDigest, publicDownloadName, writeReleaseInventory } from "./release-inventory.mjs";
-import { PUBLIC_LATEST_BUDGET_MS, alreadyPublishedMessage, draftAlreadyPublishedMessage, publicLatestDelayMs, publishDraft, publishRelease } from "./publish-component-release.mjs";
+import { PUBLIC_LATEST_BUDGET_MS, alreadyPublishedMessage, draftAlreadyPublishedMessage, findReleaseByTag, publicLatestDelayMs, publishDraft, publishRelease } from "./publish-component-release.mjs";
 import { DOWNLOAD_PLATFORMS, UPDATE_ONLY_LABEL, downloadAssetName, formatReleaseNotes } from "./release-notes.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -55,7 +55,36 @@ function compare(base, head) {
   return delta === 0 ? "identical" : delta > 0 ? "ahead" : "behind";
 }
 
-function githubMock(assets, { staleReads = 0, corrupt = false, previous = true, rollbackFails = false, moveLatestAfterReads = 0, existing = null } = {}) {
+// execFile's maxBuffer in the gh wrapper before this lookup was trimmed.
+const OLD_GH_MAX_BUFFER = 16 * 1024 * 1024;
+
+// Leftover drafts with full release bodies, like the ones that pushed the real list past 16 MB.
+function leftoverDraftList(count) {
+  const body = "x".repeat(12 * 1024);
+  return Array.from({ length: count }, (_, index) => ({
+    tag_name: "v0.0.0-build-" + String(index).padStart(12, "0"), draft: true, target_commitish: older, body, assets: [],
+  }));
+}
+
+// Answers a release-list call the way gh does: a --jq filter runs on each page and prints one
+// value per line, and a whole-list read past the old buffer fails the way execFile does.
+function releaseList(args, releases) {
+  if (args.includes("--jq")) {
+    const wanted = /\.tag_name == ("(?:[^"\\]|\\.)*")/.exec(args[args.indexOf("--jq") + 1]);
+    assert(wanted, "release lookup filters by tag");
+    const name = JSON.parse(wanted[1]);
+    return releases.filter(item => item.tag_name === name)
+      .map(item => JSON.stringify({ tag_name: item.tag_name, draft: item.draft ?? false, target_commitish: item.target_commitish }))
+      .join("\n");
+  }
+  const output = JSON.stringify(args.includes("--slurp") ? [releases] : releases);
+  if (output.length > OLD_GH_MAX_BUFFER) {
+    throw Object.assign(new RangeError("stdout maxBuffer length exceeded"), { code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" });
+  }
+  return output;
+}
+
+function githubMock(assets, { staleReads = 0, corrupt = false, previous = true, rollbackFails = false, moveLatestAfterReads = 0, existing = null, leftoverDrafts = 0 } = {}) {
   const calls = [];
   const publicReads = [];
   const sleeps = [];
@@ -64,6 +93,13 @@ function githubMock(assets, { staleReads = 0, corrupt = false, previous = true, 
   let published = false;
   let latestTag = previous ? previousTag : null;
   const notFound = () => Object.assign(new Error("gh: Not Found (HTTP 404)"), { stderr: "gh: Not Found (HTTP 404)" });
+  const leftovers = leftoverDraftList(leftoverDrafts);
+  const releases = () => {
+    const listed = [...leftovers];
+    if (latestTag) listed.push({ tag_name: latestTag, target_commitish: latestTag === tag ? commit : older });
+    if (existing) listed.push(existing);
+    return listed;
+  };
   const request = async args => {
     calls.push(args);
     if (args[1] === "delete" || args.includes("DELETE")) throw new Error("releases must not be deleted");
@@ -71,11 +107,7 @@ function githubMock(assets, { staleReads = 0, corrupt = false, previous = true, 
       const [base, head] = args[1].split("/compare/")[1].split("...");
       return compare(base, head);
     }
-    if (args[0] === "api" && args[1].endsWith("/releases")) {
-      const listed = latestTag ? [{ tag_name: latestTag, target_commitish: latestTag === tag ? commit : older }] : [];
-      if (existing) listed.push(existing);
-      return JSON.stringify([listed]);
-    }
+    if (args[0] === "api" && /\/releases(\?|$)/.test(args[1])) return releaseList(args, releases());
     if (args[0] === "api" && args[1].endsWith("/releases/latest")) {
       if (!latestTag) throw notFound();
       const ours = latestTag === tag;
@@ -131,7 +163,7 @@ function githubMock(assets, { staleReads = 0, corrupt = false, previous = true, 
   };
   const sleep = async ms => { sleeps.push(ms); clock += ms; };
   const now = () => clock;
-  return { calls, publicReads, sleeps, request, download, sleep, now, latest: () => latestTag };
+  return { calls, publicReads, sleeps, request, download, sleep, now, releases, latest: () => latestTag };
 }
 
 function assertReleaseKept(calls) {
@@ -508,11 +540,12 @@ test("publication uploads attested .sig sidecars and latest.json in SHA256SUMS",
 // pattern downloads return only the manifests and SHA256SUMS.
 function draftAware(remote) {
   const request = async args => {
-    if (args[0] === "api" && args[1].endsWith("/releases")) {
-      const listed = JSON.parse(await remote.request(args)).flat();
+    if (args[0] === "api" && /\/releases(\?|$)/.test(args[1])) {
+      remote.calls.push(args);
+      const listed = remote.releases();
       const created = remote.calls.some(call => call[1] === "create");
       if (created && remote.latest() !== tag) listed.push({ tag_name: tag, target_commitish: commit, draft: true });
-      return JSON.stringify([listed]);
+      return releaseList(args, listed);
     }
     const result = await remote.request(args);
     if (args[0] === "release" && args[1] === "download" && args.includes("--pattern")) {
@@ -562,6 +595,41 @@ test("publish-draft refuses a draft whose Latest is already newer", () => fixtur
   await assert.rejects(publishDraft(tag, newer, remote.download), /stale automatic update/);
   assert.equal(remote.calls.some(args => args[1] === "edit"), false);
 }));
+
+test("a release list larger than the old gh output buffer still finds this version's release", () => fixture(async assets => {
+  const remote = githubMock(assets, { leftoverDrafts: 1500, existing: { tag_name: tag, target_commitish: commit } });
+  assert(JSON.stringify(remote.releases()).length > OLD_GH_MAX_BUFFER, "fixture list must exceed the old buffer");
+  const result = await publishRelease(assets, commit, version, remote.request, remote.download, {
+    sleep: remote.sleep, now: remote.now,
+  });
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, alreadyPublishedMessage(tag));
+  assert.equal(remote.calls.some(args => args.includes("--slurp")), false);
+  assertReleaseKept(remote.calls);
+}));
+
+test("publish-draft finds its draft among more leftover drafts than the old gh output buffer holds", () => fixture(async assets => {
+  const remote = draftAware(githubMock(assets, { leftoverDrafts: 1500 }));
+  await publishRelease(assets, commit, version, remote.request, remote.download, { keepDraft: true, sleep: remote.sleep, now: remote.now });
+  const result = await publishDraft(tag, remote.request, remote.download, { sleep: remote.sleep, now: remote.now });
+  assert.equal(result.publicLatest.tag, tag);
+  assert.equal(remote.latest(), tag);
+  assert.equal(remote.calls.some(args => args.includes("--slurp")), false);
+  assertReleaseKept(remote.calls);
+}));
+
+test("findReleaseByTag asks gh for only the matching tag and the fields publication reads", async () => {
+  const calls = [];
+  const found = await findReleaseByTag(tag, async args => {
+    calls.push(args);
+    return releaseList(args, [...leftoverDraftList(3), { tag_name: tag, target_commitish: commit, draft: true, body: "notes" }]);
+  });
+  assert.deepEqual(found, { tag_name: tag, draft: true, target_commitish: commit });
+  assert.equal(calls.length, 1);
+  assert(calls[0].includes("--paginate") && calls[0].includes("--jq"));
+  assert.equal(calls[0].includes("--slurp"), false);
+  assert.equal(await findReleaseByTag("v9.9.9", async args => releaseList(args, leftoverDraftList(3))), null);
+});
 
 test("publish-draft needs a release tag", async () => {
   await assert.rejects(publishDraft("main", async () => "[]"), /needs a release tag/);

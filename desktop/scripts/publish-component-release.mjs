@@ -11,8 +11,10 @@ import { formatReleaseNotes } from "./release-notes.mjs";
 
 const repository = "KeepOak/Branch-Agent";
 const execute = promisify(execFile);
+// Headroom only: release lookups trim their output with --jq (see findReleaseByTag).
+const GH_MAX_BUFFER = 64 * 1024 * 1024;
 async function gh(args) {
-  const result = await execute("gh", args, { encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
+  const result = await execute("gh", args, { encoding: "utf8", windowsHide: true, maxBuffer: GH_MAX_BUFFER });
   return result.stdout.trim();
 }
 async function compareStatus(base, head, request) {
@@ -59,6 +61,18 @@ async function ensureImmutableTag(tag, commit, request) {
     return;
   }
   assert.equal(sha, commit, "Existing immutable tag points at a different source commit");
+}
+
+/**
+ * Finds the release for one tag, drafts included (releases/tags/<tag> does not return drafts).
+ * The full list carries every leftover draft with its body and grew past 16 MB, so each page is
+ * filtered with --jq and gh prints only the matching release and the fields publication reads.
+ */
+export async function findReleaseByTag(tag, request = gh) {
+  const filter = `.[] | select(.tag_name == ${JSON.stringify(tag)}) | {tag_name, draft, target_commitish}`;
+  const output = await request(["api", `repos/${repository}/releases?per_page=100`, "--paginate", "--jq", filter]);
+  const matches = output.split("\n").filter(line => line.trim()).map(line => JSON.parse(line));
+  return matches.find(item => item.tag_name === tag) ?? null;
 }
 
 function existingReleaseCommit(release, tagSha) {
@@ -171,8 +185,7 @@ export async function publishRelease(directory, commit, version, request = gh, d
   const proof = await verifyReleaseDirectory(directory, commit, version);
   assert.deepEqual(proof.targets, [...NATIVE_RELEASE_TARGETS], "All native release targets must pass");
   const tag = `v${version}`;
-  const existing = JSON.parse(await request(["api", `repos/${repository}/releases`, "--paginate", "--slurp"])).flat();
-  const found = existing.find(item => item.tag_name === tag);
+  const found = await findReleaseByTag(tag, request);
   if (found && found.draft !== true) {
     const tagSha = await readTagCommit(tag, request);
     assert.equal(existingReleaseCommit(found, tagSha), commit, "Existing immutable tag points at a different source commit");
@@ -248,8 +261,7 @@ export function draftAlreadyPublishedMessage(tag) {
  */
 export async function publishDraft(tag, request = gh, download = fetch, options = {}) {
   assert.match(tag ?? "", /^v\d+\.\d+\.\d+(-build-[a-f0-9]{12})?$/, "publish-draft needs a release tag");
-  const releases = JSON.parse(await request(["api", `repos/${repository}/releases`, "--paginate", "--slurp"])).flat();
-  const found = releases.find(item => item.tag_name === tag);
+  const found = await findReleaseByTag(tag, request);
   assert(found, `Release ${tag} was not found`);
   if (found.draft !== true) {
     const reason = draftAlreadyPublishedMessage(tag);
