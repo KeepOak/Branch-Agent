@@ -1,5 +1,5 @@
 // A held session turn must not park the next inbound reply.
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { resolveSessionLane } from "../../agents/embedded-agent-runner/lanes.js";
 import type { RunEmbeddedAgentParams } from "../../agents/embedded-agent-runner/run/params.js";
@@ -49,7 +49,6 @@ vi.mock("./agent-runner-memory.js", () => ({
 const { runReplyAgent } = await import("./agent-runner.js");
 const { createSessionStoreFile } = createReplyAgentSessionFixture();
 const pendingReplies = new Set<Promise<unknown>>();
-let warmedUp = false;
 
 type Hold = {
   promise: Promise<void>;
@@ -93,12 +92,13 @@ function createInboundRun(params: {
   sessionKey: string;
   prompt: string;
   messageId: string;
+  sessionId?: string;
   provenance?: "external_user" | "inter_session";
 }) {
   const agentId = params.sessionKey.split(":")[1]?.trim() || "main";
   const followupRun = createTestFollowupRun({
     agentId,
-    sessionId: `session-${params.messageId}`,
+    sessionId: params.sessionId ?? `session-${params.messageId}`,
     sessionKey: params.sessionKey,
     messageProvider: "telegram",
     provider: MODEL.provider,
@@ -150,6 +150,7 @@ async function sendInbound(params: {
   sessionKey: string;
   prompt: string;
   messageId: string;
+  sessionId?: string;
   provenance?: "external_user" | "inter_session";
   active?: ReplyOperation;
   session?: { entry: SessionEntry; storePath: string };
@@ -268,250 +269,308 @@ function installFastModel() {
   });
 }
 
+/**
+ * Vitest transforms modules on first import, and a cold CI runner spent the whole
+ * budget there (22-65s on #791's runs). Run the same held scenario once, unmeasured,
+ * so the measured reply times routing and not module loading.
+ */
+async function warmUp(
+  params: Omit<Parameters<typeof sendInbound>[0], "prompt" | "messageId" | "budgetMs"> & {
+    tag: string;
+  },
+): Promise<void> {
+  const prompt = "warm up " + params.tag;
+  const warm = await sendInbound({
+    ...params,
+    prompt,
+    messageId: "warm-up-" + params.tag,
+    budgetMs: WARM_UP_TIMEOUT_MS,
+  });
+  expect(warm.outcome, "warm-up reply after " + warm.elapsedMs + "ms").toBe("reply");
+  await warm.pending;
+  expect(warm.text).toBe("reply:" + prompt);
+  runEmbeddedAgentMock.mockClear();
+  runSessionCompactionIfNeededMock.mockClear();
+  runMemoryFlushIfNeededMock.mockClear();
+}
+
+const SCENARIO_TIMEOUT_MS = 2 * WARM_UP_TIMEOUT_MS + 30_000;
+
 describe("live inbound routing", () => {
-  // The first reply in a worker loads the reply pipeline's lazy modules. Pay that once,
-  // unheld and unmeasured, so a cold CI runner does not spend the measured budget on it.
-  beforeEach(async () => {
-    if (warmedUp) {
-      return;
-    }
-    installFastModel();
-    const warmUp = await sendInbound({
-      sessionKey: "agent:main:telegram:direct:warm-up",
-      prompt: "warm up",
-      messageId: "warm-up",
-      provenance: "external_user",
-      budgetMs: WARM_UP_TIMEOUT_MS,
-    });
-    await warmUp.pending;
-    expect(warmUp.text).toBe("reply:warm up");
-    runEmbeddedAgentMock.mockClear();
-    runSessionCompactionIfNeededMock.mockClear();
-    runMemoryFlushIfNeededMock.mockClear();
-    warmedUp = true;
-  }, WARM_UP_TIMEOUT_MS + 10_000);
-
-  it("answers a new message within 5s while a 60s-class turn holds the chat", async () => {
-    installFastModel();
-    setCommandLaneConcurrency(CommandLane.Main, 1);
-    mainHold = createHold();
-    const mainBlock = enqueueCommandInLane(CommandLane.Main, () => mainHold!.promise);
-    const sessionHold = armSessionHold(OWNER_SESSION_KEY);
-    const sessionBlock = holdSession(OWNER_SESSION_KEY);
-    const active = createReplyOperation({
-      sessionKey: OWNER_SESSION_KEY,
-      sessionId: "session-long",
-      resetTriggered: false,
-      turnKind: "visible",
-    });
-    active.setPhase("running");
-
-    const reply = await sendInbound({
-      sessionKey: OWNER_SESSION_KEY,
-      prompt: "Are you there?",
-      messageId: "owner-2",
-      provenance: "external_user",
-      active,
-    });
-
-    expect(reply.outcome, `no reply after ${reply.elapsedMs}ms while the turn was still held`).toBe(
-      "reply",
-    );
-    expect(reply.text, `reply text after ${reply.elapsedMs}ms`).toBe("reply:Are you there?");
-    expect(reply.elapsedMs).toBeLessThan(REPLY_BUDGET_MS);
-    expect(sessionHold.settled()).toBe(false);
-    expect(mainHold.settled()).toBe(false);
-    expect(active.result).toBeNull();
-    expect(active.abortSignal.aborted).toBe(false);
-    expect(runEmbeddedAgentMock).toHaveBeenCalled();
-    const modelCall = runEmbeddedAgentMock.mock.calls[0]?.[0] as RunEmbeddedAgentParams;
-    expect(modelCall.provider).toBe(MODEL.provider);
-    expect(modelCall.model).toBe(MODEL.model);
-    expect(modelCall.liveInboundSessionLane).toBe(`live-inbound:owner:${OWNER_SESSION_KEY}`);
-    expect(modelCall.lane).not.toBe(CommandLane.Main);
-    expect(getCommandLaneSnapshot(resolveSessionLane(OWNER_SESSION_KEY)).activeCount).toBe(1);
-
-    sessionHold.release();
-    mainHold.release();
-    await Promise.all([sessionBlock, mainBlock, reply.pending]);
-  });
-
-  it("answers the owner within 5s while two agents are messaging each other", async () => {
-    installFastModel();
-    const oakHold = armSessionHold(OAK_SESSION_KEY);
-    const elmHold = armSessionHold(ELM_SESSION_KEY);
-    const oakBlock = holdSession(OAK_SESSION_KEY);
-    const elmBlock = holdSession(ELM_SESSION_KEY);
-    const oakActive = createReplyOperation({
-      sessionKey: OAK_SESSION_KEY,
-      sessionId: "session-oak",
-      resetTriggered: false,
-      turnKind: "visible",
-    });
-    oakActive.setPhase("running");
-    const elmActive = createReplyOperation({
-      sessionKey: ELM_SESSION_KEY,
-      sessionId: "session-elm",
-      resetTriggered: false,
-      turnKind: "visible",
-    });
-    elmActive.setPhase("running");
-
-    const betweenAgents = await sendInbound({
-      sessionKey: OAK_SESSION_KEY,
-      prompt: "status from elm",
-      messageId: "elm-to-oak",
-      provenance: "inter_session",
-      active: oakActive,
-    });
-    expect(betweenAgents.outcome).toBe("reply");
-    expect(betweenAgents.text).toBe("reply:status from elm");
-    expect(betweenAgents.elapsedMs).toBeLessThan(REPLY_BUDGET_MS);
-    const agentCall = runEmbeddedAgentMock.mock.calls.at(-1)?.[0] as RunEmbeddedAgentParams;
-    expect(agentCall.provider).toBe(MODEL.provider);
-    expect(agentCall.model).toBe(MODEL.model);
-    expect(agentCall.liveInboundSessionLane).toBe(`live-inbound:agent:${OAK_SESSION_KEY}`);
-    await betweenAgents.pending;
-
-    agentReplyHold = createHold();
-    const agentPending = sendInbound({
-      sessionKey: OAK_SESSION_KEY,
-      prompt: "from-elm",
-      messageId: "elm-holds",
-      provenance: "inter_session",
-      active: oakActive,
-    });
-    await vi.waitFor(() => {
-      expect(getCommandLaneSnapshot(`live-inbound:agent:${OAK_SESSION_KEY}`).activeCount).toBe(1);
-    });
-
-    const owner = await sendInbound({
-      sessionKey: OAK_SESSION_KEY,
-      prompt: "owner ping",
-      messageId: "owner-while-agents",
-      provenance: "external_user",
-      active: oakActive,
-    });
-    expect(owner.outcome, `owner waited ${owner.elapsedMs}ms behind agent traffic`).toBe("reply");
-    expect(owner.text).toBe("reply:owner ping");
-    expect(owner.elapsedMs).toBeLessThan(REPLY_BUDGET_MS);
-    expect(agentReplyHold.settled()).toBe(false);
-    expect(oakActive.result).toBeNull();
-    expect(elmActive.result).toBeNull();
-    const ownerCall = runEmbeddedAgentMock.mock.calls.at(-1)?.[0] as RunEmbeddedAgentParams;
-    expect(ownerCall.liveInboundSessionLane).toBe(`live-inbound:owner:${OAK_SESSION_KEY}`);
-    expect(ownerCall.provider).toBe(MODEL.provider);
-    expect(ownerCall.model).toBe(MODEL.model);
-
-    agentReplyHold.release();
-    oakHold.release();
-    elmHold.release();
-    await Promise.all([oakBlock, elmBlock, (await agentPending).pending, owner.pending]);
-  });
-  it("writes the live reply into the chat transcript while the turn is still held", async () => {
-    installFastModel();
-    const messageId = "owner-transcript";
-    const sessionId = "session-" + messageId;
-    const entry: SessionEntry = { sessionId, updatedAt: Date.now() };
-    const storePath = await createSessionStoreFile(entry, OWNER_SESSION_KEY);
-    const sessionHold = armSessionHold(OWNER_SESSION_KEY);
-    const sessionBlock = holdSession(OWNER_SESSION_KEY);
-    const active = createReplyOperation({
-      sessionKey: OWNER_SESSION_KEY,
-      sessionId: "session-long",
-      resetTriggered: false,
-      turnKind: "visible",
-    });
-    active.setPhase("running");
-
-    const reply = await sendInbound({
-      sessionKey: OWNER_SESSION_KEY,
-      prompt: "Write this down",
-      messageId,
-      provenance: "external_user",
-      active,
-      session: { entry, storePath },
-    });
-
-    expect(reply.outcome, "no reply after " + reply.elapsedMs + "ms").toBe("reply");
-    expect(reply.text).toBe("reply:Write this down");
-    expect(sessionHold.settled()).toBe(false);
-    const transcript = await loadTranscriptEvents({
-      agentId: "main",
-      sessionId,
-      sessionKey: OWNER_SESSION_KEY,
-      storePath,
-    });
-    const assistantTexts = transcript.flatMap((event) => {
-      const message = (event as { message?: { role?: unknown; content?: unknown } }).message;
-      if (message?.role !== "assistant" || !Array.isArray(message.content)) {
-        return [];
-      }
-      return message.content.flatMap((block: { type?: unknown; text?: unknown }) =>
-        block.type === "text" && typeof block.text === "string" ? [block.text] : [],
-      );
-    });
-    expect(assistantTexts, "assistant text in the chat transcript").toContain(
-      "reply:Write this down",
-    );
-    // The held turn owns this session's writer; the live reply must not compact it.
-    expect(runSessionCompactionIfNeededMock).not.toHaveBeenCalled();
-
-    sessionHold.release();
-    await Promise.all([sessionBlock, reply.pending]);
-  });
-
-  it("stops a live reply when the chat is cancelled", async () => {
-    installFastModel();
-    const sessionHold = armSessionHold(OWNER_SESSION_KEY);
-    const sessionBlock = holdSession(OWNER_SESSION_KEY);
-    const active = createReplyOperation({
-      sessionKey: OWNER_SESSION_KEY,
-      sessionId: "session-long",
-      resetTriggered: false,
-      turnKind: "visible",
-    });
-    active.setPhase("running");
-    const modelStarted = createDeferred();
-    runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
-      modelStarted.resolve();
-      await new Promise<void>((resolve) => {
-        if (params.abortSignal?.aborted) {
-          resolve();
-          return;
-        }
-        params.abortSignal?.addEventListener("abort", () => resolve(), { once: true });
+  it(
+    "answers a new message within 5s while a 60s-class turn holds the chat",
+    async () => {
+      installFastModel();
+      setCommandLaneConcurrency(CommandLane.Main, 1);
+      mainHold = createHold();
+      const mainBlock = enqueueCommandInLane(CommandLane.Main, () => mainHold!.promise);
+      const sessionHold = armSessionHold(OWNER_SESSION_KEY);
+      const sessionBlock = holdSession(OWNER_SESSION_KEY);
+      const active = createReplyOperation({
+        sessionKey: OWNER_SESSION_KEY,
+        sessionId: "session-long",
+        resetTriggered: false,
+        turnKind: "visible",
       });
-      return { payloads: [], meta: { aborted: true, agentMeta: {} } };
-    });
+      active.setPhase("running");
+      await warmUp({
+        sessionKey: OWNER_SESSION_KEY,
+        provenance: "external_user",
+        active,
+        tag: "held",
+      });
 
-    const pending = sendInbound({
-      sessionKey: OWNER_SESSION_KEY,
-      prompt: "long question",
-      messageId: "owner-cancel",
-      provenance: "external_user",
-      active,
-    });
-    await modelStarted.promise;
-    const live = resolveLiveInboundOperationsForChat({
-      sessionKey: OWNER_SESSION_KEY,
-      agentId: "main",
-    });
-    expect(live).toHaveLength(1);
-    const liveOperation = live[0]!;
+      const reply = await sendInbound({
+        sessionKey: OWNER_SESSION_KEY,
+        prompt: "Are you there?",
+        messageId: "owner-2",
+        provenance: "external_user",
+        active,
+      });
 
-    const outcome = abortSessionRunTargetWithOutcome({
-      agentId: "main",
-      key: OWNER_SESSION_KEY,
-    });
+      expect(
+        reply.outcome,
+        `no reply after ${reply.elapsedMs}ms while the turn was still held`,
+      ).toBe("reply");
+      expect(reply.text, `reply text after ${reply.elapsedMs}ms`).toBe("reply:Are you there?");
+      expect(reply.elapsedMs).toBeLessThan(REPLY_BUDGET_MS);
+      expect(sessionHold.settled()).toBe(false);
+      expect(mainHold.settled()).toBe(false);
+      expect(active.result).toBeNull();
+      expect(active.abortSignal.aborted).toBe(false);
+      expect(runEmbeddedAgentMock).toHaveBeenCalled();
+      const modelCall = runEmbeddedAgentMock.mock.calls[0]?.[0] as RunEmbeddedAgentParams;
+      expect(modelCall.provider).toBe(MODEL.provider);
+      expect(modelCall.model).toBe(MODEL.model);
+      expect(modelCall.liveInboundSessionLane).toBe(`live-inbound:owner:${OWNER_SESSION_KEY}`);
+      expect(modelCall.lane).not.toBe(CommandLane.Main);
+      expect(getCommandLaneSnapshot(resolveSessionLane(OWNER_SESSION_KEY)).activeCount).toBe(1);
 
-    expect(outcome.active).toBe(true);
-    expect(liveOperation.abortSignal.aborted).toBe(true);
-    const reply = await pending;
-    expect(reply.outcome, "cancelled live reply did not settle").toBe("reply");
-    expect(sessionHold.settled()).toBe(false);
+      sessionHold.release();
+      mainHold.release();
+      await Promise.all([sessionBlock, mainBlock, reply.pending]);
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
 
-    sessionHold.release();
-    await Promise.all([sessionBlock, reply.pending]);
-  });
+  it(
+    "answers the owner within 5s while two agents are messaging each other",
+    async () => {
+      installFastModel();
+      const oakHold = armSessionHold(OAK_SESSION_KEY);
+      const elmHold = armSessionHold(ELM_SESSION_KEY);
+      const oakBlock = holdSession(OAK_SESSION_KEY);
+      const elmBlock = holdSession(ELM_SESSION_KEY);
+      const oakActive = createReplyOperation({
+        sessionKey: OAK_SESSION_KEY,
+        sessionId: "session-oak",
+        resetTriggered: false,
+        turnKind: "visible",
+      });
+      oakActive.setPhase("running");
+      const elmActive = createReplyOperation({
+        sessionKey: ELM_SESSION_KEY,
+        sessionId: "session-elm",
+        resetTriggered: false,
+        turnKind: "visible",
+      });
+      elmActive.setPhase("running");
+      await warmUp({
+        sessionKey: OAK_SESSION_KEY,
+        provenance: "inter_session",
+        active: oakActive,
+        tag: "agent",
+      });
+      await warmUp({
+        sessionKey: OAK_SESSION_KEY,
+        provenance: "external_user",
+        active: oakActive,
+        tag: "owner",
+      });
+
+      const betweenAgents = await sendInbound({
+        sessionKey: OAK_SESSION_KEY,
+        prompt: "status from elm",
+        messageId: "elm-to-oak",
+        provenance: "inter_session",
+        active: oakActive,
+      });
+      expect(betweenAgents.outcome, "agent reply after " + betweenAgents.elapsedMs + "ms").toBe(
+        "reply",
+      );
+      expect(betweenAgents.text).toBe("reply:status from elm");
+      expect(betweenAgents.elapsedMs).toBeLessThan(REPLY_BUDGET_MS);
+      const agentCall = runEmbeddedAgentMock.mock.calls.at(-1)?.[0] as RunEmbeddedAgentParams;
+      expect(agentCall.provider).toBe(MODEL.provider);
+      expect(agentCall.model).toBe(MODEL.model);
+      expect(agentCall.liveInboundSessionLane).toBe(`live-inbound:agent:${OAK_SESSION_KEY}`);
+      await betweenAgents.pending;
+
+      agentReplyHold = createHold();
+      const agentPending = sendInbound({
+        sessionKey: OAK_SESSION_KEY,
+        prompt: "from-elm",
+        messageId: "elm-holds",
+        provenance: "inter_session",
+        active: oakActive,
+      });
+      await vi.waitFor(() => {
+        expect(getCommandLaneSnapshot(`live-inbound:agent:${OAK_SESSION_KEY}`).activeCount).toBe(1);
+      });
+
+      const owner = await sendInbound({
+        sessionKey: OAK_SESSION_KEY,
+        prompt: "owner ping",
+        messageId: "owner-while-agents",
+        provenance: "external_user",
+        active: oakActive,
+      });
+      expect(owner.outcome, `owner waited ${owner.elapsedMs}ms behind agent traffic`).toBe("reply");
+      expect(owner.text).toBe("reply:owner ping");
+      expect(owner.elapsedMs).toBeLessThan(REPLY_BUDGET_MS);
+      expect(agentReplyHold.settled()).toBe(false);
+      expect(oakActive.result).toBeNull();
+      expect(elmActive.result).toBeNull();
+      const ownerCall = runEmbeddedAgentMock.mock.calls.at(-1)?.[0] as RunEmbeddedAgentParams;
+      expect(ownerCall.liveInboundSessionLane).toBe(`live-inbound:owner:${OAK_SESSION_KEY}`);
+      expect(ownerCall.provider).toBe(MODEL.provider);
+      expect(ownerCall.model).toBe(MODEL.model);
+
+      agentReplyHold.release();
+      oakHold.release();
+      elmHold.release();
+      await Promise.all([oakBlock, elmBlock, (await agentPending).pending, owner.pending]);
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
+
+  it(
+    "writes the live reply into the chat transcript while the turn is still held",
+    async () => {
+      installFastModel();
+      const messageId = "owner-transcript";
+      const sessionId = "session-" + messageId;
+      const entry: SessionEntry = { sessionId, updatedAt: Date.now() };
+      const storePath = await createSessionStoreFile(entry, OWNER_SESSION_KEY);
+      const sessionHold = armSessionHold(OWNER_SESSION_KEY);
+      const sessionBlock = holdSession(OWNER_SESSION_KEY);
+      const active = createReplyOperation({
+        sessionKey: OWNER_SESSION_KEY,
+        sessionId: "session-long",
+        resetTriggered: false,
+        turnKind: "visible",
+      });
+      active.setPhase("running");
+      await warmUp({
+        sessionKey: OWNER_SESSION_KEY,
+        sessionId,
+        provenance: "external_user",
+        active,
+        session: { entry, storePath },
+        tag: "transcript",
+      });
+
+      const reply = await sendInbound({
+        sessionKey: OWNER_SESSION_KEY,
+        prompt: "Write this down",
+        messageId,
+        sessionId,
+        provenance: "external_user",
+        active,
+        session: { entry, storePath },
+      });
+
+      expect(reply.outcome, "no reply after " + reply.elapsedMs + "ms").toBe("reply");
+      expect(reply.text).toBe("reply:Write this down");
+      expect(sessionHold.settled()).toBe(false);
+      const transcript = await loadTranscriptEvents({
+        agentId: "main",
+        sessionId,
+        sessionKey: OWNER_SESSION_KEY,
+        storePath,
+      });
+      const assistantTexts = transcript.flatMap((event) => {
+        const message = (event as { message?: { role?: unknown; content?: unknown } }).message;
+        if (message?.role !== "assistant" || !Array.isArray(message.content)) {
+          return [];
+        }
+        return message.content.flatMap((block: { type?: unknown; text?: unknown }) =>
+          block.type === "text" && typeof block.text === "string" ? [block.text] : [],
+        );
+      });
+      expect(assistantTexts, "assistant text in the chat transcript").toContain(
+        "reply:Write this down",
+      );
+      // The held turn owns this session's writer; the live reply must not compact it.
+      expect(runSessionCompactionIfNeededMock).not.toHaveBeenCalled();
+
+      sessionHold.release();
+      await Promise.all([sessionBlock, reply.pending]);
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
+
+  it(
+    "stops a live reply when the chat is cancelled",
+    async () => {
+      installFastModel();
+      const sessionHold = armSessionHold(OWNER_SESSION_KEY);
+      const sessionBlock = holdSession(OWNER_SESSION_KEY);
+      const active = createReplyOperation({
+        sessionKey: OWNER_SESSION_KEY,
+        sessionId: "session-long",
+        resetTriggered: false,
+        turnKind: "visible",
+      });
+      active.setPhase("running");
+      await warmUp({
+        sessionKey: OWNER_SESSION_KEY,
+        provenance: "external_user",
+        active,
+        tag: "cancel",
+      });
+      const modelStarted = createDeferred();
+      runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
+        modelStarted.resolve();
+        await new Promise<void>((resolve) => {
+          if (params.abortSignal?.aborted) {
+            resolve();
+            return;
+          }
+          params.abortSignal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return { payloads: [], meta: { aborted: true, agentMeta: {} } };
+      });
+
+      const pending = sendInbound({
+        sessionKey: OWNER_SESSION_KEY,
+        prompt: "long question",
+        messageId: "owner-cancel",
+        provenance: "external_user",
+        active,
+      });
+      await modelStarted.promise;
+      const live = resolveLiveInboundOperationsForChat({
+        sessionKey: OWNER_SESSION_KEY,
+        agentId: "main",
+      });
+      expect(live).toHaveLength(1);
+      const liveOperation = live[0]!;
+
+      const outcome = abortSessionRunTargetWithOutcome({
+        agentId: "main",
+        key: OWNER_SESSION_KEY,
+      });
+
+      expect(outcome.active).toBe(true);
+      expect(liveOperation.abortSignal.aborted).toBe(true);
+      const reply = await pending;
+      expect(reply.outcome, "cancelled live reply did not settle").toBe("reply");
+      expect(sessionHold.settled()).toBe(false);
+
+      sessionHold.release();
+      await Promise.all([sessionBlock, reply.pending]);
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
 });
