@@ -110,7 +110,8 @@ describe("Find anything offers Try it with examples", () => {
 });
 
 describe("FindAnything (the Classic palette re-hosted)", () => {
-  it("lists the Classic actions and says Coming for the commands R1 has no home for", async () => {
+  it("lists the Classic actions and, at Technical, says Coming for the commands R1 has no home for", async () => {
+    localStorage.setItem("branch.level", "technical");
     const { render } = setupFind();
     await render();
     expect(row("New conversation").querySelector(".pal-hint")?.textContent).toBe("Ctrl N");
@@ -119,6 +120,24 @@ describe("FindAnything (the Classic palette re-hosted)", () => {
     expect(focus.querySelector(".pal-hint")?.textContent).toBe("Coming");
     await act(async () => focus.click());
     expect(getToasts().map(toast => toast.text)).toContain("Coming · Focus mode comes in a later update.");
+    await type("quick ask");
+    expect(row("Quick ask").querySelector(".pal-hint")?.textContent).toBe("Coming");
+  });
+
+  it.each(["regular", "advanced"])("leaves Focus mode and Quick ask out at %s, since they only say Coming", async (level) => {
+    localStorage.setItem("branch.level", level);
+    const { render } = setupFind();
+    await render();
+    const labels = () => [...document.querySelectorAll('[data-testid="palette-row"] .pal-label')].map(node => node.textContent);
+    expect(labels()).toContain("New conversation");
+    for (const words of ["focus", "quick ask"]) {
+      await type(words);
+      expect(labels()).not.toContain("Focus mode");
+      expect(labels()).not.toContain("Quick ask");
+    }
+    await type("");
+    expect(labels()).not.toContain("Focus mode");
+    expect(labels()).not.toContain("Quick ask");
   });
 
   it("Take the walkthrough starts the window's tour", async () => {
