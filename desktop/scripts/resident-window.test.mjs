@@ -6,9 +6,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import { isolateHome, stopOnExit } from './fixtures/isolated-home.mjs';
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error('Compile the exact desktop source before testing');
 const require = createRequire(import.meta.url), Module = require('node:module');
+isolateHome('branch-resident-home-');
 const originalLoad = Module._load, originalFetch = globalThis.fetch;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function freePort() {
@@ -48,6 +51,9 @@ function electronFixture() {
 async function fixture(run, hidden = false) {
   const temp = join(tmpdir(), 'Codex-session-files'); await mkdir(temp, { recursive: true });
   const root = await mkdtemp(join(temp, 'branch-resident-policy-'));
+  let gatewayPid;
+  const engines = () => { try { gatewayPid ??= Number(readFileSync(join(root, 'gateway.pid'), 'utf8')) || undefined; } catch { /* not started yet */ } return gatewayPid ? [gatewayPid] : []; };
+  const forget = stopOnExit(engines);
   const engine = join(root, 'engine'), windowDir = join(root, 'window');
   await mkdir(join(engine, 'dist'), { recursive: true }); await mkdir(windowDir);
   await writeFile(join(engine, 'dist/build-info.json'), '{"version":"fixture"}');
@@ -77,7 +83,14 @@ async function fixture(run, hidden = false) {
     const pid = Number(await readFile(join(root, 'gateway.pid'), 'utf8'));
     await run({ ...runtime, window: runtime.window, tray: runtime.tray, root, pid });
   } finally {
+    engines();
     runtime.app.quit(); Module._load = originalLoad; globalThis.fetch = originalFetch;
+    // #2161: the fixture gateway never outlives its test.
+    for (const pid of engines()) {
+      for (let i = 0; i < 100; i++) { try { process.kill(pid, 0); } catch { break; } await new Promise(r => setTimeout(r, 50)); }
+      try { process.kill(pid, 'SIGKILL'); } catch { /* already stopped */ }
+    }
+    forget();
     if (previousData === undefined) delete process.env.BRANCH_DESKTOP_DATA; else process.env.BRANCH_DESKTOP_DATA = previousData;
     if (previousHidden === undefined) delete process.env.BRANCH_DESKTOP_HIDDEN; else process.env.BRANCH_DESKTOP_HIDDEN = previousHidden;
     await rm(root, { recursive: true, force: true });

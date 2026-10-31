@@ -27,7 +27,10 @@ test("the uncaught-error box is plain: no stack, no 'JavaScript error', no 'Unca
 });
 
 test("the update and stop-engine boxes pass the failure through the plain filter, never the raw error as is", () => {
-  for (const [title, raw, fallback] of [["Branch couldn't finish the update", "msg", "UPDATE_FAILED_PLAIN"], ["Branch couldn't stop its engine", "message", "STOP_FAILED_PLAIN"]]) {
+  // #2161: the update box is asynchronous (a modal error box blocked the main process and its engine watch).
+  assert.equal(box("Branch couldn't finish the update"), undefined, "no blocking error box for a failed update");
+  assert.match(main, /message: "Branch couldn't finish the update",\s*detail: plainDialogText\(message, UPDATE_FAILED_PLAIN\)/);
+  for (const [title, raw, fallback] of [["Branch couldn't stop its engine", "message", "STOP_FAILED_PLAIN"]]) {
     const found = box(title);
     assert.ok(found, title);
     assert.equal(found.body, `plainDialogText(${raw}, ${fallback})`, `${title}: filtered, with a plain fallback`);
