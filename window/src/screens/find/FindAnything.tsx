@@ -1,6 +1,7 @@
 // Find anything (Ctrl K) in the R1 window: the Classic palette (shell/Palette.tsx, shell/palette-rows.ts) re-hosted as a
 // clear glass dialog (README item 48). Only its props are adapted here: the rows open R1 routes, and the commands R1 has
-// no home for yet say Coming instead of doing nothing.
+// no home for yet say Coming instead of doing nothing. Those Coming rows are listed only at Technical (settings rows.ts
+// COMING_FROM); Regular and Advanced leave them out.
 import { useMemo } from "react";
 import { availability } from "../../connect/capabilities";
 import type { Conversation, ConversationList } from "../../connect/conversations";
@@ -16,9 +17,12 @@ import type { PaletteRow } from "../../shell/palette-model";
 import { paletteRows } from "../../shell/palette-rows";
 import { readThemeChoice, setThemeChoice, toggleTheme } from "../../theme/theme";
 import { FIND_EVENT } from "../../thread/FindBar";
+import { useLevelNow } from "../settings/level-now";
+import { COMING_FROM } from "../settings/rows";
 import "./find.css";
 
-/** Commands with no R1 home yet: the row stays listed, says Coming, and runs nothing but its reason. */
+/** Commands with no R1 home yet: at Technical the row is listed, says Coming, and runs nothing but its reason; below
+ *  Technical it is not listed. */
 export const FIND_COMING: Readonly<Record<string, string>> = {
   "a:focus": "Focus mode comes in a later update.",
   "a:ask": "Quick ask comes in a later update.",
@@ -42,9 +46,10 @@ export type FindAnythingProps = {
 
 const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** Adapts the Classic rows to R1: Coming for the commands above, and Customize's tabs open Customize. */
-export function r1PaletteRows(rows: readonly PaletteRow[], onPlace: (place: PlaceId) => void): PaletteRow[] {
-  return rows.map(row => {
+/** Adapts the Classic rows to R1: Coming for the commands above (left out when comingShown is false, below
+ *  Technical), and Customize's tabs open Customize. */
+export function r1PaletteRows(rows: readonly PaletteRow[], onPlace: (place: PlaceId) => void, comingShown = true): PaletteRow[] {
+  return rows.filter(row => comingShown || !FIND_COMING[row.id]).map(row => {
     const coming = FIND_COMING[row.id];
     if (coming) return { ...row, hint: "Coming", run: () => void notify(`Coming · ${coming}`) };
     if (row.id.startsWith("p:customize:")) return { ...row, run: () => onPlace("customize") };
@@ -55,6 +60,7 @@ export function r1PaletteRows(rows: readonly PaletteRow[], onPlace: (place: Plac
 export function FindAnything(p: FindAnythingProps) {
   const { session, ready } = p;
   const trunks = useTrunks(session, ready);
+  const comingShown = useLevelNow(session.engine) >= COMING_FROM;
   const request = useMemo(() => <T,>(method: string, params?: unknown) => session.request<T>(method, params), [session]);
   const actions = useMemo(() => conversationActions(request, p.list, () => session.getSnapshot().sessionKey), [request, p.list, session]);
   const trunkName = (id: string | undefined) => trunks.list.find(trunk => trunk.id === id)?.name ?? id ?? "";
@@ -89,7 +95,7 @@ export function FindAnything(p: FindAnythingProps) {
       startTryExamples((method, params) => session.request(method, params));
       p.onSettings("trunks");
     },
-  }), p.onPlace);
+  }), p.onPlace, comingShown);
   return <div className="r1-find">
     <Palette rows={rows} request={request} rowName={rowName} onClose={p.onClose}
       onOpenMessage={(key, words) => { p.onOpenConversation(key); setTimeout(() => window.dispatchEvent(new CustomEvent(FIND_EVENT, { detail: { query: words } })), 0); }} />
