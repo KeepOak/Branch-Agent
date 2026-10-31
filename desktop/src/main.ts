@@ -9,7 +9,7 @@ import { leaveAppWorkingFolder, userHome } from "./app-working-folder";
 import { nodeOutsideSwappedFolder } from "./install-folder-holders";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, engineEnvironment, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopEnginePid, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
-import { attachOrStartEngine, childModeSettingsLine, DETACHED_ENGINE_LINE, engineAnswers, launchdJob, nodeVolumeReader, parseSessionRunList, readEngineHealth, readEngineWork, readServiceLogsSince, recordEngineMode, restartStoppedServiceEngine, runEngineCli, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceManagerRunsEngine, serviceVolumeBlock, sessionRunListArgs, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
+import { attachOrStartEngine, childModeSettingsLine, DETACHED_ENGINE_LINE, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readEngineWork, readServiceLogsSince, readSessionRunList, recordEngineMode, restartStoppedServiceEngine, runEngineCli, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceManagerRunsEngine, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
 import { appHoldsSleepBlock, claimServiceKeepAwake, createRunKeepAwake, handOffKeepAwake, POWER_STATE_REFRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, TRAY_STATUS_MS, TRAY_STATUS_WORKING_MS, writePowerState } from "./keep-awake";
 import { applyGuestWebPreferences, BRANCH_BROWSER_PARTITION, guestAttachDecision, guestPermissionDecision, guestUrlDecision, popupDecision, r1WebPreferences } from "./browser-guest-policy";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
@@ -447,9 +447,9 @@ let runListNoted: boolean | undefined;
 /** An older engine has no run counts on /health (#2161): its session list, read with the running engine's own CLI. */
 async function readEngineRunList(): Promise<EngineWork | undefined> {
   let work: EngineWork | undefined;
-  let reason = "it has no session list";
+  let reason = "it has no complete session list";
   try {
-    work = parseSessionRunList(await runEngineCli({ file: cfg.nodePath, args: sessionRunListArgs(), cwd: serviceEngineDir(),
+    work = await readSessionRunList(args => runEngineCli({ file: cfg.nodePath, args, cwd: serviceEngineDir(),
       env: engineEnvironment(cfg, false, cfg.gatewayPort, token), timeoutMs: 20_000 }));
   } catch (error) { reason = error instanceof Error ? error.message : String(error); }
   if (runListNoted !== Boolean(work)) {
