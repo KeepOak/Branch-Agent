@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "@branch/normalization-core/record-coerce";
-import { resolveAmbientOwnerAgentId } from "../agents/agent-scope-config.js";
+import { listAgentEntries, resolveAmbientOwnerAgentId } from "../agents/agent-scope-config.js";
 import { resolveAgentDir, resolveAgentEffectiveModelPrimary } from "../agents/agent-scope.js";
 import type { SetupRuntimeCredential } from "../agents/auth-profiles/setup-access.js";
 import { loadAuthProfileStoreWithoutExternalProfiles } from "../agents/auth-profiles/store-runtime.js";
@@ -24,6 +24,7 @@ import { createPluginCache } from "../plugins/plugin-cache.js";
 import { withPluginLifecycleLease } from "../plugins/plugin-lifecycle-lease.js";
 import { resolvePluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
 import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
+import { LEGACY_IMPLICIT_AGENT_ID, normalizeAgentId } from "../routing/session-key.js";
 import { resolveUserPath } from "../utils.js";
 import { WizardCancelledError, WizardNavigationError } from "../wizard/prompts.js";
 import { appendSystemAgentAuditEntry } from "./audit.js";
@@ -271,10 +272,32 @@ export async function activateSetupInference(
   }
 }
 
-async function activateCandidate(
+/**
+ * A fresh desktop profile has no agents yet, but first-run setup still names the legacy
+ * "main" agent (#589). Activate it like an unscoped first-run setup: the model goes to the
+ * defaults the first roster agent inherits, instead of failing on an agent that isn't there.
+ */
+function withoutPendingDefaultAgent(
   params: ActivateSetupInferenceParams,
+  snapshot: ConfigFileSnapshot,
+  cfg: BranchConfig,
+): ActivateSetupInferenceParams {
+  if (
+    params.agentId === undefined ||
+    normalizeAgentId(params.agentId) !== LEGACY_IMPLICIT_AGENT_ID ||
+    hasResolvedRosterBeforeMigrations(snapshot) ||
+    listAgentEntries(cfg).length > 0
+  ) {
+    return params;
+  }
+  const { agentId: _pendingAgentId, ...unscoped } = params;
+  return unscoped;
+}
+
+async function activateCandidate(
+  requested: ActivateSetupInferenceParams,
 ): Promise<ActivateSetupInferenceResult> {
-  const deps = params.deps ?? {};
+  const deps = requested.deps ?? {};
   const readSnapshot =
     deps.readConfigFileSnapshot ?? (await import("../config/config.js")).readConfigFileSnapshot;
   const snapshot = await readSnapshot();
@@ -282,6 +305,7 @@ async function activateCandidate(
     throw new Error(invalidSetupConfigError(snapshot));
   }
   const cfg = snapshot.runtimeConfig ?? snapshot.config;
+  const params = withoutPendingDefaultAgent(requested, snapshot, cfg);
   const routeAgentId = resolveAmbientOwnerAgentId(cfg, params.agentId);
   const ctx: StageContext = {
     params,
