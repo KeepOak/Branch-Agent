@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import fs from "node:fs/promises";
 import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
 import {
   createOperationalRunInstanceRef,
@@ -9,7 +8,6 @@ import {
   createCronCreatorAuthorityCapability,
   runWithCronCreatorAuthorityCapability,
 } from "../../agents/cron-creator-authority-context.js";
-import { rootedAgentRunParams } from "../../agents/rooted-run-params.js";
 import { SessionManager } from "../../agents/sessions/session-manager.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import { getRuntimeConfig } from "../../config/config.js";
@@ -25,14 +23,13 @@ import {
 } from "../../process/gateway-work-admission.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import { captureBranchStateWorkerContext } from "../../state/branch-state-worker-context.js";
-import { bumpSkillsSnapshotVersion } from "../runtime/refresh-state.js";
+import { hasWorkshopToolFiles } from "./capability-policy.js";
 import { recordSkillExperienceReviewOutcome } from "./collection-review-state.js";
 import { resolveSkillWorkshopConfig } from "./config.js";
 import { buildSkillExperienceReviewPrompt } from "./experience-review-prompt.js";
 import type { ExperienceReviewCandidate } from "./experience-review-scheduler.js";
-import { SKILL_WORKSHOP_MAINTENANCE_TOOLS } from "./maintenance-prompt.js";
 import { assertSkillReviewRunSucceeded } from "./review-outcome.js";
-import { resolveWorkshopSkillsDir } from "./skills-root.js";
+import { applySkillProposal, inspectSkillProposal } from "./service.js";
 import type { SkillWorkshopProposalMutationBudget } from "./types.js";
 
 const reviews = createBackgroundWorkOwner({ owner: "core:skill-workshop", maxConcurrent: 1 });
@@ -55,7 +52,6 @@ export async function prepareSkillExperienceReviewCandidate(
   const foreground = candidate.ctx.foregroundPromptContext;
   const sessionKey = candidate.source.sessionKey;
   if (
-    resolveSkillWorkshopConfig(config).autonomous.mode === "propose" &&
     resolveSandboxRuntimeStatus({ cfg: config, sessionKey, agentId: foreground.agentId }).sandboxed
   ) {
     return undefined;
@@ -131,8 +127,6 @@ async function runSkillExperienceReviewInner(candidate: ExperienceReviewCandidat
     return;
   }
   const outcomeStore = { context: captureBranchStateWorkerContext() };
-  const executionRoot =
-    mode === "auto" ? resolveWorkshopSkillsDir(config, foregroundPromptContext.agentId) : undefined;
   const runId = `skill-workshop-review:${randomUUID()}`;
   const reviewSession = resolveInternalSessionEffectsIdentity({
     agentId: foregroundPromptContext.agentId,
@@ -140,8 +134,10 @@ async function runSkillExperienceReviewInner(candidate: ExperienceReviewCandidat
   });
   const origin = foregroundPromptContext.cronCreatorCallerOrigin;
   const capability = origin ? createCronCreatorAuthorityCapability(runId, origin) : undefined;
-  const proposalMutationBudget: SkillWorkshopProposalMutationBudget | undefined =
-    mode === "propose" ? { remaining: 1, readSkillHashes: new Map() } : undefined;
+  const proposalMutationBudget: SkillWorkshopProposalMutationBudget = {
+    remaining: 1,
+    readSkillHashes: new Map(),
+  };
   const attemptedAtMs = Date.now();
   let outcome: "completed" | "proposed" | "nothing";
   let proposalId: string | undefined;
@@ -158,11 +154,8 @@ async function runSkillExperienceReviewInner(candidate: ExperienceReviewCandidat
   });
   try {
     abortSignal.throwIfAborted();
-    if (executionRoot) {
-      await fs.mkdir(executionRoot, { recursive: true });
-    }
     const sessionManager = await SessionManager.openModelContextAsync(candidate.source, {
-      cwd: executionRoot ?? workspaceDir,
+      cwd: workspaceDir,
       through: candidate.source,
       signal: abortSignal,
     });
@@ -179,10 +172,10 @@ async function runSkillExperienceReviewInner(candidate: ExperienceReviewCandidat
     if (sourceEntry?.sessionId !== candidate.source.sessionId) {
       throw new Error("Skill experience review source session was deleted or replaced.");
     }
-    const existingSkills =
-      mode === "propose"
-        ? listWritableWorkshopSkillSummaries({ config, agentId: foregroundPromptContext.agentId })
-        : undefined;
+    const existingSkills = listWritableWorkshopSkillSummaries({
+      config,
+      agentId: foregroundPromptContext.agentId,
+    });
     validateSessionTranscriptContextAnchor(candidate.source, candidate.source);
     // Source revocation fences retained tools and completion, even when the
     // model handles a denied tool call and returns a normal final response.
@@ -233,9 +226,7 @@ async function runSkillExperienceReviewInner(candidate: ExperienceReviewCandidat
         sessionManager,
         sessionPersistence: "detached",
         workspaceDir,
-        ...(executionRoot ? rootedAgentRunParams(workspaceDir, executionRoot) : {}),
         permissionMode: sourceEntry.permissionMode ?? foregroundPromptContext.permissionMode,
-        ...(executionRoot ? { skillsSnapshot: { prompt: "", skills: [] } } : {}),
         config,
         abortSignal: reviewAbortSignal,
         prompt: buildSkillExperienceReviewPrompt({ ...candidate, existingSkills }, mode),
@@ -249,11 +240,11 @@ async function runSkillExperienceReviewInner(candidate: ExperienceReviewCandidat
         silentExpected: true,
         allowEmptyAssistantReplyAsSilent: true,
         terminalReplyExpectation: "optional",
-        toolExecutionAllow:
-          mode === "auto" ? [...SKILL_WORKSHOP_MAINTENANCE_TOOLS] : ["skill_workshop"],
-        skillWorkshopProposalOnly: mode === "propose",
-        skillWorkshopUpdateProposals: mode === "propose",
-        skillWorkshopAutonomousCapture: mode === "propose",
+        // Raw file/shell tools could bypass the highest step and tool approvals.
+        toolExecutionAllow: ["skill_workshop"],
+        skillWorkshopProposalOnly: true,
+        skillWorkshopUpdateProposals: true,
+        skillWorkshopAutonomousCapture: true,
         skillWorkshopProposalMutationBudget: proposalMutationBudget,
         skillWorkshopOrigin: {
           agentId: foregroundPromptContext.agentId,
@@ -285,12 +276,44 @@ async function runSkillExperienceReviewInner(candidate: ExperienceReviewCandidat
       : await run();
     preparedRunAdmission.assertSourceCurrent();
 
-    // Direct edits have normal file-tool semantics; drafts remain pending even
-    // if the operator enables automatic maintenance while this review runs.
     assertSkillReviewRunSucceeded(embeddedResult);
     const proposalIds = [...(proposalMutationBudget?.mutatedProposalIds ?? [])];
     proposalId = proposalIds[0];
-    outcome = mode === "auto" ? "completed" : proposalIds.length === 0 ? "nothing" : "proposed";
+    outcome = proposalIds.length === 0 ? "nothing" : "proposed";
+    if (mode === "auto" && proposalId) {
+      const currentConfig = getRuntimeConfig();
+      const proposal = await inspectSkillProposal(proposalId, {
+        config: currentConfig,
+        agentId: foregroundPromptContext.agentId,
+      });
+      // Manual drafts and tools stay pending. Only instruction-only autonomous
+      // proposals can publish after a successful review.
+      if (
+        resolveSkillWorkshopConfig(currentConfig).autonomous.mode === "auto" &&
+        proposal?.record.status === "pending" &&
+        proposal.record.autonomousCapture &&
+        proposal.revisionHash ===
+          proposalMutationBudget.mutatedProposalRevisionHashes?.get(proposalId) &&
+        !hasWorkshopToolFiles(proposal.record.supportFiles)
+      ) {
+        preparedRunAdmission.assertSourceCurrent();
+        await applySkillProposal({
+          config: currentConfig,
+          agentId: foregroundPromptContext.agentId,
+          workspaceDir,
+          eventActor: { type: "system", id: "autonomous-review" },
+          proposalId,
+          expectedRevisionHash: proposal.revisionHash,
+          assertCommitAllowed: () => {
+            preparedRunAdmission.assertSourceCurrent();
+            if (resolveSkillWorkshopConfig(getRuntimeConfig()).autonomous.mode !== "auto") {
+              throw new Error("Automatic Workshop publication was disabled.");
+            }
+          },
+        });
+        outcome = "completed";
+      }
+    }
     const agentUsage = embeddedResult.meta?.agentMeta?.usage;
     usage = agentUsage
       ? {
@@ -313,9 +336,6 @@ async function runSkillExperienceReviewInner(candidate: ExperienceReviewCandidat
     );
     throw error;
   } finally {
-    if (executionRoot) {
-      bumpSkillsSnapshotVersion({ reason: "workshop" });
-    }
     clearAgentRunContext(runId);
   }
   await recordSkillExperienceReviewOutcome(

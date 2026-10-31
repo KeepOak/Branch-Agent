@@ -11,6 +11,7 @@ import {
   withSkillProposalLifecycleDispatch,
   type SkillProposalTransitionInput,
 } from "./apply-transition.js";
+import { assertWorkshopCapability } from "./capability-policy.js";
 import { resolveSkillWorkshopConfig } from "./config.js";
 import { resolveDraftedSkillDescription, resolveSkillProposalName } from "./frontmatter.js";
 import { createSkillProposalEvent, dispatchSkillProposalChanged } from "./plugin-hooks.js";
@@ -199,6 +200,7 @@ export async function reviseSkillProposal(
           scan,
           supportFiles: preparedSupportFiles,
         } = prepared;
+        assertWorkshopCapability(lockedRequest.config, preparedSupportFiles);
         const supportFileMetadata =
           preparedSupportFiles.length > 0
             ? await buildSupportFileMetadata(

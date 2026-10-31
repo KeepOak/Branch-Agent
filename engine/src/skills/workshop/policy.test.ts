@@ -1,10 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { PLUGIN_APPROVAL_DESCRIPTION_MAX_LENGTH } from "../../infra/plugin-approvals.js";
-import {
-  createBranchTestState,
-  type BranchTestState,
-} from "../../test-utils/branch-test-state.js";
+import { createBranchTestState, type BranchTestState } from "../../test-utils/branch-test-state.js";
 import { createTrackedTempDirs } from "../../test-utils/tracked-temp-dirs.js";
 import { resolveSkillWorkshopToolApproval as resolveSkillWorkshopToolApprovalImpl } from "./policy.js";
 import { proposeCreateSkill as proposeCreateSkillImpl } from "./service.js";
@@ -68,7 +65,7 @@ describe("resolveSkillWorkshopToolApproval", () => {
 
     expect(result?.requireApproval).toMatchObject({
       pluginId: "workspace-skills",
-      title: "Apply Skill Workshop proposal",
+      title: "Publish a Workshop tool",
       severity: "warning",
       timeoutMs: 70_000,
       allowedDecisions: ["allow-once", "deny"],
