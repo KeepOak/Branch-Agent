@@ -23,7 +23,14 @@ vi.mock("./hardware.js", async (importOriginal) => ({
   detectLlamaCppHardware: mocks.hardware,
 }));
 
-import { DEFAULT_LLAMA_CPP_EMBEDDING_MODEL, LLAMA_CPP_PROVIDER_ID } from "./defaults.js";
+import {
+  DEFAULT_LLAMA_CPP_EMBEDDING_MODEL,
+  DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_SIZE_BYTES,
+  DEFAULT_LLAMA_CPP_MODEL_CACHE_FILE,
+  LLAMA_CPP_PROVIDER_ID,
+  resolveLlamaCppModelCacheDir,
+} from "./defaults.js";
+import { llamaServerDownloadBytes, selectLlamaServerAsset } from "./llama-server-assets.js";
 import { resolveLlamaCppModelCandidates } from "./model-catalog.js";
 import { runLlamaCppSetup } from "./setup.js";
 
@@ -143,6 +150,35 @@ describe("free model question fields", () => {
     questions.cachedModel = await askedSteps(context(false));
     mocks.hardware.mockResolvedValue(roomy);
 
+    // The default model is already here, but this NVIDIA computer has no verified CUDA
+    // build: setup asks to use it with the CPU runtime, which still has to download.
+    const cachedDefault = path.join(
+      resolveLlamaCppModelCacheDir(),
+      DEFAULT_LLAMA_CPP_MODEL_CACHE_FILE,
+    );
+    await fs.mkdir(path.dirname(cachedDefault), { recursive: true });
+    await fs.writeFile(cachedDefault, "");
+    mocks.ensureModel.mockRejectedValue(new Error("not cached"));
+    mocks.hardware.mockResolvedValue({
+      ...roomy,
+      platform: "linux",
+      arch: "x64",
+      accelerator: {
+        kind: "cuda",
+        devices: [
+          {
+            name: "GPU",
+            totalMemoryBytes: 48 * GIB,
+            availableMemoryBytes: 48 * GIB,
+            driverVersion: "580.65",
+          },
+        ],
+      },
+    });
+    questions.cachedModelOnCpu = await askedSteps(context(false));
+    await fs.rm(cachedDefault);
+    mocks.hardware.mockResolvedValue(roomy);
+
     // Declining the chat model still offers the search model to local memory.
     mocks.ensureModel.mockRejectedValue(new Error("not cached"));
     questions.declinedThenSearchModelOnly = await askedSteps(context(true));
@@ -157,6 +193,15 @@ describe("free model question fields", () => {
 
     expect(questions.model.map((step) => step.freeModel?.kind)).toEqual(["model"]);
     expect(questions.cachedModel.map((step) => step.freeModel?.kind)).toEqual(["cached-model"]);
+    expect(questions.cachedModelOnCpu.map((step) => step.freeModel)).toEqual([
+      {
+        kind: "cached-model",
+        modelName: expect.any(String),
+        downloadBytes:
+          DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_SIZE_BYTES +
+          llamaServerDownloadBytes(selectLlamaServerAsset("linux", "x64", { kind: "cpu" })),
+      },
+    ]);
     expect(questions.declinedThenSearchModelOnly.map((step) => step.freeModel?.kind)).toEqual([
       "model",
       "search-model-only",

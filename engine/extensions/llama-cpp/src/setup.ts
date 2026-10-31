@@ -109,6 +109,25 @@ function downloadTotalBytes(
   );
 }
 
+/** What setup still fetches besides the chat model: the default search model and the runtime. */
+async function resolvePendingDownloads(
+  cacheDir: string,
+  embeddingModelIsDefault: boolean,
+  asset: LlamaServerAsset,
+  signal?: AbortSignal,
+): Promise<{ cachedEmbedding: boolean; runtimeInstalled: boolean; runtimeBytes: number }> {
+  const cachedEmbedding =
+    embeddingModelIsDefault &&
+    Boolean(await resolveCachedArtifact(DEFAULT_LLAMA_CPP_EMBEDDING_MODEL, cacheDir, signal));
+  // An existing pinned command is validated by the installer; it will not be downloaded again.
+  const runtimeInstalled = await isFile(resolveManagedLlamaServerPaths(asset).command);
+  return {
+    cachedEmbedding,
+    runtimeInstalled,
+    runtimeBytes: runtimeInstalled ? 0 : llamaServerDownloadBytes(asset),
+  };
+}
+
 function describeDownloadTotal(total: number | undefined): string {
   return total === undefined ? "" : ", " + (total / BYTES_PER_GB).toFixed(1) + " GB in total";
 }
@@ -331,15 +350,32 @@ async function resolveSetupPlan(
     ? await resolveCachedCandidate(candidate, ctx.signal)
     : undefined;
   if (candidate && configuredPath) {
-    if (
-      runtimeNote &&
-      !(await ctx.prompter.confirm({
+    if (runtimeNote) {
+      // The model is here, but the search model and CPU runtime may still download.
+      const pending = await resolvePendingDownloads(
+        resolveLlamaCppModelCacheDir(candidate.provider),
+        embeddingModelIsDefault,
+        asset,
+        ctx.signal,
+      );
+      const totalBytes = downloadTotalBytes(
+        0,
+        embeddingModelIsDefault,
+        pending.cachedEmbedding,
+        pending.runtimeBytes,
+      );
+      const consent = await ctx.prompter.confirm({
         message: `${runtimeNote} Use cached ${plainModelName(candidate.model.name)} on Gateway host ${os.hostname()} with the verified CPU runtime?`,
         initialValue: false,
-        freeModel: { kind: "cached-model", modelName: plainModelName(candidate.model.name) },
-      }))
-    ) {
-      return undefined;
+        freeModel: {
+          kind: "cached-model",
+          modelName: plainModelName(candidate.model.name),
+          ...(totalBytes === undefined ? {} : { downloadBytes: totalBytes }),
+        },
+      });
+      if (!consent) {
+        return undefined;
+      }
     }
     return { kind: "chat", candidate, cachedPath: configuredPath };
   }
@@ -361,17 +397,17 @@ async function resolveSetupPlan(
       break;
     }
   }
-  const cachedEmbedding =
-    embeddingModelIsDefault &&
-    Boolean(await resolveCachedArtifact(DEFAULT_LLAMA_CPP_EMBEDDING_MODEL, cacheDir, ctx.signal));
-  // An existing pinned command is validated by the installer; it will not be downloaded again.
-  const runtimeInstalled = await isFile(resolveManagedLlamaServerPaths(asset).command);
+  const { cachedEmbedding, runtimeInstalled, runtimeBytes } = await resolvePendingDownloads(
+    cacheDir,
+    embeddingModelIsDefault,
+    asset,
+    ctx.signal,
+  );
   const recommendation = recommendLlamaCppModel(hardware, asset.backend, {
     modelIds: new Set(cachedModels.keys()),
     embedding: cachedEmbedding,
     runtime: runtimeInstalled,
   });
-  const runtimeBytes = runtimeInstalled ? 0 : llamaServerDownloadBytes(asset);
   if (recommendation.kind === "recommended") {
     const { recipe } = recommendation;
     const cachedPath = cachedModels.get(recipe.model.id);
