@@ -26,6 +26,26 @@ export function trackLiveInboundOperation(entry: LiveInboundOperationEntry): () 
   };
 }
 
+/**
+ * True while a live reply's side operation is still running for the chat
+ * session id. The held turn keeps that id's active-operation lookup, so the
+ * live run proves ownership of its own operation here instead.
+ */
+export function isLiveInboundOperationActiveForSessionId(
+  operation: ReplyOperation,
+  sessionId: string,
+): boolean {
+  if (operation.result) {
+    return false;
+  }
+  for (const entry of LIVE_INBOUND_OPERATIONS) {
+    if (entry.operation === operation) {
+      return entry.chatSessionId === undefined || entry.chatSessionId === sessionId;
+    }
+  }
+  return false;
+}
+
 /** Live replies still running for a chat, matched by the chat's own identity. */
 export function resolveLiveInboundOperationsForChat(params: {
   sessionKey: string;

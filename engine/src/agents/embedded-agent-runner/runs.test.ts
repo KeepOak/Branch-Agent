@@ -22,6 +22,7 @@ import {
 import { createDeferredCore } from "../../shared/deferred.js";
 import { withGatewayToolCallerIdentity } from "../tools/gateway-caller-context.js";
 import { prepareEmbeddedRunPermissionChange } from "./run-permissions.js";
+import { ACTIVE_EMBEDDED_RUNS, resolveEmbeddedRunRegistryKey } from "./run-state.js";
 import { createEmbeddedRunPermissionChanges } from "./run/permission-change.js";
 import {
   abortAndDrainEmbeddedAgentRun,
@@ -34,6 +35,7 @@ import {
   markActiveEmbeddedRunAbandoned,
   prepareEmbeddedAgentRunCompletionClaim,
   queueEmbeddedAgentMessageWithOutcome,
+  resolveActiveEmbeddedRunHandleSessionId,
   resolveActiveEmbeddedRunOwner,
   resolveActiveEmbeddedRunOwnerByRunId,
   resolveEmbeddedRunAbandonment,
@@ -402,4 +404,36 @@ describe("embedded run ownership", () => {
     expect(currentClaim.claimCompletion()).toBe(true);
     expect(currentClaim.claimCompletion()).toBe(false);
   });
+  it.each([
+    { isolated: true, heldSurvives: true },
+    { isolated: false, heldSurvives: false },
+  ])(
+    "a live reply registered beside a held run leaves its handle in place: isolated=$isolated",
+    ({ isolated, heldSurvives }) => {
+      const held = createRunHandle({ runId: "held" });
+      const heldClaim = prepareEmbeddedAgentRunCompletionClaim(sessionId, "held");
+      setActiveEmbeddedRun(sessionId, held, sessionKey);
+      const live = createRunHandle({ runId: "live" });
+      const liveKey = resolveEmbeddedRunRegistryKey({
+        sessionId,
+        activeRunRegistryId: isolated ? "live-inbound:owner:" + sessionKey + ":op:1" : undefined,
+      });
+      expect(liveKey.isolated).toBe(isolated);
+
+      setActiveEmbeddedRun(
+        liveKey.key,
+        live,
+        sessionKey,
+        undefined,
+        undefined,
+        liveKey.isolated ? { isolated: true } : undefined,
+      );
+      clearActiveEmbeddedRun(liveKey.key, live, sessionKey);
+
+      expect(ACTIVE_EMBEDDED_RUNS.get(sessionId) === held).toBe(heldSurvives);
+      expect(resolveActiveEmbeddedRunHandleSessionId(sessionKey) === sessionId).toBe(heldSurvives);
+      expect(isEmbeddedAgentRunAbortableForRunId("held")).toBe(heldSurvives);
+      expect(heldClaim.claimCompletion()).toBe(heldSurvives);
+    },
+  );
 });

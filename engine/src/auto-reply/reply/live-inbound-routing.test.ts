@@ -2,7 +2,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { resolveSessionLane } from "../../agents/embedded-agent-runner/lanes.js";
+import {
+  ACTIVE_EMBEDDED_RUNS,
+  resolveEmbeddedRunRegistryKey,
+} from "../../agents/embedded-agent-runner/run-state.js";
 import type { RunEmbeddedAgentParams } from "../../agents/embedded-agent-runner/run/params.js";
+import {
+  clearActiveEmbeddedRun,
+  isEmbeddedAgentRunAbortableForRunId,
+  resolveActiveEmbeddedRunHandleSessionId,
+  setActiveEmbeddedRun,
+} from "../../agents/embedded-agent-runner/runs.js";
+import {
+  createEmbeddedRunHandle,
+  testing as embeddedRunTesting,
+} from "../../agents/embedded-agent-runner/runs.test-support.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { loadTranscriptEvents } from "../../config/sessions/session-transcript-events.js";
 import {
@@ -17,7 +31,9 @@ import type { ReplyPayload } from "../types.js";
 import { abortSessionRunTargetWithOutcome } from "./abort-operation.js";
 import { createReplyAgentSessionFixture } from "./agent-runner.runreplyagent.fixture.test-support.js";
 import { createTestFollowupRun } from "./agent-runner.test-fixtures.js";
+import type { InternalGetReplyOptions } from "./get-reply.types.js";
 import { resolveLiveInboundOperationsForChat } from "./live-inbound-operations.js";
+import { captureLiveInboundDeliveries } from "./live-inbound-routing.js";
 import type { QueueSettings } from "./queue.js";
 import { clearFollowupQueueForTest } from "./queue.test-helpers.js";
 import { createReplyOperation, type ReplyOperation } from "./reply-run-registry.js";
@@ -155,6 +171,9 @@ async function sendInbound(params: {
   active?: ReplyOperation;
   session?: { entry: SessionEntry; storePath: string };
   budgetMs?: number;
+  /** Replaces the default channel callbacks, the way channel dispatch supplies its own. */
+  opts?: InternalGetReplyOptions;
+  blockStreamingEnabled?: boolean;
 }) {
   const channel = createChannel();
   const inbound = createInboundRun(params);
@@ -181,11 +200,11 @@ async function sendInbound(params: {
     defaultModel: `${MODEL.provider}/${MODEL.model}`,
     resolvedVerboseLevel: "off",
     isNewSession: false,
-    blockStreamingEnabled: false,
+    blockStreamingEnabled: params.blockStreamingEnabled ?? false,
     resolvedBlockStreamingBreak: "message_end",
     shouldInjectGroupIntro: false,
     typingMode: "instant",
-    opts: { onBlockReply: channel.onBlockReply },
+    opts: params.opts ?? { onBlockReply: channel.onBlockReply },
   });
   pendingReplies.add(pending);
   void pending.then(
@@ -226,6 +245,7 @@ afterEach(async () => {
   pendingReplies.clear();
   resetCommandQueueStateForTest();
   replyRunTesting.resetReplyRunRegistry();
+  embeddedRunTesting.resetActiveEmbeddedRuns();
   clearFollowupQueueForTest(OWNER_SESSION_KEY);
   clearFollowupQueueForTest(OAK_SESSION_KEY);
   clearFollowupQueueForTest(ELM_SESSION_KEY);
@@ -295,6 +315,35 @@ async function warmUp(
 }
 
 const SCENARIO_TIMEOUT_MS = 2 * WARM_UP_TIMEOUT_MS + 30_000;
+
+async function readAssistantTexts(sessionId: string, storePath: string): Promise<string[]> {
+  const transcript = await loadTranscriptEvents({
+    agentId: "main",
+    sessionId,
+    sessionKey: OWNER_SESSION_KEY,
+    storePath,
+  });
+  return transcript.flatMap((event) => {
+    const message = (event as { message?: { role?: unknown; content?: unknown } }).message;
+    if (message?.role !== "assistant" || !Array.isArray(message.content)) {
+      return [];
+    }
+    return message.content.flatMap((block: { type?: unknown; text?: unknown }) =>
+      block.type === "text" && typeof block.text === "string" ? [block.text] : [],
+    );
+  });
+}
+
+function createHeldTurn(sessionId = "session-long"): ReplyOperation {
+  const active = createReplyOperation({
+    sessionKey: OWNER_SESSION_KEY,
+    sessionId,
+    resetTriggered: false,
+    turnKind: "visible",
+  });
+  active.setPhase("running");
+  return active;
+}
 
 describe("live inbound routing", () => {
   it(
@@ -484,21 +533,7 @@ describe("live inbound routing", () => {
       expect(reply.outcome, "no reply after " + reply.elapsedMs + "ms").toBe("reply");
       expect(reply.text).toBe("reply:Write this down");
       expect(sessionHold.settled()).toBe(false);
-      const transcript = await loadTranscriptEvents({
-        agentId: "main",
-        sessionId,
-        sessionKey: OWNER_SESSION_KEY,
-        storePath,
-      });
-      const assistantTexts = transcript.flatMap((event) => {
-        const message = (event as { message?: { role?: unknown; content?: unknown } }).message;
-        if (message?.role !== "assistant" || !Array.isArray(message.content)) {
-          return [];
-        }
-        return message.content.flatMap((block: { type?: unknown; text?: unknown }) =>
-          block.type === "text" && typeof block.text === "string" ? [block.text] : [],
-        );
-      });
+      const assistantTexts = await readAssistantTexts(sessionId, storePath);
       expect(assistantTexts, "assistant text in the chat transcript").toContain(
         "reply:Write this down",
       );
@@ -575,4 +610,241 @@ describe("live inbound routing", () => {
     },
     SCENARIO_TIMEOUT_MS,
   );
+  it(
+    "keeps the held turn's embedded run registered while the live reply runs",
+    async () => {
+      installFastModel();
+      const sessionHold = armSessionHold(OWNER_SESSION_KEY);
+      const sessionBlock = holdSession(OWNER_SESSION_KEY);
+      const chatSessionId = "session-long";
+      const active = createHeldTurn(chatSessionId);
+      // The held turn's embedded run, registered the way its attempt registers it.
+      const heldRun = createEmbeddedRunHandle({ runId: "held-run" });
+      setActiveEmbeddedRun(chatSessionId, heldRun, OWNER_SESSION_KEY);
+      const fastModel = runEmbeddedAgentMock.getMockImplementation()!;
+      const seenWhileLive: Array<{ key: string; isolated: boolean; held: boolean }> = [];
+      runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
+        // The attempt registers under this key (attempt-stream-prepare.ts).
+        const registry = resolveEmbeddedRunRegistryKey(params);
+        const liveRun = createEmbeddedRunHandle({ runId: "live-run-" + seenWhileLive.length });
+        setActiveEmbeddedRun(
+          registry.key,
+          liveRun,
+          params.sessionKey,
+          params.sessionFile,
+          params.agentId,
+          registry.isolated ? { isolated: true } : undefined,
+        );
+        try {
+          seenWhileLive.push({
+            ...registry,
+            held: ACTIVE_EMBEDDED_RUNS.get(chatSessionId) === heldRun,
+          });
+          return await fastModel(params);
+        } finally {
+          clearActiveEmbeddedRun(registry.key, liveRun, params.sessionKey, params.sessionFile);
+        }
+      });
+
+      const reply = await sendInbound({
+        sessionKey: OWNER_SESSION_KEY,
+        prompt: "Still there?",
+        messageId: "owner-registry",
+        sessionId: chatSessionId,
+        provenance: "external_user",
+        active,
+        budgetMs: WARM_UP_TIMEOUT_MS,
+      });
+
+      expect(reply.outcome, "no reply after " + reply.elapsedMs + "ms").toBe("reply");
+      expect(reply.text).toBe("reply:Still there?");
+      const modelCall = runEmbeddedAgentMock.mock.calls.at(-1)?.[0] as RunEmbeddedAgentParams;
+      expect(modelCall.sessionId).toBe(chatSessionId);
+      expect(modelCall.activeRunRegistryId).toMatch(
+        new RegExp("^live-inbound:owner:" + OWNER_SESSION_KEY + ":op:"),
+      );
+      expect(seenWhileLive).toEqual([
+        { key: modelCall.activeRunRegistryId, isolated: true, held: true },
+      ]);
+      // After the live run cleared its own registration, the held run is untouched.
+      expect(ACTIVE_EMBEDDED_RUNS.get(chatSessionId)).toBe(heldRun);
+      expect(resolveActiveEmbeddedRunHandleSessionId(OWNER_SESSION_KEY)).toBe(chatSessionId);
+      expect(isEmbeddedAgentRunAbortableForRunId("held-run")).toBe(true);
+      expect(sessionHold.settled()).toBe(false);
+
+      sessionHold.release();
+      await Promise.all([sessionBlock, reply.pending]);
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
+
+  it(
+    "writes a block-streamed live reply into the chat transcript when dispatch prepares the blocks",
+    async () => {
+      installFastModel();
+      const messageId = "owner-streamed";
+      const sessionId = "session-" + messageId;
+      const entry: SessionEntry = { sessionId, updatedAt: Date.now() };
+      const storePath = await createSessionStoreFile(entry, OWNER_SESSION_KEY);
+      const sessionHold = armSessionHold(OWNER_SESSION_KEY);
+      const sessionBlock = holdSession(OWNER_SESSION_KEY);
+      const active = createHeldTurn();
+      const fastModel = runEmbeddedAgentMock.getMockImplementation()!;
+      runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
+        const result = await fastModel(params);
+        // The model streams its answer as a block before the run returns it.
+        await params.onBlockReply?.({ text: "reply:" + params.prompt });
+        await params.onBlockReplyFlush?.();
+        return result;
+      });
+      // Channel dispatch supplies both callbacks; the runner prefers the prepared one.
+      const prepared: string[] = [];
+      const plain = vi.fn();
+      const opts: InternalGetReplyOptions = {
+        onBlockReply: plain,
+        onPreparedBlockReply: async (plan) => {
+          if (plan.payload.text) {
+            prepared.push(plan.payload.text);
+          }
+        },
+      };
+
+      const reply = await sendInbound({
+        sessionKey: OWNER_SESSION_KEY,
+        prompt: "Stream this",
+        messageId,
+        sessionId,
+        provenance: "external_user",
+        active,
+        session: { entry, storePath },
+        budgetMs: WARM_UP_TIMEOUT_MS,
+        opts,
+        blockStreamingEnabled: true,
+      });
+
+      expect(reply.outcome, "no reply after " + reply.elapsedMs + "ms").toBe("reply");
+      expect(prepared).toEqual(["reply:Stream this"]);
+      expect(plain).not.toHaveBeenCalled();
+      // The streamed block is left out of the final result, so only the capture remembers it.
+      expect(replyText(reply.result)).toBe("");
+      expect(await readAssistantTexts(sessionId, storePath)).toContain("reply:Stream this");
+      expect(sessionHold.settled()).toBe(false);
+
+      sessionHold.release();
+      await Promise.all([sessionBlock, reply.pending]);
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
+
+  it(
+    "stops a live reply when the inbound caller cancels",
+    async () => {
+      installFastModel();
+      const sessionHold = armSessionHold(OWNER_SESSION_KEY);
+      const sessionBlock = holdSession(OWNER_SESSION_KEY);
+      const active = createHeldTurn();
+      const modelStarted = createDeferred();
+      let modelSignal: AbortSignal | undefined;
+      runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
+        modelSignal = params.abortSignal;
+        modelStarted.resolve();
+        await new Promise<void>((resolve) => {
+          if (params.abortSignal?.aborted) {
+            resolve();
+            return;
+          }
+          params.abortSignal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return { payloads: [], meta: { aborted: true, agentMeta: {} } };
+      });
+      const caller = new AbortController();
+      const channel = createChannel();
+
+      const pending = sendInbound({
+        sessionKey: OWNER_SESSION_KEY,
+        prompt: "never mind",
+        messageId: "owner-caller-cancel",
+        provenance: "external_user",
+        active,
+        budgetMs: WARM_UP_TIMEOUT_MS,
+        opts: { onBlockReply: channel.onBlockReply, abortSignal: caller.signal },
+      });
+      await modelStarted.promise;
+      const live = resolveLiveInboundOperationsForChat({
+        sessionKey: OWNER_SESSION_KEY,
+        agentId: "main",
+      });
+      expect(live).toHaveLength(1);
+      const liveOperation = live[0]!;
+
+      caller.abort();
+
+      expect(liveOperation.abortSignal.aborted).toBe(true);
+      expect(modelSignal?.aborted).toBe(true);
+      const reply = await pending;
+      expect(reply.outcome, "cancelled live reply did not settle").toBe("reply");
+      // Only the caller's own reply stops; the held turn keeps running.
+      expect(active.abortSignal.aborted).toBe(false);
+      expect(sessionHold.settled()).toBe(false);
+
+      sessionHold.release();
+      await Promise.all([sessionBlock, reply.pending]);
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
+});
+
+describe("captureLiveInboundDeliveries", () => {
+  it("records sends through both block callbacks after each one succeeds", async () => {
+    const delivered: ReplyPayload[] = [];
+    const sent: string[] = [];
+    const opts = captureLiveInboundDeliveries(
+      {
+        onBlockReply: async (payload) => {
+          sent.push("plain:" + payload.text);
+        },
+        onPreparedBlockReply: async (plan) => {
+          sent.push("prepared:" + plan.payload.text);
+        },
+      },
+      delivered,
+    );
+
+    await opts?.onBlockReply?.({ text: "one" });
+    await opts?.onPreparedBlockReply?.({
+      sourceIndex: 0,
+      payload: { text: "two" },
+      parts: { text: "two", trimmedText: "two", mediaUrls: [], hasContent: true, hasMedia: false },
+      hasPresentation: false,
+      hasInteractive: false,
+      hasChannelData: false,
+    } as unknown as Parameters<NonNullable<InternalGetReplyOptions["onPreparedBlockReply"]>>[0]);
+
+    expect(sent).toEqual(["plain:one", "prepared:two"]);
+    expect(delivered.map((payload) => payload.text)).toEqual(["one", "two"]);
+  });
+
+  it("does not record a prepared send that failed", async () => {
+    const delivered: ReplyPayload[] = [];
+    const opts = captureLiveInboundDeliveries(
+      {
+        onPreparedBlockReply: async () => {
+          throw new Error("channel down");
+        },
+      },
+      delivered,
+    );
+    await expect(
+      opts?.onPreparedBlockReply?.({ payload: { text: "lost" } } as unknown as Parameters<
+        NonNullable<InternalGetReplyOptions["onPreparedBlockReply"]>
+      >[0]),
+    ).rejects.toThrow("channel down");
+    expect(delivered).toEqual([]);
+  });
+
+  it("leaves options without block callbacks unchanged", () => {
+    const opts: InternalGetReplyOptions = { abortSignal: new AbortController().signal };
+    expect(captureLiveInboundDeliveries(opts, [])).toBe(opts);
+    expect(captureLiveInboundDeliveries(undefined, [])).toBeUndefined();
+  });
 });

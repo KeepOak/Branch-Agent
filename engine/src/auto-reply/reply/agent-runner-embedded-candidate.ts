@@ -147,6 +147,7 @@ export async function runEmbeddedFallbackCandidate(
           ? {
               sessionPersistence: "detached" as const,
               liveInboundSessionLane: turn.followupRun.liveInboundSessionLane,
+              activeRunRegistryId: turn.followupRun.liveInboundRunRegistryId,
             }
           : {}),
         provider: embeddedRunProvider,

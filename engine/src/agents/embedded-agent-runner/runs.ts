@@ -1564,13 +1564,40 @@ function notifyEmbeddedRunEnded(
   }
 }
 
+/**
+ * Handles registered under their own key beside a chat's run. They keep the
+ * session key for ownership checks but never take the chat's key or file aliases.
+ */
+const ISOLATED_EMBEDDED_RUN_HANDLES = new WeakSet<EmbeddedAgentQueueHandle>();
+
+/** The session aliases a handle may publish: none for an isolated registration. */
+function resolveIndexedSessionAliases(
+  handle: EmbeddedAgentQueueHandle,
+  sessionKey: string | undefined,
+  sessionFile: string | undefined,
+): { sessionKey?: string; sessionFile?: string } {
+  return ISOLATED_EMBEDDED_RUN_HANDLES.has(handle) ? {} : { sessionKey, sessionFile };
+}
+
 export function setActiveEmbeddedRun(
   sessionId: string,
   handle: EmbeddedAgentQueueHandle,
   sessionKey?: string,
   sessionFile?: string,
   agentId?: string,
+  options?: {
+    /**
+     * Register beside another run without displacing it: `sessionId` is this
+     * run's own registry key, and the chat's key and file lookups keep
+     * resolving to the run that already owns them.
+     */
+    isolated?: boolean;
+  },
 ) {
+  if (options?.isolated) {
+    ISOLATED_EMBEDDED_RUN_HANDLES.add(handle);
+  }
+  const aliases = resolveIndexedSessionAliases(handle, sessionKey, sessionFile);
   const currentLifecycleGeneration = getAgentEventLifecycleGeneration();
   const incomingLifecycleGeneration = setActiveEmbeddedRunLifecycleGeneration(
     handle,
@@ -1620,7 +1647,7 @@ export function setActiveEmbeddedRun(
     revokeCompletionClaim(sessionId, handle.runId);
     throw error;
   }
-  clearEmbeddedRunAbandonment({ sessionId, sessionKey, sessionFile });
+  clearEmbeddedRunAbandonment({ sessionId, ...aliases });
   ACTIVE_EMBEDDED_RUNS.set(sessionId, handle);
   // The dispatch scope carries the admitted instance across both core and
   // plugin attempts. A handle's public runId alone cannot confer wait authority.
@@ -1666,25 +1693,24 @@ export function setActiveEmbeddedRun(
     ACTIVE_EMBEDDED_RUNS_BY_RUN_ID.set(handle.runId, handle);
   }
   clearActiveRunSessionIndex(ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_KEY, sessionId);
-  const normalizedSessionKey = sessionKey?.trim();
+  const normalizedSessionKey = aliases.sessionKey?.trim();
   if (normalizedSessionKey) {
     ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_KEY.set(normalizedSessionKey, sessionId);
   }
   clearActiveRunSessionIndex(ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_FILE, sessionId);
-  const normalizedSessionFile = normalizeSessionFileRegistryKey(sessionFile);
+  const normalizedSessionFile = normalizeSessionFileRegistryKey(aliases.sessionFile);
   if (normalizedSessionFile) {
     ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_FILE.set(normalizedSessionFile, sessionId);
   }
   logSessionStateChange({
     sessionId,
-    sessionKey,
-    sessionFile,
+    ...aliases,
     state: "processing",
     reason: wasActive ? "run_replaced" : "run_started",
   });
   markDiagnosticEmbeddedRunStarted({
     sessionId,
-    sessionKey,
+    sessionKey: aliases.sessionKey,
     runId: handle.runId,
     owner: handle.diagnosticOwner,
   });
@@ -1738,17 +1764,17 @@ export function clearActiveEmbeddedRun(
   reason = "run_completed",
 ) {
   const activeHandle = ACTIVE_EMBEDDED_RUNS.get(sessionId);
+  const aliases = resolveIndexedSessionAliases(handle, sessionKey, sessionFile);
   if (activeHandle === handle) {
-    removeActiveEmbeddedRun(sessionId, handle, sessionKey, { retainFinalizing: true });
+    removeActiveEmbeddedRun(sessionId, handle, aliases.sessionKey, { retainFinalizing: true });
     logSessionStateChange({
       sessionId,
-      sessionKey,
-      sessionFile,
+      ...aliases,
       state: "idle",
       reason,
     });
     if (!handle.diagnosticOwner) {
-      markDiagnosticEmbeddedRunEnded({ sessionId, sessionKey });
+      markDiagnosticEmbeddedRunEnded({ sessionId, sessionKey: aliases.sessionKey });
     }
     if (!sessionId.startsWith("probe-")) {
       diag.debug(`run cleared: sessionId=${sessionId} totalActive=${ACTIVE_EMBEDDED_RUNS.size}`);

@@ -12,7 +12,7 @@ import { isSilentReplyText } from "../tokens.js";
 import type { ReplyPayload } from "../types.js";
 import type { InternalGetReplyOptions } from "./get-reply.types.js";
 import { trackLiveInboundOperation } from "./live-inbound-operations.js";
-import type { FollowupRun, QueueSettings } from "./queue/types.js";
+import { type FollowupRun, type QueueSettings, resolveFollowupAbortSignal } from "./queue/types.js";
 import { createReplyOperation, type ReplyOperation } from "./reply-run-registry.js";
 import { replyRunState } from "./reply-run-registry.state.js";
 
@@ -101,6 +101,7 @@ function createLiveInboundOperation(params: {
   operationKey: string;
   sessionId: string;
   agentId?: string;
+  upstreamAbortSignal?: AbortSignal;
 }): ReplyOperation {
   const previousActiveKey = replyRunState.activeKeysBySessionId.get(params.sessionId);
   const previousWaitKey = replyRunState.waitKeysBySessionId.get(params.sessionId);
@@ -110,6 +111,10 @@ function createLiveInboundOperation(params: {
     agentId: params.agentId,
     resetTriggered: false,
     turnKind: "visible",
+    // The side operation skips turn admission, which is where the caller's
+    // signal is normally wired. Without it, cancelling the inbound call would
+    // leave the model and tool work running.
+    ...(params.upstreamAbortSignal ? { upstreamAbortSignal: params.upstreamAbortSignal } : {}),
   });
   if (previousActiveKey && replyRunState.activeRunsByKey.has(previousActiveKey)) {
     replyRunState.activeKeysBySessionId.set(params.sessionId, previousActiveKey);
@@ -198,6 +203,41 @@ async function writeLiveInboundReplyToTranscript(params: {
 }
 
 /**
+ * Records what the channel was actually sent. Channel dispatch with block
+ * streaming passes both callbacks and the runner prefers the prepared one, and
+ * streamed blocks are then left out of the final result, so both are wrapped.
+ */
+export function captureLiveInboundDeliveries(
+  opts: InternalGetReplyOptions | undefined,
+  delivered: ReplyPayload[],
+): InternalGetReplyOptions | undefined {
+  const onBlockReply = opts?.onBlockReply;
+  const onPreparedBlockReply = opts?.onPreparedBlockReply;
+  if (!opts || (!onBlockReply && !onPreparedBlockReply)) {
+    return opts;
+  }
+  return {
+    ...opts,
+    ...(onBlockReply
+      ? {
+          onBlockReply: async (...args: Parameters<typeof onBlockReply>) => {
+            await onBlockReply(...args);
+            delivered.push(args[0]);
+          },
+        }
+      : {}),
+    ...(onPreparedBlockReply
+      ? {
+          onPreparedBlockReply: async (...args: Parameters<typeof onPreparedBlockReply>) => {
+            await onPreparedBlockReply(...args);
+            delivered.push(args[0].payload);
+          },
+        }
+      : {}),
+  };
+}
+
+/**
  * Marks the run as a live reply and gives it a side operation so it does not
  * take or abort the chat's active reply slot. The side operation is recorded
  * under the chat, so cancelling the chat stops it too.
@@ -220,10 +260,19 @@ export async function startLiveInboundReply(params: {
   params.followupRun.liveInboundGlobalLane = liveInboundGlobalLane(kind);
   const sideOperationId = createLiveInboundOperationId(kind, params.followupRun.messageId);
   const chatSessionId = params.followupRun.run.sessionId?.trim() || sideOperationId;
+  const operationKey = sessionLane + ":op:" + sideOperationId;
+  // The held turn's embedded run is registered under the chat's session id.
+  // The live run registers under its own key so it never replaces that handle.
+  params.followupRun.liveInboundRunRegistryId = operationKey;
   const operation = createLiveInboundOperation({
-    operationKey: sessionLane + ":op:" + sideOperationId,
+    operationKey,
     sessionId: chatSessionId,
     agentId: params.followupRun.run.agentId,
+    // Resolved the same way turn admission resolves the inbound caller's cancellation.
+    upstreamAbortSignal: resolveFollowupAbortSignal({
+      abortSignal: params.opts?.abortSignal,
+      operatorAuthority: params.followupRun.operatorAuthority,
+    }),
   });
   const forget = trackLiveInboundOperation({
     operation,
@@ -233,16 +282,7 @@ export async function startLiveInboundReply(params: {
       : {}),
   });
   const delivered: ReplyPayload[] = [];
-  const onBlockReply = params.opts?.onBlockReply;
-  const opts: InternalGetReplyOptions | undefined = onBlockReply
-    ? {
-        ...params.opts,
-        onBlockReply: async (...args: Parameters<typeof onBlockReply>) => {
-          await onBlockReply(...args);
-          delivered.push(args[0]);
-        },
-      }
-    : params.opts;
+  const opts = captureLiveInboundDeliveries(params.opts, delivered);
   let result: ReplyResult;
   try {
     result = await params.run(operation, opts);
