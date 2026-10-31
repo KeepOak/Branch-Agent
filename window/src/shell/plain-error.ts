@@ -56,6 +56,17 @@ const SAYS: [RegExp, string][] = [
   [/\bE?TIMEDOUT\b|\btimed out\b|\btimeout\b/i, "That took too long. Try again."],
 ];
 
+// A file path (issue 1814): a home folder or a system root, any other absolute path with two or more parts
+// (/data/app, /nix/store), a relative one (./config, ../notes), or a file with its folders or a leading slash
+// (notes/today.md, /config.json). A web address (https://example.com/docs/a.html, localhost:3000/app.js) is not.
+const PATHS: RegExp[] = [
+  /(?:^|[\s\x27\x22\x60(=:<\x5b\u201c\u2018\u00ab])(?:~|\/(?:home|Users|root|opt|var|tmp|usr|etc|private|mnt|workspace|app|srv|snap|run|Library|Applications|Volumes|System|Network|cores|dev|proc|sys|bin|sbin|lib|lib64|data|nix|media|boot))\/\S*/,
+  /(?:^|[\s\x27\x22\x60(=:<\x5b\u201c\u2018\u00ab])\/[\w.@+-]+\/[\w.@+-]/,
+  /(?:^|[\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab])\.{1,2}\/[\w.@+-]/,
+  /(?:^|[\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab])(?:\/|(?:[\w@+-]+\/)+)[\w@+-][\w.@+-]*\.[A-Za-z][A-Za-z0-9]{0,7}\b/,
+  /\b[A-Za-z]:\\[^\s]*/, // a Windows path
+];
+
 const RAW: RegExp[] = [
   /Gateway is only bound to loopback/i, // a pairing route refusal
   /\n\s*at\s+\S|\bat\s+[\w$.<>]+\s+\([^)]*:\d+:\d+\)/, // a stack
@@ -65,14 +76,7 @@ const RAW: RegExp[] = [
   /\b(?:INVALID_REQUEST|UNAVAILABLE|NOT_FOUND|NOT_PAIRED|FORBIDDEN|UNAUTHORIZED|INTERNAL(?:_ERROR)?|ERR_[A-Z0-9_]+|[A-Z]{2,}_[A-Z0-9_]{2,})\b/, // a gateway or library code
   /\bunknown (?:method|agent id)\b|\bmethod not found\b/i, // an engine refusal in its own words
   /\b(?:sessions|chat|agents|config|models|plugins|skills|cron|memory|logbook|doctor|exec|node|tts|rooms|contacts|users|usage|backup|browser|computer|system|update|gateway|channels|canopy|projects|themes|wizard|portal|branch)\.[a-z][A-Za-z]*(?:\.[a-z][A-Za-z]*)*\b/, // an engine method name
-  // A file path (issue 1814): a home folder or a system root, any other absolute path with two or more parts
-  // (/data/app, /nix/store), a relative one (./config, ../notes), or a file with its folders or a leading slash
-  // (notes/today.md, /config.json). A web address (https://example.com/docs/a.html, localhost:3000/app.js) is not.
-  /(?:^|[\s\x27\x22\x60(=:<\x5b\u201c\u2018\u00ab])(?:~|\/(?:home|Users|root|opt|var|tmp|usr|etc|private|mnt|workspace|app|srv|snap|run|Library|Applications|Volumes|System|Network|cores|dev|proc|sys|bin|sbin|lib|lib64|data|nix|media|boot))\/\S*/,
-  /(?:^|[\s\x27\x22\x60(=:<\x5b\u201c\u2018\u00ab])\/[\w.@+-]+\/[\w.@+-]/,
-  /(?:^|[\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab])\.{1,2}\/[\w.@+-]/,
-  /(?:^|[\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab])(?:\/|(?:[\w@+-]+\/)+)[\w@+-][\w.@+-]*\.[A-Za-z][A-Za-z0-9]{0,7}\b/,
-  /\b[A-Za-z]:\\[^\s]*/, // a Windows path
+  ...PATHS,
   /^\s*[{[]|\{\s*"\w+"\s*:/, // JSON
   /\b(?:HTTP|status(?: code)?)\s*[:=]?\s*[1-5]\d{2}\b/i, // an HTTP status
   /\bgateway (?:closed|not connected)\b/i, // a socket close
@@ -95,6 +99,29 @@ export function looksRaw(text: string): boolean {
 export function looksRawError(text: string): boolean {
   const trimmed = text.trim();
   return Boolean(trimmed) && (looksRaw(trimmed) || friendlyError(trimmed) === FRIENDLY_ERROR);
+}
+
+/** A home folder on its own (~, /Users/<name>, /home/<name>, C:\Users\<name>): its last part is the account name. */
+const HOME_ONLY = /^(?:~|\/(?:Users|home)\/[^\\/]+|\/root|[A-Za-z]:\\Users\\[^\\/]+)[\\/]*$/;
+
+/** A path as a person names it: its last part ("report.pdf", "backups"), keeping the punctuation after it. */
+function lastPart(path: string): string {
+  const [, core = path, tail = ""] = /^(.*?)([.,;:!?)\]\x22\x27\x60\u201d\u2019\u00bb]*)$/u.exec(path) ?? [];
+  if (HOME_ONLY.test(core)) return "your home folder" + tail;
+  const name = core.split(/[\\/]+/).filter(Boolean).at(-1);
+  return (name && name !== "~" ? name : "your home folder") + tail;
+}
+
+/** Each path in the words read as its last part: "Saved to Downloads/report.pdf" reads "Saved to report.pdf". */
+function namePaths(text: string): string {
+  return text.replace(/(^|[\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab])([^\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab]+)/gu, (all: string, lead: string, part: string) => {
+    let at = -1;
+    for (const re of PATHS) {
+      const found = re.exec(part);
+      if (found && (at < 0 || found.index < at)) at = found.index + (/^[\s\x27\x22\x60(=:<\x5b\u201c\u2018\u00ab]/u.test(found[0]) ? 1 : 0);
+    }
+    return at < 0 ? all : lead + part.slice(0, at) + lastPart(part.slice(at));
+  });
 }
 
 function sentenceFor(raw: string): string {
@@ -145,10 +172,15 @@ export function plainError(error: unknown, always = false): string {
 }
 
 /** Words that may or may not be a failure (a toast, a banner, the line above the page): at Regular only words with a
- *  strong raw marker are replaced, so "Copied." or "Restarting…" stay as they are. A Gateway lock is always LOCK_BUSY. */
+ *  strong raw marker are replaced, so "Copied." or "Restarting…" stay as they are, and a path alone reads as its last
+ *  part. A Gateway lock is always LOCK_BUSY. */
 export function plainText(text: string, always = false): string {
   if (!text) return text;
   if (isLockBusyMessage(text)) return LOCK_BUSY;
   if (!always && !atRegular()) return text;
+  // Words that are not a failure keep their own words (issue 1814): when a path is their only raw part, it reads as its
+  // last part, so a success like "Saved to Downloads/report.pdf" reads "Saved to report.pdf", never PLAIN_FAILURE.
+  const named = namePaths(text);
+  if (named !== text && !looksRaw(named.trim())) return plainAddresses(named, true);
   return plainWords(text, looksRaw);
 }
