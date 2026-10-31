@@ -579,7 +579,6 @@ engine:src/plugins/update.test.ts
 engine:src/plugins/update.work-deadline.test.ts
 engine:src/plugins/web-content-extractors.runtime.test.ts
 engine:src/plugins/web-fetch-providers.runtime.test.ts
-engine:src/plugins/web-provider-capture-lifetime.test.ts
 engine:src/plugins/web-provider-public-artifacts.explicit-fast-path.test.ts
 engine:src/plugins/web-provider-public-artifacts.fallback.test.ts
 engine:src/plugins/web-provider-public-artifacts.test.ts

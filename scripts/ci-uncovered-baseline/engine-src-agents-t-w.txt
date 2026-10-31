@@ -178,10 +178,8 @@ engine:src/agents/tools/web-search-output.security.test.ts
 engine:src/agents/tools/web-search-provider-common.test.ts
 engine:src/agents/tools/web-search-provider-credentials.test.ts
 engine:src/agents/tools/web-search.late-bind.test.ts
-engine:src/agents/tools/web-search.provider-errors.test.ts
 engine:src/agents/tools/web-search.redirect.test.ts
 engine:src/agents/tools/web-search.signal.test.ts
-engine:src/agents/tools/web-search.test.ts
 engine:src/agents/tools/web-shared.test.ts
 engine:src/agents/tools/web-tool-runtime-context.test.ts
 engine:src/agents/tools/web-tools.enabled-defaults.test.ts
