@@ -414,9 +414,14 @@ describe("live inbound routing", () => {
         provenance: "inter_session",
         active: oakActive,
       });
-      await vi.waitFor(() => {
-        expect(getCommandLaneSnapshot(`live-inbound:agent:${OAK_SESSION_KEY}`).activeCount).toBe(1);
-      });
+      await vi.waitFor(
+        () => {
+          expect(getCommandLaneSnapshot(`live-inbound:agent:${OAK_SESSION_KEY}`).activeCount).toBe(
+            1,
+          );
+        },
+        { timeout: WARM_UP_TIMEOUT_MS, interval: 20 },
+      );
 
       const owner = await sendInbound({
         sessionKey: OAK_SESSION_KEY,
@@ -461,15 +466,10 @@ describe("live inbound routing", () => {
         turnKind: "visible",
       });
       active.setPhase("running");
-      await warmUp({
-        sessionKey: OWNER_SESSION_KEY,
-        sessionId,
-        provenance: "external_user",
-        active,
-        session: { entry, storePath },
-        tag: "transcript",
-      });
 
+      // This case proves the transcript write, not the 5s routing budget: a real
+      // session store adds the same persistence a normal turn pays (seconds on a
+      // slow runner). The hold is never released, so any reply came through the live lane.
       const reply = await sendInbound({
         sessionKey: OWNER_SESSION_KEY,
         prompt: "Write this down",
@@ -478,6 +478,7 @@ describe("live inbound routing", () => {
         provenance: "external_user",
         active,
         session: { entry, storePath },
+        budgetMs: WARM_UP_TIMEOUT_MS,
       });
 
       expect(reply.outcome, "no reply after " + reply.elapsedMs + "ms").toBe("reply");
@@ -548,6 +549,7 @@ describe("live inbound routing", () => {
         messageId: "owner-cancel",
         provenance: "external_user",
         active,
+        budgetMs: WARM_UP_TIMEOUT_MS,
       });
       await modelStarted.promise;
       const live = resolveLiveInboundOperationsForChat({
