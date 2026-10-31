@@ -65,7 +65,13 @@ const RAW: RegExp[] = [
   /\b(?:INVALID_REQUEST|UNAVAILABLE|NOT_FOUND|NOT_PAIRED|FORBIDDEN|UNAUTHORIZED|INTERNAL(?:_ERROR)?|ERR_[A-Z0-9_]+|[A-Z]{2,}_[A-Z0-9_]{2,})\b/, // a gateway or library code
   /\bunknown (?:method|agent id)\b|\bmethod not found\b/i, // an engine refusal in its own words
   /\b(?:sessions|chat|agents|config|models|plugins|skills|cron|memory|logbook|doctor|exec|node|tts|rooms|contacts|users|usage|backup|browser|computer|system|update|gateway|channels|canopy|projects|themes|wizard|portal|branch)\.[a-z][A-Za-z]*(?:\.[a-z][A-Za-z]*)*\b/, // an engine method name
-  /(?:^|[\s\x27\x22(=:])(?:~|\/(?:home|Users|root|opt|var|tmp|usr|etc|private|mnt|workspace|app|srv|snap|run|Library|Applications|Volumes))\/\S*/, // a file path
+  // A file path (issue 1814): a home folder or a system root, any other absolute path with two or more parts
+  // (/data/app, /nix/store), a relative one (./config, ../notes), or a file with its folders or a leading slash
+  // (notes/today.md, /config.json). A web address (https://example.com/docs/a.html, localhost:3000/app.js) is not.
+  /(?:^|[\s\x27\x22\x60(=:<\x5b\u201c\u2018\u00ab])(?:~|\/(?:home|Users|root|opt|var|tmp|usr|etc|private|mnt|workspace|app|srv|snap|run|Library|Applications|Volumes|System|Network|cores|dev|proc|sys|bin|sbin|lib|lib64|data|nix|media|boot))\/\S*/,
+  /(?:^|[\s\x27\x22\x60(=:<\x5b\u201c\u2018\u00ab])\/[\w.@+-]+\/[\w.@+-]/,
+  /(?:^|[\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab])\.{1,2}\/[\w.@+-]/,
+  /(?:^|[\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab])(?:\/|(?:[\w@+-]+\/)+)[\w@+-][\w.@+-]*\.[A-Za-z][A-Za-z0-9]{0,7}\b/,
   /\b[A-Za-z]:\\[^\s]*/, // a Windows path
   /^\s*[{[]|\{\s*"\w+"\s*:/, // JSON
   /\b(?:HTTP|status(?: code)?)\s*[:=]?\s*[1-5]\d{2}\b/i, // an HTTP status
@@ -111,7 +117,8 @@ function plainWords(text: string, raw: (words: string) => boolean): string {
   // A plain sentence that ends with the raw words in brackets keeps the sentence: "… full. (QuotaExceededError: …)".
   const bracket = /^(.*?[.!?])\s*\(([^]*)\)\.?$/.exec(trimmed);
   if (bracket && !raw(bracket[1])) return plainAddresses(bracket[1], true);
-  // A screen's own lead before the raw part keeps its words: "Couldn't change Lockdown: <raw>".
+  // A screen's own lead before the raw part keeps its words: "Couldn't change Lockdown: <raw>". A lead that holds a path
+  // ("Couldn't save notes/today.md: <raw>") or other raw words is not kept.
   const colon = trimmed.indexOf(": ");
   if (colon > 0) {
     const lead = trimmed.slice(0, colon).trim();
