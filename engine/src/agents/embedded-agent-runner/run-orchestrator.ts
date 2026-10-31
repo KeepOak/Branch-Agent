@@ -73,7 +73,7 @@ import { SessionManager } from "../sessions/session-manager.js";
 import { redactRunIdentifier } from "../workspace-run.js";
 import { runEmbeddedAgentViaCliBackendIfEligible } from "./cli-backend-dispatch.js";
 import { waitForDeferredTurnMaintenanceForSession } from "./context-engine-maintenance.js";
-import { resolveGlobalLane, resolveSessionLane } from "./lanes.js";
+import { resolveGlobalLane, resolveRunSessionLane } from "./lanes.js";
 import { log } from "./logger.js";
 import { createEmbeddedAgentPluginRuntimeRefresh } from "./plugin-runtime-refresh.js";
 import { runPreparedEmbeddedLoop } from "./run-loop.js";
@@ -180,7 +180,7 @@ async function runEmbeddedAgentInternal(
     sessionFile: runSessionTarget.sessionKey,
     skillWorkshopProposalMutationBudget,
   });
-  const sessionLane = resolveSessionLane(params.sessionKey?.trim() || params.sessionId);
+  const sessionLane = resolveRunSessionLane(params);
   const globalLane = resolveGlobalLane(params.lane, params);
   // Outer fallback attempts defer session suspension only while another
   // candidate remains. Direct and final-candidate runs suspend normally.

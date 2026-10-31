@@ -118,6 +118,10 @@ export async function runEmbeddedFallbackCandidate(
       milestone: "before_embedded_run",
     });
     let eventHandler: ReturnType<typeof createAgentRunEventHandler> | undefined;
+    if (turn.followupRun.liveInbound) {
+      // The held turn owns the chat's writer; the live reply route writes this reply after the run.
+      turn.followupRun.liveInboundDetached = true;
+    }
     const result = await params.timing.measure("embedded_run", () => {
       const embeddedRunParams: RunEmbeddedAgentInternalParams = {
         preparedTtsPreferences: turn.opts?.preparedTtsPreferences,
@@ -139,6 +143,12 @@ export async function runEmbeddedFallbackCandidate(
         ...runBaseParams,
         contextWindow: turn.getActiveSessionEntry()?.contextWindow,
         lane: params.runLane,
+        ...(turn.followupRun.liveInbound
+          ? {
+              sessionPersistence: "detached" as const,
+              liveInboundSessionLane: turn.followupRun.liveInboundSessionLane,
+            }
+          : {}),
         provider: embeddedRunProvider,
         agentHarnessId: resolveSessionPinnedHarnessId(turn.getActiveSessionEntry()),
         agentHarnessRuntimeOverride: embeddedRunHarnessOverride,

@@ -158,6 +158,15 @@ export type FollowupRun = {
   disableTools?: boolean;
   /** Force individual drain; never merge this run into a collect batch. */
   disableCollectBatching?: boolean;
+  /**
+   * In-memory routing for a reply started while the chat's session lane is held.
+   * Not durable queue state: the reply uses the same model and stays off the held lane.
+   */
+  liveInbound?: boolean;
+  liveInboundSessionLane?: string;
+  liveInboundGlobalLane?: string;
+  /** Set when the live reply ran off the chat's writer and its reply still needs a transcript entry. */
+  liveInboundDetached?: boolean;
   /** Pending same-turn acceptance while this item remains parked in FIFO order. */
   steerPending?: {
     phase: "waiting" | "injecting";
