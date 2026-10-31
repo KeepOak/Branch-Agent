@@ -401,6 +401,15 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const [newTrunkOpen, setNewTrunkOpen] = useState(false);
   const [newTrunkBusy, setNewTrunkBusy] = useState(false);
   const [newTrunkError, setNewTrunkError] = useState<string | null>(null);
+  // The Trunk whose page opens once People shows. Sent after that navigation commits, so the host the person left
+  // (Settings draws its own TrunkHost) has already run its cleanup, which clears any open request (#2153).
+  const trunkAfterNav = useRef<string | null>(null), [, rerender] = useState(0);
+  useEffect(() => {
+    const agentId = trunkAfterNav.current;
+    if (!agentId || route.kind !== "place" || route.place !== "people") return;
+    trunkAfterNav.current = null;
+    window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId, view: "profile" } }));
+  });
   const makingTrunk = useRef(false);
   const trunkActions = useMemo(() => conversationActions((method, params) => session.request(method, params), list, () => session.getSnapshot().mainKey), [session, list]);
   const newTrunk = useCallback(() => { setNewTrunkError(null); setNewTrunkOpen(true); }, []);
@@ -429,8 +438,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
         openConversation(sessionKey);
       },
       showTrunk: () => {
+        trunkAfterNav.current = agentId;
         navigateTo.current({ kind: "place", place: "people" });
-        window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId, view: "profile" } }));
+        rerender((n) => n + 1); // Already on People: the effect still runs.
       },
     });
   };
