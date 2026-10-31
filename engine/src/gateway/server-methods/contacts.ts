@@ -24,6 +24,7 @@ import {
   deliverPendingGraftWork,
   type GraftWork,
 } from "../contacts/graft-work.js";
+import { queueGraftedTeammateSend } from "../contacts/grafted-send.js";
 import {
   assignOutsideAgentId,
   graftDeviceId,
@@ -39,7 +40,6 @@ import {
   recordOutsideAgent,
   updateOutsideAgentSettings,
 } from "../contacts/outside-agents.js";
-import { queueGraftedTeammateSend } from "../contacts/grafted-send.js";
 import { projectContacts } from "../contacts/project.js";
 import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role-policy.js";
 import { removeOutsideRoomMembers } from "../rooms/store.js";

@@ -1,5 +1,4 @@
 import { performance } from "node:perf_hooks";
-import { traceRunStep } from "../../infra/run-trace.js";
 import {
   createAgentRunRestartAbortError,
   isAgentRunRestartAbortReason,
@@ -16,9 +15,7 @@ import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { clearAgentRunContext } from "../../infra/agent-run-registry.js";
 import { emitDiagnosticsTimelineEvent } from "../../infra/diagnostics-timeline.js";
 import { formatErrorMessage } from "../../infra/errors.js";
-import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
-import { resolveDefaultAgentId } from "../../agents/agent-scope-config.js";
-import { isJoinedTeammateKey, routeJoinedTeammateChat } from "../contacts/grafted-send.js";
+import { traceRunStep } from "../../infra/run-trace.js";
 // chat.send owns admission, ACK timing, and detached dispatch handoff.
 import { isProgressCardRefreshInputProvenance } from "../../sessions/input-provenance.js";
 import {
@@ -31,6 +28,7 @@ import { createLazyImportLoader } from "../../shared/lazy-promise.js";
 import type { SkillWorkshopProposalRevisionConstraint } from "../../skills/workshop/types.js";
 import { isOperatorUiClient } from "../../utils/message-channel.js";
 import { resolveChatAbortDiagnosticReason } from "../chat-abort-diagnostics.js";
+import { isJoinedTeammateKey, respondJoinedTeammateChat } from "../contacts/grafted-send.js";
 import type { ChatRunTiming } from "../server-chat-state.js";
 import {
   resolveSessionMutationAuthorization,
@@ -652,33 +650,10 @@ export async function handleChatSend(
   // A joined Branch's Trunk is not a session here. Sending it to the default agent answers in the wrong place.
   const requested = (options.params ?? {}) as { sessionKey?: unknown };
   if (typeof requested.sessionKey === "string" && isJoinedTeammateKey(requested.sessionKey)) {
-    routeChatSendToJoinedTeammate(options, requested.sessionKey);
+    respondJoinedTeammateChat(options, requested.sessionKey);
     return;
   }
   await handleChatSendWithOptions(options, onAdmissionOwned, externalAuthorityAdmission);
-}
-
-/** Queues the message for the joined Branch's Trunk. The reply lands in that teammate's thread. */
-function routeChatSendToJoinedTeammate(
-  options: GatewayRequestHandlerOptions,
-  teammateKey: string,
-): void {
-  const { params, respond, client, context } = options;
-  const cfg = context.getRuntimeConfig();
-  const p = (params ?? {}) as { message?: unknown; idempotencyKey?: unknown };
-  const result = routeJoinedTeammateChat({
-    sessionKey: teammateKey,
-    message: typeof p.message === "string" ? p.message : "",
-    idempotencyKey: typeof p.idempotencyKey === "string" ? p.idempotencyKey : undefined,
-    defaultAgentId: resolveDefaultAgentId(cfg),
-    cfg,
-    client,
-  });
-  if (!result.ok) {
-    respond(false, undefined, errorShape(ErrorCodes[result.code], result.message));
-    return;
-  }
-  respond(true, { runId: result.id, status: "accepted" });
 }
 
 /** The ordinary chat owner retains the exact human-reviewed continuation through settlement. */

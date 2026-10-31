@@ -33,7 +33,9 @@ function fakeClient(reply: (method: string, params: any) => unknown = () => ({})
       request: async (method, params) => {
         client.calls.push([method, params]);
         const result = reply(method, params);
-        if (result instanceof Error) throw result;
+        if (result instanceof Error) {
+          throw result;
+        }
         return result;
       },
     };
@@ -62,52 +64,92 @@ describe("the joined Branch's link to its host", () => {
     );
     expect(result).toEqual({ reply: "PONG" });
     expect(calls.map((call) => call.method)).toEqual(["sessions.create", "chat.send"]);
-    for (const call of calls) expect(call.timeoutMs).toBe(60_000);
-    expect(wait).toHaveBeenCalledWith(expect.objectContaining({ runId: "run-1", timeoutMs: 600_000 }));
+    for (const call of calls) {
+      expect(call.timeoutMs).toBe(60_000);
+    }
+    expect(wait).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "run-1", timeoutMs: 600_000 }),
+    );
   });
   it("polls work over the outbound link and returns the joined Trunk's reply", async () => {
     const job = { id: "job-1", trunkId: "tester", text: "Ping", sourceAgentId: "juniper" };
     let offered = false;
     const fake = fakeClient((method) => {
-      if (method === "graft.work.poll") return { job: offered ? null : job };
-      if (method === "graft.work.complete") offered = true;
+      if (method === "graft.work.poll") {
+        return { job: offered ? null : job };
+      }
+      if (method === "graft.work.complete") {
+        offered = true;
+      }
       return {};
     });
     const handleWork = vi.fn(async () => ({ reply: "PONG" }));
-    const runner = new GraftLinkRunner({ link, trunks: async () => [], createClient: fake.create, forget: vi.fn(), log: () => undefined, handleWork });
+    const runner = new GraftLinkRunner({
+      link,
+      trunks: async () => [],
+      createClient: fake.create,
+      forget: vi.fn(),
+      log: () => undefined,
+      handleWork,
+    });
     runner.start();
     fake.get().handlers.onHello();
     await flush();
     await flush();
     expect(handleWork).toHaveBeenCalledWith(job);
-    expect(fake.get().calls).toContainEqual(["graft.work.complete", { id: "job-1", reply: "PONG" }]);
+    expect(fake.get().calls).toContainEqual([
+      "graft.work.complete",
+      { id: "job-1", reply: "PONG" },
+    ]);
     runner.stop();
   });
   it("waits quietly while the host's gateway restarts instead of polling work every 2 seconds (#1922)", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
-    const restarting = () => Object.assign(new Error("graft.work.poll unavailable during gateway restart"), { code: "UNAVAILABLE", retryable: true, retryAfterMs: 1_000 });
+    const restarting = () =>
+      Object.assign(new Error("graft.work.poll unavailable during gateway restart"), {
+        code: "UNAVAILABLE",
+        retryable: true,
+        retryAfterMs: 1_000,
+      });
     let up = false;
-    const fake = fakeClient((method) => (method === "graft.work.poll" ? (up ? { job: null } : restarting()) : {}));
+    const fake = fakeClient((method) =>
+      method === "graft.work.poll" ? (up ? { job: null } : restarting()) : {},
+    );
     const log = vi.fn();
-    const runner = new GraftLinkRunner({ link, trunks: async () => [], createClient: fake.create, forget: vi.fn(), log, handleWork: async () => ({ reply: "x" }), helloIntervalMs: 3_600_000 });
+    const runner = new GraftLinkRunner({
+      link,
+      trunks: async () => [],
+      createClient: fake.create,
+      forget: vi.fn(),
+      log,
+      handleWork: async () => ({ reply: "x" }),
+      helloIntervalMs: 3_600_000,
+    });
     runner.start();
     fake.get().handlers.onHello();
     await flush();
     const polls = () => fake.get().calls.filter(([m]) => m === "graft.work.poll").length;
-    for (let i = 0; i < 30; i++) { vi.advanceTimersByTime(2_000); await flush(); }
+    for (let i = 0; i < 30; i++) {
+      vi.advanceTimersByTime(2_000);
+      await flush();
+    }
     // 60 seconds of restart: the backoff (1s, 2s, 4s ... capped at 30s) keeps this to a handful, not 30.
     expect(polls()).toBeLessThanOrEqual(6);
     expect(log.mock.calls.some(([line]) => String(line).includes("work poll failed"))).toBe(false);
     up = true;
-    vi.advanceTimersByTime(HOST_BUSY_MAX_BACKOFF_MS); await flush();
+    vi.advanceTimersByTime(HOST_BUSY_MAX_BACKOFF_MS);
+    await flush();
     const after = polls();
-    vi.advanceTimersByTime(2_000); await flush();
+    vi.advanceTimersByTime(2_000);
+    await flush();
     expect(polls()).toBe(after + 1);
     runner.stop();
   });
 
   it("treats only a retryable UNAVAILABLE as the host being busy", () => {
-    expect(hostBusyRetryAfterMs({ code: "UNAVAILABLE", retryable: true, retryAfterMs: 500 })).toBe(500);
+    expect(hostBusyRetryAfterMs({ code: "UNAVAILABLE", retryable: true, retryAfterMs: 500 })).toBe(
+      500,
+    );
     expect(hostBusyRetryAfterMs({ code: "UNAVAILABLE", retryable: true })).toBe(1_000);
     expect(hostBusyRetryAfterMs({ code: "UNAVAILABLE", retryable: false })).toBeUndefined();
     expect(hostBusyRetryAfterMs(new Error("boom"))).toBeUndefined();
@@ -187,7 +229,12 @@ describe("the joined Branch's link to its host", () => {
     const created: string[] = [];
     const fake = fakeClient();
     const runner = new GraftLinkRunner({
-      link: { url: "ws://10.0.0.5:41010", urls: ["ws://100.64.0.7:41010", "ws://10.0.0.5:41010"], name: "Branch B", joinedAt: 1 },
+      link: {
+        url: "ws://10.0.0.5:41010",
+        urls: ["ws://100.64.0.7:41010", "ws://10.0.0.5:41010"],
+        name: "Branch B",
+        joinedAt: 1,
+      },
       trunks: async () => [],
       createClient: (handlers, url) => {
         created.push(url);

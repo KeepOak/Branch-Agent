@@ -1,5 +1,8 @@
+import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
+import { resolveDefaultAgentId } from "../../agents/agent-scope-config.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
+import type { GatewayRequestHandlerOptions } from "../server-methods/types.js";
 import { enqueueGraftWork } from "./graft-work.js";
 import {
   graftDeviceId,
@@ -98,4 +101,27 @@ export function routeJoinedTeammateChat(input: {
     idempotencyKey: input.idempotencyKey,
     cfg: input.cfg,
   });
+}
+
+/** Queues the message for the joined Branch's Trunk. The reply lands in that teammate's thread. */
+export function respondJoinedTeammateChat(
+  options: GatewayRequestHandlerOptions,
+  teammateKey: string,
+): void {
+  const { params, respond, client, context } = options;
+  const cfg = context.getRuntimeConfig();
+  const p = (params ?? {}) as { message?: unknown; idempotencyKey?: unknown };
+  const result = routeJoinedTeammateChat({
+    sessionKey: teammateKey,
+    message: typeof p.message === "string" ? p.message : "",
+    idempotencyKey: typeof p.idempotencyKey === "string" ? p.idempotencyKey : undefined,
+    defaultAgentId: resolveDefaultAgentId(cfg),
+    cfg,
+    client,
+  });
+  if (!result.ok) {
+    respond(false, undefined, errorShape(ErrorCodes[result.code], result.message));
+    return;
+  }
+  respond(true, { runId: result.id, status: "accepted" });
 }

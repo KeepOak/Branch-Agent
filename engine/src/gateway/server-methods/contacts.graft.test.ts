@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeBranchStateDatabaseForTest } from "../../state/branch-state-db.js";
+import { routeJoinedTeammateChat } from "../contacts/grafted-send.js";
 import {
   graftDeviceId,
   graftSendRefusal,
@@ -13,7 +14,6 @@ import {
   outsideAgentDeviceRows,
   readOutsideAgentSettings,
 } from "../contacts/outside-agents.js";
-import { routeJoinedTeammateChat } from "../contacts/grafted-send.js";
 
 const removed = vi.hoisted(() => ({ calls: [] as string[], fail: "" }));
 const replyStep = vi.hoisted(() => vi.fn(async () => undefined));
@@ -49,7 +49,9 @@ function removeStateDir(dir: string): void {
   try {
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
   } catch (error) {
-    if (process.platform !== "win32") throw error;
+    if (process.platform !== "win32") {
+      throw error;
+    }
   }
 }
 
@@ -97,7 +99,13 @@ async function call(method: string, params: Record<string, unknown>, client: unk
 }
 
 const branchB = { id: "branch-b", name: "Branch B", kind: "branch" };
-const scout = { id: "branch-b--scout", name: "Scout", kind: "trunk", via: "branch-b", trunkId: "scout" };
+const scout = {
+  id: "branch-b--scout",
+  name: "Scout",
+  kind: "trunk",
+  via: "branch-b",
+  trunkId: "scout",
+};
 
 describe("Branch-to-Branch graft on the host", () => {
   it("exposes saved links and rejects malformed window join requests", async () => {
@@ -392,10 +400,19 @@ describe("Branch-to-Branch graft on the host", () => {
 
   it("says plainly that a teammate is no longer linked, not a raw lookup error", async () => {
     await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
-    await call("contacts.outside.hello", { agent: { ...scout, trunkId: "scout" } }, device("dev-b"));
+    await call(
+      "contacts.outside.hello",
+      { agent: { ...scout, trunkId: "scout" } },
+      device("dev-b"),
+    );
     const sent = await call(
       "graft.work.send",
-      { target: "a2a:branch-b--gone", text: "Ping", sourceSessionKey: "agent:juniper:main", idempotencyKey: "gone-1" },
+      {
+        target: "a2a:branch-b--gone",
+        text: "Ping",
+        sourceSessionKey: "agent:juniper:main",
+        idempotencyKey: "gone-1",
+      },
       owner,
     );
     expect(sent.ok).toBe(false);
@@ -404,11 +421,22 @@ describe("Branch-to-Branch graft on the host", () => {
 
   it("says a disconnected teammate was disconnected, which is a different fix from a lost link", async () => {
     await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
-    await call("contacts.outside.hello", { agent: { ...scout, trunkId: "scout" } }, device("dev-b"));
-    expect((await call("contacts.outside.set", { id: "branch-b", revoked: true }, owner)).ok).toBe(true);
+    await call(
+      "contacts.outside.hello",
+      { agent: { ...scout, trunkId: "scout" } },
+      device("dev-b"),
+    );
+    expect((await call("contacts.outside.set", { id: "branch-b", revoked: true }, owner)).ok).toBe(
+      true,
+    );
     const sent = await call(
       "graft.work.send",
-      { target: "a2a:branch-b--scout", text: "Ping", sourceSessionKey: "agent:juniper:main", idempotencyKey: "rev-1" },
+      {
+        target: "a2a:branch-b--scout",
+        text: "Ping",
+        sourceSessionKey: "agent:juniper:main",
+        idempotencyKey: "rev-1",
+      },
       owner,
     );
     expect(sent.ok).toBe(false);
@@ -418,7 +446,11 @@ describe("Branch-to-Branch graft on the host", () => {
   it("sends a teammate's reply back into the thread the chat was typed in, not the default Trunk's main thread", async () => {
     replyStep.mockClear();
     await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
-    await call("contacts.outside.hello", { agent: { ...scout, trunkId: "scout" } }, device("dev-b"));
+    await call(
+      "contacts.outside.hello",
+      { agent: { ...scout, trunkId: "scout" } },
+      device("dev-b"),
+    );
     const sent = routeJoinedTeammateChat({
       sessionKey: "a2a:branch-b--scout",
       message: "Ping",
@@ -428,11 +460,28 @@ describe("Branch-to-Branch graft on the host", () => {
       client: owner,
     });
     expect(sent.ok).toBe(true);
-    expect((await call("graft.work.poll", {}, device("dev-b"))).payload.job).toMatchObject({ trunkId: "scout", text: "Ping" });
-    expect((await call("graft.work.complete", { id: sent.ok ? sent.id : "", reply: "PONG" }, device("dev-b"))).ok).toBe(true);
+    expect((await call("graft.work.poll", {}, device("dev-b"))).payload.job).toMatchObject({
+      trunkId: "scout",
+      text: "Ping",
+    });
+    expect(
+      (
+        await call(
+          "graft.work.complete",
+          { id: sent.ok ? sent.id : "", reply: "PONG" },
+          device("dev-b"),
+        )
+      ).ok,
+    ).toBe(true);
     expect(replyStep).toHaveBeenCalledWith(
-      expect.objectContaining({ agentId: "juniper", sessionKey: "agent:juniper:a2a:branch-b--scout", message: "PONG" }),
+      expect.objectContaining({
+        agentId: "juniper",
+        sessionKey: "agent:juniper:a2a:branch-b--scout",
+        message: "PONG",
+      }),
     );
-    expect(replyStep).not.toHaveBeenCalledWith(expect.objectContaining({ sessionKey: "agent:juniper:main" }));
+    expect(replyStep).not.toHaveBeenCalledWith(
+      expect.objectContaining({ sessionKey: "agent:juniper:main" }),
+    );
   });
 });
