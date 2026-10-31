@@ -3,7 +3,8 @@
 // never the preview's timed fetch. Continue is always allowed: a free local model is set up without an account.
 // Try it with examples lists the example Trunks the engine carries (trunks.template.starters).
 // A switched-on ChatGPT connection answers through Codex, which Branch doesn't ship (#589): until Codex is ready, the
-// step offers the same Get Codex question as Settings › Accounts (codex-get), and Say hello asks it first.
+// step offers the same Get Codex question as Settings › Accounts (codex-get), and Say hello asks it first. That only
+// applies when the ChatGPT row is what Say hello would test (helloTarget), not when a working model is already set up.
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "../../composer/icons";
@@ -15,7 +16,7 @@ import { logoId } from "../../setup/steps-early";
 import { NO_MODELS_ONBOARDING } from "../../composer/connect-model";
 import { FreeModelSetup } from "../../composer/FreeModelSetup";
 import { CODEX_DOWNLOAD_METHOD, codexDownloadOffered, useCodexDownload } from "../../places/settings/set1/codex-get";
-import { testModel, useDetected } from "../../setup/use-setup-engine";
+import { helloTarget, testModel, useDetected } from "../../setup/use-setup-engine";
 import { answeredBy, canSayHello, codexNeededLine, EXAMPLES_REASON, needsCodex, toggle, WAITS_FOR, type Example, type Hello } from "./model";
 import { examplesErrorText, examplesHint, loadExampleTrunks } from "./try-examples";
 
@@ -35,8 +36,10 @@ export function Models({ engine, off, onOff, hello, onHello, onExamples }: Props
   };
   const rows = detected?.candidates ?? [];
   const none = Boolean(detected) && !rows.length && !detected?.configuredModel;
-  const viaCodex = rows.filter((c) => !off.includes(c.key) && !c.signedOut && needsCodex(c));
-  const codex = useCodexDownload(engine, codexDownloadOffered(engine) && viaCodex.length > 0);
+  // Only the model Say hello will test asks for Codex: a working model already set up keeps Say hello free (#2159 review).
+  const target = detected ? helloTarget(detected, off, detected.configuredModel) : null;
+  const viaCodex = target && target !== "current" && needsCodex(target) ? target : null;
+  const codex = useCodexDownload(engine, codexDownloadOffered(engine) && viaCodex !== null);
   const codexWaits = Boolean(codex.view && !codex.view.ready);
   const sayHello = () => {
     if (!detected || hello === "busy") return;
@@ -78,7 +81,7 @@ export function Models({ engine, off, onOff, hello, onHello, onExamples }: Props
           {" · "}<button type="button" className="r1-ob-link" data-local onClick={() => void codex.decline()}>Not now</button>
         </p>
       ) : codexWaits ? (
-        <p className="r1-ob-hint" role="status" data-testid="onboarding-codex">{codex.view?.line ?? codexNeededLine(viaCodex[0]?.label ?? "ChatGPT")}
+        <p className="r1-ob-hint" role="status" data-testid="onboarding-codex">{codex.view?.line ?? codexNeededLine(viaCodex?.label || "ChatGPT")}
           {codex.view?.action ? <>{" "}<Coming need={CODEX_DOWNLOAD_METHOD} where={codex.view.action}><button type="button" className="r1-ob-link" data-local onClick={codex.requestPrompt}>{codex.view.action}</button></Coming></> : null}
         </p>
       ) : null}

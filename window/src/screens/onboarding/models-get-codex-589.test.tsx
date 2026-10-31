@@ -49,10 +49,14 @@ const CLAUDE = {
 };
 const ASK = "Download Codex 0.160.0 (134 MB)?";
 
-function fakeEngine(candidates: unknown[], runtime: { state: string; message?: string }) {
+function fakeEngine(
+  candidates: unknown[],
+  runtime: { state: string; message?: string },
+  detect: Record<string, unknown> = {},
+) {
   let state = runtime;
   const request = vi.fn(async (method: string, _params?: unknown): Promise<unknown> => {
-    if (method === "branch.setup.detect") return { candidates };
+    if (method === "branch.setup.detect") return { candidates, ...detect };
     if (method === "codex.runtime")
       return { ...state, ask: ASK, bytes: 134_311_083, version: "0.160.0" };
     if (method === "codex.runtime.download") {
@@ -176,6 +180,64 @@ it("with Codex ready, Say hello tries the ChatGPT connection straight away", asy
   expect(calls(request, "branch.setup.activate")).toEqual([
     { agentId: "main", kind: CHATGPT.kind, modelRef: CHATGPT.modelRef },
   ]);
+});
+
+// #2159 review: Say hello verifies a working model that's already set up, so an extra ChatGPT row that's switched on
+// must not hold it back until Codex is downloaded.
+it("a working non-Codex model already set up keeps Say hello free while a ChatGPT row is on", async () => {
+  const CURRENT = {
+    kind: "existing-model",
+    modelRef: "anthropic/claude-sonnet-4-6",
+    label: "Claude Sonnet 4.6",
+    detail: "In use now",
+    credentials: true,
+  };
+  const { engine, request } = fakeEngine(
+    [CURRENT, CHATGPT],
+    { state: "download" },
+    {
+      configuredModel: "anthropic/claude-sonnet-4-6",
+      setupComplete: true,
+    },
+  );
+  const host = await show(engine);
+  expect(calls(request, "codex.runtime")).toHaveLength(0);
+  expect(host.querySelector('[data-testid="onboarding-codex"]')).toBeNull();
+  expect(button(host, "Get Codex")).toBeUndefined();
+  expect(button(host, "Say hello")?.disabled).toBe(false);
+  await act(async () => button(host, "Say hello")!.click());
+  await flush();
+  expect(host.querySelector('[data-testid="onboarding-codex-prompt"]')).toBeNull();
+  expect(calls(request, "branch.setup.verify")).toEqual([{ agentId: "main" }]);
+  expect(calls(request, "branch.setup.activate")).toHaveLength(0);
+  expect(calls(request, "codex.runtime.download")).toHaveLength(0);
+});
+
+it("with the working model switched off, the ChatGPT row is what Say hello tests, so it asks for Codex", async () => {
+  const CURRENT = {
+    kind: "existing-model",
+    modelRef: "anthropic/claude-sonnet-4-6",
+    label: "Claude Sonnet 4.6",
+    detail: "In use now",
+    credentials: true,
+  };
+  const { engine, request } = fakeEngine(
+    [CURRENT, CHATGPT],
+    { state: "download" },
+    {
+      configuredModel: "anthropic/claude-sonnet-4-6",
+    },
+  );
+  const host = await show(engine);
+  await act(async () =>
+    (host.querySelector('[aria-label="Use Claude Sonnet 4.6"]') as HTMLButtonElement).click(),
+  );
+  await flush();
+  expect(button(host, "Get Codex")).toBeDefined();
+  await act(async () => button(host, "Say hello")!.click());
+  await flush();
+  expect(host.querySelector('[data-testid="onboarding-codex-prompt"]')?.textContent).toContain(ASK);
+  expect(calls(request, "branch.setup.verify")).toHaveLength(0);
 });
 
 it("other models never ask about Codex", async () => {
