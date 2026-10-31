@@ -24,6 +24,35 @@ export const TRUNKS_STILL_WORKING = "Trunks are still working. Update when they 
 /** Apply now / service restart must not treat a silent window as idle when drafts or approvals are unknown. */
 export const WINDOW_IDLE_UNKNOWN = "The window did not report pending approvals or unsaved drafts";
 
+/** Neither a window nor the engine could say what runs (an older engine reports no runs on /health, #2161). */
+export const ENGINE_ACTIVITY_UNAVAILABLE = "The window did not report activity and the engine's own activity is unavailable";
+
+/** A refusal that means the activity is unknown, not busy: the owner's Apply now asks instead of failing (#2161). */
+export function activityUnknown(message: string): boolean {
+  return message === WINDOW_IDLE_UNKNOWN || message === ENGINE_ACTIVITY_UNAVAILABLE;
+}
+
+/** The question Apply now asks when Branch can't tell whether Trunks are working (#2161). */
+export const UNKNOWN_ACTIVITY_QUESTION = {
+  message: "Branch can't tell whether Trunks are working. Update now?",
+  detail: "No window reported approvals or unsaved drafts, and the engine could not say what it is running. If a Trunk is working, the update interrupts it and the new engine resumes it.",
+  buttons: ["Update now", "Not now"],
+} as const;
+
+/**
+ * The owner confirmed Apply now while the activity was unknown (#2161): unknown approvals and drafts count as none, and an
+ * engine that could not report its work (undefined) counts as idle. Work the engine or a window did report still refuses,
+ * and so does what a still-trusted window snapshot (`windowIdle`) knows when the engine could not report at all.
+ */
+export function ownerConfirmedWork(
+  work: ServiceWork | undefined,
+  windowIdle?: { pendingApprovals: number | null; unsavedDraftFiles: boolean | null },
+): ServiceWork {
+  const known = work ?? { activeRuns: 0, streaming: false,
+    pendingApprovals: windowIdle?.pendingApprovals ?? null, unsavedDraftFiles: windowIdle?.unsavedDraftFiles ?? null };
+  return { ...known, pendingApprovals: known.pendingApprovals ?? 0, unsavedDraftFiles: known.unsavedDraftFiles ?? false };
+}
+
 /**
  * Private #1038's idle rule, applied to the service: a restart never cuts off running Trunk work. Idle means no
  * active run of any kind (main session, helper, queue job or cron run), no pending approval and no streaming reply.

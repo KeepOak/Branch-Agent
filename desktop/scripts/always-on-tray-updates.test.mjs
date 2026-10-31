@@ -10,15 +10,18 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { isolateHome } from './fixtures/isolated-home.mjs';
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error('Compile the exact desktop source before testing');
+isolateHome('branch-always-on-home-');
 const require = createRequire(import.meta.url), Module = require('node:module');
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 const { readEngineLiveState, stopBranchCompletely, trayLabel, trayMenu } = require(join(dist, 'tray-status.js'));
 const { resetQuitIntent } = require(join(dist, 'quit-intent.js'));
-const { sameEngineBuild, updateServiceEngine, TRUNKS_STILL_WORKING, WINDOW_IDLE_UNKNOWN, serviceWorkRefusal } = require(join(dist, 'service-update.js'));
+const { sameEngineBuild, updateServiceEngine, TRUNKS_STILL_WORKING, WINDOW_IDLE_UNKNOWN, serviceWorkRefusal, ownerConfirmedWork, activityUnknown,
+  ENGINE_ACTIVITY_UNAVAILABLE, UNKNOWN_ACTIVITY_QUESTION } = require(join(dist, 'service-update.js'));
 const { WINDOW_IDLE_FILE, WINDOW_IDLE_MAX_AGE_MS } = require(join(dist, 'auto-apply-update.js'));
-const { engineServiceArgs } = require(join(dist, 'engine-service.js'));
+const { engineServiceArgs, parseSessionRunList, readSessionRunList, serviceManagerRunsEngine, sessionRunListArgs } = require(join(dist, 'engine-service.js'));
 const originalLoad = Module._load, originalFetch = globalThis.fetch;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function eventually(predicate, ms = 8000) {
@@ -43,7 +46,7 @@ async function freePort() {
 
 /** Electron stand-in: one window whose page answers the app's activity probe with `work`, and a recording tray. */
 function electronFixture(work) {
-  let window, tray, quitting = false;
+  let window, tray, quitting = false, answer = 0;
   const app = new EventEmitter(), ipcMain = Object.assign(new EventEmitter(), { handle() {} });
   const dialogs = [];
   Object.assign(app, { getVersion: () => 'fixture', setPath() {}, setAppUserModelId() {},
@@ -74,11 +77,15 @@ function electronFixture(work) {
   }
   class Tray extends EventEmitter { constructor() { super(); tray = this; }
     setToolTip(value) { this.tooltip = value; } setContextMenu(value) { this.menu = value; } setImage() {} destroy() { this.destroyed = true; } }
-  return { app, dialogs, get window() { return window; }, get tray() { return tray; }, electron: { app, BrowserWindow, Tray, ipcMain,
+  // Message boxes are recorded as [kind, message, detail]; the unknown-activity question (#2161) is answered with `answer`.
+  return { app, dialogs, answer: value => { answer = value; }, get window() { return window; }, get tray() { return tray; }, electron: { app, BrowserWindow, Tray, ipcMain,
     Menu: { buildFromTemplate: value => value },
     screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) },
     dialog: { showErrorBox: (...args) => dialogs.push(['error', ...args]),
-      showMessageBox: async options => { dialogs.push(['warn', options.message]); return { response: 0 }; } },
+      showMessageBox: async options => {
+        dialogs.push([options.type === 'error' ? 'error' : 'warn', options.message, options.detail]);
+        return { response: options.message === UNKNOWN_ACTIVITY_QUESTION.message ? answer : 0 };
+      } },
     session: { fromPartition() { return { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, on() {} }; }, defaultSession: { setPermissionRequestHandler() {} } }, shell: { openExternal() {} } } };
 }
 
@@ -99,7 +106,9 @@ if (args[0] === "gateway" && args.includes("--dev")) {
 } else {
   fs.appendFileSync(root + "/cli-calls.txt", args.join(" ") + " @" + here + "\\n");
   if (args[1] === "restart") fs.writeFileSync(root + "/service-runs.txt", here);
-  console.log(JSON.stringify({ ok: true }));
+  // An older engine's session list (#2161), when the test wrote one.
+  if (args[1] === "call" && fs.existsSync(root + "/session-list.json")) console.log(fs.readFileSync(root + "/session-list.json", "utf8"));
+  else console.log(JSON.stringify({ ok: true }));
 }`);
   return dir;
 }
@@ -135,7 +144,9 @@ async function serviceApp(t, work, run, env = {}, setup = () => undefined) {
   writeFileSync(join(root, 'desktop.json'), JSON.stringify({ dataDir: root, engineDir: engine, windowDir, nodePath: process.execPath,
     gatewayPort, windowPort, alwaysOn: true }));
   setup(root);
-  const vars = { BRANCH_DESKTOP_DATA: root, BRANCH_DESKTOP_HIDDEN: '0', BRANCH_DESKTOP_ENGINE_PROFILE: profile, ...env };
+  // A launchd job runs the service engine unless a test says the engine is detached (#2161).
+  const vars = { BRANCH_DESKTOP_DATA: root, BRANCH_DESKTOP_HIDDEN: '0', BRANCH_DESKTOP_ENGINE_PROFILE: profile,
+    BRANCH_DESKTOP_TEST_SERVICE_JOB: 'running', ...env };
   const saved = Object.fromEntries(Object.keys(vars).map(key => [key, process.env[key]]));
   Object.assign(process.env, vars);
   const runtime = electronFixture(work), signals = new EventEmitter();
@@ -439,18 +450,150 @@ test('service work refuses unknown approvals or drafts, and a proven-zero snapsh
   assert.equal(serviceWorkRefusal({ activeRuns: 1, pendingApprovals: null, streaming: false, unsavedDraftFiles: null }), TRUNKS_STILL_WORKING);
 });
 
-test('Apply now in service mode: a silent window without engine activity refuses with a reason', async t => {
+// #2161: the engine service still runs an older build. Its /health has no run counts and the window is silent.
+const RUN_LIST_CALL = `${sessionRunListArgs().slice(1).join(' ')} @engine`;
+const sessionList = rows => root => writeFileSync(join(root, 'session-list.json'), JSON.stringify({ sessions: rows }, null, 2));
+
+test('an older engine\'s session list counts its live runs; anything else is unavailable', () => {
+  assert.deepEqual(sessionRunListArgs().slice(0, 5), ['branch.mjs', 'gateway', 'call', 'sessions.list', '--json']);
+  const rows = [{ key: 'a', hasActiveRun: true }, { key: 'b', activeRunIds: ['r1'] }, { key: 'c', status: 'running' },
+    { key: 'd', hasActiveRun: false, activeRunIds: [] }, { key: 'e', status: 'done' }, null];
+  assert.deepEqual(parseSessionRunList(JSON.stringify({ sessions: rows }, null, 2)), { activeRuns: 3, totalActive: 3, pendingReplies: 0 });
+  assert.deepEqual(parseSessionRunList('a warning line\n' + JSON.stringify({ sessions: [] })), { activeRuns: 0, totalActive: 0, pendingReplies: 0 });
+  assert.equal(parseSessionRunList(JSON.stringify({ ok: true })), undefined, 'no session list is unavailable, not idle');
+  assert.equal(parseSessionRunList('not json'), undefined);
+});
+
+// #2165: a list longer than one page. A live run on a later page is a live run; a list that can't be read to its end is unknown.
+test('an older engine\'s session list is read to its last page; one page of a longer list is never idle', async () => {
+  const idle = n => Array.from({ length: n }, (_, i) => ({ key: 'agent:idle:' + i, hasActiveRun: false }));
+  const firstPage = JSON.stringify({ sessions: idle(200), hasMore: true, nextOffset: 200 });
+  assert.equal(parseSessionRunList(firstPage), undefined, 'one page that says more follow is unknown, not idle');
+  assert.equal(parseSessionRunList(JSON.stringify({ sessions: idle(200) })), undefined, 'a full page that does not say whether more follow is unknown');
+
+  const offsets = [];
+  const pages = {
+    0: firstPage,
+    200: JSON.stringify({ sessions: [...idle(199), { key: 'agent:a:main', hasActiveRun: true }], hasMore: true, nextOffset: 400 }),
+    400: 'a warning line\n' + JSON.stringify({ sessions: [{ key: 'agent:a:main', hasActiveRun: true }, { key: 'agent:b:main', activeRunIds: ['r2'] }], hasMore: false, nextOffset: null }),
+  };
+  const call = async args => {
+    const offset = JSON.parse(args.at(-1)).offset ?? 0;
+    offsets.push(offset);
+    return pages[offset];
+  };
+  assert.deepEqual(await readSessionRunList(call), { activeRuns: 2, totalActive: 2, pendingReplies: 0 }, 'live runs on later pages count, a row seen twice counts once');
+  assert.deepEqual(offsets, [0, 200, 400]);
+
+  const unknown = async answers => readSessionRunList(async () => answers.shift());
+  assert.equal(await unknown([JSON.stringify({ sessions: [], hasMore: true })]), undefined, 'more rows but no next page');
+  assert.equal(await unknown([JSON.stringify({ sessions: [], hasMore: true, nextOffset: 0 })]), undefined, 'a next page that goes nowhere');
+  assert.equal(await unknown([firstPage, JSON.stringify({ ok: true })]), undefined, 'a later page with no session list');
+  let page = 0;
+  assert.equal(await readSessionRunList(async () => JSON.stringify({ sessions: [], hasMore: true, nextOffset: ++page * 200 })), undefined, 'a list that never ends');
+  await assert.rejects(readSessionRunList(async () => { throw new Error('gateway call failed'); }), /gateway call failed/);
+});
+
+test('a detached engine (no launchd job) has no service to restart; other platforms keep the service manager', () => {
+  assert.equal(serviceManagerRunsEngine('darwin', {}), false);
+  assert.equal(serviceManagerRunsEngine('darwin', undefined), false);
+  assert.equal(serviceManagerRunsEngine('darwin', { state: 'not running', lastExit: 0 }), false);
+  assert.equal(serviceManagerRunsEngine('darwin', { state: 'running', pid: 4242 }), true);
+  assert.equal(serviceManagerRunsEngine('linux', undefined), true);
+  assert.equal(serviceManagerRunsEngine('win32', undefined), true);
+});
+
+test('the owner\'s confirmation turns unknown activity into idle, never reported work', () => {
+  assert.equal(activityUnknown(WINDOW_IDLE_UNKNOWN), true);
+  assert.equal(activityUnknown(ENGINE_ACTIVITY_UNAVAILABLE), true);
+  assert.equal(activityUnknown(TRUNKS_STILL_WORKING), false);
+  assert.equal(serviceWorkRefusal(ownerConfirmedWork(undefined)), undefined, 'an engine that could not report counts as idle');
+  assert.equal(serviceWorkRefusal(ownerConfirmedWork({ activeRuns: 0, pendingApprovals: null, streaming: false, unsavedDraftFiles: null })), undefined);
+  assert.equal(serviceWorkRefusal(ownerConfirmedWork({ activeRuns: 2, pendingApprovals: null, streaming: false, unsavedDraftFiles: null })), TRUNKS_STILL_WORKING);
+  assert.equal(serviceWorkRefusal(ownerConfirmedWork({ activeRuns: 0, pendingApprovals: 1, streaming: false, unsavedDraftFiles: null })), TRUNKS_STILL_WORKING);
+  assert.equal(serviceWorkRefusal(ownerConfirmedWork({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: true })), TRUNKS_STILL_WORKING);
+  // An engine that could not report keeps what a still-trusted window snapshot knows; only unknown counts as none.
+  assert.equal(serviceWorkRefusal(ownerConfirmedWork(undefined, { pendingApprovals: 1, unsavedDraftFiles: false })), TRUNKS_STILL_WORKING);
+  assert.equal(serviceWorkRefusal(ownerConfirmedWork(undefined, { pendingApprovals: 0, unsavedDraftFiles: true })), TRUNKS_STILL_WORKING);
+  assert.equal(serviceWorkRefusal(ownerConfirmedWork(undefined, { pendingApprovals: 0, unsavedDraftFiles: false })), undefined);
+  assert.equal(serviceWorkRefusal(ownerConfirmedWork(undefined, { pendingApprovals: null, unsavedDraftFiles: null })), undefined);
+});
+
+test('Apply now with an older engine and a silent window: asks, and Update now applies the new engine', async t => {
+  await serviceApp(t, null, async ({ clickUpdate, publish, cliCalls, serviceRuns, dialogs, desktopLog }) => {
+    publish('engine-v2', 'v2');
+    clickUpdate();
+    await eventually(() => desktopLog().includes('service update: the engine service runs the new engine'), 30000);
+    assert.match(desktopLog(), /update failed: The window did not report activity and the engine's own activity is unavailable/);
+    assert.match(desktopLog(), /update: the owner confirmed the update although Trunk activity is unknown/);
+    assert.equal(dialogs.filter(d => d[1] === UNKNOWN_ACTIVITY_QUESTION.message).length, 1, 'asked once');
+    assert.deepEqual(dialogs.filter(d => d[0] === 'error'), [], 'no error box');
+    assert.ok(cliCalls().includes(RUN_LIST_CALL), cliCalls().join('\n'));
+    assert.ok(cliCalls().includes('gateway restart --json @engine-v2'), cliCalls().join('\n'));
+    assert.equal(serviceRuns(), 'engine-v2');
+  }, updateEnv);
+});
+
+test('Apply now with an older engine and a silent window: Not now keeps the running engine without an error box', async t => {
+  await serviceApp(t, null, async ({ clickUpdate, publish, cliCalls, standbys, serviceRuns, dialogs, desktopLog, answer }) => {
+    answer(1);
+    publish('engine-v2', 'v2');
+    clickUpdate();
+    await eventually(() => desktopLog().includes('update: kept the running engine; the owner chose Not now'), 30000);
+    assert.equal(dialogs.filter(d => d[1] === UNKNOWN_ACTIVITY_QUESTION.message).length, 1, 'asked once');
+    assert.deepEqual(dialogs.filter(d => d[0] === 'error'), []);
+    assert.ok(cliCalls().length > 0 && cliCalls().every(line => line === RUN_LIST_CALL), 'only the session list was read: ' + cliCalls().join('\n'));
+    assert.deepEqual(standbys(), []);
+    assert.equal(serviceRuns(), 'engine');
+  }, updateEnv);
+});
+
+for (const [what, snapshot] of [['a pending approval', { pendingApprovals: 1, unsavedDraftFiles: false }],
+  ['an unsaved draft', { pendingApprovals: 0, unsavedDraftFiles: true }]]) {
+  test('Apply now with an older engine and a silent window: Update now keeps ' + what + ' from the window snapshot and refuses', async t => {
+    await serviceApp(t, null, async ({ clickUpdate, publish, cliCalls, standbys, serviceRuns, dialogs, desktopLog }) => {
+      publish('engine-v2', 'v2');
+      clickUpdate();
+      await eventually(() => desktopLog().includes('update: the owner confirmed the update although Trunk activity is unknown'), 30000);
+      await eventually(() => (desktopLog().match(/update failed: /g) ?? []).length === 2, 30000);
+      assert.match(desktopLog(), new RegExp('update failed: ' + TRUNKS_STILL_WORKING.replace(/[.]/g, '[.]')));
+      assert.equal(dialogs.filter(d => d[1] === UNKNOWN_ACTIVITY_QUESTION.message).length, 1, 'asked once');
+      assert.deepEqual(dialogs.filter(d => d[0] === 'error').map(d => d[2]), [TRUNKS_STILL_WORKING], 'known window state still refuses');
+      assert.ok(cliCalls().every(line => line === RUN_LIST_CALL), 'no restart: ' + cliCalls().join('\n'));
+      assert.deepEqual(standbys(), []);
+      assert.equal(serviceRuns(), 'engine');
+    }, { ...updateEnv, BRANCH_DESKTOP_WINDOW_IDLE_SESSION: 'always-on-window-idle-session' }, root => {
+      writeFileSync(join(root, WINDOW_IDLE_FILE), JSON.stringify({ at: Date.now(), sessionId: 'always-on-window-idle-session', ...snapshot }));
+    });
+  });
+}
+
+test('Apply now with an older engine: a live run in its session list refuses without asking', async t => {
   await serviceApp(t, null, async ({ clickUpdate, publish, cliCalls, standbys, serviceRuns, dialogs, desktopLog }) => {
     publish('engine-v2', 'v2');
     clickUpdate();
-    await eventually(() => desktopLog().includes('update failed: The window did not report activity and the engine\'s own activity is unavailable'), 15000);
-    assert.deepEqual(cliCalls(), [], 'no gateway restart (or any service) CLI call');
-    assert.deepEqual(standbys(), [], 'not even a standby');
+    await eventually(() => desktopLog().includes(`update failed: ${TRUNKS_STILL_WORKING}`), 30000);
+    assert.match(desktopLog(), /engine activity: \/health has no run counts; using the gateway's session list/);
+    assert.match(desktopLog(), /service update: waiting for 1 active runs, unknown approvals, unknown draft files before the update/);
+    assert.deepEqual(dialogs.filter(d => d[1] === UNKNOWN_ACTIVITY_QUESTION.message), [], 'known work is never put to the owner as unknown');
+    assert.deepEqual(dialogs.filter(d => d[0] === 'error').map(d => d[2]), [TRUNKS_STILL_WORKING]);
+    assert.ok(cliCalls().length > 0 && cliCalls().every(line => line === RUN_LIST_CALL), cliCalls().join('\n'));
+    assert.deepEqual(standbys(), []);
     assert.equal(serviceRuns(), 'engine');
-    assert.deepEqual(dialogs.filter(d => d[0] === 'error').map(d => d[2]), [
-      'The window did not report activity and the engine\'s own activity is unavailable',
-    ]);
-  }, updateEnv);
+  }, updateEnv, sessionList([{ key: 'agent:a:main', hasActiveRun: true }, { key: 'agent:b:main', hasActiveRun: false }]));
+});
+
+test('Apply now on a detached engine (no launchd job) stops it instead of restarting it in place, and keeps it when it will not stop', async t => {
+  await serviceApp(t, idle, async ({ clickUpdate, publish, cliCalls, standbys, serviceRuns, dialogs, desktopLog }) => {
+    publish('engine-v2', 'v2');
+    clickUpdate();
+    await eventually(() => desktopLog().includes('update failed: The previous engine did not stop; it keeps serving'), 60000);
+    assert.match(desktopLog(), /no service manager runs the engine; stopping it and starting the new engine inside the app/);
+    assert.deepEqual(cliCalls(), ['gateway stop --force --json @engine'], 'stopped through the running engine\'s own CLI; never `gateway restart`');
+    assert.deepEqual(standbys(), []);
+    assert.equal(serviceRuns(), 'engine');
+    assert.deepEqual(dialogs.filter(d => d[0] === 'error').map(d => d[2]), ['The previous engine did not stop; it keeps serving']);
+  }, { ...updateEnv, BRANCH_DESKTOP_TEST_SERVICE_JOB: 'none' });
 });
 
 test('a running Trunk run survives an Update click in service mode: refused, no gateway CLI call, the run still answers', async t => {
@@ -786,4 +929,13 @@ test('a signal (Ctrl C in a terminal, kill) quits the same way; the question has
   assert.equal(quitQuestion(undefined).message, 'Quit while Branch may still be working?');
   assert.equal(quitQuestion({ running: true, workingTrunks: 0, waitingOnYou: 1 }).message, 'Quit while 1 request is waiting on you?');
   assert.equal(quitQuestion({ running: true, workingTrunks: 0, waitingOnYou: 3 }).message, 'Quit while 3 requests are waiting on you?');
+});
+
+test('auto-apply with an older engine and a silent window reads its session list: no failed activity check', async t => {
+  await serviceApp(t, null, async ({ cliCalls, serviceRuns, desktopLog }) => {
+    await eventually(() => /auto-apply: waiting for 0 active runs, unknown approvals, unknown draft files/.test(desktopLog()), 30000);
+    assert.doesNotMatch(desktopLog(), /activity check failed/);
+    assert.ok(cliCalls().every(line => line === RUN_LIST_CALL), cliCalls().join('\n'));
+    assert.equal(serviceRuns(), 'engine');
+  }, autoEnv, root => { pending(root); sessionList([{ key: 'agent:a:main', hasActiveRun: false }])(root); });
 });

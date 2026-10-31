@@ -119,6 +119,74 @@ export async function readEngineWork(port: number, timeoutMs = 2_000): Promise<{
   } catch { return undefined; }
 }
 
+/** Rows per session-list page, and the most pages read before activity counts as unknown. */
+const SESSION_RUN_PAGE = 200;
+const SESSION_RUN_PAGES_MAX = 100;
+
+/**
+ * #2161: an older engine reports no run counts on /health. Its session list (the rows the window's sidebar reads) still
+ * marks every conversation with a live run, so the running engine's own CLI reads it over the gateway.
+ */
+export function sessionRunListArgs(offset = 0): string[] {
+  return ["branch.mjs", "gateway", "call", "sessions.list", "--json", "--params",
+    JSON.stringify({ includeGlobal: true, includeUnknown: true, limit: SESSION_RUN_PAGE, ...(offset > 0 ? { offset } : {}) })];
+}
+
+interface SessionRunPage { live: Set<string>; next?: number }
+
+/**
+ * One page of a session-list answer: the keys of its rows with a live run, and the next page's offset when the page
+ * says there is more. Undefined when it has no session list, its next page can't be followed, or a full page doesn't
+ * say whether more rows follow (#2165: a live run on an unread page must never count as idle).
+ */
+function parseSessionRunPage(stdout: string, offset: number): SessionRunPage | undefined {
+  const answer = lastJsonObject(stdout);
+  const sessions = answer?.sessions;
+  if (!answer || !Array.isArray(sessions)) return undefined;
+  const live = new Set<string>();
+  sessions.forEach((row, index) => {
+    if (!row || typeof row !== "object") return;
+    const value = row as { key?: unknown; hasActiveRun?: unknown; activeRunIds?: unknown; status?: unknown };
+    if (value.hasActiveRun === true || (Array.isArray(value.activeRunIds) && value.activeRunIds.length > 0) || value.status === "running") {
+      live.add(typeof value.key === "string" ? value.key : "#" + String(offset + index));
+    }
+  });
+  if (answer.hasMore === true) {
+    const next = answer.nextOffset;
+    if (typeof next !== "number" || !Number.isSafeInteger(next) || next <= offset) return undefined;
+    return { live, next };
+  }
+  if (answer.hasMore !== false && sessions.length >= SESSION_RUN_PAGE) return undefined;
+  return { live };
+}
+
+/**
+ * The live runs in one complete `gateway call sessions.list --json` answer. Undefined when it has no session list
+ * or says more rows follow: one page of a longer list is not the engine's activity.
+ */
+export function parseSessionRunList(stdout: string): { activeRuns: number; totalActive: number; pendingReplies: number } | undefined {
+  const page = parseSessionRunPage(stdout, 0);
+  if (!page || page.next !== undefined) return undefined;
+  return { activeRuns: page.live.size, totalActive: page.live.size, pendingReplies: 0 };
+}
+
+/**
+ * Reads every page of the session list through `call` (the running engine's CLI, given each page's arguments) and
+ * counts the live runs. Undefined when any page is unreadable or the list never ends, so activity stays unknown.
+ */
+export async function readSessionRunList(call: (args: string[]) => Promise<string>): Promise<{ activeRuns: number; totalActive: number; pendingReplies: number } | undefined> {
+  const live = new Set<string>();
+  let offset = 0;
+  for (let pages = 0; pages < SESSION_RUN_PAGES_MAX; pages++) {
+    const page = parseSessionRunPage(await call(sessionRunListArgs(offset)), offset);
+    if (!page) return undefined;
+    for (const key of page.live) live.add(key);
+    if (page.next === undefined) return { activeRuns: live.size, totalActive: live.size, pendingReplies: 0 };
+    offset = page.next;
+  }
+  return undefined;
+}
+
 /** Polls `probe` until it answers or `timeoutMs` passes. */
 export async function waitForEngineAnswer(probe: () => Promise<boolean>, timeoutMs: number, intervalMs = 500): Promise<boolean> {
   const end = Date.now() + timeoutMs;
@@ -192,8 +260,10 @@ export const CUSTOM_COPY_SERVICE_LINE = "Running inside the app: this copy isn't
 export const EXTERNAL_VOLUME_SERVICE_LINE = "Running inside the app: your Branch data is on another drive, and macOS keeps background services from reading it.";
 /** The installed service never started, and its logs show macOS (or the shell) would not let launchd run it. */
 export const SERVICE_BLOCKED_LINE = "Running inside the app: macOS blocked Branch's background service from starting, so it was removed.";
+/** An update found the engine running outside its background service and moved it into the app (#2161). */
+export const DETACHED_ENGINE_LINE = "Running inside the app: the engine was running outside its background service, so the update moved it into the app.";
 /** Reasons that already read as complete Settings sentences: shown as they are, never cut down to a short phrase. */
-const SELF_EXPLAINING_LINES: ReadonlySet<string> = new Set([CUSTOM_COPY_SERVICE_LINE, EXTERNAL_VOLUME_SERVICE_LINE, SERVICE_BLOCKED_LINE]);
+const SELF_EXPLAINING_LINES: ReadonlySet<string> = new Set([CUSTOM_COPY_SERVICE_LINE, EXTERNAL_VOLUME_SERVICE_LINE, SERVICE_BLOCKED_LINE, DETACHED_ENGINE_LINE]);
 
 /**
  * The reason the service could not be installed, in plain words for Settings. The engine's own refusal of a custom
@@ -338,6 +408,15 @@ export function serviceCannotRunReason(appendedLog: string, executables: readonl
     if (namesExecutable && (SHELL_CANNOT_EXEC.test(line) || DENIED.test(line))) return SERVICE_BLOCKED_LINE;
   }
   return undefined;
+}
+
+/**
+ * #2161: on macOS an engine that answers while launchd runs no job for it is a detached process (a fallback engine an
+ * older app left running). It has no service to restart: `gateway restart` would only signal that process to restart
+ * in place, on its own old build. Elsewhere the service manager is assumed.
+ */
+export function serviceManagerRunsEngine(platform: NodeJS.Platform, job: LaunchdJob | undefined): boolean {
+  return platform !== "darwin" || job?.pid !== undefined;
 }
 
 /** The LaunchAgent label the engine writes (engine/src/daemon/constants.ts). */

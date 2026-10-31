@@ -9,8 +9,10 @@ import { execFileSync, spawn } from "node:child_process";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import nodeTest from "node:test";
+import { isolateHome, stopOnExit } from "./fixtures/isolated-home.mjs";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error("Compile the exact desktop source before testing");
+isolateHome("branch-restart-home-");
 // The fixture sends branch-desktop:binding before it listens. Hold the port until then.
 process.env.BRANCH_DESKTOP_HOLD_LOOPBACK = "1";
 const require = createRequire(import.meta.url), Module = require("node:module");
@@ -202,7 +204,10 @@ function electronFixture() {
   return { app, ipcMain, handlers, windows, errors, get window() { return window; }, electron: { app, BrowserWindow, Tray,
     ipcMain: Object.assign(ipcMain, { handle(channel, fn) { handlers.set(channel, fn); } }), Menu: { buildFromTemplate: value => value },
     screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) },
-    dialog: { showErrorBox: (...args) => errors.push(args) }, shell: { openExternal() {} },
+    // The failed-update box is an asynchronous message box (#2161); both record [title, text].
+    dialog: { showErrorBox: (...args) => errors.push(args),
+      showMessageBox: async options => { if (options.type === "error") errors.push([options.message, options.detail]); return { response: 0 }; } },
+    shell: { openExternal() {} },
     session: { fromPartition() { return { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, on() {} }; }, defaultSession: { setPermissionRequestHandler() {} } } } };
 }
 async function createFixtureFiles(root) {
@@ -280,6 +285,7 @@ else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-n
 async function fixture(run, holdStartup = false, fastSupervisor = false, holdCandidate = false, standby = "never", keepWorkingOff = false, prepare = undefined, holdUndo = false, manualEngineWatch = false) {
   const scratch = join(tmpdir(), "Codex-session-files"); await mkdir(scratch, { recursive: true });
   const root = await mkdtemp(join(scratch, "branch-restart-")); await createFixtureFiles(root);
+  const forget = stopOnExit(() => { try { return JSON.parse(readFileSync(join(root, "starts.json"), "utf8")); } catch { return []; } });
   if (keepWorkingOff) await writeFile(join(root, "desktop-settings.json"), JSON.stringify({ keepWorking: false }));
   const previous = process.env.BRANCH_DESKTOP_DATA;
   const previousCandidateMin = process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB;
@@ -447,6 +453,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     try { await closeListening(windowServer); } catch { /* already closed */ }
     await remember();
     for (const pid of pids) killTree(pid);
+    forget();
     Module._load = originalLoad; globalThis.fetch = originalFetch;
     previous === undefined ? delete process.env.BRANCH_DESKTOP_DATA : process.env.BRANCH_DESKTOP_DATA = previous;
     previousCandidateMin === undefined ? delete process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB : process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = previousCandidateMin;
@@ -947,7 +954,9 @@ test("a refused step-down is trusted only when the old engine proves it still se
   await writeFile(join(root, "refuse-deactivate"), "1"); await writeFile(join(root, "fence-readyz"), "1");
   await writeFile(join(root, "release-ready"), "ready");
   restart();
-  await eventually(async () => { const latest = (await starts()).at(-1); return ![old, (await starts())[1]].includes(latest) && alive(latest) && await servingOn(gatewayPort); }, 40_000);
+  // One read per check: a second read can land mid-write and return [], which used to let the standby count as the
+  // replacement while the old engine still served before its step-down (seen on Windows).
+  await eventually(async () => { const list = await starts(); const latest = list.at(-1); return list.length > 2 && ![old, list[1]].includes(latest) && alive(latest) && await servingOn(gatewayPort); }, 40_000);
   assert.equal(alive(old), false, "a fenced old engine was left running as if it served");
   assert.deepEqual(sent.filter(([channel, state]) => channel === "branch-desktop:engine-update" && ["ready", "auto-wait"].includes(state)), [],
     "the bar offered Update while no engine served");
