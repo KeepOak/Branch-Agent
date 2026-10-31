@@ -126,6 +126,11 @@ async function chatSend(gw: TrunkGateway, opts: TrunkToolsOptions, params: Rec) 
   });
 }
 
+/** The run that carries a send's reply: the run it steered into, else the send's own run. */
+function replyRunId(sent: Rec): string | null {
+  return str(sent.steeredRunId) ?? str(sent.runId) ?? null;
+}
+
 /** Live status per Trunk: working or idle, the thread it works in, its model and the account it uses. */
 /** A thread's state for a supervisor: its status, the run it is working on now, and why it may be stuck. */
 export async function threadState(gw: TrunkGateway, row: Rec): Promise<Rec> {
@@ -377,7 +382,7 @@ function registerTrunkWriteTools(
 
   server.tool(
     "trunk_send",
-    "Send a message to a Trunk: in a new thread (default) or in thread_key. Returns the thread and run ids; use run_wait for the reply.",
+    "Send a message to a Trunk: in a new thread (default) or in thread_key. target_disposition says what happened: steered (joined the thread's running turn), queued (waits behind it) or started. run_id is the run that carries the reply; use run_wait on it.",
     {
       agent_id: z.string().min(1),
       text: z.string().min(1),
@@ -396,18 +401,20 @@ function registerTrunkWriteTools(
           label: title ?? text.slice(0, 60),
         });
       }
-      // A send queues behind the thread's active run. It never starts a parallel run, whatever
-      // queue mode the session or config sets. trunk_steer is the path that joins the run.
+      // Steer first: a mid-run thread takes the message into its running turn. An idle thread
+      // starts a turn at once. When steering is impossible the gateway queues it behind the run,
+      // so a send never starts a parallel run whatever queue mode the session or config sets.
       const sent = await chatSend(gw, opts, {
         sessionKey: key,
         agentId: agent_id,
         message: text,
-        queueMode: "followup",
+        queueMode: "steer",
       });
       return ok(`sent to ${key}`, {
         thread_key: key,
-        run_id: sent.runId ?? null,
+        run_id: replyRunId(sent),
         status: sent.status,
+        target_disposition: str(sent.targetDisposition) ?? null,
       });
     },
   );
@@ -423,7 +430,12 @@ function registerTrunkWriteTools(
         message: text,
         queueMode: "steer",
       });
-      return ok("steered", { thread_key, run_id: sent.runId ?? null, status: sent.status });
+      return ok("steered", {
+        thread_key,
+        run_id: replyRunId(sent),
+        status: sent.status,
+        target_disposition: str(sent.targetDisposition) ?? null,
+      });
     },
   );
 }
