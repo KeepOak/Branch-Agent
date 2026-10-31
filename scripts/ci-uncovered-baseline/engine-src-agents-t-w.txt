@@ -20,7 +20,6 @@ engine:src/agents/tools/common.test.ts
 engine:src/agents/tools/computer-tool-guidance.test.ts
 engine:src/agents/tools/computer-tool-result.test.ts
 engine:src/agents/tools/computer-tool.context.test.ts
-engine:src/agents/tools/computer-tool.gateway.test.ts
 engine:src/agents/tools/computer-tool.observation.test.ts
 engine:src/agents/tools/computer-tool.schema.test.ts
 engine:src/agents/tools/computer-tool.v2.test.ts
