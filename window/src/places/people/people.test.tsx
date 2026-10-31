@@ -93,7 +93,7 @@ describe("People › Live now", () => {
     const queued = (n: number) => ({ key: `agent:t${n}:queue-job-${n}`, agentId: `t${n}`, label: `Queue job ${n}`, parentSessionKey: `agent:t${n}:main`, hasActiveRun: true, status: "running" });
     const list = (p: Record<string, unknown>) => p.includeOwnerSessionCounts ? { sessions: [] } : { sessions: [1, 2, 3].map(queued) };
     const { engine } = fakeEngine({ ...BASE, "sessions.list": list });
-    await mount(engine);
+    await mount(engine); await openLive();
     expect(host.textContent).not.toContain("Nothing is running right now.");
     expect(host.querySelectorAll(".pp-run")).toHaveLength(3);
     expect(host.textContent).toContain("Queue job 2");
