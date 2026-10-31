@@ -21,18 +21,18 @@ const ON_OFF: RowOption[] = [{ v: "def", label: "Use my default" }, { v: "on", l
 /** Your defaults' kinds of notice (Classic TELL), with the preview's words. */
 export const CATEGORIES: [key: string, label: string, help: string][] = [
   ["approvalRequested", "A Trunk needs a yes", "Shows on this computer and your phone."],
-  ["agentQuestion", "A Trunk asks you something", "A question it can’t go on without. Off until you turn it on."],
+  ["agentQuestion", "A Trunk asks you something", "A question it can’t go on without."],
   ["agentFinished", "A long task finishes", "When a Trunk finishes its work."],
-  ["scheduledTaskFailed", "An automation fails", "When a scheduled job can’t finish. Off until you turn it on."],
-  ["humanMentioned", "Someone mentions you", "When someone picks you with @ in a conversation you share. Off until you turn it on."],
+  ["scheduledTaskFailed", "An automation fails", "When a scheduled job can’t finish."],
+  ["humanMentioned", "Someone mentions you", "When someone picks you with @ in a conversation you share."],
 ];
 const cat = (key: string) => { const [, label, help] = CATEGORIES.find((c) => c[0] === key)!; return slot(`notifications.tell.${key}`, TELL, label, PREFS, { control: "toggle", help }); };
 const pcCat = (key: string) => { const [, label] = CATEGORIES.find((c) => c[0] === key)!; return slot(`notifications.pc.${key}`, "This PC", label, DEVICE, { control: "select", level: 1 }); };
 
 export const NOTIFICATIONS_ROWS: Row[] = [
   // Tell me when…
-  // Preview TELL_PE18 builds this switch's title at render time, so preview.html has no static label to copy. Draw the row without one.
-  slot("notifications.tell.here", TELL, undefined, ["push.web.preferences.set"], { control: "toggle", help: "Off keeps this device quiet; your other devices still get them.", bare: true }),
+  // Preview TELL_PE18 builds this switch's title at render time; use Classic's own words (set1/notifications.tsx) so the switch has a plain label.
+  slot("notifications.tell.here", TELL, "Notifications on this computer", ["push.web.preferences.set"], { control: "toggle", help: "Off keeps this device quiet; your other devices still get them." }),
   cat("approvalRequested"), cat("agentQuestion"), cat("agentFinished"),
   coming("notifications.tell.replies", TELL, "A Trunk replies", KIND, { control: "toggle", help: "Only while Branch isn’t in front." }),
   coming("notifications.tell.stops", TELL, "Something stops working", KIND, { control: "toggle", help: "A chat app, an automation, the connection or the sealed box." }),
