@@ -22,9 +22,9 @@ import {
   claimGraftWork,
   completeGraftWork,
   deliverPendingGraftWork,
-  enqueueGraftWork,
   type GraftWork,
 } from "../contacts/graft-work.js";
+import { queueGraftedTeammateSend } from "../contacts/grafted-send.js";
 import {
   assignOutsideAgentId,
   graftDeviceId,
@@ -34,7 +34,6 @@ import {
   isOutsideAgentOnline,
   listOutsideAgents,
   outsideAgentPeers,
-  outsideAgentMayMessage,
   outsideAgentMayDriveWindow,
   outsideAgentRefusal,
   readOutsideAgentSettings,
@@ -236,41 +235,18 @@ export const contactHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const records = listOutsideAgents();
-    const trunk = records.find((row) => row.id === target && row.kind === "trunk");
-    const branch = records.find((row) => row.id === trunk?.via && row.kind === "branch");
-    if (
-      !trunk?.trunkId ||
-      !trunk.deviceId ||
-      !branch ||
-      branch.deviceId !== trunk.deviceId ||
-      outsideAgentRefusal(trunk) ||
-      outsideAgentRefusal(branch)
-    ) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "That Trunk is not linked to this Branch."),
-      );
-      return;
-    }
-    if (!outsideAgentMayMessage(context.getRuntimeConfig(), sourceAgentId, target)) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.FORBIDDEN, "Agent-to-agent messaging denied by agentToAgent policy."),
-      );
-      return;
-    }
-    const job = enqueueGraftWork({
-      deviceId: trunk.deviceId,
-      trunkId: trunk.trunkId,
+    const result = queueGraftedTeammateSend({
+      target: p.target as string,
       text,
       sourceSessionKey,
-      sourceAgentId,
       idempotencyKey,
+      cfg: context.getRuntimeConfig(),
     });
-    respond(true, { id: job.id, status: "accepted" });
+    if (!result.ok) {
+      respond(false, undefined, errorShape(ErrorCodes[result.code], result.message));
+      return;
+    }
+    respond(true, { id: result.id, status: "accepted" });
   },
   "graft.work.poll": async ({ respond, client, context }) => {
     const deviceId = graftDeviceId(client);
@@ -346,6 +322,15 @@ export const contactHandlers: GatewayRequestHandlers = {
         respond,
       )
     ) {
+      return;
+    }
+    // A grafted Trunk row without its trunkId can never receive work, so it is refused rather than kept.
+    if (params.agent.kind === "trunk" && !params.agent.trunkId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "A grafted Trunk needs its trunkId."),
+      );
       return;
     }
     let settings = readOutsideAgentSettings();

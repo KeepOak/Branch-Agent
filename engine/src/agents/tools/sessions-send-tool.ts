@@ -261,18 +261,20 @@ export function createSessionsSendTool(opts?: SessionsSendToolOptions): AnyAgent
       // A joined Branch's Trunk is a contact, not a session in this gateway's store. Its outbound graft
       // connection polls durable work and brings the result back to this requester.
       if (/^a2a:branch-[a-z0-9-]+--[a-z0-9-]+$/.test(sessionKey)) {
-        if (restrictToSpawned)
+        if (restrictToSpawned) {
           return sendFailure(
             "forbidden",
             "Sandboxed sessions_send cannot address a joined Branch.",
             sessionKey,
           );
-        if (mode && mode !== "followup")
+        }
+        if (mode && mode !== "followup") {
           return sendFailure(
             "error",
             "Joined Trunks accept new work only; use mode=followup or omit mode.",
             sessionKey,
           );
+        }
         try {
           const accepted = await gatewayCall<{ id: string }>({
             method: "graft.work.send",
@@ -292,7 +294,12 @@ export function createSessionsSendTool(opts?: SessionsSendToolOptions): AnyAgent
             delivery: { status: "pending" },
           });
         } catch (error) {
-          return sendFailure("error", formatErrorMessage(error), sessionKey);
+          // The message already says what to do for the person. The agent must not work around it.
+          return sendFailure(
+            "error",
+            `${formatErrorMessage(error)} Do not retry through the CLI or chat.send.`,
+            sessionKey,
+          );
         }
       }
       const allowMissingKey = isConfiguredAgentMainSessionKey({

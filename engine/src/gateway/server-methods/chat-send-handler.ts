@@ -1,5 +1,4 @@
 import { performance } from "node:perf_hooks";
-import { traceRunStep } from "../../infra/run-trace.js";
 import {
   createAgentRunRestartAbortError,
   isAgentRunRestartAbortReason,
@@ -16,6 +15,7 @@ import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { clearAgentRunContext } from "../../infra/agent-run-registry.js";
 import { emitDiagnosticsTimelineEvent } from "../../infra/diagnostics-timeline.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { traceRunStep } from "../../infra/run-trace.js";
 // chat.send owns admission, ACK timing, and detached dispatch handoff.
 import { isProgressCardRefreshInputProvenance } from "../../sessions/input-provenance.js";
 import {
@@ -28,6 +28,7 @@ import { createLazyImportLoader } from "../../shared/lazy-promise.js";
 import type { SkillWorkshopProposalRevisionConstraint } from "../../skills/workshop/types.js";
 import { isOperatorUiClient } from "../../utils/message-channel.js";
 import { resolveChatAbortDiagnosticReason } from "../chat-abort-diagnostics.js";
+import { isJoinedTeammateKey, respondJoinedTeammateChat } from "../contacts/grafted-send.js";
 import type { ChatRunTiming } from "../server-chat-state.js";
 import {
   resolveSessionMutationAuthorization,
@@ -646,6 +647,12 @@ export async function handleChatSend(
   onAdmissionOwned?: () => Promise<boolean>,
   externalAuthorityAdmission?: ChatSendExternalAuthorityAdmission,
 ): Promise<void> {
+  // A joined Branch's Trunk is not a session here. Sending it to the default agent answers in the wrong place.
+  const requested = (options.params ?? {}) as { sessionKey?: unknown };
+  if (typeof requested.sessionKey === "string" && isJoinedTeammateKey(requested.sessionKey)) {
+    respondJoinedTeammateChat(options, requested.sessionKey);
+    return;
+  }
   await handleChatSendWithOptions(options, onAdmissionOwned, externalAuthorityAdmission);
 }
 
