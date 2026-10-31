@@ -1,0 +1,1 @@
+window:src/composer/classic-first-press.test.tsx
