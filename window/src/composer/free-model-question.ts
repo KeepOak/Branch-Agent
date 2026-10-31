@@ -16,7 +16,10 @@ export function plainFreeModelQuestion(step: Partial<Pick<WizardStep, "freeModel
   }
   const name = facts?.modelName?.trim();
   if (!name) return PLAIN_QUESTION;
-  if (facts?.kind === "cached-model") return "Use the free model " + name + " that is already on this computer so Branch can answer without an account?";
+  if (facts?.kind === "cached-model") {
+    // The model is here, but the search model or runtime files may still need downloading: say how much.
+    return "Use the free model " + name + " that is already on this computer" + (size ? " (" + size + " still to download)" : "") + " so Branch can answer without an account?";
+  }
   if (facts?.kind === "model") return "Download a free model (" + name + (size ? ", " + size : "") + ") so Branch can answer without an account?";
   return PLAIN_QUESTION;
 }
