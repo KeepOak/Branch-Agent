@@ -11,6 +11,15 @@ import { createTestApprovalManager } from "../exec-approval-manager.test-support
 import { createPluginApprovalHandlers } from "./plugin-approval.js";
 import type { GatewayRequestHandlerOptions } from "./types.js";
 
+// The turn-source route reads the live channel plugin registry, which a bare CI
+// checkout does not populate; pin it so the Slack case does not depend on that.
+const hasApprovalTurnSourceRouteMock = vi.hoisted(() =>
+  vi.fn((params: { turnSourceChannel?: string | null }) => params.turnSourceChannel === "slack"),
+);
+vi.mock("../../infra/approval-turn-source.js", () => ({
+  hasApprovalTurnSourceRoute: hasApprovalTurnSourceRouteMock,
+}));
+
 function createManager(testContext: TestContext) {
   return createTestApprovalManager<PluginApprovalRequestPayload>(testContext, {
     approvalKind: "plugin",
@@ -535,6 +544,9 @@ describe("createPluginApprovalHandlers", () => {
         const requestPromise = invokeHandler(handlers, opts);
         const approvalId = await accepted;
         expect(acceptedResult(respond).deliveryRoute).toBe("turn-source");
+        expect(hasApprovalTurnSourceRouteMock).toHaveBeenCalledWith(
+          expect.objectContaining({ turnSourceChannel: "slack", approvalKind: "plugin" }),
+        );
         await manager.resolve(approvalId, "allow-once");
 
         await requestPromise;

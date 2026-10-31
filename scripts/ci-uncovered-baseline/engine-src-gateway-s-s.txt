@@ -154,7 +154,6 @@ engine:src/gateway/server-methods/chat.reset-visible-yield.test.ts
 engine:src/gateway/server-methods/chat.send-deleted-agent.test.ts
 engine:src/gateway/server-methods/chat.stop-cascade.test.ts
 engine:src/gateway/server-methods/commands.test.ts
-engine:src/gateway/server-methods/computer.test.ts
 engine:src/gateway/server-methods/config-write-flow.test.ts
 engine:src/gateway/server-methods/config.cache-recovery.test.ts
 engine:src/gateway/server-methods/config.read-recovery.test.ts
@@ -263,7 +262,6 @@ engine:src/gateway/server-methods/open-path.test.ts
 engine:src/gateway/server-methods/optional-model-catalog.test.ts
 engine:src/gateway/server-methods/plugin-approval.agent-runtime.test.ts
 engine:src/gateway/server-methods/plugin-approval.scope.test.ts
-engine:src/gateway/server-methods/plugin-approval.test.ts
 engine:src/gateway/server-methods/plugin-host-hooks.registry.test.ts
 engine:src/gateway/server-methods/plugins-mutations.test.ts
 engine:src/gateway/server-methods/plugins.credentials.test.ts
