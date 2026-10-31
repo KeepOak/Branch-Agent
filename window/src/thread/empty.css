@@ -6,6 +6,17 @@
 }
 .empty-connect { display: grid; justify-items: center; gap: 10px; }
 .empty-connect p { margin: 0; font-size: 13px; color: var(--ink-3); }
+/* No model: the composer's free model card and connect line take room below the thread, so the empty state starts
+   higher, and Connect a model sticks to the bottom of the scroll area instead of sliding under the composer. */
+.thread .empty.empty-nomodel { padding-top: min(12vh, 48px); gap: 14px; }
+.thread .empty.empty-nomodel .empty-connect {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: -14px;
+  padding: 22px 16px 8px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 18px);
+}
 .thread .starters {
   display: flex;
   overflow-x: auto;

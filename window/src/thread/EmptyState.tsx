@@ -94,7 +94,7 @@ export function EmptyState({ onOpenSession, onStart }: { onOpenSession?: (key: s
   const noModel = conv.loaded && hasNoModel(conv, currentModelRef(conv.row, conv.defaults));
   const recent = useRecent(Boolean(onOpenSession));
   return (
-    <div className="empty" data-testid="empty-state">
+    <div className={noModel ? "empty empty-nomodel" : "empty"} data-testid="empty-state">
       <Face size={150} label={name} state="idle" reactive />
       <h1 className="empty-title">What should {name} do?</h1>
       {noModel ? <ConnectModelNotice className="empty-connect" /> : onStart ? <Starters onStart={onStart} /> : null}
