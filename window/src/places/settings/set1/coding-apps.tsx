@@ -1,7 +1,7 @@
 // Accounts › Coding apps on this computer (§4.7.8): Claude Code, Codex and Gemini CLI as branch.setup.detect finds
 // them. Codex runs through the engine's codex plugin, so its switch is plugins.entries.codex.enabled; the other
 // two follow their own sign-in on this computer.
-import { useMemo, useRef } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
 import { CheckedAt, useCheckedAt } from "../checked-at";
 import type { WindowEngine } from "../../../connect/engine";
 import { list, text, visible, type RecordValue } from "../adapter";
@@ -11,6 +11,7 @@ import { Coming } from "../../../glass/coming";
 import { CODEX_DOWNLOAD_METHOD, codexDownloadOffered, useCodexDownload } from "./codex-get";
 import { brandOf, Logo } from "./service";
 import { plainError } from "../../../shell/plain-error";
+import { plainCopy } from "../internals";
 
 const SIGN_IN_ERROR = /token expired|\b401\b|\b403\b|unauthori[sz]ed|forbidden/i;
 
@@ -58,6 +59,24 @@ export function appSub(app: App, f: Found, on: boolean): string {
   return on ? `On because ${app.name} is connected on this computer.` : `${app.name} is connected on this computer. Turn it on to use its models.`;
 }
 
+/** Why a switch that follows the app's own sign-in is greyed, on its own visible line. */
+function followsWhy(app: App): string {
+  return `Follows your sign-in in ${app.name} itself. Sign in or out there to change it.`;
+}
+
+/** A coding app's switch. When greyed it names its visible reason lines with aria-describedby, so a screen reader
+ *  says why too (Switch takes no aria props, so the input gets it after render, as the kit's greyed rows do). */
+function AppSwitch({ describedBy, ...props }: Parameters<typeof Switch>[0] & { describedBy: string }) {
+  const box = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const input = box.current?.querySelector("input");
+    if (!input) return;
+    if (props.disabled) input.setAttribute("aria-describedby", describedBy);
+    else input.removeAttribute("aria-describedby");
+  });
+  return <span ref={box}><Switch {...props} /></span>;
+}
+
 export function CodingApps({ engine, caps = [], onSignIn }: { engine: WindowEngine; caps?: RecordValue[]; onSignIn?: (provider: string) => void }) {
   const [checked, stamp] = useCheckedAt();
   const scope = useScope();
@@ -71,6 +90,7 @@ export function CodingApps({ engine, caps = [], onSignIn }: { engine: WindowEngi
   const codexApp = APPS.find((app) => app.plugin === "codex");
   const codexMissing = Boolean(codexApp) && !detect.loading && !detect.error && foundState(codexApp ?? APPS[0], detect.data).state !== "ready";
   const codex = useCodexDownload(engine, codexMissing && codexDownloadOffered(engine));
+  const ids = useId();
   return (
     <Sec title="Coding apps on this computer" hint="Each app keeps its own account and permissions." help="Each app keeps its own account and permissions. Turning one on doesn’t sign you in.">
       {APPS.map((app) => {
@@ -83,11 +103,17 @@ export function CodingApps({ engine, caps = [], onSignIn }: { engine: WindowEngi
         const pluginOn = app.plugin ? cfg.get(`plugins.entries.${app.plugin}.enabled`) === true : f.state === "ready";
         const asking = app.plugin === "codex" ? codex.prompt : undefined;
         const sub = authError && !signIn && level === 0 ? `Open ${app.name} on this computer and sign in there, then choose Check again.` : asking ? asking : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detectError ? plainError(detectError) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
+        const subId = `${ids}${app.kind}-sub`;
+        const whyId = `${ids}${app.kind}-why`;
+        const line = <span id={subId}>{typeof sub === "string" ? plainCopy(sub, level) : sub}</span>;
+        const tail = detect.error ? authError ? signIn ? <Btn sm onClick={() => onSignIn?.(text(signIn.provider))}>Sign in again</Btn> : undefined : <Btn sm onClick={() => void detect.reload()}>Check again</Btn> : asking ? <span data-testid="codex-download-prompt"><Coming need={CODEX_DOWNLOAD_METHOD} where="Download Codex"><Btn sm onClick={() => void codex.accept()}>Yes</Btn></Coming><Btn sm onClick={() => void codex.decline()}>Cancel</Btn></span> : getting?.action ? <Coming need={CODEX_DOWNLOAD_METHOD} where={getting.action}><Btn sm onClick={() => codex.requestPrompt()}>{getting.action}</Btn></Coming> : undefined;
+        // Claude Code and Gemini CLI follow their own app's sign-in, so their switch is always greyed and says so.
+        const after = app.plugin ? tail : <><small className="why-k" id={whyId}>{followsWhy(app)}</small>{tail}</>;
         return (
-          <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={sub} after={detect.error ? authError ? signIn ? <Btn sm onClick={() => onSignIn?.(text(signIn.provider))}>Sign in again</Btn> : undefined : <Btn sm onClick={() => void detect.reload()}>Check again</Btn> : asking ? <span data-testid="codex-download-prompt"><Coming need={CODEX_DOWNLOAD_METHOD} where="Download Codex"><Btn sm onClick={() => void codex.accept()}>Yes</Btn></Coming><Btn sm onClick={() => void codex.decline()}>Cancel</Btn></span> : getting?.action ? <Coming need={CODEX_DOWNLOAD_METHOD} where={getting.action}><Btn sm onClick={() => codex.requestPrompt()}>{getting.action}</Btn></Coming> : undefined}>
+          <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={line} after={after}>
             {app.plugin
-              ? <Switch checked={usable && pluginOn} label={`Use ${app.name}`} disabled={cfg.loading || !usable} onChange={(v) => void cfg.set(`plugins.entries.${app.plugin}.enabled`, v)} />
-              : <span title={`Follows ${app.name}’s own sign-in on this computer.`}><Switch checked={pluginOn} label={`Use ${app.name}`} disabled onChange={() => undefined} /></span>}
+              ? <AppSwitch describedBy={subId} checked={usable && pluginOn} label={`Use ${app.name}`} disabled={cfg.loading || !usable} onChange={(v) => void cfg.set(`plugins.entries.${app.plugin}.enabled`, v)} />
+              : <AppSwitch describedBy={`${subId} ${whyId}`} checked={pluginOn} label={`Use ${app.name}`} disabled onChange={() => undefined} />}
           </Ctl>
         );
       })}
