@@ -364,7 +364,10 @@ describe("doctor invalid config process exit", () => {
         }
       }
     },
-    getCliProcessTestTimeout(LEGACY_APPROVAL_CHILD_TIMEOUT_MS),
+    // Without a built dist this case runs Doctor's repair in process, and its first import cold-compiles
+    // the doctor and state-migration graph: 30-54 s on macOS CI runners, and past a 57 s budget three
+    // times (61 s, 62.7 s, 69.5 s). It gets the same 120 s budget as the isolated Doctor children.
+    getCliProcessTestTimeout(ISOLATED_DOCTOR_CHILD_TIMEOUT_MS),
   );
 
   it(
