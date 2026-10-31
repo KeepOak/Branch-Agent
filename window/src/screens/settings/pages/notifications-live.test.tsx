@@ -23,7 +23,7 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 
 const PREVIEW_CARDS = ["Tell me when…", "Quiet", "When work stalls", "Live activity", "Kinds of notice", "Sorting", "This PC", "Send events to a web address", "Web Push"];
 const REGULAR: Record<string, string[]> = {
-  "Tell me when…": ["A Trunk needs a yes", "A Trunk asks you something", "A long task finishes", "A Trunk replies", "Something stops working",
+  "Tell me when…": ["Notifications on this computer", "A Trunk needs a yes", "A Trunk asks you something", "A long task finishes", "A Trunk replies", "Something stops working",
     "A Trunk sends a notification", "An automation fails", "Someone mentions you", "Play a sound", "Send a test notification"],
   Quiet: ["Quiet hours", "Time zone", "Days off"],
   "When work stalls": ["A conversation stopped moving"],
@@ -71,11 +71,8 @@ describe("R1 Settings › Notifications is a native R1 page with the preview's c
     expect(host.querySelector(".r1s-custom, .r1s-classic, [data-classic]")).toBeNull();
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Notifications");
     expect(host.querySelector(".r1s-lede")?.textContent).toContain(PAGES.notifications.lede);
-    // Regular shows only what works today: Coming rows wait for Technical (rows.ts COMING_FROM). The device switch
-    // has no preview label, so it is drawn without a heading.
+    // Regular shows only what works today: Coming rows wait for Technical (rows.ts COMING_FROM).
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(regularCards.map(([title]) => title));
-    expect(row("notifications.tell.here")).not.toBeNull();
-    expect(row("notifications.tell.here")!.querySelector(":scope > b")).toBeNull();
     expect(row("notifications.tell.here")!.querySelector("[role=switch]")).not.toBeNull();
     for (const [t, rows] of regularCards) expect(labels(card(t)), t).toEqual(rows);
     await click([...host.querySelectorAll("button")].find((b) => b.textContent === "Learn more"));
@@ -126,6 +123,36 @@ describe("R1 Settings › Notifications is a native R1 page with the preview's c
       const why = document.getElementById(send.getAttribute("aria-describedby") ?? "");
       expect(why?.textContent, level).toBe("Sends a real notification from the Branch app on your computer.");
     }
+  });
+});
+
+// Private #1093 (Verifier shots p1093-6, p1093-7): a row's help never says it is off while its switch is on, and the
+// page's first switch has a plain label.
+const ALL_ON = { categories: { approvalRequested: true, agentQuestion: true, agentFinished: true, scheduledTaskFailed: true, humanMentioned: true } };
+describe("R1 Settings › Notifications help text matches the switch (Private #1093)", () => {
+  it("never says Off until you turn it on under a switch that is on", async () => {
+    const env = engineOf(ALL_ON);
+    await act(async () => root.render(<SettingsFrame engine={env.engine} page="notifications" pages={R1_PAGES} />));
+    await settle();
+    for (const level of ["Regular", "Advanced", "Technical"] as const) {
+      await setLevel(level);
+      for (const id of ["agentQuestion", "scheduledTaskFailed", "humanMentioned"]) {
+        const r = row(`notifications.tell.${id}`)!;
+        expect(r.querySelector("[role=switch]")?.getAttribute("aria-checked"), `${level} ${id}`).toBe("true");
+        expect(r.textContent, `${level} ${id}`).not.toMatch(/off until/i);
+      }
+      for (const r of host.querySelectorAll<HTMLElement>("[data-row]")) {
+        if (r.querySelector('[role=switch][aria-checked="true"]')) expect(r.textContent, r.dataset.row).not.toMatch(/off until/i);
+      }
+    }
+  });
+
+  it("gives the first switch on the page a plain-words label", async () => {
+    await mount();
+    const first = host.querySelector<HTMLElement>("[role=switch]")!;
+    expect(first.closest("[data-row]")?.getAttribute("data-row")).toBe("notifications.tell.here");
+    expect(first.getAttribute("aria-label")).toBe("Notifications on this computer");
+    expect(row("notifications.tell.here")!.querySelector(":scope > b")?.textContent).toBe("Notifications on this computer");
   });
 });
 
