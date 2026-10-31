@@ -1,5 +1,6 @@
-// Guard docs/upstream/COPIED.csv: one header, six columns, no exact duplicate rows,
-// and every file newly added to a Harvest list in this PR has a COPIED.csv row.
+// Guard docs/upstream/COPIED.csv and the per-PR shards in docs/upstream/copied/*.csv:
+// each file has one header and six columns, no exact duplicate rows across all of them,
+// and every file newly added to a Harvest list in this PR has a row in one of them.
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -7,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const copiedCsvPath = 'docs/upstream/COPIED.csv';
+export const copiedShardDir = 'docs/upstream/copied';
 export const harvestDir = 'scripts/feature-batch-ci-harvest';
 export const copiedHeader = 'branch_path,atlas_id,project,commit,upstream_path,date';
 export const copiedColumns = copiedHeader.split(',');
@@ -53,53 +55,81 @@ export function harvestEntriesFrom(text) {
   return entries;
 }
 
-export function checkCopiedCsv(text) {
-  const errors = [];
+function copiedRecords(text) {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
   const records = [];
   for (let index = 0; index < lines.length; index++) {
     if (!lines[index]) continue;
     records.push({ lineNumber: index + 1, line: lines[index], cols: parseCsvLine(lines[index]) });
   }
-  const headers = records.filter((record) => record.cols[0] === 'branch_path');
-  if (headers.length !== 1) {
-    errors.push(`docs/upstream/COPIED.csv must have exactly one header row (found ${headers.length})`);
-  } else if (headers[0].cols.length !== copiedColumns.length
-    || copiedColumns.some((name, index) => headers[0].cols[index] !== name)) {
-    errors.push(`docs/upstream/COPIED.csv header must be ${copiedHeader}`);
-  }
-  for (const record of records) {
-    if (record.cols.length !== copiedColumns.length) {
-      errors.push(`docs/upstream/COPIED.csv:${record.lineNumber} must have exactly ${copiedColumns.length} columns (found ${record.cols.length})`);
-    }
-  }
+  return records;
+}
+
+// files: [{ path, text }]. Checks each file's header and columns, and exact duplicate
+// rows within and across all files together.
+export function checkCopiedFiles(files) {
+  const errors = [];
+  const branchPaths = new Set();
   const seen = new Map();
-  for (const record of records) {
-    const first = seen.get(record.line);
-    if (first) {
-      errors.push(`docs/upstream/COPIED.csv:${record.lineNumber} is an exact duplicate of line ${first}`);
-    } else {
-      seen.set(record.line, record.lineNumber);
+  for (const file of files) {
+    const records = copiedRecords(file.text);
+    const headers = records.filter((record) => record.cols[0] === 'branch_path');
+    if (headers.length !== 1) {
+      errors.push(`${file.path} must have exactly one header row (found ${headers.length})`);
+    } else if (headers[0].cols.length !== copiedColumns.length
+      || copiedColumns.some((name, index) => headers[0].cols[index] !== name)) {
+      errors.push(`${file.path} header must be ${copiedHeader}`);
+    }
+    for (const record of records) {
+      if (record.cols.length !== copiedColumns.length) {
+        errors.push(`${file.path}:${record.lineNumber} must have exactly ${copiedColumns.length} columns (found ${record.cols.length})`);
+      }
+    }
+    for (const record of records) {
+      if (record.cols[0] === 'branch_path') continue;
+      branchPaths.add(record.cols[0]);
+      const first = seen.get(record.line);
+      if (!first) {
+        seen.set(record.line, { path: file.path, lineNumber: record.lineNumber });
+      } else if (first.path === file.path) {
+        errors.push(`${file.path}:${record.lineNumber} is an exact duplicate of line ${first.lineNumber}`);
+      } else {
+        errors.push(`${file.path}:${record.lineNumber} is an exact duplicate of ${first.path}:${first.lineNumber}`);
+      }
     }
   }
-  return {
-    errors,
-    branchPaths: new Set(records.filter((record) => record.cols[0] !== 'branch_path').map((record) => record.cols[0])),
-  };
+  return { errors, branchPaths };
+}
+
+export function checkCopiedCsv(text) {
+  return checkCopiedFiles([{ path: copiedCsvPath, text }]);
 }
 
 export function missingCopiedForAddedHarvest(addedHarvestFiles, branchPaths) {
   return [...addedHarvestFiles].filter((file) => !branchPaths.has(file)).sort();
 }
 
-export function checkCopiedAndHarvest({ csvText, headHarvest, baseHarvest }) {
-  const copied = checkCopiedCsv(csvText);
+export function checkCopiedAndHarvest({ csvText, shards = [], headHarvest, baseHarvest }) {
+  const copied = checkCopiedFiles([{ path: copiedCsvPath, text: csvText }, ...shards]);
   const errors = [...copied.errors];
   const added = new Set([...headHarvest].filter((file) => !baseHarvest.has(file)));
   for (const file of missingCopiedForAddedHarvest(added, copied.branchPaths)) {
-    errors.push(`Harvest list added ${file} with no docs/upstream/COPIED.csv row`);
+    errors.push(`Harvest list added ${file} with no row in ${copiedCsvPath} or ${copiedShardDir}/*.csv`);
   }
   return errors;
+}
+
+export function copiedShardsOnDisk(cwd = root) {
+  let names = [];
+  try {
+    names = readdirSync(path.join(cwd, copiedShardDir)).filter((name) => name.endsWith('.csv')).sort();
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  return names.map((name) => ({
+    path: `${copiedShardDir}/${name}`,
+    text: readFileSync(path.join(cwd, copiedShardDir, name), 'utf8'),
+  }));
 }
 
 function git(args, cwd) {
@@ -155,6 +185,7 @@ export function reportCopiedCheck(cwd = root, base = process.env.COPIED_CHECK_BA
   const baseHarvest = harvestEntriesAt(base, cwd);
   const errors = checkCopiedAndHarvest({
     csvText,
+    shards: copiedShardsOnDisk(cwd),
     headHarvest: harvestEntriesOnDisk(cwd),
     baseHarvest: baseHarvest ?? new Set(),
   });
@@ -170,6 +201,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     for (const error of errors) console.error(error);
     process.exitCode = 1;
   } else {
-    console.log('COPIED.csv and Harvest list additions look good.');
+    console.log('COPIED.csv, its shards and Harvest list additions look good.');
   }
 }
