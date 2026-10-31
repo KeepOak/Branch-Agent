@@ -118,9 +118,9 @@ function lastPart(path: string): string {
   return (name && name !== "~" ? name : "your home folder") + tail;
 }
 
-/** Whether a path may go on past where it was cut, so its last part can't be told: "C:\Users\some'one\a.pdf" (a quote
- *  inside a part, then more of the path), "/Users/someone/My Important Documents/a.pdf" (a later word in the same run holds
- *  a slash) or "C:\Users\Sample User" (a home folder followed by a word, maybe the rest of the name). */
+/** Whether a path may go on past where it was cut, so its last part can't be told: a quote inside one of its parts with
+ *  more of the path after it, a later word in the same run that holds a slash (a folder name with spaces), or a home
+ *  folder (<home>/<name>) followed by a word that may be the rest of the account name. */
 function endsUnclear(path: string, after: string): boolean {
   // The path must stop at a space, the end, or closing punctuation that is itself followed by a space or the end.
   if (!/^(?:$|\s|[.,;:!?)\]\x22\x27\x60\u201d\u2019\u00bb]+(?:$|\s))/u.test(after)) return true;
@@ -133,7 +133,7 @@ function endsUnclear(path: string, after: string): boolean {
 
 /** Each path in the words read as its last part: "Saved to Downloads/report.pdf" reads "Saved to report.pdf". When a
  *  path has a space in it, its end can't be told, so the words are left alone (null) rather than shortened piece by
- *  piece: "Saved to C:\Users\Sample User" would read "Saved to your home folder User" and leak part of the account name. */
+ *  piece: a home folder whose account name has a space would read "your home folder" plus the rest of that name. */
 function namePaths(text: string): string | null {
   let unclear = false;
   const named = text.replace(
