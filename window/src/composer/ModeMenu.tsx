@@ -2,7 +2,7 @@
 // (item 42), Full access only for the owner (item 128). Picking writes sessions.patch { permissionMode }.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useRef, type RefObject } from "react";
-import { blockedReason, modeName, MODE_ROWS, type EngineMode } from "./mode";
+import { blockedReason, modeName, offeredModeRows, type EngineMode } from "./mode";
 import { NO_ROUTE, type OpenTarget } from "./nav";
 import { Popover, moveFocus } from "./Popover";
 import { MenuItem, Segmented, Sep, Switch } from "./ui";
@@ -50,9 +50,10 @@ export function ModeMenu(p: Props) {
   const advanced = shows(useLevel(), "advanced");
   // Commands run in the sealed box unless this conversation opted out of it (sandboxMode "off").
   const sealed = p.row.sandboxMode !== "off";
+  const rows = offeredModeRows();
   const onKey = (e: React.KeyboardEvent) => {
     if (/^[1-5]$/.test(e.key)) {
-      const row = MODE_ROWS[Number(e.key) - 1];
+      const row = rows[Number(e.key) - 1];
       if (row && !p.lockdown && !blockedReason(row, p.canSelectFull)) {
         e.preventDefault();
         p.onPick(row.engine);
@@ -77,7 +78,7 @@ export function ModeMenu(p: Props) {
           reason={p.lockdown ? "Lockdown is on." : undefined}
           onClick={() => p.onPick(null)}
         />
-        {MODE_ROWS.map((row, i) => {
+        {rows.map((row, i) => {
           const reason = blockedReason(row, p.canSelectFull);
           const on = row.engine !== null && row.engine === p.mode;
           return (

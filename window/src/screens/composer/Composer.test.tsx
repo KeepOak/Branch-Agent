@@ -121,11 +121,11 @@ describe("R1-04 composer", () => {
     expect(clear).toHaveBeenCalled();
   });
 
-  it("changes the permission with sessions.patch permissionMode, and keeps Plan first visible and disabled", async () => {
+  it("changes the permission with sessions.patch permissionMode, and leaves out Plan first while the engine has no such mode", async () => {
     const { request } = await mount();
     await act(async () => button("Ask first")!.click());
     const plan = [...document.querySelectorAll<HTMLButtonElement>("[data-testid='mode-option']")].find((b) => b.textContent?.includes("Plan first"));
-    expect(plan?.disabled).toBe(true);
+    expect(plan).toBeUndefined();
     const auto = [...document.querySelectorAll<HTMLButtonElement>("[data-testid='mode-option']")].find((b) => b.textContent?.startsWith("Auto"));
     await act(async () => auto!.click());
     expect(request).toHaveBeenCalledWith("sessions.patch", { key: "agent:scout:main", permissionMode: "workspace" });
