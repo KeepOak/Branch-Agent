@@ -591,7 +591,7 @@ function CloudRow({ c, env, onChanged }: { c: Ctx; env: RecordValue; onChanged: 
 }
 
 /** Why Add a cloud computer is greyed, on a visible line beside it (Private #1093). */
-export const CLOUD_ADD_WHY = "Greyed until a cloud computer provider is set up in this engine.";
+export const CLOUD_ADD_WHY = "Greyed until a cloud computer provider is set up for Branch.";
 
 /** Add a cloud computer: starts one from a cloud computer profile the engine has. */
 function CloudOffer({ c, profiles, onMade }: { c: Ctx; profiles: RecordValue[]; onMade: () => void }) {

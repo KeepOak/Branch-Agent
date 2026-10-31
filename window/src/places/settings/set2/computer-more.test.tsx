@@ -8,6 +8,7 @@ import { SettingsPage } from "../index";
 import { ComputersTab, CLOUD_SETUP_WHY } from "../../trunk/ComputersTab";
 import type { Draft } from "../../trunk/api";
 import { CLOUD_ADD_WHY } from "./computer-more";
+import { isDevNote } from "../../../shell/shown-why";
 
 type Answers = Record<string, unknown | ((params: Record<string, unknown>) => unknown)>;
 function engineWith(answers: Answers) {
@@ -264,6 +265,9 @@ describe("Add a cloud computer says why it is greyed (Private #1093)", () => {
     expect(line.closest(".s2cm-offer")).not.toBeNull();
     expect(line.hidden).toBe(false);
     expect(greyedWithoutWhy("Add a cloud computer")).toEqual([]);
+    // The reason is plain words, not a developer note the sweep would hide or flag.
+    expect(isDevNote(CLOUD_ADD_WHY)).toBe(false);
+    expect(isDevNote(CLOUD_SETUP_WHY)).toBe(false);
   });
 
   it("Settings: with a cloud provider the button is live and the reason line is gone", async () => {
