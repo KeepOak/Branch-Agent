@@ -104,24 +104,47 @@ export function looksRawError(text: string): boolean {
 /** A home folder on its own (~, /Users/<name>, /home/<name>, C:\Users\<name>): its last part is the account name. */
 const HOME_ONLY = /^(?:~|\/(?:Users|home)\/[^\\/]+|\/root|[A-Za-z]:\\Users\\[^\\/]+)[\\/]*$/;
 
+/** A path split from the punctuation after it ("notes/today.md." is "notes/today.md" and "."). */
+function splitTail(path: string): [core: string, tail: string] {
+  const [, core = path, tail = ""] = /^(.*?)([.,;:!?)\]\x22\x27\x60\u201d\u2019\u00bb]*)$/u.exec(path) ?? [];
+  return [core, tail];
+}
+
 /** A path as a person names it: its last part ("report.pdf", "backups"), keeping the punctuation after it. */
 function lastPart(path: string): string {
-  const [, core = path, tail = ""] = /^(.*?)([.,;:!?)\]\x22\x27\x60\u201d\u2019\u00bb]*)$/u.exec(path) ?? [];
+  const [core, tail] = splitTail(path);
   if (HOME_ONLY.test(core)) return "your home folder" + tail;
   const name = core.split(/[\\/]+/).filter(Boolean).at(-1);
   return (name && name !== "~" ? name : "your home folder") + tail;
 }
 
-/** Each path in the words read as its last part: "Saved to Downloads/report.pdf" reads "Saved to report.pdf". */
-function namePaths(text: string): string {
-  return text.replace(/(^|[\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab])([^\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab]+)/gu, (all: string, lead: string, part: string) => {
-    let at = -1;
-    for (const re of PATHS) {
-      const found = re.exec(part);
-      if (found && (at < 0 || found.index < at)) at = found.index + (/^[\s\x27\x22\x60(=:<\x5b\u201c\u2018\u00ab]/u.test(found[0]) ? 1 : 0);
-    }
-    return at < 0 ? all : lead + part.slice(0, at) + lastPart(part.slice(at));
-  });
+/** Whether a path may go on past the space after it, so its last part can't be told: "/Users/alice/My Documents/a.pdf"
+ *  (the next word holds a slash) or "C:\Users\Jane Doe" (a home folder followed by a word, maybe the rest of the name). */
+function endsUnclear(path: string, after: string): boolean {
+  const [core, tail] = splitTail(path);
+  if (tail) return false;
+  return /^[ \t]+[^\s]*[\\/]/.test(after) || (HOME_ONLY.test(core) && /^[ \t]+[\p{L}\p{N}]/u.test(after));
+}
+
+/** Each path in the words read as its last part: "Saved to Downloads/report.pdf" reads "Saved to report.pdf". When a
+ *  path has a space in it, its end can't be told, so the words are left alone (null) rather than shortened piece by
+ *  piece: "Saved to C:\Users\Jane Doe" would read "Saved to your home folder Doe" and leak part of the account name. */
+function namePaths(text: string): string | null {
+  let unclear = false;
+  const named = text.replace(
+    /(^|[\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab])([^\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab]+)/gu,
+    (all: string, lead: string, part: string, offset: number) => {
+      let at = -1;
+      for (const re of PATHS) {
+        const found = re.exec(part);
+        if (found && (at < 0 || found.index < at)) at = found.index + (/^[\s\x27\x22\x60(=:<\x5b\u201c\u2018\u00ab]/u.test(found[0]) ? 1 : 0);
+      }
+      if (at < 0) return all;
+      if (endsUnclear(part.slice(at), text.slice(offset + all.length))) unclear = true;
+      return lead + part.slice(0, at) + lastPart(part.slice(at));
+    },
+  );
+  return unclear ? null : named;
 }
 
 function sentenceFor(raw: string): string {
@@ -180,7 +203,8 @@ export function plainText(text: string, always = false): string {
   if (!always && !atRegular()) return text;
   // Words that are not a failure keep their own words (issue 1814): when a path is their only raw part, it reads as its
   // last part, so a success like "Saved to Downloads/report.pdf" reads "Saved to report.pdf", never PLAIN_FAILURE.
+  // A path whose end can't be told (a space in it) keeps the plain fallback, so no part of an account name shows.
   const named = namePaths(text);
-  if (named !== text && !looksRaw(named.trim())) return plainAddresses(named, true);
+  if (named !== null && named !== text && !looksRaw(named.trim())) return plainAddresses(named, true);
   return plainWords(text, looksRaw);
 }

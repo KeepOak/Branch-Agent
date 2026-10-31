@@ -32,6 +32,27 @@ describe("success words keep their own words at Regular (issue 1814)", () => {
     expect(plainText(words)).not.toMatch(PATH);
   });
 
+  // PR Closer's FIX on #2152: a path with a space in it was shortened piece by piece and leaked part of the account name
+  // ("Saved to My report.pdf", "Saved to your home folder Doe"). Its end can't be told, so it keeps the plain fallback.
+  it.each([
+    ["Saved to /Users/alice/My Documents/report.pdf", /alice/],
+    ["Saved to C:\\Users\\Jane Doe", /Jane|Doe/],
+    ["Saved to C:\\Users\\Jane Doe\\report.pdf", /Jane|Doe/],
+    ["Backed up to /home/Jane Doe/notes", /Jane|Doe/],
+  ])("a spaced path %j shows no part of the account name", (words, name) => {
+    const said = plainText(words);
+    expect(said).not.toMatch(name);
+    expect(said).not.toMatch(/alice|Jane|Doe/);
+    expect(said).not.toMatch(PATH);
+    expect(said).not.toBe("Saved to My report.pdf");
+    expect(said).not.toBe("Saved to your home folder Doe");
+  });
+
+  it("a path followed by plain words still reads as its last part", () => {
+    expect(plainText("Moved it to /data/branch/backups today")).toBe("Moved it to backups today");
+    expect(plainText("Saved to Downloads/report.pdf, then opened it")).toBe("Saved to report.pdf, then opened it");
+  });
+
   it("a plain toast that names a path is not the failure sentence", () => {
     notify("Sent \u201cFix window/src/shell/notify.ts\u201d to the board.");
     expect(getToasts().at(-1)?.text).toBe("Sent \u201cFix notify.ts\u201d to the board.");
