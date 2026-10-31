@@ -42,7 +42,7 @@ async function show(engine: WindowEngine, props: Partial<Parameters<typeof Onboa
 it("shows the example Trunks from trunks.template.starters and lets Continue go on without a model", async () => {
   const { engine, request } = fakeEngine();
   const host = await show(engine, { startAt: 1 });
-  expect(button(host, "Continue").getAttribute("aria-disabled")).toBe("true");
+  expect(button(host, "Continue").getAttribute("aria-disabled")).toBeNull();
   const tryIt = button(host, "Try it with examples");
   expect(tryIt.getAttribute("aria-disabled")).toBeNull();
   expect(tryIt.dataset.need).toBe("trunks.template.starters");
@@ -71,12 +71,15 @@ it("starts Setting up Branch with the default Trunk and hands its key to the win
 
 it("says so and stays on the card when the conversation can't start", async () => {
   const { engine, request } = fakeEngine();
-  request.mockImplementation(async (method: string) => { if (method === "sessions.create") throw new Error("no default Trunk"); return {}; });
+  request.mockImplementation(async (method: string) => { if (method === "sessions.create") throw new Error("Error: NOT_FOUND: no default Trunk for agent:main:main at sessions.create (C:\\Users\\someone\\gateway.ts:4:2)"); return {}; });
   const onTalk = vi.fn();
   const host = await show(engine, { onTalk });
   await act(async () => button(host, "Set up by talking").click()); await flush();
   expect(onTalk).not.toHaveBeenCalled();
-  expect(host.querySelector("[role=alert]")?.textContent).toContain("no default Trunk");
+  expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t start that conversation. Try again.");
+  // Private #1089: the engine's words, code, session key and path are not rendered, not even behind Details.
+  expect(host.textContent).not.toMatch(/NOT_FOUND|no default Trunk|agent:main|sessions\.create|gateway\.ts|Error:/);
+  expect(host.querySelector("details")).toBeNull();
 });
 
 it("keeps both Coming, naming their calls, on an engine with no methods", async () => {

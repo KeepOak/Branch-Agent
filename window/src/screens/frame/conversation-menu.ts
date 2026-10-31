@@ -1,6 +1,7 @@
 // The conversation ••• menu in the header (owner-approved 2026-10-12, CHANGELOG-PASS17 "conversation ••• menu rebuilt"):
 // Pin to top, Rename, Snooze ›, Archive, Send to the board, then Export › and View ›, then Start over… and Delete… in red.
 // Share… follows Send to the board and opens the Classic Share dialog (owner placement for parity row 13, 2026-10-14).
+// That dialog also starts session-share, so a paired computer can read the conversation (shell/paired-share.ts).
 // It re-hosts the Classic menu's actions (shell/conversation-menu.ts, shell/ConversationMenu.tsx) on R1's glass Menu: each
 // entry names the engine call it makes, so an engine without it shows Coming; entries that only open or move are local.
 // Rows the R1 window can't run yet (Split, Side panel, its computer and browser) say why instead of pretending.

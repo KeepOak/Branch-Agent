@@ -7,7 +7,10 @@ import {
   createApiKeyCredential,
   createOAuthRefreshCredential,
 } from "../auth-profiles/credential-fixtures.test-support.js";
-import { createOAuthRefreshFence } from "../auth-profiles/oauth-refresh-marker.js";
+import {
+  createFailedOAuthRefreshFence,
+  createOAuthRefreshFence,
+} from "../auth-profiles/oauth-refresh-marker.js";
 import { resolveAgentHarnessPreparedAuthSupport } from "../harness/support.js";
 import { getApiKeyForModelCore } from "../model-auth.js";
 import {
@@ -234,6 +237,114 @@ describe("prepareAgentRuntimeAuthPlan", () => {
     });
   });
 
+  describe("subscriptionsOnly and the automatic order", () => {
+    const profiles = () =>
+      authStore(
+        {
+          "xai:key": createApiKeyCredential("xai", "key"),
+          "xai:sub": { type: "token" as const, provider: "xai", token: "sub-token" },
+        },
+        { xai: ["xai:key", "xai:sub"] },
+      );
+    const profileAttemptIds = (attempts: ReturnType<typeof prepareAuthFixture>["attempts"]) =>
+      attempts.flatMap((attempt) => (attempt.kind === "profile" ? [attempt.profileId] : []));
+    const subscriptionsOnlyConfig = {
+      agents: { defaults: { subscriptionsOnly: true } },
+    } as BranchConfig;
+
+    it("keeps a stored API-key sign-in out of the automatic order when subscriptionsOnly is set", () => {
+      const { attempts } = prepareAuthFixture({
+        provider: "xai",
+        modelId: "grok-4",
+        env: {},
+        config: subscriptionsOnlyConfig,
+        authProfileStore: profiles(),
+      });
+
+      expect(profileAttemptIds(attempts)).toEqual(["xai:sub"]);
+    });
+
+    it("keeps the stored API-key sign-in in the automatic order when subscriptionsOnly is off", () => {
+      const { attempts } = prepareAuthFixture({
+        provider: "xai",
+        modelId: "grok-4",
+        env: {},
+        config: {},
+        authProfileStore: profiles(),
+      });
+
+      expect(profileAttemptIds(attempts)).toEqual(["xai:key", "xai:sub"]);
+    });
+
+    it("fails to plan when the only stored sign-in is an API key in an explicit order and subscriptionsOnly is set", () => {
+      expect(() =>
+        prepareAuthFixture({
+          provider: "xai",
+          modelId: "grok-4",
+          env: {},
+          config: subscriptionsOnlyConfig,
+          authProfileStore: authStore(
+            { "xai:key": createApiKeyCredential("xai", "key") },
+            { xai: ["xai:key"] },
+          ),
+        }),
+      ).toThrow("Explicit auth order for xai has no usable profiles.");
+    });
+
+    it("leaves no automatic profile attempt when the only stored sign-in is an API key and no order is set", () => {
+      const { attempts } = prepareAuthFixture({
+        provider: "xai",
+        modelId: "grok-4",
+        env: {},
+        config: subscriptionsOnlyConfig,
+        authProfileStore: authStore({ "xai:key": createApiKeyCredential("xai", "key") }),
+      });
+
+      expect(profileAttemptIds(attempts)).toEqual([]);
+    });
+
+    it("keeps API-key sign-ins out of a harness-owned run's list when subscriptionsOnly is set", () => {
+      const store = authStore(
+        {
+          "openai:key": openAIApiKeyProfile("key"),
+          "openai:sub": openAITokenProfile("sub-token"),
+        },
+        { openai: ["openai:key", "openai:sub"] },
+      );
+      const withSubscriptionsOnly = prepareAuthFixture({
+        ...openAIPlatformAuthFixture,
+        harnessId: "codex",
+        harnessRuntime: "codex",
+        config: subscriptionsOnlyConfig,
+        authProfileStore: store,
+      });
+      const withDefault = prepareAuthFixture({
+        ...openAIPlatformAuthFixture,
+        harnessId: "codex",
+        harnessRuntime: "codex",
+        config: {},
+        authProfileStore: store,
+      });
+
+      expect(profileAttemptIds(withDefault.attempts)).toContain("openai:key");
+      expect(profileAttemptIds(withSubscriptionsOnly.attempts)).not.toContain("openai:key");
+    });
+
+    it("still uses an API-key sign-in the user pinned when subscriptionsOnly is set", () => {
+      const { attempts } = prepareAuthFixture({
+        provider: "xai",
+        modelId: "grok-4",
+        env: {},
+        config: subscriptionsOnlyConfig,
+        authProfileStore: profiles(),
+        sessionAuthProfileId: "xai:key",
+        sessionAuthProfileSource: "user",
+      });
+
+      expect(profileAttemptIds(attempts)).toContain("xai:key");
+    });
+  });
+
   it("fails closed before resolving an all-cooldown generic order", () => {
     const store = authStore(
       {
@@ -305,6 +416,68 @@ describe("prepareAgentRuntimeAuthPlan", () => {
         .filter((attempt) => attempt.kind === "profile")
         .map((attempt) => attempt.profileId),
     ).toEqual([pendingProfileId, backupProfileId]);
+  });
+
+  it("falls back to the next ordered sign-in when a user-pinned OAuth refresh has failed", () => {
+    const pinnedProfileId = "xai:pinned";
+    const backupProfileId = "xai:backup";
+    const failed = createFailedOAuthRefreshFence(
+      createOAuthRefreshFence({
+        profileId: pinnedProfileId,
+        credential: createOAuthRefreshCredential({
+          provider: "xai",
+          access: "expired-access",
+          expires: 1,
+        }),
+      }),
+    );
+
+    const prepared = prepareAuthFixture({
+      provider: "xai",
+      modelId: "grok-4",
+      env: {},
+      authProfileStore: authStore(
+        {
+          [pinnedProfileId]: failed,
+          [backupProfileId]: createApiKeyCredential("xai", "backup-key"),
+        },
+        { xai: [pinnedProfileId, backupProfileId] },
+      ),
+      sessionAuthProfileId: pinnedProfileId,
+      sessionAuthProfileSource: "user",
+    });
+
+    const profileAttempts = prepared.attempts.filter((attempt) => attempt.kind === "profile");
+    expect(profileAttempts.map((attempt) => attempt.profileId)).toEqual([backupProfileId]);
+    expect(profileAttempts.map((attempt) => attempt.plan.forwardedAuthProfileSource)).toEqual([
+      "auto",
+    ]);
+    expect(prepared.plan.forwardedAuthProfileId).toBe(backupProfileId);
+  });
+
+  it("explains a failed pinned refresh instead of calling it unconfigured when nothing else is eligible", () => {
+    const pinnedProfileId = "xai:pinned";
+    const failed = createFailedOAuthRefreshFence(
+      createOAuthRefreshFence({
+        profileId: pinnedProfileId,
+        credential: createOAuthRefreshCredential({
+          provider: "xai",
+          access: "expired-access",
+          expires: 1,
+        }),
+      }),
+    );
+
+    expect(() =>
+      prepareAuthFixture({
+        provider: "xai",
+        modelId: "grok-4",
+        env: {},
+        authProfileStore: authStore({ [pinnedProfileId]: failed }, { xai: [pinnedProfileId] }),
+        sessionAuthProfileId: pinnedProfileId,
+        sessionAuthProfileSource: "user",
+      }),
+    ).toThrow(/expired.*reconnect/iu);
   });
 
   it("defers an ambiguous route when native Codex owns auth", () => {

@@ -33,6 +33,12 @@ export type {
 export { detectSetupInference, listManualSetupInferenceOptions } from "./setup-inference-detect.js";
 export { activateSetupInference } from "./setup-inference-activate.js";
 export {
+  createFirstRunNoKeyPrompter,
+  ensureNoKeyDefaultModel,
+  NO_KEY_DEFAULT_KIND,
+  pickNoKeyLocalCandidate,
+} from "./no-key-default.js";
+export {
   completeSetupInference,
   completeSetupInferenceConfig,
   resolvePersistentApplyInference,

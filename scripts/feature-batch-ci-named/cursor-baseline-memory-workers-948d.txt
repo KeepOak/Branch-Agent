@@ -1,0 +1,2 @@
+engine:src/infra/sqlite-readonly-worker-idle.test.ts
+engine:src/process/spawn-broker/idle-lifecycle.test.ts

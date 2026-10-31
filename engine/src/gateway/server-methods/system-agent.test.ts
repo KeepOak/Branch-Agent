@@ -12,6 +12,7 @@ import {
   setRuntimeConfigAppliedHash,
 } from "../../config/runtime-snapshot.js";
 import { defaultRuntime } from "../../runtime.js";
+import { closeBranchStateDatabaseAsync } from "../../state/branch-state-db-cache.js";
 import { SystemAgentChatEngine } from "../../system-agent/chat-engine.js";
 import { SystemAgentInferenceUnavailableError } from "../../system-agent/inference-error.js";
 import { detectSetupInference } from "../../system-agent/setup-inference-detect.js";
@@ -43,6 +44,12 @@ const {
   makeVerifiedEngine,
   seededSession,
 } = useSystemAgentGatewayTestFixture();
+
+// Hooks run in reverse order, so this closes the shared state database before the
+// fixture removes its temp dirs. Windows cannot delete a directory with an open SQLite file.
+afterEach(async () => {
+  await closeBranchStateDatabaseAsync();
+});
 
 function makeWizardContext() {
   const wizardSessions = new Map<string, WizardSession>();
@@ -130,6 +137,8 @@ describe("branch.setup", () => {
           isRemoteProviderAuth: isLocalClient !== true,
         }),
       );
+      // Setup admission is process-wide: the next case is busy until this one settles.
+      await setupAdmission.whenAdmittedWizardSessionSettled(session);
     },
   );
 
@@ -201,10 +210,7 @@ describe("branch.setup", () => {
 
   it.each([
     ["branch.setup.activate.start" as const, { sessionId: "busy-activation", kind: "codex-cli" }],
-    [
-      "branch.setup.auth.start" as const,
-      { sessionId: "busy-auth", authChoice: "github-copilot" },
-    ],
+    ["branch.setup.auth.start" as const, { sessionId: "busy-auth", authChoice: "github-copilot" }],
     ["branch.setup.prepare.start" as const, { sessionId: "busy-prepare", authChoice: "ollama" }],
   ])("rejects %s before creating a wizard session when setup is busy", async (method, params) => {
     const ownerStarted = createDeferred();
@@ -905,8 +911,9 @@ describe("branch.chat", () => {
       ok: false,
       error: {
         code: "UNAVAILABLE",
-        message: expect.stringContaining("workspace owner branch is missing from the roster"),
-        details: { code: "system_agent_session_invalidated" },
+        message:
+          "Branch can't reach your AI account right now. Reconnect it in Accounts, then try again.",
+        details: { code: "system_agent_session_invalidated", action: "open-accounts" },
       },
     });
     expect(dispose).toHaveBeenCalledOnce();

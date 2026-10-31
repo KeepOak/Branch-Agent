@@ -117,6 +117,7 @@ import {
   writeWorkspaceFileOrRespond,
 } from "./agents-files.js";
 import { agentListHandler } from "./agents-list.js";
+import { buildModelsListResult } from "./models-list-result.js";
 import type { GatewayRequestHandlers, RespondFn } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
@@ -469,11 +470,20 @@ export const agentsHandlers: GatewayRequestHandlers = {
         context.logGateway.warn(message),
       );
       // A brand-new Trunk opens its own chat once. It is scheduled, never awaited, so a slow
-      // database cannot delay this response.
+      // database cannot delay this response. With no usable model it stays quiet, like the
+      // onboarding Trunk, rather than greet when nothing can answer yet.
       scheduleFirstRunGreeting({
         result,
         getConfig: () => context.getRuntimeConfig(),
         warn: (message) => context.logGateway.warn(message),
+        modelReady: async () =>
+          (
+            await buildModelsListResult({
+              source: { kind: "gateway", context },
+              agentId: result.agentId,
+              params: {},
+            })
+          ).models.some((model) => model.available === true),
       });
       // Creation is already committed. A failed or slow worker warm-up must not
       // make this successful create appear retryable to the client.

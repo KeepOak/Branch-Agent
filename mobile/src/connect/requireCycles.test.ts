@@ -75,4 +75,33 @@ describe('require cycles', () => {
     expect(ignored('node_modules/react-native/index.js')).toBe(true);
     expect(ignored('src/screens/ChatsScreen.tsx')).toBe(false);
   });
+
+  it('Metro watches window/src/stage so take-control can import the DOM-free gesture files', () => {
+    const printed = execFileSync(
+      process.execPath,
+      ['-e', "process.stdout.write(JSON.stringify(require('./metro.config.js').watchFolders))"],
+      { cwd: mobileRoot, encoding: 'utf8', windowsHide: true },
+    );
+    const folders = JSON.parse(printed) as string[];
+    const stage = path.resolve(mobileRoot, '..', 'window', 'src', 'stage');
+    expect(folders).toContain(stage);
+  });
+
+  it('Jest resolves Babel helpers from window/src/stage against this app’s node_modules', () => {
+    const resolver = require('../../jest.resolver.js') as (
+      request: string,
+      options: { basedir: string; defaultResolver: (request: string, options: { basedir: string }) => string },
+    ) => string;
+    const windowStage = path.resolve(mobileRoot, '..', 'window', 'src', 'stage');
+    const seen: Array<{ request: string; basedir: string }> = [];
+    const defaultResolver = (request: string, options: { basedir: string }) => {
+      seen.push({ request, basedir: options.basedir });
+      return request;
+    };
+    resolver('@babel/runtime/helpers/interopRequireDefault', { basedir: windowStage, defaultResolver });
+    expect(seen).toEqual([{ request: '@babel/runtime/helpers/interopRequireDefault', basedir: mobileRoot }]);
+    seen.length = 0;
+    resolver('./remote-map', { basedir: windowStage, defaultResolver });
+    expect(seen).toEqual([{ request: './remote-map', basedir: windowStage }]);
+  });
 });

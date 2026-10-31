@@ -19,7 +19,9 @@ const removed = vi.hoisted(() => ({ calls: [] as string[], fail: "" }));
 const replyStep = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock("../../agents/tools/agent-step.js", () => ({ runAgentStep: replyStep }));
 vi.mock("../call.js", () => ({ callGateway: vi.fn() }));
-vi.mock("../../mcp/graft-link.js", () => ({ ensureGraftLinks: vi.fn(() => ({ states: () => ({}) })) }));
+vi.mock("../../mcp/graft-link.js", () => ({
+  ensureGraftLinks: vi.fn(() => ({ states: () => ({}) })),
+}));
 vi.mock("./devices.js", () => ({
   deviceHandlers: {
     "device.pair.remove": async ({
@@ -30,8 +32,11 @@ vi.mock("./devices.js", () => ({
       respond: (ok: boolean, payload?: unknown, error?: { message: string }) => void;
     }) => {
       removed.calls.push(params.deviceId);
-      if (removed.fail) respond(false, undefined, { message: removed.fail });
-      else respond(true, { deviceId: params.deviceId });
+      if (removed.fail) {
+        respond(false, undefined, { message: removed.fail });
+      } else {
+        respond(true, { deviceId: params.deviceId });
+      }
     },
   },
 }));
@@ -57,8 +62,11 @@ beforeEach(() => {
   removed.fail = "";
 });
 afterEach(() => {
-  if (previousState === undefined) delete process.env.BRANCH_STATE_DIR;
-  else process.env.BRANCH_STATE_DIR = previousState;
+  if (previousState === undefined) {
+    delete process.env.BRANCH_STATE_DIR;
+  } else {
+    process.env.BRANCH_STATE_DIR = previousState;
+  }
   // Disconnect clears room membership in the shared state database; Windows cannot remove the dir while it is open.
   closeBranchStateDatabaseForTest();
   removeStateDir(stateDir);
@@ -76,7 +84,11 @@ async function call(method: string, params: Record<string, unknown>, client: unk
   await contactHandlers[method]!({
     params,
     client,
-    context: { broadcast: () => undefined, getRuntimeConfig: () => ({}), logGateway: { warn: () => undefined, info: () => undefined } },
+    context: {
+      broadcast: () => undefined,
+      getRuntimeConfig: () => ({}),
+      logGateway: { warn: () => undefined, info: () => undefined },
+    },
     respond: (ok: boolean, payload?: unknown, error?: { message?: string }) => {
       reply = { ok, payload, error };
     },
@@ -98,9 +110,15 @@ describe("Branch-to-Branch graft on the host", () => {
     const { saveGraftLink } = await import("../../mcp/graft-join.js");
     saveGraftLink({ url: "wss://first.example.test", name: "First", joinedAt: Date.now() });
     saveGraftLink({ url: "wss://second.example.test", name: "Second", joinedAt: Date.now() });
-    expect((await call("graft.links.forget", { url: "wss://missing.example.test" }, owner)).ok).toBe(false);
-    expect((await call("graft.links.forget", { url: "wss://first.example.test" }, owner)).payload).toEqual({ forgotten: "wss://first.example.test" });
-    expect((await call("graft.links.list", {}, owner)).payload.links).toMatchObject([{ url: "wss://second.example.test" }]);
+    expect(
+      (await call("graft.links.forget", { url: "wss://missing.example.test" }, owner)).ok,
+    ).toBe(false);
+    expect(
+      (await call("graft.links.forget", { url: "wss://first.example.test" }, owner)).payload,
+    ).toEqual({ forgotten: "wss://first.example.test" });
+    expect((await call("graft.links.list", {}, owner)).payload.links).toMatchObject([
+      { url: "wss://second.example.test" },
+    ]);
   });
 
   it("treats only non-admin device connections as grafted devices", () => {
@@ -130,25 +148,148 @@ describe("Branch-to-Branch graft on the host", () => {
 
   it("routes a local Trunk's work to the joined device and accepts only its reply", async () => {
     await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
-    await call("contacts.outside.hello", { agent: { ...scout, trunkId: "scout" } }, device("dev-b"));
-    const sent = await call("graft.work.send", { target: "a2a:branch-b--scout", text: "Ping", sourceSessionKey: "agent:juniper:main", idempotencyKey: "send-1" }, owner);
+    await call(
+      "contacts.outside.hello",
+      { agent: { ...scout, trunkId: "scout" } },
+      device("dev-b"),
+    );
+    const sent = await call(
+      "graft.work.send",
+      {
+        target: "a2a:branch-b--scout",
+        text: "Ping",
+        sourceSessionKey: "agent:juniper:main",
+        idempotencyKey: "send-1",
+      },
+      owner,
+    );
     expect(sent.ok).toBe(true);
     expect((await call("graft.work.poll", {}, device("dev-c"))).ok).toBe(false);
-    expect((await call("graft.work.poll", {}, device("dev-b"))).payload.job).toMatchObject({ id: sent.payload.id, trunkId: "scout", text: "Ping" });
-    expect((await call("graft.work.complete", { id: sent.payload.id, reply: "forged" }, device("dev-c"))).ok).toBe(false);
-    expect((await call("graft.work.complete", { id: sent.payload.id, reply: "PONG" }, device("dev-b"))).ok).toBe(true);
-    expect(replyStep).toHaveBeenCalledWith(expect.objectContaining({ agentId: "juniper", sessionKey: "agent:juniper:main", message: "PONG" }));
+    expect((await call("graft.work.poll", {}, device("dev-b"))).payload.job).toMatchObject({
+      id: sent.payload.id,
+      trunkId: "scout",
+      text: "Ping",
+    });
+    expect(
+      (await call("graft.work.complete", { id: sent.payload.id, reply: "forged" }, device("dev-c")))
+        .ok,
+    ).toBe(false);
+    expect(
+      (await call("graft.work.complete", { id: sent.payload.id, reply: "PONG" }, device("dev-b")))
+        .ok,
+    ).toBe(true);
+    expect(replyStep).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "juniper",
+        sessionKey: "agent:juniper:main",
+        message: "PONG",
+      }),
+    );
+  });
+
+  it("recovers pending delivery after handler restart with the original result and stable submission key", async () => {
+    const { getGraftWork } = await import("../contacts/graft-work.js");
+    const { callGateway } = await import("../call.js");
+    replyStep.mockClear();
+    replyStep.mockRejectedValueOnce(new Error("gateway restarting"));
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    await call(
+      "contacts.outside.hello",
+      { agent: { ...scout, trunkId: "scout" } },
+      device("dev-b"),
+    );
+    const sent = await call(
+      "graft.work.send",
+      { target: "a2a:branch-b--scout", text: "Ping", sourceSessionKey: "agent:juniper:main" },
+      owner,
+    );
+    const id = sent.payload.id as string;
+    expect((await call("graft.work.complete", { id, reply: "original" }, device("dev-b"))).ok).toBe(
+      true,
+    );
+    expect(getGraftWork(id)?.deliveryState).toBe("pending");
+    const firstStep = replyStep.mock.calls.at(-1)![0] as unknown as {
+      callGateway: (request: unknown) => Promise<unknown>;
+    };
+    await firstStep.callGateway({ method: "agent", params: { idempotencyKey: "random-first" } });
+    expect(callGateway).toHaveBeenLastCalledWith(
+      expect.objectContaining({ params: { idempotencyKey: `graft-result:${id}` } }),
+    );
+
+    // Reload the handlers and work-store module: only on-disk state survives this boundary.
+    vi.resetModules();
+    const restarted = (await import("./contacts.js")).contactHandlers;
+    const respond = vi.fn();
+    await restarted["graft.work.poll"]!({
+      params: {},
+      client: device("dev-b"),
+      respond,
+      context: { logGateway: { warn: vi.fn() } },
+    } as never);
+    expect(respond).toHaveBeenCalledWith(true, { job: null });
+    expect(getGraftWork(id)?.deliveryState).toBe("delivered");
+    expect(replyStep).toHaveBeenCalledTimes(2);
+    const retryStep = replyStep.mock.calls.at(-1)![0] as unknown as {
+      message: string;
+      callGateway: (request: unknown) => Promise<unknown>;
+    };
+    expect(retryStep.message).toBe("original");
+    await retryStep.callGateway({ method: "agent", params: { idempotencyKey: "random-retry" } });
+    expect(callGateway).toHaveBeenLastCalledWith(
+      expect.objectContaining({ params: { idempotencyKey: `graft-result:${id}` } }),
+    );
+    await call("graft.work.complete", { id, reply: "replacement" }, device("dev-b"));
+    await call("graft.work.poll", {}, device("dev-b"));
+    expect(getGraftWork(id)?.reply).toBe("original");
+    expect(replyStep).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not block new work when a pending result cannot be delivered", async () => {
+    replyStep.mockRejectedValueOnce(new Error("delivery unavailable"));
+    const { enqueueGraftWork, completeGraftWork, getGraftWork } =
+      await import("../contacts/graft-work.js");
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    const input = {
+      deviceId: "dev-b",
+      trunkId: "scout",
+      text: "Ping",
+      sourceSessionKey: "agent:juniper:main",
+      sourceAgentId: "juniper",
+    };
+    const done = enqueueGraftWork(input);
+    completeGraftWork(done.id, "dev-b", { reply: "pending" });
+    const next = enqueueGraftWork(input);
+    expect((await call("graft.work.poll", {}, device("dev-b"))).payload.job.id).toBe(next.id);
+    expect(getGraftWork(done.id)?.deliveryState).toBe("pending");
   });
 
   it("shows a joined Trunk's failure as a plain sentence and gives the raw error only to the Trunk", async () => {
     await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
-    await call("contacts.outside.hello", { agent: { ...scout, trunkId: "scout" } }, device("dev-b"));
-    const sent = await call("graft.work.send", { target: "a2a:branch-b--scout", text: "Ping", sourceSessionKey: "agent:juniper:main", idempotencyKey: "send-fail" }, owner);
+    await call(
+      "contacts.outside.hello",
+      { agent: { ...scout, trunkId: "scout" } },
+      device("dev-b"),
+    );
+    const sent = await call(
+      "graft.work.send",
+      {
+        target: "a2a:branch-b--scout",
+        text: "Ping",
+        sourceSessionKey: "agent:juniper:main",
+        idempotencyKey: "send-fail",
+      },
+      owner,
+    );
     await call("graft.work.poll", {}, device("dev-b"));
-    const raw = "gateway timeout after 10000ms\nGateway target: ws://127.0.0.1:38157\nConfig: /home/someone/.branch/branch.json";
-    expect((await call("graft.work.complete", { id: sent.payload.id, error: raw }, device("dev-b"))).ok).toBe(true);
+    const raw =
+      "gateway timeout after 10000ms\nGateway target: ws://127.0.0.1:38157\nConfig: /home/someone/.branch/branch.json";
+    expect(
+      (await call("graft.work.complete", { id: sent.payload.id, error: raw }, device("dev-b"))).ok,
+    ).toBe(true);
     const step = replyStep.mock.calls.at(-1)![0] as { message: string; extraSystemPrompt: string };
-    expect(step.message).toBe("The joined Trunk did not answer in time, so the request may or may not have run.");
+    expect(step.message).toBe(
+      "The joined Trunk did not answer in time, so the request may or may not have run.",
+    );
     expect(step.message).not.toMatch(/ws:\/\/|\/home\/|[Gg]ateway/);
     expect(step.extraSystemPrompt).toContain(raw);
   });
@@ -223,7 +364,9 @@ describe("Branch-to-Branch graft on the host", () => {
   it("Settings › Grafts hears contacts.changed (it reloads on it), and a grafted Branch's read scope does too", () => {
     const reader = { connect: { role: "operator", scopes: ["operator.read"] } };
     expect(hasEventScope(reader as never, "contacts.changed")).toBe(true);
-    expect(hasEventScope({ connect: { role: "operator", scopes: [] } } as never, "contacts.changed")).toBe(false);
+    expect(
+      hasEventScope({ connect: { role: "operator", scopes: [] } } as never, "contacts.changed"),
+    ).toBe(false);
   });
 
   it("keeps the rows connected when the pairing could not be removed", async () => {

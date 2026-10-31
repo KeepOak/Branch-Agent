@@ -11,6 +11,7 @@ import {
   sqliteStringSet,
 } from "../../infra/kysely-sync.js";
 import { runSqliteReadOperationSync } from "../../infra/sqlite-schema-facts.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import type { BranchAgentDatabase } from "../../state/branch-agent-db-contract.js";
 import type { DB as BranchAgentKyselyDatabase } from "../../state/branch-agent-db.generated.js";
@@ -37,6 +38,7 @@ import {
   readWithCanonicalSessionAdmission,
 } from "./session-canonical-key.js";
 import {
+  SessionCanonicalKeyMigrationRequiredError,
   SessionRowRepairRequiredError,
   validateCanonicalSessionRowEntry,
   type CanonicalSessionValidationRow,
@@ -52,7 +54,17 @@ import {
 } from "./store-entry.js";
 import type { InternalSessionEntry as SessionEntry } from "./types.js";
 
+const log = createSubsystemLogger("sessions/entry-read");
+
 type BranchAgentDatabaseReader = Pick<BranchAgentDatabase, "agentId" | "db">;
+
+function isUnreadablePersistedSessionRow(error: unknown): boolean {
+  return (
+    error instanceof SessionCanonicalKeyMigrationRequiredError &&
+    error.message.includes("invalid persisted session row")
+  );
+}
+
 type SessionEntryRow = Selectable<BranchAgentKyselyDatabase["session_nodes"]> &
   SessionEntrySnapshotRow;
 
@@ -238,7 +250,16 @@ export function parseReadableSqliteSessionEntryRows(
 ): SessionEntrySummary[] {
   const parsedEntries = new Map<string, SessionEntry>();
   for (const row of rows) {
-    const entry = parseReadableSessionEntryData(database, row, projection);
+    let entry: SessionEntry | null;
+    try {
+      entry = parseReadableSessionEntryData(database, row, projection);
+    } catch (error) {
+      if (!isUnreadablePersistedSessionRow(error)) {
+        throw error;
+      }
+      log.warn("Skipped unreadable persisted session row", { sessionKey: row.session_key });
+      continue;
+    }
     if (entry) {
       parsedEntries.set(row.session_key, entry);
     }

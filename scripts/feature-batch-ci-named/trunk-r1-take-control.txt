@@ -1,0 +1,7 @@
+window:src/stage/BrowserView.test.tsx
+window:src/stage/ComputerStage.test.tsx
+window:src/stage/computer-drive.test.ts
+window:src/stage/computer-screen-setup.test.tsx
+window:src/stage/remote-map.test.ts
+window:src/stage/take-control.test.tsx
+window:src/stage/touch-gestures.test.ts

@@ -84,7 +84,7 @@ describe("All features", () => {
     await act(async () => t.host.querySelector<HTMLButtonElement>("[aria-label='Open where Talk mode lives']")!.click());
     expect(onOpen).toHaveBeenCalledWith({ kind: "settings", page: "voice" });
     await act(async () => t.host.querySelector<HTMLButtonElement>("[aria-label='Open Tools']")!.click());
-    expect(onOpen).toHaveBeenLastCalledWith({ kind: "place", place: "customize", tab: "tools" });
+    expect(onOpen).toHaveBeenLastCalledWith({ kind: "place", place: "customize", tab: "Tools" });
   });
 
   it("deep-links to a feature, searching for it when its area shows only at Technical", async () => {

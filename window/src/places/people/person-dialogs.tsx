@@ -60,8 +60,11 @@ export function CodeDialog({ engine, title, onClose }: { engine: WindowEngine; t
 }
 
 type InviteTab = "this" | "device" | "keepoak";
-export function InviteDialog({ engine, onClose }: { engine: WindowEngine; onClose: () => void }) {
-  const [tab, setTab] = useState<InviteTab>("this");
+const INVITE_TABS: { id: InviteTab; name: string }[] = [{ id: "this", name: "On this computer" }, { id: "device", name: "On their own device" }, { id: "keepoak", name: "From your keepoak.com team" }];
+/** `technical`: the level in use is Technical. Adding someone on this computer waits on the engine (Coming), so its tab
+ *  shows only at Technical (Private #1093 items 4 and 7); below it the dialog opens on their own device. */
+export function InviteDialog({ engine, onClose, technical = true }: { engine: WindowEngine; onClose: () => void; technical?: boolean }) {
+  const [tab, setTab] = useState<InviteTab>(technical ? "this" : "device");
   const code = useSetupCode(engine);
   const footer = <><button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
     {tab === "this" && <button type="button" className="btn pri" disabled title={shownWhy(ADD_HERE_OFF)}>Add them</button>}
@@ -69,7 +72,7 @@ export function InviteDialog({ engine, onClose }: { engine: WindowEngine; onClos
     {tab === "device" && !code.setup && <button type="button" className="btn pri" disabled={code.busy} onClick={code.make}>{code.busy ? "Making…" : "Make a one-time code"}</button>}</>;
   return <Dialog title="Invite someone" onClose={onClose} footer={footer}>
     <div className="ppl-dlg" style={{ display: "grid", gap: 12 }}>
-      <Tabs label="How they use Branch" value={tab} onChange={setTab} tabs={[{ id: "this", name: "On this computer" }, { id: "device", name: "On their own device" }, { id: "keepoak", name: "From your keepoak.com team" }]} />
+      <Tabs label="How they use Branch" value={tab} onChange={setTab} tabs={technical ? INVITE_TABS : INVITE_TABS.filter((t) => t.id !== "this")} />
       {tab === "this" && <fieldset disabled title={shownWhy(ADD_HERE_OFF)} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 12 }}>
         <label className="fld"><span>Name</span><input className="inp" placeholder="Their name" /></label>
         <div className="fld"><span>Role</span><Seg label="Role" value={null} options={[{ id: "adult", name: "Adult" }, { id: "child", name: "Child" }]} off={ADD_HERE_OFF} /></div>

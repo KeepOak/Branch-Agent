@@ -7,14 +7,16 @@ import {
 import type { BranchConfig } from "../config/types.branch.js";
 import {
   DEFAULT_EXEC_APPROVAL_ASK_FALLBACK,
-  resolveExecApprovalAllowedDecisions,
-  resolveExecApprovalsDisplayPath,
-  type ExecApprovalDecision,
+  DEFAULT_REQUESTED_ASK,
+  DEFAULT_REQUESTED_SECURITY,
   maxAsk,
   minSecurity,
+  resolveExecApprovalAllowedDecisions,
+  resolveExecApprovalsDisplayPath,
   resolveExecApprovalsFromFile,
   resolveExecModeFromPolicy,
   resolveExecModePolicy,
+  type ExecApprovalDecision,
   type ExecApprovalsDefaults,
   type ExecApprovalsFile,
   type ExecAsk,
@@ -22,9 +24,6 @@ import {
   type ExecSecurity,
   type ExecTarget,
 } from "./exec-approvals.js";
-
-const DEFAULT_REQUESTED_SECURITY: ExecSecurity = "full";
-const DEFAULT_REQUESTED_ASK: ExecAsk = "off";
 export const SESSION_EXEC_OVERRIDES_NOTE =
   "Per-session /exec overrides are not included; run /exec in the relevant session to inspect its current defaults.";
 type ExecPolicyConfig = {

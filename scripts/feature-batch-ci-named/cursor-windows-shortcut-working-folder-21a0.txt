@@ -1,0 +1,3 @@
+# No engine or window tests. Desktop coverage is the existing node --test steps in
+# .github/workflows/desktop-checks.yml for scripts/release-installers.test.mjs,
+# scripts/windows-launcher-icon.test.mjs and scripts/desktop-update.test.mjs.

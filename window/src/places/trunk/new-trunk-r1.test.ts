@@ -1,4 +1,4 @@
-// R1's + › New Trunk and the Grove's Trunk button make a random Trunk: one create call, no dialog, its conversation opened.
+// A random unused name and look, then its conversation. The R1 window opens the New Trunk sheet instead of calling this.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { makeRandomTrunk } from "./new-trunk-r1";

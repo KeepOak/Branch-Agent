@@ -1,0 +1,2 @@
+engine:extensions/vault/src/cli.test.ts
+engine:extensions/vault/src/secret-ref-resolver.test.ts

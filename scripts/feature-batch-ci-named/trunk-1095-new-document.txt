@@ -1,0 +1,6 @@
+engine:src/gateway/method-scopes.test.ts
+engine:src/gateway/server-methods-list.test.ts
+engine:src/gateway/server-methods/agents-documents.test.ts
+window:src/places/library/create-document.test.ts
+window:src/places/library/document-editor.test.tsx
+window:src/places/library/documents.test.tsx

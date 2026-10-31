@@ -15,7 +15,7 @@ import {
 } from "../../../test/helpers/branch-test-instance.ts";
 import { runQaGatewayFixture } from "../../../test/helpers/qa-gateway-cleanup.ts";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
-import { COMMUNITY_INVITE_KEY } from "../components/community-invite-state.ts";
+const COMMUNITY_INVITE_KEY = "branch:control-ui:community-invite:v2";
 import {
   waitForControlUiGatewayReady,
   waitForControlUiGatewayReconnecting,

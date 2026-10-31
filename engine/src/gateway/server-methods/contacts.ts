@@ -19,6 +19,12 @@ import {
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { listExistingAgentIdsFromDisk, listGatewayAgentsBasic } from "../agent-list.js";
 import {
+  claimGraftWork,
+  completeGraftWork,
+  deliverPendingGraftWork,
+  type GraftWork,
+} from "../contacts/graft-work.js";
+import {
   assignOutsideAgentId,
   graftDeviceId,
   outsideAgentDeviceRefusal,
@@ -35,7 +41,6 @@ import {
 } from "../contacts/outside-agents.js";
 import { queueGraftedTeammateSend } from "../contacts/grafted-send.js";
 import { projectContacts } from "../contacts/project.js";
-import { claimGraftWork, completeGraftWork, getGraftWork } from "../contacts/graft-work.js";
 import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role-policy.js";
 import { removeOutsideRoomMembers } from "../rooms/store.js";
 import { createSessionListEntryFilter } from "../session-sharing.js";
@@ -63,7 +68,9 @@ async function readProjection({
     ...(await listExistingAgentIdsFromDisk()),
   ]);
   for (const agentId of agentIds) {
-    if (allowedAgents && !allowedAgents.has(agentId)) continue;
+    if (allowedAgents && !allowedAgents.has(agentId)) {
+      continue;
+    }
     for (const target of resolveExistingAgentSessionStoreTargetsSync(cfg, agentId)) {
       for (const row of listSessionEntriesReadOnly({
         agentId: target.agentId,
@@ -71,7 +78,9 @@ async function readProjection({
         projection: "list",
       })) {
         const owner = parseAgentSessionKey(row.sessionKey)?.agentId;
-        if (owner && owner !== agentId) continue;
+        if (owner && owner !== agentId) {
+          continue;
+        }
         sessions.set(row.sessionKey, row);
       }
     }
@@ -103,7 +112,9 @@ async function readProjection({
       });
       previews.set(row.sessionKey, fields.lastMessagePreview ?? "");
       const title = deriveSessionTitle(row.entry, fields.firstUserMessage);
-      if (title) titles.set(row.sessionKey, title);
+      if (title) {
+        titles.set(row.sessionKey, title);
+      }
     } catch {
       previews.set(row.sessionKey, "");
     }
@@ -152,12 +163,14 @@ async function removeGraftDevice(
       ...options,
       params: { deviceId },
       respond: (ok, _payload, error) => {
-        if (ok || /unknown deviceId/.test(error?.message ?? "")) resolve({ ok: true });
-        else
+        if (ok || (error?.message ?? "").includes("unknown deviceId")) {
+          resolve({ ok: true });
+        } else {
           resolve({
             ok: false,
             error: error ?? errorShape(ErrorCodes.UNAVAILABLE, "remove failed"),
           });
+        }
       },
     });
   });
@@ -165,21 +178,61 @@ async function removeGraftDevice(
 
 /** What a person reads when a joined Branch's Trunk fails a request: plain words, no addresses or file paths. */
 export function graftFailureSentence(error: string): string {
-  if (/time(?:d)?\s?out|timeout/i.test(error)) return "The joined Trunk did not answer in time, so the request may or may not have run.";
-  if (/ECONNREFUSED|not connected|unreachable|offline|closed/i.test(error)) return "The joined Trunk could not be reached right now.";
+  if (/time(?:d)?\s?out|timeout/i.test(error)) {
+    return "The joined Trunk did not answer in time, so the request may or may not have run.";
+  }
+  if (/ECONNREFUSED|not connected|unreachable|offline|closed/i.test(error)) {
+    return "The joined Trunk could not be reached right now.";
+  }
   return "The joined Trunk could not finish the request.";
+}
+
+async function deliverGraftResult(job: GraftWork): Promise<void> {
+  const { runAgentStep } = await import("../../agents/tools/agent-step.js");
+  const { callGateway } = await import("../call.js");
+  await runAgentStep({
+    agentId: job.sourceAgentId,
+    sessionKey: job.sourceSessionKey,
+    sourceTool: "sessions_send",
+    message: job.error ? graftFailureSentence(job.error) : job.reply!,
+    extraSystemPrompt:
+      "A Trunk on a joined Branch returned the result of your earlier sessions_send request. Do not resend your request unless the user asks." +
+      (job.error
+        ? `\nThe joined Branch reported this error (do not quote addresses or file paths to the user):\n${job.error}`
+        : ""),
+    timeoutMs: 60_000,
+    // runAgentStep otherwise generates a new key per attempt. Keep retries of this result stable.
+    callGateway: (request) =>
+      callGateway({
+        ...request,
+        params:
+          request.method === "agent"
+            ? {
+                ...(request.params && typeof request.params === "object" ? request.params : {}),
+                idempotencyKey: `graft-result:${job.id}`,
+              }
+            : request.params,
+      }),
+  });
 }
 
 export const contactHandlers: GatewayRequestHandlers = {
   "graft.work.send": async ({ params, respond, client, context }) => {
-    const p = params && typeof params === "object" ? params as Record<string, unknown> : {};
+    const p = params && typeof params === "object" ? (params as Record<string, unknown>) : {};
     const target = typeof p.target === "string" ? p.target.replace(/^a2a:/, "") : "";
     const text = typeof p.text === "string" ? p.text.trim() : "";
     const sourceSessionKey = typeof p.sourceSessionKey === "string" ? p.sourceSessionKey : "";
     const idempotencyKey = typeof p.idempotencyKey === "string" ? p.idempotencyKey : undefined;
     const sourceAgentId = parseAgentSessionKey(sourceSessionKey)?.agentId;
     if (!target || !text || !sourceAgentId || graftDeviceId(client)) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "A local Trunk, grafted target and message are required."));
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "A local Trunk, grafted target and message are required.",
+        ),
+      );
       return;
     }
     const result = queueGraftedTeammateSend({
@@ -195,55 +248,69 @@ export const contactHandlers: GatewayRequestHandlers = {
     }
     respond(true, { id: result.id, status: "accepted" });
   },
-  "graft.work.poll": async ({ respond, client }) => {
+  "graft.work.poll": async ({ respond, client, context }) => {
     const deviceId = graftDeviceId(client);
-    if (!deviceId || !listOutsideAgents().some((row) => row.kind === "branch" && row.deviceId === deviceId && !outsideAgentRefusal(row))) {
-      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "A joined Branch must poll using its paired device."));
+    if (
+      !deviceId ||
+      !listOutsideAgents().some(
+        (row) => row.kind === "branch" && row.deviceId === deviceId && !outsideAgentRefusal(row),
+      )
+    ) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.FORBIDDEN, "A joined Branch must poll using its paired device."),
+      );
       return;
     }
     const job = claimGraftWork(deviceId);
-    respond(true, { job: job ? { id: job.id, trunkId: job.trunkId, text: job.text, sourceAgentId: job.sourceAgentId } : null });
+    respond(true, {
+      job: job
+        ? { id: job.id, trunkId: job.trunkId, text: job.text, sourceAgentId: job.sourceAgentId }
+        : null,
+    });
+    // Retry persisted results after answering, so a slow or failing delivery never delays new work.
+    await deliverPendingGraftWork(deviceId, deliverGraftResult).catch((failure: unknown) =>
+      context.logGateway.warn(`graft work reply delivery failed: ${String(failure)}`),
+    );
   },
   "graft.work.complete": async ({ params, respond, client, context }) => {
-    const p = params && typeof params === "object" ? params as Record<string, unknown> : {};
+    const p = params && typeof params === "object" ? (params as Record<string, unknown>) : {};
     const deviceId = graftDeviceId(client);
     const id = typeof p.id === "string" ? p.id : "";
     const reply = typeof p.reply === "string" ? p.reply : undefined;
     const error = typeof p.error === "string" ? p.error : undefined;
     if (!deviceId || !id || (!reply && !error)) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "A paired work result is required."));
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "A paired work result is required."),
+      );
       return;
     }
-    const before = getGraftWork(id);
     const job = completeGraftWork(id, deviceId, { reply, error });
     if (!job) {
-      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "Work does not belong to this paired Branch."));
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.FORBIDDEN, "Work does not belong to this paired Branch."),
+      );
       return;
     }
     respond(true, { status: "recorded" });
-    if (before?.completedAt) return;
-    const { runAgentStep } = await import("../../agents/tools/agent-step.js");
-    const { callGateway } = await import("../call.js");
-    void runAgentStep({
-      agentId: job.sourceAgentId,
-      sessionKey: job.sourceSessionKey,
-      sourceTool: "sessions_send",
-      // The message shows in the conversation, so a failure reads as one plain sentence; the raw error (addresses,
-      // config paths) goes only to the Trunk, which still needs it to explain or retry.
-      message: error ? graftFailureSentence(error) : reply!,
-      extraSystemPrompt: "A Trunk on a joined Branch returned the result of your earlier sessions_send request. This result is delivered once; do not resend your request unless the user asks." +
-        (error ? `\nThe joined Branch reported this error (do not quote addresses or file paths to the user):\n${error}` : ""),
-      timeoutMs: 60_000,
-      callGateway: (request) => callGateway(request),
-    }).catch((failure: unknown) => context.logGateway.warn(`graft work reply delivery failed: ${String(failure)}`));
+    // Acknowledges durable receipt, not successful delivery. Polls retry the persisted pending result.
+    await deliverPendingGraftWork(deviceId, deliverGraftResult).catch((failure: unknown) =>
+      context.logGateway.warn(`graft work reply delivery failed: ${String(failure)}`),
+    );
   },
   "a2a.peers.list": async ({ context, respond }) => {
     const configured = listA2aPeers(context.getRuntimeConfig());
     const records = new Map(listOutsideAgents().map((row) => [row.id, row]));
-    const outside = outsideAgentPeers([...records.values()], configured).map((peer) => ({
-      ...peer,
-      online: isOutsideAgentOnline(records.get(peer.name)!),
-    }));
+    const outside = outsideAgentPeers([...records.values()], configured).map((peer) =>
+      Object.assign({}, peer, {
+        online: isOutsideAgentOnline(records.get(peer.name)!),
+      }),
+    );
     respond(true, { peers: [...configured, ...outside] });
   },
   "contacts.outside.hello": async ({ params, respond, context, client }) => {
@@ -254,11 +321,16 @@ export const contactHandlers: GatewayRequestHandlers = {
         "contacts.outside.hello",
         respond,
       )
-    )
+    ) {
       return;
+    }
     // A grafted Trunk row without its trunkId can never receive work, so it is refused rather than kept.
     if (params.agent.kind === "trunk" && !params.agent.trunkId) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "A grafted Trunk needs its trunkId."));
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "A grafted Trunk needs its trunkId."),
+      );
       return;
     }
     let settings = readOutsideAgentSettings();
@@ -301,24 +373,27 @@ export const contactHandlers: GatewayRequestHandlers = {
         "contacts.outside.list",
         respond,
       )
-    )
+    ) {
       return;
+    }
     const settings = readOutsideAgentSettings();
-    const agents = listOutsideAgents().map((row) => ({
-      ...row,
-      contactId: `a2a:${row.id}`,
-      online: isOutsideAgentOnline(row) && !outsideAgentRefusal(row, settings),
-      revoked: Boolean(outsideAgentRefusal(row, { ...settings, enabled: true })),
-      mayDriveWindow: outsideAgentMayDriveWindow(row.id, settings),
-    }));
+    const agents = listOutsideAgents().map((row) =>
+      Object.assign({}, row, {
+        contactId: `a2a:${row.id}`,
+        online: isOutsideAgentOnline(row) && !outsideAgentRefusal(row, settings),
+        revoked: Boolean(outsideAgentRefusal(row, { ...settings, enabled: true })),
+        mayDriveWindow: outsideAgentMayDriveWindow(row.id, settings),
+      }),
+    );
     respond(true, { enabled: settings.enabled, agents });
   },
   "contacts.outside.set": async (options) => {
     const { params, respond, context } = options;
     if (
       !assertValidParams(params, validateContactsOutsideSetParams, "contacts.outside.set", respond)
-    )
+    ) {
       return;
+    }
     if ((params.revoked !== undefined || params.mayDriveWindow !== undefined) && !params.id) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Name the agent (id)"));
       return;
@@ -362,17 +437,28 @@ export const contactHandlers: GatewayRequestHandlers = {
   },
   "graft.links.list": async ({ respond }) => {
     const { readGraftLinks } = await import("../../mcp/graft-join.js");
-    respond(true, { links: readGraftLinks().map(({ url, name, joinedAt }) => ({ url, name, joinedAt })) });
+    respond(true, {
+      links: readGraftLinks().map(({ url, name, joinedAt }) => ({ url, name, joinedAt })),
+    });
   },
   "graft.links.forget": async ({ params, respond, context }) => {
-    const url = params && typeof params === "object" ? (params as { url?: unknown }).url : undefined;
+    const url =
+      params && typeof params === "object" ? (params as { url?: unknown }).url : undefined;
     if (typeof url !== "string" || !url.trim()) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Choose a linked Branch to forget."));
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "Choose a linked Branch to forget."),
+      );
       return;
     }
     const { readGraftLinks, forgetGraftLink } = await import("../../mcp/graft-join.js");
     if (!readGraftLinks().some((link) => link.url === url)) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "That Branch is not linked."));
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "That Branch is not linked."),
+      );
       return;
     }
     forgetGraftLink(url);
@@ -381,17 +467,37 @@ export const contactHandlers: GatewayRequestHandlers = {
     respond(true, { forgotten: url });
   },
   "graft.join": async ({ params, respond }) => {
-    const input = params && typeof params === "object" ? params as Record<string, unknown> : {};
-    if (typeof input.code !== "string" || !input.code.trim() ||
-        (input.name !== undefined && typeof input.name !== "string")) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Enter a setup code and an optional name."));
+    const input = params && typeof params === "object" ? (params as Record<string, unknown>) : {};
+    if (
+      typeof input.code !== "string" ||
+      !input.code.trim() ||
+      (input.name !== undefined && typeof input.name !== "string")
+    ) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "Enter a setup code and an optional name."),
+      );
       return;
     }
     try {
       const { joinGraftFromWindow } = await import("../graft-join-ui.js");
-      respond(true, await joinGraftFromWindow(input.code, typeof input.name === "string" ? input.name : undefined));
+      respond(
+        true,
+        await joinGraftFromWindow(
+          input.code,
+          typeof input.name === "string" ? input.name : undefined,
+        ),
+      );
     } catch (error) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, error instanceof Error ? error.message : String(error)));
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          error instanceof Error ? error.message : String(error),
+        ),
+      );
     }
   },
   "a2a.peers.refresh": async ({ context, respond }) => {
@@ -399,7 +505,9 @@ export const contactHandlers: GatewayRequestHandlers = {
   },
   "contacts.list": async (options) => {
     const { params, respond } = options;
-    if (!assertValidParams(params, validateContactsListParams, "contacts.list", respond)) return;
+    if (!assertValidParams(params, validateContactsListParams, "contacts.list", respond)) {
+      return;
+    }
     const { contacts, defaultId } = await readProjection(options);
     respond(true, {
       contacts: params.includeArchived ? contacts : contacts.filter((row) => !row.archivedAt),
@@ -408,8 +516,9 @@ export const contactHandlers: GatewayRequestHandlers = {
   },
   "contacts.topics": async (options) => {
     const { params, respond } = options;
-    if (!assertValidParams(params, validateContactsTopicsParams, "contacts.topics", respond))
+    if (!assertValidParams(params, validateContactsTopicsParams, "contacts.topics", respond)) {
       return;
+    }
     const projection = await readProjection(options);
     if (!projection.contacts.some((contact) => contact.id === params.contactId)) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Unknown contact"));
@@ -441,8 +550,9 @@ export const contactHandlers: GatewayRequestHandlers = {
   },
   "contacts.markRead": async (options) => {
     const { params, respond, context, sessionMutationAuthorization } = options;
-    if (!assertValidParams(params, validateContactsMarkReadParams, "contacts.markRead", respond))
+    if (!assertValidParams(params, validateContactsMarkReadParams, "contacts.markRead", respond)) {
       return;
+    }
     const projection = await readProjection(options);
     const contact = projection.contacts.find((row) => row.id === params.contactId);
     if (!contact) {
@@ -463,7 +573,9 @@ export const contactHandlers: GatewayRequestHandlers = {
       const entry = await patchSessionEntryCore(
         { sessionKey, agentId: parseAgentSessionKey(sessionKey)?.agentId },
         (current) => {
-          if (!current || (current.lastActivityAt ?? current.updatedAt) > stamp) return {};
+          if (!current || (current.lastActivityAt ?? current.updatedAt) > stamp) {
+            return {};
+          }
           stamped = true;
           return {
             lastReadAt: Math.max(current.lastReadAt ?? 0, stamp),

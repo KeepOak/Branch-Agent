@@ -6,7 +6,10 @@ import type { DesktopControlName } from "../../connect/desktop-controls";
 import type { Level, PageId } from "./nav";
 import { ACCOUNTS_ROWS } from "./pages/accounts";
 import { APPEARANCE_ROWS } from "./pages/appearance";
+import { AUTOS_ROWS } from "./pages/autos";
+import { CUSTOMIZE_ROWS } from "./pages/customize";
 import { GENERAL_ROWS } from "./pages/general";
+import { MEMORY_ROWS } from "./pages/memory";
 
 export type RowSource =
   /** An engine config path: config.get, saved with config.patch through the window's one config store. */
@@ -25,7 +28,8 @@ export type RowSource =
    *  one; a frame without that control draws the row as Coming with this reason. */
   | { kind: "slot"; calls: string[]; reason: string };
 
-export type Control = "toggle" | "segmented" | "select" | "number" | "text" | "secret" | "custom";
+/** "button": a Coming row whose control is one button (its words in Row.button), as the preview draws it. */
+export type Control = "toggle" | "segmented" | "select" | "number" | "text" | "secret" | "button" | "custom";
 export type RowOption = { v: string | number | boolean; label: string };
 /** Converts between what is stored and what the control shows (for example "on"/"off" and a toggle). */
 export type Codec = { read: (stored: unknown) => unknown; write: (shown: unknown) => unknown };
@@ -48,6 +52,8 @@ export type Row = {
   /** Segmented only for 2 to 4 options; longer lists are a select. */
   options?: RowOption[];
   unit?: string;
+  /** The words on a "button" row's button. */
+  button?: string;
   source: RowSource;
   codec?: Codec;
   /** The value shown when nothing is stored and the schema has no default. */
@@ -55,7 +61,15 @@ export type Row = {
   /** A slot row whose control is a list that names its own items (computers, connections): drawn without the row's own
    *  label and help, which still name it for search and the level. */
   bare?: true;
+  /** Exists only while more than one person uses Branch (the engine's hello says so: WindowEngine.sharedGateway). On a
+   *  one-person Branch the row, and a card left with no other row, is not drawn or found by search, as in the preview. */
+  sharedOnly?: true;
 };
+
+/** The rows this engine has: a sharedOnly row goes when the engine says only one person uses it. An engine that doesn't
+ *  say (an older one) keeps every row. */
+export const rowsFor = (rows: Row[], sharedGateway: boolean | undefined): Row[] =>
+  sharedGateway === false ? rows.filter((row) => !row.sharedOnly) : rows;
 
 /** One config.schema uiHints entry. */
 export type UiHint = { label?: string; help?: string; tags?: string[]; group?: string; order?: number; advanced?: boolean; sensitive?: boolean; placeholder?: string };
@@ -90,16 +104,21 @@ export function rowLevel(row: Row, hints: UiHints): Level {
   return !row.ownerLevel && hintOf(row, hints)?.advanced && row.level < 1 ? 1 : row.level;
 }
 
-/** "How much to show" that first shows what waits for a later update: Regular shows only what works today. */
-export const COMING_FROM: Level = 1;
+/** "How much to show" that first shows what waits for a later update: Regular and Advanced show only what works today
+ *  (Private #1093 item 4); Technical shows everything, Coming included. */
+export const COMING_FROM: Level = 2;
 
-/** A row that waits for a later update: Coming by its source, or (when the page's controls are given) a slot row its
- *  page has no control for, which RowView draws as Coming. */
+/** A slot row whose every call is one the engine doesn't have yet ("engine: …"): its control is a Coming button. */
+const waitsOnEngine = (calls: string[]): boolean => calls.length > 0 && calls.every((call) => call.startsWith("engine: "));
+
+/** A row that waits for a later update: Coming by its source, a slot row that waits on calls the engine doesn't have
+ *  yet, or (when the page's controls are given) a slot row its page has no control for, which RowView draws as Coming. */
 export function comingRow(row: Row, controls?: Readonly<Record<string, unknown>>): boolean {
-  return row.source.kind === "coming" || (controls !== undefined && row.source.kind === "slot" && !controls[row.id]);
+  if (row.source.kind === "coming") return true;
+  return row.source.kind === "slot" && (waitsOnEngine(row.source.calls) || (controls !== undefined && !controls[row.id]));
 }
 
-/** The level a row first shows at: its own, and at least Advanced while it is Coming (Regular hides Coming rows). Its
+/** The level a row first shows at: its own, and at least Technical while it is Coming (Regular and Advanced hide Coming rows). Its
  *  Advanced or Technical tag still comes from rowLevel. */
 export function shownLevel(row: Row, hints: UiHints, controls?: Readonly<Record<string, unknown>>): Level {
   const level = rowLevel(row, hints);
@@ -107,7 +126,7 @@ export function shownLevel(row: Row, hints: UiHints, controls?: Readonly<Record<
 }
 
 /** Every row of the R1 Settings pages. Pages add their list here. */
-export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS];
+export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS, ...AUTOS_ROWS, ...MEMORY_ROWS];
 
 /** The rows of one card at this level, in table order. A row above the level is hidden, and so is a Coming row at
  *  Regular. */

@@ -12,7 +12,7 @@ export function ModeStep({ mode, onMode, error }: { mode: ModeId; onMode: (m: Mo
       <p className="r1-ob-lede">The same four choices you’ll see everywhere in Branch.</p>
       <div className="r1-ob-modes" role="radiogroup" aria-label="How much it may do">
         {MODES.map((m) => {
-          const body = <><Icon name={m.icon} size={15} /><span><b>{m.name}{m.recommended ? <em>Recommended</em> : null}</b><small>{m.line}</small></span></>;
+          const body = <><Icon name={m.icon} size={15} /><span><b>{m.name}{m.recommended ? <em>Recommended</em> : null}</b><small>{m.line}</small>{m.exec ? null : <small className="r1-ob-why">{PLAN_FIRST_REASON}</small>}</span></>;
           return m.exec
             ? <Coming key={m.id} need="config.patch" where={m.name}><button type="button" className="r1-ob-mode" role="radio" aria-checked={mode === m.id} onClick={() => onMode(m.id)}>{body}</button></Coming>
             : <Unwired key={m.id} need={WAITS_FOR.planFirst} reason={PLAN_FIRST_REASON} where={m.name}><button type="button" className="r1-ob-mode" role="radio" aria-checked={false}>{body}</button></Unwired>;

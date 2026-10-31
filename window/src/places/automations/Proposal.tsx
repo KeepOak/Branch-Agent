@@ -2,6 +2,7 @@
 // and Sends to; Advanced adds name, note, how it runs, Every…, model, time zone, limits and switches; Technical
 // adds routing, the spread and an editable cron line. Every field maps to a cron.add / cron.update field.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { Failure } from "./Failure";
 import type { ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import { Segmented, Switch } from "../../shell/Popover";
@@ -133,7 +134,7 @@ export function Proposal(props: Props) {
     {adv && draft.form.repeat === "once" && <SwitchRow title="Remove it after it runs" sub="For one-off reminders that tidy themselves away." on={draft.deleteAfterRun} change={deleteAfterRun => change({ deleteAfterRun })} />}
     <p className="au-sum"><b>{formWords(draft.form)}</b>{first ? ` · starts ${when(first)}` : ""}</p>
     {adv && draft.form.repeat !== "once" && draft.form.repeat !== "every" && (tech ? <Field label="Cron line"><input className="inp au-mono" aria-label="Cron line" placeholder="0 7 * * *" value={draft.form.repeat === "custom" ? draft.form.expr : cronLine(draft.form)} onChange={e => set({ repeat: "custom", expr: e.target.value })} /></Field> : <p className="au-mono au-cron" aria-label="Cron line">{cronLine(draft.form)}</p>)}
-    {error && <p className="au-error" role="alert">{error}</p>}
+    {error && <div className="au-error" role="alert"><Failure error={error} /></div>}
     <Footer {...props} />
     {draft.mode !== "edit" && <p className="au-hint">It runs only after you confirm. Until then nothing is saved.</p>}
   </section>;

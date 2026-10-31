@@ -8,6 +8,7 @@ import { turnOf } from "./layout";
 import { isInternalStep } from "./internal-steps";
 import { readAloud, readingKey, stopReading } from "./read-aloud";
 import type { Block } from "./model";
+import { ownLastMessageIndex } from "./own-last-message";
 
 export type ReplyTarget = { entryId: string; name: string; text: string };
 
@@ -17,6 +18,8 @@ type Options = {
   onReply?: (target: ReplyTarget) => void;
   onStartTopic?: (afterMessageId: string) => void;
   applyReaction: (messageId: string, raw: unknown) => void;
+  /** The viewer's profile id when a room is open. null: no room, or nobody signed in. undefined: the id is still loading. */
+  selfId?: string | null;
 };
 
 type DialogState =
@@ -92,11 +95,14 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
     const asked = isReply ? askedBy(blocks, index) : null;
     const branchAt = isReply ? nextAsk(blocks, index)?.meta?.entryId : entryId;
     const userText = block.kind === "user" ? block.text : "";
+    const selfId = Object.prototype.hasOwnProperty.call(opts, "selfId") ? opts.selfId : null;
+    const canEdit = !isReply && Boolean(entryId) && index === ownLastMessageIndex(blocks, selfId);
     return {
       copy: { run: () => void copyText(block.text, toast), disabled: null },
       // Rows that can never apply to this message are left out (no engine id, no earlier message to ask again).
+      // Edit is only your own last message. Retry is the reply's "ask that again".
       ...(isReply && asked?.meta?.entryId ? { retry: act(() => asked.meta?.entryId && retry(asked.meta.entryId), busy) } : {}),
-      ...(!isReply && entryId ? { edit: act(() => setDialog({ kind: "edit", entryId, text: userText }), busy) } : {}),
+      ...(canEdit && entryId ? { edit: act(() => setDialog({ kind: "edit", entryId, text: userText }), busy) } : {}),
       reply: { run: () => entryId && opts.onReply?.({ entryId, name: isReply ? name : "you", text: block.text }), disabled: opts.onReply && entryId ? null : NO_REPLY },
       react: (emoji, remove) => react(entryId, emoji, remove),
       reactDisabled: !engine ? NO_ENGINE : !entryId ? "This message has no engine id yet." : null,

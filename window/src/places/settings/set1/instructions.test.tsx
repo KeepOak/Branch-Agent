@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
 import { InstructionsPage } from "./instructions";
+import { STARTERS } from "./instructions-editor";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const H1 = "a".repeat(64), H2 = "b".repeat(64), H3 = "c".repeat(64);
@@ -70,6 +71,20 @@ describe("Settings › Instructions & personality", () => {
     await act(async () => second.click());
     await act(async () => undefined);
     expect(pressed()).toEqual(["Second"]);
+  });
+
+  it("a SOUL.md that does not exist yet opens on Branch's own starter text, not the engine's template", async () => {
+    const template = "You're not a chatbot. Read https://docs.example.com/concepts/soul for the full guide.";
+    const { engine } = engineOf({
+      "agents.files.get": (p) => (p.name === "SOUL.md" ? { file: { name: "SOUL.md", path: "/w/SOUL.md", missing: true, content: template } } : { file: { name: p.name, path: `/w/${p.name}`, missing: true } }),
+    });
+    await render(engine);
+    await act(async () => button(row("Who your assistant is"), "Edit").click());
+    const dlg = document.querySelector<HTMLElement>('[data-testid="instruction-file"]')!;
+    const text = dlg.querySelector("textarea")!.value;
+    expect(text).toBe(STARTERS["SOUL.md"]);
+    expect(text).not.toContain("chatbot");
+    expect(text).not.toMatch(/https?:\/\//);
   });
 
   it("saves an edited file with the hash it read, and a new one as expected missing", async () => {
@@ -167,12 +182,16 @@ describe("Settings › Instructions & personality", () => {
     expect(row("Who your assistant is").querySelector(".if-path")!.textContent).toBe("/w/SOUL.md");
   });
 
-  it("Just about you stays away on a one-person Branch, and saves the person's own USER.md otherwise", async () => {
+  it("Just about you says why it is empty on a one-person Branch, and saves the person's own USER.md otherwise", async () => {
     const one = engineOf();
     await render(one.engine);
-    expect(host.textContent).not.toContain("Just about you");
+    // The engine refuses the note here, so the card says so in one line and offers no Write.
+    expect(host.textContent).toContain("Not kept on this Branch");
+    expect(row("Just about you")?.querySelectorAll("button").length).toBe(0);
     const many = engineOf({ "users.personalFile.get": () => ({ agentId: "main", profileId: "p1", content: "", hash: null, missing: true }) });
     await render(many.engine);
+    expect(row("Just about you").querySelector("code.if-name")?.textContent).toBe("USER.md");
+    expect(row("Just about you").querySelector("small")?.textContent).toBe("Yours: what this Trunk should know about you. Only you and it read it.");
     await act(async () => button(row("Just about you"), "Write").click());
     const dlg = document.querySelector<HTMLElement>('[data-testid="just-about-you"]')!;
     expect(dlg.textContent).toContain("0 / 4,000 characters");
@@ -181,5 +200,17 @@ describe("Settings › Instructions & personality", () => {
     await type(dlg.querySelector("textarea")!, "Call me T.");
     await act(async () => button(dlg, "Save").click());
     expect(many.request).toHaveBeenCalledWith("users.personalFile.set", { agentId: "main", content: "Call me T.", expectedHash: null });
+  });
+
+  it("leaves Just about you out, and never asks for the personal USER.md, when the hello says one person uses this Branch (#1920)", async () => {
+    const one = engineOf();
+    (one.engine as { sharedGateway?: boolean }).sharedGateway = false;
+    await render(one.engine);
+    // As in the preview: a one-person Branch has no Just about you section at all.
+    expect(host.textContent).not.toContain("Just about you");
+    expect(host.textContent).not.toContain("Not kept on this Branch");
+    expect(host.querySelector('.if-row[data-row="Just about you"]')).toBeNull();
+    expect(host.textContent).toContain("Who your assistant is: tone and boundaries");
+    expect(one.request.mock.calls.some(([m]) => m === "users.personalFile.get")).toBe(false);
   });
 });

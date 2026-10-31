@@ -4,10 +4,12 @@ import type { WindowEngine } from "../../connect/engine";
 import type { Block } from "../../thread/model";
 import { SIcon } from "../stage-icons";
 import { useShells } from "./use-shells";
+import { plainError } from "../../shell/plain-error";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown) => (typeof v === "string" ? v : "");
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const errorText = (e: unknown): string => plainError(e);
 const NO_FORGET = "The engine can't forget one memory yet.";
 
 /** Memory: what it remembers that fits this conversation (memory.search with the latest thing you asked). */

@@ -1,0 +1,1 @@
+window:src/places/automations/place-tab.test.tsx

@@ -20,6 +20,7 @@ import {
   releaseBranchAgentDatabaseLease,
 } from "../state/branch-agent-db-lease.js";
 import {
+  closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
   BRANCH_AGENT_SCHEMA_VERSION,
   openBranchAgentDatabase,
@@ -29,6 +30,7 @@ import { withLegacySessionParticipantsSchema } from "../state/branch-agent-parti
 import { seedBranchAgentSchemaV21 } from "../state/branch-agent-schema-v21.test-support.js";
 import { sessionParticipantsSchemaSql } from "../state/branch-agent-session-participants-schema.js";
 import {
+  closeBranchStateDatabaseAsync,
   closeBranchStateDatabaseForTest,
   openBranchStateDatabase,
 } from "../state/branch-state-db.js";
@@ -196,8 +198,11 @@ function parseArchive(content: string): FixtureEvent[] {
     .map((line) => JSON.parse(line) as FixtureEvent);
 }
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
+  // Drain worker-held handles before rm; Windows refuses to delete open SQLite files.
+  await closeBranchAgentDatabasesAsync();
+  await closeBranchStateDatabaseAsync();
   closeBranchAgentDatabasesForTest();
   closeBranchStateDatabaseForTest();
   cleanupTempDirs(tempDirs);

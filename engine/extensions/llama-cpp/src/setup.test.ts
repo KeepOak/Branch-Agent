@@ -36,6 +36,7 @@ vi.mock("./managed-server.js", async (importOriginal) => ({
 
 import {
   DEFAULT_LLAMA_CPP_EMBEDDING_MODEL,
+  DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_SIZE_BYTES,
   DEFAULT_LLAMA_CPP_MODEL_CACHE_FILE,
   DEFAULT_LLAMA_CPP_MODEL_ID,
   DEFAULT_LLAMA_CPP_MODEL_SHA256,
@@ -95,6 +96,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await fs.rm(tempRoot, { recursive: true, force: true });
 });
 
@@ -338,7 +340,7 @@ describe("llama.cpp managed setup", () => {
     expect(result.defaultModel).toBe(`llama-cpp/${recipe.model.id}`);
     expect(ctx.prompter.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: expect.stringContaining(`Use cached ${recipe.model.name}`),
+        message: expect.stringContaining("Use cached Gemma 4 E2B, download"),
       }),
     );
     expect(mocks.prepareServer).toHaveBeenCalledWith(
@@ -364,7 +366,7 @@ describe("llama.cpp managed setup", () => {
     );
     expect(ctx.prompter.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: expect.stringContaining(`${recipe.model.name} (16.5 GB)`),
+        message: expect.stringContaining("Download Qwen3.8 27B (16.5 GB), "),
       }),
     );
     expect(result.defaultModel).toBe(`llama-cpp/${recipe.model.id}`);
@@ -383,6 +385,40 @@ describe("llama.cpp managed setup", () => {
         asset: expect.objectContaining({ backend: "metal" }),
       }),
     );
+  });
+
+  it.each([
+    { label: "nothing is cached", embeddingCached: false },
+    { label: "the search model is cached", embeddingCached: true },
+  ])("asks with the whole download size when $label", async ({ embeddingCached }) => {
+    // A fresh state dir: no runtime is installed, so its published archive is downloaded.
+    vi.stubEnv("BRANCH_STATE_DIR", path.join(tempRoot, "state"));
+    mocks.ensureModel.mockImplementation(async ({ source, download }) => {
+      if (!download && !(embeddingCached && source === DEFAULT_LLAMA_CPP_EMBEDDING_MODEL)) {
+        throw new Error("not cached");
+      }
+      return path.join(tempRoot, "artifact.gguf");
+    });
+    const ctx = authContext(false);
+    const recipe = resolveLlamaCppModelCandidates(await mocks.hardware(), "metal").recipes[0]!;
+
+    await runLlamaCppSetup(ctx);
+
+    // Published size of llama-b10809-bin-macos-arm64.tar.gz.
+    const runtimeBytes = 11_123_196;
+    const total =
+      recipe.sizeBytes +
+      (embeddingCached ? 0 : DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_SIZE_BYTES) +
+      runtimeBytes;
+    const [step] = vi.mocked(ctx.prompter.confirm).mock.calls[0]!;
+    const question = step.message.split("\n\n").at(-1) ?? "";
+    expect(question).toContain(`(${(recipe.sizeBytes / 1e9).toFixed(1)} GB)`);
+    expect(question).toMatch(
+      new RegExp(
+        `runtime, ${(total / 1e9).toFixed(1).replace(".", "[.]")} GB in total, then use this model[?]$`,
+      ),
+    );
+    expect(mocks.ensureModel).not.toHaveBeenCalledWith(expect.objectContaining({ download: true }));
   });
 
   it("makes CPU execution explicit when the NVIDIA host lacks a verified CUDA build", async () => {
@@ -520,6 +556,19 @@ describe("llama.cpp managed setup", () => {
     await expect(runLlamaCppSetup(ctx)).resolves.toEqual({ profiles: [] });
     expect(ctx.prompter.confirm).not.toHaveBeenCalled();
     expect(mocks.ensureModel).not.toHaveBeenCalledWith(expect.objectContaining({ download: true }));
+  });
+
+  it("says in plain words first why setup skipped a computer that is too small", async () => {
+    vi.mocked(os.totalmem).mockReturnValue(4 * GIB);
+    const ctx = authContext(true);
+
+    await runLlamaCppSetup(ctx);
+
+    const [message, title] = vi.mocked(ctx.prompter.note).mock.calls.at(-1)!;
+    const [plain, details] = message.split("\n\n");
+    expect(title).toBe("Setup skipped");
+    expect(plain).toBe("This computer doesn’t have enough memory to run a free model.");
+    expect(details).toMatch(/memory budget/u);
   });
 
   it("offers embedding-only setup for local memory below the chat RAM floor", async () => {
@@ -818,6 +867,21 @@ describe("llama.cpp managed setup", () => {
     expect(ctx.prompter.confirm).toHaveBeenCalledWith(
       expect.objectContaining({ message: expect.stringContaining("verified METAL runtime") }),
     );
+    expect(mocks.ensureModel).not.toHaveBeenCalledWith(expect.objectContaining({ download: true }));
+  });
+
+  it.each([
+    [16, "Download Qwen3.5 9B (5.7 GB), "],
+    [64, "Download Qwen3.8 27B (16.5 GB), "],
+  ])("asks without the file format tag at %i GiB", async (memoryGiB, download) => {
+    vi.mocked(os.totalmem).mockReturnValue(memoryGiB * GIB);
+    const ctx = authContext(false);
+    await runLlamaCppSetup(ctx);
+
+    const [step] = vi.mocked(ctx.prompter.confirm).mock.calls[0]!;
+    const question = step.message.split("\n\n").at(-1) ?? "";
+    expect(question.startsWith(download)).toBe(true);
+    expect(question).not.toMatch(/Q4_K_M|\([^)]*\(/);
     expect(mocks.ensureModel).not.toHaveBeenCalledWith(expect.objectContaining({ download: true }));
   });
 

@@ -53,7 +53,7 @@ export function PeopleTab({ engine, users, me, level, selected, onSelect, openCo
       {current && <Detail key={current.id} engine={engine} person={current} me={me} people={people} conns={conns} config={config.data} level={level} reload={users.reload} openConversation={openConversation} />}
     </div>}
     <p className="pp-hint">Separation on one computer, not separate accounts. Each person’s conversations and memory are their own.</p>
-    {invite && <InviteDialog engine={engine} onClose={() => setInvite(false)} />}
+    {invite && <InviteDialog engine={engine} technical={shows(level, "technical")} onClose={() => setInvite(false)} />}
   </>;
 }
 

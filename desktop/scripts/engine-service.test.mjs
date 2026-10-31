@@ -1,6 +1,6 @@
 // Always on (Private #454 A+B): the app attaches to the engine service and never starts a second engine.
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
@@ -12,13 +12,29 @@ import test from 'node:test';
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error('Compile the exact desktop source before testing');
 const require = createRequire(import.meta.url);
 const service = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'engine-service.js'));
+const fallback = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'fallback-engine.js'));
+const records = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'engine-records.js'));
 const { acquireEngineStartLock, attachOrStartEngine, engineAnswers, engineServiceArgs, recordEngineMode, takeChildModeNotice, takeCrashStormNotice } = service;
 const { EXTERNAL_VOLUME_SERVICE_LINE, SERVICE_BLOCKED_LINE, childModeSettingsLine, parseLaunchdJob, readServiceLogsSince, serviceCannotRunReason, serviceLogPaths, serviceVolumeBlock } = service;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+/** Windows keeps a directory locked until the process that used it as its cwd has exited. */
+async function removeDataDir(dir) {
+  const end = Date.now() + 5_000;
+  for (;;) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (!['EPERM', 'EBUSY', 'ENOTEMPTY'].includes(error.code) || Date.now() > end) throw error;
+      await pause(50);
+    }
+  }
+}
+
 function dataDir(t) {
   const dir = mkdtempSync(join(tmpdir(), 'branch-always-on-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  t.after(() => removeDataDir(dir));
   return dir;
 }
 
@@ -358,5 +374,164 @@ test('an externally supervised launch never removes or installs a service, and a
 
 test('the uninstall action runs the engine uninstall, with the JSON answer the launch reads', () => {
   assert.deepEqual(engineServiceArgs('uninstall'), ['branch.mjs', 'gateway', 'uninstall', '--json']);
+});
+
+test('the fallback detaches when Keep working is on, and Keep working off stays on today\'s spawn', () => {
+  const { fallbackEngineSurvivesQuit, fallbackEngineSpawnOptions, quitLeavesFallbackEngine } = fallback;
+  assert.equal(fallbackEngineSurvivesQuit(true, true), true);
+  assert.equal(fallbackEngineSurvivesQuit(true, false), false, 'Keep working off');
+  assert.equal(fallbackEngineSurvivesQuit(false, true), false, 'Always on off');
+  for (const platform of ['win32', 'darwin', 'linux']) {
+    const on = fallbackEngineSpawnOptions({ platform, surviveQuit: true, env: {}, cwd: '/engine', logFd: 7 });
+    assert.equal(on.detached, true, platform);
+    assert.equal(on.windowsHide, true, platform);
+    assert.deepEqual(on.stdio, ['ignore', 7, 7, 'ipc'], platform);
+    const off = fallbackEngineSpawnOptions({ platform, surviveQuit: false, env: {}, cwd: '/engine', logFd: undefined });
+    assert.equal(off.detached, platform !== 'win32', platform);
+    assert.deepEqual(off.stdio, ['ignore', 'pipe', 'pipe', 'ipc'], platform);
+    assert.equal(off.windowsHide, true, platform);
+  }
+  assert.throws(() => fallbackEngineSpawnOptions({ platform: 'win32', surviveQuit: true, env: {}, cwd: '/engine', logFd: undefined }), /gateway log/);
+  assert.equal(quitLeavesFallbackEngine(true, true, false), true, 'quit leaves the detached fallback');
+  assert.equal(quitLeavesFallbackEngine(true, false, false), false, 'Keep working off still stops it');
+  assert.equal(quitLeavesFallbackEngine(false, true, false), false, 'a normal child is still stopped');
+  assert.equal(quitLeavesFallbackEngine(true, true, true), false, 'a handoff in flight still stops it');
+});
+
+test('Keep working on, the one-time Settings line says the fallback will not restart after sign-out or reboot', () => {
+  const notice = "Running inside the app: this copy isn't the standard install, so the background service stays off.";
+  const line = childModeSettingsLine(notice, true);
+  assert.equal(line, `${notice} Closing Branch leaves your Trunks running. They won't restart after you sign out or reboot.`);
+  assert.equal(childModeSettingsLine('Access is denied', true),
+    "Branch runs inside the app on this computer because its background service couldn't be installed (Access is denied). Closing Branch leaves your Trunks running. They won't restart after you sign out or reboot.");
+  assert.doesNotMatch(line, /Quitting Branch stops/);
+  assert.equal(childModeSettingsLine(notice), `${notice} Quitting Branch stops your Trunks.`, 'Keep working off keeps the old line');
+});
+
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+function alive(pid) {
+  try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; }
+}
+
+function stopPid(pid) {
+  if (!pid) return;
+  try {
+    if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+    else {
+      try { process.kill(-pid, 'SIGKILL'); } catch { process.kill(pid, 'SIGKILL'); }
+    }
+  } catch { /* already gone */ }
+}
+
+/** Runs the quit stand-in. It starts the engine with production startGateway, then leaves or stops it. */
+function runQuitUi(dir, port, keepWorking, alwaysOn) {
+  const ui = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'fallback-quit-ui.cjs');
+  return new Promise((resolve, reject) => {
+    execFile(process.execPath, [ui, process.env.BRANCH_DESKTOP_TEST_DIST, dir, String(port), keepWorking ? '1' : '0', alwaysOn ? '1' : '0'],
+      { windowsHide: true }, (error, stdout, stderr) => {
+        if (error) reject(new Error(`quit stand-in failed: ${stderr || error.message}`));
+        else resolve(Number(/pid (\d+)/.exec(stdout)?.[1]));
+      });
+  });
+}
+
+const ENGINE_SCRIPT = `import http from "node:http";
+const port = Number(process.argv[4]);
+http.createServer((req, res) => {
+  res.statusCode = req.url === "/readyz" ? 200 : 404;
+  res.end();
+}).listen(port, "127.0.0.1");
+`;
+
+test('quit leaves the detached fallback, and the next launch attaches when that pid still owns the port', async t => {
+  const { writeFileSync } = await import('node:fs');
+  let pid;
+  // Registered before dataDir's removal, so the child is dead before the folder is removed.
+  t.after(async () => {
+    stopPid(pid);
+    const end = Date.now() + 5_000;
+    while (pid && alive(pid) && Date.now() < end) await pause(50);
+  });
+  const dir = dataDir(t);
+  writeFileSync(join(dir, 'branch.mjs'), ENGINE_SCRIPT);
+  const port = await freePort();
+  pid = await runQuitUi(dir, port, true, true);
+  assert.ok(Number.isInteger(pid) && pid > 0);
+  await pause(500);
+  assert.equal(alive(pid), true, 'quit did not kill the fallback');
+  assert.equal(await engineAnswers(port), true, 'it still answers /readyz');
+  const survivor = await records.findSurvivingEngine(dir, port);
+  assert.equal(survivor && survivor.pid, pid, 'the next launch attaches to the recorded engine');
+  assert.equal(survivor.role, 'engine');
+});
+
+async function until(check, label, ms = 10_000) {
+  const end = Date.now() + ms;
+  for (;;) {
+    if (await check()) return;
+    if (Date.now() > end) throw new Error(label);
+    await pause(50);
+  }
+}
+
+test('a stale fallback record is ignored when the pid is gone, does not own the port, or /readyz is not 200', async t => {
+  const { spawn } = await import('node:child_process');
+  const standin = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'fallback-engine-standin.cjs');
+  const port = await freePort();
+  const other = await freePort();
+  const child = spawn(process.execPath, [standin, String(port), '200'], { detached: true, windowsHide: true, stdio: 'ignore' });
+  const sleeper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, windowsHide: true, stdio: 'ignore' });
+  const notReady = spawn(process.execPath, [standin, String(other), '503'], { detached: true, windowsHide: true, stdio: 'ignore' });
+  child.unref(); sleeper.unref(); notReady.unref();
+  t.after(() => { stopPid(child.pid); stopPid(sleeper.pid); stopPid(notReady.pid); });
+  await until(() => engineAnswers(port), 'the ready stand-in did not answer');
+  await until(async () => (await fetch(`http://127.0.0.1:${other}/readyz`).then(res => res.status, () => 0)) === 503, 'the 503 stand-in did not answer');
+
+  const { findSurvivingEngine, recordEngine } = records;
+  const dir = dataDir(t);
+  recordEngine(dir, child, port, 'engine', process.execPath);
+  const attached = await findSurvivingEngine(dir, port);
+  assert.equal(attached && attached.pid, child.pid, 'a live owner that answers 200 is kept');
+
+  const missed = dataDir(t);
+  recordEngine(missed, sleeper, port, 'engine', process.execPath);
+  assert.equal(await findSurvivingEngine(missed, port), undefined, 'a pid that does not own the port is ignored');
+
+  const refusedDir = dataDir(t);
+  recordEngine(refusedDir, notReady, other, 'engine', process.execPath);
+  assert.equal(alive(notReady.pid), true);
+  assert.equal(await findSurvivingEngine(refusedDir, other), undefined, 'a listener whose /readyz is not 200 is ignored');
+
+  stopPid(child.pid);
+  await until(async () => !alive(child.pid), 'the stand-in did not exit');
+  assert.equal(await findSurvivingEngine(dir, port), undefined, 'a dead pid is ignored');
+});
+
+test('Keep working off, and Always on off, still stop the fallback on quit', async t => {
+  const { writeFileSync } = await import('node:fs');
+  const stopped = async (keepWorking, alwaysOn) => {
+    const dir = dataDir(t);
+    writeFileSync(join(dir, 'branch.mjs'), ENGINE_SCRIPT);
+    const port = await freePort();
+    const pid = await runQuitUi(dir, port, keepWorking, alwaysOn);
+    t.after(() => stopPid(pid));
+    const end = Date.now() + 5_000;
+    while (alive(pid) && Date.now() < end) await pause(50);
+    assert.equal(alive(pid), false, `keepWorking ${keepWorking} alwaysOn ${alwaysOn}`);
+    assert.equal(await engineAnswers(port), false);
+    assert.equal(await records.findSurvivingEngine(dir, port), undefined, 'a stopped engine is not attached to');
+  };
+  await stopped(false, true);
+  await stopped(true, false);
 });
 

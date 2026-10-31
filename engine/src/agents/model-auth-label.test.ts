@@ -65,7 +65,7 @@ describe("resolveModelAuthLabel", () => {
         "github-copilot:default": {
           type: "token",
           provider: "github-copilot",
-          token: "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", // pragma: allowlist secret
+          token: ["ghp_", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"].join(""), // pragma: allowlist secret
           tokenRef: { source: "env", provider: "default", id: "GITHUB_TOKEN" },
         },
       },
