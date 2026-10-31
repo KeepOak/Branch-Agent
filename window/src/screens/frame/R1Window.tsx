@@ -401,6 +401,15 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const [newTrunkOpen, setNewTrunkOpen] = useState(false);
   const [newTrunkBusy, setNewTrunkBusy] = useState(false);
   const [newTrunkError, setNewTrunkError] = useState<string | null>(null);
+  // The Trunk whose page opens once People shows. Sent after that navigation commits, so the host the person left
+  // (Settings draws its own TrunkHost) has already run its cleanup, which clears any open request (#2153).
+  const trunkAfterNav = useRef<string | null>(null), [, rerender] = useState(0);
+  useEffect(() => {
+    const agentId = trunkAfterNav.current;
+    if (!agentId || route.kind !== "place" || route.place !== "people") return;
+    trunkAfterNav.current = null;
+    window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId, view: "profile" } }));
+  });
   const makingTrunk = useRef(false);
   const trunkActions = useMemo(() => conversationActions((method, params) => session.request(method, params), list, () => session.getSnapshot().mainKey), [session, list]);
   const newTrunk = useCallback(() => { setNewTrunkError(null); setNewTrunkOpen(true); }, []);
@@ -417,7 +426,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
     try { agentId = await createShapedTrunk(engine, draft); }
     catch (e) { setNewTrunkError(creationProblem(e)); return; }
     finally { makingTrunk.current = false; setNewTrunkBusy(false); }
-    // The Trunk exists: the sheet closes even if its conversation can't open (#479). That says so, with Try again.
+    // The Trunk exists: the sheet closes even if its conversation can't open (#479). Then its page opens and a
+    // plain message says the conversation couldn't, with Try again.
     setNewTrunkOpen(false);
     const name = draft.name.trim();
     await openNewTrunkConversation(name, {
@@ -426,6 +436,11 @@ export function R1Window({ session }: { session: SaplingSession }) {
       show: (sessionKey) => {
         setNewTrunkFlow({ agentId, sessionKey, name, avatar: "classic", colour: draft.colour, shape: draft.shape });
         openConversation(sessionKey);
+      },
+      showTrunk: () => {
+        trunkAfterNav.current = agentId;
+        navigateTo.current({ kind: "place", place: "people" });
+        rerender((n) => n + 1); // Already on People: the effect still runs.
       },
     });
   };

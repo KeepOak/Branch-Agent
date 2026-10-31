@@ -6,13 +6,22 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SaplingSession } from "../../connect/session";
 import { OPEN_NEW_TRUNK_SHEET } from "../../places/trunk/new-trunk-sheet";
+import { TrunkHost } from "../../places-nav/TrunkHost";
 import { R1Window } from "./R1Window";
 
 vi.mock("../chat/ChatView", () => ({ ChatView: () => <p>chat</p> }));
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
 vi.mock("../../shell/use-status", () => ({ useLimits: () => null }));
 vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
-vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: () => <p>Place content</p> }));
+// Places and both Settings frames draw the real TrunkHost, as they do in the window, so a page request that one host's
+// cleanup clears shows up here (#2153). The profile itself is a stub.
+const hosted = (text: string) => function Hosted({ engine }: { engine: never }) {
+  return <><p>{text}</p><TrunkHost engine={engine} level="regular" openSettings={() => undefined} openPlace={() => undefined} /></>;
+};
+vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: (props: { engine: never }) => hosted("Place content")(props) }));
+vi.mock("../settings", async (real) => ({ ...(await real<object>()), SettingsFrame: (props: { engine: never }) => hosted("Settings content")(props) }));
+vi.mock("../../places-nav/SettingsFrame", async (real) => ({ ...(await real<object>()), SettingsFrame: (props: { engine: never }) => hosted("Settings content")(props) }));
+vi.mock("../../places/trunk", async (real) => ({ ...(await real<object>()), TrunkProfile: ({ agentId }: { agentId: string }) => <p data-testid="trunk-profile">{agentId}</p> }));
 vi.mock("../../face/Face", () => ({ Face: () => <span /> }));
 vi.mock("../sidebar/Sidebar", () => ({ Sidebar: () => <nav aria-label="Sidebar stub" /> }));
 vi.mock("../../places/settings/set1/appearance-store", () => ({ lookStore: () => ({ load: async () => undefined }) }));
@@ -76,4 +85,70 @@ it("closes the New Trunk sheet once the Trunk exists, says its conversation coul
   expect(open).toHaveBeenCalledWith("agent:hazel:main");
   expect(request.mock.calls.filter(([method]) => method === "agents.create")).toHaveLength(1);
   expect(document.querySelector('[data-testid="new-trunk-sheet"]')).toBeNull();
+});
+
+it("opens the new Trunk's page when its first conversation can't open, with the plain message (#479)", async () => {
+  const snapshot = { status: { phase: "connected" }, name: "Ledger", sessionKey: "agent:ledger:main", mainKey: "agent:ledger:main", history: [], live: [], queued: [] };
+  let created = false;
+  const request = vi.fn(async (method: string) => {
+    if (method === "agents.create") { created = true; return { agentId: "hazel" }; }
+    if (method === "agents.list") {
+      if (created) throw new Error("Agent creation no longer owns its originally observed target");
+      return { defaultId: "ledger", mainKey: "main", agents: [{ id: "ledger" }] };
+    }
+    if (method === "sessions.list") return { sessions: [] };
+    return {};
+  });
+  const engine = { request, onEvent: () => () => undefined, sessionKey: "agent:ledger:main", scopes: ["operator.admin"], gatewayUrl: "ws://gateway-479.invalid" };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine, request, open: vi.fn(async () => undefined), gatewayUrl: "ws://gateway-479.invalid" } as unknown as SaplingSession;
+  const opened: unknown[] = [];
+  const onOpenTrunk = (e: Event) => opened.push((e as CustomEvent).detail);
+  window.addEventListener("branch:open-trunk", onOpenTrunk);
+  try {
+    await act(async () => root.render(<R1Window session={session} />));
+    expect(document.body.textContent).not.toContain("Place content");
+    await act(async () => { window.dispatchEvent(new CustomEvent(OPEN_NEW_TRUNK_SHEET)); });
+    const make = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Make Trunk");
+    await act(async () => make!.click());
+    await flush();
+
+    expect(document.querySelector('[data-testid="new-trunk-sheet"]')).toBeNull();
+    expect(document.body.textContent).toContain("Place content");
+    expect(opened).toContainEqual({ agentId: "hazel", view: "profile" });
+    const toast = document.querySelector('[data-testid="toast"]');
+    expect(toast?.textContent).toContain("“Hazel” is ready, but its conversation couldn’t open.");
+    expect(toast?.textContent).toContain("Its page is open.");
+    expect(toast?.textContent).not.toContain("originally observed target");
+    expect(request.mock.calls.filter(([method]) => method === "agents.create")).toHaveLength(1);
+  } finally {
+    window.removeEventListener("branch:open-trunk", onOpenTrunk);
+  }
+});
+
+it("keeps the new Trunk's page open when New Trunk started from Settings and its conversation can't open (#2153)", async () => {
+  const snapshot = { status: { phase: "connected" }, name: "Ledger", sessionKey: "agent:ledger:main", mainKey: "agent:ledger:main", history: [], live: [], queued: [] };
+  let created = false;
+  const request = vi.fn(async (method: string) => {
+    if (method === "agents.create") { created = true; return { agentId: "hazel" }; }
+    if (method === "agents.list") {
+      if (created) throw new Error("Agent creation no longer owns its originally observed target");
+      return { defaultId: "ledger", mainKey: "main", agents: [{ id: "ledger" }] };
+    }
+    if (method === "sessions.list") return { sessions: [] };
+    return {};
+  });
+  const engine = { request, onEvent: () => () => undefined, sessionKey: "agent:ledger:main", scopes: ["operator.admin"], gatewayUrl: "ws://gateway-479.invalid" };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine, request, open: vi.fn(async () => undefined), gatewayUrl: "ws://gateway-479.invalid" } as unknown as SaplingSession;
+  await act(async () => root.render(<R1Window session={session} />));
+  await act(async () => { window.dispatchEvent(new CustomEvent("branch:navigate-settings", { detail: { page: "trunks" } })); });
+  expect(document.body.textContent).toContain("Settings content");
+  await act(async () => { window.dispatchEvent(new CustomEvent(OPEN_NEW_TRUNK_SHEET)); });
+  const make = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Make Trunk");
+  await act(async () => make!.click());
+  await flush();
+
+  expect(document.body.textContent).not.toContain("Settings content");
+  expect(document.body.textContent).toContain("Place content");
+  expect(document.querySelector('[data-testid="trunk-profile"]')?.textContent).toBe("hazel");
+  expect(document.querySelector('[data-testid="toast"]')?.textContent).toContain("Its page is open.");
 });
