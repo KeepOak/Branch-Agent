@@ -144,6 +144,35 @@ vi.mock("./launchd-recovery.js", () => ({
   recoverInstalledLaunchAgent: (args: { result: "started" | "restarted" }) =>
     recoverInstalledLaunchAgent(args),
 }));
+vi.mock("../../infra/runtime-process-entrypoints.js", () => ({ runtimeProcessEntrypoints: [] }));
+vi.mock("../../infra/gateway-state-owner-heartbeat.js", () => ({}));
+vi.mock("../../infra/gateway-state-owner.js", () => ({
+  acquireGatewayStateOwner: vi.fn(),
+  createGatewayStateProjection: vi.fn(),
+  resolveGatewayStateOwnerPath: vi.fn(),
+  tryBorrowGatewayStateOwner: vi.fn(),
+  GatewayStateOwnerContentionError: class extends Error {},
+}));
+vi.mock("./service-start-fallback.js", () => ({
+  GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE: "both-failed",
+  failAfterGatewayChildFallback: (reason: string, fail: (message: string) => void) => fail(reason),
+  createGatewayChildFallbackOnce: () => ({
+    attempted: () => false,
+    peek: () => null,
+    run: async () => null,
+  }),
+  applyGatewayChildFallbackOnce: async (params: {
+    failed: string;
+    fail: (message: string, hints?: string[], code?: string) => void;
+    hints?: string[];
+    code?: string;
+  }) => {
+    params.fail(params.failed, params.hints, params.code);
+    return false;
+  },
+  noteReadyChildFallback: () => false,
+  recoverGatewayAsAppChild: async () => null,
+}));
 
 vi.mock("./start-repair.js", () => ({
   repairLoadedGatewayServiceForStart: (args: unknown) => repairLoadedGatewayServiceForStart(args),
@@ -999,7 +1028,7 @@ describe("runDaemonRestart health checks", () => {
         mode: "rpc",
         pid: 4200,
       });
-      expectListenerHealth(720, lockIdentity);
+      expectListenerHealth(process.platform === "win32" ? 960 : 720, lockIdentity);
     });
 
     it("keeps safe restarts on the exact local lock owner", async () => {

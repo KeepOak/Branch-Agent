@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readRootJsonObjectSync } from "@openclaw/fs-safe/json";
@@ -44,6 +45,28 @@ export function resolveRuntimeWorkerUrl(params: {
   return new URL(`./${params.sourceWorkerName}${extension}`, params.currentModuleUrl);
 }
 
+/**
+ * Resolve a loader specifier such as "tsx" to a file URL. `import.meta.resolve` is missing when this module
+ * is loaded through a CommonJS transform (tsx/esbuild rewrite `import.meta` to a plain object, which threw
+ * "define_import_meta_default.resolve is not a function" in Doctor's Codex migration), so fall back to
+ * createRequire, as runtime-worker-url.test.ts already does. tsx's "." and "./esm" exports are unconditional.
+ */
+export function resolveLoaderSpecifierUrl(
+  specifier: string,
+  meta: { resolve?: unknown; url?: unknown } = import.meta,
+): string {
+  if (typeof meta.resolve === "function") {
+    return (meta.resolve as (value: string) => string)(specifier);
+  }
+  const base =
+    typeof meta.url === "string" && meta.url
+      ? meta.url
+      : typeof __filename === "string"
+        ? pathToFileURL(__filename).href
+        : pathToFileURL(path.join(process.cwd(), "__branch_loader_base__.js")).href;
+  return pathToFileURL(createRequire(base).resolve(specifier)).href;
+}
+
 function isBunTargetRuntime(execPath: string): boolean {
   // Current runtime metadata also identifies renamed binaries; foreign paths keep their own selection.
   return execPath === process.execPath ? Boolean(process.versions.bun) : isBunRuntime(execPath);
@@ -63,7 +86,7 @@ export function resolveRuntimeWorkerArgv(url: URL, execPath = process.execPath):
   const entry = fileURLToPath(url);
   // Resolve the preload here: Node resolves bare imports from the child cwd.
   return runtimeNeedsTypeScriptLoader(entry, execPath)
-    ? ["--import", import.meta.resolve("tsx"), entry]
+    ? ["--import", resolveLoaderSpecifierUrl("tsx"), entry]
     : [...resolveRuntimeArgs(execPath), entry];
 }
 
@@ -73,6 +96,6 @@ export function resolveRuntimeWorkerThreadExecArgv(
   execPath = process.execPath,
 ): string[] {
   return url.protocol === "file:" && runtimeNeedsTypeScriptLoader(fileURLToPath(url), execPath)
-    ? ["--import", import.meta.resolve("tsx/esm")]
+    ? ["--import", resolveLoaderSpecifierUrl("tsx/esm")]
     : [];
 }

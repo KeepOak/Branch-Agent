@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { createConnection, createServer } from "node:net";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import * as driverModule from "../dist/mac-computer-driver.js";
-const { MacComputerDriver, describeDriverError, macScreenControlEnabled } = driverModule;
+const { MacComputerDriver, describeDriverError, macDriverStore, macScreenControlEnabled, readEnginePins } = driverModule;
+import { externalUrlAllowed, MAC_SCREEN_RECORDING_SETTINGS } from "../dist/external-url.js";
 
 test("Mac screen control remains off until explicitly enabled", async () => {
   const dir = await mkdtemp(join(tmpdir(), "branch-mac-screen-setting-"));
@@ -23,10 +26,18 @@ test("Mac app requests both permissions before supplying a live embedded driver 
   const dir = await mkdtemp(join(tmpdir(), "branch-mac-driver-test-"));
   const binary = join(dir, "cua-driver");
   const socketPath = process.platform === "win32" ? `\\\\.\\pipe\\branch-driver-test-${process.pid}` : join(dir, "driver.sock");
-  const backend = createServer(socket => socket.pipe(socket));
+  // The daemon's private socket speaks the driver's own protocol, never MCP: anything piped straight to it fails.
+  let daemonConnections = 0;
+  const backend = createServer(socket => { daemonConnections += 1; socket.end('{"ok":false,"error":"Unknown method: initialize","exit_code":65}\n'); });
   await new Promise((resolve, reject) => { backend.once("error", reject); backend.listen(socketPath, resolve); });
   await writeFile(binary, "fixture");
   const events = [];
+  const proxies = [];
+  // Stands in for `cua-driver mcp --embedded --socket <daemon>`: an echoing MCP proxy.
+  const spawnProxy = (command, args, options) => {
+    proxies.push({ command, args, env: options.env });
+    return spawn(process.execPath, ["-e", "process.stdin.pipe(process.stdout)"], { ...options, env: process.env });
+  };
   let granted = false;
   const sdk = () => ({
     currentMacOsPermissionStatus: () => ({ accessibility: granted, screenRecording: granted }),
@@ -49,7 +60,7 @@ test("Mac app requests both permissions before supplying a live embedded driver 
       uniffiDestroy() { events.push("destroy"); }
     },
   });
-  const driver = new MacComputerDriver(() => {}, sdk, () => "ai.branch.mac");
+  const driver = new MacComputerDriver(() => {}, sdk, () => "ai.branch.mac", undefined, undefined, 2_000, spawnProxy);
   try {
     assert.equal(await driver.start(dir), undefined);
     assert.deepEqual(events, ["permission request"]);
@@ -71,6 +82,13 @@ test("Mac app requests both permissions before supplying a live embedded driver 
       admitted.write(`${endpoint.secret}\nping`);
       assert.equal((await new Promise(resolve => admitted.once("data", resolve))).toString(), "ping");
     } finally { admitted.destroy(); }
+    // Private #1103 item 5: the engine's MCP goes through the driver's MCP proxy, never raw into the daemon socket.
+    assert.equal(daemonConnections, 0);
+    assert.equal(proxies.length, 1);
+    assert.equal(proxies[0].command, binary);
+    assert.deepEqual(proxies[0].args, ["mcp", "--embedded", "--socket", socketPath]);
+    assert.equal(proxies[0].env.CUA_DRIVER_RS_TELEMETRY_ENABLED, "false");
+    assert.equal(proxies[0].env.CUA_DRIVER_RS_UPDATE_CHECK, "false");
     await driver.stop();
     events.length = 0;
     await driver.start(dir);
@@ -148,6 +166,74 @@ test("a rejected embedded configuration surfaces the SDK's reason, not just its 
   } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
 });
 
+// Release builds fetch the driver on first use (#983): the engine keeps it in <state dir>/tools/computer-use/.
+const sha256 = text => createHash("sha256").update(text).digest("hex");
+const NATIVE = { "libcua_driver_sdk.dylib": "native library", "cua_driver_node_runtime.node": "node runtime" };
+
+/** A release engine (no bundled driver, only the plugin's pins) and a per-user download of that driver. */
+async function downloadedDriver(t, { driverText = "verified driver" } = {}) {
+  const dir = await mkdtemp(join(tmpdir(), "branch-mac-driver-download-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const engineDir = join(dir, "engine");
+  const stateDir = join(dir, "state");
+  const pluginDir = join(engineDir, "dist", "extensions", "cua-computer");
+  await mkdir(pluginDir, { recursive: true });
+  const nativePins = Object.fromEntries(Object.entries(NATIVE).map(([name, text]) => [name, sha256(text)]));
+  await writeFile(join(pluginDir, "package.json"), JSON.stringify({
+    dependencies: { "@trycua/cua-driver": "0.28.2" },
+    cuaDriverArtifacts: { "darwin-universal-binary": { files: { "cua-driver": sha256("verified driver") } }, "darwin-arm64": { files: nativePins } },
+  }));
+  const root = macDriverStore(stateDir, "0.28.2", "arm64");
+  const nativeDir = join(root, "node_modules", "@trycua", "cua-driver-darwin-arm64");
+  await mkdir(nativeDir, { recursive: true });
+  for (const [name, text] of Object.entries(NATIVE)) await writeFile(join(nativeDir, name), text);
+  await writeFile(join(root, "cua-driver"), driverText);
+  return { engineDir, stateDir, root, receipt: () => writeFile(join(root, "computer-use-install.json"), "{}") };
+}
+
+test("a release engine starts the per-user download only after it matches the engine's pins", async t => {
+  const { engineDir, stateDir, root, receipt } = await downloadedDriver(t);
+  const loaded = [];
+  const events = [];
+  const lines = [];
+  const driver = new MacComputerDriver(line => lines.push(line), sdkRoot => { loaded.push(sdkRoot); return allowlistedSdk(events); },
+    () => "ai.branch.mac", () => stateDir, "arm64");
+  t.after(() => driver.stop());
+  assert.deepEqual(readEnginePins(engineDir, "arm64")?.version, "0.28.2");
+  // Not downloaded yet: nothing loads, and the log says why.
+  assert.equal(driver.installed(engineDir), false);
+  assert.equal(await driver.start(engineDir), undefined);
+  assert.match(lines.join("\n"), /not downloaded yet/);
+  assert.deepEqual(loaded, []);
+  await receipt();
+  assert.equal(driver.installed(engineDir), true);
+  assert.equal(JSON.parse(await driver.start(engineDir)).v, 2);
+  assert.deepEqual(loaded, [root]);
+  assert.deepEqual(events, ["start"]);
+  assert.equal(driver.permissionsGranted(engineDir), true);
+});
+
+test("a downloaded driver that differs from its pin is refused before the SDK loads or the driver runs", async t => {
+  const { engineDir, stateDir, receipt } = await downloadedDriver(t, { driverText: "tampered driver" });
+  await receipt();
+  const loaded = [];
+  const lines = [];
+  const driver = new MacComputerDriver(line => lines.push(line), sdkRoot => { loaded.push(sdkRoot); throw new Error("must not load"); },
+    () => "ai.branch.mac", () => stateDir, "arm64");
+  t.after(() => driver.stop());
+  assert.equal(await driver.start(engineDir), undefined);
+  assert.deepEqual(loaded, []);
+  assert.match(lines.join("\n"), /refused: .*cua-driver does not match the SHA-256 this engine pins .*not loaded or run/);
+  assert.equal(driver.permissionsGranted(engineDir), false);
+  assert.deepEqual((await driver.locate(engineDir)).state, "refused");
+});
+
+test("the MCP proxy's environment drops driver overrides and the broker's own variables", () => {
+  const env = driverModule.mcpProxyEnvironment({ PATH: "/bin", HOME: "/h", CUA_DRIVER_SOCKET: "x", CUA_TELEMETRY_ENABLED: "true", BRANCH_CUA_BROKER_SECRET: "s" });
+  assert.deepEqual(env, { PATH: "/bin", HOME: "/h", CUA_DRIVER_RS_TELEMETRY_ENABLED: "false", CUA_DRIVER_RS_UPDATE_CHECK: "false" });
+  assert.deepEqual(driverModule.mcpProxyArgs("/tmp/d.sock"), ["mcp", "--embedded", "--socket", "/tmp/d.sock"]);
+});
+
 test("the Coming reasons are the preview's copy: none for a missing driver, its permission line for permissions", () => {
   assert.equal(driverModule.DRIVER_NOT_PACKAGED, "");
   assert.equal(driverModule.DRIVER_START_FAILED, "");
@@ -199,7 +285,7 @@ test("the driver notices an exit by checking its state, never by a pending waitF
   const Host = base.EmbeddedCuaDriverHost;
   const sdk = { ...base, EmbeddedCuaDriverHost: class extends Host { state() { checks += 1; return state; } } };
   const tick = () => new Promise(resolve => setTimeout(resolve, 30));
-  const driver = new MacComputerDriver(line => lines.push(line), () => sdk, () => "ai.branch.mac", 5);
+  const driver = new MacComputerDriver(line => lines.push(line), () => sdk, () => "ai.branch.mac", undefined, undefined, 5);
   try {
     const endpoint = await driver.start(dir);
     assert.equal(JSON.parse(endpoint).v, 2);
@@ -219,4 +305,16 @@ test("the driver notices an exit by checking its state, never by a pending waitF
     await tick();
     assert.equal(checks, stopped, "stop ends the checks");
   } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+// Private #1103 item 5: the computer pane's Open System Settings reaches the Screen Recording pane, and nothing else
+// outside the web gets out of the window.
+test("the window may open web pages and the Screen Recording pane, nothing else", () => {
+  assert.equal(MAC_SCREEN_RECORDING_SETTINGS, "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture");
+  assert.equal(externalUrlAllowed("https://github.com/KeepOak/Branch-Agent"), true);
+  assert.equal(externalUrlAllowed(MAC_SCREEN_RECORDING_SETTINGS), true);
+  for (const url of ["http://example.com", "file:///etc/passwd", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture&x=1", "javascript:alert(1)", "smb://host/share"]) {
+    assert.equal(externalUrlAllowed(url), false, url);
+  }
 });

@@ -88,6 +88,31 @@ export function freshVoice(): CrawlVoice {
   return structuredClone(INITIAL_VOICE);
 }
 
+/** Connected agents (contacts.outside.list / .set). Starts allowed, with nobody connected. */
+export type CrawlOutside = { enabled: boolean; agents: Record<string, unknown>[] };
+
+export function freshOutside(): CrawlOutside {
+  return { enabled: true, agents: [] };
+}
+
+/** contacts.outside.set: the master switch, or one agent's revoke / window right. Never mutates its input. */
+export function applyOutsideSet(current: CrawlOutside, params: { enabled?: boolean; id?: string; revoked?: boolean; mayDriveWindow?: boolean }): CrawlOutside {
+  if (params.id) {
+    return {
+      ...current,
+      agents: current.agents.map((agent) => agent.id === params.id
+        ? {
+          ...agent,
+          ...(typeof params.revoked === "boolean" ? { revoked: params.revoked } : {}),
+          ...(typeof params.mayDriveWindow === "boolean" ? { mayDriveWindow: params.mayDriveWindow } : {}),
+        }
+        : agent),
+    };
+  }
+  if (typeof params.enabled === "boolean") return { ...current, enabled: params.enabled };
+  return current;
+}
+
 /** tts.enable turns reading aloud on for every reply; tts.disable turns it off. */
 export function applyVoiceToggle(current: CrawlVoice, enabled: boolean): CrawlVoice {
   return { ...current, auto: enabled ? 'always' : 'off' };

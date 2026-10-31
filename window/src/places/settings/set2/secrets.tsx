@@ -2,10 +2,11 @@
 // Branch holds (secrets.store.list / set / delete), key sources, plain-text findings from the settings and
 // secrets.reload. Filling website sign-ins from a password manager needs an engine fill list, so that list says why.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
+import { clientOs, type ClientOs } from "../../../connect/client-os";
 import { Dialog } from "../../../shell/Dialog";
 import { Menu, type MenuItem } from "../../../shell/Menu";
 import { Icon } from "../../../shell/icons";
@@ -17,10 +18,23 @@ const ONEPASSWORD = { source: "exec", pluginIntegration: { pluginId: "onepasswor
 const REDACTED = "__BRANCH_REDACTED__";
 const KEYLIKE = /(_API_KEY|_TOKEN|_PASSWORD|_PRIVATE_KEY|_SECRET)$/;
 const NAME_RE = /^[A-Z][A-Z0-9_]{0,127}$/;
+const FLASH_MS = 2000;
+
+/** Password managers the engine can actually read. SecretRefSource is env | file | exec | store
+ *  (`engine/src/secrets/ref-contract.ts`); the only password-manager plugin is 1Password
+ *  (`engine/extensions/onepassword`). Bitwarden and Windows Credential Manager have no provider, so they are not listed. */
+export type PasswordManager = { id: string; label: string; os?: readonly ClientOs[] };
+export const PASSWORD_MANAGERS: readonly PasswordManager[] = [
+  { id: "onepassword", label: "1Password" },
+];
+
+/** Managers that apply to this OS and that the engine can read today. */
+export function passwordManagersFor(os: ClientOs = clientOs()): PasswordManager[] {
+  return PASSWORD_MANAGERS.filter((m) => !m.os || m.os.includes(os));
+}
 
 export const ROWS: RowEntry[] = [
-  ["Make narrow keys for services", "Narrow keys", 0], ["Password manager", "Where passwords come from", 1],
-  ["Keys kept apart from settings", "Where passwords come from", 1], ["Sign-in tokens", "Where passwords come from", 1],
+  ["Use 1Password", "Where passwords come from", 1], ["Keys kept apart from settings", "Where passwords come from", 1],
   ["List the keys", "Keys Branch holds", 2], ["Set a key", "Keys Branch holds", 2], ["Remove a key", "Keys Branch holds", 2],
   ["Bring in a .env file", "Keys Branch holds", 2], ["Reload keys", "Keys, technical", 2], ["Keys written in plain text", "Keys, technical", 2],
   ["Move keys out of settings", "Keys, technical", 2], ["The settings file", "Keys, technical", 2],
@@ -37,10 +51,7 @@ export function SecretsPage(props: SettingsPageProps) {
         ? <Status title="1Password is set up">Branch asks 1Password for a key when a setting points to it.</Status>
         : <Status tone="bad" title="No password manager is connected">Turns on when a password manager is connected.</Status>}
       <Sec title="Branch may fill">
-        <Empty>{onePassword ? "Filling website sign-ins needs the engine’s list of sign-ins Branch may fill." : "Nothing to fill until a password manager is connected. Pick one at Advanced: How much to show › Advanced, then “Where passwords come from”."}</Empty>
-      </Sec>
-      <Sec title="Narrow keys">
-        <Ctl title="Make narrow keys for services" sub="Creates limited keys for services such as Vercel." help="Vercel, Supabase and others: a key that can do only what a Trunk needs, replaced on a schedule." off="Needs the engine to make keys with each service."><Btn sm disabled>Choose a service</Btn></Ctl>
+        <Empty>{onePassword ? "Filling website sign-ins needs the engine’s list of sign-ins Branch may fill." : lv >= 1 ? "Nothing to fill until a password manager is on. Turn on 1Password under Where passwords come from, below." : "Nothing to fill until a password manager is on. Turn on 1Password at Advanced, under Where passwords come from."}</Empty>
       </Sec>
       {lv >= 1 ? <Where engine={props.engine} onePassword={onePassword} config={config} /> : null}
       {lv >= 1 ? <Keys engine={props.engine} lv={lv} store={store} /> : null}
@@ -65,25 +76,62 @@ export function SecretsBlock(props: SettingsPageProps & { part: "where" | "keys"
   </>;
 }
 
-/** Where passwords come from: 1Password through its plugin's secret provider; the others have no engine plugin. */
+function useSavedTick() {
+  const [saved, setSaved] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const mark = () => {
+    setSaved(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setSaved(false), FLASH_MS);
+  };
+  return [saved, mark] as const;
+}
+
+/** Where passwords come from. 1Password is the one manager the engine can read today; the switch applies as it changes. */
 function Where({ onePassword, config }: Pick<SettingsPageProps, "engine"> & { onePassword: boolean; config: Config }) {
-  const choose = async (id: string) => {
-    if (id !== "onepassword") return;
-    await config.set("plugins.entries.onepassword.enabled", true);
-    await config.set("secrets.providers.onepassword", ONEPASSWORD);
+  const [saved, mark] = useSavedTick();
+  const managers = passwordManagersFor();
+  const toggle = async (on: boolean) => {
+    const ok = on
+      ? (await config.set("plugins.entries.onepassword.enabled", true)) && (await config.set("secrets.providers.onepassword", ONEPASSWORD))
+      : await config.set("secrets.providers.onepassword", null);
+    if (ok) mark();
   };
   return (
     <Sec title="Where passwords come from" group="Keys">
-      <Ctl title="Password manager" sub={onePassword ? "1Password gives Branch a key only where a setting points to it; Branch never shows it." : "Pick the one you use. Branch never sees your passwords."}>
-        <Seg label="Password manager" value={onePassword ? "onepassword" : ""} disabled={config.loading} onChange={(id) => void choose(id)}
-          options={[{ id: "bitwarden", label: "Bitwarden", off: "Bitwarden needs its engine plugin." }, { id: "onepassword", label: "1Password" }, { id: "windows", label: "Windows", off: "Windows Credential Manager needs its engine plugin." }]} />
-      </Ctl>
+      {managers.some((m) => m.id === "onepassword") ? (
+        <Ctl title="Use 1Password" sub={onePassword ? "1Password gives Branch a key only where a setting points to it; Branch never shows it." : "Turn on to let settings point to keys in 1Password. Branch never sees your passwords."}>
+          <Switch label="Use 1Password" checked={onePassword} disabled={config.loading} onChange={(on) => void toggle(on)} />
+          <small className="g-label checked-at" role="status" aria-live="polite"><span style={{ visibility: saved ? "visible" : "hidden" }}>✓ Saved</span></small>
+        </Ctl>
+      ) : null}
       <Ctl title="Keys kept apart from settings" sub="Keys stay in a locker only the engine can read." help="Keys live in a locker only the engine reads, so sharing your settings never shares a key.">
-        <Btn sm data-jump-to="#s2-keys" onClick={() => (document.getElementById("s2-keys") ?? document.getElementById("sec-signins-Keys Branch holds"))?.scrollIntoView({ block: "start" })}>Show where</Btn>
+        <ShowWhere />
       </Ctl>
-      <Ctl title="Sign-in tokens" sub="Sign-in tokens are encrypted, refreshed and revoked." help="Tokens from “sign in with…” are encrypted, refreshed before they expire, and revoked when removed." off="Checking them needs the engine’s token report."><Btn sm>Check them</Btn></Ctl>
     </Sec>
   );
+}
+
+export const KEYS_SHOWN = "Your keys are listed below, under “Keys Branch holds”.";
+export const KEYS_ELSEWHERE = "Your keys are listed under “Keys Branch holds” on Sign-ins & keys, at Advanced.";
+
+/** Show where (B-047): scrolls to Keys Branch holds, marks it for a moment and says where it is; when the list isn't on
+ *  this page it says where to find it, so the button never looks like it did nothing. */
+function ShowWhere() {
+  const [line, setLine] = useState("");
+  const show = () => {
+    const target = document.getElementById("s2-keys") ?? document.getElementById("sec-signins-Keys Branch holds");
+    if (!target) { setLine(KEYS_ELSEWHERE); return; }
+    target.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    target.setAttribute("data-flash", "");
+    setTimeout(() => target.removeAttribute("data-flash"), FLASH_MS);
+    setLine(KEYS_SHOWN);
+  };
+  return <>
+    <Btn sm data-jump-to="#s2-keys" onClick={show}>Show where</Btn>
+    {line ? <small className="g-label checked-at" role="status">{line}</small> : null}
+  </>;
 }
 
 type Res = ReturnType<typeof useLive<RecordValue>>;

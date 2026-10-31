@@ -43,6 +43,9 @@
 /* The notice line ("Reconnecting…", a part that didn't load): text on a frosted pill (.g-label, README item 48), centred. */
 .r1-notice { margin: 8px auto; max-width: min(100%, 680px); font-size: var(--fs-12-5); text-align: center; }
 .r1-notice button { background: transparent; border: 0; text-decoration: underline; }
+.r1-startup-raw { margin-top: 4px; }
+.r1-startup-raw summary { cursor: pointer; color: var(--ink-2); }
+.r1-startup-raw pre { margin: 6px 0 0; text-align: left; font: var(--fs-12)/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); }
 .r1-composer-slot { padding: 8px 16px 16px; }
 .r1-drawer-scrim { position: fixed; inset: 0; z-index: 29; border: 0; background: var(--scrim); }
 .r1-sidebar-list { flex: 1; overflow: auto; min-height: 0; mask-image: linear-gradient(var(--mask-opaque) calc(100% - 18px), transparent); }

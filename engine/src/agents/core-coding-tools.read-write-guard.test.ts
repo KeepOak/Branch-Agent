@@ -7,7 +7,7 @@ import { createCoreCodingTools } from "./core-coding-tools.js";
 type CoreOptions = Parameters<typeof createCoreCodingTools>[0];
 
 const LINE_COUNT = 3412;
-const PARTIAL_REFUSAL = "You only read part of this file. Read the rest, or use an edit.";
+const PARTIAL_REFUSAL = "You only read part of this file. Read the rest or use an edit instead.";
 const UNREAD_SHRINK_REFUSAL =
   "You have not read this file, and this write would shrink it. Read it first, or use an edit.";
 
@@ -29,7 +29,7 @@ function bigFileContent(): string {
   return Array.from({ length: LINE_COUNT }, (_, index) => lineText(index + 1)).join("\n") + "\n";
 }
 
-function toolSet() {
+function toolSet(extra?: { modelContextWindowTokens?: number }) {
   return createCoreCodingTools({
     codingRoot: root,
     containmentRoot: root,
@@ -41,6 +41,7 @@ function toolSet() {
     applyPatchWorkspaceOnly: true,
     execDefaults: {},
     processDefaults: {},
+    ...extra,
   } as unknown as CoreOptions);
 }
 
@@ -76,6 +77,30 @@ describe("read truncation marker", () => {
       truncation: {
         truncated: true,
         totalLines: LINE_COUNT,
+        totalBytes: Buffer.byteLength(content, "utf8"),
+      },
+    });
+  });
+
+  it("marks a token-budget cutoff with the line range, flag, and file size", async () => {
+    // Under the 32KB byte floor, over a small context's tool-result budget.
+    const filePath = path.join(root, "budget.txt");
+    const content = Array.from({ length: 400 }, () => "y".repeat(40)).join("\n") + "\n";
+    await fs.writeFile(filePath, content);
+
+    const result = await tool(toolSet({ modelContextWindowTokens: 4_000 }), "read").execute(
+      "read-budget",
+      { path: "budget.txt" },
+    );
+
+    const text = textOf(result);
+    expect(text).toContain("File truncated");
+    expect(text).toContain("of 400");
+    expect(result.details).toMatchObject({
+      kind: "truncated",
+      truncation: {
+        truncated: true,
+        totalLines: 400,
         totalBytes: Buffer.byteLength(content, "utf8"),
       },
     });

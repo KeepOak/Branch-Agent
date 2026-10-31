@@ -2,6 +2,7 @@
 // model, the line "Please connect a model, or click here to set up a local model." is the composer's (NoModelLine),
 // so it shows once, on every conversation, not twice on an empty one.
 import { useEffect, useState } from "react";
+import { ConnectModelNotice } from "../composer/ConnectModelNotice";
 import { currentModelRef } from "../composer/model";
 import { hasNoModel, useConversation } from "../composer/useConversation";
 import { Face } from "../face/Face";
@@ -88,13 +89,15 @@ function Starters({ onStart }: { onStart: (text: string) => void }) {
 }
 
 export function EmptyState({ onOpenSession, onStart }: { onOpenSession?: (key: string) => void; onStart?: (text: string) => void }) {
-  const { name } = useThread();
+  const { name, engine } = useThread();
+  const conv = useConversation(engine);
+  const noModel = conv.loaded && hasNoModel(conv, currentModelRef(conv.row, conv.defaults));
   const recent = useRecent(Boolean(onOpenSession));
   return (
     <div className="empty" data-testid="empty-state">
       <Face size={150} label={name} state="idle" reactive />
       <h1 className="empty-title">What should {name} do?</h1>
-      {onStart ? <Starters onStart={onStart} /> : null}
+      {noModel ? <ConnectModelNotice className="empty-connect" /> : onStart ? <Starters onStart={onStart} /> : null}
       {onOpenSession && recent.length ? (
         <div className="recent">
           <div className="section-label">Recent</div>

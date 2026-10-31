@@ -3,7 +3,7 @@
 // reason, and is listed by data-coming with the call it waits for (R1-10). Rules lines never separate rows. The control
 // goes through <Coming> with the calls the row makes (useRow callsOf), so an engine without config.patch or
 // users.prefs.set shows Coming instead of a live control; a row that stays on this computer says data-local.
-import { useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type KeyboardEvent } from "react";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { plainCopy } from "../../places/settings/internals";
 import type { WindowEngine } from "../../connect/engine";
@@ -59,8 +59,8 @@ export function Segmented({ label, value, options, disabled, onChange }: { label
   );
 }
 
-export function Toggle({ label, on, disabled, onChange }: { label: string; on: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
-  return <button type="button" className="r1s-sw" role="switch" aria-label={label} aria-checked={on} disabled={disabled} onClick={() => onChange(!on)} />;
+export function Toggle({ label, on, disabled, onChange, ...rest }: { label: string; on: boolean; disabled?: boolean; onChange: (v: boolean) => void } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onChange">) {
+  return <button type="button" className="r1s-sw" role="switch" aria-label={label} aria-checked={on} disabled={disabled} onClick={() => onChange(!on)} {...rest} />;
 }
 
 /** A field that saves when it is left or Enter is pressed, and only when the text changed. */
@@ -106,21 +106,33 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
       );
       case "number": case "text": return <Field label={r.label} value={r.value} kind={row.control} unit={row.unit} disabled={off} onSave={save} />;
       case "secret": return <Field label={r.label} value={r.sensitive ? "" : r.value} kind="secret" disabled={off} placeholder={r.value ? "Saved" : undefined} onSave={save} />;
+      // Only Coming rows are buttons in the table: a button that does something is its page's own control (slots.ts).
+      case "button": return <button type="button" className="r1s-btn" disabled={off}>{row.button ?? r.label}</button>;
       default: return null;
     }
   })();
   const tag = TAG[r.level];
+  // A desktop row not read yet (Branch never asks the app on mount, #1826) is focusable and named, so focus reads it.
+  const unknown = row.source.kind === "desktop" && r.state === "loading";
+  // A desktop row showing Branch's own stored value says so until the app is checked; the value stays usable.
+  const lastSeen = row.source.kind === "desktop" && r.lastSeen === true && (r.state === "ready" || r.state === "saving");
+  const labelId = `row-${row.id}-label`;
   const stack = row.control === "segmented" && options.length > 3;
   return (
     <div id={`row-${row.id}`} className={`r1s-row${stack ? " r1s-stack" : ""}`} data-row={row.id} data-lv={tag} aria-disabled={coming || undefined}
+      tabIndex={unknown ? 0 : undefined} role={unknown ? "group" : undefined} aria-labelledby={unknown ? labelId : undefined}
       aria-busy={r.state === "saving" || undefined} data-coming={coming ? r.need : undefined} title={coming ? r.reason : undefined}>
-      <b className="g-label" data-lv={tag}>{r.label}</b>
+      <b id={labelId} className="g-label" data-lv={tag}>{r.label}</b>
       {r.help ? <small className="g-label" data-lines>{plainCopy(r.help, chosen)}</small> : null}
       {coming || r.calls.length
         ? <Coming engine={engine} need={r.calls} unwired={coming} reason={coming ? r.reason : undefined} where={r.label}><div className="r1s-ctl">{control}</div></Coming>
         : <div className="r1s-ctl" data-local="">{control}</div>}
       {coming || r.state === "blocked" ? <small className="r1s-note g-label" data-lines>{r.reason}</small>
-        : r.state === "error" && r.reason ? (
+        : unknown ? (
+          <small className="r1s-note g-label" data-lines role="status">
+            {r.checking ? "Checking with the app..." : <>Not checked yet · <button type="button" className="r1s-link" data-local="" onClick={() => void r.retry()}>Check with the app</button></>}
+          </small>
+        ) : r.state === "error" && r.reason ? (
           <small className="r1s-note r1s-bad g-label" data-lines role="status">
             {r.reason === CHANGED_ELSEWHERE ? <>Changed somewhere else · <Coming engine={engine} need="config.get"><button type="button" className="r1s-link" onClick={() => void r.retry()}>Reload</button></Coming></>
               // A config load failure has the page's own Try again; a pref load failure is retried here.
@@ -128,6 +140,10 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
                 ? <Coming engine={engine} need="users.prefs.get"><button type="button" className="r1s-link" onClick={() => void r.retry()}>Try again</button></Coming>
                 : <button type="button" className="r1s-link" data-local="" onClick={() => void r.retry()}>Try again</button>}</>
               : r.reason}
+          </small>
+        ) : lastSeen ? (
+          <small className="r1s-note g-label" data-lines role="status">
+            {r.checking ? "Checking with the app..." : <>Last seen by Branch · <button type="button" className="r1s-link" data-local="" onClick={() => void r.retry()}>Check with the app</button></>}
           </small>
         ) : r.restart ? <small className="r1s-note g-label">{RESTART_NOTE}</small> : null}
     </div>

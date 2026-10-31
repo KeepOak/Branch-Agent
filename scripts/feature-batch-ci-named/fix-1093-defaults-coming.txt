@@ -1,0 +1,2 @@
+window:src/places/settings/set1/models-defaults-coming-why.test.tsx
+window:src/places/settings/set1/models-planning-why.test.tsx

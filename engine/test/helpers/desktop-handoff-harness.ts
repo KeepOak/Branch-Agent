@@ -90,8 +90,11 @@ export async function spawnHandoffEngine(params: {
     ],
     {
       // The instance's entrypoint is relative to the engine root, which is where tests run.
+      // Detached on every OS, hidden on Windows: a non-detached child joins the parent's
+      // Windows job, and stopping the old engine then ends the successor too.
       cwd: process.cwd(),
       env,
+      detached: true,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     },

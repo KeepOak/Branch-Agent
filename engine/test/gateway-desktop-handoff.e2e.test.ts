@@ -41,12 +41,16 @@ import {
   type HandoffModelProvider,
   startHandoffModelProvider,
 } from "./helpers/handoff-model-provider.js";
+import { prepareHeldDrainTaskScheduler } from "./helpers/task-scheduler-preflight.js";
 
 // The desktop's own bounds for each step (desktop/src/main.ts): a request answers within 20 s.
 const DESKTOP_REQUEST_MS = 20_000;
 const ENGINE_START_MS = 150_000;
 const SESSION_S = "agent:main:handoff-s";
 const SESSION_T = "agent:main:handoff-t";
+/** Server wait for agent.wait. The client default is 30s and fires first on slow runners. */
+const AGENT_WAIT_TIMEOUT_MS = 60_000;
+const AGENT_WAIT_CLIENT_TIMEOUT_MS = 75_000;
 
 /** Progress on stdout: each step of a slow scenario is visible in CI, and keeps the runner's no-output watchdog fed. */
 function step(text: string): void {
@@ -199,6 +203,15 @@ async function sendTurn(client: GatewayClient, sessionKey: string, message: stri
   );
 }
 
+/** Wait for a run with a client timeout above the server wait. */
+async function waitForAgentRun(client: GatewayClient, runId: string) {
+  return await client.request(
+    "agent.wait",
+    { runId, timeoutMs: AGENT_WAIT_TIMEOUT_MS },
+    { timeoutMs: AGENT_WAIT_CLIENT_TIMEOUT_MS },
+  );
+}
+
 async function waitUntil(check: () => boolean | Promise<boolean>, timeoutMs: number, what: string) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -238,7 +251,7 @@ async function expectConfiguredPortReady(
   livePort: number,
   successor: HandoffEngine,
 ): Promise<void> {
-  expect(await probeReadyz(livePort), `successor still serves on ${livePort}`).toBe(200);
+  await waitForReadyz(livePort, 200, 30_000, successor);
   await waitForReadyz(configuredPort, 200, 30_000, successor);
 }
 
@@ -324,7 +337,7 @@ describe("in-place engine handoff between real engines", () => {
         clientB.request("sessions.create", { agentId: "main", key: SESSION_T }),
       );
       const t = await sendTurn(clientB, SESSION_T, "MARK_T: run now.");
-      await clientB.request("agent.wait", { runId: t.runId, timeoutMs: 60_000 });
+      await waitForAgentRun(clientB, t.runId);
       expect(current.provider.answered).toContain("T");
       expect(current.provider.answered).not.toContain("A");
       expect(listLeasedLanes(a.env)).toEqual([{ lane: `session:${SESSION_S}`, pid: a.child.pid }]);
@@ -363,7 +376,7 @@ describe("in-place engine handoff between real engines", () => {
         );
       }
       const successor = await sendTurn(clientB, SESSION_S, "MARK_S: run after A releases S.");
-      await clientB.request("agent.wait", { runId: successor.runId, timeoutMs: 60_000 });
+      await waitForAgentRun(clientB, successor.runId);
       await waitUntil(
         async () => {
           transcript = JSON.stringify(
@@ -403,7 +416,7 @@ describe("in-place engine handoff between real engines", () => {
       expect(listLeasedLanes(a.env)).toEqual([{ lane: `session:${SESSION_S}`, pid: a.child.pid }]);
       current.provider.release("A");
       const successor = await withTimeout(pending, 90_000, "B admits queued turn on S");
-      await clientB.request("agent.wait", { runId: successor.runId, timeoutMs: 60_000 });
+      await waitForAgentRun(clientB, successor.runId);
       await waitUntil(() => listLeasedLanes(a.env).length === 0, 60_000, "A releases S");
       let history = "";
       await waitUntil(async () => {
@@ -418,7 +431,12 @@ describe("in-place engine handoff between real engines", () => {
   it(
     "keeps A alive on drain-stop while it holds S, then stops after its reply",
     { timeout: 420_000 },
-    async ({ signal }) => {
+    async (ctx) => {
+      const { signal } = ctx;
+      // Hosted runners can leave Task Scheduler unable to answer. On Windows this
+      // detects that quickly and skips. When it is usable, a timed out probe is
+      // retried once. The case timeout stays 420 s, inside the 15 minute job.
+      prepareHeldDrainTaskScheduler((reason) => ctx.skip(reason), step);
       const current = await startScenario(signal);
       const { a, b, portA, portB, clientB } = await handOverWithRunInFlight(current, signal);
       await sendDesktopRequest(a, DESKTOP_DRAIN_STOP, DESKTOP_REQUEST_MS);
@@ -461,7 +479,7 @@ describe("in-place engine handoff between real engines", () => {
         client.request("sessions.create", { agentId: "main", key: SESSION_T }),
       );
       const t = await sendTurn(client, SESSION_T, "MARK_R: run after rollback.");
-      await client.request("agent.wait", { runId: t.runId, timeoutMs: 60_000 });
+      await waitForAgentRun(client, t.runId);
       expect(current.provider.answered).toContain("R");
     },
   );
@@ -596,7 +614,7 @@ describe("in-place engine handoff between real engines", () => {
         clientB.request("sessions.create", { agentId: "main", key: SESSION_T }),
       );
       const t = await sendTurn(clientB, SESSION_T, "MARK_R: run on B after failed rollback.");
-      await clientB.request("agent.wait", { runId: t.runId, timeoutMs: 60_000 });
+      await waitForAgentRun(clientB, t.runId);
       expect(current.provider.answered).toContain("R");
       await expectConfiguredPortReady(portA, portB, b);
     },

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { capabilityTests, namedTests, shardOf, shardTests, touchedTests } from './feature-batch-ci-targets.mjs';
+import { capabilityTests, namedE2eTests, namedTests, shardOf, shardTests, touchedShardTests, touchedTests } from './feature-batch-ci-targets.mjs';
+import { splitUiTests } from './feature-batch-ci-targets.mjs';
 import { runTargetedStrictChecks } from './feature-batch-ci-typecheck.mjs';
 import {
   assertLocalModules, engineRoot, gitHead, hostedChrome, preparePnpm, publishWindowDependencies, repoRoot, run,
@@ -12,6 +13,7 @@ export async function validateScope() {
   for (const lane of ['engine', 'window']) {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     for (const file of namedTests(lane)) await fs.access(path.join(root, file));
+    if (lane === 'engine') for (const file of namedE2eTests(lane)) await fs.access(path.join(root, file));
   }
   for (const file of capabilityTests()) await fs.access(path.join(engineRoot, file));
   const source = JSON.parse(await fs.readFile(path.join(windowRoot, 'package.json'), 'utf8'));
@@ -80,16 +82,63 @@ async function prChangedFiles() {
   return changedFilesCache;
 }
 
+// Linux uses the hosted Chrome; macOS and Windows runners need Playwright's own Chromium.
+let playwrightChromiumReady = false;
+async function ensurePlaywrightChromium(cwd, env) {
+  if (process.platform === 'linux' || playwrightChromiumReady) return;
+  // Vitest browser launches chromium-headless-shell; installing only "chromium"
+  // leaves that binary missing on macOS GH runners (merge-gate red on os-specific PRs).
+  await run(process.execPath, [path.join(engineRoot, 'node_modules/playwright/cli.js'),
+    'install', 'chromium'], cwd, env);
+  await run(process.execPath, [path.join(engineRoot, 'node_modules/playwright/cli.js'),
+    'install', 'chromium-headless-shell'], cwd, env);
+  playwrightChromiumReady = true;
+}
+
+// Feature-batch vitest excludes **/*.e2e.test.ts, so named engine e2e tests run here through
+// the engine's own e2e configs (control UI e2e under ui/src/e2e, the rest under test/vitest).
+// Only the full-scope Linux shards run them: those run on every PR, and the e2e suites (Chromium,
+// the prebuilt UI bundle) are Linux-only in CI. The Windows "touched" job and the main-push
+// Windows/macOS shards skip them, so they never run e2e files under the unit configs either.
+export function namedE2eScope({ scope = process.env.FEATURE_SCOPE, platform = process.platform } = {}) {
+  return scope !== 'touched' && platform === 'linux';
+}
+
+async function runNamedE2eTests(env, shard) {
+  if (!namedE2eScope()) return;
+  const tests = shardTests(namedE2eTests('engine'), shard);
+  const ui = tests.filter(file => file.startsWith('ui/src/e2e/'));
+  const other = tests.filter(file => !ui.includes(file));
+  for (const [config, files] of [['test/vitest/vitest.ui-e2e.config.ts', ui], ['test/vitest/vitest.e2e.config.ts', other]]) {
+    if (!files.length) continue;
+    if (files === ui) await ensurePlaywrightChromium(engineRoot, env);
+    console.log(`engine e2e: ${files.length} named test files with ${config} in shard ${shard.index + 1}/${shard.total}`);
+    await run(process.execPath, [path.join(engineRoot, 'scripts/run-vitest.mjs'),
+      'run', '--config', config, ...files], engineRoot, env);
+  }
+}
+
 async function runFeatureTests(scratch) {
   const env = await featureTestEnv(scratch);
   const shard = shardOf();
+  await runNamedE2eTests(env, shard);
   for (const lane of ['engine', 'window']) {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     const config = path.join(repoRoot, 'scripts', `feature-batch-ci-${lane}.config.mjs`);
-    const tests = process.env.FEATURE_SCOPE === 'touched'
-      ? touchedTests(lane, await prChangedFiles()) : shardTests(namedTests(lane), shard);
-    if (!tests.length) continue;
-    console.log(`${lane}: ${tests.length} named test files in shard ${shard.index + 1}/${shard.total}`);
+    const selected = process.env.FEATURE_SCOPE === 'touched'
+      ? touchedShardTests(touchedTests(lane, await prChangedFiles()), shard) : shardTests(namedTests(lane), shard);
+    if (!selected.length) continue;
+    console.log(`${lane}: ${selected.length} named test files in shard ${shard.index + 1}/${shard.total}`);
+    // Control UI files (engine/ui) run under the UI package's own vitest config and root.
+    const { ui: uiTests, other: tests } = splitUiTests(lane, selected);
+    if (uiTests.length) {
+      const uiRoot = path.join(engineRoot, 'ui');
+      // Control UI vitest launches chromium-headless-shell; macOS/Windows need Playwright's own install.
+      await ensurePlaywrightChromium(uiRoot, env);
+      console.log(`${lane}/ui: ${uiTests.length} Control UI test files under ui/vitest.config.ts`);
+      await run(process.execPath, [path.join(uiRoot, 'node_modules/vitest/vitest.mjs'),
+        'run', '--config', path.join(uiRoot, 'vitest.config.ts'), ...uiTests], uiRoot, env);
+    }
     const browserTests = lane === 'engine' ? tests.filter(file => file.endsWith('.browser.test.ts')) : [];
     const regularTests = tests.filter(file => !browserTests.includes(file));
     if (regularTests.length) {
@@ -97,10 +146,7 @@ async function runFeatureTests(scratch) {
         'run', '--config', config, ...regularTests], root, env);
     }
     if (browserTests.length) {
-      if (process.platform !== 'linux') {
-        await run(process.execPath, [path.join(engineRoot, 'node_modules/playwright/cli.js'),
-          'install', 'chromium'], root, env);
-      }
+      await ensurePlaywrightChromium(root, env);
       if (process.platform === 'win32') {
         env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = await hostedChrome();
       }

@@ -89,7 +89,8 @@ describe("R1 Settings › Voice & calls is a native R1 page with the preview's c
     await mount();
     await setLevel("Technical");
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
-    for (const [title, rows] of Object.entries(TECH_FIRST)) expect(labels(card(title)).slice(0, rows.length), title).toEqual(rows);
+    // Later-update rows fold under their own line after the live rows, so each preview row is checked as present.
+    for (const [title, rows] of Object.entries(TECH_FIRST)) expect(labels(card(title)), title).toEqual(expect.arrayContaining(rows));
     expect(host.textContent).not.toContain("Voice engine");
   });
 

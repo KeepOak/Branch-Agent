@@ -1,6 +1,11 @@
 import type { Serializable, SpawnOptions } from "node:child_process";
 import type { BrokerExecaOptions, BrokerExecaResult } from "./execa-protocol.js";
 
+/** In-flight spawn and native-resource claims a broker will admit (unchanged prior ceiling). */
+export const SPAWN_BROKER_MAX_CONCURRENT = 256;
+/** Park an idle broker worker so baseline RSS does not keep a helper process. */
+export const SPAWN_BROKER_IDLE_TIMEOUT_MS = 30_000;
+
 export type BrokerSpawnOptions = Pick<
   SpawnOptions,
   | "cwd"

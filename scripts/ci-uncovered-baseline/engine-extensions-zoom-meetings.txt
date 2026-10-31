@@ -1,0 +1,7 @@
+engine:extensions/zoom-meetings/index.test.ts
+engine:extensions/zoom-meetings/src/cli.test.ts
+engine:extensions/zoom-meetings/src/runtime-probes.test.ts
+engine:extensions/zoom-meetings/src/runtime-setup.test.ts
+engine:extensions/zoom-meetings/src/runtime.test.ts
+engine:extensions/zoom-meetings/src/transports/zoom-meetings-platform-adapter.test.ts
+engine:extensions/zoom-meetings/src/transports/zoom-meetings-urls.test.ts

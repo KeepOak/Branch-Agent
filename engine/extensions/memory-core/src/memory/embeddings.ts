@@ -9,8 +9,11 @@ import { formatErrorMessage } from "../rings-shared.js";
 import type { MemoryCoreAcquireLocalService } from "./embedding-local-service.js";
 import { MemoryManagerReloadError } from "./lifecycle.js";
 import {
-  MISSING_LOCAL_MEMORY_EMBEDDING_PROVIDER_MESSAGE,
+  DEFAULT_MEMORY_EMBEDDING_PROVIDER,
+  LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE,
   LOCAL_MEMORY_EMBEDDING_PROVIDER_ID,
+  isPaidRemoteMemoryEmbeddingProvider,
+  resolveDefaultMemoryEmbeddingProvider,
 } from "./local-embedding-provider.js";
 import type { MemoryManagerProviderFactory } from "./manager-registry.js";
 
@@ -34,7 +37,7 @@ type CreateEmbeddingProviderOptions = Omit<MemoryEmbeddingProviderCreateOptions,
   createProvider?: MemoryManagerProviderFactory;
 };
 
-const DEFAULT_MEMORY_EMBEDDING_PROVIDER = "openai";
+export { DEFAULT_MEMORY_EMBEDDING_PROVIDER, LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE };
 
 function formatProviderError(adapter: MemoryEmbeddingProviderAdapter, err: unknown): string {
   return adapter.formatSetupError?.(err) ?? formatErrorMessage(err);
@@ -49,7 +52,7 @@ function getAdapter(
     return adapter;
   }
   if (id === LOCAL_MEMORY_EMBEDDING_PROVIDER_ID) {
-    throw new Error(MISSING_LOCAL_MEMORY_EMBEDDING_PROVIDER_MESSAGE);
+    throw new Error(LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE);
   }
   throw new Error(`Unknown memory embedding provider: ${id}`);
 }
@@ -103,8 +106,7 @@ export function resolveEmbeddingProviderAdapterTransport(
 }
 
 export function resolveEmbeddingProviderIndexIdentity(options: CreateEmbeddingProviderOptions) {
-  const provider =
-    options.provider === "auto" ? DEFAULT_MEMORY_EMBEDDING_PROVIDER : options.provider;
+  const provider = resolveDefaultMemoryEmbeddingProvider(options.provider);
   try {
     const adapter = getAdapter(provider, options.config);
     const createOptions = resolveAdapterCreateOptions(adapter, { ...options, provider });
@@ -135,11 +137,22 @@ async function createWithAdapter(
   };
 }
 
+function formatPrimaryProviderError(
+  adapter: MemoryEmbeddingProviderAdapter,
+  providerId: string,
+  err: unknown,
+): string {
+  if (providerId === LOCAL_MEMORY_EMBEDDING_PROVIDER_ID) {
+    return LOCAL_MEMORY_SEARCH_UNAVAILABLE_MESSAGE;
+  }
+  return formatProviderError(adapter, err);
+}
+
 export async function createEmbeddingProvider(
   options: CreateEmbeddingProviderOptions,
 ): Promise<EmbeddingProviderResult> {
-  const provider =
-    options.provider === "auto" ? DEFAULT_MEMORY_EMBEDDING_PROVIDER : options.provider;
+  const requestedProvider = options.provider;
+  const provider = resolveDefaultMemoryEmbeddingProvider(requestedProvider);
   const primaryAdapter = getAdapter(provider, options.config);
   try {
     return await createWithAdapter(primaryAdapter, {
@@ -150,8 +163,18 @@ export async function createEmbeddingProvider(
     if (primaryErr instanceof MemoryManagerReloadError) {
       throw primaryErr;
     }
-    const reason = formatProviderError(primaryAdapter, primaryErr);
-    if (options.fallback && options.fallback !== "none" && options.fallback !== provider) {
+    const reason = formatPrimaryProviderError(primaryAdapter, provider, primaryErr);
+    const fallback = options.fallback;
+    const requestedWasChosen =
+      Boolean(requestedProvider?.trim()) && requestedProvider.trim() !== "auto";
+    const skipPaidFallback =
+      !requestedWasChosen && isPaidRemoteMemoryEmbeddingProvider(fallback ?? "");
+    if (
+      fallback &&
+      fallback !== "none" &&
+      fallback !== provider &&
+      !skipPaidFallback
+    ) {
       const fallbackAdapter = getAdapter(options.fallback, options.config);
       try {
         const fallbackResult = await createWithAdapter(fallbackAdapter, {

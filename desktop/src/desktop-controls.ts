@@ -5,7 +5,7 @@
 // tests use fakes and never change this computer's startup, power or PATH settings.
 import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { saveUnlessDiskFull } from "./disk-full";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { RELEASE_REPOSITORY } from "./component-update-manifest";
 import { isOwnedComponentWindow } from "./component-update-ipc";
 
@@ -36,19 +36,136 @@ export type ControlName = { [K in keyof ControlsState]-?: ControlsState[K] exten
 
 export const DEFAULT_SETTINGS: DesktopSettings = { keepWorking: true, keepAwake: true, keepAwakeOnBattery: false, trayUsage: false, autoApplyUpdates: true, agentControl: false };
 
-/** The engine's own app links (engine/ui/src/pages/apps/view.ts); desktops come from Branch's releases. */
-const DESKTOP_RELEASES = `https://github.com/${RELEASE_REPOSITORY}/releases/latest`;
-export const DOWNLOAD_PAGES: Readonly<Record<string, string>> = {
-  iphone: "https://apps.apple.com/app/branch-ai-that-does-things/id6780396132",
-  android: "https://play.google.com/store/apps/details?id=ai.branch.app",
-  mac: DESKTOP_RELEASES,
-  windows: DESKTOP_RELEASES,
-  linux: DESKTOP_RELEASES,
-  extension: "https://chromewebstore.google.com/detail/branch/kcdjddhmeafeomebliikmbpblkmkfoig",
+/** Asset name patterns per Get-it target. Stable OS names (#1842) win; versioned names stay as fallback. */
+export const RELEASE_DOWNLOADS = {
+  mac: [/^Branch-macOS\.dmg$/, /^Branch-Agent-.+-darwin-arm64\.dmg$/],
+  windows: [/^Branch-Setup-Windows\.exe$/, /^Branch-Agent-Setup-.+-win32-x64\.exe$/],
+  linux: [/^Branch-Linux\.deb$/, /^Branch-Agent-.+-linux-x64\.AppImage$/],
+  android: [/^branch-android-.+\.apk$/],
+} as const;
+export type ReleaseDownloadId = keyof typeof RELEASE_DOWNLOADS;
+export interface ReleaseAsset { name?: string; browser_download_url?: string }
+export interface ReleaseListing { assets?: readonly ReleaseAsset[]; published_at?: string; draft?: boolean; prerelease?: boolean }
+
+const RELEASES_API = `https://api.github.com/repos/${RELEASE_REPOSITORY}/releases?per_page=100`;
+const RELEASES_PAGE = `https://github.com/${RELEASE_REPOSITORY}/releases`;
+/** Where Get it lands when the newest asset cannot be read: Branch's own release pages, never a store (Private #1103). */
+export const RELEASE_PAGES: Readonly<Record<ReleaseDownloadId, string>> = {
+  mac: `${RELEASES_PAGE}/latest`,
+  windows: `${RELEASES_PAGE}/latest`,
+  linux: `${RELEASES_PAGE}/latest`,
+  // Android builds ship in their own releases, so the latest one may have no APK.
+  android: RELEASES_PAGE,
 };
+
+/** A GitHub release asset URL for this repository, or nothing when the URL is not one. */
+export function trustedReleaseAsset(value: string): string | undefined {
+  let url: URL;
+  try { url = new URL(value); } catch { return undefined; }
+  const prefix = `/${RELEASE_REPOSITORY}/releases/download/`;
+  if (url.protocol !== "https:" || url.hostname !== "github.com" || url.username || url.password || url.search || url.hash) return undefined;
+  if (!url.pathname.startsWith(prefix)) return undefined;
+  return url.toString();
+}
+
+const publishedAt = (release: ReleaseListing): number => Date.parse(release.published_at ?? "") || 0;
+
+/** The newest signed asset whose name is one Branch already publishes. Drafts and prereleases are skipped. */
+export function releaseDownloadUrl(id: ReleaseDownloadId, releases: readonly ReleaseListing[]): string | undefined {
+  const patterns = RELEASE_DOWNLOADS[id];
+  const newestFirst = releases.filter((release) => !release.draft && !release.prerelease).sort((a, b) => publishedAt(b) - publishedAt(a));
+  for (const release of newestFirst) {
+    for (const pattern of patterns) {
+      for (const asset of release.assets ?? []) {
+        if (typeof asset.name !== "string" || typeof asset.browser_download_url !== "string") continue;
+        if (!pattern.test(asset.name) || asset.name.toLowerCase().includes("unsigned")) continue;
+        const url = trustedReleaseAsset(asset.browser_download_url);
+        if (url) return url;
+      }
+    }
+  }
+  return undefined;
+}
+
+async function publishedReleases(): Promise<readonly ReleaseListing[]> {
+  const response = await fetch(RELEASES_API, { headers: { Accept: "application/vnd.github+json", "User-Agent": "Branch-Agent" } });
+  if (!response.ok) throw new Error(`Branch releases could not be read (${response.status})`);
+  const body: unknown = await response.json();
+  if (!Array.isArray(body)) throw new Error("Branch releases could not be read");
+  return body as ReleaseListing[];
+}
+
+/** How this copy of Branch was installed, so "Remove the app" takes away only the app (Private #1102). */
+export type AppRemoval =
+  | { kind: "windows"; uninstaller: string }
+  | { kind: "mac"; bundles: string[] }
+  | { kind: "appimage"; files: string[] }
+  | { kind: "none"; reason: string };
+export interface AppRemovalTarget {
+  platform: string; execPath: string; packaged: boolean;
+  /** %LOCALAPPDATA% on Windows: the per-user install's uninstaller sits in Programs\Branch Agent Uninstall. */
+  localAppData?: string;
+  /** $APPIMAGE on Linux: the file the app runs from. */
+  appImage?: string;
+  exists(path: string): boolean;
+}
+/** What the confirm sheet says: exactly what goes and what stays. */
+export interface AppRemovalPlan { supported: boolean; reason?: string; removes: string[]; keeps: string[]; dataDir: string }
+
+/** Inno Setup names a per-user install's uninstaller unins000.exe, in UninstallFilesDir (release-installers.mjs). */
+export const WINDOWS_UNINSTALL_DIR = ["Programs", "Branch Agent Uninstall"];
+export const APP_REMOVAL_KEEPS = ["Your conversations", "Your Trunks and what they remember", "Your settings and connected accounts"];
+const FROM_SOURCE = "This copy of Branch runs from its source folder, so there is no installed app to remove.";
+
+export function appRemoval(t: AppRemovalTarget): AppRemoval {
+  if (!t.packaged) return { kind: "none", reason: FROM_SOURCE };
+  if (t.platform === "win32") {
+    const uninstaller = t.localAppData ? join(t.localAppData, ...WINDOWS_UNINSTALL_DIR, "unins000.exe") : "";
+    return uninstaller && t.exists(uninstaller) ? { kind: "windows", uninstaller }
+      : { kind: "none", reason: "Branch’s uninstaller isn’t on this computer. Remove Branch from Settings › Apps instead." };
+  }
+  if (t.platform === "darwin") {
+    const at = t.execPath.indexOf(".app/Contents/");
+    if (at < 0) return { kind: "none", reason: FROM_SOURCE };
+    const bundle = t.execPath.slice(0, at + 4);
+    // A whole-app update leaves the old copy aside as .Branch.previous beside it (mac-applications.ts).
+    const aside = join(dirname(bundle), ".Branch.previous");
+    return { kind: "mac", bundles: [bundle, ...(t.exists(aside) ? [aside] : [])] };
+  }
+  if (t.platform === "linux") {
+    if (!t.appImage) return { kind: "none", reason: "Branch was installed by your package manager here. Remove it there; your data stays." };
+    const previous = `${t.appImage}.previous`;
+    return { kind: "appimage", files: [t.appImage, ...(t.exists(previous) ? [previous] : [])] };
+  }
+  return { kind: "none", reason: FROM_SOURCE };
+}
+
+export function appRemovalPlan(removal: AppRemoval, o: { dataDir: string; startsAtLogin: boolean; branchOnPath: boolean; service: boolean }): AppRemovalPlan {
+  const keeps = [...APP_REMOVAL_KEEPS];
+  if (removal.kind === "none") return { supported: false, reason: removal.reason, removes: [], keeps, dataDir: o.dataDir };
+  const removes = [
+    removal.kind === "windows" ? "The Branch app, with its Start menu and desktop shortcuts"
+      : removal.kind === "mac" ? "The Branch app (it goes to the Trash)" : "The Branch app (its AppImage file)",
+    ...(o.service ? ["Branch’s background service, so nothing keeps running"] : []),
+    ...(o.startsAtLogin ? ["Starting Branch when you sign in"] : []),
+    ...(o.branchOnPath ? ["The branch command in your terminal"] : []),
+  ];
+  return { supported: true, removes, keeps, dataDir: o.dataDir };
+}
 
 export interface ControlDeps {
   settingsFile: string;
+  /** "Remove the app, keep my data": the install it came from, and the steps that remove it. Absent in tests of
+   *  other controls and in older wiring, where the window shows why it can't. */
+  removeApp?: {
+    dataDir: string;
+    removal(): AppRemoval;
+    /** Stops and removes the engine service (`branch gateway uninstall`); absent when there is none. */
+    service?: () => Promise<void>;
+    /** Removes the app itself, or starts its uninstaller to do so once the app has quit. */
+    launch(removal: Exclude<AppRemoval, { kind: "none" }>): Promise<void>;
+    quit(): void;
+  };
   login: { get(): boolean; set(on: boolean): void };
   /** Linux: the engine's systemd-linger path (`branch gateway linger`); absent elsewhere. */
   linger?: { get(): Promise<boolean>; set(on: boolean): Promise<void> };
@@ -61,6 +178,8 @@ export interface ControlDeps {
   };
   tray: { usage(left: number | null, on: boolean): void };
   openExternal(url: string): Promise<void>;
+  /** Newest-first Branch release listings. Tests inject this; the app reads the public releases. */
+  releases?: () => Promise<readonly ReleaseListing[]>;
   /** Writes the settings file; tests inject a failing one. */
   writeFile?: (path: string, text: string) => void;
   onChange?: (settings: DesktopSettings) => void;
@@ -72,6 +191,9 @@ export interface DesktopControls {
   set(name: ControlName, on: boolean): Promise<ControlsState>;
   openDownload(id: string): Promise<void>;
   trayUsage(left: number | null): void;
+  removalPlan(): Promise<AppRemovalPlan>;
+  /** Removes the app and quits; conversations, Trunks and settings in the data folder stay. */
+  removeApp(): Promise<void>;
   /** Applies saved settings at launch (refreshes the branch command). */
   apply(): void;
   dispose(): void;
@@ -115,8 +237,10 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
       await deps.linger.set(on);
       linger = Promise.resolve(on);
     } else if (name === "keepWorking" || name === "keepAwake" || name === "keepAwakeOnBattery" || name === "trayUsage" || name === "autoApplyUpdates" || name === "agentControl") {
+      // A failed save (other than a full disk, which keeps the new value on purpose) puts the old value back and says why.
+      const previous = saved;
       saved = { ...saved, [name]: on };
-      save();
+      try { save(); } catch (error) { saved = previous; throw error; }
       if (name === "trayUsage") deps.tray.usage(lastLeft, on);
       deps.onChange?.({ ...saved });
     } else throw new Error(`Unknown desktop control: ${String(name)}`);
@@ -125,13 +249,31 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
   return {
     settings: () => ({ ...saved }), get, set,
     openDownload: async (id) => {
-      const url = Object.hasOwn(DOWNLOAD_PAGES, id) ? DOWNLOAD_PAGES[id] : undefined;
-      if (!url) throw new Error(`No download page for ${id}`);
-      await deps.openExternal(url);
+      if (!Object.hasOwn(RELEASE_DOWNLOADS, id)) throw new Error(`No download page for ${id}`);
+      const which = id as ReleaseDownloadId;
+      // An unreadable listing (offline, rate limited) still opens Branch's own release page.
+      const listings = await (deps.releases ?? publishedReleases)().catch((): readonly ReleaseListing[] => []);
+      await deps.openExternal(releaseDownloadUrl(which, listings) ?? RELEASE_PAGES[which]);
     },
     trayUsage: (left) => {
       lastLeft = typeof left === "number" && Number.isFinite(left) ? Math.max(0, Math.min(100, left)) : null;
       deps.tray.usage(lastLeft, saved.trayUsage);
+    },
+    removalPlan: async () => {
+      const remove = deps.removeApp;
+      if (!remove) return appRemovalPlan({ kind: "none", reason: "Removing the app needs a newer Branch app." }, { dataDir: "", startsAtLogin: false, branchOnPath: false, service: false });
+      return appRemovalPlan(remove.removal(), { dataDir: remove.dataDir, startsAtLogin: deps.login.get(), branchOnPath: await deps.cli.installed(), service: Boolean(remove.service) });
+    },
+    removeApp: async () => {
+      const remove = deps.removeApp;
+      const removal = remove?.removal();
+      if (!remove || !removal || removal.kind === "none") throw new Error(removal?.kind === "none" ? removal.reason : "Removing the app needs a newer Branch app.");
+      // Everything outside the data folder that points at the app goes first; the data folder is never touched.
+      await remove.service?.();
+      if (deps.login.get()) deps.login.set(false);
+      if (await deps.cli.installed()) await deps.cli.uninstall();
+      await remove.launch(removal);
+      remove.quit();
     },
     apply: () => {
       // An update can move the bundled node; the branch command (and agents registered with it) must keep working.
@@ -164,6 +306,8 @@ export function registerDesktopControlsIpc(ipc: Ipc, owner: (event: InvokeEvent)
     if (typeof id !== "string") throw new Error("A download takes an app id");
     await controls.openDownload(id);
   });
+  ipc.handle("branch-desktop:controls:removal-plan", async (event) => { owned(event); return controls.removalPlan(); });
+  ipc.handle("branch-desktop:controls:remove-app", async (event) => { owned(event); await controls.removeApp(); });
   ipc.on("branch-desktop:controls:tray-usage", (event, left) => {
     if (!isOwnedComponentWindow(event, owner(event), servedUrl)) return;
     controls.trayUsage(typeof left === "number" ? left : null);
@@ -190,6 +334,27 @@ export function ringBitmap(left: number, size = 32): Buffer {
   return out;
 }
 
+/** Live gateway.pid: branch.mjs then gateway, --port matches the port file, path may contain spaces. */
+const LIVE_ENGINE_PS = [
+  "$ProgressPreference='SilentlyContinue'",
+  "$q=[char]34",
+  "$livePid=$env:LIVEPID.Trim()",
+  "if($livePid -notmatch '^\\d+$'){exit 0}",
+  "$expect=$env:EXPECTPORT.Trim()",
+  "if($expect -notmatch '^\\d+$'){exit 0}",
+  "$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$livePid) -EA SilentlyContinue",
+  "if(-not $p){exit 0}",
+  "$c=[string]$p.CommandLine",
+  // Drop the node executable (quoted or a single token) so a spaced engine path is the rest.
+  "$rest=[regex]::Replace($c,'^(?:'+$q+'[^'+$q+']+'+$q+'|\\S+)\\s+','')",
+  "$m=[regex]::Match($rest,'(?i)^(?:'+$q+'([^'+$q+']+)[\\\\/]branch\\.mjs'+$q+'|(.+?)[\\\\/]branch\\.mjs)\\s+gateway(?:\\s|$)')",
+  "if(-not $m.Success){exit 0}",
+  "$d=if($m.Groups[1].Value){$m.Groups[1].Value}else{$m.Groups[2].Value}",
+  "$pm=[regex]::Match($c,'(?i)(?:^|\\s)--port(?:=|\\s+)(\\d+)')",
+  "if(-not $pm.Success -or $pm.Groups[1].Value -ne $expect){exit 0}",
+  "if((Test-Path -LiteralPath ($d+'\\branch.mjs') -PathType Leaf) -or (Test-Path -LiteralPath ($d+'/branch.mjs') -PathType Leaf)){Write-Output $d}",
+].join("; ");
+
 /** The branch command: a shim that reads the running engine (else the published one), the token and the live port. */
 export function branchShim(o: { dataDir: string; engineDir: string; nodePath: string; gatewayPort: number }): string {
   return [
@@ -197,9 +362,15 @@ export function branchShim(o: { dataDir: string; engineDir: string; nodePath: st
     "setlocal",
     `set "BRANCH_DATA=${o.dataDir}"`,
     `set "ENGINE=${o.engineDir}"`,
-    `if exist "%BRANCH_DATA%\\engine-current.txt" set /p ENGINE=<"%BRANCH_DATA%\\engine-current.txt"`,
+    `call :read_engine "%BRANCH_DATA%\\engine-current.txt"`,
+    "if errorlevel 1 exit /b 1",
     // The engine actually running wins over a staged one that has not been applied yet.
-    `if exist "%BRANCH_DATA%\\engine-running.txt" set /p ENGINE=<"%BRANCH_DATA%\\engine-running.txt"`,
+    `call :read_engine "%BRANCH_DATA%\\engine-running.txt"`,
+    "if errorlevel 1 exit /b 1",
+    // A live gateway process wins when the pointer names a different engine that still has branch.mjs.
+    "call :read_live_engine",
+    `if not exist "%ENGINE%\\branch.mjs" (echo Branch Agent engine is unavailable. Open Branch Agent to restore its engine, then retry. >&2 & exit /b 1)`,
+    `if exist "%ENGINE%\\branch.mjs\\" (echo Branch Agent engine is unavailable. Open Branch Agent to restore its engine, then retry. >&2 & exit /b 1)`,
     `if exist "%BRANCH_DATA%\\gateway-token" set /p BRANCH_GATEWAY_TOKEN=<"%BRANCH_DATA%\\gateway-token"`,
     `set "BRANCH_PROFILE=default"`,
     `set "BRANCH_HOME=%BRANCH_DATA%\\home"`,
@@ -209,6 +380,28 @@ export function branchShim(o: { dataDir: string; engineDir: string; nodePath: st
     // An update can move the engine to another loopback port; the desktop records the live one here.
     `if exist "%BRANCH_DATA%\\gateway-port" set /p BRANCH_GATEWAY_PORT=<"%BRANCH_DATA%\\gateway-port"`,
     `"${o.nodePath}" "%ENGINE%\\branch.mjs" %*`,
+    "exit /b %errorlevel%",
+    ":read_engine",
+    `if not exist "%~1" exit /b 0`,
+    `type "%~1" >nul 2>nul`,
+    `if errorlevel 1 (echo Cannot read Branch Agent engine pointer "%~1". Check its permissions and retry from a terminal with access. >&2 & exit /b 1)`,
+    `set "CANDIDATE="`,
+    `set /p CANDIDATE=<"%~1"`,
+    "if not defined CANDIDATE exit /b 0",
+    `if exist "%CANDIDATE%\\branch.mjs" if not exist "%CANDIDATE%\\branch.mjs\\" set "ENGINE=%CANDIDATE%"`,
+    "exit /b 0",
+    ":read_live_engine",
+    `if not exist "%BRANCH_DATA%\\gateway.pid" exit /b 0`,
+    `set "LIVEPID="`,
+    `set /p LIVEPID=<"%BRANCH_DATA%\\gateway.pid"`,
+    "if not defined LIVEPID exit /b 0",
+    // Accept the pid only when it is this data folder's gateway on the recorded (else configured) port.
+    `set "EXPECTPORT=${o.gatewayPort}"`,
+    `if exist "%BRANCH_DATA%\\gateway-port" set /p EXPECTPORT=<"%BRANCH_DATA%\\gateway-port"`,
+    `set "LIVEENGINE="`,
+    `for /f "usebackq delims=" %%A in (\`powershell.exe -NoProfile -NonInteractive -Command "${LIVE_ENGINE_PS}"\`) do set "LIVEENGINE=%%A"`,
+    `if defined LIVEENGINE if exist "%LIVEENGINE%\\branch.mjs" if not exist "%LIVEENGINE%\\branch.mjs\\" set "ENGINE=%LIVEENGINE%"`,
+    "exit /b 0",
     "",
   ].join("\r\n");
 }
@@ -221,9 +414,89 @@ export function branchShShim(o: { dataDir: string; engineDir: string; nodePath: 
   return [
     "#!/bin/sh",
     `data=${q(slash(o.dataDir))}`,
-    `engine=${q(o.engineDir)}`,
-    `if [ -f "$data/engine-current.txt" ]; then engine=$(head -n 1 "$data/engine-current.txt" | tr -d '\\r'); fi`,
-    `if [ -f "$data/engine-running.txt" ]; then running=$(head -n 1 "$data/engine-running.txt" | tr -d '\\r'); if [ -n "$running" ]; then engine=$running; fi; fi`,
+    `engine=${q(slash(o.engineDir))}`,
+    "read_engine() {",
+    `  if [ -e "$1" ]; then`,
+    `    candidate=$(head -n 1 "$1") || { printf 'Cannot read Branch Agent engine pointer %s. Check its permissions and retry from a terminal with access.\\n' "$1" >&2; return 1; }`,
+    `    candidate=$(printf '%s' "$candidate" | tr -d '\\r' | tr '\\\\' '/')`,
+    `    if [ -n "$candidate" ] && [ -f "$candidate/branch.mjs" ]; then engine=$candidate; fi`,
+    "  fi",
+    "  return 0",
+    "}",
+    // macOS /bin/sh is bash 3.2: `case`/`;;` inside `$(...)` is a parse error, so this stays a function.
+    "parse_live_cmdline() {",
+    "  prev=; dir=; saw=; port=; take_port=",
+    `  while IFS= read -r arg; do`,
+    `    if [ -n "$take_port" ]; then port=$arg; take_port=; fi`,
+    "    case \"$arg\" in",
+    "      --port=*) port=${arg#--port=} ;;",
+    "      --port) take_port=1 ;;",
+    "    esac",
+    "    case \"$prev\" in",
+    "      */branch.mjs)",
+    "        if [ \"$arg\" = \"gateway\" ]; then saw=1; dir=${prev%/branch.mjs}; fi",
+    "        ;;",
+    "    esac",
+    "    prev=$arg",
+    "  done",
+    `  if [ -n "$saw" ] && [ "$port" = "$expect" ] && [ -f "$dir/branch.mjs" ]; then printf '%s\\n' "$dir"; fi`,
+    "}",
+    "read_live_engine() {",
+    `  [ -f "$data/gateway.pid" ] || return 0`,
+    `  pid=$(head -n 1 "$data/gateway.pid" | tr -d '\\r')`,
+    `  [ -n "$pid" ] || return 0`,
+    "  case \"$pid\" in",
+    "    *[!0-9]*) return 0 ;;",
+    "  esac",
+    `  expect=${String(o.gatewayPort)}`,
+    `  if [ -f "$data/gateway-port" ]; then recorded=$(head -n 1 "$data/gateway-port" | tr -d '\\r'); if [ -n "$recorded" ]; then expect=$recorded; fi; fi`,
+    "  case \"$expect\" in",
+    "    *[!0-9]*) return 0 ;;",
+    "  esac",
+    "  live=",
+    // Linux (and Git Bash): null-separated args. Accept only branch.mjs immediately followed by gateway,
+    // with --port equal to the port file (else the configured port). Tests set BRANCH_SHIM_FORCE_PS to skip this.
+    `  if [ -z "$BRANCH_SHIM_FORCE_PS" ] && [ -r "/proc/$pid/cmdline" ]; then`,
+    `    live=$(tr '\\0' '\\n' < "/proc/$pid/cmdline" | parse_live_cmdline)`,
+    "  fi",
+    // macOS has no /proc; parse `ps -o args=` for .../branch.mjs gateway and the matching --port.
+    // Git Bash's ps has no BSD -o args= and quotes spaced paths; fall back to /proc cmdline
+    // space-joined (the same bytes macOS ps would print). Strip quotes so a spaced node path
+    // still matches. Walk the prefix one word at a time until branch.mjs exists.
+    `  if [ -z "$live" ]; then`,
+    `    args=$(ps -o args= -p "$pid" 2>/dev/null) || true`,
+    `    if [ -z "$args" ]; then args=$(ps -o command= -p "$pid" 2>/dev/null) || true; fi`,
+    `    if [ -z "$args" ] && [ -r "/proc/$pid/cmdline" ]; then args=$(tr '\\0' ' ' < "/proc/$pid/cmdline"); fi`,
+    "    args=$(printf '%s' \"$args\" | tr -d '\"' | sed 's/^[[:space:]]*//' | tr '\\\\' '/')",
+    "    case \"$args\" in",
+    "      */branch.mjs\\ gateway\\ *|*/branch.mjs\\ gateway)",
+    "        case \"$args\" in",
+    "          *\\ --port\\ \"$expect\"\\ *|*\\ --port\\ \"$expect\"|*\\ --port=\"$expect\"\\ *|*\\ --port=\"$expect\")",
+    "            prefix=${args%%/branch.mjs gateway*}",
+    "            rest=$prefix",
+    "            while [ -n \"$rest\" ]; do",
+    `              if [ -f "$rest/branch.mjs" ]; then live=$rest; break; fi`,
+    "              case \"$rest\" in",
+    "                *\" \"*) rest=${rest#* } ;;",
+    "                *) break ;;",
+    "              esac",
+    "            done",
+    "            ;;",
+    "        esac",
+    "        ;;",
+    "    esac",
+    "  fi",
+    `  if [ -z "$live" ] && [ -z "$BRANCH_SHIM_FORCE_PS" ] && command -v powershell.exe >/dev/null 2>&1; then`,
+    `    live=$(LIVEPID=$pid EXPECTPORT=$expect powershell.exe -NoProfile -NonInteractive -Command ${q(LIVE_ENGINE_PS)})`,
+    "  fi",
+    `  live=$(printf '%s' "$live" | tr -d '\\r' | tr '\\\\' '/')`,
+    `  if [ -n "$live" ] && [ -f "$live/branch.mjs" ]; then engine=$live; fi`,
+    "  return 0",
+    "}",
+    `read_engine "$data/engine-current.txt" || exit 1`,
+    `read_engine "$data/engine-running.txt" || exit 1`,
+    "read_live_engine || exit 1",
+    `if [ ! -f "$engine/branch.mjs" ]; then printf '%s\\n' 'Branch Agent engine is unavailable. Open Branch Agent to restore its engine, then retry.' >&2; exit 1; fi`,
     `if [ -f "$data/gateway-token" ]; then BRANCH_GATEWAY_TOKEN=$(head -n 1 "$data/gateway-token" | tr -d '\\r'); export BRANCH_GATEWAY_TOKEN; fi`,
     `BRANCH_PROFILE=default; BRANCH_HOME=${q(`${o.dataDir}\\home`)}; BRANCH_STATE_DIR=${q(`${o.dataDir}\\home\\.branch`)}; BRANCH_CONFIG_PATH=${q(`${o.dataDir}\\home\\.branch\\branch.json`)}; BRANCH_GATEWAY_PORT=${o.gatewayPort}`,
     `if [ -f "$data/gateway-port" ]; then live=$(head -n 1 "$data/gateway-port" | tr -d '\\r'); if [ -n "$live" ]; then BRANCH_GATEWAY_PORT=$live; fi; fi`,

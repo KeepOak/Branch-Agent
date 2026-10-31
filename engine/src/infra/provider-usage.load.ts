@@ -9,6 +9,7 @@ import { trackAsyncWork } from "../shared/async-work-scope.js";
 import { formatErrorMessage } from "./errors.js";
 import { resolveFetch } from "./fetch.js";
 import { resolveProxyFetchFromEnv } from "./net/proxy-fetch.js";
+import { overlayAccountLiveState } from "./provider-usage.account-state.js";
 import { type ProviderAuth, resolveProviderAuthsAll } from "./provider-usage.auth.js";
 import {
   PROVIDER_USAGE_TIMEOUT_MS,
@@ -93,7 +94,9 @@ export async function loadProviderUsageSummary(
         store: opts.authStore,
         onError: (_provider, error) => { authError = error; },
       })), timeoutMs, null);
-    if (auths === null) return [failureSnapshot(provider, "Timeout")];
+    if (auths === null) {
+      return [failureSnapshot(provider, "Timeout")];
+    }
     if (authError) {
       const message = formatErrorMessage(authError);
       return [failureSnapshot(provider, message.trim() || "Auth failed")];
@@ -101,7 +104,9 @@ export async function loadProviderUsageSummary(
     const seen = new Set<string>();
     const unique = auths.filter((auth) => {
       const key = `${provider}:${auth.email?.toLowerCase() ?? auth.accountId ?? auth.authProfileId ?? auth.token}`;
-      if (seen.has(key)) return false;
+      if (seen.has(key)) {
+        return false;
+      }
       seen.add(key);
       return true;
     });
@@ -191,5 +196,9 @@ export async function loadProviderUsageSummary(
       !ignoredErrors.has(entry.error),
   );
 
-  return { updatedAt: now, providers };
+  return overlayAccountLiveState(
+    { updatedAt: now, providers },
+    (opts.authStore ?? authStore)?.usageStats,
+    now,
+  );
 }

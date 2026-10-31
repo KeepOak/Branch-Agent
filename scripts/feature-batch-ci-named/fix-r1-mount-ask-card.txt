@@ -1,0 +1,3 @@
+window:src/screens/approvals/Approvals.test.tsx
+window:src/screens/chat/ChatView.approvals.test.tsx
+window:src/screens/settings/pages/permissions-approvals.test.tsx

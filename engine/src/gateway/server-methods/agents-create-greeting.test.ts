@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   ownerWorkspace: "",
   reviveAgentDatabases: vi.fn(async () => {}),
   warmAdmission: vi.fn(async () => ({ databaseClaim: { release: async () => {} } })),
+  models: [{ id: "m", provider: "p", available: true }] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("../../agents/agent-create.js", () => ({ createAgent: mocks.createAgent }));
@@ -41,6 +42,12 @@ vi.mock("../../config/sessions/session-accessor.sqlite-entry.js", async (importO
 vi.mock("./optional-model-catalog.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./optional-model-catalog.js")>()),
   readPreparedServerMethodModelCatalog: async () => undefined,
+}));
+
+// What models.list would say. Each test sets whether any model can answer.
+vi.mock("./models-list-result.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./models-list-result.js")>()),
+  buildModelsListResult: async () => ({ models: mocks.models }),
 }));
 
 const { agentsHandlers } = await import("./agents.js");
@@ -87,6 +94,7 @@ function setup() {
   mocks.ownerWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), "create-greeting-owner-"));
   mocks.append.mockClear();
   mocks.append.mockImplementation(async () => ({ ok: true }));
+  mocks.models = [{ id: "m", provider: "p", available: true }];
 }
 
 it("greets a brand-new Trunk once, after the create is answered", async () => {
@@ -109,6 +117,24 @@ it("greets a brand-new Trunk once, after the create is answered", async () => {
       idempotencyKey: "first-run-greeting:new-trunk",
     }),
   );
+});
+
+it("sends no canned greeting while no model can answer, like the onboarding Trunk (#1769)", async () => {
+  setup();
+  stubCreate("created", true);
+
+  for (const models of [[], [{ id: "m", provider: "p", available: false }]]) {
+    mocks.models = models;
+    const created = createCall();
+    await created.promise;
+    await settleFirstRunGreetings();
+    expect(created.respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ agentId: "new-trunk" }),
+      undefined,
+    );
+  }
+  expect(mocks.append).not.toHaveBeenCalled();
 });
 
 it("never greets an existing Trunk, even one whose ritual is pending", async () => {

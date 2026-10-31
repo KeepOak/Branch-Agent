@@ -12,9 +12,15 @@ function decide(cfg: BranchConfig, overrides = {}) {
   });
 }
 
+const YOLO: BranchConfig = { tools: { exec: { mode: "full" } } };
+
 describe("resolveSystemAgentRescuePolicy", () => {
   it("allows auto rescue for owner DMs in YOLO host posture with sandboxing off", () => {
-    expect(decide({}).allowed).toBe(true);
+    expect(decide(YOLO).allowed).toBe(true);
+  });
+
+  it("blocks remote rescue when nothing is saved", () => {
+    expect(decide({})).toMatchObject({ allowed: false, reason: "disabled", yolo: false });
   });
 
   it("hard-denies rescue when sandboxing is active", () => {
@@ -32,10 +38,10 @@ describe("resolveSystemAgentRescuePolicy", () => {
   });
 
   it("requires owner identity and direct messages by default", () => {
-    const notOwnerDecision = decide({}, { senderIsOwner: false });
+    const notOwnerDecision = decide(YOLO, { senderIsOwner: false });
     expect(notOwnerDecision).toMatchObject({ allowed: false, reason: "not-owner" });
 
-    const notDirectMessageDecision = decide({}, { isDirectMessage: false });
+    const notDirectMessageDecision = decide(YOLO, { isDirectMessage: false });
     expect(notDirectMessageDecision).toMatchObject({
       allowed: false,
       reason: "not-direct-message",

@@ -37,7 +37,7 @@ const ROLES = [
   ["Code", "Writes and changes code"],
   ["Debug", "Finds the cause of a problem first"],
   ["Orchestrator", "Splits big work between helpers"],
-  ["Release notes", "Summarizes what changed for a release"],
+  ["Release notes", "Writes release notes from the commits"],
 ] as const;
 const ELEVATED = [
   { id: "off", label: "Off" },

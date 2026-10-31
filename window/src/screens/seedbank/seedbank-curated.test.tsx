@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CapabilityProvider } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
 import { Seedbank } from "./index";
-import { pluginEntries } from "./catalog";
+import { pluginEntries, type Entry } from "./catalog";
+import { CURATED_PLUGINS, inR1Seedbank } from "./curated";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 window.matchMedia ??= ((query: string) => ({ matches: false, media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
@@ -54,6 +55,17 @@ describe("#1049 R1 Seedbank shows the preview's curated catalogue", () => {
     // A curated card keeps the feed's install data and its download count.
     expect(host.querySelector("[data-id='mcp:github'] [aria-label='9800 downloads']")).not.toBeNull();
     expect(host.querySelector("[aria-label='52000 downloads']")).toBeNull();
+  });
+
+  it("keeps LanceDB memory by the real plugin id and leaves the old id out", () => {
+    const card = (pluginId: string, name: string): Entry => ({
+      id: "plugins:" + pluginId, kind: "plugins", name, by: "Branch", desc: name, badge: "Official", checked: true, installed: false,
+      source: { type: "plugin", catalogId: pluginId, pluginId, packageName: "@branch/" + pluginId, install: null, unavailable: false, present: false },
+    });
+    expect(CURATED_PLUGINS.map(([id]) => id)).toContain("memory-lancedb");
+    expect(CURATED_PLUGINS.map(([id]) => id)).not.toContain("lancedb-memory");
+    expect(inR1Seedbank(card("memory-lancedb", "Memory LanceDB"))).toBe(true);
+    expect(inR1Seedbank(card("lancedb-memory", "LanceDB memory"))).toBe(false);
   });
 
   it("filters only at the R1 boundary: the feed reader itself still returns every item", () => {
