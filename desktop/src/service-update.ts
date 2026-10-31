@@ -41,11 +41,16 @@ export const UNKNOWN_ACTIVITY_QUESTION = {
 
 /**
  * The owner confirmed Apply now while the activity was unknown (#2161): unknown approvals and drafts count as none, and an
- * engine that could not report its work (undefined) counts as idle. Work the engine or a window did report still refuses.
+ * engine that could not report its work (undefined) counts as idle. Work the engine or a window did report still refuses,
+ * and so does what a still-trusted window snapshot (`windowIdle`) knows when the engine could not report at all.
  */
-export function ownerConfirmedWork(work: ServiceWork | undefined): ServiceWork {
-  if (!work) return { activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false };
-  return { ...work, pendingApprovals: work.pendingApprovals ?? 0, unsavedDraftFiles: work.unsavedDraftFiles ?? false };
+export function ownerConfirmedWork(
+  work: ServiceWork | undefined,
+  windowIdle?: { pendingApprovals: number | null; unsavedDraftFiles: boolean | null },
+): ServiceWork {
+  const known = work ?? { activeRuns: 0, streaming: false,
+    pendingApprovals: windowIdle?.pendingApprovals ?? null, unsavedDraftFiles: windowIdle?.unsavedDraftFiles ?? null };
+  return { ...known, pendingApprovals: known.pendingApprovals ?? 0, unsavedDraftFiles: known.unsavedDraftFiles ?? false };
 }
 
 /**

@@ -2081,7 +2081,8 @@ async function serviceWork(confirmed = false): Promise<ServiceWork> {
   catch (error) {
     // The owner said Update now to the unknown-activity question: unknown is not a refusal any more (#2161).
     if (!confirmed) throw error;
-    return ownerConfirmedWork(undefined);
+    // Unknown runs are the owner's call; a window snapshot that is still trusted (approvals, drafts) is not (#2161).
+    return ownerConfirmedWork(undefined, resolvedWindowIdle(undefined));
   }
   const { window, engine } = probed;
   const runs = Math.max(engine.activeRuns, engine.totalActive, window ? windowRuns(window) : 0);

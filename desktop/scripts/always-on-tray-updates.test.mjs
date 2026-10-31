@@ -512,6 +512,11 @@ test('the owner\'s confirmation turns unknown activity into idle, never reported
   assert.equal(serviceWorkRefusal(ownerConfirmedWork({ activeRuns: 2, pendingApprovals: null, streaming: false, unsavedDraftFiles: null })), TRUNKS_STILL_WORKING);
   assert.equal(serviceWorkRefusal(ownerConfirmedWork({ activeRuns: 0, pendingApprovals: 1, streaming: false, unsavedDraftFiles: null })), TRUNKS_STILL_WORKING);
   assert.equal(serviceWorkRefusal(ownerConfirmedWork({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: true })), TRUNKS_STILL_WORKING);
+  // An engine that could not report keeps what a still-trusted window snapshot knows; only unknown counts as none.
+  assert.equal(serviceWorkRefusal(ownerConfirmedWork(undefined, { pendingApprovals: 1, unsavedDraftFiles: false })), TRUNKS_STILL_WORKING);
+  assert.equal(serviceWorkRefusal(ownerConfirmedWork(undefined, { pendingApprovals: 0, unsavedDraftFiles: true })), TRUNKS_STILL_WORKING);
+  assert.equal(serviceWorkRefusal(ownerConfirmedWork(undefined, { pendingApprovals: 0, unsavedDraftFiles: false })), undefined);
+  assert.equal(serviceWorkRefusal(ownerConfirmedWork(undefined, { pendingApprovals: null, unsavedDraftFiles: null })), undefined);
 });
 
 test('Apply now with an older engine and a silent window: asks, and Update now applies the new engine', async t => {
@@ -542,6 +547,26 @@ test('Apply now with an older engine and a silent window: Not now keeps the runn
     assert.equal(serviceRuns(), 'engine');
   }, updateEnv);
 });
+
+for (const [what, snapshot] of [['a pending approval', { pendingApprovals: 1, unsavedDraftFiles: false }],
+  ['an unsaved draft', { pendingApprovals: 0, unsavedDraftFiles: true }]]) {
+  test('Apply now with an older engine and a silent window: Update now keeps ' + what + ' from the window snapshot and refuses', async t => {
+    await serviceApp(t, null, async ({ clickUpdate, publish, cliCalls, standbys, serviceRuns, dialogs, desktopLog }) => {
+      publish('engine-v2', 'v2');
+      clickUpdate();
+      await eventually(() => desktopLog().includes('update: the owner confirmed the update although Trunk activity is unknown'), 30000);
+      await eventually(() => (desktopLog().match(/update failed: /g) ?? []).length === 2, 30000);
+      assert.match(desktopLog(), new RegExp('update failed: ' + TRUNKS_STILL_WORKING.replace(/[.]/g, '[.]')));
+      assert.equal(dialogs.filter(d => d[1] === UNKNOWN_ACTIVITY_QUESTION.message).length, 1, 'asked once');
+      assert.deepEqual(dialogs.filter(d => d[0] === 'error').map(d => d[2]), [TRUNKS_STILL_WORKING], 'known window state still refuses');
+      assert.ok(cliCalls().every(line => line === RUN_LIST_CALL), 'no restart: ' + cliCalls().join('\n'));
+      assert.deepEqual(standbys(), []);
+      assert.equal(serviceRuns(), 'engine');
+    }, { ...updateEnv, BRANCH_DESKTOP_WINDOW_IDLE_SESSION: 'always-on-window-idle-session' }, root => {
+      writeFileSync(join(root, WINDOW_IDLE_FILE), JSON.stringify({ at: Date.now(), sessionId: 'always-on-window-idle-session', ...snapshot }));
+    });
+  });
+}
 
 test('Apply now with an older engine: a live run in its session list refuses without asking', async t => {
   await serviceApp(t, null, async ({ clickUpdate, publish, cliCalls, standbys, serviceRuns, dialogs, desktopLog }) => {
