@@ -32,6 +32,7 @@ import {
   ACTIVE_EMBEDDED_RUN_REGISTRATIONS,
   ACTIVE_EMBEDDED_RUNS,
   ACTIVE_EMBEDDED_RUNS_BY_RUN_ID,
+  isolatedRegistrationArgs,
   resolveEmbeddedRunRegistryKey,
   setActiveEmbeddedRunLifecycleGeneration,
 } from "../run-state.js";
@@ -626,7 +627,7 @@ function prepareStream(
     attempt.sessionKey,
     attempt.sessionFile,
     input.hookAgentId,
-    activeRunKey.isolated ? { isolated: true } : undefined,
+    ...isolatedRegistrationArgs(activeRunKey),
   );
   const registration = ACTIVE_EMBEDDED_RUN_REGISTRATIONS.get(queueHandle);
   if (attempt.deferTerminalLifecycle && attempt.onDeferredLifecycleOwner) {

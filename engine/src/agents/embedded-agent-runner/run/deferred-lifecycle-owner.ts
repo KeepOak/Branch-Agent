@@ -14,7 +14,7 @@ import {
 import { log } from "../logger.js";
 import { registerHandoffRetryWait } from "../retry-handoff.js";
 import type { EmbeddedAgentQueueHandle } from "../run-state.js";
-import { resolveEmbeddedRunRegistryKey } from "../run-state.js";
+import { isolatedRegistrationArgs, resolveEmbeddedRunRegistryKey } from "../run-state.js";
 import { clearActiveEmbeddedRun, setActiveEmbeddedRun } from "../runs.js";
 import { flushEmbeddedAttemptTrajectoryRecorder } from "./attempt-trajectory-flush.js";
 
@@ -289,7 +289,7 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
         params.sessionKey,
         params.sessionFile,
         params.agentId,
-        activeRunKey.isolated ? { isolated: true } : undefined,
+        ...isolatedRegistrationArgs(activeRunKey),
       );
       const previous = current;
       current = undefined;

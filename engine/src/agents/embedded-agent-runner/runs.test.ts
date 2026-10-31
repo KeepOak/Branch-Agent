@@ -432,7 +432,9 @@ describe("embedded run ownership", () => {
 
       expect(ACTIVE_EMBEDDED_RUNS.get(sessionId) === held).toBe(heldSurvives);
       expect(resolveActiveEmbeddedRunHandleSessionId(sessionKey) === sessionId).toBe(heldSurvives);
-      expect(isEmbeddedAgentRunAbortableForRunId("held")).toBe(heldSurvives);
+      // A replaced handle keeps its finalizing abort entry, so the slot, the
+      // key lookup and the completion claim are what tell the two cases apart.
+      expect(isEmbeddedAgentRunAbortableForRunId("held")).toBe(true);
       expect(heldClaim.claimCompletion()).toBe(heldSurvives);
     },
   );

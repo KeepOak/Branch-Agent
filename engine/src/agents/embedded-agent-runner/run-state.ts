@@ -453,3 +453,8 @@ export function resolveEmbeddedRunRegistryKey(params: {
     ? { key: registryId, isolated: true }
     : { key: params.sessionId, isolated: false };
 }
+
+/** Trailing registration options: only an isolated run passes any. */
+export function isolatedRegistrationArgs(key: { isolated: boolean }): [] | [{ isolated: true }] {
+  return key.isolated ? [{ isolated: true }] : [];
+}
