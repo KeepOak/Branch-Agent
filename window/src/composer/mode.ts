@@ -51,6 +51,12 @@ export const MODE_ROWS: readonly ModeRow[] = [
   },
 ];
 
+/** The modes Branch offers: one the engine doesn't have yet stays out of sight instead of greyed (#1769), and it
+ *  shows again once its row names an engine mode. */
+export function offeredModeRows(rows: readonly ModeRow[] = MODE_ROWS): readonly ModeRow[] {
+  return rows.filter((row) => row.engine !== null);
+}
+
 export const FULL_ACCESS_BLOCKED = "Only the owner can give full access. People on this computer and chat apps never can.";
 
 export function modeName(mode: EngineMode | null | undefined): string {

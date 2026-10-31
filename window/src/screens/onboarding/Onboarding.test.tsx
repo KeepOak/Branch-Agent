@@ -172,17 +172,16 @@ describe("Onboarding", () => {
     expect(request.mock.calls.filter(([method, params]) => method === "wizard.next" && (params as { answer?: { value?: unknown } })?.answer?.value === true)).toHaveLength(0);
   });
 
-  it("saves Ask first as tools.exec.mode and never offers Full access; Plan first is Coming", async () => {
+  it("saves Ask first as tools.exec.mode, never offers Full access, and leaves out Plan first while it has no engine mode", async () => {
     const { engine, request } = fakeEngine({ "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true } });
     const { host, onAnswered } = await show(engine, { startAt: 2 });
     const radios = [...host.querySelectorAll("[role=radio]")] as HTMLButtonElement[];
-    expect(radios.map((r) => r.textContent)).toEqual(["Ask firstRecommended" + MODES[0].line, "Auto" + MODES[1].line, "Plan first" + MODES[2].line + PLAN_FIRST_REASON, "Read only" + MODES[3].line]);
-    expect(radios[2].getAttribute("title")).toBe(PLAN_FIRST_REASON);
-    expect(radios[2].querySelector(".r1-ob-why")?.textContent).toBe(PLAN_FIRST_REASON);
+    expect(radios.map((r) => r.textContent)).toEqual(["Ask firstRecommended" + MODES[0].line, "Auto" + MODES[1].line, "Read only" + MODES[3].line]);
+    expect(host.textContent).not.toContain("Plan first");
+    expect(host.textContent).not.toContain(PLAN_FIRST_REASON);
     expect(radios[0].getAttribute("aria-checked")).toBe("true");
     expect(host.querySelector(".r1-ob-hint")?.textContent).toBe("Change it any time in Settings › Permissions. Full access lives there too, one click away.");
     expect(radios.some((r) => r.textContent?.startsWith("Full access"))).toBe(false);
-    expect(radios[2].getAttribute("aria-disabled")).toBe("true");
     await act(async () => button(host, "Continue").click());
     await flush();
     expect(calls(request, "config.patch")).toEqual([{ raw: JSON.stringify({ tools: { exec: { mode: "ask", security: null, ask: null } } }), baseHash: "h1" }]);
@@ -212,7 +211,7 @@ describe("Onboarding", () => {
     // R1-10: what the card doesn't wire yet is listed by the engine call it waits for, never by its look alone.
     expect(needs.get("Set up by talking")).toEqual(["sessions.create"]);
     expect(needs.get("Try it with examples")).toEqual(["trunks.template.starters"]);
-    expect(needs.get("Plan first")).toEqual(["config.patch"]);
+    expect(needs.has("Plan first")).toBe(false);
     expect([...needs.values()].every((need) => need.length > 0)).toBe(true);
   });
 });
