@@ -100,7 +100,18 @@ describe("FreeModelSetup", () => {
 
   it("names the model without its file format tag", () => {
     for (const step of [FULL, engineStep("cachedModel")]) expect(step.freeModel?.modelName).not.toMatch(/\((?:UD-)?I?Q\d|BF16|F16|F32\)/i);
-    expect(plainFreeModelQuestion(engineStep("cachedModel"))).toBe("Use the free model " + engineStep("cachedModel").freeModel?.modelName + " that is already on this computer so Branch can answer without an account?");
+    const cached = engineStep("cachedModel");
+    expect(plainFreeModelQuestion({ ...cached, freeModel: { ...cached.freeModel!, downloadBytes: undefined } })).toBe("Use the free model " + cached.freeModel?.modelName + " that is already on this computer so Branch can answer without an account?");
+  });
+
+  it("shows what is still to download when the model is already on this computer", async () => {
+    // The engine's cached-model question still downloads the search model and runtime files, and sends their size.
+    const step = engineStep("cachedModel");
+    expect(step.freeModel?.downloadBytes).toBeGreaterThan(0);
+    const question = "Use the free model " + step.freeModel?.modelName + " that is already on this computer (" + gb(step.freeModel?.downloadBytes) + " still to download) so Branch can answer without an account?";
+    const { host } = await mount({ next: [{ done: false, step }] });
+    expect(host.querySelector("p")?.textContent).toBe(question);
+    expect(button("Yes")).toBeTruthy();
   });
 
   it.each(["searchModelOnly", "declinedThenSearchModelOnly"])("asks its own sized question when the engine offers only the search model (%s)", async (name) => {
