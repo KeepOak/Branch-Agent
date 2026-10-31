@@ -1,0 +1,3 @@
+window:src/places/overview/connector-data.test.ts
+window:src/places/overview/dashboard.test.tsx
+window:src/places/overview/setup.test.tsx
