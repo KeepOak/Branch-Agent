@@ -119,6 +119,26 @@ export async function readEngineWork(port: number, timeoutMs = 2_000): Promise<{
   } catch { return undefined; }
 }
 
+/**
+ * #2161: an older engine reports no run counts on /health. Its session list (the rows the window's sidebar reads) still
+ * marks every conversation with a live run, so the running engine's own CLI reads it over the gateway.
+ */
+export function sessionRunListArgs(): string[] {
+  return ["branch.mjs", "gateway", "call", "sessions.list", "--json", "--params", JSON.stringify({ includeGlobal: true, includeUnknown: true, limit: 200 })];
+}
+
+/** The live runs in a `gateway call sessions.list --json` answer, or undefined when it has no session list. */
+export function parseSessionRunList(stdout: string): { activeRuns: number; totalActive: number; pendingReplies: number } | undefined {
+  const sessions = lastJsonObject(stdout)?.sessions;
+  if (!Array.isArray(sessions)) return undefined;
+  const live = sessions.filter(row => {
+    if (!row || typeof row !== "object") return false;
+    const value = row as { hasActiveRun?: unknown; activeRunIds?: unknown; status?: unknown };
+    return value.hasActiveRun === true || (Array.isArray(value.activeRunIds) && value.activeRunIds.length > 0) || value.status === "running";
+  }).length;
+  return { activeRuns: live, totalActive: live, pendingReplies: 0 };
+}
+
 /** Polls `probe` until it answers or `timeoutMs` passes. */
 export async function waitForEngineAnswer(probe: () => Promise<boolean>, timeoutMs: number, intervalMs = 500): Promise<boolean> {
   const end = Date.now() + timeoutMs;
@@ -192,8 +212,10 @@ export const CUSTOM_COPY_SERVICE_LINE = "Running inside the app: this copy isn't
 export const EXTERNAL_VOLUME_SERVICE_LINE = "Running inside the app: your Branch data is on another drive, and macOS keeps background services from reading it.";
 /** The installed service never started, and its logs show macOS (or the shell) would not let launchd run it. */
 export const SERVICE_BLOCKED_LINE = "Running inside the app: macOS blocked Branch's background service from starting, so it was removed.";
+/** An update found the engine running outside its background service and moved it into the app (#2161). */
+export const DETACHED_ENGINE_LINE = "Running inside the app: the engine was running outside its background service, so the update moved it into the app.";
 /** Reasons that already read as complete Settings sentences: shown as they are, never cut down to a short phrase. */
-const SELF_EXPLAINING_LINES: ReadonlySet<string> = new Set([CUSTOM_COPY_SERVICE_LINE, EXTERNAL_VOLUME_SERVICE_LINE, SERVICE_BLOCKED_LINE]);
+const SELF_EXPLAINING_LINES: ReadonlySet<string> = new Set([CUSTOM_COPY_SERVICE_LINE, EXTERNAL_VOLUME_SERVICE_LINE, SERVICE_BLOCKED_LINE, DETACHED_ENGINE_LINE]);
 
 /**
  * The reason the service could not be installed, in plain words for Settings. The engine's own refusal of a custom
@@ -338,6 +360,15 @@ export function serviceCannotRunReason(appendedLog: string, executables: readonl
     if (namesExecutable && (SHELL_CANNOT_EXEC.test(line) || DENIED.test(line))) return SERVICE_BLOCKED_LINE;
   }
   return undefined;
+}
+
+/**
+ * #2161: on macOS an engine that answers while launchd runs no job for it is a detached process (a fallback engine an
+ * older app left running). It has no service to restart: `gateway restart` would only signal that process to restart
+ * in place, on its own old build. Elsewhere the service manager is assumed.
+ */
+export function serviceManagerRunsEngine(platform: NodeJS.Platform, job: LaunchdJob | undefined): boolean {
+  return platform !== "darwin" || job?.pid !== undefined;
 }
 
 /** The LaunchAgent label the engine writes (engine/src/daemon/constants.ts). */

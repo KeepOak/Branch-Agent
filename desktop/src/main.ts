@@ -9,7 +9,7 @@ import { leaveAppWorkingFolder, userHome } from "./app-working-folder";
 import { nodeOutsideSwappedFolder } from "./install-folder-holders";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, engineEnvironment, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopEnginePid, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
-import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readEngineWork, readServiceLogsSince, restartStoppedServiceEngine, runEngineCli, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
+import { attachOrStartEngine, childModeSettingsLine, DETACHED_ENGINE_LINE, engineAnswers, launchdJob, nodeVolumeReader, parseSessionRunList, readEngineHealth, readEngineWork, readServiceLogsSince, recordEngineMode, restartStoppedServiceEngine, runEngineCli, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceManagerRunsEngine, serviceVolumeBlock, sessionRunListArgs, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
 import { appHoldsSleepBlock, claimServiceKeepAwake, createRunKeepAwake, handOffKeepAwake, POWER_STATE_REFRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, TRAY_STATUS_MS, TRAY_STATUS_WORKING_MS, writePowerState } from "./keep-awake";
 import { applyGuestWebPreferences, BRANCH_BROWSER_PARTITION, guestAttachDecision, guestPermissionDecision, guestUrlDecision, popupDecision, r1WebPreferences } from "./browser-guest-policy";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
@@ -22,7 +22,7 @@ import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, revealResidentWindow, showTrayStatus } from "./resident-window";
 import { DASHBOARD_HANDOFF_ARGS, openInBrowser } from "./open-in-browser";
 import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
-import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
+import { activityUnknown, ENGINE_ACTIVITY_UNAVAILABLE, ownerConfirmedWork, sameEngineBuild, serviceWorkLine, serviceWorkRefusal, UNKNOWN_ACTIVITY_QUESTION, updateServiceEngine, type ServiceWork } from "./service-update";
 import { plainDialogText, STOP_FAILED_PLAIN, UPDATE_FAILED_PLAIN } from "./plain-dialog";
 import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates, type StopComponentWatch } from "./component-update";
 import { askFirstLaunchInWindow, FIRST_LAUNCH_DOWNLOAD, FIRST_LAUNCH_RETRY, FIRST_LAUNCH_WATCH_CANCEL, firstLaunchAllowsWindow, firstLaunchNeedComponentsScript, firstLaunchProgressScript, needsFirstLaunchComponents, runFirstLaunchInstall } from "./first-launch-install";
@@ -404,7 +404,6 @@ function windowSilent(error: unknown): undefined {
   return undefined;
 }
 
-const ENGINE_ACTIVITY_UNAVAILABLE = "The window did not report activity and the engine's own activity is unavailable";
 type EngineWork = { activeRuns: number; totalActive: number; pendingReplies: number };
 const windowRuns = (window: WindowState): number => window.workingTrunks ?? (window.streaming ? 1 : 0);
 const windowIdleSession = windowIdleSessionId();
@@ -439,8 +438,25 @@ function resolvedWindowIdle(window?: WindowState) {
 /** The owned child answers over its channel; the service engine reports runs on /health when it can. */
 async function engineOwnActivity(): Promise<EngineWork> {
   if (!serviceEngine && gateway) return gatewayActivity(gateway);
-  const work = await readEngineWork(cfg.gatewayPort);
+  const work = await readEngineWork(cfg.gatewayPort) ?? await readEngineRunList();
   if (!work) throw new Error(ENGINE_ACTIVITY_UNAVAILABLE);
+  return work;
+}
+
+let runListNoted: boolean | undefined;
+/** An older engine has no run counts on /health (#2161): its session list, read with the running engine's own CLI. */
+async function readEngineRunList(): Promise<EngineWork | undefined> {
+  let work: EngineWork | undefined;
+  let reason = "it has no session list";
+  try {
+    work = parseSessionRunList(await runEngineCli({ file: cfg.nodePath, args: sessionRunListArgs(), cwd: serviceEngineDir(),
+      env: engineEnvironment(cfg, false, cfg.gatewayPort, token), timeoutMs: 20_000 }));
+  } catch (error) { reason = error instanceof Error ? error.message : String(error); }
+  if (runListNoted !== Boolean(work)) {
+    runListNoted = Boolean(work);
+    log(work ? "engine activity: /health has no run counts; using the gateway's session list"
+      : `engine activity: /health has no run counts and the gateway's session list is unavailable (${reason})`);
+  }
   return work;
 }
 
@@ -472,8 +488,9 @@ const engineServing = (): boolean => engineRunning() && gateway === readyGateway
  * engine's state lock means the standby can only bind and become ready after the old engine has released state.
  * A staged desktop app is never applied here; it waits for the next natural launch.
  */
-async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false, drain = false): Promise<void> {
-  if (serviceEngine) return swapServiceEngineInPlace(label, explicit, held, handoffOnly);
+async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false, drain = false,
+  confirmed = false): Promise<void> {
+  if (serviceEngine) return swapServiceEngineInPlace(label, explicit, held, handoffOnly, confirmed);
   // `held`: the caller (Undo) already holds the update lock and keeps it; otherwise the swap takes it.
   if (!gateway || !win || (held ? !updateLock.holds(held) : updateLock.held)) throw new Error("The desktop is not ready to update");
   // A crash restart always runs first: an update never cancels it, and never starts with no engine serving.
@@ -597,7 +614,12 @@ function serviceEngineDir(): string {
  * and a new engine that is not ready in time is rolled back (the release recorded as failed, the pointers restored,
  * the service restarted on the previous engine). A release that changed only the window never touches the engine.
  */
-async function swapServiceEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false): Promise<void> {
+/**
+ * `confirmed`: the owner answered Update now to the unknown-activity question (#2161), so unknown approvals, drafts or
+ * engine activity no longer refuse; work the engine or a window reports still does.
+ */
+async function swapServiceEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false,
+  confirmed = false): Promise<void> {
   // A service restart is never a seamless handoff: auto-apply's handoff attempt fails here, before the service is
   // touched, and falls back to its idle drain (Private #1038: an update never cuts off running Trunk work).
   if (handoffOnly) throw new Error("The engine service has no seamless handoff; the update waits until Trunk work is idle");
@@ -611,11 +633,15 @@ async function swapServiceEngineInPlace(label: string, explicit: boolean, held?:
   const probe = () => engineAnswers(cfg.gatewayPort);
   try {
     if (explicit) sendToBranchWindows("branch-desktop:engine-update", "preparing");
+    if (!sameEngineBuild(running, selected) && !await serviceManagerOwnsEngine()) {
+      await replaceDetachedEngine(label, explicit, running, confirmed, windowBefore);
+      return;
+    }
     const result = await updateServiceEngine({
       runningEngineDir: running,
       selectedEngineDir: selected,
       // Runs, approvals or a streaming reply refuse the update with no service call (the Update click and the drain).
-      workRunning: serviceWork,
+      workRunning: () => serviceWork(confirmed),
       warmStandby: async () => {
         // The machine-load rule: a second engine only when there is room for it; otherwise the restart with its rollback.
         const { bytes, measure } = await measureAvailableMemory();
@@ -658,6 +684,52 @@ async function swapServiceEngineInPlace(label: string, explicit: boolean, held?:
   }
 }
 
+/** launchd runs the engine the app attached to (macOS). Tests pin it with BRANCH_DESKTOP_TEST_SERVICE_JOB=running|none. */
+async function serviceManagerOwnsEngine(): Promise<boolean> {
+  const pinned = process.env.BRANCH_DESKTOP_TEST_SERVICE_JOB;
+  if (pinned === "running" || pinned === "none") return pinned === "running";
+  return serviceManagerRunsEngine(process.platform, process.platform === "darwin" ? await launchdJob() : undefined);
+}
+
+/** How long a detached engine gets to stop and free the gateway port before the update gives up (#2161). */
+const DETACHED_STOP_TIMEOUT_MS = 30_000;
+
+/**
+ * #2161: the engine answers on the gateway port but no service manager runs it (a detached engine an older app left
+ * running). There is no service to restart, and `gateway restart` would only make that process restart itself on its
+ * own old build. Once the same work check passes, the old engine is stopped through its own CLI, and the selected
+ * engine starts inside the app, as the attach does when the service cannot run; a build that never becomes ready
+ * rolls back to the previous one. An engine that does not stop keeps serving, and nothing is started beside it.
+ */
+async function replaceDetachedEngine(label: string, explicit: boolean, running: string, confirmed: boolean, windowBefore: string): Promise<void> {
+  const work = await serviceWork(confirmed);
+  const refusal = serviceWorkRefusal(work);
+  if (refusal) {
+    log(`update ${label}: ${serviceWorkLine(work)} before the update; the detached engine was not touched`);
+    throw new Error(refusal);
+  }
+  log(`update ${label}: no service manager runs the engine; stopping it and starting the new engine inside the app`);
+  if (explicit) sendToBranchWindows("branch-desktop:engine-update", "updating");
+  await runEngineServiceAction(cfg, running, token, "stop", log);
+  const end = Date.now() + DETACHED_STOP_TIMEOUT_MS;
+  while (await engineAnswers(cfg.gatewayPort) || !await portIsFree(cfg.gatewayPort)) {
+    if (Date.now() >= end || quitting) throw new Error("The previous engine did not stop; it keeps serving");
+    await pause(500);
+  }
+  serviceEngine = false;
+  recordEngineMode(cfg.dataDir, "child", DETACHED_ENGINE_LINE);
+  fallbackDetached = fallbackEngineSurvivesQuit(true, controls.settings().keepWorking);
+  servedWindowDir = cfg.windowDir;
+  const rolledBack = await bootSelectedEngine();
+  engineUpdateReady = false;
+  log(`update ${label}: engine ${rolledBack ? "rolled back" : "swapped"}; it now runs inside the app`);
+  handWindowToGateway(true);
+  if (rolledBack) {
+    if (explicit) sendToBranchWindows("branch-desktop:engine-update", "kept");
+  } else if (windowBuild(cfg.windowDir) !== windowBefore) void hotSwapWindow();
+  else sendToBranchWindows("branch-desktop:engine-update", "updated");
+}
+
 /**
  * After an update, a replacement or Undo releases the lock: never leave zero engines. Whatever the holder did, the
  * crash supervisor brings back the build that last ran, with a fresh budget, when nothing serves now. Crash recovery
@@ -670,7 +742,9 @@ async function afterUpdateLockRelease(released: UpdateLockHandle): Promise<void>
   const exitedDuring = recoveryDeferred;
   recoveryDeferred = false;
   if (quitting) return;
-  if (!engineServing()) {
+  // The engine service has no child here: its own watch notices a service that stopped answering (#2161: this check
+  // started a false recovery after every service update).
+  if (!serviceEngine && !engineServing()) {
     if (gateway && engineRunning()) await stopFailedEngine(gateway);
     gatewaySupervisor.recover(new Error(exitedDuring ? `the engine exited during "${released.purpose}"` : `nothing served after "${released.purpose}"`));
   } else if (queuedClick) {
@@ -1967,12 +2041,29 @@ async function restartEngine(): Promise<void> {
     return;
   }
   log(`update requested (${staged ?? "rebuilt engine"}); ${serviceEngine ? "the engine service" : `old engine pid ${gateway?.pid}`}`);
-  try { await swapEngineInPlace(staged ?? "rebuilt engine", true); }
-  catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  const label = staged ?? "rebuilt engine";
+  let msg = await swapEngineInPlace(label, true).then(() => undefined, (err: unknown) => err instanceof Error ? err.message : String(err));
+  if (msg === undefined) return;
+  log(`update failed: ${msg}`);
+  if (quitting || HIDDEN || !(serviceEngine || !engineRunning())) return;
+  // Activity that can't be known (an older engine, a silent window) is the owner's call, not a dead end (#2161).
+  if (serviceEngine && activityUnknown(msg)) {
+    const { response } = await dialog.showMessageBox({ type: "question", message: UNKNOWN_ACTIVITY_QUESTION.message,
+      detail: UNKNOWN_ACTIVITY_QUESTION.detail, buttons: [...UNKNOWN_ACTIVITY_QUESTION.buttons], defaultId: 1, cancelId: 1 });
+    if (response !== 0 || quitting) { log("update: kept the running engine; the owner chose Not now"); return; }
+    log("update: the owner confirmed the update although Trunk activity is unknown");
+    msg = await swapEngineInPlace(label, true, undefined, false, false, true).then(() => undefined, (err: unknown) => err instanceof Error ? err.message : String(err));
+    if (msg === undefined) return;
     log(`update failed: ${msg}`);
-    if (!quitting && (serviceEngine || !engineRunning()) && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", plainDialogText(msg, UPDATE_FAILED_PLAIN));
+    if (quitting) return;
   }
+  showUpdateFailed(msg);
+}
+
+/** The failed-update box. Asynchronous: a modal error box blocked the main process and its engine watch (#2161). */
+function showUpdateFailed(message: string): void {
+  void dialog.showMessageBox({ type: "error", message: "Branch couldn't finish the update",
+    detail: plainDialogText(message, UPDATE_FAILED_PLAIN), buttons: ["OK"] }).catch(() => undefined);
 }
 
 /** What the engine runs now: the owned child answers itself; a silent window falls back to the engine's own call. */
@@ -1984,12 +2075,20 @@ async function engineActivity(): Promise<EngineWork> {
 }
 
 /** The service engine's live work, read before any update restarts the service (Private #1038's idle rule). */
-async function serviceWork(): Promise<ServiceWork> {
-  const { window, engine } = await probeWindowOrEngine();
+async function serviceWork(confirmed = false): Promise<ServiceWork> {
+  let probed: Awaited<ReturnType<typeof probeWindowOrEngine>>;
+  try { probed = await probeWindowOrEngine(); }
+  catch (error) {
+    // The owner said Update now to the unknown-activity question: unknown is not a refusal any more (#2161).
+    if (!confirmed) throw error;
+    return ownerConfirmedWork(undefined);
+  }
+  const { window, engine } = probed;
   const runs = Math.max(engine.activeRuns, engine.totalActive, window ? windowRuns(window) : 0);
   const idle = resolvedWindowIdle(window);
-  return { activeRuns: runs, pendingApprovals: idle.pendingApprovals,
+  const work = { activeRuns: runs, pendingApprovals: idle.pendingApprovals,
     streaming: engine.pendingReplies > 0 || Boolean(window?.streaming), unsavedDraftFiles: idle.unsavedDraftFiles };
+  return confirmed ? ownerConfirmedWork(work) : work;
 }
 
 /** The engine's live state for the tray, from the engine calls the app already makes. */
