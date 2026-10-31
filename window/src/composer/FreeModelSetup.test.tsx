@@ -104,9 +104,9 @@ describe("FreeModelSetup", () => {
     expect(plainFreeModelQuestion({ ...cached, freeModel: { ...cached.freeModel!, downloadBytes: undefined } })).toBe("Use the free model " + cached.freeModel?.modelName + " that is already on this computer so Branch can answer without an account?");
   });
 
-  it("shows what is still to download when the model is already on this computer", async () => {
-    // The engine's cached-model question still downloads the search model and runtime files, and sends their size.
-    const step = engineStep("cachedModel");
+  it.each(["cachedModel", "cachedModelOnCpu"])("shows what is still to download when the model is already on this computer (%s)", async (name) => {
+    // The engine's cached-model questions still download the search model and runtime files, and send their size.
+    const step = engineStep(name);
     expect(step.freeModel?.downloadBytes).toBeGreaterThan(0);
     const question = "Use the free model " + step.freeModel?.modelName + " that is already on this computer (" + gb(step.freeModel?.downloadBytes) + " still to download) so Branch can answer without an account?";
     const { host } = await mount({ next: [{ done: false, step }] });

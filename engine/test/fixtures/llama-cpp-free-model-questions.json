@@ -38,6 +38,19 @@
       }
     }
   ],
+  "cachedModelOnCpu": [
+    {
+      "type": "confirm",
+      "message": "No verified CUDA llama-server b10809 build is available for linux/x64. Install a CUDA-enabled llama-server manually and configure its absolute path, or explicitly choose CPU setup. This recommendation uses CPU execution. Use cached Gemma 4 E4B on Gateway host gateway-host with the verified CPU runtime?",
+      "initialValue": false,
+      "executor": "client",
+      "freeModel": {
+        "kind": "cached-model",
+        "modelName": "Gemma 4 E4B",
+        "downloadBytes": 345311642
+      }
+    }
+  ],
   "declinedThenSearchModelOnly": [
     {
       "type": "confirm",
