@@ -12,6 +12,7 @@ import { CodexMissingNotice, ConnectModelNotice } from "../../composer/ConnectMo
 import { isCodexMissingError, isNoUsableModelError } from "../../composer/connect-model";
 import { currentModelRef } from "../../composer/model";
 import { hasNoModel, useConversation } from "../../composer/useConversation";
+import { useComposerShowsConnect } from "../composer/Composer";
 import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
 import { resolveApproval } from "../../thread/actions";
@@ -186,10 +187,12 @@ function earliestStepAt(blocks: readonly Block[]): number | undefined {
 function EmptyChat({ name, engine, onStart }: { name: string; engine?: WindowEngine; onStart?: (text: string) => void }) {
   const conv = useConversation(engine);
   const noModel = conv.loaded && hasNoModel(conv, currentModelRef(conv.row, conv.defaults));
+  // After a held send the composer shows the reason with its button; the empty chat then leaves its copy out.
+  const composerShows = useComposerShowsConnect(engine?.sessionKey);
   return <div className="r1c-empty" data-testid="empty-chat">
     <Face size={72} label={name} state="idle" reactive />
     <h1 className="r1c-empty-title">What should {name || "it"} do?</h1>
-    {noModel ? <ConnectModelNotice className="r1c-connect" /> : onStart ? <Starters engine={engine} onStart={onStart} /> : null}
+    {noModel ? composerShows ? null : <ConnectModelNotice className="r1c-connect" /> : onStart ? <Starters engine={engine} onStart={onStart} /> : null}
   </div>;
 }
 

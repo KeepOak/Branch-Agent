@@ -1,7 +1,7 @@
 // R1-04 Composer (HANDOFF R1-04, preview composeP17): the floating glass pill (+, field, Improve, mic, ring, voice → send),
 // the quiet row under it and their menus. The logic is the Classic composer's (composer/*.ts hooks, imported, not
 // rewritten); this file only draws it the approved way and joins the parts. Every control is wired or shows Coming.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type ReactElement } from "react";
 import type { Conversation as ListRow } from "../../connect/conversations";
 import { isPreparationPending, isPreparationStalled, preparationLabel } from "../../connect/preparation-status";
 import { PASTED_TEXT_CHIP_CHARS } from "../../composer/attachments";
@@ -99,6 +99,25 @@ type Props = {
 };
 
 type Menu = RowMenu | "plus" | "ring" | "mic" | null;
+
+// Conversations whose composer shows Connect a model right now (a held send's reason). The empty chat
+// (screens/chat/ChatView) leaves its own copy out then, so the person sees the notice once.
+const connectShown = new Set<string>();
+const connectListeners = new Set<() => void>();
+function markConnectShown(key: string, on: boolean) {
+  if (on === connectShown.has(key)) return;
+  if (on) connectShown.add(key);
+  else connectShown.delete(key);
+  connectListeners.forEach((listener) => listener());
+}
+function subscribeConnect(listener: () => void) {
+  connectListeners.add(listener);
+  return () => { connectListeners.delete(listener); };
+}
+/** True while this conversation's composer shows the Connect a model notice. */
+export function useComposerShowsConnect(sessionKey: string | null | undefined): boolean {
+  return useSyncExternalStore(subscribeConnect, () => Boolean(sessionKey) && connectShown.has(sessionKey ?? ""), () => false);
+}
 
 function readGoal(row: Record<string, unknown>): Goal | null {
   const g = rec(row.goal);
@@ -410,7 +429,14 @@ export function Composer(props: Props) {
   const summary = ringSummary(usage, runningCount, context);
   const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : waitingForFreeModel ? FREE_MODEL_READY : noModel ? (conv.noKeyError ?? CONNECT_MODEL_ANSWERS) : holdReason ?? (working && hasDraft ? sendTooltip(queueMode) : undefined);
   const placeholder = waitingForFreeModel ? FREE_MODEL_READY : noModel ? "Connect a model to start" : props.placeholder ?? `Message ${name}`;
-  const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n) && !(props.startupShown && (isPreparationPending(n) || isPreparationStalled(n))));
+  const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n) && !(props.startupShown && (isPreparationPending(n) || isPreparationStalled(n))))
+    .filter((n, i, all) => !isNoUsableModelError(n) || all.findIndex((m) => isNoUsableModelError(m)) === i);
+  const showsConnect = notes.some((n) => isNoUsableModelError(n));
+  useEffect(() => {
+    if (!sessionKey) return;
+    markConnectShown(sessionKey, showsConnect);
+    return () => markConnectShown(sessionKey, false);
+  }, [sessionKey, showsConnect]);
 
   return <div ref={dock} className="r1c" data-tight={tight || undefined} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }} onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)} onDrop={onDrop}>
     {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
