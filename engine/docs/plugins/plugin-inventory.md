@@ -70,6 +70,8 @@ Each entry lists the package, distribution route, and description.
 
 - **[beam](/plugins/reference/beam)** (`@branch/beam`) - included in Branch Agent. Read-only coding-session Beam receiver.
 
+- **[bitwarden](/plugins/reference/bitwarden)** (`@branch/bitwarden`) - included in Branch Agent. Bitwarden SecretRef resolver and the list of saved sign-ins Branch may fill, by reference only.
+
 - **[bonjour](/plugins/reference/bonjour)** (`@branch/bonjour`) - included in Branch Agent. Advertise the local Branch Agent gateway over Bonjour/mDNS.
 
 - **[browser](/plugins/reference/browser)** (`@branch/browser-plugin`) - included in Branch Agent. Adds agent-callable tools.
