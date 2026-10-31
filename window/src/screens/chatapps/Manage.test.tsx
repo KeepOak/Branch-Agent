@@ -37,8 +37,16 @@ function button(host: Element, label: string) { return [...host.querySelectorAll
 const type = async (el: HTMLInputElement, value: string) => act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, value); el.dispatchEvent(new Event("input", { bubbles: true })); });
 const pick = async (el: HTMLSelectElement, value: string) => act(async () => { el.value = value; el.dispatchEvent(new Event("change", { bubbles: true })); });
 
+const LINKED = [{ accountId: "selected", running: true, configured: true, linked: true }];
+it("#1049: shows Unlink only for a linked account, and no Set up again in the row", async () => {
+  const plain = await render(false, {}, { methods: ADMIN });
+  const labels = [...plain.host.querySelectorAll(".r1-cw-actions button")].map((b) => b.textContent);
+  expect(labels).not.toContain("Unlink");
+  expect(labels).not.toContain("Set up again");
+  expect(button(plain.host, "Disconnect")).toBeTruthy();
+});
 it("pauses the app and confirms before unlinking", async () => {
-  const { host, request } = await render(false, {}, { methods: ADMIN });
+  const { host, request } = await render(false, {}, { methods: ADMIN, accounts: LINKED });
   await act(async () => button(host, "Pause").click());
   expect(request).toHaveBeenCalledWith("channels.stop", { channel: "telegram", accountId: "selected" });
   await act(async () => button(host, "Unlink").click());
@@ -48,7 +56,7 @@ it("pauses the app and confirms before unlinking", async () => {
   expect(host.textContent).toContain("Adapters arrive after release.");
 });
 it("keeps a rejected unlink visible instead of claiming success", async () => {
-  const { host } = await render(true);
+  const { host } = await render(true, {}, { accounts: LINKED });
   await act(async () => button(host, "Unlink").click());
   await act(async () => button(host, "Unlink account").click());
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("Unlink failed");

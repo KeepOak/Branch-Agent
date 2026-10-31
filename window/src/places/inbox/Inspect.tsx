@@ -1,5 +1,6 @@
 // [T] "Who ran this, and with what right" (preview 41-placesap inspectPD18), read from audit.run.inspect:
 // the run's identity facts, what is missing, and each recorded decision. A record only: nothing here acts.
+import { Failure } from "../automations/Failure";
 import { useCallback, useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
@@ -81,6 +82,6 @@ export function Inspect({ engine, title, at, runId, close }: { engine: WindowEng
   return <Dialog wide title="Who ran this, and with what right" onClose={close} footer={<><button type="button" className="btn ghost" onClick={() => load()}>Start again</button></>}>
     <p className="ib-p"><b>{title}</b> · {dayWord(at)}</p>
     <p className="ib-hint">Kept by the Gateway for 30 days. A missing record doesn’t prove the run didn’t happen.</p>
-    {error ? <p className="ib-err" role="alert">{error}</p> : !result ? <p className="ib-hint" role="status">Reading the record…</p> : <Body result={result} pick={pick} setPick={setPick} />}
+    {error ? <div className="ib-err" role="alert"><Failure error={error} /></div> : !result ? <p className="ib-hint" role="status">Reading the record…</p> : <Body result={result} pick={pick} setPick={setPick} />}
   </Dialog>;
 }

@@ -184,7 +184,7 @@ export type BoundVerifySetupInferenceResult =
   | Extract<VerifySetupInferenceResult, { ok: false }>;
 
 export type ActivateSetupInferenceParams = {
-  kind: SetupInferenceKind | "api-key" | "provider-auth";
+  kind: SetupInferenceKind | "api-key" | "provider-auth" | "no-key-default";
   /** Acknowledge utility-only activation; older clients must not promote it as primary-ready. */
   modelTarget?: "utility";
   /** Configured agent that owns the route being tested and persisted. */

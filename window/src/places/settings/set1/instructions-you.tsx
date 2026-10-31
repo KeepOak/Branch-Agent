@@ -16,25 +16,40 @@ function docOf(r: unknown): Doc {
   return { content: typeof v.content === "string" ? v.content : "", hash: typeof v.hash === "string" ? v.hash : null, missing: v.missing === true };
 }
 
+const NO_NOTE: Doc = { content: "", hash: null, missing: true };
+
+const NOT_KEPT = <span className="grow"><b>Not kept on this Branch</b><small>Branch keeps this note for people who share it. Nothing is written here.</small></span>;
+
 export function JustAboutYou({ engine, agentId }: { engine: WindowEngine; agentId: string }) {
+  // A one-person Branch (the engine's hello says so) has no section at all, as in the preview, and never asks: the engine
+  // refuses users.personalFile.* there and logs each refusal as a gateway error (#1920).
+  if (engine.sharedGateway === false) return null;
+  return <JustAboutYouFile engine={engine} agentId={agentId} />;
+}
+
+function JustAboutYouFile({ engine, agentId }: { engine: WindowEngine; agentId: string }) {
   const file = useResource<RecordValue>(engine, "users.personalFile.get", { agentId });
   const last = useRef<Doc | null>(null);
   const [open, setOpen] = useState(false);
   if (file.data) last.current = docOf(file.data);
-  if (file.error || !last.current) return null;
   const doc = last.current;
-  const n = lineCount(doc.content);
+  const n = doc ? lineCount(doc.content) : 0;
+  // A read the engine refused (a one-person Branch) gets a plain reason and no Write, since the engine won't save it.
+  const refused = Boolean(file.error) && !doc;
   return (
     <Sec title="Just about you">
       <Plist>
         <div className="prow if-row" data-row="Just about you">
-          <code className="if-name">USER.md</code>
-          <span className="grow"><b>Just about you</b><small>Yours: what this Trunk should know about you. Only you and it read it.{n ? ` · ${linesText(n)}` : ""}</small></span>
-          <Btn sm onClick={() => setOpen(true)}>{n ? "Edit" : "Write"}</Btn>
+          {refused ? NOT_KEPT : <>
+            {/* The preview's row: the file's tag, what it is, its line count once written, then Edit or Write. */}
+            <code className="if-name">USER.md</code>
+            <span className="grow"><b>Just about you</b><small>Yours: what this Trunk should know about you. Only you and it read it.{n ? ` · ${linesText(n)}` : ""}</small></span>
+            <Btn sm onClick={() => setOpen(true)}>{n ? "Edit" : "Write"}</Btn>
+          </>}
         </div>
       </Plist>
       <Hint>The shared USER.md above stays the household’s.</Hint>
-      {open ? <YouEditor engine={engine} agentId={agentId} start={doc} onClose={(saved) => { setOpen(false); if (saved) void file.reload(); }} /> : null}
+      {open ? <YouEditor engine={engine} agentId={agentId} start={doc ?? NO_NOTE} onClose={(saved) => { setOpen(false); if (saved) void file.reload(); }} /> : null}
     </Sec>
   );
 }

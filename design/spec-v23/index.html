@@ -9300,7 +9300,7 @@ function shellRun(cmd) {
   const [name, ...args] = c.split(/\s+/);
   const out = {
     ls:() => args[0] ? Object.keys(SAMPLE_FS).filter(f => f.startsWith(args[0].replace(/\/$/, ''))).map(f => f.split('/').pop()).join('  ') || 'No such folder.' : 'Documents  Downloads  notes',
-    pwd:() => 'C:\\Users\\taofik', whoami:() => 'taofik', help:() => 'ls, pwd, cat <file>, whoami, echo, clear, branch status, branch usage. Nothing here runs on your computer.',
+    pwd:() => '.', whoami:() => 'you', help:() => 'ls, pwd, cat <file>, whoami, echo, clear, branch status, branch usage. Nothing here runs on your computer.',
     cat:() => SAMPLE_FS[args[0]] ?? `cat: ${args[0] || ''}: No such file`, echo:() => args.join(' '), clear:() => { S.shell.lines = []; return null; },
     branch:() => args[0] === 'usage' ? LIMITS.map(l => `${(l.name + ' ' + l.acct.split(' · ')[0]).padEnd(24)} ${l.state === 'measured' || l.state === 'estimated' ? l.windows.map(w => `${w[0].replace('This ', '')} ${w[1]}%`).join('  ') + (l.state === 'estimated' ? '  (estimate)' : '') : l.state === 'local' ? 'on this computer, no limit' : l.state === 'off' ? 'not asked' : 'not published'}`).join('\n') + '\nAccounts are never added together.'
       : args[0] === 'status' ? `Branch 0.19.4 · gateway ${gwWord()} · ${chats.filter(x => x.status === 'working').length} working · ${pendingCount()} waiting for you\nTrunks: ${trunkList().map(t => t.name).join(', ')}` : 'Try: branch status, branch usage'
@@ -16535,7 +16535,7 @@ document.addEventListener('keydown', e => {
 /* Example facts the list can show (example data; the demo strip marks it once): a folder, branch and pull request on
    Scout's conversation, a chat-app link on Ada's, who is viewing Sapling's. */
 const EX_PA18 = {
-  scout: {folder: 'C:\\Users\\Taofik\\Code\\hartwell-portal', repo: 'hartwell-portal', branch: 'invoice-lookup',
+  scout: {folder: 'Code\\hartwell-portal', repo: 'hartwell-portal', branch: 'invoice-lookup',
     pr: {n: 18, state: 'Draft', ci: 'running', title: 'Match invoices to orders', by: 'Scout'}, files: ['src/match.ts', 'src/invoices.ts', 'README.md', 'tests/match.test.ts'], plan: [3, 5],
     notes: 'Statements are under Billing › Statements. July is missing its PO number.', head: 'Finding the Hartwell invoice'},
   ada: {app: 'Telegram', account: '@taofik_home'},
@@ -16943,7 +16943,7 @@ ACTS.pjwPA18 = el => el.parentElement.querySelectorAll('button').forEach(b => b.
 ACTS.projdefgoPA18 = el => {
   const pr = projects.find(p => p.id === el.dataset.v); if (!pr) return;
   const folder = ($('#pjfPA18')?.value || '').trim(), where = $('[data-act="pjwPA18"][aria-pressed="true"]')?.dataset.v || 'this';
-  if (folder && S.person !== 0 && !/^C:\\Users\\Taofik\\/i.test(folder)) { $('#pjePA18').innerHTML = errPA18('This folder is outside your Trunks’ folders. Only an admin can save it.'); return; }
+  if (folder && S.person !== 0 && !/^Code\\/i.test(folder)) { $('#pjePA18').innerHTML = errPA18('This folder is outside your Trunks’ folders. Only an admin can save it.'); return; }
   if (where === 'copy' && !folder) { $('#pjePA18').innerHTML = errPA18('Its own copy needs a repository with at least one commit. Pick its folder first.'); $('#pjfPA18')?.focus(); return; }
   pr.defPA18 = {folder, where}; closeDlg(); toast(`Saved the defaults for ${pr.name}.`);
 };
@@ -17863,7 +17863,7 @@ ACTS.newoptgoPA18 = () => {
 };
 ACTS.termstartPA18 = () => {
   closePop(); const live = liveMPA18().filter(i => machines[i][2] === 'ok');
-  openDlg({title: 'Start in the terminal', body: `<div class="field"><label for="tsTPA18">Tool</label><select class="inp" id="tsTPA18"><option>Claude Code</option><option>Codex</option></select></div>${live.length > 1 ? `<div class="field"><label for="tsWPA18">Where</label><select class="inp" id="tsWPA18">${live.map(i => `<option>${esc(machines[i][0])}</option>`).join('')}</select></div>` : ''}${fieldPA18('tsFPA18', 'Folder', '', 'C:\\Users\\Taofik\\Code')}<div class="field"><label for="tsMPA18">First message (optional)</label><textarea class="inp" id="tsMPA18" rows="2"></textarea></div><p class="hint" style="margin:0">It uses that tool’s own account, model and settings on that computer. Branch doesn’t change them.</p>`,
+  openDlg({title: 'Start in the terminal', body: `<div class="field"><label for="tsTPA18">Tool</label><select class="inp" id="tsTPA18"><option>Claude Code</option><option>Codex</option></select></div>${live.length > 1 ? `<div class="field"><label for="tsWPA18">Where</label><select class="inp" id="tsWPA18">${live.map(i => `<option>${esc(machines[i][0])}</option>`).join('')}</select></div>` : ''}${fieldPA18('tsFPA18', 'Folder', '', 'Code')}<div class="field"><label for="tsMPA18">First message (optional)</label><textarea class="inp" id="tsMPA18" rows="2"></textarea></div><p class="hint" style="margin:0">It uses that tool’s own account, model and settings on that computer. Branch doesn’t change them.</p>`,
     foot: `<button class="btn ghost" type="button" data-act="dlg-close">Cancel</button><button class="btn pri" type="button" ${off18('Starts the tool in a terminal from the Branch app on your computer.')}>Start in terminal</button>`});
 };
 
@@ -18639,7 +18639,7 @@ const siteIcPB18 = site => `<span class="site-pb18" aria-hidden="true">${esc((si
 
 chats.push(
   {id: 'fixPB18', kind: 'main', name: 'Fix the failing checks', role: 'Sapling · garden-site', time: 'Tue', status: 'waiting', preview: 'Waiting for you: run git push origin fix/dates?',
-    repoPB18: {repo: 'keepoak-example/garden-site', branch: 'fix/dates', base: 'main'}, folderPB18: 'C:\\Users\\you\\Code\\garden-site', appPB18: 'Telegram', routinesPB18: true,
+    repoPB18: {repo: 'keepoak-example/garden-site', branch: 'fix/dates', base: 'main'}, folderPB18: 'Code\\garden-site', appPB18: 'Telegram', routinesPB18: true,
     prsPB18: [{n: 212, title: 'Fix the flaky date test', state: 'Open', ci: 'failing'}]},
   {id: 'notesPB18', kind: 'main', name: 'River survey notes', role: 'Sapling · reading and notes', time: 'Wed', status: 'waiting', preview: 'Three sources agree on the spring counts.',
     shared: {by: 't', owner: 't', viewing: []}, earlierPB18: 6, fallbackPB18: {model: 'GPT-6.1 Mini', reason: 'GPT-6.1 Sol is busy at your provider, so a fallback model answers until it’s free.'}}
@@ -18666,7 +18666,7 @@ threads.fixPB18 = [
   {k: 'stamp', text: 'Tuesday 9:40'},
   {k: 'tidyPB18', state: 'done', freed: '18,400'},
   {k: 'u', via: 'the terminal', text: 'The checks on fix/dates are failing again. Find out why and fix them.',
-    matPB18: [['Folder', 'garden-site', 'C:\\Users\\you\\Code\\garden-site'], ['File', 'src/dates.test.ts', 'garden-site/src/dates.test.ts'], ['Selection', 'expect(format(day)).toBe("Oct 2")', 'src/dates.test.ts:14']]},
+    matPB18: [['Folder', 'garden-site', 'Code\\garden-site'], ['File', 'src/dates.test.ts', 'garden-site/src/dates.test.ts'], ['Selection', 'expect(format(day)).toBe("Oct 2")', 'src/dates.test.ts:14']]},
   {k: 'b', html: '<p>Found it. One test formats a date in this computer’s own time zone, so it fails on the cloud runner. Here’s the plan:</p>', thinkPB18: 'The failure only shows on the runner, which runs in UTC. The test builds a date at midnight local time, so in UTC it lands on the day before.'},
   {k: 'planPB18', id: 'plPB18', items: [['Run the failing test on its own', 'done'], ['Fix the time zone in src/dates.ts', 'done'], ['Run every check again', 'now'], ['Open the pull request', 'todo']], note: 'The date test passes now; running the whole suite next.', state: 'live'},
   {k: 'notePB18', text: 'Two files changed; the rest of the suite runs next.'},
@@ -18688,13 +18688,13 @@ threads.fixPB18 = [
     {p: `The first try is in ${convPB18('branch')}; the release notes were in ${convPB18('goneXPB18')}.`}
   ]},
   {k: 'ask', pb18: 'cmd', id: 'apPB18a', short: 'a3e07b', trunk: 'branch', chat: 'fixPB18', q: 'Run this command?', cmd: 'git push origin fix/dates', noAlways: true, expiresIn: 270, local: true,
-    fields: [['Computer', 'This computer'], ['Folder', 'C:\\Users\\you\\Code\\garden-site'], ['Runs', 'C:\\Program Files\\Git\\cmd\\git.exe'], ['Rule', 'Pushing to another computer asks every time'], ['Asks', 'Every time'], ['Conversation', 'Fix the failing checks']],
+    fields: [['Computer', 'This computer'], ['Folder', 'Code\\garden-site'], ['Runs', 'C:\\Program Files\\Git\\cmd\\git.exe'], ['Rule', 'Pushing to another computer asks every time'], ['Asks', 'Every time'], ['Conversation', 'Fix the failing checks']],
     state: 'pending'},
   {k: 'ask', pb18: 'plugin', id: 'apPB18b', short: 'b81d2c', trunk: 'branch', chat: 'fixPB18', q: 'Post the lint report on pull request #212?', fields: [['Plugin', 'garden-lint']], plugin: 'garden-lint', level: 'warning',
     detail: 'garden-lint wants to post its report as a comment on the pull request. The report lists 3 warnings and no errors.', covers: ['Posts publicly on GitHub'], state: 'pending'},
   {k: 'ask', pb18: 'cmd', id: 'apPB18c', short: 'c41f9e', trunk: 'branch', chat: 'fixPB18', q: 'Run this command?', local: true, routine: 'Nightly check run', secondPB18: 'checking',
     cmd: 'curl -sS -H "Authorization: Bearer wk-example-token-0042" "https://dаta.weirwatch.example/export?from=2026-03-01&to=2026-05-31&format=csv" -o counts.csv && python scripts/merge_counts.py counts.csv --out data/spring.csv',
-    fields: [['Computer', 'This computer'], ['Folder', 'C:\\Users\\you\\Code\\garden-site'], ['Runs', 'C:\\Windows\\System32\\curl.exe'], ['Rule', 'Downloads ask first'], ['Asks', 'The first time'], ['Conversation', 'Fix the failing checks']], state: 'pending'},
+    fields: [['Computer', 'This computer'], ['Folder', 'Code\\garden-site'], ['Runs', 'C:\\Windows\\System32\\curl.exe'], ['Rule', 'Downloads ask first'], ['Asks', 'The first time'], ['Conversation', 'Fix the failing checks']], state: 'pending'},
   {k: 'secondPB18', action: 'deleting the build folder', level: 'high', reason: 'It would delete files outside the project folder.'},
   {k: 'cmdPB18', cmd: '/usage', html: 'This conversation: 41,200 words in, 6,300 out · GPT-6.1 Sol · 9% of your ChatGPT plan’s 5-hour window used.'},
   {k: 'taskPB18', id: 'tkPB18', project: 'garden-site', at: 0, tasks: [
@@ -20051,7 +20051,7 @@ afterChat15(() => {
 });
 POPS.whereCompPB18 = () => `<div class="ph">Where it works</div>${[['This computer', 'Online · you are here'], ...machines.slice(1).map(m => [m[0], m[1]]), ['Cloud computer', 'A throwaway machine on your cloud account'], ['Any free computer', 'Picks the least busy one']].map(([n, s]) => radio('whereSetPB18', n, esc(n), esc(s), compNamePB18() === n)).join('')}`;
 POPS.whereFolderPB18 = q => {
-  const all = projects.map(p => p.name), rec = ['C:\\Users\\you\\Code\\garden-site', 'C:\\Users\\you\\Documents\\River survey'];
+  const all = projects.map(p => p.name), rec = ['Code\\garden-site', 'Documents\\River survey'];
   const f = s => !q || s.toLowerCase().includes(q.toLowerCase());
   const git = /^https?:\/\/|^git@/.test(q || '');
   return `<div class="ph">Folder</div><label class="row-in"><input class="inp" id="wf-q-pb18" placeholder="Search projects or paste a Git link" aria-label="Search projects or paste a Git link" value="${esc(q || '')}" autocomplete="off"></label>
@@ -23130,7 +23130,7 @@ Object.assign(ACTS, {
   chgrefPC18: () => render(),
   chgfilePC18: el => { const p = el.dataset.v; openPop(el, mi('chgcpPC18', 'copy', 'Copy path', '', `data-v="${esc(p)}"`) + mi('revfilePC18', 'doc', 'Open file', '', `data-v="${esc(p)}"`) + `<button class="mi" type="button" role="menuitem" ${off18('Opens in your editor from the Branch app on your computer.')}><span class="ico">${ic('edit', 's')}</span><span class="mi-t">Open in editor</span></button>` + mi('revfilesPC18', 'folder', 'Show in Files'), {right: true}); },
   chgcpPC18: el => { closePop(); copyPC18(el.dataset.v, 'Copied.'); },
-  chgsyncPC18: () => openDlg({title: 'Sync to your own checkout', body: `<p style="margin:0">Run this in your own checkout to copy this conversation’s commits.</p><label class="fld"><span>Checkout folder</span><input class="inp" id="chgDirPC18" value="C:\\Users\\taofik\\code\\supplier-quotes" spellcheck="false"></label><label class="fld"><span>Branch name</span><input class="inp" id="chgBrPC18" value="supplier-quotes-compare" spellcheck="false"></label><pre class="revPrePC18" id="chgCmdPC18">git -C "C:\\Users\\taofik\\code\\supplier-quotes" fetch branch://conversation/room supplier-quotes-compare</pre><p class="hint" style="margin:0">Uncommitted changes stay where they are.</p>`, foot: '<button class="btn ghost" type="button" data-act="dlg-close">Close</button><button class="btn pri" type="button" data-act="chgcmdPC18">Copy command</button>'}),
+  chgsyncPC18: () => openDlg({title: 'Sync to your own checkout', body: `<p style="margin:0">Run this in your own checkout to copy this conversation’s commits.</p><label class="fld"><span>Checkout folder</span><input class="inp" id="chgDirPC18" value="code\\supplier-quotes" spellcheck="false"></label><label class="fld"><span>Branch name</span><input class="inp" id="chgBrPC18" value="supplier-quotes-compare" spellcheck="false"></label><pre class="revPrePC18" id="chgCmdPC18">git -C "code\\supplier-quotes" fetch branch://conversation/room supplier-quotes-compare</pre><p class="hint" style="margin:0">Uncommitted changes stay where they are.</p>`, foot: '<button class="btn ghost" type="button" data-act="dlg-close">Close</button><button class="btn pri" type="button" data-act="chgcmdPC18">Copy command</button>'}),
   chgcmdPC18: () => copyPC18($('#chgCmdPC18')?.textContent || '', 'Copied.')
 });
 document.addEventListener('input', e => { if (e.target.id !== 'chgDirPC18' && e.target.id !== 'chgBrPC18') return; const c = $('#chgCmdPC18'); if (c) c.textContent = `git -C "${$('#chgDirPC18').value}" fetch branch://conversation/${S.chat} ${$('#chgBrPC18').value}`; });
@@ -35469,7 +35469,7 @@ ACTS['ph-compmorePG18'] = () => phSheetPG18('', `<div class="p-list">${pActPG18(
 ACTS['ph-termPG18'] = () => { S.ph.shPG18 = null; phGo('termPG18'); render(); };
 addScrPG18('termPG18', 'computer', () => { const c = C(S.ph.chat || 'scout'), on = S.ph.connPG18 === 'on';
   return `<div class="p-compv8 p-termPG18"><div class="p-nav dark8"><button type="button" data-act="ph-back8" aria-label="Back">${iosPG18() ? '‹' : '←'}</button><span class="p-who"><b>Terminal</b><small>${esc(c.name)}’s project folder on ${COMP_PG18}</small></span><span></span></div>
-    <pre class="p-termoutPG18">${on ? `PS C:\\Users\\you\\Code\\${esc(c.id)}&gt; <span class="p-curPG18">_</span>` : `The terminal needs a connection to ${COMP_PG18}.`}</pre>
+    <pre class="p-termoutPG18">${on ? `PS Code\\${esc(c.id)}&gt; <span class="p-curPG18">_</span>` : `The terminal needs a connection to ${COMP_PG18}.`}</pre>
     <input class="p-inPG18 p-terminPG18" aria-label="Type a command" placeholder="Type a command" ${off18('The shell runs on ' + COMP_PG18 + '; this preview has no connection to it.')}>
     <div class="p-keysPG18" role="toolbar" aria-label="Keys">${['Esc', 'Tab', 'Ctrl', '←', '↑', '↓', '→'].map(k => `<button type="button" ${off18('Keys go to the real shell, which this preview can’t reach.')}>${k}</button>`).join('')}</div><p class="p-hint8">Turn your phone sideways to widen it.</p></div>`; });
 
@@ -37357,7 +37357,7 @@ Object.assign(ACTS, {
   brCdR218: el => openPop(el, brPopCd(), {force: true}),
   brsetCdR218: el => { CD.br[S.chat] = el.dataset.v; closePop(); render(); },
   projCdR218: el => { const id = S.chat, extra = CD.folders[id] || [];
-    openPop(el, `<div class="ph">Project · garden-site</div><p class="pp hint">Coding project found: a git repository with package.json and AGENTS.md. Ready for Trunks: 3 of 4 (no review checks yet).</p><div class="ph">Folders in this conversation</div>${['C:\\Users\\you\\Code\\garden-site', ...extra].map(f => `<div class="mi" role="menuitem"><span class="ico">${ic('folder', 's')}</span><span class="mi-t">${esc(f)}</span></div>`).join('')}<div class="ph">Work in another folder</div>${['C:\\Users\\you\\Code\\garden-api', 'garden-site · separate copy fix-dates', 'taofik-ai · /home/taofik/garden-site'].filter(f => !extra.includes(f)).map(f => mi('foldaddCdR218', 'plus', esc(f), '', `data-v="${esc(f)}"`)).join('')}`, {force: true}); },
+    openPop(el, `<div class="ph">Project · garden-site</div><p class="pp hint">Coding project found: a git repository with package.json and AGENTS.md. Ready for Trunks: 3 of 4 (no review checks yet).</p><div class="ph">Folders in this conversation</div>${['Code\\garden-site', ...extra].map(f => `<div class="mi" role="menuitem"><span class="ico">${ic('folder', 's')}</span><span class="mi-t">${esc(f)}</span></div>`).join('')}<div class="ph">Work in another folder</div>${['Code\\garden-api', 'garden-site · separate copy fix-dates', 'sample-ai · Projects/garden-site'].filter(f => !extra.includes(f)).map(f => mi('foldaddCdR218', 'plus', esc(f), '', `data-v="${esc(f)}"`)).join('')}`, {force: true}); },
   foldaddCdR218: el => { (CD.folders[S.chat] = CD.folders[S.chat] || []).push(el.dataset.v); closePop(); render(); }
 });
 document.addEventListener('input', e => { if (e.target.id !== 'brQCdR218') return; CD.brQ = e.target.value; const pos = e.target.selectionStart; if (popEl) popEl.innerHTML = brPopCd(); const i = $('#brQCdR218'); if (i) { i.focus(); i.setSelectionRange(pos, pos); } });
@@ -39520,7 +39520,7 @@ kindPB18('quotaR518', {bot: true, draw: (b, c, i) => b.done ? `<div class="decid
 kindPB18('heldR518', {bot: true, draw: () => `<div class="sys-pb18" data-r518="held">${ic('shield', 's')}<span>The service held this reply for its own safety check.</span><button class="btn ghost sm" type="button" ${off18('Asks the model again, in the Branch app.')}>Try again</button></div>`});
 if (threads.fixPB18 && !threads.fixPB18.some(b => b.k === 'scopeR518')) threads.fixPB18.push(
   {k: 'scopeR518', cmd: 'npm install lodash', parts: ['npm', 'npm install', 'npm install lodash']},
-  {k: 'accessR518', title: 'Sapling needs one more place', what: 'Read C:\\Users\\you\\Downloads, for the test data you mentioned.'},
+  {k: 'accessR518', title: 'Sapling needs one more place', what: 'Read Downloads, for the test data you mentioned.'},
   {k: 'accessR518', title: 'The sandbox stopped a request', what: 'registry.npmjs.org was refused. Allow it for this sandbox?'},
   {k: 'quotaR518'}, {k: 'heldR518'}, {k: 'u', text: 'Add my second Claude account too.'}, {k: 'acctaskR518'});
 kindPB18('acctaskR518', {bot: true, draw: () => `<div class="card-r518" data-r518="acct"><div class="h-r518">${logo('anthropic', 26)}<span><b>Add another Claude account</b><p class="sub">It signs in on Claude’s own page and joins the order in Settings › Accounts. Branch never sees the password.</p></span></div><div class="acts"><button class="btn sm" type="button" data-act="addacct" data-v="anthropic">Start the sign-in</button><button class="btn ghost sm" type="button" data-act="setgo" data-v="accounts">Open Accounts</button></div></div>`});

@@ -229,6 +229,14 @@ function createAllowlistedAnthropicModelCfg(): BranchConfig {
   } as BranchConfig;
 }
 
+/** The same config with agents.defaults.subscriptionsOnly on. */
+function withSubscriptionsOnly(cfg: BranchConfig): BranchConfig {
+  return {
+    ...cfg,
+    agents: { ...cfg.agents, defaults: { ...cfg.agents?.defaults, subscriptionsOnly: true } },
+  } as BranchConfig;
+}
+
 describe("gateway sessions patch", () => {
   beforeEach(() => {
     providerThinkingMocks.resolveProviderThinkingProfile.mockReset();
@@ -2184,13 +2192,13 @@ describe("gateway sessions patch", () => {
       });
     }
 
-    test("refuses an agent patch onto an API-key sign-in and keeps the saved sign-in", async () => {
+    test("refuses an agent patch onto an API-key sign-in when subscriptionsOnly is set and keeps the saved sign-in", async () => {
       const store = planPinnedStore();
       const result = await withAgentSessionModelPatchOrigin(
         async () =>
           await runPatch({
             store,
-            cfg: createAllowlistedAnthropicModelCfg(),
+            cfg: withSubscriptionsOnly(createAllowlistedAnthropicModelCfg()),
             patch: { key: MAIN_SESSION_KEY, model: `${ANTHROPIC_SONNET_MODEL}@${API_KEY_PROFILE}` },
             loadGatewayModelCatalog: loadCatalog(ANTHROPIC_SONNET_MODEL),
             providerAuthMetadataSnapshot: EMPTY_PROVIDER_AUTH_METADATA_SNAPSHOT,
@@ -2205,12 +2213,25 @@ describe("gateway sessions patch", () => {
         async () =>
           await applyMainModelPatch({
             store: mainAuthOverrideStore({ authProfileOverride: API_KEY_PROFILE }),
-            cfg: createAllowlistedAnthropicModelCfg(),
+            cfg: withSubscriptionsOnly(createAllowlistedAnthropicModelCfg()),
             model: `${ANTHROPIC_SONNET_MODEL}@${PLAN_PROFILE}`,
             catalogRefs: [ANTHROPIC_SONNET_MODEL],
           }),
       );
       expectAuthOverride(entry, { profile: PLAN_PROFILE });
+    });
+
+    test("lets an agent patch onto an API-key sign-in when subscriptionsOnly is off", async () => {
+      const entry = await withAgentSessionModelPatchOrigin(
+        async () =>
+          await applyMainModelPatch({
+            store: planPinnedStore(),
+            cfg: createAllowlistedAnthropicModelCfg(),
+            model: `${ANTHROPIC_SONNET_MODEL}@${API_KEY_PROFILE}`,
+            catalogRefs: [ANTHROPIC_SONNET_MODEL],
+          }),
+      );
+      expectAuthOverride(entry, { profile: API_KEY_PROFILE });
     });
 
     test("keeps owner patches onto an API-key sign-in", async () => {

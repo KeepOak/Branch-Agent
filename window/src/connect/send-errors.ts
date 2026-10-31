@@ -1,6 +1,7 @@
 // How a chat.send (or a read) failed, as the gateway client reports it: the engine answered with a refusal (it carries
 // its gateway code), the request never left this window ("gateway not connected"), or the connection went after it
 // left (`gateway closed`, a local timeout), when the engine may or may not have it.
+import { friendlyError } from "./friendly-error";
 
 /** The message never left this window. */
 export const isNotConnected = (error: unknown): boolean => error instanceof Error && error.message === "gateway not connected";
@@ -44,5 +45,5 @@ export function failedAck(result: Record<string, unknown>): string | null {
   const status = typeof result.status === "string" ? result.status : "";
   if (!status || ["started", "in_flight", "ok"].includes(status)) return null;
   const said = [result.summary, result.error].find((v): v is string => typeof v === "string" && v.length > 0);
-  return said ?? `The engine answered "${status}".`;
+  return friendlyError(said ?? status);
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_TRUNK_NAME } from "../connect/trunk-name";
 import { PLACE_NAMES, PLACES, loadRoute, parseRoute, placeTitle, saveRoute, windowTitle, type PlaceId } from "./routes";
 
 describe("routes", () => {
@@ -14,10 +15,20 @@ describe("routes", () => {
   it("lists the seven places in the sidebar's order", () => {
     expect(PLACES.map((p) => p.name)).toEqual(["Overview", "Canopy", "Inbox", "Automations", "Library", "People", "Customize"]);
   });
-  it("window title", () => {
-    expect(windowTitle("Sapling", 0, false)).toBe("Sapling — Branch");
-    expect(windowTitle("Sapling", 2, false)).toBe("(2) Sapling — Branch");
-    expect(windowTitle("Sapling", 2, true)).toBe("(Offline) Sapling — Branch");
+  it("a fresh profile's window title is Branch, not the default agent name", () => {
+    expect(DEFAULT_TRUNK_NAME).toBe("Sapling");
+    expect(windowTitle(DEFAULT_TRUNK_NAME, 0, false)).toBe("Branch");
+    expect(windowTitle("", 0, false)).toBe("Branch");
+    expect(windowTitle("Branch", 0, false)).toBe("Branch");
+    expect(windowTitle("Branch Agent", 0, false)).toBe("Branch");
+    expect(windowTitle(DEFAULT_TRUNK_NAME, 2, false)).toBe("(2) Branch");
+    expect(windowTitle(DEFAULT_TRUNK_NAME, 2, true)).toBe("(Offline) Branch");
+    expect(windowTitle(DEFAULT_TRUNK_NAME, 0, false)).not.toMatch(/Sapling/i);
+  });
+  it("window title names a real page once the user has one", () => {
+    expect(windowTitle("Garden plan", 0, false)).toBe("Garden plan — Branch");
+    expect(windowTitle("Inbox", 2, false)).toBe("(2) Inbox — Branch");
+    expect(windowTitle("Settings", 0, true)).toBe("(Offline) Settings — Branch");
   });
   it("keeps a dedicated conversation window's route separate from the main window", () => {
     const original = location.href;

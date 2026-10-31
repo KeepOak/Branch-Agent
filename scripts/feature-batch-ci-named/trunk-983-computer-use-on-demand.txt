@@ -1,0 +1,2 @@
+engine:extensions/cua-computer/index.test.ts
+engine:extensions/cua-computer/src/on-demand.test.ts

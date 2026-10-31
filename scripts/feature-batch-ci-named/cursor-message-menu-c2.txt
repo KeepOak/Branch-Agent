@@ -1,0 +1,3 @@
+window:src/screens/chat/ChatView.test.tsx
+window:src/screens/chat/HoverBar.test.tsx
+window:src/thread/own-last-message.test.ts

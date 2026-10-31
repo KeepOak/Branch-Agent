@@ -6,6 +6,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { entriesOf, errorText, fileOf, trunkName, type Trunk } from "./data";
 import type { FileEntry } from "./data";
 import { mapLimited } from "./parts";
+import { stalledRead } from "../settings/stall";
 
 export type Fact = { agentId: string; trunk: string; text: string; detail: string; start: number; end: number };
 export type MemoryFile = { agentId: string; trunk: string; file: FileEntry | null; error: string | null; facts: Fact[] };
@@ -46,7 +47,7 @@ export function useMemoryFiles(engine: WindowEngine, trunks: Trunk[] | null) {
     void mapLimited(trunks, 4, async (t): Promise<MemoryFile> => {
       const trunk = trunkName(t);
       try {
-        const file = fileOf(await engine.request<unknown>("agents.files.get", { agentId: t.id, name: "MEMORY.md" }));
+        const file = fileOf(await stalledRead(engine.request<unknown>("agents.files.get", { agentId: t.id, name: "MEMORY.md" })));
         if (!file) return { agentId: t.id, trunk, file: null, error: "The engine did not return this Trunk’s MEMORY.md.", facts: [] };
         return { agentId: t.id, trunk, file, error: null, facts: file.missing ? [] : parseFacts(file.content ?? "", t.id, trunk) };
       } catch (error) { return { agentId: t.id, trunk, file: null, error: errorText(error), facts: [] }; }
@@ -90,7 +91,7 @@ export function useDailyNotes(engine: WindowEngine, agentIds: string[]) {
   useEffect(() => {
     let current = true;
     setCount(null);
-    void Promise.all(key.split("\n").filter(Boolean).map(agentId => engine.request<unknown>("agents.workspace.list", { agentId, path: "memory" })
+    void Promise.all(key.split("\n").filter(Boolean).map(agentId => stalledRead(engine.request<unknown>("agents.workspace.list", { agentId, path: "memory" }))
       .then(r => entriesOf(r).filter(e => e.kind !== "directory" && /^\d{4}-\d{2}-\d{2}.*\.md$/.test(e.name)).length)))
       .then(counts => { if (current) setCount(counts.reduce((a, b) => a + b, 0)); }, () => { if (current) setCount(null); });
     return () => { current = false; };

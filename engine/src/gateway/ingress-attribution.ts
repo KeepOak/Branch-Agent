@@ -1,4 +1,5 @@
 import type { IncomingMessage } from "node:http";
+import { normalizeIpAddress } from "@branch/net-policy/ip";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
 import { readTailscaleWhoisIdentity, type TailscaleWhoisIdentity } from "../infra/tailscale.js";
 import { firstHeaderValue } from "./http-header-value.js";
@@ -9,6 +10,8 @@ import {
   resolveClientIp,
   resolveRequestClientIpFromHeaders,
 } from "./net.js";
+
+export const PAIRING_REMOTE_CLIENT_HEADER = "x-branch-pairing-remote";
 
 export const PROXY_ATTRIBUTION_REQUIRED_REASON = "proxy_attribution_required";
 export const PROXY_ATTRIBUTION_GUIDANCE =
@@ -219,6 +222,18 @@ function resolveGatewayIngressAttribution(params: {
 
   const hasProxyHeaders = hasForwardedRequestHeaders(req);
   const hasTailscaleHeaders = hasTailscaleOwnedHeaders(req);
+  const pairingRemoteClaim = firstHeaderValue(req.headers?.[PAIRING_REMOTE_CLIENT_HEADER])?.trim();
+  if (
+    isLoopbackAddress(remoteAddress) &&
+    !hasProxyHeaders &&
+    !hasTailscaleHeaders &&
+    pairingRemoteClaim
+  ) {
+    // Pairing proxies dial the gateway on loopback. Honor the claimed peer IP
+    // when it is a literal, and never grant local trust even if the claim is
+    // loopback or unparseable.
+    return attributed("direct-remote", normalizeIpAddress(pairingRemoteClaim) ?? "0.0.0.0");
+  }
   if (isLoopbackAddress(remoteAddress) && !hasProxyHeaders && !hasTailscaleHeaders) {
     return attributed("direct-local", remoteAddress);
   }

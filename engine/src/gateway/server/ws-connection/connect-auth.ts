@@ -112,8 +112,8 @@ async function authenticateGatewayConnectCore(
     return undefined;
   }
   let { scopes } = admission;
-  const { role, isControlUi, startupPending } = admission;
-  const startupBootstrapConnect = startupPending && isStartupNodeBootstrapConnect(connectParams);
+  const { role, isControlUi, nodeStartupPending } = admission;
+  const startupBootstrapConnect = nodeStartupPending && isStartupNodeBootstrapConnect(connectParams);
 
   const device = connectParams.device;
   const hasTokenAuth = Boolean(connectParams.auth?.token);
@@ -321,7 +321,7 @@ async function authenticateGatewayConnectCore(
     close(1008, "device identity required");
     return false;
   };
-  if (startupPending && !device) {
+  if (nodeStartupPending && !device) {
     await settleRejectedSharedAuthFailure();
     await rejectGatewayStartupConnect(context);
     return undefined;
@@ -382,7 +382,7 @@ async function authenticateGatewayConnectCore(
     authMethod,
   });
   if (!authOk) {
-    if (startupPending && bootstrapTokenCandidate) {
+    if (nodeStartupPending && bootstrapTokenCandidate) {
       await rejectGatewayStartupConnect(context);
       return undefined;
     }
@@ -397,7 +397,7 @@ async function authenticateGatewayConnectCore(
           publicKey: device.publicKey,
         })
       : null;
-  if (startupPending && authMethod === "bootstrap-token" && !startupBootstrapConnect) {
+  if (nodeStartupPending && authMethod === "bootstrap-token" && !startupBootstrapConnect) {
     await rejectGatewayStartupConnect(context);
     return undefined;
   }

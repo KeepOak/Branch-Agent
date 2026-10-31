@@ -12,11 +12,13 @@ import { MoveInDialog } from "../places/settings/set2/usage";
 import { Icon, type IconName } from "../shell/icons";
 import { ToolLogo } from "./tool-logos";
 import { shownWhy } from "../shell/shown-why";
+import { plainError } from "../shell/plain-error";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.map(rec) : []);
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const message = (e: unknown): string => plainError(e);
 
 /** The assistants the session catalogue reads (Settings › Data & usage › Moving in and out). */
 const CATALOGS = ["anthropic", "codex", "opencode"];

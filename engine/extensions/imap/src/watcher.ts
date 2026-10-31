@@ -8,6 +8,7 @@ import type {
 } from "branch/plugin-sdk/plugin-entry";
 import type { ImapAccountConfig } from "./config.js";
 import { renderImapPrompt } from "./prompt.js";
+import { imapMessageMatchesFilter } from "./trigger.js";
 import { evaluateImapSender, type MailAuthenticator } from "./sender-gate.js";
 import {
   advanceImapCursor,
@@ -331,6 +332,12 @@ export class ImapAccountWatcher {
     }
     // Only consume plain text; avoid generating unused HTML and scanning untrusted links.
     const mail = await simpleParser(message.source, { skipImageLinks: true, skipTextToHtml: true });
+    const fromText = mail.from?.text ?? "";
+    const subject = typeof mail.subject === "string" ? mail.subject : "";
+    if (!imapMessageMatchesFilter(account.match, fromText, subject)) {
+      await this.recordSkip(message.uid, mail.from?.value?.[0]?.address, "filter");
+      return true;
+    }
     const verdict = await evaluateImapSender({
       mail,
       raw: message.source,

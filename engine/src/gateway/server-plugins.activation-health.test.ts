@@ -161,24 +161,30 @@ it.each([false, true])(
         }
       });
     const kernelModule = await import("./server-kernel.js");
-    const createKernel = kernelModule.createGatewayKernel;
+    const prepareKernel = kernelModule.prepareGatewayKernel;
     const publicationFailure = new Error("fixture publication failure after activation");
     const kernelSpy = vi
-      .spyOn(kernelModule, "createGatewayKernel")
+      .spyOn(kernelModule, "prepareGatewayKernel")
       .mockImplementationOnce(async (...args) => {
-        const kernel = await createKernel(...args);
-        const prepare = kernel.prepareAttachedPluginRuntime;
+        const prepared = await prepareKernel(...args);
         return {
-          ...kernel,
-          prepareAttachedPluginRuntime: async (...prepareArgs) => {
-            const attachment = await prepare(...prepareArgs);
+          ...prepared,
+          async activate(...activateArgs) {
+            const kernel = await prepared.activate(...activateArgs);
+            const prepare = kernel.prepareAttachedPluginRuntime;
             return {
-              ...attachment,
-              publish() {
-                attachment.publish();
-                if (publicationThrows) {
-                  throw publicationFailure;
-                }
+              ...kernel,
+              prepareAttachedPluginRuntime: async (...prepareArgs) => {
+                const attachment = await prepare(...prepareArgs);
+                return {
+                  ...attachment,
+                  publish() {
+                    attachment.publish();
+                    if (publicationThrows) {
+                      throw publicationFailure;
+                    }
+                  },
+                };
               },
             };
           },

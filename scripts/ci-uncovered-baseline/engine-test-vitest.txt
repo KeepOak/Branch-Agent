@@ -1,0 +1,2 @@
+engine:test/vitest/vitest.pattern-file.test.ts
+engine:test/vitest/vitest.sqlite-admission.test.ts

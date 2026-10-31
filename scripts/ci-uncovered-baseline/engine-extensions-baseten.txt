@@ -1,0 +1,3 @@
+engine:extensions/baseten/catalog-transport.test.ts
+engine:extensions/baseten/index.test.ts
+engine:extensions/baseten/models.test.ts

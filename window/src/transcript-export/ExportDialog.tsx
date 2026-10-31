@@ -6,6 +6,7 @@ import { loadCompleteTranscript } from "./load";
 import { eventsToHtml, eventsToMarkdown, type TranscriptExportFormat } from "./render";
 import { eventsToReplayHtml } from "./replay-html";
 import "./export.css";
+import { plainError } from "../shell/plain-error";
 
 export function exportFilename(title: string, format: TranscriptExportFormat): string {
   const stem = title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").replace(/[. ]+$/g, "").trim() || "Conversation";
@@ -55,6 +56,6 @@ export function ExportDialog({ engine, sessionKey, title, onClose, initialFormat
     <div className="export-fields"><label className={clear ? "g-label" : undefined}>Format <select aria-label="Export format" value={format} disabled={busy} onChange={e => setFormat(e.target.value as TranscriptExportFormat)}><option value="markdown">Markdown</option><option value="html">HTML</option><option value="replay">HTML replay</option></select></label>
     <label className={clear ? "g-label" : undefined}><input type="checkbox" checked={includeToolDetails} disabled={busy} onChange={e => setTools(e.target.checked)} /> Include tool details</label>
     <label className={clear ? "g-label" : undefined}><input type="checkbox" checked={includeTimestamps} disabled={busy} onChange={e => setTimestamps(e.target.checked)} /> Include timestamps</label></div>
-    {error && <p role="alert" className={clear ? "g-label" : undefined}>{error}</p>}
+    {error && <p role="alert" className={clear ? "g-label" : undefined}>{plainError(error)}</p>}
   </Dialog>;
 }

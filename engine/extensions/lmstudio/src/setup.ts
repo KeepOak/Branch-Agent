@@ -460,6 +460,12 @@ export async function promptAndConfigureLmstudioInteractive(params: {
   }
   const note = params.prompter ? params.prompter.note.bind(params.prompter) : params.note;
   const defaultBaseUrl = resolveLmstudioSetupDefaultBaseUrl();
+  if (note && !params.suppliedApiKey) {
+    await note(
+      "LM Studio runs models on this computer. Install LM Studio and load a model there first. Branch then connects to it. Model files can be several GB; nothing is downloaded until you choose one in LM Studio.",
+      LMSTUDIO_PROVIDER_LABEL,
+    );
+  }
   const baseUrlRaw = params.suppliedApiKey
     ? (params.config.models?.providers?.[PROVIDER_ID]?.baseUrl ?? defaultBaseUrl)
     : await promptText({

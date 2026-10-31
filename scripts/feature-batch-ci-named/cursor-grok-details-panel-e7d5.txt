@@ -1,0 +1,2 @@
+window:src/screens/details/R1DetailsPanel.behavior.test.tsx
+window:src/screens/frame/R1Window.details.test.tsx

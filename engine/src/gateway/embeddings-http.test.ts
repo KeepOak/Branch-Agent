@@ -102,14 +102,13 @@ beforeAll(async () => {
       const localServiceOptions = options as typeof options & {
         acquireLocalService?: unknown;
       };
-      const result = await createEmbeddingProviderMock({
-        provider: options.provider ?? "openai",
+      return await createEmbeddingProviderMock({
+        provider: options.provider ?? "local",
         model: options.model,
         agentDir: options.agentDir,
         dimensions: options.dimensions,
         acquireLocalService: localServiceOptions.acquireLocalService,
       });
-      return result;
     },
   };
   ({ startGatewayServer } = await import("./server.js"));
@@ -136,6 +135,9 @@ beforeEach(async () => {
     activateGlobalSideEffects: true,
   });
   setTestPluginRegistry(builder.registry);
+  registerEmbeddingProvider({
+    ...openAiAdapter, id: "local", defaultModel: "embeddinggemma-300m-qat-q8_0", transport: "local",
+  });
   registerEmbeddingProvider(openAiAdapter);
 });
 
@@ -225,10 +227,7 @@ async function expectInvalidEmbeddingRequest(res: Response, message?: string) {
     expect(json.error?.type).toBe("invalid_request_error");
     return;
   }
-  expect(json.error).toEqual({
-    type: "invalid_request_error",
-    message,
-  });
+  expect(json.error).toEqual({ type: "invalid_request_error", message });
 }
 
 async function expectGenericProviderEmbeddingRequest(expectedProviderCall: {
@@ -236,10 +235,7 @@ async function expectGenericProviderEmbeddingRequest(expectedProviderCall: {
   dimensions: number;
   inputType: string;
 }) {
-  const res = await postEmbeddings({
-    model: "branch/default",
-    input: ["a", "b"],
-  });
+  const res = await postEmbeddings({ model: "branch/default", input: ["a", "b"] });
   await expectEmbeddingData(res, [
     { object: "embedding", index: 0, embedding: [9.1, 9.2] },
     { object: "embedding", index: 1, embedding: [10.1, 9.2] },
@@ -268,21 +264,17 @@ function latestCreateEmbeddingProviderOptions(): {
 describe("OpenAI-compatible embeddings HTTP API (e2e)", () => {
   it("embeds string and array inputs", async () => {
     const closesBefore = closeEmbeddingProviderMock.mock.calls.length;
-    const single = await postEmbeddings({
-      model: "branch/default",
-      input: "hello",
-    });
+    const single = await postEmbeddings({ model: "branch/default", input: "hello" });
     await expectDefaultEmbeddingResponse(single);
 
-    const batch = await postEmbeddings({
-      model: "branch/default",
-      input: ["a", "b"],
-    });
+    const batch = await postEmbeddings({ model: "branch/default", input: ["a", "b"] });
     await expectEmbeddingData(batch, [
       { object: "embedding", index: 0, embedding: [0.1, 0.2] },
       { object: "embedding", index: 1, embedding: [1.1, 1.2] },
     ]);
 
+    expect(latestCreateEmbeddingProviderOptions().provider).toBe("local");
+    await writeEmbeddingConfig({ memory: { search: { provider: "openai" } } });
     const qualified = await postEmbeddings(
       {
         model: "branch/default",
@@ -523,10 +515,7 @@ describe("OpenAI-compatible embeddings HTTP API (e2e)", () => {
       model: "ollama/nomic-embed-text",
       input: "hello",
     });
-    await expectInvalidEmbeddingRequest(
-      res,
-      "Invalid `model`. Use `branch` or `branch/<agentId>`.",
-    );
+    await expectInvalidEmbeddingRequest(res, "Invalid `model`. Use `branch` or `branch/<agentId>`.");
   });
 
   it("rejects disallowed x-branch-model provider overrides", async () => {
@@ -578,6 +567,9 @@ describe("OpenAI-compatible embeddings HTTP API (e2e)", () => {
             port: portClaim,
             auth,
             openAiChatCompletionsEnabled: true,
+          });
+          registerEmbeddingProvider({
+            ...openAiAdapter, id: "local", defaultModel: "embeddinggemma-300m-qat-q8_0", transport: "local",
           });
           registerEmbeddingProvider(openAiAdapter);
           for (const role of ["reader", "writer"]) {
@@ -892,6 +884,9 @@ describe("OpenAI-compatible embeddings HTTP API (e2e)", () => {
           },
         });
       }
+      if (modelOverride) {
+        await writeEmbeddingConfig({ memory: { search: { provider: "openai" } } });
+      }
       const createsBefore = createEmbeddingProviderMock.mock.calls.length;
       const closesBefore = closeEmbeddingProviderMock.mock.calls.length;
       // Concurrent provider admission needs distinct connections; each socket owns serial requests.
@@ -1018,6 +1013,8 @@ describe("OpenAI-compatible embeddings HTTP API (e2e)", () => {
   });
 
   it("allows providers without cleanup resources to embed concurrently", async () => {
+    // Remote providers skip the local cleanup fence; default embeddings are local.
+    await writeEmbeddingConfig({ memory: { search: { provider: "openai" } } });
     const { promise: firstEmbedGate, resolve: releaseFirstEmbed } = createProviderGate();
     const firstEmbedStarted = createDeferred();
     const firstEmbed = vi.fn(async () => {

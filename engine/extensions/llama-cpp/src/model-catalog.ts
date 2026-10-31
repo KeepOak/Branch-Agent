@@ -10,6 +10,7 @@ import {
   buildLlamaCppModel,
 } from "./defaults.js";
 import { formatLlamaCppMemory, type LlamaCppHardware } from "./hardware.js";
+import { LLAMA_CPP_SKIP_REASONS, type LlamaCppSkipReason } from "./skip-reasons.js";
 
 const GIB = 1024 ** 3;
 
@@ -179,7 +180,7 @@ export function resolveLlamaCppCatalogArtifact(source: string): CatalogArtifact 
 }
 
 type LlamaCppRecommendation =
-  | { kind: "unavailable"; reason: string }
+  | { kind: "unavailable"; reason: string; plainReason: LlamaCppSkipReason }
   | {
       kind: "recommended";
       recipe: LlamaCppModelRecipe;
@@ -235,6 +236,7 @@ export function recommendLlamaCppModel(
       kind: "unavailable",
       reason:
         "Cannot measure free space in the model cache or runtime directory. Check their permissions and retry setup.",
+      plainReason: LLAMA_CPP_SKIP_REASONS.diskUnknown,
     };
   }
   const { recipes: candidates, memoryBudgetBytes } = resolveLlamaCppModelCandidates(
@@ -249,6 +251,7 @@ export function recommendLlamaCppModel(
       kind: "unavailable",
       reason:
         "There is not enough free disk space in the runtime directory. Free space on that volume and retry setup.",
+      plainReason: LLAMA_CPP_SKIP_REASONS.diskFull,
     };
   }
   const modelDiskBudget = hardware.sharedDisk
@@ -282,5 +285,7 @@ export function recommendLlamaCppModel(
       candidates.length > 0
         ? "There is not enough free disk space for a recommended model, embeddings, and the runtime. Free space in the model cache and retry setup."
         : `No recommended model fits the current ${formatLlamaCppMemory(Math.max(0, memoryBudgetBytes))} memory budget. Close other applications and retry, or configure an existing GGUF or external server.`,
+    plainReason:
+      candidates.length > 0 ? LLAMA_CPP_SKIP_REASONS.diskFull : LLAMA_CPP_SKIP_REASONS.memory,
   };
 }

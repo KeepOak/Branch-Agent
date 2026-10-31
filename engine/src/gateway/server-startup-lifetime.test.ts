@@ -51,7 +51,7 @@ import { getActiveGatewayRootWorkCount } from "../process/gateway-work-admission
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
 import { getFreePort } from "../test-utils/ports.js";
-import { createGatewayKernel } from "./server-kernel.js";
+import { createGatewayKernel, prepareGatewayKernel } from "./server-kernel.js";
 import type { GatewayContextResolver } from "./server-methods/types.js";
 import type { GatewayServer } from "./server-public.js";
 
@@ -764,12 +764,18 @@ describe("Gateway startup lifetime", () => {
       let publishedStartup: Promise<void> | undefined;
       let startupOutcome: Promise<unknown> | undefined;
       let closeOutcome: Promise<unknown> | undefined;
-      const createKernel = createGatewayKernel;
+      const prepareKernel = prepareGatewayKernel;
       const kernelFactory = vi
-        .spyOn(await import("./server-kernel.js"), "createGatewayKernel")
+        .spyOn(await import("./server-kernel.js"), "prepareGatewayKernel")
         .mockImplementation(async (...args) => {
-          kernel = await createKernel(...args);
-          return kernel;
+          const prepared = await prepareKernel(...args);
+          return {
+            ...prepared,
+            async activate(...activateArgs) {
+              kernel = await prepared.activate(...activateArgs);
+              return kernel;
+            },
+          };
         });
       const startupModule = await import("./server-startup-finish.js");
       const finishStartup = startupModule.finishGatewayStartup;

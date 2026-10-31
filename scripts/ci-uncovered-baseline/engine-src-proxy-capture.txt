@@ -1,0 +1,16 @@
+engine:src/proxy-capture/ca.test.ts
+engine:src/proxy-capture/coverage.test.ts
+engine:src/proxy-capture/env.test.ts
+engine:src/proxy-capture/header-redaction.test.ts
+engine:src/proxy-capture/proxy-server.managed-proxy.test.ts
+engine:src/proxy-capture/proxy-server.test.ts
+engine:src/proxy-capture/runtime.admission.test.ts
+engine:src/proxy-capture/runtime.guarded-fetch.test.ts
+engine:src/proxy-capture/runtime.input-admission.test.ts
+engine:src/proxy-capture/runtime.lifecycle.test.ts
+engine:src/proxy-capture/runtime.retirement.test.ts
+engine:src/proxy-capture/runtime.test.ts
+engine:src/proxy-capture/runtime.transport-admission.test.ts
+engine:src/proxy-capture/store-readonly.test.ts
+engine:src/proxy-capture/store.async.test.ts
+engine:src/proxy-capture/store.sqlite.test.ts

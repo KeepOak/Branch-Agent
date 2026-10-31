@@ -133,10 +133,12 @@ describe('test approval', () => {
     expect(engine.pendingApprovals('plugin').map((a) => a.id)).toEqual(['plugin:request-1']);
 
     await fireEvent.press(screen.getByTestId('allow-plugin:request-1'));
-    await eventually(() => expect(within(screen.getByTestId('answered-plugin:request-1')).getByText('Allowed on this phone')).toBeOnTheScreen());
+    await eventually(() => expect(screen.queryByTestId('approval-plugin:request-1')).toBeNull());
     expect(engine.requests).toContainEqual({ method: 'plugin.approval.resolve', params: { id: 'plugin:request-1', decision: 'allow-once' } });
     // "Sent. Answer it above" goes once there's nothing left to answer.
     expect(screen.queryByTestId('test-approval-sent')).toBeNull();
+    await fireEvent.press(screen.getByTestId('inbox-tab-finished'));
+    expect(within(screen.getByTestId('answered-plugin:request-1')).getByText('Allowed on this phone')).toBeOnTheScreen();
     expect(engine.pendingApprovals('plugin')).toEqual([]);
     session.dispose();
   });
@@ -147,6 +149,7 @@ describe('test approval', () => {
     await fireEvent.press(screen.getByTestId('test-approval-send'));
     await eventually(() => expect(screen.getByTestId('approval-plugin:request-1')).toBeOnTheScreen());
     engine.resolveApproval('plugin:request-1', 'deny');
+    await fireEvent.press(screen.getByTestId('inbox-tab-finished'));
     await eventually(() => expect(within(screen.getByTestId('answered-plugin:request-1')).getByText('Denied somewhere else')).toBeOnTheScreen());
     session.dispose();
   });

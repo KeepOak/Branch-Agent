@@ -3,9 +3,10 @@
 import { useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { notify } from "../../shell/notify";
+import { plainError } from "../../shell/plain-error";
 import { canWrite, useLoad, WRITE_WHY } from "./data";
 import { ENGINE_DEFAULTS, NUMBER_KEYS, readDefaults, type DefaultKey } from "./may";
-import { errorText, patchConfig, readConfig } from "./model";
+import { patchConfig, readConfig } from "./model";
 import "./trunk.css";
 
 const ROWS: { k: DefaultKey; title: string; hint?: string; unit?: string; placeholder?: string }[] = [
@@ -23,7 +24,8 @@ function zones(current: string): string[] {
   return [...new Set([current, host, "UTC", ...all].filter(Boolean))];
 }
 
-export function TrunkDefaults({ engine }: { engine: WindowEngine }) {
+/** heading: false in Settings › Trunks, where these rows sit in the Trunks card with no heading of their own (preview). */
+export function TrunkDefaults({ engine, heading = true }: { engine: WindowEngine; heading?: boolean }) {
   const data = useLoad(async () => readConfig(await engine.request("config.get", {})), "defaults");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,14 +36,14 @@ export function TrunkDefaults({ engine }: { engine: WindowEngine }) {
     if (NUMBER_KEYS.includes(row.k) && v && !/^[1-9]\d*$/.test(v)) { setError(`${row.title}: enter a whole number, or leave it empty.`); return; }
     setBusy(true); setError(null);
     try { await patchConfig(engine, data.data, { [`agents.defaults.${row.k}`]: v === "" ? null : NUMBER_KEYS.includes(row.k) ? Number(v) : v }); notify(`${row.title} saved.`); data.reload(); }
-    catch (e) { setError(errorText(e)); }
+    catch (e) { setError(plainError(e)); }
     finally { setBusy(false); }
   };
   return (
     <section className="tk-sec tk-defaults">
-      <h3 className="tk-h">Defaults for every Trunk</h3>
+      {heading ? <h3 className="tk-h">Defaults for every Trunk</h3> : null}
       <p className="tk-hint">A Trunk’s own value, set in its editor at Technical, wins over these.</p>
-      {data.error && <p className="tk-error" role="alert">{data.error}</p>}
+      {data.error && <p className="tk-error" role="alert">{plainError(data.error)}</p>}
       {values && <div className="tk-rows">{ROWS.map((row) => (
         <div className="tk-ctl" key={row.k}>
           <b>{row.title}</b>
@@ -55,7 +57,7 @@ export function TrunkDefaults({ engine }: { engine: WindowEngine }) {
           {row.hint && <small>{row.hint}</small>}
         </div>
       ))}</div>}
-      {error && <p className="tk-error" role="alert">{error}</p>}
+      {error && <p className="tk-error" role="alert">{plainError(error)}</p>}
     </section>
   );
 }

@@ -1,0 +1,8 @@
+window:src/screens/find/FindAnything.test.tsx
+window:src/screens/find/palette-entry.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/settings/pages/updates-live.test.tsx
+window:src/screens/sidebar/coming.test.tsx
+window:src/shell/WindowShell.topics.test.tsx
+window:src/shell/palette-spotlight.test.tsx
+window:src/shell/search-find.test.tsx

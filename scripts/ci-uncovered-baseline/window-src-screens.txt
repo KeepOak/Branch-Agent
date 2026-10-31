@@ -1,0 +1,2 @@
+window:src/screens/chat/ChatView.exchange.test.tsx
+window:src/screens/sidebar/faces-status.test.tsx

@@ -25,7 +25,10 @@ import {
   loadSystemAgentGreetingFacts,
   resolveSystemAgentGreeting,
 } from "../../system-agent/greeting.js";
-import { isSystemAgentInferenceUnavailableError } from "../../system-agent/inference-error.js";
+import {
+  describeSystemAgentInferenceFailureForChat,
+  isSystemAgentInferenceUnavailableError,
+} from "../../system-agent/inference-error.js";
 import { buildNewAgentWelcome } from "../../system-agent/new-agent-welcome.js";
 import { buildOnboardingWelcome } from "../../system-agent/onboarding-welcome.js";
 import {
@@ -458,7 +461,14 @@ export const systemAgentHandlers: GatewayRequestHandlers = {
           if (!isSystemAgentInferenceUnavailableError(error)) {
             throw error;
           }
-          respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, error.message));
+          const failure = describeSystemAgentInferenceFailureForChat(error);
+          respond(
+            false,
+            undefined,
+            errorShape(ErrorCodes.UNAVAILABLE, failure.message, {
+              details: buildSystemAgentInferenceUnavailableErrorDetails(failure.action),
+            }),
+          );
           return undefined;
         }
         // Passive welcomes are ephemeral; an external-edit alert must survive
@@ -581,11 +591,13 @@ export const systemAgentHandlers: GatewayRequestHandlers = {
         } catch {
           // The inference error is authoritative; cleanup stays best-effort.
         }
+        // Chat shows one plain sentence and a fix; the raw cause stays in error.message for logs.
+        const failure = describeSystemAgentInferenceFailureForChat(error);
         respond(
           false,
           undefined,
-          errorShape(ErrorCodes.UNAVAILABLE, error.message, {
-            details: buildSystemAgentSessionInvalidatedErrorDetails(),
+          errorShape(ErrorCodes.UNAVAILABLE, failure.message, {
+            details: buildSystemAgentSessionInvalidatedErrorDetails(failure.action),
           }),
         );
         return undefined;

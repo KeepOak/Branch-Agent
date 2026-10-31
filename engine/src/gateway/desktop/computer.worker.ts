@@ -12,6 +12,7 @@ import {
   watchRegisteredNodeHostCommandAvailability,
 } from "../../node-host/plugin-node-host.js";
 import { createDeferredCore } from "../../shared/deferred.js";
+import { hasDriverEndpoint } from "./computer-driver-endpoint.js";
 import {
   parseComputerHostInput,
   type ComputerHostExecutionClose,
@@ -105,6 +106,8 @@ async function runComputerHost(): Promise<void> {
         return;
       }
       const pluginIds = message.pluginIds;
+      // Presence only: the address itself is a credential and never reaches the log.
+      log(`computer host: driver address ${hasDriverEndpoint(process.env) ? "present" : "missing"}`);
       startup = (async () => {
         const config = getRuntimeConfig();
         const context = { config, env: process.env };

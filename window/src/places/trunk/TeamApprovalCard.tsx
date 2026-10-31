@@ -1,4 +1,4 @@
-// The team proposal card. One owner tap on "Approve team" decides it, and that tap is the existing change
+// The team proposal card. One owner tap on "Approve" decides it, and that tap is the existing change
 // approval. The card only shows the team and the answer; it never creates anything itself.
 import "./team-approval.css";
 
@@ -52,7 +52,7 @@ export function TeamApprovalCard({
       data-state={state}
       aria-label={`Team for ${goal}`}
     >
-      <h3>Create a team for “{goal}”</h3>
+      <h3>{goal}</h3>
       <ul className="team-approval-members">
         {members.map((member) => (
           <MemberRow key={member.name} member={member} />
@@ -67,13 +67,13 @@ export function TeamApprovalCard({
               data-testid="team-approve"
               onClick={onApprove}
             >
-              Approve team
+              Approve
             </button>
             <button type="button" className="btn ghost" onClick={onDecline}>
               Not now
             </button>
           </div>
-          <p className="team-approval-hint">Nothing is created until you approve.</p>
+          <p className="team-approval-hint">Nothing happens until you approve it here.</p>
         </>
       ) : (
         <p role="status" className="team-approval-answer">

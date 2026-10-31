@@ -36,7 +36,6 @@ import {
   dispatchInboundMessageMock,
   embeddedRunMock,
   installGatewayTestHooks,
-  onceMessage,
   prepareGatewayReplyRuntimeForTest,
   rpcReq,
   startServerWithClient,
@@ -71,10 +70,16 @@ installGatewayTestHooks({
   scope: "suite",
   setup: async () => {
     const module = await import("./server-kernel.js");
-    const create = module.createGatewayKernel;
-    const capture = vi.spyOn(module, "createGatewayKernel").mockImplementation(async (...args) => {
-      kernel = await create(...args);
-      return kernel;
+    const prepareKernel = module.prepareGatewayKernel;
+    const capture = vi.spyOn(module, "prepareGatewayKernel").mockImplementation(async (...args) => {
+      const prepared = await prepareKernel(...args);
+      return {
+        ...prepared,
+        async activate(...activateArgs) {
+          kernel = await prepared.activate(...activateArgs);
+          return kernel;
+        },
+      };
     });
     try {
       testState.gatewayControlUi = { allowedOrigins: [browserOrigin] };
@@ -276,6 +281,11 @@ it.for([
       }
     });
     const requestId = `original-${source}`;
+    // The browser request's acceptance and terminal frames are observed without a wall-clock
+    // timer: a loaded runner can take longer than onceMessage's 10 s default to admit a cold
+    // request (seen on macOS CI), and the Vitest test timeout still bounds both waits.
+    const browserAccepted = createDeferred<AgentResponse>();
+    let browserAcceptedObserved = false;
     const browserTerminal = createDeferred<unknown>();
     let browserTerminalObserved = false;
     const isOriginalTerminal = (frame: unknown) =>
@@ -285,12 +295,18 @@ it.for([
     if (source === "browser") {
       const observeTerminal = (data: RawData) => {
         const frame: unknown = JSON.parse(rawDataToString(data));
+        if (!browserAcceptedObserved && isGatewayResponseFrame(frame) && frame.id === requestId) {
+          browserAcceptedObserved = true;
+          browserAccepted.resolve(frame as AgentResponse);
+        }
         if (isOriginalTerminal(frame)) {
           browserTerminalObserved = true;
           browserTerminal.resolve(frame);
         }
       };
       const closed = () => {
+        browserAcceptedObserved = true;
+        browserAccepted.reject(new Error("Original agent socket closed"));
         browserTerminalObserved = true;
         browserTerminal.reject(new Error("Original agent socket closed"));
       };
@@ -301,13 +317,7 @@ it.for([
         harness.ws.off("close", closed);
       });
     }
-    const accepted =
-      source === "browser"
-        ? onceMessage<AgentResponse>(
-            harness.ws,
-            (frame) => frame.type === "res" && frame.id === requestId,
-          )
-        : undefined;
+    const accepted = source === "browser" ? browserAccepted.promise : undefined;
     const original =
       source === "browser"
         ? browserTerminal.promise
@@ -350,7 +360,10 @@ it.for([
     onTestFinished(() => diagnostics.mockRestore());
     try {
       if (accepted) {
-        expect(await accepted).toMatchObject({ ok: true, payload: { status: "accepted" } });
+        expect(await withinTest(accepted, signal)).toMatchObject({
+          ok: true,
+          payload: { status: "accepted" },
+        });
       }
       const { attempt, handle } = await withinTest(
         Promise.race([
@@ -414,10 +427,11 @@ it.for([
         expect(dispatchInboundMessageMock).not.toHaveBeenCalled();
       }
     } finally {
-      // The fixture prevents completion until release; only then does its response budget begin.
+      // The fixture prevents completion until release. An unobserved browser terminal is awaited
+      // within the test, so a timed-out test still reaches the outcome check instead of hanging.
       const settled =
         source === "browser" && !browserTerminalObserved
-          ? Promise.allSettled([onceMessage(harness.ws, isOriginalTerminal)])
+          ? Promise.allSettled([withinTest(browserTerminal.promise, signal)])
           : originalSettled;
       releaseModel.resolve();
       const outcomes = await settled;
