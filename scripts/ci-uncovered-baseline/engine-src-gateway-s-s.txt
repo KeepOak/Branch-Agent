@@ -465,7 +465,6 @@ engine:src/gateway/server-methods/system-agent-setup-prepare.test.ts
 engine:src/gateway/server-methods/system-agent-setup-resolution.test.ts
 engine:src/gateway/server-methods/system-agent.host-lifecycle.test.ts
 engine:src/gateway/server-methods/system-agent.session-lifecycle.test.ts
-engine:src/gateway/server-methods/system-agent.test.ts
 engine:src/gateway/server-methods/system-changes.test.ts
 engine:src/gateway/server-methods/system-event-routing.test.ts
 engine:src/gateway/server-methods/system-info.benchmark.test.ts

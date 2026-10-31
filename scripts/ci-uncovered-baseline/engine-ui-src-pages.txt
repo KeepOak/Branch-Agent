@@ -548,7 +548,6 @@ engine:ui/src/pages/cron/view.test.ts
 engine:ui/src/pages/custodian/custodian-alert-store.test.ts
 engine:ui/src/pages/custodian/custodian-page-agent-create.test.ts
 engine:ui/src/pages/custodian/custodian-page.nudges.test.ts
-engine:ui/src/pages/custodian/custodian-page.session-lifecycle.test.ts
 engine:ui/src/pages/custodian/custodian-page.test.ts
 engine:ui/src/pages/custodian/custodian-plugin-help.test.ts
 engine:ui/src/pages/custodian/custodian-session-store.test.ts

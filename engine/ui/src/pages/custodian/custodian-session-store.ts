@@ -54,6 +54,7 @@ export class CustodianSessionStore {
   wizardSecretVisible = false;
   questionReplyUncertain = false;
   error: string | null = null;
+  errorFix: { error: string; action: ReturnType<typeof custodianFailure>["action"] } | null = null;
   transcript = new CustodianTranscriptLoader(
     () => this.emit(),
     () => this.context?.gateway.snapshot,
@@ -344,12 +345,10 @@ export class CustodianSessionStore {
   }
 
   answerQuestion(message: CustodianMessage, label: string): void {
-    const question = message.question;
-    if (!question) {
-      return;
+    if (message.question) {
+      const option = message.question.options.find((candidate) => candidate.label === label);
+      void this.send(option?.reply ?? label, label, true);
     }
-    const option = question.options.find((candidate) => candidate.label === label);
-    void this.send(option?.reply ?? label, label, true);
   }
 
   answerWizardStep(message: CustodianMessage, value: unknown): void {
@@ -741,7 +740,7 @@ export class CustodianSessionStore {
           rollbackUnsent();
         }
         this.error = custodianErrorMessage(error);
-        const { inferenceUnavailable, sessionInvalidated } = custodianFailure(error);
+        const { inferenceUnavailable, sessionInvalidated, action } = custodianFailure(error);
         if (inferenceUnavailable) {
           this.inferenceState = "unverified";
           // Recheck the runtime without replaying a user turn that may have reached the Gateway.
@@ -756,6 +755,7 @@ export class CustodianSessionStore {
           this.retryParams = { ...params, sessionId: this.sessionId };
           this.error = t("custodian.sessionRestarted", { error: custodianErrorMessage(error) });
         }
+        this.errorFix = action && this.error ? { error: this.error, action } : null;
       }
       if (hasCustodianUserInput(params) && this.retryParams === params) {
         // User turns have no idempotency key and are never replayed after an ambiguous failure.
