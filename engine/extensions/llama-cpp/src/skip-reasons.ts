@@ -3,7 +3,7 @@
 export const LLAMA_CPP_SKIP_REASONS = {
   diskUnknown: "Branch couldn’t check how much free space this computer has.",
   diskFull: "This computer doesn’t have enough free disk space for a free model.",
-  memory: "This computer doesn’t have enough memory to run a free model.",
+  memory: "None of the free models fit in this computer’s memory.",
 } as const;
 
 export type LlamaCppSkipReason =
