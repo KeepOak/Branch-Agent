@@ -184,7 +184,7 @@ describe("the ⋯ menu's touch modes", () => {
   it("switches between Touch and Trackpad in plain words, and Trackpad shows a pointer you move with a finger", async () => {
     const { engine, request } = computerFixture();
     await renderComputer(engine);
-    const more = () => document.querySelector<HTMLButtonElement>("button[aria-label='More for this view']")!;
+    const more = () => [...document.querySelectorAll<HTMLButtonElement>(".st7-top button[aria-haspopup='menu']")].find((b) => b.textContent === "More")!;
     await act(async () => more().click());
     const item = (label: string) => [...document.querySelectorAll<HTMLButtonElement>("[role='menuitemradio']")].find((b) => b.textContent?.includes(label))!;
     expect(item("Touch").getAttribute("aria-checked")).toBe("true");
