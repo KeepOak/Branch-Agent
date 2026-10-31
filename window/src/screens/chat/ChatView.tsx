@@ -35,7 +35,7 @@ import { suggestionsFor } from "../../thread/suggestions";
 import { useApprovalDetails, useHelpers, useReactions } from "../../thread/useEngineData";
 import { useMessageActions, type MessageChanges, type ReplyTarget } from "../../thread/useMessageActions";
 import { Icon } from "../../shell/icons";
-import { isLockBusyMessage } from "../../shell/plain-error";
+import { isLockBusyMessage, plainError } from "../../shell/plain-error";
 import { shows, useLevel } from "../../places-nav/level";
 import { CODEX_CANCEL_METHOD, CODEX_DOWNLOAD_METHOD } from "../../places/settings/set1/codex-get";
 import { answerBelowWorkingLine, blockTime, dividerPositions, entriesOf, useWorkMode, type Entry, type WorkMode } from "./chat-logic";
@@ -224,7 +224,7 @@ export function ChatView(props: ChatViewProps) {
   const askCards = useMemo(() => new Map(asks.map((s) => [s.ask.id, s] as const)), [asks]);
   const answer = useCallback((id: string, decision: ApprovalDecision) => {
     const plugin = details.get(id)?.plugin ?? false;
-    if (engine && (decision === "allow-always" || plugin)) resolveApproval(engine, id, decision, plugin).catch((e: unknown) => toast(e instanceof Error ? e.message : String(e)));
+    if (engine && (decision === "allow-always" || plugin)) resolveApproval(engine, id, decision, plugin).catch((e: unknown) => toast(plainError(e)));
     else if (decision !== "allow-always") props.onAnswer(id, decision);
   }, [details, engine, props, toast]);
   // What waits in this conversation: two or more approvals group into one card at the foot (preview ask2); the rest get
@@ -286,7 +286,7 @@ export function ChatView(props: ChatViewProps) {
   // Continue stands in for the "Carry on" chip there, so the stopped turn offers one way to resume, not two.
   const suggestions = props.onStart && !waitingHere && suggestionKey !== usedSuggestion && !offerContinue ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
   const helperChip = helpers.length && engine?.sessionKey ? <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenHelpers}
-    onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast("Stopped " + h.name + ". " + name + " carries on without it."), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} /> : null;
+    onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast("Stopped " + h.name + ". " + name + " carries on without it."), (e: unknown) => toast(plainError(e)))} /> : null;
 
   const view: View = { all, name, running, live, actionsFor, changes, reactions, apply, asks: askCards, grouped, answerAsk, lockdown: Boolean(props.lockdown), times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast, room: props.room, continueKey, onContinue };
   const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status"), history.length)) : [];
