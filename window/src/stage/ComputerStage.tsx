@@ -8,6 +8,7 @@ import type { Block } from "../thread/model";
 import type { WindowEngine } from "../connect/engine";
 import type { ProgressCard } from "../thread/PlanCard";
 import { Menu, type MenuAnchor, type MenuItem } from "../shell/Menu";
+import { plainError } from "../shell/plain-error";
 import { SIcon } from "./stage-icons";
 import { COMPUTER_UNAVAILABLE, type DesktopView, useDesktopView } from "./use-desktop";
 import { announceComputerControl, listenComputerControl } from "../thread/computer-card";
@@ -294,7 +295,7 @@ export function ComputerStage({
   }, [ownerScreen, mode, engine]);
   const stop = () => {
     setStopError("");
-    engine.request("sessions.abort", { key: engine.sessionKey }).catch((e: unknown) => setStopError(e instanceof Error ? e.message : String(e)));
+    engine.request("sessions.abort", { key: engine.sessionKey }).catch((e: unknown) => setStopError(`Couldn't stop ${name}: ${e instanceof Error ? e.message : String(e)}`));
   };
   const watchMenu = (at: MenuAnchor) =>
     setMenu({
@@ -391,7 +392,8 @@ export function ComputerStage({
           More
         </button>
       </div>
-      {stopError ? <p className="stage-error-st" role="alert">{stopError}</p> : null}
+      {/* At Regular "Couldn't stop Scout." and a plain next step; Advanced and Technical keep the exact words (#1814). */}
+      {stopError ? <p className="stage-error-st" role="alert">{plainError(stopError)}</p> : null}
       {hold.error ? <p className="stage-error-st" role="alert">{hold.error}</p> : null}
       {!browser && where.error && viewing ? <p className="stage-error-st" role="alert">{COMPUTER_UNAVAILABLE} <button type="button" className="btn sm" onClick={() => setTick((value) => value + 1)}>Try again</button>{shows(level, "technical") ? <small className="stage-detail"> {where.error}</small> : null}</p> : null}
       {!browser && screens.length > 1 ? (

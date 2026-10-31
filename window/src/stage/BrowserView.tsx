@@ -5,6 +5,7 @@ import type { Block } from "../thread/model";
 import type { Level } from "../places-nav/settings-nav";
 import type { BrowserPresentation } from "../thread/browser-presentation";
 import { Menu, type MenuAnchor, type MenuItem } from "../shell/Menu";
+import { plainError } from "../shell/plain-error";
 import { BrowserScreencastClient, type BrowserScreencastFrame } from "./browser-screencast-client";
 import { browserCall, readTabs, recordedBrowserTabs, routeKey, routeOf, scopedBrowserRequest, type BrowserRoute, type LiveTab } from "./browser-route";
 import { BrowserTools } from "./BrowserTools";
@@ -374,7 +375,8 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     if (browser.phase === "none" || browser.phase === "stopped" || (browser.phase === "ready" && !browser.tabs.length)) onState("empty");
     if (browser.phase === "error") onState("error");
   }, [browser.phase, browser.tabs.length, onState]);
-  const fail = (e: unknown) => setNote(e instanceof Error ? e.message : String(e));
+  // At Regular a failed page action reads as a plain sentence; Advanced and Technical keep the exact words (#1814).
+  const fail = (e: unknown) => setNote(plainError(e));
   const call = (method: "GET" | "POST" | "DELETE", path: string, options: Parameters<typeof browserCall>[4] = {}) => {
     if (!route) return Promise.resolve(null);
     setNote("");
@@ -497,7 +499,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   else if (!engine.sessionKey) page = <Blank title="Choose a conversation first" text="Open a conversation to browse pages with its Trunk." />;
   else if (starting) page = <Blank title="Starting the browser…" text="See the pages your Trunk opens, or open a page yourself in this conversation." />;
   else if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
-  else if (browser.phase === "error") page = <Blank title="Couldn't connect to the browser" text={browser.error ?? ""}><button type="button" className="btn sm" onClick={refresh}>Try again</button></Blank>;
+  else if (browser.phase === "error") page = <Blank title="Couldn't connect to the browser" text={plainError(browser.error ?? "")}><button type="button" className="btn sm" onClick={refresh}>Try again</button></Blank>;
   else if (browser.phase === "stopped") page = <Blank title="The browser isn’t running." text="See the pages your Trunk opens, or open a page yourself in this conversation.">
     <small>Type a website or a search above and press Enter, or start it now.</small>
     <button type="button" className="btn pri sm" onClick={() => { startAttempt.current = false; void startBrowser(); }}>Start the browser</button>
