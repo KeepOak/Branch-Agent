@@ -954,7 +954,9 @@ test("a refused step-down is trusted only when the old engine proves it still se
   await writeFile(join(root, "refuse-deactivate"), "1"); await writeFile(join(root, "fence-readyz"), "1");
   await writeFile(join(root, "release-ready"), "ready");
   restart();
-  await eventually(async () => { const latest = (await starts()).at(-1); return ![old, (await starts())[1]].includes(latest) && alive(latest) && await servingOn(gatewayPort); }, 40_000);
+  // One read per check: a second read can land mid-write and return [], which used to let the standby count as the
+  // replacement while the old engine still served before its step-down (seen on Windows).
+  await eventually(async () => { const list = await starts(); const latest = list.at(-1); return list.length > 2 && ![old, list[1]].includes(latest) && alive(latest) && await servingOn(gatewayPort); }, 40_000);
   assert.equal(alive(old), false, "a fenced old engine was left running as if it served");
   assert.deepEqual(sent.filter(([channel, state]) => channel === "branch-desktop:engine-update" && ["ready", "auto-wait"].includes(state)), [],
     "the bar offered Update while no engine served");
