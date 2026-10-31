@@ -24,10 +24,11 @@ import { PlusMenu } from "./PlusMenu";
 import { buildExtras, planSend, sendHoldReason, sendTooltip, type Reply } from "./sending";
 import { Drawer } from "./SlashDrawer";
 import { useBackground } from "./useBackground";
-import { CONNECT_MODEL_ANSWERS } from "./connect-model";
+import { CONNECT_MODEL_ANSWERS, isNoUsableModelError } from "./connect-model";
+import { ConnectModelNotice } from "./ConnectModelNotice";
 import { FreeModelSetup } from "./FreeModelSetup";
 import { FREE_MODEL_READY } from "./no-key-default";
-import { hasNoModel, useConversation } from "./useConversation";
+import { hasNoModel, stillLoadingModels, useConversation } from "./useConversation";
 import { safeStorage, saveDraft } from "./drafts";
 import { useConversationPrefs } from "../thread/prefs";
 import { shortReason } from "../thread/format";
@@ -162,12 +163,13 @@ export function Composer(props: Props) {
   const conversationProblem = conv.error ?? (isPreparationPending(conv.modelsError) || conv.modelsError?.includes("is still starting up.") ? conv.modelsError : null);
   const holdReason = sendHoldReason({
     offline: Boolean(props.offline),
-    loadingModels: conv.modelsLoading && !conv.models.some((m) => m.available),
+    loadingModels: stillLoadingModels(conv, noModel),
     preparing: isPreparationPending(conversationProblem),
     noModel,
   });
-  // A held send leaves its reason in `problem`. Clear that one alert, and only that one, once send can go again or a
-  // send goes out, so the old Connect a model words do not stay after an account is added.
+  // A held send leaves its reason in `problem`. Clear that one alert, and only that one, once that reason no longer
+  // holds (send can go again, or loading ended) or a send goes out, so neither the old Connect a model words stay after
+  // an account is added nor Still loading models stays after the list settled. The next press names the real reason.
   const heldProblem = useRef<string | null>(null);
   const showHold = (why: string) => {
     heldProblem.current = why;
@@ -180,7 +182,7 @@ export function Composer(props: Props) {
     setProblem((now) => (now === held ? null : now));
   }, []);
   useEffect(() => {
-    if (!holdReason) clearHold();
+    if (heldProblem.current && holdReason !== heldProblem.current) clearHold();
   }, [holdReason, clearHold]);
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
 
@@ -482,7 +484,9 @@ export function Composer(props: Props) {
       {noModel && engine ? <FreeModelSetup engine={engine} onReady={() => void conv.reload()} /> : null}
       {noModel ? <NoModelLine onOpen={onOpen} error={conv.noKeyError} onRetry={() => void conv.retryNoKey()} /> : null}
       {conversationProblem ? <p className={isPreparationPending(conversationProblem) ? "c-note" : "c-note bad"} role={isPreparationPending(conversationProblem) ? "status" : "alert"}>{isPreparationPending(conversationProblem) ? preparationLabel(trunkName) : shortReason(conversationProblem)}</p> : null}
-      {problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : shortReason(problem)}</p> : null}
+      {problem && isNoUsableModelError(problem) ? (
+        <div role="alert" data-testid="hold-connect-model"><ConnectModelNotice onOpen={onOpen} className="c-note bad c-nomodel" /></div>
+      ) : problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : shortReason(problem)}</p> : null}
       {line.error ? <p className="c-note bad" role="alert">{isPreparationPending(line.error) ? preparationLabel(trunkName) : shortReason(line.error)}</p> : null}
       {draft.note ? <p className="c-note">{draft.note}</p> : null}
       {picks.length > 0 ? (

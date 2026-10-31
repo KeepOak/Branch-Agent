@@ -48,6 +48,13 @@ export function hasNoModel(conv: Conversation, currentRef: string): boolean {
   return conv.loaded && (!currentRef || (conv.modelsLoaded && !conv.models.some((m) => m.available)));
 }
 
+/** Send waits with "Still loading models" only while the first models.list is in flight and the answer is not known.
+ *  Once no model is known (none named, or the settled list has none usable) the real reason is Connect a model, and a
+ *  background refresh (window focus, a held press) does not turn that back into loading. */
+export function stillLoadingModels(conv: Conversation, noModel: boolean): boolean {
+  return !noModel && conv.modelsLoading && !conv.modelsLoaded && !conv.models.some((m) => m.available);
+}
+
 function readTrunks(result: unknown): { trunks: Trunk[]; defaultId: string } {
   const r = rec(result);
   const trunks = list(r.agents).map((a) => ({
