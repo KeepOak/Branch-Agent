@@ -87,4 +87,4 @@ npx jest src/theme/theme.test.tsx
 npm run web                # browser preview at phone size; npm run ios / android need a Mac or an emulator
 ```
 
-CI: the desktop checks don't build `mobile/`. `.github/workflows/mobile-checks.yml` runs `tsc --noEmit`, Jest and an `expo export` web smoke when `mobile/` or the compiled engine packages change. Other pull requests skip that job; merge-gate treats the skip as a pass. It needs the whole repository checked out, because the app compiles the engine's gateway client from `engine/packages`.
+CI: the desktop checks don't build `mobile/`. `.github/workflows/mobile-checks.yml` runs `tsc --noEmit`, Jest and an `expo export` web smoke when `mobile/` or the compiled engine packages change. `.github/workflows/mobile-ios-simulator.yml` runs an unsigned iOS Simulator `xcodebuild` and launch when `mobile/` changes. Other pull requests skip those jobs; merge-gate treats the skip as a pass. It needs the whole repository checked out, because the app compiles the engine's gateway client from `engine/packages`.
