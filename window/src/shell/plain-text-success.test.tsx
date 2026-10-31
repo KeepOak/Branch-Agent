@@ -39,6 +39,10 @@ describe("success words keep their own words at Regular (issue 1814)", () => {
     ["Saved to C:\\Users\\Sample User", /Sample|\bUser\b/],
     ["Saved to C:\\Users\\Sample User\\report.pdf", /Sample|\bUser\b/],
     ["Backed up to /home/Sample User/notes", /Sample|\bUser\b/],
+    // PR Closer's FIX on #2155: a quote inside a part, and a slash two or more words on.
+    ["Saved to C:\\Users\\some'one\\report.pdf", /some'?one|\bone\b/],
+    ["Saved to /Users/someone/My Important Documents/report.pdf", /someone|Important/],
+    ["Saved to C:\\Users\\someone\\My Important Documents\\report.pdf", /someone|Important/],
   ])("a spaced path %j shows no part of the account name", (words, name) => {
     const said = plainText(words);
     expect(said).not.toMatch(name);

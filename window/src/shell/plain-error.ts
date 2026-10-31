@@ -118,12 +118,17 @@ function lastPart(path: string): string {
   return (name && name !== "~" ? name : "your home folder") + tail;
 }
 
-/** Whether a path may go on past the space after it, so its last part can't be told: "/Users/someone/My Documents/a.pdf"
- *  (the next word holds a slash) or "C:\Users\Sample User" (a home folder followed by a word, maybe the rest of the name). */
+/** Whether a path may go on past where it was cut, so its last part can't be told: "C:\Users\some'one\a.pdf" (a quote
+ *  inside a part, then more of the path), "/Users/someone/My Important Documents/a.pdf" (a later word in the same run holds
+ *  a slash) or "C:\Users\Sample User" (a home folder followed by a word, maybe the rest of the name). */
 function endsUnclear(path: string, after: string): boolean {
+  // The path must stop at a space, the end, or closing punctuation that is itself followed by a space or the end.
+  if (!/^(?:$|\s|[.,;:!?)\]\x22\x27\x60\u201d\u2019\u00bb]+(?:$|\s))/u.test(after)) return true;
   const [core, tail] = splitTail(path);
   if (tail) return false;
-  return /^[ \t]+[^\s]*[\\/]/.test(after) || (HOME_ONLY.test(core) && /^[ \t]+[\p{L}\p{N}]/u.test(after));
+  // Every word up to the next sentence break may still be part of this path.
+  const run = /^[\s\S]*?(?=[.,;:!?](?:\s|$)|$)/u.exec(after)?.[0] ?? "";
+  return (/^[ \t]+\S/.test(run) && /[\\/]/.test(run)) || (HOME_ONLY.test(core) && /^[ \t]+[\p{L}\p{N}]/u.test(after));
 }
 
 /** Each path in the words read as its last part: "Saved to Downloads/report.pdf" reads "Saved to report.pdf". When a
