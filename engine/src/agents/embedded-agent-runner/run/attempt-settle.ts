@@ -22,6 +22,7 @@ import {
   withSessionManagerWrite,
 } from "../../sessions/session-manager-write-admission.js";
 import { log } from "../logger.js";
+import { resolveEmbeddedRunRegistryKey } from "../run-state.js";
 import { clearActiveEmbeddedRun } from "../runs.js";
 import { joinWithRunLivenessDeadline, RUN_LIVENESS_JOIN_TIMEOUT_MS } from "./abortable.js";
 import type { EmbeddedAttemptExecutionPhaseInput } from "./attempt-execution-types.js";
@@ -78,7 +79,7 @@ function cleanupEmbeddedAttemptStreamExecution(input: StreamCleanupInput): Error
       "active run cleanup",
       () =>
         clearActiveEmbeddedRun(
-          attempt.sessionId,
+          resolveEmbeddedRunRegistryKey(attempt).key,
           input.queueHandle,
           attempt.sessionKey,
           attempt.sessionFile,

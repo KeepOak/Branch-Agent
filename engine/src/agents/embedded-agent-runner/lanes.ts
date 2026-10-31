@@ -12,6 +12,18 @@ export function resolveSessionLane(key: string) {
   return cleaned.startsWith("session:") ? cleaned : `session:${cleaned}`;
 }
 
+/** A live inbound reply names its own lane so a held chat turn cannot park it. */
+export function resolveRunSessionLane(params: {
+  liveInboundSessionLane?: string;
+  sessionKey?: string;
+  sessionId: string;
+}) {
+  return (
+    params.liveInboundSessionLane?.trim() ||
+    resolveSessionLane(params.sessionKey?.trim() || params.sessionId)
+  );
+}
+
 export function resolveGlobalLane(
   lane?: string,
   context?: {

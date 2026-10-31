@@ -32,6 +32,8 @@ import {
   ACTIVE_EMBEDDED_RUN_REGISTRATIONS,
   ACTIVE_EMBEDDED_RUNS,
   ACTIVE_EMBEDDED_RUNS_BY_RUN_ID,
+  isolatedRegistrationArgs,
+  resolveEmbeddedRunRegistryKey,
   setActiveEmbeddedRunLifecycleGeneration,
 } from "../run-state.js";
 import {
@@ -128,6 +130,8 @@ function prepareStream(
   input: PrepareEmbeddedAttemptStreamInput,
   admission: EmbeddedAttemptSteeringAdmission,
 ) {
+  // A live inbound reply registers beside the chat's run, never in its slot.
+  const activeRunKey = resolveEmbeddedRunRegistryKey(input.attempt);
   const { attempt, agentSession } = input;
   const { activeSession, hookRunner } = agentSession;
   let beforeAgentFinalizeRevisionReason: string | undefined;
@@ -241,7 +245,7 @@ function prepareStream(
                       input.runAbortController.signal.aborted ||
                       input.getRunState().aborted ||
                       admission.closed ||
-                      ACTIVE_EMBEDDED_RUNS.get(attempt.sessionId) !== queueHandle
+                      ACTIVE_EMBEDDED_RUNS.get(activeRunKey.key) !== queueHandle
                     ) {
                       throw new Error("Nested tool finalization is no longer current");
                     }
@@ -396,7 +400,7 @@ function prepareStream(
       }
       // Clear active-run state before terminal events and post-completion cleanup.
       clearActiveEmbeddedRun(
-        attempt.sessionId,
+        activeRunKey.key,
         queueHandle,
         attempt.sessionKey,
         attempt.sessionFile,
@@ -441,7 +445,7 @@ function prepareStream(
     sessionManager: activeSession.sessionManager,
     subscription,
     isCurrent: () =>
-      ACTIVE_EMBEDDED_RUNS.get(attempt.sessionId) === queueHandle && !input.getRunState().aborted,
+      ACTIVE_EMBEDDED_RUNS.get(activeRunKey.key) === queueHandle && !input.getRunState().aborted,
     isReplaySafeTool: input.isReplaySafeTool,
     nestedToolActivityState: input.nestedToolActivityState,
   });
@@ -472,7 +476,7 @@ function prepareStream(
     return (
       registration !== undefined &&
       ACTIVE_EMBEDDED_RUN_REGISTRATIONS.get(queueHandle) === registration &&
-      ACTIVE_EMBEDDED_RUNS.get(attempt.sessionId) === queueHandle &&
+      ACTIVE_EMBEDDED_RUNS.get(activeRunKey.key) === queueHandle &&
       ACTIVE_EMBEDDED_RUNS_BY_RUN_ID.get(attempt.runId) === queueHandle
     );
   };
@@ -618,11 +622,12 @@ function prepareStream(
     attempt.lifecycleGeneration ?? captureAgentRunLifecycleGeneration(attempt.runId),
   );
   setActiveEmbeddedRun(
-    attempt.sessionId,
+    activeRunKey.key,
     queueHandle,
     attempt.sessionKey,
     attempt.sessionFile,
     input.hookAgentId,
+    ...isolatedRegistrationArgs(activeRunKey),
   );
   const registration = ACTIVE_EMBEDDED_RUN_REGISTRATIONS.get(queueHandle);
   if (attempt.deferTerminalLifecycle && attempt.onDeferredLifecycleOwner) {
@@ -635,14 +640,14 @@ function prepareStream(
         registration?.delegatedAuthority !== undefined &&
         validateAgentRunDelegatedAuthority(registration.delegatedAuthority) &&
         ACTIVE_EMBEDDED_RUN_REGISTRATIONS.get(queueHandle) === registration &&
-        ACTIVE_EMBEDDED_RUNS.get(attempt.sessionId) === queueHandle,
+        ACTIVE_EMBEDDED_RUNS.get(activeRunKey.key) === queueHandle,
       trajectoryRecorder: input.trajectoryRecorder ?? null,
       clearActiveRun: () => {
         try {
           unsubscribe();
         } finally {
           clearActiveEmbeddedRun(
-            attempt.sessionId,
+            activeRunKey.key,
             queueHandle,
             attempt.sessionKey,
             attempt.sessionFile,

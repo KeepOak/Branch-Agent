@@ -63,6 +63,17 @@ export type RunEmbeddedAgentParams = {
   memoryAudience?: import("../../../plugins/memory-provider-types.js").MemoryAudience;
   /** Detached runs may read session identity but never write its durable transcript or metadata. */
   sessionPersistence?: "durable" | "detached";
+  /**
+   * Command lane for a live inbound reply. When set, the run does not take the
+   * chat's `session:` lane, so a held turn cannot park the new reply.
+   */
+  liveInboundSessionLane?: string;
+  /**
+   * Active-run registry key for a run that works beside the chat's own run (a
+   * live inbound reply). The run registers under this key instead of
+   * `sessionId`, so it never replaces or clears the chat run's handle.
+   */
+  activeRunRegistryId?: string;
   /** Storage-neutral transcript/session target. Defaults to sessionId/sessionKey/agentId. */
   sessionTarget?: AgentRunSessionTarget;
   /** Provider prompt-cache affinity key; distinct from transcript/session identity. */

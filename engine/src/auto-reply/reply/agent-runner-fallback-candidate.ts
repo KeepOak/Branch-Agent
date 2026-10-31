@@ -66,7 +66,12 @@ export async function runAgentFallbackCandidates(params: AgentFallbackCycleParam
   bindSourceReplyDeliveryRuntime(turn.followupRun.run, sourceReplyDeliveryRuntime);
   const sourceReplyDeliveryModeOrigin = sourceReplyDeliveryRuntime.origin;
   const preserveProgressCallbackStartOrder = turn.opts?.preserveProgressCallbackStartOrder === true;
-  const runLane = turn.isHeartbeat ? CommandLane.CronNested : CommandLane.Main;
+  const liveGlobalLane = turn.followupRun.liveInboundGlobalLane?.trim();
+  const runLane = liveGlobalLane
+    ? liveGlobalLane
+    : turn.isHeartbeat
+      ? CommandLane.CronNested
+      : CommandLane.Main;
   let queuedUserMessagePersistedAcrossFallback = false;
   const messageToolDeliveryState: MessageToolDeliveryState = {
     toolCallIds: new Set(),
