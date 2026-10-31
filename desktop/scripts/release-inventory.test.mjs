@@ -303,8 +303,10 @@ function simulatedGitHub(options = {}) {
       compares++;
       return options.leftMain && head === "main" && compares > 1 ? "diverged" : compare(options.source ?? base, head);
     }
-    if (args[0] === "api" && args[1].endsWith("/releases")) {
-      return JSON.stringify([options.existing ? [{ tag_name: `v${version}`, target_commitish: options.existingCommit ?? commit }] : []]);
+    if (args[0] === "api" && /\/releases(\?|$)/.test(args[1])) {
+      // findReleaseByTag filters each page with --jq, so gh prints one line per matching release.
+      assert(args.includes("--jq"), "release list lookups filter by tag");
+      return options.existing ? JSON.stringify({ tag_name: `v${version}`, draft: false, target_commitish: options.existingCommit ?? commit }) : "";
     }
     if (args[0] === "api" && args[1].endsWith("/releases/latest")) {
       if (published) return JSON.stringify({ draft: false, prerelease: false, target_commitish: commit, tag_name: `v${version}` });
