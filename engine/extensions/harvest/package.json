@@ -1,0 +1,14 @@
+{
+  "name": "@branch/harvest",
+  "version": "2026.9.8",
+  "private": true,
+  "description": "Harvest plugin: the Harvest skill, the pinned REA server, and the reverse-engineer-anything skill.",
+  "type": "module",
+  "branch": {
+    "extensions": ["./index.ts"],
+    "build": {
+      "bundledDist": false,
+      "branchVersion": "2026.9.8"
+    }
+  }
+}

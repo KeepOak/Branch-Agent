@@ -20,7 +20,6 @@ import {
   resolveBranchAgentSqlitePath,
 } from "../../state/branch-agent-db.js";
 import type { AgentDatabaseRequestExecutionSource } from "../../state/branch-agent-execution-contract.js";
-import { captureBranchAgentDatabaseExecution } from "../../state/branch-agent-execution.js";
 import { runBranchAgentWorkerWrite } from "../../state/branch-agent-write-admission.js";
 import { cloneEnvWithPlatformSemantics } from "../config-env-vars.js";
 import { resolveStateDir } from "../paths.js";
@@ -31,6 +30,7 @@ import {
   resolveSqliteSessionKey,
   toDatabaseOptions,
 } from "./session-accessor.sqlite-scope.js";
+import { captureSessionStoreAgentDatabaseExecution } from "./session-store-creation-witness.js";
 import { captureSessionStoreReadCandidates } from "./session-store-target-inventory.js";
 import { withSessionStoreTarget } from "./session-store-target-runtime.js";
 import type { InternalSessionEntry as SessionEntry } from "./types.js";
@@ -133,19 +133,10 @@ export async function loadSessionEntryForAdmission(
                 owner.assertCurrent();
                 assertOriginalTarget();
                 // Discovery retains the file while queued; an earlier cancelled open may retire its executor.
-                const execution = captureBranchAgentDatabaseExecution(
-                  options,
-                  retained.key.startsWith("file:")
-                    ? {
-                        expectedIdentity: {
-                          kind: "file",
-                          physicalIdentity: retained.key.slice("file:".length),
-                          nativeLocation: retained.canonicalPath,
-                          birthtime: retained.birthtime,
-                        },
-                      }
-                    : { expectedCreationIdentity: retained },
-                );
+                const execution = await captureSessionStoreAgentDatabaseExecution(options, {
+                  observed: retained,
+                  signal: preparation.signal,
+                });
                 const assertSourceCurrent = () => {
                   assertCurrent();
                   execution.assertCurrent();

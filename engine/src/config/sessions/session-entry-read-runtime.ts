@@ -23,7 +23,6 @@ import {
   resolveBranchAgentSqlitePath,
 } from "../../state/branch-agent-db.paths.js";
 import type { AgentDatabaseRequestExecutionSource } from "../../state/branch-agent-execution-contract.js";
-import { captureBranchAgentDatabaseExecution } from "../../state/branch-agent-execution.js";
 import { runBranchAgentWorkerWrite } from "../../state/branch-agent-write-admission.js";
 import { cloneEnvWithPlatformSemantics } from "../config-env-vars.js";
 import { resolveStateDir } from "../state-dir.js";
@@ -52,6 +51,7 @@ import type {
   SessionEntryReadSourcePreparation,
 } from "./session-entry-read-runtime.types.js";
 import { resolveUnsuffixedSqliteTargetFromSessionStorePath } from "./session-sqlite-target-paths.js";
+import { captureSessionStoreAgentDatabaseExecution } from "./session-store-creation-witness.js";
 import {
   assertSessionStoreReadCandidate,
   captureSessionStoreReadCandidate,
@@ -247,28 +247,23 @@ export async function readSessionEntryInWorker(
     async (target, owner) => {
       const sessionKey = resolveSqliteSessionKey(scope.sessionKey, target.logicalAgentId);
       const options = { ...target.database, env };
-      const targetIdentity = readDatabasePathIdentitySync(options.path);
-      const execution = captureBranchAgentDatabaseExecution(
-        options,
-        targetIdentity.key.startsWith("file:")
-          ? {
-              expectedIdentity: {
-                kind: "file",
-                physicalIdentity: targetIdentity.key.slice("file:".length),
-                nativeLocation: targetIdentity.canonicalPath,
-                birthtime: targetIdentity.birthtime,
-              },
-            }
-          : { expectedCreationIdentity: targetIdentity },
-      );
+      let retainedIdentity = readDatabasePathIdentitySync(options.path);
+      const execution = await captureSessionStoreAgentDatabaseExecution(options, {
+        observed: retainedIdentity,
+      });
       const assertRetainedTarget = () => {
         execution.assertCurrent();
         const currentIdentity = readDatabasePathIdentitySync(options.path);
         if (
-          currentIdentity.key !== targetIdentity.key ||
-          currentIdentity.canonicalPath !== targetIdentity.canonicalPath
+          currentIdentity.canonicalPath !== retainedIdentity.canonicalPath ||
+          (retainedIdentity.key.startsWith("file:") &&
+            (currentIdentity.key !== retainedIdentity.key ||
+              currentIdentity.birthtime !== retainedIdentity.birthtime))
         ) {
           throw new Error("Session database identity changed while awaiting admission");
+        }
+        if (currentIdentity.key.startsWith("file:")) {
+          retainedIdentity = currentIdentity;
         }
       };
       const assertCurrent = () => {

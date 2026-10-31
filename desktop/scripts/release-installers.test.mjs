@@ -1,28 +1,168 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { buildLinuxDeb, debVersion, LINUX_DEB_DESKTOP, LINUX_DEB_LAUNCHER, readLinuxDeb } from "./linux-deb.mjs";
+import { PUBLIC_DOWNLOAD_NAMES } from "./release-inventory.mjs";
 import { APPIMAGE_DESKTOP_ENTRY, APPIMAGE_TOOLS, appImageToolArgs, appImageToolEnv, assembleAppDir, dmgArgs, fetchPinned, innoCompiler, innoSetupScript,
-  installerName, main, numericVersion, parseArgs, WINDOWS_APP_ID } from "./release-installers.mjs";
+  installerName, layoutWindowsInstallRoot, main, numericVersion, parseArgs, WINDOWS_APP_ID, windowsInstallerFolderName, windowsLauncherScript } from "./release-installers.mjs";
+import { publicDownloadName } from "./release-inventory.mjs";
+import * as launcher from "./windows-launcher.mjs";
 
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 
 test("installer names carry the release version and target", () => {
   assert.equal(installerName("0.4.4-build-56aed4e6d99d", "win32-x64"), "Branch-Agent-Setup-0.4.4-build-56aed4e6d99d-win32-x64.exe");
   assert.equal(installerName("0.4.4-build-56aed4e6d99d", "darwin-arm64"), "Branch-Agent-0.4.4-build-56aed4e6d99d-darwin-arm64.dmg");
+  assert.equal(installerName("0.4.4-build-56aed4e6d99d", "darwin-x64"), "Branch-Agent-0.4.4-build-56aed4e6d99d-darwin-x64.dmg");
   assert.equal(installerName("0.4.4-build-56aed4e6d99d", "linux-x64"), "Branch-Agent-0.4.4-build-56aed4e6d99d-linux-x64.AppImage");
+  assert.deepEqual(PUBLIC_DOWNLOAD_NAMES, {
+    "win32-x64": "Branch-Setup-Windows.exe",
+    "darwin-arm64": "Branch-macOS.dmg",
+    "darwin-x64": "Branch-macOS-Intel.dmg",
+    "linux-x64": "Branch-Linux.deb",
+  });
+});
+
+test("the README leads with one download link per operating system and keeps the command-line install under Advanced", () => {
+  const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
+  const advancedAt = readme.indexOf("## Advanced");
+  assert.ok(advancedAt > 0);
+  const download = readme.slice(0, advancedAt);
+  assert.ok(download.indexOf("## Download") < download.indexOf("Branch Agent is a desktop"));
+  for (const name of Object.values(PUBLIC_DOWNLOAD_NAMES)) {
+    assert.match(download, new RegExp(`https://github.com/KeepOak/Branch-Agent/releases/latest/download/${name.replace(/\./g, "\\.")}`));
+  }
+  assert.doesNotMatch(download, /curl -fsSL/);
+  const advanced = readme.slice(advancedAt);
+  assert.match(advanced, /curl -fsSL https:\/\/github\.com\/KeepOak\/Branch-Agent\/releases\/latest\/download\/install\.sh \| sh/);
+  assert.match(advanced, /irm https:\/\/github\.com\/KeepOak\/Branch-Agent\/releases\/latest\/download\/install\.ps1 \| iex/);
+  assert.match(advanced, /SHA256SUMS/);
+});
+
+test("the Linux deb installs an executable launcher and an application menu entry", () => {
+  assert.throws(() => debVersion("latest"), /Not a Debian package version/);
+  const root = mkdtempSync(join(tmpdir(), "branch-deb-"));
+  try {
+    const payload = join(root, "payload");
+    mkdirSync(join(payload, "resources"), { recursive: true });
+    writeFileSync(join(payload, "Branch Agent.bin"), "electron");
+    writeFileSync(join(payload, "branch-agent"), "#!/bin/sh\n");
+    writeFileSync(join(payload, "chrome-sandbox"), "sandbox");
+    writeFileSync(join(payload, "resources", "app.asar"), "asar");
+    const incomplete = join(root, "incomplete");
+    mkdirSync(incomplete);
+    assert.throws(() => buildLinuxDeb({ payload: incomplete, version: "0.4.4", out: join(root, "missing.deb") }), /no Branch Agent\.bin/);
+    const out = join(root, "Branch-Linux.deb");
+    buildLinuxDeb({ payload, version: "0.4.4-build-56aed4e6d99d", out, env: { GITHUB_RUN_NUMBER: "812" } });
+    const deb = readLinuxDeb(readFileSync(out));
+    assert.match(deb.control, /^Package: branch-agent$/m);
+    assert.match(deb.control, /^Version: 0\.4\.4\.812\+56aed4e6d99d$/m);
+    assert.match(deb.control, /^Architecture: amd64$/m);
+    const file = name => deb.files.find(entry => entry.name === name);
+    assert.equal(file("./opt/branch-agent/chrome-sandbox").mode, 0o4755);
+    assert.equal(file("./opt/branch-agent/branch-agent").mode, 0o755);
+    assert.equal(file("./opt/branch-agent/Branch Agent.bin").mode, 0o755);
+    assert.equal(file("./opt/branch-agent/resources/app.asar").mode, 0o644);
+    assert.equal(file("./usr/bin/branch-agent").data.toString("utf8"), LINUX_DEB_LAUNCHER);
+    assert.equal(file("./usr/bin/branch-agent").mode, 0o755);
+    assert.equal(file("./usr/share/applications/branch-agent.desktop").data.toString("utf8"), LINUX_DEB_DESKTOP);
+    assert.ok(file("./usr/share/icons/hicolor/512x512/apps/branch-agent.png").data.length > 0);
+    if (process.platform === "linux") {
+      const info = spawnSync("dpkg-deb", ["-I", out], { encoding: "utf8" });
+      const contents = spawnSync("dpkg-deb", ["-c", out], { encoding: "utf8" });
+      assert.equal(info.status, 0, info.stderr);
+      assert.match(info.stdout, /Package: branch-agent/);
+      assert.equal(contents.status, 0, contents.stderr);
+      assert.match(contents.stdout, /-rwsr-xr-x root\/root .+ \.\/opt\/branch-agent\/chrome-sandbox$/m);
+      assert.match(contents.stdout, /branch-agent\.desktop$/m);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test("the Linux deb PATH launcher seeds a user-owned live app a normal user can update", { skip: process.platform === "win32" }, () => {
+  const root = mkdtempSync(join(tmpdir(), "branch-deb-seed-"));
+  try {
+    const system = join(root, "opt", "branch-agent");
+    const home = join(root, "home");
+    mkdirSync(join(system, "resources"), { recursive: true });
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(system, "Branch Agent.bin"), "#!/bin/sh\nprintf 'bin:%s\\n' \"$1\"\n");
+    writeFileSync(join(system, "branch-agent"), "#!/bin/sh\nprintf 'started:%s\\n' \"$1\"\n");
+    writeFileSync(join(system, "chrome-sandbox"), "sandbox");
+    writeFileSync(join(system, "resources", "app.asar"), "old asar");
+    chmodSync(join(system, "Branch Agent.bin"), 0o755);
+    chmodSync(join(system, "branch-agent"), 0o755);
+    chmodSync(join(system, "resources", "app.asar"), 0o444);
+    chmodSync(join(system, "resources"), 0o555);
+    // Simulate a root-owned install: directories not writable by the launching user.
+    chmodSync(system, 0o555);
+    const launcher = join(root, "usr-bin-branch-agent");
+    writeFileSync(launcher, LINUX_DEB_LAUNCHER.replaceAll("/opt/branch-agent", system));
+    chmodSync(launcher, 0o755);
+    const env = { ...process.env, HOME: home, XDG_DATA_HOME: join(home, ".local", "share") };
+    delete env.APPIMAGE;
+    const first = spawnSync(launcher, ["ready"], { encoding: "utf8", env });
+    assert.equal(first.status, 0, first.stderr);
+    assert.equal(first.stdout.trim(), "started:ready");
+    const live = join(home, ".local", "share", "branch-agent", "app");
+    assert.equal(readFileSync(join(live, "resources", "app.asar"), "utf8"), "old asar");
+    assert.equal(statSync(live).uid, statSync(home).uid);
+    // User can place a replacement beside the live app (what the update helper does).
+    writeFileSync(join(live, "resources", "app.asar.incoming"), "new asar");
+    renameSync(join(live, "resources", "app.asar"), join(live, "resources", "app.asar.previous"));
+    renameSync(join(live, "resources", "app.asar.incoming"), join(live, "resources", "app.asar"));
+    assert.equal(readFileSync(join(live, "resources", "app.asar"), "utf8"), "new asar");
+    // A second launch must not overwrite the updated user copy from /opt.
+    const second = spawnSync(launcher, ["again"], { encoding: "utf8", env });
+    assert.equal(second.status, 0, second.stderr);
+    assert.equal(readFileSync(join(live, "resources", "app.asar"), "utf8"), "new asar");
+    // The system tree stays untouched and still refuses new siblings (helper bringBesideTarget).
+    assert.equal(readFileSync(join(system, "resources", "app.asar"), "utf8"), "old asar");
+    assert.throws(() => writeFileSync(join(system, "resources", "app.asar.incoming"), "nope"));
+    assert.match(LINUX_DEB_DESKTOP, /^Exec=\/usr\/bin\/branch-agent %U$/m);
+    assert.doesNotMatch(LINUX_DEB_LAUNCHER, /APPIMAGE/);
+  } finally {
+    try {
+      chmodSync(join(root, "opt", "branch-agent"), 0o755);
+      chmodSync(join(root, "opt", "branch-agent", "resources"), 0o755);
+      chmodSync(join(root, "opt", "branch-agent", "resources", "app.asar"), 0o644);
+    } catch { /* best effort before rm */ }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the Linux installer builds the deb before the AppImage consumes the package", () => {
+  const source = readFileSync(new URL("./release-installers.mjs", import.meta.url), "utf8");
+  const deb = source.indexOf("buildLinuxDeb(");
+  const appImage = source.lastIndexOf("assembleAppDir(");
+  assert.ok(deb !== -1 && appImage !== -1 && deb < appImage, "the deb is packed before assembleAppDir renames the package");
+  assert.match(source, /copyFileSync\(file, download\)/);
 });
 
 test("the Windows installer is per-user and leaves nothing the desktop updater swaps behind", () => {
-  const script = innoSetupScript({ version: "0.4.4-build-56aed4e6d99d", source: "C:\\stage\\payload", out: "C:\\out" });
+  const version = "0.4.4-build-56aed4e6d99d";
+  const folder = windowsInstallerFolderName(version);
+  const script = innoSetupScript({ version, source: "C:\\stage\\payload", out: "C:\\out" });
   const lines = script.split("\r\n");
+  const exe = "{app}\\Branch Agent Launcher.exe";
+  assert.equal(folder, "app-0.4.4-build-56aed4e6d99d");
   assert.ok(lines.includes(`AppId=${WINDOWS_APP_ID}`));
   assert.ok(lines.includes("PrivilegesRequired=lowest"), "no admin prompt");
+  assert.doesNotMatch(script, /requireAdministrator|PrivilegesRequired=admin|runas/i, "never needs a UAC prompt");
   assert.ok(lines.includes("MinVersion=10.0"), "Setup refuses Windows the bundled Electron can't run on");
-  assert.ok(lines.includes("DefaultDirName={localappdata}\\Programs\\Branch Agent"), "a folder the updater can rename");
-  assert.ok(lines.includes("UninstallFilesDir={localappdata}\\Programs\\Branch Agent Uninstall"), "the uninstaller survives a whole-app swap");
+  assert.ok(lines.includes("DefaultDirName={localappdata}\\Programs\\Branch Agent"), "a user-writable install root");
+  assert.ok(lines.includes("UninstallFilesDir={localappdata}\\Programs\\Branch Agent Uninstall"), "the uninstaller survives leftover folders");
+  const shortcut = `Filename: "${exe}"; WorkingDir: "{%USERPROFILE}"; AppUserModelID: "dev.branch.agent.desktop"`;
+  assert.ok(lines.includes(`Name: "{autoprograms}\\Branch Agent"; ${shortcut}`), "the Start-menu shortcut opens the stable launcher from the user folder");
+  assert.ok(lines.includes(`Name: "{autodesktop}\\Branch Agent"; ${shortcut}; Tasks: desktopicon`), "so does the desktop shortcut");
+  assert.doesNotMatch(script, /WorkingDir:\s*"\{app\}"/, "no shortcut or Run entry Starts in the install folder");
+  assert.doesNotMatch(script, /\{app\}\\app-/, "no shortcut, icon or run entry names a version folder a prune can remove");
+  assert.ok(lines.includes(`UninstallDisplayIcon=${exe}`));
   assert.ok(lines.includes('Type: filesandordirs; Name: "{app}"'));
   assert.ok(lines.includes('Type: filesandordirs; Name: "{app}.previous"'));
   assert.ok(lines.includes("AppVersion=0.4.4-build-56aed4e6d99d"));
@@ -30,6 +170,7 @@ test("the Windows installer is per-user and leaves nothing the desktop updater s
   assert.ok(lines.includes("OutputBaseFilename=Branch-Agent-Setup-0.4.4-build-56aed4e6d99d-win32-x64"));
   assert.ok(lines.some((line) => line.startsWith('Source: "C:\\stage\\payload\\*"')));
   assert.doesNotMatch(script, /SignTool|signtool/i, "nothing signs here");
+  assert.match(windowsLauncherScript(), /set \/p VER=<"%ROOT%current\.txt"/);
 });
 
 test("the macOS image wraps the signed app with an Applications link", () => {
@@ -101,6 +242,23 @@ test("appimagetool runs with the pinned runtime, no network and no FUSE", () => 
   assert.deepEqual(env, { PATH: "/usr/bin", ARCH: "x86_64", VERSION: "1.0.0", APPIMAGE_EXTRACT_AND_RUN: "1" });
 });
 
+test("the release workflow builds a darwin-x64 package beside darwin-arm64", () => {
+  const workflow = readFileSync(new URL("../../.github/workflows/component-release.yml", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const native = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
+  assert.match(native, /target: darwin-arm64/);
+  assert.match(native, /os: macos-15-intel\n\s+target: darwin-x64/);
+  assert.match(native, /target: darwin-x64\n\s+node_arch: x64/);
+  assert.match(native, /node_arch: x64/);
+  assert.equal(publicDownloadName("darwin-x64"), "Branch-macOS-Intel.dmg");
+  assert.match(readFileSync(new URL("./release-installers.mjs", import.meta.url), "utf8"), /copyFileSync\(file, download\)/);
+  assert.match(native, /architecture: \$\{\{ matrix\.node_arch \}\}/);
+  assert.match(native, /component-release-pnpm-\$\{\{ matrix\.target \}\}/);
+  assert.match(native, /component-release-electron-\$\{\{ matrix\.target \}\}/);
+  assert.match(native, /release-proof-\$\{BRANCH_RELEASE_TARGET\}\.json/);
+  assert.match(native, /if: startsWith\(matrix\.target, 'darwin-'\)/);
+  assert.doesNotMatch(native, /matrix\.target == 'darwin-x64' && secrets\.APPLE_/);
+});
+
 test("the release workflow builds the Linux AppImage as a required step", () => {
   const workflow = readFileSync(new URL("../../.github/workflows/component-release.yml", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const at = workflow.indexOf("      - name: Build installers, signed only when configured\n");
@@ -116,3 +274,168 @@ test("the Inno Setup compiler is found or named", () => {
   assert.equal(innoCompiler(env, (file) => file.startsWith("C:\\PF86")), join("C:\\PF86", "Inno Setup 6", "ISCC.exe"));
   assert.throws(() => innoCompiler({}, () => false), /INNO_SETUP_COMPILER/);
 });
+
+/** A fake Windows filesystem keyed by path, for the launcher's pure rules. */
+const fakeFs = files => ({ readText: path => files[path], exists: path => path in files });
+
+test("the stable launcher reads current.txt and starts that version folder's Branch Agent.exe", () => {
+  const root = join("C:", "Users", "person", "AppData", "Local", "Programs", "Branch Agent");
+  const exe = folder => join(root, folder, "Branch Agent.exe");
+  const files = { [join(root, "current.txt")]: "\uFEFFapp-0.4.5-abcdef\r\n", [exe("app-0.4.4-123456")]: "", [exe("app-0.4.5-abcdef")]: "" };
+  const started = [];
+  const spawn = (command, args, options) => started.push({ command, args, cwd: options.cwd, detached: options.detached, windowsHide: options.windowsHide });
+  const home = join("C:", "Users", "person");
+  assert.equal(launcher.runWindowsLauncher({ root, args: ["--from-shortcut", "a b"], fs: fakeFs(files), spawn, env: { USERPROFILE: home } }), exe("app-0.4.5-abcdef"));
+  assert.deepEqual(started, [{ command: exe("app-0.4.5-abcdef"), args: ["--from-shortcut", "a b"], cwd: home, detached: true, windowsHide: false }]);
+  // The pointer moves after an update: the same launcher starts the new folder.
+  files[join(root, "current.txt")] = "app-0.4.4-123456\n";
+  assert.equal(launcher.windowsLaunchTarget(root, fakeFs(files)), exe("app-0.4.4-123456"));
+  // A pointer at a folder that is gone, or at something that is not a version folder, never starts it.
+  files[join(root, "current.txt")] = "app-0.4.3-gone00\n";
+  assert.equal(launcher.windowsLaunchTarget(root, fakeFs(files)), undefined);
+  files[join(root, "current.txt")] = "..\\..\\evil\n";
+  files[join(root, "..", "..", "evil", "Branch Agent.exe")] = "";
+  assert.equal(launcher.windowsLaunchTarget(root, fakeFs(files)), undefined);
+  // A legacy install keeps its Branch Agent.exe at the root.
+  files[join(root, "Branch Agent.exe")] = "";
+  assert.equal(launcher.windowsLaunchTarget(root, fakeFs(files)), join(root, "Branch Agent.exe"));
+  assert.equal(launcher.runWindowsLauncher({ root: join(root, "nowhere"), fs: fakeFs({}), spawn: () => assert.fail("nothing to start") }), undefined);
+});
+
+test("only shortcuts into a version folder or a legacy root copy are moved to the launcher", () => {
+  const root = "C:\\Users\\person\\AppData\\Local\\Programs\\Branch Agent";
+  assert.equal(launcher.windowsShortcutNeedsLauncher(root + "\\app-0.4.4-123456\\Branch Agent.exe", root), true);
+  assert.equal(launcher.windowsShortcutNeedsLauncher(root.toUpperCase() + "\\APP-0.4.4\\branch agent.EXE", root + "\\"), true, "Windows paths are case-insensitive");
+  assert.equal(launcher.windowsShortcutNeedsLauncher(root + "\\Branch Agent.exe", root), true, "a legacy root copy");
+  assert.equal(launcher.windowsShortcutNeedsLauncher(root + "\\Branch Agent Launcher.exe", root), false, "already the launcher");
+  assert.equal(launcher.windowsShortcutNeedsLauncher(root + "\\app-0.4.4\\resources\\Branch Agent.exe", root), false);
+  assert.equal(launcher.windowsShortcutNeedsLauncher(root + " Other\\app-1\\Branch Agent.exe", root), false, "a sibling folder is not this install");
+  assert.equal(launcher.windowsShortcutNeedsLauncher("C:\\Program Files\\Other\\Other.exe", root), false);
+  assert.equal(launcher.windowsShortcutNeedsLauncher("", root), false);
+});
+
+test("the compiled launcher follows the same rules as a windowed exe", () => {
+  const source = launcher.windowsLauncherSource();
+  assert.match(source, /Path\.Combine\(root, "current\.txt"\)/);
+  assert.match(source, /Regex\.IsMatch\(folder, "\^app-\[A-Za-z0-9\._-\]\+\$"\)/);
+  assert.match(source, /"Branch Agent\.exe"/);
+  assert.match(source, /UseShellExecute = false/);
+  assert.match(source, /GetEnvironmentVariable\("USERPROFILE"\)/);
+  assert.doesNotMatch(source, /WorkingDirectory = Path\.GetDirectoryName\(exe\)/);
+  assert.deepEqual(launcher.windowsLauncherCompileArgs({ source: "l.cs", out: "o.exe" }),
+    ["/nologo", "/target:winexe", "/optimize+", "/platform:anycpu", "/out:o.exe", "l.cs"], "winexe: no console window");
+  const csc = launcher.windowsLauncherCompiler({ SystemRoot: "C:\\Windows" }, file => file.includes("Framework64"));
+  assert.equal(csc, "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe");
+  assert.throws(() => launcher.windowsLauncherCompiler({}, () => false), /csc\.exe/);
+});
+
+test("the installer writes the one shared launcher: the exe from the package, the cmd stub and the pointer", () => {
+  const work = mkdtempSync(join(tmpdir(), "branch-win-layout-"));
+  try {
+    const payload = join(work, "payload"), root = join(work, "root");
+    mkdirSync(join(payload, "resources"), { recursive: true });
+    writeFileSync(join(payload, "Branch Agent.exe"), "app");
+    writeFileSync(join(payload, "resources", launcher.WINDOWS_LAUNCHER_RESOURCE), "launcher bytes");
+    const signed = [];
+    const folder = layoutWindowsInstallRoot({ payload, root, version: "0.4.5-build-1", signApp: file => signed.push(file) });
+    assert.equal(folder, "app-0.4.5-build-1");
+    assert.equal(readFileSync(join(root, folder, "Branch Agent.exe"), "utf8"), "app");
+    assert.equal(readFileSync(join(root, "Branch Agent Launcher.exe"), "utf8"), "launcher bytes");
+    assert.deepEqual(signed, [join(root, "Branch Agent Launcher.exe")]);
+    assert.equal(readFileSync(join(root, "current.txt"), "utf8"), folder + "\n");
+    assert.equal(readFileSync(join(root, "Branch Agent.cmd"), "utf8"), launcher.windowsLauncherScript());
+    assert.equal(windowsLauncherScript, launcher.windowsLauncherScript, "the installer re-exports the shared source, not a copy");
+    assert.equal(readFileSync(join(root, launcher.WINDOWS_LAUNCHER_REVISION_FILE), "utf8"), launcher.WINDOWS_LAUNCHER_REVISION + "\n");
+    const bare = join(work, "bare");
+    mkdirSync(bare);
+    writeFileSync(join(bare, "Branch Agent.exe"), "app");
+    assert.throws(() => layoutWindowsInstallRoot({ payload: bare, root: join(work, "root2"), version: "0.4.5" }), /branch-launcher\.exe/);
+  } finally { rmSync(work, { recursive: true, force: true }); }
+});
+
+// The cmd stub exactly as #1586 shipped it from release-installers.mjs and desktop-update-helper.ts. The handoff and
+// terminals start the app through it, so the shared source must not change a byte of it.
+const CMD_STUB_1586 = [
+  "@echo off",
+  "setlocal EnableDelayedExpansion",
+  'set "ROOT=%~dp0"',
+  'set "VER="',
+  'if exist "%ROOT%current.txt" set /p VER=<"%ROOT%current.txt"',
+  'if defined VER if exist "%ROOT%!VER!\\Branch Agent.exe" (',
+  '  start "" "%ROOT%!VER!\\Branch Agent.exe" %*',
+  "  exit /b 0",
+  ")",
+  'if exist "%ROOT%Branch Agent.exe" start "" "%ROOT%Branch Agent.exe" %*',
+  "",
+].join("\r\n");
+
+test("the shared cmd stub is byte for byte the one #1586 shipped", () => {
+  assert.equal(launcher.windowsLauncherScript(), CMD_STUB_1586);
+  assert.equal(windowsLauncherScript(), CMD_STUB_1586);
+});
+
+test("the Windows release build never hands csc an icon (branch.ico is PNG-compressed; the icon is stamped on after)", () => {
+  const icon = join(import.meta.dirname, "..", "assets", "branch.ico");
+  const args = launcher.windowsLauncherCompileArgs({ source: "l.cs", out: "o.exe", icon });
+  assert.equal(args.some(arg => /^\/win32icon/i.test(arg)), false, args.join(" "));
+});
+
+/** PE optional-header Subsystem: 2 is a windowed program (no console), 3 a console one. */
+const peSubsystem = file => { const bytes = readFileSync(file); const pe = bytes.readUInt32LE(0x3c); return bytes.readUInt16LE(pe + 4 + 20 + 68); };
+
+test("Windows: the built launcher has no console, starts the folder current.txt names and survives a prune", { skip: process.platform !== "win32" }, async () => {
+  const csc = launcher.windowsLauncherCompiler(process.env, existsSync);
+  const work = mkdtempSync(join(tmpdir(), "branch-win-launcher-"));
+  let appPid;
+  try {
+    const root = join(work, "Branch Agent");
+    mkdirSync(root);
+    const build = (name, source, out) => {
+      writeFileSync(join(work, name), source);
+      const result = spawnSync(csc, launcher.windowsLauncherCompileArgs({ source: join(work, name), out }), { encoding: "utf8" });
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+    };
+    build("launcher.cs", launcher.windowsLauncherSource(), join(root, launcher.WINDOWS_LAUNCHER_EXE));
+    // As release-build.mjs does: the app icon goes on after csc, and the exe stays a windowed one.
+    // The icon stamp needs the desktop's dev dependencies, which this Windows-only test has (desktop-checks installs them).
+    const { stampWindowsLauncherIcon, launcherIconGroups } = await import("./windows-launcher-icon.mjs");
+    await stampWindowsLauncherIcon(join(root, launcher.WINDOWS_LAUNCHER_EXE), join(import.meta.dirname, "..", "assets", "branch.ico"));
+    assert.equal(launcherIconGroups(readFileSync(join(root, launcher.WINDOWS_LAUNCHER_EXE))), 1);
+    assert.equal(peSubsystem(join(root, launcher.WINDOWS_LAUNCHER_EXE)), 2, "a windowed exe: opening it shows no console");
+    // A stand-in Branch Agent.exe that records where it ran from and what it was given.
+    // It writes its own process id first, so the test can wait for it to exit before removing the folder.
+    build("app.cs", "using System; using System.IO; static class App { static void Main(string[] a) { File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, \"pid.txt\"), System.Diagnostics.Process.GetCurrentProcess().Id.ToString()); File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, \"ran.txt\"), Environment.CurrentDirectory + \"|\" + string.Join(\"|\", a)); } }",
+      join(work, "Branch Agent.exe"));
+    for (const folder of ["app-0.4.4-aaaaaa", "app-0.4.5-bbbbbb"]) {
+      mkdirSync(join(root, folder));
+      copyFileSync(join(work, "Branch Agent.exe"), join(root, folder, "Branch Agent.exe"));
+    }
+    writeFileSync(join(root, "current.txt"), "app-0.4.5-bbbbbb\r\n");
+    rmSync(join(root, "app-0.4.4-aaaaaa"), { recursive: true, force: true });
+    const run = spawnSync(join(root, launcher.WINDOWS_LAUNCHER_EXE), ["--hidden", "two words"], { encoding: "utf8" });
+    assert.equal(run.status, 0);
+    const ran = join(root, "app-0.4.5-bbbbbb", "ran.txt");
+    for (const end = Date.now() + 10_000; !existsSync(ran) && Date.now() < end;) spawnSync(process.execPath, ["-e", "setTimeout(() => {}, 100)"]);
+    // The runner may hand back the 8.3 short form of the temp folder (C:\\Users\\RUNNER~1\\...), so compare real paths.
+    const [cwd, ...args] = readFileSync(ran, "utf8").split("|");
+    assert.equal(realpathSync.native(cwd).toLowerCase(), realpathSync.native(process.env.USERPROFILE).toLowerCase());
+    assert.notEqual(realpathSync.native(cwd).toLowerCase(), realpathSync.native(join(root, "app-0.4.5-bbbbbb")).toLowerCase());
+    assert.deepEqual(args, ["--hidden", "two words"]);
+    appPid = Number(readFileSync(join(root, "app-0.4.5-bbbbbb", "pid.txt"), "utf8"));
+  } finally {
+    // Windows will not delete a folder that a live process runs from or has as its working directory.
+    // End every process whose executable lives under the temp folder (the launched app and anything it started),
+    // wait until none is left, and only then remove the folder; rmSync's retries cover a brief scanner hold.
+    const under = () => {
+      const ps = "Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($env:BRANCH_TEST_WORK, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { $_.ProcessId }";
+      const out = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", ps], { encoding: "utf8", env: { ...process.env, BRANCH_TEST_WORK: realpathSync.native(work) } });
+      return String(out.stdout ?? "").split(/\s+/).filter(Boolean).map(Number);
+    };
+    const pids = new Set([...(appPid ? [appPid] : []), ...under()]);
+    for (const pid of pids) spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"]);
+    const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    for (const end = Date.now() + 15_000; ([...pids].some(alive) || under().length) && Date.now() < end;) spawnSync(process.execPath, ["-e", "setTimeout(() => {}, 200)"]);
+    rmSync(work, { recursive: true, force: true, maxRetries: 50, retryDelay: 200 });
+  }
+});
+

@@ -65,7 +65,7 @@ describe("detect-private-keys CLI", () => {
       fs.writeFileSync(path.join(repoDir, file), content);
     }
     fs.symlinkSync("clean.txt", path.join(repoDir, "link.txt"));
-    fs.writeFileSync(path.join(repoDir, "untracked.pem"), "-----BEGIN DSA PRIVATE KEY-----\n");
+    fs.writeFileSync(path.join(repoDir, "untracked.pem"), ["-----BEGIN ", "DSA PRIVATE KEY-----\n"].join(""));
     expect(spawnSync("git", ["init", "-q", "."], { cwd: repoDir }).status).toBe(0);
     expect(
       spawnSync("git", ["add", "--", ...Object.keys(files), "link.txt"], { cwd: repoDir }).status,
@@ -76,8 +76,8 @@ describe("detect-private-keys CLI", () => {
   it("fails with the wrapper trailer when a tracked file carries a key marker", () => {
     const cwd = createTrackedRepo({
       "clean.txt": "nothing to see\n",
-      "leaked.pem": "-----BEGIN RSA PRIVATE KEY-----\nfixture only, no key material\n",
-      "fixture.test.ts": "-----BEGIN EC PRIVATE KEY-----\n",
+      "leaked.pem": ["-----BEGIN ", "RSA PRIVATE KEY-----\nfixture only, no key material\n"].join(""),
+      "fixture.test.ts": ["-----BEGIN ", "EC PRIVATE KEY-----\n"].join(""),
     });
     // Pull-request CI runs a `git show` copy of the base-ref scanner from
     // outside the candidate tree, so the file must work without siblings.

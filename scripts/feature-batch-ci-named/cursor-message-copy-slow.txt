@@ -1,0 +1,2 @@
+window:src/glass/Popover.test.tsx
+window:src/screens/chat/HoverBar.test.tsx

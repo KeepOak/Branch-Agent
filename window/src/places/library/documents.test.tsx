@@ -80,7 +80,7 @@ describe("Library › Documents", () => {
     await click(button("Documents"));
     expect(button("Write a new document")!.disabled).toBe(false);
     await click(button("Write a new document"));
-    expect(host.querySelector('[data-testid="document-list"]')?.textContent).toContain("Untitled document.md");
+    expect(host.querySelector('[data-testid="document-list"]')?.textContent).toContain("Untitled document");
     expect(loadDraft(safeStorage(), "agent:a:desk")).toBe('Help me write “Untitled document.md”: ');
     expect(request.mock.calls.some(([method]) => method === "chat.send" || method === "sessions.create")).toBe(false);
   });
@@ -97,7 +97,7 @@ describe("Library › Documents", () => {
       return undefined;
     }));
     await writable(engine); await click(button("Write a new document"));
-    expect(host.querySelector('[data-testid="document-list"]')?.textContent).toContain("Untitled document 2.md");
+    expect(host.querySelector('[data-testid="document-list"]')?.textContent).toContain("Untitled document 2");
     expect(kept.get("Untitled document.md")).toBe("keep this content");
     expect(loadDraft(safeStorage(), "agent:a:desk")).toBe('Help me write “Untitled document 2.md”: ');
   });
@@ -123,7 +123,7 @@ describe("Library › Documents", () => {
     await act(async () => held.resolve(created())); await settle();
     expect(localStorage.length).toBe(0);
     expect(request.mock.calls.some(([method]) => method === "agents.workspace.list")).toBe(false);
-    expect(host.textContent).not.toContain("Created “");
+    expect(host.textContent).not.toContain("Started “");
   });
   it("does not overwrite a draft edited while creation was pending", async () => {
     const held = deferred();
@@ -139,7 +139,7 @@ describe("Library › Documents", () => {
     await writable(engine);
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("Storage blocked", "SecurityError"); });
     await click(button("Write a new document"));
-    expect(host.textContent).toContain("Created “Untitled document.md”");
+    expect(host.textContent).toContain("Started “Untitled document”");
     expect(host.textContent).toContain("could not be saved");
     expect(host.textContent).not.toContain("help draft is ready");
   });
@@ -148,7 +148,7 @@ describe("Library › Documents", () => {
     await writable(engine); await click(button("Write a new document"));
     expect(host.querySelector('[role="alert"]')?.textContent).toContain("did not confirm");
     expect(localStorage.length).toBe(0);
-    expect(host.textContent).not.toContain("Created “");
+    expect(host.textContent).not.toContain("Started “");
   });
   it("ignores an old target's completion after selecting another Trunk", async () => {
     const held = deferred();
@@ -161,7 +161,7 @@ describe("Library › Documents", () => {
     request.mockClear();
     await act(async () => held.resolve(created())); await settle();
     expect(localStorage.length).toBe(0);
-    expect(host.textContent).not.toContain("Created “");
+    expect(host.textContent).not.toContain("Started “");
     expect(request.mock.calls.some(([method]) => method === "agents.workspace.list")).toBe(false);
   });
   it("does not revive a retired save when the selection moves away and back", async () => {
@@ -173,9 +173,9 @@ describe("Library › Documents", () => {
     expect(button("Write a new document")!.disabled).toBe(false);
     await act(async () => held.resolve(created())); await settle();
     expect(localStorage.length).toBe(0);
-    expect(host.textContent).not.toContain("Created “");
+    expect(host.textContent).not.toContain("Started “");
     await click(button("Write a new document"));
-    expect(host.textContent).toContain("Created “Untitled document.md”");
+    expect(host.textContent).toContain("Started “Untitled document”");
   });
   it("leaves temporary-conversation selection private without staging durable help", async () => {
     const { engine } = engineOf(workspace(method => method === "agents.documents.create" ? created() : undefined));
@@ -223,7 +223,7 @@ describe("Library › Documents", () => {
     await act(async () => { write.click(); write.click(); });
     expect(attempts).toBe(1);
     await act(async () => held.resolve(created())); await settle();
-    expect(host.textContent).toContain("Created “Untitled document.md”");
+    expect(host.textContent).toContain("Started “Untitled document”");
   });
   it("lists every Trunk's project folder without the core files, and opens a document read only", async () => {
     const { engine, request } = engineOf(workspace());
@@ -231,9 +231,9 @@ describe("Library › Documents", () => {
     expect(request).toHaveBeenCalledWith("agents.workspace.list", { agentId: "a", path: "", offset: 0 });
     expect(request).toHaveBeenCalledWith("agents.workspace.list", { agentId: "b", path: "", offset: 0 });
     const list = host.querySelector('[data-testid="document-list"]')!;
-    expect(list.textContent).toContain("plan.md"); expect(list.textContent).toContain("report.pdf"); expect(list.textContent).toContain("Rowan");
+    expect(list.textContent).toContain("plan"); expect(list.textContent).toContain("report"); expect(list.textContent).toContain("Rowan");
     expect(list.textContent).not.toContain("MEMORY.md"); expect(list.textContent).not.toContain(".git");
-    const planRow = [...list.querySelectorAll(".lib-row")].find(r => r.textContent?.includes("plan.md"))!;
+    const planRow = [...list.querySelectorAll(".lib-row")].find(r => r.textContent?.includes("plan"))!;
     await click(button("Open", planRow));
     expect(request).toHaveBeenCalledWith("agents.workspace.get", { agentId: "a", path: "plan.md" });
     expect(host.querySelector('[data-testid="file-dialog"]')!.textContent).toContain("line two");
@@ -244,15 +244,15 @@ describe("Library › Documents", () => {
     const folderRow = [...host.querySelectorAll(".lib-row")].find(r => r.textContent?.includes("notes"))!;
     await click(button("Open", folderRow));
     expect(request).toHaveBeenCalledWith("agents.workspace.list", { agentId: "a", path: "notes", offset: 0 });
-    expect(host.textContent).toContain("inner.md");
+    expect(host.textContent).toContain("inner");
     await click(button("‹ Documents"));
     request.mockClear();
     await click(button("Load more"));
     expect(request.mock.calls.filter(([m]) => m === "agents.workspace.list")).toEqual([["agents.workspace.list", { agentId: "b", path: "", offset: 1 }]]);
     const names = [...host.querySelectorAll('[data-testid="document-list"] .lib-row b')].map(b => b.textContent);
-    expect(names.filter(n => n === "plan.md")).toHaveLength(1);
+    expect(names.filter(n => n === "plan")).toHaveLength(1);
     expect(names.filter(n => n === "notes")).toHaveLength(1);
-    expect(names).toContain("later.pdf");
+    expect(names).toContain("later");
     expect(button("Load more")).toBeUndefined();
   });
   it("shows one Trunk's failure on that Trunk and the empty line when nothing is there", async () => {

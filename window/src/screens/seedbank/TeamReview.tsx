@@ -8,11 +8,13 @@ import { Coming } from "../../glass/coming";
 import { Sheet } from "./InstallSheet";
 import { hasHiddenInstructions } from "./seed";
 import { templateFor, type TeamBot, type TeamFile } from "./team-markdown";
+import { plainError } from "../../shell/plain-error";
 
 type Outcome = { added: ReadonlySet<number>; errors: ReadonlyMap<number, string> };
 type Props = { team: TeamFile; engine: WindowEngine; onClose: () => void; onDone: (result: { notice: string }) => void };
 
-const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const errorText = (error: unknown): string => plainError(error);
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** One Trunk's entry in What it adds: its model, what the file says it may do, its routines, and where it stands. */

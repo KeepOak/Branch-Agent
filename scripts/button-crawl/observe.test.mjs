@@ -69,3 +69,29 @@ test('stableText removes clocks and elapsed times and keeps words and counts', (
   assert.equal(stableText('Elapsed 00:12 of 3 steps'), 'Elapsed of 3 steps');
   assert.equal(stableText('Checked at 9:24'), 'Checked at');
 });
+
+// A disclosure (LaterRows and similar) is a control whose aria-expanded flips when it opens its content.
+test('a disclosure whose aria-expanded flips is a result, even when nothing else on the screen changes', () => {
+  const before = { ...still, control: '|||false', controlled: 'hidden' };
+  const after = { ...still, control: '|||true', controlled: 'shown:6 more rows' };
+  assert.deepEqual(problemsOf(before, after), []);
+  // The same flip with no content it controls still counts: the control's own state changed.
+  assert.deepEqual(problemsOf({ ...still, control: '|||false' }, { ...still, control: '|||true' }), []);
+});
+
+test('the content a disclosure controls showing or hiding is a result', () => {
+  assert.deepEqual(problemsOf({ ...still, controlled: 'hidden' }, { ...still, controlled: 'shown:Writing rows' }), []);
+});
+
+test('a button whose aria-expanded does not change, and nothing else changes, is still dead', () => {
+  assert.deepEqual(problemsOf({ ...still, control: '|||false', controlled: 'hidden' }, { ...still, control: '|||false', controlled: 'hidden' }), ['dead']);
+  assert.deepEqual(problemsOf({ ...still, control: '|||', controlled: '' }, { ...still, control: '|||', controlled: '' }), ['dead']);
+});
+
+// A timer inside an expanded panel changes as time passes; that alone is not a result.
+test('a ticking time inside an expanded panel is not a result', () => {
+  const before = { ...still, control: '|||true', controlled: 'shown:Next run 10:01 AM' };
+  const after = { ...still, control: '|||true', controlled: 'shown:Next run 10:02 AM' };
+  assert.deepEqual(problemsOf(before, after), ['dead']);
+  assert.deepEqual(problemsOf({ ...still, controlled: 'shown:Two items' }, { ...still, controlled: 'shown:Three items' }), []);
+});

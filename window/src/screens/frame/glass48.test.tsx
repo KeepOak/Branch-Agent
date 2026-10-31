@@ -9,7 +9,7 @@ import { Frame } from "./Frame";
 import { R1Window } from "./R1Window";
 
 /* README item 48 (owner, final): menus, popovers and dialogs are clear glass with their words on frosted pills. In the R1
-   window the header pill's Agent details popover is clear with its name, line and Close on pills, and the Lockdown
+   window the header pill's details panel is clear with its name, line and actions on pills, and the Lockdown
    confirmation is a clear dialog with Turn Lockdown on solid. */
 const lockdownArgs = vi.hoisted(() => ({ value: [] as unknown[] }));
 vi.mock("../chat/ChatView", () => ({ ChatView: () => <p>chat</p> }));
@@ -45,7 +45,7 @@ function bareText(scope: Element) {
   return bare;
 }
 
-it("opens Agent details as a clear popover with the name, its line and Close on pills", async () => {
+it("opens the details panel clear, with the name, its line and its actions on pills", async () => {
   const snapshot = { status: { phase: "connected" }, name: "Ledger", sessionKey: "agent:ledger:main", mainKey: "agent:ledger:main", history: [], live: [], queued: [] };
   const request = vi.fn(async () => ({ name: "Ledger", emoji: "📒" }));
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request, onEvent: () => () => undefined } } as unknown as SaplingSession;
@@ -54,9 +54,8 @@ it("opens Agent details as a clear popover with the name, its line and Close on 
   expect(pill).toBeTruthy();
   await act(async () => pill!.click());
   await act(async () => undefined);
-  const box = document.querySelector(".g-popover > .r1-agent-details")!;
+  const box = document.querySelector(".r1-details.g-clear > .r1-agent-details")!;
   expect(box).not.toBeNull();
-  expect(box.classList).toContain("g-clear");
   expect(box.querySelector("strong")!.classList).toContain("g-label");
   expect(bareText(box)).toEqual([]);
   const css = readFileSync("src/screens/frame/frame.css", "utf8").replace(/\s+/g, " ");

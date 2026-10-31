@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Dialog } from "./Dialog";
 import { ROW_COLOURS } from "./row-look";
 import type { NewTopicDraft } from "./topic-create";
+import { plainError } from "../shell/plain-error";
 
 const ICONS = ["💬", "🧠", "📌", "🧾", "📅", "🛠️", "✈️", "🏠", "📈", "🎨", "🌱", "🔬"];
 
@@ -22,7 +23,7 @@ export function NewTopicSheet({ trunkName, clear, onCancel, onCreate }: {
     try { await onCreate({ name: value, icon, colour }); } catch (e) { setError(e instanceof Error ? e.message : String(e)); setBusy(false); }
   };
   return <Dialog title="New topic" clear={clear} onClose={onCancel} testid="new-topic"
-    footer={<><button className="btn ghost" type="button" onClick={onCancel}>Cancel</button><button className="btn pri" type="button" disabled={busy} onClick={() => void submit()}>Create</button></>}>
+    footer={<><button className="btn ghost" type="button" onClick={onCancel}>Cancel</button><button className="btn pri" type="button" disabled={busy || !name.trim()} onClick={() => void submit()}>Create</button></>}>
     <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
       <label className="fld"><span>Name</span><input className="inp" autoFocus maxLength={60} placeholder="What is it about?" value={name} onChange={(e) => setName(e.target.value)} /></label>
       <div className="fld"><span>Icon and colour</span>
@@ -30,7 +31,7 @@ export function NewTopicSheet({ trunkName, clear, onCancel, onCreate }: {
         <div role="group" aria-label="Colour" className="tpPickGridP17">{ROW_COLOURS.map((item) => <button key={item.id} type="button" className="tpSwatchP17" aria-label={item.name} aria-pressed={colour === item.id} title={item.name} onClick={() => setColour(colour === item.id ? null : item.id)} style={{ ["--c" as string]: item.hue }} />)}</div>
       </div>
       <div className="fld"><span>Who’s in it</span><p className="pp">{trunkName} and you.</p></div>
-      {error ? <p className="tpErrorT5" role="alert">{error}</p> : null}
+      {error ? <p className="tpErrorT5" role="alert">{plainError(error)}</p> : null}
     </form>
   </Dialog>;
 }
@@ -46,6 +47,6 @@ export function DeleteTopicDialog({ title, clear, onCancel, onDelete }: { title:
   return <Dialog title={`Delete “${title}”?`} clear={clear} onClose={onCancel} testid="delete-topic"
     footer={<><button className="btn ghost" type="button" onClick={onCancel}>Cancel</button><button className="btn pri" type="button" disabled={busy} onClick={() => void remove()} style={{ background: "var(--bad)" }}>Delete</button></>}>
     <p className="pp">Deleting is final for now.</p>
-    {error ? <p className="tpErrorT5" role="alert">{error}</p> : null}
+    {error ? <p className="tpErrorT5" role="alert">{plainError(error)}</p> : null}
   </Dialog>;
 }

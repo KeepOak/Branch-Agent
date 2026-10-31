@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { newestChecksByIdentity, workflowFromActionsRun } from './merge-gate-trusted.mjs';
 
 export const MAX_RATE_LIMIT_SLEEP_SECONDS = 120;
+// Extra delay after a shared reset so concurrent waiters do not retry in lock-step.
+export const RATE_LIMIT_WAKE_SPREAD_SECONDS = 45;
 export const DEFAULT_WAIT_BUDGET_SECONDS = 32 * 60;
 export const GH_API_MAX_BUFFER = 64 * 1024 * 1024;
 export const POLL_INTERVAL_SECONDS = [30, 60, 90];
@@ -202,23 +204,30 @@ export function rateLimitSleepSeconds({
   retryAttempt = 0,
   maxSleep = MAX_RATE_LIMIT_SLEEP_SECONDS,
   random = Math.random,
+  bufferSeconds = 0,
 } = {}) {
   const fromObject = parseRateLimitHeaders(error?.headers ?? error);
   const fromText = parseRateLimitHeaders(errorText(error));
   const retryAfter = fromObject.retryAfter ?? fromText.retryAfter;
   const resetEpoch = fromObject.resetEpoch ?? fromText.resetEpoch;
+  const buffer = Number.isFinite(bufferSeconds) && bufferSeconds > 0 ? bufferSeconds : 0;
   let seconds = null;
+  let fromReset = false;
   if (Number.isFinite(retryAfter)) seconds = retryAfter;
   else if (Number.isFinite(resetEpoch) && Number.isFinite(nowSeconds)) {
     seconds = resetEpoch - nowSeconds;
+    fromReset = true;
   } else {
     const resetFromPayload = resetEpochFromRateLimit(rateLimit);
     if (Number.isFinite(resetFromPayload) && Number.isFinite(nowSeconds)) {
       seconds = resetFromPayload - nowSeconds;
+      fromReset = true;
     }
   }
   if (seconds == null || seconds <= 0) {
     seconds = backoffSeconds(retryAttempt, { random, cap: maxSleep });
+  } else if (fromReset) {
+    seconds += buffer;
   }
   return Math.min(maxSleep, Math.max(1, Math.ceil(seconds)));
 }
@@ -406,6 +415,9 @@ export function withRateLimitRetry(fn, {
   budgetSeconds = DEFAULT_WAIT_BUDGET_SECONDS,
   maxRetries = Number.POSITIVE_INFINITY,
   maxSleep = MAX_RATE_LIMIT_SLEEP_SECONDS,
+  bufferSeconds = 0,
+  spreadSeconds = 0,
+  retryTransient = true,
   random = Math.random,
   log,
 } = {}) {
@@ -417,7 +429,7 @@ export function withRateLimitRetry(fn, {
     } catch (error) {
       if (!isRateLimitError(error)) {
         const remaining = budgetSeconds - (now() - start) / 1000;
-        if (!isTransientGitHubError(error) || transientRetries >= TRANSIENT_RETRY_LIMIT || remaining < 1) {
+        if (!retryTransient || !isTransientGitHubError(error) || transientRetries >= TRANSIENT_RETRY_LIMIT || remaining < 1) {
           throw error;
         }
         const transientWait = transientBackoffSeconds(transientRetries, random);
@@ -436,15 +448,29 @@ export function withRateLimitRetry(fn, {
           rateLimit = null;
         }
       }
+      const fromHeaders = parseRateLimitHeaders(error?.headers ?? error);
+      const fromText = parseRateLimitHeaders(errorText(error));
+      const retryAfter = fromHeaders.retryAfter ?? fromText.retryAfter;
+      const resetAt = fromHeaders.resetEpoch ?? fromText.resetEpoch ?? resetEpochFromRateLimit(rateLimit);
+      const untilReset = Number.isFinite(resetAt) ? resetAt - now() / 1000 : null;
+      // Waiting when the window reopens after this job keeps every waiter in lock-step
+      // for the next hour. Fail closed now; a later event can recheck after the reset.
+      if (!Number.isFinite(retryAfter) && Number.isFinite(untilReset) && untilReset > remaining) {
+        throw error;
+      }
       const wait = rateLimitSleepSeconds({
         error,
         nowSeconds: now() / 1000,
         rateLimit,
         retryAttempt,
-        maxSleep,
+        maxSleep: Number.isFinite(untilReset) && !Number.isFinite(retryAfter) ? remaining : maxSleep,
         random,
+        bufferSeconds,
       });
-      const sleepFor = Math.min(wait, remaining);
+      const spread = Math.max(0, Number(spreadSeconds)) > 0
+        ? Math.round(random() * Math.max(0, Number(spreadSeconds)))
+        : 0;
+      const sleepFor = Math.min(wait + spread, remaining);
       if (sleepFor < 1) throw error;
       log?.(`GitHub API rate limited; retrying in ${Math.ceil(sleepFor)}s…`);
       sleep(sleepFor);
@@ -485,6 +511,7 @@ export function runGhWithRetry(args, {
   startedAt,
   budgetSeconds,
   maxSleep,
+  spreadSeconds = RATE_LIMIT_WAKE_SPREAD_SECONDS,
   random = Math.random,
   log = console.error,
 } = {}) {
@@ -501,28 +528,83 @@ export function runGhWithRetry(args, {
     startedAt: startedAt ?? wait.startedAt,
     budgetSeconds: budgetSeconds ?? wait.budgetSeconds,
     maxSleep: maxSleep ?? wait.maxSleep,
+    spreadSeconds,
     random,
     log,
   });
   return prepared.includeHeaders ? (parsed.body ?? '') : (parsed.raw ?? parsed.body ?? '');
 }
 
-export function shouldSkipEditedRerun(runs, { runId, sha } = {}) {
-  return (runs ?? []).some((run) => {
-    if (runId != null && Number(run.id) === Number(runId)) return false;
-    if (sha && run.head_sha && run.head_sha !== sha) return false;
-    if (run.status !== 'completed') return true;
-    return run.conclusion === 'success';
+// A debounced (edited) run skips these steps, so a run where any of them did not conclude `success`
+// never counts as proof for a later edit. Names must match .github/workflows/merge-gate.yml (a test pins them).
+export const VERIFIED_RUN_STEPS = Object.freeze({
+  'changed-test-coverage': Object.freeze([
+    'Require every changed test to run in CI',
+    'Fail new window cleanliness violations',
+  ]),
+  'merge-gate': Object.freeze(["Wait for the PR's other checks"]),
+});
+
+// Cheap filter on the runs list: a finished, green pull_request run of this workflow on this exact
+// head, for this PR number and base. In-progress runs, other events, other PRs or bases, and runs with
+// an empty pull_requests list (forks, or the API leaving it out) are never candidates.
+export function isReusableRunCandidate(run, { runId, sha, prNumber, baseRef, baseSha } = {}) {
+  if (!run || !sha || prNumber == null || prNumber === '' || !baseRef) return false;
+  if (runId != null && Number(run.id) === Number(runId)) return false;
+  if (run.head_sha !== sha) return false;
+  if (run.event !== 'pull_request') return false;
+  if (run.status !== 'completed' || run.conclusion !== 'success') return false;
+  const prs = Array.isArray(run.pull_requests) ? run.pull_requests : [];
+  return prs.some((pr) => Number(pr?.number) === Number(prNumber)
+    && pr?.base?.ref === baseRef
+    && (!baseSha || pr?.base?.sha === baseSha));
+}
+
+// Proof that a run did the real work: each named job concluded success once, and each required step
+// in it concluded success. A debounced run reports those steps as `skipped`, so it never qualifies.
+export function isVerifiedRunJobs(jobs, required = VERIFIED_RUN_STEPS) {
+  if (!Array.isArray(jobs)) return false;
+  return Object.entries(required).every(([jobName, stepNames]) => {
+    const matches = jobs.filter((job) => job?.name === jobName);
+    if (matches.length !== 1) return false;
+    const [job] = matches;
+    if (job.status !== 'completed' || job.conclusion !== 'success') return false;
+    const steps = Array.isArray(job.steps) ? job.steps : [];
+    return stepNames.every((name) => {
+      const found = steps.filter((step) => step?.name === name);
+      return found.length === 1 && found[0].status === 'completed' && found[0].conclusion === 'success';
+    });
   });
+}
+
+// The pure decision. `fetchJobs(runId)` returns that run's jobs; a throw propagates so the caller
+// fails closed (no skip). Without fetchJobs nothing can be proven, so nothing skips.
+export function shouldSkipEditedRerun(runs, scope = {}, { fetchJobs, maxChecks = 3 } = {}) {
+  if (typeof fetchJobs !== 'function') return false;
+  const candidates = (runs ?? []).filter((run) => isReusableRunCandidate(run, scope));
+  for (const run of candidates.slice(0, maxChecks)) {
+    if (isVerifiedRunJobs(fetchJobs(run.id))) return true;
+  }
+  return false;
 }
 
 export function fetchMergeGateRuns(repo, sha, token, { exec = execFileSync } = {}) {
   const raw = runGhWithRetry(
-    ['api', `repos/${repo}/actions/workflows/merge-gate.yml/runs?head_sha=${sha}&per_page=20`],
+    ['api', `repos/${repo}/actions/workflows/merge-gate.yml/runs?head_sha=${sha}&event=pull_request&status=success&per_page=20`],
     { token, exec },
   );
   const payload = raw ? JSON.parse(raw) : {};
   return payload.workflow_runs ?? [];
+}
+
+export function fetchRunJobs(repo, runId, token, { exec = execFileSync } = {}) {
+  const raw = runGhWithRetry(
+    ['api', `repos/${repo}/actions/runs/${Number(runId)}/jobs?filter=latest&per_page=100`],
+    { token, exec },
+  );
+  const payload = raw ? JSON.parse(raw) : {};
+  if (!Array.isArray(payload.jobs)) throw new Error(`No jobs list for run ${runId}`);
+  return payload.jobs;
 }
 
 export function skipEditedMergeGate({
@@ -530,12 +612,20 @@ export function skipEditedMergeGate({
   sha,
   token,
   runId,
+  prNumber = process.env.PR_NUMBER,
+  baseRef = process.env.BASE_REF,
+  baseSha = process.env.BASE_SHA,
   action = process.env.MERGE_GATE_ACTION ?? process.env.GITHUB_EVENT_ACTION,
   fetchRuns = fetchMergeGateRuns,
+  fetchJobs = (id) => fetchRunJobs(repo, id, token),
   outputFile = process.env.GITHUB_OUTPUT,
 } = {}) {
   if (action !== 'edited') return false;
-  const skip = shouldSkipEditedRerun(fetchRuns(repo, sha, token), { runId, sha });
+  const skip = shouldSkipEditedRerun(
+    fetchRuns(repo, sha, token),
+    { runId, sha, prNumber, baseRef, baseSha },
+    { fetchJobs },
+  );
   if (outputFile) appendFileSync(outputFile, `skip=${skip ? 'true' : 'false'}\n`);
   return skip;
 }
@@ -687,6 +777,7 @@ export function pollOrdinaryGate({
           fetchRateLimit: fetchRateLimit ?? (() => fetchGitHubRateLimit(token)),
           startedAt,
           budgetSeconds: waitBudgetSeconds,
+          spreadSeconds: RATE_LIMIT_WAKE_SPREAD_SECONDS,
           random,
           log,
         },
@@ -762,21 +853,17 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(1);
   }
 
-  if (command === 'skip-edited' || process.env.MERGE_GATE_ACTION === 'edited') {
+  // Only the explicit subcommand debounces. The wait itself never skips, so a run whose wait step
+  // concluded success is real proof for a later edit (see VERIFIED_RUN_STEPS).
+  if (command === 'skip-edited') {
     const skip = skipEditedMergeGate({
       repo,
       sha,
       token,
       runId: process.env.GITHUB_RUN_ID,
     });
-    if (command === 'skip-edited') {
-      if (skip) console.log('Skipping redundant edited merge-gate rerun for this SHA.');
-      process.exit(skip ? 0 : 1);
-    }
-    if (skip) {
-      console.log('Skipping redundant edited merge-gate wait; another run for this SHA is in progress or succeeded.');
-      process.exit(0);
-    }
+    if (skip) console.log('Reusing a verified earlier merge-gate run for this PR, base and SHA.');
+    process.exit(skip ? 0 : 1);
   }
 
   process.exit(pollOrdinaryGate({

@@ -42,8 +42,9 @@ export function IcoTile({ icon }: { icon: LibIconName }) {
 }
 
 /** A control whose engine method does not exist: drawn greyed, the reason in its title. */
-export function Grey({ label, reason, ghost, className, full }: { label: ReactNode; reason: string; ghost?: boolean; className?: string; full?: boolean }) {
-  return <button type="button" className={`btn${full ? "" : " sm"}${ghost ? " ghost" : ""}${className ? " " + className : ""}`} disabled title={shownWhy(reason)} data-reason={reason}>{label}</button>;
+export function Grey({ label, reason, why, ghost, className, full }: { label: ReactNode; reason: string; why?: string; ghost?: boolean; className?: string; full?: boolean }) {
+  // `why` is the person-facing reason when `reason` is a developer note that shownWhy hides.
+  return <button type="button" className={`btn${full ? "" : " sm"}${ghost ? " ghost" : ""}${className ? " " + className : ""}`} disabled title={why ?? shownWhy(reason)} data-reason={reason}>{label}</button>;
 }
 
 /** A switch with no engine setting behind it: greyed, with the reason. */

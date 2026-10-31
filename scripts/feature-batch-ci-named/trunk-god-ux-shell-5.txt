@@ -1,0 +1,2 @@
+window:src/shell/palette-model.test.ts
+window:src/shell/search-model.test.ts

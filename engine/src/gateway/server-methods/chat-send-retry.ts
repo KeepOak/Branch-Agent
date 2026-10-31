@@ -1,6 +1,7 @@
 import type { SessionTranscriptReadScope } from "../../config/sessions/session-accessor.sqlite-contract.js";
 import { isSessionTranscriptProjectionUnavailableError } from "../../config/sessions/session-transcript-projection-error.js";
 import { waitForSessionTranscriptProjection } from "../../config/sessions/session-transcript-reconcile.js";
+import { WorkerTaskError } from "../../infra/worker-task-pool.js";
 import {
   AgentDatabaseAdmissionError,
   createAgentDatabaseAdmissionErrorShape,
@@ -28,6 +29,14 @@ export function classifyAcceptedChatSendFailure(params: {
     params.phase === "pre-ack" &&
     params.error instanceof AgentDatabaseAdmissionError &&
     createAgentDatabaseAdmissionErrorShape(params.error.refusal).retryable
+  ) {
+    return "client-retry";
+  }
+  // A full worker queue refuses the task before it runs, so the same request can be sent again.
+  if (
+    params.phase === "pre-ack" &&
+    params.error instanceof WorkerTaskError &&
+    params.error.code === "overloaded"
   ) {
     return "client-retry";
   }

@@ -21,6 +21,7 @@ import { tryProcessCwd } from "./safe-cwd.js";
 import { retainSnapshotWork } from "./sqlite-readonly-location-cleanup.js";
 import type { SqliteReadOnlyOperations } from "./sqlite-readonly-operation-registry.js";
 import {
+  SQLITE_READONLY_WORKER_IDLE_TIMEOUT_MS,
   readOnlyWorkerScope,
   type SqliteReadOnlyWorkerScope,
 } from "./sqlite-readonly-worker-context.js";
@@ -36,10 +37,27 @@ import {
   type SqliteAuthProfileRows,
 } from "./sqlite-readonly-worker-protocol.js";
 import {
+  SQLITE_READONLY_HARD_MAX_SESSIONS,
+  SQLITE_READONLY_MAX_LIVE_SESSIONS,
+  SQLITE_READONLY_SLOT_WAIT_MS,
+  SqliteReadOnlyWorkerBusyError,
+  countLiveSqliteReadOnlyWorkerSessions,
   createSqliteReadOnlyWorkerSession,
+  waitForSqliteReadOnlyWorkerSlot,
   isSameSqliteReadOnlyWorkerLaunch,
   type SqliteReadOnlyWorkerLaunch,
+  type SqliteReadOnlyWorkerSlot,
 } from "./sqlite-readonly-worker-session.js";
+
+export { SQLITE_READONLY_WORKER_IDLE_TIMEOUT_MS };
+export {
+  SQLITE_READONLY_HARD_MAX_SESSIONS,
+  SQLITE_READONLY_MAX_LIVE_SESSIONS,
+  SQLITE_READONLY_SLOT_WAIT_MS,
+  SqliteReadOnlyWorkerBusyError,
+  countLiveSqliteReadOnlyWorkerSessions,
+  waitForSqliteReadOnlyWorkerSlot,
+};
 
 const SLOW_HARDWARE_HEADROOM = 10;
 const SQLITE_INSPECTION_TIMEOUT_MS = 30_000 * SLOW_HARDWARE_HEADROOM;
@@ -132,8 +150,9 @@ export function sqliteInspectionTimeoutError(
 
 /** Reuse child imports until the lifecycle owner closes; reads reacquire source admission. */
 export function createSqliteReadOnlyWorkerScope(options?: {
-  signal: AbortSignal;
-  deadlineOwnedByCaller: boolean;
+  signal?: AbortSignal;
+  deadlineOwnedByCaller?: boolean;
+  idleTimeoutMs?: number;
 }) {
   const scope: SqliteReadOnlyWorkerScope = {
     active: true,
@@ -141,11 +160,12 @@ export function createSqliteReadOnlyWorkerScope(options?: {
     controller: new AbortController(),
     pending: new Set(),
     deadlineOwnedByCaller: options?.deadlineOwnedByCaller ?? false,
+    idleTimeoutMs: options?.idleTimeoutMs ?? SQLITE_READONLY_WORKER_IDLE_TIMEOUT_MS,
     readTail: Promise.resolve(),
   };
-  const abort = () => scope.controller.abort(options?.signal.reason);
-  options?.signal.addEventListener("abort", abort, { once: true });
-  if (options?.signal.aborted) {
+  const abort = () => scope.controller.abort(options?.signal?.reason);
+  options?.signal?.addEventListener("abort", abort, { once: true });
+  if (options?.signal?.aborted) {
     abort();
   }
   let closing: Promise<void> | undefined;
@@ -155,14 +175,19 @@ export function createSqliteReadOnlyWorkerScope(options?: {
     },
     close(): Promise<void> {
       closing ??= (async () => {
-        options?.signal.removeEventListener("abort", abort);
+        options?.signal?.removeEventListener("abort", abort);
+        clearSqliteReadOnlyWorkerScopeIdle(scope);
         scope.active = false;
         scope.controller.abort(new Error("SQLite read-only worker scope closed"));
         await Promise.allSettled(scope.pending);
-        const closed = await Promise.allSettled([
-          scope.worker?.close(),
-          scope.readWorker?.session.close(),
-        ]);
+        const idleClosed = (await scope.idleClosing) ?? [];
+        scope.idleClosing = undefined;
+        const closed = [
+          ...idleClosed,
+          ...(await Promise.allSettled([scope.worker?.close(), scope.readWorker?.session.close()])),
+        ];
+        scope.worker = undefined;
+        scope.readWorker = undefined;
         const failures = closed.flatMap((result) =>
           result.status === "rejected" ? [result.reason] : [],
         );
@@ -173,6 +198,44 @@ export function createSqliteReadOnlyWorkerScope(options?: {
       return closing;
     },
   };
+}
+
+function clearSqliteReadOnlyWorkerScopeIdle(scope: SqliteReadOnlyWorkerScope): void {
+  if (scope.idleTimer) {
+    clearTimeout(scope.idleTimer);
+    scope.idleTimer = undefined;
+  }
+}
+
+function scheduleSqliteReadOnlyWorkerScopeIdle(scope: SqliteReadOnlyWorkerScope): void {
+  clearSqliteReadOnlyWorkerScopeIdle(scope);
+  if (!scope.active || scope.pending.size > 0 || scope.busy || scope.idleTimeoutMs <= 0) {
+    return;
+  }
+  if (!scope.worker && !scope.readWorker) {
+    return;
+  }
+  // A context-free timer: the idle deadline must not keep the last caller's async state alive.
+  scope.idleTimer = runInDetachedAsyncContext(() =>
+    setTimeout(() => {
+      scope.idleTimer = undefined;
+      if (!scope.active || scope.pending.size > 0 || scope.busy) {
+        return;
+      }
+      const worker = scope.worker;
+      const readWorker = scope.readWorker;
+      scope.worker = undefined;
+      scope.readWorker = undefined;
+      // Owner close() joins every idle close so shutdown never returns while idle children
+      // still exit; a later idle cycle chains onto, never replaces, an earlier pending close.
+      const previous = scope.idleClosing;
+      const current = Promise.allSettled([worker?.close(), readWorker?.session.close()]);
+      scope.idleClosing = previous
+        ? Promise.all([previous, current]).then(([earlier, later]) => [...earlier, ...later])
+        : current;
+    }, scope.idleTimeoutMs),
+  );
+  scope.idleTimer.unref();
 }
 
 export async function withSqliteReadOnlyWorkerScope<T>(
@@ -220,11 +283,7 @@ export function runScopedSqliteInspection<T>(
     ? AbortSignal.any([signal, scope.controller.signal])
     : scope.controller.signal;
   const operation = inspect(scopedSignal);
-  scope.pending.add(operation);
-  void operation.then(
-    () => scope.pending.delete(operation),
-    () => scope.pending.delete(operation),
-  );
+  trackSqliteReadOnlyWorkerScopeOperation(scope, operation);
   return operation;
 }
 
@@ -268,6 +327,7 @@ export function createScopedSqliteReadOnlyWorker(
   launch: ReturnType<typeof captureSqliteReadOnlyWorkerLaunch> & {
     retainLifetime?: boolean;
     retainOnOperationError?: boolean;
+    slot?: SqliteReadOnlyWorkerSlot;
   },
 ): ReturnType<typeof createSqliteReadOnlyWorkerSession> {
   const workerUrl = resolveRuntimeWorkerUrl(runtimeProcessEntrypoints.sqliteReadOnly);
@@ -386,7 +446,9 @@ export function runSqliteReadOnlyWorker(
           if (!scope.worker?.compatible(launch)) {
             await scope.worker?.close();
             scopedOptions.signal.throwIfAborted();
-            scope.worker = createScopedSqliteReadOnlyWorker(launch);
+            // Bounded async wait for a pool slot; creation follows synchronously.
+            const slot = await waitForSqliteReadOnlyWorkerSlot(scopedOptions.signal);
+            scope.worker = createScopedSqliteReadOnlyWorker({ ...launch, slot });
           }
           return await scope.worker.run(pathname, scopedOptions);
         } finally {
@@ -402,12 +464,26 @@ export function runSqliteReadOnlyWorker(
       ),
     );
   }
+  trackSqliteReadOnlyWorkerScopeOperation(scope, operation);
+  return operation;
+}
+
+function trackSqliteReadOnlyWorkerScopeOperation(
+  scope: SqliteReadOnlyWorkerScope,
+  operation: Promise<unknown>,
+): void {
+  clearSqliteReadOnlyWorkerScopeIdle(scope);
   scope.pending.add(operation);
   void operation.then(
-    () => scope.pending.delete(operation),
-    () => scope.pending.delete(operation),
+    () => {
+      scope.pending.delete(operation);
+      scheduleSqliteReadOnlyWorkerScopeIdle(scope);
+    },
+    () => {
+      scope.pending.delete(operation);
+      scheduleSqliteReadOnlyWorkerScopeIdle(scope);
+    },
   );
-  return operation;
 }
 
 async function runSqliteScopedReadWorker(
@@ -427,7 +503,11 @@ async function runSqliteScopedReadWorker(
     scope.readWorker = undefined;
     options.signal?.throwIfAborted();
   }
-  let worker = scope?.readWorker?.session ?? createScopedSqliteReadOnlyWorker(launch);
+  // Bounded async wait for a pool slot; creation follows synchronously.
+  const slot = scope?.readWorker
+    ? undefined
+    : await waitForSqliteReadOnlyWorkerSlot(options.signal);
+  let worker = scope?.readWorker?.session ?? createScopedSqliteReadOnlyWorker({ ...launch, slot });
   while (true) {
     if (scope) {
       // A confirmed native replacement still belongs to this captured broker request.
@@ -467,8 +547,11 @@ async function runSqliteScopedReadWorker(
     if ("error" in outcome) {
       if (worker.notStarted && hasErrnoCode(outcome.error, "ERR_SPAWN_BROKER_UNAVAILABLE")) {
         options.signal?.throwIfAborted();
+        // The refused session gave its slot back on close, and a queued caller may have
+        // taken it. Wait for a slot like any new session instead of failing at the ceiling.
+        const replacementSlot = await waitForSqliteReadOnlyWorkerSlot(options.signal);
         // A confirmed refusal has no child to replay. Preserve the captured launch context.
-        worker = worker.createNativeReplacement();
+        worker = worker.createNativeReplacement(replacementSlot);
         continue;
       }
       throw outcome.error;

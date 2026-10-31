@@ -4,7 +4,7 @@
 // voice (talk.catalog, talk.* through config), meeting notes (the meeting plugins), the test call (voicecall.initiate),
 // the listening engine and the Technical commands and key list.
 import { CheckedAt, useCheckedAt } from "../../../places/settings/checked-at";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { errorText, list, record, text, visible } from "../../../places/settings/adapter";
 import { useConfig } from "../../../places/settings/kit";
@@ -17,15 +17,24 @@ import { Segmented, Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
 import { useRead } from "./accounts-live";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { copyAndSay } from "../../../shell/clipboard";
 import { VOICE_CODE } from "./voice";
 
-const Line = ({ children, bad }: { children: ReactNode; bad?: boolean }) => <small className={"r1s-msg g-label" + (bad ? " r1s-bad" : "")} role={bad ? "status" : undefined} data-lines>{children}</small>;
+const Line = ({ children, bad, id }: { children: ReactNode; bad?: boolean; id?: string }) => <small id={id} className={"r1s-msg g-label" + (bad ? " r1s-bad" : "")} role={bad ? "status" : undefined} data-lines>{children}</small>;
+/** Why a greyed control is greyed (Private #1093): one visible line the control names with aria-describedby. */
+const LOADING = "Waiting for Branch to read the voice settings.";
+function useWhy(why: string) {
+  const id = useId();
+  return { why, describedBy: why ? id : undefined, line: (bad?: boolean) => (why ? <Line id={id} bad={bad}>{why}</Line> : null) };
+}
+/** Why a control on an engine read is greyed: still reading, or the read failed (the engine's words, as before). */
+const readWhy = (r: { data?: unknown; error?: string }) => (r.data ? "" : r.error ? visible(r.error) : LOADING);
 /** A button that keeps the attributes <Coming> gives it (data-need), so the control stays declared. */
-const Btn = ({ children, disabled, onClick, ...rest }: { children: ReactNode; disabled?: boolean; onClick: () => void }) =>
+const Btn = ({ children, disabled, onClick, ...rest }: { children: ReactNode; disabled?: boolean; onClick: () => void; "aria-describedby"?: string }) =>
   <button type="button" className="r1s-btn" disabled={disabled} onClick={onClick} {...rest}>{children}</button>;
 type Opt = { v: string; label: string };
 /** A choice as segments when short and a list when long, as Classic's Choice. */
-function Choose({ label, value, options, disabled, onChange, ...rest }: { label: string; value: string; options: Opt[]; disabled?: boolean; onChange: (v: string) => void }) {
+function Choose({ label, value, options, disabled, onChange, ...rest }: { label: string; value: string; options: Opt[]; disabled?: boolean; onChange: (v: string) => void; "aria-describedby"?: string }) {
   return options.length <= 4
     ? <span className="r1s-own-ctl" {...rest}><Segmented label={label} value={value} options={options} disabled={disabled} onChange={(v) => onChange(String(v))} /></span>
     : <select className="r1s-inp" aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} {...rest}>{options.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}</select>;
@@ -53,6 +62,7 @@ export function VoicePick({ engine, row }: SlotControlProps) {
   const options: Opt[] = personas.length ? personas.map((p) => ({ v: text(p.id), label: visible(p.label ?? p.id) })) : [{ v: "", label: "Engine default" }];
   const persona = typeof tts.data?.persona === "string" ? tts.data.persona : "";
   const value = !on ? "off" : personas.length ? persona : "";
+  const w = useWhy(readWhy(tts));
   const pick = (id: string) => void run(async () => {
     if (id === "off") await engine.request("tts.disable", {});
     else { if (personas.length) await engine.request("tts.setPersona", { persona: id }); if (!on) await engine.request("tts.enable", {}); }
@@ -60,10 +70,10 @@ export function VoicePick({ engine, row }: SlotControlProps) {
   });
   return <>
     <Needs engine={engine} need={["tts.status", "tts.enable", "tts.disable"]} where={row.label ?? ""}>
-      <Choose label="Voice" value={value} options={[...options, { v: "off", label: "Off" }]} disabled={!tts.data} onChange={pick} />
+      <Choose label="Voice" value={value} options={[...options, { v: "off", label: "Off" }]} disabled={!tts.data} aria-describedby={w.describedBy} onChange={pick} />
     </Needs>
     {!personas.length && active?.voices.length ? <Line>{`${active.label} voices: ${active.voices.slice(0, 6).join(", ")}. A named voice picks one.`}</Line> : null}
-    {tts.error ? <Line bad>{visible(tts.error)}</Line> : null}
+    {w.why ? w.line(Boolean(tts.error)) : tts.error ? <Line bad>{visible(tts.error)}</Line> : null}
     <Failed text={failed} />
   </>;
 }
@@ -75,6 +85,7 @@ export function WakeWords({ engine, row }: SlotControlProps) {
   const saved = Array.isArray(wake.data?.triggers) ? (wake.data.triggers as unknown[]).map(String).join("\n") : "";
   const [draft, setDraft] = useState(saved);
   const [err, setErr] = useState("");
+  const w = useWhy(readWhy(wake));
   useEffect(() => setDraft(saved), [saved]);
   const commit = () => {
     const lines = draft.split("\n").map((s) => s.trim()).filter(Boolean);
@@ -85,9 +96,10 @@ export function WakeWords({ engine, row }: SlotControlProps) {
   };
   return <>
     <Needs engine={engine} need={["voicewake.get", "voicewake.set"]} where={row.label ?? ""}>
-      <textarea className="r1s-inp" rows={4} aria-label="Wake words" value={draft} disabled={!wake.data} onChange={(e) => setDraft(e.target.value)} onBlur={commit} />
+      <textarea className="r1s-inp" rows={4} aria-label="Wake words" value={draft} disabled={!wake.data} aria-describedby={w.describedBy} onChange={(e) => setDraft(e.target.value)} onBlur={commit} />
     </Needs>
-    {err ? <Line bad>{err}</Line> : wake.error ? <Line bad>{visible(wake.error)}</Line> : null}
+    {err ? <Line bad>{err}</Line> : null}
+    {w.why ? w.line(Boolean(wake.error)) : !err && wake.error ? <Line bad>{visible(wake.error)}</Line> : null}
     <Failed text={failed} />
   </>;
 }
@@ -98,11 +110,13 @@ export function AnswerAloud({ engine, row }: SlotControlProps) {
   const { tts } = useTts(engine);
   const [failed, run] = useFailure();
   const value = AUTO[String(tts.data?.auto)] ?? "";
+  const w = useWhy(readWhy(tts));
   return <>
     <Needs engine={engine} need={["tts.status", "tts.enable", "tts.disable"]} where={row.label ?? ""}>
-      <Choose label="Answer aloud" value={value} options={[{ v: "never", label: "Never" }, { v: "always", label: "Always" }]} disabled={!tts.data}
+      <Choose label="Answer aloud" value={value} options={[{ v: "never", label: "Never" }, { v: "always", label: "Always" }]} disabled={!tts.data} aria-describedby={w.describedBy}
         onChange={(id) => void run(async () => { await engine.request(id === "never" ? "tts.disable" : "tts.enable", {}); await tts.reload(); })} />
     </Needs>
+    {w.line(Boolean(tts.error))}
     <Line>{tts.data?.auto === "tagged" ? "Now: only when a reply asks to be read out." : "Reading aloud only after you talk comes in a later update."}</Line>
     <Failed text={failed} />
   </>;
@@ -113,12 +127,14 @@ export function SpeakingEngine({ engine, row }: SlotControlProps) {
   const { tts, voices, providers } = useTts(engine);
   const [failed, run] = useFailure();
   const current = text(tts.data?.provider ?? voices.data?.active ?? "");
+  const w = useWhy(readWhy(voices));
   return <>
     <Needs engine={engine} need={["tts.providers", "tts.setProvider"]} where={row.label ?? ""}>
-      <select className="r1s-inp" aria-label="Speaking engine" value={current} disabled={!voices.data} onChange={(e) => { const id = e.target.value; void run(async () => { await engine.request("tts.setProvider", { provider: id }); await Promise.all([tts.reload(), voices.reload()]); }); }}>
+      <select className="r1s-inp" aria-label="Speaking engine" value={current} disabled={!voices.data} aria-describedby={w.describedBy} onChange={(e) => { const id = e.target.value; void run(async () => { await engine.request("tts.setProvider", { provider: id }); await Promise.all([tts.reload(), voices.reload()]); }); }}>
         {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
       </select>
     </Needs>
+    {w.line(Boolean(voices.error))}
     <Failed text={failed} />
   </>;
 }
@@ -184,8 +200,10 @@ export function NamedVoices({ engine, row }: SlotControlProps) {
   const { tts } = useTts(engine);
   const [open, setOpen] = useState(false);
   const personas = list(tts.data?.personas);
+  const w = useWhy(personas.length ? "" : tts.data ? "No named voices are set up yet." : readWhy(tts));
   return <>
-    <Needs engine={engine} need={["tts.status"]} where={row.label ?? ""}><Btn disabled={!personas.length} onClick={() => setOpen(true)}>{personas.length ? `See ${personas.length}` : "None yet"}</Btn></Needs>
+    <Needs engine={engine} need={["tts.status"]} where={row.label ?? ""}><Btn disabled={!personas.length} aria-describedby={w.describedBy} onClick={() => setOpen(true)}>{personas.length ? `See ${personas.length}` : "None yet"}</Btn></Needs>
+    {w.line(Boolean(tts.error) && !tts.data)}
     {open ? <Dialog title="Named voices" onClose={() => setOpen(false)}><ul className="r1s-items">{personas.map((p) => <li key={text(p.id)} className="r1s-item">
       <span className="r1s-item-t g-label">{visible(p.label ?? p.id)}</span><small className="g-label">{[p.description, p.provider].filter(Boolean).map(visible).join(" · ")}</small></li>)}</ul></Dialog> : null}
   </>;
@@ -204,12 +222,14 @@ export function LiveThrough({ engine, row }: SlotControlProps) {
   const { cfg, live } = useLive(engine);
   const [failed, run] = useFailure();
   const options: Opt[] = [{ v: "", label: "Any service with a working key" }, ...live.providers.map((p) => ({ v: p.id, label: p.label }))];
+  const w = useWhy(cfg.loading ? LOADING : "");
   return <>
     <Needs engine={engine} need={["talk.catalog", ...CFG]} where={row.label ?? ""}>
-      <select className="r1s-inp" aria-label="Live voice through" value={live.chosen} disabled={cfg.loading} onChange={(e) => { const id = e.target.value; void run(() => chooseLive(cfg, id)); }}>
+      <select className="r1s-inp" aria-label="Live voice through" value={live.chosen} disabled={cfg.loading} aria-describedby={w.describedBy} onChange={(e) => { const id = e.target.value; void run(() => chooseLive(cfg, id)); }}>
         {options.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
       </select>
     </Needs>
+    {w.line()}
     <Line>{live.providers.some((p) => p.configured) ? "On because a live-voice service is connected." : "Turns on when a live-voice service is connected."}</Line>
     <Failed text={failed} />
   </>;
@@ -218,13 +238,15 @@ export function LiveThrough({ engine, row }: SlotControlProps) {
 function LivePick({ engine, row, path, label, values, first }: SlotControlProps & { path: string; label: string; values: (p?: Provider) => string[]; first: (p?: Provider) => string }) {
   const { cfg, live } = useLive(engine);
   const [failed, run] = useFailure();
+  const w = useWhy(!live.active ? "Set up a live-voice service first." : cfg.loading ? LOADING : "");
   return <>
     <Needs engine={engine} need={["talk.catalog", ...CFG]} where={row.label ?? ""}>
-      <select className="r1s-inp" aria-label={label} value={text(cfg.get(path) ?? "")} disabled={!live.active || cfg.loading} onChange={(e) => { const v = e.target.value; void run(() => cfg.set(path, v || null)); }}>
+      <select className="r1s-inp" aria-label={label} value={text(cfg.get(path) ?? "")} disabled={!live.active || cfg.loading} aria-describedby={w.describedBy} onChange={(e) => { const v = e.target.value; void run(() => cfg.set(path, v || null)); }}>
         <option value="">{first(live.active)}</option>
         {values(live.active).map((m) => <option key={m} value={m}>{m}</option>)}
       </select>
     </Needs>
+    {w.line()}
     <Failed text={failed} />
   </>;
 }
@@ -236,12 +258,13 @@ export function LiveGateway({ engine, row }: SlotControlProps) {
   const { cfg, live } = useLive(engine);
   const [failed, run] = useFailure();
   const can = Boolean(live.active?.configured) && (!live.active?.transports.length || live.active.transports.includes("gateway-relay"));
+  const w = useWhy(!can ? "Needs a live-voice service, the Gateway connection and the Trunk doing the thinking (Technical)." : cfg.loading ? LOADING : "");
   return <>
     <Needs engine={engine} need={["talk.catalog", ...CFG]} where={row.label ?? ""}>
-      <span className="r1s-own-ctl"><Toggle label="Live voice through the Gateway" on={cfg.get("talk.realtime.transport") === "gateway-relay"} disabled={!can || cfg.loading}
+      <span className="r1s-own-ctl"><Toggle label="Live voice through the Gateway" on={cfg.get("talk.realtime.transport") === "gateway-relay"} disabled={!can || cfg.loading} aria-describedby={w.describedBy}
         onChange={(v) => void run(() => cfg.set("talk.realtime.transport", v ? "gateway-relay" : null))} /></span>
     </Needs>
-    {!can ? <Line>Needs a live-voice service, the Gateway connection and the Trunk doing the thinking (Technical).</Line> : null}
+    {w.line()}
     <Failed text={failed} />
   </>;
 }
@@ -251,13 +274,15 @@ export function LiveWho({ engine, row }: SlotControlProps) {
   const cfg = useConfig(engine);
   const agents = useRead(engine, "agents.list");
   const [failed, run] = useFailure();
+  const w = useWhy(cfg.loading ? LOADING : "");
   return <>
     <Needs engine={engine} need={["agents.list", ...CFG]} where={row.label ?? ""}>
-      <select className="r1s-inp" aria-label="Who answers live voice" value={text(cfg.get("talk.agentId") ?? "")} disabled={cfg.loading} onChange={(e) => { const v = e.target.value; void run(() => cfg.set("talk.agentId", v || null)); }}>
+      <select className="r1s-inp" aria-label="Who answers live voice" value={text(cfg.get("talk.agentId") ?? "")} disabled={cfg.loading} aria-describedby={w.describedBy} onChange={(e) => { const v = e.target.value; void run(() => cfg.set("talk.agentId", v || null)); }}>
         <option value="">The default Trunk</option>
         {list(agents.data?.agents).map((a) => <option key={text(a.id)} value={text(a.id)}>{visible(record(a.identity).name ?? a.name ?? a.id)}</option>)}
       </select>
     </Needs>
+    {w.line()}
     <Failed text={failed} />
   </>;
 }
@@ -282,9 +307,10 @@ export function TestCall({ engine, row }: SlotControlProps) {
   const cfg = useConfig(engine);
   const [failed, run] = useFailure();
   const on = cfg.get("plugins.entries.voice-call.enabled") === true;
+  const w = useWhy(on ? "" : cfg.loading ? LOADING : "Turn on Phone calls first.");
   return <>
-    <Needs engine={engine} need={["voicecall.initiate"]} where={row.label ?? ""}><Btn disabled={!on} onClick={() => void run(async () => { await engine.request("voicecall.initiate", { message: "This is a test call from Branch.", mode: "notify" }); })}>Call me</Btn></Needs>
-    {!on ? <Line>Turn on Phone calls first.</Line> : null}
+    <Needs engine={engine} need={["voicecall.initiate"]} where={row.label ?? ""}><Btn disabled={!on} aria-describedby={w.describedBy} onClick={() => void run(async () => { await engine.request("voicecall.initiate", { message: "This is a test call from Branch.", mode: "notify" }); })}>Call me</Btn></Needs>
+    {w.line()}
     <Failed text={failed} />
   </>;
 }
@@ -295,9 +321,11 @@ export function MeetingNotes({ engine, row }: SlotControlProps) {
   const cfg = useConfig(engine);
   const [failed, run] = useFailure();
   const on = MEETINGS.every((id) => cfg.get(`plugins.entries.${id}.enabled`) !== false);
+  const w = useWhy(cfg.loading ? LOADING : "");
   return <>
-    <Needs engine={engine} need={CFG} where={row.label ?? ""}><span className="r1s-own-ctl"><Toggle label="Meeting notes" on={on} disabled={cfg.loading}
+    <Needs engine={engine} need={CFG} where={row.label ?? ""}><span className="r1s-own-ctl"><Toggle label="Meeting notes" on={on} disabled={cfg.loading} aria-describedby={w.describedBy}
       onChange={(v) => void run(() => cfg.set("plugins.entries", Object.fromEntries(MEETINGS.map((id) => [id, { enabled: v }]))))} /></span></Needs>
+    {w.line()}
     <Failed text={failed} />
   </>;
 }
@@ -310,12 +338,14 @@ export function ListeningEngine({ engine, row }: SlotControlProps) {
   const tr = group(catalog.data, "transcription");
   const providers = providersOf(tr.providers);
   const STREAM = "plugins.entries.voice-call.config.streaming.provider";
+  const w = useWhy(cfg.loading ? LOADING : !providers.length ? (catalog.error ? visible(catalog.error) : catalog.data ? "No listening service is set up yet." : LOADING) : "");
   return <>
     <Needs engine={engine} need={["talk.catalog", ...CFG]} where={row.label ?? ""}>
-      <select className="r1s-inp" aria-label="Listening engine" value={text(cfg.get(STREAM) ?? tr.activeProvider ?? "")} disabled={cfg.loading || !providers.length} onChange={(e) => { const v = e.target.value; void run(() => cfg.set(STREAM, v)); }}>
+      <select className="r1s-inp" aria-label="Listening engine" value={text(cfg.get(STREAM) ?? tr.activeProvider ?? "")} disabled={cfg.loading || !providers.length} aria-describedby={w.describedBy} onChange={(e) => { const v = e.target.value; void run(() => cfg.set(STREAM, v)); }}>
         {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
       </select>
     </Needs>
+    {w.line(Boolean(catalog.error) && !providers.length)}
     <Failed text={failed} />
   </>;
 }
@@ -325,7 +355,7 @@ export function VoiceCode({ row }: SlotControlProps) {
   const code = VOICE_CODE[row.id] ?? "";
   const [copied, setCopied] = useState(false);
   return <span className="r1s-own-ctl" data-local=""><code className="r1s-val">{code}</code>
-    <Btn onClick={() => void navigator.clipboard?.writeText(code).then(() => setCopied(true), () => undefined)}>{copied ? "Copied" : "Copy"}</Btn></span>;
+    <Btn onClick={() => void copyAndSay(code).then(setCopied)}>{copied ? "Copied" : "Copy"}</Btn></span>;
 }
 
 type Kind = "text" | "number" | "bool";
@@ -343,6 +373,7 @@ export function AllVoiceSettings({ engine, row }: SlotControlProps) {
   const [draft, setDraft] = useState<Record<string, string | boolean>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const w = useWhy(busy ? "" : cfg.loading ? LOADING : !Object.keys(draft).length ? "Change a setting above first." : "");
   const shown = (key: string, kind: Kind) => (key in draft ? draft[key] : kind === "bool" ? cfg.get(key) !== false : text(cfg.get(key) ?? ""));
   const save = async () => {
     let values: [string, unknown][];
@@ -357,8 +388,9 @@ export function AllVoiceSettings({ engine, row }: SlotControlProps) {
         {kind === "bool" ? <Toggle label={key} on={v === true} onChange={(on) => setDraft({ ...draft, [key]: on })} />
           : <input className="r1s-inp" aria-label={key} value={String(v)} placeholder="Default" onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} />}
         <small className="g-label">{what}</small></li>); })}</ul>
-    <span className="r1s-acts"><button type="button" className="r1s-btn" disabled={!Object.keys(draft).length || busy || cfg.loading} onClick={() => void save()}>Save</button>
+    <span className="r1s-acts"><button type="button" className="r1s-btn" disabled={!Object.keys(draft).length || busy || cfg.loading} aria-describedby={w.describedBy} onClick={() => void save()}>Save</button>
       <button type="button" className="r1s-btn" disabled={busy} onClick={() => { setDraft({}); setErr(""); void cfg.reload().then((ok) => { if (ok) stamp(); }, () => undefined); }}>Reload</button><CheckedAt at={checked} /></span>
+    {w.line()}
     {err ? <Line bad>{err}</Line> : null}
   </div></Needs>;
 }

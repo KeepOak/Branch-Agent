@@ -6,6 +6,7 @@ import { createDeferred } from "../../test/helpers/promise.js";
 import { writeConfigFile } from "../config/config.js";
 import { issueDevicePairSetupBootstrapToken } from "../infra/device-bootstrap.js";
 import { loadOrCreateDeviceIdentity } from "../infra/device-identity.js";
+import { approveDevicePairing } from "../infra/device-pairing-approval.js";
 import { upsertPresence, type SystemPresence } from "../infra/system-presence.js";
 import { NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE } from "../shared/device-bootstrap-profile.js";
 import {
@@ -17,7 +18,7 @@ import {
   testState,
   withGatewayServer,
 } from "./server.auth.test-helpers.js";
-import { connectWatchNode } from "./watch-node-http.test-helpers.js";
+import { connectWatchNode, readJson } from "./watch-node-http.test-helpers.js";
 
 installGatewayTestHooks({ scope: "suite" });
 
@@ -95,6 +96,27 @@ describe("Gateway hello publication", () => {
         const issued = await issueDevicePairSetupBootstrapToken({
           profile: NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE,
         });
+        const connect = () =>
+          connectWatchNode({
+            baseUrl: `http://127.0.0.1:${port}/api/nodes/watch`,
+            identity,
+            bootstrapToken: issued.token,
+            approvePending: false,
+          });
+        const pendingResponse = await connect();
+        expect(pendingResponse.status).toBe(202);
+        const pending = await readJson(pendingResponse);
+        expect(pending).toMatchObject({
+          reason: "pairing required",
+          requestId: expect.any(String),
+        });
+        expect(
+          (
+            await approveDevicePairing(String(pending.requestId), {
+              callerScopes: ["operator.admin"],
+            })
+          )?.status,
+        ).toBe("approved");
         upsertPresence(
           identity.deviceId,
           { connectionId: "undelivered-ws", deviceId: identity.deviceId, reason: "connect" },
@@ -106,11 +128,7 @@ describe("Gateway hello publication", () => {
             frame.event === "presence" &&
             frame.payload?.presence?.some((entry) => entry.deviceId === identity.deviceId) === true,
         );
-        const response = await connectWatchNode({
-          baseUrl: `http://127.0.0.1:${port}/api/nodes/watch`,
-          identity,
-          bootstrapToken: issued.token,
-        });
+        const response = await connect();
         expect(response.status).toBe(200);
         const entry = (await published).payload?.presence?.find(
           (row) => row.deviceId === identity.deviceId,

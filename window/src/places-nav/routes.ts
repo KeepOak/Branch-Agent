@@ -1,5 +1,6 @@
 // Where the window can be (DESIGN-SPEC §3.3 saved layout, §4.6 Places, §4.7 Settings): a conversation,
 // one of the seven places, or a Settings page. The last route is kept on this computer and reopened at launch.
+import { DEFAULT_TRUNK_NAME } from "../connect/trunk-name";
 import type { IconName } from "../shell/icons";
 
 /** Grove (office) and Seedbank open from the sidebar, so they are places without a sidebar row. */
@@ -83,8 +84,13 @@ export function saveRoute(route: Route): void {
   }
 }
 
-/** The window title (§3.2 Parity adds, document-title-status): "<page> — Branch", with "(N) " or "(Offline) " in front. */
+/** The product name in the window title: never the default agent's internal name. */
+const PRODUCT = "Branch";
+
+/** The window title (§3.2 Parity adds, document-title-status): "<page> — Branch", with "(N) " or "(Offline) " in front.
+ *  A fresh profile, and any page that is only the default agent or the product name itself, is just "Branch". */
 export function windowTitle(page: string, waiting: number, offline: boolean): string {
   const prefix = offline ? "(Offline) " : waiting > 0 ? `(${waiting}) ` : "";
-  return `${prefix}${page ? `${page} — ` : ""}Branch`;
+  const shown = page && page !== DEFAULT_TRUNK_NAME && page !== PRODUCT && page !== `${PRODUCT} Agent` ? page : "";
+  return `${prefix}${shown ? `${shown} — ` : ""}${PRODUCT}`;
 }

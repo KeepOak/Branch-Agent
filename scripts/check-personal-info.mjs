@@ -104,6 +104,50 @@ export function isPlaceholderUser(raw) {
   return user === '~' || user === '$HOME' || user === '$USER' || user === '$USERNAME';
 }
 
+// Source-module names such as homeModel or HomeScreen, not a username.
+export function isSourceIdentifier(raw) {
+  const name = String(raw ?? '');
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) return false;
+  return /[a-z]/.test(name) && /[A-Z]/.test(name);
+}
+
+// Characters that can appear in a path token before `home/` or `Users/`.
+// `@` and `~` stay in so module prefixes are not read as an empty root.
+const PATH_TOKEN_CHAR = /[A-Za-z0-9_./:@~-]/;
+
+function pathTokenBefore(text, index) {
+  const value = String(text ?? '');
+  let start = index;
+  while (start > 0 && PATH_TOKEN_CHAR.test(value[start - 1])) start -= 1;
+  return value.slice(start, index);
+}
+
+function isFileUrlToken(token) {
+  const marker = 'file://';
+  const at = token.toLowerCase().lastIndexOf(marker);
+  return at !== -1 && (at === 0 || !/[A-Za-z0-9]/.test(token[at - 1]));
+}
+
+// True when `home/` or `Users/` is on a filesystem root, so a mixed-case
+// source name is still a username. Relative and module prefixes (`./`,
+// `../`, `@/`, `~/`, `src/screens/`) are not. A path that starts at `/`,
+// follows `file://`, or climbs from `/` (`/./`, `/../`, `/var/../`,
+// `/tmp/foo/../../`) is. A leading slash stays rooted through `.` and `..`.
+function isFilesystemRootSegment(text, slashIndex) {
+  const token = pathTokenBefore(text, slashIndex);
+  if (isFileUrlToken(token)) return true;
+  return token.length === 0 || token.startsWith('/');
+}
+
+function homeSegmentSlashIndex(found) {
+  return found.index + found[0].indexOf(found[1]);
+}
+
+function skipSourceHomeSegment(text, found) {
+  if (!isSourceIdentifier(found[2])) return false;
+  return !isFilesystemRootSegment(text, homeSegmentSlashIndex(found));
+}
+
 export function isAllowlistedDiffPath(filePath) {
   const normalized = String(filePath ?? '').replace(/\\/g, '/');
   if (!normalized) return false;
@@ -188,11 +232,11 @@ export function findPersonalInfo(text) {
     return { match: `${found[1]}${found[2]}`, offset: found[0].startsWith(found[1]) ? 0 : found[0].length - found[1].length - found[2].length };
   }));
   hits.push(...collectRegexHits(text, MAC_USER, 'macos-user-path', (found) => {
-    if (isPlaceholderUser(found[2])) return null;
+    if (isPlaceholderUser(found[2]) || skipSourceHomeSegment(text, found)) return null;
     return { match: `${found[1]}${found[2]}`, offset: found[0].indexOf(found[1]) };
   }));
   hits.push(...collectRegexHits(text, LINUX_USER, 'linux-user-path', (found) => {
-    if (isPlaceholderUser(found[2])) return null;
+    if (isPlaceholderUser(found[2]) || skipSourceHomeSegment(text, found)) return null;
     return { match: `${found[1]}${found[2]}`, offset: found[0].indexOf(found[1]) };
   }));
   hits.push(...collectRegexHits(text, EMAIL, 'email', (found) => {

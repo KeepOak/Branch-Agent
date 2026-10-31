@@ -1,4 +1,4 @@
-// Library › Made for you (preview 40-places made + 42-placesbp libDashHtmlPQ18 / libImgHtmlPQ18 + 94-g4p apps):
+// Library › Activity › Made by Trunks, once the Made for you tab (preview 40-places made + 42-placesbp libDashHtmlPQ18 / libImgHtmlPQ18 + 94-g4p apps):
 // Dashboards (sessions.list hasBoard + board.get), every Trunk's made files (artifacts.list per conversation),
 // Images (artifacts.list type image, four at a time), Apps with Publish.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Face } from "../../face/Face";
-import { errorText, num, optStr, rec, recs, str, trunkName, useOperation, useResource, type Trunk } from "./data";
+import { errorText, num, optStr, plainFailure, rec, recs, str, trunkName, useOperation, useResource, type Trunk } from "./data";
 import { useMenu } from "./memory";
 import { EmptyIcon, Grey, LibIcon, mapLimited, plural, Row, Section, TypeBadge, when } from "./parts";
 
@@ -76,7 +76,7 @@ function Dashboards({ engine, trunks, openConversation }: Props) {
     </div>
     {menu.element}
     {page.loading && <p className="lib-hint" role="status">Loading…</p>}
-    {page.error && <p className="lib-bad" role="alert">{page.error}</p>}
+    {page.error && <p className="lib-bad" role="alert">{plainFailure(page.error)}</p>}
     {total !== null && (!all.length ? <p className="lib-hint">No dashboards yet. Dashboards your Trunks build in a conversation show here.</p>
       : !rows.length ? <p className="lib-hint">No matching dashboards. Try another search or Trunk.</p>
       : <div className="lib-dgrid">{rows.map(r => <DashTile key={r.key} engine={engine} row={r} trunk={name(agentOf(r))} open={() => openConversation(r.key)} />)}</div>)}
@@ -91,7 +91,7 @@ function DashTile({ engine, row, trunk, open }: { engine: WindowEngine; row: Ses
   const title = sessionTitle(row);
   return <div className="lib-dtile">
     <button type="button" className="lib-dopen" aria-label={`Open ${title} on its dashboard`} onClick={open}>
-      <span className="lib-dprev">{board.error ? <small>{board.error}</small> : (board.data?.widgets ?? []).slice(0, 6).map(w => <i key={w.name} title={w.title ?? w.name} style={{ gridColumn: `span ${Math.max(1, Math.min(3, Math.round(w.sizeW / 4)))}`, gridRow: `span ${w.sizeH > 4 ? 2 : 1}` }} />)}</span>
+      <span className="lib-dprev">{board.error ? <small>{plainFailure(board.error)}</small> : (board.data?.widgets ?? []).slice(0, 6).map(w => <i key={w.name} title={w.title ?? w.name} style={{ gridColumn: `span ${Math.max(1, Math.min(3, Math.round(w.sizeW / 4)))}`, gridRow: `span ${w.sizeH > 4 ? 2 : 1}` }} />)}</span>
     </button>
     <div className="lib-dmeta"><b>{title}</b>{(row.status === "running" || row.status === "queued") && <span className="lib-pill work"><i />{row.status === "running" ? "Working" : "Queued"}</span>}
       <button type="button" className="ib" aria-label={`More for ${title}`} aria-haspopup="menu" onClick={e => menu.open(e, title, [{ label: "Open", run: open }])}><LibIcon name="more" /></button></div>
@@ -102,7 +102,7 @@ function DashTile({ engine, row, trunk, open }: { engine: WindowEngine; row: Ses
 
 type Group = { row: SessionRow; trunk: string; files: Artifact[]; hasImages: boolean; error: string | null };
 
-function useMadeFiles(engine: WindowEngine, trunks: Trunk[]) {
+function useMadeFiles(engine: WindowEngine, trunks: Trunk[], agentId?: string) {
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
@@ -110,32 +110,33 @@ function useMadeFiles(engine: WindowEngine, trunks: Trunk[]) {
   useEffect(() => {
     let current = true;
     const name = (id: string) => { const t = trunks.find(x => x.id === id); return t ? trunkName(t) : id; };
-    void engine.request<unknown>("sessions.list", { excludeSubagents: true, limit: PAGE, offset }).then(pageOf).then(async page => {
+    void engine.request<unknown>("sessions.list", { excludeSubagents: true, limit: PAGE, offset, ...(agentId ? { agentId } : {}) }).then(pageOf).then(async page => {
       const found = await mapLimited(page.sessions ?? [], 4, async (row): Promise<Group> => {
         try {
           const r = { artifacts: artifactsOf(await engine.request<unknown>("artifacts.list", { sessionKey: row.key, ...(agentOf(row) ? { agentId: agentOf(row) } : {}), messageRole: "assistant" })) };
           return { row, trunk: name(agentOf(row)), files: r.artifacts.filter(a => a.type !== "image"), hasImages: r.artifacts.some(a => a.type === "image"), error: null };
-        } catch (e) { return { row, trunk: name(agentOf(row)), files: [], hasImages: false, error: errorText(e) }; }
+        } catch (e) { return { row, trunk: name(agentOf(row)), files: [], hasImages: false, error: plainFailure(errorText(e)) }; }
       });
       if (!current) return;
       setMore(page.hasMore ?? (page.sessions ?? []).length >= PAGE);
       setGroups(g => [...(offset && g ? g : []), ...found]);
-    }, e => { if (current) setError(errorText(e)); });
+    }, e => { if (current) setError(plainFailure(errorText(e))); });
     return () => { current = false; };
-  }, [engine, trunks, offset]);
+  }, [engine, trunks, offset, agentId]);
   return { groups, error, more, loadMore: () => setOffset(o => o + PAGE) };
 }
 
-function MadeFiles({ engine, trunks, openConversation }: Props) {
-  const made = useMadeFiles(engine, trunks);
+/** Every made file, or with `agentId` only that Trunk's (the R1 details panel's Library tab). */
+export function MadeFiles({ engine, trunks, openConversation, agentId }: Props & { agentId?: string }) {
+  const made = useMadeFiles(engine, trunks, agentId);
   const op = useOperation(engine);
   const files = made.groups?.flatMap(g => g.files.map(f => ({ f, g }))) ?? [];
   const withImages = made.groups?.filter(g => g.hasImages) ?? [];
   return <>
-    {made.error && <p className="lib-bad" role="alert">{made.error}</p>}
+    {made.error && <p className="lib-bad" role="alert">{plainFailure(made.error)}</p>}
     {!made.groups && !made.error && <p className="lib-hint" role="status">Loading…</p>}
-    {made.groups?.filter(g => g.error).map(g => <p key={g.row.key} className="lib-bad" role="alert">{sessionTitle(g.row)}: {g.error}</p>)}
-    {op.error && <p className="lib-bad" role="alert">{op.error}</p>}
+    {made.groups?.filter(g => g.error).map(g => <p key={g.row.key} className="lib-bad" role="alert">{sessionTitle(g.row)}: {plainFailure(g.error ?? "")}</p>)}
+    {op.error && <p className="lib-bad" role="alert">{plainFailure(op.error)}</p>}
     {made.groups && !files.length && !withImages.length && <EmptyLine icon={<EmptyIcon name="file" />}>Nothing made yet. Files your Trunks make show up here.</EmptyLine>}
     {!!files.length && <div className="lib-rows lib-made-files" data-testid="made-files">{files.map(({ f, g }) => <Row key={g.row.key + f.id} badge={<TypeBadge name={f.title} />} title={f.title} line={[g.trunk, kindWord(f), when(g.row.updatedAt)].filter(Boolean).join(" · ")}>
       <button type="button" className="btn sm" disabled={op.busy || f.download.mode === "unsupported"} title={f.download.mode === "unsupported" ? "The engine does not provide a download for this file." : undefined} onClick={() => openArtifact(op, g.row, f)}>Open</button>
@@ -171,17 +172,17 @@ function ImageGroup({ engine, group, open }: { engine: WindowEngine; group: Grou
   const cursor = pages.length ? pages[pages.length - 1].cursor : undefined;
   const params = (from?: string) => ({ sessionKey: group.row.key, ...(agentOf(group.row) ? { agentId: agentOf(group.row) } : {}), type: "image", limit: 4, ...(from ? { cursor: from } : {}) });
   const older = (from: string) => engine.request<unknown>("artifacts.list", params(from))
-    .then(r => setPages(p => [...p, { images: artifactsOf(r), cursor: optStr(rec(r).nextCursor) }]), e => setError(errorText(e)));
+    .then(r => setPages(p => [...p, { images: artifactsOf(r), cursor: optStr(rec(r).nextCursor) }]), e => setError(plainFailure(errorText(e))));
   useEffect(() => {
     let current = true;
     void engine.request<unknown>("artifacts.list", params())
-      .then(r => { if (current) setPages([{ images: artifactsOf(r), cursor: optStr(rec(r).nextCursor) }]); }, e => { if (current) setError(errorText(e)); });
+      .then(r => { if (current) setPages([{ images: artifactsOf(r), cursor: optStr(rec(r).nextCursor) }]); }, e => { if (current) setError(plainFailure(errorText(e))); });
     return () => { current = false; };
   }, [engine, group.row.key]); // the first four images, once per conversation
   const images = pages.flatMap(p => p.images).filter(a => a.type === "image");
   return <div className="lib-ig">
     <button type="button" className="link" onClick={open}>{sessionTitle(group.row)}</button>
-    {error && <p className="lib-bad" role="alert">{error}</p>}
+    {error && <p className="lib-bad" role="alert">{plainFailure(error)}</p>}
     <div className="lib-ithumbs">{images.map(img => img.image?.url ? <img key={img.id} className="lib-ithumb" src={img.image.url} alt={img.title} /> : <span key={img.id} className="lib-ibig" role="img" aria-label={img.title}>Too large to preview here.</span>)}</div>
     {cursor && <button type="button" className="btn ghost sm" onClick={() => void older(cursor)}>Older images</button>}
   </div>;

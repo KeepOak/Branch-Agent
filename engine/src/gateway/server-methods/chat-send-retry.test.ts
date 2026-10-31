@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { SessionTranscriptProjectionUnavailableError } from "../../config/sessions/session-transcript-projection-error.js";
+import { WorkerTaskError } from "../../infra/worker-task-pool.js";
 import {
   classifyAcceptedChatSendFailure,
   runAcceptedChatSendDispatch,
@@ -7,6 +8,7 @@ import {
 } from "./chat-send-retry.js";
 
 const projectionError = new SessionTranscriptProjectionUnavailableError("sess-main");
+const overloadedError = new WorkerTaskError("worker task capacity reached", "overloaded");
 
 describe("accepted chat-send retry classification", () => {
   it.each([
@@ -19,6 +21,16 @@ describe("accepted chat-send retry classification", () => {
       name: "post-ACK projection unavailability before execution",
       params: { error: projectionError, phase: "post-ack" as const },
       expected: "retry",
+    },
+    {
+      name: "a pre-ACK worker queue refusal",
+      params: { error: overloadedError, phase: "pre-ack" as const },
+      expected: "client-retry",
+    },
+    {
+      name: "a post-ACK worker queue refusal",
+      params: { error: overloadedError, phase: "post-ack" as const },
+      expected: "terminal",
     },
     {
       name: "an unclassified dispatch failure",

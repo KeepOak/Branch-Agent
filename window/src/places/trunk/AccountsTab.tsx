@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
+import { plainError } from "../../shell/plain-error";
 import { useResource } from "../settings/hooks";
 import { accountName, providersOf, STATUS_WORDS, type Provider } from "../settings/set1/accounts";
 import { canWrite, WRITE_WHY } from "./data";
-import { entryOf, errorText, patchConfig, readConfig } from "./model";
+import { entryOf, patchConfig, readConfig } from "./model";
 
 type AuthStatus = { providers?: unknown };
 
@@ -29,7 +30,7 @@ function OwnerAccountsSwitch({ engine, agentId, onChanged }: { engine: WindowEng
       await config.reload();
       await onChanged();
     } catch (cause) {
-      setError(errorText(cause));
+      setError(plainError(cause));
     } finally {
       setBusy(false);
     }
@@ -40,7 +41,7 @@ function OwnerAccountsSwitch({ engine, agentId, onChanged }: { engine: WindowEng
       Use my accounts
     </label>
     <p className="tk-hint">{on ? "This Trunk can use the accounts you signed in." : "This Trunk uses only accounts signed in for it."}</p>
-    {error && <p className="tk-error" role="alert">{error}</p>}
+    {error && <p className="tk-error" role="alert">{plainError(error)}</p>}
   </div>;
 }
 
@@ -61,7 +62,7 @@ export function AccountsTab({ engine, agentId }: { engine: WindowEngine; agentId
       });
       await status.reload();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(plainError(cause));
     } finally {
       setBusy(false);
     }
@@ -71,7 +72,7 @@ export function AccountsTab({ engine, agentId }: { engine: WindowEngine; agentId
     <p className="tk-hint">Choose which signed-in accounts this Trunk can use. Drag the selected accounts into priority order; the first available account goes first.</p>
     <OwnerAccountsSwitch engine={engine} agentId={agentId} onChanged={status.reload} />
     {status.loading && <p role="status">Reading accounts…</p>}
-    {status.error && <p role="alert">{status.error}</p>}
+    {status.error && <p role="alert">{plainError(status.error)}</p>}
     {!status.loading && !status.error && !providers.length && <div className="tk-error" role="alert" data-testid="no-account">
       <p>This Trunk has no model account, so it can’t answer or run jobs. Sign in an account, or turn on Use my accounts.</p>
       <button type="button" className="btn sm" onClick={openAccountsSettings}>Sign in an account</button>
@@ -110,6 +111,6 @@ export function AccountsTab({ engine, agentId }: { engine: WindowEngine; agentId
         </ol>
       </section>;
     })}
-    {error && <p className="tk-error" role="alert">{error}</p>}
+    {error && <p className="tk-error" role="alert">{plainError(error)}</p>}
   </div>;
 }

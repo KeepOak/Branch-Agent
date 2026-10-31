@@ -20,7 +20,8 @@ const cuaDriverArtifactCheck: HealthCheck = {
     return [
       {
         checkId: CUA_DRIVER_ARTIFACT_CHECK_ID,
-        severity: "error",
+        // Not downloaded yet is a state with a Download button, not a broken install.
+        severity: verification.code === "COMPUTER_DRIVER_NOT_DOWNLOADED" ? "warning" : "error",
         source: "cua-computer",
         message: verification.diagnostic,
         target: "@trycua/cua-driver",

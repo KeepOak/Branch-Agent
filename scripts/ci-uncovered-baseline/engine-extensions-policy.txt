@@ -1,0 +1,17 @@
+engine:extensions/policy/src/cli-output-mode.test.ts
+engine:extensions/policy/src/cli.agent-owner.test.ts
+engine:extensions/policy/src/cli.test.ts
+engine:extensions/policy/src/cli.watch-interval.test.ts
+engine:extensions/policy/src/doctor/checks.test.ts
+engine:extensions/policy/src/doctor/metadata.test.ts
+engine:extensions/policy/src/doctor/policy-shape.test.ts
+engine:extensions/policy/src/doctor/register.model-provider-conformance.test.ts
+engine:extensions/policy/src/doctor/register.test.ts
+engine:extensions/policy/src/doctor/routing-findings.test.ts
+engine:extensions/policy/src/doctor/routing-shapes.test.ts
+engine:extensions/policy/src/doctor/sandbox-findings.test.ts
+engine:extensions/policy/src/doctor/strictness.test.ts
+engine:extensions/policy/src/policy-state-data.test.ts
+engine:extensions/policy/src/policy-state.test.ts
+engine:extensions/policy/src/policy-value.test.ts
+engine:extensions/policy/src/tool-policy-conformance.test.ts

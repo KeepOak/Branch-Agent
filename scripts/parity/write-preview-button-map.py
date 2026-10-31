@@ -1261,8 +1261,8 @@ add("cz-tab-connections", "customize", "Connections",
     "different")
 add("cz-tab-channels", "customize", "Channels",
     "Shows chat apps + pair a phone.",
-    "window/src/places/customize/channels.tsx", "ChannelsTab",
-    "Tab label is Chat apps.",
+    "window/src/screens/chatapps/ChatApps.tsx", "ChatApps",
+    "Customize has no Chat apps tab; chat apps live in Settings › Chat apps.",
     "different")
 add("cz-tab-everywhere", "customize", "Everywhere",
     "Later preview everywhere tab.",
@@ -1296,8 +1296,8 @@ add("cz-job-template", "customize", "Job template tile",
     "same")
 add("cz-channel-setup", "customize", "Set up",
     "Toasts a two-minute setup stub, or Manage if already connected.",
-    "window/src/places/customize/channels.tsx", "ChannelsTab",
-    "Starts the real chat-app setup / manage flow.",
+    "window/src/screens/chatapps/ChatApps.tsx", "ChatApps",
+    "Starts the real chat-app setup / manage flow, in Settings › Chat apps.",
     "different")
 add("cz-pair-phone", "customize", "Pair a phone",
     "Opens the pair-a-phone QR dialog (demo code).",

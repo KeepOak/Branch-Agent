@@ -1,3 +1,4 @@
+/* @vitest-environment jsdom */
 // Control UI tests cover mount fallback behavior.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -107,6 +108,39 @@ describe("Control UI mount fallback", () => {
     },
   );
 
+  it("paints a fresh install light even when the computer prefers dark", async () => {
+    const frameWindow = createIsolatedWindow();
+    frameWindow.localStorage.clear();
+    const matchMedia = vi.fn(() => ({ matches: false }));
+    Object.defineProperty(frameWindow, "matchMedia", { configurable: true, value: matchMedia });
+    installStartupPaintShell(frameWindow, await readIndexHtml());
+
+    expect(frameWindow.document.documentElement.dataset.theme).toBe("light");
+    expect(frameWindow.document.documentElement.dataset.themeMode).toBe("light");
+    expect(matchMedia).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "a saved system mode follows a dark computer",
+      { theme: "grove", themeMode: "system" },
+      "dark",
+    ],
+    ["a legacy dark theme keeps dark", { theme: "dark" }, "dark"],
+    ["a legacy light theme keeps light", { theme: "light" }, "light"],
+  ])("paints %s", async (_name, settings, expectedTheme) => {
+    const frameWindow = createIsolatedWindow();
+    frameWindow.localStorage.clear();
+    frameWindow.localStorage.setItem("branch.control.settings.v1", JSON.stringify(settings));
+    Object.defineProperty(frameWindow, "matchMedia", {
+      configurable: true,
+      value: () => ({ matches: false }),
+    });
+    installStartupPaintShell(frameWindow, await readIndexHtml());
+
+    expect(frameWindow.document.documentElement.dataset.theme).toBe(expectedTheme);
+  });
+
   it("shows the static troubleshooting panel when the app never renders", async () => {
     const frameWindow = createIsolatedWindow();
     installFallbackShell(frameWindow, await readIndexHtml());
@@ -120,7 +154,8 @@ describe("Control UI mount fallback", () => {
     expect(fallback.hidden).toBe(false);
     expect([...frameWindow.document.body.classList]).toEqual(["branch-mount-fallback-active"]);
     expect(fallback.querySelector("h1")?.textContent?.trim()).toBe("Control UI did not start");
-    expect(fallback.querySelector("a")?.textContent?.trim()).toBe("Control UI troubleshooting");
+    expect(fallback.querySelector("a")?.textContent?.trim()).toBe("Branch help");
+    expect(fallback.querySelector("a")?.getAttribute("href")).toBe("https://keepoak.com/help");
     expect(frameWindow.document.activeElement).toBeInstanceOf(frameWindow.HTMLElement);
     expect([...(frameWindow.document.activeElement as HTMLElement).classList]).toEqual([
       "mount-fallback__panel",

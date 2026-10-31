@@ -5,6 +5,7 @@
 // preview's catalogue names: its plugin catalogue (preview.html CZP_RAW_PQ18) and its connector catalogue (MCP12). A
 // curated card keeps the feed's live data (install, downloads); everything else from the feed is left out. The feed, the
 // engine call and pluginEntries are unchanged, so Classic and other callers see what they did before.
+import { plainLine, uniqueApps } from "../../places/customize/app-logos";
 import type { Entry } from "./catalog";
 
 /** The preview's plugin catalogue (CZP_RAW_PQ18): ids and names. */
@@ -12,7 +13,7 @@ export const CURATED_PLUGINS: readonly (readonly [string, string])[] = [
   ["memory-wiki", "Memory wiki"], ["logbook", "Logbook"], ["snapshots", "Snapshots"], ["place-lookup", "Place lookup"], ["team-reports", "Team reports"],
   ["docs-search", "Docs search"], ["brave-search", "Brave web search"], ["river-map", "River map"], ["garden-lint", "garden-lint"], ["matrix", "Matrix"],
   ["mattermost", "Mattermost"], ["irc", "IRC"], ["zulip", "Zulip"], ["nostr", "Nostr"], ["ollama", "Ollama"], ["lmstudio", "LM Studio"],
-  ["openrouter", "OpenRouter"], ["vllm", "vLLM"], ["lancedb-memory", "LanceDB memory"], ["memory-graph", "Memory graph"], ["page-reader", "Page reader"],
+  ["openrouter", "OpenRouter"], ["vllm", "vLLM"], ["memory-lancedb", "Memory LanceDB"], ["memory-graph", "Memory graph"], ["page-reader", "Page reader"],
   ["searxng", "SearXNG search"], ["voice-call", "Voice calls"], ["local-transcribe", "Local transcription"], ["scan-reader", "Scan reader"],
   ["image-studio", "Image studio"], ["lease-check", "Lease check"], ["docker-sandbox", "Docker sandbox"], ["openshell", "OpenShell sandbox"],
   ["tailscale", "Tailscale reach"], ["webhooks", "Webhooks"], ["secret-scan", "Secret scanner"], ["blocklist", "Site blocklist"],
@@ -41,4 +42,11 @@ export function inR1Seedbank(entry: Entry): boolean {
   return keys.some(k => curated.has(k));
 }
 
-export const curatedEntries = (entries: readonly Entry[]): Entry[] => entries.filter(inR1Seedbank);
+/** A connector card per app, not per listing (A-141): the one on this computer wins, then the official one, then the most
+ *  added. Its line is the summary's first sentence in plain words. Plugins pass through as they are. */
+const connectorRank = (e: Entry) => (e.installed || (e.source.type === "plugin" && e.source.present) ? 1e12 : 0) + (e.badge === "Official" ? 1e11 : 0) + (e.downloads ?? 0);
+export const curatedEntries = (entries: readonly Entry[]): Entry[] => {
+  const kept = entries.filter(inR1Seedbank);
+  const apps = new Set(uniqueApps(kept.filter(e => e.kind === "mcp"), e => e.name, connectorRank));
+  return kept.flatMap(e => e.kind !== "mcp" ? [e] : apps.has(e) ? [{ ...e, desc: plainLine(e.desc) }] : []);
+};
