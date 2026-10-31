@@ -1,7 +1,7 @@
 // R1 onboarding (HANDOFF R1-07, preview item 37): four questions, then the first conversation. This file holds the
 // step list, the four modes and the rules the card follows; the engine calls live in the step components.
 import { MODE_ROWS, PLAN_FIRST_REASON } from "../../composer/mode";
-import type { Detected, TestResult } from "../../setup/setup-model";
+import type { Candidate, Detected, TestResult } from "../../setup/setup-model";
 import { errorWords, plainError, PLAIN_FAILURE } from "../../shell/plain-error";
 import { DAY_ONE_TEMPLATES, listedTemplate, type DayOneTemplate, type ListedTemplate } from "../seedbank/templates";
 
@@ -114,6 +114,21 @@ export function canSayHello(detected: Detected | null, off: string[]): boolean {
   if (!detected) return false;
   return Boolean(detected.configuredModel) || detected.candidates.some((c) => !off.includes(c.key) && !c.signedOut);
 }
+
+/** A found connection that answers through Codex (#589): the Codex app, or a ChatGPT sign-in (a saved Codex login).
+ *  Codex isn't shipped with Branch, so until it's downloaded these can't answer. An OpenAI API key doesn't need it. */
+export function needsCodex(c: Pick<Candidate, "kind" | "modelRef" | "label" | "detail">): boolean {
+  if (c.kind === "codex-cli") return true;
+  const provider = c.modelRef.split("/", 1)[0]?.toLowerCase() ?? "";
+  if (provider === "codex" || provider === "openai-codex") return true;
+  let id = "";
+  try { id = decodeURIComponent(c.kind.replace(/^(?:saved-auth|provider-auto):/, "")).toLowerCase(); } catch { id = c.kind.toLowerCase(); }
+  if (/^(?:openai-)?codex\b/.test(id)) return true;
+  return provider === "openai" && /\b(?:codex|chatgpt)\b/i.test(`${c.label} ${c.detail}`);
+}
+
+/** What the Your models step says while a picked ChatGPT connection waits for Codex. */
+export const codexNeededLine = (label: string) => `${label} needs Codex on this computer to answer. Get Codex, then say hello.`;
 
 export const toggle = (off: string[], key: string) => (off.includes(key) ? off.filter((k) => k !== key) : [...off, key]);
 
