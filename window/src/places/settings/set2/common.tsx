@@ -4,8 +4,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Btn, Ctl } from "../kit";
 import { copyAndSay } from "../../../shell/clipboard";
-import { errorText, record, type RecordValue } from "../adapter";
+import { record, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
+import { plainError } from "../../../shell/plain-error";
 import "./set2.css";
 
 export { useResource };
@@ -34,7 +35,7 @@ export function useCall() {
       setState({ busy: false, note: note?.(result) });
       return result;
     } catch (error) {
-      setState({ busy: false, error: errorText(error) });
+      setState({ busy: false, error: plainError(error) });
       return undefined;
     }
   };
@@ -43,7 +44,7 @@ export function useCall() {
 
 /** The line under a button group: the engine's error, or what just happened. */
 export function CallLine({ call }: { call: { error?: string; note?: string } }) {
-  if (call.error) return <p className="hint s2-err" role="alert">{call.error}</p>;
+  if (call.error) return <p className="hint s2-err" role="alert">{plainError(call.error)}</p>;
   return call.note ? <p className="hint" role="status">{call.note}</p> : null;
 }
 
