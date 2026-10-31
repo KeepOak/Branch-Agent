@@ -21,7 +21,7 @@ const { resetQuitIntent } = require(join(dist, 'quit-intent.js'));
 const { sameEngineBuild, updateServiceEngine, TRUNKS_STILL_WORKING, WINDOW_IDLE_UNKNOWN, serviceWorkRefusal, ownerConfirmedWork, activityUnknown,
   ENGINE_ACTIVITY_UNAVAILABLE, UNKNOWN_ACTIVITY_QUESTION } = require(join(dist, 'service-update.js'));
 const { WINDOW_IDLE_FILE, WINDOW_IDLE_MAX_AGE_MS } = require(join(dist, 'auto-apply-update.js'));
-const { engineServiceArgs, parseSessionRunList, serviceManagerRunsEngine, sessionRunListArgs } = require(join(dist, 'engine-service.js'));
+const { engineServiceArgs, parseSessionRunList, readSessionRunList, serviceManagerRunsEngine, sessionRunListArgs } = require(join(dist, 'engine-service.js'));
 const originalLoad = Module._load, originalFetch = globalThis.fetch;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function eventually(predicate, ms = 8000) {
@@ -462,6 +462,36 @@ test('an older engine\'s session list counts its live runs; anything else is una
   assert.deepEqual(parseSessionRunList('a warning line\n' + JSON.stringify({ sessions: [] })), { activeRuns: 0, totalActive: 0, pendingReplies: 0 });
   assert.equal(parseSessionRunList(JSON.stringify({ ok: true })), undefined, 'no session list is unavailable, not idle');
   assert.equal(parseSessionRunList('not json'), undefined);
+});
+
+// #2165: a list longer than one page. A live run on a later page is a live run; a list that can't be read to its end is unknown.
+test('an older engine\'s session list is read to its last page; one page of a longer list is never idle', async () => {
+  const idle = n => Array.from({ length: n }, (_, i) => ({ key: 'agent:idle:' + i, hasActiveRun: false }));
+  const firstPage = JSON.stringify({ sessions: idle(200), hasMore: true, nextOffset: 200 });
+  assert.equal(parseSessionRunList(firstPage), undefined, 'one page that says more follow is unknown, not idle');
+  assert.equal(parseSessionRunList(JSON.stringify({ sessions: idle(200) })), undefined, 'a full page that does not say whether more follow is unknown');
+
+  const offsets = [];
+  const pages = {
+    0: firstPage,
+    200: JSON.stringify({ sessions: [...idle(199), { key: 'agent:a:main', hasActiveRun: true }], hasMore: true, nextOffset: 400 }),
+    400: 'a warning line\n' + JSON.stringify({ sessions: [{ key: 'agent:a:main', hasActiveRun: true }, { key: 'agent:b:main', activeRunIds: ['r2'] }], hasMore: false, nextOffset: null }),
+  };
+  const call = async args => {
+    const offset = JSON.parse(args.at(-1)).offset ?? 0;
+    offsets.push(offset);
+    return pages[offset];
+  };
+  assert.deepEqual(await readSessionRunList(call), { activeRuns: 2, totalActive: 2, pendingReplies: 0 }, 'live runs on later pages count, a row seen twice counts once');
+  assert.deepEqual(offsets, [0, 200, 400]);
+
+  const unknown = async answers => readSessionRunList(async () => answers.shift());
+  assert.equal(await unknown([JSON.stringify({ sessions: [], hasMore: true })]), undefined, 'more rows but no next page');
+  assert.equal(await unknown([JSON.stringify({ sessions: [], hasMore: true, nextOffset: 0 })]), undefined, 'a next page that goes nowhere');
+  assert.equal(await unknown([firstPage, JSON.stringify({ ok: true })]), undefined, 'a later page with no session list');
+  let page = 0;
+  assert.equal(await readSessionRunList(async () => JSON.stringify({ sessions: [], hasMore: true, nextOffset: ++page * 200 })), undefined, 'a list that never ends');
+  await assert.rejects(readSessionRunList(async () => { throw new Error('gateway call failed'); }), /gateway call failed/);
 });
 
 test('a detached engine (no launchd job) has no service to restart; other platforms keep the service manager', () => {
