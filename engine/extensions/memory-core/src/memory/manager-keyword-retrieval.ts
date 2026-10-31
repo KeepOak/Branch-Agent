@@ -129,12 +129,15 @@ export abstract class MemoryKeywordRetrieval extends MemoryProviderLifecycle {
       this.memorySourceProvenanceRepairPending = result.provenanceRepairPending;
       if (this.memorySourceProvenanceRepairPending) {
         // Automatic recall runs before the model. Keep repair admitted for teardown
-        // without holding the reply; unclassified sources stay excluded.
-        void this.withManagerOperation(() =>
-          this.syncAdmitted({ reason: "search" }, { allowEmbeddingBootstrapFallback: true }),
-        ).catch((err: unknown) => {
-          log.warn(`memory sync failed (automatic candidates): ${formatErrorMessage(err)}`);
-        });
+        // without holding the reply; unclassified sources stay excluded. The
+        // repair waits out an open embedding account backoff and stays pending.
+        if (!this.embeddingAccountBackoff.isActive()) {
+          void this.withManagerOperation(() =>
+            this.syncAdmitted({ reason: "search" }, { allowEmbeddingBootstrapFallback: true }),
+          ).catch((err: unknown) => {
+            log.warn(`memory sync failed (automatic candidates): ${formatErrorMessage(err)}`);
+          });
+        }
         return [];
       }
       return this.toCuratedMemorySearchResults(result.rows);

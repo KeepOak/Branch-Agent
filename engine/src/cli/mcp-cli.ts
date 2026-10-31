@@ -41,6 +41,7 @@ import {
   type OAuthLoopbackCallbackServer,
 } from "../infra/oauth-loopback-callback.js";
 import { resolveEnvironmentValue } from "../infra/process-env.js";
+import { plainGatewayStartFailure } from "../mcp/gateway-start-copy.js";
 import { defaultRuntime } from "../runtime.js";
 import { createLazyRuntimeMethod } from "../shared/lazy-runtime.js";
 import { runTasksWithConcurrency } from "../utils/run-with-concurrency.js";
@@ -753,8 +754,10 @@ function registerGraftServe(command: Command): void {
           verbose: Boolean(opts.verbose),
         });
       } catch (err) {
+        const plain = plainGatewayStartFailure(err);
         defaultRuntime.error(
-          `MCP server failed to start: ${formatErrorMessage(err)}. Run ${formatCliCommand("branch gateway status --deep --require-rpc")} to inspect Gateway health.`,
+          plain ??
+            `MCP server failed to start: ${formatErrorMessage(err)}. Run ${formatCliCommand("branch gateway status --deep --require-rpc")} to inspect Gateway health.`,
         );
         defaultRuntime.exit(1);
       }

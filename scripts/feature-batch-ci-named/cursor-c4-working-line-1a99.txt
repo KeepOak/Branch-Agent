@@ -1,0 +1,2 @@
+window:src/screens/chat/ChatView.test.tsx
+window:src/screens/chat/working-line-c4.test.tsx

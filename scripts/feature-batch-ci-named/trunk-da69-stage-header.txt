@@ -1,0 +1,2 @@
+window:src/stage/ComputerStage.test.tsx
+window:src/stage/take-control.test.tsx

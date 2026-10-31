@@ -69,3 +69,19 @@ test('the engine started through the service outlives the app; a plain child of 
   await pause(2_000);
   assert.equal(await engineAnswers(childPort), false, 'a plain child engine dies with the app (job object)');
 });
+
+test('a detached fallback engine outlives the app when Keep working is on', { skip: !windows && 'Windows job objects only (run on the Windows CI leg or a Windows machine)' }, async t => {
+  if (!dist) throw Error('Compile the exact desktop source before testing');
+  const { engineAnswers } = createRequire(import.meta.url)(join(dist, 'engine-service.js'));
+  const dir = mkdtempSync(join(tmpdir(), 'branch-job-detached-'));
+  const standin = join(fixtures, 'engine-service-standin.cjs');
+  const port = await freePort();
+  const pidFile = join(dir, 'detached.pid');
+  t.after(() => {
+    stopByPidFile(pidFile);
+    rmSync(dir, { recursive: true, force: true });
+  });
+  assert.equal(await runUi(['detached', dist, 'unused', process.execPath, standin, String(port), pidFile]), 0, 'the detached fallback answered while the app ran');
+  await pause(2_000);
+  assert.equal(await engineAnswers(port), true, 'the detached fallback keeps serving after the app quit');
+});

@@ -1,0 +1,1 @@
+window:src/shell/plain-error.test.tsx

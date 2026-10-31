@@ -57,39 +57,41 @@ describe("setup preview rail", () => {
     expect(railTicked(4, 4)).toBe(false);
   });
 
-  it("does not tick Your first Trunks on Welcome, even when Trunks already exist", async () => {
+  it("shows Welcome as the centred card, even when Trunks already exist", async () => {
     const host = await show(<SetupFlow engine={engine(SET_UP)} version="1" trunkNames={["Researcher", "Expense Manager"]} defaultAgentId="main" defaultName="Sapling" startAt={0} onClose={() => {}} onLocalModel={() => {}} />);
     await act(async () => new Promise((r) => setTimeout(r, 0)));
-    expect(host.querySelector("h2")?.textContent).toBe("Hi, I’m Branch.");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Hi, I’m Branch.");
     expect(host.textContent).toContain("It asks before it sends, deletes, spends or installs anything.");
+    expect(host.textContent).toContain("Agents that work on your computer: Trunks that each take one job off your plate.");
     expect(host.textContent).not.toContain("You choose how much Branch asks before it acts.");
-    const names = rail(host);
-    expect(names.map((r) => r.name)).toEqual([...STEPS]);
-    expect(names.find((r) => r.name === "Your first Trunks")?.cls).toBe("");
-    expect(names.find((r) => r.name === "Welcome")?.cls).toBe("now");
-    expect(names.every((r) => r.name === "Welcome" || r.cls !== "done")).toBe(true);
+    expect(host.querySelector(".ob-rail")).toBeNull();
+    const dots = [...host.querySelectorAll(".ob-dots i")].map((i) => i.className);
+    expect(dots).toEqual(["on", "", "", ""]);
   });
 
   it("ticks a step only after the person has passed it", async () => {
     const host = await show(<SetupFlow engine={engine({})} version="1" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
-    await act(async () => (host.querySelector('[data-testid="setup-promise"]') as HTMLInputElement).click());
     await act(async () => (host.querySelector('[data-testid="setup-next"]') as HTMLButtonElement).click());
     const names = rail(host);
-    expect(host.querySelector("h2")?.textContent).toBe("Where should Branch run?");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Which models should answer?");
     expect(names.find((r) => r.name === "Welcome")?.cls).toBe("done");
-    expect(names.find((r) => r.name === "Where Branch runs")?.cls).toBe("now");
+    expect(names.find((r) => r.name === "Where Branch runs")?.cls).toBe("done");
+    expect(names.find((r) => r.name === "Models")?.cls).toBe("now");
     expect(names.find((r) => r.name === "Your first Trunks")?.cls).toBe("");
   });
 
-  it("Run setup again reopens at Welcome with a clear rail", async () => {
+  it("Run setup again reopens at the Welcome card, and the rail after it is clear", async () => {
     const host = await show(<SetupFlow engine={engine(SET_UP)} version="1" trunkNames={["Researcher"]} defaultAgentId="main" defaultName="Sapling" startAt={5} onClose={() => {}} onLocalModel={() => {}} />);
     await act(async () => new Promise((r) => setTimeout(r, 0)));
-    expect(host.querySelector("h2")?.textContent).toBe("Reach Branch anywhere");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Reach Branch anywhere");
     expect(rail(host).find((r) => r.name === "Your first Trunks")?.cls).toBe("done");
     await act(async () => rerunSetup());
-    expect(host.querySelector("h2")?.textContent).toBe("Hi, I’m Branch.");
+    expect(host.querySelector("h1, h2")?.textContent).toBe("Hi, I’m Branch.");
+    expect(host.querySelector(".ob-rail")).toBeNull();
+    expect(host.querySelector(".ob-dots i")?.className).toBe("on");
+    await act(async () => (host.querySelector('[data-testid="setup-next"]') as HTMLButtonElement).click());
     const names = rail(host);
-    expect(names.find((r) => r.name === "Welcome")?.cls).toBe("now");
+    expect(names.find((r) => r.name === "Models")?.cls).toBe("now");
     expect(names.find((r) => r.name === "Your first Trunks")?.cls).toBe("");
     expect(names.find((r) => r.name === "Reach it anywhere")?.cls).toBe("");
   });

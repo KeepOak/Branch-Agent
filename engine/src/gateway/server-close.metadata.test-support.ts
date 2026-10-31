@@ -15,7 +15,7 @@ import {
   setActivePluginRegistry,
 } from "../plugins/runtime.js";
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
-import { createGatewayKernel } from "./server-kernel.js";
+import { prepareGatewayKernel } from "./server-kernel.js";
 import type { GatewayServer, GatewayServerOptions } from "./server-public.js";
 import { startGatewayServerCore } from "./server-start.js";
 import { reserveGatewayTestListener } from "./test-helpers.listener.js";
@@ -90,7 +90,10 @@ export async function createGatewayMetadataCloseFixture(label: string) {
       slots: { memory: "none" },
     },
   };
-  const kernels = new Map<number, Awaited<ReturnType<typeof createGatewayKernel>>>();
+  const kernels = new Map<
+    number,
+    Awaited<ReturnType<Awaited<ReturnType<typeof prepareGatewayKernel>>["activate"]>>
+  >();
   const servers: GatewayServer[] = [];
   const reservedListeners = new Map<
     number,
@@ -101,7 +104,7 @@ export async function createGatewayMetadataCloseFixture(label: string) {
     reservedListeners.set(reservation.port, reservation);
     return reservation.port;
   };
-  const create = createGatewayKernel;
+  const prepare = prepareGatewayKernel;
   const audit = await import("../audit/audit-event-writer.js");
   const createAuditWriter = audit.createAuditEventWriter;
   const auditReadiness = new Set<Promise<void>>();
@@ -165,11 +168,17 @@ export async function createGatewayMetadataCloseFixture(label: string) {
         },
       });
       const factory = vi
-        .spyOn(await import("./server-kernel.js"), "createGatewayKernel")
+        .spyOn(await import("./server-kernel.js"), "prepareGatewayKernel")
         .mockImplementation(async (...args) => {
-          const kernel = await create(...args);
-          kernels.set(args[0] ?? 18789, kernel);
-          return kernel;
+          const prepared = await prepare(...args);
+          return {
+            ...prepared,
+            async activate(...activateArgs) {
+              const kernel = await prepared.activate(...activateArgs);
+              kernels.set(args[0] ?? 18789, kernel);
+              return kernel;
+            },
+          };
         });
       let server: GatewayServer;
       try {

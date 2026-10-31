@@ -1,6 +1,7 @@
 import type { IdentifierAuthentication } from "branch/plugin-sdk/channel-ingress-runtime";
 import type { BranchPluginApi } from "branch/plugin-sdk/plugin-entry";
 import { asOptionalRecord, filterStringEntries } from "branch/plugin-sdk/string-coerce-runtime";
+import { readImapMatchFilter } from "./trigger.js";
 
 const SENDER_STRENGTHS = [
   "mutable",
@@ -17,6 +18,8 @@ export type ImapAccountConfig = {
   user: string;
   password: string;
   mailbox: string;
+  /** Optional sender or subject text. Blank admits every message the sender gate already accepts. */
+  match: string;
   watch: { mode: "auto" | "idle" | "interval"; pollSeconds: number };
   allowedSenders: string[];
   senderAuth: {
@@ -88,6 +91,7 @@ export function resolveImapConfig(
       port: typeof account.port === "number" ? account.port : 993,
       secure: account.secure !== false,
       mailbox: typeof account.mailbox === "string" ? account.mailbox : "INBOX",
+      match: readImapMatchFilter(account.match, accountId),
       watch: {
         mode: mode === "idle" || mode === "interval" ? mode : "auto",
         pollSeconds: Math.max(15, typeof watch?.pollSeconds === "number" ? watch.pollSeconds : 60),

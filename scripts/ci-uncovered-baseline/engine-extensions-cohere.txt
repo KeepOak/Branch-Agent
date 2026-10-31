@@ -1,0 +1,2 @@
+engine:extensions/cohere/index.test.ts
+engine:extensions/cohere/onboard.test.ts

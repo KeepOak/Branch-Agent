@@ -4,6 +4,7 @@ import {
   asOptionalRecord as record,
   readStringField,
 } from "branch/plugin-sdk/string-coerce-runtime";
+import { createSubsystemLogger } from "branch/plugin-sdk/runtime-env";
 import {
   ClickButton,
   ScrollDirection,
@@ -16,6 +17,32 @@ const MCP_STARTUP_TIMEOUT_MS = 10_000;
 const MCP_REQUEST_TIMEOUT_MS = 120_000;
 const MAX_PENDING_REQUESTS = 64;
 const MAX_MCP_LINE_BYTES = 256 * 1024 * 1024;
+const log = createSubsystemLogger("cua-computer");
+const PROXY_EXIT_PREFIX = "COMPUTER_DRIVER_UNAVAILABLE: CUA MCP proxy exited (";
+const PROXY_EXIT_USER_MESSAGE =
+  "Computer control stopped unexpectedly and restarting it didn't help. Try again in a moment, or restart Branch if it keeps happening.";
+const PROXY_EXIT_NOT_RESENT_MESSAGE =
+  "Computer control stopped unexpectedly while this action was running, so Branch restarted it but didn't repeat the action. Check the screen, then try again if the action didn't happen.";
+/**
+ * Tools that only read state (or move the pointer without pressing a button), so resending one
+ * after a proxy exit can't repeat a user-visible action. Anything else is retried only when its
+ * request never reached the proxy.
+ */
+export const CUA_RETRY_SAFE_TOOLS: ReadonlySet<string> = new Set([
+  "screenshot",
+  "zoom",
+  "get_cursor_position",
+  "get_session_state",
+  "get_desktop_state",
+  "get_screen_size",
+  "get_window_state",
+  "get_accessibility_tree",
+  "get_browser_state",
+  "get_recording_state",
+  "list_apps",
+  "list_windows",
+  "move_cursor",
+]);
 const MCP_DESKTOP_TARGET = { kind: "desktop", display_id: "primary" } as const;
 
 const ACTION_RESULT_TOOLS = new Set([
@@ -53,6 +80,21 @@ function driverUnavailable(message: string, cause?: unknown): Error {
 
 function driverProtocolError(message: string, cause?: unknown): Error {
   return new Error(`COMPUTER_DRIVER_ERROR: ${message}`, { cause });
+}
+
+/** A non-zero (or signal) proxy exit, which is worth one automatic restart. */
+export function isCuaProxyExit(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    error.message.startsWith(PROXY_EXIT_PREFIX) &&
+    !error.message.startsWith(`${PROXY_EXIT_PREFIX}0)`)
+  );
+}
+
+/** Keeps the UNAVAILABLE code for callers, puts a plain sentence first, and keeps the raw detail. */
+export function plainCuaProxyExitError(error: Error, message = PROXY_EXIT_USER_MESSAGE): Error {
+  const detail = error.message.slice("COMPUTER_DRIVER_UNAVAILABLE: ".length);
+  return driverUnavailable(`${message} (${detail})`, error);
 }
 
 function mappedEnum(value: unknown, values: readonly string[], label: string): number {
@@ -168,7 +210,7 @@ function normalizeMcpToolResult(tool: string, raw: unknown): CuaToolResult {
   };
 }
 
-export const MAC_BROKER_CLIENT = `const net=require('node:net');const port=Number(process.env.BRANCH_CUA_BROKER_PORT);const secret=process.env.BRANCH_CUA_BROKER_SECRET;delete process.env.BRANCH_CUA_BROKER_PORT;delete process.env.BRANCH_CUA_BROKER_SECRET;if(!Number.isInteger(port)||!secret)process.exit(1);const socket=net.connect({host:'127.0.0.1',port},()=>{socket.write(secret+'\\n');process.stdin.pipe(socket);socket.pipe(process.stdout)});socket.on('error',()=>process.exit(1));socket.on('close',()=>process.exit(0));`;
+export const MAC_BROKER_CLIENT = `const net=require('node:net');const fail=(m)=>{process.stderr.write('branch cua broker: '+m+'\\n',()=>process.exit(1))};const port=Number(process.env.BRANCH_CUA_BROKER_PORT);const secret=process.env.BRANCH_CUA_BROKER_SECRET;delete process.env.BRANCH_CUA_BROKER_PORT;delete process.env.BRANCH_CUA_BROKER_SECRET;if(!Number.isInteger(port)||!secret){fail('missing broker port or secret')}else{const socket=net.connect({host:'127.0.0.1',port},()=>{socket.write(secret+'\\n');process.stdin.pipe(socket);socket.pipe(process.stdout)});socket.on('error',(e)=>fail('broker connection failed: '+(e&&e.code||'error')));socket.on('close',(hadError)=>{if(!hadError)process.exit(0)})}`;
 
 function createClient(endpoint: { binaryPath: string; socketPath: string } | { port: number; secret: string }, env: NodeJS.ProcessEnv) {
   const proxyEnvironment = { ...env };
@@ -262,13 +304,42 @@ class McpCuaDriverSession implements CuaDriverSession {
   private disposed = false;
 
   private resolved?: Awaited<ReturnType<typeof createClient>>;
+  private client!: ReturnType<typeof createClient>;
+  private restarting: Promise<void> | undefined;
 
-  constructor(private readonly client: ReturnType<typeof createClient>) {
+  constructor(private readonly connect: () => ReturnType<typeof createClient>) {
+    this.useClient(connect());
+  }
+
+  private useClient(client: ReturnType<typeof createClient>): void {
+    this.client = client;
+    this.resolved = undefined;
     void client
       .then((resolved) => {
-        this.resolved = resolved;
+        if (this.client === client) {
+          this.resolved = resolved;
+        }
       })
       .catch(() => {});
+  }
+
+  /** Replaces a proxy that exited; concurrent callers that saw the same exit share one restart. */
+  private async restartAfterExit(
+    failed: ReturnType<typeof createClient>,
+    error: Error,
+  ): Promise<void> {
+    if (this.client !== failed) {
+      await this.restarting;
+      return;
+    }
+    log.warn(`${error.message}; restarting the CUA MCP proxy once`);
+    this.restarting = (async () => {
+      await failed.then((client) => client.stop()).catch(() => undefined);
+      this.started = false;
+      this.startPromise = undefined;
+      this.useClient(this.connect());
+    })();
+    await this.restarting;
   }
 
   isAvailable(): boolean {
@@ -407,16 +478,44 @@ class McpCuaDriverSession implements CuaDriverSession {
     args: Record<string, unknown>,
     signal?: AbortSignal,
   ): Promise<CuaToolResult> {
-    await this.ensureStarted(signal);
-    return await this.tool(name, args, signal);
+    const client = this.client;
+    const delivery = { sent: false };
+    try {
+      await this.ensureStarted(signal);
+      return await this.tool(name, args, signal, delivery);
+    } catch (error) {
+      if (!isCuaProxyExit(error) || this.disposed || signal?.aborted) {
+        throw error;
+      }
+      await this.restartAfterExit(client, error);
+      if (delivery.sent && !CUA_RETRY_SAFE_TOOLS.has(name)) {
+        log.warn(`${error.message}; not resending ${name} because the proxy may have run it`);
+        throw plainCuaProxyExitError(error, PROXY_EXIT_NOT_RESENT_MESSAGE);
+      }
+    }
+    try {
+      await this.ensureStarted(signal);
+      return await this.tool(name, args, signal);
+    } catch (error) {
+      if (isCuaProxyExit(error)) {
+        log.error(`${error.message}; the restarted CUA MCP proxy also exited`);
+        throw plainCuaProxyExitError(error);
+      }
+      throw error;
+    }
   }
 
   private async tool(
     name: string,
     args: Record<string, unknown>,
     signal?: AbortSignal,
+    delivery?: { sent: boolean },
   ): Promise<CuaToolResult> {
     const client = await this.client;
+    if (delivery) {
+      // A client that already failed rejects without writing, so the request can't reach the proxy.
+      delivery.sent = client.isAvailable();
+    }
     return normalizeMcpToolResult(
       name,
       await client.request(
@@ -461,7 +560,5 @@ export function createCuaMcpDriver(options: {
   socketPath: string;
   env?: NodeJS.ProcessEnv;
 } | { port: number; secret: string; env?: NodeJS.ProcessEnv }): CuaDriverSession {
-  return new McpCuaDriverSession(
-    createClient(options, options.env ?? process.env),
-  );
+  return new McpCuaDriverSession(() => createClient(options, options.env ?? process.env));
 }

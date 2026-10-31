@@ -94,10 +94,13 @@ describe("Library place tab event", () => {
     const selected = () => host.querySelector('[role=tab][aria-selected=true]')!.textContent;
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "people", tab: "Logbook" } })); });
     expect(selected()).toBe("Memory");
+    const part = () => host.querySelector('[role=radiogroup][aria-label=Activity] [aria-checked=true]')!.textContent;
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "library", tab: "Made for you" } })); });
-    expect(selected()).toBe("Made for you");
+    expect(selected()).toBe("Activity");
+    expect(part()).toBe("Made by Trunks");
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "library", tab: "logbook" } })); });
-    expect(selected()).toBe("Logbook");
+    expect(selected()).toBe("Activity");
+    expect(part()).toBe("Your day");
     expect(libraryTab("nope")).toBeNull();
   });
 });

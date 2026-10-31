@@ -60,6 +60,17 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     expect(sec("Lent computer, technical")).not.toBeNull();
   });
 
+  it("folds identical pairings of one window into one row, with a count, and removes nothing", async () => {
+    const copy = (approvedAtMs: number) => ({ deviceId: `win-${approvedAtMs}`, publicKey: "k", displayName: "Branch", platform: "MacIntel", clientId: "webchat-ui", clientMode: "webchat", roles: ["operator"], scopes: [], approvedAtMs, createdAtMs: approvedAtMs, connected: false });
+    const copies = [1, 2, 3, 4, 5].map(copy);
+    const { engine, request } = engineWith({ ...CONFIG, "device.pair.list": { pending: [], paired: copies }, "node.list": { nodes: [] } });
+    await show(engine, "technical");
+    const rows = [...document.querySelectorAll<HTMLElement>("[data-row='Branch']")];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain("4 older copies of this folded in");
+    expect(request).not.toHaveBeenCalledWith("device.pair.remove", expect.anything());
+  });
+
   it("does not draw a row the engine can't back yet, and shows no developer note", async () => {
     const { engine } = engineWith(CONFIG);
     await show(engine, "regular");
@@ -179,6 +190,26 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     const chip = [...dialog.querySelectorAll<HTMLButtonElement>("[aria-label='Computers Scout uses'] button")].find((b) => b.textContent === "Desk")!;
     await click(chip);
     expect(patches(request)).toContainEqual({ agents: { entries: { scout: { tools: { exec: { node: "n1" } } } } } });
+  });
+
+  it("A screen in the sealed box reads and writes cloudWorkers.desktop", async () => {
+    const { engine, request } = engineWith(CONFIG);
+    await show(engine, "advanced");
+    const screen = row("A screen in the sealed box")!.querySelector<HTMLInputElement>("input[role=switch]")!;
+    expect(screen.checked).toBe(false);
+    expect(row("A screen in the sealed box")!.textContent).toContain("Off until you choose");
+    await click(screen);
+    expect(patches(request)).toContainEqual({ cloudWorkers: { desktop: true } });
+
+    const { engine: onEngine, request: onRequest } = engineWith({
+      ...CONFIG,
+      "config.get": { hash: "h", valid: true, config: { cloudWorkers: { desktop: true } } },
+    });
+    await show(onEngine, "advanced");
+    const on = row("A screen in the sealed box")!.querySelector<HTMLInputElement>("input[role=switch]")!;
+    expect(on.checked).toBe(true);
+    await click(on);
+    expect(patches(onRequest)).toContainEqual({ cloudWorkers: { desktop: false } });
   });
 
   it("Most spares at once: Save stays off until the number changes", async () => {

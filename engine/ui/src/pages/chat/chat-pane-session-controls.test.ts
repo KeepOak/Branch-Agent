@@ -423,9 +423,7 @@ describe("chat pane composer controls", () => {
       "wa-dropdown > wa-dropdown-item.chat-controls__permission-learn-more",
     );
     expect(docsLink?.textContent?.trim()).toBe("Learn more");
-    expect(docsLink?.getAttribute("href")).toBe(
-      "https://docs.openclaw.ai/gateway/permission-modes",
-    );
+    expect(docsLink?.getAttribute("href")).toBe("https://keepoak.com/help");
     expect(docsLink?.getAttribute("target")).toBe("_blank");
     expect(docsLink?.getAttribute("rel")?.split(/\s+/).toSorted()).toEqual([
       "noopener",

@@ -50,19 +50,19 @@ const LEGACY_MEMORY_SEARCH_AUTO_PROVIDER_RULES: LegacyConfigRule[] = [
   {
     path: ["memorySearch", "provider"],
     message:
-      'memorySearch.provider = "auto" is legacy; use "openai" explicitly. Run "branch doctor --fix".',
+      'memorySearch.provider = "auto" is legacy; use "local" explicitly. Run "branch doctor --fix".',
     match: isLegacyMemorySearchAutoProvider,
   },
   {
     path: ["memory", "search", "provider"],
     message:
-      'memory.search.provider = "auto" is legacy; use "openai" explicitly. Run "branch doctor --fix".',
+      'memory.search.provider = "auto" is legacy; use "local" explicitly. Run "branch doctor --fix".',
     match: isLegacyMemorySearchAutoProvider,
   },
   {
     path: ["agents"],
     message:
-      'agents.entries.*.memorySearch.provider = "auto" is legacy; use "openai" explicitly. Run "branch doctor --fix".',
+      'agents.entries.*.memorySearch.provider = "auto" is legacy; use "local" explicitly. Run "branch doctor --fix".',
     match: (value) =>
       someAgentEntry(value, (agent) =>
         isLegacyMemorySearchAutoProvider(getAgentMemorySearchRecord(agent)?.provider),
@@ -205,6 +205,10 @@ function migrateLegacyMemorySearchFlatKeys(
   }
 }
 
+function isRemoteMemoryEmbeddingModelName(value: unknown): boolean {
+  return typeof value === "string" && /^text-embedding-/i.test(value.trim());
+}
+
 function rewriteLegacyMemorySearchAutoProvider(
   memorySearch: Record<string, unknown> | null,
   pathLabel: string,
@@ -213,8 +217,16 @@ function rewriteLegacyMemorySearchAutoProvider(
   if (!memorySearch || !isLegacyMemorySearchAutoProvider(memorySearch.provider)) {
     return;
   }
-  memorySearch.provider = "openai";
-  changes.push(`Moved ${pathLabel}.provider from legacy "auto" to "openai".`);
+  memorySearch.provider = "local";
+  changes.push(`Moved ${pathLabel}.provider from legacy "auto" to "local".`);
+  if (!isRemoteMemoryEmbeddingModelName(memorySearch.model)) {
+    return;
+  }
+  const model = String(memorySearch.model).trim();
+  delete memorySearch.model;
+  changes.push(
+    `Removed ${pathLabel}.model ("${model}") so local embeddings use their default model.`,
+  );
 }
 
 function migrateCanonicalMemorySearches(
@@ -786,7 +798,7 @@ export const LEGACY_CONFIG_MIGRATIONS_RUNTIME_AGENTS: LegacyConfigMigrationSpec[
   }),
   defineLegacyConfigMigration({
     id: "memorySearch.provider-auto->openai",
-    describe: 'Rewrite legacy memorySearch provider "auto" to "openai"',
+    describe: 'Rewrite legacy memorySearch provider "auto" to "local"',
     legacyRules: LEGACY_MEMORY_SEARCH_AUTO_PROVIDER_RULES,
     apply: (raw, changes) =>
       migrateCanonicalMemorySearches(raw, changes, rewriteLegacyMemorySearchAutoProvider),

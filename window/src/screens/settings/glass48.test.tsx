@@ -97,7 +97,7 @@ describe("R1 Settings follows the item 48 glass model", () => {
     expect(css).not.toMatch(/\.r1s-head::after/);
     expect(css).not.toMatch(/\.r1set \{[^}]*background/);
     const glass = readFileSync("src/glass/glass.css", "utf8").replace(/\s+/g, " ");
-    expect(glass).toContain('.g-clear [role="switch"]:not([aria-checked="true"]):not(#g48) { background: var(--gp-fill);');
+    expect(glass).toContain('.g-clear [role="switch"]:not([aria-checked="true"], :checked):not(#g48) { background: var(--gp-fill);');
     expect(glass).toMatch(/\[aria-current="page"\][^{]*\{ box-shadow: inset 0 0 0 1px var\(--gp-edge\), inset 0 0 0 100vmax var\(--gp-on\); \}/);
   });
 });

@@ -28,6 +28,11 @@ import type {
   WaitFilter,
 } from "./channel-shared.js";
 import { matchEventFilter, toConversation, toText } from "./channel-shared.js";
+import {
+  isGatewayClosedBeforeReadyError,
+  MCP_GATEWAY_CLOSE_BEFORE_READY_RETRIES,
+  MCP_GATEWAY_UNREACHABLE,
+} from "./gateway-start-copy.js";
 
 type PendingWaiter = {
   filter: WaitFilter;
@@ -72,6 +77,7 @@ export class BranchChannelBridge {
   private ready = false;
   private started = false;
   private retryingInitialConnect = false;
+  private closeBeforeReadyAttempts = 0;
   private readonly readiness = createDeferredCore();
   private readonly eventListeners = new Set<(event: EventFrame) => void>();
 
@@ -186,21 +192,31 @@ export class BranchChannelBridge {
       },
       onHelloOk: () => {
         this.retryingInitialConnect = false;
+        this.closeBeforeReadyAttempts = 0;
         void this.handleHelloOk();
       },
       onConnectError: (error) => {
         const normalizedError = error instanceof Error ? error : new Error(String(error));
+        if (isGatewayClosedBeforeReadyError(normalizedError)) {
+          // The matching onClose counts this attempt. Rejecting here would show the raw close.
+          return;
+        }
         if (shouldRetryInitialMcpGatewayConnect(normalizedError)) {
           this.retryingInitialConnect = true;
           return;
         }
         this.readiness.reject(normalizedError);
       },
-      onClose: (code, reason) => {
-        if (!this.ready && !this.closed && !this.retryingInitialConnect) {
-          this.readiness.reject(new Error(`gateway closed before ready (${code}): ${reason}`));
+      onClose: () => {
+        if (this.ready || this.closed) {
+          this.retryingInitialConnect = false;
+          return;
         }
-        this.retryingInitialConnect = false;
+        if (this.retryingInitialConnect) {
+          this.retryingInitialConnect = false;
+          return;
+        }
+        this.retryCloseBeforeReady();
       },
     });
     const readiness = await startGatewayClientWhenEventLoopReady(this.gateway, {
@@ -700,6 +716,18 @@ export class BranchChannelBridge {
         },
       },
     });
+  }
+
+  /** Wait through a few pre-hello closes. The Gateway client reconnects with its own backoff. */
+  private retryCloseBeforeReady(): void {
+    if (this.ready || this.closed) {
+      return;
+    }
+    if (this.closeBeforeReadyAttempts < MCP_GATEWAY_CLOSE_BEFORE_READY_RETRIES) {
+      this.closeBeforeReadyAttempts += 1;
+      return;
+    }
+    this.readiness.reject(new Error(MCP_GATEWAY_UNREACHABLE));
   }
 }
 

@@ -1,0 +1,3 @@
+engine:src/mcp/graft-join.test.ts
+engine:src/mcp/graft-link.host-moved.test.ts
+engine:src/mcp/graft-link.test.ts

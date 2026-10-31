@@ -65,6 +65,8 @@ type DeviceBootstrapTokenIssueParams = {
   profile?: DeviceBootstrapProfileInput;
   roles?: readonly string[];
   scopes?: readonly string[];
+  /** Ask for a shorter lifetime than the default (clamped; never longer). Ignored for setup credentials. */
+  ttlMs?: number;
 };
 
 async function issueDeviceBootstrapTokenRecord(
@@ -81,7 +83,15 @@ async function issueDeviceBootstrapTokenRecord(
       : PAIRING_SETUP_BOOTSTRAP_PROFILE;
     warnIfIssuedBootstrapScopesWereStripped({ input, profile });
     return await executeDevicePairingMutation(
-      { type: "bootstrap.issue", input: { profile, setupId: params.setupId, nowMs: Date.now() } },
+      {
+        type: "bootstrap.issue",
+        input: {
+          profile,
+          setupId: params.setupId,
+          nowMs: Date.now(),
+          ...(params.ttlMs === undefined ? {} : { ttlMs: params.ttlMs }),
+        },
+      },
       { baseDir: params.baseDir, assertCurrent },
     );
   });

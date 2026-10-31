@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { checkUIProof, hasScreenshotProof, isWindowUISource } from './check-ui-proof.mjs';
+import {
+  checkCommittedProofImages,
+  checkUIProof,
+  hasScreenshotProof,
+  isCommittedProofImage,
+  isWindowUISource,
+} from './check-ui-proof.mjs';
 
 test('isWindowUISource identifies window UI source files', () => {
   assert.equal(isWindowUISource('window/src/composer/Composer.tsx'), true);
@@ -165,4 +171,54 @@ test('checkUIProof passes when a window tsx change has a real screenshot', () =>
   assert.equal(hasScreenshotProof(body), true);
   assert.equal(result.exitCode, 0);
   assert.match(result.message, /screenshot proof/);
+});
+
+test('isCommittedProofImage flags images under proof-style folders at any depth', () => {
+  for (const file of [
+    'verifier/1918/window.png',
+    'proof/1797/onboarding.png',
+    'docs/proof/1768/welcome.jpg',
+    'docs/ui-proof/pr-1800/a.jpeg',
+    'engine/.github/pr-proof/x/b.webp',
+    'window/screenshots/run.gif',
+    'mobile/artifacts/shot.PNG',
+    'a/b/c/screenshot/d.png',
+    'docs\\proofs\\e.png',
+  ]) {
+    assert.equal(isCommittedProofImage(file), true, file);
+  }
+});
+
+test('isCommittedProofImage ignores app assets, non-images and look-alike names', () => {
+  for (const file of [
+    'window/public/assets/logo.png',
+    'assets/art17/agents/a.webp',
+    'desktop/assets/brand/icon.png',
+    'mobile/docs/parity/home.png',
+    'docs/proof/notes.md',
+    'verifier/1918/report.json',
+    'proof.png',
+    'docs/proofread/a.png',
+    'window/src/proofing/a.png',
+  ]) {
+    assert.equal(isCommittedProofImage(file), false, file);
+  }
+});
+
+test('checkCommittedProofImages passes with no added proof images', () => {
+  const result = checkCommittedProofImages(['window/src/App.tsx', 'window/public/assets/new.png']);
+  assert.equal(result.exitCode, 0);
+});
+
+test('checkCommittedProofImages fails and tells authors to host and link screenshots', () => {
+  const result = checkCommittedProofImages(['verifier/1918/a.png', 'window/src/App.tsx', 'proof/1/b.jpg']);
+  assert.equal(result.exitCode, 1);
+  assert.match(result.message, /2 proof screenshot\(s\)/);
+  assert.match(result.message, /verifier\/1918\/a\.png/);
+  assert.match(result.message, /proof\/1\/b\.jpg/);
+  assert.doesNotMatch(result.message, /App\.tsx/);
+  assert.match(result.message, /hosted and linked in the PR body, never committed/);
+  assert.match(result.message, /PR description/);
+  assert.match(result.message, /`evidence` branch under verifier\/<PR number>\//);
+  assert.match(result.message, /raw\.githubusercontent\.com\/KeepOak\/Branch-Agent\/evidence\/verifier\//);
 });

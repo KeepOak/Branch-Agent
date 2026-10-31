@@ -9,9 +9,9 @@ import {
   resolveAgentConfig,
   resolveAgentDir,
   resolveAgentWorkspaceDir,
-  tryResolveLegacyCompatibilityAgentId,
-  tryResolveContactDefaultAgentId,
   toAgentEntriesRecord,
+  tryResolveDisplayedDefaultAgentId,
+  tryResolveLegacyCompatibilityAgentId,
 } from "../agents/agent-scope.js";
 import { resolveAgentAvatarUrlFromSource } from "../agents/identity-avatar-file.js";
 import { loadAgentIdentityFromWorkspaceAsync } from "../agents/identity-file.js";
@@ -61,8 +61,7 @@ export function findAgentEntryIndex(list: AgentEntry[], agentId: string): number
 
 /** Build config-derived summaries for text/JSON agent listing. */
 export async function buildAgentSummaries(cfg: BranchConfig): Promise<AgentSummary[]> {
-  const defaultAgentId =
-    tryResolveContactDefaultAgentId(cfg) ?? tryResolveLegacyCompatibilityAgentId(cfg);
+  const defaultAgentId = tryResolveDisplayedDefaultAgentId(cfg);
   const configuredAgents = listAgentEntries(cfg);
   const orderedIds =
     configuredAgents.length > 0

@@ -34,7 +34,7 @@ import {
   currentPluginHelpReference,
   pluginHelpFocusRequest,
 } from "./plugin-help.ts";
-import { sessionVariant } from "./session-lifecycle.ts";
+import { custodianFixAction, sessionVariant } from "./session-lifecycle.ts";
 import { renderCustodianTranscriptEntry } from "./transcript.ts";
 
 registerPluginManagementEnglish();
@@ -307,6 +307,21 @@ class CustodianSurface extends BranchLightDomElement {
             !(store.abandonedTurnOutcomeUnknown && store.error === t("custodian.connectionChanged"))
               ? html`<div class="custodian__error" role="alert">
                   <span>${store.error}</span>
+                  ${
+                    custodianFixAction(store.errorFix, store.error) === "open-accounts"
+                      ? html`<button
+                          class="btn btn--sm custodian__fix-open-accounts"
+                          type="button"
+                          @click=${() => {
+                            // Model accounts live on the profile page; the dock stays mounted.
+                            store.exitSetup("profile");
+                            this.requestUpdate();
+                          }}
+                        >
+                          ${t("custodian.openAccounts")}
+                        </button>`
+                      : nothing
+                  }
                   ${
                     store.activeClient && store.chatAvailable && store.canRetry()
                       ? html`<button
