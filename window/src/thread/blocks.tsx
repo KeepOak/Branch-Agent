@@ -30,7 +30,7 @@ import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
 import { withMentions } from "../rooms/RoomMessage";
 import { ConnectModelNotice } from "../composer/ConnectModelNotice";
 import { isNoUsableModelError } from "../composer/connect-model";
-import { friendlyError } from "../connect/friendly-error";
+import { friendlyError, friendlyFailure } from "../connect/friendly-error";
 import { plainError } from "../shell/plain-error";
 
 type Of<K extends Block["kind"]> = Extract<Block, { kind: K }>;
@@ -84,7 +84,7 @@ export function SteeredNote({ name, text, attachments }: { name: string; text: s
  *  and Discard. */
 export function NotSent({ text, reason, onRetry, onDiscard }: { text: string; reason: string; onRetry: () => void; onDiscard: () => void }) {
   // Visible copy goes through the issue 1700 helper so a stranger never sees a stack, Error: prefix, JSON, status, id or method name.
-  const why = friendlyError(reason);
+  const why = friendlyFailure(reason);
   return (
     <div className="queued-msg not-sent" data-testid="not-sent">
       <UserMessage block={{ kind: "user", key: "not-sent", text }} />

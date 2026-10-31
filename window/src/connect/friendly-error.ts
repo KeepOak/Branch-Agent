@@ -6,6 +6,9 @@
 /** One sentence and a next step. Used when the value is empty or still looks like a dump. */
 export const FRIENDLY_ERROR = "Something went wrong. Retry.";
 
+/** A provider's quota or credit refusal (`insufficient_quota`, `credit balance is too low`), which often has no 429. */
+export const QUOTA_ERROR = "Your model account is out of quota or credits. Add credits or choose another model, then try again.";
+
 const ERROR_PREFIX_RE =
   /^(?:(?:[a-z][\w-]*\s+)?(?:api\s*)?error|[A-Z][A-Za-z]*Error)(?:\s*\(\d{3}\)|\s+\d{3})?\s*[:\-]\s*/i;
 const STACK_RE = /\n\s*at\s+\S|:\d+:\d+\b/;
@@ -20,6 +23,9 @@ const ERRNO_RE = /\bE[A-Z]{3,}\b/;
 const CLASS_ERROR_RE = /\b[A-Z][A-Za-z]+Error\b/;
 const CODE_RE = /\b[A-Z][A-Z0-9_]{5,}\b/;
 const QUOTED_STATUS_RE = /the engine answered\s+"/i;
+// Browser storage's QuotaExceededError is not a provider quota, so `quota exceeded` must not run into `Error`.
+const QUOTA_RE =
+  /\binsufficient[_\s-]?quota|\bquota[_\s-]?exceeded(?!error)|\bexceeded\s+(?:your|the)\s+(?:current\s+)?quota|\bout\s+of\s+(?:quota|credits?)\b|\bcredit\s+balance\s+is\s+too\s+low|\bbilling[_\s-]?hard[_\s-]?limit/i;
 
 function extractRaw(value: unknown): string {
   if (typeof value === "string") return value.trim();
@@ -79,4 +85,12 @@ export function friendlyError(value: unknown): string {
     return FRIENDLY_ERROR;
   }
   return stripped;
+}
+
+/** friendlyError(), except that a raw dump about a provider quota reads as QUOTA_ERROR instead of the generic line.
+ *  Already-plain copy and one-word states stay as friendlyError() leaves them. friendlyError() itself is unchanged
+ *  because shell/plain-error.ts reads its generic line as the sign that words are raw. */
+export function friendlyFailure(value: unknown): string {
+  const said = friendlyError(value);
+  return said === FRIENDLY_ERROR && QUOTA_RE.test(extractRaw(value)) ? QUOTA_ERROR : said;
 }
