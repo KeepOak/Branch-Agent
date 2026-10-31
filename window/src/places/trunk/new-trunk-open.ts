@@ -10,6 +10,8 @@ export type NewTrunkOpenSteps = {
   open: () => Promise<string | null>;
   /** Shows the opened conversation. */
   show: (sessionKey: string) => void;
+  /** Shows the new Trunk's own page when its conversation could not open, so the person lands on what they made. */
+  showTrunk?: () => void;
 };
 
 /** What the person reads when the Trunk was made but its conversation did not open. */
@@ -31,10 +33,11 @@ export async function openNewTrunkConversation(name: string, steps: NewTrunkOpen
     steps.show(key);
     return true;
   }
+  steps.showTrunk?.();
   notify(newTrunkOpenFailedLine(name), {
     tone: "bad",
     keep: true,
-    line: "It’s in your Trunks list. Try again, or open it from there.",
+    line: steps.showTrunk ? "Its page is open. Try again to start its conversation." : "It’s in your Trunks list. Try again, or open it from there.",
     action: { label: "Try again", run: () => void openNewTrunkConversation(name, steps) },
   });
   return false;

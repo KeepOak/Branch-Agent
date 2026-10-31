@@ -417,7 +417,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
     try { agentId = await createShapedTrunk(engine, draft); }
     catch (e) { setNewTrunkError(creationProblem(e)); return; }
     finally { makingTrunk.current = false; setNewTrunkBusy(false); }
-    // The Trunk exists: the sheet closes even if its conversation can't open (#479). That says so, with Try again.
+    // The Trunk exists: the sheet closes even if its conversation can't open (#479). Then its page opens and a
+    // plain message says the conversation couldn't, with Try again.
     setNewTrunkOpen(false);
     const name = draft.name.trim();
     await openNewTrunkConversation(name, {
@@ -426,6 +427,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
       show: (sessionKey) => {
         setNewTrunkFlow({ agentId, sessionKey, name, avatar: "classic", colour: draft.colour, shape: draft.shape });
         openConversation(sessionKey);
+      },
+      showTrunk: () => {
+        navigateTo.current({ kind: "place", place: "people" });
+        window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId, view: "profile" } }));
       },
     });
   };

@@ -49,6 +49,16 @@ describe("opening a new Trunk's first conversation (#479)", () => {
     expect(notify).toHaveBeenCalledTimes(1);
   });
 
+  it("opens the new Trunk's page when its conversation can't open, and only then", async () => {
+    const showTrunk = vi.fn();
+    await openNewTrunkConversation("Hazel", { ready: async () => undefined, open: async () => null, show: vi.fn(), showTrunk });
+    expect(showTrunk).toHaveBeenCalledTimes(1);
+    expect(lastOptions()?.line).toBe("Its page is open. Try again to start its conversation.");
+    showTrunk.mockClear();
+    await openNewTrunkConversation("Hazel", { ready: async () => undefined, open: async () => "agent:hazel:main", show: vi.fn(), showTrunk });
+    expect(showTrunk).not.toHaveBeenCalled();
+  });
+
   it("names an unnamed Trunk plainly", () => {
     expect(newTrunkOpenFailedLine("  ")).toBe("Your new Trunk is ready, but its conversation couldn’t open.");
   });
