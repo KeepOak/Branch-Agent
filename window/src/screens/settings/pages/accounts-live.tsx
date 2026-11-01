@@ -21,6 +21,7 @@ import { key, moveToTop, PAUSE_OFF, RENAME_LATER, signOutAll } from "../../../pl
 import { AddAccountDialog, type AddStart } from "../../../places/settings/set1/add-account";
 import { APPS, appSub, foundState, PILL, type App } from "../../../places/settings/set1/coding-apps";
 import { CODEX_DOWNLOAD_METHOD, codexDownloadOffered, useCodexDownload } from "../../../places/settings/set1/codex-get";
+import { appChatModels, modelsOf } from "../../../places/settings/set1/models-data";
 import { PickOwn } from "../../../places/settings/set1/own-accounts";
 import { Logo, serviceName } from "../../../places/settings/set1/service";
 import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
@@ -486,6 +487,9 @@ function openAddAccount(provider: string) {
 
 /** The engine's model runtime for a coding app whose sign-in can answer chats; Codex is a plugin with its own switch. */
 const RUNTIME: Readonly<Record<string, string>> = { "claude-cli": "claude-cli", "gemini-cli": "google-gemini-cli" };
+/** The engine's model list as Models reads it: the household view names the default Trunk (Models: scope || agentId),
+ *  since with several Trunks the engine refuses a models.list that names none. */
+const useModelList = (engine: WindowEngine) => useRead(engine, "models.list", { includeDetails: true, ...agentOf(engine) });
 
 /** A coding app on this computer as branch.setup.detect finds it; Codex's switch is plugins.entries.codex.enabled, the
  *  others follow their own sign-in (a greyed switch, as Classic). Claude Code shows its account from usage.status. */
@@ -502,9 +506,9 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
   const getting = offer ? codex.view : undefined;
   const usable = f.state === "ready" || getting?.ready === true;
   // Models reads models.list: a ready app with no model there for chats is a coding app only, not "Models ready".
-  const models = useRead(engine, "models.list", { includeDetails: true });
+  const models = useModelList(engine);
   const runtime = RUNTIME[app.kind];
-  const appOnly = Boolean(runtime) && f.state === "ready" && models.data !== undefined && !list(models.data.models).some((m) => m.provider === runtime && m.available !== false);
+  const appOnly = Boolean(runtime) && f.state === "ready" && models.data !== undefined && !appChatModels(modelsOf(models.data), runtime).length;
   const word = detect.error ? "Couldn’t check" : detect.loading ? "Looking…" : appOnly ? "Connected" : PILL[f.state][1];
   const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
   const pluginOn = app.plugin ? record(record(record(config.plugins).entries)[app.plugin]).enabled === true : f.state === "ready";
@@ -523,7 +527,7 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
         <small>{detect.error ? failLine : sub}</small>
         {detect.error ? signIn
           ? <button type="button" className="r1s-btn" onClick={() => openAddAccount(CODEX_PROVIDER)}>Sign in again</button>
-          : <button type="button" className="r1s-btn" onClick={() => void detect.reload()}>Check again</button> : null}
+          : <button type="button" className="r1s-btn" onClick={() => void Promise.all([detect.reload(), models.reload()])}>Check again</button> : null}
       </span>
       {codex.prompt ? (
         <span data-testid="codex-download-prompt">
@@ -553,13 +557,16 @@ export const ClaudeCode = (p: SlotControlProps) => <CodingApp {...p} app={appOf(
 export const Codex = (p: SlotControlProps) => <CodingApp {...p} app={appOf("codex-cli")} />;
 export const GeminiCli = (p: SlotControlProps) => <CodingApp {...p} app={appOf("gemini-cli")} />;
 
-/** Check again: looks for the coding apps on this computer again (branch.setup.detect). */
+/** Check again: looks for the coding apps on this computer again (branch.setup.detect) and reads the model list
+ *  again, so a coding app's line follows the models it gives chats. */
 export function CheckApps({ engine }: SlotControlProps) {
   const detect = useRead(engine, "branch.setup.detect");
+  const models = useModelList(engine);
   const [checked, stamp] = useCheckedAt();
+  const again = async () => { const [ok] = await Promise.all([detect.reload(), models.reload()]); if (ok) stamp(); };
   return <Needs engine={engine} need={["branch.setup.detect"]} where="Check again">
     <span className="r1s-own-ctl">
-      <button type="button" className="r1s-btn" disabled={detect.loading || Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void detect.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</button>
+      <button type="button" className="r1s-btn" disabled={detect.loading || Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void again().catch(() => undefined)}>Check again</button>
       <CheckedAt at={checked} />
     </span>
   </Needs>;

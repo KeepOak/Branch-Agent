@@ -6,7 +6,7 @@ import { record, text, visible } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Ctl, Empty, Hint, LinkBtn, Pick, Sec, Seg, Switch, useSaveRunner, type Opt } from "../kit";
 import { Logo } from "./service";
-import { connectionsOf, fallbacksOf, modelOpts, plainThinking, refOf, type Connection, type ModelsCtx } from "./models-data";
+import { appChatModels, connectionsOf, fallbacksOf, modelOpts, plainThinking, refOf, type Connection, type ModelsCtx } from "./models-data";
 import { useLevel } from "../kit";
 import { showsInternals } from "../internals";
 
@@ -36,9 +36,9 @@ type Conn = Connection & { app?: boolean };
 function connectionsWithApps(models: ModelsCtx["models"], providers: ModelsCtx["providers"]): Conn[] {
   const conns: Conn[] = connectionsOf(models, providers);
   for (const [id, name] of Object.entries(APP_RUNTIMES)) {
-    const own = models.filter((x) => !x.local && x.available && x.provider === id);
+    const own = appChatModels(models, id);
     if (!own.length || conns.some((c) => c.id === id)) continue;
-    const at = conns.findIndex((c) => c.local);
+    const at = conns.findIndex(({ local }) => local);
     conns.splice(at < 0 ? conns.length : at, 0, { id, name, local: false, accounts: 0, models: own, app: true });
   }
   return conns;
@@ -79,9 +79,10 @@ function NoModelYet({ openSettings }: { openSettings?: (page: string) => void })
 function ConnectionRow({ m, c, value, onModel }: { m: ModelsCtx; c: Conn; value: string; onModel: (ref: string) => void }) {
   const model = c.models.find((x) => x.ref === value);
   const technical = showsInternals(useLevel());
+  const { local } = c;
   const think = model ? text(m.cfg.get(m.own("models", model.ref, "params", "thinking")) ?? model.thinkingDefault ?? "") : "";
   return (
-    <Ctl id={c.name} title={c.name} icon={<Logo id={c.local ? "local" : c.id} name={c.name} size={22} />} sub={c.local ? "On this computer · free and private" : c.app ? `Signed in with ${c.name} on this computer` : `${c.accounts} ${c.accounts === 1 ? "account" : "accounts"}`}>
+    <Ctl id={c.name} title={c.name} icon={<Logo id={local ? "local" : c.id} name={c.name} size={22} />} sub={local ? "On this computer · free and private" : c.app ? `Signed in with ${c.name} on this computer` : `${c.accounts} ${c.accounts === 1 ? "account" : "accounts"}`}>
       <Pick label={`${c.name} default model`} value={value} options={modelOpts(c.models)} onChange={onModel} />
       {model && model.thinking.length ? <Seg label={`${c.name} thinking`} value={think} options={plainThinking(model.thinking, technical)} onChange={(v) => void m.cfg.set(m.own("models", model.ref, "params", "thinking"), v)} /> : null}
     </Ctl>
