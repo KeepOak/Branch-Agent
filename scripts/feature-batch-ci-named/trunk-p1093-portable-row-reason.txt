@@ -1,0 +1,1 @@
+window:src/screens/settings/pages/developer-portable-row.test.tsx
