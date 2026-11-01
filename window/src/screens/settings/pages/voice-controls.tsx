@@ -19,6 +19,8 @@ import { useRead } from "./accounts-live";
 import { Failed, Needs, useFailure } from "./appearance-live";
 import { copyAndSay } from "../../../shell/clipboard";
 import { VOICE_CODE } from "./voice";
+import { useLevel } from "../SettingsFrame";
+import { COMING_FROM } from "../rows";
 
 const Line = ({ children, bad, id }: { children: ReactNode; bad?: boolean; id?: string }) => <small id={id} className={"r1s-msg g-label" + (bad ? " r1s-bad" : "")} role={bad ? "status" : undefined} data-lines>{children}</small>;
 /** Why a greyed control is greyed (Private #1093): one visible line the control names with aria-describedby. */
@@ -105,10 +107,14 @@ export function WakeWords({ engine, row }: SlotControlProps) {
 }
 
 const AUTO: Record<string, string> = { off: "never", inbound: "talk", always: "always" };
+/** Reading aloud only after you talk waits for the engine: a Coming line, so it shows at Technical only (rows.ts COMING_FROM). */
+const ALOUD_COMING = "Reading aloud only after you talk comes in a later update.";
 /** Answer aloud: Never or Always (tts.disable / tts.enable); When I talk waits for the engine. */
 export function AnswerAloud({ engine, row }: SlotControlProps) {
   const { tts } = useTts(engine);
   const [failed, run] = useFailure();
+  const [level] = useLevel(engine);
+  const note = tts.data?.auto === "tagged" ? "Now: only when a reply asks to be read out." : level >= COMING_FROM ? ALOUD_COMING : "";
   const value = AUTO[String(tts.data?.auto)] ?? "";
   const w = useWhy(readWhy(tts));
   return <>
@@ -117,7 +123,7 @@ export function AnswerAloud({ engine, row }: SlotControlProps) {
         onChange={(id) => void run(async () => { await engine.request(id === "never" ? "tts.disable" : "tts.enable", {}); await tts.reload(); })} />
     </Needs>
     {w.line(Boolean(tts.error))}
-    <Line>{tts.data?.auto === "tagged" ? "Now: only when a reply asks to be read out." : "Reading aloud only after you talk comes in a later update."}</Line>
+    {note ? <Line>{note}</Line> : null}
     <Failed text={failed} />
   </>;
 }
