@@ -254,11 +254,17 @@ function ConnectLine({ row }: SlotControlProps) {
   );
 }
 
-/** Pair with Branch on another computer: Classic's pairing dialog (a one-time code or QR, or a code from the other one). */
+/** The call the pairing control is gated on. The dialog also calls device.pair.setupCode, but the engine never lists that
+ *  method in its hello (core-descriptors advertise: false), so gating on it drew the button as Coming on every engine. */
+const PAIR_NEED = ["graft.join"];
+
+/** Pair with Branch on another computer: Classic's pairing dialog (a one-time code or QR, or a code from the other one).
+ *  On an engine without graft.join the button is Coming, and is drawn only at Technical (rows.ts COMING_FROM). */
 export function PairBranch({ engine }: SlotControlProps) {
   const [open, setOpen] = useState(false);
+  const [level] = useLevel(engine);
   return <>
-    <Needs engine={engine} need={["device.pair.setupCode", "graft.join"]} where="Show a pairing code">
+    <Needs engine={engine} need={PAIR_NEED} where="Show a pairing code" hidden={level < COMING_FROM}>
       <button type="button" className="r1s-btn" onClick={() => setOpen(true)}>Show a pairing code</button>
     </Needs>
     {open ? <BranchLinkDialog engine={engine} onClose={() => setOpen(false)} /> : null}
