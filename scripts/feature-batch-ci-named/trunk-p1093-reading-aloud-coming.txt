@@ -1,0 +1,1 @@
+window:src/screens/settings/pages/voice-aloud-coming.test.tsx
