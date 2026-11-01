@@ -2,6 +2,7 @@
 // otherwise its off row. Turning it on needs its GitHub and Discord sources set up in the engine.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
+import { plainError } from "../../shell/plain-error";
 import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
@@ -31,16 +32,16 @@ function ReportsOn({ engine, level }: { engine: WindowEngine; level: Level }) {
   const make = useOperation(engine);
   const [made, setMade] = useState<string | null>(null);
   return <Section title="Reports" side={<Seg label="Report period" value={period} options={PERIODS} onChange={setPeriod} />}>
-    <Status {...list} />
+    <Status {...list} error={list.error ? plainError(list.error) : list.error} />
     {list.data != null && !latest && <p className="pp-hint" style={{ margin: 0 }}>No report for this period yet.</p>}
     {latest && <div className="pp-team">
       <div className="th"><b>{key}</b><span className={str(latest.status) === "closed" ? "pill ok" : "pill idle"}><i />{str(latest.status) === "closed" ? "Complete" : "So far"}</span></div>
       <p>{num(latest.activeMembers) ?? 0} people active · made {new Date(num(latest.generatedAtMs) ?? 0).toLocaleString()}</p>
-      <Status {...doc} />
+      <Status {...doc} error={doc.error ? plainError(doc.error) : doc.error} />
       {doc.data != null && <pre className="pp-report">{str(rec(doc.data).markdown)}</pre>}
     </div>}
     {shows(level, "advanced") && <div className="pp-acts" style={{ marginTop: 8 }}>
       <button type="button" className="btn sm" disabled={make.busy} onClick={() => void make.run<unknown>("team-reports.generate", { period: "day" }, r => { setMade(str(rec(r).runId)); list.reload(); })}>{make.busy ? "Making the report…" : "Make today's report"}</button>
-      {made && <span role="status" className="pp-mut">Started: run {made}</span>}{make.error && <span role="alert" className="pp-error">{make.error}</span>}</div>}
+      {made && <span role="status" className="pp-mut">Started: run {made}</span>}{make.error && <span role="alert" className="pp-error">{plainError(make.error)}</span>}</div>}
   </Section>;
 }

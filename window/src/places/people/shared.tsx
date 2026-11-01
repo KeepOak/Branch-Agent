@@ -2,6 +2,7 @@
 // links you can stop (session.publicShare.set), and what others share with you.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState } from "react";
+import { plainError } from "../../shell/plain-error";
 import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
 import type { WindowEngine } from "../../connect/engine";
@@ -31,7 +32,7 @@ export function SharedTab({ engine, me, level, openConversation }: { engine: Win
   const [stopped, setStopped] = useState<string[]>([]);
   const linked = ours.filter(r => links.has(r.key) && !stopped.includes(r.key));
   return <>
-    <Status {...list} />
+    <Status {...list} error={list.error ? plainError(list.error) : list.error} />
     {list.data != null && <>
       {shared.length || linked.length ? <div className="pp-rows">{shared.map(r => <div key={r.key} className="pp-prow kp-row">
         <span className="pp-tile"><Glyph name="chat" /></span>
@@ -57,7 +58,7 @@ function LinkRow({ engine, row, made, onStopped }: { engine: WindowEngine; row: 
   const op = useOperation(engine);
   return <div className="pp-prow">
     <span className="pp-tile"><Icon name="globe" small /></span>
-    <span className="grow"><b>{row.title} <span className="pp-tag">A copy</span></b><small>Anyone with the link can read it · made {new Date(made).toLocaleDateString()}</small>{op.error && <small role="alert" className="pp-error">{op.error}</small>}</span>
+    <span className="grow"><b>{row.title} <span className="pp-tag">A copy</span></b><small>Anyone with the link can read it · made {new Date(made).toLocaleDateString()}</small>{op.error && <small role="alert" className="pp-error">{plainError(op.error)}</small>}</span>
     <button type="button" className="btn ghost sm" disabled={op.busy || !row.sessionId} title={row.sessionId ? undefined : "The engine did not give this conversation's id."} onClick={() => void op.run("session.publicShare.set", { sessionKey: row.key, expectedSessionId: row.sessionId, enabled: false }, onStopped)}>Stop this link</button>
   </div>;
 }
@@ -92,7 +93,7 @@ function ManageDialog({ engine, row, onClose, onChanged }: { engine: WindowEngin
   const addable = identities.filter(i => str(i.id) !== str(owner.id) && !memberIds.includes(str(i.id)) && str(i.type) !== "agent");
   return <Dialog title={`Manage ${row.title}`} onClose={onClose} footer={<button type="button" className="btn pri" onClick={onClose}>Done</button>}>
     <div className="ppl-dlg" style={{ display: "grid", gap: 12 }}>
-      <Status {...members} />
+      <Status {...members} error={members.error ? plainError(members.error) : members.error} />
       {members.data != null && <>
         {allowed.length > 0 && <div className="fld"><span>Everyone else on this Branch</span><Seg label="Everyone else on this Branch" value={current} options={allowed.map(v => ({ id: v, name: VIS_NAME[v] ?? v }))} off={op.busy ? "Saving…" : undefined} onChange={v => void op.run("session.visibility.set", { sessionKey: row.key, visibility: v }, () => { setVisibility(v); onChanged(); })} /></div>}
         {str(owner.id) && <p style={{ margin: 0 }}>Owner: {str(owner.displayName) || str(owner.label) || str(owner.id)}</p>}
@@ -102,7 +103,7 @@ function ManageDialog({ engine, row, onClose, onChanged }: { engine: WindowEngin
         {addable.length > 0 && <AddMember options={addable.map(i => ({ id: str(i.id), name: str(i.displayName) || str(i.label) || str(i.id) }))} busy={op.busy} add={id => void op.run("session.members.add", { sessionKey: row.key, identityId: id }, after)} />}
         <p className="pp-hint" style={{ margin: 0 }}>They see who started it, who owns it, and who else is in it. Their drafts stay private until they send.</p>
       </>}
-      {op.error && <p role="alert" className="pp-error">{op.error}</p>}
+      {op.error && <p role="alert" className="pp-error">{plainError(op.error)}</p>}
     </div>
   </Dialog>;
 }
