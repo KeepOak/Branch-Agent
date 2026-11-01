@@ -39,6 +39,7 @@ const IN_APP_STORES = "Store links and downloads don’t open from here yet.";
 const IN_APP_LICENCES = "The list isn’t in this version of the app yet.";
 const IN_APP_REPAIR = "Repair runs on the computer that runs the engine.";
 const IN_APP_REMOVE = "Removing everything runs in the uninstaller, not on this page.";
+const IN_APP_WINDOW_FIXES = "This app gets small window fixes with its own updates.";
 /** True inside the Branch desktop app, where the window has the app's bridge. */
 const inApp = () => typeof window !== "undefined" && (window as unknown as { branchDesktop?: unknown }).branchDesktop !== undefined;
 const NO_SKIP = "Skipping a version needs the engine to keep a skip list.";
@@ -454,7 +455,7 @@ function BeforeInstall() {
   return (
     <Sec title="Before you install">
       <Ctl title="See the plan" sub="What a Branch update changes and how each part restarts."><Btn sm onClick={() => setOpen(true)}>See the plan</Btn></Ctl>
-      <Ctl title="Window fixes without reinstalling" sub="Small window fixes arrive automatically." help="Small fixes to the window arrive on their own, checked like any update." off="Small window fixes arrive with the Branch app’s updater."><Switch label="Window fixes without reinstalling" checked={false} onChange={() => undefined} /></Ctl>
+      <Ctl title="Window fixes without reinstalling" sub="Small window fixes arrive automatically." help="Small fixes to the window arrive on their own, checked like any update." off={inApp() ? IN_APP_WINDOW_FIXES : "Small window fixes arrive with the Branch app’s updater."}><Switch label="Window fixes without reinstalling" checked={false} onChange={() => undefined} /></Ctl>
       <Ctl title="Window changes" sub="Replaces the window while preserving your draft and place." help="The new window takes the old one’s place while you aren’t typing or reading a reply; your draft, place and replies carry over." off="Swapping the window in place is done by the Branch app.">
         <Seg label="Window changes" value="idle" options={[{ id: "idle", label: "When I’m not typing" }, { id: "ask", label: "Ask me" }]} onChange={() => undefined} />
       </Ctl>
