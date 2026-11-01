@@ -1,0 +1,2 @@
+window:src/screens/settings/pages/notifications-live.test.tsx
+window:src/screens/settings/pages/notifications-send-test.test.tsx

@@ -4,7 +4,7 @@ import { friendlyError } from "../../../connect/friendly-error";
 import { KeeperMark } from "../../../brand/KeeperMark";
 import { Btn, Ctl, Hint, Page, Sec, Status, Switch } from "../kit";
 import { useDesktopControls } from "../../../connect/desktop-controls";
-import { componentDesktop, DESKTOP_CHECKS_HOURLY, ENGINE_UPDATE_EVENT, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus, type ComponentUpdateStatus, type EngineUpdateEvent, undoOpen, useDesktopUndoAvailability, type ComponentUpdates, type UndoAvailability } from "../../../connect/desktop-component-updates";
+import { componentDesktop, DESKTOP_CHECKS_HOURLY, ENGINE_UPDATE_EVENT, useDesktopComponentStatus, type ComponentUpdateStatus, type EngineUpdateEvent, undoOpen, useDesktopUndoAvailability, type ComponentUpdates, type UndoAvailability } from "../../../connect/desktop-component-updates";
 
 /** The desktop drains running work for up to 330 s, then restarts; a silent desktop gets this long plus a 60 s margin. */
 export const INSTALL_NO_ANSWER_MS = 390_000;
@@ -108,6 +108,9 @@ export function checkNote(state: "running" | "ok" | "failed" | null, at: number 
   return available ? `${time} A new Branch is ready to download.` : staged ? `${time} A new Branch is ready and applies by itself.` : time;
 }
 
+/** Why Check now is greyed in an older app. The page shows inside that app, so it names this app, not "the Branch app". */
+const IN_APP_NO_MANUAL_CHECK = "This version checks on its own. Checking by hand needs a newer version.";
+
 /** An older Branch Agent app has no Check now bridge, but it still checks every hour and stages updates by itself.
  *  The page still uses Branch's version; a window connected elsewhere keeps its own reason. */
 function HourlyUpdates({ title, engine, level, reason }: Pick<SettingsPageProps, "title" | "engine" | "level"> & { reason?: string }) {
@@ -121,7 +124,7 @@ function HourlyUpdates({ title, engine, level, reason }: Pick<SettingsPageProps,
       ? <Status tone="warn" title="Updates aren’t available here">{reason}</Status>
       : <Status title={version ? `You have Branch ${versionLabel(version, level)}` : "Branch on this computer"}>{DESKTOP_CHECKS_HOURLY}</Status>}
     <Sec title="Updating">
-      <Ctl title="Check for updates" off={reason ? undefined : MANUAL_UPDATE_UNSUPPORTED}><Btn sm disabled>Check now</Btn></Ctl>
+      <Ctl title="Check for updates" off={reason ? undefined : IN_APP_NO_MANUAL_CHECK}><Btn sm disabled>Check now</Btn></Ctl>
       <Hint>A downloaded update takes effect when Branch restarts.</Hint>
     </Sec>
   </Page>;

@@ -173,13 +173,19 @@ const ROWS_AS_DRAWN: Row[] = [
 
   { id: "general.clipboard.keep", page: "general", card: "Clipboard history", label: "Keep after restart", help: "Off until you choose: copied text would be written to disk.", level: 1, control: "toggle", source: no("a clipboard history") },
 
+  // The shortcut's page control is only a Coming Change button, so, like Cover now below, the row is Coming by its source
+  // and shows only at Technical (rows.ts COMING_FROM).
+  { id: "general.quick-ask.shortcut", page: "general", card: "Quick ask", label: "Quick ask shortcut", help: "Escape keeps the old keys.", level: 1, control: "custom",
+    source: { kind: "coming", need: "desktop: a quick ask shortcut", reason: "Changing the quick ask shortcut comes in a later update." } },
   { id: "general.quick-ask.anywhere", page: "general", card: "Quick ask", label: "Quick ask from anywhere", help: "A small box over any app.", level: 1, control: "toggle", source: no("quick ask over other apps") },
-  { id: "general.quick-ask.shortcut", page: "general", card: "Quick ask", label: "Quick ask shortcut", help: "Escape keeps the old keys.", level: 1, control: "custom", source: slot(["desktop: a quick ask shortcut"], "Changing the quick ask shortcut comes in a later update.") },
 
   { id: "general.controllers.pad", page: "general", card: "Controllers", label: "Use a gamepad or macro pad", help: "Buttons answer and steer Trunks; a keypad’s lights show who needs you.", level: 1, control: "toggle", source: no("controllers") },
 
+  // Cover now has nothing behind it yet: its page control is only a Coming button, so the row is Coming by its source
+  // and, like every Coming row, shows only at Technical (rows.ts COMING_FROM, Private issue 1093). As a slot row with a
+  // page control it read as live and showed its later-update button at Regular and Advanced.
   { id: "general.cover.now", page: "general", card: "Cover the screen", label: "Cover now", help: "Covers every display and blocks input without sleeping, so Trunks, builds and remote sessions keep going. Any key or click brings it back.", level: 0, control: "custom",
-    source: slot(["desktop: covering the screen"], "Cover the screen comes in a later update.") },
+    source: { kind: "coming", need: "desktop: covering the screen", reason: "Cover the screen comes in a later update." } },
 ];
 
 export const GENERAL_ROWS: Row[] = ROWS_AS_DRAWN.map(named);
