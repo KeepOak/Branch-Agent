@@ -15,6 +15,7 @@ import { BackfillDialog, DiaryDialog } from "../../../places/settings/set2/seaso
 import { ImportDialog, MOVE_WHY, SOURCE, exportSettings } from "../../../places/settings/set2/self";
 import { Segmented, Toggle } from "../RowView";
 import { useLevel } from "../SettingsFrame";
+import { COMING_FROM } from "../rows";
 import type { SlotControlProps } from "../slots";
 import { useRead } from "./accounts-live";
 import { Failed, Needs, useFailure } from "./appearance-live";
@@ -248,7 +249,8 @@ export function changeLines(e: RecordValue, technical: boolean): { title: string
   return { title: [SOURCE[str(e.source)], plain].filter(Boolean).join(": "), sub: when(e.at) };
 }
 
-/** Why Roll back is greyed: one visible line for the whole list, named by every Roll back (Private #1093). */
+/** Why Roll back is greyed: one visible line for the whole list, named by every Roll back (Private #1093). Roll back is
+ *  Coming, so it and this line show at Technical only (rows.ts COMING_FROM); below it the list of changes stands alone. */
 const ROLLBACK_WHY = "Rolling back a change comes in a later update. Until then, Import a saved settings file to go back.";
 
 export function EveryChange({ engine, row }: SlotControlProps) {
@@ -256,7 +258,7 @@ export function EveryChange({ engine, row }: SlotControlProps) {
   const whyId = useId();
   const changes = useLive<RecordValue>(engine, "branch.changes.list", { limit: 50 }, ["config"]);
   const entries = list(record(changes.data).entries);
-  const canRollBack = entries.some((e) => e.kind === "config-write");
+  const canRollBack = level >= COMING_FROM && entries.some((e) => e.kind === "config-write");
   return (
     <Needs engine={engine} need={["branch.changes.list"]} where={row.label ?? ""}>
       <div className="r1s-own-ctl">
@@ -268,7 +270,7 @@ export function EveryChange({ engine, row }: SlotControlProps) {
               <li key={str(e.id)} className="r1s-change" data-bad={e.invalid === true || undefined}>
                 <span className="r1s-change-t">{line.title}</span>
                 <time className="r1s-change-when" dateTime={typeof e.at === "number" ? new Date(e.at).toISOString() : undefined}>{line.sub}</time>
-                {e.kind === "config-write" ? <div className="r1s-change-acts"><Coming engine={engine} need="engine: rolling back a settings change" unwired reason="Rolling back a change comes in a later update." where="Roll back">
+                {canRollBack && e.kind === "config-write" ? <div className="r1s-change-acts"><Coming engine={engine} need="engine: rolling back a settings change" unwired reason="Rolling back a change comes in a later update." where="Roll back">
                   <button type="button" className="r1s-link" disabled aria-describedby={whyId}>Roll back</button></Coming></div> : null}
               </li>
             ); })}
@@ -304,17 +306,20 @@ export function ImportSettings({ engine, row }: SlotControlProps) {
 const FOLDER_COL = { maxWidth: "min(18rem, 42vw)", justifyContent: "flex-end" } as const;
 const PATH_CAP = { display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "middle" } as const;
 
-/** Where your data lives: the folder the engine reports. Moving it isn't built yet: Move… is greyed and one visible line,
- *  named by Move…, says so. */
+/** Where your data lives: the folder the engine reports. Moving it isn't built yet: at Technical Move… is greyed and one
+ *  visible line, named by Move…, says so; below Technical neither shows, like every Coming control (rows.ts COMING_FROM). */
 export function DataFolder({ engine, row }: SlotControlProps) {
+  const [level] = useLevel(engine);
   const sys = record(useLive<RecordValue>(engine, "system.info", {}, []).data);
   const path = str(sys.diskPath);
   const whyId = useId();
   return <span className="r1s-own-ctl" data-folder="" style={FOLDER_COL}>
     {path ? <code className="r1s-val" title={path} style={PATH_CAP}>{path}</code> : null}
-    <Coming engine={engine} need="desktop: moving Branch's data" unwired reason={MOVE_WHY} where={row.label}>
-      <button type="button" className="r1s-btn" disabled aria-describedby={whyId}>Move…</button>
-    </Coming>
-    <Line id={whyId}>{MOVE_WHY}</Line>
+    {level >= COMING_FROM ? <>
+      <Coming engine={engine} need="desktop: moving Branch's data" unwired reason={MOVE_WHY} where={row.label}>
+        <button type="button" className="r1s-btn" disabled aria-describedby={whyId}>Move…</button>
+      </Coming>
+      <Line id={whyId}>{MOVE_WHY}</Line>
+    </> : null}
   </span>;
 }
