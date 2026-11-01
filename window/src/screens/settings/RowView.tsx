@@ -13,6 +13,12 @@ import type { Row, RowOption } from "./rows";
 import { CHANGED_ELSEWHERE, LOAD_FAILED, NO_PERSON, useRow } from "./useRow";
 
 export const RESTART_NOTE = "Takes effect after a restart.";
+/** A desktop row's own words: they show inside the Branch app, so they never send the person to the app. */
+const DESK_CHECKING = "Checking...";
+const DESK_NOT_CHECKED = "Not checked yet";
+const DESK_SAVED = "Saved earlier";
+const DESK_CHECK = "Check now";
+const DESK_RECHECK = "Check again";
 const TAG: Record<Level, string | undefined> = { 0: undefined, 1: "Advanced", 2: "Technical" };
 
 /** Where each segmented control's thumb last was, by its label, so a re-created control starts there and springs on. */
@@ -114,7 +120,7 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
   const tag = TAG[r.level];
   // A desktop row not read yet (Branch never asks the app on mount, #1826) is focusable and named, so focus reads it.
   const unknown = row.source.kind === "desktop" && r.state === "loading";
-  // A desktop row showing Branch's own stored value says so until the app is checked; the value stays usable.
+  // A desktop row showing Branch's own stored value says so until it is checked; the value stays usable.
   const lastSeen = row.source.kind === "desktop" && r.lastSeen === true && (r.state === "ready" || r.state === "saving");
   const labelId = `row-${row.id}-label`;
   const stack = row.control === "segmented" && options.length > 3;
@@ -130,7 +136,7 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
       {coming || r.state === "blocked" ? <small className="r1s-note g-label" data-lines>{r.reason}</small>
         : unknown ? (
           <small className="r1s-note g-label" data-lines role="status">
-            {r.checking ? "Checking with the app..." : <>Not checked yet · <button type="button" className="r1s-link" data-local="" onClick={() => void r.retry()}>Check with the app</button></>}
+            {r.checking ? DESK_CHECKING : <>{DESK_NOT_CHECKED} · <button type="button" className="r1s-link" data-local="" onClick={() => void r.retry()}>{DESK_CHECK}</button></>}
           </small>
         ) : r.state === "error" && r.reason ? (
           <small className="r1s-note r1s-bad g-label" data-lines role="status">
@@ -143,7 +149,7 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
           </small>
         ) : lastSeen ? (
           <small className="r1s-note g-label" data-lines role="status">
-            {r.checking ? "Checking with the app..." : <>Last seen by Branch · <button type="button" className="r1s-link" data-local="" onClick={() => void r.retry()}>Check with the app</button></>}
+            {r.checking ? DESK_CHECKING : <>{DESK_SAVED} · <button type="button" className="r1s-link" data-local="" onClick={() => void r.retry()}>{DESK_RECHECK}</button></>}
           </small>
         ) : r.restart ? <small className="r1s-note g-label">{RESTART_NOTE}</small> : null}
     </div>
