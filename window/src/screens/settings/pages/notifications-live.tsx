@@ -3,9 +3,9 @@
 // store per engine, so every row reads the same state and changes queue one after another instead of racing.
 import { useId, useSyncExternalStore, useEffect, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
-import { availability, canAll } from "../../../connect/capabilities";
+import { availability } from "../../../connect/capabilities";
 import { list, record, visible } from "../../../places/settings/adapter";
-import { current, deviceOff, facts, isDesktopApp, normalizeDevice, subscribe, type DevicePrefs } from "../../../places/settings/set1/notifications-browser";
+import { current, deviceOff, facts, isDesktopApp, normalizeDevice, showTestNotice, subscribe, TEST_SENDING, testLine, type DevicePrefs } from "../../../places/settings/set1/notifications-browser";
 import { hourOpts, zoneOpts } from "../../../places/settings/set1/notifications";
 import { DEFAULT_PREFS, PREFS_KEY, normalizePrefs, prefsOff, type CategoryKey, type Detail, type NotifyPrefs, type Quiet } from "../../../places/settings/set1/notifications-prefs";
 import { noticesHereOn, setNoticesHere } from "../../../shell/notify";
@@ -209,27 +209,43 @@ export function LockedScreen({ engine, row }: SlotControlProps) {
   </>;
 }
 
-/** Preview TELL_PE18 greys Send test with this line (off18) when the window is not the Branch app. */
-const SEND_TEST_APP = "Sends a real notification from the Branch app on your computer.";
-const SEND_TEST_FIRST = "Turn on notifications here first.";
+/** Why Send test is greyed in the Branch app while this computer's notices are off. */
+export const SEND_TEST_FIRST = "Turn on notifications here first.";
+/** What a browser's test says when no computer or phone has notifications on (the engine: "no web push subscriptions"). */
+export const SEND_TEST_NONE = "No computer or phone has notifications on yet. Turn on notifications here first.";
+const sentTo = (n: number) => `Sent to ${n} ${n === 1 ? "device" : "devices"}.`;
 
-/** Send a test notification: this computer's own notice in the Branch app, or push.web.test. */
+/** Send a test notification. In the Branch app it shows this computer's own notice, the way the window shows any other.
+ *  In a browser it asks the engine (push.web.test) to send one to every computer and phone with notifications on. The
+ *  engine answers push.web.test but never lists it in its hello (core-descriptors advertise: false), so gating on it drew
+ *  the button greyed on every engine. Like Push to this browser, the browser path is gated on the listed
+ *  push.web.preferences calls from the same push methods; on an engine without them it is Coming, drawn only at
+ *  Technical (rows.ts COMING_FROM). */
 export function SendTest({ engine, row }: SlotControlProps) {
   const [failed, run] = useFailure();
   const [busy, setBusy] = useState(false);
+  const [said, setSaid] = useState("");
+  const [level] = useLevel(engine);
   const whyId = useId();
   const desktop = isDesktopApp();
-  const canPush = canAll(engine, ["push.web.test"]);
+  const hidden = !desktop && level < COMING_FROM && PUSH_NEED.some((method) => availability(engine, method) === "no");
   const here = noticesHereOn() && facts().permission === "granted";
-  const why = desktop ? (here ? undefined : SEND_TEST_FIRST) : (canPush ? undefined : SEND_TEST_APP);
-  const go = () => { setBusy(true); void run(async () => {
-    if (desktop) { new Notification("Branch", { body: "Send a test notification" }); return; }
-    await engine.request("push.web.test", {});
-  }).finally(() => setBusy(false)); };
+  const why = desktop && !here ? SEND_TEST_FIRST : undefined;
+  const send = async () => {
+    if (desktop) return setSaid(testLine(await showTestNotice(), "your system settings"));
+    try {
+      const results = list(record(await engine.request("push.web.test", {})).results);
+      setSaid(sentTo(results.filter((r) => record(r).ok === true).length));
+    } catch (error) {
+      throw /no web push subscriptions/i.test(error instanceof Error ? error.message : String(error)) ? new Error(SEND_TEST_NONE) : error;
+    }
+  };
+  const go = () => { setBusy(true); setSaid(TEST_SENDING); void run(send).then((ok) => { if (!ok) setSaid(""); }).finally(() => setBusy(false)); };
   const btn = <button type="button" className="r1s-btn" disabled={busy || Boolean(why)} aria-describedby={why ? whyId : undefined} onClick={go}>Send test</button>;
   return <>
-    {desktop || !canPush ? <span className="r1s-own-ctl" data-local="">{btn}</span> : <Needs engine={engine} need={["push.web.test"]} where={row.label ?? ""}>{btn}</Needs>}
-    {why ? <small id={whyId} className="r1s-note g-label" data-lines>{why}</small> : null}
+    {desktop ? <span className="r1s-own-ctl" data-local="">{btn}</span> : <Needs engine={engine} need={PUSH_NEED} where={row.label ?? ""} hidden={hidden}>{btn}</Needs>}
+    <Why id={whyId} text={why} />
+    {said && !hidden ? <small className="r1s-note g-label" role="status" data-lines>{said}</small> : null}
     <Failed text={failed} />
   </>;
 }

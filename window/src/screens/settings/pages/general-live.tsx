@@ -118,13 +118,16 @@ export function SummaryModel({ engine, row }: SlotControlProps) {
   </>;
 }
 
-/** A preview button with nothing behind it yet: its keys (if the preview shows any) and the button, Coming. */
+/** A preview button with nothing behind it yet: its keys (if the preview shows any) and the button, Coming. It waits on
+ *  the row's calls (a slot row) or the row's need (a Coming row, such as Cover now). */
 function comingButton(button: string, keys?: () => string): SlotControl {
   return function ComingButton({ engine, row }: SlotControlProps) {
-    const src = row.source.kind === "slot" ? row.source : null;
+    const src = row.source;
+    const need = src.kind === "slot" ? src.calls : src.kind === "coming" ? [src.need] : [];
+    const reason = src.kind === "slot" || src.kind === "coming" ? src.reason : undefined;
     return <span className="r1s-own-ctl">
       {keys ? <span className="r1s-val g-label">{keys()}</span> : null}
-      <Coming engine={engine} need={src?.calls ?? []} unwired reason={src?.reason} where={row.label ?? button}>
+      <Coming engine={engine} need={need} unwired reason={reason} where={row.label ?? button}>
         <button type="button" className="r1s-btn">{button}</button>
       </Coming>
     </span>;
