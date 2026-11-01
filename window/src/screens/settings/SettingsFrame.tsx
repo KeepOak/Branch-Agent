@@ -234,7 +234,8 @@ type RowHost = { engine: WindowEngine; hints: UiHints; controls?: Record<string,
 function SlotRow({ engine, row, hints, control: Control, onPage, onAsk }: RowHost & { row: Row; control: SlotControl }) {
   const level = rowLevel(row, hints);
   const tag = level > 0 ? LEVELS[level].label : undefined;
-  const help = rowHelp(row, hints);
+  const [now] = useLevel(engine);
+  const help = (now >= COMING_FROM ? row.comingHelp : undefined) ?? rowHelp(row, hints);
   if (row.bare) return (
     <div id={`row-${row.id}`} className="r1s-row r1s-stack" data-row={row.id} data-lv={tag} data-slot="" data-bare="" aria-label={rowLabel(row, hints)}>
       <div className="r1s-ctl r1s-own"><Control engine={engine} row={row} onPage={onPage} /></div>
