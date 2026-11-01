@@ -179,7 +179,7 @@ const ROWS_AS_DRAWN: Row[] = [
   { id: "general.controllers.pad", page: "general", card: "Controllers", label: "Use a gamepad or macro pad", help: "Buttons answer and steer Trunks; a keypad’s lights show who needs you.", level: 1, control: "toggle", source: no("controllers") },
 
   // Cover now has nothing behind it yet: its page control is only a Coming button, so the row is Coming by its source
-  // and, like every Coming row, shows only at Technical (rows.ts COMING_FROM, Private #1093). As a slot row with a
+  // and, like every Coming row, shows only at Technical (rows.ts COMING_FROM, Private issue 1093). As a slot row with a
   // page control it read as live and showed its later-update button at Regular and Advanced.
   { id: "general.cover.now", page: "general", card: "Cover the screen", label: "Cover now", help: "Covers every display and blocks input without sleeping, so Trunks, builds and remote sessions keep going. Any key or click brings it back.", level: 0, control: "custom",
     source: { kind: "coming", need: "desktop: covering the screen", reason: "Cover the screen comes in a later update." } },
