@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { IN_BROWSER, NEEDS_NEWER_APP, useDesktopControls, type DesktopControlsState } from "../../../connect/desktop-controls";
 import { platformName } from "../../../setup/steps-later";
+import { startAtSignInHelp } from "../../../screens/settings/pages/general";
 import { Ctl, Sec, Switch, useSaveRunner } from "../kit";
 import { useLook } from "./appearance-store";
 
@@ -49,7 +50,7 @@ export function StartingUp() {
   const why = deskWhy(desk.off, desk.error, desk.state);
   return (
     <Sec title="Starting up">
-      <StartupSwitch desk={desk} why={why} title={START_AT_SIGN_IN} sub="Opens quietly in the tray." name="startWithWindows" />
+      <StartupSwitch desk={desk} why={why} title={START_AT_SIGN_IN} sub={startAtSignInHelp()} name="startWithWindows" />
       <StartupSwitch
         desk={desk}
         why={why ?? (desk.state && desk.state.keepWorkingSignedOut === undefined ? KEEP_SIGNED_OUT_UNAVAILABLE : undefined)}

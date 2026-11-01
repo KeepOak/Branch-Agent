@@ -216,7 +216,7 @@ describe("Settings › General", () => {
       expect(start.getAttribute("aria-disabled")).toBe("true");
       expect(start.querySelector<HTMLInputElement>("input")!.checked).toBe(false);
       expect(start.querySelector(".why-k")?.textContent).toBe(START_NEEDS_UPDATE);
-      expect(start.textContent).toContain("Opens quietly in the tray.");
+      expect(start.textContent).toContain("Opens quietly in the menu bar.");
       expect(visibleDevNotes(host)).toEqual([]);
     } finally {
       delete (window as { branchDesktop?: unknown }).branchDesktop;

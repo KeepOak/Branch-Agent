@@ -29,6 +29,11 @@ export const agentsWork: Codec = {
   write: (mode) => ({ reasoningDefault: mode === "normal" ? "off" : "on", verboseDefault: mode === "verbose" ? "on" : "off" }),
 };
 
+/** Where Start Branch when I sign in opens it: the menu bar on a Mac, the tray on Windows and Linux. */
+export function startAtSignInHelp(platform: string = platformName()): string {
+  return platform === "macOS" ? "Opens quietly in the menu bar." : "Opens quietly in the tray.";
+}
+
 /**
  * Always on (Private #454 F): how Branch keeps working, in plain words, on the desktop app's switches. Defaults on,
  * except keeping awake on battery and, on Linux only, keeping working when nobody is signed in.
@@ -38,7 +43,7 @@ export function startingUpRows(platform: string = platformName()): Row[] {
   return [
     { id: "general.start.keep-working", page: "general", card, label: "Keep working when Branch is closed", help: "Your Trunks keep going after you close the window. Off: closing Branch stops them.", level: 0, control: "toggle",
       source: { kind: "desktop", name: "keepWorking" }, fallback: true },
-    { id: "general.start.with-computer", page: "general", card, label: "Start Branch when I sign in", help: "Opens quietly in the tray.", level: 0, control: "toggle",
+    { id: "general.start.with-computer", page: "general", card, label: "Start Branch when I sign in", help: startAtSignInHelp(platform), level: 0, control: "toggle",
       source: { kind: "desktop", name: "startWithWindows" }, fallback: true },
     { id: "general.start.keep-awake", page: "general", card, label: "Keep this computer awake while Trunks work", help: "Only while a Trunk is working, and only when plugged in. The screen can still lock.", level: 0, control: "toggle",
       source: { kind: "desktop", name: "keepAwake" }, fallback: true },
