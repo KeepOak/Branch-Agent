@@ -189,38 +189,81 @@ type LlamaCppRecommendation =
       requiredDiskBytes: number;
     };
 
-export function resolveLlamaCppModelCandidates(
+function resolveMemoryBudget(
   hardware: LlamaCppHardware,
   backend: "cpu" | "metal" | "cuda",
-): { recipes: readonly LlamaCppModelRecipe[]; memoryBudgetBytes: number } {
-  // Leave host headroom even on an idle machine. Available memory also limits upgrades
-  // on busy hosts; unified memory must not be added to system RAM a second time.
-  const systemBudget = Math.min(
-    hardware.availableMemoryBytes,
-    hardware.totalMemoryBytes - Math.max(2 * GIB, hardware.totalMemoryBytes * 0.25),
-  );
+  limitToAvailable: boolean,
+): number {
+  // Leave host headroom even on an idle machine; unified memory must not be added to
+  // system RAM a second time. This headroom is what the list's system tiers assume.
+  const hostBudget =
+    hardware.totalMemoryBytes - Math.max(2 * GIB, hardware.totalMemoryBytes * 0.25);
+  const systemBudget = limitToAvailable
+    ? Math.min(hardware.availableMemoryBytes, hostBudget)
+    : hostBudget;
+  if (backend !== "cuda") {
+    return systemBudget;
+  }
   const gpuBudget =
     hardware.accelerator.kind === "cuda"
       ? Math.max(
           0,
-          ...hardware.accelerator.devices.map((device) =>
-            Math.min(
-              device.availableMemoryBytes,
-              device.totalMemoryBytes - Math.max(GIB, device.totalMemoryBytes * 0.1),
-            ),
-          ),
+          ...hardware.accelerator.devices.map((device) => {
+            const deviceBudget =
+              device.totalMemoryBytes - Math.max(GIB, device.totalMemoryBytes * 0.1);
+            return limitToAvailable
+              ? Math.min(device.availableMemoryBytes, deviceBudget)
+              : deviceBudget;
+          }),
         )
       : 0;
   // Require one device to hold the model; summing cards would assume a topology and
   // tensor-split configuration that setup has not measured or configured.
-  const memoryBudgetBytes = backend === "cuda" ? Math.min(systemBudget, gpuBudget) : systemBudget;
-  const candidates = LLAMA_CPP_MODEL_RECIPES.filter(
+  return Math.min(systemBudget, gpuBudget);
+}
+
+function recipesWithinBudget(
+  hardware: LlamaCppHardware,
+  backend: "cpu" | "metal" | "cuda",
+  budgetBytes: number,
+): LlamaCppModelRecipe[] {
+  return LLAMA_CPP_MODEL_RECIPES.filter(
     (recipe) =>
       (!recipe.requiresAcceleration || backend !== "cpu") &&
       hardware.totalMemoryBytes >= recipe.minimumSystemMemoryBytes &&
-      memoryBudgetBytes >= recipe.memoryBytes,
+      budgetBytes >= recipe.memoryBytes,
   );
-  return { recipes: candidates, memoryBudgetBytes };
+}
+
+export function resolveLlamaCppModelCandidates(
+  hardware: LlamaCppHardware,
+  backend: "cpu" | "metal" | "cuda",
+): { recipes: readonly LlamaCppModelRecipe[]; memoryBudgetBytes: number } {
+  // Whether a model fits is decided by the list's own limits against installed memory.
+  // Free memory right now (macOS keeps much of it in caches and compressed pages) only
+  // steers which fitting model comes first; it never turns a fitting computer away.
+  const fitBudgetBytes = resolveMemoryBudget(hardware, backend, false);
+  const fitting = recipesWithinBudget(hardware, backend, fitBudgetBytes);
+  const currentBudgetBytes = resolveMemoryBudget(hardware, backend, true);
+  const freeNow = fitting.filter((recipe) => currentBudgetBytes >= recipe.memoryBytes);
+  if (freeNow.length > 0 || fitting.length === 0) {
+    return {
+      recipes: freeNow,
+      memoryBudgetBytes: fitting.length === 0 ? fitBudgetBytes : currentBudgetBytes,
+    };
+  }
+  // A busy computer: prefer the lightest fitting model so less has to be freed.
+  const lightestFirst = fitting.toSorted((a, b) => a.memoryBytes - b.memoryBytes);
+  return { recipes: lightestFirst, memoryBudgetBytes: fitBudgetBytes };
+}
+
+function smallestListedNeed(backend: "cpu" | "metal" | "cuda"): string {
+  const usable = LLAMA_CPP_MODEL_RECIPES.filter(
+    (recipe) => !recipe.requiresAcceleration || backend !== "cpu",
+  );
+  const systemBytes = Math.min(...usable.map((recipe) => recipe.minimumSystemMemoryBytes));
+  const modelBytes = Math.min(...usable.map((recipe) => recipe.memoryBytes));
+  return `The smallest listed free model needs ${formatLlamaCppMemory(systemBytes)} of installed memory and a ${formatLlamaCppMemory(modelBytes)} memory budget.`;
 }
 
 export function recommendLlamaCppModel(
@@ -284,7 +327,7 @@ export function recommendLlamaCppModel(
     reason:
       candidates.length > 0
         ? "There is not enough free disk space for a recommended model, embeddings, and the runtime. Free space in the model cache and retry setup."
-        : `No recommended model fits the current ${formatLlamaCppMemory(Math.max(0, memoryBudgetBytes))} memory budget. Close other applications and retry, or configure an existing GGUF or external server.`,
+        : `No listed free model fits this computer's ${formatLlamaCppMemory(Math.max(0, memoryBudgetBytes))} memory budget. ${smallestListedNeed(backend)} Configure an existing GGUF or external server instead.`,
     plainReason:
       candidates.length > 0 ? LLAMA_CPP_SKIP_REASONS.diskFull : LLAMA_CPP_SKIP_REASONS.memory,
   };

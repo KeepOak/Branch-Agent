@@ -567,7 +567,7 @@ describe("llama.cpp managed setup", () => {
     const [message, title] = vi.mocked(ctx.prompter.note).mock.calls.at(-1)!;
     const [plain, details] = message.split("\n\n");
     expect(title).toBe("Setup skipped");
-    expect(plain).toBe("This computer doesn’t have enough memory to run a free model.");
+    expect(plain).toBe("None of the free models fit in this computer’s memory.");
     expect(details).toMatch(/memory budget/u);
   });
 

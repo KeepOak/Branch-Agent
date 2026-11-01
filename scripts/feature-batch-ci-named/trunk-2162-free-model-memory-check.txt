@@ -1,0 +1,2 @@
+engine:extensions/llama-cpp/src/model-catalog.memory-limits.test.ts
+engine:extensions/llama-cpp/src/setup.test.ts
