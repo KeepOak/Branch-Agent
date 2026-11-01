@@ -113,10 +113,11 @@ export const HISTORY_ROWS: Row[] = [
   coming("history.copy.files", COPY, "Where files are kept", "engine: keeping files somewhere else", "Needs the engine to keep files somewhere else.",
     { level: 1, control: "select", options: [{ v: "local", label: "This computer" }, { v: "s3", label: "Amazon S3" }, { v: "gcs", label: "Google Cloud Storage" }, { v: "azure", label: "Azure Blob" }], help: "Attachments and what Trunks make." }),
   // Below Technical the row shows only the folder (Move… is Coming, history-live.tsx DataFolder), so its help says what
-  // the folder is; the help about moving shows with Move…, from Technical up.
+  // the folder is; the help about moving shows with Move…, from Technical up. It names no portable mode: nothing in
+  // Settings turns one on (Developer › System draws it only greyed).
   slot("history.copy.data", COPY, "Where your data lives", ["system.info"], { control: "text", level: 1,
     help: "The folder on this computer that holds your conversations, memory and settings.",
-    comingHelp: "Moves conversations, memory and settings together. Portable mode (Developer) keeps them beside the program." }),
+    comingHelp: "Moves conversations, memory and settings together." }),
   coming("history.copy.usb", COPY, "Put Branch on a USB stick", "desktop: writing a copy to a USB stick", "Writing a copy to a USB stick needs the Branch app.",
     { level: 1, help: "Runs on Mac, Windows or Linux from the stick." }),
 ];
