@@ -7,7 +7,9 @@ import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
 import { useOperation, useResource } from "../library/data";
 import { num, rec, recs, str } from "./data";
-import { Glyph, Section, Seg, Status } from "./ui";
+import { Glyph, Section, Seg } from "./ui";
+import { Status } from "./plain-status";
+import { plainError } from "../../shell/plain-error";
 
 const REPORTS_OFF = "Needs the engine's Team Reports plugin turned on, with its GitHub and Discord sources.";
 const PERIODS = [{ id: "day", name: "Today" }, { id: "week", name: "Week to date" }, { id: "month", name: "Month to date" }];
@@ -41,6 +43,6 @@ function ReportsOn({ engine, level }: { engine: WindowEngine; level: Level }) {
     </div>}
     {shows(level, "advanced") && <div className="pp-acts" style={{ marginTop: 8 }}>
       <button type="button" className="btn sm" disabled={make.busy} onClick={() => void make.run<unknown>("team-reports.generate", { period: "day" }, r => { setMade(str(rec(r).runId)); list.reload(); })}>{make.busy ? "Making the report…" : "Make today's report"}</button>
-      {made && <span role="status" className="pp-mut">Started: run {made}</span>}{make.error && <span role="alert" className="pp-error">{make.error}</span>}</div>}
+      {made && <span role="status" className="pp-mut">Started: run {made}</span>}{make.error && <span role="alert" className="pp-error">{plainError(make.error)}</span>}</div>}
   </Section>;
 }
