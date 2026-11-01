@@ -109,7 +109,7 @@ describe("level switch and Regular Starting up never read other apps on first mo
     expect(toggle.disabled).toBe(false);
   });
 
-  it("says a Starting up row is not checked yet, names the row, and checks with the app on request", async () => {
+  it("says a Starting up row is not checked yet, names the row, and checks it on request", async () => {
     let finish!: () => void;
     const onAtLogin: DesktopControlsState = { ...offAtLogin, startWithWindows: true, keepWorking: true };
     const get = vi.fn(() => new Promise<DesktopControlsState>((done) => { finish = () => done(onAtLogin); }));
@@ -126,15 +126,15 @@ describe("level switch and Regular Starting up never read other apps on first mo
       const named = document.getElementById(el.getAttribute("aria-labelledby")!);
       expect(named?.textContent).toBe(row.label);
       expect(el.textContent).toContain("Not checked yet");
-      expect([...el.querySelectorAll("button")].some((b) => b.textContent === "Check with the app")).toBe(true);
+      expect([...el.querySelectorAll("button")].some((b) => b.textContent === "Check now")).toBe(true);
     }
 
     const el = document.getElementById("row-general.start.with-computer")!;
-    const check = [...el.querySelectorAll("button")].find((b) => b.textContent === "Check with the app")!;
+    const check = [...el.querySelectorAll("button")].find((b) => b.textContent === "Check now")!;
     expect(check.className).toBe("r1s-link");
     await act(async () => { check.click(); });
     expect(get).toHaveBeenCalledTimes(1);
-    expect(el.textContent).toContain("Checking with the app...");
+    expect(el.textContent).toContain("Checking...");
     await act(async () => { finish(); });
     await flush();
     expect(get).toHaveBeenCalledTimes(1);
@@ -146,7 +146,7 @@ describe("level switch and Regular Starting up never read other apps on first mo
     expect(el.tabIndex).toBe(-1);
   });
 
-  it("says a stored Starting up value is last seen by Branch, and checking with the app replaces it", async () => {
+  it("says a stored Starting up value was saved earlier, and checking again replaces it", async () => {
     writeOwnDesktopState({ ...offAtLogin, startWithWindows: true });
     const get = vi.fn(async () => offAtLogin);
     (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get, set: vi.fn(async () => offAtLogin) } as unknown as DesktopControlsBridge };
@@ -160,16 +160,16 @@ describe("level switch and Regular Starting up never read other apps on first mo
     const toggle = el.querySelector<HTMLButtonElement>("[role=switch]")!;
     expect(toggle.getAttribute("aria-checked")).toBe("true");
     expect(toggle.disabled).toBe(false);
-    expect(el.textContent).toContain("Last seen by Branch");
+    expect(el.textContent).toContain("Saved earlier");
     expect(el.textContent).not.toContain("Not checked yet");
-    const check = buttonNamed(el, "Check with the app");
+    const check = buttonNamed(el, "Check again");
     expect(check?.className).toBe("r1s-link");
 
     await act(async () => { check!.click(); });
     await flush();
     expect(get).toHaveBeenCalledTimes(1);
-    expect(el.textContent).not.toContain("Last seen by Branch");
-    expect(buttonNamed(el, "Check with the app")).toBeUndefined();
+    expect(el.textContent).not.toContain("Saved earlier");
+    expect(buttonNamed(el, "Check again")).toBeUndefined();
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     expect(toggle.disabled).toBe(false);
   });
