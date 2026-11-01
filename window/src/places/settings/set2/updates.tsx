@@ -33,6 +33,15 @@ const STORE_WHY = "Opens the store in your browser, from the Branch app.";
 const APK_WHY = "Downloads run in the Branch app on your computer.";
 /** The one visible line the greyed store links and downloads name with aria-describedby (Private #1093 item 7). */
 const STORES_LINE = "Get the apps from the Branch app on your computer: it opens the stores and downloads.";
+// Inside the Branch app these lines never send the person to the app they are already in (Verifier, Private #1093).
+const IN_APP_HERE = "This is the app you are using now.";
+const IN_APP_STORES = "Store links and downloads don’t open from here yet.";
+const IN_APP_LICENCES = "The list isn’t in this version of the app yet.";
+const IN_APP_REPAIR = "Repair runs on the computer that runs the engine.";
+const IN_APP_REMOVE = "Removing everything runs in the uninstaller, not on this page.";
+const IN_APP_WINDOW_FIXES = "This app gets small window fixes with its own updates.";
+/** True inside the Branch desktop app, where the window has the app's bridge. */
+const inApp = () => typeof window !== "undefined" && (window as unknown as { branchDesktop?: unknown }).branchDesktop !== undefined;
 const NO_SKIP = "Skipping a version needs the engine to keep a skip list.";
 const NO_UNDO = "Undoing an update needs the engine's roll back.";
 const NO_DEADLINE = "The engine’s wait is fixed at 15 minutes; changing it needs an engine setting.";
@@ -297,6 +306,9 @@ const DEVICES: [string, string, string, string][] = [
 /** One device row. At Advanced the Android row adds the APK line, greyed until the Branch app can download it. `whyId`
  *  is the line under the list that says why its store links and downloads are greyed. */
 function DeviceRow({ icon, title, sub, store, apk, whyId }: { icon: string; title: string; sub: string; store: string; apk: boolean; whyId: string }) {
+  const app = inApp();
+  const apkWhy = app ? IN_APP_STORES : APK_WHY;
+  const storeWhy = app ? (store === "Download" ? IN_APP_HERE : IN_APP_STORES) : store === "Download" ? APP_ONLY : STORE_WHY;
   return (
     <div className="prow" data-row={title}>
       <Tile><Ico name={icon} s /></Tile>
@@ -305,11 +317,11 @@ function DeviceRow({ icon, title, sub, store, apk, whyId }: { icon: string; titl
         {sub ? <small>{sub}</small> : null}
         {apk ? (
           <small className="up-apk">
-            <button type="button" className="link-k" disabled title={APK_WHY} aria-describedby={whyId}>Download the APK</button> · <button type="button" className="link-k" disabled title={APK_WHY} aria-describedby={whyId}>Checksum</button> · Not every release includes the APK. Check the checksum before installing.
+            <button type="button" className="link-k" disabled title={apkWhy} aria-describedby={whyId}>Download the APK</button> · <button type="button" className="link-k" disabled title={apkWhy} aria-describedby={whyId}>Checksum</button> · Not every release includes the APK. Check the checksum before installing.
           </small>
         ) : null}
       </span>
-      {store ? <Btn sm ghost disabled title={store === "Download" ? APP_ONLY : STORE_WHY} aria-describedby={whyId}>{store}</Btn> : null}
+      {store ? <Btn sm ghost disabled title={storeWhy} aria-describedby={whyId}>{store}</Btn> : null}
     </div>
   );
 }
@@ -322,7 +334,7 @@ function Devices({ lv, engine }: { lv: number; engine: WindowEngine }) {
       <Plist>
         {DEVICES.map(([icon, title, sub, store]) => <DeviceRow key={title} icon={icon} title={title} sub={sub} store={store} apk={title === "Android" && lv >= 1} whyId={whyId} />)}
       </Plist>
-      <p className="hint" id={whyId}>{STORES_LINE}</p>
+      <p className="hint" id={whyId}>{inApp() ? IN_APP_STORES : STORES_LINE}</p>
       <Ctl title="Already have the app?"><Btn sm onClick={() => setPairing(true)}>Pair your phone</Btn></Ctl>
       <Ctl title="Add more to Branch"><Btn sm onClick={() => openPlace("customize", "Plugins")}>Open Plugins</Btn><Btn sm ghost onClick={() => openPlace("customize", "Skills")}>Browse the skill library</Btn></Ctl>
       {pairing && <Suspense fallback={null}><PairDialog engine={engine} close={() => setPairing(false)} /></Suspense>}
@@ -335,7 +347,7 @@ export function About() {
     <Sec title="About">
       <KeeperMark />
       <WhatsNewRow />
-      <Ctl title="Open-source licences" sub="The software Branch is built on, with each licence." off="The list comes with the Branch app on your computer."><Btn sm disabled>Show</Btn></Ctl>
+      <Ctl title="Open-source licences" sub="The software Branch is built on, with each licence." off={inApp() ? IN_APP_LICENCES : "The list comes with the Branch app on your computer."}><Btn sm disabled>Show</Btn></Ctl>
       <small className="about-credit">Based on OpenClaw</small>
     </Sec>
   );
@@ -369,6 +381,7 @@ function RemoveBranch() {
   // WSL is Windows-only: on Linux or a Mac the panel never names it (B-053).
   const parts: [string, string][] = [["The app", ""], ["Programs it downloaded to run models", ""], ["Models on this computer", ""],
     ...(clientOs() === "windows" ? [["Branch’s Linux system (WSL)", "Its WSL system, disk image and start-up entry."] as [string, string]] : [])];
+  const removeWhy = inApp() ? IN_APP_REMOVE : "Removing Branch runs in the Branch app’s uninstaller.";
   return (
     <div className={headless ? "s2-danger" : "sec s2-danger"} data-sec="Remove Branch">
       {headless ? null : <h2>Remove Branch</h2>}
@@ -377,8 +390,8 @@ function RemoveBranch() {
         {parts.map(([t, s]) => <Prow key={t} title={t} sub={s || undefined}><span className="s2-meta">Removed</span></Prow>)}
         <Ctl title="Keep my conversations and settings" sub="Branch finds them again if you install it later." off="The uninstaller asks."><Switch label="Keep my conversations and settings" checked onChange={() => undefined} /></Ctl>
       </div>
-      <Ctl title="Type Branch to confirm" sub="It is there so a misclick can’t remove Branch." off="Removing Branch runs in the Branch app’s uninstaller."><input className="inp" style={{ width: 180 }} aria-label="Type Branch to confirm" disabled /></Ctl>
-      <Acts><Btn className="s2-dz" disabled title="Removing Branch runs in the Branch app’s uninstaller.">Remove Branch and everything it installed</Btn></Acts>
+      <Ctl title="Type Branch to confirm" sub="It is there so a misclick can’t remove Branch." off={removeWhy}><input className="inp" style={{ width: 180 }} aria-label="Type Branch to confirm" disabled /></Ctl>
+      <Acts><Btn className="s2-dz" disabled title={removeWhy}>Remove Branch and everything it installed</Btn></Acts>
     </div>
   );
 }
@@ -442,7 +455,7 @@ function BeforeInstall() {
   return (
     <Sec title="Before you install">
       <Ctl title="See the plan" sub="What a Branch update changes and how each part restarts."><Btn sm onClick={() => setOpen(true)}>See the plan</Btn></Ctl>
-      <Ctl title="Window fixes without reinstalling" sub="Small window fixes arrive automatically." help="Small fixes to the window arrive on their own, checked like any update." off="Small window fixes arrive with the Branch app’s updater."><Switch label="Window fixes without reinstalling" checked={false} onChange={() => undefined} /></Ctl>
+      <Ctl title="Window fixes without reinstalling" sub="Small window fixes arrive automatically." help="Small fixes to the window arrive on their own, checked like any update." off={inApp() ? IN_APP_WINDOW_FIXES : "Small window fixes arrive with the Branch app’s updater."}><Switch label="Window fixes without reinstalling" checked={false} onChange={() => undefined} /></Ctl>
       <Ctl title="Window changes" sub="Replaces the window while preserving your draft and place." help="The new window takes the old one’s place while you aren’t typing or reading a reply; your draft, place and replies carry over." off="Swapping the window in place is done by the Branch app.">
         <Seg label="Window changes" value="idle" options={[{ id: "idle", label: "When I’m not typing" }, { id: "ask", label: "Ask me" }]} onChange={() => undefined} />
       </Ctl>
@@ -505,9 +518,9 @@ function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: 
       ) : <Empty>No update has been tried yet.</Empty>}
       <Ctl title="Update history" sub="Every update, who started it and how it went."><Btn sm onClick={() => setHistory(true)}>See all</Btn></Ctl>
       {/* Repair is greyed here, so the row says where it runs (Private #1093 item 7). */}
-      <Ctl title="The engine" sub={`${version ? "The engine is installed and answering. " : ""}Repair it from the Branch app on your computer.`}>
+      <Ctl title="The engine" sub={`${version ? "The engine is installed and answering. " : ""}${inApp() ? IN_APP_REPAIR : "Repair it from the Branch app on your computer."}`}>
         <span className="val-k">{version ? `Installed ${version}` : ""}</span>
-        <Btn sm disabled title={APP_ONLY}>Repair</Btn>
+        <Btn sm disabled title={inApp() ? IN_APP_REPAIR : APP_ONLY}>Repair</Btn>
         <Btn sm ghost onClick={() => void data.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</Btn><CheckedAt at={checked} />
       </Ctl>
       {lvOf(level) >= 2 ? <CodeRow title="Update status for scripts" code="branch update status --json" /> : null}

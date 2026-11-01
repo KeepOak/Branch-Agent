@@ -3,7 +3,7 @@
 // store per engine, so every row reads the same state and changes queue one after another instead of racing.
 import { useId, useSyncExternalStore, useEffect, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
-import { canAll } from "../../../connect/capabilities";
+import { availability, canAll } from "../../../connect/capabilities";
 import { list, record, visible } from "../../../places/settings/adapter";
 import { current, deviceOff, facts, isDesktopApp, normalizeDevice, subscribe, type DevicePrefs } from "../../../places/settings/set1/notifications-browser";
 import { hourOpts, zoneOpts } from "../../../places/settings/set1/notifications";
@@ -11,6 +11,8 @@ import { DEFAULT_PREFS, PREFS_KEY, normalizePrefs, prefsOff, type CategoryKey, t
 import { noticesHereOn, setNoticesHere } from "../../../shell/notify";
 import { Segmented, Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
+import { useLevel } from "../SettingsFrame";
+import { COMING_FROM } from "../rows";
 import { useRead } from "./accounts-live";
 import { Failed, Needs, useFailure } from "./appearance-live";
 
@@ -334,16 +336,29 @@ export function DeviceCategory({ engine, row }: SlotControlProps) {
   </Needs><Why id={whyId} text={why} /><Failed text={failed} /></>;
 }
 
-/** Push to this browser: this browser's own Web Push subscription. */
+/** The calls Push to this browser is gated on. The toggle itself calls push.web.vapidPublicKey, .subscribe and
+ *  .unsubscribe, but the engine never lists those in its hello (core-descriptors advertise: false), so gating on them
+ *  drew the toggle as Coming on every engine. The listed push.web.preferences calls come from the same push methods. */
+export const PUSH_NEED = DEVICE;
+/** Why the toggle is greyed in the Branch app, which shows this computer's notices itself. */
+export const PUSH_APP = "In the Branch app, notices on this computer come from the app itself.";
+
+/** Push to this browser: this browser's own Web Push subscription. On an engine without the push calls the toggle is
+ *  Coming, and is drawn only at Technical (rows.ts COMING_FROM). */
 export function PushBrowser({ engine, row }: SlotControlProps) {
   const push = usePush(engine);
   const [failed, run] = useFailure();
+  const [level] = useLevel(engine);
+  const whyId = useId();
   const desktop = isDesktopApp();
+  const hidden = level < COMING_FROM && PUSH_NEED.some((method) => availability(engine, method) === "no");
+  const why = desktop && !hidden ? PUSH_APP : undefined;
   return <>
-    <Needs engine={engine} need={["push.web.vapidPublicKey", "push.web.subscribe", "push.web.unsubscribe"]} where={row.label ?? ""}>
+    <Needs engine={engine} need={PUSH_NEED} where={row.label ?? ""} hidden={hidden}>
       <span className="r1s-own-ctl"><Toggle label={row.label ?? ""} on={Boolean(push.sub)} disabled={desktop || push.loading || !push.supported || !push.reg || push.permission === "denied"}
-        onChange={(v) => void run(() => (v ? push.store.turnOn() : push.store.turnOff()))} /></span>
+        aria-describedby={why ? whyId : undefined} onChange={(v) => void run(() => (v ? push.store.turnOn() : push.store.turnOff()))} /></span>
     </Needs>
+    <Why id={whyId} text={why} />
     <Failed text={failed} />
   </>;
 }
