@@ -7,7 +7,7 @@
 import type { Level } from "../nav";
 import type { Control, Codec, Row, RowOption } from "../rows";
 
-type Extra = { help?: string; level?: Level; control?: Control; options?: RowOption[]; unit?: string; codec?: Codec; fallback?: unknown };
+type Extra = { help?: string; comingHelp?: string; level?: Level; control?: Control; options?: RowOption[]; unit?: string; codec?: Codec; fallback?: unknown };
 /** A Coming row's reason is one plain sentence in the preview's words (R1-10): a reason that names how Branch works
  *  inside becomes "<label> comes in a later update."; the call it waits for stays in `need`. */
 export const plainReason = (label: string, reason: string): string =>
@@ -112,7 +112,11 @@ export const HISTORY_ROWS: Row[] = [
     { level: 1, control: "select", options: [{ v: "local", label: "This computer" }, { v: "pg", label: "PostgreSQL" }], help: "PostgreSQL for a shared server. Changing it copies them across." }),
   coming("history.copy.files", COPY, "Where files are kept", "engine: keeping files somewhere else", "Needs the engine to keep files somewhere else.",
     { level: 1, control: "select", options: [{ v: "local", label: "This computer" }, { v: "s3", label: "Amazon S3" }, { v: "gcs", label: "Google Cloud Storage" }, { v: "azure", label: "Azure Blob" }], help: "Attachments and what Trunks make." }),
-  slot("history.copy.data", COPY, "Where your data lives", ["system.info"], { control: "text", level: 1, help: "Moves conversations, memory and settings together. Portable mode (Developer) keeps them beside the program." }),
+  // Below Technical the row shows only the folder (Move… is Coming, history-live.tsx DataFolder), so its help says what
+  // the folder is; the help about moving shows with Move…, from Technical up.
+  slot("history.copy.data", COPY, "Where your data lives", ["system.info"], { control: "text", level: 1,
+    help: "The folder on this computer that holds your conversations, memory and settings.",
+    comingHelp: "Moves conversations, memory and settings together. Portable mode (Developer) keeps them beside the program." }),
   coming("history.copy.usb", COPY, "Put Branch on a USB stick", "desktop: writing a copy to a USB stick", "Writing a copy to a USB stick needs the Branch app.",
     { level: 1, help: "Runs on Mac, Windows or Linux from the stick." }),
 ];

@@ -43,6 +43,9 @@ export type Row = {
   /** Falls back to the schema label of a config path. */
   label?: string;
   help?: string;
+  /** The help from Technical up (COMING_FROM), where the row's own Coming control shows, when that help is about the
+   *  control; below Technical the row shows help, so it never describes a control that isn't there. */
+  comingHelp?: string;
   /** 0 Regular, 1 Advanced, 2 Technical. A schema hint marked advanced puts a row at Advanced at least. */
   level: Level;
   /** The owner placed this row at its level: the schema's advanced mark doesn't move it (a row over a whole object,
