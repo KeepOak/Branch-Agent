@@ -47,7 +47,7 @@ async function mount(level: string) {
 const dataRow = () => host.querySelector<HTMLElement>('[data-row="history.copy.data"]');
 const helpOf = (row: HTMLElement | null) => row?.querySelector(":scope > small")?.textContent ?? "";
 const MOVING = /\bmov(e|es|ing)\b/i;
-const MOVE_HELP = "Moves conversations, memory and settings together. Portable mode (Developer) keeps them beside the program.";
+const MOVE_HELP = "Moves conversations, memory and settings together.";
 
 describe("Settings › History & backups: Where your data lives says what it shows", () => {
   it("at Advanced the row shows the folder and its help says what the folder is, never moving", async () => {
@@ -65,7 +65,7 @@ describe("Settings › History & backups: Where your data lives says what it sho
     expect(host.textContent ?? "").not.toContain("Moves conversations, memory and settings together.");
   });
 
-  it("at Technical the help about moving shows with Move…, unchanged", async () => {
+  it("at Technical the help about moving shows with Move…", async () => {
     await mount("Technical");
     const row = dataRow();
     expect(helpOf(row)).toBe(MOVE_HELP);
