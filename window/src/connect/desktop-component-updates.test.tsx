@@ -219,7 +219,7 @@ it("legacy native bootstrap says it checks every ten minutes, greys Check now, a
   await show(); expect(host.textContent).toContain("Branch checks for updates every 10 minutes and lets you know when one is ready to apply.");
   expect(host.textContent).not.toContain("aren’t available");
   const check = [...host.querySelectorAll("button")].find(row => row.textContent === "Check now");
-  expect(check?.disabled).toBe(true); expect(host.textContent).toContain("Update the Branch app to check by hand.");
+  expect(check?.disabled).toBe(true); expect(host.textContent).toContain("This version checks on its own. Checking by hand needs a newer version.");
   expect(updateCalls()).toEqual([]);
   await expect(stageWindowUpdate(engine)).rejects.toThrow("Update the Branch app to check by hand.");
   expect(updateCalls()).toEqual([]);

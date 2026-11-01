@@ -67,7 +67,7 @@ async function mount(env: ReturnType<typeof engineWith>, at: "Regular" | "Advanc
 }
 
 describe("R1 Coding apps rows that couldn't check", () => {
-  it("read one plain sentence and Check again at Regular, and Check again reloads only branch.setup.detect", async () => {
+  it("read one plain sentence and Check again at Regular, and Check again reloads branch.setup.detect and the model list", async () => {
     const { request, recover } = await mount(engineWith(NETWORK_ERROR));
     for (const [id] of ROWS) {
       expect(row(id).textContent).toContain("Couldn’t check");
@@ -79,7 +79,7 @@ describe("R1 Coding apps rows that couldn't check", () => {
     request.mockClear();
     recover();
     await click(actions("accounts.apps.claude")[0]);
-    expect(request.mock.calls.map(([method]) => method)).toEqual(["branch.setup.detect"]);
+    expect(request.mock.calls.map(([method]) => method)).toEqual(["branch.setup.detect", "models.list"]);
     for (const [id] of ROWS) expect(row(id).textContent).not.toContain("Couldn’t check");
   });
 
@@ -140,7 +140,7 @@ describe("R1 Coding apps rows that couldn't check", () => {
     request.mockClear();
     recover();
     await click(actions("accounts.apps.gemini")[0]);
-    expect(request.mock.calls.map(([method]) => method)).toEqual(["branch.setup.detect"]);
+    expect(request.mock.calls.map(([method]) => method)).toEqual(["branch.setup.detect", "models.list"]);
     expect(document.querySelector('[data-testid="add-account"]')).toBeNull();
   });
 

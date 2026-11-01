@@ -18,6 +18,15 @@ export function plainThinking(options: Opt[], technical: boolean): Opt[] {
 
 export type Model = { ref: string; id: string; provider: string; name: string; local: boolean; available: boolean; images: boolean; thinking: Opt[]; thinkingDefault?: string };
 
+/** One rule for Models and Accounts: a model the engine lists is ready for chats unless it says available: false. */
+export const readyForChats = (m: RecordValue): boolean => m.available !== false;
+
+/** The models a coding app's sign-in on this computer gives chats (models.list under its runtime, ready for chats).
+ *  Models counts them as a connection; Accounts says the app is a coding app only when there are none. */
+export function appChatModels(models: Model[], runtime: string): Model[] {
+  return models.filter((m) => m.provider === runtime && m.available);
+}
+
 export function modelsOf(data: RecordValue | undefined): Model[] {
   return list(data?.models).map((m) => ({
     ref: `${text(m.provider)}/${text(m.id)}`,
@@ -25,7 +34,7 @@ export function modelsOf(data: RecordValue | undefined): Model[] {
     provider: text(m.provider),
     name: displayModelName(visible(m.name ?? m.id)),
     local: m.local === true,
-    available: m.available !== false,
+    available: readyForChats(m),
     images: Array.isArray(m.input) && m.input.includes("image"),
     thinking: list(m.thinkingLevels).map((t) => ({ id: text(t.id), label: visible(t.label) })),
     thinkingDefault: typeof m.thinkingDefault === "string" ? m.thinkingDefault : undefined,
