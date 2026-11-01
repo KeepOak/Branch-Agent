@@ -1,0 +1,1 @@
+window:src/screens/settings/updates-window-changes-in-app.test.tsx
