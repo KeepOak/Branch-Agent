@@ -43,11 +43,12 @@ const labels = (card: string) => [...host.querySelectorAll<HTMLElement>(`.r1s-se
 it("draws the preview's General cards at each level, and Pinned only once a row is pinned", async () => {
   const { engine } = engineOf();
   await mount(engine, "regular");
-  expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "Cover the screen"]);
+  // Cover the screen waits for a later update too, so it shows only at Technical.
+  expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing"]);
   await remount();
   await mount(engine, "advanced");
   // Clipboard history and Controllers wait for a later update: they show with every Coming row, at Technical (Private #1093 item 4).
-  expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "Quick ask", "Cover the screen"]);
+  expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "Quick ask"]);
   await remount();
   await mount(engine, "technical");
   expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "History repair", "Waiting line", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"]);

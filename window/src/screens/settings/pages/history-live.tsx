@@ -132,14 +132,15 @@ export function BackupNow({ engine, row }: SlotControlProps) {
   </>;
 }
 
-/** Last backup: when, what happened, and whether it succeeded, with the preview's Restore… (Coming until a copy can be
- *  put back from here). */
+/** Last backup: when, what happened, and whether it succeeded, at every level. The preview's Restore… is Coming until a
+ *  copy can be put back from here, so like every Coming control it shows only at Technical (rows.ts COMING_FROM). */
 export function LastBackup({ engine }: SlotControlProps) {
+  const [level] = useLevel(engine);
   const b = useBackups(engine);
   const last = lastBackup(b.status.data, str(b.schedule?.target));
   return <>
     <span className="r1s-own-ctl"><Val>{last.pill ? last.pill.label : "None"}</Val>
-      <Coming engine={engine} need="backup.restore" unwired reason="Restoring a copy comes in a later update." where="Restore…"><button type="button" className="r1s-btn" disabled>Restore…</button></Coming></span>
+      {level >= COMING_FROM ? <Coming engine={engine} need="backup.restore" unwired reason="Restoring a copy comes in a later update." where="Restore…"><button type="button" className="r1s-btn" disabled>Restore…</button></Coming> : null}</span>
     <Line bad={last.pill?.tone === "bad"}>{last.sub}</Line>
   </>;
 }
