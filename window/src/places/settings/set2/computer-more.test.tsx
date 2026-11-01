@@ -5,6 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { SettingsPage } from "../index";
+import { ComputersTab, CLOUD_SETUP_WHY } from "../../trunk/ComputersTab";
+import type { Draft } from "../../trunk/api";
+import { CLOUD_ADD_WHY } from "./computer-more";
+import { isDevNote } from "../../../shell/shown-why";
 
 type Answers = Record<string, unknown | ((params: Record<string, unknown>) => unknown)>;
 function engineWith(answers: Answers) {
@@ -237,5 +241,70 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "C:\data:/data:ro"); field.dispatchEvent(new Event("input", { bubbles: true })); });
     await click(buttons("Add").at(-1)!);
     expect(patches(request)).toContainEqual({ agents: { defaults: { sandbox: { docker: { binds: ["C:\data:/data:ro"] } } } } });
+  });
+});
+
+/** The visible text a control names with aria-describedby, or "" when it names none. */
+function describedBy(el: Element): string {
+  return (el.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean).map((id) => document.getElementById(id)?.textContent ?? "").join(" ");
+}
+/** Every greyed Add a cloud computer on the page must name a visible line that says why (Private #1093). */
+function greyedWithoutWhy(text: string): HTMLButtonElement[] {
+  return buttons(text).filter((b) => b.disabled && !describedBy(b).trim());
+}
+
+describe("Add a cloud computer says why it is greyed (Private #1093)", () => {
+  it("Settings at Advanced: with no cloud provider the greyed button names a visible line that says why", async () => {
+    const { engine } = engineWith({ ...CONFIG, "environments.list": { environments: [], profiles: [] } });
+    await show(engine, "advanced");
+    const add = buttons("Add a cloud computer");
+    expect(add).toHaveLength(1);
+    expect(add[0].disabled).toBe(true);
+    expect(describedBy(add[0])).toBe(CLOUD_ADD_WHY);
+    const line = document.getElementById(add[0].getAttribute("aria-describedby")!)!;
+    expect(line.closest(".s2cm-offer")).not.toBeNull();
+    expect(line.hidden).toBe(false);
+    expect(greyedWithoutWhy("Add a cloud computer")).toEqual([]);
+    // The reason is plain words, not a developer note the sweep would hide or flag.
+    expect(isDevNote(CLOUD_ADD_WHY)).toBe(false);
+    expect(isDevNote(CLOUD_SETUP_WHY)).toBe(false);
+  });
+
+  it("Settings: with a cloud provider the button is live and the reason line is gone", async () => {
+    const { engine } = engineWith({ ...CONFIG, "environments.list": { environments: [], profiles: [{ id: "fly-small", providerId: "fly" }] } });
+    await show(engine, "advanced");
+    const add = buttons("Add a cloud computer")[0];
+    expect(add.disabled).toBe(false);
+    expect(add.hasAttribute("aria-describedby")).toBe(false);
+    expect(document.body.textContent).not.toContain(CLOUD_ADD_WHY);
+  });
+
+  it("Settings at Regular and Technical: no greyed Add a cloud computer without a visible reason", async () => {
+    const { engine } = engineWith({ ...CONFIG, "environments.list": { environments: [], profiles: [] } });
+    await show(engine, "regular");
+    expect(greyedWithoutWhy("Add a cloud computer")).toEqual([]);
+    await show(engine, "technical");
+    expect(buttons("Add a cloud computer")).toHaveLength(1);
+    expect(greyedWithoutWhy("Add a cloud computer")).toEqual([]);
+  });
+
+  it("Trunk › Computers: Set one up, greyed when Settings can't be opened, names a visible line that says why", async () => {
+    const draft = { may: { startOn: "this" } } as unknown as Draft;
+    await act(async () => root.render(<ComputersTab name="Birch" draft={draft} computers={[]} set={() => {}} />));
+    const offer = document.querySelector(".tk-offer") as HTMLElement;
+    expect(offer.textContent).toContain("Add a cloud computer");
+    const setUp = buttons("Set one up")[0];
+    expect(setUp.disabled).toBe(true);
+    expect(describedBy(setUp)).toBe(CLOUD_SETUP_WHY);
+    expect(offer.textContent).toContain(CLOUD_SETUP_WHY);
+
+    const openSettings = vi.fn();
+    await act(async () => root.render(<ComputersTab name="Birch" draft={draft} computers={[]} set={() => {}} openSettings={openSettings} />));
+    const live = buttons("Set one up")[0];
+    expect(live.disabled).toBe(false);
+    expect(live.hasAttribute("aria-describedby")).toBe(false);
+    expect(document.body.textContent).not.toContain(CLOUD_SETUP_WHY);
+    await click(live);
+    expect(openSettings).toHaveBeenCalledWith("computer");
   });
 });

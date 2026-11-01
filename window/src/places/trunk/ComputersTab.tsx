@@ -1,6 +1,7 @@
 // Trunk editor › Its computers (preview 31-trunksp itsCompsPC18): this computer and every paired one from node.list.
 // The engine lets every Trunk use every paired computer, so the ticks are fixed; where a new conversation's commands
 // run is the Trunk's tools.exec host/node.
+import { useId } from "react";
 import { Segmented } from "../../shell/Popover";
 import { Icon } from "../../shell/icons";
 import { LineIcon } from "./TrunkFace";
@@ -9,6 +10,8 @@ import type { Computer } from "./data";
 import type { May } from "./may";
 
 const ALLOW_WHY = "Every Trunk may use every paired computer; the engine keeps no list per Trunk.";
+/** Why Set one up is greyed when this editor can't open Settings, on a visible line under it (Private #1093). */
+export const CLOUD_SETUP_WHY = "Settings can’t be opened from here. Set one up in Settings › Computer & browser › Cloud computers.";
 const OS: Record<string, string> = { darwin: "macOS", macos: "macOS", win32: "Windows", windows: "Windows", linux: "Linux", ios: "iPhone", android: "Android" };
 const iconFor = (platform: string) => (/darwin|mac/i.test(platform) ? "laptop" : /linux/i.test(platform) ? "server" : "monitor");
 
@@ -34,6 +37,8 @@ export function ComputersTab({ name, draft, computers, set, openSettings }: Prop
   const options = [...usable.map((r) => ({ id: r.id, name: r.name })), ...(known ? [] : [{ id: draft.may.startOn, name: draft.may.startOn }])];
   const offline = computers.some((c) => !c.connected && c.id !== draft.may.startOn);
   const setMay = (m: Partial<May>) => set({ may: { ...draft.may, ...m } });
+  // The greyed Set one up names the visible line with aria-describedby, so a screen reader says why too.
+  const whyId = useId();
   return (
     <div className="tk-its">
       <p className="tk-hint">Which computers {name} may use. Each task runs on one; a conversation can pick which.</p>
@@ -45,8 +50,8 @@ export function ComputersTab({ name, draft, computers, set, openSettings }: Prop
       </div>
       <div className="tk-offer" role="note">
         <span className="tk-ico"><LineIcon name="cloud" /></span>
-        <span className="tk-grow"><b>Add a cloud computer</b><small>A fresh computer for each conversation, removed when work stops.</small></span>
-        <button type="button" className="btn sm" disabled={!openSettings} onClick={() => openSettings?.("computer")}>Set one up</button>
+        <span className="tk-grow"><b>Add a cloud computer</b><small>A fresh computer for each conversation, removed when work stops.</small>{openSettings ? null : <small id={whyId}>{CLOUD_SETUP_WHY}</small>}</span>
+        <button type="button" className="btn sm" disabled={!openSettings} aria-describedby={openSettings ? undefined : whyId} onClick={() => openSettings?.("computer")}>Set one up</button>
       </div>
     </div>
   );

@@ -6,7 +6,7 @@
 // computer-code.tsx.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { CheckedAt, useCheckedAt } from "../checked-at";
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Pick, Pill, Sec, Seg, Switch, Tabs, useConfig, type RowEntry } from "../kit";
 import type { WindowEngine } from "../../../connect/engine";
@@ -590,14 +590,20 @@ function CloudRow({ c, env, onChanged }: { c: Ctx; env: RecordValue; onChanged: 
   );
 }
 
+/** Why Add a cloud computer is greyed, on a visible line beside it (Private #1093). */
+export const CLOUD_ADD_WHY = "Greyed until a cloud computer provider is set up for Branch.";
+
 /** Add a cloud computer: starts one from a cloud computer profile the engine has. */
 function CloudOffer({ c, profiles, onMade }: { c: Ctx; profiles: RecordValue[]; onMade: () => void }) {
   const [open, setOpen] = useState(false);
+  // The greyed button names the visible line with aria-describedby, so a screen reader says why too.
+  const whyId = useId();
+  const none = !profiles.length;
   return (
     <div className="s2cm-offer">
       <Tile><Ico name="cloud" s /></Tile>
-      <span className="grow"><b>Cloud computers</b><small>Off until you choose: they cost money while they run.</small></span>
-      <Btn sm disabled={!profiles.length} title={profiles.length ? undefined : "Needs a cloud computer provider set up in this engine."} onClick={() => setOpen(true)}>Add a cloud computer</Btn>
+      <span className="grow"><b>Cloud computers</b><small>Off until you choose: they cost money while they run.</small>{none ? <small id={whyId}>{CLOUD_ADD_WHY}</small> : null}</span>
+      <Btn sm disabled={none} aria-describedby={none ? whyId : undefined} onClick={() => setOpen(true)}>Add a cloud computer</Btn>
       {open ? <NewCloud engine={c.engine} profiles={profiles} onClose={(made) => { setOpen(false); if (made) onMade(); }} /> : null}
     </div>
   );
