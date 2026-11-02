@@ -14,6 +14,7 @@ import type { WindowEngine } from "../../../connect/engine";
 import { COMING_FROM } from "../rows";
 import { useLevel } from "../SettingsFrame";
 import type { PageSlots } from "../slots";
+import { findAnythingKeys } from "../../../shell/keymap";
 
 /** Go to's tiles, in the approved preview's order and words (preview.html Go to, PG goto): each place with its one-line
  *  subtitle. Harvest, Workshop and This computer have no place in this window yet, so their tiles are Coming, and like
@@ -33,7 +34,9 @@ export const GOTO_TILES: { id: string; name: string; sub: string; place?: PlaceI
   { id: "computer", name: "This computer", sub: "Computers, gateway and battery" },
 ];
 /** The preview's line above the tiles. */
-export const GOTO_LEDE = "Every page in Branch, in one place. Each also opens from Ctrl K.";
+/** Go to's line, with Find anything's keys as this computer reads them. */
+export const gotoLede = (mac?: boolean) => `Every page in Branch, in one place. Each also opens from ${findAnythingKeys(mac)}.`;
+export const GOTO_LEDE = gotoLede(false);
 
 /** The badges the preview shows: what needs you in the Inbox (as the Inbox counts it) and how many people there are. */
 function useBadges(engine: WindowEngine): Record<string, number> {
@@ -54,7 +57,7 @@ function GoTo({ engine, go }: { engine: WindowEngine; go: (route: Route) => void
   const tiles = level < COMING_FROM ? GOTO_TILES.filter((tile) => tile.place) : GOTO_TILES;
   return (
     <div className="r1s-col">
-      <p className="r1s-lede g-label" data-lines>{GOTO_LEDE}</p>
+      <p className="r1s-lede g-label" data-lines>{gotoLede()}</p>
       <section className="r1s-sec g-clear" aria-label="Places">
         <ul className="r1s-goto">
           {tiles.map((tile) => {

@@ -133,3 +133,8 @@ export function shownInline(combo: string, mac: boolean): string {
 export function onMac(): boolean {
   return typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 }
+
+/** Find anything's keys in a hint: "⌘K" on a Mac, where only ⌘K opens it, and "Ctrl K" on Windows and Linux. */
+export function findAnythingKeys(mac: boolean = onMac()): string {
+  return shownInline("Ctrl K", mac);
+}

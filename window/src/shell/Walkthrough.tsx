@@ -4,6 +4,7 @@
 // the count stays the same (owner Q93). Toasts and banners are held while it runs and show when it ends (rule 2). No
 // mascot on the card (rule 5). R1 re-hosts it with its own cards and clear glass (screens/onboarding/R1Tour.tsx).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { findAnythingKeys, onMac, shownInline } from "./keymap";
 import { coachCardPlace, overlaps, type Box } from "./walkthrough-place";
 import "./walkthrough.css";
 
@@ -42,7 +43,7 @@ export function tourCards(defaultName: string): Card[] {
     { title: "What each account has left", target: "[data-testid=sb-usage]", prep: () => sidePanel(false), text: "The ring shows the account used next. Click it for every plan’s 5-hour, daily and weekly limits." },
     { title: "The gateway", target: "[data-testid=sb-gateway]", text: "Keeps your Trunks running when Branch is closed, and starts Branch again if it ever stops." },
     { title: "Seven places", target: "nav.places", side: true, text: "Overview at a glance, Canopy to watch and steer all the work at once, Inbox for what needs you, Automations for work on its own, Library for what it remembers and made, People for who uses Branch, Customize for Trunks, skills and chat apps." },
-    { title: "Search everything", target: "[data-testid=search]", side: true, text: "Chats, Trunk names, words inside messages and past sessions, as you type. Ctrl F finds words in a conversation; Ctrl K opens every command." },
+    { title: "Search everything", target: "[data-testid=search]", side: true, text: `Chats, Trunk names, words inside messages and past sessions, as you type. ${shownInline("Ctrl F", onMac())} finds words in a conversation; ${findAnythingKeys()} opens every command.` },
     { title: "Settings, your way", target: "[data-testid=gear]", side: true, text: "Regular, Advanced or Technical: just the essentials, or every file, port and raw key." },
     { title: "Models on this computer", target: ".lm-grid-k", prep: settings("local"), text: "Branch looks at your memory and graphics card and only offers what fits. One click installs it; it runs free and private." },
     { title: "Every chat app", target: ".r1-ca-surface", prep: settings("chatapps"), text: "Each has its own setup: paste the code it gives you, let Branch check it, then allow the connection." },
@@ -75,6 +76,52 @@ function sidebarBox(): Box | null {
     return { left, top, width: right - left, height: bottom - top };
   }
   return null;
+}
+
+/** The roaming pet. It walks a step every 360 ms, so the card checks it again each time it moves. */
+const PETS = ".r1-pet-rim .petbox, .keeper .petbox";
+/** The mascots a card keeps off: the Trunk's face on an empty conversation, its character and the pet. */
+const MASCOTS = "[data-testid=empty-chat] > :first-child, .character-panel, " + PETS;
+/** How far the pet walks in one step at most, kept on each side of it so the card stays off its next step too. */
+const PET_STEP = 12;
+/** Points checked across a mascot (a 5 x 5 grid); it counts when at least half of them show. */
+const GRID = 5;
+
+/** True when this point of the mascot shows: inside every box that clips it, and nothing but the walkthrough lies on top. */
+function showsAt(el: HTMLElement, clips: Box[], x: number, y: number): boolean {
+  if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return false;
+  if (clips.some((c) => x < c.left || x > c.left + c.width || y < c.top || y > c.top + c.height)) return false;
+  if (typeof document.elementsFromPoint !== "function") return true;
+  const top = document.elementsFromPoint(x, y).find((hit) => !hit.closest(".tour-layer"));
+  // the mascot, a part of it, or (when the mascot lets clicks through) what it sits on
+  return !top || el.contains(top) || top.contains(el);
+}
+
+/** Each mascot's whole box, kept to the part inside the window. A mascot that mostly doesn't show (scrolled under the
+ * header, covered by a bar) is left out, so the card isn't squeezed to keep off something nobody can see. */
+function mascotBoxes(selector = MASCOTS): Box[] {
+  const boxes: Box[] = [];
+  for (const el of document.querySelectorAll<HTMLElement>(selector)) {
+    const r = el.getBoundingClientRect();
+    const pad = el.matches(PETS) ? PET_STEP : 0;
+    const left = Math.max(0, r.left - pad), top = Math.max(0, r.top), right = Math.min(innerWidth, r.right + pad), bottom = Math.min(innerHeight, r.bottom);
+    if (right - left < 2 || bottom - top < 2) continue;
+    const clips: Box[] = [];
+    for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
+      const style = getComputedStyle(up);
+      if (![style.overflow, style.overflowX, style.overflowY].some((value) => value && value !== "visible")) continue;
+      const c = up.getBoundingClientRect();
+      if (c.width > 0 && c.height > 0) clips.push({ left: c.left, top: c.top, width: c.width, height: c.height });
+    }
+    let shown = 0;
+    for (let row = 0; row < GRID; row++) {
+      for (let col = 0; col < GRID; col++) {
+        if (showsAt(el, clips, r.left + (r.width * (col + 0.5)) / GRID, r.top + (r.height * (row + 0.5)) / GRID)) shown++;
+      }
+    }
+    if (shown * 2 >= GRID * GRID) boxes.push({ left, top, width: right - left, height: bottom - top });
+  }
+  return boxes;
 }
 
 /** The target's spotlight box (6 px around it, kept inside the window), if it is on screen. */
@@ -114,20 +161,26 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
   const [i, setI] = useState(0);
   const [ended, setEnded] = useState(false);
   const [box, setBox] = useState<Box | null>(null);
-  const [pos, setPos] = useState<{ top: number; left: number; maxWidth?: number }>({ top: 0, left: 0 });
+  const [pos, setPos] = useState<{ top: number; left: number; maxWidth?: number; maxHeight?: number }>({ top: 0, left: 0 });
   const card = useRef<HTMLDivElement>(null);
+  /** The card's box as last placed, so a moving pet can be checked against it. */
+  const drawn = useRef<Box | null>(null);
   const last = i === cards.length - 1;
   const place = useCallback(() => {
     const target = boxOf(cards[i].target);
     const side = sidebarBox();
     // A hole in the sidebar would dim and cover the rest of it, unless the card opts in. The card still sits beside the control.
     setBox(target && side && overlaps(target, side) && !cards[i].sidebarSpot ? null : target);
-    setPos(coachCardPlace(
-      target,
-      { width: card.current?.offsetWidth || 340, height: card.current?.offsetHeight || 200 },
-      { width: innerWidth, height: innerHeight },
-      side,
-    ));
+    // The card's full height, not the squeezed one from a smaller window.
+    const el = card.current;
+    const held = el?.style.maxHeight ?? "";
+    if (el) el.style.maxHeight = "";
+    const size = { width: el?.offsetWidth || 340, height: el?.offsetHeight || 200 };
+    if (el) el.style.maxHeight = held;
+    const next = coachCardPlace(target, size, { width: innerWidth, height: innerHeight }, side, mascotBoxes());
+    drawn.current = { top: next.top, left: next.left, width: Math.min(size.width, next.maxWidth), height: Math.min(size.height, next.maxHeight ?? size.height) };
+    // the same spot again (the pet still walking under a card that has nowhere else to go) changes nothing
+    setPos((was) => (was.top === next.top && was.left === next.left && was.maxWidth === next.maxWidth && was.maxHeight === next.maxHeight ? was : next));
   }, [cards, i]);
   useLayoutEffect(() => {
     try {
@@ -153,6 +206,16 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
       document.documentElement.classList.remove("touring");
       removeEventListener("resize", place);
     };
+  }, [place]);
+  useEffect(() => {
+    // The pet keeps walking while the walkthrough runs: when a step takes it into the card, the card moves off it.
+    const observer = new MutationObserver((records) => {
+      if (!records.some((record) => record.target instanceof Element && record.target.matches(PETS))) return;
+      const at = drawn.current;
+      if (at && mascotBoxes(PETS).some((pet) => overlaps(pet, at))) place();
+    });
+    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["style", "class"] });
+    return () => observer.disconnect();
   }, [place]);
   useEffect(() => (card.current?.querySelector<HTMLButtonElement>("[data-next]") ?? card.current?.querySelector<HTMLButtonElement>("button"))?.focus({ preventScroll: true }), [i]);
   useEffect(() => () => {
@@ -180,7 +243,7 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
       }}
     >
       <div className={box ? "tour-spot" : "tour-spot none"} style={box ?? undefined} />
-      <div ref={card} className={clear ? "tour-card g-clear" : "tour-card"} role="dialog" aria-live="polite" aria-label="Walkthrough" style={pos}>
+      <div ref={card} className={["tour-card", clear ? "g-clear" : "", pos.maxHeight ? "tight" : ""].filter(Boolean).join(" ")} role="dialog" aria-live="polite" aria-label="Walkthrough" style={pos}>
         <span className={pill("n")}>
           {i + 1} of {cards.length}
         </span>

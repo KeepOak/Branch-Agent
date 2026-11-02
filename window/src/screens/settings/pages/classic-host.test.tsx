@@ -59,7 +59,9 @@ for (const [page, classic] of Object.entries(REHOSTED)) {
     const hosted = host.querySelector<HTMLElement>(`.r1s-custom[data-slot="${page}"] .r1s-classic[data-classic="${list.join(" ")}"]`);
     expect(hosted, page).not.toBeNull();
     expect(before.sections.length + before.rows.length, list.join(" ")).toBeGreaterThan(0);
-    expect(drawn(hosted!)).toEqual(before);
+    // A row another R1 page draws (hostedOff) is left out of the re-hosted page, so it shows once.
+    const leftOut = new Set(SETTINGS_ROWS.filter((r) => list.includes(r.page) && r.hostedOff).map((r) => r.title));
+    expect(drawn(hosted!)).toEqual({ ...before, rows: before.rows.filter((title) => !leftOut.has(title ?? "")) });
   });
 }
 
@@ -146,7 +148,7 @@ it("adds each re-hosted page's Classic rows to the R1 table, so R1 search finds 
   const merged = mergeRows(ROWS, R1_PAGES);
   expect(new Set(merged.map((r) => r.id)).size).toBe(merged.length);
   for (const [page, classic] of Object.entries(REHOSTED)) {
-    const titles = new Set(SETTINGS_ROWS.filter((r) => classicList(classic).includes(r.page)).map((r) => r.title));
+    const titles = new Set(SETTINGS_ROWS.filter((r) => classicList(classic).includes(r.page) && !r.hostedOff).map((r) => r.title));
     expect(titles.size, classicList(classic).join(" ")).toBeGreaterThan(0);
     const extra = page === "privacy" ? TOWN_ROWS.map((row) => row.label) : [];
     expect(new Set(merged.filter((r) => r.page === page).map((r) => r.label))).toEqual(new Set([...titles, ...extra]));

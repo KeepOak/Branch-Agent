@@ -67,7 +67,7 @@ export function ClassicHost({ engine, page, classic, coming, onPage }: { engine:
         <p className={`set-save r1s-classic-save g-label${save?.kind === "failed" ? " bad" : ""}`} role="status" aria-live="polite">
           {save ? <span className="r1s-classic-save-pill">{save.kind === "saved" ? <><Icon name="check" small />Saved</> : save.kind === "saving" ? "Saving…" : `Not saved: ${visible(save.message)}`}</span> : null}
         </p>
-        <KitProvider level={level} report={report} scope={null} pins={pins}>
+        <KitProvider level={level} report={report} scope={null} pins={pins} hosted>
           {list.map((id, i) => {
             const title = i === 0 ? PAGES[page].title : pageName(id);
             // Classic leaves these pages out without operator.admin; R1 keeps the page in the nav, so it says why it is empty.
@@ -103,7 +103,7 @@ const slug = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]
 export function classicRows(page: PageId, classic: string | readonly string[]): Row[] {
   const seen = new Set<string>();
   const list = classicList(classic);
-  return SETTINGS_ROWS.filter((r) => list.includes(r.page)).flatMap((r) => {
+  return SETTINGS_ROWS.filter((r) => list.includes(r.page) && !r.hostedOff).flatMap((r) => {
     const id = `${page}.classic.${slug(r.sec ?? r.group)}.${slug(r.title)}`;
     if (seen.has(id)) return [];
     seen.add(id);

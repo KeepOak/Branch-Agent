@@ -69,8 +69,8 @@ const CFG = (config: Record<string, unknown> = {}): Answers => ({ "config.get": 
 describe("Settings › Data & usage", () => {
   it("locates the usage ring in the bottom bar and explains the optional desktop tray", async () => {
     await show(engineWith(BASE).engine);
-    const tray = row("Also show usage in the system tray");
-    expect(tray?.textContent).toContain("The usage ring is in the bottom bar. In the desktop app, you can also show it in the system tray.");
+    const tray = row("Show usage in the tray");
+    expect(tray?.textContent).toContain("The ring from the bottom bar, also in the tray.");
     expect(tray?.getAttribute("aria-disabled")).toBe("true");
     expect(host.textContent).not.toContain("by the clock");
   });
@@ -80,7 +80,7 @@ describe("Settings › Data & usage", () => {
     const set = vi.fn(async (_name: string, on: boolean) => (state = { ...state, trayUsage: on }));
     Object.assign(window, { branchDesktop: { controls: { get: async () => state, set } } });
     await show(engineWith(BASE).engine);
-    const toggle = row("Also show usage in the system tray")?.querySelector("input");
+    const toggle = row("Show usage in the tray")?.querySelector("input");
     expect(toggle?.disabled).toBe(false);
     await act(async () => toggle!.click());
     await flush();

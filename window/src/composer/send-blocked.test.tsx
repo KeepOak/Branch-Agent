@@ -43,7 +43,8 @@ describe("classic composer when no model can answer", () => {
       await act(async () => box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
       expect(box.value).toBe("Keep this message");
       expect(onSend).not.toHaveBeenCalled();
-      expect(host.querySelector('[data-testid="no-model"]')?.textContent).toContain(CONNECT_MODEL_ANSWERS);
+      // The held send names it once, in the Connect a model notice; the plain no-model line steps aside.
+      expect(host.querySelector('[data-testid="hold-connect-model"]')?.textContent).toContain(CONNECT_MODEL_ANSWERS);
     } finally {
       await act(async () => root.unmount());
     }

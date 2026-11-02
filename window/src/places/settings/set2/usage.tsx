@@ -5,7 +5,7 @@ import { CheckedAt, useCheckedAt } from "../checked-at";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import type { WindowEngine } from "../../../connect/engine";
-import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Page, Pick, Pill, Plist, Prow, Sec, Seg, Switch, useConfig, useLevel, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Page, Pick, Pill, Plist, Prow, Sec, Seg, Switch, useConfig, useHosted, useLevel, type RowEntry } from "../kit";
 import { showsInternals } from "../internals";
 import { errorText, list } from "../adapter";
 import { STALL_TEXT, stallAfter } from "../stall";
@@ -21,6 +21,7 @@ import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
 import { lookStore } from "../set1/appearance-store";
 import "./usage.css";
 import { DesktopCtl } from "../desktop-ctl";
+import { trayUsageHelp, trayUsageLabel } from "../../../screens/settings/tray-words";
 import { formatMoney } from "../../../format/money";
 import { forgetDeletedConversationWindow } from "../../../shell/own-window";
 import { trunkDisplayName } from "../../../connect/trunk-name";
@@ -845,14 +846,16 @@ function retentionDays(v: unknown): number | null {
 /** A config value as a number for Num: undefined (engine default) when unset or unreadable. */
 const asNum = (v: string): number | undefined => (v.trim() === "" || !Number.isFinite(Number(v)) ? undefined : Number(v));
 
-/** The connection rows under the allowances: what the engine doesn't do yet is greyed with why. */
+/** The connection rows under the allowances: what the engine doesn't do yet is greyed with why. The tray switch is one
+ *  line in R1: its Accounts page draws it, so this page leaves it out when R1's Privacy page re-hosts it. */
 function AllowanceRows({ engine }: { engine: WindowEngine }) {
   const ckptOn = useCkptOn(engine);
+  const hosted = useHosted();
   return (
     <>
       <Ctl title="Offer to save progress at 95%" sub={<>It asks once per account window, never for an estimate. <button type="button" className="link-k" onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
       <Ctl title="Asking a service what is left" coming off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
-      <DesktopCtl title="Also show usage in the system tray" sub="The usage ring is in the bottom bar. In the desktop app, you can also show it in the system tray." name="trayUsage" />
+      {hosted ? null : <DesktopCtl title={trayUsageLabel()} sub={trayUsageHelp()} name="trayUsage" />}
     </>
   );
 }
@@ -1353,7 +1356,7 @@ const COMING_ROWS = new Set([
 
 export const ROWS: RowEntry[] = ([
   ["Offer to save progress at 95%", "Account allowances", 0],
-  ["Asking a service what is left", "Account allowances", 0], ["Also show usage in the system tray", "Account allowances", 0],
+  ["Asking a service what is left", "Account allowances", 0], [trayUsageLabel(), "Account allowances", 0],
   ["Keep conversations", "Keeping things", 0], ["Checkpoints", "Keeping things", 0], ["Conversations", "Keeping things", 1],
   ["Test set", "Test the model you use", 0],
   ...SUITES.map(([t]): [string, string, number] => [t, "Evals", 0]),
@@ -1373,4 +1376,5 @@ export const ROWS: RowEntry[] = ([
   ["What’s kept on this computer", "Your data", 0], ["What leaves this computer", "Your data", 0], ["Export everything", "Your data", 0],
   ["Move to another computer", "Your data", 0], ["Backups go to", "Your data", 0], ["Back up to GitHub", "Your data", 0], ["Restore from a backup", "Your data", 0],
   ["Pictures and video this month", "Your data", 0], ["Delete everything", "Your data", 0],
-] as [string, string, number][]).map(([title, sec, lv]) => ({ page: "usage", title, ...(sec ? { sec } : {}), group: ({ "Money and keeping, more": "Keeping things", "Keeping things, more": "Keeping things", "Conversations, every setting": "Keeping things" } as Record<string, string>)[sec] ?? (sec || "Data & usage"), lv: (COMING_CARDS.has(sec) || COMING_ROWS.has(title) ? 2 : lv) as 0 | 1 | 2 }));
+] as [string, string, number][]).map(([title, sec, lv]) => ({ page: "usage", title, ...(sec ? { sec } : {}), group: ({ "Money and keeping, more": "Keeping things", "Keeping things, more": "Keeping things", "Conversations, every setting": "Keeping things" } as Record<string, string>)[sec] ?? (sec || "Data & usage"), lv: (COMING_CARDS.has(sec) || COMING_ROWS.has(title) ? 2 : lv) as 0 | 1 | 2,
+  ...(title === trayUsageLabel() ? { hostedOff: true as const } : {}) }));

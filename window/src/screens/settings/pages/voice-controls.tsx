@@ -21,6 +21,7 @@ import { copyAndSay } from "../../../shell/clipboard";
 import { VOICE_CODE } from "./voice";
 import { useLevel } from "../SettingsFrame";
 import { COMING_FROM } from "../rows";
+import { availability } from "../../../connect/capabilities";
 
 const Line = ({ children, bad, id }: { children: ReactNode; bad?: boolean; id?: string }) => <small id={id} className={"r1s-msg g-label" + (bad ? " r1s-bad" : "")} role={bad ? "status" : undefined} data-lines>{children}</small>;
 /** Why a greyed control is greyed (Private #1093): one visible line the control names with aria-describedby. */
@@ -308,14 +309,19 @@ export function LiveServices({ engine, row }: SlotControlProps) {
   </>;
 }
 
-/** Test call: rings your own number (voicecall.initiate); needs Phone calls on. */
+/** The test call's call comes from the Phone calls plugin. With Phone calls on, this engine can still lack it for reasons a
+ *  restart may not fix (the plugin left out of the allowed plugins, an older engine), so the line says what is known and promises no cure. */
+const CALLS_OFF = "Turn on Phone calls first.";
+const CALLS_UNOFFERED = "Phone calls is on, but this engine doesn't offer calls yet.";
+/** Test call: rings your own number (voicecall.initiate); needs Phone calls on. Greyed, it says whether Phone calls is off or on without the call. */
 export function TestCall({ engine, row }: SlotControlProps) {
   const cfg = useConfig(engine);
   const [failed, run] = useFailure();
   const on = cfg.get("plugins.entries.voice-call.enabled") === true;
-  const w = useWhy(on ? "" : cfg.loading ? LOADING : "Turn on Phone calls first.");
+  const offered = availability(engine, "voicecall.initiate") !== "no";
+  const w = useWhy(on ? (offered ? "" : CALLS_UNOFFERED) : cfg.loading ? LOADING : CALLS_OFF);
   return <>
-    <Needs engine={engine} need={["voicecall.initiate"]} where={row.label ?? ""}><Btn disabled={!on} aria-describedby={w.describedBy} onClick={() => void run(async () => { await engine.request("voicecall.initiate", { message: "This is a test call from Branch.", mode: "notify" }); })}>Call me</Btn></Needs>
+    <Needs engine={engine} need={["voicecall.initiate"]} where={row.label ?? ""} reason={w.why || CALLS_OFF}><Btn disabled={!on} aria-describedby={w.describedBy} onClick={() => void run(async () => { await engine.request("voicecall.initiate", { message: "This is a test call from Branch.", mode: "notify" }); })}>Call me</Btn></Needs>
     {w.line()}
     <Failed text={failed} />
   </>;
