@@ -3,6 +3,7 @@
 // rows from it and the settings search lists them from it, so the two can't drift.
 // TODO(engine-lane): TODO(desktop-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Keep, Lv, Opt, RowEntry } from "../kit";
+import { trayCard, trayMenuLabel } from "../../../screens/settings/tray-words";
 
 type Kind = "sw" | "seg" | "pick";
 export type RowSpec = { sec: string; group?: string; title: string; key: string; kind: Kind; def: string | boolean; sub?: string; help?: string; opts?: Opt[]; lv?: Lv; keep?: Keep; off?: string };
@@ -56,7 +57,7 @@ const OTHER: [string, string, Lv][] = [
   ["Light or dark", "Match this computer", 0], ["Theme", "Theme", 0], ["Theme", "Accent colour", 0], ["Agents", "Show the agent beside the conversation", 0],
   ["Background", "Painted scenes", 0], ["Background", "How much the theme covers it", 0], ["Background", "See-through panels", 0], ["Background", "Preview", 0],
   ["Reading", "Interface font", 1], ["Reading", "Conversation font", 1], ["The pet", "Pet", 0], ["The pet", "Name", 0], ["The pet", "Pets you’ve had", 0],
-  ["Language", "Language", 0], ["Tray", "Tray menu", 0], ["Window", "Customize layout", 0],
+  ["Language", "Language", 0], [trayCard(), trayMenuLabel(), 0], ["Window", "Customize layout", 0],
   ["Pictures around Branch", "Pictures around Branch", 1],
   ["Window, technical", "Window frame", 2], ["The list", "Ask before deleting a conversation", 1],
 ];

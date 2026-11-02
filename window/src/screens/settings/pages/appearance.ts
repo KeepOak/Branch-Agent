@@ -12,6 +12,7 @@ import { rowOf, type RowSpec } from "../../../places/settings/set1/appearance-ro
 import { FONTS, SCENES } from "../../../places/settings/set1/appearance-sections";
 import { LANGUAGES } from "../../../i18n/language";
 import type { Level } from "../nav";
+import { trayCard, trayMenuHelp, trayMenuLabel, trayMenuReason } from "../tray-words";
 import type { Codec, Control, Row, RowOption } from "../rows";
 
 /** Shows the stored choice or the default; saving the default removes the choice (Classic's SpecRow). */
@@ -118,8 +119,8 @@ export const APPEARANCE_ROWS: Row[] = [
   coming("appearance.window.kiosk", "Window", rowOf("kiosk").title, DESKTOP_NEED, rowOf("kiosk").off ?? "", { help: rowOf("kiosk").sub, level: 1, control: "toggle" }),
   coming("appearance.window.frame", "Window", "Window frame", DESKTOP_NEED, "Branch’s own title bar or the system one needs the Branch desktop app.", { level: 2 }),
 
-  // Tray
-  coming("appearance.tray.menu", "Tray", "Tray menu", DESKTOP_NEED, "What Branch puts in the tray needs the Branch desktop app.", { help: "What Branch puts in the tray: its icon and menu." }),
+  // Tray (Menu bar on a Mac)
+  coming("appearance.tray.menu", trayCard(), trayMenuLabel(), DESKTOP_NEED, trayMenuReason(), { help: trayMenuHelp() }),
 
   // Language
   // Private #1100: the window's words that have a translation follow it; the rest stay in English for now.

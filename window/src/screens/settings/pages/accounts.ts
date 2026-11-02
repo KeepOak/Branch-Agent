@@ -9,6 +9,7 @@
 // words (R1-10).
 import { COMING_REASON } from "../../../glass/coming-registry";
 import type { Level } from "../nav";
+import { trayUsageHelp, trayUsageLabel } from "../tray-words";
 import type { Control, Row, RowOption } from "../rows";
 
 type Extra = { help?: string; level?: Level; control?: Control; options?: RowOption[]; bare?: true; fallback?: unknown };
@@ -49,7 +50,7 @@ const ROWS_AS_DRAWN: Row[] = [
   slot("accounts.usage.save-progress", USAGE, "Offer to save progress at 95%", ["users.prefs.set"], { help: "It only asks, once per connection per window, and never for an estimate." }),
   coming("accounts.usage.ask", USAGE, "Asking a service what is left", "engine: a switch for asking each service what is left (always on today)", "Asking a service what is left comes in a later update.",
     { help: "Only OpenRouter documents a way to ask. Subscriptions are never asked.", control: "toggle", fallback: true }),
-  { id: "accounts.usage.tray", page: "accounts", card: USAGE, label: "Show usage in the tray", help: "A small ring by the clock opens the same list.", level: 0, control: "toggle",
+  { id: "accounts.usage.tray", page: "accounts", card: USAGE, label: trayUsageLabel(), help: trayUsageHelp(), level: 0, control: "toggle",
     source: { kind: "desktop", name: "trayUsage" }, fallback: false },
 
   // Linked accounts: GitHub (live, Classic's connection), then the three the preview lists, Coming.

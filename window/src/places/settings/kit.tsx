@@ -18,7 +18,8 @@ export type Lv = 0 | 1 | 2;
 export type SaveReport = { saving: () => void; saved: () => void; failed: (message: string) => void };
 /** ask: starts a conversation with the default Trunk ("Learn more"); absent while no model is set up. */
 /** pins: each row's pin and General's Pinned list (absent outside the Settings frame). */
-type Kit = { level: Lv; report: SaveReport; scope: string | null; ask?: (text: string) => void; askName?: string; pins?: Pins };
+/** hosted: the page is drawn inside an R1 Settings page (classic-host.tsx), which draws some of its rows elsewhere. */
+type Kit = { level: Lv; report: SaveReport; scope: string | null; ask?: (text: string) => void; askName?: string; pins?: Pins; hosted?: boolean };
 const NOOP: SaveReport = { saving: () => undefined, saved: () => undefined, failed: () => undefined };
 const KitContext = createContext<Kit>({ level: 0, report: NOOP, scope: null });
 
@@ -34,6 +35,8 @@ export const useAsk = (): ((text: string) => void) | undefined => useContext(Kit
 export const useScope = (): string | null => useContext(KitContext).scope;
 /** The pinned rows, for General's Pinned list. */
 export const usePinsKit = (): Pins | undefined => useContext(KitContext).pins;
+/** True when an R1 Settings page re-hosts this Classic page. */
+export const useHosted = (): boolean => useContext(KitContext).hosted === true;
 
 /** The not-allowed state (§4.7.0): a person who may not change how Branch is set up sees these rows greyed. */
 export const NOSETUP = "Only someone who may change how Branch is set up can change this.";
@@ -393,4 +396,5 @@ export function LinkBtn({ children, title, ...rest }: ButtonHTMLAttributes<HTMLB
 }
 
 /** The row search index: each page module lists its rows (title, section, level) so the frame can find and jump. */
-export type RowEntry = { page: string; title: string; sec?: string; group: string; lv: Lv; words?: string };
+/** hostedOff: the row is left out when an R1 page re-hosts its Classic page, because another R1 page draws it. */
+export type RowEntry = { page: string; title: string; sec?: string; group: string; lv: Lv; words?: string; hostedOff?: true };

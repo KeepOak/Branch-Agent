@@ -1,6 +1,7 @@
 // Settings nav and page structure, ported from the approved R1 preview (item 36: NAV and PG). Page ids are the new
 // ids; OLD_IDS sends the preview's and Classic's old ids to their new page so old deep links still land.
 import type { IconName } from "../../shell/icons";
+import { trayCard } from "./tray-words";
 
 /** How much to show: 0 Regular, 1 Advanced, 2 Technical. */
 export type Level = 0 | 1 | 2;
@@ -98,7 +99,7 @@ export const PAGES: Record<PageId, PageSpec> = {
   card: { title: "Your card", lede: "How people see you in Branch: your photo, name, role, computers and teams.", cards: ["Your card"] },
   goto: { title: "Go to", lede: "Every place in Branch, one tap away.", cards: [""] },
   general: { title: "General", lede: "How Branch starts, how you write to it, and how conversations behave.", cards: ["Pinned", "Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "History repair", "Waiting line", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"] },
-  appearance: { title: "Appearance", lede: "How Branch looks: theme, glass, background, the pet and the list.", cards: ["Theme", "Background", "Reading", "The pet", "Characters", "What’s shown", "The list", "Window", "Tray", "Language", "Celebrations", "Make it yours"] },
+  appearance: { title: "Appearance", lede: "How Branch looks: theme, glass, background, the pet and the list.", cards: ["Theme", "Background", "Reading", "The pet", "Characters", "What’s shown", "The list", "Window", trayCard(), "Language", "Celebrations", "Make it yours"] },
   notifications: { title: "Notifications", lede: "When Branch tells you something, and how.", cards: ["Tell me when…", "Quiet", "When work stalls", "Live activity", "Kinds of notice", "Sorting", "This PC", "Send events to a web address", "Web Push"] },
   who: { title: "Who uses Branch", lede: "The people who use Branch on this computer, and how they sign in.", cards: ["People", "Records", "Signing in to Branch"] },
   trunks: { title: "Trunks", lede: "Your Trunks, groups and grafted agents: make one the default, change it, package it or remove it.", cards: ["", "Defaults for every Trunk", "Trunks’ own databases"] },
