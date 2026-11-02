@@ -90,6 +90,8 @@ function useHelpEntry(key: string, label: string, help?: string): void {
 }
 
 const HeadlessContext = createContext(false);
+/** Set inside SharedWhy: the id of the one note that says why the rows below are greyed. */
+const SharedWhyContext = createContext<string | undefined>(undefined);
 /** Inside an R1 card, a whole Classic page draws only its body. */
 export const useHeadless = (): boolean => useContext(HeadlessContext);
 
@@ -180,6 +182,19 @@ export function Sec({ title, group, showHeading = true, hint, help, right, child
   );
 }
 
+/** One reason shared by several greyed rows in a row: said once above them instead of under every row. Each row stays
+ *  greyed, and its controls still point at the note with aria-describedby, so a screen reader says why too. */
+export function SharedWhy({ why, children }: { why: string; children: ReactNode }) {
+  const level = useLevel();
+  const id = useId();
+  return (
+    <>
+      <p className="hint why-k" id={id} data-shared-why>{plainCopy(why, level)}</p>
+      <SharedWhyContext.Provider value={id}>{children}</SharedWhyContext.Provider>
+    </>
+  );
+}
+
 /** Where an Advanced row's choice lives. */
 export type Keep = "device" | "everywhere";
 const KEEP_LINE: Record<Keep, string> = { device: "This device only.", everywhere: "Follows you on every device." };
@@ -220,14 +235,18 @@ function CtlRow({ title, sub, help, children, off, keep, icon, stack, id, after,
   // A row greyed by a real condition ("Turn on … first", "needs a backup folder") says what to do in one visible line
   // (Private #1093 item 7). A developer note stays out of sight: that row is Coming, and Coming shows only at Technical.
   const shown = shownWhy(why);
-  const whyId = useId();
+  // Under SharedWhy the reason is already said once above, so the row doesn't repeat it.
+  const sharedId = useContext(SharedWhyContext);
+  const own = sharedId ? undefined : shown;
+  const ownId = useId();
+  const whyId = sharedId ?? ownId;
   const right = useRef<HTMLSpanElement>(null);
   // The greyed controls inside name that line with aria-describedby, so a screen reader says why too.
   useEffect(() => {
     const controls = right.current ? [...right.current.querySelectorAll<HTMLElement>("button, input, select, textarea, [role=switch]")] : [];
     for (const el of controls) { if (shown) el.setAttribute("aria-describedby", whyId); else if (el.getAttribute("aria-describedby") === whyId) el.removeAttribute("aria-describedby"); }
   });
-  const raw = sub ?? shown;
+  const raw = sub ?? own;
   const line = typeof raw === "string" ? plainCopy(raw, level) : raw;
   useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", help ? plainCopy(help, level) : help);
   const kept = keep && level >= 1 ? KEEP_LINE[keep] : null;
@@ -235,8 +254,8 @@ function CtlRow({ title, sub, help, children, off, keep, icon, stack, id, after,
     <div className={`ctl${why ? " off-k" : ""}${stack ? " stack-k" : ""}`} data-row={name} aria-disabled={why ? true : undefined}>
       <b>{icon}{title}{typeof title === "string" && !noPin ? <PinBtn title={title} /> : null}</b>
       {children ? <span className="right" ref={right} inert={why ? true : undefined}>{children}</span> : null}
-      {line || kept ? <small id={shown && !sub ? whyId : undefined}>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
-      {shown && sub ? <small className="why-k" id={whyId}>{shown}</small> : null}
+      {line || kept ? <small id={own && !sub ? whyId : undefined}>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
+      {own && sub ? <small className="why-k" id={whyId}>{own}</small> : null}
       {after}
     </div>
   );
