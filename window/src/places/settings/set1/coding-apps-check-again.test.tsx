@@ -38,6 +38,8 @@ function engineWith(error: string) {
     }
     if (method === "config.get") return { hash: "test", valid: true, config: {} };
     if (method === "usage.status") return { providers: [] };
+    // Claude Code's and Gemini CLI's models are listed for chats, so their rows read Models ready once found.
+    if (method === "models.list") return { models: [{ id: "opus", provider: "claude-cli" }, { id: "pro", provider: "google-gemini-cli" }] };
     return {};
   });
   const engine: WindowEngine = { request: request as WindowEngine["request"], onEvent: () => () => {}, sessionKey: "agent:main:main", agentId: "main", scopes: ["operator.admin"] };
@@ -101,7 +103,8 @@ describe("Coding-app rows that could not check", () => {
     request.mockClear();
     recover();
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Check again")!.click());
-    expect(request.mock.calls.map(([method]) => method)).toEqual(["branch.setup.detect"]);
+    // The section's Check again reads the model list again too, as Accounts does.
+    expect(request.mock.calls.map(([method]) => method)).toEqual(["branch.setup.detect", "models.list"]);
     expect(signIn).not.toHaveBeenCalled();
     for (const { name } of APPS) expect(row(name).textContent).toContain("Models ready");
   });

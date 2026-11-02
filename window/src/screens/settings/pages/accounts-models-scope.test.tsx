@@ -25,7 +25,7 @@ const METHODS = ["config.get", "config.patch", "config.schema", "config.schema.l
   "models.authLogout", "models.authLogin", "models.authSetApiKey", "models.list", "branch.setup.detect", "usage.status", "users.listModelAccounts", "users.selectModelAccount",
   "users.unlinkAuthProfile", "agents.list", "gateway.identity.get"];
 const OPUS = { id: "claude-opus-5-5", provider: "claude-cli", name: "Claude Opus 5.5", local: false, input: ["text"] };
-const CODING_APP = "Claude Code is a coding app on this computer, not a model for chats.";
+const CODING_APP = "Claude Code is connected on this computer, but it isn’t set up as a model for chats yet.";
 
 /** Two Trunks, Claude Code signed in on this computer, no account in models.authStatus. models.list answers only when
  *  it names a Trunk, as the engine does with several Trunks. */

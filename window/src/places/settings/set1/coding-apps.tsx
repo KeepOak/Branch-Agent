@@ -4,7 +4,7 @@
 import { useEffect, useId, useMemo, useRef } from "react";
 import { CheckedAt, useCheckedAt } from "../checked-at";
 import type { WindowEngine } from "../../../connect/engine";
-import { list, text, visible, type RecordValue } from "../adapter";
+import { list, text, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Ctl, Sec, Switch, useConfig, useLevel, useScope } from "../kit";
 import { Coming } from "../../../glass/coming";
@@ -12,6 +12,8 @@ import { CODEX_DOWNLOAD_METHOD, codexDownloadOffered, useCodexDownload } from ".
 import { brandOf, Logo } from "./service";
 import { plainError } from "../../../shell/plain-error";
 import { plainCopy } from "../internals";
+import { modelsOf } from "./models-data";
+import { APPS, appStatusLine, appStatusOf, appSub, foundState, STATUS_PILL, type App } from "./coding-app-status";
 
 const SIGN_IN_ERROR = /token expired|\b401\b|\b403\b|unauthori[sz]ed|forbidden/i;
 
@@ -35,29 +37,8 @@ function useRawDetectError(engine: WindowEngine) {
   return [wrapped, raw] as const;
 }
 
-export type App = { kind: string; brand: string; name: string; plugin?: string };
-export const APPS: App[] = [
-  { kind: "claude-cli", brand: "anthropic", name: "Claude Code" },
-  { kind: "codex-cli", brand: "openai", name: "Codex", plugin: "codex" },
-  { kind: "gemini-cli", brand: "google", name: "Gemini CLI" },
-];
-export type Found = { state: "ready" | "signin" | "missing"; reason?: string };
-
-export function foundState(app: App, detect: RecordValue | undefined): Found {
-  const hit = list(detect?.candidates).find((c) => c.kind === app.kind);
-  if (hit) return { state: hit.credentials === false ? "signin" : "ready" };
-  const gone = list(detect?.unavailableCandidates).find((c) => text(c.id).includes(app.kind) || text(c.id).includes(app.kind.replace("-cli", "")));
-  return { state: "missing", reason: gone ? visible(gone.reason) : undefined };
-}
-
-export const PILL: Record<Found["state"], [string, string]> = { ready: ["ok", "Models ready"], signin: ["warn", "Sign-in needed"], missing: ["idle", "Not found"] };
-
-export function appSub(app: App, f: Found, on: boolean): string {
-  // §4.7.8: an app that isn't installed always reads the same; Codex turns fail with this sentence too.
-  if (f.state === "missing") return `Install and sign in to ${app.name} on this computer, then check again.`;
-  if (f.state === "signin") return `Open ${app.name} and check its sign-in, then check again.`;
-  return on ? `On because ${app.name} is connected on this computer.` : `${app.name} is connected on this computer. Turn it on to use its models.`;
-}
+// The status itself lives in coding-app-status.ts, shared with Accounts, Models and the first-run step.
+export { APPS } from "./coding-app-status";
 
 /** Why a switch that follows the app's own sign-in is greyed, on its own visible line. */
 function followsWhy(app: App): string {
@@ -85,6 +66,10 @@ export function CodingApps({ engine, caps = [], onSignIn }: { engine: WindowEngi
   const detect = useResource<RecordValue>(detectEngine, "branch.setup.detect", scope ? { agentId: scope } : {});
   const detectError = detect.error ? rawDetectError.current ?? detect.error : undefined;
   const usage = useResource<RecordValue>(engine, "usage.status");
+  // The same model list Models reads (the default Trunk's when no Trunk is picked), so both agree on chats.
+  const owner = scope || engine.agentId;
+  const models = useResource<RecordValue>(engine, "models.list", { includeDetails: true, ...(owner ? { agentId: owner } : {}) });
+  const chatModels = models.data ? modelsOf(models.data) : undefined;
   const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
   const cfg = useConfig(engine);
   const codexApp = APPS.find((app) => app.plugin === "codex");
@@ -97,12 +82,13 @@ export function CodingApps({ engine, caps = [], onSignIn }: { engine: WindowEngi
         const signIn = onSignIn && caps.find((cap) => brandOf(text(cap.provider)) === app.brand && list(cap.loginOptions).some((option) => option.kind === "oauth" || option.kind === "device-code"));
         const authError = Boolean(detectError && SIGN_IN_ERROR.test(detectError));
         const f = foundState(app, detect.data);
+        const status = appStatusOf(app, f, chatModels);
         const getting = app.plugin === "codex" ? codex.view : undefined;
         const usable = f.state === "ready" || getting?.ready === true;
-        const [tone, word] = detect.error ? ["idle", "Couldn’t check"] : detect.loading ? ["idle", "Looking…"] : PILL[f.state];
+        const [tone, word] = detect.error ? ["idle", "Couldn’t check"] : detect.loading ? ["idle", "Looking…"] : STATUS_PILL[status.state];
         const pluginOn = app.plugin ? cfg.get(`plugins.entries.${app.plugin}.enabled`) === true : f.state === "ready";
         const asking = app.plugin === "codex" ? codex.prompt : undefined;
-        const sub = authError && !signIn && level === 0 ? `Open ${app.name} on this computer and sign in there, then choose Check again.` : asking ? asking : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detectError ? plainError(detectError) : detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
+        const sub = authError && !signIn && level === 0 ? `Open ${app.name} on this computer and sign in there, then choose Check again.` : asking ? asking : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detectError ? plainError(detectError) : detect.loading ? "Looking on this computer…" : appStatusLine(app, status, pluginOn);
         const subId = `${ids}${app.kind}-sub`;
         const whyId = `${ids}${app.kind}-why`;
         const line = <span id={subId}>{typeof sub === "string" ? plainCopy(sub, level) : sub}</span>;
@@ -117,7 +103,7 @@ export function CodingApps({ engine, caps = [], onSignIn }: { engine: WindowEngi
           </Ctl>
         );
       })}
-      <div className="acts"><Btn sm disabled={detect.loading} onClick={() => void detect.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</Btn><CheckedAt at={checked} /></div>
+      <div className="acts"><Btn sm disabled={detect.loading} onClick={() => void Promise.all([detect.reload(), models.reload()]).then(([ok]) => { if (ok) stamp(); }, () => undefined)}>Check again</Btn><CheckedAt at={checked} /></div>
     </Sec>
   );
 }

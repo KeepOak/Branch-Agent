@@ -2,7 +2,7 @@
 // Settings › Accounts and Settings › Models tell the same story about Claude Code. With Claude Code signed in on this
 // computer and no other account, the engine lists Claude Code's models (models.list) but models.authStatus has no
 // account for them. Models offers those models instead of "No model set up yet". When the engine lists none for chats,
-// Accounts says Claude Code is a coding app, not "Models ready".
+// Accounts says Claude Code is connected but not set up for chats yet, not "Models ready".
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -66,7 +66,7 @@ describe("Accounts and Models agree on Claude Code", () => {
     expect([...(pick?.options ?? [])].map((o) => o.textContent)).toEqual(["Claude Opus 5.5", "Claude Sonnet 5.5"]);
   });
 
-  it("says plainly in Accounts that Claude Code is a coding app when Models has no model for chats", async () => {
+  it("says plainly in Accounts that Claude Code isn't set up for chats when Models has no model for chats", async () => {
     const engine = engineWith([]);
     await show(engine, "models");
     expect(host.textContent).toContain("No model set up yet");
@@ -74,7 +74,7 @@ describe("Accounts and Models agree on Claude Code", () => {
     const row = claudeRow();
     expect(row.textContent).not.toContain("Models ready");
     expect(row.textContent).toContain("Connected");
-    expect(row.textContent).toContain("Claude Code is a coding app on this computer, not a model for chats.");
+    expect(row.textContent).toContain("Claude Code is connected on this computer, but it isn’t set up as a model for chats yet.");
   });
 
   it("does not count Claude Code's models the engine says it can't use", async () => {

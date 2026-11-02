@@ -18,6 +18,10 @@ import { logoId } from "../../setup/steps-early";
 import { NO_MODELS_ONBOARDING } from "../../composer/connect-model";
 import { FreeModelSetup } from "../../composer/FreeModelSetup";
 import { CODEX_DOWNLOAD_METHOD, codexDownloadOffered, useCodexDownload } from "../../places/settings/set1/codex-get";
+import { foundLine } from "../../places/settings/set1/coding-app-status";
+import { modelsOf } from "../../places/settings/set1/models-data";
+import { useResource } from "../../places/settings/hooks";
+import type { RecordValue } from "../../places/settings/adapter";
 import { helloTarget, testModel, useDetected } from "../../setup/use-setup-engine";
 import { answeredBy, canSayHello, codexNeededLine, EXAMPLES_REASON, needsCodex, toggle, WAITS_FOR, type Example, type Hello } from "./model";
 import { examplesErrorText, examplesHint, loadExampleTrunks } from "./try-examples";
@@ -51,6 +55,11 @@ type Props = { engine: WindowEngine; off: string[]; onOff: (off: string[]) => vo
 
 export function Models({ engine, off, onOff, hello, onHello, onExamples }: Props) {
   const { detected, error, reload, refresh } = useDetected(engine);
+  // The model list Settings reads, so a coding app's row says the same as Accounts and Models (coding-apps foundLine).
+  const models = useResource<RecordValue>(engine, "models.list", { includeDetails: true, ...(engine.agentId ? { agentId: engine.agentId } : {}) });
+  const reloadModels = models.reload;
+  const chatModels = models.data ? modelsOf(models.data) : undefined;
+  useEffect(() => { if (detected || hello) void reloadModels(); }, [detected, hello, reloadModels]);
   const [adding, setAdding] = useState(false);
   useLookAgainOnReturn(refresh, hello === "busy" || adding);
   const [examples, setExamples] = useState<Example[] | "busy" | null>(null), [examplesError, setExamplesError] = useState<string | null>(null);
@@ -97,7 +106,7 @@ export function Models({ engine, off, onOff, hello, onHello, onExamples }: Props
           {rows.map((c) => (
             <div className="r1-ob-row" key={c.key}>
               <Logo id={logoId(c)} name={c.label} size={30} />
-              <span className="r1-ob-grow"><b>{c.label}</b><small>{c.signedOut ? `${c.detail} · signed out` : c.detail}</small></span>
+              <span className="r1-ob-grow"><b>{c.label}</b><small>{foundLine(c, chatModels)}</small></span>
               <button type="button" role="switch" className="r1-ob-switch" data-local aria-checked={!off.includes(c.key)} aria-label={`Use ${c.label}`} onClick={() => { onOff(toggle(off, c.key)); onHello(null); }} />
             </div>
           ))}
