@@ -314,7 +314,8 @@ export function createAutoApplyUpdate(options: {
     if (!options.activeRuns) { await readActivity(); return; }
     const runs = await options.activeRuns();
     lastSampleAt = now();
-    if (runs > 0) { lastRunSeenAt = lastSampleAt; unknownSince = undefined; }
+    // A run seen here clears the last unknown reading too, so the next unknown reading starts a fresh wait.
+    if (runs > 0) { lastRunSeenAt = lastSampleAt; unwatched(); }
   };
   const runningTrunkWork = () => options.trunkWork?.() ?? (lastRunSeenAt !== undefined && now() - lastRunSeenAt < TRUNK_WORK_WINDOW_MS);
   const applied = async (version: string) => {

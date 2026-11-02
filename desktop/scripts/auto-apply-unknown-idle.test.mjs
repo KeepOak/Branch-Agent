@@ -162,6 +162,19 @@ test("a stretch with no check at all (a sleeping machine) restarts the unknown w
   assert.equal(f.restarts.length, 1, f.logs.join("\n"));
 });
 
+test("a run seen only by the engine's run count starts a fresh unknown wait that still ends", async () => {
+  let runs = 0;
+  const f = fixture({ trunkWork: undefined, activeRuns: async () => runs });
+  await f.run(2 * AUTO_APPLY_POLL_MS);
+  runs = 1;
+  await f.run(0);
+  runs = 0;
+  await f.run(UNKNOWN_IDLE_MS - 2 * AUTO_APPLY_POLL_MS);
+  assert.deepEqual(f.restarts, [], "applied before nothing had run for a full 10 minutes");
+  await f.run(4 * AUTO_APPLY_GAP_MS);
+  assert.deepEqual(f.restarts, [{ version: "next", handoffOnly: false, drain: false }], f.logs.join("\n"));
+});
+
 test("a newer update that replaces a waiting one starts the 10 minutes again", async () => {
   let version = "first";
   const f = fixture({ pendingVersion: async () => version });
