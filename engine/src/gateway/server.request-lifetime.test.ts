@@ -69,6 +69,7 @@ describe("public Gateway close request lifetime", () => {
       let requestSent = false;
       let settled = false;
       let emergencyRelease = false;
+      let waitSignal: AbortSignal | undefined;
       const observation = vi.spyOn(agentJobs, "waitForAgentJob").mockImplementation((params) => {
         const wait = originalWait(params);
         if (params.runId === runId) {
@@ -76,28 +77,46 @@ describe("public Gateway close request lifetime", () => {
             settled = true;
             return result;
           });
+          // Retirement follows the request's abort, never the clock: close may legitimately
+          // run for seconds after it retires the waiter. A wait still pending one turn after
+          // that abort was abandoned, so release it and record the failure.
+          waitSignal = getAsyncWorkSignal();
+          waitSignal?.addEventListener(
+            "abort",
+            () => {
+              void nextTurn().then(() => {
+                emergencyRelease = releaseWait() || emergencyRelease;
+              });
+            },
+            { once: true },
+          );
           entered.resolve();
         }
         return wait;
       });
       const releaseWait = () => {
-        if (requestSent && !settled) {
-          agentJobs.setGatewayDedupeEntry({
-            dedupe: new Map(),
-            key: `agent:${runId}`,
-            entry: {
-              ts: Date.now(),
-              ok: true,
-              payload: { runId, status: "ok", startedAt: 100, endedAt: 200 },
-            },
-          });
+        if (!requestSent || settled) {
+          return false;
         }
+        agentJobs.setGatewayDedupeEntry({
+          dedupe: new Map(),
+          key: `agent:${runId}`,
+          entry: {
+            ts: Date.now(),
+            ok: true,
+            payload: { runId, status: "ok", startedAt: 100, endedAt: 200 },
+          },
+        });
+        return true;
       };
-      signal.addEventListener("abort", releaseWait, { once: true });
+      // A failing owner is released through the real terminal registry, not an abandoned wait.
+      const releaseOnAbort = () => {
+        emergencyRelease = releaseWait() || emergencyRelease;
+      };
+      signal.addEventListener("abort", releaseOnAbort, { once: true });
       let gateway: GatewayHarness | undefined;
       let ws: WebSocket | undefined;
       let closing: Promise<void> | undefined;
-      let releaseTimer: ReturnType<typeof setTimeout> | undefined;
       try {
         gateway = await createGatewaySuiteHarness({
           serverOptions: { bind: "loopback", auth: { mode: "none" } },
@@ -133,14 +152,11 @@ describe("public Gateway close request lifetime", () => {
         );
         requestSent = true;
         await Promise.race([entered.promise, prematureReply]);
+        expect(waitSignal).toBeInstanceOf(AbortSignal);
+        expect(waitSignal?.aborted).toBe(false);
         expect(getActiveGatewayRootWorkCount(), getActiveGatewayRootWorkHolders().join(", ")).toBe(
           1,
         );
-        // A failing owner is released through the real terminal registry, not an abandoned wait.
-        releaseTimer = setTimeout(() => {
-          emergencyRelease = true;
-          releaseWait();
-        }, 5_000);
         if (finish === "disconnect") {
           const disconnected = once(ws, "close");
           ws.close();
@@ -176,13 +192,12 @@ describe("public Gateway close request lifetime", () => {
         expect(settled).toBe(true);
         await expect(observed).resolves.toBeNull();
       } finally {
-        clearTimeout(releaseTimer);
         releaseWait();
         await observed;
         ws?.terminate();
         await (closing ?? gateway?.server.close({ drainTimeoutMs: 0 }));
         observation.mockRestore();
-        signal.removeEventListener("abort", releaseWait);
+        signal.removeEventListener("abort", releaseOnAbort);
       }
     },
   );
