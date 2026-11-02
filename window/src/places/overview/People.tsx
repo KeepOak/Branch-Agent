@@ -7,6 +7,7 @@ import { openInboxWith } from "../inbox/handoff";
 import type { PlaceId } from "../../places-nav/routes";
 import { agentName, countable, type Agent, type Person, type Session } from "./engine";
 import { ago } from "./format";
+import { shownName } from "./person-name";
 
 export type PersonLine = Person & { shared?: boolean };
 
@@ -45,7 +46,8 @@ function Card({ person, rows, agents, at, open, openPlace, keep, leave }: { pers
   );
 }
 
-export function PersonRow({ person, rows, agents, open, openPlace }: { person: PersonLine; rows: Session[]; agents: Agent[]; open: (key: string) => void; openPlace: (place: PlaceId) => void }) {
+export function PersonRow({ person: raw, rows, agents, open, openPlace }: { person: PersonLine; rows: Session[]; agents: Agent[]; open: (key: string) => void; openPlace: (place: PlaceId) => void }) {
+  const person = raw.shared ? raw : { ...raw, name: shownName(raw) };
   const line = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);

@@ -83,10 +83,16 @@ function isDisabledByEnv() {
   return parseBooleanValue(process.env.BRANCH_DISABLE_BONJOUR) ?? isContainerEnvironment();
 }
 
+// Same rule as displayHostname in engine/src/infra/machine-name.ts (extensions cannot import it):
+// BRANCH_DISPLAY_HOSTNAME (trimmed) when set, else the real hostname.
+function displayHostname(real: string): string {
+  return process.env.BRANCH_DISPLAY_HOSTNAME?.trim() || real;
+}
+
 function resolveSystemMdnsHostname(): string | null {
   let raw: string;
   try {
-    raw = os.hostname();
+    raw = displayHostname(os.hostname());
   } catch {
     return null;
   }

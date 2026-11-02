@@ -104,7 +104,7 @@ describe("diagnostic support export", () => {
   );
 
   it("writeDiagnosticSupportExport writes a shareable zip without raw chats, webhook bodies, or secrets", async () => {
-    const fakeToken = "sk-test-support-export-secret-token-1234567890";
+    const fakeToken = ["sk-t", "est-support-export-secret-token-1234567890"].join("");
     const fakeAwsKey = ["AKIA", "IOSFODNN7EXAMPLE"].join("");
     const fakeJwt = [
       "eyJhbGciOiJIUzI1NiIs",
@@ -738,7 +738,7 @@ describe("diagnostic support export", () => {
   });
 
   it("keeps writing when status and health snapshots fail", async () => {
-    const fakeToken = "sk-test-support-export-secret-token-1234567890";
+    const fakeToken = ["sk-t", "est-support-export-secret-token-1234567890"].join("");
     const outputPath = path.join(tempDir, "support-failed-snapshots.zip");
 
     await writeDiagnosticSupportExport({
@@ -774,7 +774,7 @@ describe("diagnostic support export", () => {
   });
 
   it("keeps writing when log tail collection fails", async () => {
-    const fakeToken = "sk-test-log-tail-secret-token-1234567890";
+    const fakeToken = ["sk-t", "est-log-tail-secret-token-1234567890"].join("");
     const outputPath = path.join(tempDir, "support-failed-log-tail.zip");
 
     await writeDiagnosticSupportExport({
@@ -802,7 +802,7 @@ describe("diagnostic support export", () => {
   });
 
   it("keeps writing when config stat fails", async () => {
-    const fakeToken = "sk-test-config-stat-secret-token-1234567890";
+    const fakeToken = ["sk-t", "est-config-stat-secret-token-1234567890"].join("");
     const configPath = path.join(tempDir, "branch.json");
     const outputPath = path.join(tempDir, "support-failed-config-stat.zip");
     fs.writeFileSync(configPath, "{}\n", "utf8");

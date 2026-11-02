@@ -1,15 +1,13 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { spawn, type ChildProcess, type SendHandle, type SpawnOptions } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmodSync, mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, rmSync } from "node:fs";
 import { Socket } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serialize } from "node:v8";
 import { toErrorObject } from "@branch/normalization-core/error-coercion";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
-import { hiddenWindowsOptions } from "../windows-hidden-options.js";
 import {
   resolveRuntimeWorkerArgv,
   resolveRuntimeWorkerUrl,
@@ -17,16 +15,32 @@ import {
 import { createDeferredCore } from "../../shared/deferred.js";
 import type { SpawnInitiation } from "../spawn-initiation.js";
 import { GRACEFUL_CANCEL_TIMEOUT_MS } from "../supervisor/cancellation-policy.js";
+import { hiddenWindowsOptions } from "../windows-hidden-options.js";
 import { BrokerChild } from "./child.js";
 import { terminateBrokerProcessGroup, terminateLostBrokerChild } from "./cleanup.js";
-import type { BrokerExecaOptions, BrokerExecaResult } from "./execa-protocol.js";
+import type { BrokerExecaOptions } from "./execa-protocol.js";
+import {
+  SPAWN_BROKER_MAX_REQUESTS,
+  admitSpawnBrokerRequest,
+  type SpawnBrokerAdmitHost,
+  type SpawnBrokerRequest,
+} from "./host-admit.js";
+import {
+  clearSpawnBrokerIdlePark,
+  ensureSpawnBrokerStarted,
+  refreshSpawnBrokerIdle,
+  replaceParkedReadiness,
+  type SpawnBrokerIdleHost,
+} from "./host-idle.js";
+import { brokerSpawnOptions, createNativeResourceDirectory } from "./host-spawn-options.js";
 import { createBrokerReceiver, createBrokerSender } from "./ipc.js";
 import { holdPipe, restoreStdinPipe } from "./pipe.js";
 import {
+  SPAWN_BROKER_IDLE_TIMEOUT_MS,
+  SPAWN_BROKER_MAX_CONCURRENT,
   SpawnBrokerError,
   type BrokerRequest,
   type BrokerResponse,
-  type BrokerSpawnOptions,
 } from "./protocol.js";
 import {
   BrokerResourceClaims,
@@ -42,68 +56,10 @@ import {
 } from "./resource-protocol.js";
 
 export type { BrokerNativeResourceLease } from "./resource-host.js";
+export { brokerSpawnOptions } from "./host-spawn-options.js";
 
-const MAX_REQUESTS = 256;
 const RESTART_DELAYS = [100, 250, 500, 1000, 2000];
-const UNIX_SOCKET_PATH_BYTES = 103;
 const MAX_BOOTSTRAP_BYTES = 1024;
-
-function createNativeResourceDirectory(): string {
-  const directory = mkdtempSync(join(tmpdir(), "oc-br-"));
-  if (
-    process.platform === "win32" ||
-    Buffer.byteLength(join(directory, "resource.sock")) <= UNIX_SOCKET_PATH_BYTES
-  ) {
-    return directory;
-  }
-  // A configured temp root can exceed Darwin's sockaddr_un even for a short private socket.
-  rmSync(directory, { recursive: true, force: true });
-  return mkdtempSync("/tmp/oc-br-");
-}
-
-type Request = {
-  child: BrokerChild;
-  initiateSpawn?: SpawnInitiation;
-  nativeInitiated?: ReturnType<typeof createDeferredCore<void>>;
-  pid?: number;
-  detached: boolean;
-  result?: ReturnType<typeof createDeferredCore<BrokerExecaResult>>;
-  childClosed: boolean;
-  resultSettled: boolean;
-};
-
-export function brokerSpawnOptions(options: SpawnOptions): BrokerSpawnOptions | undefined {
-  const stdio = options.stdio ?? "pipe";
-  const entries = typeof stdio === "string" ? [stdio, stdio, stdio] : [...stdio];
-  const normalized: BrokerSpawnOptions["stdio"] = [];
-  for (let fd = 0; fd < Math.max(3, entries.length); fd += 1) {
-    const entry = entries[fd] ?? (fd < 3 ? "pipe" : "ignore");
-    // Only stdin is inherited by the broker. Numeric/anonymous descriptors stay host-owned.
-    if (entry === "inherit" && fd !== 0) {
-      return undefined;
-    }
-    if (entry !== "pipe" && entry !== "ignore" && entry !== "inherit" && entry !== "ipc") {
-      return undefined;
-    }
-    normalized.push(entry);
-  }
-  if (options.signal || options.timeout || options.killSignal) {
-    throw new Error("Unsupported spawn broker cancellation options");
-  }
-  return {
-    cwd: options.cwd instanceof URL ? fileURLToPath(options.cwd) : options.cwd,
-    env: options.env ? { ...options.env } : { ...process.env },
-    argv0: options.argv0,
-    detached: options.detached,
-    shell: options.shell,
-    windowsHide: hiddenWindowsOptions(options).windowsHide,
-    windowsVerbatimArguments: options.windowsVerbatimArguments,
-    serialization: options.serialization,
-    uid: options.uid,
-    gid: options.gid,
-    stdio: normalized,
-  };
-}
 
 export class SpawnBrokerHost {
   readonly entryPath: string;
@@ -120,7 +76,7 @@ export class SpawnBrokerHost {
   private generation = 0;
   private consecutiveFailures = 0;
   private sequence = 0;
-  private requests = new Map<number, Request>();
+  private requests = new Map<number, SpawnBrokerRequest>();
   private readonly cleanups = new Set<ReturnType<typeof terminateLostBrokerChild>>();
   private readonly cleanupErrors: Error[] = [];
   private readonly resourceClaims: BrokerResourceClaims | undefined;
@@ -138,14 +94,29 @@ export class SpawnBrokerHost {
       cleanup.force();
     }
   };
+  /** Read and written by host-idle.ts through the idle-host view. */
+  idleTimer: NodeJS.Timeout | undefined;
+  private parking = false;
+  private parked = false;
+  private parkPromise: Promise<void> | undefined;
+  private readonly lazyStart: boolean;
+  /** Read by host-idle.ts through the idle-host view. */
+  readonly idleTimeoutMs: number;
+  private readonly maxConcurrent: number;
 
   constructor(
     private readonly options: {
       onReady?: (pid: number, restarted: boolean) => void;
       workerUrl?: URL;
       nativeResources?: true;
+      lazyStart?: boolean;
+      idleTimeoutMs?: number;
+      maxConcurrent?: number;
     } = {},
   ) {
+    this.lazyStart = options.lazyStart === true;
+    this.idleTimeoutMs = options.idleTimeoutMs ?? SPAWN_BROKER_IDLE_TIMEOUT_MS;
+    this.maxConcurrent = options.maxConcurrent ?? SPAWN_BROKER_MAX_CONCURRENT;
     this.workerUrl =
       options.workerUrl ?? resolveRuntimeWorkerUrl(runtimeProcessEntrypoints.spawnBroker);
     this.entryPath = fileURLToPath(this.workerUrl);
@@ -177,13 +148,15 @@ export class SpawnBrokerHost {
       });
     }
     void this.readiness.promise.catch(() => {});
-    try {
-      this.start();
-    } catch (error) {
-      if (this.resourceDirectory) {
-        rmSync(this.resourceDirectory, { recursive: true, force: true });
+    if (!this.lazyStart) {
+      try {
+        this.start();
+      } catch (error) {
+        if (this.resourceDirectory) {
+          rmSync(this.resourceDirectory, { recursive: true, force: true });
+        }
+        throw error;
       }
-      throw error;
     }
     process.once("exit", this.onParentExit);
   }
@@ -191,30 +164,55 @@ export class SpawnBrokerHost {
   get pid(): number | undefined {
     return this.process?.pid;
   }
+  get activeWorkerCount(): number {
+    return this.process ? 1 : 0;
+  }
   ready(): Promise<void> {
-    return this.closing
-      ? Promise.reject(new SpawnBrokerError("Spawn broker is closing"))
-      : this.readiness.promise;
+    if (this.closing) {
+      return Promise.reject(new SpawnBrokerError("Spawn broker is closing"));
+    }
+    if (this.parking && this.parkPromise) {
+      return this.parkPromise.then(() => {
+        this.ensureStarted();
+        return this.readiness.promise;
+      });
+    }
+    this.ensureStarted();
+    return this.readiness.promise;
   }
 
   captureNativeResource(
     input: BrokerNativeResourceInput,
     callbacks: BrokerNativeResourceCallbacks,
   ): BrokerNativeResourceLease {
+    this.clearIdlePark();
+    this.ensureStarted();
     if (
       !this.resourceClaims ||
       !this.resourceAuthority ||
       this.closing ||
-      this.requests.size + this.resourceClaims.size >= MAX_REQUESTS
+      this.requests.size + this.resourceClaims.size >= SPAWN_BROKER_MAX_REQUESTS ||
+      this.requests.size + this.resourceClaims.size >= this.maxConcurrent
     ) {
       throw new SpawnBrokerError("Native resource broker is unavailable or at capacity");
+    }
+    // While parking, the retiring broker rejects new attachments. Bind the claim to the
+    // replacement's generation instead, start it once parking ends, and give the attachment
+    // a deadline that covers the park's bounded shutdown plus the replacement's startup.
+    const parking = this.parking && this.parkPromise !== undefined;
+    if (parking) {
+      void this.parkPromise?.then(() => this.ensureStarted());
     }
     return this.resourceClaims.capture(
       {
         ...input,
         ...this.resourceAuthority,
-        generation: this.generation - 1,
-        startupDeadline: this.available ? undefined : this.startupDeadline,
+        generation: parking ? this.generation : this.generation - 1,
+        startupDeadline: parking
+          ? Date.now() + GRACEFUL_CANCEL_TIMEOUT_MS + 2000 + SPAWN_BROKER_STARTUP_TIMEOUT_MS
+          : this.available
+            ? undefined
+            : this.startupDeadline,
         id: ++this.sequence,
       },
       callbacks,
@@ -237,7 +235,25 @@ export class SpawnBrokerHost {
     this.serviceStartup?.();
   }
 
+  private idleHost(): SpawnBrokerIdleHost {
+    return this as unknown as SpawnBrokerIdleHost;
+  }
+
+  onParked(): void {
+    clearTimeout(this.restartTimer);
+    this.restartTimer = undefined;
+    this.process = undefined;
+    this.sendMessage = undefined;
+    this.hasBeenReady = false;
+    this.parking = false;
+    this.parkPromise = undefined;
+    this.markNativeReady = undefined;
+    this.serviceStartup = undefined;
+    this.readiness = replaceParkedReadiness();
+  }
+
   private refreshNativeReference(): void {
+    refreshSpawnBrokerIdle(this.idleHost());
     if (!this.resourceClaims || !this.process) {
       return;
     }
@@ -249,6 +265,14 @@ export class SpawnBrokerHost {
       this.process.unref();
       this.process.channel?.unref?.();
     }
+  }
+
+  private ensureStarted(): void {
+    ensureSpawnBrokerStarted(this.idleHost());
+  }
+
+  private clearIdlePark(): void {
+    clearSpawnBrokerIdlePark(this.idleHost());
   }
 
   spawn(
@@ -289,58 +313,11 @@ export class SpawnBrokerHost {
   private admit(
     message: Extract<BrokerRequest, { type: "spawn" | "prepare-spawn" | "spawn-execa" }>,
     initiateSpawn?: SpawnInitiation,
-  ): Request {
-    const child = new BrokerChild(message.id, message.argv, (value, handle, initiate) =>
-      this.transmit(value, handle, initiate),
-    );
-    const result =
-      message.type === "spawn-execa" ? createDeferredCore<BrokerExecaResult>() : undefined;
-    if (result) {
-      void result.promise.catch(() => {});
-    }
-    const request: Request = {
-      child,
-      initiateSpawn,
-      result,
-      childClosed: false,
-      resultSettled: !result,
-      detached:
-        message.options.detached === true ||
-        (message.type === "spawn-execa" && message.options.killDescendants === true),
-    };
-    const fail = (error: Error) => {
-      result?.reject(error);
-      child.fail(error);
-    };
-    if (
-      !this.available ||
-      this.closing ||
-      this.requests.size + (this.resourceClaims?.size ?? 0) >= MAX_REQUESTS
-    ) {
-      child.markNotStarted();
-      queueMicrotask(() => fail(new SpawnBrokerError("Spawn broker is unavailable")));
-      return request;
-    }
-    this.requests.set(message.id, request);
-    this.refreshNativeReference();
-    void child.waitForClose().then(() => {
-      request.childClosed = true;
-      this.retire(message.id, request);
-    });
-    void this.transmit(message).catch((error: unknown) => {
-      if (!request.nativeInitiated) {
-        if (message.type === "prepare-spawn") {
-          child.markNotStarted();
-        }
-        this.requests.delete(message.id);
-        this.refreshNativeReference();
-      }
-      fail(new SpawnBrokerError("Spawn broker request delivery failed", { cause: error }));
-    });
-    return request;
+  ): SpawnBrokerRequest {
+    return admitSpawnBrokerRequest(this as unknown as SpawnBrokerAdmitHost, message, initiateSpawn);
   }
 
-  private retire(id: number, request: Request): void {
+  private retire(id: number, request: SpawnBrokerRequest): void {
     if (request.childClosed && request.resultSettled && !request.nativeInitiated) {
       this.requests.delete(id);
       this.refreshNativeReference();
@@ -423,6 +400,9 @@ export class SpawnBrokerHost {
       receiver.clear();
       this.available = false;
       this.sendMessage = undefined;
+      if (this.parking || this.parked) {
+        return;
+      }
       const error = new SpawnBrokerError(
         this.hasBeenReady
           ? "Spawn broker exited; command outcome is unavailable"
@@ -475,8 +455,10 @@ export class SpawnBrokerHost {
       this.hasBeenReady = true;
       this.consecutiveFailures = 0;
       this.available = true;
+      this.parked = false;
       this.readiness.resolve();
       this.runInContext(() => this.options.onReady?.(pid, generation > 0));
+      this.refreshNativeReference();
     };
     this.markNativeReady = markReady;
     child.once("error", fail);
@@ -665,6 +647,10 @@ export class SpawnBrokerHost {
 
   private async closeInternal(): Promise<void> {
     this.closing = true;
+    this.clearIdlePark();
+    if (this.parkPromise) {
+      await this.parkPromise;
+    }
     this.refreshNativeReference();
     this.readiness.reject(new SpawnBrokerError("Spawn broker is closing"));
     clearTimeout(this.restartTimer);

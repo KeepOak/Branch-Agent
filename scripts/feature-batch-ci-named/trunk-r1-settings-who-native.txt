@@ -1,0 +1,5 @@
+window:src/screens/settings/pages/who-live.test.tsx
+window:src/screens/settings/pages/classic-host.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/places/settings/set1/people.test.tsx
+window:src/places/settings/set1/people-more.test.tsx

@@ -1,0 +1,4 @@
+engine:extensions/imap/src/config.test.ts
+engine:extensions/imap/src/prompt.test.ts
+engine:extensions/imap/src/sender-gate.test.ts
+engine:extensions/imap/src/state.test.ts

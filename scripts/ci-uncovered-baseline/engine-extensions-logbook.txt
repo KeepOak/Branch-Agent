@@ -1,0 +1,9 @@
+engine:extensions/logbook/index.test.ts
+engine:extensions/logbook/src/card-reads.test.ts
+engine:extensions/logbook/src/node-host.test.ts
+engine:extensions/logbook/src/observation-reads.test.ts
+engine:extensions/logbook/src/service-lifecycle.test.ts
+engine:extensions/logbook/src/store-batch-images.test.ts
+engine:extensions/logbook/src/store-frame-io.test.ts
+engine:extensions/logbook/src/store-prune.test.ts
+engine:extensions/logbook/src/store-read-budgets.test.ts

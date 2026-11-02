@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@drawable/branch_home_widget_bg"
+  android:orientation="vertical"
+  android:padding="16dp">
+
+  <TextView
+    android:id="@+id/brand"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:letterSpacing="0.04"
+    android:text="@string/branch_home_widget_brand"
+    android:textAllCaps="true"
+    android:textColor="@color/branch_home_widget_ink3"
+    android:textSize="11sp" />
+
+  <TextView
+    android:id="@+id/title"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="6dp"
+    android:ellipsize="end"
+    android:maxLines="2"
+    android:text="@string/branch_home_widget_title_default"
+    android:textColor="@color/branch_home_widget_ink"
+    android:textSize="16sp"
+    android:textStyle="bold" />
+
+  <TextView
+    android:id="@+id/detail"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="2dp"
+    android:ellipsize="end"
+    android:maxLines="2"
+    android:text="@string/branch_home_widget_detail_default"
+    android:textColor="@color/branch_home_widget_ink2"
+    android:textSize="13sp" />
+
+  <TextView
+    android:id="@+id/work"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="4dp"
+    android:ellipsize="end"
+    android:maxLines="1"
+    android:textColor="@color/branch_home_widget_ink2"
+    android:textSize="12sp"
+    android:visibility="gone" />
+
+  <TextView
+    android:id="@+id/counts"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="6dp"
+    android:ellipsize="end"
+    android:maxLines="1"
+    android:textColor="@color/branch_home_widget_ink3"
+    android:textSize="12sp" />
+
+  <TextView
+    android:id="@+id/ask"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="10dp"
+    android:background="@drawable/branch_home_widget_button"
+    android:gravity="center"
+    android:minHeight="36dp"
+    android:paddingLeft="16dp"
+    android:paddingTop="8dp"
+    android:paddingRight="16dp"
+    android:paddingBottom="8dp"
+    android:text="@string/branch_home_widget_ask"
+    android:textColor="@color/branch_home_widget_on_button"
+    android:textSize="14sp"
+    android:textStyle="bold" />
+</LinearLayout>

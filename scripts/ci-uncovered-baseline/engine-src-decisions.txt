@@ -1,0 +1,4 @@
+engine:src/decisions/diagnostics.test.ts
+engine:src/decisions/registry-adoption.test.ts
+engine:src/decisions/runtime.admission.test.ts
+engine:src/decisions/runtime.test.ts

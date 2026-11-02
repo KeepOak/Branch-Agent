@@ -33,6 +33,15 @@ describe("Devices & apps tiles", () => {
     expect(tile(container, "Windows")?.textContent).not.toContain("Connected");
   });
 
+  it("reads the computer's own connection when its paired record says otherwise, so the tile agrees with its details", async () => {
+    // The same Windows PC is both a node (offline now, last seen yesterday) and a paired device whose record says connected.
+    const node = { nodeId: "win-1", displayName: "Office PC", platform: "win32", connected: false, lastSeenAtMs: Date.now() - 86_400_000 };
+    const paired = { deviceId: "win-1", displayName: "Office PC", platform: "win32", connected: true };
+    const container = await render(engineWith([node], [paired]));
+    expect(tile(container, "Windows")?.textContent).toContain("Offline");
+    expect(tile(container, "Windows")?.textContent).not.toContain("Connected");
+  });
+
   it("is Connected when the computer is online now", async () => {
     const container = await render(engineWith([{ displayName: "Office PC", platform: "win32", connected: true }], []));
     expect(tile(container, "Windows")?.textContent).toContain("Connected");

@@ -11,6 +11,7 @@ import type { SchemaContract } from "../../packages/gateway-protocol/src/schema-
 import type { PresenceEntry } from "../../packages/gateway-protocol/src/schema/snapshot.js";
 import { resolveRuntimeServiceVersion } from "../version.js";
 import { resolveMachineModelIdentifier } from "./machine-model.js";
+import { displayHostname } from "./machine-name.js";
 import { pickBestEffortPrimaryLanIPv4 } from "./network-discovery-display.js";
 import { resolveDarwinProductVersion } from "./os-summary.js";
 
@@ -58,8 +59,9 @@ function setPresence(
 }
 
 function initSelfPresence() {
-  const host = os.hostname();
-  const ip = pickBestEffortPrimaryLanIPv4() ?? os.hostname();
+  // Shown in Settings > Connected; BRANCH_DISPLAY_HOSTNAME keeps tours from showing the real name.
+  const host = displayHostname(os.hostname());
+  const ip = pickBestEffortPrimaryLanIPv4() ?? host;
   const version = resolveRuntimeServiceVersion(process.env);
   const modelIdentifier = resolveMachineModelIdentifier();
   const osPlatform = os.platform();

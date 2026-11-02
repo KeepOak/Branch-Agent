@@ -1,0 +1,3 @@
+/** Free minisign/Tauri updater public key. The matching private key is the TAURI_SIGNING_PRIVATE_KEY secret. */
+export const UPDATER_PUBKEY =
+  "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBMTc2QUJDNDVBMzdERTAKUldUZ2ZhTkZ2R29YbW1udGNQVFhnNHQvMFVaL0RCM1drRFovVm5HWnBoNHdXZXcxdWJMVit4bXAK";

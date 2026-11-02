@@ -20,10 +20,11 @@ import "./people.css";
 export type TabId = "live" | "people" | "groups" | "shared" | "agents" | "activity" | "usage" | "rules" | "signin";
 /** The optional-team banner shows on these tabs only (§4.6.5 shared header parts). */
 const BANNER: TabId[] = ["live", "agents", "activity", "usage", "rules"];
-const TAB_NAMES: [TabId, string][] = [["live", "Live now"], ["people", "People"], ["groups", "Access groups"], ["shared", "Shared"], ["agents", "Teams"], ["activity", "Activity"], ["usage", "Usage"], ["rules", "Rules"], ["signin", "Signing in"]];
+/** People opens on the tab that lists people (DA-51); Live now stays one click away. */
+const TAB_NAMES: [TabId, string][] = [["people", "People"], ["live", "Live now"], ["groups", "Access groups"], ["shared", "Shared"], ["agents", "Teams"], ["activity", "Activity"], ["usage", "Usage"], ["rules", "Rules"], ["signin", "Signing in"]];
 
 export function PeoplePlace({ engine, openConversation, openSettings, level }: PlaceProps) {
-  const [tab, setTab] = useState<TabId>("live");
+  const [tab, setTab] = useState<TabId>("people");
   const [person, setPerson] = useState<string | null>(null);
   const users = useResource<unknown>(engine, "users.list");
   const self = useResource<unknown>(engine, "users.self");

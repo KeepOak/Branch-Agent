@@ -13,6 +13,10 @@ import {
   encodePairingSetupCode,
   resolvePairingSetupFromConfig,
 } from "../../pairing/setup-code.js";
+import {
+  openPairingReachability,
+  rememberPairingReachability,
+} from "../../pairing/pairing-reachability.js";
 import { runCommandWithTimeout } from "../../process/exec.js";
 import {
   NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE,
@@ -107,13 +111,27 @@ export const devicePairSetupHandlers: GatewayRequestHandlers = {
             }
           : {}),
         // Lets Tailscale serve/funnel URLs resolve, mirroring the `branch qr` CLI.
-        runCommandWithTimeout: async (argv, runOpts) =>
+        runCommandWithTimeout: async (argv: string[], runOpts: { timeoutMs: number }) =>
           await runCommandWithTimeout(argv, { timeoutMs: runOpts.timeoutMs }),
+        openReachability: async (plan) =>
+          await openPairingReachability({
+            localGatewayUrl: plan.localGatewayUrl,
+            relayUrl: plan.relayUrl,
+            runCommandWithTimeout: async (argv: string[], runOpts: { timeoutMs: number }) =>
+              await runCommandWithTimeout(argv, { timeoutMs: runOpts.timeoutMs }),
+          }),
       });
       assertJoinCurrent?.();
       if (!resolved.ok) {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, resolved.error));
         return;
+      }
+      if (resolved.reachability) {
+        await rememberPairingReachability(
+          resolved.setupId,
+          resolved.reachability,
+          resolved.expiresAtMs,
+        );
       }
       const setupCode = encodePairingSetupCode(resolved.payload);
       let joinUrl: string | undefined;
@@ -146,6 +164,7 @@ export const devicePairSetupHandlers: GatewayRequestHandlers = {
           setupId: resolved.setupId,
           expiresAtMs: resolved.expiresAtMs,
           setupCode,
+          confirmCode: resolved.confirmCode,
           ...(joinUrl ? { joinUrl } : {}),
           ...(qrDataUrl ? { qrDataUrl } : {}),
           gatewayUrl: resolved.payload.url,

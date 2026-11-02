@@ -1,0 +1,14 @@
+{
+  "schema": "branch.pack/v1",
+  "kind": "plugin",
+  "tier": "official",
+  "id": "harvest",
+  "summary": "Studies a program you point at. It can use the network, read workspace files, run commands, and control the computer. It asks you before a tool runs a command, drives an app, or overwrites a file.",
+  "permissions": {
+    "network": true,
+    "files": "workspace",
+    "runCommands": true,
+    "secrets": false,
+    "computerControl": true
+  }
+}

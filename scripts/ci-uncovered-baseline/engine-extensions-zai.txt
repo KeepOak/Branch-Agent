@@ -1,0 +1,6 @@
+engine:extensions/zai/detect.test.ts
+engine:extensions/zai/index.test.ts
+engine:extensions/zai/onboard.test.ts
+engine:extensions/zai/provider-policy-api.test.ts
+engine:extensions/zai/provider-runtime.contract.test.ts
+engine:extensions/zai/video-generation-provider.test.ts

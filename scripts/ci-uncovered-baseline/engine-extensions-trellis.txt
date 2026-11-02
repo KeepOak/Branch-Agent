@@ -1,0 +1,2 @@
+engine:extensions/trellis/src/trellis-runner.test.ts
+engine:extensions/trellis/src/trellis-tool.test.ts

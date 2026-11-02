@@ -196,6 +196,7 @@ export const validateAgentsFilesSetParams = compile(S.AgentsFilesSetParamsSchema
 export const validateAgentsWorkspaceListParams = compile(S.AgentsWorkspaceListParamsSchema);
 export const validateAgentsWorkspaceGetParams = compile(S.AgentsWorkspaceGetParamsSchema);
 export const validateAgentsDocumentsCreateParams = compile(S.AgentsDocumentsCreateParamsSchema);
+export const validateAgentsDocumentsSetParams = compile(S.AgentsDocumentsSetParamsSchema);
 export const validateArtifactsListParams = compile(S.ArtifactsListParamsSchema);
 export const validateArtifactsGetParams = compile(S.ArtifactsGetParamsSchema);
 export const validateArtifactsDownloadParams = compile(S.ArtifactsDownloadParamsSchema);

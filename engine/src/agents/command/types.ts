@@ -103,6 +103,8 @@ export type AgentCommandOpts = {
   runContext?: AgentRunContext;
   /** Client capabilities captured by trusted Gateway ingress. */
   clientCaps?: string[];
+  /** Gateway client mode captured by trusted Gateway ingress ("cli" for `branch-engine agent`). */
+  gatewayClientMode?: string;
   /** Exact Control UI destination captured by trusted Gateway ingress. */
   gatewayUiCommandTarget?: GatewayUiCommandTarget;
   /** Tool bindings admitted by the originating Gateway request. */
@@ -254,6 +256,7 @@ export type AgentCommandOpts = {
 
 type AgentCommandGatewayOnlyKey =
   | "clientCaps"
+  | "gatewayClientMode"
   | "gatewayUiCommandTarget"
   | "toolBindings"
   | "taskSuggestionDeliveryMode"

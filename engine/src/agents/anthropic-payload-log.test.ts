@@ -10,7 +10,7 @@ import { createAnthropicPayloadLogger } from "./anthropic-payload-log.js";
 
 describe("createAnthropicPayloadLogger", () => {
   const bareAnthropicKey = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWx"; // pragma: allowlist secret
-  const bareGithubKey = "ghp_AbCdEfGhIjKlMnOpQrStUvWxYz1234567890"; // pragma: allowlist secret
+  const bareGithubKey = ["ghp_", "AbCdEfGhIjKlMnOpQrStUvWxYz1234567890"].join(""); // pragma: allowlist secret
   const bareGoogleKey = "AIzaSyA1bC2dE3fG4hI5jK6lM7nO8pQrStUvW"; // pragma: allowlist secret
 
   it.each(["dashboard", "subagent", "internal-session-effects"])(

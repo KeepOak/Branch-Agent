@@ -1,0 +1,6 @@
+engine:extensions/a2a/src/channel.test.ts
+engine:extensions/a2a/src/gateway.test.ts
+engine:extensions/a2a/src/http.test.ts
+engine:extensions/a2a/src/outbound.test.ts
+engine:extensions/a2a/src/protocol.test.ts
+engine:extensions/a2a/src/task-store.test.ts

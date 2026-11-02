@@ -1,5 +1,6 @@
 import { normalizeNullableString as normalizeLabelPart } from "@branch/normalization-core/string-coerce";
 import type { SessionParticipantIdentity } from "../../../../packages/gateway-protocol/src/schema/session-participant.js";
+import { GATEWAY_OWNER_PROFILE_ID } from "../../../../packages/gateway-protocol/src/schema/user-profile-constants.js";
 import { readTranscriptSenderIdentity } from "../../../../src/chat/sender-identity.js";
 
 export type SenderIdentity = {
@@ -29,6 +30,17 @@ export function formatSenderLabel(sender: SenderIdentity | null | undefined): st
     return null;
   }
   return /^([^@\s]+)@[^@\s]+$/.exec(id)?.[1] ?? id;
+}
+
+/** The owner's own key (no personal sign-in): on this computer that is the person using it (#1933). */
+export function isSharedOwnerSender(sender: SenderIdentity | null | undefined): boolean {
+  if (!sender) {
+    return false;
+  }
+  if (sender.identity) {
+    return sender.identity.type === "profile" && sender.identity.id === GATEWAY_OWNER_PROFILE_ID;
+  }
+  return sender.id === GATEWAY_OWNER_PROFILE_ID;
 }
 
 export function normalizeSenderIdentity(

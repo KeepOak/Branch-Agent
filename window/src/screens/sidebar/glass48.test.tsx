@@ -83,7 +83,7 @@ describe("a conversation's dialogs follow the item 48 glass model", () => {
   it("draws Delete conversation… as a clear dialog with its words and the Don't ask again line on pills and Delete solid", async () => {
     await mount();
     await click(host.querySelector('[aria-label="More for Ledger"]'));
-    await click(row("Delete conversation"));
+    await click(row("Delete"));
     expectClearDialog("confirm-delete", "Delete");
     expect(document.querySelector('[data-testid="confirm-delete"] label.check')!.classList).toContain("g-label");
   });
@@ -91,8 +91,7 @@ describe("a conversation's dialogs follow the item 48 glass model", () => {
   it("draws Remove <Trunk>… as a clear dialog with its warning on a pill and Remove solid", async () => {
     await mount();
     await click(host.querySelector('[aria-label="More for Ledger"]'));
-    await click(row("Ledger"));
-    await click(row("Remove Ledger"));
+    await click(row("Remove"));
     expectClearDialog("trunk-remove", "Remove");
   });
 });

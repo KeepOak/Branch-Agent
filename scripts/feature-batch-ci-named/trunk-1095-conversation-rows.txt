@@ -1,0 +1,5 @@
+window:src/screens/frame/Topics.test.tsx
+window:src/screens/sidebar/conversation-rows.test.tsx
+window:src/screens/sidebar/menus.test.tsx
+window:src/screens/sidebar/row-menu.test.ts
+window:src/shell/TopicRail.test.tsx

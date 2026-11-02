@@ -58,7 +58,8 @@ const pick = async (el: HTMLSelectElement, value: string) => {
   await settle();
 };
 const row = (id: string) => host.querySelector<HTMLElement>(`[data-row="${id}"]`);
-const button = (scope: ParentNode | null, text: string) => [...(scope ?? document).querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === text || b.getAttribute("aria-label") === text);
+// A greyed menu item says why under its label (Private #1093 item 7), so a menu item is found by its label line.
+const button = (scope: ParentNode | null, text: string) => [...(scope ?? document).querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === text || b.getAttribute("aria-label") === text || b.querySelector(".mi-text > span")?.textContent === text);
 const calls = (request: ReturnType<typeof engineOf>["request"], method: string) => request.mock.calls.filter(([m]) => m === method).map(([, p]) => p);
 
 async function mount(onPage = vi.fn(), env = engineOf()) {
@@ -68,7 +69,9 @@ async function mount(onPage = vi.fn(), env = engineOf()) {
   return { ...env, onPage };
 }
 
-const SLOT_ROWS = Object.keys(R1_PAGES.accounts?.controls ?? {});
+/** Rows the page draws as the preview's button, Coming until something stands behind it (Link, Connect…). */
+const COMING_BUTTONS = ["accounts.linked.gmail", "accounts.linked.calendar", "accounts.linked.drive", "accounts.keepoak.connect"];
+const SLOT_ROWS = Object.keys(R1_PAGES.accounts?.controls ?? {}).filter((id) => !COMING_BUTTONS.includes(id));
 
 describe("R1 Settings › Accounts draws every working Classic control", () => {
   it("draws each working Classic control itself, live, with every control declared", async () => {
@@ -81,8 +84,9 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
       expect(r!.getAttribute("aria-disabled"), id).toBeNull();
       expect(r!.querySelector("[data-coming]"), id).toBeNull();
     }
-    // What Classic greys stays Coming: Rename, Pause, keepoak.com.
-    for (const id of ["accounts.order.rename", "accounts.order.pause", "accounts.keepoak.connect"]) expect(row(id)?.getAttribute("aria-disabled"), id).toBe("true");
+    // What Classic greys stays Coming: Rename and Pause as rows; keepoak.com and the linked accounts as the preview's button.
+    for (const id of ["accounts.order.rename", "accounts.order.pause"]) expect(row(id)?.getAttribute("aria-disabled"), id).toBe("true");
+    for (const id of COMING_BUTTONS) expect(row(id)?.querySelector("button")?.getAttribute("aria-disabled"), id).toBe("true");
     expect(undeclaredControls(host).map((el) => el.getAttribute("aria-label") || el.textContent)).toEqual([]);
   });
 
@@ -107,6 +111,27 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     await click(more());
     await click(button(document.querySelector('[role="menu"]'), "Sign out"));
     expect(calls(request, "models.authLogout")).toContainEqual({ provider: "openai", profileIds: ["openai:home"], agentId: "main" });
+  });
+
+  it("the ⋯ menu's Rename and Select accounts' Pause wait for Technical (Private #1093)", async () => {
+    await mount();
+    const level = (name: string) => click([...host.querySelectorAll(".r1s-level button")].find((b) => b.textContent === name));
+    const more = () => row("accounts.order.list")!.querySelector<HTMLButtonElement>("button[aria-label^='More for']");
+    // A menu item greyed by a real condition says why under its label, so each item is read by its label line.
+    const menuItems = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')].map((b) => b.querySelector(".mi-text > span")?.textContent ?? b.textContent);
+    const sel = () => row("accounts.order.select")!;
+    await level("Advanced");
+    await click(more());
+    expect(menuItems()).toEqual(["Test it", "Answer first", "Which Trunks use it", "Sign out"]);
+    await click(more());
+    expect(menuItems()).toEqual([]);
+    await click(button(sel(), "Select accounts"));
+    expect(button(sel(), "Pause")).toBeUndefined();
+    await level("Technical");
+    await click(more());
+    expect(menuItems()).toEqual(["Test it", "Answer first", "Rename", "Which Trunks use it", "Sign out"]);
+    expect(button(document.querySelector('[role="menu"]'), "Rename")?.disabled).toBe(true);
+    expect(button(sel(), "Pause")?.disabled).toBe(true);
   });
 
   it("Test it, Answer first and Sign out also have their own rows", async () => {
@@ -183,54 +208,78 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     expect(calls(request, "branch.setup.detect").length).toBeGreaterThan(before);
   });
 
-  it("Codex not installed: the row reads Not found with the preview's line and Check again, and offers no download", async () => {
+  it("Get Codex asks before the download, and Cancel does not download", async () => {
     const env = engineOf();
     const answer = env.request.getMockImplementation()!;
-    let detect: Record<string, unknown> = { candidates: [], unavailableCandidates: [{ id: "codex-cli", reason: "codex: command not found" }] };
     env.request.mockImplementation((async (method: string, params?: unknown) => {
       if (method === "config.get") return { hash: "h1", valid: true, config: { agents: { defaults: { model: { fallbacks: [] } } }, plugins: { entries: { codex: { enabled: true } } } } };
-      if (method === "branch.setup.detect") return detect;
-      // An engine from the first-use download design still answers these; the row must not use them.
-      if (method === "codex.runtime") return { state: "download", reason: "not-downloaded", version: "0.160.0", bytes: 134_311_083, message: "Codex 0.160.0 downloads the first time you use it (134 MB)." };
-      if (method === "codex.runtime.download") return { state: "downloading", received: 0, bytes: 134_311_083, message: "Downloading Codex 0.160.0 (134 MB): 0%." };
+      if (method === "branch.setup.detect") return { candidates: [], unavailableCandidates: [{ id: "codex-cli", reason: "codex: command not found" }] };
+      if (method === "codex.runtime") return { state: "download", reason: "not-downloaded", version: "0.160.0", bytes: 134_311_083, ask: "Download Codex 0.160.0 (134 MB)?", message: "Download Codex 0.160.0 (134 MB)?" };
+      if (method === "codex.runtime.download") return { state: "downloading", received: 40_000_000, bytes: 134_311_083, message: "Getting Codex ready (134 MB)… 29%" };
       return answer(method, params);
     }) as typeof answer);
     (env.engine as unknown as { features: { methods: string[] } }).features.methods = [...METHODS, "codex.runtime", "codex.runtime.download"];
     const { request } = await mount(vi.fn(), env);
-    const codex = row("accounts.apps.codex")!;
-    // Preview §4.7.8: CODE_PILL_PE18.none = Not found; "Install and sign in to ${c.name} on ${comp}, then check again."
-    expect(codex.querySelector(".r1s-item-t b")!.textContent).toBe("Not found");
-    expect(codex.querySelector(".r1s-item-t small")!.textContent).toBe("Install and sign in to Codex on this computer, then check again.");
-    // Preview: a coding app that isn't ready shows its switch off and greyed (`${c.st === 'ready' ? '' : 'disabled'}`).
-    const use = codex.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Use Codex"]')!;
-    expect(use.getAttribute("aria-checked")).toBe("false");
-    expect(use.disabled).toBe(true);
-    expect(codex.textContent).not.toMatch(/download/i);
-    for (const gone of ["Download now", "Try again", "Cancel"]) expect(button(codex, gone)).toBeUndefined();
-    expect(calls(request, "codex.runtime")).toHaveLength(0);
+    const codex = () => row("accounts.apps.codex")!;
+    // Preview §4.7.8 keeps the Not found pill and its line. The preview has no download control on this row, so the action is Get Codex.
+    expect(codex().querySelector(".r1s-item-t b")!.textContent).toBe("Not found");
+    expect(codex().querySelector(".r1s-item-t small")!.textContent).toBe("Install and sign in to Codex on this computer, then check again.");
+    expect(codex().textContent).not.toMatch(/isn['’]t needed/iu);
+    const use = () => codex().querySelector<HTMLButtonElement>('[role="switch"][aria-label="Use Codex"]')!;
+    expect(use().getAttribute("aria-checked")).toBe("false");
+    expect(use().disabled).toBe(true);
     expect(calls(request, "codex.runtime.download")).toHaveLength(0);
-    // Check again looks again; once Codex is installed and signed in, the row is ready.
-    detect = { candidates: [{ kind: "codex-cli", credentials: true }], unavailableCandidates: [] };
-    await click(button(row("accounts.apps.check"), "Check again"));
-    expect(row("accounts.apps.codex")!.querySelector(".r1s-item-t b")!.textContent).toBe("Models ready");
-    const ready = row("accounts.apps.codex")!.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Use Codex"]')!;
-    expect(ready.getAttribute("aria-checked")).toBe("true");
-    expect(ready.disabled).toBe(false);
+    await click(button(codex(), "Get Codex"));
+    expect(calls(request, "codex.runtime.download")).toHaveLength(0);
+    expect(codex().textContent).toContain("Download Codex 0.160.0 (134 MB)?");
+    expect(codex().textContent).not.toMatch(/isn['’]t needed/iu);
+    await click(button(codex(), "Cancel"));
+    expect(calls(request, "codex.runtime.download")).toHaveLength(0);
+    await click(button(codex(), "Get Codex"));
+    await click(button(codex(), "Yes"));
+    expect(calls(request, "codex.runtime.download")).toEqual([{ confirmed: true }]);
+    expect(codex().textContent).toContain("Getting Codex ready (134 MB)… 29%");
+    expect(use().disabled).toBe(true);
   });
 
-  it("has no Codex download in the window: no download line, no download calls", async () => {
-    const { readFileSync, readdirSync, statSync } = await import("node:fs");
-    const { join, resolve } = await import("node:path");
-    const src = resolve(__dirname, "../../..");
-    const walk = (dir: string): string[] => readdirSync(dir).flatMap((name) => { const full = join(dir, name); return statSync(full).isDirectory() ? walk(full) : /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [full] : []; });
-    const files = walk(src);
-    expect(files.some((file) => file.endsWith("codex-line.tsx"))).toBe(false);
-    for (const file of files) {
-      const text = readFileSync(file, "utf8");
-      for (const banned of ["codex.runtime", "codex_download", "Getting Codex ready"]) {
-        expect(text.includes(banned), file + " mentions " + banned).toBe(false);
-      }
-    }
+  it("a finished download enables Use Codex, and a failure offers Try again", async () => {
+    const env = engineOf();
+    const answer = env.request.getMockImplementation()!;
+    let download: Record<string, unknown> = { state: "ready", source: "downloaded", command: "codex", version: "0.160.0" };
+    env.request.mockImplementation((async (method: string, params?: unknown) => {
+      if (method === "config.get") return { hash: "h1", valid: true, config: { agents: { defaults: { model: { fallbacks: [] } } }, plugins: { entries: { codex: { enabled: true } } } } };
+      if (method === "branch.setup.detect") return { candidates: [], unavailableCandidates: [{ id: "codex-cli", reason: "codex: command not found" }] };
+      if (method === "codex.runtime") return { state: "download", reason: "not-downloaded", version: "0.160.0", bytes: 134_311_083, message: "Codex downloads the first time you use it." };
+      if (method === "codex.runtime.download") return download;
+      return answer(method, params);
+    }) as typeof answer);
+    (env.engine as unknown as { features: { methods: string[] } }).features.methods = [...METHODS, "codex.runtime", "codex.runtime.download"];
+    const { request } = await mount(vi.fn(), env);
+    const codex = () => row("accounts.apps.codex")!;
+    const use = () => codex().querySelector<HTMLButtonElement>('[role="switch"][aria-label="Use Codex"]')!;
+    await click(button(codex(), "Get Codex"));
+    expect(calls(request, "codex.runtime.download")).toHaveLength(0);
+    await click(button(codex(), "Yes"));
+    expect(calls(request, "codex.runtime.download")).toEqual([{ confirmed: true }]);
+    expect(use().disabled).toBe(false);
+    expect(use().getAttribute("aria-checked")).toBe("true");
+    download = { state: "unavailable", reason: "offline", bytes: 134_311_083, version: "0.160.0", ask: "Download Codex 0.160.0 (134 MB)?", message: "Codex isn’t downloaded yet and this computer looks offline. Try again." };
+    await act(async () => root.render(<></>));
+    await mount(vi.fn(), env);
+    await click(button(row("accounts.apps.codex"), "Get Codex"));
+    await click(button(row("accounts.apps.codex"), "Yes"));
+    expect(row("accounts.apps.codex")!.textContent).toContain("Try again.");
+    expect(row("accounts.apps.codex")!.textContent).not.toMatch(/isn['’]t needed/iu);
+    expect(button(row("accounts.apps.codex"), "Try again")).toBeTruthy();
+    const before = calls(request, "codex.runtime.download").length;
+    await click(button(row("accounts.apps.codex"), "Try again"));
+    expect(calls(request, "codex.runtime.download").length).toBe(before);
+    expect(row("accounts.apps.codex")!.textContent).toContain("Download Codex 0.160.0 (134 MB)?");
+    await click(button(row("accounts.apps.codex"), "Cancel"));
+    expect(calls(request, "codex.runtime.download").length).toBe(before);
+    await click(button(row("accounts.apps.codex"), "Try again"));
+    await click(button(row("accounts.apps.codex"), "Yes"));
+    expect(calls(request, "codex.runtime.download").length).toBeGreaterThan(before);
   });
 
   it("connects GitHub (tools.github.authorize.start) and refreshes it (tools.github.status)", async () => {

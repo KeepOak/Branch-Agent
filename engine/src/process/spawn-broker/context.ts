@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { toErrorObject } from "@branch/normalization-core/error-coercion";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
 import { createSpawnBrokerHost, type SpawnBrokerHost } from "./host.js";
+import { SPAWN_BROKER_IDLE_TIMEOUT_MS } from "./protocol.js";
 
 const context = new AsyncLocalStorage<SpawnBrokerHost | undefined>();
 let gatewayStartupDisabled = false;
@@ -17,7 +18,10 @@ export async function startGatewaySpawnBroker(options: {
   let broker: SpawnBrokerHost | undefined;
   let entryPath: string = runtimeProcessEntrypoints.spawnBroker.distWorkerPath;
   try {
-    broker = createSpawnBrokerHost({ onReady: options.onReady });
+    broker = createSpawnBrokerHost({
+      onReady: options.onReady,
+      idleTimeoutMs: SPAWN_BROKER_IDLE_TIMEOUT_MS,
+    });
     entryPath = broker.entryPath;
     await broker.ready();
     return broker;

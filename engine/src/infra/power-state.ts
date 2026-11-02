@@ -1,7 +1,8 @@
 // Polite on battery (Private #454 D). The Branch Agent app knows when this computer runs on battery and writes
-// power-state.json into the engine's state directory; the engine then lowers its own process priority and backs off
-// timed work that can wait (the heartbeat's interval polls). An old file (the app closed long ago) counts as plugged
-// in, so a stale answer never keeps the engine slow.
+// power-state.json into the engine's state directory. After Quit Branch, the per-user engine service keeps writing
+// that file itself (service-keep-awake.ts). The engine then lowers its own process priority and backs off timed work
+// that can wait (the heartbeat's interval polls). An old file counts as plugged in, so a stale answer never keeps
+// the engine slow.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

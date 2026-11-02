@@ -17,6 +17,7 @@ async function importMachineName(scope: string) {
 afterEach(() => {
   runExecMock.mockReset();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("getMachineDisplayName", () => {
@@ -47,5 +48,29 @@ describe("getMachineDisplayName", () => {
     }
     expect(hostnameSpy).toHaveBeenCalledTimes(expectedCalls);
     expect(runExecMock).not.toHaveBeenCalled();
+  });
+
+  it("shows BRANCH_DISPLAY_HOSTNAME instead of the real name, even after the real name is cached", async () => {
+    vi.stubEnv("BRANCH_DISPLAY_HOSTNAME", "");
+    const hostnameSpy = vi.spyOn(os, "hostname").mockReturnValue("grovebox.local");
+    const machineName = await importMachineName("display-override");
+
+    await expect(machineName.getMachineDisplayName()).resolves.toBe("grovebox");
+    vi.stubEnv("BRANCH_DISPLAY_HOSTNAME", "  tour-machine  ");
+    await expect(machineName.getMachineDisplayName()).resolves.toBe("tour-machine");
+    expect(hostnameSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("displayHostname", () => {
+  it("returns the trimmed BRANCH_DISPLAY_HOSTNAME when set and the real name otherwise", async () => {
+    const { displayHostname } = await importMachineName("display-helper");
+
+    vi.stubEnv("BRANCH_DISPLAY_HOSTNAME", "  tour-machine  ");
+    expect(displayHostname("grovebox")).toBe("tour-machine");
+    vi.stubEnv("BRANCH_DISPLAY_HOSTNAME", "   ");
+    expect(displayHostname("grovebox")).toBe("grovebox");
+    vi.stubEnv("BRANCH_DISPLAY_HOSTNAME", undefined);
+    expect(displayHostname("grovebox")).toBe("grovebox");
   });
 });

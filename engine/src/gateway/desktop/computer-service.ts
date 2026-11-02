@@ -10,6 +10,7 @@ import type {
 } from "../../plugins/registry-types.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { parseNodeWorkerComputerInput } from "../../worker/node-computer-protocol.js";
+import { computerHostEnvironment, hasDriverEndpoint } from "./computer-driver-endpoint.js";
 import { computerRunOwner } from "./computer-owner.js";
 import { startComputerHostProcess, type ComputerHostProcess } from "./computer-process.js";
 import {
@@ -32,10 +33,16 @@ export type GatewayComputerStatus = {
 
 /** Set by the desktop app when it starts the Gateway without a native driver endpoint. */
 const DRIVER_REASON_ENV = "BRANCH_COMPUTER_DRIVER_REASON";
+/** Said when this Gateway holds no driver address to pass its computer host. */
+const DRIVER_ADDRESS_MISSING = "Branch can't see this computer's screen right now. Quit Branch Agent and open it again.";
 /** An empty reason still means Coming: the pane then shows the preview's bare "Coming" with no reason line. */
 function appDriverReason(env: NodeJS.ProcessEnv): string | undefined {
   const reason = env[DRIVER_REASON_ENV]?.trim();
   return reason !== undefined && reason.length <= 300 ? reason : undefined;
+}
+/** The plain reason for a stopped computer host: the desktop's own reason first, then a missing address. */
+function nativeDriverReason(env: NodeJS.ProcessEnv): string | undefined {
+  return appDriverReason(env) ?? (hasDriverEndpoint(computerHostEnvironment(env)) ? undefined : DRIVER_ADDRESS_MISSING);
 }
 type ComputerInvokeRequest = ComputerInvokeParams & {
   owner: string;
@@ -73,6 +80,25 @@ type HostRuntime = {
     releaseOwner: () => void;
   };
 };
+
+/** Match the provider's five-minute idle execution lifetime. */
+export const COMPUTER_EXECUTION_LINGER_MS = 300_000;
+/** A discovery-only managed desktop holds a virtual display, so it keeps the observer linger. */
+export const COMPUTER_MANAGED_DISCOVERY_LINGER_MS = 60_000;
+/**
+ * Every agent turn discovers the computer before building its tools. Starting the native
+ * host takes seconds, so a discovery-only native host stays warm across ordinary turn gaps.
+ */
+export const COMPUTER_NATIVE_DISCOVERY_LINGER_MS = 15 * 60_000;
+
+function computerIdleLingerMs(runtime: Pick<HostRuntime, "execution" | "desktopTarget">): number {
+  if (runtime.execution) {
+    return COMPUTER_EXECUTION_LINGER_MS;
+  }
+  return runtime.desktopTarget === "native"
+    ? COMPUTER_NATIVE_DISCOVERY_LINGER_MS
+    : COMPUTER_MANAGED_DISCOVERY_LINGER_MS;
+}
 
 /** Owns the Gateway transport, while registered providers retain native action semantics. */
 export function createGatewayComputerService(options: {
@@ -172,11 +198,9 @@ export function createGatewayComputerService(options: {
     if (runtime.closed || runtime.execution?.requests.size) {
       return;
     }
-    // Match the provider's five-minute idle execution lifetime. Discovery alone
-    // retains the desktop only for the ordinary observer linger period.
     runtime.idleTimer = setTimeout(
       () => retireInBackground(runtime),
-      runtime.execution ? 300_000 : 60_000,
+      computerIdleLingerMs(runtime),
     );
     runtime.idleTimer.unref?.();
   };
@@ -216,7 +240,7 @@ export function createGatewayComputerService(options: {
     };
     current = runtime;
     const preparation = (async () => {
-      let env = process.env;
+      let env = computerHostEnvironment(process.env);
       if (runtime.desktopTarget === "managed") {
         if (!options.hostDesktopService) {
           throw new Error("Managed Gateway desktop is unavailable");
@@ -287,7 +311,7 @@ export function createGatewayComputerService(options: {
         const reason =
           configuredDesktopTarget() === "native" &&
           message.startsWith("COMPUTER_DRIVER_UNAVAILABLE:")
-            ? appDriverReason(options.env ?? process.env)
+            ? nativeDriverReason(options.env ?? process.env)
             : undefined;
         return {
           configured,

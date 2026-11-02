@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import {
   validateJsonSchemaValue,
   type JsonSchemaObject,
@@ -24,8 +25,18 @@ vi.mock("./api.js", () => ({
   registerCuaDriverDoctorChecks: artifactMocks.registerDoctor,
 }));
 
+// Registration builds the image processor, which resolves the Branch temp root. On a
+// Windows host that pretends to be darwin, the POSIX temp-root checks cannot run, so
+// give registration the OS temp dir instead.
+vi.mock("branch/plugin-sdk/temp-path", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("branch/plugin-sdk/temp-path")>()),
+  resolvePreferredBranchTmpDir: () => os.tmpdir(),
+}));
+
 vi.mock("./src/driver-artifacts.js", () => ({
   verifyInstalledCuaDriverArtifacts: artifactMocks.verify,
+  bundledCuaDriverReady: () => true,
+  setComputerUseOnDemand: () => undefined,
 }));
 
 import plugin from "./index.js";
@@ -166,8 +177,7 @@ describe("cua-computer plugin registration", () => {
     artifactMocks.verify.mockReturnValue({
       ok: false,
       code: "COMPUTER_DRIVER_PACKAGE_MISSING",
-      diagnostic:
-        "COMPUTER_DRIVER_PACKAGE_MISSING: native package absent. Fix: reinstall Branch.",
+      diagnostic: "COMPUTER_DRIVER_PACKAGE_MISSING: native package absent. Fix: reinstall Branch.",
       fixHint: "Reinstall Branch.",
     });
 

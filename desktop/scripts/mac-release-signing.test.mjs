@@ -28,6 +28,11 @@ test("a partial signing identity fails and names what is missing, never falling 
     /incomplete: BRANCH_MACOS_SIGNING_P12_FILE, BRANCH_MACOS_SIGNING_PASSWORD_FILE are not set/);
 });
 
+test("darwin-x64 is always ad-hoc and never uses the pinned release identity", () => {
+  assert.deepEqual(macSigningPlan(identity, { arch: "x64" }), { signing: "adhoc" });
+  assert.deepEqual(macSignCommand(macSigningPlan(identity, { arch: "x64" }), app), ["codesign", ["--force", "--deep", "--sign", "-", app]]);
+});
+
 test("an unknown plan never produces a signing command", () => {
   assert.throws(() => macSignCommand({ signing: "none" }, app), /Unknown macOS signing plan/);
   assert.throws(() => macSignCommand(undefined, app), /Unknown macOS signing plan/);

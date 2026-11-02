@@ -489,6 +489,7 @@ async function executeAgentRun(params: StartAgentRunExecutionParams): Promise<vo
                 threadId: prepared.resolvedThreadId,
                 runContext,
                 clientCaps,
+                gatewayClientMode: params.client?.connect.client.mode,
                 gatewayUiCommandTarget,
                 approvalReviewerDeviceId: callerContext.ApprovalReviewerDeviceId,
                 taskSuggestionDeliveryMode: supportsTaskSuggestions ? "gateway" : undefined,

@@ -1,7 +1,11 @@
 /* @vitest-environment jsdom */
 
 import { GatewayProtocolRequestError } from "@branch/gateway-client/browser";
-import { buildSystemAgentSessionInvalidatedErrorDetails } from "@branch/gateway-protocol";
+import {
+  buildSystemAgentInferenceUnavailableErrorDetails,
+  buildSystemAgentSessionInvalidatedErrorDetails,
+  type SystemAgentErrorFixAction,
+} from "@branch/gateway-protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import { waitForFast } from "../../test-helpers/wait-for.ts";
@@ -44,6 +48,38 @@ describe("custodian page session lifecycle", () => {
   afterEach(() => {
     document.body.replaceChildren();
     vi.restoreAllMocks();
+  });
+
+  it.each<{ action: SystemAgentErrorFixAction; offersAccounts: boolean }>([
+    { action: "open-accounts", offersAccounts: true },
+    { action: "retry", offersAccounts: false },
+  ])("offers the fix the inference failure names ($action)", async ({ action, offersAccounts }) => {
+    const message =
+      action === "open-accounts"
+        ? "Branch can't reach your AI account right now. Reconnect it in Accounts, then try again."
+        : "Branch is busy finishing other work. Try again in a moment.";
+    const request = vi.fn().mockRejectedValueOnce(
+      new GatewayProtocolRequestError({
+        code: "UNAVAILABLE",
+        message,
+        details: buildSystemAgentInferenceUnavailableErrorDetails(action),
+      }),
+    );
+    const { context } = createContext(request);
+    const { page } = await mountPage(context);
+    await waitForFast(() => expect(page.textContent).toContain(message));
+    const alert = page.querySelector<HTMLElement>('.custodian__error[role="alert"]')!;
+    expect(alert.textContent).toContain("Retry");
+    const openAccounts = alert.querySelector<HTMLButtonElement>(".custodian__fix-open-accounts");
+    if (!offersAccounts) {
+      expect(openAccounts).toBeNull();
+      return;
+    }
+    expect(openAccounts?.textContent).toContain("Open Accounts");
+    openAccounts!.click();
+    expect(context.navigate).toHaveBeenCalledWith("profile");
+    await page.updateComplete;
+    expect(page.querySelector(".custodian__fix-open-accounts")).toBeNull();
   });
 
   it("retires sensitive input when cancelling an invalidated session", async () => {

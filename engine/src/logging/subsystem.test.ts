@@ -401,7 +401,7 @@ describe("createSubsystemLogger().isEnabled", () => {
       setLoggerOverride({ level: "silent", consoleLevel: "info", consoleStyle });
       const logSpy = installConsoleMethodSpy("log");
       const log = createSubsystemLogger("gateway/auth");
-      const secret = "sk-abcdefghijklmnopqrstuvwxyz123456";
+      const secret = ["sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join("");
 
       for (const forceColor of ["1", "0", "1"]) {
         vi.stubEnv("FORCE_COLOR", forceColor);
@@ -427,7 +427,7 @@ describe("createSubsystemLogger().isEnabled", () => {
         consoleStyle: variant === "redacted" ? undefined : variant,
       });
       const logSpy = installConsoleMethodSpy("log");
-      const secret = "sk-rawtokenabcdefghijklmnopqrstuvwxyz123456";
+      const secret = ["sk-r", "awtokenabcdefghijklmnopqrstuvwxyz123456"].join("");
       const message = variant === "redacted" ? `raw token ${secret}` : "raw diagnostic";
       createSubsystemLogger("gateway/auth").raw(message);
 

@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Exe,
     [switch]$DryRun,
     [string]$ConfigModule,
-    [string[]]$ShortcutDirectories = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))
+    [string[]]$ShortcutDirectories = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Startup'))
 )
 $ErrorActionPreference = 'Stop'
 $executable = [IO.Path]::GetFullPath($Exe)
@@ -52,7 +52,8 @@ foreach ($directory in $directories) {
     }
     $link = $shell.CreateShortcut($path)
     $link.TargetPath = $executable
-    $link.WorkingDirectory = Split-Path -Parent $executable
+    # Start in the user folder, not the package folder an update later renames (#1777).
+    $link.WorkingDirectory = $env:USERPROFILE
     $link.IconLocation = "$executable,0"
     $link.Description = 'Branch Agent'
     $link.Save()

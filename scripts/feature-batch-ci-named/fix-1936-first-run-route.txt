@@ -1,0 +1,1 @@
+window:src/setup/first-run-path.test.ts

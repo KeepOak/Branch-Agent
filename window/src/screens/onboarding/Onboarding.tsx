@@ -4,15 +4,14 @@
 // the step that owns it; Meet them creates the picked Trunks and lands in the first conversation (finish.ts).
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { readListedTemplates, type ListedTemplate } from "../seedbank/templates";
-import { createPicked, greet, readDefaultTrunk, recordOnboarding, startSetupTalk, type DefaultTrunk, type Made } from "./finish";
+import { createPicked, greet, readDefaultTrunk, recordOnboarding, saveDisplayName, startSetupTalk, type DefaultTrunk, type Made } from "./finish";
 import { FirstTrunk } from "./FirstTrunk";
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
-import { configStore } from "../../places/settings/config-store";
-import { errorText } from "../../places/settings/adapter";
+import { saveOnboardingAccess } from "./access";
 import { Models } from "./Models";
 import { ModeStep } from "./ModeStep";
-import { clampStep, freshState, helloOk, LAST_STEP, MODES, mainSessionOf, picked, primary, STEPS, togglePick, WAITS_FOR, type OnboardingState } from "./model";
+import { advanceFrom, failedStep, freshState, helloOk, LAST_STEP, MODES, mainSessionOf, picked, primary, STEPS, togglePick, WAITS_FOR, type OnboardingState } from "./model";
 import { Welcome, WhereSheet } from "./Welcome";
 import "./onboarding.css";
 
@@ -51,17 +50,35 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
   const [trunkError, setTrunkError] = useState<string | null>(null);
   const [made, setMade] = useState<Made[]>([]);
   const [talking, setTalking] = useState(false), [talkError, setTalkError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  /** True once a mode radio is pressed this run. Skip / finish / talk then write that pick; otherwise they write only when unset. */
+  const [pickedMode, setPickedMode] = useState(false);
+  /** Writes the welcome name onto the profile. An empty name, or a connection with no profile, saves nothing. */
+  const keepName = async () => {
+    if (s.step !== 0 || !s.name.trim()) return true;
+    setSaving(true); setNameError(null);
+    try {
+      await saveDisplayName(engine, s.name);
+      return true;
+    } catch {
+      setNameError("Couldn’t save your name. Try again in a moment.");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
   const talk = async () => {
     if (!onTalk || talking) return;
     setTalking(true); setTalkError(null);
     try {
       const key = await startSetupTalk(engine);
       // As Set up later does, so the card doesn't open again; the conversation asks the rest. A failed save only means
-      // the card comes back at the next launch.
+      // the card comes back at the next launch. Write Ask first only on a fresh profile, or the pick made this run.
+      await saveOnboardingAccess(engine, s.mode, { onlyIfUnset: !pickedMode }).catch(() => undefined);
       await recordOnboarding(engine, s).catch(() => undefined);
       onTalk(key);
     }
-    catch (e) { setTalkError(`Couldn’t start that conversation. ${errorText(e)}`); }
+    catch (e) { setTalkError(failedStep("Couldn’t start that conversation", e)); }
     finally { setTalking(false); }
   };
   const go = useRef<HTMLButtonElement>(null);
@@ -79,51 +96,66 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
       const first = created.made[0];
       const target = first ? { agentId: first.agentId, mainKey: four.def?.mainKey ?? "main" } : four.def ? { agentId: four.def.id, mainKey: four.def.mainKey } : null;
       if (!target) { setTrunkError("Couldn’t find your default Trunk. Try again in a moment."); return; }
+      await saveOnboardingAccess(engine, s.mode, { onlyIfUnset: !pickedMode });
       await recordOnboarding(engine, s);
       // The greeting is a real model reply, so it waits for a hello that worked. With examples or no model the
       // conversation opens empty: no chat.send that would fail with "Couldn't sign in" (ONBOARDING-PROPOSAL ⑤).
-      const sessionKey = helloOk(s.hello) ? await greet(engine, target.agentId, target.mainKey) : mainSessionOf(target.agentId, target.mainKey);
+      const sessionKey = helloOk(s.hello) ? await greet(engine, target.agentId, target.mainKey, s.name) : mainSessionOf(target.agentId, target.mainKey);
       onDone?.({ sessionKey, made: created.made, state: s });
     } catch (e) {
-      setTrunkError(`Couldn’t start your first conversation. ${errorText(e)}`);
+      setTrunkError(failedStep("Couldn’t start your first conversation", e));
     } finally {
       setSaving(false);
     }
   };
   const next = async () => {
     if (!p.ok || saving) return;
-    if (s.step < 2) { set({ step: clampStep(s.step + 1) }); return; }
+    if (s.step < 2) {
+      const from = s.step;
+      if (!(await keepName())) return;
+      // Advance only from the step this click started on, so a second Get started
+      // (double-click, or two handlers in one turn) cannot skip Your models.
+      setS((cur) => ({ ...cur, step: advanceFrom(cur.step, from) }));
+      return;
+    }
     if (s.step === LAST_STEP) { await meet(); return; }
-    const exec = MODES.find((m) => m.id === s.mode)?.exec;
-    if (!exec) return;
+    if (!MODES.find((m) => m.id === s.mode)?.exec) return;
     setSaving(true); setModeError(null);
     try {
-      // The engine refuses mode beside the older security/ask keys, so those go (as Settings › Permissions saves it).
-      await configStore(engine).set("tools.exec", { mode: exec, security: null, ask: null });
+      await saveOnboardingAccess(engine, s.mode);
       onAnswered?.(s);
       set({ step: LAST_STEP });
     } catch (e) {
-      setModeError(`Couldn’t save that. ${errorText(e)}`);
+      setModeError(failedStep("Couldn’t save that", e));
     } finally {
       setSaving(false);
     }
   };
+  const leave = async () => {
+    // A refused name stays on this computer (saveDisplayName writes it before the profile call) and must not
+    // trap the person on Welcome. Fresh profile: accept recommended Ask first (or the pick already made) so the
+    // composer never starts on Full access. An access already in the profile stays put. A failed write must not
+    // block leaving.
+    await keepName();
+    await saveOnboardingAccess(engine, s.mode, { onlyIfUnset: !pickedMode }).catch(() => undefined);
+    onLater(s);
+  };
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape" || where) return;
     e.preventDefault();
-    onLater(s);
+    void leave();
   };
   const body = s.step === 0
-    ? <Welcome where={s.where} onChangeWhere={() => setWhere(true)} />
+    ? <Welcome where={s.where} onChangeWhere={() => setWhere(true)} name={s.name} onName={(name) => { set({ name }); setNameError(null); }} nameError={nameError} />
     : s.step === 1
       ? <Models engine={engine} off={s.off} onOff={(off) => set({ off })} hello={s.hello} onHello={(hello) => set({ hello })} onExamples={(examples) => set({ examples })} />
       : s.step === 2
-        ? <ModeStep mode={s.mode} onMode={(mode) => { set({ mode }); setModeError(null); }} error={modeError} />
+        ? <ModeStep mode={s.mode} onMode={(mode) => { set({ mode }); setPickedMode(true); setModeError(null); }} error={modeError} />
         : <FirstTrunk s={s} listed={four.listed} defaultName={four.def?.name ?? ""} error={trunkError} onText={(text) => set({ text })} onPick={(id) => { setS((cur) => ({ ...cur, ...togglePick(cur, id) })); setTrunkError(null); }} />;
   // Meet them creates Trunks from templates; Start with <default> only records setup and sends the first message.
   const need = s.step === LAST_STEP ? [...(picked(s).length ? ["trunks.template.create"] : []), "config.get", "config.patch", "chat.send"] : "config.patch";
   const primaryButton = (
-    <button type="button" ref={go} className="r1-ob-btn r1-ob-pri r1-ob-go" aria-disabled={!p.ok || saving ? true : undefined} title={p.why} onClick={() => void next()} {...(s.step < 2 ? { "data-local": true } : {})}>
+    <button type="button" key={s.step} ref={go} className="r1-ob-btn r1-ob-pri r1-ob-go" aria-disabled={!p.ok || saving ? true : undefined} title={p.why} onClick={(e) => { if (e.detail > 1) return; void next(); }} {...(s.step < 2 ? { "data-local": true } : {})}>
       {saving ? "Saving…" : p.label}
     </button>
   );
@@ -141,7 +173,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
         {talkError ? <p className="r1-ob-error" role="alert">{talkError}</p> : null}
         <div className="r1-ob-later">
           {s.step === 0 ? <><Coming need={WAITS_FOR.talk} unwired={!onTalk} reason={onTalk ? "This engine can’t start a conversation." : "Setting up by talking comes in a later update."} where="Set up by talking"><button type="button" className="r1-ob-link" disabled={talking} onClick={() => void talk()}>{talking ? "Starting…" : "Set up by talking"}</button></Coming><span aria-hidden="true">·</span></> : null}
-          <button type="button" className="r1-ob-link" data-local onClick={() => onLater(s)}>Set up later</button>
+          <button type="button" className="r1-ob-link" data-local onClick={() => void leave()}>Set up later</button>
         </div>
       </div>
       {where ? <WhereSheet where={s.where} onPick={(w) => { set({ where: w }); setWhere(false); }} onClose={() => setWhere(false)} /> : null}

@@ -4,11 +4,13 @@ import { icons } from "../../../components/icons.ts";
 import { t } from "../../../i18n/index.ts";
 import { registerModelControlsEnglish } from "../../../i18n/locales/en-model-controls.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "../../../lib/external-link.ts";
+import { BRANCH_HELP_URL } from "../../../lib/product-links.ts";
 import { restorePointerOpenedChatComposerTrigger } from "./chat-picker-overlay.ts";
 
 registerModelControlsEnglish();
 
-const PERMISSION_MODES_DOCS_URL = "https://docs.openclaw.ai/gateway/permission-modes";
+// Branch's handbook, not the upstream engine docs.
+const PERMISSION_MODES_DOCS_URL = BRANCH_HELP_URL;
 const PERMISSION_MODES = ["read-only", "guarded", "workspace", "full"] as const;
 const DEFAULT_PERMISSION_VALUE = "default";
 const PERMISSION_OPTIONS = [null, ...PERMISSION_MODES] as const;

@@ -1,0 +1,3 @@
+engine:extensions/fireworks/index.test.ts
+engine:extensions/fireworks/onboard.test.ts
+engine:extensions/fireworks/stream.test.ts

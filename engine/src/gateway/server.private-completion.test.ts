@@ -72,10 +72,16 @@ describe("private subagent completion processing receipts", () => {
 
   async function start() {
     const module = await import("./server-kernel.js");
-    const create = module.createGatewayKernel;
-    const capture = vi.spyOn(module, "createGatewayKernel").mockImplementation(async (...args) => {
-      kernel = await create(...args);
-      return kernel;
+    const prepareKernel = module.prepareGatewayKernel;
+    const capture = vi.spyOn(module, "prepareGatewayKernel").mockImplementation(async (...args) => {
+      const prepared = await prepareKernel(...args);
+      return {
+        ...prepared,
+        async activate(...activateArgs) {
+          kernel = await prepared.activate(...activateArgs);
+          return kernel;
+        },
+      };
     });
     try {
       harness = await startGatewayServerHarness();

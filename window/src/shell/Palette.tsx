@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
-import { filterPalette, GROUPS, moveSelection, paletteEmptyLine, type PaletteRow } from "./palette-model";
+import { filterPalette, GROUPS, messageMetaLine, moveSelection, paletteBoldParts, paletteEmptyLine, type PaletteRow } from "./palette-model";
 import { readMessageHits, type MessageHit } from "./search-model";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
@@ -16,12 +16,14 @@ type Props = {
 /** Message rows from sessions.search after a 200 ms pause in typing (§4.1.7 Parity adds, palette-session-search). */
 function useMessageRows(request: Request, query: string, rowName: (k: string) => string, open: (key: string, query: string) => void) {
   const [hits, setHits] = useState<MessageHit[]>([]);
+  const [searchedAt, setSearchedAt] = useState(0);
   const [note, setNote] = useState("");
   const [searching, setSearching] = useState(false);
   useEffect(() => {
     const q = query.trim();
     if (!q) {
       setHits([]);
+      setSearchedAt(0);
       setNote("");
       setSearching(false);
       return;
@@ -36,6 +38,7 @@ function useMessageRows(request: Request, query: string, rowName: (k: string) =>
         (r) => {
           if (current) {
             setHits(readMessageHits(r));
+            setSearchedAt(Date.now());
             setNote((r as { indexing?: boolean }).indexing ? "Looking through older messages. Search again shortly." : "");
             setSearching(false);
           }
@@ -53,13 +56,29 @@ function useMessageRows(request: Request, query: string, rowName: (k: string) =>
       clearTimeout(timer);
     };
   }, [request, query]);
-  const rows = messagePaletteRows(hits, query, rowName, open);
+  const rows = messagePaletteRows(hits, query, rowName, open, searchedAt);
   return { rows, note, searching };
 }
 
 /** Palette message rows carry the searched words into the destination conversation's Find bar. */
-export function messagePaletteRows(hits: MessageHit[], query: string, rowName: (key: string) => string, open: (key: string, query: string) => void): PaletteRow[] {
-  return hits.map((hit, i) => ({ id: `msg:${i}`, group: "Messages", label: hit.snippet, hint: rowName(hit.key), run: () => open(hit.key, query) }));
+export function messagePaletteRows(hits: MessageHit[], query: string, rowName: (key: string) => string, open: (key: string, query: string) => void, now: number): PaletteRow[] {
+  return hits.map((hit, i) => ({
+    id: `msg:${i}`,
+    group: "Messages",
+    label: hit.snippet,
+    hint: "",
+    mark: query,
+    meta: messageMetaLine(rowName(hit.key), hit.at, now),
+    run: () => open(hit.key, query),
+  }));
+}
+
+function BoldQuery({ text, query }: { text: string; query: string }) {
+  return (
+    <>
+      {paletteBoldParts(text, query).map((part, index) => (part.hit ? <strong key={index}>{part.text}</strong> : <span key={index}>{part.text}</span>))}
+    </>
+  );
 }
 
 /** Message rows take their GROUPS slot, just before Trunks. Rows already listed keep their order; message rows only insert. */
@@ -77,10 +96,11 @@ export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Prop
   const listRef = useRef<HTMLDivElement>(null);
   const messages = useMessageRows(request, query, rowName, onOpenMessage);
   const typing = query.trim() !== "";
-  // Trunks and Messages show only while typing (§4.1.7 Parity adds); conversation commands too.
-  const listed = typing ? rows : rows.filter((r) => r.group !== "Trunks" && !r.whenTyping);
+  // Conversation commands stay out until you type. Trunks stay listed when the field is empty, ahead of the other commands.
+  const listed = typing ? rows : rows.filter((r) => !r.whenTyping);
   const base = filterPalette(listed, query);
-  const shown = paletteShown(base, typing ? messages.rows : []);
+  const ordered = typing ? base : [...base.filter((r) => r.group === "Trunks"), ...base.filter((r) => r.group !== "Trunks")];
+  const shown = paletteShown(ordered, typing ? messages.rows : []);
   useEffect(() => setSel(0), [query]);
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${sel}"]`)?.scrollIntoView({ block: "nearest" });
@@ -138,7 +158,11 @@ export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Prop
                   onMouseMove={() => setSel(i)}
                   onClick={() => run(row)}
                 >
-                  <span className="pal-label">{row.label}</span>
+                  <span className="pal-copy">
+                    <span className="pal-label">{row.mark ? <BoldQuery text={row.label} query={row.mark} /> : row.label}</span>
+                    {row.detail ? <span className="pal-detail">{row.detail}</span> : null}
+                    {row.meta ? <span className="pal-meta">{row.meta}</span> : null}
+                  </span>
                   <span className="pal-hint">{row.hint}</span>
                 </button>
               </div>

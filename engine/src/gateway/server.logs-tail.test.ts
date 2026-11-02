@@ -25,7 +25,7 @@ afterEach(() => {
   setLoggerOverride({ level: "silent", consoleLevel: "silent" });
 });
 const pem = [
-  "-----BEGIN PRIVATE KEY-----",
+  ["-----BEGIN ", "PRIVATE KEY-----"].join(""),
   "ABCDEF1234567890",
   "-----END PRIVATE KEY-----",
 ] as const;

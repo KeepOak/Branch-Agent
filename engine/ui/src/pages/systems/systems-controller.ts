@@ -4,7 +4,7 @@ import { registerListener } from "../../../../src/shared/listeners.js";
 import type { NodeListNode } from "../../../../src/shared/node-list-types.js";
 import type { ApplicationContext } from "../../app/context.ts";
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
-import { hasOperatorReadAccess } from "../../app/operator-access.ts";
+import { hasOperatorReadAccess, hasOperatorWriteAccess } from "../../app/operator-access.ts";
 import { isDesktopPanelAvailable } from "../../app/panel-availability.ts";
 import { t } from "../../i18n/index.ts";
 import { resolveEditableSnapshotConfig } from "../../lib/config/config-state-model.ts";
@@ -47,6 +47,7 @@ export class SystemsController {
   backups: BackupStatusResult | null = null;
   backupsLoading = false;
   backupsError: string | null = null;
+  backupFolderSwitching = false;
   readonly storageProbes = new Map<string, StorageLocationsProbeResult>();
   private backupsRequest: AbortController | undefined;
   private readonly storageProbeRequests = new Map<string, AbortController>();
@@ -155,6 +156,53 @@ export class SystemsController {
         this.backupsLoading = false;
         this.notify();
       }
+    }
+  }
+
+  /** The scheduled Git backup this page can repoint, when it can (Settings › Backups owns the rest). */
+  get defaultBackupFolderSwitch():
+    | { folder: string; schedule: BackupStatusResult["schedules"][number] }
+    | undefined {
+    const status = this.backups;
+    const schedule = status?.schedules.find((entry) => entry.mode === "git");
+    if (!status?.suggestedFolder || !schedule || schedule.target === status.suggestedFolder) {
+      return undefined;
+    }
+    if (!hasOperatorWriteAccess(this.context.gateway.snapshot.hello?.auth ?? null)) {
+      return undefined;
+    }
+    return { folder: status.suggestedFolder, schedule };
+  }
+
+  /** "Use default folder" (#1931): keeps the schedule's cadence and limits, moves it to the suggested folder. */
+  async useDefaultBackupFolder(): Promise<void> {
+    const scope = this.lifecycle.capture();
+    const target = this.defaultBackupFolderSwitch;
+    if (!this.presented || !this.current || !scope || !target || this.backupFolderSwitching) {
+      return;
+    }
+    const { folder, schedule } = target;
+    this.backupFolderSwitching = true;
+    this.backupsError = null;
+    this.notify();
+    try {
+      await scope.client.request("backup.schedule.set", {
+        destination: { kind: "folder", path: folder },
+        everyMs: Math.max(60_000, Math.round(schedule.everyMs)),
+        enabled: schedule.enabled,
+        ...(schedule.mediaMaxFileMb ? { mediaMaxFileMb: schedule.mediaMaxFileMb } : {}),
+        ...(schedule.mediaMaxTotalMb ? { mediaMaxTotalMb: schedule.mediaMaxTotalMb } : {}),
+      });
+    } catch (error) {
+      if (this.lifecycle.isCurrent(scope)) {
+        this.backupsError = formatUiError(error);
+      }
+    } finally {
+      this.backupFolderSwitching = false;
+      this.notify();
+    }
+    if (this.lifecycle.isCurrent(scope)) {
+      await this.refreshBackups();
     }
   }
 

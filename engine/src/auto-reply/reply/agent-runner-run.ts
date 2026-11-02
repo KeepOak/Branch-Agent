@@ -53,6 +53,7 @@ import {
 } from "./compaction-notice.js";
 import { createFollowupRunner } from "./followup-runner.js";
 import { REPLY_RUN_STILL_SHUTTING_DOWN_TEXT } from "./get-reply-run-queue.js";
+import { shouldStartLiveInboundReply, startLiveInboundReply } from "./live-inbound-routing.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
 import { resolveActiveRunQueueAction } from "./queue-policy.js";
 import { enqueueFollowupRun, scheduleFollowupDrain } from "./queue.js";
@@ -323,6 +324,38 @@ export async function runReplyAgent(
     releaseAdmissionTicket();
     typing.cleanup();
     return undefined;
+  }
+
+  const liveSessionKey = sessionKey ?? followupRun.run.sessionKey;
+  if (
+    shouldStartLiveInboundReply({
+      liveInbound: params.liveInbound,
+      followupAlreadyLive: followupRun.liveInbound === true,
+      isHeartbeat,
+      resetTriggered: effectiveResetTriggered,
+      queueMode: resolvedQueue.mode,
+      messageInjectionDisposition,
+      sessionKey: liveSessionKey,
+    })
+  ) {
+    return await startLiveInboundReply({
+      followupRun,
+      sessionKey: liveSessionKey ?? "",
+      storePath,
+      opts,
+      run: (operation, liveOpts) =>
+        runReplyAgent({
+          ...params,
+          opts: liveOpts,
+          isActive: false,
+          isRunActive: () => false,
+          shouldSteer: false,
+          shouldFollowup: false,
+          hasQueuedFollowups: false,
+          liveInbound: true,
+          replyOperation: operation,
+        }),
+    });
   }
 
   const bindQueueDisposition = () => {

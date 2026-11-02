@@ -46,6 +46,14 @@ export function presenceUserLabel(
   };
 }
 
+/** One online connection that is the owner's own key: this computer, not a separate person (#1927). */
+export function isLoneSharedOwner(
+  users: readonly Pick<PresenceViewer, "id" | "name" | "email">[],
+): boolean {
+  const only = users.length === 1 ? users[0] : undefined;
+  return only !== undefined && presenceUserLabel(only).isSharedOwner;
+}
+
 export function presenceViewerLabel(user: Pick<PresenceViewer, "id" | "name" | "email">): string {
   return presenceUserLabel(user).name;
 }

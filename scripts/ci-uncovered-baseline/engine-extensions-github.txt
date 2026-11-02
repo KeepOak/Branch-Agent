@@ -1,0 +1,4 @@
+engine:extensions/github/index.test.ts
+engine:extensions/github/src/github-api.test.ts
+engine:extensions/github/src/preview.test.ts
+engine:extensions/github/src/upgrade.test.ts

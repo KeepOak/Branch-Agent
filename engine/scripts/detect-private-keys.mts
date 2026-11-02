@@ -112,8 +112,18 @@ function isDirectRun(): boolean {
   if (!process.argv[1]) {
     return false;
   }
-  const normalize = (value: string) =>
-    process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
+  // macOS tmpdirs are often reached via /var → /private/var; argv and
+  // import.meta.url can disagree after path.resolve alone, which would skip
+  // main() and exit 0 (a silent pass). realpath both sides.
+  const normalize = (value: string) => {
+    const resolved = path.resolve(value);
+    try {
+      const real = fs.realpathSync.native(resolved);
+      return process.platform === "win32" ? real.toLowerCase() : real;
+    } catch {
+      return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+    }
+  };
   return normalize(process.argv[1]) === normalize(fileURLToPath(import.meta.url));
 }
 

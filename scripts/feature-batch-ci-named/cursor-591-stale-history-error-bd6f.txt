@@ -1,0 +1,2 @@
+window:src/connect/preparation-status.test.ts
+window:src/connect/session-history-unavailable.test.ts

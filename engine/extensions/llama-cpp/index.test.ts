@@ -187,11 +187,15 @@ describe("llama.cpp provider plugin", () => {
         ]),
       }),
     );
-    expect(provider.auth.map((method) => method.id)).toEqual(["local", "existing-server"]);
+    expect(provider.auth.map((method) => method.id)).toEqual(["local", "memory", "existing-server"]);
     expect(provider.auth.map((method) => method.wizard?.choiceId)).toEqual([
       "llama-cpp",
+      "llama-cpp-memory",
       "llama-cpp-existing-server",
     ]);
+    expect(provider.auth.find((method) => method.id === "memory")?.wizard?.assistantVisibility).toBe(
+      "detected-only",
+    );
     expect(provider).not.toHaveProperty("createStreamFn");
   });
 

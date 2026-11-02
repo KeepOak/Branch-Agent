@@ -1,0 +1,6 @@
+engine:packages/llm-core/src/model-contracts/anthropic.test.ts
+engine:packages/llm-core/src/utils/assistant-text-stream.test.ts
+engine:packages/llm-core/src/utils/assistant-thinking-stream.test.ts
+engine:packages/llm-core/src/utils/event-stream.test.ts
+engine:packages/llm-core/src/utils/provider-refusal.test.ts
+engine:packages/llm-core/src/validation.test.ts

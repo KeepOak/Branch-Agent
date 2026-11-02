@@ -40,6 +40,7 @@ import { setAbortMemory } from "./abort-primitives.js";
 import type { FastAbortRequestParams, FastAbortResult, PreparedFastAbortRequest } from "./abort.js";
 import { resolveEffectiveResetTargetSessionKey } from "./acp-reset-target.js";
 import { resolveConversationBindingContextFromMessage } from "./conversation-binding-input.js";
+import { resolveLiveInboundOperationsForChat } from "./live-inbound-operations.js";
 import { clearSessionLifecycleQueues } from "./queue/cleanup.js";
 import { resolveReplyOperationsForSession } from "./reply-run-registry.js";
 
@@ -75,8 +76,20 @@ export function abortSessionRunTargetWithOutcome(params: {
     }
   }
 
+  // A reply answered while the chat's turn was held runs on its own operation.
+  const liveOperations = key
+    ? resolveLiveInboundOperationsForChat({
+        sessionKey: key,
+        ...(explicitSessionId ? { sessionId: explicitSessionId } : {}),
+        agentId: params.agentId,
+      })
+    : [];
+  if (liveOperations.length > 0) {
+    active = true;
+  }
+
   let aborted = false;
-  for (const operation of operations) {
+  for (const operation of [...operations, ...liveOperations]) {
     aborted = operation.abortByUser() || aborted;
   }
   for (const sessionId of sessionIds) {

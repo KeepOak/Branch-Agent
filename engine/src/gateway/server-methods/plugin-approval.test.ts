@@ -11,6 +11,15 @@ import { createTestApprovalManager } from "../exec-approval-manager.test-support
 import { createPluginApprovalHandlers } from "./plugin-approval.js";
 import type { GatewayRequestHandlerOptions } from "./types.js";
 
+// The turn-source route reads the live channel plugin registry, which a bare CI
+// checkout does not populate; pin it so the Slack case does not depend on that.
+const hasApprovalTurnSourceRouteMock = vi.hoisted(() =>
+  vi.fn((params: { turnSourceChannel?: string | null }) => params.turnSourceChannel === "slack"),
+);
+vi.mock("../../infra/approval-turn-source.js", () => ({
+  hasApprovalTurnSourceRoute: hasApprovalTurnSourceRouteMock,
+}));
+
 function createManager(testContext: TestContext) {
   return createTestApprovalManager<PluginApprovalRequestPayload>(testContext, {
     approvalKind: "plugin",
@@ -310,6 +319,28 @@ describe("createPluginApprovalHandlers", () => {
       expect(finalResult.decision).toBe("allow-once");
     });
 
+    it("logs which tool each approval prompt belongs to", async () => {
+      const handlers = createPluginApprovalHandlers(manager);
+      const { respond, accepted } = createApprovalRequestResponder();
+      const opts = createMockOptions(
+        "plugin.approval.request",
+        {
+          title: "Computer action",
+          description: "Click in the focused window",
+          toolName: "computer",
+          twoPhase: true,
+        },
+        { respond },
+      );
+      const handlerPromise = invokeHandler(handlers, opts);
+      const approvalId = await accepted;
+      expect(opts.context.logGateway.info).toHaveBeenCalledWith(
+        `plugin approval requested: tool=computer id=${approvalId}`,
+      );
+      await manager.resolve(approvalId, "deny");
+      await handlerPromise;
+    });
+
     it("sanitizes title/description/detail at creation so every surface gets safe text", async () => {
       const handlers = createPluginApprovalHandlers(manager);
       const { respond, accepted } = createApprovalRequestResponder();
@@ -513,6 +544,9 @@ describe("createPluginApprovalHandlers", () => {
         const requestPromise = invokeHandler(handlers, opts);
         const approvalId = await accepted;
         expect(acceptedResult(respond).deliveryRoute).toBe("turn-source");
+        expect(hasApprovalTurnSourceRouteMock).toHaveBeenCalledWith(
+          expect.objectContaining({ turnSourceChannel: "slack", approvalKind: "plugin" }),
+        );
         await manager.resolve(approvalId, "allow-once");
 
         await requestPromise;

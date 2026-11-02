@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyApprovalsSet, applyConfigPatch, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshPrefs, freshVoice, mergeConfig, voiceProviders, voiceStatus } from "./button-crawl-state";
+import { applyApprovalsSet, applyConfigPatch, applyOutsideSet, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshOutside, freshPrefs, freshVoice, mergeConfig, voiceProviders, voiceStatus } from "./button-crawl-state";
 
 describe("button crawl mock engine state", () => {
   it("a config.patch from one click does not reach the next click's fresh config", () => {
@@ -34,6 +34,19 @@ describe("button crawl mock engine state", () => {
     const merged = mergeConfig(base, { a: { b: null, c: [3] }, d: 2 }) as Record<string, unknown>;
     expect(merged).toEqual({ a: { c: [3] }, d: 2 });
     expect(base).toEqual({ a: { b: 1, c: [1, 2] }, d: "x" });
+  });
+});
+
+describe("button crawl connected agents", () => {
+  it("the master switch stays off after contacts.outside.set, and a fresh list starts on", () => {
+    expect(freshOutside()).toEqual({ enabled: true, agents: [] });
+    const off = applyOutsideSet(freshOutside(), { enabled: false });
+    expect(off).toEqual({ enabled: false, agents: [] });
+    expect(freshOutside().enabled).toBe(true);
+    const row = { id: "codex", name: "Codex", revoked: false, mayDriveWindow: false };
+    const next = applyOutsideSet({ enabled: true, agents: [row] }, { id: "codex", revoked: true });
+    expect(next.agents).toEqual([{ ...row, revoked: true }]);
+    expect(row.revoked).toBe(false);
   });
 });
 

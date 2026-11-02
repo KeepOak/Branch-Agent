@@ -10,7 +10,22 @@ import { providersOf, type Provider } from "./accounts";
 import { serviceName } from "./service";
 import { displayModelName } from "../../../composer/model-display";
 
+/** Plain words for the engine's thinking levels. The stored id never changes; Technical shows the id after the word. */
+const PLAIN_THINKING: Readonly<Record<string, string>> = { low: "Quick", medium: "Balanced", high: "Thorough", xhigh: "Very thorough", max: "Maximum", ultra: "Ultra" };
+export function plainThinking(options: Opt[], technical: boolean): Opt[] {
+  return options.map((o) => (PLAIN_THINKING[o.id] ? { ...o, label: technical ? `${PLAIN_THINKING[o.id]} (${o.id})` : PLAIN_THINKING[o.id] } : o));
+}
+
 export type Model = { ref: string; id: string; provider: string; name: string; local: boolean; available: boolean; images: boolean; thinking: Opt[]; thinkingDefault?: string };
+
+/** One rule for Models and Accounts: a model the engine lists is ready for chats unless it says available: false. */
+export const readyForChats = (m: RecordValue): boolean => m.available !== false;
+
+/** The models a coding app's sign-in on this computer gives chats (models.list under its runtime, ready for chats).
+ *  Models counts them as a connection; Accounts says the app is a coding app only when there are none. */
+export function appChatModels(models: Model[], runtime: string): Model[] {
+  return models.filter((m) => m.provider === runtime && m.available);
+}
 
 export function modelsOf(data: RecordValue | undefined): Model[] {
   return list(data?.models).map((m) => ({
@@ -19,7 +34,7 @@ export function modelsOf(data: RecordValue | undefined): Model[] {
     provider: text(m.provider),
     name: displayModelName(visible(m.name ?? m.id)),
     local: m.local === true,
-    available: m.available !== false,
+    available: readyForChats(m),
     images: Array.isArray(m.input) && m.input.includes("image"),
     thinking: list(m.thinkingLevels).map((t) => ({ id: text(t.id), label: visible(t.label) })),
     thinkingDefault: typeof m.thinkingDefault === "string" ? m.thinkingDefault : undefined,

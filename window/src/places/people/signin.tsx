@@ -10,7 +10,9 @@ import { useOperation, useResource } from "../library/data";
 import { rec, str, strs, type Rec } from "./data";
 import { Devices } from "./devices";
 import { PIN_OFF } from "./person";
-import { Ctl, Section, Seg, Status, Sw } from "./ui";
+import { Ctl, Section, Seg, Sw } from "./ui";
+import { Status } from "./plain-status";
+import { plainError } from "../../shell/plain-error";
 import { shownWhy } from "../../shell/shown-why";
 
 const OWN_DEVICE_OFF = "Needs the engine's own-device sign-in setting.";
@@ -55,7 +57,7 @@ function PairingRules({ engine }: { engine: WindowEngine }) {
         check={v => !v || ORIGIN.test(v)} save={v => save(["gateway", "publicOrigin"], v || null)} />
       <Ctl title="New people start as" line="Admin is never a good default."><Seg label="New people start as" value={null} options={[{ id: "viewer", name: "Viewer" }, { id: "operator", name: "Operator" }, { id: "admin", name: "Admin" }]} off={str(gateway.publicOrigin) ? DEFAULT_ROLE_OFF : "Set its web address first."} /></Ctl>
     </Section>
-    {op.error && <p role="alert" className="pp-error">{op.error}</p>}
+    {op.error && <p role="alert" className="pp-error">{plainError(op.error)}</p>}
   </>;
 }
 

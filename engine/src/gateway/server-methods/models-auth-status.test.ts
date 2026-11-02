@@ -1343,7 +1343,8 @@ describe("models.authOrderSet", () => {
       );
     });
 
-    it("refuses an agent-made order change that puts an API-key sign-in in", async () => {
+    it("refuses an agent-made order change that puts an API-key sign-in in when subscriptionsOnly is set", async () => {
+      mocks.getRuntimeConfig.mockReturnValue({ agents: { defaults: { subscriptionsOnly: true } } });
       const opts = createOrderOptions({ provider: "openai", profileIds: order });
       opts.client = {
         connect: { scopes: ["operator.admin"] },
@@ -1359,6 +1360,20 @@ describe("models.authOrderSet", () => {
           message: "Trunks only use subscription sign-ins.",
         }),
       ]);
+    });
+
+    it("accepts an agent-made order change that puts an API-key sign-in in when subscriptionsOnly is off", async () => {
+      const opts = createOrderOptions({ provider: "openai", profileIds: order });
+      opts.client = {
+        connect: { scopes: ["operator.admin"] },
+        internal: { agentRuntimeIdentity: { agentId: "main", sessionKey: "agent:main:main" } },
+      } as never;
+      await orderHandler(opts);
+      expect(mocks.setAuthProfileOrder).toHaveBeenCalledWith({
+        agentDir: "/tmp/agent",
+        provider: "openai",
+        order,
+      });
     });
 
     it("keeps owner order changes that include an API-key sign-in", async () => {

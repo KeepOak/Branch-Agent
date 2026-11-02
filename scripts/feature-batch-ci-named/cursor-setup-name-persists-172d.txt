@@ -1,0 +1,1 @@
+window:src/screens/onboarding/setup-name-persist.test.tsx

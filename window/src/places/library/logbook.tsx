@@ -1,9 +1,11 @@
-// Library › Logbook (preview 42-placesbp libLogDrawPQ18) on logbook.*: off state with Turn on…, the capture status
+// Library › Activity › Your day, once the Logbook tab (preview 42-placesbp libLogDrawPQ18) on logbook.*: off state with Turn on…, the capture status
 // with Pause / Resume and Look now, the day picker, Day at a glance, the timeline, Daily standup and Ask your day.
 import { useState, type FormEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
+import { availability, isUnknownMethod } from "../../connect/capabilities";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
-import { num, optStr, rec, recs, str, useOperation, useResource } from "./data";
+import { plainText } from "../../shell/plain-error";
+import { num, optStr, plainFailure, rec, recs, str, useOperation, useResource } from "./data";
 import { EmptyIcon, IcoTile, Section, type LibIconName } from "./parts";
 
 type Status = {
@@ -35,14 +37,16 @@ const ICONS: Record<string, LibIconName> = { code: "code", coding: "code", mail:
 type Props = { engine: WindowEngine; openSettings?: (page: string) => void };
 
 export function LogbookTab({ engine, openSettings }: Props) {
-  const raw = useResource<unknown>(engine, "logbook.status");
+  // Logbook is a plugin that is off on a fresh install: an engine without logbook.status reads as off, never as its error.
+  const offered = availability(engine, "logbook.status") !== "no";
+  const raw = useResource<unknown>(engine, offered ? "logbook.status" : null);
   const status = { ...raw, data: raw.data === null ? null : statusOf(raw.data) };
   const hint = <p className="lib-hint lib-mhint">Your day, built from pictures of your screen.</p>;
   if (status.loading) return <>{hint}<p className="lib-hint" role="status">Loading…</p></>;
   if (!status.data || !status.data.captureEnabled) return <>{hint}
     <EmptyLine icon={<EmptyIcon name="camera" />}><b>Logbook is off</b><br />It builds a timeline of your day from pictures of your screen. The model that reads them sees them.<br />
       <button type="button" className="btn sm" disabled={!openSettings} title={openSettings ? undefined : "Needs the window’s Settings to turn Logbook on."} onClick={() => openSettings?.("computer")}>Turn on…</button></EmptyLine>
-    {status.error && <p className="lib-hint" data-testid="logbook-engine">{status.error}</p>}
+    {status.error && !isUnknownMethod(status.error) ? <div className="lib-hint" data-testid="logbook-engine"><p>Branch couldn’t check Logbook. Try again in a moment.</p></div> : null}
   </>;
   return <>{hint}<On engine={engine} status={status.data} reload={status.reload} openSettings={openSettings} /></>;
 }
@@ -59,8 +63,8 @@ function On({ engine, status, reload, openSettings }: Props & { status: Status; 
     <div className="lib-card lib-logst" data-testid="logbook-status">
       <span className={`lib-dot${problem ? " bad" : status.capturePaused ? " idle" : ""}`} />
       <div className="lib-grow"><b>{title}</b>
-        <p>From {status.nodeName || status.nodeId || "this computer"} · <span title="Pictures waiting for the next look">{status.pendingFrames} pictures waiting</span></p>
-        {status.lastCaptureError && <p className="lib-bad">{status.lastCaptureError}</p>}
+        <p>From {status.nodeName ? plainText(status.nodeName) : "this computer"} · <span title="Pictures waiting for the next look">{status.pendingFrames} pictures waiting</span></p>
+        {status.lastCaptureError && <p className="lib-bad">{plainFailure(status.lastCaptureError)}</p>}
         {status.visionModelSource === "missing" && openSettings && <div className="lib-acts"><button type="button" className="btn sm" onClick={() => openSettings("models")}>Choose one</button></div>}
       </div>
       <span className="lib-card-acts">
@@ -68,7 +72,7 @@ function On({ engine, status, reload, openSettings }: Props & { status: Status; 
         <button type="button" className="btn sm" disabled={op.busy || status.analysisRunning || !status.pendingFrames} onClick={() => void op.run("logbook.analyze.now", {}, reload)}>Look now</button>
       </span>
     </div>
-    {op.error && <p className="lib-bad" role="alert">{op.error}</p>}
+    {op.error && <p className="lib-bad" role="alert">{plainFailure(op.error)}</p>}
     <div className="lib-day">
       <button type="button" className="ib" aria-label="Previous day" disabled={at < 0 || at >= list.length - 1} onClick={() => setDay(list[at + 1])}>‹</button>
       <b>{dayWords(day)}</b>
@@ -85,7 +89,7 @@ function Day({ engine, day }: { engine: WindowEngine; day: string }) {
   const focus = t && t.stats.trackedMs ? Math.round((100 * Math.max(0, t.stats.trackedMs - t.stats.distractionMs)) / t.stats.trackedMs) : null;
   return <>
     {timeline.loading && <p className="lib-hint" role="status">Loading…</p>}
-    {timeline.error && <p className="lib-bad" role="alert">{timeline.error}</p>}
+    {timeline.error && <p className="lib-bad" role="alert">{plainFailure(timeline.error)}</p>}
     {t && !!t.cards.length && <div className="lib-card lib-glance"><div className="lib-grow"><b>Day at a glance</b><p className="lib-figs">{focus !== null && <span><b>{focus}%</b> focus</span>}<span><b>{duration(t.stats.trackedMs)}</b> tracked</span></p></div></div>}
     {t && (t.cards.length ? <div className="lib-plain" data-testid="logbook-timeline">{t.cards.map(c => <div className="lib-row lib-logcard" key={c.id}>
       <IcoTile icon={(Object.hasOwn(ICONS, c.category.toLowerCase()) ? ICONS[c.category.toLowerCase()] : "clock")} />
@@ -103,7 +107,7 @@ function Standup({ engine, day }: { engine: WindowEngine; day: string }) {
   const [text, setText] = useState<string | null>(null);
   return <Section title="Daily standup" hint="Turn today's timeline into a standup update you can paste. It works from your screen timeline, not from Trunks' tasks." testid="standup">
     <button type="button" className="btn sm" disabled={op.busy} onClick={() => void op.run<unknown>("logbook.standup", { day, ...(text !== null ? { refresh: true } : {}) }, r => setText(str(rec(r).text)))}>{text === null ? "Make it" : "Make it again"}</button>
-    {op.error && <p className="lib-bad" role="alert">{op.error}</p>}
+    {op.error && <p className="lib-bad" role="alert">{plainFailure(op.error)}</p>}
     {text !== null && <pre className="lib-pre">{text}</pre>}
   </Section>;
 }
@@ -115,7 +119,7 @@ function Ask({ engine, day }: { engine: WindowEngine; day: string }) {
   const ask = (e: FormEvent) => { e.preventDefault(); if (question.trim()) void op.run<unknown>("logbook.ask", { day, question: question.trim() }, r => setAnswer(str(rec(r).answer))); };
   return <Section title="Ask your day" testid="ask-day">
     <form className="lib-form" onSubmit={ask}><input className="inp" aria-label="Ask your day" placeholder="When did I review the pull request?" value={question} onChange={e => setQuestion(e.target.value)} /><button type="submit" className="btn" disabled={op.busy || !question.trim()}>Ask</button></form>
-    {op.error && <p className="lib-bad" role="alert">{op.error}</p>}
+    {op.error && <p className="lib-bad" role="alert">{plainFailure(op.error)}</p>}
     {answer !== null && <p className="lib-about">{answer}</p>}
   </Section>;
 }

@@ -427,6 +427,37 @@ describe("gateway bonjour advertiser", () => {
     await started.stop();
   });
 
+  it("advertises the display placeholder instead of the real hostname", async () => {
+    vi.stubEnv("BRANCH_MDNS_HOSTNAME", "");
+    vi.stubEnv("BRANCH_DISPLAY_HOSTNAME", "tour-mac");
+    vi.spyOn(os, "hostname").mockReturnValue("real-host-sentinel");
+
+    const started = await startAdvertiser();
+
+    const [gatewayCall] = createService.mock.calls as Array<[ServiceCall]>;
+    expect(gatewayCall?.[0]?.hostname).toBe("tour-mac");
+    expect(gatewayCall?.[0]?.name).toBe("tour-mac (Branch Agent)");
+    expect((gatewayCall?.[0]?.txt as Record<string, string>)?.lanHost).toBe("tour-mac.local");
+    expect(JSON.stringify(createService.mock.calls)).not.toContain("real-host-sentinel");
+
+    await started.stop();
+  });
+
+  it("still prefers BRANCH_MDNS_HOSTNAME over the display placeholder", async () => {
+    vi.stubEnv("BRANCH_MDNS_HOSTNAME", "mdns-override");
+    vi.stubEnv("BRANCH_DISPLAY_HOSTNAME", "tour-mac");
+    vi.spyOn(os, "hostname").mockReturnValue("real-host-sentinel");
+
+    const started = await startAdvertiser();
+
+    const [gatewayCall] = createService.mock.calls as Array<[ServiceCall]>;
+    expect(gatewayCall?.[0]?.hostname).toBe("mdns-override");
+    expect((gatewayCall?.[0]?.txt as Record<string, string>)?.lanHost).toBe("mdns-override.local");
+    expect(JSON.stringify(createService.mock.calls)).not.toContain("real-host-sentinel");
+
+    await started.stop();
+  });
+
   it("falls back to branch when system hostname is invalid for DNS", async () => {
     vi.stubEnv("BRANCH_MDNS_HOSTNAME", undefined);
     vi.spyOn(os, "hostname").mockReturnValue("My_Trellis Host");
@@ -441,7 +472,7 @@ describe("gateway bonjour advertiser", () => {
   });
 
   it("truncates reported Kubernetes service name at the DNS label byte limit", async () => {
-    const reportedHostname = "app-41627eae5842473f9e05f139ea307277-7f9477f4d6-lqqzf";
+    const reportedHostname = "app-41627eae5842473f9e05f139ea30-7f9477f4d6-lqqzf";
     enableAdvertiserUnitMode(reportedHostname);
 
     const started = await startAdvertiser();

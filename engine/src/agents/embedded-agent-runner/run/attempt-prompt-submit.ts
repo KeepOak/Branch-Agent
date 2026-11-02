@@ -15,6 +15,7 @@ import {
   declarePromptHistoryRewrite,
   recordAggregateTruncation,
 } from "../prompt-cache-observability.js";
+import { resolveEmbeddedRunRegistryKey } from "../run-state.js";
 import { updateActiveEmbeddedRunSnapshot } from "../runs.js";
 import type { ToolResultPromptProjectionState } from "../session-prompt-state.js";
 import { truncateOversizedToolResultsInMessages } from "../tool-result-truncation.js";
@@ -286,7 +287,7 @@ export async function submitEmbeddedAttemptPrompt(input: {
     messages: activeSession.messages,
     imagesCount: input.images.length,
   });
-  updateActiveEmbeddedRunSnapshot(attempt.sessionId, {
+  updateActiveEmbeddedRunSnapshot(resolveEmbeddedRunRegistryKey(attempt).key, {
     transcriptLeafId: input.transcriptLeafId,
     messages: snapshotRecentMessages(activeSession.messages),
     inFlightPrompt: input.transcriptPrompt,

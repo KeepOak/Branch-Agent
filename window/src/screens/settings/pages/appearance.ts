@@ -10,7 +10,9 @@ import { ACCENTS } from "../../../places/settings/set1/appearance-editor";
 import { DEFAULT_PET, PETS } from "../../../places/settings/set1/appearance-pet";
 import { rowOf, type RowSpec } from "../../../places/settings/set1/appearance-rows";
 import { FONTS, SCENES } from "../../../places/settings/set1/appearance-sections";
+import { LANGUAGES } from "../../../i18n/language";
 import type { Level } from "../nav";
+import { trayCard, trayMenuHelp, trayMenuLabel, trayMenuReason } from "../tray-words";
 import type { Codec, Control, Row, RowOption } from "../rows";
 
 /** Shows the stored choice or the default; saving the default removes the choice (Classic's SpecRow). */
@@ -64,6 +66,8 @@ export const APPEARANCE_ROWS: Row[] = [
   slot("appearance.background.preview", "Background", "Preview", [], { help: "Hold it to see the background on its own." }),
 
   // Reading
+  fromClassic("appearance.reading.scale", "Reading", "scale"),
+  fromClassic("appearance.reading.chat-size", "Reading", "chatSize"),
   fromClassic("appearance.reading.size", "Reading", "size"),
   fromClassic("appearance.reading.messages", "Reading", "msgLook"),
   fromClassic("appearance.reading.direction", "Reading", "dir"),
@@ -115,12 +119,13 @@ export const APPEARANCE_ROWS: Row[] = [
   coming("appearance.window.kiosk", "Window", rowOf("kiosk").title, DESKTOP_NEED, rowOf("kiosk").off ?? "", { help: rowOf("kiosk").sub, level: 1, control: "toggle" }),
   coming("appearance.window.frame", "Window", "Window frame", DESKTOP_NEED, "Branch’s own title bar or the system one needs the Branch desktop app.", { level: 2 }),
 
-  // Tray
-  coming("appearance.tray.menu", "Tray", "Tray menu", DESKTOP_NEED, "What Branch puts in the tray needs the Branch desktop app.", { help: "What Branch puts in the tray: its icon and menu." }),
+  // Tray (Menu bar on a Mac)
+  coming("appearance.tray.menu", trayCard(), trayMenuLabel(), DESKTOP_NEED, trayMenuReason(), { help: trayMenuHelp() }),
 
   // Language
-  coming("appearance.language.pick", "Language", "Language", "engine: a language setting and translated words (English only today)", "Other languages come with the Branch app.", { help: "Dates and numbers follow it too.", control: "select",
-    options: [{ v: "en", label: "English" }] }),
+  // Private #1100: the window's words that have a translation follow it; the rest stay in English for now.
+  { id: "appearance.language.pick", page: "appearance", card: "Language", label: "Language", help: "Settings’ titles follow it where there is a translation; everything else stays in English for now.", level: 0, control: "select",
+    options: LANGUAGES.map((l) => ({ v: l.id, label: l.name })), source: { kind: "look", key: "lang" }, codec: orDefault("en") },
 
   // Make it yours: Classic's Make your own theme.
   coming("appearance.yours.make-theme", "Make it yours", "Make your own theme", "window: the theme editor opened from a row (themes.import)", "Making your own theme from here comes in a later update."),

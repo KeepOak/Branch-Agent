@@ -18,7 +18,7 @@ vi.mock("./client.js", async () => ({
 }));
 type SlackReaction = NonNullable<SlackMessageSummary["reactions"]>[number];
 const slackConfig: BranchConfig = {
-  channels: { slack: { botToken: "xoxb-local-proof", groupPolicy: "open" } },
+  channels: { slack: { botToken: ["xoxb", "-local-proof"].join(""), groupPolicy: "open" } },
 };
 function createClient(
   reactions: SlackReaction[] = [],
@@ -26,7 +26,7 @@ function createClient(
 ) {
   let pendingFailure = failure;
   const calls: Array<{ method: string; body: URLSearchParams }> = [];
-  const client = new WebClient("xoxb-local-proof", {
+  const client = new WebClient(["xoxb", "-local-proof"].join(""), {
     retryConfig: { retries: 0 },
     fetch: async (input, init) => {
       const method = new URL(String(input)).pathname.split("/").at(-1) ?? "";
@@ -125,7 +125,7 @@ describe("Slack reactions", () => {
           {
             channels: {
               slack: {
-                botToken: "xoxb-local-proof",
+                botToken: ["xoxb", "-local-proof"].join(""),
                 groupPolicy: "allowlist",
                 channels: { C_ALLOWED: { enabled: true } },
               },

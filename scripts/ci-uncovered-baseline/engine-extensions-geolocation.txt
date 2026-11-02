@@ -1,0 +1,2 @@
+engine:extensions/geolocation/index.test.ts
+engine:extensions/geolocation/src/config.test.ts

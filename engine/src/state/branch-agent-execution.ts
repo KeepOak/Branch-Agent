@@ -60,6 +60,7 @@ type ExecutionOwner = {
   readonly kind: "file";
   readonly agentId: string;
   readonly sharedDatabaseKey: string;
+  creationIsPending(): boolean;
   borrow(
     pathname: string,
     expectedIdentity?: AgentDatabaseExecutionFileIdentity,
@@ -412,6 +413,7 @@ function createAgentDatabaseExecution(
     get sharedDatabaseKey() {
       return context.admission.identity.key;
     },
+    creationIsPending: () => Boolean(creationReference && !fileIdentity),
     borrow(borrowedPath, expected, creating, requestedPath) {
       const expectedIdentity = expected ? Object.freeze({ ...expected }) : undefined;
       const creatingTarget = creating ? Object.freeze({ ...creating }) : undefined;

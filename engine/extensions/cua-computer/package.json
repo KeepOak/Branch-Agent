@@ -18,7 +18,23 @@
   },
   "cuaDriverArtifacts": {
     "darwin-universal-binary": {
-      "archiveSha256": "386db225a3080714a0f9f935525e61efaf46709587ef8b94dd2df81aeb2f6daa"
+      "archiveSha256": "386db225a3080714a0f9f935525e61efaf46709587ef8b94dd2df81aeb2f6daa",
+      "archiveBytes": 43629843,
+      "files": {
+        "cua-driver": "af30d29cf33bd3bbda1330be7225b18881ea4c5af6df374e08627914b5ac334d"
+      }
+    },
+    "darwin-arm64": {
+      "files": {
+        "cua_driver_node_runtime.node": "4e16135a878fdf6ba5192904288b368eaf193c707473551d118db36a99f534d1",
+        "libcua_driver_sdk.dylib": "3ba128cf27783605f498b6e372aeb92a14787563e0ed39543f27d232eeabdbbb"
+      }
+    },
+    "darwin-x64": {
+      "files": {
+        "cua_driver_node_runtime.node": "4e16135a878fdf6ba5192904288b368eaf193c707473551d118db36a99f534d1",
+        "libcua_driver_sdk.dylib": "3ba128cf27783605f498b6e372aeb92a14787563e0ed39543f27d232eeabdbbb"
+      }
     },
     "linux-arm64-gnu": {
       "files": {
@@ -42,6 +58,126 @@
       "files": {
         "cua_driver_sdk.dll": "7605fe15bcda9257dc485c779bc7d0f08832e1766165d87e120b345614bd734b",
         "cua_driver_node_runtime.node": "93f220e8a5cbf25aff23321f20a868368a204f1026b8dce45c5a4f84290de09f"
+      }
+    }
+  },
+  "cuaDriverDownloads": {
+    "packages": {
+      "@trycua/cua-driver": {
+        "version": "0.28.2",
+        "sha256": "743b28e409747b38ac530eeb5280fea75e8de8de45b40e68f70b0d987ca10a1e",
+        "integrity": "sha512-18DHs68WpIdKtkAMecd5mLKwJtT854gXzie24Ag0QMxveRNgzKphAje51t0oeI7ZnHetyXKDAQUr5fQyZu7S6Q==",
+        "bytes": 74128
+      },
+      "@ubjs/core": {
+        "version": "0.31.0-3",
+        "sha256": "74d7950698bdc74569a8e754b2d5dc055a43afdd0647c0171595f9b77e8c7151",
+        "integrity": "sha512-39XrJgUZ2VVb561sSnkXPhczNoeBsNiSRArecsV0JE7CJq69ajFkcn9/tBAUS2NpgHkLIDU+z6Ks2+1wXnboxg==",
+        "bytes": 44743
+      },
+      "@ubjs/node": {
+        "version": "0.31.0-3",
+        "sha256": "e5c18f3cfc46d072f9aa23439644c9c18fac62729e6385aadcc937e458507a09",
+        "integrity": "sha512-qNMpi2LICNwxGXZyRF8fSDBSpbezyZbEsydrbiMPJOmtOWr4tmZIEl7jkWGHVGShoBvHfFo4eHp5B4UVP928Cg==",
+        "bytes": 7224
+      }
+    },
+    "targets": {
+      "darwin-arm64": {
+        "packages": {
+          "@trycua/cua-driver-darwin-arm64": {
+            "version": "0.28.2",
+            "sha256": "9dbc79870dc367acbee20c86dee34794e77883e5d5d4b440260652d9341098cb",
+            "integrity": "sha512-Eeo62jJjxi67/XwSQKvxpJQMmJg7pjLqGa4vZTxLj3KUmjfGYjwt3wifLl82yU0AfJs6icB7V1uu6sYE+nm9mg==",
+            "bytes": 18268706
+          },
+          "@ubjs/node-darwin-arm64": {
+            "version": "0.31.0-3",
+            "sha256": "206201d85b7e1e5763bd1c3b2deaa46af6e367d3799554080f2293723e3b162e",
+            "integrity": "sha512-GGQVPLkVo4Gc8qVLW4IGvS8bjl8eHXyeP4a97ntGmsAdXwE5gsS29o8xUEFROjhwHKD+9sgVeblCSWVG3CpHsw==",
+            "bytes": 318814
+          }
+        }
+      },
+      "darwin-x64": {
+        "packages": {
+          "@trycua/cua-driver-darwin-x64": {
+            "version": "0.28.2",
+            "sha256": "f7b671148c06a3c764ceaef1ee58ea39385f3f7ed5416833948a64b9e47c37b6",
+            "integrity": "sha512-n7iWl2iqIyPoDpCJ3hyK2gKZqu0RTolabRptmZKYPzRSTbRbzO3mejOa+CXHsJjVbM4+FyDJDNn5NE2CZLMdXg==",
+            "bytes": 18268704
+          },
+          "@ubjs/node-darwin-x64": {
+            "version": "0.31.0-3",
+            "sha256": "3d141850b34d9d6a03508b1a20dbda6c1263d80798a303a6d0de656754575cc3",
+            "integrity": "sha512-2sc47u4XFYOsbmP5EW+Gx8m/yGrYnfFDFQm6+kz7goSWTNg84eEiz3COs9HKJDVuNJ5Khv5XipTO8CFadMLXCw==",
+            "bytes": 334675
+          }
+        }
+      },
+      "linux-arm64-gnu": {
+        "packages": {
+          "@trycua/cua-driver-linux-arm64-gnu": {
+            "version": "0.28.2",
+            "sha256": "461091a23495321f5c086a2c6036435707ed4d21dd22a1b1f0d0375629a7c03b",
+            "integrity": "sha512-ZFrYmA53ooEGyImEHo7cxYxgyXidP6Mkxc1KYiM8KoFmeHFSX3TmuKDsVV9dwZGKrhAOJBvQTvLvlb85RlccQg==",
+            "bytes": 13711251
+          },
+          "@ubjs/node-linux-arm64-gnu": {
+            "version": "0.31.0-3",
+            "sha256": "31c4c8ecbd26484f660c03576fb1c0de7883f45b0018df4b76fd316845b96a52",
+            "integrity": "sha512-YStVXhYz/5jvlWf/p4fhiVT72unYAbGugifFC9QmO/+hnroQDAQ5t8SARbsc15G4olMcamdIB+GETiUB7gmaYg==",
+            "bytes": 326581
+          }
+        }
+      },
+      "linux-x64-gnu": {
+        "packages": {
+          "@trycua/cua-driver-linux-x64-gnu": {
+            "version": "0.28.2",
+            "sha256": "12a00132983d722118ebad5a107af5ffb19d2451a6883912b42b19e878653025",
+            "integrity": "sha512-mZp8rRyaT0/gUXnHGAC53EKA6WHKvRbliacMVsiwf/EEUOLNtz6pRNfhYyF4GLT6jHbC/Xwu8V9kpntz9Tssdg==",
+            "bytes": 13492095
+          },
+          "@ubjs/node-linux-x64-gnu": {
+            "version": "0.31.0-3",
+            "sha256": "08e05d837c6b3faefdd3e77ac3155c2654392a62d241961bcccc221f3783170a",
+            "integrity": "sha512-Xdm21blyg5U/kW6s7OMvgrr8coGTkUlt26DVR9x8gKISif+E3YwdEskbFScWqystAiJnfjw7xHEc8UMu0Qlz7Q==",
+            "bytes": 339564
+          }
+        }
+      },
+      "win32-arm64-msvc": {
+        "packages": {
+          "@trycua/cua-driver-win32-arm64-msvc": {
+            "version": "0.28.2",
+            "sha256": "a5791af3321933bd818b8a37cbd988480bf1b733e332f6669da2e7d29d820676",
+            "integrity": "sha512-prShQ7VSVXMkytMGj+d43u54/9H3K0nJT5OOAqT3S78XATw7dlu1ESdEacr/J2lNcmn5mxwEy+i+9HRmEt0DJw==",
+            "bytes": 8713639
+          },
+          "@ubjs/node-win32-arm64-msvc": {
+            "version": "0.31.0-3",
+            "sha256": "b031ff6ceeb7a1c0815ec991fe1784cc6a8b13803b8462e67d0d79201ab5c22c",
+            "integrity": "sha512-ID6rSz1NmPsWTNBBNAw4OnJ5Dj8pcbtNJtdPB3OxcGigLBd/e0x7buhSI7os6Mo5iYtEdCynBRQHFJwub5XSPg==",
+            "bytes": 216744
+          }
+        }
+      },
+      "win32-x64-msvc": {
+        "packages": {
+          "@trycua/cua-driver-win32-x64-msvc": {
+            "version": "0.28.2",
+            "sha256": "731a3e5d7307ea535a74df4dca806826b9b53a723b3f137ecf7d940f585b982a",
+            "integrity": "sha512-H7pUIwbrKCqkyDBcI4ovk1ggN+MOmFtATGl0fokPkD7dp1EHGn5I9vRJEPVvqjP0BTwdlBJ8NucIy0g2eFK86Q==",
+            "bytes": 9234367
+          },
+          "@ubjs/node-win32-x64-msvc": {
+            "version": "0.31.0-3",
+            "sha256": "04348e4375732d06db85408ff4a16b1806cdcf6a5800af5444481ea66a7efb36",
+            "integrity": "sha512-wevs+Y+szwcCUT8IJFbB4/1nfxyRv/51l8oG7FGUPWD1xLPyuHfJBG27C+PDeC7KRzes/2n6aLo4DGZbr/LYTw==",
+            "bytes": 231147
+          }
+        }
       }
     }
   },

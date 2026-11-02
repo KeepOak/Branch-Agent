@@ -56,7 +56,7 @@ function CharactersSec({ engine, look, trunk }: MoreProps) {
 function TrunkCards({ engine, look, trunk }: Omit<MoreProps, "openSettings">) {
   const save = useSaveRunner();
   const models = useResource<RecordValue>(engine, "models.list", {});
-  const refs = list(models.data?.models).map((m) => ({ id: `${String(m.provider)}/${String(m.id)}`, label: visible(m.name ?? m.id) }));
+  const refs = list(models.data?.models).filter((m) => m.available !== false).map((m) => ({ id: `${String(m.provider)}/${String(m.id)}`, label: visible(m.name ?? m.id) }));
   if (!trunk.agents.length) return null;
   const setModel = (id: string, v: string) => void save(async () => { await engine.request("agents.update", { agentId: id, model: v || null }); await trunk.reload(); });
   return (
@@ -70,7 +70,7 @@ function TrunkCards({ engine, look, trunk }: Omit<MoreProps, "openSettings">) {
             <label><span>Model</span>
               <select className="inp" value={model} disabled={models.loading} aria-label={`${trunk.nameOf(a)}: model`} onChange={(e) => setModel(id, e.target.value)}>
                 <option value="">Default</option>
-                {model && !refs.some((r) => r.id === model) ? <option value={model}>{visible(model)}</option> : null}
+                {model && !refs.some((r) => r.id === model) ? <option value={model}>No model is set up</option> : null}
                 {refs.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
               </select>
             </label>

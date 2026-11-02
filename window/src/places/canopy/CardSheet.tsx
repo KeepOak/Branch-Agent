@@ -3,6 +3,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState, type ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
+import { plainError } from "../../shell/plain-error";
 import { shows } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
 import type { MenuAnchor } from "../../shell/Menu";
@@ -100,7 +101,7 @@ function Follow({ ctx, c }: { ctx: Ctx; c: Row }) {
   const toggle = () => void ctx.act(() => on ? ctx.engine.request("canopy.notifications.delete", { id: on.id }) : ctx.engine.request("canopy.notifications.subscribe", { boardId: cardBoard(c), cardId: c.id }), on ? "Stopped following." : "Following. Its moves and notes reach your notifications.");
   return <Sec title="Notifications">
     <button className="btn sm cn-left" type="button" aria-pressed={!!on} disabled={!ctx.write || subs === null} onClick={toggle}>{on ? "Following" : "Follow this card"}</button>
-    {err ? <p className="cn-err">{err}</p> : null}
+    {err ? <p className="cn-err">{plainError(err)}</p> : null}
     {notices.length ? <ol className="cn-tl">{notices.map(n => <li key={str(n.id)}><span>{str(n.message)}</span><time>{when(n.createdAt)}</time></li>)}</ol> : <p className="cn-hint cn-flush">No notices for this card yet.</p>}
   </Sec>;
 }

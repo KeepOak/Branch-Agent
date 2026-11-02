@@ -1,0 +1,10 @@
+engine:src/mcp/agent-session-owner.test.ts
+engine:src/mcp/branch-tools-serve.test.ts
+engine:src/mcp/channel-server.shutdown-unhandled-rejection.test.ts
+engine:src/mcp/codex-supervision-tools-serve.test.ts
+engine:src/mcp/graft-b2b.integration.test.ts
+engine:src/mcp/plugin-tools-handlers.cancel.test.ts
+engine:src/mcp/plugin-tools-mcp-client.test.ts
+engine:src/mcp/plugin-tools-registration.stdio.test.ts
+engine:src/mcp/plugin-tools-registration.test.ts
+engine:src/mcp/plugin-tools-serve.test.ts

@@ -27,6 +27,15 @@ export function isDevNote(why: string | undefined | null): boolean {
   return DEV_WORDING.some((rx) => rx.test(why));
 }
 
+const LATER = /\bin a later update\b/i;
+
+/** True for a Coming reason, the words every not-built-yet control uses: "… comes in a later update." A Coming control
+ *  shows only at Technical (Private #1093 item 4, screens/settings/rows.ts COMING_FROM). A control greyed for a real
+ *  condition ("Turn on … first.", "Needs a newer Branch app …") is not Coming and shows at every level. */
+export function isComingWhy(why: string | undefined | null): boolean {
+  return Boolean(why && LATER.test(why));
+}
+
 /** The reason to show for a greyed control: undefined for a developer note, any other reason unchanged.
  *  TODO(engine-lane): the notes stay in the source as data (grep "TODO(engine-lane)" and "TODO(desktop-lane)") so the
  *  engine and desktop lanes can find every control still waiting on them; the control stays greyed while its note is

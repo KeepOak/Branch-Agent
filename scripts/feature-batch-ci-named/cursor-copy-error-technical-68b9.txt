@@ -1,0 +1,3 @@
+window:src/thread/clipboard.test.tsx
+window:src/thread/copy-error-1813.test.tsx
+window:src/thread/run-outcome.test.tsx

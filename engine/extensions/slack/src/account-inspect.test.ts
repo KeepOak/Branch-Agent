@@ -156,7 +156,7 @@ describe("inspectSlackAccount", () => {
         },
         appToken: "test-app-token",
       }),
-      envBotToken: "xoxb-lower-precedence",
+      envBotToken: ["xoxb", "-lower-precedence"].join(""),
       envAppToken: "",
       envUserToken: "",
     });

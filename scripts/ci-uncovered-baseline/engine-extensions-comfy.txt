@@ -1,0 +1,5 @@
+engine:extensions/comfy/image-generation-provider.test.ts
+engine:extensions/comfy/index.test.ts
+engine:extensions/comfy/music-generation-provider.test.ts
+engine:extensions/comfy/video-generation-provider.test.ts
+engine:extensions/comfy/workflow-runtime.header-secrets.integration.test.ts

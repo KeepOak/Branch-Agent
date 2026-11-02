@@ -1,0 +1,2 @@
+engine:packages/media-generation-core/src/catalog.test.ts
+engine:packages/media-generation-core/src/model-ref.test.ts

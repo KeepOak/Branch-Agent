@@ -194,6 +194,7 @@ function createWizardSessionPrompter(session: WizardSession): WizardPrompter {
         message: params.message,
         initialValue: params.initialValue,
         executor: "client",
+        ...(params.freeModel ? { freeModel: { ...params.freeModel } } : {}),
       });
       // Answers cross the wire as unknown values; truthy strings are not consent.
       return res === true;

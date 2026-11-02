@@ -8,6 +8,7 @@ import type { SettingsPageProps } from "../index";
 import { CheckedAt, useCheckedAt } from "../checked-at";
 import { Acts, Btn, Ctl, Hint, Page, Pill, Plist, Sec, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
+import { plainError } from "../../../shell/plain-error";
 import { Dialog } from "../../../shell/Dialog";
 import { Face } from "../../../face/Face";
 import { Menu, type MenuItem } from "../../../shell/Menu";
@@ -118,7 +119,7 @@ function Waiting({ engine, lv }: SettingsPageProps & { lv: number }) {
   const shown = all ? reqs : reqs.slice(0, 3);
   return (
     <Sec title="Waiting for your yes" hint="Only allow what you recognise. You can remove it later on this page." id="s2-waiting">
-      {error ? <p className="hint s2-err" role="alert">{error}</p> : null}
+      {error ? <p className="hint s2-err" role="alert">{plainError(error)}</p> : null}
       {shown.length ? <Plist>{shown.map((r) => <RequestRow key={`${r.kind}:${r.id}`} r={r} lv={lv} busy={call.busy} onAllow={() => decide(r, true)} onRefuse={() => setRefuse(r)} />)}</Plist> : null}
       {reqs.length > 3 && !all ? <Acts><Btn sm ghost onClick={() => setAll(true)}>{reqs.length - 3} more waiting</Btn></Acts> : null}
       <CallLine call={call} />
@@ -185,7 +186,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
   const hereStatus: RecordValue = { ...local, available: local.available === true || screenOn };
   return (
     <Sec title="Computers they may use">
-      {nodes.error ? <p className="hint s2-err" role="alert">{nodes.error}</p> : null}
+      {nodes.error ? <p className="hint s2-err" role="alert">{plainError(nodes.error)}</p> : null}
       {lv >= 1 ? <FindRow find={find} onFind={setFind} onRefresh={refresh} checked={checked} /> : null}
       {lv >= 1 && paired.length && !all.length ? <Hint>No computer matches.</Hint> : null}
       {here.length || (usableHere && !find.q) ? <div className="s2-grp">On this computer</div> : null}
@@ -268,7 +269,7 @@ function ThisComputer({ status }: { status: RecordValue }) {
       <span className="grow">
         <b>This computer</b>
         <small>{str(rec(use.provider).label) || "The computer Branch runs on"}</small>
-        <span className="s2-reach">{ok ? "Your screen, mouse and apps. It asks before an app it hasn’t used, and you can take over any time." : str(status.error) || shownWhy("Computer control isn’t set up in this engine.")}</span>
+        <span className="s2-reach">{ok ? "Your screen, mouse and apps. It asks before an app it hasn’t used, and you can take over any time." : (status.error ? plainError(status.error) : shownWhy("Computer control isn’t set up in this engine."))}</span>
       </span>
       <Pill tone={ok ? "ok" : "idle"}>{ok ? "Ready" : "Not set up"}</Pill>
     </div>
@@ -298,7 +299,7 @@ function ComputerCard({ engine, node, lv, users, onChanged }: Pick<SettingsPageP
       <span className="grow">
         <b>{name}</b>
         <small>{[osOf(node.platform), node.connected === true ? "online" : node.lastSeenAtMs ? `last seen ${when(node.lastSeenAtMs)}` : "offline"].filter(Boolean).join(" · ")}</small>
-        {issues.map((i, k) => <span key={k} className="s2-cwarn">{str(i.message) || str(i.code)}</span>)}
+        {issues.map((i, k) => <span key={k} className="s2-cwarn">{plainError(i.message ?? i.code)}</span>)}
         {users.length ? <span className="s2-users">Used by {users.join(", ")}</span> : null}
         {node.connected === true ? <span className="s2-watch"><Btn sm ghost onClick={() => watch(node.gatewayLocal === true ? "gateway" : `node:${str(node.nodeId)}`)}>Watch its screen</Btn></span> : null}
         {total ? <span className="s2-busy"><span className="s2-meter" aria-hidden="true"><u style={{ width: `${Math.round((busy / total) * 100)}%` }} /></span>{busy} of {total} busy</span> : null}

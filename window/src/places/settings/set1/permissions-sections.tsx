@@ -6,7 +6,7 @@
 import { record } from "../adapter";
 import { CommandDefaults, RulesFor, RulesList } from "./permissions-commands";
 import { WHY, type Cfg, type Dead, type Row, type Section } from "./permissions-rows";
-import { ApprovalsRow, Connectors, Lockdown, Pinned, WhoMay } from "./permissions-top";
+import { ApprovalsRow, Connectors, Lockdown, WhoMay } from "./permissions-top";
 
 const off = (t: string, sub: string | undefined, c: Dead, why = WHY.key, lv?: 0 | 1 | 2): Row => ({ k: "off", t, sub, c, why, lv });
 const offSw = (t: string, sub: string, on: boolean, why = WHY.key): Row => off(t, sub, { sw: on }, why);
@@ -33,7 +33,7 @@ const mediaOn = (c: Cfg) => MEDIA.every((k) => c.get(`tools.media.${k}.enabled`)
 const mediaSet = (c: Cfg, on: boolean) => c.set("tools.media", Object.fromEntries(MEDIA.map((k) => [k, { enabled: on ? null : false }])));
 const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
 const SAFE_BINS = ["cut", "uniq", "head", "tail", "tr", "wc"];
-const SB_SUB: Record<string, string> = { off: "Off: commands follow “Where commands run”.", all: "Every conversation: each Trunk works in its own sealed container.", "non-main": "Every conversation except each Trunk’s main one. Group chats and chat-app conversations are never a main one." };
+const SB_SUB: Record<string, string> = { off: "Off: commands follow “Where commands run”.", all: "Every conversation: each Trunk works in its own safe container.", "non-main": "Every conversation except each Trunk’s main one. Group chats and chat-app conversations are never a main one." };
 
 const LOCKS: Section = { title: "Locks and records", lv: 0, rows: [
   off("App lock", "Turns on when you set a PIN.", { seg: ["Off", "After 15 min", "Always"] }, WHY.pin),
@@ -46,10 +46,6 @@ const LOCKS: Section = { title: "Locks and records", lv: 0, rows: [
   off("Older file-transfer permissions", "Older yeses for copying files to and from your computers stay paused until you review them. Blocks, size limits and link settings keep working meanwhile.", { btn: "Review" }, "The engine can’t list them here yet; move them by command.", 2),
   { k: "code", t: "Move them by command", lv: 2, code: "branch file-transfer approvals migrate --dry-run" },
 ], tail: (x) => <Lockdown engine={x.engine} /> };
-
-const PINNED: Section = { title: "Pinned settings", lv: 0, hint: "A pinned setting is fixed. Someone else who uses this computer sees it pinned and can’t change it any way.", rows: [
-  { k: "el", t: "Pin a setting", el: () => <Pinned /> },
-] };
 
 const RULES: Section = { title: "Rules for each tool and folder", group: "Rules and checks", lv: 1, rows: [
   { k: "el", t: "Rules for", el: (x) => <RulesFor x={x} /> },
@@ -79,7 +75,7 @@ const ISOLATION: Section = { title: "Isolation", group: "Sandbox", lv: 1, rows: 
   { k: "pick", t: "One sandbox per", lv: 2, path: "agents.defaults.sandbox.scope", def: "agent", opts: [{ id: "agent", label: "Trunk" }, { id: "session", label: "Conversation" }, { id: "shared", label: "Shared by all" }], subOf: (v) => (v === "shared" ? "Shared ignores per-Trunk settings." : "") },
   { k: "pick", t: "Runs in", lv: 2, sub: "Plugins can add more (OpenShell, Cuttings).", path: "agents.defaults.sandbox.backend", def: "docker", opts: [{ id: "docker", label: "Docker" }, { id: "podman", label: "Podman" }, { id: "ssh", label: "SSH" }, { id: "openshell", label: "OpenShell" }, { id: "crabbox", label: "Cuttings" }] },
   off("System sandbox for commands", "Every command runs contained here.", { seg: ["Off", "When needed", "Always"], v: "Always" }, WHY.desk, 2),
-  { k: "sw", t: "Let a conversation run commands outside the sealed box", sub: "Commands may leave the sealed box only for the people and chats on the list. No one is on it at first. Turning it off turns it off in every conversation.", path: "tools.elevated.enabled", def: true },
+  { k: "sw", t: "Let a conversation run commands outside the safe box", sub: "Commands may leave the safe box only for the people and chats on the list. No one is on it at first. Turning it off turns it off in every conversation.", path: "tools.elevated.enabled", def: true },
   { k: "el", t: "Who may", when: (c) => c.get("tools.elevated.enabled") !== false, el: (x) => <WhoMay x={x} /> },
   off("Add sign-ins from outside the sandbox", "The sandbox never holds a password; Branch adds it on the way out. Off until you choose: a Trunk’s web requests then pass through Branch.", { sw: false }, WHY.key, 2),
   off("Verify each release", "Checks the signature before installing an update.", { sw: true }, WHY.key, 2),
@@ -159,7 +155,7 @@ const FOLDERS: Section = { title: "Folders the sandbox may reach", group: "Sandb
   off("Add a folder", undefined, { btn: "Add a folder" }, SB_FOLDERS),
 ] };
 
-const POLICY: Section = { title: "Company policy", group: "Pinned settings", showHeading: false, lv: 2, rows: [
+const POLICY: Section = { title: "Company policy", group: "Company policy", showHeading: false, lv: 2, rows: [
   offSw("Check Branch against a policy file", "Reports where Branch differs from your organisation’s policy file (policy.jsonc). It changes nothing by itself. Off until you choose: it is for organisations with a written policy.", false, WHY.policy),
   offSw("Let it repair project folders", "Off until you choose: it changes files in your projects.", false, WHY.policy),
 ] };
@@ -276,4 +272,4 @@ const CONNECTORS: Section = { title: "What each connector may do", group: "Rules
 ] };
 
 /** Every section after "Without asking, Trunks may…", in the preview's order. */
-export const LOWER: Section[] = [LOCKS, PINNED, RULES, COMMANDS, MORE_WITHOUT, CHECKS, ISOLATION, TOOLS_TECH, TEST, SECURITY_TECH, GUARDS_ON, TOOLS_LOOPS, PRIVACY, TERMINAL, FOLDERS, POLICY, MORE_APPROVALS, MORE_GUARDS, MONEY, NETWORK, CONNECTORS];
+export const LOWER: Section[] = [LOCKS, RULES, COMMANDS, MORE_WITHOUT, CHECKS, ISOLATION, TOOLS_TECH, TEST, SECURITY_TECH, GUARDS_ON, TOOLS_LOOPS, PRIVACY, TERMINAL, FOLDERS, POLICY, MORE_APPROVALS, MORE_GUARDS, MONEY, NETWORK, CONNECTORS];

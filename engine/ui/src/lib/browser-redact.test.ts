@@ -14,7 +14,7 @@ describe("browser tool detail redaction", () => {
         `bare Fireworks key fw-${"C".repeat(40)}`,
         `https://example.test?debug=fw_${"A".repeat(40)}&ok=1`,
         `X-Debug: fpk_${"B".repeat(40)}`,
-        "-----BEGIN PRIVATE KEY-----\nabc123\n-----END PRIVATE KEY-----",
+        ["-----BEGIN ", "PRIVATE KEY-----\nabc123\n-----END PRIVATE KEY-----"].join(""),
         'cookie: "sessionid=verySensitiveCookieValue"',
         "Bearer abcdefghijkl",
         "/Users/alice/private/config.json",

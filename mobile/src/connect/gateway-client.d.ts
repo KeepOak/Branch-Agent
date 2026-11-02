@@ -59,6 +59,13 @@ declare module '@branch/gateway-client/browser' {
     server: { version: string };
     auth: { role: string; scopes: string[]; deviceToken?: string };
     snapshot?: { sessionDefaults?: { mainSessionKey?: string } } & Record<string, unknown>;
+    features?: { methods?: string[]; events?: string[] };
+    policy?: {
+      maxPayload?: number;
+      maxBufferedBytes?: number;
+      tickIntervalMs?: number;
+      attachments?: { maxBytes?: number; maxImageBytes?: number };
+    };
   };
 
   export type EventFrame = { type: 'event'; event: string; payload?: unknown; seq?: number };

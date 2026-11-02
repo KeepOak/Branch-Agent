@@ -183,6 +183,8 @@ export const MODEL_FIELD_HELP: Record<string, string> = {
     "Explicit policy for model overrides. Omit it or leave allow empty to permit any model.",
   "agents.defaults.modelPolicy.allow":
     'Allowed model override refs. Accepts aliases, full "provider/model" refs, and provider wildcards such as "openai/*". Empty permits any model.',
+  "agents.defaults.subscriptionsOnly":
+    "When true, stored API-key sign-ins are never picked automatically: unpinned runs and the automatic order of embedded runs skip them, so a run with only API-key sign-ins has no sign-in to use; rate-limit, auth-failure and failover rotations pass them over; rate-limit account switching does too; and agents cannot move a session or the sign-in order onto one. A sign-in the owner or user pins is still used, and provider keys set in config or environment are not affected. Default false: stored API-key sign-ins are ordinary candidates for automatic choices.",
   "agents.defaults.models.*.agentRuntime":
     "Optional per-model runtime policy for the default agent. Use this for model-specific runtime exceptions instead of setting a whole-agent runtime.",
   "agents.defaults.models.*.agentRuntime.id":
@@ -213,7 +215,7 @@ export const MODEL_FIELD_HELP: Record<string, string> = {
   "memory.search.experimental.sessionMemory":
     "Indexes session transcripts into memory search. Keep this advanced override when root and per-agent recall inheritance differ.",
   "memory.search.provider":
-    'Selects the embedding backend used to build/query memory vectors. Defaults to "openai"; set "openai-compatible", "gemini", "voyage", "mistral", "bedrock", "deepinfra", "github-copilot", "lmstudio", "ollama", or "local" when you want a different backend.',
+    'Selects the embedding backend used to build/query memory vectors. Defaults to "local" (on-device llama.cpp, no API key). Paid remotes such as "openai" are used only when you set them explicitly — a ChatGPT or OAuth login is not enough. Other backends: "openai-compatible", "gemini", "voyage", "mistral", "bedrock", "deepinfra", "github-copilot", "lmstudio", or "ollama".',
   "memory.search.model":
     "Embedding model override used by the selected memory provider when a non-default model is required. Set this only when you need explicit recall quality/cost tuning beyond provider defaults.",
   "memory.search.inputType":
@@ -237,7 +239,7 @@ export const MODEL_FIELD_HELP: Record<string, string> = {
   "memory.search.store.vector.enabled":
     "Controls the sqlite-vec semantic index. Keep this advanced override when root and per-agent vector policies differ.",
   "memory.search.fallback":
-    'Backup provider used when primary embeddings fail: "openai", "gemini", "voyage", "mistral", "bedrock", "lmstudio", "ollama", "local", or "none". Set a real fallback for production reliability; use "none" only if you prefer explicit failures.',
+    'Backup provider used when primary embeddings fail: "openai", "gemini", "voyage", "mistral", "bedrock", "lmstudio", "ollama", "local", or "none". Defaults to "none". A paid backup is used only when you also set memory.search.provider yourself; auto and unset ignore it. A ChatGPT or OAuth login is not enough.',
   "memory.search.store.vector.extensionPath":
     "Overrides the auto-discovered sqlite-vec extension library path (`.dylib`, `.so`, or `.dll`). Use this when your runtime cannot find sqlite-vec automatically or you pin a known-good build.",
   "memory.search.query.maxResults":

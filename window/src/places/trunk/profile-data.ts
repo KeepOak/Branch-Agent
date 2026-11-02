@@ -5,8 +5,9 @@ import { loadTrunkData, type TrunkData } from "./data";
 import { entryOf, rec, str, strs } from "./model";
 import { scheduleWords } from "../automations/model";
 import { isEngineJob } from "../../connect/engine-jobs";
+import { plainError } from "../../shell/plain-error";
 
-type Automation = { id: string; name: string; when: string; enabled: boolean };
+export type Automation = { id: string; name: string; when: string; enabled: boolean };
 /** `facts`: the bullets in its MEMORY.md (agents.files.get), as Library › Memory counts them; null when unread. */
 /** `working`: what one of its conversations is doing now ("" when it says nothing), or null when none is running. */
 export type ProfileData = TrunkData & { automations: Automation[] | null; week: number | null; facts: number | null; working: string | null; notes: string[] };
@@ -19,7 +20,8 @@ export function scheduleText(schedule: unknown): string {
   return scheduleWords(rec(schedule));
 }
 
-function readAutomations(result: unknown, agentId: string): Automation[] {
+/** cron.list read into one Trunk's routines (engine jobs left out); the details panel reads the same list. */
+export function readAutomations(result: unknown, agentId: string): Automation[] {
   const jobs = Array.isArray(rec(result).jobs) ? (rec(result).jobs as unknown[]).map(rec) : [];
   return jobs.filter((j) => str(j.agentId) === agentId && !isEngineJob(j)).map((j) => ({ id: str(j.id), name: str(j.displayName) || str(j.name), when: scheduleText(j.schedule), enabled: j.enabled === true }));
 }
@@ -45,9 +47,9 @@ export async function loadProfile(engine: WindowEngine, agentId: string): Promis
     engine.request("sessions.list", { activeMinutes: 7 * 24 * 60, excludeSubagents: true, excludeCron: true, limit: WEEK_LIMIT }).then((r) => ({ r }), (e: unknown) => ({ e })),
     engine.request("agents.files.get", { agentId, name: "MEMORY.md" }).then((r) => ({ r }), (e: unknown) => ({ e })),
   ]);
-  const notes = [...base.partial];
-  if ("e" in cron) notes.push(`Automations: ${String(cron.e instanceof Error ? cron.e.message : cron.e)}`);
-  if ("e" in sessions) notes.push(`Conversations: ${String(sessions.e instanceof Error ? sessions.e.message : sessions.e)}`);
+  const notes = base.partial.map((note) => plainError(note));
+  if ("e" in cron) notes.push(`Automations: ${plainError(cron.e)}`);
+  if ("e" in sessions) notes.push(`Conversations: ${plainError(sessions.e)}`);
   return {
     ...base,
     automations: "r" in cron ? readAutomations(cron.r, agentId) : null,

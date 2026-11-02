@@ -1,0 +1,17 @@
+window:src/places/automations/checkins-ui.test.tsx
+window:src/places/automations/checkins.test.ts
+window:src/places/automations/procedures-board.test.tsx
+window:src/places/automations/runtime.test.tsx
+window:src/places/automations/scheduled.test.tsx
+window:src/places/automations/triggers.test.tsx
+window:src/places/library/made.test.tsx
+window:src/places/library/meetings.test.tsx
+window:src/places/office/office-lifecycle.test.tsx
+window:src/places/office/pixel/webview-ui/src/branch/CharactersPanel.test.tsx
+window:src/places/office/pixel/webview-ui/src/branch/branchServer-core.test.ts
+window:src/places/office/pixel/webview-ui/src/branch/branchServer.test.ts
+window:src/places/office/pixel/webview-ui/src/branch/lighting.test.ts
+window:src/places/settings/pins.test.tsx
+window:src/places/settings/set2/desktop-updates-undo.test.tsx
+window:src/places/settings/set2/usage-prices.test.ts
+window:src/places/settings/use-wizard.test.tsx

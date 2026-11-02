@@ -1,0 +1,10 @@
+engine:extensions/cua-computer/src/actions.test.ts
+engine:extensions/cua-computer/src/browser-actions.test.ts
+engine:extensions/cua-computer/src/commands.modifiers.test.ts
+engine:extensions/cua-computer/src/doctor.test.ts
+engine:extensions/cua-computer/src/driver-artifacts-resolution.test.ts
+engine:extensions/cua-computer/src/driver-artifacts.test.ts
+engine:extensions/cua-computer/src/driver-result.test.ts
+engine:extensions/cua-computer/src/node-invoke-policy.test.ts
+engine:extensions/cua-computer/src/recording-actions.test.ts
+engine:extensions/cua-computer/src/ref-lifecycle.contract.test.ts

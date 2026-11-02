@@ -1,0 +1,6 @@
+engine:packages/acp-core/src/error-format.test.ts
+engine:packages/acp-core/src/meta.test.ts
+engine:packages/acp-core/src/runtime/session-identifiers.test.ts
+engine:packages/acp-core/src/session-interaction-mode.test.ts
+engine:packages/acp-core/src/session-lineage-meta.test.ts
+engine:packages/acp-core/src/session.test.ts

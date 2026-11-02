@@ -18,10 +18,12 @@ import {
 } from "../../../test/helpers/branch-test-instance.ts";
 import { runQaGatewayFixture } from "../../../test/helpers/qa-gateway-cleanup.ts";
 import { createRequireRecord } from "../../../test/helpers/record.js";
-import { COMMUNITY_INVITE_KEY } from "../components/community-invite-state.ts";
 import { waitForControlUiGatewayReady } from "../test-helpers/control-ui-e2e-readiness.ts";
 import { takeControlUiViewportScreenshot } from "../test-helpers/control-ui-e2e-screenshot.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
+
+// The sidebar invite is gone; old dismissal keys may still be in saved storage.
+const COMMUNITY_INVITE_KEY = "branch:control-ui:community-invite:v2";
 
 const requireRecord = createRequireRecord("record", "expected-object-value");
 const agentIds = ["main", "second", "third", "fourth", "fifth"];

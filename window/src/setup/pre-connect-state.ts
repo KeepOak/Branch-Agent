@@ -7,6 +7,8 @@ const TARGET_KEY = "branch.gatewayTarget";
 const TARGET_NAME_KEY = "branch.gatewayTargetName";
 const SAVED_TARGETS_KEY = "branch.gatewayTargets.v1";
 
+export { SETUP_LATER_KEY } from "./setup-model";
+
 export type PreConnect = { promise: boolean; where: Where };
 
 export function readPreConnect(): PreConnect | null {

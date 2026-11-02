@@ -1,0 +1,6 @@
+engine:extensions/onnx/src/artifacts.test.ts
+engine:extensions/onnx/src/decisions.test.ts
+engine:extensions/onnx/src/model-loader.test.ts
+engine:extensions/onnx/src/models/gliclass.test.ts
+engine:extensions/onnx/src/models/gliner.test.ts
+engine:extensions/onnx/src/worker-client.test.ts

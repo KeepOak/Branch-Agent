@@ -1,0 +1,6 @@
+window:src/i18n/language.test.tsx
+window:src/screens/settings/SettingsFrame.test.tsx
+window:src/screens/settings/four-pages.test.tsx
+window:src/screens/settings/pages/accounts-preview.test.tsx
+window:src/screens/settings/regular-groups.test.tsx
+window:scripts/build-window-locales.test.mjs

@@ -1,0 +1,2 @@
+window:src/composer/composer-refresh-loop-offline-slash.test.tsx
+window:src/composer/composer-send-after-account.test.tsx

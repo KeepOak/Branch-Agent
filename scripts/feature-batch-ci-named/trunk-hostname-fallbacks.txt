@@ -1,0 +1,3 @@
+engine:src/gateway/graft-join-ui.test.ts
+engine:src/gateway/server/ws-connection/connect-session.presence-host.test.ts
+engine:src/mcp/outside-presence.test.ts

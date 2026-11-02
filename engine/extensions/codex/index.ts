@@ -46,6 +46,7 @@ import {
 import { retireSharedCodexAppServerClientsBeforeDesktopGeneration } from "./src/app-server/shared-client-lifecycle.js";
 import { createCodexAppServerProcessReaperService } from "./src/app-server/transport-process-registration.js";
 import { codexNativeProfileRecoveryService } from "./src/auth-profile-health.js";
+import { registerCodexRuntime } from "./src/codex-runtime.js";
 import type { CodexPluginsConfigBlock } from "./src/command-plugin-config.js";
 import { createCodexCommand } from "./src/commands.js";
 import {
@@ -99,8 +100,10 @@ export default definePluginEntry({
     // Bundled modules may execute from a shared dist chunk, so import.meta.url
     // cannot identify the owning plugin package or its pinned dependencies.
     setManagedCodexPluginRoot(api.rootDir);
-    // Release builds ship no Codex binary: turns use the Codex installed on this computer.
+    // Release builds ship no Codex binary. A codex on PATH or the bundled package
+    // is used as it is; otherwise the first-use download fetches the pinned package.
     setManagedCodexInstalled(createInstalledCodex());
+    registerCodexRuntime(api);
     api.registerProvider(codexProviderDiscovery);
     const resolveCurrentConfig = () =>
       api.runtime.config?.current ? (api.runtime.config.current() as BranchConfig) : undefined;

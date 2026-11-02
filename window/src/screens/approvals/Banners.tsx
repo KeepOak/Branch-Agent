@@ -2,8 +2,12 @@
 // (the oldest is dismissed). Each has its own 6 s timer that pauses on hover or focus, unless it is sticky; × shows only on hover or focus;
 // drag or flick right past 80 px to dismiss. They arrive with a spring from the right and leave by collapsing.
 // Approvals elsewhere in the app use this shell with Yes / No / Open. glass/Banners.tsx can adopt it for every toast.
+// Every row's words pass through plainAddresses() as they draw (card #1095, B-026): at Regular no hostname, IP address
+// or URL shows, whether the row is an approval, a problem or news, and even when the computer's hostname arrives after
+// the row was raised. Advanced and Technical keep the exact words.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { plainAddresses } from "../../shell/plain-address";
 
 export const BANNER_MS = 6000, BANNER_MAX = 3, LEAVE_MS = 380, FLING_PX = 80;
 
@@ -50,7 +54,7 @@ function Banner({ item, onDismiss }: { item: BannerItem; onDismiss: (id: string)
       onPointerCancel={() => { drag.current = null; setDragging(false); setDx(0); resume(); }}
     >
       {item.face ? <span className="r1-banner-face">{item.face}</span> : null}
-      <span className="r1-banner-text"><b>{item.title}</b>{item.body ? <span>{item.body}</span> : null}</span>
+      <span className="r1-banner-text"><b>{plainAddresses(item.title)}</b>{item.body ? <span>{plainAddresses(item.body)}</span> : null}</span>
       {item.actions ? <span className="r1-banner-acts">{item.actions}</span> : null}
       <button type="button" className="r1-banner-x" aria-label="Dismiss" data-local onClick={() => dismiss()}>×</button>
     </div>

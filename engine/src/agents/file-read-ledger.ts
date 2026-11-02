@@ -25,7 +25,7 @@ export type FileReadLedger = {
 };
 
 export const PARTIAL_READ_WRITE_REFUSAL =
-  "You only read part of this file. Read the rest, or use an edit.";
+  "You only read part of this file. Read the rest or use an edit instead.";
 export const UNREAD_SHRINK_WRITE_REFUSAL =
   "You have not read this file, and this write would shrink it. Read it first, or use an edit.";
 

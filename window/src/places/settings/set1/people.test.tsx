@@ -55,6 +55,9 @@ describe("Settings › People", () => {
       expect(PEOPLE_ROWS.some((row) => row.title === title)).toBe(false);
     }
     expect(button("Invite someone")?.disabled).toBe(false);
+    expect(host.textContent).toContain("Visitor invitations are managed by this Branch.");
+    expect(host.textContent).not.toMatch(/cloudflare|api token|apiToken/i);
+    expect(host.querySelector('[aria-label="Cloudflare API token"]')).toBeNull();
     expect(button("Open People")?.disabled).toBe(false);
     expect(Boolean(button("See the last"))).toBe(level >= 1);
   });

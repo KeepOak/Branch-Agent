@@ -9,7 +9,7 @@ function bootstrapResponse(
   pluginAssetsRequireAuth?: boolean,
   communityInvite = true,
 ): Response {
-  const payload: ControlUiBootstrapConfig = {
+  const payload: ControlUiBootstrapConfig & { communityInvite: boolean } = {
     basePath: "",
     assistantName: "Assistant",
     assistantAvatar: "A",
@@ -99,7 +99,7 @@ describe("createApplicationConfigCapability", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
-  it("keeps invitations hidden until bootstrap enables them and accepts later opt-outs", async () => {
+  it("ignores the retired invitation flag even from an older gateway", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(bootstrapResponse("test"))
@@ -110,7 +110,7 @@ describe("createApplicationConfigCapability", () => {
     const unsubscribe = config.subscribe(listener);
 
     expect(config.current.communityInvite).toBe(false);
-    await expect(config.refresh()).resolves.toMatchObject({ communityInvite: true });
+    await expect(config.refresh()).resolves.toMatchObject({ communityInvite: false });
     await expect(config.refresh()).resolves.toMatchObject({ communityInvite: false });
     expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({ communityInvite: false }));
     unsubscribe();

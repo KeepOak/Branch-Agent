@@ -1,0 +1,3 @@
+window:src/places/library/activity.test.tsx
+window:src/places/library/logbook.test.tsx
+window:src/places/library/shapes.test.tsx

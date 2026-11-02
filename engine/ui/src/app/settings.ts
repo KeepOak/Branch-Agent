@@ -159,7 +159,8 @@ export function normalizeTextScale(value: unknown, fallback: TextScaleStop = 100
 
 export const UI_APPEARANCE_DEFAULTS = {
   theme: "grove",
-  themeMode: "system",
+  // Light first, like the Branch App Preview (#1927). "System" stays selectable in Appearance.
+  themeMode: "light",
   textScale: 100,
   sidebarLiveActivity: true,
   chatMessageMaxWidth: "48rem",

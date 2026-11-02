@@ -4,7 +4,8 @@
 import { useEffect, useState } from "react";
 import { visible } from "../adapter";
 import { Ctl, Pick, Sec, Switch, useSaveRunner, type Opt } from "../kit";
-import { APP, Choice, Greyed, NO_KEY, isMac } from "./voice-kit";
+import { APP, Choice, Greyed, NO_KEY } from "./voice-kit";
+import { VOICE_DEFAULTS } from "./voice-defaults";
 import type { Cfg, Shared } from "./voice-more";
 
 export function HearingMore() {
@@ -18,14 +19,14 @@ export function HearingMore() {
 export function ListeningMore(props: Shared) {
   return (
     <Sec title="Listening, more" showHeading={false} group="Listening">
-      <Greyed why={APP} rows={[{ t: "Wake word", sub: `${props.word}, heard on this computer only. Off until you choose: it keeps the microphone open.`, c: { sw: false } }]} />
+      <Greyed why={APP} rows={[{ t: "Wake word", sub: `${props.word}, heard on this computer only. Off until you choose: it keeps the microphone open.`, c: { sw: VOICE_DEFAULTS.wakeWord } }]} />
       <WakeWords {...props} />
       <Greyed why={APP} rows={[
         { t: "The wake word starts live voice", sub: "Saying a wake word opens live voice with the default Trunk. Off: the wake word starts dictation into the message box. Off until you choose: the call keeps the microphone open until you end it.", c: { sw: false } },
-        { t: "Stop listening after silence", sub: "For live dictation.", c: { field: isMac() ? "0.7" : "2.5", unit: "s" } },
+        { t: "Stop listening after silence", sub: "For live dictation.", c: { field: String(VOICE_DEFAULTS.silenceSeconds), unit: "s" } },
       ]} />
       <AnswerAloud {...props} />
-      <Greyed why={NO_KEY} rows={[{ t: "Spoken morning brief", sub: "The written brief, read out at 7:30 on the speaker you choose.", c: { sw: true } }]} />
+      <Greyed why={NO_KEY} rows={[{ t: "Spoken morning brief", sub: "The written brief, read out at 7:30 on the speaker you choose. Off until you choose: it plays sound at a fixed time.", c: { sw: VOICE_DEFAULTS.morningBrief } }]} />
       <SpeechLanguage cfg={props.cfg} />
       <Greyed why={NO_KEY} rows={[{ t: "Also understand", sub: "None added.", c: { pick: ["Add a language…"] } }]} />
       <Greyed why={APP} rows={[

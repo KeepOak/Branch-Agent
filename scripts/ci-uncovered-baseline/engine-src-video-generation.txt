@@ -1,0 +1,6 @@
+engine:src/video-generation/capabilities.test.ts
+engine:src/video-generation/capability-overlays.test.ts
+engine:src/video-generation/dashscope-compatible.test.ts
+engine:src/video-generation/live-test-helpers.test.ts
+engine:src/video-generation/runtime.resources.test.ts
+engine:src/video-generation/runtime.test.ts

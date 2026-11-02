@@ -68,7 +68,10 @@ import { resolveAuthProfileOrder } from "../auth-profiles/order.js";
 import { isSetupCredentialAccessible } from "../auth-profiles/setup-access.js";
 import { loadAuthProfileStoreForRuntime } from "../auth-profiles/store-runtime.js";
 import { resolveRuntimeAuthProfileAgentDir } from "../auth-profiles/store.js";
-import { SUBSCRIPTION_ONLY_RUN_MESSAGE } from "../auth-profiles/subscription-only.js";
+import {
+  isSubscriptionsOnly,
+  SUBSCRIPTION_ONLY_RUN_MESSAGE,
+} from "../auth-profiles/subscription-only.js";
 import type { AuthProfileCredential, AuthProfileStore } from "../auth-profiles/types.js";
 import {
   buildBootstrapBudgetState,
@@ -477,11 +480,12 @@ async function prepareCliRunContextWithinReadFence(
     })
       .map((profileId) => profileId.trim())
       .filter(Boolean);
-    // Unpinned runs only pick subscription sign-ins; API keys are never used implicitly.
+    // With subscriptionsOnly, unpinned runs only pick subscription sign-ins; otherwise API keys are ordinary candidates.
+    const subscriptionsOnly = isSubscriptionsOnly(params.config);
     effectiveAuthProfileId = orderedProfileIds.find(
-      (profileId) => orderStore.profiles[profileId]?.type !== "api_key",
+      (profileId) => !subscriptionsOnly || orderStore.profiles[profileId]?.type !== "api_key",
     );
-    if (orderedProfileIds.length > 0 && !effectiveAuthProfileId) {
+    if (subscriptionsOnly && orderedProfileIds.length > 0 && !effectiveAuthProfileId) {
       throw new Error(SUBSCRIPTION_ONLY_RUN_MESSAGE);
     }
     if (effectiveAuthProfileId) {

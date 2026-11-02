@@ -1,0 +1,2 @@
+engine:extensions/sglang/index.test.ts
+engine:extensions/sglang/provider-discovery.contract.test.ts

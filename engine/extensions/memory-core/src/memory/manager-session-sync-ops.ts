@@ -286,7 +286,7 @@ export abstract class MemoryManagerSessionSyncOps extends MemoryManagerWatchOps 
       return dirtyFiles;
     }
     void this.sync({ reason: "session-startup-catchup" }).catch((err: unknown) => {
-      log.warn("memory sync failed (session-startup-catchup): " + String(err));
+      this.reportBackgroundSyncFailure("session-startup-catchup", err);
     });
     return dirtyFiles;
   }
@@ -337,7 +337,7 @@ export abstract class MemoryManagerSessionSyncOps extends MemoryManagerWatchOps 
         sessions: pendingTargets,
         archiveFiles: pending,
       }).catch((err: unknown) => {
-        log.warn(`memory sync failed (session update): ${String(err)}`);
+        this.reportBackgroundSyncFailure("session update", err);
       });
     }
   }

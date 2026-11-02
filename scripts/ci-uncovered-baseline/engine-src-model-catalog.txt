@@ -1,0 +1,9 @@
+engine:src/model-catalog/endpoint-eligibility.test.ts
+engine:src/model-catalog/manifest-planner.test.ts
+engine:src/model-catalog/pricing.routing.test.ts
+engine:src/model-catalog/pricing.test.ts
+engine:src/model-catalog/pricing.v2-standalone.test.ts
+engine:src/model-catalog/pricing.v2.test.ts
+engine:src/model-catalog/remote-overlay.test.ts
+engine:src/model-catalog/remote-refresh.test.ts
+engine:src/model-catalog/remote-store.test.ts

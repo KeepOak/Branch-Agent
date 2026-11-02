@@ -61,6 +61,10 @@ describe("new conversation drafts", () => {
     expect(row).toMatchObject({ hint: "random character", testid: "new-trunk" });
     if ("run" in row) row.run();
     expect(ctx.newTrunk).toHaveBeenCalledOnce();
+    const template = items.find((entry) => "label" in entry && entry.label === "Start from a template")!;
+    expect(template).toMatchObject({ sub: "Templates in Seedbank", testid: "new-trunk-from-job" });
+    if ("run" in template) template.run();
+    expect(ctx.openPlace).toHaveBeenCalledExactlyOnceWith("customize");
     const branch = items.find((entry) => "label" in entry && entry.label === "Have Branch make a Trunk")!;
     if ("run" in branch) branch.run();
     expect(ctx.makeTrunk).toHaveBeenCalledOnce();

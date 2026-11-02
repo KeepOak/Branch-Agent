@@ -10,14 +10,22 @@ function countItems(result: unknown): number {
   return items.length;
 }
 
+function countPendingDevices(result: unknown): number {
+  const pending = result && typeof result === "object" && "pending" in result ? (result as { pending?: unknown }).pending : undefined;
+  return Array.isArray(pending) ? pending.length : 0;
+}
+
 /**
  * The pending approvals the desktop's update probe reports. The gateway's lists answer within APPROVAL_PROBE_MS; a slow
  * or unreachable gateway answers with the approvals the window already shows, so the probe never times out on the desktop.
+ * Device pairing requests count too: a phone waiting for Allow is "waiting on you".
  */
 export async function pendingApprovalsWithin(session: Pick<SaplingSession, "request">, shown: number): Promise<number> {
-  const listed = Promise.all(APPROVAL_LISTS.map(method => session.request<unknown>(method, {})))
+  const approvals = Promise.all(APPROVAL_LISTS.map(method => session.request<unknown>(method, {})))
     .then(results => results.reduce<number>((count, result) => count + countItems(result), 0))
     .catch(() => shown);
+  const pairing = session.request<unknown>("device.pair.list", {}).then(countPendingDevices).catch(() => 0);
+  const listed = Promise.all([approvals, pairing]).then(([count, devices]) => count + devices);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const bound = new Promise<number>(resolve => { timer = setTimeout(() => resolve(shown), APPROVAL_PROBE_MS); });
   try { return await Promise.race([listed, bound]); }

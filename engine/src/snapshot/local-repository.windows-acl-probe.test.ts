@@ -140,6 +140,30 @@ describe("fail-closed Windows ACL probe", () => {
     }
   });
 
+  it("keeps an unresolvable domain account untrusted on a chosen backup folder", async () => {
+    // An inherited grant to a SID that no longer resolves (a removed domain account) is still another account.
+    mockWindowsPathSecurity({
+      rootEntries: [
+        CURRENT_USER_FULL_ACCESS,
+        {
+          ...CURRENT_USER_FULL_ACCESS,
+          sid: "s-1-5-21-1111111111-2222222222-3333333333-1001",
+          mask: 0x1201bf,
+          flags: {
+            ...CURRENT_USER_FULL_ACCESS.flags,
+            raw: 0x13,
+            objectInherit: true,
+            containerInherit: true,
+            inherited: true,
+          },
+        },
+      ],
+    });
+    await expect(admitRoot(tempDir)).rejects.toThrow(
+      /Windows ACL permits untrusted SQLite staging access on repository root: path=.*principal=S-1-5-21-1111111111-2222222222-3333333333-1001/u,
+    );
+  });
+
   it.each([
     {
       label: "an untrusted read grant",

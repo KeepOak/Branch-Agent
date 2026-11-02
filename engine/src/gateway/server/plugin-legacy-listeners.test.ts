@@ -69,6 +69,7 @@ describe("legacy channel webhook ports", () => {
     stop = startPluginLegacyListeners({
       gatewayServer,
       httpServers,
+      bindHost: "127.0.0.1",
       getRegistry: () => registry,
       warn,
     });
@@ -749,6 +750,7 @@ describe("legacy channel webhook ports", () => {
       stop = startPluginLegacyListeners({
         gatewayServer,
         httpServers,
+        bindHost: "127.0.0.1",
         getRegistry: () => registry,
         warn,
       });

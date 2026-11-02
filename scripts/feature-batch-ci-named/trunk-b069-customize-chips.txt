@@ -1,0 +1,2 @@
+window:src/screens/settings/pages/customize-chips.test.tsx
+window:src/screens/settings/pages/customize-live.test.tsx

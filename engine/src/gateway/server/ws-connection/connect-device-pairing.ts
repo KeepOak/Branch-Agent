@@ -519,7 +519,7 @@ export async function authorizeGatewayConnectDevice(
     const paired = await getPairedDevice(device.id);
     const isPaired = paired?.publicKey === devicePublicKey;
     if (
-      state.startupPending &&
+      state.nodeStartupPending &&
       !isStartupNodeBootstrapConnect(connectParams) &&
       (!paired || !isPaired || !hasEffectivePairedDeviceRole(paired, "node") || !paired.nodeSurface)
     ) {

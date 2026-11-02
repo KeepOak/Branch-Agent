@@ -1,0 +1,2 @@
+window:src/screens/settings/pages/data-lives-portable-help.test.tsx
+window:src/screens/settings/pages/developer-portable-row.test.tsx

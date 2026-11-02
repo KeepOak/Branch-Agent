@@ -1,12 +1,11 @@
 // Codex is the one installed on this computer: PATH (at the minimum version), else the bundled
-// package in a source checkout, else the desktop app. Nothing is downloaded.
+// package in a source checkout, else the desktop app. With none of those, the registered
+// first-use download (on-demand.ts) runs; with it unregistered, nothing is fetched.
 import { existsSync } from "node:fs";
 import {
   chmod,
   mkdir,
   mkdtemp,
-  readdir,
-  readFile,
   realpath,
   rm,
   writeFile,
@@ -25,11 +24,11 @@ import {
 import {
   resolveManagedCodexAppServerStartOptions,
   setManagedCodexInstalled,
+  setManagedCodexOnDemand,
   setManagedCodexPluginRoot,
 } from "./managed-binary.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const codexPluginRoot = path.resolve(here, "..", "..");
 
 function startOptions(): CodexAppServerStartOptions {
   return {
@@ -45,22 +44,6 @@ async function writeExecutable(file: string): Promise<void> {
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, "#!/bin/sh\n");
   await chmod(file, 0o755);
-}
-
-async function sourceFiles(dir: string): Promise<string[]> {
-  const out: string[] = [];
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    if (entry.name === "node_modules" || entry.name === "protocol-generated") {
-      continue;
-    }
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      out.push(...(await sourceFiles(full)));
-    } else if (/\.ts$/u.test(entry.name) && !/\.test\.ts$/u.test(entry.name)) {
-      out.push(full);
-    }
-  }
-  return out;
 }
 
 describe("Codex installed on this computer", () => {
@@ -89,50 +72,65 @@ describe("Codex installed on this computer", () => {
 
   afterEach(async () => {
     setManagedCodexInstalled(undefined);
+    setManagedCodexOnDemand(undefined);
     setManagedCodexPluginRoot(undefined);
     vi.restoreAllMocks();
     await rm(root, { recursive: true, force: true });
   });
 
-  it("has no download path: no download modules or calls, and nothing is fetched", async () => {
-    for (const gone of [
-      "on-demand.ts",
-      "on-demand-assets.ts",
-      "on-demand-tar.ts",
-      "turn-download.ts",
-    ]) {
-      expect(existsSync(path.join(here, gone)), gone).toBe(false);
-    }
-    expect(existsSync(path.join(codexPluginRoot, "src", "codex-runtime.ts"))).toBe(false);
-    const files = [
-      path.join(codexPluginRoot, "index.ts"),
-      ...(await sourceFiles(path.join(codexPluginRoot, "src"))),
-    ];
-    for (const file of files) {
-      const text = await readFile(file, "utf8");
-      for (const banned of [
-        "registry.npmjs.org",
-        "codex.runtime.download",
-        "codex.runtime.cancel",
-        "ensureLauncher",
-        "codex_download",
-        "Getting Codex ready",
-        "Download now",
-        "Not downloaded",
-      ]) {
-        expect(
-          text.includes(banned),
-          `${path.relative(codexPluginRoot, file)} mentions ${banned}`,
-        ).toBe(false);
-      }
-    }
-
+  it("fetches nothing when the first-use download is not registered", async () => {
+    // The downloader is the existing on-demand module. With it unregistered, a
+    // missing Codex still fails with the Settings sentence and nothing is fetched.
+    expect(existsSync(path.join(here, "on-demand.ts"))).toBe(true);
     const fetch = vi.spyOn(globalThis, "fetch");
+    setManagedCodexOnDemand(undefined);
     setManagedCodexInstalled(createInstalledCodex({ platform: "linux", env: { PATH: emptyBin } }));
     await expect(
       resolveManagedCodexAppServerStartOptions(startOptions(), { platform: "linux", pluginRoot }),
     ).rejects.toBeInstanceOf(CodexNotInstalledError);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not download until the owner agrees, then uses the registered downloader", async () => {
+    const downloaded = path.join(root, "downloaded", "codex.js");
+    await writeExecutable(downloaded);
+    const ensureLauncher = vi.fn(async () => downloaded);
+    const source = {
+      findPathCommand: async () => undefined,
+      installedLauncher: async () => undefined,
+      ensureLauncher,
+      downloadAllowed: () => false,
+      askMessage: () => "Download Codex 0.160.0 (134 MB)?",
+      waitForDownloadConsent: async () => undefined,
+      status: async () => ({
+        state: "download" as const,
+        reason: "not-downloaded" as const,
+        version: "0.160.0",
+        bytes: 134_311_083,
+        message: "Download Codex 0.160.0 (134 MB)?",
+        ask: "Download Codex 0.160.0 (134 MB)?",
+      }),
+    };
+    setManagedCodexOnDemand(source);
+    setManagedCodexInstalled(createInstalledCodex({ platform: "linux", env: { PATH: emptyBin } }));
+    const declined = await resolveManagedCodexAppServerStartOptions(startOptions(), {
+      platform: "linux",
+      pluginRoot,
+      bundledReady: () => false,
+    }).catch((error: unknown) => error);
+    expect(declined).toMatchObject({ reason: "not-downloaded" });
+    expect((declined as Error).message).toBe("Download Codex 0.160.0 (134 MB)?");
+    expect((declined as Error).message).not.toMatch(/isn['’]t needed/iu);
+    expect(ensureLauncher).not.toHaveBeenCalled();
+    setManagedCodexOnDemand({ ...source, downloadAllowed: () => true });
+    await expect(
+      resolveManagedCodexAppServerStartOptions(startOptions(), {
+        platform: "linux",
+        pluginRoot,
+        bundledReady: () => false,
+      }),
+    ).resolves.toMatchObject({ command: downloaded, commandSource: "resolved-managed" });
+    expect(ensureLauncher).toHaveBeenCalledTimes(1);
   });
 
   it("a Codex turn with no installed codex fails with the Settings sentence", async () => {
@@ -200,5 +198,63 @@ describe("Codex installed on this computer", () => {
     expect(parseCodexVersion("codex-cli 0.160.0\n")).toBe("0.160.0");
     expect(parseCodexVersion("0.161.0-alpha.2")).toBe("0.161.0-alpha.2");
     expect(parseCodexVersion("")).toBeUndefined();
+  });
+
+  it("finds the official Linux install when PATH is a stripped desktop PATH", async () => {
+    // Linux desktop / AppImage / service PATH is often /usr/bin:/bin, with no ~/.local/bin.
+    // Official installer: ~/.local/bin/codex. Same lookup starts the main-agent chat and a Trunk.
+    const home = "/home/testuser";
+    const command = "/home/testuser/.local/bin/codex";
+    const installed = createInstalledCodex({
+      platform: "linux",
+      env: { HOME: home, BRANCH_HOME: "/srv/branch-home", PATH: "/usr/bin:/bin" },
+      isExecutable: async (file) => file === command,
+      readVersion: async () => "codex-cli 0.160.0",
+    });
+    await expect(installed.findPathCommand()).resolves.toEqual({
+      command,
+      version: "0.160.0",
+    });
+    await expect(
+      resolveManagedCodexAppServerStartOptions(startOptions(), {
+        platform: "linux",
+        pluginRoot,
+        installed,
+        pathExists: async (candidate) => candidate === command,
+      }),
+    ).resolves.toMatchObject({ command, commandSource: "resolved-managed" });
+  });
+
+  it("finds Codex next to the saved ChatGPT sign-in under ~/.codex when ~/.local/bin is missing", async () => {
+    const command = "/home/testuser/.codex/packages/standalone/current/bin/codex";
+    const installed = createInstalledCodex({
+      platform: "linux",
+      env: { HOME: "/home/testuser", PATH: "/usr/bin:/bin" },
+      isExecutable: async (file) => file === command,
+      readVersion: async () => "codex-cli 0.161.2",
+    });
+    await expect(installed.findPathCommand()).resolves.toEqual({
+      command,
+      version: "0.161.2",
+    });
+  });
+
+  it("expands a tilde PATH entry using the OS home, not BRANCH_HOME", async () => {
+    const command = "/home/testuser/.local/bin/codex";
+    const decoy = "/srv/branch-home/.local/bin/codex";
+    const installed = createInstalledCodex({
+      platform: "linux",
+      env: {
+        HOME: "/home/testuser",
+        BRANCH_HOME: "/srv/branch-home",
+        PATH: "~/.local/bin:/usr/bin",
+      },
+      isExecutable: async (file) => file === command || file === decoy,
+      readVersion: async (file) => (file === command ? "codex-cli 0.160.0" : "codex-cli 0.120.0"),
+    });
+    await expect(installed.findPathCommand()).resolves.toEqual({
+      command,
+      version: "0.160.0",
+    });
   });
 });

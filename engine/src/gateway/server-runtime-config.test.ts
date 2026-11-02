@@ -286,6 +286,32 @@ describe("resolveGatewayRuntimeConfig", () => {
       ).rejects.toThrow(/non-loopback Control UI requires gateway\.controlUi\.allowedOrigins/);
     });
 
+    it("defaults to loopback outside a container when gateway.bind is unset", async () => {
+      const result = await resolveGatewayRuntimeConfig({
+        cfg: { gateway: { auth: TOKEN_AUTH } },
+        port: 18789,
+      });
+      expect(result.bindHost).toBe("127.0.0.1");
+    });
+
+    it.each([
+      { name: "lan", gateway: { bind: "lan" as const } },
+      { name: "custom", gateway: { bind: "custom" as const, customBindHost: "0.0.0.0" } },
+    ])("refuses a $name bind with no token and says how to fix it", async ({ gateway }) => {
+      await expect(
+        resolveGatewayRuntimeConfig({
+          cfg: {
+            gateway: {
+              ...gateway,
+              auth: { mode: "none" as const },
+              controlUi: { allowedOrigins: ["https://control.example.com"] },
+            },
+          },
+          port: 18789,
+        }),
+      ).rejects.toThrow(/refusing to bind gateway.*gateway\.auth\.token.*gateway\.bind=loopback/);
+    });
+
     it("rejects container auto-bind without auth (security invariant preserved)", async () => {
       const fs = require("node:fs");
       vi.spyOn(fs, "accessSync").mockImplementation(() => undefined); // /.dockerenv exists

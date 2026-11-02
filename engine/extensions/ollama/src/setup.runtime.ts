@@ -266,6 +266,13 @@ async function promptAndConfigureHostBackedOllama(params: {
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
 }): Promise<OllamaSetupResult> {
+  await params.prompter.note(
+    [
+      "Ollama runs models on this computer. Install it from https://ollama.com/download if it is not already running.",
+      `A recommended tools-capable model is ${OLLAMA_RECOMMENDED_TOOLS_MODEL_SIZE}. Branch asks before it pulls anything.`,
+    ].join("\n"),
+    "Ollama",
+  );
   const baseUrl = await promptForOllamaBaseUrl(params.prompter, params.env);
   let discovery = await discoverOllamaModelsForSetup({
     baseUrl,

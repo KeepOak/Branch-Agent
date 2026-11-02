@@ -1,5 +1,16 @@
 export const RELEASE_REPOSITORY = "KeepOak/Branch-Agent";
-export const RELEASE_MANIFEST_URL = `https://github.com/${RELEASE_REPOSITORY}/releases/latest/download/branch-release-${process.platform}-${process.arch}.json`;
+export type ReleaseRuntime = { platform: string; arch: string };
+
+/** The latest-release manifest this machine's updater fetches. Intel Macs get darwin-x64; Apple silicon gets darwin-arm64. */
+export function releaseManifestName(platform: string = process.platform, arch: string = process.arch): string {
+  return `branch-release-${platform}-${arch}.json`;
+}
+
+export function releaseManifestUrl(platform: string = process.platform, arch: string = process.arch): string {
+  return `https://github.com/${RELEASE_REPOSITORY}/releases/latest/download/${releaseManifestName(platform, arch)}`;
+}
+
+export const RELEASE_MANIFEST_URL = releaseManifestUrl();
 
 export interface ComponentAsset {
   url: string;
@@ -23,7 +34,7 @@ export interface ComponentRelease {
   components: { engine: ComponentAsset; window: ComponentAsset; desktop?: DesktopAsset; desktopRuntime?: DesktopAsset };
 }
 
-function asset(value: unknown): ComponentAsset {
+function asset(value: unknown, runtime: ReleaseRuntime): ComponentAsset {
   if (!value || typeof value !== "object") throw new Error("Missing release component");
   const item = value as ComponentAsset;
   const url = new URL(item.url);
@@ -34,32 +45,32 @@ function asset(value: unknown): ComponentAsset {
   for (const size of [item.bytes, item.expandedBytes]) {
     if (!Number.isSafeInteger(size) || size <= 0) throw new Error("Invalid component size");
   }
-  if (item.platform && item.platform !== process.platform) throw new Error("Release platform mismatch");
-  if (item.arch && item.arch !== process.arch) throw new Error("Release architecture mismatch");
+  if (item.platform && item.platform !== runtime.platform) throw new Error("Release platform mismatch");
+  if (item.arch && item.arch !== runtime.arch) throw new Error("Release architecture mismatch");
   return item;
 }
 
 /** Releases before the desktop component carry none; a present one must name its exact target and Electron. */
-function desktopAsset(value: unknown): DesktopAsset | undefined {
+function desktopAsset(value: unknown, runtime: ReleaseRuntime): DesktopAsset | undefined {
   if (value === undefined) return undefined;
-  const item = asset(value) as DesktopAsset;
+  const item = asset(value, runtime) as DesktopAsset;
   if (!item.platform || !item.arch) throw new Error("Desktop component must name its target");
   if (typeof item.electronVersion !== "string" || !/^\d+\.\d+\.\d+$/.test(item.electronVersion)) throw new Error("Invalid desktop Electron version");
   if (item.appAsarSha256 !== undefined && !/^[a-f0-9]{64}$/.test(item.appAsarSha256)) throw new Error("Invalid desktop app.asar SHA256");
   return item;
 }
 
-export function parseComponentRelease(value: unknown): ComponentRelease {
+export function parseComponentRelease(value: unknown, runtime: ReleaseRuntime = { platform: process.platform, arch: process.arch }): ComponentRelease {
   const item = value as ComponentRelease | undefined;
   if (item?.schemaVersion !== 1 || typeof item.version !== "string" || !/^[\w.-]+$/.test(item.version)) {
     throw new Error("Unsupported release manifest");
   }
   const security = (item as { security?: unknown }).security;
   if (security !== undefined && typeof security !== "boolean") throw new Error("Invalid release security flag");
-  const desktop = desktopAsset(item.components?.desktop);
-  const desktopRuntime = desktopAsset(item.components?.desktopRuntime);
+  const desktop = desktopAsset(item.components?.desktop, runtime);
+  const desktopRuntime = desktopAsset(item.components?.desktopRuntime, runtime);
   return { schemaVersion: 1, version: item.version, ...(security ? { security: true as const } : {}),
-    components: { engine: asset(item.components?.engine), window: asset(item.components?.window),
+    components: { engine: asset(item.components?.engine, runtime), window: asset(item.components?.window, runtime),
       ...(desktop ? { desktop } : {}), ...(desktopRuntime ? { desktopRuntime } : {}) } };
 }
 

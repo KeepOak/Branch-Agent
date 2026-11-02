@@ -1,0 +1,2 @@
+window:src/transcript-export/inline-think.test.ts
+window:src/transcript-export/markdown-fence.test.ts

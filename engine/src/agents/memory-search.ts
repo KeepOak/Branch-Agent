@@ -67,7 +67,40 @@ const DEFAULT_CACHE_ENABLED = true;
 // without limit. Must stay above a typical live chunk count: a cap below the working set
 // evicts rows the next sync needs and forces paid re-embedding.
 const DEFAULT_CACHE_MAX_ENTRIES = 50_000;
-const DEFAULT_MEMORY_EMBEDDING_PROVIDER = "openai";
+const DEFAULT_MEMORY_EMBEDDING_PROVIDER = "local";
+const PAID_REMOTE_MEMORY_EMBEDDING_PROVIDERS = new Set([
+  "openai",
+  "gemini",
+  "google",
+  "voyage",
+  "mistral",
+  "bedrock",
+  "amazon-bedrock",
+  "deepinfra",
+  "github-copilot",
+  "anthropic",
+]);
+
+function resolveDefaultMemoryEmbeddingProvider(rawProvider: string | undefined): string {
+  const provider = rawProvider?.trim();
+  if (!provider || provider === "auto") {
+    return DEFAULT_MEMORY_EMBEDDING_PROVIDER;
+  }
+  return provider;
+}
+
+function resolveMemoryEmbeddingFallback(rawProvider: string | undefined, rawFallback: string | undefined): string {
+  const fallback = rawFallback?.trim() || "none";
+  if (fallback === "none") {
+    return fallback;
+  }
+  const explicitProvider = rawProvider?.trim();
+  const providerWasChosen = Boolean(explicitProvider) && explicitProvider !== "auto";
+  if (!providerWasChosen && PAID_REMOTE_MEMORY_EMBEDDING_PROVIDERS.has(fallback.toLowerCase())) {
+    return "none";
+  }
+  return fallback;
+}
 
 function getConfiguredMemoryEmbeddingProvider(providerId: string, cfg: BranchConfig) {
   // `none` is the built-in FTS-only sentinel, never a plugin capability.
@@ -135,14 +168,14 @@ function produceMemorySearchConfig(cfg: BranchConfig, agentId: string) {
   const defaults = cfg.memory?.search;
   const overrides = resolveAgentConfig(cfg, agentId)?.memory?.search;
   const rawProvider = overrides?.provider ?? defaults?.provider;
-  const provider =
-    rawProvider?.trim() === "auto"
-      ? DEFAULT_MEMORY_EMBEDDING_PROVIDER
-      : rawProvider?.trim() || DEFAULT_MEMORY_EMBEDDING_PROVIDER;
+  const provider = resolveDefaultMemoryEmbeddingProvider(rawProvider);
   const primaryAdapter = getConfiguredMemoryEmbeddingProvider(provider, cfg);
   const defaultRemote = defaults?.remote;
   const overrideRemote = overrides?.remote;
-  const fallback = overrides?.fallback ?? defaults?.fallback ?? "none";
+  const fallback = resolveMemoryEmbeddingFallback(
+    rawProvider,
+    overrides?.fallback ?? defaults?.fallback,
+  );
   const fallbackAdapter =
     normalizeProviderId(provider) !== "none" && fallback && fallback !== "none"
       ? getConfiguredMemoryEmbeddingProvider(fallback, cfg)
@@ -158,7 +191,7 @@ function produceMemorySearchConfig(cfg: BranchConfig, agentId: string) {
   );
   const includeRemote =
     hasRemoteConfig ||
-    primaryAdapter?.transport !== "local" ||
+    (provider !== "local" && primaryAdapter?.transport !== "local") ||
     fallbackAdapter?.transport === "remote";
   const remote = includeRemote
     ? {

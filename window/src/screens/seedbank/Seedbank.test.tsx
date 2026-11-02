@@ -6,11 +6,12 @@ import { CapabilityProvider } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { CustomizeWithCommunity, Seedbank } from "./index";
+import { requestCustomize } from "../../places/customize/r1-request";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 window.matchMedia ??= ((query: string) => ({ matches: false, media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
+afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
 
 type Handler = (method: string, params: unknown) => unknown;
 function engineOf(methods: string[], handler: Handler = () => ({})) {
@@ -62,7 +63,55 @@ async function pasteTo(text: string) {
 }
 
 describe("Seedbank", () => {
+  it.each(["regular", "advanced", "technical"])("at %s, only Technical draws Seedbank Coming sections and controls", async (level) => {
+    localStorage.setItem("branch.level", level);
+    const { engine } = engineOf(["trunks.template.list", "trunks.template.create"], method => method === "trunks.template.list" ? TEMPLATES : {});
+    const host = await render(engine);
+    const technical = level === "technical";
+    expect(host.querySelector("[data-coming-kind]") !== null).toBe(technical);
+    expect(host.querySelector(".sb-adapter") !== null).toBe(technical);
+    expect(host.querySelector("[data-coming]") !== null).toBe(technical);
+    expect(buttons(host, "Adapters").length).toBe(technical ? 1 : 0);
+    expect(buttons(host, "Grove layouts").length).toBe(technical ? 1 : 0);
+    expect(buttons(host, "＋ Paste a seed")).toHaveLength(1);
+    expect(host.querySelector('[aria-label="Add Home Desk"]')?.getAttribute("aria-disabled")).toBeNull();
+    expect(host.querySelector('[aria-label="Add Home Desk"]')).not.toBeNull();
+    await click(buttons(host, "Connectors")[0]);
+    expect(buttons(host, "Public registry").length).toBe(technical ? 1 : 0);
+    expect(buttons(host, "Agents")).toHaveLength(1);
+  });
+
+  it.each(["regular", "advanced", "technical"])("at %s, opening Adapters directly keeps Coming tiles Technical-only", async (level) => {
+    localStorage.setItem("branch.level", level);
+    const { engine } = engineOf([]);
+    const host = await render(engine, <Seedbank engine={engine} initialKind="adapters" />);
+    expect(host.querySelectorAll(".sb-adapter")).toHaveLength(level === "technical" ? 6 : 0);
+    expect(host.querySelector("[data-coming-kind=adapters]") !== null).toBe(level === "technical");
+    expect(buttons(host, "＋ Paste a seed")).toHaveLength(1);
+  });
+
+  it.each([
+    ["regular", "toolsets"], ["regular", "clis"],
+    ["advanced", "toolsets"], ["advanced", "clis"],
+    ["technical", "toolsets"], ["technical", "clis"],
+  ] as const)("at %s, opening %s selects All unless Coming is shown", async (level, initialKind) => {
+    localStorage.setItem("branch.level", level);
+    const { engine } = engineOf([]);
+    const host = await render(engine, <Seedbank engine={engine} initialKind={initialKind} />);
+    const selected = host.querySelectorAll('.sb-chips [aria-selected="true"]');
+    expect(selected).toHaveLength(1);
+    if (level === "technical") {
+      expect(selected[0].textContent).toBe(initialKind === "toolsets" ? "Toolsets" : "Command-line tools");
+      expect(host.querySelector(`[data-coming-kind=${initialKind}]`)).not.toBeNull();
+    } else {
+      expect(selected[0].textContent).toBe("All");
+      expect([...host.querySelectorAll(".sb-results .sb-sec-h b")].map(el => el.textContent)).toEqual(["Agents", "Skills", "Connectors", "Plugins", "Themes & looks"]);
+      expect(host.querySelector('[data-testid="sb-row"]')).not.toBeNull();
+    }
+  });
+
   it("renders with an empty engine: the eight templates, every unwired control Coming, nothing undeclared", async () => {
+    localStorage.setItem("branch.level", "technical");   // the Add pills' Coming reasons show only at Technical
     const { engine, request } = engineOf([]);
     const host = await render(engine);
     expect(request).not.toHaveBeenCalled();
@@ -80,6 +129,8 @@ describe("Seedbank", () => {
 
   it("R1-10: Soon controls go through <Coming>: nothing they wrap runs or bubbles, even when the engine offers the call", async () => {
     const soon = ["mcp.import", "mcp.registry.search", "mcp.servers.add", "skills.import", "skills.workshop.create"];
+    // Coming controls are drawn only at Technical (Private #1093 item 7).
+    localStorage.setItem("branch.level", "technical");
     const { engine } = engineOf(soon);
     const outer = vi.fn();
     const host = await render(engine, <div onClick={outer} onKeyDown={outer}><Seedbank engine={engine} /></div>);
@@ -161,15 +212,15 @@ describe("Seedbank", () => {
     expect(host.textContent).toContain("Nothing matches. Try another word.");
   });
 
-  it("opens Community from Customize's switch and from a place-tab event", async () => {
+  it("opens Community from Customize's switch and from a requestCustomize call", async () => {
     const { engine } = engineOf([]);
     const host = await render(engine, <CustomizeWithCommunity engine={engine} personal={<p>Personal page</p>} />);
     expect(host.textContent).toContain("Personal page");
     await click(buttons(host, "Community")[0]);
     expect(host.querySelector(".sb")).not.toBeNull();
-    await act(async () => void dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Tools" } })));
+    await click(buttons(host, "Personal")[0]);
     expect(host.textContent).toContain("Personal page");
-    await act(async () => void dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Community" } })));
+    await act(async () => requestCustomize({ mode: "community" }));
     expect(host.querySelector(".sb")).not.toBeNull();
   });
 
@@ -223,6 +274,7 @@ describe("Seedbank", () => {
     expect(host.textContent).toContain("Added Sales desk: 2 Trunks.");
   });
   it("draws exactly the preview's kind chips and sections, with no Coming to Branch kind (#1049)", async () => {
+    localStorage.setItem("branch.level", "technical");
     const { engine } = engineOf([]);
     const host = await render(engine);
     // preview.html Seedbank KINDS: All · Agents · Grove layouts · Graft setups · Skills · Connectors · Plugins ·

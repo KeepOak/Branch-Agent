@@ -29,7 +29,7 @@ import { publicKeyRawBase64UrlFromPem } from "../../infra/device-identity.js";
 import { tryReadDiskSpace } from "../../infra/disk-space.js";
 import { getLastHeartbeatEvent } from "../../infra/heartbeat-events.js";
 import { requestHeartbeat, setHeartbeatsEnabled } from "../../infra/heartbeat-wake.js";
-import { getMachineDisplayName } from "../../infra/machine-name.js";
+import { displayHostname, getMachineDisplayName } from "../../infra/machine-name.js";
 import { resolveRuntimeOsLabel } from "../../infra/os-summary.js";
 import { readSystemDisks } from "../../infra/system-disks.js";
 import {
@@ -146,7 +146,7 @@ async function collectSystemInfo(context: GatewayRequestContext): Promise<System
 
   return {
     machineName: await getMachineDisplayName(),
-    hostname: os.hostname(),
+    hostname: displayHostname(os.hostname()),
     platform: os.platform(),
     release: os.release(),
     arch: os.arch(),

@@ -3,6 +3,7 @@
 // config.patch, and "What it checks" as the Trunk's HEARTBEAT.md through agents.files.get/set.
 // Heartbeat fields from engine/src/config/zod-schema.agent-runtime.ts; only the edited fields are patched.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { Failure } from "./Failure";
 import { useCallback, useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Segmented } from "../../shell/Popover";
@@ -96,7 +97,7 @@ function WhatItChecks({ engine, agentId, trunk, level, canWrite }: { engine: Win
   const why = canWrite ? undefined : "Needs an owner";
   return <div className="au-checks">
     <h3 className="au-sub">What it checks</h3>
-    {hb.error && <p className="au-error" role="alert">{hb.error}</p>}
+    {hb.error && <div className="au-error" role="alert"><Failure error={hb.error} /></div>}
     {items.map((it, i) => <div className="au-check" key={`${i}-${it}`}><span className="au-tile"><Glyph name="pulse" /></span><span className="au-grow">{it}</span><button type="button" className="ib" aria-label={`Take out “${it}”`} title={shownWhy(why)} disabled={!canWrite || busy} onClick={() => void run(() => hb.write(withoutItem(content, i)), "Taken out of the list.")}><Glyph name="x" /></button></div>)}
     {hb.file && !items.length && <p className="au-hint">The list is empty, so check-ins are skipped.</p>}
     <form className="au-describe" onSubmit={e => { e.preventDefault(); if (item.trim()) void run(() => hb.write(withItem(content, item)), "Added to the list.").then(ok => ok && setItem("")); }}>
@@ -114,7 +115,7 @@ const LAST_WORDS: Record<string, string> = { sent: "Told you.", "ok-empty": "Not
 function LastCheckins({ last }: { last: Row | null }) {
   return <div className="au-checks">
     <h3 className="au-sub">Last check-ins</h3>
-    {last && last.ts ? <div className="au-last"><Glyph name="pulse" size={14} /><span className="au-grow">{str(last.preview) || [LAST_WORDS[str(last.status)], str(last.message)].filter(Boolean).join(" ")}</span><time className="au-time">{new Date(Number(last.ts)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div> : <p className="au-hint">No check-ins since Branch started.</p>}
+    {last && last.ts ? <div className="au-last"><Glyph name="pulse" size={14} /><span className="au-grow">{last.status === "failed" ? <Failure error={str(last.preview) || str(last.message) || "It didn’t finish. Try again."} /> : str(last.preview) || [LAST_WORDS[str(last.status)], str(last.message)].filter(Boolean).join(" ")}</span><time className="au-time">{new Date(Number(last.ts)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div> : <p className="au-hint">No check-ins since Branch started.</p>}
   </div>;
 }
 
@@ -146,7 +147,7 @@ export function Checkins({ engine, level }: { engine: WindowEngine; level: Level
   const save = (field: Row, message: string) => data && void run(() => saveHeartbeatField(engine, data.snap, target, field), message);
   const why = admin ? undefined : "Needs an owner";
   return <div className="au-tab">
-    {state.error && <p className="au-error" role="alert">{state.error}</p>}
+    {state.error && <div className="au-error" role="alert"><Failure error={state.error} /></div>}
     <section className="au-card">
       <div className="au-card-h"><b>Check in on its own</b><button type="button" className="btn ghost sm" disabled={!canWake || busy} onClick={() => void run(() => engine.request("wake", { mode: "now", text: "Check in now.", ...(agentId ? { agentId } : {}) }), "Checking in now.")}>Check now</button></div>
       <p className="au-hint">Branch looks at the list below every so often and speaks up only when there’s news. It’s HEARTBEAT.md, in plain words.</p>

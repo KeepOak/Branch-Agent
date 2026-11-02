@@ -1,0 +1,3 @@
+engine:test/tsconfig/tsconfig.core.test.json
+engine:test/tsconfig/tsconfig.extensions.test.json
+engine:test/tsconfig/tsconfig.test.json

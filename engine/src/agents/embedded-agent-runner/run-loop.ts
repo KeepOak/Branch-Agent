@@ -10,10 +10,10 @@ import { resolveSessionAgentIds } from "../agent-scope.js";
 import type { ToolOutcomeObservation } from "../agent-tools.before-tool-call.js";
 import { isStrictAgenticExecutionContractActive } from "../execution-contract.js";
 import type { FailoverReason } from "../failover/signal.js";
-import { resolveToolLoopDetectionConfig } from "../tool-loop-detection-config.js";
-import { normalizeUsage } from "../usage.js";
 import { runWithStreamingContext } from "../source-streaming-context.js";
 import { extractTurnBudgetDirectiveText, parseTurnBudgetDirective } from "../source-turn-budget.js";
+import { resolveToolLoopDetectionConfig } from "../tool-loop-detection-config.js";
+import { normalizeUsage } from "../usage.js";
 import { log } from "./logger.js";
 import type { EmbeddedPluginRuntimeRefresh } from "./plugin-runtime-refresh.js";
 import {
@@ -62,23 +62,26 @@ export async function runPreparedEmbeddedLoop(
   refresh: EmbeddedPluginRuntimeRefresh,
   input: PreparedEmbeddedRunInput,
 ): Promise<EmbeddedAgentRunResult> {
-  const directive = parseTurnBudgetDirective(extractTurnBudgetDirectiveText(
-    input.runParams.transcriptPrompt ?? input.runParams.prompt,
-  ));
-  return runWithStreamingContext({
-    messageId: input.runParams.runId,
-    abortSignal: input.laneController.abortSignal,
-    onStreamChunk: input.runParams.onPartialReply,
-    onAgentEvent: input.runParams.onAgentEvent,
-    turnBudget: {
-      promptId: input.runParams.runId,
-      sessionId: input.runParams.sessionId,
-      budget: directive?.total ?? null,
-      directiveText: directive?.text,
-      // Native logical runs own an accumulator starting at zero, including all retry attempts.
-      outputTokensAtTurnStart: 0,
+  const directive = parseTurnBudgetDirective(
+    extractTurnBudgetDirectiveText(input.runParams.transcriptPrompt ?? input.runParams.prompt),
+  );
+  return runWithStreamingContext(
+    {
+      messageId: input.runParams.runId,
+      abortSignal: input.laneController.abortSignal,
+      onStreamChunk: input.runParams.onPartialReply,
+      onAgentEvent: input.runParams.onAgentEvent,
+      turnBudget: {
+        promptId: input.runParams.runId,
+        sessionId: input.runParams.sessionId,
+        budget: directive?.total ?? null,
+        directiveText: directive?.text,
+        // Native logical runs own an accumulator starting at zero, including all retry attempts.
+        outputTokensAtTurnStart: 0,
+      },
     },
-  }, () => runPreparedEmbeddedLoopInContext(refresh, input));
+    () => runPreparedEmbeddedLoopInContext(refresh, input),
+  );
 }
 
 async function runPreparedEmbeddedLoopInContext(
@@ -592,6 +595,7 @@ async function runPreparedEmbeddedLoopInContext(
         attemptCompactionCount: terminalAttemptCompactionCount,
         prepared: terminalPrepared,
         finalizationOutcome: settledTurnFinalizationOutcome,
+        endedWithoutFinal: settledTurnEndedWithoutFinal,
       } = finalizedTerminal;
       lastRunPromptUsage = finalizedTerminal.lastRunPromptUsage;
       if (
@@ -671,6 +675,7 @@ async function runPreparedEmbeddedLoopInContext(
         apiKeyInfo: getApiKeyInfo(),
         agentHarnessId: agentHarness.id,
         settledTurnFinalizationOutcome,
+        settledTurnEndedWithoutFinal,
         pluginHarnessOwnsTransport,
         pluginHarnessOwnsAuthBootstrap,
         reportedModelRef,

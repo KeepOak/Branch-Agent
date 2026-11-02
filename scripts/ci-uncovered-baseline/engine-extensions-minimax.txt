@@ -1,0 +1,13 @@
+engine:extensions/minimax/image-generation-provider.test.ts
+engine:extensions/minimax/index.test.ts
+engine:extensions/minimax/model-definitions.test.ts
+engine:extensions/minimax/music-generation-provider.test.ts
+engine:extensions/minimax/oauth.test.ts
+engine:extensions/minimax/onboard.test.ts
+engine:extensions/minimax/provider-catalog.test.ts
+engine:extensions/minimax/provider-discovery.contract.test.ts
+engine:extensions/minimax/provider-fast-mode.test.ts
+engine:extensions/minimax/speech-provider.test.ts
+engine:extensions/minimax/src/minimax-web-search-provider.test.ts
+engine:extensions/minimax/tts.test.ts
+engine:extensions/minimax/video-generation-provider.test.ts

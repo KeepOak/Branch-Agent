@@ -581,6 +581,7 @@ async function executeAgentTurnInternal(
     sessionId: params.followupRun.run.sessionId,
     sessionKey: params.sessionKey,
     sessionFile: params.followupRun.run.sessionFile,
+    activeRunRegistryId: params.followupRun.liveInboundRunRegistryId,
     abortSignal: resolveFollowupAbortSignal({
       abortSignal: params.replyOperation?.abortSignal ?? params.opts?.abortSignal,
       operatorAuthority: params.followupRun.operatorAuthority,

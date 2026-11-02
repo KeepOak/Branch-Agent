@@ -1,6 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
-import { pcm16, toBase64, ulaw, VoiceCall } from "./voice";
+import { MIC_DENIED, MIC_MISSING, micSettingsPage, pcm16, toBase64, ulaw, voiceError, VoiceCall } from "./voice";
+
+describe("microphone refusals", () => {
+  it("says why in plain words and points at Settings › Permissions", () => {
+    expect(voiceError(new DOMException("Permission denied", "NotAllowedError"))).toBe(MIC_DENIED);
+    expect(voiceError(new DOMException("secure context", "SecurityError"))).toBe(MIC_DENIED);
+    expect(voiceError(new DOMException("Requested device not found", "NotFoundError"))).toBe(MIC_MISSING);
+    expect(micSettingsPage(MIC_DENIED)).toBe("settings/permissions");
+    expect(micSettingsPage(MIC_MISSING)).toBeNull();
+    expect(MIC_DENIED).not.toMatch(/NotAllowedError|getUserMedia|DOMException/);
+  });
+});
 
 describe("voice audio", () => {
   it("encodes µ-law and PCM16 the way the engine's Talk relay reads them", () => {

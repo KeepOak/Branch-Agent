@@ -8,7 +8,8 @@ import type { WindowEngine } from "../../connect/engine";
 import { useResource } from "../library/data";
 import { sharedConnections } from "../overview/engine";
 import { ACTIVITY_WORD, activeProfiles, activityOf, deviceName, firstName, nameOf, ownerCounts, presence, presenceOf, profiles, rec, recs, rows, str, trunkNames, type Profile, type Row } from "./data";
-import { Avatar, Empty, Glyph, Status } from "./ui";
+import { Avatar, Empty, Glyph } from "./ui";
+import { Status } from "./plain-status";
 
 /** No engine method lets someone ask to join another person's run yet. */
 const ASK_TO_JOIN_OFF = "Needs the engine's ask-to-join method.";

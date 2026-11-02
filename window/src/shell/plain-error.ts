@@ -1,0 +1,215 @@
+// No raw engine error at Regular (Private #1089). A failure's words reach a person through plainError(): at Regular,
+// words that issue 1700's friendlyError() would replace (a dump, JSON, an HTTP status, an id, a code, a method name), or that
+// carry a stack, an error class or errno code (CodexNotInstalledError, ECONNREFUSED), a file path or an engine sentence
+// such as `unknown method: logbook.status`, read as one plain sentence with one next step chosen from the map below,
+// and any web or computer address reads as plainAddresses() (#1706) says. Words that are already plain pass through
+// unchanged, with the lead a screen put before the raw part (`Couldn't change Lockdown: …`). Advanced and Technical keep
+// the exact words.
+//
+// plainText() is for words that are not always a failure (a toast like "Copied.", a banner title, the line above the
+// page). friendlyError() reads a one-word or numbered line as raw, so those use the strong markers only, which include
+// issue 1700's id shapes (a UUID, a long hex id, a named id, a session key with or without `agent:`).
+import { FRIENDLY_ERROR, friendlyError } from "../connect/friendly-error";
+import { plainAddresses } from "./plain-address";
+
+/** The "How much to show" level's saved choice (places-nav/SettingsFrame readLevel), read as plainAddresses() reads it. */
+function atRegular(): boolean {
+  try {
+    const level = localStorage.getItem("branch.level");
+    return level !== "advanced" && level !== "technical";
+  } catch {
+    return true;
+  }
+}
+
+/** The sentence for a failure nothing more specific matches. */
+export const PLAIN_FAILURE = "That didn’t work. Try again.";
+
+/** The engine's Gateway lock is held (handoff, a busy state database). Never the class name, even at Advanced. */
+export const LOCK_BUSY = "Branch is busy right now. Try again in a moment.";
+
+/** Pairing when the Gateway only listens on this computer (Add Computer, Pair a phone, shared plainError). */
+export const PAIRING_UNREACHABLE = "That device can't reach this computer yet.";
+
+const LOCK_BUSY_RE =
+  /\bGatewayLockError\b|\bGatewayStateOwnerContentionError\b|\bstate database is busy\b|\bfailed to acquire gateway state ownership\b/i;
+
+/** True when the words are the engine's Gateway lock, not a person-facing failure. */
+export function isLockBusyMessage(text: string): boolean {
+  return LOCK_BUSY_RE.test(text);
+}
+
+/** Error classes, codes and engine sentences, each with the plain sentence a person reads instead. First match wins. */
+const SAYS: [RegExp, string][] = [
+  [LOCK_BUSY_RE, LOCK_BUSY],
+  [/Gateway is only bound to loopback|PAIRING_GATEWAY_LOOPBACK/i, PAIRING_UNREACHABLE],
+  [/\bunknown method\b|\bmethod not found\b/i, "This part of Branch isn’t ready on this computer yet. Update Branch, then try again."],
+  [/\bunknown agent id\b|\bagent not found\b|\bno such agent\b/i, "That Trunk isn’t on this computer. Choose another Trunk."],
+  [/\bNo API key found\b|\bno (?:model|provider) (?:is )?(?:connected|configured|set)\b|\bmodel_not_found\b|\bno auth profile\b|\bMissing(?:ApiKey|Credentials)\b/i, "No model is connected. Connect one in Settings, Models, then try again."],
+  [/\bE(?:CONNREFUSED|CONNRESET|CONNABORTED|HOSTUNREACH|NETUNREACH|NOTFOUND|AI_AGAIN|PIPE)\b|\bgateway (?:closed|not connected)\b|\bsocket hang up\b|\bfetch failed\b|\bFailed to fetch\b|\bNetworkError\b/i, "Branch can’t reach its engine right now. It keeps trying, so try again in a moment."],
+  [/\bENOSPC\b|\bno space left\b|\bQuotaExceededError\b/i, "This computer is out of space. Free some space, then try again."],
+  [/\bENOENT\b|\bno such file or directory\b|\bENOTDIR\b/i, "That file or folder isn’t there. Check that it still exists, then try again."],
+  [/\bE(?:ACCES|PERM|ROFS)\b|\bpermission denied\b|\boperation not permitted\b/i, "Branch isn’t allowed to do that here. Check the folder’s permissions, then try again."],
+  [/NotInstalled|\bnot installed\b|\bcommand not found\b|\bnpm ERR!|\bE404\b/i, "That isn’t installed on this computer. Install it, then try again."],
+  [/\b(?:HTTP\s*|status(?: code)?\s*[:=]?\s*)?(?:401|403)\b|\bunauthori[sz]ed\b|\bforbidden\b|\binvalid api key\b|\btoken (?:mismatch|expired)\b/i, "Branch isn’t signed in for that. Sign in again, then try again."],
+  [/\b429\b|\brate.?limit|\btoo many requests\b/i, "That service is busy. Wait a minute, then try again."],
+  [/\bE?TIMEDOUT\b|\btimed out\b|\btimeout\b/i, "That took too long. Try again."],
+];
+
+// A file path (issue 1814): a home folder or a system root, any other absolute path with two or more parts
+// (/data/app, /nix/store), a relative one (./config, ../notes), or a file with its folders or a leading slash
+// (notes/today.md, /config.json). A web address (https://example.com/docs/a.html, localhost:3000/app.js) is not.
+const PATHS: RegExp[] = [
+  /(?:^|[\s\x27\x22\x60(=:<\x5b\u201c\u2018\u00ab])(?:~|\/(?:home|Users|root|opt|var|tmp|usr|etc|private|mnt|workspace|app|srv|snap|run|Library|Applications|Volumes|System|Network|cores|dev|proc|sys|bin|sbin|lib|lib64|data|nix|media|boot))\/\S*/,
+  /(?:^|[\s\x27\x22\x60(=:<\x5b\u201c\u2018\u00ab])\/[\w.@+-]+\/[\w.@+-]/,
+  /(?:^|[\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab])\.{1,2}\/[\w.@+-]/,
+  /(?:^|[\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab])(?:\/|(?:[\w@+-]+\/)+)[\w@+-][\w.@+-]*\.[A-Za-z][A-Za-z0-9]{0,7}\b/,
+  /\b[A-Za-z]:\\[^\s]*/, // a Windows path
+];
+
+const RAW: RegExp[] = [
+  /Gateway is only bound to loopback/i, // a pairing route refusal
+  /\n\s*at\s+\S|\bat\s+[\w$.<>]+\s+\([^)]*:\d+:\d+\)/, // a stack
+  /\b[A-Z][A-Za-z]*(?:Error|Exception)\b/, // an error class
+  /^\s*(?:Uncaught\s+)?Error\b\s*:/,
+  /\bE(?:CONNREFUSED|CONNRESET|CONNABORTED|NOENT|ACCES|PERM|NOSPC|EXIST|ISDIR|NOTDIR|NOTEMPTY|MFILE|PIPE|TIMEDOUT|HOSTUNREACH|NETUNREACH|NOTFOUND|AI_AGAIN|ADDRINUSE|ADDRNOTAVAIL|BUSY|ROFS|NOTSUP|INVAL|404)\b/, // an errno code
+  /\b(?:INVALID_REQUEST|UNAVAILABLE|NOT_FOUND|NOT_PAIRED|FORBIDDEN|UNAUTHORIZED|INTERNAL(?:_ERROR)?|ERR_[A-Z0-9_]+|[A-Z]{2,}_[A-Z0-9_]{2,})\b/, // a gateway or library code
+  /\bunknown (?:method|agent id)\b|\bmethod not found\b/i, // an engine refusal in its own words
+  /\b(?:sessions|chat|agents|config|models|plugins|skills|cron|memory|logbook|doctor|exec|node|tts|rooms|contacts|users|usage|backup|browser|computer|system|update|gateway|channels|canopy|projects|themes|wizard|portal|branch)\.[a-z][A-Za-z]*(?:\.[a-z][A-Za-z]*)*\b/, // an engine method name
+  ...PATHS,
+  /^\s*[{[]|\{\s*"\w+"\s*:/, // JSON
+  /\b(?:HTTP|status(?: code)?)\s*[:=]?\s*[1-5]\d{2}\b/i, // an HTTP status
+  /\bgateway (?:closed|not connected)\b/i, // a socket close
+  /\btoken (?:mismatch|expired)\b/i, // a sign-in failure in the engine's words (`token expired (401)`)
+  /\bCannot read propert|\bis not a function\b|\bis not defined\b|\bUnexpected token\b|\bnpm ERR!|\bfetch failed\b|\bFailed to fetch\b|\bsocket hang up\b|\bNo API key found\b/i,
+  /\bagent:[\w-]+:[\w:.-]+/, // a session key
+  // PR 1700 id shapes (connect/friendly-error.ts), so words that skip friendlyError() still never show an id.
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i, // a UUID
+  /\b[0-9a-f]{16,}\b/i, // a long hex id
+  /\b(?:request[\s_-]*id|runId|sessionKey|agentId|gatewayCode)\b/i, // a named id
+  /\b[a-z][a-z0-9_-]{1,20}:[a-z0-9_-]+:[a-z0-9_-]+/i, // a session key without agent:
+];
+
+/** True when any words (a failure or not) still carry a strong raw marker: a stack, a class or code, a path, an id. */
+export function looksRaw(text: string): boolean {
+  return RAW.some((re) => re.test(text));
+}
+
+/** True when a failure's words are raw: issue 1700's friendlyError() would replace them, or they carry a strong marker. */
+export function looksRawError(text: string): boolean {
+  const trimmed = text.trim();
+  return Boolean(trimmed) && (looksRaw(trimmed) || friendlyError(trimmed) === FRIENDLY_ERROR);
+}
+
+/** A home folder on its own (~, /Users/<name>, /home/<name>, C:\Users\<name>): its last part is the account name. */
+const HOME_ONLY = /^(?:~|\/(?:Users|home)\/[^\\/]+|\/root|[A-Za-z]:\\Users\\[^\\/]+)[\\/]*$/;
+
+/** A path split from the punctuation after it ("notes/today.md." is "notes/today.md" and "."). */
+function splitTail(path: string): [core: string, tail: string] {
+  const [, core = path, tail = ""] = /^(.*?)([.,;:!?)\]\x22\x27\x60\u201d\u2019\u00bb]*)$/u.exec(path) ?? [];
+  return [core, tail];
+}
+
+/** A path as a person names it: its last part ("report.pdf", "backups"), keeping the punctuation after it. */
+function lastPart(path: string): string {
+  const [core, tail] = splitTail(path);
+  if (HOME_ONLY.test(core)) return "your home folder" + tail;
+  const name = core.split(/[\\/]+/).filter(Boolean).at(-1);
+  return (name && name !== "~" ? name : "your home folder") + tail;
+}
+
+/** Whether a path may go on past where it was cut, so its last part can't be told: a quote inside one of its parts with
+ *  more of the path after it, a later word in the same run that holds a slash (a folder name with spaces), or a home
+ *  folder (<home>/<name>) followed by a word that may be the rest of the account name. */
+function endsUnclear(path: string, after: string): boolean {
+  // The path must stop at a space, the end, or closing punctuation that is itself followed by a space or the end.
+  if (!/^(?:$|\s|[.,;:!?)\]\x22\x27\x60\u201d\u2019\u00bb]+(?:$|\s))/u.test(after)) return true;
+  const [core, tail] = splitTail(path);
+  if (tail) return false;
+  // Every word up to the next sentence break may still be part of this path.
+  const run = /^[\s\S]*?(?=[.,;:!?](?:\s|$)|$)/u.exec(after)?.[0] ?? "";
+  return (/^[ \t]+\S/.test(run) && /[\\/]/.test(run)) || (HOME_ONLY.test(core) && /^[ \t]+[\p{L}\p{N}]/u.test(after));
+}
+
+/** Each path in the words read as its last part: "Saved to Downloads/report.pdf" reads "Saved to report.pdf". When a
+ *  path has a space in it, its end can't be told, so the words are left alone (null) rather than shortened piece by
+ *  piece: a home folder whose account name has a space would read "your home folder" plus the rest of that name. */
+function namePaths(text: string): string | null {
+  let unclear = false;
+  const named = text.replace(
+    /(^|[\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab])([^\s\x27\x22\x60(<\x5b\u201c\u2018\u00ab]+)/gu,
+    (all: string, lead: string, part: string, offset: number) => {
+      let at = -1;
+      for (const re of PATHS) {
+        const found = re.exec(part);
+        if (found && (at < 0 || found.index < at)) at = found.index + (/^[\s\x27\x22\x60(=:<\x5b\u201c\u2018\u00ab]/u.test(found[0]) ? 1 : 0);
+      }
+      if (at < 0) return all;
+      if (endsUnclear(part.slice(at), text.slice(offset + all.length))) unclear = true;
+      return lead + part.slice(0, at) + lastPart(part.slice(at));
+    },
+  );
+  return unclear ? null : named;
+}
+
+function sentenceFor(raw: string): string {
+  for (const [re, say] of SAYS) if (re.test(raw)) return say;
+  return PLAIN_FAILURE;
+}
+
+/** The words of a failure exactly as it came: an Error's message, a { message } record's, or the value itself. */
+export function errorWords(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && typeof (error as { message?: unknown }).message === "string") return (error as { message: string }).message;
+  return String(error ?? "");
+}
+
+function plainWords(text: string, raw: (words: string) => boolean): string {
+  const trimmed = text.trim();
+  // Plain words keep their spacing: a status line can be built from parts ("Branch ", version, " keeps running.").
+  if (!raw(trimmed)) return plainAddresses(text, true);
+  // A plain sentence that ends with the raw words in brackets keeps the sentence: "… full. (QuotaExceededError: …)".
+  const bracket = /^(.*?[.!?])\s*\(([^]*)\)\.?$/.exec(trimmed);
+  if (bracket && !raw(bracket[1])) return plainAddresses(bracket[1], true);
+  // A screen's own lead before the raw part keeps its words: "Couldn't change Lockdown: <raw>". A lead that holds a path
+  // ("Couldn't save notes/today.md: <raw>") or other raw words is not kept.
+  const colon = trimmed.indexOf(": ");
+  if (colon > 0) {
+    const lead = trimmed.slice(0, colon).trim();
+    if (lead && !looksRaw(lead) && /^[\p{Lu}\p{N}]/u.test(lead)) {
+      const say = sentenceFor(trimmed.slice(colon + 2));
+      return /\s/.test(lead) ? `${plainAddresses(lead, true).replace(/[.!?]*$/, ".")} ${say}` : `${lead}: ${say}`;
+    }
+  }
+  return sentenceFor(trimmed);
+}
+
+/** A leading `Error:` (any case, with the spaces after it) is how a thrown message prints, not the failure's words. */
+const ERROR_LEAD = /^\s*error:\s*/i;
+
+/** A failure as a person reads it: at Regular one plain sentence and a next step, at Advanced and Technical the exact
+ *  words. A Gateway lock is always LOCK_BUSY (never the class name). `always` skips the level check (tests, and
+ *  callers that know). */
+export function plainError(error: unknown, always = false): string {
+  const exact = errorWords(error);
+  const words = exact.replace(ERROR_LEAD, "") || exact;
+  if (isLockBusyMessage(words)) return LOCK_BUSY;
+  if (!words || (!always && !atRegular())) return words;
+  return plainWords(words, looksRawError);
+}
+
+/** Words that may or may not be a failure (a toast, a banner, the line above the page): at Regular only words with a
+ *  strong raw marker are replaced, so "Copied." or "Restarting…" stay as they are, and a path alone reads as its last
+ *  part. A Gateway lock is always LOCK_BUSY. */
+export function plainText(text: string, always = false): string {
+  if (!text) return text;
+  if (isLockBusyMessage(text)) return LOCK_BUSY;
+  if (!always && !atRegular()) return text;
+  // Words that are not a failure keep their own words (issue 1814): when a path is their only raw part, it reads as its
+  // last part, so a success like "Saved to Downloads/report.pdf" reads "Saved to report.pdf", never PLAIN_FAILURE.
+  // A path whose end can't be told (a space in it) keeps the plain fallback, so no part of an account name shows.
+  const named = namePaths(text);
+  if (named !== null && named !== text && !looksRaw(named.trim())) return plainAddresses(named, true);
+  return plainWords(text, looksRaw);
+}

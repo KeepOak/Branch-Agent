@@ -1,0 +1,83 @@
+name: Main CI failure tracker
+
+# Main and the nightly schedule already run the macOS shards (with Linux and Windows) in the feature
+# workflows below; this file adds no test runs and no shard logic. What was missing is that a red run on
+# main or a nightly went unnoticed until the same break showed up in pull request shards. When one of
+# these runs fails on main, this opens or updates one tracking issue (matched by exact title) with the
+# failing jobs, their failed steps and the run link. When a later run of the same workflow passes, it
+# comments that the workflow is green again (the issue is left for a person to close).
+on:
+  workflow_run:
+    workflows:
+      - Feature batch checks
+      - Feature slice checks
+      - Capability feature checks
+    types: [completed]
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  # One group per tracked workflow. A single shared group keeps only one pending run, so when the three
+  # nightlies finish together one workflow's result would be dropped. Two workflows racing to create the
+  # issue is handled in the step below (the newer duplicate is closed).
+  group: main-ci-failure-tracker-${{ github.event.workflow_run.workflow_id }}
+  cancel-in-progress: false
+
+jobs:
+  track:
+    name: Track main/nightly failures
+    if: >-
+      github.event.workflow_run.head_branch == 'main' &&
+      contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event.workflow_run.event) &&
+      contains(fromJSON('["failure","timed_out","success"]'), github.event.workflow_run.conclusion)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      RUN_EVENT: ${{ github.event.workflow_run.event }}
+      RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+      RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+      TITLE: 'CI failing on main (nightly/push): feature, slice and capability shards'
+    steps:
+      - name: Open, update or note recovery on the tracking issue
+        run: |
+          set -euo pipefail
+          existing=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title --limit 20 \
+            | jq -r --arg t "$TITLE" '[.[] | select(.title == $t)][0].number // empty')
+
+          if [ "$RUN_CONCLUSION" = success ]; then
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --body "$WORKFLOW_NAME is green again on main at \`${RUN_SHA:0:12}\` ($RUN_EVENT): $RUN_URL"
+            fi
+            exit 0
+          fi
+
+          failed=$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/jobs?filter=latest&per_page=100" \
+            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out")
+                  | "- [\(.name)](\(.html_url)) — \(.conclusion); failed step: \([.steps[]? | select(.conclusion == "failure") | .name] | join(", ") | if . == "" then "n/a" else . end)"')
+          macos=$(printf '%s\n' "$failed" | grep -ci 'macos' || true)
+          body=$(printf '### %s failed on main (%s)\n\nCommit: `%s`\nRun: %s\nFailing jobs (%s on macOS):\n%s\n\nTest names are in each job log under the failed step.\n' \
+            "$WORKFLOW_NAME" "$RUN_EVENT" "${RUN_SHA:0:12}" "$RUN_URL" "$macos" "${failed:-"- (no failed job found; see the run)"}")
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$TITLE" --body "$body
+
+          Opened by .github/workflows/main-ci-failure-tracker.yml. Later failures are added as comments; recoveries are noted. Close it once main is green."
+            # Another tracked workflow may have opened the same issue at the same moment: keep the oldest.
+            mapfile -t dupes < <(gh issue list --state open --json number,title --limit 100 \
+              | jq -r --arg t "$TITLE" '[.[] | select(.title == $t) | .number] | sort | .[]')
+            for n in "${dupes[@]:1}"; do
+              gh issue comment "${dupes[0]}" --body "$(gh issue view "$n" --json body --jq .body)"
+              gh issue close "$n" --reason "not planned" --comment "Duplicate of #${dupes[0]}; details copied there."
+            done
+          fi

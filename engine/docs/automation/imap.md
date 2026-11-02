@@ -85,6 +85,8 @@ branch sandbox explain --agent mail_reader
 
 The plugin checks the parsed `From` address against `allowedSenders` before any message reaches a model. Entries can be complete email addresses or `@domain` entries. Display names and `Reply-To` do not grant access, messages with multiple `From` addresses are rejected, and an empty allowlist disables that account.
 
+An optional `match` string on the account adds a second check. Leave it blank to admit every allowed sender. When it is set, a Trunk starts only if the sender text or the subject contains that text, ignoring case. The message body is not part of the match. A message that does not match is skipped. Automations can set the folder, this filter, and the Trunk for an account whose password is already in the credential store. That page does not read or replace the password.
+
 | Evidence                                                                 | Recorded strength | Accepted by default                                                |
 | ------------------------------------------------------------------------ | ----------------- | ------------------------------------------------------------------ |
 | Local `mailauth` verification returns aligned `dmarc=pass`               | `verified`        | Yes                                                                |

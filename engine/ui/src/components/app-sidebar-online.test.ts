@@ -202,6 +202,36 @@ describe("sidebar people workload", () => {
     expect(sidebar.querySelector(".sidebar-online")).toBeNull();
   });
 
+  it("leaves the shared owner key out of Online, so a solo owner gets no list (#1937)", async () => {
+    const { sidebar, gateway } = await mountWorkload();
+    gateway.publishEvent("presence", {
+      presence: [
+        {
+          instanceId: "owner-tab",
+          ts: NOW,
+          lastActivityAt: NOW,
+          user: { id: "gateway-owner", identity: { type: "profile", id: "gateway-owner" } },
+        },
+      ],
+    });
+    await settle(sidebar);
+    expect(sidebar.querySelector(".sidebar-online")).toBeNull();
+    expect(sidebar.textContent).not.toContain("Shared owner");
+    gateway.publishEvent("presence", {
+      presence: [
+        ...presence(),
+        {
+          instanceId: "owner-tab",
+          ts: NOW,
+          user: { id: "gateway-owner", identity: { type: "profile", id: "gateway-owner" } },
+        },
+      ],
+    });
+    await settle(sidebar);
+    expect(names(sidebar)).toContain("ada");
+    expect(names(sidebar)).not.toContain("Shared owner");
+  });
+
   it("uses one complete cross-agent summary, including self, not the paginated or owner-filtered sidebar", async () => {
     const pending = createDeferred<SessionsListResult>();
     const { sidebar, sessions, context, request, summaryRequest } = await mountWorkload(

@@ -1,0 +1,3 @@
+engine:src/agents/tools/computer-tool.gateway.test.ts
+engine:src/gateway/server-methods/computer.test.ts
+engine:src/gateway/server-methods/plugin-approval.test.ts

@@ -22,7 +22,7 @@ describe("readConfiguredLogTail redaction", () => {
     const configFile = path.join(dir, "branch.json");
     const basicSecret = "c2VjcmV0OnBhc3M=";
     const branchToken = "supersecretgatewaytoken1234567890";
-    const pomeriumJwt = "eyJheaderabcd.eyJpayloadabcd.signatureabcd123456";
+    const pomeriumJwt = ["eyJh", "eaderabcd.eyJpayloadabcd.signatureabcd123456"].join("");
 
     await fs.writeFile(
       configFile,

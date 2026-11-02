@@ -1,6 +1,7 @@
 // Adapted from engine/ui/src/features/github-connections/github-identity-controller-authorization.ts.
 // The engine owns credentials, polling intervals, identity replacement and expiry.
 import type { WindowEngine } from "../../connect/engine";
+import { stalledRead } from "./stall";
 import type { ToolsGitHubStatusResult, ToolsGitHubAuthorizeStartResult, ToolsGitHubAuthorizePollResult } from "@branch/gateway-protocol";
 
 export type GitHubView = { status: ToolsGitHubStatusResult | null; device: ToolsGitHubAuthorizeStartResult | null; phase: string; error: string | null; busy: boolean; expiresAt: number | null };
@@ -29,7 +30,7 @@ export class GitHubConnection {
     const revision = ++this.reading;
     this.update({ phase: "loading", error: null });
     try {
-      const status = await this.engine.request<ToolsGitHubStatusResult>("tools.github.status", { agentId: this.agentId, selectedScope: this.scope });
+      const status = await stalledRead(this.engine.request<ToolsGitHubStatusResult>("tools.github.status", { agentId: this.agentId, selectedScope: this.scope }));
       if (revision === this.reading) this.update({ status: readable(status), phase: "ready" });
       return true;
     } catch (error) { if (revision === this.reading) { this.fail(error); this.update({ phase: "ready" }); } return false; }

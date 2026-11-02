@@ -64,6 +64,24 @@ const WizardDeviceCodeSchema = closedObject({
   message: Type.Optional(Type.String()),
 });
 
+/**
+ * Structured facts of a free local model question, so clients can word it
+ * without reading the provider's own message text.
+ */
+const WizardFreeModelQuestionSchema = closedObject({
+  // "model" downloads a chat model, "cached-model" uses one already on the computer,
+  // "search-model-only" gets only the small memory search model.
+  kind: Type.Union([
+    Type.Literal("model"),
+    Type.Literal("cached-model"),
+    Type.Literal("search-model-only"),
+  ]),
+  // Plain display name of the chat model, without a file format tag.
+  modelName: Type.Optional(NonEmptyString),
+  // Every byte the answer starts downloading; omitted when the total is unknown.
+  downloadBytes: Type.Optional(Type.Integer({ minimum: 0 })),
+});
+
 /** UI contract for one wizard step rendered by gateway clients. */
 export const WizardStepSchema = closedObject({
   id: NonEmptyString,
@@ -86,6 +104,7 @@ export const WizardStepSchema = closedObject({
   executor: Type.Optional(Type.Union([Type.Literal("gateway"), Type.Literal("client")])),
   externalUrl: Type.Optional(Type.String()),
   deviceCode: Type.Optional(WizardDeviceCodeSchema),
+  freeModel: Type.Optional(WizardFreeModelQuestionSchema),
 });
 
 /** Channel/account pair the channels flow actually configured. */

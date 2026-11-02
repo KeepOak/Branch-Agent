@@ -1,0 +1,3 @@
+engine:src/model-picker/apply-session-model-selection-placement.test.ts
+engine:src/model-picker/apply-session-model-selection.operator-context.test.ts
+engine:src/model-picker/apply-session-model-selection.test.ts

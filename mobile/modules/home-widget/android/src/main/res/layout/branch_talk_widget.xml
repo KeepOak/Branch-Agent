@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/talk_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@drawable/branch_home_widget_bg"
+  android:contentDescription="@string/branch_talk_tile_description"
+  android:gravity="center"
+  android:orientation="vertical"
+  android:padding="12dp">
+
+  <ImageView
+    android:id="@+id/talk_icon"
+    android:layout_width="28dp"
+    android:layout_height="28dp"
+    android:importantForAccessibility="no"
+    android:src="@drawable/branch_talk_tile"
+    android:tint="@color/branch_home_widget_ink" />
+
+  <TextView
+    android:id="@+id/talk_label"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="6dp"
+    android:ellipsize="end"
+    android:gravity="center"
+    android:maxLines="2"
+    android:text="@string/branch_talk_tile_label"
+    android:textColor="@color/branch_home_widget_ink"
+    android:textSize="14sp"
+    android:textStyle="bold" />
+</LinearLayout>

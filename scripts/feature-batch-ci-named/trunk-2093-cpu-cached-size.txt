@@ -1,0 +1,3 @@
+engine:extensions/llama-cpp/src/setup.free-model-question.test.ts
+engine:extensions/llama-cpp/src/setup.test.ts
+window:src/composer/FreeModelSetup.test.tsx

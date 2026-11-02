@@ -7,6 +7,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { useOperation } from "../library/data";
 import { firstName, nameOf, num, rec, str, type Profile } from "./data";
 import { Seg, Tabs, copyText } from "./ui";
+import { plainError } from "../../shell/plain-error";
 
 const ROLES_OFF = "Needs roles set up in the engine first.";
 const ADD_HERE_OFF = "Needs the engine's add-a-person method.";
@@ -21,7 +22,7 @@ export function RoleSeg({ engine, person, roles, reload }: { engine: WindowEngin
   return <>
     <Seg label={`${nameOf(person)}’s role`} value={value} options={options} off={roles.length ? (op.busy ? "Saving…" : undefined) : ROLES_OFF}
       onChange={role => void op.run("users.setRole", { profileId: person.id, role: role === NO_ROLE ? null : role }, reload)} />
-    {op.error && <span role="alert" className="pp-error">{op.error}</span>}
+    {op.error && <span role="alert" className="pp-error">{plainError(op.error)}</span>}
   </>;
 }
 
@@ -54,14 +55,17 @@ export function CodeDialog({ engine, title, onClose }: { engine: WindowEngine; t
   return <Dialog title={title} onClose={onClose} footer={<>{!code.setup && <button type="button" className="btn pri" disabled={code.busy} onClick={code.make}>{code.busy ? "Making…" : "Make a one-time code"}</button>}</>}>
     <div className="ppl-dlg" style={{ display: "grid", gap: 12 }}>
       {code.setup ? <CodeBody setup={code.setup} /> : <p style={{ margin: 0 }}>A code their own phone or computer uses once to reach this Branch. It never gives them the owner’s rights.</p>}
-      {code.error && <p role="alert" className="pp-error">{code.error}</p>}
+      {code.error && <p role="alert" className="pp-error">{plainError(code.error)}</p>}
     </div>
   </Dialog>;
 }
 
 type InviteTab = "this" | "device" | "keepoak";
-export function InviteDialog({ engine, onClose }: { engine: WindowEngine; onClose: () => void }) {
-  const [tab, setTab] = useState<InviteTab>("this");
+const INVITE_TABS: { id: InviteTab; name: string }[] = [{ id: "this", name: "On this computer" }, { id: "device", name: "On their own device" }, { id: "keepoak", name: "From your keepoak.com team" }];
+/** `technical`: the level in use is Technical. Adding someone on this computer waits on the engine (Coming), so its tab
+ *  shows only at Technical (Private #1093 items 4 and 7); below it the dialog opens on their own device. */
+export function InviteDialog({ engine, onClose, technical = true }: { engine: WindowEngine; onClose: () => void; technical?: boolean }) {
+  const [tab, setTab] = useState<InviteTab>(technical ? "this" : "device");
   const code = useSetupCode(engine);
   const footer = <><button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
     {tab === "this" && <button type="button" className="btn pri" disabled title={shownWhy(ADD_HERE_OFF)}>Add them</button>}
@@ -69,7 +73,7 @@ export function InviteDialog({ engine, onClose }: { engine: WindowEngine; onClos
     {tab === "device" && !code.setup && <button type="button" className="btn pri" disabled={code.busy} onClick={code.make}>{code.busy ? "Making…" : "Make a one-time code"}</button>}</>;
   return <Dialog title="Invite someone" onClose={onClose} footer={footer}>
     <div className="ppl-dlg" style={{ display: "grid", gap: 12 }}>
-      <Tabs label="How they use Branch" value={tab} onChange={setTab} tabs={[{ id: "this", name: "On this computer" }, { id: "device", name: "On their own device" }, { id: "keepoak", name: "From your keepoak.com team" }]} />
+      <Tabs label="How they use Branch" value={tab} onChange={setTab} tabs={technical ? INVITE_TABS : INVITE_TABS.filter((t) => t.id !== "this")} />
       {tab === "this" && <fieldset disabled title={shownWhy(ADD_HERE_OFF)} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 12 }}>
         <label className="fld"><span>Name</span><input className="inp" placeholder="Their name" /></label>
         <div className="fld"><span>Role</span><Seg label="Role" value={null} options={[{ id: "adult", name: "Adult" }, { id: "child", name: "Child" }]} off={ADD_HERE_OFF} /></div>
@@ -80,7 +84,7 @@ export function InviteDialog({ engine, onClose }: { engine: WindowEngine; onClos
         <label className="fld"><span>Their email</span><input className="inp" type="email" placeholder="name@example.com" /></label>
         <div className="fld"><span>Role on keepoak.com</span><Seg label="Role on keepoak.com" value="operator" options={[{ id: "admin", name: "Admin" }, { id: "operator", name: "Operator" }, { id: "viewer", name: "Viewer" }]} off={KEEPOAK_OFF} /></div>
         <p className="pp-hint" style={{ margin: 0 }}>There’s nothing to accept: signing in to keepoak.com with that email joins your workspace. {KEEPOAK_OFF}</p></fieldset>}
-      {code.error && <p role="alert" className="pp-error">{code.error}</p>}
+      {code.error && <p role="alert" className="pp-error">{plainError(code.error)}</p>}
     </div>
   </Dialog>;
 }
@@ -96,7 +100,7 @@ export function LinkEmailDialog({ engine, person, onClose, onDone }: { engine: W
     <div className="ppl-dlg" style={{ display: "grid", gap: 12 }}>
       <label className="fld"><span>Email</span><input className="inp" type="email" value={email} aria-invalid={bad} onChange={e => { setEmail(e.target.value); setBad(false); }} placeholder="name@example.com" /></label>
       <p className="pp-hint" style={{ margin: 0 }}>If the address belongs to someone else, it moves here; when it was their last address, they are merged into {firstName(nameOf(person))}.</p>
-      {op.error && <p role="alert" className="pp-error">{op.error}</p>}
+      {op.error && <p role="alert" className="pp-error">{plainError(op.error)}</p>}
     </div>
   </Dialog>;
 }
@@ -109,7 +113,7 @@ export function MergeDialog({ engine, person, others, onClose, onDone }: { engin
     <div className="ppl-dlg" style={{ display: "grid", gap: 12 }}>
       {others.length ? <label className="fld"><span>Who stays</span><select className="inp" value={target} onChange={e => setTarget(e.target.value)}>{others.map(p => <option key={p.id} value={p.id}>{nameOf(p)}</option>)}</select></label> : <p style={{ margin: 0 }}>Nobody else to merge with.</p>}
       {stays && <p style={{ margin: 0 }}>Merge {nameOf(person)} into {nameOf(stays)}? Their emails, sign-ins and chat app accounts move to {nameOf(stays)}, and {nameOf(person)} leaves the list.</p>}
-      {op.error && <p role="alert" className="pp-error">{op.error}</p>}
+      {op.error && <p role="alert" className="pp-error">{plainError(op.error)}</p>}
     </div>
   </Dialog>;
 }

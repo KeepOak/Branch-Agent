@@ -22,7 +22,7 @@ import { withEnvAsync } from "../test-utils/env.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
 import { pairDeviceIdentity } from "./device-authz.test-helpers.js";
 import { respondToNodeShutdown } from "./node-shutdown.test-support.js";
-import { createGatewayKernel } from "./server-kernel.js";
+import { createGatewayKernel, prepareGatewayKernel } from "./server-kernel.js";
 import { connectGatewayClient } from "./test-helpers.e2e.js";
 import { installGatewayTestHooks, startServer, writeSessionStore } from "./test-helpers.js";
 import { testState } from "./test-helpers.runtime-state.js";
@@ -66,12 +66,18 @@ test.for(["direct", "restart"] as const)(
     await writeConfigFile({ gateway: { nodes: { commands: { allow: ["camera.list"] } } } });
 
     let kernel: Awaited<ReturnType<typeof createGatewayKernel>> | undefined;
-    const createKernel = createGatewayKernel;
+    const prepareKernel = prepareGatewayKernel;
     const factory = vi
-      .spyOn(await import("./server-kernel.js"), "createGatewayKernel")
+      .spyOn(await import("./server-kernel.js"), "prepareGatewayKernel")
       .mockImplementation(async (...args) => {
-        kernel = await createKernel(...args);
-        return kernel;
+        const prepared = await prepareKernel(...args);
+        return {
+          ...prepared,
+          async activate(...activateArgs) {
+            kernel = await prepared.activate(...activateArgs);
+            return kernel;
+          },
+        };
       });
     let started: Awaited<ReturnType<typeof startServer>>;
     try {

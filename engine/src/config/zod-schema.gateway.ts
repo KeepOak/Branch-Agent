@@ -218,7 +218,7 @@ export const GatewayConfigSchema = z
             color: z.enum(CONTROL_UI_ENVIRONMENT_COLORS),
           })
           .optional(),
-        /** Show the Discord community invitation in this Gateway's Control UI (default true). */
+        /** @deprecated Retained for old configs; the removed community invitation has no effect. */
         communityInvite: z.boolean().optional(),
         /** Seed fresh drafts from configured model/reasoning instead of remembered choices. */
         newSessionModelDefaults: z.enum(["last-used", "configured"]).optional(),

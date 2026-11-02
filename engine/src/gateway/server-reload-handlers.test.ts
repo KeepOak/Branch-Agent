@@ -86,6 +86,7 @@ import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
+import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
 import { isRecord } from "../utils.js";
 import { diffConfigPaths, diffGatewayReloadPaths } from "./config-diff.js";
 import {
@@ -1720,9 +1721,15 @@ describe("gateway hot reload model state", () => {
       const fixtureDir = autoCleanupTempDirs.make("branch-cron-exit-reload-");
       const { markerPath, releasePath, command, childStarted, spawning, spawn } =
         await createSupervisedExitWatcherFixture(fixtureDir);
+      let watchedRun: Awaited<typeof spawning> | undefined;
       const config = {
         // This fixture runs cron without a heartbeat wake handler.
-        agents: { defaults: { heartbeat: { every: "0m" } } },
+        agents: {
+          defaults: {
+            heartbeat: { every: "0m" },
+            systemAgent: { agentId: "main" },
+          },
+        },
         session: { mainKey: "main", store: path.join(fixtureDir, "sessions.json") },
         cron: { enabled: true, store: path.join(fixtureDir, "jobs.json") },
       } as BranchConfig;
@@ -1736,6 +1743,7 @@ describe("gateway hot reload model state", () => {
       setRuntimeConfigSnapshot(config, config);
 
       const scheduler = createTestGatewayScheduler();
+      const cronReconciliation = createTestCronReconciliation();
       try {
         const actualCron =
           await vi.importActual<typeof import("./server-cron.js")>("./server-cron.js");
@@ -1759,6 +1767,7 @@ describe("gateway hot reload model state", () => {
         const job = await initialCronState.cron.add({
           name: "preserve the real watched child",
           enabled: true,
+          agentId: "main",
           schedule: { kind: "on-exit", command },
           sessionTarget: "main",
           wakeMode: "next-heartbeat",
@@ -1766,11 +1775,12 @@ describe("gateway hot reload model state", () => {
         });
         await initialCronState.reconcileExitWatchers();
         expect(spawn).toHaveBeenCalledOnce();
-        const watchedRun = await withinTest(spawning, signal);
+        const run = await withinTest(spawning, signal);
+        watchedRun = run;
         await withinTest(
           awaitGateBeforeSettlement(
             childStarted,
-            watchedRun.wait(),
+            run.wait(),
             "expected the supervised cron exit watcher to start",
           ),
           signal,
@@ -1781,6 +1791,7 @@ describe("gateway hot reload model state", () => {
         const handlers = createGatewayReloadHandlers({
           scheduler,
           resolveGatewayContext,
+          cronReconciliation,
           getState: () => {
             if (!state) {
               throw new Error("expected gateway state");
@@ -1794,27 +1805,79 @@ describe("gateway hot reload model state", () => {
 
         await withGatewayRestartSignal(async () => {
           await handlers.applyHotReload(createCronRestartPlan(), config);
-        });
 
-        expect(hoisted.buildGatewayCronService).toHaveBeenCalledWith(
-          expect.objectContaining({ resolveGatewayContext }),
-        );
-        expect(watchedRun.activity.resultSettled).toBe(false);
-        expect(await readFile(markerPath, "utf8")).toBe("run\n");
-        expect(spawn).toHaveBeenCalledOnce();
+          expect(hoisted.buildGatewayCronService).toHaveBeenCalledWith(
+            expect.objectContaining({ resolveGatewayContext }),
+          );
+          expect(run.activity.resultSettled).toBe(false);
+          expect(await readFile(markerPath, "utf8")).toBe("run\n");
+          expect(spawn).toHaveBeenCalledOnce();
 
-        await writeFile(releasePath, "release");
-        await waitForFast(() => expect(state?.cronState.cron.getJob(job.id)?.enabled).toBe(false), {
-          timeout: 10_000,
+          // applyHotReload starts the replacement scheduler without awaiting it.
+          // fireOnExit will not admit the watched exit until that start, afterStart
+          // reconcile, and reconciliation.complete() finish. Keep this work inside
+          // withGatewayRestartSignal so resetGatewayWorkAdmission cannot abort the
+          // in-flight cron-start root before the watched exit is consumed.
+          await waitForFast(() => expect(cronReconciliation.arm).toHaveBeenCalled(), {
+            timeout: 10_000,
+          });
+          const replacementStart = cronReconciliation.arm.mock.results.at(-1)?.value;
+          assert(
+            replacementStart && typeof replacementStart.complete === "function",
+            "expected cron reload to arm reconciliation",
+          );
+          await waitForFast(() => expect(replacementStart.complete).toHaveBeenCalled(), {
+            timeout: 10_000,
+          });
+          await waitForFast(
+            () => expect(getActiveGatewayRootWorkHolders()).not.toContain("runtime:cron-start"),
+            { timeout: 10_000 },
+          );
+          expect(run.activity.resultSettled).toBe(false);
+          expect(spawn).toHaveBeenCalledOnce();
+          expect(isGatewayWorkAdmissionClosed()).toBe(false);
+          const currentJob = state?.cronState.cron.getJob(job.id);
+          expect(currentJob?.enabled).toBe(true);
+          expect(currentJob?.agentId).toBe("main");
+          const replacementCron = state?.cronState.cron;
+          assert(
+            replacementCron && "runOnExit" in replacementCron,
+            "expected replacement cron runOnExit",
+          );
+          const runOnExit = vi.spyOn(replacementCron as CronService, "runOnExit");
+          await writeFile(releasePath, "release");
+          await waitForFast(() => expect(run.activity.resultSettled).toBe(true), {
+            timeout: 10_000,
+          });
+          await waitForFast(() => expect(runOnExit).toHaveBeenCalled(), { timeout: 10_000 });
+          const admitted = await withinTest(
+            Promise.resolve(runOnExit.mock.results.at(-1)?.value),
+            signal,
+          );
+          expect(admitted).toEqual(expect.objectContaining({ ok: true, ran: true }));
+          expect(spawn).toHaveBeenCalledOnce();
+          await waitForFast(
+            () => expect(state?.cronState.cron.getJob(job.id)?.enabled).toBe(false),
+            { timeout: 10_000 },
+          );
+          if (run.waitForExtinction) {
+            await withinTest(run.waitForExtinction(), signal);
+          }
+          expect(await readFile(markerPath, "utf8")).toBe("run\n");
+          expect(spawn).toHaveBeenCalledOnce();
         });
-        expect(await readFile(markerPath, "utf8")).toBe("run\n");
-        expect(spawn).toHaveBeenCalledOnce();
       } finally {
         await fixtureLifetime.verifyCleanup(async () => {
           hoisted.buildGatewayCronService.mockImplementation(previousCronFactory);
           await writeFile(releasePath, "release").catch(() => {});
+          watchedRun?.cancel("manual-cancel");
+          await watchedRun?.wait().catch(() => {});
+          await watchedRun?.waitForExtinction?.().catch(() => {});
           await state?.cronState.cron.stopAndDrain?.();
           await scheduler.stop();
+          // Real cron writes SQLite under BRANCH_STATE_DIR. Close those workers
+          // before afterEach rm, or Windows holds the temp dir with EPERM.
+          await cleanupSessionStateForTest({ stateDir: fixtureDir });
           spawn.mockRestore();
           vi.unstubAllEnvs();
         });
@@ -3267,10 +3330,10 @@ describe("gateway restart deferral preflight", () => {
     expect(getDeferredChannelReloads?.()).toEqual([]);
   });
 
-  it("reports admitted run blockers before waiting and when forcing after timeout", async () => {
+  it("reports admitted run blockers before waiting and restarts after the run drains", async () => {
     restartTesting.resetRestartSignalState();
     const logReload = { info: vi.fn(), warn: vi.fn() };
-    const { requestGatewayRestart } = createReloadHandlersForTest(logReload);
+    const { requestGatewayRestart, stopRestartRetries } = createReloadHandlersForTest(logReload);
     hoisted.activeAgentRunCount.value = 1;
     hoisted.activeEmbeddedRunSessionIds.push("session-issue-82433");
     hoisted.activeEmbeddedRunSessionKeys.push("agent:main:issue-82433");
@@ -3294,25 +3357,23 @@ describe("gateway restart deferral preflight", () => {
       await vi.advanceTimersByTimeAsync(300_000);
       await Promise.resolve();
 
-      expect(signalSpy).toHaveBeenCalledTimes(1);
-      expect(consumeGatewayRestartIntent()).toEqual({
-        force: true,
-        waitMs: 300_000,
-        reason: "config reload forced restart",
-      });
+      expect(signalSpy).not.toHaveBeenCalled();
+      expect(consumeGatewayRestartIntent()).toBeNull();
       expect(hoisted.markRestartAbortedMainSessions).not.toHaveBeenCalled();
-      expect(logReload.warn.mock.calls).toEqual(
-        expect.arrayContaining([
-          [
-            "config change requires gateway restart (gateway.port) — deferring until 1 admitted agent run(s) complete",
-          ],
-          [
-            "restart timeout after 300000ms with 1 admitted agent run(s) still active; forcing restart",
-          ],
-        ]),
+      expect(logReload.warn.mock.calls.flat()).not.toEqual(
+        expect.arrayContaining([expect.stringContaining("forcing restart")]),
       );
+
+      hoisted.activeAgentRunCount.value = 0;
+      await vi.advanceTimersByTimeAsync(500);
+      await Promise.resolve();
+
+      expect(signalSpy).toHaveBeenCalledTimes(1);
+      expect(consumeGatewayRestartIntent()).toBeNull();
+      expect(hoisted.markRestartAbortedMainSessions).not.toHaveBeenCalled();
     } finally {
       hoisted.activeAgentRunCount.value = 0;
+      stopRestartRetries();
       vi.useRealTimers();
       process.removeListener("SIGUSR2", signalSpy);
       restartTesting.resetRestartSignalState();

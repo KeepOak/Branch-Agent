@@ -1,0 +1,8 @@
+engine:extensions/anthropic-vertex/api.test.ts
+engine:extensions/anthropic-vertex/index.test.ts
+engine:extensions/anthropic-vertex/provider-discovery.import-guard.test.ts
+engine:extensions/anthropic-vertex/provider-policy-api.test.ts
+engine:extensions/anthropic-vertex/region.adc.test.ts
+engine:extensions/anthropic-vertex/region.test.ts
+engine:extensions/anthropic-vertex/runtime-catalog.test.ts
+engine:extensions/anthropic-vertex/stream-runtime.test.ts

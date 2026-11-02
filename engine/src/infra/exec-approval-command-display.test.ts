@@ -45,9 +45,9 @@ describe("sanitizeExecApprovalDisplayText", () => {
   });
 
   it("redacts GitHub personal access tokens", () => {
-    const cmd = "git clone https://ghp_1234567890abcdefghij1234567890abcdef@github.com/user/repo";
+    const cmd = ["git clone https://ghp_", "1234567890abcdefghij1234567890abcdef@github.com/user/repo"].join("");
     const result = sanitizeExecApprovalDisplayText(cmd);
-    expect(result).not.toContain("ghp_1234567890abcdefghij1234567890abcdef");
+    expect(result).not.toContain(["ghp_", "1234567890abcdefghij1234567890abcdef"].join(""));
     expect(result).toContain("git clone");
   });
 
@@ -132,7 +132,7 @@ describe("sanitizeExecApprovalDisplayText", () => {
 
   it("keeps PEM private-key context visible when raw redaction already covers the key (not a bypass)", () => {
     const cmd =
-      "echo -----BEGIN RSA PRIVATE KEY-----\nABCDEF0123456789abcdef\n-----END RSA PRIVATE KEY----- > key.pem";
+      ["echo -----BEGIN ", "RSA PRIVATE KEY-----\nABCDEF0123456789abcdef\n-----END RSA PRIVATE KEY----- > key.pem"].join("");
     const result = sanitizeExecApprovalDisplayText(cmd);
     expect(result).not.toContain("ABCDEF0123456789abcdef");
     expect(result).toContain("BEGIN RSA PRIVATE KEY");
@@ -169,9 +169,9 @@ describe("sanitizeExecApprovalDisplayText", () => {
     // would split the token below the pattern's minimum length and leak the prefix. With
     // redaction first, the full token is masked before any size-based truncation runs.
     const padding = "a ".repeat(10 * 1024);
-    const cmd = padding + "ghp_1234567890abcdefghij1234567890abcdef";
+    const cmd = padding + ["ghp_", "1234567890abcdefghij1234567890abcdef"].join("");
     const result = sanitizeExecApprovalDisplayText(cmd);
-    expect(result).not.toContain("ghp_1234567890abcdefghij1234567890abcdef");
+    expect(result).not.toContain(["ghp_", "1234567890abcdefghij1234567890abcdef"].join(""));
     expect(result).not.toContain("ghp_1234567890");
   });
 

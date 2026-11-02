@@ -1,0 +1,2 @@
+engine:extensions/groq/index.test.ts
+engine:extensions/groq/provider-discovery.test.ts

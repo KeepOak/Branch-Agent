@@ -1,0 +1,4 @@
+engine:extensions/vydra/image-generation-provider.test.ts
+engine:extensions/vydra/shared.test.ts
+engine:extensions/vydra/speech-provider.test.ts
+engine:extensions/vydra/video-generation-provider.test.ts

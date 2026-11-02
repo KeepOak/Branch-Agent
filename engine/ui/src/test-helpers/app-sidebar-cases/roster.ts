@@ -89,10 +89,8 @@ describe("AppSidebar agent roster", () => {
         expect(
           [...(menu?.querySelectorAll("a") ?? [])].map((link) => link.getAttribute("href")),
         ).toEqual([
-          "https://docs.openclaw.ai",
-          "https://docs.openclaw.ai/help",
-          "https://discord.gg/clawd",
-          "https://docs.openclaw.ai/releases",
+          "https://keepoak.com/help",
+          "https://github.com/KeepOak/Branch-Agent/releases",
         ]);
         menu?.dispatchEvent(
           new CustomEvent("wa-select", {

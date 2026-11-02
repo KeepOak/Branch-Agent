@@ -1,0 +1,3 @@
+window:src/places/trunk/new-trunk-open.test.ts
+window:src/screens/frame/R1Window.new-trunk.test.tsx
+window:src/shell/conversation-actions.test.ts

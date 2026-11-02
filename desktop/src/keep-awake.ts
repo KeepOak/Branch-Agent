@@ -1,8 +1,11 @@
 // Always on (Private #454 D): keep this computer awake only while a Trunk works, and be polite on battery. The sleep
 // blocker is the OS's own (caffeinate on macOS, systemd-inhibit on Linux, SetThreadExecutionState on Windows), held by
 // one child process that also waits on the app's process, so it can never outlive the app. It is taken when a run
-// starts and released the moment the last run ends. By default it is not taken on battery. Nothing here imports
+// starts and released the moment the last run ends, fails, is cancelled or its process dies. A hold that is not
+// renewed by a live run expires on its own. By default it is not taken on battery. Nothing here imports
 // Electron: main.ts gives it the run state, the power state and the spawn call, so the tests use fakes.
+// With the per-user engine service, the engine holds that blocker itself (engine/src/infra/service-keep-awake.ts).
+// This app then does not hold a second one. It keeps writing the power source until quit, then hands that to the engine.
 import type { SpawnOptions } from "node:child_process";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -51,6 +54,9 @@ export interface KeepAwakeDeps {
   onBatteryToo(): boolean;
   onBattery(): boolean;
   log(line: string): void;
+  now?: () => number;
+  setTimeout?: (fn: () => void, ms: number) => unknown;
+  clearTimeout?: (timer: unknown) => void;
 }
 
 export interface RunKeepAwake {
@@ -63,11 +69,28 @@ export interface RunKeepAwake {
   dispose(): void;
 }
 
+/** A hold must be renewed by a live run within this window or it is dropped. */
+export const KEEP_AWAKE_LEASE_MS = 30_000;
+/** Tray status (and with it the hold) is refreshed this often while a Trunk works. Must stay below the lease. */
+export const TRAY_STATUS_WORKING_MS = 3_000;
+/** Tray status when no Trunk is working. Also below the lease. */
+export const TRAY_STATUS_MS = 10_000;
+
 /** Holds the sleep blocker exactly while a run is active (and the setting and power source allow it). */
 export function createRunKeepAwake(deps: KeepAwakeDeps): RunKeepAwake {
   let blocker: BlockerProcess | undefined;
   let working = false;
   let disposed = false;
+  let stale = false;
+  let confirmedAt = 0;
+  let leaseTimer: unknown;
+  const now = deps.now ?? Date.now;
+  const schedule = deps.setTimeout ?? ((fn: () => void, ms: number) => {
+    const timer = setTimeout(fn, ms);
+    timer.unref?.();
+    return timer;
+  });
+  const cancel = deps.clearTimeout ?? ((timer: unknown) => { clearTimeout(timer as NodeJS.Timeout); });
   const wanted = (): boolean => !disposed && working && deps.enabled() && (!deps.onBattery() || deps.onBatteryToo());
   const apply = (): void => {
     if (wanted() && !blocker) {
@@ -89,14 +112,47 @@ export function createRunKeepAwake(deps: KeepAwakeDeps): RunKeepAwake {
       const child = blocker;
       blocker = undefined;
       child.kill();
-      deps.log("keep awake: released");
+      deps.log(stale ? "keep awake: released (no live Trunk run)" : "keep awake: released");
+      stale = false;
     }
   };
+  const clearLease = (): void => {
+    if (leaseTimer === undefined) return;
+    cancel(leaseTimer);
+    leaseTimer = undefined;
+  };
+  const armLease = (): void => {
+    clearLease();
+    if (disposed || !working) return;
+    const wait = Math.max(1, KEEP_AWAKE_LEASE_MS - (now() - confirmedAt));
+    leaseTimer = schedule(() => {
+      leaseTimer = undefined;
+      if (disposed || !working) return;
+      if (now() - confirmedAt < KEEP_AWAKE_LEASE_MS) {
+        armLease();
+        return;
+      }
+      stale = true;
+      working = false;
+      apply();
+    }, wait);
+  };
   return {
-    update: (next) => { working = next; apply(); },
+    update: (next) => {
+      working = next;
+      if (next) {
+        confirmedAt = now();
+        stale = false;
+        apply();
+        armLease();
+        return;
+      }
+      clearLease();
+      apply();
+    },
     refresh: apply,
     held: () => blocker !== undefined,
-    dispose: () => { disposed = true; apply(); },
+    dispose: () => { disposed = true; clearLease(); apply(); },
   };
 }
 
@@ -113,4 +169,43 @@ export function writePowerState(stateDir: string, onBattery: boolean, now = Date
     writeFileSync(`${file}.tmp`, JSON.stringify({ onBattery, at: now }));
     renameSync(`${file}.tmp`, file);
   } catch { /* best effort: without the file the engine runs as plugged in */ }
+}
+
+/**
+ * Who holds sleep, and who refreshes power-state.json. The engine service reads this same file
+ * (engine/src/infra/service-keep-awake.ts). Keep the name and the 20 second freshness together.
+ */
+export const KEEP_AWAKE_OWNER_FILE = "keep-awake-owner.json";
+export const DESKTOP_KEEP_AWAKE_FRESH_MS = 20_000;
+/** How often the open app rewrites the file, well inside the freshness window. */
+export const SERVICE_KEEP_AWAKE_CLAIM_MS = 5_000;
+
+export interface KeepAwakeOwnership { sleep: "desktop" | "engine"; power: "desktop" | "engine" }
+
+/** The service engine holds the blocker. This app holds it only while it is running a child engine. */
+export function appHoldsSleepBlock(serviceEngine: boolean): boolean {
+  return !serviceEngine;
+}
+
+function writeKeepAwakeOwnership(stateDir: string, ownership: KeepAwakeOwnership, now: number): void {
+  try {
+    mkdirSync(stateDir, { recursive: true });
+    const file = join(stateDir, KEEP_AWAKE_OWNER_FILE);
+    writeFileSync(`${file}.tmp`, JSON.stringify({ sleep: ownership.sleep, power: ownership.power, at: now }));
+    renameSync(`${file}.tmp`, file);
+  } catch { /* best effort: a missing file means the engine owns both */ }
+}
+
+/** While this app is open on the service: the engine holds sleep, and this app keeps the power file current. */
+export function claimServiceKeepAwake(stateDir: string, now = Date.now()): void {
+  writeKeepAwakeOwnership(stateDir, { sleep: "engine", power: "desktop" }, now);
+}
+
+/**
+ * Quit on the service path. Release any blocker this process held, then tell the engine it owns sleep and power.
+ * Releasing first means the two never hold the blocker at the same time.
+ */
+export function handOffKeepAwake(stateDir: string, keepAwake: { dispose(): void }, now = Date.now()): void {
+  keepAwake.dispose();
+  writeKeepAwakeOwnership(stateDir, { sleep: "engine", power: "engine" }, now);
 }

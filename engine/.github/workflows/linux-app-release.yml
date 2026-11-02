@@ -501,6 +501,12 @@ jobs:
             sha256sum --check -
           printf '%s  %s\n' "$MINISIGN_BINARY_SHA256" "${RUNNER_TEMP}/bin/minisign" |
             sha256sum --check -
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is missing. Free update signing needs this repository secret (a Tauri/minisign private key). Generate the key with cargo-tauri signer generate. Put the public key in the committed tauri.conf.json plugins.updater.pubkey. Never commit the private key. A key rotation must change the committed pubkey with it."
+            exit 1
+          fi
+          # A key with no password is valid: empty or missing TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
           version="${RELEASE_TAG#v}"
           appimage="dist/signing-input/Branch-${version}-amd64.AppImage"
           mapfile -d '' inputs < <(find dist/signing-input -mindepth 1 -maxdepth 1 -print0)
@@ -582,7 +588,7 @@ jobs:
           set -euo pipefail
           version="${RELEASE_TAG#v}"
           pnpm dlx @tauri-apps/cli@2.11.4 build --bundles app,dmg \
-            --config "{\"version\":\"${version}\",\"bundle\":{\"createUpdaterArtifacts\":false}}"
+            --config "{\"version\":\"${version}\",\"bundle\":{\"createUpdaterArtifacts\":false,\"macOS\":{\"signingIdentity\":\"-\"}}}"
 
       - name: Verify and stage unsigned macOS bundles
         env:
@@ -769,6 +775,12 @@ jobs:
             sha256sum --check -
           printf '%s  %s\n' "$MINISIGN_BINARY_SHA256" "${RUNNER_TEMP}/bin/minisign" |
             sha256sum --check -
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is missing. Free update signing needs this repository secret (a Tauri/minisign private key). Generate the key with cargo-tauri signer generate. Put the public key in the committed tauri.conf.json plugins.updater.pubkey. Never commit the private key. A key rotation must change the committed pubkey with it."
+            exit 1
+          fi
+          # A key with no password is valid: empty or missing TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
           version="${RELEASE_TAG#v}"
           macos="dist/signing-input/macos/Branch-${version}-darwin-aarch64.app.tar.gz"
           windows="dist/signing-input/windows/Branch-${version}-windows-x86_64.exe"

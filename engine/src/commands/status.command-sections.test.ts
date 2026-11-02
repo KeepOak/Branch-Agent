@@ -65,7 +65,7 @@ const healthRows = (health: Partial<HealthSummary>) =>
     health: { ...baseHealth, ...health },
   });
 
-it("shows valid configuration examples when heartbeat is waiting for a delivery route", () => {
+it("gives a plain next step, with no sample IDs, when heartbeat has no delivery route", () => {
   const agent = {
     agentId: "main",
     enabled: true,
@@ -76,10 +76,23 @@ it("shows valid configuration examples when heartbeat is waiting for a delivery 
   const value = buildStatusHeartbeatValue({
     summary: { heartbeat: { defaultAgentId: "main", agents: [agent] } },
   });
-  expect(value).toContain("1m (main; waiting for delivery route");
-  expect(value).toContain('commands.ownerAllowFrom=["telegram:123456789"]');
-  expect(value).toContain('heartbeat.target="telegram"');
-  expect(value).toContain('heartbeat.to="123456789"');
+  expect(value).toContain("1m (main; no chat app to send alerts to yet");
+  expect(value).toContain("channels add");
+  expect(value).not.toMatch(/123456789|ownerAllowFrom|heartbeat\.to=|heartbeat\.target=/);
+});
+
+it("adds no hint when heartbeat has a delivery route", () => {
+  const value = buildStatusHeartbeatValue({
+    summary: {
+      heartbeat: {
+        defaultAgentId: "main",
+        agents: [
+          { agentId: "main", enabled: true, every: "1h", everyMs: 3_600_000, waitingForRoute: false },
+        ],
+      },
+    },
+  });
+  expect(value).toBe("1h (main)");
 });
 
 it("prioritizes critical audit findings, caps warnings, and preserves remediation", () => {

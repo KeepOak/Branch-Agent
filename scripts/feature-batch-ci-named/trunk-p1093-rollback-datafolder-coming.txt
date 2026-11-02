@@ -1,0 +1,2 @@
+window:src/screens/settings/pages/history-rollback-move-coming.test.tsx
+window:src/screens/settings/pages/history-rollback-move.test.tsx

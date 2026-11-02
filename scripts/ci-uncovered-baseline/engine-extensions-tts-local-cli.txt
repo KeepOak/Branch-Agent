@@ -1,0 +1,2 @@
+engine:extensions/tts-local-cli/speech-provider-stream-error.test.ts
+engine:extensions/tts-local-cli/speech-provider.test.ts

@@ -1,0 +1,4 @@
+engine:extensions/memory-core/src/memory/generic-embedding-provider.integration.test.ts
+engine:extensions/memory-core/src/memory/manager-embedding-account-backoff.test.ts
+engine:extensions/memory-core/src/memory/manager-embedding-ops.retry.test.ts
+engine:extensions/memory-core/src/tools.real-manager.embedding-backoff.test.ts

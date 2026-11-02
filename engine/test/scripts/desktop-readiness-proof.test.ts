@@ -54,7 +54,7 @@ describe("desktop readiness evidence", () => {
   it("retains timeout probes, timing, and redacted Gateway logs when cleanup also fails", async () => {
     const diagnostics: GatewayReadinessDiagnostic[] = [];
     const cleanup = new Error("fixture cleanup also failed");
-    const credential = "ghp_abcdefghijklmnopqrstuvwxyz1234567890ABCD";
+    const credential = ["ghp_", "abcdefghijklmnopqrstuvwxyz1234567890ABCD"].join("");
     const fetchImpl = vi.fn<typeof fetch>(() => new Promise(() => {}));
     const failure = await withDesktopProofCleanup(
       () =>

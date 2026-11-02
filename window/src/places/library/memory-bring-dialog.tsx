@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
-import { errorText } from "./data";
+import { errorText, plainFailure } from "./data";
 import {
   applyMemoryImport, readApplySummary, readProviders, summaryLine, whatComesIn,
   type ApplySummary, type ProviderPlan,
@@ -25,7 +25,7 @@ export function BringInDialog({
     let live = true;
     engine.request("migrations.memory.plan", { agentId }).then(
       (r) => { if (live) { setProviders(readProviders(r)); setError(null); } },
-      (e: unknown) => { if (live) setError(errorText(e)); },
+      (e: unknown) => { if (live) setError(plainFailure(errorText(e))); },
     );
     return () => { live = false; };
   }, [engine, agentId]);
@@ -40,7 +40,7 @@ export function BringInDialog({
       setDone(readApplySummary(result));
       onApplied?.();
     } catch (e) {
-      setError(errorText(e));
+      setError(plainFailure(errorText(e)));
     } finally {
       setBusy(false);
     }
@@ -103,7 +103,7 @@ export function BringInDialog({
           <Row title="Keys and passwords" line="Never copied; you sign in again where needed"><span className="lib-pill">Left out</span></Row>
         </div>
       ) : providers?.length ? <p className="lib-hint">Pick one to see what comes in.</p> : null}
-      {error ? <p className="lib-bad" role="alert">{error}</p> : null}
+      {error ? <p className="lib-bad" role="alert">{plainFailure(error)}</p> : null}
     </Dialog>
   );
 }

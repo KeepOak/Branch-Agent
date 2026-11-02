@@ -1,0 +1,1 @@
+engine:extensions/qianfan/index.test.ts

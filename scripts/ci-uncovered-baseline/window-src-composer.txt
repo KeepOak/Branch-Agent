@@ -1,0 +1,8 @@
+window:src/composer/codex-plan.test.ts
+window:src/composer/context.test.ts
+window:src/composer/history-search.test.ts
+window:src/composer/picture-dialog.test.tsx
+window:src/composer/plug-library.test.ts
+window:src/composer/popover-geometry.test.tsx
+window:src/composer/voice-approvals.test.tsx
+window:src/composer/voice-cancel.test.tsx

@@ -1,0 +1,9 @@
+engine:extensions/teams-meetings/index.test.ts
+engine:extensions/teams-meetings/src/cli.test.ts
+engine:extensions/teams-meetings/src/runtime-probes.test.ts
+engine:extensions/teams-meetings/src/runtime.test.ts
+engine:extensions/teams-meetings/src/transports/teams-meetings-audio-routing.test.ts
+engine:extensions/teams-meetings/src/transports/teams-meetings-caption-capture.test.ts
+engine:extensions/teams-meetings/src/transports/teams-meetings-caption-ownership.test.ts
+engine:extensions/teams-meetings/src/transports/teams-meetings-platform-adapter.test.ts
+engine:extensions/teams-meetings/src/transports/teams-meetings-urls.test.ts

@@ -1,0 +1,2 @@
+window:src/screens/onboarding/Onboarding.test.tsx
+window:src/shell/walkthrough-place.test.tsx

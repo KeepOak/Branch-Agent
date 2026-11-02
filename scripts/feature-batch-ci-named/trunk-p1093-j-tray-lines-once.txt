@@ -1,0 +1,3 @@
+window:src/places/settings/set2/usage.test.tsx
+window:src/screens/settings/pages/classic-host.test.tsx
+window:src/screens/settings/tray-words.test.tsx

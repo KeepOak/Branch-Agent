@@ -1,0 +1,12 @@
+engine:src/canvas/constants.test.ts
+engine:src/canvas/documents.test.ts
+engine:src/canvas/serve.runtime.test.ts
+engine:src/canvas/widget-script-syntax.test.ts
+engine:src/canvas/widget-tool.grants.test.ts
+engine:src/canvas/widget-tool.presenter.test.ts
+engine:src/canvas/widget-tool.prompt.test.ts
+engine:src/canvas/widget-tool.report.test.ts
+engine:src/canvas/widget-tool.scheduled.test.ts
+engine:src/canvas/widget-tool.script-syntax.test.ts
+engine:src/canvas/widget-tool.test.ts
+engine:src/canvas/wrap.test.ts

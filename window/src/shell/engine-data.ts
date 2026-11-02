@@ -6,6 +6,7 @@ import type { SaplingSession } from "../connect/session";
 import type { Contact } from "@branch/gateway-protocol";
 import { NO_PEOPLE, type ListPeople } from "./list-model";
 import { trunkDisplayName } from "../connect/trunk-name";
+import { rememberHostnames } from "./plain-address";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -74,6 +75,18 @@ export function useContacts(session: SaplingSession, ready: boolean): [Contact[]
     });
     return () => { off(); if (timer) clearTimeout(timer); refresh.cancel(); };
   }, [session, ready, refresh]);
+  // Trunks in the sidebar open by contact.threadKey. Warm those too: sessions.list's top eight may be
+  // child topics, so a Trunk click would otherwise always wait on a cold chat.history ("Opening…").
+  useEffect(() => {
+    if (!ready || !loaded || !contacts.length) return;
+    if (!("warmHistories" in session) || typeof session.warmHistories !== "function") return;
+    const keys = [...contacts]
+      .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+      .slice(0, 8)
+      .map((contact) => contact.threadKey)
+      .filter(Boolean);
+    session.warmHistories(keys);
+  }, [ready, loaded, contacts, session]);
   return [ready ? contacts : [], refresh, ready && loaded];
 }
 
@@ -174,7 +187,13 @@ export function useMachine(session: SaplingSession, ready: boolean): MachineInfo
       return;
     }
     session.request("system.info", {}).then(
-      (r) => setInfo({ name: str(rec(r).machineName) || str(rec(r).hostname) }),
+      (r) => {
+        // The hostname never shows in a toast or banner at Regular (on Linux machineName is the hostname too); a name the
+        // person gave the computer, like a Mac's computer name, still does.
+        const hostname = str(rec(r).hostname);
+        rememberHostnames(hostname, hostname.split(".")[0]);
+        setInfo({ name: str(rec(r).machineName) || str(rec(r).hostname) });
+      },
       (error: unknown) => console.warn("system.info failed", error),
     );
   }, [session, ready]);

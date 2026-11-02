@@ -42,10 +42,18 @@ const kindOf = (contact: Contact): SideKind => contact.kind === "trunk" ? "trunk
 const roleOf = (contact: Contact): string =>
   contact.kind === "trunk" ? (contact.isDefault ? "Chief of Staff" : "Trunk") : contact.kind === "outside" ? "Grafted" : "Group";
 
+/** A topic with no name of its own arrives titled with its session key (agent:<id>:…). That key is never shown
+ *  (Private #1089): the preview reads the topic's last line alone. */
+const SESSION_KEY = /^[a-z][\w-]*(?::[^\s:]+){2,}:?$/i;
+export function topicPreview(title: string, text: string): string {
+  const name = title.trim();
+  return name && !SESSION_KEY.test(name) ? `${name}: ${text}` : text;
+}
+
 /** One row per contact, with the waiting state from pending approvals. */
 export function contactRows(contacts: readonly Contact[], waiting: ReadonlyMap<string, number>, memberNames: (contact: Contact) => SideRow["members"]): SideRow[] {
   return contacts.map(contact => {
-    const preview = contact.preview.kind === "topic" ? `${contact.preview.title}: ${contact.preview.text}` : contact.preview.text;
+    const preview = contact.preview.kind === "topic" ? topicPreview(contact.preview.title, contact.preview.text) : contact.preview.text;
     const kind = kindOf(contact);
     return {
       id: contact.id, kind, name: contact.name, key: contact.threadKey,

@@ -24,7 +24,11 @@ import {
 } from "./doctor-config-flow.test-support.js";
 import { withDoctorConfigPreflightHome } from "./doctor-config-preflight.test-support.js";
 
-describe("Doctor workspace persistence", () => {
+const windowsTouched =
+  process.platform === "win32" && process.env.FEATURE_SCOPE === "touched";
+
+// Ubuntu named jobs retain this suite; repeated persistence is too slow for Windows touched.
+describe.skipIf(windowsTouched)("Doctor workspace persistence", () => {
   afterEach(() => {
     closeBranchStateDatabaseForTest();
   });
@@ -221,7 +225,7 @@ describe("Doctor workspace persistence", () => {
             });
             expect(saved.gateway).toEqual({ mode: "local" });
             expect(saved.agents.entries.research).toEqual({
-              memory: { search: { provider: "openai" } },
+              memory: { search: { provider: "local" } },
             });
             expect((await readConfigFileSnapshot()).valid).toBe(true);
             expect((await prepareDoctorContext(configPath)).configResult.shouldWriteConfig).toBe(

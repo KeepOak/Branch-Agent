@@ -1,0 +1,5 @@
+window:src/places/trunk/NewTrunkSheet.test.tsx
+window:src/places/trunk/new-trunk-r1.test.ts
+window:src/places/trunk/new-trunk-sheet.test.ts
+window:src/screens/sidebar/Sidebar.test.tsx
+window:src/shell/new-trunk-flow.chat.test.tsx

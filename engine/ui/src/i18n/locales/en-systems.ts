@@ -107,6 +107,12 @@ const enSystems = {
       namespace: "Namespace: {name}",
       scheduled: "Scheduled: {target}.",
       failureHint: "Check the backup job logs and try again.",
+      folderShared:
+        "This backup folder can be accessed by another account, so Branch won't store backups there. Switch to the default folder ({folder}) or pick a private folder.",
+      folderSharedNoDefault:
+        "This backup folder can be accessed by another account, so Branch won't store backups there. Pick a private folder in Settings › Backups.",
+      useDefaultFolder: "Use default folder",
+      switchingFolder: "Switching…",
       pushFailureHint:
         "Local backup succeeded, but pushing to the Git remote failed. Check the remote and retry.",
       locations: "Storage locations",

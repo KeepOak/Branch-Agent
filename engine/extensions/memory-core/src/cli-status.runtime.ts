@@ -42,6 +42,7 @@ import {
   type MemorySourceScan,
 } from "./cli-runtime-common.js";
 import type { MemoryCommandOptions } from "./cli.types.js";
+import type { MemoryCoreRuntimeHost } from "./memory/runtime-host.js";
 import {
   auditRingsArtifacts,
   repairRingsArtifacts,
@@ -49,7 +50,6 @@ import {
   type RepairRingsArtifactsResult,
 } from "./rings-repair.js";
 import { formatRecallRepairDetails } from "./rings-shared.js";
-import type { MemoryCoreRuntimeHost } from "./memory/runtime-host.js";
 import {
   auditShortTermPromotionArtifacts,
   repairShortTermPromotionArtifacts,
@@ -186,9 +186,325 @@ async function runSelectedMemoryProviderStatus(
   }
 }
 
+type MemoryStatusResult = {
+  agentId: string;
+  status: ReturnType<MemoryManager["status"]>;
+  embeddingProbe?: MemoryEmbeddingProbeResult;
+  indexError?: string;
+  scan?: MemorySourceScan;
+  audit?: ShortTermAuditSummary;
+  repair?: RepairShortTermPromotionArtifactsResult;
+  ringsAudit?: RingsArtifactsAuditSummary;
+  ringsRepair?: RepairRingsArtifactsResult;
+};
+type MemoryStatusFailure = { agentId: string; error: string };
+
+/** Per-agent ceiling so one slow agent store can never hold `memory status` silently. */
+export const MEMORY_STATUS_AGENT_TIMEOUT_MS = 30_000;
+
+class MemoryStatusAgentTimeoutError extends Error {}
+
+/** How long a timed-out agent's manager may take to close before the command moves on. */
+export const MEMORY_STATUS_CLOSE_GRACE_MS = 2_000;
+
+async function withAgentStatusTimeout<T>(
+  agentId: string,
+  timeoutMs: number,
+  task: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const controller = new AbortController();
+  const pending = task(controller.signal);
+  // The abandoned task may still settle after the deadline; never surface it as unhandled.
+  pending.catch(() => {});
+  try {
+    return await Promise.race([
+      pending,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          // Stop the abandoned task from starting any further steps.
+          controller.abort();
+          reject(
+            new MemoryStatusAgentTimeoutError(
+              `memory status timed out for agent "${agentId}" after ${timeoutMs / 1000} seconds. Retry with --agent ${agentId}; if it keeps timing out, stop other Branch Agent processes using this agent's database and check storage performance.`,
+            ),
+          );
+        }, timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function renderMemoryStatusResult(
+  result: MemoryStatusResult,
+  cfg: BranchConfig,
+  opts: MemoryCommandOptions,
+  deep: boolean,
+) {
+  const label = (text: string) => muted(`${text}:`);
+  const {
+    agentId,
+    status,
+    embeddingProbe,
+    indexError,
+    scan,
+    audit,
+    repair,
+    ringsAudit,
+    ringsRepair,
+  } = result;
+  const filesIndexed = status.files ?? 0;
+  const chunksIndexed = status.chunks ?? 0;
+  const totalFiles = scan?.totalFiles ?? null;
+  const indexedLabel =
+    totalFiles === null
+      ? `${filesIndexed}/? files · ${chunksIndexed} chunks`
+      : `${filesIndexed}/${totalFiles} files · ${chunksIndexed} chunks`;
+  if (opts.index) {
+    const line = indexError
+      ? `Memory index failed: ${indexError}`
+      : formatMemoryIndexOutcome(status, scan, agentId);
+    defaultRuntime.log(line);
+  }
+  const requestedProvider = status.requestedProvider ?? status.provider;
+  const modelLabel = status.model ?? status.provider;
+  const storePath = status.dbPath ? shortenHomePath(status.dbPath) : "<unknown>";
+  const workspacePath = status.workspaceDir ? shortenHomePath(status.workspaceDir) : "<unknown>";
+  const sourceList = status.sources?.length ? status.sources.join(", ") : null;
+  const extraPaths = status.workspaceDir
+    ? formatExtraPaths(status.workspaceDir, status.extraPaths ?? [])
+    : [];
+  const lines = [
+    `${heading("Memory Search")} ${muted(`(${agentId})`)}`,
+    `${label("Provider")} ${info(status.provider)} ${muted(`(requested: ${requestedProvider})`)}`,
+    `${label("Model")} ${info(modelLabel)}`,
+    sourceList ? `${label("Sources")} ${info(sourceList)}` : null,
+    extraPaths.length ? `${label("Extra paths")} ${info(extraPaths.join(", "))}` : null,
+    `${label("Indexed")} ${success(indexedLabel)}`,
+    `${label("Dirty")} ${status.dirty ? warn("yes") : muted("no")}`,
+    `${label("Store")} ${info(storePath)}`,
+    `${label("Workspace")} ${info(workspacePath)}`,
+    `${label("Rings")} ${info(formatRingsSummary(cfg))}`,
+  ].filter(Boolean) as string[];
+  if (status.storage) {
+    const storage = status.storage;
+    lines.push(
+      `${label("Agent database")} ${info(formatMemoryByteSize(storage.databaseBytes))} · WAL ${formatMemoryByteSize(storage.walBytes)} · reusable ${formatMemoryByteSize(storage.reusableBytes)}`,
+    );
+    lines.push(
+      `${label("Stored embedding cache")} ${info(formatMemoryByteSize(storage.embeddingCacheBytes))} · ${storage.embeddingCacheEntries} entries`,
+    );
+    lines.push(
+      muted(
+        "Database includes sessions and other agent data. Reusable pages remain allocated until compaction.",
+      ),
+    );
+  }
+  if (embeddingProbe) {
+    const state =
+      embeddingProbe.ok && embeddingProbe.checked === false
+        ? "skipped"
+        : embeddingProbe.ok
+          ? "ready"
+          : "unavailable";
+    const stateColor = state === "skipped" ? muted : embeddingProbe.ok ? success : warn;
+    lines.push(`${label("Embeddings")} ${stateColor(state)}`);
+    if (embeddingProbe.error) {
+      lines.push(`${label("Embeddings error")} ${warn(embeddingProbe.error)}`);
+    }
+  }
+  const runtime = deep ? readLlamaCppRuntimeStatus(status) : null;
+  if (runtime) {
+    const backend = runtime.backend ?? "unknown";
+    const build = runtime.buildInfo ? ` (${runtime.buildInfo})` : "";
+    lines.push(`${label("llama.cpp server")} ${info(backend)}${muted(build)}`);
+    if (runtime.model?.id) {
+      lines.push(`${label("Server model")} ${info(runtime.model.id)}`);
+    }
+    if (runtime.model?.path) {
+      lines.push(`${label("Model path")} ${info(shortenHomePath(runtime.model.path))}`);
+    }
+    if (runtime.capabilities) {
+      const capabilities = [
+        runtime.capabilities.vision ? "vision" : null,
+        runtime.capabilities.draft ? "draft" : null,
+      ].filter(Boolean);
+      lines.push(
+        `${label("Capabilities")} ${info(capabilities.length ? capabilities.join(", ") : "text only")}`,
+      );
+    }
+    if (runtime.endpoints) {
+      lines.push(
+        `${label("Endpoints")} ${info(
+          Object.entries(runtime.endpoints)
+            .map(([name, state]) => `${name}=${state}`)
+            .join(" "),
+        )}`,
+      );
+    }
+    if (runtime.loadError) {
+      lines.push(`${label("llama.cpp error")} ${warn(runtime.loadError)}`);
+    }
+  }
+  const identityWarning = formatMemoryIndexIdentityWarning(status, agentId);
+  if (identityWarning) {
+    lines.push(`${label("Index identity")} ${warn(identityWarning.reason)}`);
+    lines.push(`${label("Vector search")} ${warn(identityWarning.paused)}`);
+    lines.push(`${label("Fix")} ${muted(identityWarning.fix)}`);
+  }
+  if (status.sourceCounts?.length) {
+    lines.push(label("By source"));
+    for (const entry of status.sourceCounts) {
+      const total = scan?.sources?.find(
+        (scanEntry) => scanEntry.source === entry.source,
+      )?.totalFiles;
+      const counts =
+        total === null
+          ? `${entry.files}/? files · ${entry.chunks} chunks`
+          : `${entry.files}/${total} files · ${entry.chunks} chunks`;
+      const payload =
+        entry.chunkBytes === undefined
+          ? ""
+          : ` · ${formatMemoryByteSize(entry.chunkBytes)} text + embeddings`;
+      lines.push(`  ${accent(entry.source)} ${muted("·")} ${muted(counts + payload)}`);
+    }
+  }
+  if (status.fallback) {
+    lines.push(`${label("Fallback")} ${warn(status.fallback.from)}`);
+  }
+  if (status.vector) {
+    const vector = status.vector;
+    const formatVectorState = (available: boolean | undefined) =>
+      resolveMemoryVectorState({ enabled: vector.enabled, available }).state;
+    const formatVectorLine = (lineLabel: string, state: string) => {
+      const vectorColor = state === "ready" ? success : state === "unavailable" ? warn : muted;
+      lines.push(`${label(lineLabel)} ${vectorColor(state)}`);
+    };
+    if (status.backend === "builtin") {
+      const storeState =
+        status.vector.storeAvailable === undefined && status.vector.enabled
+          ? status.vector.index?.state === "complete"
+            ? "indexed (unprobed)"
+            : status.vector.index?.state === "incomplete"
+              ? "index incomplete (unprobed)"
+              : status.vector.index?.state === "unverified"
+                ? "index unverified (unprobed)"
+                : formatVectorState(undefined)
+          : formatVectorState(status.vector.storeAvailable);
+      formatVectorLine("Vector store", storeState);
+      if (status.vector.semanticAvailable !== undefined) {
+        formatVectorLine("Semantic vectors", formatVectorState(status.vector.semanticAvailable));
+      }
+    } else {
+      const vectorState = formatVectorState(
+        status.vector.semanticAvailable ?? status.vector.available,
+      );
+      formatVectorLine("Vector", vectorState);
+    }
+    if (status.vector.dims) {
+      lines.push(`${label("Vector dims")} ${info(String(status.vector.dims))}`);
+    }
+    if (status.vector.extensionPath) {
+      lines.push(`${label("Vector path")} ${info(shortenHomePath(status.vector.extensionPath))}`);
+    }
+    if (status.vector.loadError) {
+      lines.push(`${label("Vector error")} ${warn(status.vector.loadError)}`);
+    }
+  }
+  if (status.fts) {
+    const { state: ftsState } = resolveMemoryFtsState(status.fts);
+    const ftsColor = ftsState === "ready" ? success : ftsState === "unavailable" ? warn : muted;
+    lines.push(`${label("FTS")} ${ftsColor(ftsState)}`);
+    if (status.fts.error) {
+      lines.push(`${label("FTS error")} ${warn(status.fts.error)}`);
+    }
+  }
+  if (status.cache) {
+    const cacheState = status.cache.enabled ? "enabled" : "disabled";
+    const cacheColor = status.cache.enabled ? success : muted;
+    const suffix =
+      status.cache.enabled && typeof status.cache.entries === "number"
+        ? ` (${status.cache.entries} entries)`
+        : "";
+    lines.push(`${label("Embedding cache")} ${cacheColor(cacheState)}${suffix}`);
+    if (status.cache.enabled && typeof status.cache.maxEntries === "number") {
+      lines.push(`${label("Cache cap")} ${info(String(status.cache.maxEntries))}`);
+    }
+  }
+  if (status.batch) {
+    const batchState = status.batch.enabled ? "enabled" : "disabled";
+    const batchColor = status.batch.enabled ? success : warn;
+    const batchSuffix = ` (failures ${status.batch.failures}/${status.batch.limit})`;
+    lines.push(`${label("Batch")} ${batchColor(batchState)}${muted(batchSuffix)}`);
+    if (status.batch.lastError) {
+      lines.push(`${label("Batch error")} ${warn(status.batch.lastError)}`);
+    }
+  }
+  if (audit) {
+    lines.push(`${label("Recall store")} ${info(formatAuditCounts(audit))}`);
+    lines.push(`${label("Recall path")} ${info(shortenHomePath(audit.storePath))}`);
+    if (audit.updatedAt) {
+      lines.push(`${label("Recall updated")} ${info(audit.updatedAt)}`);
+    }
+  }
+  if (ringsAudit) {
+    lines.push(`${label("Rings artifacts")} ${info(formatRingsAuditSummary(ringsAudit))}`);
+    lines.push(`${label("Dream corpus")} ${info(shortenHomePath(ringsAudit.sessionCorpusDir))}`);
+    lines.push(
+      `${label("Dream ingestion")} ${info(shortenHomePath(ringsAudit.sessionIngestionPath))}`,
+    );
+    if (ringsAudit.dreamsPath) {
+      lines.push(`${label("Dream diary")} ${info(shortenHomePath(ringsAudit.dreamsPath))}`);
+    }
+  }
+  if (repair) {
+    lines.push(`${label("Repair")} ${info(formatRepairSummary(repair))}`);
+  }
+  if (ringsRepair) {
+    lines.push(`${label("Dream repair")} ${info(formatRingsRepairSummary(ringsRepair))}`);
+    if (ringsRepair.archiveDir) {
+      lines.push(`${label("Dream archive")} ${info(shortenHomePath(ringsRepair.archiveDir))}`);
+    }
+  }
+  if (status.fallback?.reason) {
+    lines.push(muted(status.fallback.reason));
+  }
+  if (indexError) {
+    lines.push(`${label("Index error")} ${warn(indexError)}`);
+  }
+  if (scan?.issues.length) {
+    lines.push(label("Issues"));
+    for (const issue of scan.issues) {
+      lines.push(`  ${warn(issue)}`);
+    }
+  }
+  let hasIssues = Boolean(scan?.issues.length);
+  for (const report of [audit, ringsAudit]) {
+    if (!report?.issues.length) {
+      continue;
+    }
+    if (!hasIssues) {
+      lines.push(label("Issues"));
+    }
+    hasIssues = true;
+    for (const issue of report.issues) {
+      lines.push(`  ${issue.severity === "error" ? warn(issue.message) : muted(issue.message)}`);
+    }
+    if (!opts.fix && report.issues.some((issue) => issue.fixable)) {
+      lines.push(`  ${muted(`Fix: branch memory status --fix --agent ${agentId}`)}`);
+    }
+  }
+  defaultRuntime.log(lines.join("\n"));
+  defaultRuntime.log("");
+}
+
 export async function runMemoryStatus(
   opts: MemoryCommandOptions,
   hostOptions?: MemoryCoreRuntimeHost,
+  statusOptions?: { agentTimeoutMs?: number; closeGraceMs?: number },
 ) {
   setVerbose(Boolean(opts.verbose));
   const runtimeConfig = getRuntimeConfig({ skipPluginValidation: true });
@@ -198,18 +514,14 @@ export async function runMemoryStatus(
     return;
   }
   const deep = Boolean(opts.deep || opts.index);
-  const allResults: Array<{
-    agentId: string;
-    status: ReturnType<MemoryManager["status"]>;
-    embeddingProbe?: MemoryEmbeddingProbeResult;
-    indexError?: string;
-    scan?: MemorySourceScan;
-    audit?: ShortTermAuditSummary;
-    repair?: RepairShortTermPromotionArtifactsResult;
-    ringsAudit?: RingsArtifactsAuditSummary;
-    ringsRepair?: RepairRingsArtifactsResult;
-  }> = [];
-  const cfg = await withMemoryCommand({
+  const allResults: Array<MemoryStatusResult | MemoryStatusFailure> = [];
+  const timedOutAgents = new Set<string>();
+  // Index and fix runs do real work and keep their own progress; only read-only status is capped.
+  const timeoutMs =
+    opts.index || opts.fix
+      ? undefined
+      : (statusOptions?.agentTimeoutMs ?? MEMORY_STATUS_AGENT_TIMEOUT_MS);
+  await withMemoryCommand({
     commandName: "memory status",
     agent: opts.agent,
     allAgents: true,
@@ -217,363 +529,132 @@ export async function runMemoryStatus(
     purpose: opts.index || opts.fix ? "cli" : "status",
     inspectSources: true,
     ...hostOptions,
-    run: async ({ manager, agentId }) => {
-      let embeddingProbe: MemoryEmbeddingProbeResult | undefined;
-      let indexError: string | undefined;
-      const syncFn = manager.sync ? manager.sync.bind(manager) : undefined;
-      if (deep) {
-        const initialStatus = manager.status();
-        const hasVectorStoreProbe =
-          initialStatus.backend === "builtin" &&
-          typeof manager.probeVectorStoreAvailability === "function";
-        await withProgress(
-          { label: "Checking memory…", total: hasVectorStoreProbe ? 3 : 2 },
-          async (progress) => {
-            progress.setLabel(hasVectorStoreProbe ? "Probing vector store…" : "Probing vectors…");
-            if (hasVectorStoreProbe) {
-              await manager.probeVectorStoreAvailability?.();
-            } else {
-              await manager.probeVectorAvailability();
-            }
-            progress.tick();
-            progress.setLabel("Probing embeddings…");
-            embeddingProbe = await manager.probeEmbeddingAvailability();
-            progress.tick();
-            if (hasVectorStoreProbe) {
-              progress.setLabel("Checking semantic vectors…");
-              await manager.probeVectorAvailability();
+    closeTimeoutMsFor: (agentId) =>
+      timedOutAgents.has(agentId)
+        ? (statusOptions?.closeGraceMs ?? MEMORY_STATUS_CLOSE_GRACE_MS)
+        : undefined,
+    run: async ({ manager, agentId, cfg: agentCfg }) => {
+      const collect = async (signal?: AbortSignal): Promise<MemoryStatusResult> => {
+        let embeddingProbe: MemoryEmbeddingProbeResult | undefined;
+        let indexError: string | undefined;
+        const syncFn = manager.sync ? manager.sync.bind(manager) : undefined;
+        if (deep) {
+          const initialStatus = manager.status();
+          const hasVectorStoreProbe =
+            initialStatus.backend === "builtin" &&
+            typeof manager.probeVectorStoreAvailability === "function";
+          await withProgress(
+            { label: "Checking memory…", total: hasVectorStoreProbe ? 3 : 2 },
+            async (progress) => {
+              progress.setLabel(hasVectorStoreProbe ? "Probing vector store…" : "Probing vectors…");
+              if (hasVectorStoreProbe) {
+                await manager.probeVectorStoreAvailability?.();
+              } else {
+                await manager.probeVectorAvailability();
+              }
               progress.tick();
-            }
-          },
-        );
-        if (opts.index && syncFn) {
-          await withProgressTotals(
-            {
-              label: "Indexing memory…",
-              total: 0,
-              fallback: opts.verbose ? "line" : undefined,
-            },
-            async (update, progress) => {
-              try {
-                await syncFn({
-                  reason: "cli",
-                  force: Boolean(opts.force),
-                  progress: (syncUpdate) => {
-                    update({
-                      completed: syncUpdate.completed,
-                      total: syncUpdate.total,
-                      label: syncUpdate.label,
-                    });
-                    if (syncUpdate.label) {
-                      progress.setLabel(syncUpdate.label);
-                    }
-                  },
-                });
-              } catch (err) {
-                indexError = formatErrorMessage(err);
-                defaultRuntime.error(`Memory index failed: ${indexError}`);
-                process.exitCode = 1;
+              progress.setLabel("Probing embeddings…");
+              embeddingProbe = await manager.probeEmbeddingAvailability();
+              progress.tick();
+              if (hasVectorStoreProbe) {
+                progress.setLabel("Checking semantic vectors…");
+                await manager.probeVectorAvailability();
+                progress.tick();
               }
             },
           );
-        } else if (opts.index && !syncFn) {
-          defaultRuntime.log("Memory backend does not support manual reindex.");
+          if (opts.index && syncFn) {
+            await withProgressTotals(
+              {
+                label: "Indexing memory…",
+                total: 0,
+                fallback: opts.verbose ? "line" : undefined,
+              },
+              async (update, progress) => {
+                try {
+                  await syncFn({
+                    reason: "cli",
+                    force: Boolean(opts.force),
+                    progress: (syncUpdate) => {
+                      update({
+                        completed: syncUpdate.completed,
+                        total: syncUpdate.total,
+                        label: syncUpdate.label,
+                      });
+                      if (syncUpdate.label) {
+                        progress.setLabel(syncUpdate.label);
+                      }
+                    },
+                  });
+                } catch (err) {
+                  indexError = formatErrorMessage(err);
+                  defaultRuntime.error(`Memory index failed: ${indexError}`);
+                  process.exitCode = 1;
+                }
+              },
+            );
+          } else if (opts.index && !syncFn) {
+            defaultRuntime.log("Memory backend does not support manual reindex.");
+          }
         }
-      }
-      const status = manager.status();
-      const scan = await scanMemoryManagerSources(status);
-      const workspaceDir = status.workspaceDir;
-      let audit: ShortTermAuditSummary | undefined;
-      let repair: RepairShortTermPromotionArtifactsResult | undefined;
-      let ringsAudit: RingsArtifactsAuditSummary | undefined;
-      let ringsRepair: RepairRingsArtifactsResult | undefined;
-      if (workspaceDir) {
-        ringsAudit = await auditRingsArtifacts({ workspaceDir });
-        if (opts.fix && ringsAudit.issues.some((issue) => issue.fixable)) {
-          ringsRepair = await repairRingsArtifacts({ workspaceDir });
+        signal?.throwIfAborted();
+        const status = manager.status();
+        const scan = await scanMemoryManagerSources(status);
+        signal?.throwIfAborted();
+        const workspaceDir = status.workspaceDir;
+        let audit: ShortTermAuditSummary | undefined;
+        let repair: RepairShortTermPromotionArtifactsResult | undefined;
+        let ringsAudit: RingsArtifactsAuditSummary | undefined;
+        let ringsRepair: RepairRingsArtifactsResult | undefined;
+        if (workspaceDir) {
           ringsAudit = await auditRingsArtifacts({ workspaceDir });
+          if (opts.fix && ringsAudit.issues.some((issue) => issue.fixable)) {
+            ringsRepair = await repairRingsArtifacts({ workspaceDir });
+            ringsAudit = await auditRingsArtifacts({ workspaceDir });
+          }
+          if (opts.fix) {
+            repair = await repairShortTermPromotionArtifacts({ workspaceDir });
+          }
+          audit = await auditShortTermPromotionArtifacts({ workspaceDir });
         }
-        if (opts.fix) {
-          repair = await repairShortTermPromotionArtifacts({ workspaceDir });
+        return {
+          agentId,
+          status,
+          embeddingProbe,
+          indexError,
+          scan,
+          audit,
+          repair,
+          ringsAudit,
+          ringsRepair,
+        };
+      };
+      let result: MemoryStatusResult;
+      try {
+        result =
+          timeoutMs === undefined
+            ? await collect()
+            : await withAgentStatusTimeout(agentId, timeoutMs, (signal) => collect(signal));
+      } catch (err) {
+        if (!(err instanceof MemoryStatusAgentTimeoutError)) {
+          throw err;
         }
-        audit = await auditShortTermPromotionArtifacts({ workspaceDir });
+        timedOutAgents.add(agentId);
+        const error = err.message;
+        defaultRuntime.error(error);
+        process.exitCode = 1;
+        allResults.push({ agentId, error });
+        return;
       }
-      allResults.push({
-        agentId,
-        status,
-        embeddingProbe,
-        indexError,
-        scan,
-        audit,
-        repair,
-        ringsAudit,
-        ringsRepair,
-      });
+      if (opts.json) {
+        allResults.push(result);
+        return;
+      }
+      // Stream each agent as it finishes so long multi-agent runs never look hung.
+      renderMemoryStatusResult(result, agentCfg, opts, deep);
     },
   });
   if (opts.json) {
     defaultRuntime.writeJson(allResults);
-    return;
-  }
-  const label = (text: string) => muted(`${text}:`);
-  for (const result of allResults) {
-    const {
-      agentId,
-      status,
-      embeddingProbe,
-      indexError,
-      scan,
-      audit,
-      repair,
-      ringsAudit,
-      ringsRepair,
-    } = result;
-    const filesIndexed = status.files ?? 0;
-    const chunksIndexed = status.chunks ?? 0;
-    const totalFiles = scan?.totalFiles ?? null;
-    const indexedLabel =
-      totalFiles === null
-        ? `${filesIndexed}/? files · ${chunksIndexed} chunks`
-        : `${filesIndexed}/${totalFiles} files · ${chunksIndexed} chunks`;
-    if (opts.index) {
-      const line = indexError
-        ? `Memory index failed: ${indexError}`
-        : formatMemoryIndexOutcome(status, scan, agentId);
-      defaultRuntime.log(line);
-    }
-    const requestedProvider = status.requestedProvider ?? status.provider;
-    const modelLabel = status.model ?? status.provider;
-    const storePath = status.dbPath ? shortenHomePath(status.dbPath) : "<unknown>";
-    const workspacePath = status.workspaceDir ? shortenHomePath(status.workspaceDir) : "<unknown>";
-    const sourceList = status.sources?.length ? status.sources.join(", ") : null;
-    const extraPaths = status.workspaceDir
-      ? formatExtraPaths(status.workspaceDir, status.extraPaths ?? [])
-      : [];
-    const lines = [
-      `${heading("Memory Search")} ${muted(`(${agentId})`)}`,
-      `${label("Provider")} ${info(status.provider)} ${muted(`(requested: ${requestedProvider})`)}`,
-      `${label("Model")} ${info(modelLabel)}`,
-      sourceList ? `${label("Sources")} ${info(sourceList)}` : null,
-      extraPaths.length ? `${label("Extra paths")} ${info(extraPaths.join(", "))}` : null,
-      `${label("Indexed")} ${success(indexedLabel)}`,
-      `${label("Dirty")} ${status.dirty ? warn("yes") : muted("no")}`,
-      `${label("Store")} ${info(storePath)}`,
-      `${label("Workspace")} ${info(workspacePath)}`,
-      `${label("Rings")} ${info(formatRingsSummary(cfg))}`,
-    ].filter(Boolean) as string[];
-    if (status.storage) {
-      const storage = status.storage;
-      lines.push(
-        `${label("Agent database")} ${info(formatMemoryByteSize(storage.databaseBytes))} · WAL ${formatMemoryByteSize(storage.walBytes)} · reusable ${formatMemoryByteSize(storage.reusableBytes)}`,
-      );
-      lines.push(
-        `${label("Stored embedding cache")} ${info(formatMemoryByteSize(storage.embeddingCacheBytes))} · ${storage.embeddingCacheEntries} entries`,
-      );
-      lines.push(
-        muted(
-          "Database includes sessions and other agent data. Reusable pages remain allocated until compaction.",
-        ),
-      );
-    }
-    if (embeddingProbe) {
-      const state =
-        embeddingProbe.ok && embeddingProbe.checked === false
-          ? "skipped"
-          : embeddingProbe.ok
-            ? "ready"
-            : "unavailable";
-      const stateColor = state === "skipped" ? muted : embeddingProbe.ok ? success : warn;
-      lines.push(`${label("Embeddings")} ${stateColor(state)}`);
-      if (embeddingProbe.error) {
-        lines.push(`${label("Embeddings error")} ${warn(embeddingProbe.error)}`);
-      }
-    }
-    const runtime = deep ? readLlamaCppRuntimeStatus(status) : null;
-    if (runtime) {
-      const backend = runtime.backend ?? "unknown";
-      const build = runtime.buildInfo ? ` (${runtime.buildInfo})` : "";
-      lines.push(`${label("llama.cpp server")} ${info(backend)}${muted(build)}`);
-      if (runtime.model?.id) {
-        lines.push(`${label("Server model")} ${info(runtime.model.id)}`);
-      }
-      if (runtime.model?.path) {
-        lines.push(`${label("Model path")} ${info(shortenHomePath(runtime.model.path))}`);
-      }
-      if (runtime.capabilities) {
-        const capabilities = [
-          runtime.capabilities.vision ? "vision" : null,
-          runtime.capabilities.draft ? "draft" : null,
-        ].filter(Boolean);
-        lines.push(
-          `${label("Capabilities")} ${info(capabilities.length ? capabilities.join(", ") : "text only")}`,
-        );
-      }
-      if (runtime.endpoints) {
-        lines.push(
-          `${label("Endpoints")} ${info(
-            Object.entries(runtime.endpoints)
-              .map(([name, state]) => `${name}=${state}`)
-              .join(" "),
-          )}`,
-        );
-      }
-      if (runtime.loadError) {
-        lines.push(`${label("llama.cpp error")} ${warn(runtime.loadError)}`);
-      }
-    }
-    const identityWarning = formatMemoryIndexIdentityWarning(status, agentId);
-    if (identityWarning) {
-      lines.push(`${label("Index identity")} ${warn(identityWarning.reason)}`);
-      lines.push(`${label("Vector search")} ${warn(identityWarning.paused)}`);
-      lines.push(`${label("Fix")} ${muted(identityWarning.fix)}`);
-    }
-    if (status.sourceCounts?.length) {
-      lines.push(label("By source"));
-      for (const entry of status.sourceCounts) {
-        const total = scan?.sources?.find(
-          (scanEntry) => scanEntry.source === entry.source,
-        )?.totalFiles;
-        const counts =
-          total === null
-            ? `${entry.files}/? files · ${entry.chunks} chunks`
-            : `${entry.files}/${total} files · ${entry.chunks} chunks`;
-        const payload =
-          entry.chunkBytes === undefined
-            ? ""
-            : ` · ${formatMemoryByteSize(entry.chunkBytes)} text + embeddings`;
-        lines.push(`  ${accent(entry.source)} ${muted("·")} ${muted(counts + payload)}`);
-      }
-    }
-    if (status.fallback) {
-      lines.push(`${label("Fallback")} ${warn(status.fallback.from)}`);
-    }
-    if (status.vector) {
-      const vector = status.vector;
-      const formatVectorState = (available: boolean | undefined) =>
-        resolveMemoryVectorState({ enabled: vector.enabled, available }).state;
-      const formatVectorLine = (lineLabel: string, state: string) => {
-        const vectorColor = state === "ready" ? success : state === "unavailable" ? warn : muted;
-        lines.push(`${label(lineLabel)} ${vectorColor(state)}`);
-      };
-      if (status.backend === "builtin") {
-        const storeState =
-          status.vector.storeAvailable === undefined && status.vector.enabled
-            ? status.vector.index?.state === "complete"
-              ? "indexed (unprobed)"
-              : status.vector.index?.state === "incomplete"
-                ? "index incomplete (unprobed)"
-                : status.vector.index?.state === "unverified"
-                  ? "index unverified (unprobed)"
-                  : formatVectorState(undefined)
-            : formatVectorState(status.vector.storeAvailable);
-        formatVectorLine("Vector store", storeState);
-        if (status.vector.semanticAvailable !== undefined) {
-          formatVectorLine("Semantic vectors", formatVectorState(status.vector.semanticAvailable));
-        }
-      } else {
-        const vectorState = formatVectorState(
-          status.vector.semanticAvailable ?? status.vector.available,
-        );
-        formatVectorLine("Vector", vectorState);
-      }
-      if (status.vector.dims) {
-        lines.push(`${label("Vector dims")} ${info(String(status.vector.dims))}`);
-      }
-      if (status.vector.extensionPath) {
-        lines.push(`${label("Vector path")} ${info(shortenHomePath(status.vector.extensionPath))}`);
-      }
-      if (status.vector.loadError) {
-        lines.push(`${label("Vector error")} ${warn(status.vector.loadError)}`);
-      }
-    }
-    if (status.fts) {
-      const { state: ftsState } = resolveMemoryFtsState(status.fts);
-      const ftsColor = ftsState === "ready" ? success : ftsState === "unavailable" ? warn : muted;
-      lines.push(`${label("FTS")} ${ftsColor(ftsState)}`);
-      if (status.fts.error) {
-        lines.push(`${label("FTS error")} ${warn(status.fts.error)}`);
-      }
-    }
-    if (status.cache) {
-      const cacheState = status.cache.enabled ? "enabled" : "disabled";
-      const cacheColor = status.cache.enabled ? success : muted;
-      const suffix =
-        status.cache.enabled && typeof status.cache.entries === "number"
-          ? ` (${status.cache.entries} entries)`
-          : "";
-      lines.push(`${label("Embedding cache")} ${cacheColor(cacheState)}${suffix}`);
-      if (status.cache.enabled && typeof status.cache.maxEntries === "number") {
-        lines.push(`${label("Cache cap")} ${info(String(status.cache.maxEntries))}`);
-      }
-    }
-    if (status.batch) {
-      const batchState = status.batch.enabled ? "enabled" : "disabled";
-      const batchColor = status.batch.enabled ? success : warn;
-      const batchSuffix = ` (failures ${status.batch.failures}/${status.batch.limit})`;
-      lines.push(`${label("Batch")} ${batchColor(batchState)}${muted(batchSuffix)}`);
-      if (status.batch.lastError) {
-        lines.push(`${label("Batch error")} ${warn(status.batch.lastError)}`);
-      }
-    }
-    if (audit) {
-      lines.push(`${label("Recall store")} ${info(formatAuditCounts(audit))}`);
-      lines.push(`${label("Recall path")} ${info(shortenHomePath(audit.storePath))}`);
-      if (audit.updatedAt) {
-        lines.push(`${label("Recall updated")} ${info(audit.updatedAt)}`);
-      }
-    }
-    if (ringsAudit) {
-      lines.push(
-        `${label("Rings artifacts")} ${info(formatRingsAuditSummary(ringsAudit))}`,
-      );
-      lines.push(
-        `${label("Dream corpus")} ${info(shortenHomePath(ringsAudit.sessionCorpusDir))}`,
-      );
-      lines.push(
-        `${label("Dream ingestion")} ${info(shortenHomePath(ringsAudit.sessionIngestionPath))}`,
-      );
-      if (ringsAudit.dreamsPath) {
-        lines.push(`${label("Dream diary")} ${info(shortenHomePath(ringsAudit.dreamsPath))}`);
-      }
-    }
-    if (repair) {
-      lines.push(`${label("Repair")} ${info(formatRepairSummary(repair))}`);
-    }
-    if (ringsRepair) {
-      lines.push(`${label("Dream repair")} ${info(formatRingsRepairSummary(ringsRepair))}`);
-      if (ringsRepair.archiveDir) {
-        lines.push(`${label("Dream archive")} ${info(shortenHomePath(ringsRepair.archiveDir))}`);
-      }
-    }
-    if (status.fallback?.reason) {
-      lines.push(muted(status.fallback.reason));
-    }
-    if (indexError) {
-      lines.push(`${label("Index error")} ${warn(indexError)}`);
-    }
-    if (scan?.issues.length) {
-      lines.push(label("Issues"));
-      for (const issue of scan.issues) {
-        lines.push(`  ${warn(issue)}`);
-      }
-    }
-    let hasIssues = Boolean(scan?.issues.length);
-    for (const report of [audit, ringsAudit]) {
-      if (!report?.issues.length) {
-        continue;
-      }
-      if (!hasIssues) {
-        lines.push(label("Issues"));
-      }
-      hasIssues = true;
-      for (const issue of report.issues) {
-        lines.push(`  ${issue.severity === "error" ? warn(issue.message) : muted(issue.message)}`);
-      }
-      if (!opts.fix && report.issues.some((issue) => issue.fixable)) {
-        lines.push(`  ${muted(`Fix: branch memory status --fix --agent ${agentId}`)}`);
-      }
-    }
-    defaultRuntime.log(lines.join("\n"));
-    defaultRuntime.log("");
   }
 }

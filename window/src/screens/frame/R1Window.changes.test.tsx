@@ -48,7 +48,7 @@ function live(methods = METHODS) {
   return { session: { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine, gatewayUrl: "ws://gateway.invalid" } as unknown as SaplingSession, request };
 }
 const header = (label: string) => host.querySelector<HTMLButtonElement>(`.r1-header-right [aria-label="${label}"]`);
-const changesRow = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(b => b.textContent?.includes("Changes and pull request"));
+const changesRow = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(b => b.textContent?.startsWith("Changes"));
 async function openChanges() {
   await act(async () => header("More")!.click());
   await flush();

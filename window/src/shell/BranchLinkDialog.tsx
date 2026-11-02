@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { pairingCheckCode } from "../shared/pairing-check-code";
 import { Dialog } from "./Dialog";
+import { plainError } from "./plain-error";
 
 type Code = { setupId: string; value: string; qr: string; expiresAtMs: number; access: string };
 type Join = { pending: boolean; requestId?: string; link?: { url: string; name: string } };
@@ -39,7 +40,7 @@ export function BranchLinkDialog({ engine, onClose, onLinked, onOpenGatewaySetti
       await engine.request("graft.links.forget", { url });
       setSavedLinks((rows) => rows.filter((row) => row.url !== url));
       onLinkedRef.current?.();
-    } catch (cause) { setError(errorText(cause)); }
+    } catch (cause) { setError(plainError(cause)); }
     finally { setBusy(false); }
   };
   const invite = async () => {
@@ -47,7 +48,7 @@ export function BranchLinkDialog({ engine, onClose, onLinked, onOpenGatewaySetti
     try {
       const result = record(await engine.request("device.pair.setupCode", { includeQr: true, bootstrapProfile: "limited" }));
       setCode({ setupId: String(result.setupId ?? ""), value: String(result.setupCode ?? ""), qr: String(result.qrDataUrl ?? ""), expiresAtMs: Number(result.expiresAtMs ?? 0), access: String(result.access ?? "limited") });
-    } catch (cause) { if (isUnreachableGateway(cause)) setUnreachable(true); else setError(errorText(cause)); }
+    } catch (cause) { if (isUnreachableGateway(cause)) setUnreachable(true); else setError(plainError(cause)); }
     finally { setBusy(false); }
   };
   const tryJoin = async () => {
@@ -61,7 +62,7 @@ export function BranchLinkDialog({ engine, onClose, onLinked, onOpenGatewaySetti
         if (next.link) setSavedLinks((rows) => [next.link!, ...rows.filter((row) => row.url !== next.link?.url)]);
         onLinkedRef.current?.();
       }
-    } catch (cause) { setJoin(null); setError(errorText(cause)); }
+    } catch (cause) { setJoin(null); setError(plainError(cause)); }
     finally { setBusy(false); }
   };
   useEffect(() => {
@@ -94,7 +95,7 @@ export function BranchLinkDialog({ engine, onClose, onLinked, onOpenGatewaySetti
       {code && <><div className="branch-link-code"><code data-testid="branch-invite-code">{code.value}</code>
         <button type="button" className="btn sm" onClick={() => {
           if (!navigator.clipboard?.writeText) { setError("Clipboard unavailable. Select the code to copy it."); return; }
-          void navigator.clipboard.writeText(code.value).catch(cause => setError(errorText(cause)));
+          void navigator.clipboard.writeText(code.value).catch(cause => setError(plainError(cause)));
         }}>Copy code</button></div>
         {code.qr && <img src={code.qr} alt="QR code to link another Branch" width={180} height={180} />}
         <p className="cz-hint">Works once, until {new Date(code.expiresAtMs).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. Approve the other Branch here before it connects.</p>

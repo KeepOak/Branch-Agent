@@ -89,7 +89,8 @@ function Whose({ trunks, defaultId, owner, onPick }: { trunks: Trunk[]; defaultI
     <div className="if-whose">
       <span className="if-lbl">Whose files</span>
       <div className="if-chips" role="group" aria-label="Whose files">
-        {chips.map((c) => <button key={c.id} type="button" className="chip6" aria-pressed={owner === c.id} onClick={() => onPick(c.id)}>{c.name}</button>)}
+        {/* The chosen owner is the preview's solid chip; data-solid keeps the Settings glass from frosting it. */}
+        {chips.map((c) => <button key={c.id} type="button" className="chip6" aria-pressed={owner === c.id} data-solid={owner === c.id ? "" : undefined} onClick={() => onPick(c.id)}>{c.name}</button>)}
       </div>
     </div>
   );

@@ -1,0 +1,7 @@
+engine:src/docs/channel-config-examples.test.ts
+engine:src/docs/clawhub-plugin-docs.test.ts
+engine:src/docs/cloud-workers-config.test.ts
+engine:src/docs/config-path-docs.test.ts
+engine:src/docs/install-cloud-secrets.test.ts
+engine:src/docs/plugin-doc-examples.test.ts
+engine:src/docs/slash-commands-doc.test.ts

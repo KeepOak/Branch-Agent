@@ -1,0 +1,2 @@
+window:src/App.window-default.test.tsx
+window:src/shell/ConnectElsewhereDialog.test.tsx

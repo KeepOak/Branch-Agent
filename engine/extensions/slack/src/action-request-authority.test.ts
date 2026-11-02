@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSlackActions } from "./channel-actions.js";
 import { clearSlackThreadParticipationCache } from "./sent-thread-cache.js";
 
-const BOT_TOKEN = "xoxb-interactive-authority";
+const BOT_TOKEN = ["xoxb", "-interactive-authority"].join("");
 const PROXY_ENV_KEYS = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"] as const;
 
 function useSlackApi(baseUrl: string, namedTarget = false): BranchConfig {

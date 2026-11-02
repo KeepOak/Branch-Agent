@@ -1,0 +1,14 @@
+engine:extensions/mxc/index.test.ts
+engine:extensions/mxc/test/binary-resolver.test.ts
+engine:extensions/mxc/test/config.test.ts
+engine:extensions/mxc/test/fs-bridge.test.ts
+engine:extensions/mxc/test/mxc-backend-cleanup.test.ts
+engine:extensions/mxc/test/mxc-backend.test.ts
+engine:extensions/mxc/test/mxc-sdk-wire-contract.integration.test.ts
+engine:extensions/mxc/test/mxc-spawn-launcher.test.ts
+engine:extensions/mxc/test/path-comparison.test.ts
+engine:extensions/mxc/test/plugin-root.test.ts
+engine:extensions/mxc/test/plugin.test.ts
+engine:extensions/mxc/test/readiness.test.ts
+engine:extensions/mxc/test/sandbox-baseline.test.ts
+engine:extensions/mxc/test/sandbox-policy-loader.test.ts

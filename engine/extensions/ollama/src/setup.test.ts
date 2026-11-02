@@ -129,6 +129,15 @@ describe("ollama setup", () => {
     fetchWithSsrFGuardMock.mockClear();
   });
 
+  it("explains install and model size before asking for a URL", async () => {
+    const note = vi.fn(async () => undefined);
+    const prompter = createLocalPrompter({ note });
+    vi.stubGlobal("fetch", createOllamaFetchMock({ tags: ["llama3:8b"] }));
+    await promptAndConfigureOllama({ cfg: {}, prompter });
+    expect(String(note.mock.calls[0]?.[0])).toMatch(/9\.6 GB/);
+    expect(String(note.mock.calls[0]?.[0])).toMatch(/Install/i);
+  });
+
   it("puts suggested local model first in local mode", async () => {
     const prompter = createLocalPrompter();
 

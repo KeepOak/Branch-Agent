@@ -1965,7 +1965,7 @@ describe("capability cli", () => {
   });
 
   it.each([
-    { args: [], provider: "auto", model: "" },
+    { args: [], provider: "local", model: "" },
     {
       args: ["--model", "openai/text-embedding-3-large"],
       provider: "openai",

@@ -10,6 +10,7 @@ import { registerAgentsHomeEnglish } from "../../i18n/locales/en-agents-home.ts"
 import type { agentRosterCards } from "../../lib/agents/roster-activity.ts";
 import { formatRelativeTimestamp } from "../../lib/format.ts";
 import { shouldHandleNavigationClick } from "../../lib/navigation-click.ts";
+import { agentCardPreviewText } from "./card-preview.ts";
 import "../../styles/agents-home.css";
 
 registerAgentsHomeEnglish();
@@ -88,7 +89,9 @@ export function renderAgentsHome(props: AgentsHomeProps) {
         ${repeat(
           props.cards,
           (card) => card.id,
-          (card) => html` <a
+          (card) => {
+            const preview = agentCardPreviewText(card.preview);
+            return html` <a
             class="agents-home__card"
             data-agent-id=${card.id}
             href=${card.target.href}
@@ -115,11 +118,12 @@ export function renderAgentsHome(props: AgentsHomeProps) {
                     : t("agentsHome.neverActive")
               }
             </div>
-            <p class="agents-home__preview" title=${card.preview ?? ""}>
-              ${card.preview || t("agentsHome.noMessage")}
+            <p class="agents-home__preview" title=${preview}>
+              ${preview || t("agentsHome.noMessage")}
             </p>
             <span class="btn primary agents-home__open">${t("agentsHome.openChat")}</span>
-          </a>`,
+          </a>`;
+          },
         )}
       </div>
     </section>`;

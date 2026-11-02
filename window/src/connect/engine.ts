@@ -24,6 +24,9 @@ export type WindowEngine = {
    *  reconnects; absent until the first hello. connect/capabilities.ts reads it for the Coming state. */
   features?: EngineFeatures;
   attachmentPolicy?: { maxBytes?: number; maxImageBytes?: number };
+  /** False when the engine's hello says only one person uses this Branch (hello.policy.hasMultipleSessionSharingIdentities),
+   *  so per-person calls such as users.personalFile.* would only be refused. Absent when the engine didn't say. */
+  sharedGateway?: boolean;
   /** Ask an owner for this device's full operator scopes; the connection stores the rotated key. */
   requestScopeUpgrade?: (options?: { onPending?: (requestId: string) => void }) => Promise<ScopeUpgradeOutcome>;
   /** Withdraw or forget a live full-access wait. */

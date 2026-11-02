@@ -66,3 +66,18 @@ it("a row whose destination this window can't open is disabled, not a dead butto
   expect(pick("Remember").disabled).toBe(true);
   expect(pick("Work from your phone").disabled).toBe(false);
 });
+
+it("the profile's ⋯ menu shows Copy seed, Download seed, Copy its look and Share to Seedbank at Technical only (Private #1093)", async () => {
+  const COMING = ["Copy seed", "Download seed", "Copy its look", "Share to Seedbank…"];
+  const items = () => [...document.querySelectorAll<HTMLButtonElement>('[data-testid="trunk-more"] button')];
+  for (const level of ["regular", "advanced"] as const) {
+    await mount(<TrunkProfile engine={engine} agentId="birch" level={level} onClose={() => {}} openPlace={vi.fn()} openSettings={vi.fn()} openConversation={vi.fn()} />);
+    await click(document.querySelector<HTMLButtonElement>('[aria-label="More for Birch"]')!);
+    expect(items().map((b) => b.textContent), level).toEqual(["Share this Trunk…", "Remove Trunk…"]);
+    await act(async () => root!.unmount()); root = null; document.body.innerHTML = "";
+  }
+  await mount(<TrunkProfile engine={engine} agentId="birch" level="technical" onClose={() => {}} openPlace={vi.fn()} openSettings={vi.fn()} openConversation={vi.fn()} />);
+  await click(document.querySelector<HTMLButtonElement>('[aria-label="More for Birch"]')!);
+  expect(items().map((b) => b.textContent)).toEqual(["Share this Trunk…", ...COMING, "Remove Trunk…"]);
+  expect(items().filter((b) => b.disabled).map((b) => b.textContent)).toEqual(COMING);
+});

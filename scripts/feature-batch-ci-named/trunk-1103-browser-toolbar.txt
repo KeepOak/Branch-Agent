@@ -1,0 +1,3 @@
+window:src/stage/BrowserView.test.tsx
+window:src/stage/browser-toolbar.test.tsx
+window:src/stage/stage-mode-switch.test.tsx

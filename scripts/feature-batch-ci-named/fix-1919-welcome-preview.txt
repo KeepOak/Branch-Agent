@@ -1,0 +1,8 @@
+window:src/connect/start-key.test.ts
+window:src/setup/FirstTrunk.test.tsx
+window:src/setup/pre-connect-rail.test.tsx
+window:src/setup/setup-preview.test.tsx
+window:src/setup/setup.test.tsx
+window:src/setup/welcome-local-token.test.tsx
+window:src/setup/welcome.test.tsx
+window:src/brand/KeeperMark.test.tsx

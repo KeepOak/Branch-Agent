@@ -61,7 +61,8 @@ export function searchSettings(query: string, input: SearchInput): SearchGroups 
   const trunks = best(input.trunks ?? [], (t) => score(q, t.name, "trunk"), MAX.trunks);
   out.trunks = trunks.map((t): SearchHit => ({ kind: "trunk", id: t.id, label: t.name, actions: t.isDefault ? ["open"] : ["open", "makeDefault"] }));
   if (score(q, "New Trunk", "make create start add") > 0 && input.trunks) out.trunks.push({ kind: "newTrunk", id: "new-trunk", label: "New Trunk" });
-  out.features = best(input.features ?? [], (f) => score(q, f.name, `${f.description ?? ""} ${f.id}`), MAX.features).map((f) => ({ kind: "feature", id: f.id, label: f.name, sub: f.description }));
+  // The feature atlas is mostly what Branch plans, so it is searched only at Technical, with the All features page.
+  out.features = level < COMING_FROM ? [] : best(input.features ?? [], (f) => score(q, f.name, `${f.description ?? ""} ${f.id}`), MAX.features).map((f) => ({ kind: "feature", id: f.id, label: f.name, sub: f.description }));
   return out;
 }
 

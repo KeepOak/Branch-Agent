@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import "../test-utils/prepare-compiled-subprocesses.js";
 import { withTempDir } from "../test-utils/temp-dir.js";
 import {
+  resolveLoaderSpecifierUrl,
   resolveRuntimeWorkerArgv,
   resolveRuntimeWorkerThreadExecArgv,
   resolveRuntimeWorkerUrl,
@@ -206,5 +207,17 @@ describe("resolveRuntimeProcessEntrypointUrl", () => {
     } finally {
       vi.resetModules();
     }
+  });
+});
+
+describe("resolveLoaderSpecifierUrl", () => {
+  it("uses import.meta.resolve when the module is loaded as ESM", () => {
+    expect(resolveLoaderSpecifierUrl("tsx")).toBe(import.meta.resolve("tsx"));
+  });
+
+  it("falls back to createRequire when a CommonJS transform removed import.meta.resolve", () => {
+    const expected = pathToFileURL(requireFromHere.resolve("tsx/esm")).href;
+    expect(resolveLoaderSpecifierUrl("tsx/esm", { url: import.meta.url })).toBe(expected);
+    expect(resolveLoaderSpecifierUrl("tsx/esm", {})).toMatch(/^file:.*esm\/index\.mjs$/u);
   });
 });

@@ -8,7 +8,8 @@ import { shows, type Level } from "../../places-nav/level";
 import { useResource } from "../library/data";
 import { ACTIVITY_WORD, OWNER_ID, activeProfiles, activityOf, ago, deviceKind, deviceName, firstName, nameOf, presence, presenceOf, profiles, reachOf, roleDefinition, roleNames, rows, secondsAgo, strs, type Presence, type Profile } from "./data";
 import { CodeDialog, InviteDialog, LinkEmailDialog, MergeDialog, RoleSeg } from "./person-dialogs";
-import { Avatar, Section, Seg, Status, copyText } from "./ui";
+import { Avatar, Section, Seg, copyText } from "./ui";
+import { Status } from "./plain-status";
 
 type Res = ReturnType<typeof useResource<unknown>>;
 const MAY = ["Look things up", "Use web pages", "Write files", "Run commands", "Send messages", "Spend money", "Change how Branch is set up"];
@@ -53,7 +54,7 @@ export function PeopleTab({ engine, users, me, level, selected, onSelect, openCo
       {current && <Detail key={current.id} engine={engine} person={current} me={me} people={people} conns={conns} config={config.data} level={level} reload={users.reload} openConversation={openConversation} />}
     </div>}
     <p className="pp-hint">Separation on one computer, not separate accounts. Each person’s conversations and memory are their own.</p>
-    {invite && <InviteDialog engine={engine} onClose={() => setInvite(false)} />}
+    {invite && <InviteDialog engine={engine} technical={shows(level, "technical")} onClose={() => setInvite(false)} />}
   </>;
 }
 

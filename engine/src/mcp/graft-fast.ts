@@ -9,6 +9,7 @@ import {
   liveDesktopGatewayUrl,
   resolveDesktopGateway,
 } from "./desktop-gateway.js";
+import { plainGatewayStartFailure } from "./gateway-start-copy.js";
 
 export type GraftFastPlan = {
   gatewayUrl: string;
@@ -132,8 +133,11 @@ export async function runGraftFast(argv: readonly string[]): Promise<boolean> {
       config: {},
     });
   } catch (error) {
+    const plain = plainGatewayStartFailure(error);
     process.stderr.write(
-      `Graft failed to start: ${error instanceof Error ? error.message : String(error)}. Run branch gateway status --deep --require-rpc to inspect Gateway health.\n`,
+      plain
+        ? `${plain}\n`
+        : `Graft failed to start: ${error instanceof Error ? error.message : String(error)}. Run branch gateway status --deep --require-rpc to inspect Gateway health.\n`,
     );
     process.exitCode = 1;
   }

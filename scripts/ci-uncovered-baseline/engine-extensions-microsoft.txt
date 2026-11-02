@@ -1,0 +1,3 @@
+engine:extensions/microsoft/speech-provider.optional-capture.test.ts
+engine:extensions/microsoft/speech-provider.test.ts
+engine:extensions/microsoft/tts.test.ts

@@ -3,6 +3,7 @@
 // updater reports a percentage, so the ring spins and the line says only what is happening.
 import type { ComponentUpdateStatus, EngineUpdateEvent } from "../../connect/desktop-component-updates";
 import { isNewerBranchVersion, versionParts } from "../../connect/branch-version";
+import { plainError } from "../../shell/plain-error";
 
 export type UpdateView =
   | { kind: "none" }
@@ -24,6 +25,15 @@ export const RUN_STEP: Record<string, string> = {
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
+/** A failed update's words as a person reads them, through main's plainError() (Private #1089). plainError() keeps a
+ *  one-word lead before a colon, so an engine dump that starts "Error: …" would still read "Error: <sentence>": when
+ *  it replaced the words, it reads them again without that prefix. Advanced and Technical keep the exact words. */
+export function plainUpdateError(words: string): string {
+  const said = plainError(words);
+  const prefix = /^\s*(?:Uncaught\s+)?(?:[A-Z][A-Za-z]*)?Error\s*:\s*/;
+  return said !== words && prefix.test(said) ? plainError(words.replace(prefix, "")) : said;
+}
+
 /**
  * The desktop updater (desktop/src/main.ts restartEngine): stage() downloads and checks; install() lets running work
  * finish, then swaps the engine process. The window stays open, but the engine does restart, so the action says
@@ -38,7 +48,7 @@ export function desktopUpdateView(input: {
   const version = (status?.phase === "staged" ? pending ?? latest : latest ?? pending) ?? "";
   if (bar?.state === "updated" && (input.restartRequested || version)) return { kind: "done", version: version || current };
   if (!version || !isNewerBranchVersion(version, current)) return { kind: "none" };
-  if (bar?.state === "failed") return { kind: "failed", version, message: bar.message || "The update didn’t finish. Branch kept the current version." };
+  if (bar?.state === "failed") return { kind: "failed", version, message: plainUpdateError(bar.message ?? "") || "The update didn’t finish. Branch kept the current version." };
   if (input.error) return { kind: "failed", version, message: input.error };
   if (input.restartRequested || bar?.state === "preparing" || bar?.state === "restarting" || bar?.state === "updating") return { kind: "restarting", version };
   if (input.staging || status?.phase === "staging") return { kind: "installing", version, step: "Downloading and checking" };
@@ -56,7 +66,7 @@ export function engineUpdateView(input: { status: unknown; current: string; star
   if (!version || (input.current && !isNewerBranchVersion(version, input.current) && !str(active.runId))) return { kind: "none" };
   if (input.error) return { kind: "failed", version, message: input.error };
   if (str(active.runId) || input.started) return { kind: "installing", version, step: RUN_STEP[str(active.phase)] ?? null };
-  if (last.status === "failed" || last.status === "rolled-back") return { kind: "failed", version, message: str(last.reason) || "The last update didn’t finish. Branch kept the current version." };
+  if (last.status === "failed" || last.status === "rolled-back") return { kind: "failed", version, message: plainUpdateError(str(last.reason)) || "The last update didn’t finish. Branch kept the current version." };
   return { kind: "offer", version };
 }
 

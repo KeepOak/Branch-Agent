@@ -1,0 +1,12 @@
+engine:src/context-engine/context-engine.test.ts
+engine:src/context-engine/delegate-watchdog.test.ts
+engine:src/context-engine/host-compat.test.ts
+engine:src/context-engine/host-param-projection.test.ts
+engine:src/context-engine/quarantine-health.test.ts
+engine:src/context-engine/registry.copied-view-resources.test.ts
+engine:src/context-engine/registry.factory-admission.test.ts
+engine:src/context-engine/registry.fallback-resources.test.ts
+engine:src/context-engine/registry.logical-turn-resources.test.ts
+engine:src/context-engine/registry.runtime-adoption.test.ts
+engine:src/context-engine/registry.selection.test.ts
+engine:src/context-engine/runtime-settings.test.ts

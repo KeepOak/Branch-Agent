@@ -178,20 +178,24 @@ export async function executePreparedReplyAgentRun(
   };
 
   const prePreflightCompactionCount = activeSessionEntry?.compactionCount ?? 0;
-  activeSessionEntry = await traceAgentPhase("reply.preflight_compaction", () =>
-    runSessionCompactionIfNeeded({
-      ...context,
-      pendingUserEntryId: preflightAdmission?.entryId,
-      promptForEstimate: followupRun.prompt,
-      sessionEntry: activeSessionEntry,
-      sessionStore: activeSessionStore,
-      abortSignal: replyOperation.abortSignal,
-      beforeCompaction: checkpointMemory,
-      onCompactionStart: () => replyOperation.setPhase("preflight_compacting"),
-      onSessionIdChanged: (sessionId) => replyOperation.updateSessionId(sessionId),
-      onCompactionNotice: sendDirectCompactionNotice,
-    }),
-  );
+  // A live reply runs beside a held turn that owns the chat's writer; it must not
+  // flush memory into or compact that session underneath it.
+  activeSessionEntry = followupRun.liveInbound
+    ? activeSessionEntry
+    : await traceAgentPhase("reply.preflight_compaction", () =>
+        runSessionCompactionIfNeeded({
+          ...context,
+          pendingUserEntryId: preflightAdmission?.entryId,
+          promptForEstimate: followupRun.prompt,
+          sessionEntry: activeSessionEntry,
+          sessionStore: activeSessionStore,
+          abortSignal: replyOperation.abortSignal,
+          beforeCompaction: checkpointMemory,
+          onCompactionStart: () => replyOperation.setPhase("preflight_compacting"),
+          onSessionIdChanged: (sessionId) => replyOperation.updateSessionId(sessionId),
+          onCompactionNotice: sendDirectCompactionNotice,
+        }),
+      );
   setActiveSessionEntry(activeSessionEntry);
   const preflightCompactionApplied =
     (activeSessionEntry?.compactionCount ?? 0) > prePreflightCompactionCount;

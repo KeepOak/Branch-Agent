@@ -14,6 +14,7 @@ import {
 import { log } from "../logger.js";
 import { registerHandoffRetryWait } from "../retry-handoff.js";
 import type { EmbeddedAgentQueueHandle } from "../run-state.js";
+import { isolatedRegistrationArgs, resolveEmbeddedRunRegistryKey } from "../run-state.js";
 import { clearActiveEmbeddedRun, setActiveEmbeddedRun } from "../runs.js";
 import { flushEmbeddedAttemptTrajectoryRecorder } from "./attempt-trajectory-flush.js";
 
@@ -144,7 +145,10 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
   sessionKey?: string;
   sessionFile?: string;
   abortSignal?: AbortSignal;
+  /** A live inbound reply's own registry key; see RunEmbeddedAgentParams.activeRunRegistryId. */
+  activeRunRegistryId?: string;
 }): DeferredEmbeddedRunLifecycleManager {
+  const activeRunKey = resolveEmbeddedRunRegistryKey(params);
   // Recovery projections time the whole logical turn, not the current runtime attempt.
   const startedAtMs = Date.now();
   const lifecycleGeneration = captureAgentRunLifecycleGeneration(params.runId);
@@ -171,7 +175,7 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
     if (cliOwner) {
       const owner = cliOwner;
       cliOwner = undefined;
-      clearActiveEmbeddedRun(params.sessionId, owner, params.sessionKey, params.sessionFile);
+      clearActiveEmbeddedRun(activeRunKey.key, owner, params.sessionKey, params.sessionFile);
     }
   };
   return {
@@ -280,11 +284,12 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
         abort,
       };
       setActiveEmbeddedRun(
-        params.sessionId,
+        activeRunKey.key,
         cliOwner,
         params.sessionKey,
         params.sessionFile,
         params.agentId,
+        ...isolatedRegistrationArgs(activeRunKey),
       );
       const previous = current;
       current = undefined;

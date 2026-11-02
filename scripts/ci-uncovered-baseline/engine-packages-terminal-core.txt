@@ -1,0 +1,12 @@
+engine:packages/terminal-core/src/ansi.test.ts
+engine:packages/terminal-core/src/decorative-emoji.test.ts
+engine:packages/terminal-core/src/display-string.test.ts
+engine:packages/terminal-core/src/health-style.test.ts
+engine:packages/terminal-core/src/links.test.ts
+engine:packages/terminal-core/src/osc-progress.test.ts
+engine:packages/terminal-core/src/prompt-select-styled.test.ts
+engine:packages/terminal-core/src/restore.test.ts
+engine:packages/terminal-core/src/safe-text.test.ts
+engine:packages/terminal-core/src/stream-writer.test.ts
+engine:packages/terminal-core/src/table.test.ts
+engine:packages/terminal-core/src/terminal-link.test.ts

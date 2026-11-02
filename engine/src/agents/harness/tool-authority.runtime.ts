@@ -1,3 +1,4 @@
+import { isLiveInboundOperationActiveForSessionId } from "../../auto-reply/reply/live-inbound-operations.js";
 import { resolveActiveReplyOperationForSessionId } from "../../auto-reply/reply/reply-run-registry.js";
 import { getAttachedBackend } from "../../auto-reply/reply/reply-run-registry.state.js";
 import { createReplyTurnParticipants } from "../../auto-reply/reply/reply-run-registry.tool-authority.js";
@@ -11,6 +12,7 @@ import {
   readAdmittedRunOperatorAuthority,
   resolveAdmittedRunActiveAssertion,
 } from "../admitted-run-context.js";
+import { resolveEmbeddedRunRegistryKey } from "../embedded-agent-runner/run-state.js";
 import type { EmbeddedRunAttemptInternalParams } from "../embedded-agent-runner/run/internal-params.js";
 import {
   getGatewayToolCallerIdentity,
@@ -38,7 +40,11 @@ type ToolAuthorityAttempt = Pick<
   | "abortSignal"
   | "toolAuthorityFingerprint"
   | "userTurnTranscriptRecorder"
-> & { hostCapabilities?: AgentHarnessAttemptParamsV2["hostCapabilities"] };
+> & {
+  hostCapabilities?: AgentHarnessAttemptParamsV2["hostCapabilities"];
+  /** A live inbound reply registers its embedded run under this key, beside the chat's run. */
+  activeRunRegistryId?: string;
+};
 
 /** Execution-only: policy preparation must finish before authority reaches a publisher. */
 export async function withPreparedEmbeddedRunToolAuthority<T, Attempt extends ToolAuthorityAttempt>(
@@ -54,6 +60,15 @@ export async function withPreparedEmbeddedRunToolAuthority<T, Attempt extends To
   const source = inherited?.operationalRunInstance === instance ? inherited : undefined;
   const { sessionId, sessionKey, sessionFile, agentId, runId } = attempt;
   const route = { provider: attempt.provider, model: attempt.modelId };
+  const registrySessionId = resolveEmbeddedRunRegistryKey({
+    sessionId,
+    activeRunRegistryId: attempt.activeRunRegistryId,
+  }).key;
+  // The held turn keeps the chat session id's active operation, so a live
+  // reply's side operation is matched through its own record.
+  const isCurrentOperation = (candidate: NonNullable<typeof operation>) =>
+    resolveActiveReplyOperationForSessionId(sessionId) === candidate ||
+    isLiveInboundOperationActiveForSessionId(candidate, sessionId);
   // Maintenance borrows an operation for cancellation, not its injection snapshot.
   const operation = attempt.toolAuthorityFingerprint ? internal.replyOperation : undefined;
   const assertHostActive = attempt.hostCapabilities?.assertActive;
@@ -118,7 +133,7 @@ export async function withPreparedEmbeddedRunToolAuthority<T, Attempt extends To
     input.operatorAuthority?.assertCurrent();
     if (
       operation &&
-      (resolveActiveReplyOperationForSessionId(sessionId) !== operation ||
+      (!isCurrentOperation(operation) ||
         operation.toolAuthorityRoute?.provider !== route.provider ||
         operation.toolAuthorityRoute.model !== route.model ||
         operation.toolAuthorityFingerprint !== fingerprint)
@@ -167,7 +182,7 @@ export async function withPreparedEmbeddedRunToolAuthority<T, Attempt extends To
           assertActive();
           const { handle } = registration;
           if (
-            registration.sessionId !== sessionId ||
+            registration.sessionId !== registrySessionId ||
             registration.sessionKey !== sessionKey ||
             registration.sessionFile !== sessionFile ||
             (registration.agentId !== undefined && registration.agentId !== agentId) ||
@@ -185,7 +200,7 @@ export async function withPreparedEmbeddedRunToolAuthority<T, Attempt extends To
           };
           const ownsOperation = () =>
             !operation ||
-            (resolveActiveReplyOperationForSessionId(sessionId) === operation &&
+            (isCurrentOperation(operation) &&
               getAttachedBackend(operation) === handle &&
               operation.toolAuthorityRoute?.provider === route.provider &&
               operation.toolAuthorityRoute.model === route.model);

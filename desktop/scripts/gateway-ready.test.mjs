@@ -1,12 +1,139 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createServer } from "node:http";
+import { connect as connectNet, createServer as createNetServer } from "node:net";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
 const { GatewayReadinessTimeoutError, killGatewayAndWait, waitForReady } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+
+test("a handed-out loopback port can be bound again on that exact port", async () => {
+  const { freeLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const port = await freeLoopbackPort();
+  const server = createNetServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, "127.0.0.1", resolve);
+    });
+    assert.equal(server.address().port, port);
+  } finally {
+    try { server.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } });
+  }
+});
+
+test("a held loopback port stays taken until it is released for the engine", async () => {
+  const { freeLoopbackPort, holdLoopbackServer, releaseHeldLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const port = await freeLoopbackPort();
+  const holder = createNetServer();
+  await new Promise((resolve, reject) => {
+    holder.once("error", reject);
+    holder.listen(port, "127.0.0.1", resolve);
+  });
+  holdLoopbackServer(port, holder);
+  const blocked = createNetServer();
+  try {
+    await assert.rejects(new Promise((resolve, reject) => {
+      blocked.once("error", reject);
+      blocked.listen(port, "127.0.0.1", resolve);
+    }), { code: "EADDRINUSE" });
+  } finally {
+    releaseHeldLoopbackPort(port);
+  }
+  const server = createNetServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, "127.0.0.1", resolve);
+    });
+    assert.equal(server.address().port, port);
+  } finally {
+    try { server.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } });
+  }
+});
+
+test("a held loopback port is handed to the engine before anyone else can bind it", async () => {
+  const previous = process.env.BRANCH_DESKTOP_HOLD_LOOPBACK;
+  process.env.BRANCH_DESKTOP_HOLD_LOOPBACK = "1";
+  const { reserveLoopbackPort, releaseHeldPortWhenBinding, releaseHeldLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  let child;
+  let port;
+  const thief = createNetServer();
+  try {
+    port = await reserveLoopbackPort();
+    child = spawn(process.execPath, ["--input-type=module", "-e", [
+      'import http from "node:http";',
+      'const listener = http.createServer((q, r) => r.writeHead(200).end("ok"));',
+      'process.on("message", (msg, handle) => {',
+      '  if (msg?.type !== "branch-desktop:listen-handle" || !handle) return;',
+      '  listener.listen(handle, () => { process.send({ type: "branch-desktop:bound" }); process.send({ listening: true }); });',
+      '});',
+      'process.send({ type: "branch-desktop:binding" });',
+    ].join("\n")], { stdio: ["ignore", "ignore", "pipe", "ipc"], windowsHide: true });
+    releaseHeldPortWhenBinding(child, port);
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("the engine did not adopt the listening socket")), 3000);
+      child.on("message", (msg) => { if (msg?.listening) { clearTimeout(timer); resolve(); } });
+      child.once("exit", (code) => { clearTimeout(timer); reject(new Error(`engine exited ${code} before it listened`)); });
+    });
+    await assert.rejects(new Promise((resolve, reject) => {
+      thief.once("error", reject);
+      thief.listen(port, "127.0.0.1", resolve);
+    }), { code: "EADDRINUSE" });
+    assert.equal(await (await fetch(`http://127.0.0.1:${port}`)).text(), "ok");
+  } finally {
+    try { thief.close(); } catch { /* not listening */ }
+    if (port !== undefined) releaseHeldLoopbackPort(port);
+    if (child?.pid) { try { child.kill(); } catch { /* already gone */ } }
+    if (previous === undefined) delete process.env.BRANCH_DESKTOP_HOLD_LOOPBACK;
+    else process.env.BRANCH_DESKTOP_HOLD_LOOPBACK = previous;
+  }
+});
+
+test("a client connected to a held loopback port does not keep it after release", async () => {
+  const { freeLoopbackPort, holdLoopbackServer, releaseHeldLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const port = await freeLoopbackPort();
+  const holder = createNetServer();
+  const rebound = createNetServer();
+  let client;
+  try {
+    await new Promise((resolve, reject) => {
+      holder.once("error", reject);
+      holder.listen(port, "127.0.0.1", resolve);
+    });
+    holdLoopbackServer(port, holder);
+    client = connectNet({ host: "127.0.0.1", port });
+    client.on("error", () => {});
+    const outcome = await new Promise((resolve) => {
+      client.once("connect", () => resolve("connect"));
+      client.once("error", (error) => resolve(error.code ?? "error"));
+    });
+    assert.notEqual(outcome, "ECONNREFUSED");
+    releaseHeldLoopbackPort(port);
+    const end = Date.now() + 2000;
+    let bound = false;
+    while (Date.now() < end && !bound) {
+      bound = await new Promise((resolve) => {
+        rebound.once("error", () => resolve(false));
+        rebound.listen(port, "127.0.0.1", () => resolve(true));
+      });
+      if (!bound) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(bound, true);
+  } finally {
+    client?.destroy();
+    releaseHeldLoopbackPort(port);
+    try { rebound.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise((resolve) => { try { rebound.close(() => resolve()); } catch { resolve(); } });
+    try { holder.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise((resolve) => { try { holder.close(() => resolve()); } catch { resolve(); } });
+  }
+});
 
 test("a child that never emits exit cannot hold the update lock indefinitely", async () => {
   const child = Object.assign(new EventEmitter(), { pid: undefined, exitCode: null, signalCode: null });
@@ -122,6 +249,20 @@ test("a standby that never warms is stopped at its deadline and leaves no proces
     for (const end = Date.now() + 5000; alive() && Date.now() < end;) await new Promise(resolve => setTimeout(resolve, 50));
     assert.equal(alive(), false, "the timed-out standby was left running");
   }));
+
+test("engineEnvironment omits BRANCH_SKIP_CHANNELS so spawn cannot coerce undefined to empty string", async () => {
+  const { engineEnvironment } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const prior = process.env.BRANCH_SKIP_CHANNELS;
+  process.env.BRANCH_SKIP_CHANNELS = "1";
+  try {
+    const env = engineEnvironment({ dataDir: "/tmp/branch-env-omit", gatewayPort: 18765 }, false, 18765, "tok");
+    assert.equal(Object.hasOwn(env, "BRANCH_SKIP_CHANNELS"), false);
+    assert.equal(env.BRANCH_SKIP_CHANNELS, undefined);
+  } finally {
+    if (prior === undefined) delete process.env.BRANCH_SKIP_CHANNELS;
+    else process.env.BRANCH_SKIP_CHANNELS = prior;
+  }
+});
 
 test("the owned desktop gateway starts configured channels even when the launcher environment skips them", async () => {
   const { mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
@@ -266,4 +407,43 @@ test("the admission watch ends without promoting or rolling back when the engine
     assert.ok(Date.now() - started < 1_000);
     assert.deepEqual(calls, []);
   });
+});
+
+test("Mac driver endpoint files are removed only when their writer is gone, and nothing else (#1921)", async () => {
+  const { mkdtempSync, writeFileSync, readdirSync, rmSync, utimesSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { sweepStaleEndpointFiles, endpointFileName, LEGACY_ENDPOINT_MAX_AGE_MS } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const dir = mkdtempSync(join(tmpdir(), "branch-endpoint-sweep-"));
+  const hex = (c) => c.repeat(32);
+  try {
+    const live = `cua-endpoint-4242-${hex("a")}`;
+    const dead = `cua-endpoint-4343-${hex("b")}`;
+    const mine = `cua-endpoint-${process.pid}-${hex("c")}`;
+    const legacyOld = `cua-endpoint-${hex("d")}`;
+    const legacyNew = `cua-endpoint-${hex("e")}`;
+    for (const name of [live, dead, mine, legacyOld, legacyNew]) writeFileSync(join(dir, name), "{}");
+    const now = Date.now();
+    const old = (now - LEGACY_ENDPOINT_MAX_AGE_MS - 60_000) / 1000;
+    utimesSync(join(dir, legacyOld), old, old);
+    writeFileSync(join(dir, "gateway.log"), "keep");
+    writeFileSync(join(dir, "cua-endpoint-notes.txt"), "keep");
+    const asked = [];
+    const alive = (pid) => { asked.push(pid); return pid === 4242; };
+    assert.equal(sweepStaleEndpointFiles(dir, alive, now), 2);
+    assert.deepEqual(readdirSync(dir).sort(), ["cua-endpoint-notes.txt", "gateway.log", live, legacyNew, mine].sort());
+    assert.deepEqual(asked.sort(), [4242, 4343]);
+    assert.equal(sweepStaleEndpointFiles(join(dir, "missing")), 0);
+    assert.match(endpointFileName(), new RegExp(`^cua-endpoint-${process.pid}-[0-9a-f]{32}$`));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("process liveness: EPERM counts as alive, ESRCH as gone (#1921)", async () => {
+  const { processAlive } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const fail = (code) => () => { throw Object.assign(new Error(code), { code }); };
+  assert.equal(processAlive(1, () => {}), true);
+  assert.equal(processAlive(1, fail("EPERM")), true);
+  assert.equal(processAlive(1, fail("ESRCH")), false);
+  assert.equal(processAlive(process.pid), true);
 });

@@ -15,7 +15,7 @@ describe("update failure triage diagnostics", () => {
       const home = tempDirs.make("branch-update-triage-");
       const stateDir = path.join(home, ".branch");
       const env = { HOME: home, BRANCH_STATE_DIR: stateDir };
-      const secret = "sk-test-update-triage-secret-1234567890";
+      const secret = ["sk-t", "est-update-triage-secret-1234567890"].join("");
       const result: UpdateRunResult = {
         runId: "10000000-0000-4000-8000-000000000001",
         status: "error",

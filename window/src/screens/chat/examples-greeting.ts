@@ -3,6 +3,7 @@
 // engine call, so it is shown here in place of an empty history and is not sent anywhere.
 import { useEffect, useMemo, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
+import { recalledSessionName } from "../onboarding/session-name";
 import { readPersonName } from "../../shell/PersonMenu";
 import type { Block } from "../../thread/model";
 
@@ -12,22 +13,33 @@ export const DEFAULT_TRUNK_WHY = "I’m your default Trunk, the one with the lea
 /** A Trunk made from a template (preview greet, the template's own line). */
 export const TEMPLATE_TRUNK_WHY = "I take one job off your plate.";
 
-/** The greeting's words. The person's first name is left out when the engine has none to give (an email or "Owner"). */
+/** The greeting's words. A name from setup is used; without one, the Trunk still asks what to call you. */
 export function examplesGreetingText(me: string, name: string, why: string): string {
   const hello = me ? `Hi ${me}, I’m ${name}.` : `Hi, I’m ${name}.`;
-  return `${hello} ${why} You’re trying Branch with examples, so my replies are examples until you add a model.\n\nWhat should I call you, and what are you working on right now?`;
+  const ask = me ? "What are you working on right now?" : "What should I call you, and what are you working on right now?";
+  return `${hello} ${why} You’re trying Branch with examples, so my replies are examples until you add a model.\n\n${ask}`;
 }
 
-/** The person's first name from users.self, read once while the greeting is shown. */
+function firstWord(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? "";
+}
+
+/** The person's first name from users.self, or the name remembered from setup. */
 export function useFirstName(engine: WindowEngine | undefined, on: boolean): string {
-  const [me, setMe] = useState("");
+  const [me, setMe] = useState(() => (on ? firstWord(recalledSessionName()) : ""));
   useEffect(() => {
-    if (!engine || !on) return;
+    if (!on) return;
+    const remembered = firstWord(recalledSessionName());
+    if (remembered) setMe(remembered);
+    if (!engine) return;
     let live = true;
     engine.request("users.self", {}).then((r) => {
       const name = readPersonName(r);
-      if (live && !name.includes("@") && name !== "Owner") setMe(name.split(/\s+/)[0] ?? "");
-    }, () => undefined);
+      const fromProfile = !name.includes("@") && name !== "Owner" ? firstWord(name) : "";
+      if (live) setMe(fromProfile || remembered);
+    }, () => {
+      if (live && remembered) setMe(remembered);
+    });
     return () => { live = false; };
   }, [engine, on]);
   return me;

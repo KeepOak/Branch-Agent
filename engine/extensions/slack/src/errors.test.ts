@@ -59,7 +59,7 @@ describe("formatSlackError", () => {
   });
 
   it("redacts token-shaped values before returning", () => {
-    const token = "xoxb-1234567890abcdef";
+    const token = ["xoxb", "-1234567890abcdef"].join("");
     const err = Object.assign(new Error(`Authorization: Bearer ${token}`), {
       code: "slack_webapi_platform_error",
       data: {

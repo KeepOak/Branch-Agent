@@ -9,6 +9,7 @@ on:
     paths:
       - 'engine/**'
       - '.github/workflows/engine-lint-baselines.yml'
+      - 'scripts/engine-lint-baselines.test.mjs'
   push:
     branches: [main]
     paths:
@@ -47,9 +48,86 @@ jobs:
       - name: Verify Control UI source catalog and raw-copy baseline
         working-directory: engine
         run: pnpm ui:i18n:verify
-        # `generated` / catalog-fallbacks.json is post-merge owned. Requiring it
-        # on source PRs forces mixed generated+source commits, which isolation rejects.
+        # catalog-fallbacks.json freshness runs in generated-baseline-pr below (PRs) and generated-baseline (after merge).
 
+  # Same freshness check as generated-baseline, on PRs, so a stale catalog-fallbacks.json
+  # fails the PR (and merge-gate) instead of turning main red after merge. Read-only: it never
+  # regenerates or pushes. pull_request checks out the merge ref, so it checks the merge result.
+  generated-baseline-pr:
+    name: Control UI catalog fallbacks (PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Check catalog-fallbacks workflow wiring
+        run: node --test scripts/engine-lint-baselines.test.mjs
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@12.5.1
+      - name: Install frozen engine dependencies
+        working-directory: engine
+        run: pnpm install --frozen-lockfile
+      - name: Check catalog-fallbacks.json against the Control UI source
+        id: generated
+        working-directory: engine
+        run: node scripts/run-vitest.mjs run test/scripts/control-ui-i18n.generated.test.ts
+      - name: Explain how to refresh catalog-fallbacks.json
+        if: ${{ failure() && steps.generated.outcome == 'failure' }}
+        run: |
+          {
+            echo '### catalog-fallbacks.json is stale'
+            echo 'Regenerate it (no provider key needed) and commit engine/ui/src/i18n/.i18n/catalog-fallbacks.json on this PR:'
+            echo '```'
+            echo 'cd engine && node --import ./scripts/tsx.mjs --input-type=module -e "const m = await import('"'"'./scripts/control-ui-i18n-verify.ts'"'"'); await m.syncControlUiCatalogFallbackBaseline({ checkOnly: false, write: true });"'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # No other workflow runs the full extensions type check, so main collected tsgo errors that only
+  # `pnpm tsgo:extensions` showed. merge-gate waits for every check on the PR head, so this job gates merges.
+  extensions-typecheck:
+    name: Extensions type check (tsgo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@12.5.1
+      - name: Install frozen engine dependencies
+        working-directory: engine
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Generate Kysely types and build the gateway workspace packages
+        # Same preparation as scripts/feature-batch-ci.mjs (prepareBuildArtifacts). Without the generated
+        # database types and the gateway-protocol/gateway-client builds, core imports fail to resolve.
+        working-directory: engine
+        run: |
+          node --import ./scripts/tsx.mjs --input-type=module --eval 'const { withDistArtifactOwnership } = await import("./scripts/lib/dist-artifact-ownership.mts"); const { ensureKyselyTypes } = await import("./scripts/generate-kysely-types.mts"); await withDistArtifactOwnership(process.cwd(), () => ensureKyselyTypes(process.cwd()));'
+          node --import ./scripts/tsx.mjs scripts/build-workspace-package.mts gateway-protocol
+          node --import ./scripts/tsx.mjs scripts/build-workspace-package.mts gateway-client
+      - name: Type-check every extension
+        working-directory: engine
+        run: node scripts/run-tsgo.mjs -p tsconfig.extensions.json
+
+  # generated-baseline-pr runs the same check on PRs; this job stays as the backstop for main.
   # The generated-baseline check moved out of the named PR suite (control-ui-i18n.test.ts) into
   # its own test file. It runs after merge on main only (push to main; never dispatch or PRs).
   # When it drifts on main, the job regenerates catalog-fallbacks.json and pushes a bot branch

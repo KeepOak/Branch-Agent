@@ -49,7 +49,11 @@ function stubChrome(narrow = true) {
 
 type HistoryLine = { kind: "user"; key: string; text: string } | { kind: "text"; key: string; text: string; streaming: false };
 
-function session(openKey: string, topics: typeof trip[], history: HistoryLine[]) {
+function session(openKey: string, topics: typeof trip[], history: HistoryLine[], controls?: {
+  listeners: Set<(event: string, payload: unknown) => void>;
+  rows: () => typeof sessions;
+  historyGate?: () => Promise<void>;
+}) {
   const snapshot = {
     status: { phase: "connected" }, sessionKey: openKey, mainKey: "agent:oak:main", name: "Oak",
     history, live: [], pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null,
@@ -62,8 +66,9 @@ function session(openKey: string, topics: typeof trip[], history: HistoryLine[])
     if (method === "contacts.list") return { contacts: [oak] };
     if (method === "contacts.topics") return { topics };
     if (method === "sessions.subscribe") return { list: { sessions } };
-    if (method === "sessions.list") return { sessions };
+    if (method === "sessions.list") return { sessions: controls?.rows() ?? sessions };
     if (method === "chat.history") {
+      await controls?.historyGate?.();
       if (key === "agent:oak:main") return { messages: [{ role: "assistant", content: [{ type: "text", text: "General last line" }] }] };
       if (key === "agent:oak:trip") return { messages: [{ role: "user", content: "Child question" }] };
       return { messages: [] };
@@ -80,7 +85,10 @@ function session(openKey: string, topics: typeof trip[], history: HistoryLine[])
     gatewayUrl: "ws://127.0.0.1:19661",
     getSnapshot: () => snapshot,
     subscribe: () => () => {},
-    onGatewayEvent: () => () => {},
+    onGatewayEvent: (listener: (event: string, payload: unknown) => void) => {
+      controls?.listeners.add(listener);
+      return () => controls?.listeners.delete(listener);
+    },
     open: vi.fn(async () => {}),
     reload: vi.fn(),
   } as unknown as SaplingSession;
@@ -131,6 +139,114 @@ describe("preview topic row in the shell", () => {
 });
 
 
+describe("All topics across sessions.list refreshes", () => {
+  async function setup() {
+    stubChrome();
+    localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "tabs", width: 300, per: {} }));
+    const listeners = new Set<(event: string, payload: unknown) => void>();
+    let rows = sessions.map((row) => ({ ...row }));
+    let gate: Promise<void> | undefined;
+    const client = session("agent:oak:main", [trip], [], { listeners, rows: () => rows, historyGate: () => gate ?? Promise.resolve() });
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(<WindowShell session={client} url="ws://127.0.0.1:19661" />));
+    await vi.waitFor(() => expect(host.querySelector(".topicsT5")).toBeTruthy());
+    const reads = () => vi.mocked(client.request).mock.calls.filter(([method]) => method === "chat.history");
+    const refresh = async (changed = false) => {
+      rows = rows.map((row) => ({ ...row, ...(changed && row.key === trip.key ? { updatedAt: row.updatedAt + 1 } : {}) }));
+      const before = vi.mocked(client.request).mock.calls.filter(([method]) => method === "sessions.list").length;
+      await act(async () => {
+        listeners.forEach((listener) => listener("sessions.changed", {}));
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      });
+      expect(vi.mocked(client.request).mock.calls.filter(([method]) => method === "sessions.list").length).toBeGreaterThan(before);
+    };
+    const click = async (label: string) => {
+      const button = host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
+      expect(button).toBeTruthy();
+      await act(async () => button!.click());
+    };
+    return { host, reads, refresh, click, hold: () => { let release!: () => void; gate = new Promise<void>((resolve) => { release = resolve; }); return release; } };
+  }
+
+  it("reuses unchanged threads after a new rows array and reads only a changed thread", async () => {
+    const view = await setup();
+    const before = view.reads().length;
+    await view.click("All");
+    expect(view.reads()).toHaveLength(before + 2);
+    await view.refresh();
+    expect(view.reads()).toHaveLength(before + 2);
+    await view.refresh(true);
+    expect(view.reads()).toHaveLength(before + 3);
+    expect(view.reads().at(-1)?.[1]).toEqual({ sessionKey: trip.key });
+    await view.click("General");
+    await view.click("All");
+    expect(view.reads()).toHaveLength(before + 5);
+  });
+
+  it("finishes the in-flight load before collapsing refreshed rows into one follow-up", async () => {
+    const view = await setup();
+    const release = view.hold();
+    const before = view.reads().length;
+    await view.click("All");
+    expect(view.reads()).toHaveLength(before + 2);
+    await view.refresh(true);
+    await view.refresh(true);
+    expect(view.reads()).toHaveLength(before + 2);
+    await act(async () => release());
+    expect(view.reads()).toHaveLength(before + 3);
+    expect(view.reads().at(-1)?.[1]).toEqual({ sessionKey: trip.key });
+    expect(view.host.textContent).not.toContain("Reading all threads…");
+  });
+});
+
+describe("opening a contact row", () => {
+  it("fires one contacts.markRead when the sidebar and shell both handle the click", async () => {
+    const unread: Contact = { ...oak, unreadTopics: 2, topicCount: 2 };
+    stubChrome(false);
+    const request = vi.fn(async (method: string, params?: unknown) => {
+      const key = (params as { sessionKey?: string } | undefined)?.sessionKey;
+      if (method === "config.get") return { hash: "h", config: { wizard: { lastRunAt: "2026-10-06T00:00:00Z" } } };
+      if (method === "agents.list") return { defaultId: "oak", agents: [{ id: "oak", kind: "agent", name: "Oak" }] };
+      if (method === "contacts.list") return { contacts: [unread] };
+      if (method === "contacts.topics") return { topics: [trip] };
+      if (method === "contacts.markRead") return { updated: 2 };
+      if (method === "sessions.subscribe") return { list: { sessions } };
+      if (method === "sessions.list") return { sessions };
+      if (method === "chat.history") {
+        if (key === "agent:oak:main") return { messages: [{ role: "assistant", content: [{ type: "text", text: "General last line" }] }] };
+        return { messages: [] };
+      }
+      if (method === "rooms.list") return { rooms: [] };
+      if (method === "peers.list" || method === "a2a.peers.list") return { peers: [] };
+      if (method === "channels.status") return { channelOrder: [] };
+      if (method === "exec.approval.list" || method === "plugin.approval.list" || method === "branch.approval.list") return { items: [] };
+      return {};
+    });
+    const snapshot = {
+      status: { phase: "connected" }, sessionKey: "agent:oak:main", mainKey: "agent:oak:main", name: "Oak",
+      history: [], live: [], pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null,
+      doneAt: null, lastActivityAt: 10, error: null, steered: [], ended: null,
+    };
+    const client = {
+      request, engine: { request, onEvent: () => () => {}, scopes: ["operator.admin"], agentId: "oak" },
+      gatewayUrl: "ws://127.0.0.1:19661", getSnapshot: () => snapshot, subscribe: () => () => {},
+      onGatewayEvent: () => () => {}, open: vi.fn(async () => {}), reload: vi.fn(),
+    } as unknown as SaplingSession;
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(<WindowShell session={client} url="ws://127.0.0.1:19661" />));
+    const row = await vi.waitFor(() => {
+      const button = host.querySelector<HTMLButtonElement>('[data-testid=conversation-row][data-key="agent:oak:main"] .row-open');
+      expect(button).toBeTruthy();
+      return button!;
+    });
+    await act(async () => row.click());
+    const markReads = request.mock.calls.filter(([method]) => method === "contacts.markRead");
+    expect(markReads).toEqual([["contacts.markRead", { contactId: "trunk:oak" }]]);
+  });
+});
+
 describe("Settings sidebar rail", () => {
   it("uses the icon rail on desktop and restores the saved full width after leaving Settings", async () => {
     localStorage.setItem("branch.layout", JSON.stringify({ sideW: 340, rail: false, hidden: false }));
@@ -151,7 +267,10 @@ describe("Settings sidebar rail", () => {
     const host = await show("agent:oak:main", [], [], false);
     const frame = host.querySelector<HTMLElement>(".frame")!;
     await act(async () => host.querySelector<HTMLButtonElement>(".rail-search")!.click());
-    await vi.waitFor(() => expect(document.activeElement).toBe(host.querySelector("[data-testid=search] input")));
+    expect(host.querySelector("[data-testid=palette]")).not.toBeNull();
+    await act(async () => host.querySelector<HTMLInputElement>("[data-testid=palette] input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(host.querySelector("[data-testid=palette]")).toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=list-toggle]")!.click());
     expect(frame.classList.contains("rail")).toBe(false);
     await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=list-toggle]")!.click());
     expect(frame.classList.contains("rail")).toBe(true);
@@ -173,5 +292,45 @@ describe("Settings sidebar rail", () => {
     localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "general" }));
     const host = await show("agent:oak:main", [], [], false);
     expect(host.querySelector<HTMLElement>(".frame")!.style.getPropertyValue("--side-w")).toBe("0px");
+  });
+});
+
+describe("Skip to the conversation", () => {
+  it("moves keyboard focus to the chat composer (C6-092)", async () => {
+    const host = await show("agent:oak:main", [], [], false);
+    const skip = host.querySelector<HTMLAnchorElement>("a.skip")!;
+    const main = host.querySelector<HTMLElement>("main#main")!;
+    expect(skip.textContent).toBe("Skip to the conversation");
+    const composer = main.querySelector<HTMLTextAreaElement>(".composer textarea")!;
+    expect(composer).not.toBeNull();
+    skip.focus();
+    await act(async () => skip.click());
+    expect(document.activeElement).toBe(composer);
+  });
+
+  it("moves keyboard focus to the Settings heading (C6-092)", async () => {
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "general" }));
+    const host = await show("agent:oak:main", [], [], false);
+    const skip = host.querySelector<HTMLAnchorElement>("a.skip")!;
+    const heading = host.querySelector<HTMLElement>("main#main h1")!;
+    expect(heading).not.toBeNull();
+    expect(skip.textContent).toBe("Skip to the page");
+    skip.focus();
+    await act(async () => skip.click());
+    expect(document.activeElement).toBe(heading);
+    expect(heading.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("falls back to main when there is no composer or heading (C6-092)", async () => {
+    const host = await show("agent:oak:main", [], [], false);
+    const skip = host.querySelector<HTMLAnchorElement>("a.skip")!;
+    const main = host.querySelector<HTMLElement>("main#main")!;
+    main.querySelector(".composer")!.remove();
+    main.querySelectorAll("h1").forEach((heading) => heading.remove());
+    expect(main.querySelector(".composer, h1")).toBeNull();
+    expect(main.getAttribute("tabindex")).toBe("-1");
+    skip.focus();
+    await act(async () => skip.click());
+    expect(document.activeElement).toBe(main);
   });
 });

@@ -34,6 +34,18 @@ describe("contact navigation", () => {
     }
   });
 
+  it("leaves the message to New Trunk when asked to stay quiet, and still returns no conversation (#479)", async () => {
+    vi.mocked(notify).mockClear();
+    const request = fakeRequest((method: string) => method === "agents.list"
+      ? Promise.resolve({ defaultId: "fern", mainKey: "home" })
+      : Promise.reject(new Error("The engine is busy")));
+    const actions = conversationActions(request, new ConversationList(request, null), () => null);
+    expect(await actions.create("hazel", { quiet: true })).toBeNull();
+    expect(notify).not.toHaveBeenCalled();
+    expect(await actions.create("hazel")).toBeNull();
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
   it("shows one plain message when contact admission stays pending past the cap", async () => {
     vi.mocked(notify).mockClear();
     vi.useFakeTimers();

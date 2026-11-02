@@ -240,7 +240,11 @@ function nativeRuntime(source: NativeSource): NativeRuntime {
       },
       resourceBroker() {
         return (source.broker ??= runInDetachedAsyncContext(() =>
-          createSpawnBrokerHost({ nativeResources: true, workerUrl: source.brokerModuleUrl }),
+          createSpawnBrokerHost({
+            nativeResources: true,
+            workerUrl: source.brokerModuleUrl,
+            lazyStart: true,
+          }),
         ));
       },
       refreshReference() {

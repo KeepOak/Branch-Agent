@@ -1,0 +1,1 @@
+engine:test/provider-auth-method.openai-siwc.integration.test.ts

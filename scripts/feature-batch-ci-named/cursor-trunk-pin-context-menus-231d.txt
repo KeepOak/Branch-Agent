@@ -1,0 +1,7 @@
+window:src/screens/sidebar/Sidebar.test.tsx
+window:src/screens/sidebar/batch.test.tsx
+window:src/screens/sidebar/coming.test.tsx
+window:src/screens/sidebar/glass48.test.tsx
+window:src/screens/sidebar/menus.test.tsx
+window:src/screens/sidebar/row-menu.test.ts
+window:src/screens/sidebar/wired.test.tsx

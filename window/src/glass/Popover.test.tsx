@@ -40,6 +40,25 @@ it("stays open for a scroll inside itself", async () => {
   expect(onClose).not.toHaveBeenCalled();
 });
 
+it("focuses its first control without scrolling, and a scroll does not redraw the menu", async () => {
+  const focus = vi.spyOn(HTMLElement.prototype, "focus");
+  let renders = 0;
+  function Row() {
+    renders += 1;
+    return <button type="button">Copy</button>;
+  }
+  const anchor = createRef<HTMLElement>();
+  const button = anchorHost.appendChild(document.createElement("button"));
+  anchor.current = button;
+  await act(async () => root.render(<Popover anchor={anchor} label="Message" onClose={() => {}}><Row /></Popover>));
+  const settled = renders;
+  expect(settled).toBeGreaterThan(0);
+  expect(focus.mock.calls.length).toBeGreaterThan(0);
+  expect(focus.mock.calls.every((call) => (call[0] as { preventScroll?: boolean } | undefined)?.preventScroll === true)).toBe(true);
+  await act(async () => { window.dispatchEvent(new Event("scroll")); });
+  expect(renders).toBe(settled);
+});
+
 it("keeps a popover that did not ask to close on scroll open", async () => {
   const onClose = vi.fn();
   await mount(onClose, false);

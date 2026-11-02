@@ -63,6 +63,89 @@ function value(plistText, key) {
   return new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`).exec(plistText)?.[1];
 }
 
+test("a first launch from Downloads or a disk image offers to move Branch.app into Applications", async () => {
+  const home = await mkdtemp(join(tmpdir(), "mac-move-home-"));
+  const data = await mkdtemp(join(tmpdir(), "mac-move-data-"));
+  try {
+    const system = "/Applications";
+    const user = join(home, "Applications");
+    const options = { systemApplications: system, homeDirectory: home };
+    assert.equal(mac.MAC_MOVE_MESSAGE, "Move Branch to Applications so it is easy to find?");
+    assert.equal(mac.MAC_MOVE_BUTTON, "Move");
+    assert.equal(mac.MAC_NOT_NOW_BUTTON, "Not now");
+    assert.doesNotMatch(mac.MAC_MOVE_MESSAGE, /[—–]/);
+    assert.equal(mac.macAppIsInApplicationsFolder(join(system, "Branch.app"), options), true);
+    assert.equal(mac.macAppIsInApplicationsFolder(join(user, "Branch.app"), options), true);
+    assert.equal(mac.macAppIsInApplicationsFolder(join(user, "Branch Agent.app"), options), true);
+    assert.equal(mac.shouldOfferMacApplicationsMove(join(home, "Downloads", "Branch.app"), options), true);
+    assert.equal(mac.shouldOfferMacApplicationsMove(join("/Volumes", "Branch", "Branch.app"), options), true);
+    assert.equal(mac.shouldOfferMacApplicationsMove(join("/private/var/folders/zz/AppTranslocation/abc/d/Branch.app"), options), true);
+    assert.equal(mac.shouldOfferMacApplicationsMove(join(system, "Branch.app"), options), false);
+    assert.equal(mac.shouldOfferMacApplicationsMove(join(user, "Branch.app"), options), false);
+    assert.equal(mac.shouldOfferMacApplicationsMove(join(home, "Downloads", "Branch.app"), { ...options, declined: true }), false);
+    assert.equal(mac.shouldOfferMacApplicationsMove(join(home, "src", "desktop"), options), false);
+    assert.equal(mac.macLaunchLocationIsTransient(join(home, "Downloads", "Branch.app")), true);
+    assert.equal(mac.macLaunchLocationIsTransient(join("/Volumes", "Branch", "Branch.app")), false);
+    assert.equal(mac.macApplicationsExecutable(join(system, "Branch.app")), join(system, "Branch.app", "Contents", "MacOS", "Branch Agent"));
+
+    const source = join(home, "Downloads", "Branch.app");
+    await bundle(source);
+    const installed = [];
+    const removed = [];
+    const moved = await mac.offerMacApplicationsMove({
+      appDir: source,
+      dataDir: data,
+      ask: async () => "move",
+      install: async (app, opts) => {
+        installed.push({ app, running: opts.runningAppDir });
+        return join(system, "Branch.app");
+      },
+      removeTransient: async app => { removed.push(app); },
+    });
+    assert.deepEqual(moved, { moved: true, relaunch: join(system, "Branch.app", "Contents", "MacOS", "Branch Agent") });
+    assert.deepEqual(installed, [{ app: source, running: source }]);
+    assert.deepEqual(removed, [source]);
+
+    const skipped = await mac.offerMacApplicationsMove({
+      appDir: join(system, "Branch.app"),
+      dataDir: data,
+      ask: async () => { throw new Error("already in Applications"); },
+    });
+    assert.deepEqual(skipped, { moved: false });
+
+    const later = await mac.offerMacApplicationsMove({
+      appDir: source,
+      dataDir: data,
+      ask: async () => "not-now",
+    });
+    assert.deepEqual(later, { moved: false });
+    assert.equal(await mac.readMacMoveDeclined(data), true);
+    const remembered = await mac.offerMacApplicationsMove({
+      appDir: source,
+      dataDir: data,
+      ask: async () => { throw new Error("Not now was remembered"); },
+    });
+    assert.deepEqual(remembered, { moved: false });
+    assert.deepEqual(await mac.offerMacApplicationsMove({ appDir: source, dataDir: data, skip: true }), { moved: false });
+  } finally {
+    await rm(home, { recursive: true, force: true });
+    await rm(data, { recursive: true, force: true });
+  }
+});
+
+test("install.sh prefers /Applications/Branch.app and keeps fixture installs in HOME", { skip: process.platform === "win32" }, async () => {
+  const source = await text("install/install.sh");
+  assert.match(source, /choose_darwin_apps/);
+  assert.match(source, /\[ -d \/Applications \] && \[ -w \/Applications \]/);
+  assert.match(source, /dest="\$apps\/Branch\.app"/);
+  assert.match(source, /BRANCH_INSTALL_BASE_URL/);
+  assert.match(source, /\$HOME\/Applications/);
+  assert.match(source, /lsregister/);
+  assert.match(source, /open Branch from Applications/);
+  assert.match(source, /BRANCH_INSTALL_BASE_URL[\s\S]*Branch Agent\.app/);
+  assert.doesNotMatch(source.replace(/BRANCH_INSTALL_BASE_URL[\s\S]*?dest="\$apps\/Branch Agent\.app"/, ""), /Installed \$apps\/Branch Agent\.app/);
+});
+
 test("Applications directory prefers a writable system folder, then the home folder", async () => {
   const home = await mkdtemp(join(tmpdir(), "mac-applications-home-"));
   try {
@@ -311,15 +394,19 @@ test("packaging, updates, and CI keep the Applications install and the pinned si
   const bundleCheck = await text("scripts/check-mac-bundle.mjs");
   assert.match(release, /darwinPackagerOptions\(macIcon\)/);
   assert.match(release, /assets\/branch\.icns/);
-  assert.match(release, /macSigningPlan\(\)/);
+  assert.match(release, /macSigningPlan\(process\.env, identity\)/);
   assert.match(release, /signing: macSigning\.signing/);
   const stampAt = release.indexOf("await stampMacBundle");
   assert.ok(stampAt !== -1 && release.indexOf("macSignCommand(macSigning, join(app, MAC_ARCHIVE_BUNDLE_FOLDER))", stampAt) > stampAt);
   // The workflow reads the declared signing from the release proof and allows ad-hoc only for an "adhoc" build.
-  assert.match(componentRelease, /signing="\$\(node -p 'JSON\.parse\(require\("node:fs"\)\.readFileSync\(process\.argv\[1\], "utf8"\)\)\.signing' "\$RELEASE_ASSETS\/release-proof-darwin-arm64\.json"\)"/);
+  assert.match(componentRelease, /signing="\$\(node -p 'JSON\.parse\(require\("node:fs"\)\.readFileSync\(process\.argv\[1\], "utf8"\)\)\.signing' "\$RELEASE_ASSETS\/release-proof-\$\{BRANCH_RELEASE_TARGET\}\.json"\)"/);
   assert.match(componentRelease, /mod\.assertMacReleaseSignature\(text, actual, process\.argv\[3\]\);' "\$GITHUB_WORKSPACE\/desktop\/dist\/mac-applications\.js" "\$report" "\$signing"/);
   assert.match(updater, /ensureMacApplicationsInstall/);
   assert.match(updater, /chooseStagedMacBundle/);
+  const launcher = await text("src/main.ts");
+  assert.match(launcher, /offerMacApplicationsMove/);
+  assert.match(launcher, /MAC_MOVE_MESSAGE/);
+  assert.match(launcher, /app\.relaunch\(\{ execPath: move\.relaunch \}\)/);
   assert.match(helper, /lsregister/);
   assert.match(helper, /windowsHide: true/);
   assert.match(maker, /Branch Agent\.app\/Contents\/Resources\/app\.asar/);
@@ -374,6 +461,31 @@ test("a launch from Applications registers Branch.app and does not copy or delet
       const viaLink = await mac.installMacApp(linked, { applicationsDirectory: apps, runningAppDir: linked, register });
       assert.equal((await stat(viaLink)).ino, before.ino, apps);
     }
+  } finally { await done(); }
+});
+
+test("a running legacy Applications bundle is not recopied and successful installs are logged", async () => {
+  const { root, done } = await tempTree();
+  try {
+    const apps = join(root, "Applications");
+    const legacy = join(apps, "Branch Agent.app");
+    const staged = join(root, "Downloads", "Branch Agent.app");
+    const applications = { platform: "darwin", systemApplications: apps };
+    assert.equal(mac.shouldEnsureMacApplicationsInstall(legacy, applications), false);
+    assert.equal(mac.shouldEnsureMacApplicationsInstall(staged, applications), true);
+    const messages = [];
+    const installs = [];
+    await mac.ensureMacApplicationsInstall(staged, join(root, "desktop.log"), {
+      platform: "darwin",
+      testDist: false,
+      install: async (source, options) => {
+        installs.push({ source, running: options.runningAppDir });
+        return join(apps, "Branch.app");
+      },
+      appendLog: (_file, message) => { messages.push(message); },
+    });
+    assert.deepEqual(installs, [{ source: staged, running: staged }]);
+    assert.match(messages[0], /macOS Applications install succeeded: .*Branch\.app/);
   } finally { await done(); }
 });
 

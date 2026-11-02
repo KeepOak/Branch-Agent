@@ -15,6 +15,8 @@ type DashboardOptions = {
   json?: boolean;
   noOpen?: boolean;
   yes?: boolean;
+  /** Shorter lifetime for the one-time browser pairing code (clamped to the default). */
+  ttlSeconds?: number;
 };
 
 const quietRuntime: RuntimeEnv = {
@@ -57,7 +59,7 @@ function dashboardJsonFailure(runtime: RuntimeEnv, reason: string): void {
   runtime.exit(1);
 }
 
-async function dashboardJsonCommand(runtime: RuntimeEnv): Promise<void> {
+async function dashboardJsonCommand(runtime: RuntimeEnv, ttlSeconds?: number): Promise<void> {
   try {
     const target = await resolveDashboardTarget();
     const readiness = await ensureDashboardTargetReady({
@@ -86,7 +88,10 @@ async function dashboardJsonCommand(runtime: RuntimeEnv): Promise<void> {
       dashboardJsonFailure(runtime, document.reason);
       return;
     }
-    const browserHandoff = await issueControlUiBrowserHandoff(target.links);
+    const browserHandoff = await issueControlUiBrowserHandoff(
+      target.links,
+      ttlSeconds === undefined ? {} : { ttlMs: ttlSeconds * 1000 },
+    );
 
     writeRuntimeJson(
       runtime,
@@ -117,7 +122,7 @@ export async function dashboardCommand(
   options: DashboardOptions = {},
 ) {
   if (options.json) {
-    await dashboardJsonCommand(runtime);
+    await dashboardJsonCommand(runtime, options.ttlSeconds);
     return;
   }
 
@@ -172,7 +177,12 @@ export async function dashboardCommand(
   }
   let browserUrl: string;
   try {
-    browserUrl = (await issueControlUiBrowserHandoff(target.links)).browserUrl;
+    browserUrl = (
+      await issueControlUiBrowserHandoff(
+        target.links,
+        options.ttlSeconds === undefined ? {} : { ttlMs: options.ttlSeconds * 1000 },
+      )
+    ).browserUrl;
   } catch (error) {
     runtime.error(
       `Could not create a one-time browser pairing link: ${error instanceof Error ? error.message : String(error)}`,

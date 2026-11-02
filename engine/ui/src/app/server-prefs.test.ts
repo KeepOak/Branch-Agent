@@ -148,7 +148,7 @@ describe("server preferences", () => {
   });
 
   it("does not reapply a retained pre-commit snapshot after an ack moves lastSeen", async () => {
-    const oldSnapshot = configWithPrefs({ themeMode: "light" });
+    const oldSnapshot = configWithPrefs({ themeMode: "system" });
     const onApplied = vi.fn();
     applyServerUiPrefs(oldSnapshot, { scope, onApplied });
     patchSettings({ themeMode: "dark" });
@@ -166,10 +166,10 @@ describe("server preferences", () => {
     expect(applyServerUiPrefs(oldSnapshot, { scope, onApplied })).toBe(false);
     expect(loadSettings().themeMode).toBe("dark");
     expect(afterCommit).toHaveBeenCalledWith({ needsRefresh: true });
-    expect(applyServerUiPrefs(configWithPrefs({ themeMode: "light" }), { scope, onApplied })).toBe(
+    expect(applyServerUiPrefs(configWithPrefs({ themeMode: "system" }), { scope, onApplied })).toBe(
       true,
     );
-    expect(loadSettings().themeMode).toBe("light");
+    expect(loadSettings().themeMode).toBe("system");
   });
 
   it("preserves a local sidebar edit when only another server preference changes", () => {
@@ -231,7 +231,7 @@ describe("server preferences", () => {
     const reset = loadSettings();
     expect(changedServerUiPrefs(before, reset)).toEqual({
       theme: "grove",
-      themeMode: "system",
+      themeMode: "light",
       accent: null,
       locale: null,
       chatSendShortcut: "enter",
@@ -239,7 +239,7 @@ describe("server preferences", () => {
     });
     expect(reset).toMatchObject({
       theme: "grove",
-      themeMode: "system",
+      themeMode: "light",
     });
     expect(reset.locale).toBeUndefined();
     expect(reset.chatFollowUpMode).toBeUndefined();
@@ -450,7 +450,7 @@ describe("server preferences", () => {
   });
 
   it("reconciles the refreshed snapshot again after clearing its pending shadow", async () => {
-    const refreshedSnapshot = configWithPrefs({ themeMode: "light" });
+    const refreshedSnapshot = configWithPrefs({ themeMode: "system" });
     patchSettings({ themeMode: "dark" });
     const onApplied = vi.fn();
     const request = vi.fn<Request>(async () => {
@@ -475,8 +475,8 @@ describe("server preferences", () => {
     await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
     await waitForFast(() => expect(localStorage.getItem(pendingKey("ws://gw"))).toBeNull());
 
-    expect(onApplied).toHaveBeenCalledWith({ themeMode: "light" });
-    expect(loadSettings().themeMode).toBe("light");
+    expect(onApplied).toHaveBeenCalledWith({ themeMode: "system" });
+    expect(loadSettings().themeMode).toBe("system");
   });
 
   it("does not let another scope's reconcile replace an active drain's pending state", async () => {

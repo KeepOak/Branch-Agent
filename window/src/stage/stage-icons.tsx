@@ -12,6 +12,7 @@ const PATHS = {
   window: <><rect x="3.5" y="5" width="17" height="14" rx="2" /><path d="M3.5 9h17" /><path d="M6.5 7h.01M9 7h.01" /></>,
   pip: <><rect x="3" y="4.5" width="18" height="15" rx="2" /><rect x="12" y="12" width="6.5" height="5" rx="1" /></>,
   more: <><circle cx="6" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="18" cy="12" r="1" /></>,
+  keyboard: <><rect x="2.5" y="6" width="19" height="12" rx="2" /><path d="M6 10h.1M9.5 10h.1M13 10h.1M16.5 10h.1M7 14.5h10" /></>,
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   spark: <path d="M12 3v5M12 16v5M3 12h5M16 12h5M6 6l3 3M15 15l3 3M6 18l3-3M15 9l3-3" />,
   spin: <path d="M12 3a9 9 0 1 0 9 9" />,

@@ -16,6 +16,7 @@ import type {
   WorkerOperations,
 } from "../state/worker-operation-registry.js";
 import {
+  clampDeviceBootstrapTokenTtlMs,
   DEVICE_BOOTSTRAP_TOKEN_TTL_MS,
   resolveDeviceBootstrapTokenExpiresAtMs,
   type BoundDeviceBootstrapContext,
@@ -128,11 +129,19 @@ function loadState(nowMs: number): DeviceBootstrapStateFile {
 }
 
 function issueDeviceBootstrapTokenRecord(
-  params: { profile: DeviceBootstrapProfile; setupId?: string; nowMs: number },
+  params: { profile: DeviceBootstrapProfile; setupId?: string; nowMs: number; ttlMs?: number },
   state = loadState(params.nowMs),
 ): { token: string; expiresAtMs: number } {
   const token = generatePairingToken();
-  const issuedAtMs = asDateTimestampMs(params.nowMs);
+  const nowMs = asDateTimestampMs(params.nowMs);
+  // A shorter requested lifetime (#1932) moves the expiry anchor back so every existing expiry check, which reads
+  // issuedAtMs + the default TTL, ends it early without a new column. Setup credentials keep their own lifetime;
+  // `ts` keeps the real issue time.
+  const ttlMs = params.setupId ? undefined : clampDeviceBootstrapTokenTtlMs(params.ttlMs);
+  const issuedAtMs =
+    nowMs === undefined || ttlMs === undefined
+      ? nowMs
+      : asDateTimestampMs(nowMs - (DEVICE_BOOTSTRAP_TOKEN_TTL_MS - ttlMs));
   const expiresAtMs =
     issuedAtMs === undefined
       ? undefined
@@ -143,7 +152,7 @@ function issueDeviceBootstrapTokenRecord(
   state[token] = {
     token,
     ...(params.setupId ? { setupId: params.setupId } : {}),
-    ts: issuedAtMs,
+    ts: nowMs ?? issuedAtMs,
     profile: params.profile,
     redeemedProfile: normalizeDeviceBootstrapProfile(undefined),
     issuedAtMs,

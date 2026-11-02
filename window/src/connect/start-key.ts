@@ -4,10 +4,12 @@ import { hasStoredDeviceToken } from "./device-token-store";
 export type DesktopBridge = { gatewayUrl?: string; getGatewayUrl?: () => string; gatewayToken?: string };
 
 /** The key this window starts with for `url`: the desktop app's for its own gateway, none once paired elsewhere,
- *  null when it must ask. The desktop app always sends its key, so a pairing made with fewer scopes (an older
- *  window) widens to the scopes this window asks for; a stored device token alone can never widen its own scopes. */
+ *  null when it must ask. An empty typed key is "not typed" — Get started / Set up later pass "" and this falls
+ *  through to `window.branchDesktop.gatewayToken` (desktop preload, `desktop/src/preload.ts`) or a stored device
+ *  token. The desktop app always sends its key, so a pairing made with fewer scopes (an older window) widens to
+ *  the scopes this window asks for; a stored device token alone can never widen its own scopes. */
 export function startKey(url: string, typed: string | null, bridge: DesktopBridge | undefined): string | null {
-  if (typed !== null) {
+  if (typed) {
     return typed;
   }
   if (url === bridge?.gatewayUrl && bridge.gatewayToken) {

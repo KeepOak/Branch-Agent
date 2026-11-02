@@ -80,7 +80,7 @@ const memory = {
 };
 const memoryIssue = {
   path: "memory.search.provider",
-  message: 'memory.search.provider = "auto" is legacy; use "openai" explicitly.',
+  message: 'memory.search.provider = "auto" is legacy; use "local" explicitly.',
 };
 function useInvalidConfig(
   config: Record<string, unknown>,
@@ -172,7 +172,7 @@ describe("runDoctorConfigPreflight state migration input", () => {
     const migratedConfig = {
       memory: expect.objectContaining({
         search: expect.objectContaining({
-          provider: "openai",
+          provider: "local",
           store: { vector: { enabled: false } },
         }),
       }),

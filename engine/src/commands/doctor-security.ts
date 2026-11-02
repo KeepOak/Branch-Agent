@@ -13,6 +13,8 @@ import { resolveExecPolicyScopeSnapshot } from "../infra/exec-approvals-effectiv
 import { countObsoleteGeneratedExecApprovals } from "../infra/exec-approvals-generated-migration.js";
 import { ExecApprovalsMigrationRequiredError } from "../infra/exec-approvals-migration-gate.js";
 import {
+  DEFAULT_REQUESTED_ASK,
+  DEFAULT_REQUESTED_SECURITY,
   loadExecApprovalsReadOnly,
   resolveExecApprovalsDisplayPath,
   type ExecApprovalsFile,
@@ -77,8 +79,8 @@ function collectExecPolicyConflictWarnings(
   approvals: ExecApprovalsFile,
 ): SecurityAuditFinding[] {
   const findings: SecurityAuditFinding[] = [];
-  const defaultRequestedSecuritySource = "Branch Agent default (full)";
-  const defaultRequestedAskSource = "Branch Agent default (off)";
+  const defaultRequestedSecuritySource = `Branch Agent default (${DEFAULT_REQUESTED_SECURITY})`;
+  const defaultRequestedAskSource = `Branch Agent default (${DEFAULT_REQUESTED_ASK})`;
 
   const maybeWarn = (params: {
     scopeLabel: string;

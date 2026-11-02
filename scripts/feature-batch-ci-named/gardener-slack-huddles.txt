@@ -1,0 +1,4 @@
+engine:extensions/slack-huddles/src/join-gate.test.ts
+engine:src/meeting-bot/slack-huddle-notes.test.ts
+window:src/places/library/slack-huddle-notes.test.tsx
+window:src/screens/chatapps/slack-huddles.test.tsx

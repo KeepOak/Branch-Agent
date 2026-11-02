@@ -5,6 +5,7 @@ import { Dialog } from "../shell/Dialog";
 import { SIcon, type StageIconName } from "./stage-icons";
 import { computersChanged } from "./computers";
 import { shownWhy } from "../shell/shown-why";
+import { PAIRING_UNREACHABLE, plainError } from "../shell/plain-error";
 
 type View = "choose" | "pair" | "cloud";
 type Pairing = { phase: "loading" } | { phase: "error"; message: string } | { phase: "code"; code: string; qr?: string; setupId?: string; expiresAtMs?: number; done?: boolean };
@@ -12,7 +13,13 @@ type Profile = { id: string; name: string; os?: string };
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** The pairing refusal's next step, as BranchLinkDialog words it (#1814: one plain sentence and a next step). */
+export const ADD_COMPUTER_UNREACHABLE = `${PAIRING_UNREACHABLE} In Gateway settings, choose “My network” or “Tailscale” under “Who can reach the Gateway”, then make a new code.`;
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const message = (e: unknown): string => {
+  const plain = plainError(e);
+  return plain === PAIRING_UNREACHABLE ? ADD_COMPUTER_UNREACHABLE : plain;
+};
 
 /** A one-time node setup code (device.pair.setupCode, node profile), then its status until that computer finishes. */
 function usePairing(engine: WindowEngine, on: boolean): Pairing {

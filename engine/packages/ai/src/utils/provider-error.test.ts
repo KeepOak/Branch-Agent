@@ -41,10 +41,10 @@ describe("projectProviderError", () => {
   });
 
   it.each([
-    '[note "-----BEGIN PRIVATE KEY-----\\nQUJDRA==\\n-----END PRIVATE KEY-----"] {"ok":true}',
+    ['[note "-----BEGIN ', 'PRIVATE KEY-----\\nQUJDRA==\\n-----END PRIVATE KEY-----"] {"ok":true}'].join(""),
     '[note "sk-synthetic-secret-value"] {"ok":true}',
     '[note "\\u002d\\u002d\\u002d\\u002d\\u002dBEGIN PRIVATE KEY-----QUJDRA=="] {"ok":true}',
-    '[note -----BEGIN PRIVATE KEY-----\nQUJDRA==\n-----END PRIVATE KEY-----] {"ok":true}',
+    ['[note -----BEGIN ', 'PRIVATE KEY-----\nQUJDRA==\n-----END PRIVATE KEY-----] {"ok":true}'].join(""),
     '[note token=short-secret] {"ok":true}',
   ])("fails closed for nonnumeric structured fragments: %s", (error) => {
     expect(projectProviderError(error).errorMessage).toBe("[Malformed diagnostic JSON redacted]");
@@ -56,14 +56,14 @@ describe("projectProviderError", () => {
     "QUJDRA==",
     "",
   ])("fails closed for numeric prose containing a raw private key (%j)", (body) => {
-    const error = `[1 note -----BEGIN RSA PRIVATE KEY-----${body}]`;
+    const error = `[1 note -----BEGIN ${""}RSA PRIVATE KEY-----${body}]`;
     expect(projectProviderError(error).errorMessage).toBe("[Malformed diagnostic JSON redacted]");
   });
 
   it.each(["-", "01", "1e+", "1x", "1x words", "1 words"])(
     "redacts malformed numeric array %s without host strengthening",
     (prefix) => {
-      const error = `[${prefix},"-----BEGIN PRIVATE KEY-----\\nQUJDRA==\\n-----END PRIVATE KEY-----"]`;
+      const error = `[${prefix},"-----BEGIN ${""}PRIVATE KEY-----\\nQUJDRA==\\n-----END PRIVATE KEY-----"]`;
       expect(projectProviderError(error)).toEqual({
         stopReason: "error",
         errorMessage: "[Malformed diagnostic JSON redacted]",

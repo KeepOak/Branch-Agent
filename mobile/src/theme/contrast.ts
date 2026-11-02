@@ -7,7 +7,7 @@ function channel(value: number): number {
 
 function luminance(hex: string): number {
   const match = /^#([0-9a-f]{6})$/i.exec(hex);
-  if (!match) throw new Error(`Expected a #rrggbb colour, got ${hex}`);
+  if (!match) throw new Error(`Expected a six-digit hex colour, got ${hex}`);
   const n = Number.parseInt(match[1], 16);
   return 0.2126 * channel((n >> 16) & 255) + 0.7152 * channel((n >> 8) & 255) + 0.0722 * channel(n & 255);
 }

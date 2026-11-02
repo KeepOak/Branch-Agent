@@ -6,20 +6,43 @@ export const SystemAgentErrorDetailCodes = {
   SESSION_INVALIDATED: "system_agent_session_invalidated",
 } as const;
 
+/** The single fix a chat surface offers beside a plain failure sentence. */
+export type SystemAgentErrorFixAction = "retry" | "open-accounts";
+const FIX_ACTIONS: readonly string[] = ["retry", "open-accounts"];
+
 export type SystemAgentInferenceUnavailableErrorDetails = {
   code: typeof SystemAgentErrorDetailCodes.INFERENCE_UNAVAILABLE;
+  action?: SystemAgentErrorFixAction;
 };
 
 export type SystemAgentSessionInvalidatedErrorDetails = {
   code: typeof SystemAgentErrorDetailCodes.SESSION_INVALIDATED;
+  action?: SystemAgentErrorFixAction;
 };
 
-export function buildSystemAgentInferenceUnavailableErrorDetails(): SystemAgentInferenceUnavailableErrorDetails {
-  return { code: SystemAgentErrorDetailCodes.INFERENCE_UNAVAILABLE };
+function withAction<T extends { code: string }>(
+  details: T,
+  action: SystemAgentErrorFixAction | undefined,
+): T & { action?: SystemAgentErrorFixAction } {
+  return action ? { ...details, action } : details;
 }
 
-export function buildSystemAgentSessionInvalidatedErrorDetails(): SystemAgentSessionInvalidatedErrorDetails {
-  return { code: SystemAgentErrorDetailCodes.SESSION_INVALIDATED };
+function readAction(value: unknown): { action?: SystemAgentErrorFixAction } {
+  return typeof value === "string" && FIX_ACTIONS.includes(value)
+    ? { action: value as SystemAgentErrorFixAction }
+    : {};
+}
+
+export function buildSystemAgentInferenceUnavailableErrorDetails(
+  action?: SystemAgentErrorFixAction,
+): SystemAgentInferenceUnavailableErrorDetails {
+  return withAction({ code: SystemAgentErrorDetailCodes.INFERENCE_UNAVAILABLE }, action);
+}
+
+export function buildSystemAgentSessionInvalidatedErrorDetails(
+  action?: SystemAgentErrorFixAction,
+): SystemAgentSessionInvalidatedErrorDetails {
+  return withAction({ code: SystemAgentErrorDetailCodes.SESSION_INVALIDATED }, action);
 }
 
 export function readSystemAgentInferenceUnavailableErrorDetails(
@@ -29,7 +52,9 @@ export function readSystemAgentInferenceUnavailableErrorDetails(
     return undefined;
   }
   const code = details.code;
-  return code === SystemAgentErrorDetailCodes.INFERENCE_UNAVAILABLE ? { code } : undefined;
+  return code === SystemAgentErrorDetailCodes.INFERENCE_UNAVAILABLE
+    ? { code, ...readAction(details.action) }
+    : undefined;
 }
 
 export function readSystemAgentSessionInvalidatedErrorDetails(
@@ -39,5 +64,7 @@ export function readSystemAgentSessionInvalidatedErrorDetails(
     return undefined;
   }
   const code = details.code;
-  return code === SystemAgentErrorDetailCodes.SESSION_INVALIDATED ? { code } : undefined;
+  return code === SystemAgentErrorDetailCodes.SESSION_INVALIDATED
+    ? { code, ...readAction(details.action) }
+    : undefined;
 }

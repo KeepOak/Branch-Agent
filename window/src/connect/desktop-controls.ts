@@ -22,7 +22,13 @@ export type DesktopControlsBridge = {
   openDownload(id: string): Promise<void>;
   setTrayUsage(left: number | null): void;
   onOpenUsage(listener: () => void): () => void;
+  /** Settings › Remove Branch (Private #1102): what removing the app takes and keeps; older apps leave these out. */
+  removalPlan?(): Promise<AppRemovalPlan>;
+  /** Removes the app and quits it; the data folder (conversations, Trunks, settings) stays. */
+  removeApp?(): Promise<void>;
 };
+/** From the desktop (desktop-controls.ts appRemovalPlan): the confirm sheet shows exactly these lines. */
+export type AppRemovalPlan = { supported: boolean; reason?: string; removes: string[]; keeps: string[]; dataDir: string };
 
 /** Sent on window with the new state after any control changes, so every row showing a control follows it. */
 export const DESKTOP_CONTROLS_CHANGED = "branch:desktop-controls";

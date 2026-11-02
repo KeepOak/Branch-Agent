@@ -1,0 +1,6 @@
+engine:extensions/moonshot/index.test.ts
+engine:extensions/moonshot/media-understanding-provider.test.ts
+engine:extensions/moonshot/native-video.test.ts
+engine:extensions/moonshot/onboard.test.ts
+engine:extensions/moonshot/provider-catalog.test.ts
+engine:extensions/moonshot/src/kimi-web-search-provider.test.ts

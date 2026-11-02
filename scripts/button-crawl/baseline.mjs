@@ -1,6 +1,7 @@
 // Shrink-only gate for the hard problems. A new problem fails. A problem that
 // no longer reproduces fails until its baseline line is deleted.
 
+import { consoleEvidenceGateLines } from './console-evidence.mjs';
 import { screenOf } from './observe.mjs';
 
 export function normalizeBaseline(problems) {
@@ -46,9 +47,13 @@ export function compareBaseline({ baseline, found, checks }) {
   return { ok: news.length === 0 && stale.length === 0, news, stale };
 }
 
-export function formatGate(result) {
+export function formatGate(result, evidence) {
   const lines = [];
-  for (const item of result.news) lines.push(`New button-crawl problem: ${item.key} [${item.problem}]`);
+  for (const item of result.news) {
+    lines.push(`New button-crawl problem: ${item.key} [${item.problem}]`);
+    // The tag alone cannot be debugged. When the crawl kept the console text, print it here.
+    if (item.problem === 'console-error' && evidence) lines.push(...consoleEvidenceGateLines(evidence[item.key]));
+  }
   for (const item of result.stale) lines.push(`stale baseline entry, delete it: ${item.key} [${item.problem}]`);
   return lines;
 }

@@ -37,16 +37,17 @@ import { resolveRuntimeModelAttempt } from "./backend.js";
 import { resolveFinalAssistantVisibleText } from "./helpers.js";
 import {
   resolveSettledToolBatchEvidence,
+  SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT,
   shouldTreatEmptyAssistantReplyAsSilent,
 } from "./incomplete-turn-recovery.js";
 import type { createEmbeddedRunLaneController } from "./lane-controller.js";
+import { resolveSettledTurnFinalizationRequest } from "./settled-turn-finalization-request.js";
 import {
   isEmbeddedRunTerminalTimeout,
   resolveEmbeddedRunAttemptTerminalOutcome,
   type EmbeddedRunTerminalState,
 } from "./terminal-outcome.js";
 import { prepareEmbeddedRunTerminal } from "./terminal-preparation.js";
-import { resolveSettledTurnFinalizationRequest } from "./terminal-resolution.js";
 import type { EmbeddedRunAttemptParams } from "./types.js";
 
 type TerminalPreparationInput = Parameters<typeof prepareEmbeddedRunTerminal>[0];
@@ -54,8 +55,6 @@ type CreateAttemptControls = ReturnType<
   typeof createEmbeddedRunLaneController
 >["createAttemptControls"];
 const MAX_EMPTY_SETTLED_FINALIZATION_ATTEMPTS = 2;
-const SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT =
-  "The tool run finished, but no final summary was produced. I did not repeat any completed actions.";
 type TerminalPreparationBase = Omit<
   TerminalPreparationInput,
   | "attempt"
@@ -118,6 +117,7 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
     ...initial,
     prepared,
     lastRunPromptUsage,
+    endedWithoutFinal: false,
     finalizationOutcome,
   });
   const prompt = resolveSettledTurnFinalizationRequest({
@@ -173,6 +173,8 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
       `provider=${errorContext.provider}/${errorContext.model} — running isolated finalization`,
   );
   let finalizationOutcome: "answered" | "empty" | "failed" | "silent-fallback" = "failed";
+  // Set only when the host fallback stands in for a final the model never wrote.
+  let usedVisibleFallback = false;
   try {
     let finalization: Awaited<ReturnType<typeof runPreparedSettledTurnFinalization>>;
     let finalizationAttempt = 0;
@@ -286,6 +288,8 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
     });
     if (runParams.trigger === "cron") {
       finalizationOutcome = "silent-fallback";
+    } else {
+      usedVisibleFallback = true;
     }
   }
   // Only an actual recovery replaces a failed or timed-out turn's terminal ownership.
@@ -348,6 +352,8 @@ export async function prepareTerminalWithSettledTurnFinalization(input: {
     ...completion,
     prepared,
     lastRunPromptUsage,
+    // The terminal owner reports this run as ended without a final (#847).
+    endedWithoutFinal: usedVisibleFallback && completion !== initial,
     finalizationOutcome:
       completion === initial
         ? ("failed" as const)

@@ -23,6 +23,7 @@ type ApplicationConfig = {
   embedSandboxMode: ControlUiEmbedSandboxMode;
   allowExternalEmbedUrls: boolean;
   automaticallyFetchFavicons: boolean;
+  /** @deprecated The community invitation was removed; always false. */
   communityInvite: boolean;
   /** Null until the serving Gateway publishes its bootstrap policy. */
   newSessionModelDefaults?: "last-used" | "configured" | null;
@@ -107,7 +108,7 @@ function normalizeApplicationConfig(parsed: ControlUiBootstrapConfig): Applicati
     embedSandboxMode: parsed.embedSandbox ?? "scripts",
     allowExternalEmbedUrls: Boolean(parsed.allowExternalEmbedUrls),
     automaticallyFetchFavicons: Boolean(parsed.automaticallyFetchFavicons),
-    communityInvite: parsed.communityInvite === true,
+    communityInvite: false,
     newSessionModelDefaults: parsed.newSessionModelDefaults ?? "last-used",
     terminalEnabled: Boolean(parsed.terminalEnabled),
     uploadsEnabled: parsed.uploadsEnabled !== false,

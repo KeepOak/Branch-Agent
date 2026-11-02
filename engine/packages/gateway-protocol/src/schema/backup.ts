@@ -29,6 +29,8 @@ export const BackupRunRecordSchema = closedObject({
   target: Type.Optional(Type.String()),
   namespace: Type.Optional(Type.String()),
   error: Type.Optional(Type.String()),
+  /** A failure Branch explains plainly (#1931); `error` then holds that plain sentence, never raw details. */
+  errorCode: Type.Optional(Type.Literal("folder-shared")),
   pushFailed: Type.Optional(Type.Literal(true)),
   bytes: Type.Optional(BytesSchema),
   location: Type.Optional(BackupRunLocationSchema),

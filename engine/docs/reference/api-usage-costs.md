@@ -73,7 +73,7 @@ See [Image generation](/tools/image-generation) and [Video generation](/tools/vi
 
 ### Memory embeddings and semantic search
 
-Semantic memory search uses embedding APIs when `memory.search.provider` names a remote adapter (for example `openai`, `gemini`, `voyage`, `mistral`, `deepinfra`, `github-copilot`, `amazon-bedrock`). `memory.search.provider = "lmstudio"` or `"ollama"` runs against a local/self-hosted server and typically has no hosted billing. `memory.search.provider = "local"` keeps everything on-device with no API usage. An optional `memory.search.fallback` provider can cover local-embedding failures.
+Semantic memory search uses embedding APIs when `memory.search.provider` names a remote adapter (for example `openai`, `gemini`, `voyage`, `mistral`, `deepinfra`, `github-copilot`, `amazon-bedrock`). `memory.search.provider = "lmstudio"` or `"ollama"` runs against a local/self-hosted server and typically has no hosted billing. Unset, `auto`, and `memory.search.provider = "local"` keep everything on-device with no API usage. An optional `memory.search.fallback` provider covers failures only when you also set `memory.search.provider` yourself.
 
 See [Memory](/concepts/memory).
 

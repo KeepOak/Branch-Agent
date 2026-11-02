@@ -23,23 +23,31 @@ function fallbackHostName() {
   return trimmed.replace(/\.local$/i, "") || "branch";
 }
 
+/**
+ * The name to show for this machine: BRANCH_DISPLAY_HOSTNAME (trimmed) when set, else the real name.
+ * Visual tours set it so screenshots never show the CI runner's own name.
+ */
+export function displayHostname(real: string): string {
+  return normalizeNullableString(process.env.BRANCH_DISPLAY_HOSTNAME) ?? real;
+}
+
 /** Resolve a user-facing name for the current machine. */
 export async function getMachineDisplayName(): Promise<string> {
-  if (cachedPromise) {
-    return cachedPromise;
-  }
-  cachedPromise = (async () => {
-    if (process.env.VITEST || process.env.NODE_ENV === "test") {
-      return fallbackHostName();
-    }
-    if (process.platform === "darwin") {
-      return (
-        (await tryScutil("ComputerName")) ??
-        (await tryScutil("LocalHostName")) ??
-        fallbackHostName()
-      );
-    }
+  // The cache keeps only the real lookup, so the override applies on every read.
+  cachedPromise ??= resolveRealMachineName();
+  return displayHostname(await cachedPromise);
+}
+
+async function resolveRealMachineName(): Promise<string> {
+  if (process.env.VITEST || process.env.NODE_ENV === "test") {
     return fallbackHostName();
-  })();
-  return cachedPromise;
+  }
+  if (process.platform === "darwin") {
+    return (
+      (await tryScutil("ComputerName")) ??
+      (await tryScutil("LocalHostName")) ??
+      fallbackHostName()
+    );
+  }
+  return fallbackHostName();
 }

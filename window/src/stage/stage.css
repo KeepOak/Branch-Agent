@@ -11,7 +11,10 @@
 .stage7 .tb-grow {flex:1;}
 .stage7.computer-stage {background:var(--title);}
 .stage7 .st7-top .ib {color:var(--ink-2);border-radius:10px;}
-.st7-mode {display:flex;justify-content:flex-start;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg);flex:none;}
+.st7-hslot {display:inline-flex;min-width:0;}
+.st7-hslot > .guest-switch {padding:2px;gap:2px;border:0;border-radius:999px;background:var(--fill);}
+.st7-hslot > .guest-switch button {height:26px;padding:0 10px;border-radius:999px;font-weight:400;}
+.st7-hslot > .guest-switch button[aria-pressed="true"] {background:var(--raise);color:var(--ink);font-weight:400;}
 .st7-sw {display:inline-flex;padding:2px;border-radius:999px;background:var(--fill);gap:2px;}
 .st7-sw button {display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:0;border-radius:999px;background:transparent;font:inherit;font-size:12.5px;color:var(--ink-2);}
 .st7-sw button[aria-pressed="true"] {background:var(--raise);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}
@@ -30,6 +33,12 @@
 /* The preview's fitStage: 18 px clear on each side, as wide as fits the wrap at 16:10. */
 .st7-screen.live-st {width:min(calc(100cqw - 36px),calc((100cqh - 36px) * 1.6));aspect-ratio:16/10;}
 .native-screen {width:100%;height:100%;object-fit:contain;display:block;}
+.st7-screen .pane-note {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;}
+.st7-screen .pane-note p {margin:0;max-width:44ch;font-size:15px;line-height:1.45;}
+.pane-technical {margin-top:8px;max-width:56ch;font-size:12px;opacity:.7;}
+.pane-technical summary {cursor:pointer;}
+.st7-screen.live-st.has-frame {width:min(calc(100cqw - 36px),calc((100cqh - 36px) * var(--frame-ratio,1.6)));aspect-ratio:var(--frame-ratio,1.6);}
+.st7-screen.live-st.has-frame .native-screen {width:100%;height:100%;object-fit:contain;}
 .st7-screen.ctl-st {box-shadow:0 0 0 4px var(--accent) inset,0 30px 80px -30px rgba(0,0,0,.55);}
 .st7-screen .stage-screen {position:absolute;inset:0;width:100%;height:100%;overflow:hidden;}
 .st7-screen .stage-empty {position:absolute;inset:0;}
@@ -112,14 +121,14 @@
 .frame:has(.pip7) .character-panel {display:none;}
 
 /* The browser: the page tools bar, the "using this page" banner, the window chrome around the live page, the drawer */
-.browser-st {flex:1;min-height:0;display:flex;flex-direction:column;}
+.browser-st {flex:1;min-height:0;display:flex;flex-direction:column;container:browser-st / inline-size;}
 .bar-br {display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 12px;background:var(--bg);border-bottom:1px solid var(--line);min-width:0;flex:none;}
 .lbl-br {font-size:12px;color:var(--ink-3);}
 .seg-br {display:inline-flex;padding:2px;border-radius:10px;background:var(--fill);gap:2px;}
 .seg-br button {height:26px;padding:0 10px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:12.5px;color:var(--ink-2);}
 .seg-br button[aria-pressed="true"] {background:var(--raise);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}
 .seg-br button:disabled {opacity:.6;}
-.bar-br .tb-br {display:inline-flex;align-items:center;gap:5px;}
+.bar-br .tb-br, .br-chrome-st .tb-br {display:inline-flex;align-items:center;gap:5px;flex:none;}
 .tb-br[aria-pressed="true"] {background:var(--fill-2);color:var(--ink);}
 .tb-br:disabled {opacity:.55;}
 .bn-br {display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 12px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--accent) 12%,var(--bg));color:var(--ink-2);font-size:12.5px;min-width:0;flex:none;}
@@ -131,28 +140,61 @@
 .note-br {color:var(--ink-2);background:var(--fill);}
 .br-left-st {display:flex;flex-direction:column;min-width:0;min-height:0;}
 .br-left-st > .st7-wrap {flex:1;}
-.st7-screen.br-screen-st {width:min(calc(100cqw - 36px),calc((100cqh - 36px) * 1.6));height:auto;aspect-ratio:16/10;display:flex;flex-direction:column;background:#fff;}
-.br-chrome-st {flex:none;color:var(--ink-2);}
-.br-tabs-st {display:flex;align-items:flex-end;gap:2px;height:38px;padding:0 10px;background:var(--fill-2);font-size:13px;overflow-x:auto;scrollbar-width:none;}
-.br-tab-st {display:inline-flex;align-items:center;gap:2px;height:32px;padding:0 4px 0 0;border-radius:9px 9px 0 0;color:#556666;max-width:220px;flex:0 1 auto;min-width:0;}
-.br-tab-st.on {background:var(--bg);color:var(--ink);}
+/* The browser fills the stage: the window's own chrome above the page, the page filling everything below it. */
+.br-left-st > .st7-wrap {display:flex;flex-direction:column;place-items:initial;padding:0;background:none;}
+.st7-screen.br-screen-st {flex:1;width:100%;height:auto;min-height:0;aspect-ratio:auto;border-radius:0;box-shadow:none;display:flex;flex-direction:column;background:var(--bg);}
+/* Plain status words in the stage header, not a pill. */
+.stage-status-st {display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2);white-space:nowrap;}
+.stage-status-st i {width:7px;height:7px;border-radius:50%;background:var(--ink-3);flex:none;}
+.stage-status-st.you {color:var(--ink);font-weight:600;}
+.stage-status-st.you i {background:var(--accent);}
+.stage-status-st.work i {background:var(--accent);animation:beat-st 1.2s ease-in-out infinite;}
+@media (prefers-reduced-motion: reduce) {.stage-status-st.work i {animation:none;}}
+/* #1103: one Chrome-like toolbar row: back, forward, reload, the address bar (full height, rounded), the tabs, Page and Tools. */
+.br-chrome-st {flex:none;display:flex;align-items:center;gap:6px;height:52px;padding:8px 12px;min-width:0;color:var(--ink-2);background:var(--bg);border-bottom:1px solid var(--line);}
+.br-tabs-st {display:flex;align-items:center;gap:4px;height:36px;flex:0 1 auto;min-width:0;max-width:40%;font-size:13px;overflow-x:auto;scrollbar-width:none;}
+.br-tab-st {display:inline-flex;align-items:center;gap:2px;height:36px;padding:0 4px 0 0;border-radius:999px;color:var(--ink-2);max-width:200px;flex:0 1 auto;min-width:112px;}
+.br-tab-st.on {background:var(--fill-2);color:var(--ink);}
 .br-tab-st > button {border:0;background:none;font:inherit;color:inherit;display:inline-flex;align-items:center;gap:6px;padding:0 10px;height:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .br-x-st {padding:0 4px !important;opacity:.6;}
 .br-x-st:hover {opacity:1;}
 .br-dot-st {width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none;}
-.br-new-st {border:0;background:none;font-size:20px;line-height:1;padding:0 12px 6px;color:inherit;}
-.br-url-st {display:flex;align-items:center;gap:6px;height:40px;padding:0 12px;border-bottom:1px solid var(--line);font-size:14px;background:var(--bg);}
-.br-nav-st {border:0;background:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:inherit;}
+.br-new-st {flex:none;width:36px;height:36px;border:0;border-radius:999px;background:none;display:grid;place-items:center;font-size:20px;line-height:1;padding:0;color:inherit;}
+.br-new-st:hover:not([disabled]) {background:var(--fill);}
+.br-url-st {flex:1 0 320px;min-width:320px;display:flex;align-items:center;gap:8px;height:36px;padding:0 4px 0 14px;border-radius:999px;font-size:14px;background:var(--fill);}
+.br-url-st > .btn {height:28px;border-radius:999px;flex:none;}
+.br-nav-st {flex:none;border:0;background:none;width:36px;height:36px;border-radius:999px;display:grid;place-items:center;color:inherit;}
 .br-nav-st:hover:not([disabled]) {background:rgba(0,0,0,.06);}
 .br-nav-st[disabled] {opacity:.35;}
 .br-addr-st {flex:1;min-width:0;border:0;background:transparent;font:inherit;color:inherit;outline:none;}
-.br-addr-st:focus {box-shadow:0 0 0 2px var(--accent);border-radius:6px;}
-.br-page-st {position:relative;flex:1;min-height:0;background:#fff;}
+.br-addr-st:focus {box-shadow:none;}
+/* The address bar is one rounded field: the input inside draws no box of its own, and the tabs are pills, not boxes. */
+/* Item 48 puts every control in clear glass on its own outlined pill; here the address bar and each tab are that pill,
+   and what sits inside them (the input, a tab's title and its ×) draws none of its own. */
+.br-chrome-st .br-url-st:not(#g48#g48) {background:var(--gp-fill, var(--fill));box-shadow:inset 0 0 0 1px var(--gp-edge, var(--line));}
+.br-chrome-st .br-url-st > input.br-addr-st:not(#g48#g48) {height:100%;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;outline:none;}
+.br-chrome-st .br-tab-st:not(#g48#g48) {background:var(--gp-fill, var(--fill));box-shadow:inset 0 0 0 1px var(--gp-edge, var(--line));}
+.br-chrome-st .br-tab-st.on:not(#g48#g48) {box-shadow:inset 0 0 0 1px var(--gp-edge, var(--line)), inset 0 0 0 100vmax var(--gp-on, var(--fill-2));}
+.br-chrome-st .br-tab-st > button:not(#g48#g48#g48#g48) {border:0;background:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;}
+.br-chrome-st .br-url-st:focus-within:not(#g48#g48) {box-shadow:inset 0 0 0 1px var(--gp-edge, var(--line)), 0 0 0 2px var(--accent);}
+/* #1103 beside Chrome: the toolbar follows the browser's own width, not the window's. Below 900 px (a window snapped to
+   half a screen, or a phone) it takes a second row, as Chrome's tab strip does: back, forward, reload and the address bar
+   fill the first row, and the tabs, New tab, Page and Tools sit below, so the address bar and the tabs keep their room. */
+@container browser-st (max-width:899px) {.br-chrome-st {flex-wrap:wrap;height:auto;row-gap:6px;}
+  .br-chrome-st .br-url-st {flex:1 1 calc(100% - 126px);min-width:0;} .br-chrome-st .br-tabs-st {flex:1 1 160px;max-width:none;}}
+/* A phone-width window: a tighter row, and Page and Tools show their icons only. */
+@media (max-width:640px) {.br-chrome-st {padding:8px;} .br-chrome-st .tb-br > span {display:none;}
+  .st7-hslot > .guest-switch button {padding:0 8px;font-size:12px;}}
+.br-page-st {position:relative;flex:1;min-height:0;background:var(--bg);overflow:hidden;}
+/* The keyboard proxy for the live page: focused on a click, invisible, and never shown. */
+.br-input-st {position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;border:0;padding:0;margin:0;resize:none;overflow:hidden;pointer-events:none;}
+.br-page-st:focus-within {outline:none;}
 .br-page-st canvas {position:absolute;inset:0;width:100%;height:100%;object-fit:contain;outline:none;}
-.blank-st {position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:8px;padding:16px;overflow:auto;text-align:center;color:var(--ink-2);background:var(--bg);}
-.blank-st > .icon {width:40px;height:40px;}
-.blank-st b {color:var(--ink);font-size:15px;}
-.blank-st small {font-size:13px;max-width:420px;}
+/* The empty page breathes (#1103): room around the words, a larger title, and lines that read at a comfortable width. */
+.blank-st {position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:14px;padding:48px 32px;overflow:auto;text-align:center;color:var(--ink-2);background:var(--bg);line-height:1.5;}
+.blank-st > .icon {width:48px;height:48px;}
+.blank-st b {color:var(--ink);font-size:20px;font-weight:600;letter-spacing:-.01em;}
+.blank-st small {font-size:13px;max-width:460px;}
 .drw-br {border-top:1px solid var(--line);background:var(--bg);display:grid;grid-template-rows:auto minmax(0,1fr);max-height:38vh;min-height:0;flex:none;}
 .drw-tabs-br {display:flex;align-items:center;gap:2px;padding:4px 8px;border-bottom:1px solid var(--line);overflow-x:auto;}
 .drw-tabs-br [role="tab"] {height:28px;padding:0 10px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:12.5px;color:var(--ink-2);white-space:nowrap;}
@@ -212,3 +254,12 @@
 .acts-list-st .grow {flex:1;min-width:0;display:grid;gap:1px;}
 .acts-list-st b {font-weight:500;font-size:13px;color:var(--ink);}
 .acts-list-st small {font-size:12px;color:var(--ink-3);line-height:1.45;overflow-wrap:anywhere;}
+
+/* Driving the Trunk's browser or computer (DriveSurface): the picture's box, the local zoom, the trackpad pointer and
+   the keyboard button. */
+.rd-surface {position:absolute;inset:0;overflow:hidden;}
+.rd-surface.rd-on {touch-action:none;user-select:none;-webkit-user-select:none;cursor:default;}
+.rd-view {position:absolute;inset:0;transform-origin:0 0;}
+.rd-cursor {position:absolute;z-index:2;width:18px;height:18px;margin:-2px 0 0 -2px;pointer-events:none;fill:var(--raise);stroke:var(--ink);stroke-width:1.2;stroke-linejoin:round;}
+.rd-kb {position:absolute;right:12px;bottom:12px;z-index:3;width:38px;height:38px;display:grid;place-items:center;border-radius:10px;border:1px solid var(--line-2);background:var(--raise);color:var(--ink);box-shadow:var(--pop);cursor:pointer;}
+.rd-kb:focus-visible {outline:2px solid var(--accent);outline-offset:2px;}

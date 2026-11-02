@@ -1,0 +1,14 @@
+engine:extensions/sms/src/accounts.test.ts
+engine:extensions/sms/src/channel.test.ts
+engine:extensions/sms/src/gateway.test.ts
+engine:extensions/sms/src/inbound.test.ts
+engine:extensions/sms/src/ingress-spool.test.ts
+engine:extensions/sms/src/media-limits.test.ts
+engine:extensions/sms/src/media.test.ts
+engine:extensions/sms/src/phone.test.ts
+engine:extensions/sms/src/secret-contract.test.ts
+engine:extensions/sms/src/session-route.test.ts
+engine:extensions/sms/src/status.test.ts
+engine:extensions/sms/src/webhook.boundary.test.ts
+engine:extensions/sms/src/webhook.delivery-admission.test.ts
+engine:extensions/sms/src/webhook.wire.test.ts

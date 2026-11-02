@@ -133,10 +133,22 @@ export function buildContactSections(contacts: Contact[], prefs: ListPrefs, now:
   ];
 }
 
+const markReadInFlight = new Map<string, Promise<boolean>>();
+
 export async function markContactRead(contact: Contact, request: (method: string, params: unknown) => Promise<unknown>): Promise<boolean> {
   if (!contact.threadUnread && contact.unreadTopics === 0) return false;
-  await request("contacts.markRead", { contactId: contact.id });
-  return true;
+  const pending = markReadInFlight.get(contact.id);
+  if (pending) return pending;
+  const run = (async () => {
+    try {
+      await request("contacts.markRead", { contactId: contact.id });
+      return true;
+    } finally {
+      markReadInFlight.delete(contact.id);
+    }
+  })();
+  markReadInFlight.set(contact.id, run);
+  return run;
 }
 
 export async function listContactTopics(contactId: string, request: (method: string, params: unknown) => Promise<unknown>): Promise<Topic[]> {

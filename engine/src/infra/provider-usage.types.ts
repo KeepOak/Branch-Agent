@@ -88,6 +88,10 @@ export type ProviderUsageSnapshot = {
    * Signing in again with the account's full login reads its usage; no other retry will.
    */
   signInNeeded?: boolean;
+  /** Model or subscription limit reset time in ms. A usage-check 429 must not set this. */
+  rateLimitedUntil?: number;
+  /** The account can run. Set even when the usage-check endpoint itself returned 429. */
+  ready?: boolean;
 };
 
 export type UsageSummary = {

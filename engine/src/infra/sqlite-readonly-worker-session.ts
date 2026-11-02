@@ -33,6 +33,176 @@ export type SqliteReadOnlyWorkerLaunch = {
   transport: { kind: "native" } | { kind: "broker"; owner: SpawnBrokerHost };
 };
 
+/**
+ * Session pool policy:
+ * - up to SQLITE_READONLY_MAX_LIVE_SESSIONS (8) sessions stay alive for reuse;
+ * - past 8, the least-recently-used idle session is evicted first;
+ * - when all are busy, overflow sessions are admitted up to
+ *   SQLITE_READONLY_HARD_MAX_SESSIONS (16) total and close as soon as their work ends;
+ * - a closing (evicted, overflow or failed) session keeps its slot until its child closes
+ *   and any broker-owned native cleanup settles, so the 16 ceiling bounds real processes,
+ *   not just pooled bookkeeping;
+ * - at 16, async callers wait up to SQLITE_READONLY_SLOT_WAIT_MS for a slot
+ *   (waitForSqliteReadOnlyWorkerSlot), then fail with SqliteReadOnlyWorkerBusyError.
+ *   Each freed slot is reserved for exactly one waiter, first come first served.
+ * Session construction itself stays synchronous: it admits or throws, never waits.
+ */
+export const SQLITE_READONLY_MAX_LIVE_SESSIONS = 8;
+export const SQLITE_READONLY_HARD_MAX_SESSIONS = 16;
+export const SQLITE_READONLY_SLOT_WAIT_MS = 2_000;
+export const SQLITE_READONLY_WORKER_BUSY_MESSAGE =
+  "Branch is busy finishing other work. Try again in a moment.";
+
+/** Plain, user-safe error when the session pool stays full past the bounded wait. */
+export class SqliteReadOnlyWorkerBusyError extends Error {
+  readonly code = "SQLITE_READONLY_WORKER_BUSY";
+  constructor() {
+    super(SQLITE_READONLY_WORKER_BUSY_MESSAGE);
+    this.name = "SqliteReadOnlyWorkerBusyError";
+  }
+}
+
+/** One pool slot held for a single waiter until it creates its session. */
+export type SqliteReadOnlyWorkerSlot = { readonly kind: "sqlite-readonly-worker-slot" };
+
+type LiveSessionEntry = {
+  lastUsed: number;
+  idle: () => boolean;
+  retiring: () => boolean;
+  evict: () => void;
+};
+const liveSessions = new Map<object, LiveSessionEntry>();
+let liveSessionClock = 0;
+const reservedSlots = new Set<SqliteReadOnlyWorkerSlot>();
+const slotWaiters: Array<(slot: SqliteReadOnlyWorkerSlot) => void> = [];
+
+function occupiedSlots(): number {
+  return liveSessions.size + reservedSlots.size;
+}
+
+function countActiveSessions(): number {
+  let active = 0;
+  for (const entry of liveSessions.values()) {
+    if (!entry.retiring()) {
+      active += 1;
+    }
+  }
+  return active;
+}
+
+function countRetiringSessions(): number {
+  return liveSessions.size - countActiveSessions();
+}
+
+function reserveSlot(): SqliteReadOnlyWorkerSlot {
+  const slot: SqliteReadOnlyWorkerSlot = { kind: "sqlite-readonly-worker-slot" };
+  reservedSlots.add(slot);
+  // The holder creates its session in the same turn; an unused hold lapses after it.
+  // The timer runs context-free so it never retains the reserving caller's async state.
+  runInDetachedAsyncContext(() =>
+    setTimeout(() => {
+      if (reservedSlots.delete(slot)) {
+        notifySlotWaiters();
+      }
+    }, 0),
+  ).unref();
+  return slot;
+}
+
+function notifySlotWaiters(): void {
+  while (slotWaiters.length > 0 && occupiedSlots() < SQLITE_READONLY_HARD_MAX_SESSIONS) {
+    slotWaiters.shift()?.(reserveSlot());
+  }
+  // Start closing idle sessions for waiters that no in-flight close will serve.
+  let uncovered = slotWaiters.length - countRetiringSessions();
+  while (uncovered > 0 && evictLeastRecentlyUsedIdleSession()) {
+    uncovered -= 1;
+  }
+}
+
+/** True when a new session could be admitted right now without exceeding the ceiling. */
+export function hasSqliteReadOnlyWorkerSlot(): boolean {
+  return occupiedSlots() < SQLITE_READONLY_HARD_MAX_SESSIONS;
+}
+
+/**
+ * Resolve with a reserved slot once a session can be admitted, waiting at most waitMs.
+ * Callers must pass the slot to the session they create synchronously right after this
+ * resolves (no await in between); an unused slot is released after that turn.
+ */
+export function waitForSqliteReadOnlyWorkerSlot(
+  signal?: AbortSignal,
+  waitMs: number = SQLITE_READONLY_SLOT_WAIT_MS,
+): Promise<SqliteReadOnlyWorkerSlot> {
+  if (slotWaiters.length === 0 && hasSqliteReadOnlyWorkerSlot()) {
+    return Promise.resolve(reserveSlot());
+  }
+  return new Promise<SqliteReadOnlyWorkerSlot>((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const grant = (slot: SqliteReadOnlyWorkerSlot) => {
+      cleanup();
+      resolve(slot);
+    };
+    const fail = (error: unknown) => {
+      const index = slotWaiters.indexOf(grant);
+      if (index < 0) {
+        return;
+      }
+      slotWaiters.splice(index, 1);
+      cleanup();
+      reject(error);
+    };
+    const onAbort = () => fail(signal?.reason);
+    const timer = setTimeout(() => fail(new SqliteReadOnlyWorkerBusyError()), waitMs);
+    slotWaiters.push(grant);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    notifySlotWaiters();
+  });
+}
+
+function admitSqliteReadOnlyWorkerSession(slot?: SqliteReadOnlyWorkerSlot): "pooled" | "overflow" {
+  const reserved = slot !== undefined && reservedSlots.delete(slot);
+  if (!reserved && occupiedSlots() >= SQLITE_READONLY_HARD_MAX_SESSIONS) {
+    // Start closing an idle session so a bounded waiter can take its slot soon.
+    evictLeastRecentlyUsedIdleSession();
+    throw new SqliteReadOnlyWorkerBusyError();
+  }
+  while (
+    countActiveSessions() >= SQLITE_READONLY_MAX_LIVE_SESSIONS &&
+    evictLeastRecentlyUsedIdleSession()
+  ) {
+    // Evict idle sessions until a pooled slot frees or only busy sessions remain.
+  }
+  return countActiveSessions() < SQLITE_READONLY_MAX_LIVE_SESSIONS ? "pooled" : "overflow";
+}
+
+function evictLeastRecentlyUsedIdleSession(): boolean {
+  let victim: LiveSessionEntry | undefined;
+  for (const entry of liveSessions.values()) {
+    if (entry.idle() && (!victim || entry.lastUsed < victim.lastUsed)) {
+      victim = entry;
+    }
+  }
+  if (!victim) {
+    return false;
+  }
+  // The evicted session keeps its slot until its child closes; close() retires it now.
+  victim.evict();
+  return true;
+}
+
+/** Sessions holding a slot, including ones still closing. */
+export function countLiveSqliteReadOnlyWorkerSessions(): number {
+  return liveSessions.size;
+}
+
 export function isSameSqliteReadOnlyWorkerLaunch(
   captured: SqliteReadOnlyWorkerLaunch,
   requested: SqliteReadOnlyWorkerLaunch,
@@ -53,7 +223,8 @@ export function isSameSqliteReadOnlyWorkerLaunch(
 type SqliteReadOnlyWorkerSession = {
   readonly closed: Promise<void>;
   readonly notStarted: boolean;
-  createNativeReplacement: () => SqliteReadOnlyWorkerSession;
+  /** Pass a slot from waitForSqliteReadOnlyWorkerSlot; the refused session already freed its own. */
+  createNativeReplacement: (slot: SqliteReadOnlyWorkerSlot) => SqliteReadOnlyWorkerSession;
   isRetired: () => boolean;
   compatible: (launch: SqliteReadOnlyWorkerLaunch) => boolean;
   run: (
@@ -73,6 +244,8 @@ export function createSqliteReadOnlyWorkerSession(
     deadlineOwnedByCaller: () => boolean;
     timeoutError: (pathname: string, timeoutMs: number, size: string) => Error;
     closeTimeoutMs: number;
+    /** Slot reserved by waitForSqliteReadOnlyWorkerSlot for this session. */
+    slot?: SqliteReadOnlyWorkerSlot;
   },
 ): SqliteReadOnlyWorkerSession {
   const env = { ...host.env };
@@ -83,6 +256,8 @@ export function createSqliteReadOnlyWorkerSession(
       ? { kind: "broker", owner: host.transport.owner }
       : { kind: "native" };
   const capturedLaunch = { env, cwd, transport, runtimeGeneration: host.runtimeGeneration };
+  // Synchronous admission: evict, overflow, or throw the plain busy error at the ceiling.
+  const overflow = admitSqliteReadOnlyWorkerSession(host.slot) === "overflow";
   const argv = [...host.argv];
   const spawnOptions: SpawnOptions = hiddenWindowsOptions({
     env,
@@ -95,6 +270,15 @@ export function createSqliteReadOnlyWorkerSession(
       ? transport.owner.spawn(executable, argv, spawnOptions)
       : spawn(executable, argv, spawnOptions);
   recordChildProcessSpawn(executable, child);
+  const liveEntry: LiveSessionEntry = {
+    lastUsed: ++liveSessionClock,
+    idle: () => !retired && pending === undefined,
+    retiring: () => retired,
+    evict: () => {
+      void session.close().catch(() => undefined);
+    },
+  };
+  liveSessions.set(child, liveEntry);
   let retired = false;
   let sequence = 0;
   let pendingOperation: Promise<SqliteReadOnlyWorkerValue> | undefined;
@@ -114,19 +298,32 @@ export function createSqliteReadOnlyWorkerSession(
       }
     | undefined;
   const { promise: closeSignal, resolve: resolveClosed } = createDeferredCore();
-  // Broker loss retains group cleanup later in the same turn as proxy close.
-  const closed = closeSignal.then(() => {
-    if (
-      transport.kind === "broker" &&
-      child instanceof BrokerChild &&
-      !child.notStarted &&
-      child.exitCode === null &&
-      child.signalCode === null
-    ) {
-      return transport.owner.waitForCleanup();
+  // A brokered proxy that closes without an observed exit (broker loss) leaves the native
+  // child to broker-owned cleanup, retained later in the same turn as proxy close.
+  const awaitsBrokerCleanup = () =>
+    transport.kind === "broker" &&
+    child instanceof BrokerChild &&
+    !child.notStarted &&
+    child.exitCode === null &&
+    child.signalCode === null;
+  const closed = closeSignal.then(() =>
+    transport.kind === "broker" && awaitsBrokerCleanup()
+      ? transport.owner.waitForCleanup()
+      : undefined,
+  );
+  // The slot follows the full close, cleanup included, so the ceiling bounds real
+  // processes. A child that exited (every native child) frees it on its close event.
+  const releaseSlot = () => {
+    if (liveSessions.delete(child)) {
+      notifySlotWaiters();
     }
-    return undefined;
+  };
+  child.once("close", () => {
+    if (!awaitsBrokerCleanup()) {
+      releaseSlot();
+    }
   });
+  void closed.then(releaseSlot, releaseSlot);
   const retire = (error?: unknown) => {
     retired = true;
     if (pending && error !== undefined) {
@@ -273,10 +470,11 @@ export function createSqliteReadOnlyWorkerSession(
     get notStarted() {
       return child instanceof BrokerChild ? child.notStarted : nativeClosed && !spawned;
     },
-    createNativeReplacement() {
+    createNativeReplacement(slot: SqliteReadOnlyWorkerSlot) {
       return runInDetachedAsyncContext(() =>
         createSqliteReadOnlyWorkerSession({
           ...host,
+          slot,
           env,
           cwd,
           argv,
@@ -291,7 +489,8 @@ export function createSqliteReadOnlyWorkerSession(
       if (retired) {
         return Promise.reject(new Error("SQLite read-only worker is closed"));
       }
-      return (pendingOperation = new Promise<SqliteReadOnlyWorkerValue>((resolve, reject) => {
+      liveEntry.lastUsed = ++liveSessionClock;
+      const operation = new Promise<SqliteReadOnlyWorkerValue>((resolve, reject) => {
         const { timeoutMs, size } = host.readBudget(pathname);
         stderr = "";
         outputBytes = 0;
@@ -363,7 +562,17 @@ export function createSqliteReadOnlyWorkerSession(
         } else {
           send();
         }
-      }));
+      });
+      pendingOperation = operation;
+      const afterRun = () => {
+        // Overflow sessions are never kept idle; pooled ones become evictable.
+        if (overflow && !retired) {
+          void session.close().catch(() => undefined);
+        }
+        notifySlotWaiters();
+      };
+      void operation.then(afterRun, afterRun);
+      return operation;
     },
     async close() {
       if (retired) {

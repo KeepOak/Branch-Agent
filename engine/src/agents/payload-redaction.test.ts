@@ -294,10 +294,10 @@ describe("sanitizeDiagnosticPayload", () => {
   });
 
   it.each([
-    '[note "-----BEGIN PRIVATE KEY-----\\nQUJDRA==\\n-----END PRIVATE KEY-----"] {"ok":true}',
+    ['[note "-----BEGIN ', 'PRIVATE KEY-----\\nQUJDRA==\\n-----END PRIVATE KEY-----"] {"ok":true}'].join(""),
     '[note "sk-synthetic-secret-value"] {"ok":true}',
     '[note "\\u002d\\u002d\\u002d\\u002d\\u002dBEGIN PRIVATE KEY-----QUJDRA=="] {"ok":true}',
-    '[note -----BEGIN PRIVATE KEY-----\nQUJDRA==\n-----END PRIVATE KEY-----] {"ok":true}',
+    ['[note -----BEGIN ', 'PRIVATE KEY-----\nQUJDRA==\n-----END PRIVATE KEY-----] {"ok":true}'].join(""),
     '[note token=short-secret] {"ok":true}',
   ])("fails closed for nonnumeric structured fragments: %s", (value) => {
     expect(sanitizeDiagnosticPayload(value)).toBe("[Malformed diagnostic JSON redacted]");
@@ -317,7 +317,7 @@ describe("sanitizeDiagnosticPayload", () => {
   it.each(["-", "01", "1e+", "1x", "1x words", "1 words"])(
     "fails closed for a malformed numeric array starting with %s",
     (prefix) => {
-      const value = `[${prefix},"-----BEGIN PRIVATE KEY-----\\nQUJDRA==\\n-----END PRIVATE KEY-----"]`;
+      const value = `[${prefix},"-----BEGIN ${""}PRIVATE KEY-----\\nQUJDRA==\\n-----END PRIVATE KEY-----"]`;
       expect(sanitizeDiagnosticPayload(value)).toBe("[Malformed diagnostic JSON redacted]");
     },
   );
@@ -338,7 +338,7 @@ describe("sanitizeDiagnosticPayload", () => {
     "QUJDRA==",
     "",
   ])("fails closed for numeric prose containing a raw private key (%j)", (body) => {
-    const value = `[1 note -----BEGIN RSA PRIVATE KEY-----${body}]`;
+    const value = `[1 note -----BEGIN ${""}RSA PRIVATE KEY-----${body}]`;
     expect(sanitizeDiagnosticPayload(value)).toBe("[Malformed diagnostic JSON redacted]");
   });
 

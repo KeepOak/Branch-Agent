@@ -1,0 +1,2 @@
+window:src/screens/settings/pages/history-datafolder-help.test.tsx
+window:src/screens/settings/pages/history-portable-help.test.tsx

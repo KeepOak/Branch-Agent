@@ -1,256 +1,108 @@
-import { expectDefined } from "@branch/normalization-core";
-import { html, nothing, type TemplateResult } from "lit";
+import { html, nothing } from "lit";
+import { inferControlUiPublicAssetPath } from "../../app/public-assets.ts";
 import type { ControlUiBuildInfo } from "../../build-info.ts";
-import { brandIcons } from "../../components/brand-icons.ts";
 import { icons } from "../../components/icons.ts";
-import {
-  canonicalTrellisLook,
-  trellisLookStyle,
-  renderTrellisSvg,
-} from "../../components/trellis-pet-look.ts";
-import { LOBSTER_PET_PALETTES } from "../../components/trellis-pet-palettes.ts";
-import { currentThemeBranding } from "../../components/neutral-mark.ts";
-import "../../components/tooltip.ts";
-import {
-  renderSettingsPage,
-  renderSettingsRow,
-  renderSettingsSection,
-  renderSettingsValue,
-} from "../../components/settings-ui.ts";
-import { i18n, t } from "../../i18n/index.ts";
+import { t } from "../../i18n/index.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "../../lib/external-link.ts";
-import { formatRelativeTimestamp } from "../../lib/format.ts";
 import "../../styles/about.css";
-import { COMMUNITY_DISCORD_URL } from "../../lib/product-links.ts";
+import {
+  BRANCH_HELP_URL,
+  BRANCH_LICENCES_URL,
+  BRANCH_RELEASES_URL,
+  BRANCH_WEBSITE_URL,
+} from "../../lib/product-links.ts";
 
-export type AboutCommitCopyState = "idle" | "copying" | "copied" | "error";
+export type AboutPlatform = "macOS" | "Windows" | "Linux";
 
 type AboutProps = {
-  buildInfo: ControlUiBuildInfo;
-  gatewayVersion: string | null;
-  copyState: AboutCommitCopyState;
-  onCopyCommit: () => void;
-  clawdWaving: boolean;
-  onPokeClawd: () => void;
+  buildInfo: Pick<ControlUiBuildInfo, "version">;
+  platform: AboutPlatform | null;
+  onClose?: () => void;
 };
 
-const SHORT_COMMIT_LENGTH = 12;
-
-// Docs-first where a docs page exists; GitHub/Discord match the native
-// macOS/iOS About screens (AboutSettings.swift, SettingsProTabSections.swift).
-const ABOUT_LINKS: ReadonlyArray<{ href: string; icon: TemplateResult; label: () => string }> = [
-  { href: "https://openclaw.ai", icon: icons.globe, label: () => t("aboutPage.linkWebsite") },
-  { href: "https://docs.openclaw.ai", icon: icons.book, label: () => t("aboutPage.linkDocs") },
-  {
-    href: "https://github.com/openclaw/openclaw",
-    icon: brandIcons.github,
-    label: () => t("aboutPage.linkGitHub"),
-  },
-  {
-    href: COMMUNITY_DISCORD_URL,
-    icon: brandIcons.discord,
-    label: () => t("aboutPage.linkDiscord"),
-  },
-  {
-    href: "https://x.com/branch",
-    icon: brandIcons.x,
-    label: () => t("aboutPage.linkX"),
-  },
-  {
-    href: "https://docs.openclaw.ai/releases",
-    icon: icons.scrollText,
-    label: () => t("aboutPage.linkChangelog"),
-  },
+// The preview's About dialog: keepoak.com, the Handbook and What's new; licences sit on the © line.
+const ABOUT_LINKS: ReadonlyArray<{ href: string; label: () => string }> = [
+  { href: BRANCH_WEBSITE_URL, label: () => t("aboutPage.linkWebsite") },
+  { href: BRANCH_HELP_URL, label: () => t("aboutPage.linkDocs") },
+  { href: BRANCH_RELEASES_URL, label: () => t("aboutPage.linkChangelog") },
 ];
 
-function formatControlUiBuildDate(
-  value: string | null,
-  locales?: Intl.LocalesArgument,
-): string | null {
-  if (!value) {
-    return null;
+/** The by-line's system name, as the preview writes it ("By KeepOak · macOS"). */
+export function detectAboutPlatform(
+  nav: Pick<Navigator, "platform" | "userAgent"> | undefined = globalThis.navigator,
+): AboutPlatform | null {
+  const hint = `${nav?.platform ?? ""} ${nav?.userAgent ?? ""}`;
+  if (/Mac/u.test(hint)) {
+    return "macOS";
   }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
+  if (/Win/u.test(hint)) {
+    return "Windows";
   }
-  return new Intl.DateTimeFormat(locales, {
-    dateStyle: "medium",
-    timeZone: "UTC",
-  }).format(date);
+  if (/Linux|X11/u.test(hint)) {
+    return "Linux";
+  }
+  return null;
 }
 
-function renderUnavailable() {
-  return html`<span class="muted">${t("aboutPage.unavailable")}</span>`;
+function externalLink(href: string, label: string, className: string) {
+  return html`<a
+    class=${className}
+    href=${href}
+    target=${EXTERNAL_LINK_TARGET}
+    rel=${buildExternalLinkRel()}
+    >${label}</a
+  >`;
 }
 
-// Always-relative commit age; the exact localized timestamp lives on hover
-// (title) so the row stays compact for any artifact age.
-function renderCommitAge(commitAt: string | null) {
-  if (!commitAt) {
-    return nothing;
-  }
-  const timestamp = Date.parse(commitAt);
-  if (!Number.isFinite(timestamp)) {
-    return nothing;
-  }
-  const exact = new Intl.DateTimeFormat(i18n.getLocale(), {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(timestamp));
+// Preview `ACTS.about` body: mark + identity (.about18u), the links, then the © line (.aboutline18u).
+function renderBody(props: AboutProps) {
+  const version = props.buildInfo.version;
+  const byline = props.platform
+    ? `${t("aboutPage.byline")} · ${props.platform}`
+    : t("aboutPage.byline");
   return html`
-    <time class="about-commit__age" dir="auto" datetime=${commitAt} title=${exact}
-      >${formatRelativeTimestamp(timestamp, { fallback: "" })}</time
-    >
+    <div class="about-hero">
+      <img
+        class="about-hero__mark"
+        src=${inferControlUiPublicAssetPath("brand/keepoak-app-icon-512.png")}
+        alt=""
+        aria-hidden="true"
+        width="84"
+        height="84"
+        draggable="false"
+      />
+      <div class="about-hero__id">
+        <b class="about-hero__name">${t("aboutPage.productName")}</b>${
+          version ? html` <code class="about-hero__version" dir="ltr">${version}</code>` : nothing
+        }
+        <p class="about-hero__tagline">${t("aboutPage.tagline")}</p>
+        <p class="about-hero__byline">${byline}</p>
+      </div>
+    </div>
+    <nav class="about-hero__links" aria-label=${t("aboutPage.linksLabel")}>
+      ${ABOUT_LINKS.map((link) => externalLink(link.href, link.label(), "about-hero__link"))}
+    </nav>
+    <p class="about-footer">
+      ${t("aboutPage.license")} ·
+      ${externalLink(BRANCH_LICENCES_URL, t("aboutPage.linkLicences"), "about-footer__licences")}
+    </p>
   `;
 }
 
-function renderCommit(props: AboutProps) {
-  const commit = props.buildInfo.commit;
-  if (!commit) {
-    return renderUnavailable();
-  }
-  const label = t(
-    {
-      idle: "aboutPage.copyCommit",
-      copying: "aboutPage.copyingCommit",
-      copied: "aboutPage.copiedCommit",
-      error: "aboutPage.copyCommitFailed",
-    }[props.copyState],
-  );
-  return html`
-    <span class="about-commit">
-      <code dir="ltr" title=${commit}>${commit.slice(0, SHORT_COMMIT_LENGTH)}</code>
-      ${renderCommitAge(props.buildInfo.commitAt)}
-      <branch-tooltip .content=${label}>
-        <button
-          type="button"
-          class="about-commit__copy"
-          aria-label=${label}
-          aria-busy=${props.copyState === "copying" ? "true" : nothing}
-          ?disabled=${props.copyState === "copying"}
-          @click=${props.onCopyCommit}
-        >
-          <span aria-hidden="true">${props.copyState === "copied" ? icons.check : icons.copy}</span>
-        </button>
-      </branch-tooltip>
-      <span class="sr-only" role="status" aria-live="polite"
-        >${props.copyState === "copied" || props.copyState === "error" ? label : ""}</span
-      >
-    </span>
-  `;
-}
-
-// The same canonical crimson Clawd as the chat welcome hero, rendered big.
-// The poke button replays the grove wave; ambient motion lives in about.css.
-function renderHero(props: AboutProps) {
-  const palette =
-    LOBSTER_PET_PALETTES.find((entry) => entry.id === "crimson") ??
-    expectDefined(LOBSTER_PET_PALETTES[0], "about trellis palette");
-  const look = canonicalTrellisLook(palette);
-  return html`
-    <section class="about-hero">
-      ${
-        currentThemeBranding().mascot === "none"
-          ? html`<span class="about-hero__mark--neutral" aria-hidden="true">${icons.mark}</span>`
-          : html`<button
-              type="button"
-              class="about-hero__clawd ${props.clawdWaving ? "about-hero__clawd--wave" : ""}"
-              style=${trellisLookStyle(look)}
-              aria-label=${t("aboutPage.waveHello")}
-              @click=${props.onPokeClawd}
-            >
-              ${renderTrellisSvg(look)}
-            </button>`
-      }
-      <h2 class="about-hero__name">${t("aboutPage.productName")}</h2>
-      <p class="about-hero__tagline">${t("aboutPage.tagline")}</p>
-      ${
-        props.buildInfo.version
-          ? html`<code class="about-hero__version" dir="ltr">v${props.buildInfo.version}</code>`
-          : nothing
-      }
-      <nav class="about-hero__links" aria-label=${t("aboutPage.linksLabel")}>
-        ${ABOUT_LINKS.map(
-          (link) => html`
-            <a
-              class="about-hero__link"
-              href=${link.href}
-              target=${EXTERNAL_LINK_TARGET}
-              rel=${buildExternalLinkRel()}
-            >
-              <span class="about-hero__link-icon" aria-hidden="true">${link.icon}</span>
-              <span>${link.label()}</span>
-            </a>
-          `,
-        )}
-      </nav>
-    </section>
-  `;
-}
-
+// Preview `openDlg`: .dlg > .dlg-h (title + close X) > .dlg-b.
 export function renderAbout(props: AboutProps) {
-  const buildDate = formatControlUiBuildDate(props.buildInfo.builtAt, i18n.getLocale());
-  const buildFacts = html`
-    <dl class="settings-kv about-build-grid" aria-label=${t("aboutPage.artifactDetails")}>
-      <dt>${t("aboutPage.version")}</dt>
-      <dd>
-        ${
-          props.buildInfo.version
-            ? html`<code dir="ltr" title=${props.buildInfo.version}
-                >${props.buildInfo.version}</code
-              >`
-            : renderUnavailable()
-        }
-      </dd>
-      <dt>${t("aboutPage.commit")}</dt>
-      <dd>${renderCommit(props)}</dd>
-      ${
-        props.buildInfo.branch
-          ? html`
-              <dt>${t("aboutPage.branch")}</dt>
-              <dd>
-                <code dir="ltr" title=${props.buildInfo.branch}
-                  >${props.buildInfo.branch}${props.buildInfo.dirty === true ? "*" : ""}</code
-                >
-              </dd>
-            `
-          : nothing
-      }
-      <dt>${t("aboutPage.built")}</dt>
-      <dd>
-        ${
-          buildDate && props.buildInfo.builtAt
-            ? html`<time
-                dir="auto"
-                datetime=${props.buildInfo.builtAt}
-                title=${props.buildInfo.builtAt}
-                >${buildDate}</time
-              >`
-            : renderUnavailable()
-        }
-      </dd>
-    </dl>
-  `;
-  return renderSettingsPage([
-    renderHero(props),
-    renderSettingsSection(
-      { title: t("aboutPage.artifactTitle"), description: t("aboutPage.artifactSubtitle") },
-      buildFacts,
-    ),
-    renderSettingsSection(
-      {},
-      renderSettingsRow({
-        title: t("aboutPage.gatewayVersion"),
-        description: t("aboutPage.gatewayVersionHint"),
-        control: props.gatewayVersion
-          ? renderSettingsValue(
-              html`<code dir="ltr" title=${props.gatewayVersion}>${props.gatewayVersion}</code>`,
-              { mono: true },
-            )
-          : renderSettingsValue(t("aboutPage.unavailable")),
-      }),
-    ),
-    html`<p class="about-footer">${t("aboutPage.license")}</p>`,
-  ]);
+  return html`<section class="about-dialog" aria-labelledby="about-dialog-title">
+    <div class="about-dialog__h">
+      <h2 class="about-dialog__title" id="about-dialog-title">${t("aboutPage.title")}</h2>
+      <button
+        class="about-dialog__close"
+        type="button"
+        aria-label=${t("common.close")}
+        @click=${() => props.onClose?.()}
+      >
+        <span aria-hidden="true">${icons.x}</span>
+      </button>
+    </div>
+    <div class="about-dialog__b">${renderBody(props)}</div>
+  </section>`;
 }

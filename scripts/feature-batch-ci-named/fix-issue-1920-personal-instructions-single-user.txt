@@ -1,0 +1,2 @@
+# PR #1945 named feature tests
+window:src/places/settings/set1/instructions.test.tsx

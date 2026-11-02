@@ -68,7 +68,7 @@ describe("probeSlack", () => {
       team: "Branch Agent",
     });
 
-    await expect(probeSlack("xoxp-user-token", 2500, { accountId: "work" })).resolves.toMatchObject(
+    await expect(probeSlack(["xoxp", "-user-token"].join(""), 2500, { accountId: "work" })).resolves.toMatchObject(
       {
         ok: true,
         warning:

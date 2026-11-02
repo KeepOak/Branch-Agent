@@ -170,7 +170,6 @@ export function OfficePlace({ engine, openConversation, createTrunk, openPlace }
       <button type="button" className="btn sm" onClick={graft}>Graft an agent</button></header>
     {error ? <p role="alert">The office didn’t load. {error} <button type="button" onClick={() => setRetry(n => n + 1)}>Try again</button></p> : null}
     {layoutError ? <p role="alert">{layoutError}</p> : null}
-    {!data && !error ? <p role="status">Opening the office…</p> : null}
     <div className="pixel-office-stage" ref={host} />
   </section>;
 }

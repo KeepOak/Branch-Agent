@@ -5,11 +5,21 @@
 import { CHAT_APP_ROWS, ChatAppsPage } from "../../chatapps";
 import type { PageSlots } from "../slots";
 import {
-  AccountList, AddAccount, AddOwnAccount, AnswerFirst, BranchIdentity, CheckApps, ClaudeCode, Codex, EachTrunkAccount, FallBackHere, FallbackKeys, GeminiCli,
-  GitHubExpires, GitHubPermissions, GitHubRow, HubCommand, OwnAccountList, OwnFolder, RestingNow, SelectAccounts, SignInSources, SignOut, TestIt, WhichNext,
+  AccountList, AddAccount, AddOwnAccount, KeepOakConnect, LinkButton, SaveProgressOffer, UsageList, UsageRing, UsageSpend, AnswerFirst, BranchIdentity, CheckApps, ClaudeCode, Codex, EachTrunkAccount, FallBackHere, FallbackKeys, GeminiCli,
+  GitHubPermissions, GitHubRow, HubCommand, OwnAccountList, OwnFolder, RestingNow, SelectAccounts, SignInSources, SignOut, TestIt, WhichNext,
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
+import { CUSTOMIZE_PAGE } from "./customize-live";
+import { AUTOS_PAGE } from "./autos-live";
+import { MEMORY_PAGE } from "./memory-live";
+import { CARD_PAGE } from "./card-live";
+import { permissionsSlot } from "./permissions-approvals";
+import { privacySlot } from "./privacy-town";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { NOTIFICATIONS_ROWS } from "./notifications";
+import * as Notify from "./notifications-live";
+import { WHO_ROWS } from "./who";
+import { Everyone, PeopleButtons, SignedRecords } from "./who-live";
 import { INSTRUCTIONS_ROWS } from "./instructions";
 import { AboutYou, Files } from "./instructions-live";
 import { VOICE_ROWS } from "./voice";
@@ -36,7 +46,6 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
-  who: "people", notifications: "notifications",
   models: "models",
   permissions: "permissions",
   privacy: "usage",
@@ -52,9 +61,42 @@ export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> =
 };
 
 export const R1_PAGES: PageSlots = {
+  // Your card is one card the page draws itself (card-live.tsx), on Classic People's own card logic. It stays the
+  // first page, where it was when Classic People drew it.
+  card: CARD_PAGE,
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
+  permissions: permissionsSlot,
+  privacy: privacySlot,
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Notifications: native R1 cards in the preview's order; Classic Notifications' calls behind its rows (notifications-live.tsx).
+  notifications: {
+    rows: NOTIFICATIONS_ROWS,
+    controls: {
+      "notifications.tell.here": Notify.NoticesHere,
+      ...Object.fromEntries(["approvalRequested", "agentQuestion", "agentFinished", "scheduledTaskFailed", "humanMentioned"].flatMap((k) => [
+        [`notifications.tell.${k}`, Notify.Category], [`notifications.pc.${k}`, Notify.DeviceCategory]])),
+      "notifications.tell.trunks": Notify.OnlyTrunks,
+      "notifications.tell.locked": Notify.LockedScreen,
+      "notifications.tell.test": Notify.SendTest,
+      "notifications.quiet.hours": Notify.QuietHours,
+      "notifications.quiet.zone": Notify.QuietZone,
+      "notifications.pc.name": Notify.DeviceName,
+      "notifications.pc.locked": Notify.DeviceLocked,
+      "notifications.pc.quiet": Notify.DeviceQuiet,
+      "notifications.pc.trunks": Notify.DeviceTrunks,
+      "notifications.push.browser": Notify.PushBrowser,
+    },
+  },
+  // Who uses Branch: the preview's three cards, with Classic's list of everyone at the top of People.
+  who: { rows: WHO_ROWS, controls: { "who.people.everyone": Everyone, "who.people.open": PeopleButtons, "who.records.signed": SignedRecords } },
+  // Customize is a row page: the kinds hub, Saved prompts and Connected agents are its own cards (customize-live.tsx).
+  customize: CUSTOMIZE_PAGE,
+  // Automations is a row page; where alerts go and the Edit windows are its own (autos-live.tsx).
+  autos: AUTOS_PAGE,
+  // Memory & documents is a row page; meaning search, Last night, other-agents memory and Library rewrite are its own
+  // (memory-live.tsx).
+  memory: MEMORY_PAGE,
   // Instructions & personality: the preview's seven cards; Classic's file list and Just about you inside them.
   instructions: { rows: INSTRUCTIONS_ROWS, controls: { "instructions.you.file": AboutYou, "instructions.project.files": Files } },
   // Voice & calls: native R1 cards in the preview's order; Classic Voice draws behind its rows (voice-controls.tsx).
@@ -175,6 +217,14 @@ export const R1_PAGES: PageSlots = {
   },
   accounts: {
     controls: {
+      "accounts.usage.spend": UsageSpend,
+      "accounts.usage.list": UsageList,
+      "accounts.usage.ring": UsageRing,
+      "accounts.usage.save-progress": SaveProgressOffer,
+      "accounts.linked.gmail": LinkButton,
+      "accounts.linked.calendar": LinkButton,
+      "accounts.linked.drive": LinkButton,
+      "accounts.keepoak.connect": KeepOakConnect,
       "accounts.order.list": AccountList,
       "accounts.order.add": AddAccount,
       "accounts.order.test": TestIt,
@@ -192,7 +242,6 @@ export const R1_PAGES: PageSlots = {
       "accounts.sources.each": SignInSources,
       "accounts.github.connection": GitHubRow,
       "accounts.github.permissions": GitHubPermissions,
-      "accounts.github.expires": GitHubExpires,
       "accounts.more.each-trunk": EachTrunkAccount,
       "accounts.more.fallback-keys": FallbackKeys,
       "accounts.more.resting": RestingNow,

@@ -1,0 +1,4 @@
+window:src/screens/sidebar/Sidebar.test.tsx
+window:src/screens/seedbank/Seedbank.test.tsx
+window:src/screens/seedbank/seedbank-terms.test.tsx
+window:src/screens/seedbank/glass48.test.tsx

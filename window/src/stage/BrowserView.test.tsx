@@ -92,22 +92,65 @@ describe("scoped browser viewing", () => {
   it("offers a scoped managed browser and guidance before the first recorded tab", async () => {
     const request = vi.fn(async () => ({ running: false }));
     await render(owner(request as any), []);
+    await flush();
     expect(request).toHaveBeenCalledWith("browser.request", {
       target: "host", method: "GET", path: "/", query: { profile: "branch" }, tabScope: { sessionKey: "agent:scout:one" },
     });
-    expect(container.textContent).toContain("Browse with your Trunk");
-    expect(container.textContent).toContain("Enter a website address above and press Enter");
-    expect(container.textContent).toContain("ask Scout to read, compare or work on the page");
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ method: "POST", path: "/start" }));
+    expect(container.textContent).toContain("The browser isn’t running");
+    expect(container.querySelector('[aria-label="Search or enter an address"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="New tab"]')).not.toBeNull();
-    for (const label of ["Back", "Forward", "Reload", "Page", "Tools", "Reads", "Numbers", "Comment", "Record"]) {
+    // Back, forward and reload keep their place in the toolbar, as Chrome's do, and stay off until a page is open (#1103).
+    for (const label of ["Back", "Forward", "Reload"]) {
+      expect(container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)?.disabled).toBe(true);
+    }
+    for (const label of ["Page", "Tools", "Reads", "Numbers", "Comment", "Record"]) {
       expect(container.querySelector(`[aria-label="${label}"]`)).toBeNull();
     }
+  });
+  it("keeps the browser-stage guidance visible while stopped and starting, and retries POST /start", async () => {
+    const guidance = "See the pages your Trunk opens, or open a page yourself in this conversation.";
+    let finishStart!: () => void;
+    let starts = 0;
+    let running = false;
+    const request = vi.fn(async (_method: string, params: any) => {
+      if (params.path === "/") return { running };
+      if (params.path === "/start") {
+        starts++;
+        if (starts === 1) throw new Error("Browser unavailable");
+        await new Promise<void>(resolve => { finishStart = resolve; });
+        running = true;
+        return { running: true };
+      }
+      if (params.path === "/tabs") return { tabs: [] };
+      return {};
+    });
+    await render(owner(request as any), []);
+    await flush();
+    expect(starts).toBe(1);
+    expect(container.textContent).toContain("The browser isn’t running.");
+    expect(container.textContent).toContain(guidance);
+    const start = [...container.querySelectorAll("button")].find(button => button.textContent === "Start the browser");
+    expect(start).toBeDefined();
+    await act(async () => start!.click());
+    expect(request).toHaveBeenCalledWith("browser.request", {
+      target: "host", method: "POST", path: "/start", body: {}, query: { profile: "branch" }, tabScope: { sessionKey: "agent:scout:one" },
+    });
+    expect(starts).toBe(2);
+    expect(container.textContent).toContain("Starting the browser…");
+    expect(container.textContent).toContain(guidance);
+    await flush();
+    expect(starts).toBe(2);
+    await act(async () => finishStart());
+    expect(container.textContent).toContain(guidance);
+    expect(starts).toBe(2);
   });
   it("opens the first address and presents opening progress without duplicate requests", async () => {
     let resolve!: (value: unknown) => void;
     let opened = false;
     const request = vi.fn(async (_m: string, p: any) => {
       if (p.path === "/") return { running: opened };
+      if (p.path === "/start") return { running: true };
       if (p.path === "/tabs/open") return new Promise((r) => { resolve = r; });
       if (p.path === "/tabs") return { tabs: [{ targetId: "first", url: "https://example.test", title: "Example" }] };
       return new Promise(() => {});
@@ -120,7 +163,7 @@ describe("scoped browser viewing", () => {
       body: { url: "https://example.test" }, tabScope: { sessionKey: "agent:scout:one" },
     });
     expect(container.textContent).toContain("Opening your page");
-    expect(container.textContent).not.toContain("Browse with your Trunk");
+    expect(container.textContent).not.toContain("Scout’s browser");
     expect(container.querySelector<HTMLButtonElement>('[aria-label="New tab"]')!.disabled).toBe(true);
     await act(async () => input.form!.requestSubmit());
     expect(request.mock.calls.filter(([, p]) => p.path === "/tabs/open")).toHaveLength(1);
@@ -139,7 +182,7 @@ describe("scoped browser viewing", () => {
     await render(owner(request as any), []);
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="New tab"]')!.click());
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/tabs/open", body: { url: "about:blank" } }));
-    expect(container.textContent).toContain("Browse with your Trunk");
+    expect(container.textContent).toContain("Scout’s browser");
     const input = await enterAddress("https://example.test");
     await act(async () => input.form!.requestSubmit());
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/navigate", body: { targetId: "blank", url: "https://example.test" } }));
@@ -187,7 +230,7 @@ describe("scoped browser viewing", () => {
     expect(container.querySelector<HTMLInputElement>(".br-addr-st")!.value).toContain("private-page");
     await render(owner(vi.fn(async () => ({ running: false })) as any, "agent:ada:two"), []);
     expect(container.querySelector<HTMLInputElement>(".br-addr-st")!.value).toBe("");
-    expect(container.textContent).toContain("Browse with your Trunk");
+    expect(container.textContent).toContain("The browser isn’t running.");
   });
   it("retires a closing final tab immediately and restores it if closing fails", async () => {
     let reject!: (error: Error) => void;
@@ -201,7 +244,7 @@ describe("scoped browser viewing", () => {
     await flush();
     const stream = casts.created[0];
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Close tab"]')!.click());
-    expect(container.textContent).toContain("Browse with your Trunk");
+    expect(container.textContent).toContain("Scout’s browser");
     expect(stream.close).toHaveBeenCalledOnce();
     await act(async () => stream.options.onClose());
     expect(container.textContent).not.toContain("The browser stream closed");
@@ -260,24 +303,33 @@ describe("scoped browser viewing", () => {
       }),
     );
     expect(draw).toHaveBeenCalledOnce();
-    const canvas = container.querySelector("canvas")!;
     const before = request.mock.calls.length;
-    await act(async () =>
-      canvas.dispatchEvent(new KeyboardEvent("keydown", { key: "A", bubbles: true })),
-    );
+    const field = () => container.querySelector<HTMLTextAreaElement>("textarea[aria-label='Type into the page']")!;
+    await act(async () => field().dispatchEvent(new KeyboardEvent("keydown", { key: "A", bubbles: true })));
     expect(request.mock.calls.length).toBe(before);
     await render(engine, blocks, true);
     await act(async () =>
-      canvas.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "A", bubbles: true, cancelable: true }),
-      ),
+      field().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })),
     );
     expect(request).toHaveBeenLastCalledWith(
       "browser.request",
       expect.objectContaining({
         path: "/act",
-        body: { kind: "press", key: "A", targetId: "tab-one" },
+        body: { kind: "press", key: "Enter", targetId: "tab-one" },
         tabScope: { sessionKey: "agent:scout:one" },
+      }),
+    );
+    // A soft keyboard or an IME sends text as beforeinput, never as a keydown for each character.
+    const typed = Object.assign(new Event("beforeinput", { bubbles: true, cancelable: true }), { inputType: "insertText", data: "hé", isComposing: false });
+    await act(async () => {
+      field().dispatchEvent(typed);
+    });
+    expect(typed.defaultPrevented).toBe(true);
+    expect(request).toHaveBeenLastCalledWith(
+      "browser.request",
+      expect.objectContaining({
+        path: "/act",
+        body: { kind: "insertText", text: "hé", targetId: "tab-one" },
       }),
     );
     await act(async () => root!.unmount());
@@ -359,9 +411,10 @@ describe("scoped browser viewing", () => {
     const request = vi.fn(async (_m: string, params: any) => (params.path === "/" ? { running: false } : {}));
     await render(owner(request as any));
     await flush();
-    expect(container.textContent).toContain("Browse with your Trunk");
+    expect(container.textContent).toContain("The browser isn’t running");
     const input = await enterAddress("example.test");
     await act(async () => input.form!.requestSubmit());
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ method: "POST", path: "/start" }));
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ method: "POST", path: "/tabs/open", target: "node", node: "node-one", query: { profile: "work" }, body: { url: "https://example.test" } }));
   });
   it("goes back, reloads and opens an address on the tab in front", async () => {

@@ -1112,7 +1112,7 @@ function installControlUiMockGateway(
   const scenario = input.scenario;
   if (scenario.communityInviteDismissed) {
     try {
-      // Same persisted preference as community-invite-state.ts, before the first sidebar render.
+      // The removed community invite's old dismissal key, set before the first sidebar render.
       window.localStorage.setItem(
         "branch:control-ui:community-invite:v2",
         JSON.stringify({ dismissedAtMs: 1770000000000 }),

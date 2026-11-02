@@ -1,5 +1,5 @@
 import { waitFor } from '@testing-library/react-native';
-import { Conversation, historyItems, phaseLabel, stepTitle } from './conversation';
+import { Conversation, historyItems, isComputerTool, phaseLabel, stepTitle } from './conversation';
 import { createFakeEngine, type FakeEngine } from '../connect/fakeEngine';
 import { createFakeSession } from '../testing/fakeSession';
 import type { PairingSession } from '../pairing/pairingSession';
@@ -57,6 +57,33 @@ describe('chat history as the phone shows it', () => {
     expect(stepTitle('github_pr_view')).toBe('Used github pr view');
     expect(phaseLabel('starting_model')).toBe('Starting the model…');
     expect(phaseLabel(null)).toBe('Thinking…');
+    expect(isComputerTool('computer')).toBe(true);
+    expect(isComputerTool('browser')).toBe(true);
+    expect(isComputerTool('read')).toBe(false);
+  });
+
+  it('lifts computer and browser steps into their own message, and keeps other tools on the work line', () => {
+    const { items } = historyItems([
+      user('Search Outlook', 1_000),
+      {
+        role: 'assistant',
+        content: [
+          { type: 'toolCall', id: 't1', name: 'read', arguments: {} },
+          { type: 'toolCall', id: 't2', name: 'computer', arguments: {} },
+          { type: 'toolCall', id: 't3', name: 'browser', arguments: {} },
+        ],
+        timestamp: 2_000,
+        stopReason: 'toolUse',
+      },
+      reply('Found it.', 13_000),
+    ]);
+    expect(items.map((i) => [i.kind, 'text' in i ? i.text : i.steps.join(' / ')])).toEqual([
+      ['user', 'Search Outlook'],
+      ['work', 'Read a file'],
+      ['computer', 'Used the computer / Used the browser'],
+      ['assistant', 'Found it.'],
+    ]);
+    expect(items[2]).toMatchObject({ kind: 'computer', title: 'Used the browser', durationMs: 12_000 });
   });
 });
 
@@ -126,13 +153,47 @@ describe('one chat, live', () => {
     await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
     engine.failMethod('chat.send', 'The engine is busy');
     await chat.send('Book the table');
-    expect(chat.getSnapshot().sends).toMatchObject([{ id: 'run-1', state: 'failed', error: 'The engine is busy' }]);
+    expect(chat.getSnapshot().sends).toMatchObject([{ id: 'run-1', state: 'failed', error: "Can't reach Branch. Check your connection." }]);
     expect(chat.getSnapshot().live).toBeNull();
     engine.failMethod('chat.send', null);
     await chat.retry('run-1');
     const sends = engine.requests.filter((r) => r.method === 'chat.send').map((r) => (r.params as { idempotencyKey: string }).idempotencyKey);
     expect(sends).toEqual(['run-1', 'run-1']);
     expect(chat.getSnapshot().sends).toMatchObject([{ id: 'run-1', state: 'sent' }]);
+    chat.dispose();
+    session.dispose();
+  });
+
+  it('sends ready chips on chat.send and retries them under the same key', async () => {
+    const { session, engine } = await paired();
+    const chat = open(session);
+    await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
+    const file = {
+      id: '1',
+      kind: 'file' as const,
+      fileName: 'shot.png',
+      mimeType: 'image/png',
+      sizeBytes: 3,
+      content: 'AAA',
+      origin: 'file' as const,
+    };
+    await chat.send('Look', [file]);
+    expect(engine.requests.find((r) => r.method === 'chat.send')?.params).toEqual({
+      sessionKey: KEY,
+      message: 'Look',
+      idempotencyKey: 'run-1',
+      attachments: [{ type: 'image', mimeType: 'image/png', fileName: 'shot.png', origin: 'file', content: 'AAA' }],
+    });
+    engine.failMethod('chat.send', 'The engine is busy');
+    await chat.send('', [file]);
+    expect(chat.getSnapshot().sends).toMatchObject([
+      { id: 'run-1', text: 'Look', state: 'sent' },
+      { id: 'run-2', text: 'shot.png', message: '', state: 'failed' },
+    ]);
+    engine.failMethod('chat.send', null);
+    await chat.retry('run-2');
+    const last = engine.requests.filter((r) => r.method === 'chat.send').at(-1)?.params;
+    expect(last).toMatchObject({ message: '', idempotencyKey: 'run-2', attachments: [{ fileName: 'shot.png', content: 'AAA' }] });
     chat.dispose();
     session.dispose();
   });
@@ -323,7 +384,7 @@ describe('one chat, around the reply', () => {
     const { session, engine } = await paired();
     engine.failMethod('chat.history', 'history unavailable');
     const chat = open(session);
-    await eventually(() => expect(chat.getSnapshot().error).toBe('history unavailable'));
+    await eventually(() => expect(chat.getSnapshot().error).toBe("Can't reach Branch. Check your connection."));
     expect(chat.getSnapshot().loaded).toBe(false);
     engine.failMethod('chat.history', null);
     await chat.load();

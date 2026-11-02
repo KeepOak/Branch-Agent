@@ -1,8 +1,7 @@
 // Settings › Chat apps › Manage <app> (§4.7.10.1): who answers there, who may message it (channels.<id>.dmPolicy and
 // allowFrom), who is asking, its live state with Pause/Start (channels.stop/start, kept with channels.<id>.enabled),
 // its token (the engine's setup steps again) and Disconnect. Advanced and Technical parts are in chatapps-manage-more.
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
 import { record, text, visible } from "../adapter";
@@ -44,14 +43,14 @@ export function ManageDialog(p: ManageProps) {
       <div className="ca-head"><Logo id={p.app.id} name={p.app.name} size={40} /><span className="grow"><b>{p.app.name}</b>{p.app.detail ? <small>{p.app.detail}</small> : null}</span></div>
       {p.app.tone === "ok" ? null : <SetupSteps done={false} />}
       <div className="fld-ca"><span>Who answers in {p.app.name}</span><WhoSeg app={p.app} cfg={p.cfg} trunks={p.trunks} defaultId={p.defaultId} /><LinkBtn onClick={p.onPerChat}>Choose per chat</LinkBtn></div>
-      <Ctl title="Who may message it" sub="Everyone else gets no answer.">
+      <Ctl title="Who may message it" sub="Everyone else gets no answer." off={p.cfg.loading ? "Wait for the settings to load." : undefined}>
         <Seg layout="radio" label="Who may message it" value={WHO.find((w) => w.policy === policy)?.id ?? ""} options={WHO.map((w) => ({ id: w.id, label: w.label, off: w.id === "me" && !allow.filter((a) => a !== "*").length ? "Add yourself below first." : w.off }))} disabled={p.cfg.loading} onChange={setWho} />
       </Ctl>
       {policy === "pairing" || policy === "allowlist" ? <Approved {...p} base={base} allow={allow} /> : null}
       {policy === "pairing" ? <AskingHere {...p} /> : null}
       {p.app.id === "telegram" ? <>
-        <Ctl title="Keep forum topics apart" sub="Each topic in a group becomes its own conversation." off="Branch has no setting for this yet."><Switch checked label="Keep forum topics apart" disabled onChange={() => undefined} /></Ctl>
-        <Ctl title="Photos and files reach the task" sub={`What you send in ${p.app.name} is handed to the Trunk as material.`} off="Branch has no setting for this yet."><Switch checked label="Photos and files reach the task" disabled onChange={() => undefined} /></Ctl>
+        <Ctl title="Keep forum topics apart" sub="Each topic in a group becomes its own conversation." off="This setting cannot be changed yet."><Switch checked label="Keep forum topics apart" disabled onChange={() => undefined} /></Ctl>
+        <Ctl title="Photos and files reach the task" sub={`What you send in ${p.app.name} is handed to the Trunk as material.`} off="This setting cannot be changed yet."><Switch checked label="Photos and files reach the task" disabled onChange={() => undefined} /></Ctl>
       </> : null}
       <Running {...p} base={base} />
       <ManageMore {...p} base={base} />
@@ -62,6 +61,7 @@ export function ManageDialog(p: ManageProps) {
 
 /** The people let in (allowFrom), one per row, and a list of people to use instead. */
 function Approved({ app, cfg, base, allow }: ManageProps & { base: string; allow: string[] }) {
+  const whyId = useId();
   const held = [...new Set(app.accounts.flatMap((a) => (Array.isArray(a.allowFrom) ? a.allowFrom.map(String) : [])))].filter((x) => x !== "*" && !allow.includes(x));
   const [add, setAdd] = useState("");
   const people = allow.filter((a) => a !== "*" && !a.startsWith(GROUP));
@@ -73,12 +73,14 @@ function Approved({ app, cfg, base, allow }: ManageProps & { base: string; allow
     <>
       <div className="rows list-ca">
         {people.map((who) => <div key={who} className="prow"><span className="grow"><b>{visible(who)}</b><small>Allowed to message it</small></span><Btn ghost sm onClick={() => put(allow.filter((a) => a !== who))}>Remove</Btn></div>)}
-        {held.map((who) => <div key={`held:${who}`} className="prow"><span className="grow"><b>{visible(who)}</b><small>Allowed to message it</small></span><span title="Branch can’t remove someone the engine let in yet."><Btn ghost sm disabled>Remove</Btn></span></div>)}
+        {held.map((who) => <div key={`held:${who}`} className="prow"><span className="grow"><b>{visible(who)}</b><small>Allowed to message it</small></span><span><Btn ghost sm disabled aria-describedby={`${whyId}-remove`}>Remove</Btn></span></div>)}
+        {held.length > 0 && <p className="hint" id={`${whyId}-remove`}>People approved outside these settings cannot be removed here yet.</p>}
         {!people.length && !held.length ? <Hint>No one yet.</Hint> : null}
         <Hint>People you approve from a request are kept by the engine and may not be listed here yet.</Hint>
-        <div className="prow add-ca"><input className="inp" placeholder={`Their ${app.name} ID or @name`} aria-label={`Their ${app.name} ID or @name`} value={add} onChange={(e) => setAdd(e.target.value)} onKeyDown={(e) => e.key === "Enter" && plus()} /><Btn sm disabled={!add.trim()} onClick={plus}>Add</Btn></div>
+        <div className="prow add-ca"><input className="inp" placeholder={`Their ${app.name} ID or @name`} aria-label={`Their ${app.name} ID or @name`} value={add} onChange={(e) => setAdd(e.target.value)} onKeyDown={(e) => e.key === "Enter" && plus()} /><Btn sm disabled={!add.trim()} aria-describedby={!add.trim() ? `${whyId}-add` : undefined} onClick={plus}>Add</Btn></div>
+        {!add.trim() && <p className="hint" id={`${whyId}-add`}>Enter an ID or name to add someone.</p>}
       </div>
-      <Ctl title="Use a list" sub="Everyone else gets no answer.">
+      <Ctl title="Use a list" sub="Everyone else gets no answer." off={cfg.loading ? "Wait for the settings to load." : undefined}>
         <Pick label="Use a list" value={group} disabled={cfg.loading} options={[{ id: "", label: "None" }, ...lists.map((l) => ({ id: l, label: visible(l) }))]}
           onChange={(v) => put([...allow.filter((a) => !a.startsWith(GROUP)), ...(v ? [GROUP + v] : [])])} />
       </Ctl>
@@ -126,11 +128,11 @@ function Running({ engine, app, cfg, base, reload, onSetup }: ManageProps & { ba
   return (
     <div className="box-ca">
       <div className="box-h-ca"><Pill tone={app.paused ? "idle" : app.tone === "ok" ? "ok" : app.tone === "work" ? "work" : "bad"}>{app.paused ? "Paused" : app.word}</Pill>{!app.paused && app.tone === "bad" ? <small>{app.sub}</small> : null}</div>
-      <Ctl title="Connection"><Btn sm disabled={cfg.loading} onClick={() => void toggle()}>{state === "running" ? "Pause" : "Start"}</Btn></Ctl>
-      {isLinked(app) ? <Ctl title={app.accounts.some((a) => a.linked === true) ? `Linked to your ${app.name} account` : "Not linked"} sub={`This computer keeps the link to your ${app.name} account.`}><Btn sm disabled={!app.accounts.some((a) => a.linked === true)} onClick={() => void save(async () => { await eachAccount(engine, app, "channels.logout"); await reload(); })}>Unlink</Btn></Ctl> : null}
+      <Ctl title="Connection" off={cfg.loading ? "Wait for the settings to load." : undefined}><Btn sm disabled={cfg.loading} onClick={() => void toggle()}>{state === "running" ? "Pause" : "Start"}</Btn></Ctl>
+      {isLinked(app) ? <Ctl title={app.accounts.some((a) => a.linked === true) ? `Linked to your ${app.name} account` : "Not linked"} sub={`This computer keeps the link to your ${app.name} account.`} off={!app.accounts.some((a) => a.linked === true) ? "Link this account before unlinking it." : undefined}><Btn sm disabled={!app.accounts.some((a) => a.linked === true)} onClick={() => void save(async () => { await eachAccount(engine, app, "channels.logout"); await reload(); })}>Unlink</Btn></Ctl> : null}
       {source ? <Ctl title="Token" sub={`Replacing it restarts ${app.name} with the new one.`}><Val>{SOURCE_WORDS[source] ?? visible(source)}</Val><Btn sm onClick={onSetup}>Replace</Btn></Ctl> : null}
       {[["Sees edited messages", "It answers the latest version."], ["Photo albums as one message", "Not one reply per photo."], [`Online status in ${app.name}`, "“Online” or “Offline, back soon” in the bot’s description."]].map(([t, s]) => (
-        <Ctl key={t} title={t} sub={s} off="Branch has no setting for this yet."><Switch checked={!t.startsWith("Online")} label={t} disabled onChange={() => undefined} /></Ctl>
+        <Ctl key={t} title={t} sub={s} off="This setting cannot be changed yet."><Switch checked={!t.startsWith("Online")} label={t} disabled onChange={() => undefined} /></Ctl>
       ))}
       <Ctl title="Formatting" off="Each app’s own formatting is always used."><Seg label="Formatting" value="own" options={[{ id: "own", label: NATIVE[app.id] ?? "Its own styles" }, { id: "plain", label: "Plain text" }]} disabled onChange={() => undefined} /></Ctl>
       {app.tone === "bad" && !app.paused ? <div className="acts"><Btn pri sm onClick={onSetup}>Set it up again</Btn></div> : null}
@@ -164,11 +166,15 @@ function Disconnect({ engine, app, cfg, base, reload, onClose }: ManageProps & {
 /** The five setup steps (the preview's .chw-steps12): every one ticked once the app is connected. Changes here save as
  *  they are made, so Save closes; Back goes through the engine's setup steps again. */
 function SetupSteps({ done }: { done: boolean }) {
+  const whyId = useId();
   return (
-    <div className="chw-steps12" aria-label="Setup steps">
-      {["Create", "Paste", "Check", "Pair", "Save"].map((name, i) => (
-        <span key={name} className={done ? "done" : undefined}><em>{done ? "✓" : i + 1}</em>{name}</span>
-      ))}
-    </div>
+    <>
+      <div className="chw-steps12" aria-label="Setup steps">
+        {["Create", "Paste", "Check", "Pair", "Save"].map((name, i) => (
+          <span key={name} className={done ? "done" : undefined} aria-describedby={!done ? whyId : undefined}><em>{done ? "✓" : i + 1}</em>{name}</span>
+        ))}
+      </div>
+      {!done && <p id={whyId} className="hint">These are setup progress labels. Use Back to open the setup steps.</p>}
+    </>
   );
 }

@@ -1,0 +1,4 @@
+engine:src/media-generation/live-test-helpers.test.ts
+engine:src/media-generation/provider-assets.test.ts
+engine:src/media-generation/registry.test.ts
+engine:src/media-generation/runtime-shared.test.ts

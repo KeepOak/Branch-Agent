@@ -24,6 +24,7 @@ import {
   listAgentEntriesWithSource,
   listAgentIds,
   readAgentRosterProperty,
+  tryResolveDefaultAgentId,
   tryResolveLegacyDataOwner,
   tryResolveRawLegacyDefaultAgentId,
   tryResolveSoleAgentId,
@@ -246,6 +247,19 @@ export function tryResolveContactDefaultAgentId(cfg: BranchConfig): string | und
     }
   }
   return undefined;
+}
+
+/**
+ * Default agent the app shows (`agents.list` `defaultId` / snapshot `sessionDefaults.defaultAgentId`).
+ * Contact first, then a sole or raw-legacy owner, then the migrated compatibility owner.
+ * An ownerless multi-agent fleet has no designated default.
+ */
+export function tryResolveDisplayedDefaultAgentId(cfg: BranchConfig): string | undefined {
+  return (
+    tryResolveContactDefaultAgentId(cfg) ??
+    tryResolveDefaultAgentId(cfg) ??
+    tryResolveLegacyCompatibilityAgentId(cfg)
+  );
 }
 
 /** Resolves the recorded default after migration, or a sole/raw legacy owner. */

@@ -1,6 +1,7 @@
 // The R1 topics (owner items 5, 43, 46 and 47): the Classic thread rail (shell/TopicRail.tsx), re-hosted for R1. R1 offers
 // "Tabs above the chat" (the default) only for now; a saved removed layout reads as Tabs. The tabs carry the round + (New topic)
-// and each topic's right-click menu. All shows every thread's messages in one stream (shell/topic-all.ts).
+// even when this Trunk has no topics yet, and each topic's right-click menu. All shows every thread's messages in one stream
+// (shell/topic-all.ts). Classic still hides its rail until a topic exists (WindowShell).
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Topic } from "@branch/gateway-protocol";
 import type { Conversation, ConversationList } from "../../connect/conversations";
@@ -121,7 +122,7 @@ export function useR1Topics(p: R1TopicsProps): { column: ReactNode; above: React
       (error: unknown) => { if (live) { console.warn("All threads failed to load", error); setAll(null); } });
     return () => { live = false; };
   }, [all, contact, showingAll, items, p.rows, p.session]);
-  if (!contact || !topics.length) return { column: null, above: null, history: null, layout };
+  if (!contact) return { column: null, above: null, history: null, layout };
   const general = p.rows.find((row) => row.key === contact.key);
   const agentId = contact.id.replace(/^trunk:/, "");
   const request = (method: string, params: unknown) => p.session.request(method, params);

@@ -1,0 +1,9 @@
+{
+  "name": "@branch/harvest-rea-pin",
+  "private": true,
+  "version": "6.4.0",
+  "description": "Locked install of rea-agents 6.4.0 for the Harvest plugin MCP server.",
+  "dependencies": {
+    "rea-agents": "6.4.0"
+  }
+}

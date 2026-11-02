@@ -6,13 +6,13 @@ import type { ConversationList } from "../../connect/conversations";
 import type { WindowEngine } from "../../connect/engine";
 import type { SaplingSession } from "../../connect/session";
 import type { Route } from "../../places-nav/routes";
-import { createReadyTrunk, loadRoster, makeDefault } from "../../places/trunk/api";
-import { conversationActions } from "../../shell/conversation-actions";
+import { loadRoster, makeDefault } from "../../places/trunk/api";
+import { openNewTrunkSheet } from "../../places/trunk/new-trunk-sheet";
 import { useTrunks } from "../../shell/engine-data";
-import { nextTrunkName } from "../../shell/NewTrunkFlow";
 import { HOME, loadAtlas, statusWord, type AtlasRow } from "../features/atlas";
 import { featureRoute } from "../settings/pages/places-live";
 import type { SettingsFrameProps } from "../settings/SettingsFrame";
+import { plainError } from "../../shell/plain-error";
 
 type Deps = {
   session: SaplingSession;
@@ -27,7 +27,8 @@ type Deps = {
   onNotice: (text: string) => void;
 };
 
-const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const why = (e: unknown): string => plainError(e);
 
 export function useSettingsSearch(d: Deps): Pick<SettingsFrameProps, "trunks" | "features" | "onTrunk" | "onOpenFeature"> {
   const roster = useTrunks(d.session, d.ready);
@@ -41,7 +42,7 @@ export function useSettingsSearch(d: Deps): Pick<SettingsFrameProps, "trunks" | 
   const trunks = useMemo(() => (roster.loaded ? roster.list.map((t) => ({ id: t.id, name: t.name, isDefault: t.isDefault })) : undefined), [roster]);
   // The preview names a feature by its title, with its status under it (In Branch, Partly built, Coming).
   const features = useMemo(() => atlas?.map((r) => ({ id: r.id, name: r.f, description: statusWord(r.s) })), [atlas]);
-  const { session, engine, list, mainKey, navigate, onNotice } = d;
+  const { engine, mainKey, navigate, onNotice } = d;
   return {
     trunks,
     features,
@@ -54,14 +55,8 @@ export function useSettingsSearch(d: Deps): Pick<SettingsFrameProps, "trunks" | 
           (e: unknown) => onNotice(`Couldn’t make it the default: ${why(e)}`));
         return;
       }
-      // New Trunk, as the sidebar's + menu makes one: a ready Trunk with the next free name, then its conversation.
-      void (async () => {
-        try {
-          const agentId = await createReadyTrunk(engine, nextTrunkName(roster.list.map((t) => t.name)));
-          const key = await conversationActions(<T,>(m: string, p?: unknown) => session.request(m, p) as Promise<T>, list, () => null).create(agentId);
-          navigate({ kind: "chat", key: key ?? `agent:${agentId}:main` });
-        } catch (e) { onNotice(`Couldn’t make the Trunk: ${why(e)}`); }
-      })();
+      // New Trunk opens the same sheet as the + menu. The chat asks for the job, the model and the tools after Create.
+      openNewTrunkSheet();
     },
     onOpenFeature: (id) => {
       const row = atlas?.find((r) => r.id === id);

@@ -1,0 +1,4 @@
+engine:extensions/firecrawl/src/firecrawl-cache.test.ts
+engine:extensions/firecrawl/src/firecrawl-client.test.ts
+engine:extensions/firecrawl/src/firecrawl-search-results.test.ts
+engine:extensions/firecrawl/src/firecrawl-tools.test.ts

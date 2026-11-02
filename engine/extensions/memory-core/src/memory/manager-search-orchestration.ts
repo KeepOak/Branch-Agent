@@ -279,8 +279,12 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
               indexState,
             });
       const indexIdentity = refreshSearchIdentity();
+      // Identity repair re-embeds the index, so it waits out an open account
+      // backoff like the other automatic syncs; the search below then answers
+      // from what the published identity still allows.
       const shouldRepairIdentity =
         hasIndexedContent &&
+        !this.embeddingAccountBackoff.isActive() &&
         (indexIdentity.status === "missing" ||
           (searchSyncEnabled &&
             indexIdentity.status === "mismatched" &&
@@ -343,9 +347,16 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
           return [];
         }
         if (embeddingKeywordFallback) {
-          log.warn(
-            "memory search: embedding configuration changed; serving keyword results until the rebuild finishes",
-          );
+          // Report each distinct mismatch once with its fix; repeated searches
+          // keep serving keyword results without repeating the warning.
+          const mismatchReason =
+            repairedIndexIdentity.status === "mismatched" ? repairedIndexIdentity.reason : "";
+          if (!this.reportedIndexIdentityMismatches.has(mismatchReason)) {
+            this.reportedIndexIdentityMismatches.add(mismatchReason);
+            log.warn(
+              `memory search: ${mismatchReason}; serving keyword results from the existing index until it is rebuilt. Fix: run branch memory status --index --agent ${this.agentId} once the embedding provider is available.`,
+            );
+          }
           this.dirty = true;
           this.memoryFullRetryDirty = true;
         } else {
@@ -371,7 +382,7 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
       ) {
         const trackedSearchSync = this.syncPublishedIndexInBackground({ reason: "search" })
           .catch((err: unknown) => {
-            log.warn(`memory sync failed (search): ${String(err)}`);
+            this.reportBackgroundSyncFailure("search", err);
           })
           .finally(() => {
             this.activeBackgroundSearchSyncs.delete(trackedSearchSync);
@@ -416,7 +427,16 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
           activeProjectKeys: opts?.activeProjectKeys,
         });
 
+      // While the provider account rejects embeddings, skip the query request
+      // and answer from the existing keyword index. Explicit providers keep
+      // their fail-closed contract.
+      const embeddingAccountBackoffKeywordOnly =
+        this.embeddingAccountBackoff.isActive() &&
+        this.providerRequirement.mode !== "required" &&
+        this.fts.enabled &&
+        this.fts.available;
       const keywordOnly =
+        embeddingAccountBackoffKeywordOnly ||
         embeddingBootstrapKeywordOnly ||
         chunkingUpgradePendingKeywordOnly(effectiveIdentity) ||
         embeddingIdentityOnlyKeywordFallback(effectiveIdentity) ||
@@ -471,6 +491,12 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
           return [];
         }
         return await finalizeKeywords(await loadKeywordResults());
+      }
+      // With no keyword index to answer from (hybrid off, FTS unavailable or
+      // an explicit provider), the backoff still holds: fail the search
+      // instead of resending the query to the rejected account.
+      if (this.embeddingAccountBackoff.isActive()) {
+        throw new Error(this.embeddingAccountBackoff.describeSearchPause());
       }
       let semanticProvider = this.provider;
       let semanticProviderRuntime = this.providerRuntime;
@@ -557,9 +583,14 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
             this.fts.available
           ) {
             this.assertRequiredProviderAvailable("search");
-            log.warn(
-              `memory search: embeddings unavailable; using keyword-only results: ${message}`,
-            );
+            if (this.embeddingAccountBackoff.claimLog(err)) {
+              // A query failure can open the window before any background sync
+              // fails, so this warning carries the window description too.
+              const suffix = this.embeddingAccountBackoff.warningSuffix();
+              log.warn(
+                `memory search: embeddings unavailable; using keyword-only results: ${message}${suffix}`,
+              );
+            }
             return await finalizeKeywords(keywordResults);
           } else {
             throw err;

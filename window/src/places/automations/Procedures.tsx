@@ -3,6 +3,7 @@
 // procedure, so it has nothing to open). [T] Commands, technical edits config `commands` (engine
 // src/config/zod-schema.session.ts CommandsSchema) through config.patch.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { Failure } from "./Failure";
 import { useState } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
@@ -42,7 +43,7 @@ function CommandsTechnical({ engine, canWrite }: { engine: WindowEngine; canWrit
   const off = canWrite ? undefined : "Needs an owner";
   const flag = (field: string, title: string, sub: string, dflt: boolean) => <SwitchRow key={field} title={title} sub={sub} on={typeof c[field] === "boolean" ? (c[field] as boolean) : dflt} change={v => set(field, v)} disabled={off} />;
   return <Section title="Commands, technical" aside={<button type="button" className="au-link" disabled={!canWrite} title={shownWhy(off)} onClick={() => void run(async () => { const r = rec(await engine.request("config.openFile", {})); if (r.ok !== true) throw new Error(str(r.error) || "The settings file couldn’t be opened."); return r; }, "Opened the settings file on the Gateway’s computer.")}>Edit as text</button>}>
-    {state.error && <p className="au-error" role="alert">{state.error}</p>}
+    {state.error && <div className="au-error" role="alert"><Failure error={state.error} /></div>}
     <div className={canWrite && !busy ? "" : "au-off"} title={shownWhy(off)}>
       <NativeRow title="Commands in chat apps’ menus" value={toNative(c.native)} change={v => set("native", fromNative(v))} />
       <NativeRow title="Skills as commands in chat apps’ menus" value={toNative(c.nativeSkills)} change={v => set("nativeSkills", fromNative(v))} />

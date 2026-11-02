@@ -1,30 +1,47 @@
 #!/usr/bin/env node
 // Local preflight: runs the gate checks that need no CI infrastructure, before a push or a PR body edit.
 // Reuses the gates' own exported checks and config so the rules cannot drift. Prints one line per problem, with the fix.
-// Usage: node scripts/pr-preflight.mjs --body <draft-body.md> [--base origin/main] [--cloud-agent]
+// Usage: node scripts/pr-preflight.mjs --body <draft-body.md> [--title <PR title>] [--base origin/main] [--cloud-agent]
+// Without --title the title is the HEAD commit subject; pass the PR title when it differs.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkSelfCheck } from './check-self-check.mjs';
-import { checkUIProof } from './check-ui-proof.mjs';
+import { explainFinalHeadDrift } from './final-head-history.mjs';
+import { checkCommittedProofImages, checkUIProof } from './check-ui-proof.mjs';
 import { ALLOWED_SUFFIX, FIX_LINES, evaluateCommits, fetchPrCommitsWithApi } from './check-commit-emails.mjs';
 import {
   changedFilesFromPrFiles,
   coverageFromPrFiles,
   evaluateGateChangeReview,
   fetchFileTextsBatch,
-  fetchPrBody,
   fetchPrFiles,
   gateApiBudget,
+  ghApi,
   loadProtectedGatePaths,
 } from './merge-gate-trusted.mjs';
 import { checkWindowClean, scanTree } from './check-window-clean.mjs';
+import { loadUnlistedRunner, unlistedDesktopTargets } from './changed-test-coverage.mjs';
 
 const PERSONAL_PATTERNS = [
   /\/Users\/[A-Za-z0-9._-]+\//,
   /[A-Za-z]:\\Users\\[A-Za-z0-9._-]+\\/,
   /\b[A-Za-z0-9._%+-]+@(gmail|outlook|hotmail|yahoo|icloud|proton)\.[a-z.]+\b/i,
+];
+// Provider key formats. Test files are scanned too: a literal fake key in a fixture still trips
+// GitHub secret scanning. Minimum lengths keep short placeholders such as sk-test passing.
+const SECRET_PATTERNS = [
+  ['github-token', /\bgh[pousr]_[A-Za-z0-9]{36,}\b/],
+  ['github-fine-grained-token', /\bgithub_pat_[A-Za-z0-9_]{22,}/],
+  ['anthropic-key', /\bsk-ant-[A-Za-z0-9_-]{32,}/],
+  ['openai-key', /\bsk-(?!ant-)(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}/],
+  ['aws-access-key-id', /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
+  ['slack-token', /\bxox[bpar]-[A-Za-z0-9-]{10,}/],
+  ['stripe-live-key', /\b(?:sk|rk)_live_[A-Za-z0-9]{24,}/],
+  ['google-api-key', /\bAIza[0-9A-Za-z_-]{35}/],
+  ['jwt', /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/],
+  ['private-key-pem', /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY( BLOCK)?-----/],
 ];
 // Test files carry synthetic fixtures (example addresses, sample paths) on purpose, so they are exempt.
 const FIXTURE_FILE = /\.test\.(mjs|ts|tsx)$/;
@@ -74,19 +91,34 @@ export function commitProblems(commits, { cloudAgent = false } = {}) {
   return [...addressProblems, ...trailerProblems];
 }
 
-// The SELF-CHECK block must exist, be valid, and name the head this push is actually at.
-export function selfCheckProblems({ branch, headSha, body }) {
+// The SELF-CHECK block must exist and be valid. Final head must be this head, or this head
+// may be that commit plus later merges that only bring main in.
+export function selfCheckProblems({ branch, headSha, body, repoDir }) {
   const problems = checkSelfCheck({ headRef: branch, body }).problems.map((message) => problem(
     'self-check', message, 'edit the draft body file, then rerun preflight',
   ));
   const final = /Final head:\s*([0-9a-f]{40})/i.exec(body ?? '');
   if (final && final[1].toLowerCase() !== headSha.toLowerCase()) {
-    problems.push(problem('self-check', `Final head ${final[1].slice(0, 9)} is stale; HEAD is ${headSha.slice(0, 9)}`, `set "Final head: ${headSha}" in the body`));
+    const drift = repoDir ? explainFinalHeadDrift({ repoDir, namedSha: final[1], headSha }) : { ok: false, known: false };
+    if (!drift.ok) {
+      const message = drift.known
+        ? drift.message
+        : `Final head ${final[1].slice(0, 9)} is stale; HEAD is ${headSha.slice(0, 9)}`;
+      problems.push(problem('self-check', message, `set "Final head: ${headSha}" in the body`));
+    }
   }
   return problems;
 }
 
-// Named-test list: every changed engine or window test file must appear in the branch's list, sorted.
+// Named-test list: every changed engine or window test file must appear in the branch's list, in any order.
+// Only one PR edits its own list, so order cannot cause merge conflicts. The shared engineTests and windowTests
+// arrays in feature-batch-ci-targets.mjs stay sorted; namedTests() checks those.
+// Only files that exist on the head can run, so removed files and the old names of renames are left out,
+// as the gate's coverage rule does. Takes PR files (or filesFromNameStatus output): { filename, status }.
+export function namedListCandidates(files) {
+  return (files ?? []).filter((f) => f.status !== 'removed').map((f) => f.filename);
+}
+
 export function namedListProblems({ changedFiles, listText, listPath }) {
   const wanted = changedFiles.filter((f) => ENGINE_OR_WINDOW_TEST.test(f)).map((f) => f.replace(/^(engine|window)\//, '$1:')).sort();
   if (wanted.length === 0) return [];
@@ -95,17 +127,20 @@ export function namedListProblems({ changedFiles, listText, listPath }) {
   }
   const have = listText.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
   const missing = wanted.filter((w) => !have.includes(w));
-  const problems = missing.map((w) => problem('named-tests', `${listPath} lacks ${w}`, `add the line ${w}`));
-  if (JSON.stringify(have) !== JSON.stringify([...have].sort())) {
-    problems.push(problem('named-tests', `${listPath} is not sorted`, `sort the lines in ${listPath}`));
-  }
-  return problems;
+  return missing.map((w) => problem('named-tests', `${listPath} lacks ${w}`, `add the line ${w}`));
 }
 
 export function uiProofProblems({ changedFiles, body }) {
   const result = checkUIProof(changedFiles, body ?? '');
   if (result.exitCode === 0) return [];
   return [problem('ui-proof', result.message.split('\n')[0], 'add a screenshot image or link to the body, or the line "No visible change: <reason>"')];
+}
+
+export function proofImageProblems(files) {
+  const added = (files ?? []).filter((f) => f.status === 'added' || f.status === 'renamed').map((f) => f.filename);
+  const result = checkCommittedProofImages(added);
+  if (result.exitCode === 0) return [];
+  return [problem('proof-images', result.message.split('\n')[0], 'remove the committed screenshots; attach them to the PR description, or (bots) push them to the evidence branch under verifier/<PR number>/, and link the raw URLs in the body')];
 }
 
 export function windowCleanProblems(windowResult) {
@@ -120,20 +155,29 @@ export function shardProblems(shardResult) {
 }
 
 // The gate's own review: protected files (its workflows, CODEOWNERS, invoked scripts) need the reviewer marker for this head.
-export function gateFileProblems({ changedFiles, body, headSha, protectedPaths }) {
-  const review = evaluateGateChangeReview({ changedFiles, body: body ?? '', headSha, protectedPaths });
+export function gateFileProblems({
+  changedFiles, body, headSha, protectedPaths,
+  commits, files, baseRef, request, prNumber, baselineGrew, repoDir,
+}) {
+  const review = evaluateGateChangeReview({
+    changedFiles, body: body ?? '', headSha, protectedPaths,
+    commits, files, baseRef, request, prNumber, baselineGrew, repoDir,
+  });
   if (review.ok) return [];
   return [problem(
     'gate-files',
     `protected gate file(s) changed without a reviewer marker for this head: ${review.protectedFiles.join(', ')}`,
-    'this change needs a non-author review of this exact head; GOD adds the gate-change-reviewed marker after approval. Do not add it yourself',
+    'this change needs a non-author review of this exact head; after approval the reviewer or the merge owner adds the line gate-change-reviewed: <full head sha> to the PR body. The PR author never adds it',
   )];
 }
 
 // Desktop tests are covered by desktop-checks.yml, not by a named list. The gate's own coverage rule decides.
-export function desktopCoverageProblems({ files, desktopWorkflow }) {
+// When the desktop runner for unlisted tests is loaded, a file it would run counts too; its EXCLUDED files do not.
+export function desktopCoverageProblems({ files, desktopWorkflow, unlistedRunner = null }) {
   if (desktopWorkflow == null) return [];
-  const { uncovered } = coverageFromPrFiles(files, desktopWorkflow);
+  const present = files.filter((file) => file.status !== 'removed').map((file) => file.filename);
+  const extraDesktop = [...unlistedDesktopTargets(unlistedRunner, present, desktopWorkflow)];
+  const { uncovered } = coverageFromPrFiles(files, desktopWorkflow, [], '', '', extraDesktop);
   return uncovered.filter((file) => file.startsWith('desktop/')).map((file) => problem(
     'desktop-tests',
     `${file} is not run by desktop-checks.yml`,
@@ -141,11 +185,162 @@ export function desktopCoverageProblems({ files, desktopWorkflow }) {
   ));
 }
 
-export function personalInfoProblems(addedLines) {
-  const real = addedLines.filter((l) => !FIXTURE_FILE.test(l.file));
-  return real.filter((l) => PERSONAL_PATTERNS.some((p) => p.test(l.text))).map((l) => (
-    problem('personal-info', `${l.file}:${l.line} contains a personal path or email`, 'replace it with a placeholder or remove it')
+// A fix, perf or refactor PR must say what it checked before it changed code: upstream, peer agents or the old code.
+// The title match ignores case, so "Fix(settings): ..." is held to the rule too.
+const PRIOR_ART_TITLE = /^(fix|perf|refactor)(\([^)]*\))?!?:/i;
+// "Prior art: x", "- Prior art: x", "**Prior art:** x" or "**Prior art**: x".
+const PRIOR_ART_LABEL = /^\s*(?:[-*+]\s+)?(?:\*\*|__)?prior art(?:\*\*|__)?\s*:(?:\*\*|__)?(.*)$/i;
+// A "## Prior art" heading; its section is the lines up to the next heading.
+const PRIOR_ART_HEADING = /^\s{0,3}#{1,6}\s+(?:\*\*|__)?prior art(?:\*\*|__)?\s*:?\s*#*\s*$/i;
+const HEADING = /^\s{0,3}#{1,6}\s/;
+// An unfilled template slot such as "<what you checked>". Autolinks like <https://...> are real sources.
+const PLACEHOLDER = /<(?![a-z][a-z0-9+.-]*:\/\/)[^<>\n]*>/i;
+const EMPTY_ANSWER = /^(?:n\/?a|none|nothing|-+|tbd|todo)[.!]?$/i;
+const PRIOR_ART_FIX = 'add "Prior art: <what you checked>" (a line, a bold label, or a "## Prior art" section) naming the upstream project, peer agents or old code you checked, or "Prior art: none found: <what you checked>"';
+
+// The text a body gives for prior art: the label's own text, or the lines under it or under the heading when that is empty.
+function priorArtCandidates(body) {
+  const lines = body.replace(/<!--[\s\S]*?-->/g, '').split('\n');
+  const candidates = [];
+  lines.forEach((line, index) => {
+    const label = PRIOR_ART_LABEL.exec(line);
+    if (label && label[1].trim()) {
+      candidates.push(label[1]);
+      return;
+    }
+    if (!label && !PRIOR_ART_HEADING.test(line)) return;
+    const following = [];
+    for (const next of lines.slice(index + 1)) {
+      if (HEADING.test(next)) break;
+      // A bare label's source sits on the lines right after it; a blank line after them ends it.
+      if (label && !next.trim() && following.length) break;
+      following.push(next);
+    }
+    candidates.push(following.join('\n'));
+  });
+  return candidates;
+}
+
+function cleanPriorArt(text) {
+  return text
+    .split('\n')
+    .map((line) => line.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, '').replace(/\*\*|__/g, '').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+// Why a candidate is not an answer, or null when it is one.
+function priorArtGap(candidate) {
+  const text = cleanPriorArt(candidate);
+  if (!text) return 'is empty';
+  if (PLACEHOLDER.test(text)) return 'still has the template placeholder';
+  const answer = text.replace(/^prior art\s*:\s*/i, '');
+  if (EMPTY_ANSWER.test(answer)) return 'says only "' + answer + '" and names nothing checked';
+  if (/^none found\b/i.test(answer) && !/^none found\s*:\s*\S/i.test(answer)) return 'says "none found" without what was checked';
+  return null;
+}
+
+export function priorArtProblems({ title, body }) {
+  if (!PRIOR_ART_TITLE.test((title ?? '').trim())) {
+    return [];
+  }
+  const candidates = priorArtCandidates(body ?? '');
+  if (!candidates.length) {
+    return [problem('prior-art', 'title "' + title + '" needs a "Prior art:" line or section in the body and has none', PRIOR_ART_FIX)];
+  }
+  const gaps = candidates.map(priorArtGap);
+  if (gaps.some((gap) => gap === null)) {
+    return [];
+  }
+  return [problem('prior-art', 'the Prior art entry ' + gaps[0], PRIOR_ART_FIX)];
+}
+
+// Generic machine-detail patterns. /home/<name>/ skips fixture-like names; *.local skips
+// file names such as .env.local or settings.local.json (a dot, slash or word follows or precedes).
+const HOME_PATH = /\/home\/([A-Za-z0-9._-]+)\//g;
+const FIXTURE_HOME_NAMES = new Set(['user', 'username', 'runner', 'ubuntu', 'node', 'example', 'test', 'tester', 'me', 'ci', 'name', 'someone', 'alice', 'bob']);
+const LOCAL_HOSTNAME = /(?<![\w./-])[A-Za-z][A-Za-z0-9-]*\.local\b(?![.\w/-])/i;
+
+export function personalHomePath(text) {
+  for (const m of String(text).matchAll(HOME_PATH)) {
+    if (!FIXTURE_HOME_NAMES.has(m[1].toLowerCase())) return true;
+  }
+  return false;
+}
+
+// Private names (machine names, hostnames, account handles) come from the environment, never from the repo:
+// BRANCH_PRIVATE_NAME_DENYLIST is a comma-separated list, set locally or as a CI secret.
+export function privateNameDenylist(env = process.env) {
+  return String(env.BRANCH_PRIVATE_NAME_DENYLIST ?? '')
+    .split(',').map((n) => n.trim()).filter((n) => n.length >= 3);
+}
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function deniedNameIn(text, denylist) {
+  const value = String(text);
+  return denylist.some((name) => new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(name)}(?![A-Za-z0-9])`, 'i').test(value));
+}
+
+// In a path, a directory named like a host (<host>.local/) counts; a file name ending in .local does not.
+function hostDirectoryInPath(file) {
+  return String(file).split('/').slice(0, -1).some((part) => /^[A-Za-z][A-Za-z0-9-]*\.local$/i.test(part));
+}
+
+function genericMachineDetail(text) {
+  return PERSONAL_PATTERNS.some((p) => p.test(text)) || personalHomePath(text) || LOCAL_HOSTNAME.test(text);
+}
+
+// Added lines and changed file paths. Test files are exempt from the generic patterns (they carry
+// synthetic fixtures) but never from the private denylist, whose names must not appear anywhere.
+// The problem text never repeats the matched name, so a CI log cannot leak it.
+// The branch name lands in main's history through merge commits, so it is scanned as well.
+export function branchNameProblems(branch, denylist = privateNameDenylist()) {
+  if (!branch || branch === 'HEAD') return [];
+  if (!genericMachineDetail(branch) && !/[A-Za-z][A-Za-z0-9-]*\.local(?![A-Za-z0-9.])/i.test(branch) && !deniedNameIn(branch, denylist)) return [];
+  return [problem('personal-info', 'the branch name contains a personal path, hostname or private name', 'push the work to a new branch with a generic name')];
+}
+
+export function personalInfoProblems(addedLines, { changedFiles = [], denylist = privateNameDenylist(), branch = null } = {}) {
+  const lineProblems = addedLines.filter((l) => (
+    (!FIXTURE_FILE.test(l.file) && genericMachineDetail(l.text)) || deniedNameIn(l.text, denylist)
+  )).map((l) => (
+    problem('personal-info', `${l.file}:${l.line} contains a personal path, email, hostname or private name`, 'replace it with a placeholder or remove it')
   ));
+  const pathProblems = [...new Set(changedFiles)].filter((f) => genericMachineDetail(f) || hostDirectoryInPath(f) || deniedNameIn(f, denylist)).map((f) => (
+    problem('personal-info', `changed file path ${f} contains a personal path, hostname or private name`, 'rename the file to a generic name')
+  ));
+  return [...branchNameProblems(branch, denylist), ...pathProblems, ...lineProblems];
+}
+
+// Never echo the matched value: the problem text lands in CI logs.
+export function secretLiteralProblems(addedLines) {
+  const problems = [];
+  for (const l of addedLines) {
+    const hit = SECRET_PATTERNS.find(([, re]) => re.test(l.text));
+    if (hit) {
+      problems.push(problem(
+        'secret-literal',
+        `${l.file}:${l.line} adds a literal that looks like a ${hit[0]}`,
+        'remove it; for a test fixture, build the fake key at runtime (for example by joining string parts)',
+      ));
+    }
+  }
+  return problems;
+}
+
+// Bodies are public prose, not test fixtures. Scan every domain and Markdown
+// context, but retain the GitHub noreply identity exemption used by the gates.
+export function bodyEmailProblems(body) {
+  const addresses = body.match(/[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}/g) ?? [];
+  if (addresses.every((address) => address.toLowerCase().endsWith(ALLOWED_SUFFIX))) return [];
+  return [problem(
+    'body-email',
+    'PR body contains an email address',
+    'remove the address or replace it with a GitHub handle; only GitHub noreply identities are exempt',
+  )];
 }
 
 export function unverifiedPatchProblems(files) {
@@ -174,14 +369,25 @@ export function runPreflight(input) {
   return [
     ...dirtyTreeProblems(input.dirtyCount ?? 0),
     ...commitProblems(input.commits ?? [], { cloudAgent: input.cloudAgent === true }),
-    ...selfCheckProblems({ branch: input.branch, headSha: input.headSha, body }),
-    ...namedListProblems({ changedFiles, listText: input.listText ?? null, listPath: input.listPath }),
+    ...selfCheckProblems({ branch: input.branch, headSha: input.headSha, body, repoDir: input.repoDir }),
+    ...namedListProblems({ changedFiles: input.namedListFiles ?? changedFiles, listText: input.listText ?? null, listPath: input.listPath }),
+    ...priorArtProblems({ title: input.title, body }),
     ...uiProofProblems({ changedFiles, body }),
+    ...proofImageProblems(input.files),
     ...windowCleanProblems(input.windowResult),
     ...shardProblems(input.shardResult),
-    ...gateFileProblems({ changedFiles, body, headSha: input.headSha, protectedPaths }),
-    ...desktopCoverageProblems({ files: input.files ?? [], desktopWorkflow: input.desktopWorkflow ?? null }),
-    ...personalInfoProblems(input.addedLines ?? []),
+    ...gateFileProblems({
+      changedFiles, body, headSha: input.headSha, protectedPaths,
+      commits: input.prCommits, files: input.files, baseRef: input.baseRef,
+      request: input.request, prNumber: input.prNumber, baselineGrew: input.baselineGrew,
+      repoDir: input.repoDir,
+    }),
+    ...desktopCoverageProblems({
+      files: input.files ?? [], desktopWorkflow: input.desktopWorkflow ?? null, unlistedRunner: input.unlistedRunner ?? null,
+    }),
+    ...personalInfoProblems(input.addedLines ?? [], { changedFiles, denylist: input.denylist ?? privateNameDenylist(), branch: input.branch }),
+    ...secretLiteralProblems(input.addedLines ?? []),
+    ...bodyEmailProblems(body),
     ...unverifiedPatchProblems(input.unverifiedFiles ?? []),
   ];
 }
@@ -250,10 +456,13 @@ function gatherInputs({ argv, cwd }) {
   return {
     branch,
     headSha: git(['rev-parse', 'HEAD'], cwd),
+    title: argValue('--title', argv) ?? git(['log', '-1', '--format=%s'], cwd),
+    repoDir: cwd,
     body: bodyPath && existsSync(path.resolve(cwd, bodyPath)) ? readFileSync(path.resolve(cwd, bodyPath), 'utf8') : null,
     dirtyCount: git(['status', '--porcelain'], cwd).split('\n').filter(Boolean).length,
     commits: gitCommits(base, cwd),
     changedFiles: git(['diff', '--name-only', `${base}...HEAD`], cwd).split('\n').filter(Boolean),
+    namedListFiles: git(['diff', '--name-only', '--diff-filter=d', `${base}...HEAD`], cwd).split('\n').filter(Boolean),
     files: filesFromNameStatus(git(['diff', '--name-status', `${base}...HEAD`], cwd)),
     desktopWorkflow: readIfExists(path.join(cwd, '.github/workflows/desktop-checks.yml')),
     addedLines: gitAddedLines(base, cwd),
@@ -316,21 +525,30 @@ export function unverifiedFileNames(files) {
     .map((f) => f.filename);
 }
 
-export function inputFromApi({ headBranch, headSha, files, commits, listText, desktopWorkflow = null }) {
+export function inputFromApi({
+  headBranch, headSha, files, commits, listText, desktopWorkflow = null, title = '',
+  baseRef = null, request, prNumber,
+} = {}) {
   return {
     branch: headBranch,
     headSha,
+    title,
     files,
     desktopWorkflow,
     dirtyCount: 0,
     commits: commits.map(commitFromApi),
+    prCommits: commits,
     changedFiles: changedFilesFromPrFiles(files),
+    namedListFiles: namedListCandidates(files),
     addedLines: files.flatMap((f) => addedLinesFromPatch(f.filename, f.patch)),
     unverifiedFiles: unverifiedFileNames(files),
     listPath: namedListPathFor(headBranch),
     listText: listText ?? null,
     windowResult: null,
     shardResult: null,
+    baseRef,
+    request,
+    prNumber,
   };
 }
 
@@ -346,22 +564,33 @@ function apiInputFromEnv(env) {
   const prNumber = env.PR_NUMBER;
   const token = env.GITHUB_TOKEN;
   const headSha = env.HEAD_SHA;
-  const headBranch = env.HEAD_BRANCH;
+  const headBranch = env.HEAD_BRANCH || env.GITHUB_HEAD_REF;
   if (!repo || !prNumber || !token || !headSha || !headBranch) {
     throw new Error('CI mode needs REPO, PR_NUMBER, GITHUB_TOKEN, HEAD_SHA and HEAD_BRANCH');
   }
-  // The live body from the API: the event payload can predate a body edit, so CI never reads it from there.
-  const body = fetchPrBody(repo, prNumber, token);
+  // The live title and body from the API: the event payload can predate an edit, so CI never reads them from there.
+  const pr = ghApi(repo, token, `pulls/${prNumber}`);
+  const body = typeof pr?.body === 'string' ? pr.body : '';
+  const title = typeof pr?.title === 'string' ? pr.title : '';
+  const baseRef = typeof pr?.base?.ref === 'string' && pr.base.ref ? pr.base.ref : null;
+  const request = (requestPath, options) => ghApi(repo, token, requestPath, options);
   const files = fetchPrFiles(repo, prNumber, token);
   const commits = fetchPrCommitsWithApi({ repo, prNumber, token });
   const namedList = namedListPathFor(headBranch);
   const desktop = '.github/workflows/desktop-checks.yml';
   const heads = fetchFileTextsBatch(repo, headSha, token, [namedList, desktop]);
-  return { ...inputFromApi({ headBranch, headSha, files, commits, listText: heads[namedList], desktopWorkflow: heads[desktop] }), body };
+  return {
+    ...inputFromApi({
+      headBranch, headSha, files, commits, listText: heads[namedList],
+      desktopWorkflow: heads[desktop], title, baseRef, request, prNumber,
+    }),
+    body,
+  };
 }
 
 // Exported so tests can drive the real CLI wiring against a temporary repository.
-export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv } = {}) {
+// unlistedRunner is the loaded desktop runner for unlisted tests, or null when the repo has none.
+export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv, unlistedRunner = null } = {}) {
   if (argv.includes('--ci')) {
     // CI reads the live body and its own inputs from the API under one job-wide budget.
     const budgetSeconds = preflightBudgetSeconds(env);
@@ -377,7 +606,7 @@ export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv
         text: [...ciSkippedLines(), `preflight could not read GitHub within its ${budgetSeconds}s budget (${reason}). This is not a preflight failure; re-run the check.`].join('\n'),
       };
     }
-    const problems = runPreflight({ ...input, cloudAgent: false });
+    const problems = runPreflight({ ...input, cloudAgent: false, repoDir: cwd, unlistedRunner });
     return { exitCode: problems.length ? 1 : 0, text: [...ciSkippedLines(), formatProblems(problems)].join('\n') };
   }
   if (!argv.includes('--body')) {
@@ -388,13 +617,14 @@ export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv
   const scope = scopedChecks(input.changedFiles);
   input.windowResult = scope.window ? windowResultFor(cwd) : null;
   input.shardResult = scope.shard ? shardResultFor(cwd) : null;
+  input.unlistedRunner = unlistedRunner;
   const problems = runPreflight(input);
   return { exitCode: problems.length ? 1 : 0, text: formatProblems(problems) };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const result = runCli(process.argv.slice(2), repoRoot);
+  const result = runCli(process.argv.slice(2), repoRoot, process.env, { unlistedRunner: await loadUnlistedRunner(repoRoot) });
   console.log(result.text);
   process.exitCode = result.exitCode;
 }

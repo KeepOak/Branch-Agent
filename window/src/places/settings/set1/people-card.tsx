@@ -1,7 +1,7 @@
 // Settings › People, the chosen person's card: face, name, where they use Branch and their role; what they may do
 // (their role's or connection's operator scopes); Trunks and devices; and the owner's actions: role (users.setRole),
 // a one-time code for their device (device.pair.setupCode) and Sign out everywhere (device.token.revoke).
-import { useState } from "react";
+import { useId, useState } from "react";
 import { visible } from "../adapter";
 import { Acts, Btn, Hint, Pill, Sec, Seg, useSaveRunner } from "../kit";
 import { ACTKINDS, OWNER_ID, devicesLine, firstName, mayOf, revokePlan, roleOf, scopesOf, type Profile } from "./people-data";
@@ -34,18 +34,24 @@ export function PersonCard({ ctx, p }: { ctx: People; p: Profile }) {
   );
 }
 
+/** Why the owner's boxes are ticked and greyed, on a visible line under them (Private #1093). */
+export const OWNER_MAY_WHY = "The owner may do everything, so these can’t be changed.";
+
 function May({ ctx, p }: { ctx: People; p: Profile }) {
   const may = mayOf(p.owner, scopesOf(p, ctx.roles, ctx.conns));
+  // The greyed boxes name the visible line under them with aria-describedby, so a screen reader says why too.
+  const whyId = useId();
+  const why = p.owner ? OWNER_MAY_WHY : `${ctx.roles.defs[roleOf(p, ctx.roles)] ? `Follows ${firstName(visible(p.name))}’s role.` : `What ${firstName(visible(p.name))}’s devices were granted.`} Branch can’t tick these one by one yet.`;
   return (
     <Sec title="May">
       <div className="may-pp">
         {ACTKINDS.map((a, i) => (
-          <label key={a} className={`chk-pp${may[i] ? "" : " no-pp"}`} title={p.owner ? "The owner may do everything." : i === 5 ? "Branch has no spending permission yet." : undefined}>
-            <input type="checkbox" checked={may[i]} disabled aria-label={a} onChange={() => undefined} /> {a}
+          <label key={a} className={`chk-pp${may[i] ? "" : " no-pp"}`} title={!p.owner && i === 5 ? "Branch has no spending permission yet." : undefined}>
+            <input type="checkbox" checked={may[i]} disabled aria-label={a} aria-describedby={whyId} onChange={() => undefined} /> {a}
           </label>
         ))}
       </div>
-      {p.owner ? null : <p className="hint">{ctx.roles.defs[roleOf(p, ctx.roles)] ? `Follows ${firstName(visible(p.name))}’s role.` : `What ${firstName(visible(p.name))}’s devices were granted.`} Branch can’t tick these one by one yet.</p>}
+      <p className="hint" id={whyId}>{why}</p>
     </Sec>
   );
 }

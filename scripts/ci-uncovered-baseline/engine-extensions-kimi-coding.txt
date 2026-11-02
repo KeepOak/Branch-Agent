@@ -1,0 +1,5 @@
+engine:extensions/kimi-coding/implicit-provider.test.ts
+engine:extensions/kimi-coding/index.test.ts
+engine:extensions/kimi-coding/onboard.test.ts
+engine:extensions/kimi-coding/provider-catalog.test.ts
+engine:extensions/kimi-coding/stream.test.ts

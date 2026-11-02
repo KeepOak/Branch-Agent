@@ -1,0 +1,3 @@
+engine:src/storage/encryption.test.ts
+engine:src/storage/filesystem.test.ts
+engine:src/storage/locations.test.ts

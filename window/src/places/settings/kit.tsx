@@ -4,20 +4,22 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
-import { errorText, record, type RecordValue } from "./adapter";
+import { record, type RecordValue } from "./adapter";
 import { configStore, pathKeys, type ConfigPath } from "./config-store";
 import { Icon } from "../../shell/icons";
 import { PIN_MAX, type Pins } from "./pins";
-import { isDevNote, shownWhy } from "../../shell/shown-why";
+import { isComingWhy, isDevNote, shownWhy } from "../../shell/shown-why";
 import { plainCopy } from "./internals";
 import "./kit.css";
+import { plainError, plainText } from "../../shell/plain-error";
 
 /** 0 = Regular, 1 = Advanced, 2 = Technical. */
 export type Lv = 0 | 1 | 2;
 export type SaveReport = { saving: () => void; saved: () => void; failed: (message: string) => void };
 /** ask: starts a conversation with the default Trunk ("Learn more"); absent while no model is set up. */
 /** pins: each row's pin and General's Pinned list (absent outside the Settings frame). */
-type Kit = { level: Lv; report: SaveReport; scope: string | null; ask?: (text: string) => void; askName?: string; pins?: Pins };
+/** hosted: the page is drawn inside an R1 Settings page (classic-host.tsx), which draws some of its rows elsewhere. */
+type Kit = { level: Lv; report: SaveReport; scope: string | null; ask?: (text: string) => void; askName?: string; pins?: Pins; hosted?: boolean };
 const NOOP: SaveReport = { saving: () => undefined, saved: () => undefined, failed: () => undefined };
 const KitContext = createContext<Kit>({ level: 0, report: NOOP, scope: null });
 
@@ -33,6 +35,8 @@ export const useAsk = (): ((text: string) => void) | undefined => useContext(Kit
 export const useScope = (): string | null => useContext(KitContext).scope;
 /** The pinned rows, for General's Pinned list. */
 export const usePinsKit = (): Pins | undefined => useContext(KitContext).pins;
+/** True when an R1 Settings page re-hosts this Classic page. */
+export const useHosted = (): boolean => useContext(KitContext).hosted === true;
 
 /** The not-allowed state (§4.7.0): a person who may not change how Branch is set up sees these rows greyed. */
 export const NOSETUP = "Only someone who may change how Branch is set up can change this.";
@@ -53,7 +57,7 @@ export function useSaveRunner(failureMessage?: string): (save: () => Promise<unk
       return true;
     } catch (error) {
       console.warn("Settings save failed:", error);
-      report.failed(failureMessage ?? errorText(error));
+      report.failed(failureMessage ?? plainError(error));
       return false;
     }
   }, [report, failureMessage]);
@@ -192,9 +196,20 @@ function PinBtn({ title }: { title: string }) {
   );
 }
 
+/** `coming`: the row waits for a later update (its `off` names what the engine still lacks). */
+type CtlProps = Parameters<typeof CtlRow>[0] & { coming?: boolean };
+
+/** One settings row (CtlRow). A Coming row (`coming`, or an `off` that says it "comes in a later update") shows only at
+ *  Technical, like every Coming row (Private #1093 item 4, screens/settings/rows.ts COMING_FROM). A row greyed for a
+ *  real condition shows at every level with its reason. */
+export function Ctl({ coming, ...props }: CtlProps) {
+  const level = useLevel();
+  return (coming || isComingWhy(props.off)) && level < 2 ? null : <CtlRow {...props} />;
+}
+
 /** One settings row: title, sub-line and the control on the right. `off` greys the control and says why on its own line.
  *  Every row with a plain title has a pin, except General's Pinned list itself (noPin). */
-export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, after, noPin }: {
+function CtlRow({ title, sub, help, children, off, keep, icon, stack, id, after, noPin }: {
   title: ReactNode; sub?: ReactNode; help?: string; children?: ReactNode; off?: string; keep?: Keep; icon?: ReactNode; stack?: boolean; id?: string; after?: ReactNode; noPin?: boolean;
 }) {
   const level = useLevel();
@@ -202,7 +217,16 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   const locked = useContext(LockContext);
   const why = off ?? (locked ? NOSETUP : undefined);
   const name = typeof title === "string" ? title : id;
+  // A row greyed by a real condition ("Turn on … first", "needs a backup folder") says what to do in one visible line
+  // (Private #1093 item 7). A developer note stays out of sight: that row is Coming, and Coming shows only at Technical.
   const shown = shownWhy(why);
+  const whyId = useId();
+  const right = useRef<HTMLSpanElement>(null);
+  // The greyed controls inside name that line with aria-describedby, so a screen reader says why too.
+  useEffect(() => {
+    const controls = right.current ? [...right.current.querySelectorAll<HTMLElement>("button, input, select, textarea, [role=switch]")] : [];
+    for (const el of controls) { if (shown) el.setAttribute("aria-describedby", whyId); else if (el.getAttribute("aria-describedby") === whyId) el.removeAttribute("aria-describedby"); }
+  });
   const raw = sub ?? shown;
   const line = typeof raw === "string" ? plainCopy(raw, level) : raw;
   useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", help ? plainCopy(help, level) : help);
@@ -210,9 +234,9 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   return (
     <div className={`ctl${why ? " off-k" : ""}${stack ? " stack-k" : ""}`} data-row={name} aria-disabled={why ? true : undefined}>
       <b>{icon}{title}{typeof title === "string" && !noPin ? <PinBtn title={title} /> : null}</b>
-      {children ? <span className="right" inert={why ? true : undefined}>{children}</span> : null}
-      {line || kept ? <small>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
-      {shown && sub ? <small className="why-k">{shown}</small> : null}
+      {children ? <span className="right" ref={right} inert={why ? true : undefined}>{children}</span> : null}
+      {line || kept ? <small id={shown && !sub ? whyId : undefined}>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
+      {shown && sub ? <small className="why-k" id={whyId}>{shown}</small> : null}
       {after}
     </div>
   );
@@ -261,13 +285,13 @@ export function Pick({ value, options, onChange, label, disabled }: { value: str
 
 /** A text or number field that saves on Enter or when it loses focus; Escape puts the saved value back. */
 export function Field({ value, onCommit, label, placeholder, type = "text", disabled, wide }: {
-  value: string; onCommit: (v: string) => void; label: string; placeholder?: string; type?: "text" | "number"; disabled?: boolean; wide?: boolean;
+  value: string; onCommit: (v: string) => void; label: string; placeholder?: string; type?: "text" | "number" | "password"; disabled?: boolean; wide?: boolean;
 }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   const commit = () => { if (draft !== value) onCommit(draft); };
   return (
-    <input className={`inp${wide ? " wide-k" : ""}`} aria-label={label} type={type} value={draft} placeholder={placeholder} disabled={disabled}
+    <input className={`inp${wide ? " wide-k" : ""}`} aria-label={label} type={type} autoComplete={type === "password" ? "off" : undefined} value={draft} placeholder={placeholder} disabled={disabled}
       onChange={(e) => setDraft(e.target.value)} onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") commit(); else if (e.key === "Escape") setDraft(value); }} />
   );
@@ -302,8 +326,17 @@ export function Tabs({ tabs, value, onChange, label }: { tabs: Opt[]; value: str
 }
 
 export type Tone = "ok" | "warn" | "bad" | "idle";
+/** A bad status's words: a whole string through plainError(); a line built from parts ("Branch ", a version, " keeps
+ *  running.") part by part through plainText(), so a plain part like a version number stays as it is. */
+function plainNode(node: ReactNode): ReactNode {
+  if (typeof node === "string") return plainError(node);
+  return Array.isArray(node) ? node.map((part) => (typeof part === "string" ? plainText(part) : part)) : node;
+}
 /** The status box at the top of a page: a dot, a bold line and what it means. */
-export function Status({ tone = "ok", title, help, children, action }: { tone?: Tone; title: ReactNode; help?: string; children?: ReactNode; action?: ReactNode }) {
+export function Status({ tone = "ok", title: rawTitle, help, children: rawChildren, action }: { tone?: Tone; title: ReactNode; help?: string; children?: ReactNode; action?: ReactNode }) {
+  // A failure's words reach a person plain at Regular (Private #1089): no engine sentence, code, stack or path.
+  const title = tone === "bad" ? plainNode(rawTitle) : rawTitle;
+  const children = tone === "bad" ? plainNode(rawChildren) : rawChildren;
   const helpKey = useId();
   useHelpEntry(helpKey, typeof title === "string" ? title : "Status", help);
   return (
@@ -363,4 +396,5 @@ export function LinkBtn({ children, title, ...rest }: ButtonHTMLAttributes<HTMLB
 }
 
 /** The row search index: each page module lists its rows (title, section, level) so the frame can find and jump. */
-export type RowEntry = { page: string; title: string; sec?: string; group: string; lv: Lv; words?: string };
+/** hostedOff: the row is left out when an R1 page re-hosts its Classic page, because another R1 page draws it. */
+export type RowEntry = { page: string; title: string; sec?: string; group: string; lv: Lv; words?: string; hostedOff?: true };

@@ -1,0 +1,4 @@
+window:src/screens/settings/pages/classic-host.test.tsx
+window:src/screens/settings/pages/developer-live.test.tsx
+window:src/screens/settings/pages/general-live.test.tsx
+window:src/screens/settings/pages/privacy-town.test.tsx

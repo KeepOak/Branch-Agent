@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CapabilityProvider } from "../../connect/capabilities";
 import type { ConversationList } from "../../connect/conversations";
+import { forgetLookStore, LOOK_PREF, lookStore } from "../../places/settings/set1/appearance-store";
 import type { SaplingSession } from "../../connect/session";
 import { comingControls } from "../../glass/coming-registry";
 import { Sidebar, type SidebarProps } from "./Sidebar";
@@ -17,7 +18,7 @@ vi.mock("../../connect/branch-version", async (load) => ({ ...(await load<typeof
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root, host: HTMLDivElement;
 beforeEach(() => {
-  localStorage.clear(); update.value = null;
+  localStorage.clear(); forgetLookStore(); update.value = null;
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
@@ -46,7 +47,7 @@ const methods = ["contacts.list", "agents.list", "rooms.list", "sessions.patch",
 
 function setup(responses: Record<string, unknown>, ready = true, over: Partial<SidebarProps> = {}) {
   const request = vi.fn(async (method: string) => responses[method] ?? {});
-  const engine = { request, features: { methods, events: [] } };
+  const engine = { request, features: { methods, events: [] }, onEvent: () => () => undefined };
   const session = { request, onGatewayEvent: () => () => undefined, engine, gatewayUrl: "ws://127.0.0.1:1", open: vi.fn(async () => undefined), send: vi.fn() } as unknown as SaplingSession;
   const props: SidebarProps = {
     onNewTrunk: vi.fn(), session, ready, list: { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [] }) } as unknown as ConversationList,
@@ -60,6 +61,49 @@ const text = (selector: string) => [...document.querySelectorAll(selector)].map(
 const click = async (node: Element | null) => act(async () => { (node as HTMLElement).click(); });
 
 describe("R1 sidebar", () => {
+  it("updates New folder immediately through the Settings look store while the sidebar stays mounted", async () => {
+    localStorage.setItem("branch.level", "regular");
+    const { props, request } = setup({
+      ...FULL,
+      "users.prefs.get": { status: "ok", entries: { [LOOK_PREF]: { level: "technical" } } },
+      "users.prefs.set": { status: "ok" },
+    });
+    await act(async () => root.render(<Sidebar {...props} />));
+    await act(async () => undefined);
+    const folderStrip = host.querySelector(".r1sb-fold");
+    expect(folderStrip).not.toBeNull();
+    const store = lookStore(props.session.engine);
+    await act(async () => store.load());
+    expect(store.snap.where).toBe("profile");
+    expect(host.querySelector('[aria-label="New folder"]')?.getAttribute("data-coming")).toBe("Your own folders come in a later update.");
+
+    // SettingsFrame's level control writes this same store. No rerender or storage event.
+    for (const level of ["advanced", "technical", "regular"] as const) {
+      await act(async () => store.set("level", level));
+      const add = host.querySelector('[aria-label="New folder"]');
+      if (level === "technical") expect(add?.getAttribute("data-coming")).toBe("Your own folders come in a later update.");
+      else expect(add).toBeNull();
+      expect(host.querySelector(".r1sb-fold")).toBe(folderStrip);
+      expect(localStorage.getItem("branch.level")).toBe("regular");
+    }
+    expect(request).toHaveBeenCalledWith("users.prefs.set", expect.objectContaining({ entries: { [LOOK_PREF]: { level: "regular" } } }));
+  });
+
+  it.each(["regular", "advanced", "technical"])("at %s, only Technical draws the New folder Coming chip", async (level) => {
+    localStorage.setItem("branch.level", level);
+    const { render } = setup(FULL);
+    await render();
+    const add = host.querySelector('[aria-label="New folder"]');
+    if (level === "technical") {
+      expect(add?.getAttribute("data-coming")).toBe("Your own folders come in a later update.");
+      expect(add?.getAttribute("aria-disabled")).toBe("true");
+    } else {
+      expect(add).toBeNull();
+    }
+    expect(host.querySelector('.r1sb-fold [role="tab"]')).not.toBeNull();
+    expect(host.querySelector(".r1sb-seed")).not.toBeNull();
+  });
+
   it("says why when the conversation list couldn't load", async () => {
     const { render } = setup(FULL, true, { error: "Couldn’t load conversations: gateway timeout" });
     await render();
@@ -101,14 +145,34 @@ describe("R1 sidebar", () => {
     expect(host.querySelector('.r1sb-rw[data-kind="person"] .r1sb-more')).toBeNull();
   });
 
-  it("opens the row ••• menu with four tiles and pins through sessions.patch", async () => {
+  it("marks unread topics read when opening the row, without deleting conversations", async () => {
+    const responses = {
+      ...FULL,
+      "contacts.list": {
+        contacts: [
+          contact("trunk:sapling", "trunk", "Sapling", { isDefault: true, pinnedAt: 1 }),
+          contact("trunk:ledger", "trunk", "Ledger", { unreadTopics: 21, threadUnread: false }),
+        ],
+      },
+      "contacts.markRead": { updated: 21 },
+    };
+    const { render, request, props } = setup(responses);
+    await render();
+    expect(host.querySelector('.r1sb-row[aria-label^="Ledger"]')?.getAttribute("aria-label")).toMatch(/unread/);
+    await click(host.querySelector('.r1sb-row[aria-label^="Ledger"]'));
+    expect(props.onOpen).toHaveBeenCalledWith("agent:ledger:main");
+    expect(request).toHaveBeenCalledWith("contacts.markRead", { contactId: "trunk:ledger" });
+    expect(request.mock.calls.some(([method]) => method === "sessions.delete")).toBe(false);
+  });
+
+  it("opens the row menu as the preview's list and pins through sessions.patch", async () => {
     const ledger = { key: "agent:ledger:main", title: "Ledger", agentId: "ledger", pinned: false, archived: false, unread: true, snoozedUntil: null, createdAt: 1, updatedAt: 10, preview: "", working: false, kind: "direct", system: false, automation: false, totalTokens: 0, contextTokens: 0 };
     const { render, request } = setup(FULL, true, { sessions: [ledger] as unknown as SidebarProps["sessions"] });
     await render();
     await click(host.querySelector('[aria-label="More for Ledger"]'));
-    expect(text(".g-menu-tile-label")).toEqual(["Pin", "Read", "Snooze ›", "Archive"]);
-    expect(text(".g-menu-row .g-menu-label")).toContain("Delete conversation…");
-    await click(document.querySelector(".g-menu-tile"));
+    expect(text(".g-menu-tile-label")).toEqual([]);
+    expect(text(".g-menu-row .g-menu-label")).toContain("Delete…");
+    await click([...document.querySelectorAll(".g-menu-row")].find(node => node.querySelector(".g-menu-label")?.firstChild?.textContent === "Pin to top")!);
     expect(request).toHaveBeenCalledWith("sessions.patch", expect.objectContaining({ key: "agent:ledger:main", pinned: true }));
   });
 
@@ -137,6 +201,7 @@ describe("R1 sidebar", () => {
   });
 
   it("opens Recently deleted to a Nothing here state, marks New folder Coming (preview foldP11), and opens Seedbank, Grove and Settings", async () => {
+    localStorage.setItem("branch.level", "technical");
     const { render, props } = setup(FULL);
     await render();
     const deleted = [...host.querySelectorAll<HTMLButtonElement>(".r1sb-bins .r1sb-bin")].find(bin => bin.textContent?.includes("Recently deleted"))!;
@@ -167,7 +232,7 @@ describe("R1 sidebar", () => {
     expect(props.onSettings).toHaveBeenCalledWith("updates");
     await click(host.querySelector('[aria-label="New, places and more"]'));
     expect(text(".g-menu-row .g-menu-label")).toEqual(["New conversation", "New Trunk", "New group", "Have Branch make a Trunk", "New automation", "Quick ask", "Collapse the list to faces"]);
-    expect(text(".g-menu-row .g-menu-end small")).toEqual(["random character", "Ctrl Shift Space", "Ctrl B"]);
+    expect(text(".g-menu-row .g-menu-end small")).toEqual(["name and face", "Ctrl Shift Space", "Ctrl B"]);
   });
 
   it("shows a downloaded update as a calm ready chip, never as installing", async () => {
@@ -200,7 +265,8 @@ describe("R1 sidebar", () => {
     await click(host.querySelector(".r1sb-me"));
     expect(document.querySelector(".g-popover > .r1sb-pop.r1sb-person")).not.toBeNull();
     const css = readFileSync("src/screens/sidebar/sidebar.css", "utf8").replace(/\s+/g, " ");
-    expect(css).toContain(".g-popover:has(> .r1sb-pop) { background: transparent; backdrop-filter: none;");
+    expect(css).toMatch(/\.g-popover:has\(> \.r1sb-pop\)[^{]*\{ background: var\(--raise\); backdrop-filter: none;/);
+    expect(css).toMatch(/\.g-popover:has\(> \.r1sb-pop\):not\(#g48#g48#g48\) \{[^}]*box-shadow: var\(--pop\)/);
     expect(css).toMatch(/\.r1sb-pop :is\(\.g-menu-row, \.g-menu-tile[^{]*\{ background: var\(--gp-fill\); backdrop-filter: var\(--gp-blur\);[^}]*box-shadow: inset 0 0 0 1px var\(--gp-edge\);/);
     expect(readFileSync("src/theme/tokens.css", "utf8")).toContain("--gp-fill: rgba(255,255,255,.76); --gp-edge: rgba(0,0,0,.11);");
   });

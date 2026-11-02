@@ -26,9 +26,10 @@ describe("smart glass", () => {
 });
 
 describe("smart glass, batch 3", () => {
-  it("makes the re-hosted Classic popovers one glass sheet with plain rows, solid when transparency is reduced", () => {
-    expect(code).toMatch(/:root:not\(#sg#sg#sg#sg\) \.pop:is\(\.menu, \.panel\) \{ background: color-mix\(in srgb, var\(--bg\) 94%/);
-    expect(code).toMatch(/:root\[data-transparency="reduce"\]:not\(#sg#sg#sg#sg\) \.pop:is\(\.menu, \.panel\) \{ background: var\(--bg\)/);
+  it("makes the re-hosted Classic popovers a solid --raise sheet with --pop edge and shadow (spec-v23 .pop)", () => {
+    expect(code).toMatch(/:root:not\(#sg#sg#sg#sg\) \.pop:is\(\.menu, \.panel\) \{ background: var\(--raise\); backdrop-filter: none/);
+    expect(code).toMatch(/:root:not\(#sg#sg#sg#sg\) \.pop:is\(\.menu, \.panel\) \{[^}]*box-shadow: var\(--pop\)/);
+    expect(code).toMatch(/:root\[data-transparency="reduce"\]:not\(#sg#sg#sg#sg\) \.pop:is\(\.menu, \.panel\) \{ background: var\(--raise\)/);
   });
   it("leaves the scroll edge under the window header to the shared frame rule (no one-off scrim here)", () => {
     expect(code).not.toMatch(/\.r1-header::before/);

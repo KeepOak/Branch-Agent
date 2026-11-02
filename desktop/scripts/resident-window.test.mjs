@@ -6,9 +6,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import { isolateHome, stopOnExit } from './fixtures/isolated-home.mjs';
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error('Compile the exact desktop source before testing');
 const require = createRequire(import.meta.url), Module = require('node:module');
+isolateHome('branch-resident-home-');
 const originalLoad = Module._load, originalFetch = globalThis.fetch;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function freePort() {
@@ -43,11 +46,14 @@ function electronFixture() {
     destroy() { this.destroyed = true; } }
   return { app, get window() { return window; }, get tray() { return tray; }, electron: { app, BrowserWindow, Tray,
     Menu: { buildFromTemplate: value => value }, screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) }, ipcMain: Object.assign(new EventEmitter(), { handle() {} }), dialog: { showErrorBox: assert.fail },
-    session: { defaultSession: { setPermissionRequestHandler() {} } }, shell: { openExternal() {} } } };
+    session: { fromPartition() { return { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, on() {} }; }, defaultSession: { setPermissionRequestHandler() {} } }, shell: { openExternal() {} } } };
 }
 async function fixture(run, hidden = false) {
   const temp = join(tmpdir(), 'Codex-session-files'); await mkdir(temp, { recursive: true });
   const root = await mkdtemp(join(temp, 'branch-resident-policy-'));
+  let gatewayPid;
+  const engines = () => { try { gatewayPid ??= Number(readFileSync(join(root, 'gateway.pid'), 'utf8')) || undefined; } catch { /* not started yet */ } return gatewayPid ? [gatewayPid] : []; };
+  const forget = stopOnExit(engines);
   const engine = join(root, 'engine'), windowDir = join(root, 'window');
   await mkdir(join(engine, 'dist'), { recursive: true }); await mkdir(windowDir);
   await writeFile(join(engine, 'dist/build-info.json'), '{"version":"fixture"}');
@@ -77,7 +83,14 @@ async function fixture(run, hidden = false) {
     const pid = Number(await readFile(join(root, 'gateway.pid'), 'utf8'));
     await run({ ...runtime, window: runtime.window, tray: runtime.tray, root, pid });
   } finally {
+    engines();
     runtime.app.quit(); Module._load = originalLoad; globalThis.fetch = originalFetch;
+    // #2161: the fixture gateway never outlives its test.
+    for (const pid of engines()) {
+      for (let i = 0; i < 100; i++) { try { process.kill(pid, 0); } catch { break; } await new Promise(r => setTimeout(r, 50)); }
+      try { process.kill(pid, 'SIGKILL'); } catch { /* already stopped */ }
+    }
+    forget();
     if (previousData === undefined) delete process.env.BRANCH_DESKTOP_DATA; else process.env.BRANCH_DESKTOP_DATA = previousData;
     if (previousHidden === undefined) delete process.env.BRANCH_DESKTOP_HIDDEN; else process.env.BRANCH_DESKTOP_HIDDEN = previousHidden;
     await rm(root, { recursive: true, force: true });
@@ -113,8 +126,8 @@ test('Dock activate restores the resident window without restarting its gateway 
   assert.equal((await readFile(join(root, 'desktop.log'), 'utf8')).match(/gateway started from/g).length, 1);
 }));
 test('tray Quit and session end perform normal owned-child shutdown', () => fixture(async ({ tray, window, pid }) => {
-  assert.ok(tray); tray.menu.find(item => item.label === 'Quit Branch').click();
-  assert.equal(window.destroyed, true); assert.equal(tray.destroyed, true);
+  assert.ok(tray); tray.menu.find(item => item.label === 'Quit').click();
+  await eventually(() => window.destroyed); assert.equal(tray.destroyed, true);
   await eventually(() => { try { process.kill(pid, 0); return false; } catch { return true; } });
 }));
 test('session-end quits instead of hiding a dying OS session', () => fixture(async ({ window, pid }) => {
@@ -130,7 +143,7 @@ test('usage-off setTrayUsage restores the darwin template and never branch-48.pn
   const desktop = join(process.env.BRANCH_DESKTOP_TEST_DIST, '..');
   const main = await readFile(join(desktop, 'src/main.ts'), 'utf8');
   const osSource = await readFile(join(desktop, 'src/desktop-os.ts'), 'utf8');
-  assert.match(main, /desktopOs\(app, cfg, \(\) => tray, TRAY_ICON\)/);
+  assert.match(main, /desktopOs\(app, cfg, \(\) => tray, TRAY_ICON, removeAppSteps\)/);
   assert.match(osSource, /t\.setImage\(menuBarIcon\(icon, process\.platform\)\)/);
   const template = join(desktop, 'assets', 'brand', 'linux', 'branchTemplate.png');
   Module._load = function (name, ...args) {
@@ -184,6 +197,24 @@ test('usage-off setTrayUsage restores the darwin template and never branch-48.pn
   }
 });
 
+test('revealResidentWindow restores a hidden minimised window and stays quiet when hidden', () => {
+  const { revealResidentWindow } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'resident-window.js'));
+  const window = {
+    hidden: true, minimized: true, focused: false,
+    isDestroyed: () => false,
+    isMinimized() { return this.minimized; },
+    restore() { this.minimized = false; },
+    show() { this.hidden = false; },
+    focus() { this.focused = true; },
+  };
+  assert.equal(revealResidentWindow(window), true);
+  assert.equal(window.hidden, false);
+  assert.equal(window.minimized, false);
+  assert.equal(window.focused, true);
+  assert.equal(revealResidentWindow(window, true), false);
+  assert.equal(revealResidentWindow(null), false);
+});
+
 test('macOS and Linux keep the gateway resident after the window closes', () => {
   const { keepWindowResident } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'resident-window.js'));
   for (const platform of ['darwin', 'linux']) {
@@ -200,4 +231,43 @@ test('macOS and Linux keep the gateway resident after the window closes', () => 
     window.emit('close', quitClose);
     assert.equal(quitClose.prevented, false);
   }
+});
+
+test('Open in browser opens only a one-time pairing link from the engine, never the Gateway secret', async () => {
+  const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
+  const { pickBrowserHandoffUrl, openInBrowser, DASHBOARD_HANDOFF_ARGS } = require(join(dist, 'open-in-browser.js'));
+  const { trayMenu } = require(join(dist, 'tray-status.js'));
+  assert.deepEqual([...DASHBOARD_HANDOFF_ARGS], ['branch.mjs', 'dashboard', '--json', '--ttl-seconds', '120']);
+  const code = 'one-time-code-1';
+  const good = `http://127.0.0.1:19031/#bootstrapToken=${code}&bootstrapProfile=owner&gatewayUrl=ws%3A%2F%2F127.0.0.1%3A19031`;
+  const answer = (fields) => `preparing\n${JSON.stringify({ ok: true, url: 'http://127.0.0.1:19031/#token=SHARED', ...fields })}\n`;
+  assert.equal(new URL(pickBrowserHandoffUrl(answer({ browserUrl: good }), 19031)).hash.includes(code), true);
+  const refused = [
+    ['not JSON', 19031], [JSON.stringify({ ok: false, error: 'SHARED' }), 19031], [answer({}), 19031],
+    [answer({ browserUrl: good }), 19032],
+    [answer({ browserUrl: good.replace('127.0.0.1:19031/', 'example.com:19031/') }), 19031],
+    [answer({ browserUrl: `${good}&token=SHARED` }), 19031],
+    [answer({ browserUrl: good.replace('/#', '/?token=SHARED#') }), 19031],
+    [answer({ browserUrl: 'http://127.0.0.1:19031/#token=SHARED' }), 19031],
+    [answer({ browserUrl: 'file:///etc/passwd' }), 19031],
+  ];
+  for (const [stdout, port] of refused) {
+    assert.throws(() => pickBrowserHandoffUrl(stdout, port), (error) => !String(error.message).includes('SHARED'));
+  }
+  // Each click asks for a fresh code and logs neither the link nor the engine's answer.
+  const lines = [], opened = []; let issued = 0;
+  const steps = { issue: async () => { issued += 1; return answer({ browserUrl: good }); }, port: () => 19031,
+    open: async (url) => { opened.push(url); }, log: (line) => lines.push(line) };
+  assert.equal(await openInBrowser(steps), true);
+  assert.equal(await openInBrowser(steps), true);
+  assert.equal(issued, 2); assert.equal(opened.length, 2);
+  assert.equal(await openInBrowser({ ...steps, issue: async () => { throw Error('dashboard failed: SHARED stderr'); } }), false);
+  assert.equal(await openInBrowser({ ...steps, issue: async () => answer({ browserUrl: 'http://127.0.0.1:19031/#token=SHARED' }) }), false);
+  assert.equal(opened.length, 2);
+  assert.ok(lines.length > 0);
+  for (const line of lines) { assert.ok(!line.includes(code) && !line.includes('SHARED'), line); }
+  let clicks = 0;
+  trayMenu(undefined, { open() {}, quit() {}, openInBrowser() { clicks += 1; } }).find(item => item.label === 'Open in browser').click();
+  assert.equal(clicks, 1);
+  assert.equal(trayMenu(undefined, { open() {}, quit() {} }).some(item => item.label === 'Open in browser'), false);
 });

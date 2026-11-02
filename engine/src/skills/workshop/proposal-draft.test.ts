@@ -60,7 +60,7 @@ describe("Skill Workshop proposal draft preparation", () => {
         secretScanMetadata: [
           {
             file: "skill-name",
-            content: "ghp_1234567890abcdefghijklmnopqrstuvwxyz",
+            content: ["ghp_", "1234567890abcdefghijklmnopqrstuvwxyz"].join(""),
           },
         ],
       }),

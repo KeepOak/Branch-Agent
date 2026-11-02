@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { LOCK_BUSY } from "../shell/plain-error";
 import { clockLeft, dayStamp, formatDuration, modelName, parseDiffLines, rawDiffText, scrubLocalPaths, shortReason, stepExitCode, stepInputLines, stepKind, stepLabel, stepOutputFilename, stepOutputTail, stepsSummary } from "./format";
 import type { Block } from "./model";
 
@@ -53,7 +54,8 @@ describe("thread words", () => {
 
   it("shortens an engine error to its first sentence without the lead-in", () => {
     const raw = "Your request couldn't be completed: ⚠️ Authentication failed (provider returned HTTP 401). Your provider token may have expired.";
-    expect(shortReason(raw)).toBe("Authentication failed (provider returned HTTP 401).");
+    // At Regular a provider's HTTP status reads as a plain sentence (Private #1089, as #1700's friendlyError reads it).
+    expect(shortReason(raw)).toBe("Branch isn’t signed in for that. Sign in again, then try again.");
     expect(shortReason("Failed to observe plugin state entry. | PLUGIN_STATE_READ_FAILED | 42")).not.toContain("PLUGIN_STATE_READ_FAILED");
   });
 });
@@ -100,11 +102,37 @@ describe("preview step kinds and cards", () => {
 });
 
 describe("plain error copy", () => {
+  it("never names GatewayLockError, even when the recovery log is the note", () => {
+    const raw = "GatewayLockError: failed to acquire gateway state ownership: Branch Agent state database is busy at state/branch.sqlite";
+    expect(shortReason(raw)).toBe(LOCK_BUSY);
+    expect(shortReason(`desktop handoff recovery failed: ${raw}`)).toBe(LOCK_BUSY);
+    expect(shortReason(raw)).not.toMatch(/GatewayLockError/);
+  });
+
+  it("maps main's unchanged engine GatewayLockError (String(error), no handoff wrapper)", () => {
+    class GatewayLockError extends Error {
+      constructor(message: string, cause?: unknown) {
+        super(message, cause === undefined ? undefined : { cause });
+        this.name = "GatewayLockError";
+      }
+    }
+    const error = new GatewayLockError("failed to acquire gateway state ownership");
+    const fromEngine = String(error);
+    const fromMainHandoffLog = `desktop handoff recovery failed: ${String(error)}`;
+    const fromErrorMessage = error instanceof Error ? error.message : String(error);
+    expect(fromEngine).toBe("GatewayLockError: failed to acquire gateway state ownership");
+    for (const raw of [fromEngine, fromMainHandoffLog, fromErrorMessage]) {
+      expect(shortReason(raw)).toBe(LOCK_BUSY);
+      expect(shortReason(raw)).not.toMatch(/GatewayLockError/);
+    }
+  });
+
   it("never shows a local file path in the plain sentence", () => {
     expect(shortReason("ENOENT: no such file '/Users/someone/Library/Caches/run/out.json' was found.")).not.toMatch(/\/Users\//);
     expect(shortReason("Could not write C:\\Users\\someone\\notes.md. Try again.")).not.toMatch(/Users|C:\\/);
     expect(shortReason("Failed in /tmp/rv1305/verdict.md, see log.")).toBe("Failed in a local file, see log.");
-    expect(shortReason("Authentication failed (provider returned HTTP 401).")).toBe("Authentication failed (provider returned HTTP 401).");
+    // An HTTP status reads plain at Regular (Private #1089).
+    expect(shortReason("Authentication failed (provider returned HTTP 401).")).toBe("Branch isn’t signed in for that. Sign in again, then try again.");
   });
 });
 

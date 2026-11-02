@@ -405,6 +405,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
     messageChannel: params.messageChannel,
     messageProvider: params.messageProvider,
     clientCaps: params.clientCaps,
+    gatewayClientMode: params.gatewayClientMode,
     bootstrapUserProfileId: params.bootstrapUserProfileId,
     gatewayUiCommandTarget: params.gatewayUiCommandTarget,
     pinnedWidgetAuthoring: params.pinnedWidgetAuthoring,
@@ -642,6 +643,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
     // Authorized prompt enrichment needs the exact prepared turn policy identity.
     toolAuthorityFingerprint: params.toolAuthorityFingerprint,
     sessionPersistence: params.sessionPersistence,
+    activeRunRegistryId: params.activeRunRegistryId,
     // The host loop settles all completed counts, including default/SDK runs.
     compactionCountOwner: "caller",
     onContextAccountingEvent: params.onContextAccountingEvent,

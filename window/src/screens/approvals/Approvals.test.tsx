@@ -30,7 +30,7 @@ async function render(engine: WindowEngine, node: React.ReactNode) {
   await settle();
   return host;
 }
-const button = (scope: ParentNode, text: string) => [...scope.querySelectorAll("button")].find((b) => b.textContent?.trim() === text)!;
+const button = (scope: ParentNode, text: string) => [...scope.querySelectorAll("button")].find((b) => b.textContent?.trim() === text || b.querySelector("b")?.textContent === text)!;
 const click = async (el: Element) => { await act(async () => (el as HTMLElement).click()); await settle(); };
 const EMAIL = { id: "p1", request: { title: "Send this email to Dana Okafor?", description: "To: Dana Okafor\nSubject: Thursday", agentId: "ledger", sessionKey: "agent:ledger:main", allowedDecisions: ["allow-once", "allow-always", "deny"] } };
 const ALL = ["exec.approval.list", "exec.approval.resolve", "plugin.approval.list", "plugin.approval.resolve", "question.list", "question.resolve", "agents.list", "config.get", "config.patch"];
@@ -156,9 +156,9 @@ describe("R1-05 approvals", () => {
     const host = await render(engine, <AskHistory engine={engine} />);
     expect(host.textContent).toContain("✕ Declined");
     expect(host.textContent).toContain("Nightly backup");
-    await click(button(host, "Show more"));
+    await click(button(host, "Load more"));
     expect(request).toHaveBeenCalledWith("approval.history", { limit: 20, cursor: "c2" });
-    await click(button(host, "Take back"));
+    await click(button(host, "Revoke"));
     expect(request).toHaveBeenCalledWith("exec.approval.grants.revoke", { grantId: "g1" });
   });
 });

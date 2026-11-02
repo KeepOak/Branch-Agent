@@ -1,0 +1,3 @@
+engine:extensions/azure-speech/speech-provider.test.ts
+engine:extensions/azure-speech/tts.test.ts
+engine:extensions/azure-speech/voices-timeout.test.ts

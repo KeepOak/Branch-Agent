@@ -282,8 +282,9 @@ export async function createGatewayHttpTransport(params: {
   const bindHosts = await resolveGatewayListenHosts(params.bindHost);
   if (!isLoopbackHost(params.bindHost)) {
     params.log.warn(
-      "⚠️  Gateway is binding to a non-loopback address. " +
-        "Ensure authentication is configured before exposing to public networks.",
+      `⚠️  Gateway is binding to a non-loopback address (${params.bindHost}). ` +
+        "Other devices on the network can reach it; the dashboard requires the gateway token there. " +
+        "Set gateway.bind=loopback to keep it on this computer only.",
     );
   }
   if (params.cfg.gateway?.controlUi?.dangerouslyAllowHostHeaderOriginFallback === true) {
@@ -571,6 +572,7 @@ export async function createGatewayHttpTransport(params: {
         startPluginLegacyListeners({
           gatewayServer: httpServer,
           httpServers,
+          bindHost: params.bindHost,
           getRegistry: resolvePluginRouteRegistry,
           warn: (message) => params.logPlugins.warn(message),
         });

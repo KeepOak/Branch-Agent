@@ -9,6 +9,7 @@ import { normalizeAgentLabel } from "../lib/agents/display.ts";
 import { resolveAgentAvatarUrl } from "../lib/avatar.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "../lib/external-link.ts";
 import { openExternalUrlSafe } from "../lib/open-external-url.ts";
+import { BRANCH_HELP_URL, BRANCH_RELEASES_URL } from "../lib/product-links.ts";
 import { normalizeAgentId } from "../lib/sessions/session-key.ts";
 import { renderAgentSelectAvatar, renderAgentSelectCopy } from "./agent-select.ts";
 import { renderSidebarMenuAction, renderSidebarMenuTrigger } from "./app-sidebar-nav-menus.ts";
@@ -19,22 +20,19 @@ import {
   trackDropdownKeyboardDismissal,
 } from "./web-awesome.ts";
 
-// External rows of the footer identity menu. Docs-first: public docs pages over
-// raw GitHub, matching the Rake docs-link policy for user-facing copy.
+// External rows of the footer identity menu: Branch help and release notes.
 const IDENTITY_MENU_LINKS: ReadonlyArray<{
   href: string;
   icon: IconName;
   label: () => string;
 }> = [
-  { href: "https://docs.openclaw.ai", icon: "book", label: () => t("common.docs") },
   {
-    href: "https://docs.openclaw.ai/help",
+    href: BRANCH_HELP_URL,
     icon: "messageSquare",
     label: () => t("agentChip.getHelp"),
   },
-  { href: "https://discord.gg/clawd", icon: "users", label: () => t("agentChip.discord") },
   {
-    href: "https://docs.openclaw.ai/releases",
+    href: BRANCH_RELEASES_URL,
     icon: "scrollText",
     label: () => t("agentChip.viewChangelog"),
   },

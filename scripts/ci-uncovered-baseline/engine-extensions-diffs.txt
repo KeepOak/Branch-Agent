@@ -1,0 +1,14 @@
+engine:extensions/diffs/plugin-startup-laziness.test.ts
+engine:extensions/diffs/src/browser.runtime.test.ts
+engine:extensions/diffs/src/config.test.ts
+engine:extensions/diffs/src/http.test.ts
+engine:extensions/diffs/src/language-hints.test.ts
+engine:extensions/diffs/src/plugin.test.ts
+engine:extensions/diffs/src/render-target.test.ts
+engine:extensions/diffs/src/render.preload.test.ts
+engine:extensions/diffs/src/render.test.ts
+engine:extensions/diffs/src/store.cleanup.test.ts
+engine:extensions/diffs/src/store.test.ts
+engine:extensions/diffs/src/tool.test.ts
+engine:extensions/diffs/src/viewer-assets.test.ts
+engine:extensions/diffs/src/viewer-client.test.ts

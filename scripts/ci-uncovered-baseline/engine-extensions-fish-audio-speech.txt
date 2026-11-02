@@ -1,0 +1,1 @@
+engine:extensions/fish-audio-speech/speech-provider.test.ts

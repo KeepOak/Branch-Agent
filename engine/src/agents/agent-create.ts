@@ -19,7 +19,6 @@ import {
   attachRuntimeConfigWriteApplication,
   type RuntimeConfigWriteApplication,
 } from "../config/runtime-write-application.js";
-import type { LegacyMainSessionMigrationOutcome } from "../config/sessions/legacy-main-session-migration.contract.js";
 import { migrateLegacyMainSessionKeys } from "../config/sessions/legacy-main-session-migration.js";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
 import { resolveConfiguredAgentDatabaseTargets } from "../config/sessions/targets.js";
@@ -42,11 +41,13 @@ import { runBranchStateWriteTransaction } from "../state/branch-state-db.js";
 import { isReservedSystemAgentId } from "../system-agent/agent-id.js";
 import { resolveUserPath } from "../utils.js";
 import { DuplicateAgentError } from "./agent-create-error.js";
+import { describeLegacySessionOutcome } from "./agent-create-legacy-outcome.js";
 import { normalizeAgentDirRegistryPath } from "./agent-dir-registry.js";
 import { claimCompletedAgentDeletion } from "./agent-lifecycle-registry.js";
 import { listAgentRoles, loadAgentRole } from "./agent-roles.js";
 import { toAgentEntriesRecord } from "./agent-scope-config.js";
 import { resolveAgentDir, resolveAgentWorkspaceDir } from "./agent-scope.js";
+import { materializeImplicitMainAgent } from "./implicit-main-agent.js";
 import { resolveSharedAuthStoreOwnership } from "./auth-profiles/path-resolve.js";
 import {
   createAgentIdentityConfig,
@@ -206,33 +207,6 @@ export function validateAgentIdInput(
 
 function isInjectedBootstrapMainEntry(entry: CreateAgentEntry | undefined): boolean {
   return entry?.id === BOOTSTRAP_AGENT_ID && Object.keys(entry).every((key) => key === "id");
-}
-
-function describeLegacySessionOutcome(outcome: LegacyMainSessionMigrationOutcome): string {
-  const claims = (outcome.sourceKeys ?? []).map(
-    (key, index) => `${outcome.paths?.[index] ?? outcome.paths?.[0] ?? "session store"}#${key}`,
-  );
-  switch (outcome.kind) {
-    case "divergent-aliases":
-    case "divergent-canonical":
-      return `${outcome.kind} for ${outcome.canonicalKey ?? "the canonical session"}; preserved claims ${claims.join(", ") || "could not be reconciled"} must be quarantined`;
-    case "legacy-json-store":
-      return `legacy JSON session store ${outcome.paths?.join(", ") ?? "requires import"}`;
-    case "store-unreadable":
-      return `unreadable session store ${outcome.paths?.join(", ") ?? "unknown"}${outcome.detail ? ` (${outcome.detail})` : ""}`;
-    case "migrated-in-place":
-    case "migrated-cross-store":
-    case "canonical-exists-identical":
-      return `legacy claim ${claims.join(", ") || outcome.canonicalKey || "requires migration"}`;
-    case "not-armed":
-      return outcome.detail === "owner-unresolved"
-        ? "legacy main sessions have no unambiguous configured owner; set agents.defaults.sessionStore.agentId to the intended live owner"
-        : `legacy main session migration is not armed (${outcome.detail ?? "unknown reason"})`;
-    case "no-legacy-rows":
-      return "the current session-store layout has no matching completed migration ledger";
-  }
-  const unreachable: never = outcome.kind;
-  return unreachable;
 }
 
 async function evaluateMainCreationGate(
@@ -522,7 +496,7 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
             isBootstrapMain &&
             isInjectedBootstrapMainEntry(existingEntry) &&
             !context.snapshot.exists;
-          const creationBase = bootstrappingFirstAgent
+          let creationBase = bootstrappingFirstAgent
             ? {
                 ...currentConfig,
                 agents: {
@@ -531,6 +505,11 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
                 },
               }
             : (params.stagedConfig?.config ?? currentConfig);
+          // A named first Trunk must not replace the unpersisted onboarding Trunk.
+          // bootstrapFirstAgent still drops the load-time compatibility roster on purpose.
+          if (!bootstrappingFirstAgent && agentId !== BOOTSTRAP_AGENT_ID && existingIndex < 0) {
+            creationBase = materializeImplicitMainAgent(creationBase) ?? creationBase;
+          }
           let nextConfig =
             existingIndex < 0 || materializeInjectedMain
               ? applyAgentConfig(creationBase, {

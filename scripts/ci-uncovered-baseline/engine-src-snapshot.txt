@@ -1,0 +1,8 @@
+engine:src/snapshot/git-backup-codec.test.ts
+engine:src/snapshot/git-backup-failure.test.ts
+engine:src/snapshot/git-backup-streaming.test.ts
+engine:src/snapshot/git-backup.test.ts
+engine:src/snapshot/local-repository-directory-identity.test.ts
+engine:src/snapshot/local-repository.test.ts
+engine:src/snapshot/local-repository.windows.test.ts
+engine:src/snapshot/session-cold-storage-backup.test.ts

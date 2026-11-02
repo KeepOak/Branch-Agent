@@ -1,0 +1,3 @@
+window:src/screens/settings/SettingsFrame.test.tsx
+window:src/screens/settings/pages/general-cover-coming.test.tsx
+window:src/screens/settings/pages/general-live.test.tsx

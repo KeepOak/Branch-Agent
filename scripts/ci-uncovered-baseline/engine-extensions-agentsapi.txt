@@ -1,0 +1,10 @@
+engine:extensions/agentsapi/agentsapi-attempt.harvest.test.ts
+engine:extensions/agentsapi/agentsapi-attempt.instructions.test.ts
+engine:extensions/agentsapi/agentsapi-attempt.test.ts
+engine:extensions/agentsapi/agentsapi-client.test.ts
+engine:extensions/agentsapi/agentsapi-environment.test.ts
+engine:extensions/agentsapi/agentsapi-files.test.ts
+engine:extensions/agentsapi/agentsapi-harness.persistence.test.ts
+engine:extensions/agentsapi/agentsapi-mcp.test.ts
+engine:extensions/agentsapi/agentsapi-messages.test.ts
+engine:extensions/agentsapi/agentsapi-session.test.ts

@@ -39,12 +39,13 @@ describe("LP-14 destinations and results", () => {
     const navigate = vi.fn();
     window.addEventListener("branch:navigate-place", navigate);
     try {
-      for (const [query, tab] of [["skills", "Skills"], ["capabilities", "Get capabilities"]]) {
+      for (const [query, tab] of [["skills", "Skills"]]) {
         const hit = filterPalette(rows(), query).find(r => r.label === tab);
         expect(hit).toBeDefined();
         hit!.run();
         expect(navigate.mock.calls.at(-1)?.[0].detail).toEqual({ place: "customize", tab });
       }
+      expect(filterPalette(rows(), "capabilities").some(r => r.label === "Get capabilities")).toBe(false);
       expect(filterPalette(rows(), "settings").some(r => r.label === "General")).toBe(true);
       expect(filterPalette(rows(), "appearance").some(r => r.group === "Settings")).toBe(true);
     } finally { window.removeEventListener("branch:navigate-place", navigate); }

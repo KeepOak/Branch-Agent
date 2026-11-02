@@ -1,7 +1,12 @@
 import { resolveAgentEntry } from "../agents/agent-scope-config.js";
 // Branch Agent rescue policy gates remote writes by owner, DM, sandbox, and YOLO posture.
 import type { BranchConfig } from "../config/types.branch.js";
-import { resolveExecModePolicy } from "../infra/exec-approvals.js";
+import {
+  DEFAULT_REQUESTED_ASK,
+  DEFAULT_REQUESTED_SECURITY,
+  resolveExecModePolicy,
+} from "../infra/exec-approvals.js";
+import { applyExecPolicyLayer } from "../infra/exec-policy.js";
 
 /**
  * Policy checks for remote Branch Agent rescue commands.
@@ -54,18 +59,14 @@ function resolveScopedSandboxMode(
 function isYoloHostPosture(cfg: BranchConfig, agentId?: string): boolean {
   const scopedExec = resolveScopedExecConfig(cfg, agentId);
   const globalExec = cfg.tools?.exec;
-  const inherited = resolveExecModePolicy({
-    mode: globalExec?.mode,
-    security: globalExec?.security ?? "full",
-    ask: globalExec?.ask ?? "off",
-  });
-  return (
-    resolveExecModePolicy({
-      mode: scopedExec?.mode,
-      security: scopedExec?.security ?? inherited.security,
-      ask: scopedExec?.ask ?? inherited.ask,
-    }).mode === "full"
+  const layered = applyExecPolicyLayer(
+    applyExecPolicyLayer(
+      { security: DEFAULT_REQUESTED_SECURITY, ask: DEFAULT_REQUESTED_ASK },
+      globalExec,
+    ),
+    scopedExec,
   );
+  return resolveExecModePolicy(layered).mode === "full";
 }
 
 /** Decide whether a message-channel rescue command is allowed for this sender/context. */

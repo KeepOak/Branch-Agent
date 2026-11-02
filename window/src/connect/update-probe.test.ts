@@ -28,4 +28,11 @@ describe("the desktop update probe answers in time (Private #1047)", () => {
     };
     await expect(pendingApprovalsWithin(session(request), 5)).resolves.toBe(5);
   });
+
+  it("counts a phone waiting for Allow as waiting on you", async () => {
+    const request = async (method: string) => method === "device.pair.list"
+      ? { pending: [{ requestId: "r1" }, { requestId: "r2" }] }
+      : items(0);
+    await expect(pendingApprovalsWithin(session(request), 0)).resolves.toBe(2);
+  });
 });

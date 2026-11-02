@@ -1,0 +1,4 @@
+engine:src/music-generation/capabilities.test.ts
+engine:src/music-generation/provider-assets.test.ts
+engine:src/music-generation/runtime.resources.test.ts
+engine:src/music-generation/runtime.test.ts

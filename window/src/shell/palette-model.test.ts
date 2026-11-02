@@ -10,6 +10,16 @@ describe("palette model", () => {
     expect(filterPalette(rows, "place").map((x) => x.label)).toEqual(["Inbox"]);
     expect(filterPalette(rows, "MODEL").map((x) => x.label)).toEqual(["Models"]);
   });
+  it("finds a row by its keywords, and ranks an exact title first", () => {
+    const rows = [
+      { ...r("Settings", "Grafts", "Settings"), keywords: "skills agents capabilities" },
+      r("Places", "Skills", "Place"),
+      r("Actions", "Install update", "Update"),
+    ];
+    expect(filterPalette(rows, "skills").map((x) => x.label)).toEqual(["Skills", "Grafts"]);
+    expect(filterPalette(rows, "capabilities").map((x) => x.label)).toEqual(["Grafts"]);
+    expect(filterPalette(rows, "install").map((x) => x.label)).toEqual(["Install update"]);
+  });
   it("never moves past the ends", () => {
     expect(moveSelection(0, -1, 3)).toBe(0);
     expect(moveSelection(2, 1, 3)).toBe(2);

@@ -693,7 +693,10 @@ export async function finalizeCodexAttempt(
         succeeded: turnSucceeded,
         error: finalPromptError,
         providerStarted: Boolean(activeTurnId),
-        stateMode: params.authProfileStateMode,
+        // Host-internal run param: the host spreads it onto attempt params, but it is not part of
+        // the public harness attempt contract, so read it through a narrow optional view.
+        stateMode: (params as typeof params & { authProfileStateMode?: "read-write" | "read-only" })
+          .authProfileStateMode,
       });
     }
     if (turnSucceeded && toolState.yieldDetected && !runAbortController.signal.aborted) {

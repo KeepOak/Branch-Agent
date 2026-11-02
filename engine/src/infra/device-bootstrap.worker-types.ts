@@ -4,6 +4,20 @@ import type { DeviceBootstrapTokenRecord, PairedDevice } from "./device-pairing.
 
 export const DEVICE_BOOTSTRAP_TOKEN_TTL_MS = 10 * 60 * 1000;
 
+/** Shortest lifetime a caller may ask for; anything longer than the default is refused back to the default. */
+export const DEVICE_BOOTSTRAP_TOKEN_MIN_TTL_MS = 30 * 1000;
+
+/**
+ * A caller-requested shorter lifetime (#1932), clamped to [30 s, the default]. Undefined, non-finite or longer
+ * requests keep the default, so existing callers are unchanged.
+ */
+export function clampDeviceBootstrapTokenTtlMs(ttlMs: number | undefined): number | undefined {
+  if (ttlMs === undefined || !Number.isFinite(ttlMs) || ttlMs >= DEVICE_BOOTSTRAP_TOKEN_TTL_MS) {
+    return undefined;
+  }
+  return Math.max(DEVICE_BOOTSTRAP_TOKEN_MIN_TTL_MS, Math.floor(ttlMs));
+}
+
 export function resolveDeviceBootstrapTokenExpiresAtMs(
   record: Pick<DeviceBootstrapTokenRecord, "issuedAtMs" | "setupId" | "profile">,
 ): number {

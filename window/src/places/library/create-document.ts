@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { loadDraft, safeStorage, saveDraft } from "../../composer/drafts";
 import { errorText, rec, trunkName, type Trunk } from "./data";
+import { documentTitle } from "./document-editor";
 
 const EMPTY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 export type CreatedDocument = { agentId: string; file: { name: string; path: string; size: number; hash: string } };
@@ -36,7 +37,7 @@ export async function createUntitledDocument(engine: WindowEngine, agentId: stri
 }
 
 /** Never opens/sends a conversation or replaces any existing text, chips, or waiting messages. */
-export function stageDocumentHelp(engine: WindowEngine, agentId: string, mainKey: string, name: string): string {
+export function stageDocumentHelp(engine: WindowEngine, agentId: string, mainKey: string, name: string, trunk = "This Trunk"): string {
   const key = `agent:${agentId}:${mainKey}`;
   const temporary = /^agent:[^:]+:(?:dashboard|subagent|internal-session-effects):incognito-[^:]+$/iu;
   if (temporary.test((engine.sessionKey ?? "").trim()) || temporary.test(key.trim())) {
@@ -48,7 +49,7 @@ export function stageDocumentHelp(engine: WindowEngine, agentId: string, mainKey
     if (loadDraft(storage, key)) return "Your existing draft was kept; no help message was added.";
     const text = `Help me write “${name}”: `;
     saveDraft(storage, key, text);
-    return loadDraft(storage, key) === text ? "The unsent help draft is ready in this Trunk's conversation." : "The unsent help draft could not be saved.";
+    return loadDraft(storage, key) === text ? `${trunk} can help write it: the message is ready in its conversation.` : "The unsent help draft could not be saved.";
   } catch {
     return "The unsent help draft could not be saved: storage is unavailable.";
   }
@@ -82,8 +83,9 @@ export function useCreateDocument({ engine, trunks, defaultId, mainKey, location
     try {
       const document = await createUntitledDocument(engine, target.id, current);
       if (!document || !current()) return;
-      const help = stageDocumentHelp(engine, target.id, mainKey, document.file.name);
-      setNotice({ engine, agentId: target.id, note: `Created “${document.file.name}”. ${help}` });
+      const help = stageDocumentHelp(engine, target.id, mainKey, document.file.name, trunkName(target));
+      // Preview newdocD18's words, with the name as people read it (no ".md").
+      setNotice({ engine, agentId: target.id, note: `Started “${documentTitle(document.file.name, "regular")}”. ${help}` });
       onCreated(document, trunkName(target));
     } catch (error) {
       if (current()) setNotice({ engine, agentId: target.id, error: errorText(error) });

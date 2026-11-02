@@ -54,7 +54,7 @@ it("requires first-contact creation before setup/chat and retries failed default
   expect(request).toHaveBeenCalledWith("agents.create", { name: "Fern" });
   expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { defaultId: "fern" } }) });
   expect(host.textContent).not.toContain("Create your first Trunk");
-  expect(host.querySelector("h2")?.textContent).toBe("Your first Trunks");
+  expect(host.querySelector("h1, h2")?.textContent).toBe("Your first Trunks");
 });
 
 it("does not mistake system workers for user contact Trunks", () => {

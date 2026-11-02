@@ -1,0 +1,2 @@
+window:src/connect/desktop-component-updates.test.tsx
+window:src/screens/settings/updates-in-app-wording.test.tsx

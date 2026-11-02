@@ -4,7 +4,9 @@
 import type { WindowEngine } from "../../connect/engine";
 import { useResource } from "../library/data";
 import { firstName, num, rec, recs, str } from "./data";
-import { Empty, Status } from "./ui";
+import { Empty } from "./ui";
+import { Status } from "./plain-status";
+import { plainError } from "../../shell/plain-error";
 import { formatMoney } from "../../format/money";
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -46,7 +48,7 @@ function Limits({ engine }: { engine: WindowEngine }) {
         <div className="pp-lim-h"><b>{str(p.displayName) || str(p.provider)}</b>{acct && <span className="muted">{acct}</span>}{windows.length > 0 && <span className="pill ok">Measured</span>}</div>
         {windows.map((w, i) => { const left = Math.max(0, Math.min(100, Math.round(100 - (num(w.usedPercent) ?? 0))));
           return <div key={i} className="pp-lim-w"><span>{str(w.label)}</span><span className="pp-lim-bar"><i className={left < 15 ? "low" : undefined} style={{ width: `${left}%` }} /></span><span>{[`${left}% left`, resetWords(num(w.resetAt))].filter(Boolean).join(" · ")}</span></div>; })}
-        {str(p.error) ? <small>{str(p.error)}</small> : !windows.length ? <small>This service does not say what it allows.</small> : str(p.summary) ? <small>{str(p.summary)}</small> : null}
+        {str(p.error) ? <small>{plainError(str(p.error))}</small> : !windows.length ? <small>This service does not say what it allows.</small> : str(p.summary) ? <small>{str(p.summary)}</small> : null}
       </div></div>; })}
   </div>;
 }

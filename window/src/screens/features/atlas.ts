@@ -38,9 +38,9 @@ export type FeatureHome = { kind: "settings"; page: PageId } | { kind: "place"; 
 // The preview's HOME table, moved to the new page ids (its OLD2NEW: computer → browser, gateway → remote, usage → privacy,
 // self → learning). research and media have no home yet.
 export const HOME: Readonly<Record<string, FeatureHome>> = {
-  tools: { kind: "place", place: "customize", tab: "tools" },
-  integrations: { kind: "place", place: "customize", tab: "tools" },
-  coding: { kind: "place", place: "customize", tab: "tools" },
+  tools: { kind: "place", place: "customize", tab: "Tools" },
+  integrations: { kind: "place", place: "customize", tab: "Tools" },
+  coding: { kind: "place", place: "customize", tab: "Tools" },
   browser: { kind: "settings", page: "browser" },
   "computer-use": { kind: "settings", page: "browser" },
   "chat-apps": { kind: "settings", page: "chatapps" },

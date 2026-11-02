@@ -1,0 +1,4 @@
+window:src/screens/settings/pages/instructions-live.test.tsx
+window:src/screens/settings/pages/instructions-reasons.test.tsx
+window:src/screens/settings/pages/voice-live.test.tsx
+window:src/screens/settings/pages/voice-reasons.test.tsx

@@ -140,10 +140,30 @@ afterEach(async () => {
   fake.releasers.clear();
 });
 
+it("retries a hung same-row open instead of staying on Opening this conversation…", async () => {
+  fake.rows.set(KEY, { sessionId: "s1", messages: [user("Hello", "h1", 1)] });
+  fake.arm(KEY);
+  const session = await connect();
+  await vi.waitFor(() => expect(fake.historyCalls).toContain(KEY));
+  expect(session.getSnapshot()).toMatchObject({ historyReady: false, error: null, history: [] });
+  const opening = await renderThread({ history: [], historyReady: false });
+  expect(opening.querySelector('[data-testid="thread-opening"]')).not.toBeNull();
+
+  const heldReads = readsOf(KEY);
+  // Same row again while the shared flight is still held: must start a fresh read, not join the hang.
+  const reopening = session.open(KEY);
+  await vi.waitFor(() => expect(readsOf(KEY)).toBe(heldReads + 1));
+  fake.release(KEY);
+  await reopening;
+  expect(session.getSnapshot().historyReady).toBe(true);
+  expect(texts(session)).toContain("Hello");
+  session.stop();
+});
+
 it("stops a failed history read and reads that conversation again on the next open", async () => {
   fake.historyError = new Error("history unavailable");
   const session = await connect();
-  await vi.waitFor(() => expect(session.getSnapshot().error).toBe("history unavailable"));
+  await vi.waitFor(() => expect(session.getSnapshot().error).toBe("Couldn't load this conversation: history unavailable"));
   expect(session.getSnapshot().historyReady).toBe(false);
   expect(session.getSnapshot().history).toEqual([]);
   const failed = await renderThread({ history: session.getSnapshot().history, historyReady: session.getSnapshot().historyReady, preparationError: session.getSnapshot().error });
@@ -158,7 +178,7 @@ it("stops a failed history read and reads that conversation again on the next op
   expect(failedReads).toBeGreaterThan(0);
   await session.open(KEY);
   expect(readsOf(KEY)).toBe(failedReads + 1);
-  expect(session.getSnapshot()).toMatchObject({ historyReady: false, error: "history unavailable", history: [] });
+  expect(session.getSnapshot()).toMatchObject({ historyReady: false, error: "Couldn't load this conversation: history unavailable", history: [] });
   await expect(session.reload()).rejects.toThrow("history unavailable");
   expect(readsOf(KEY)).toBe(failedReads + 2);
   expect(session.getSnapshot().historyReady).toBe(false);

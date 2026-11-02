@@ -3,8 +3,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
-import { listAgentEntries, tryResolveDefaultAgentId } from "../agents/agent-scope.js";
-import { tryResolveLegacyCompatibilityAgentId } from "../config/legacy.default-agent-owner.js";
+import {
+  listAgentEntries,
+  tryResolveContactDefaultAgentId,
+  tryResolveDefaultAgentId,
+  tryResolveDisplayedDefaultAgentId,
+  tryResolveLegacyCompatibilityAgentId,
+} from "../agents/agent-scope.js";
 import { resolveStateDir } from "../config/paths.js";
 import type { SessionScope } from "../config/sessions.js";
 import type { BranchConfig } from "../config/types.branch.js";
@@ -49,20 +54,20 @@ export function resolveGatewayAgentSelectionState(cfg: BranchConfig): GatewayAge
   if (cfg.agents?.ownership === "explicit" && configuredIds.length === 0) {
     return { defaultId: "main", ownership: "explicit", selectionRequired: true };
   }
-  const contactDefault = cfg.agents?.defaultId && normalizeAgentId(cfg.agents.defaultId);
-  if (contactDefault && configuredIds.includes(contactDefault)) {
-    return { defaultId: contactDefault, ownership: "explicit", selectionRequired: false };
+  const designated = tryResolveDisplayedDefaultAgentId(cfg);
+  if (designated && tryResolveContactDefaultAgentId(cfg)) {
+    return { defaultId: designated, ownership: "explicit", selectionRequired: false };
   }
   const soleAgentId = tryResolveDefaultAgentId(cfg);
   if (soleAgentId) {
     return {
-      defaultId: normalizeAgentId(soleAgentId),
+      defaultId: designated ?? normalizeAgentId(soleAgentId),
       ownership: "sole",
       selectionRequired: false,
     };
   }
   const legacyAgentId = tryResolveLegacyCompatibilityAgentId(cfg);
-  const legacyCompatibleId = legacyAgentId ?? configuredIds[0];
+  const legacyCompatibleId = designated ?? configuredIds[0];
   if (!legacyCompatibleId) {
     throw new Error("Cannot project gateway agent ownership without a configured agent.");
   }

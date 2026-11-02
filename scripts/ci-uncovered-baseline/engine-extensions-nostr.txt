@@ -1,0 +1,10 @@
+engine:extensions/nostr/doctor-contract-api.test.ts
+engine:extensions/nostr/secret-contract-api.test.ts
+engine:extensions/nostr/src/channel.outbound.test.ts
+engine:extensions/nostr/src/channel.test.ts
+engine:extensions/nostr/src/metrics.test.ts
+engine:extensions/nostr/src/nostr-bus.outbound.test.ts
+engine:extensions/nostr/src/nostr-key-utils.test.ts
+engine:extensions/nostr/src/nostr-relay-subscription.test.ts
+engine:extensions/nostr/src/nostr-state-store.test.ts
+engine:extensions/nostr/src/session-route.test.ts

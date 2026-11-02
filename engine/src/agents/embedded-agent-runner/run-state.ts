@@ -439,3 +439,22 @@ export function setActiveEmbeddedRunLifecycleGeneration(
   ACTIVE_EMBEDDED_RUN_LIFECYCLE_GENERATIONS.set(handle, lifecycleGeneration);
   return lifecycleGeneration;
 }
+
+/**
+ * Where a run registers itself: its own registry key when it works beside the
+ * chat's run (a live inbound reply), otherwise the chat's session id.
+ */
+export function resolveEmbeddedRunRegistryKey(params: {
+  sessionId: string;
+  activeRunRegistryId?: string;
+}): { key: string; isolated: boolean } {
+  const registryId = params.activeRunRegistryId?.trim();
+  return registryId && registryId !== params.sessionId
+    ? { key: registryId, isolated: true }
+    : { key: params.sessionId, isolated: false };
+}
+
+/** Trailing registration options: only an isolated run passes any. */
+export function isolatedRegistrationArgs(key: { isolated: boolean }): [] | [{ isolated: true }] {
+  return key.isolated ? [{ isolated: true }] : [];
+}

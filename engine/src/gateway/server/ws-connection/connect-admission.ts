@@ -227,11 +227,12 @@ export async function admitGatewayConnect(context: GatewayConnectPhaseContext) {
   } = context;
 
   const isNodeClient = isStartupNodeConnect(connectParams);
-  const startupPending = (isOperatorAdmissionPending ?? isStartupPending)?.() === true;
+  const operatorStartupPending = (isOperatorAdmissionPending ?? isStartupPending)?.() === true;
+  const nodeStartupPending = isNodeClient && isStartupPending?.() === true;
   // Node enrollment is an awaited startup dependency: authenticated node admission
   // must complete while ordinary methods and other clients remain startup-gated.
   // Operators may be admitted earlier (after bind); unready methods answer retryable UNAVAILABLE.
-  if (startupPending && !isNodeClient) {
+  if (operatorStartupPending && !isNodeClient) {
     await rejectGatewayStartupConnect(context);
     return undefined;
   }
@@ -354,6 +355,6 @@ export async function admitGatewayConnect(context: GatewayConnectPhaseContext) {
     isBrowserOperatorUi,
     isWebchat,
     isNativeAppUi,
-    startupPending,
+    nodeStartupPending,
   };
 }

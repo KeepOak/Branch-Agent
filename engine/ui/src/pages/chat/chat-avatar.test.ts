@@ -851,3 +851,33 @@ describe("attributed sender avatars", () => {
     expect(container.querySelector(".chat-avatar--sender-initials")?.textContent?.trim()).toBe("H");
   });
 });
+
+describe("owner avatar (#1937)", () => {
+  it("draws the owner's initial from their name, not a generic person", () => {
+    const avatar = renderAvatar(["user", undefined, { id: "owner", name: "Taylor", avatar: null }]);
+    expect(avatar?.textContent?.trim()).toBe("T");
+    expect(avatar?.classList.contains("chat-avatar--sender-initials")).toBe(true);
+    expect(avatar?.querySelector("svg")).toBeNull();
+  });
+
+  it("uses the owner's initial for shared-owner messages, matching the footer's seed", () => {
+    const sender = {
+      id: "gateway-owner",
+      identity: { type: "profile", id: "gateway-owner" },
+    } as const;
+    const avatar = renderAvatar(["user", undefined, { name: "Taylor", avatar: null }, sender]);
+    expect(avatar?.textContent?.trim()).toBe("T");
+    const owner = renderAvatar(["user", undefined, { name: "Taylor", avatar: null }]);
+    expect(avatar?.getAttribute("style")).toBe(owner?.getAttribute("style"));
+  });
+
+  it("falls back to the footer's Owner label when no name is set", () => {
+    const avatar = renderAvatar(["user", undefined, { name: null, avatar: null }]);
+    expect(avatar?.textContent?.trim()).toBe("O");
+  });
+
+  it("keeps the generic mark for unattributed history", () => {
+    const avatar = renderAvatar(["user"]);
+    expect(avatar?.querySelector("svg")).not.toBeNull();
+  });
+});

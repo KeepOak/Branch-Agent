@@ -5,12 +5,18 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $desktopRoot = Split-Path -Parent $PSScriptRoot
-if (!$OutputRoot) {
-    $legacy = Join-Path $env:USERPROFILE 'BranchApp'
-    $dataRoot = if ($env:BRANCH_DESKTOP_DATA) { $env:BRANCH_DESKTOP_DATA } elseif (Test-Path -LiteralPath (Join-Path $legacy 'desktop.json')) { $legacy } else { Join-Path $env:LOCALAPPDATA 'BranchAgent' }
-    $OutputRoot = Join-Path $dataRoot 'dist'
+$legacy = Join-Path $env:USERPROFILE 'BranchApp'
+$dataRoot = if ($env:BRANCH_DESKTOP_DATA) { $env:BRANCH_DESKTOP_DATA } elseif (Test-Path -LiteralPath (Join-Path $legacy 'desktop.json')) { $legacy } else { Join-Path $env:LOCALAPPDATA 'BranchAgent' }
+$dataDist = [IO.Path]::GetFullPath((Join-Path $dataRoot 'dist'))
+# A dev build goes to a temp folder, never <data>\dist: a copy there runs beside the installed app and shares its
+# data folder (the setup .exe moves an old one aside). Install real builds with the setup .exe.
+if (!$OutputRoot) { $OutputRoot = Join-Path ([IO.Path]::GetTempPath()) 'branch-desktop-dist' }
+$fullOutput = [IO.Path]::GetFullPath($OutputRoot).TrimEnd('\')
+if ($fullOutput -ieq $dataDist -or $fullOutput.StartsWith($dataDist + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to package into the app data folder ($dataDist). Pick another -OutputRoot."
 }
-if (!$BaseRuntime) { $BaseRuntime = Join-Path $OutputRoot 'v0.2.0\Branch Agent-win32-x64' }
+# The approved runtime is only read; older checkouts kept it in the data folder.
+if (!$BaseRuntime) { $BaseRuntime = Join-Path $dataDist 'v0.2.0\Branch Agent-win32-x64' }
 $package = Get-Content -LiteralPath (Join-Path $desktopRoot 'package.json') -Raw | ConvertFrom-Json
 $versionRoot = [IO.Path]::GetFullPath((Join-Path $OutputRoot "v$($package.version)"))
 if (Test-Path -LiteralPath $versionRoot) { throw "Version folder already exists: $versionRoot. Bump the version first." }

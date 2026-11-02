@@ -34,7 +34,7 @@ async function walk(engine: WindowEngine, level: Level) {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => { root!.render(<LibraryPlace engine={engine} level={level} facts={{ running: 0, waiting: 0 }} openConversation={() => {}} openPlace={() => {}} openSettings={() => {}} />); });
   await settle();
-  for (const tab of ["Memory", "Documents", "Meetings", "Made for you", "Logbook"]) {
+  for (const tab of ["Memory", "Documents", "Meetings", "Activity"]) {
     const button = [...host.querySelectorAll<HTMLButtonElement>("[role=tab]")].find(b => b.textContent?.startsWith(tab))!;
     await act(async () => { button.click(); }); await settle();
     expect(host.querySelector("h1")?.textContent).toBe("Library");

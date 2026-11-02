@@ -28,7 +28,7 @@ See [`AGENTS.md`](../AGENTS.md) for the full workflow.
 
 **Priority order:** (1) fix what's broken, (2) seamless updates, (3) proactive agents, (4) every screen and control logical, beautiful and smooth, with every preview feature present and working, (5) logic testing of the app, (6) new features.
 
-The preview (`design/spec-v23/index.html` plus Taofik's newer Branch App Preview) is a map of the features and the look to aim for, not something to copy pixel for pixel. The bar is that every screen and control is logical, beautiful and smooth: no empty-screen flash, no slow open, no leftover product names, nothing off-theme. Every feature in the preview should exist and work in the app. [`AGENTS.md`](../AGENTS.md) states the same bar.
+The design target is the owner's latest Branch App Preview, kept privately (a superset of `design/spec-v23` with later rounds and decisions). Never commit that preview to this public repo. Parity briefs paste only the slices they need. `design/spec-v23` is superseded (Oct 18, 2026) and is a historical reference only, not the parity target. The bar is that every screen and control is logical, beautiful and smooth: no empty-screen flash, no slow open, no leftover product names, nothing off-theme. Every feature in the preview should exist and work in the app. [`AGENTS.md`](../AGENTS.md) states the same bar.
 
 ### Seamless handoff
 

@@ -8,6 +8,7 @@ export function createFakeNotifier(initial: NotificationPermission = 'granted') 
   let permission = initial;
   let launch: AlertResponse | null = null;
   const shown = new Map<string, ShownAlert>();
+  const posted: ShownAlert[] = [];
   const dismissed: string[] = [];
   const badges: number[] = [];
   const listeners = new Set<(response: AlertResponse) => void>();
@@ -22,6 +23,7 @@ export function createFakeNotifier(initial: NotificationPermission = 'granted') 
       return permission;
     },
     show: async (alert) => {
+      posted.push(alert);
       shown.set(alert.key, alert);
     },
     dismiss: async (key) => {
@@ -40,6 +42,7 @@ export function createFakeNotifier(initial: NotificationPermission = 'granted') 
   return {
     notifier,
     shown,
+    posted,
     dismissed,
     badges,
     get prepared() {

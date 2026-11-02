@@ -1,0 +1,6 @@
+engine:packages/gateway-protocol/src/system-agent-error-details.test.ts
+engine:src/gateway/server-methods/system-agent.test.ts
+engine:src/infra/sqlite-readonly-worker-idle.test.ts
+engine:src/process/spawn-broker/idle-lifecycle.test.ts
+engine:src/system-agent/inference-error.test.ts
+engine:ui/src/pages/custodian/custodian-page.session-lifecycle.test.ts

@@ -1,0 +1,7 @@
+engine:src/pairing/pairing-allowlist.lifecycle.test.ts
+engine:src/pairing/pairing-allowlist.worker.test.ts
+engine:src/pairing/pairing-messages.test.ts
+engine:src/pairing/pairing-store-keys.test.ts
+engine:src/pairing/setup-code.control-ui.test.ts
+engine:src/pairing/setup-code.public-origin.test.ts
+engine:src/pairing/setup-code.trusted-proxy.test.ts

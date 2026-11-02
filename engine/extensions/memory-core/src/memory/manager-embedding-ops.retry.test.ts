@@ -6,6 +6,7 @@ import {
 import { sleepWithAbort } from "branch/plugin-sdk/runtime-env";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EmbeddingProvider, EmbeddingProviderRuntime } from "./embeddings.js";
+import { MemoryEmbeddingAccountBackoff } from "./manager-embedding-account-backoff.js";
 import { MemoryManagerEmbeddingOps } from "./manager-embedding-ops.js";
 
 type EmbeddingQueryRetryHarness = {
@@ -37,6 +38,7 @@ function createEmbeddingQueryRetryHarness(
   // memory index or acquiring an external embedding provider.
   return Object.assign(Object.create(MemoryManagerEmbeddingOps.prototype), {
     provider,
+    embeddingAccountBackoff: new MemoryEmbeddingAccountBackoff(),
     resolveEmbeddingTimeout: () => timeoutMs,
     markLocalEmbeddingProviderDegraded: vi.fn(),
     withProviderUse: async <T>(_provider: EmbeddingProvider, run: () => Promise<T>) => await run(),

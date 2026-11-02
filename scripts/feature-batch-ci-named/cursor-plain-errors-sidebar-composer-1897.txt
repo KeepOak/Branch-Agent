@@ -1,0 +1,2 @@
+window:src/composer/composer-plain-error.test.tsx
+window:src/shell/sidebar-plain-error.test.tsx

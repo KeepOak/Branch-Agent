@@ -1,0 +1,4 @@
+engine:extensions/bonjour/index.test.ts
+engine:extensions/bonjour/manifest.test.ts
+engine:extensions/bonjour/src/ciao.test.ts
+engine:extensions/bonjour/src/errors.test.ts

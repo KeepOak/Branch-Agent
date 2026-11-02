@@ -5,6 +5,8 @@ import { Fragment, useEffect, useState } from "react";
 import { Btn, Ctl, Pick, Sec, Seg, Switch, useLevel, useSaveRunner, type Opt } from "../kit";
 import { DESKTOP, READING_MORE, rowOf, rowsOf, type RowSpec } from "./appearance-rows";
 import { sceneFile, type useLook } from "./appearance-store";
+import { LANGUAGES } from "../../../i18n/language";
+import { trayCard, trayMenuHelp, trayMenuLabel } from "../../../screens/settings/tray-words";
 
 export type Look = ReturnType<typeof useLook>;
 
@@ -139,6 +141,8 @@ export function ReadingSec({ look }: { look: Look }) {
   const set = (k: "fontUi" | "fontChat") => (id: string) => void save(() => look.store.set(k, id === "theme" ? null : id));
   return (
     <Sec title="Reading">
+      <SpecRow r={rowOf("scale")} look={look} />
+      <SpecRow r={rowOf("chatSize")} look={look} />
       <SpecRow r={rowOf("size")} look={look} />
       <ReadingMoreRows look={look} />
       {level >= 1 ? (
@@ -156,19 +160,22 @@ export function ShownSec({ look }: { look: Look }) {
   return <Sec title="What’s shown">{rowsOf("What’s shown").map((r) => <SpecRow key={r.key} r={r} look={look} />)}</Sec>;
 }
 
-const LANGS: Opt[] = [{ id: "en", label: "English" }, ...["Français", "Español", "Deutsch", "Yorùbá"].map((l) => ({ id: l, label: l, off: "Other languages come with the Branch app." }))];
-export function LanguageSec() {
+const LANGS: Opt[] = LANGUAGES.map((l) => ({ id: l.id, label: l.name }));
+/** The window's language (Private #1100), kept in the person's look; i18n/language.ts follows it. */
+export function LanguageSec({ look }: { look: Look }) {
+  const save = useSaveRunner();
+  const lang = String(look.val("lang", "en"));
   return (
     <Sec title="Language">
-      <Ctl title="Language" sub="Dates and numbers follow it too."><Pick value="en" options={LANGS} label="Language" onChange={() => undefined} /></Ctl>
+      <Ctl title="Language" sub="Settings’ titles follow it where there is a translation; everything else stays in English for now." keep="everywhere"><Pick value={lang} options={LANGS} label="Language" onChange={(id) => void save(() => look.store.set("lang", id === "en" ? null : id))} /></Ctl>
     </Sec>
   );
 }
 
 export function TraySec() {
   return (
-    <Sec title="Tray">
-      <Ctl title="Tray menu" sub="What Branch puts in the tray: its icon and menu." off={DESKTOP}><Btn sm>Open</Btn></Ctl>
+    <Sec title={trayCard()}>
+      <Ctl title={trayMenuLabel()} sub={trayMenuHelp()} off={DESKTOP}><Btn sm>Open</Btn></Ctl>
     </Sec>
   );
 }

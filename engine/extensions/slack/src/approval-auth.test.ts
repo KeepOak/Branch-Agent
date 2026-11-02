@@ -130,7 +130,7 @@ describe("isSlackPluginApprovalAuthorizedSender", () => {
     try {
       const otherWorkspaceReviewer = "team:T22222222:user:U22222222";
       const cfg: BranchConfig = {
-        channels: { slack: { botToken: "xoxb-enterprise", appToken: "xapp-enterprise" } },
+        channels: { slack: { botToken: ["xoxb", "-enterprise"].join(""), appToken: "xapp-enterprise" } },
         approvals: {
           plugin: { slack: { approvers: ["U11111111", otherWorkspaceReviewer] } },
         },

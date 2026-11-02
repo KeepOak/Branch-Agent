@@ -33,7 +33,7 @@ const engine = (request: WindowEngine["request"], key = "agent:scout:one"): Wind
   scopes: ["operator.admin"],
   onEvent: () => () => {},
 });
-const render = async (owner: WindowEngine, mode: "Computer" | "Browser" = "Computer") => {
+const render = async (owner: WindowEngine, mode: "Computer" | "Browser" = "Computer", onClose: () => void = () => {}) => {
   if (!root) {
     container = document.createElement("div");
     document.body.append(container);
@@ -47,7 +47,7 @@ const render = async (owner: WindowEngine, mode: "Computer" | "Browser" = "Compu
         name="Scout"
         mode={mode}
         onMode={() => {}}
-        onClose={() => {}}
+        onClose={onClose}
         onChooseComputer={() => {}}
       />,
     );
@@ -190,6 +190,35 @@ describe("conversation computer lifecycle", () => {
     expect(viewer.connect).not.toHaveBeenCalled();
     expect(request).toHaveBeenCalledWith("desktop.release", { wsPath: "/desktop/one" });
     expect(container.textContent).toContain("requires authentication");
+  });
+});
+
+describe("the stage header (DA-69)", () => {
+  const header = () => container.querySelector<HTMLElement>(".st7-top")!;
+  const unlabeled = () => [...header().querySelectorAll<HTMLButtonElement>("button")].filter((b) => !b.textContent?.trim()).map((b) => b.getAttribute("aria-label") ?? b.outerHTML);
+  it.each(["Computer", "Browser"] as const)("names the agent once and words every %s control", async (mode) => {
+    const request = vi.fn(async () => ({ session: { key: "agent:scout:one" } }));
+    await render(engine(request as WindowEngine["request"]), mode);
+    await flush();
+    expect(header().textContent?.split("Scout").length).toBe(2);
+    expect(header().querySelector(".st7-back")?.textContent).toBe("Back");
+    expect(unlabeled()).toEqual([]);
+    expect([...header().querySelectorAll("button")].filter((b) => b.disabled).map((b) => b.textContent)).toEqual([]);
+  });
+  it("keeps Disconnect in the More menu and Back runs the same close", async () => {
+    viewer.connect.mockImplementation(async (options: any) => { options.onConnect(); return { disconnect: vi.fn() }; });
+    const request = vi.fn(async (method: string) => (method === "sessions.describe" ? placed : method === "environments.status" ? environment : method === "environments.list" ? { environments: [environment] } : method === "desktop.observe" ? observed : {}));
+    const onClose = vi.fn();
+    await render(engine(request as WindowEngine["request"]), "Computer", onClose);
+    await flush();
+    const more = [...header().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "More")!;
+    await act(async () => more.click());
+    const disconnect = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')].find((b) => b.textContent?.startsWith("Disconnect"))!;
+    expect(disconnect.disabled).toBe(false);
+    await act(async () => disconnect.click());
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await act(async () => header().querySelector<HTMLButtonElement>(".st7-back")!.click());
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
 

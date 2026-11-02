@@ -12,7 +12,10 @@ import { saveExecApprovals } from "../infra/exec-approvals-store.test-support.js
 import type { ExecApprovalsSnapshot } from "../infra/exec-approvals.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
-import { closeBranchStateDatabaseForTest } from "../state/branch-state-db.js";
+import {
+  closeBranchStateDatabaseAsync,
+  closeBranchStateDatabaseForTest,
+} from "../state/branch-state-db.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
 import * as nodeRunCommand from "./invoke-run-command.js";
@@ -21,8 +24,12 @@ import { handleInvoke } from "./invoke.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
-afterEach(() => {
+afterEach(async () => {
   resetPluginRuntimeStateForTest();
+  // Worker retirement continues after the sync close; Windows temp-dir rm
+  // otherwise hits EPERM on the still-mapped SQLite files.
+  await closeBranchStateDatabaseAsync();
+  closeBranchStateDatabaseForTest();
 });
 
 const approvalResolutionFailure = vi.hoisted(() => ({ error: null as Error | null }));
@@ -939,16 +946,32 @@ describe("node host invoke", () => {
   });
 
   it.each(["system.run", "agent.cli.claude.run.v1"])(
-    "executes %s with omitted exec config and full/off host approvals",
+    "executes %s with Full access config and full/off host approvals",
     async (command) => {
       const state = await createBranchTestState({ label: "node-default-policy" });
       try {
-        await state.writeConfig({});
+        await state.writeConfig({ tools: { exec: { mode: "full" } } });
         saveExecApprovals({ version: 1, defaults: { security: "full", ask: "off" } });
-        const executable = path.join(fs.realpathSync(state.root), "native-agent.cjs");
-        fs.writeFileSync(executable, `#!${process.execPath}\nprocess.stdout.write('ok');\n`, {
+        const root = fs.realpathSync(state.root);
+        // Claude argv must stay a real Claude flag (`-p`). `--version` is
+        // rejected as unsupported before spawn. Approval pins a native
+        // executable (.com/.exe/.bat/.cmd on Windows); a raw .cjs is not one.
+        // A real Windows Claude CLI is a .cmd/.exe, so the plan is correct.
+        // A two-line %~dp0 .cmd forwarder is that identity; the supervisor
+        // then rewrites it to [process.execPath, script, ...argv]. A copied
+        // node.exe cannot take `-p` because Node treats that as print.
+        const script = path.join(root, "native-agent.cjs");
+        fs.writeFileSync(script, `#!${process.execPath}\nprocess.stdout.write('ok');\n`, {
           mode: 0o700,
         });
+        const executable =
+          process.platform === "win32" ? path.join(root, "native-agent.cmd") : script;
+        if (process.platform === "win32") {
+          fs.writeFileSync(
+            executable,
+            `@echo off\r\n"${path.join("%~dp0", path.basename(script))}" %*\r\n`,
+          );
+        }
         const request = vi.fn<GatewayClient["request"]>().mockResolvedValue(null);
         await handleInvoke(
           {
@@ -958,7 +981,11 @@ describe("node host invoke", () => {
             paramsJSON: JSON.stringify(
               command === "system.run"
                 ? { command: [process.execPath, "--version"] }
-                : { argv: ["-p"], timeoutMs: 5000, idleTimeoutMs: 1000 },
+                : {
+                    argv: ["-p"],
+                    timeoutMs: 5000,
+                    idleTimeoutMs: 1000,
+                  },
             ),
           },
           {
@@ -974,8 +1001,15 @@ describe("node host invoke", () => {
         const result = request.mock.calls.find(
           ([method]) => method === "node.invoke.result",
         )?.[1] as InvokeResult;
-        expect(result).toMatchObject({ ok: true });
-        expect(JSON.parse(result.payloadJSON ?? "{}")).toMatchObject({ exitCode: 0 });
+        const failurePayload = JSON.stringify({
+          ok: result?.ok,
+          payloadJSON: result?.payloadJSON,
+          error: result?.error,
+        });
+        expect(result, failurePayload).toMatchObject({ ok: true });
+        expect(JSON.parse(result.payloadJSON ?? "{}"), failurePayload).toMatchObject({
+          exitCode: 0,
+        });
       } finally {
         await state.cleanup();
       }
@@ -1016,7 +1050,7 @@ describe("node host invoke", () => {
       execPolicy?: { security?: string; ask?: string };
       plan?: { policySnapshot?: unknown };
     };
-    expect(payload.execPolicy).toEqual({ security: "full", ask: "off" });
+    expect(payload.execPolicy).toEqual({ security: "allowlist", ask: "on-miss" });
     // The plan snapshot binds persisted approval state. Effective config-layer
     // policy is returned separately above and re-evaluated at execution.
     expect(payload.plan?.policySnapshot).toEqual({

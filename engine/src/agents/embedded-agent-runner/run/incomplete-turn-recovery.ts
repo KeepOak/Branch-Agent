@@ -40,6 +40,13 @@ const REJECTED_TOOL_CALL_RETRY_INSTRUCTION =
 export const SETTLED_TOOL_TERMINAL_CONTINUATION_INSTRUCTION =
   "The previous assistant turn completed its tool calls but did not produce a user-visible answer. Continue from the current transcript and produce the final user-visible answer now. Do not repeat completed tool calls or restart from scratch. Tools are unavailable in this step: it is a text-only pass, so reply with plain text and do not attempt any tool call.";
 
+/** Host-authored reply when settled tools and their finalization produced no final message. */
+export const SETTLED_TOOL_FINALIZATION_FALLBACK_TEXT =
+  "The tool run finished, but no final summary was produced. I did not repeat any completed actions.";
+/** Terminal error for a required reply that still had no final message after finalization. */
+export const SETTLED_TOOL_ENDED_WITHOUT_FINAL_ERROR =
+  "The run ended after a tool call without a final message.";
+
 export function shouldRetrySilentErrorAssistantTurn(params: {
   attempt: Pick<
     EmbeddedRunAttemptResult,

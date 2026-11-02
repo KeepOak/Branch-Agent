@@ -6,6 +6,12 @@ import { checkedStep } from './dead-click.mjs';
 import { gatewayPort } from './gateway-port.mjs';
 import { drivePreview } from './preview.mjs';
 
+// Screenshots must never show the CI runner's own name; the engine shows BRANCH_DISPLAY_HOSTNAME instead.
+if (!process.env.BRANCH_DISPLAY_HOSTNAME?.trim()) {
+  console.error('visual tour: set BRANCH_DISPLAY_HOSTNAME (for example tour-machine) so screenshots never show the real machine name.');
+  process.exit(1);
+}
+
 const require = createRequire(new URL('../../engine/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
 const screens = await readScreens(new URL('./screens.json', import.meta.url));

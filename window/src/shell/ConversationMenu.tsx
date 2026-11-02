@@ -1,7 +1,7 @@
 // The header's ⋯ conversation menu and what its rows open (DESIGN-SPEC §4.2.7): the rows come from
 // conversation-menu.ts; this hook runs them against the engine and keeps the menu, popover and dialogs.
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
-import { describePlacement, listComputers, placementComputer, type Computer, type Placement } from "../stage/computers";
+import { currentComputer, describeWhere, listComputers, type Computer, type Placement } from "../stage/computers";
 import { ComputerPicker } from "../stage/ComputerPicker";
 import { ReplayDialog } from "./Replay";
 import type { Conversation } from "../connect/conversations";
@@ -251,17 +251,18 @@ async function whoItKnows(p: ConversationMenuProps, setOpen: (o: Open) => void, 
 
 /** The computers this conversation could move to (environments.list) and where it is now (sessions.describe). */
 function useComputers(p: ConversationMenuProps, key: string | null) {
-  const [state, setState] = useState<{ list: Computer[]; profiles: { id: string; name: string }[]; placement?: Placement; tick: number }>({ list: [], profiles: [], tick: 0 });
+  const [state, setState] = useState<{ list: Computer[]; profiles: { id: string; name: string }[]; placement?: Placement; execNode?: string; tick: number }>({ list: [], profiles: [], tick: 0 });
   useEffect(() => {
     if (!p.ready || !key) return;
     let live = true;
-    Promise.allSettled([listComputers(p.session.engine), describePlacement(p.session.engine)]).then(([c, pl]) => {
+    Promise.allSettled([listComputers(p.session.engine), describeWhere(p.session.engine)]).then(([c, pl]) => {
       if (!live) return;
       setState((cur) => ({
         tick: cur.tick,
         list: c.status === "fulfilled" ? c.value.computers : [],
         profiles: c.status === "fulfilled" ? c.value.profiles : [],
-        placement: pl.status === "fulfilled" ? pl.value : undefined,
+        placement: pl.status === "fulfilled" ? pl.value.placement : undefined,
+        execNode: pl.status === "fulfilled" ? pl.value.execNode : undefined,
       }));
     });
     return () => {
@@ -302,7 +303,7 @@ function Overlays({ p, open, items, close, target, lastReply, computers }: Overl
     case "move":
       return (
         <ComputerPicker at={open.at} engine={engine} name={p.trunk.name} computers={computers.list} profiles={computers.profiles} placement={computers.placement}
-          current={placementComputer(computers.placement) ?? "gateway"} onClose={close} onAdd={() => (close(), p.onAddComputer())} onManage={() => (close(), p.onManageComputers())}
+          execNode={computers.execNode} current={currentComputer(computers.placement, computers.execNode, computers.list)} onClose={close} onAdd={() => (close(), p.onAddComputer())} onManage={() => (close(), p.onManageComputers())}
           onMoved={computers.reload} />
       );
   }

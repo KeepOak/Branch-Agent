@@ -9,6 +9,7 @@ import { Dialog } from "./Dialog";
 import { formatDuration, modelName } from "./format";
 import type { MessageMeta } from "./model";
 import { formatMoney } from "../format/money";
+import { plainError } from "../shell/plain-error";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -42,7 +43,7 @@ export function EditDialog({ text, onClose, onSend }: { text: string; onClose: (
         </div>
       </div>
       <p className="hint">“Undo that” puts everything back the way it was.</p>
-      {error ? <p className="field-error">{error}</p> : null}
+      {error ? <p className="field-error">{plainError(error)}</p> : null}
     </Dialog>
   );
 }
@@ -67,7 +68,7 @@ export function DeleteDialog({ onClose, onDelete }: { onClose: () => void; onDel
   return (
     <Dialog title="Delete this message?" onClose={onClose} footer={footer} testid="delete-dialog">
       <p className="hint">It leaves this conversation, and the agent stops reading it.</p>
-      {error ? <p className="field-error">{error}</p> : null}
+      {error ? <p className="field-error">{plainError(error)}</p> : null}
     </Dialog>
   );
 }
@@ -117,7 +118,7 @@ export function BranchDialog({ onClose, onBranch }: { onClose: () => void; onBra
           {models.map((m) => <option key={m} value={m}>{modelName(m)}</option>)}
         </select>
       </label>
-      {error ? <p className="field-error">{error}</p> : null}
+      {error ? <p className="field-error">{plainError(error)}</p> : null}
     </Dialog>
   );
 }

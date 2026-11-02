@@ -181,7 +181,7 @@ it("Updates & about shows the running build and hides a leftover older staged sh
   expect(host.textContent).toContain("Branch 0.4.4 on this computer");
   expect(host.textContent).toContain("Branch 0.4.4. The window refreshes itself");
   expect(host.textContent).not.toContain("c27f2be2");
-  expect(host.textContent).toContain("Updates apply in place.");
+  expect(host.textContent).toContain("You’re on the latest version, checked");
   expect(host.textContent).not.toContain("applying when your Trunks finish");
   expect(host.textContent).not.toContain("An update is ready");
   await act(async () => root.render(<UpdatesPage page="updates" title="Updates & about" level="technical" engine={engine} />));
@@ -219,7 +219,7 @@ it("legacy native bootstrap says it checks every ten minutes, greys Check now, a
   await show(); expect(host.textContent).toContain("Branch checks for updates every 10 minutes and lets you know when one is ready to apply.");
   expect(host.textContent).not.toContain("aren’t available");
   const check = [...host.querySelectorAll("button")].find(row => row.textContent === "Check now");
-  expect(check?.disabled).toBe(true); expect(host.textContent).toContain("Update the Branch app to check by hand.");
+  expect(check?.disabled).toBe(true); expect(host.textContent).toContain("This version checks on its own. Checking by hand needs a newer version.");
   expect(updateCalls()).toEqual([]);
   await expect(stageWindowUpdate(engine)).rejects.toThrow("Update the Branch app to check by hand.");
   expect(updateCalls()).toEqual([]);

@@ -1,0 +1,1 @@
+window:src/shell/menu-rerender.test.tsx

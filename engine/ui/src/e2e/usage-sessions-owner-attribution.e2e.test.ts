@@ -11,9 +11,11 @@ import {
 } from "../../../src/test-utils/branch-test-state.ts";
 import { getFreePort } from "../../../src/test-utils/ports.ts";
 import type { ApplicationContext } from "../app/context.ts";
-import { COMMUNITY_INVITE_KEY } from "../components/community-invite-state.ts";
 import { waitForControlUiGatewayReady } from "../test-helpers/control-ui-e2e-readiness.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
+
+// The sidebar invite is gone; old dismissal keys may still be in saved storage.
+const COMMUNITY_INVITE_KEY = "branch:control-ui:community-invite:v2";
 
 const suite = createControlUiE2eSuite({
   name: "Control UI usage sessions owner attribution",

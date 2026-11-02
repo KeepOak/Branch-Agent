@@ -65,6 +65,12 @@ export function stepsLine(steps: readonly Step[]): { text: string; meta: string;
   return { text, meta: count, failed, live: false };
 }
 
+/** Regular's one quiet link on the steps: the count alone ("6 steps", "3 steps so far"), never the step words. */
+export function stepCount(n: number, live: boolean): string {
+  const words = n === 1 ? "1 step" : n + " steps";
+  return live ? words + " so far" : words;
+}
+
 /** "Show agents' work as" (owner item 26): Normal hides thoughts, Thinking adds them as quiet rows inside the steps,
  *  Verbose opens every fold. Settings keeps the default; a conversation can differ. */
 export type WorkMode = "normal" | "thinking" | "verbose";
@@ -119,6 +125,22 @@ export type Entry =
   | { type: "item"; item: Extract<Item, { type: "block" }> }
   | { type: "steps"; key: string; steps: Step[]; thoughts: Thought[]; face: boolean; run?: { title: string; durationMs?: number } }
   | { type: "thought"; key: string; thought: Thought };
+
+/** While a reply is being written, an answer that arrived before the steps stays below the working line. */
+export function answerBelowWorkingLine(entries: readonly Entry[]): Entry[] {
+  const firstSteps = entries.findIndex((e) => e.type === "steps");
+  if (firstSteps < 0) return [...entries];
+  const early: Entry[] = [];
+  const rest: Entry[] = [];
+  entries.forEach((entry, i) => {
+    if (i < firstSteps && entry.type === "item" && entry.item.block.kind === "text") early.push(entry);
+    else rest.push(entry);
+  });
+  if (!early.length) return [...entries];
+  let last = -1;
+  rest.forEach((entry, i) => { if (entry.type === "steps") last = i; });
+  return [...rest.slice(0, last + 1), ...early, ...rest.slice(last + 1)];
+}
 
 /** Thoughts become quiet rows inside the steps they sit beside (owner item 26), never blocks of their own. */
 export function entriesOf(items: readonly Item[]): Entry[] {

@@ -16,6 +16,7 @@ import { ConvDialog } from "../../../places/settings/set2/advanced-tech";
 import { ShortcutsDialog } from "../../../shell/ShortcutsDialog";
 import { onMac, shownInline } from "../../../shell/keymap";
 import { pageFor } from "../nav";
+import { COMING_FROM } from "../rows";
 import { useLevel } from "../SettingsFrame";
 import type { PageSlot, SlotControl, SlotControlProps } from "../slots";
 import { Failed, Needs, useFailure } from "./appearance-live";
@@ -50,19 +51,21 @@ export function PinnedList({ engine, onPage }: SlotControlProps) {
 }
 
 type Project = { id: string; displayName: string };
-/** One project: its name, how many conversations it has, and Edit (its own instructions, Coming). */
+/** One project: its name, how many conversations it has, and Edit (its own instructions, Coming). Like every Coming
+ *  control, Edit shows only at Technical (rows.ts COMING_FROM): Regular and Advanced show only what works today. */
 function ProjectRow({ engine, project }: { engine: WindowEngine; project: Project }) {
+  const [level] = useLevel(engine);
   const res = useResource<RecordValue>(engine, "sessions.list", { projectId: project.id, limit: 1, excludeSubagents: true, excludeCron: true });
   const total = record(res.data).totalCount;
   return (
     <div className="r1s-row" data-project={project.id}>
       <b className="g-label">{visible(project.displayName)}</b>
       {typeof total === "number" ? <small className="g-label">{total} {total === 1 ? "conversation" : "conversations"}</small> : null}
-      <div className="r1s-ctl">
+      {level >= COMING_FROM ? <div className="r1s-ctl">
         <Coming engine={engine} need="engine: a project's own instructions" unwired reason="Editing a project’s own instructions comes in a later update.">
           <button type="button" className="r1s-btn">Edit</button>
         </Coming>
-      </div>
+      </div> : null}
     </div>
   );
 }
@@ -115,13 +118,16 @@ export function SummaryModel({ engine, row }: SlotControlProps) {
   </>;
 }
 
-/** A preview button with nothing behind it yet: its keys (if the preview shows any) and the button, Coming. */
+/** A preview button with nothing behind it yet: its keys (if the preview shows any) and the button, Coming. It waits on
+ *  the row's calls (a slot row) or the row's need (a Coming row, such as Cover now). */
 function comingButton(button: string, keys?: () => string): SlotControl {
   return function ComingButton({ engine, row }: SlotControlProps) {
-    const src = row.source.kind === "slot" ? row.source : null;
+    const src = row.source;
+    const need = src.kind === "slot" ? src.calls : src.kind === "coming" ? [src.need] : [];
+    const reason = src.kind === "slot" || src.kind === "coming" ? src.reason : undefined;
     return <span className="r1s-own-ctl">
       {keys ? <span className="r1s-val g-label">{keys()}</span> : null}
-      <Coming engine={engine} need={src?.calls ?? []} unwired reason={src?.reason} where={row.label ?? button}>
+      <Coming engine={engine} need={need} unwired reason={reason} where={row.label ?? button}>
         <button type="button" className="r1s-btn">{button}</button>
       </Coming>
     </span>;

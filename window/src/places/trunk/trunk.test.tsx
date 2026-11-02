@@ -108,9 +108,8 @@ describe("Trunk editor", () => {
     await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[1], "Money");
     await click(byText("What it may do"));
     await click(document.querySelector('[aria-label="Use the browser"]'));
-    const send = [...document.querySelectorAll<HTMLElement>(".tk-ctl")].find(r => r.querySelector("b")?.textContent === "Send email and messages")!;
-    expect(send.classList.contains("off")).toBe(true); expect(send.title).toBe("");
-    expect(send.textContent).toContain("Overrides the mode for this Trunk only."); expect([...send.querySelectorAll("button")].every(b => b.disabled)).toBe(true);
+    // The later-update rows (Send email and messages, Keep its own notes) are not drawn until they work.
+    expect(document.body.textContent).not.toContain("Send email and messages");
     expect(visibleDevNotes(document.body)).toEqual([]);
     await click(byText("Its computers"));
     await click(document.querySelector('[data-value="n1"]'));
@@ -128,6 +127,37 @@ describe("Trunk editor", () => {
     await act(async () => root!.unmount()); root = null; document.body.innerHTML = "";
     await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="advanced" tab="may" onClose={() => {}} />);
     expect(document.body.textContent).toContain("Model for decisions");
+  });
+  it("groups each set of look choices, the chosen one pressed, so the choice already made reads as chosen", async () => {
+    await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="regular" onClose={() => {}} />);
+    const group = (label: string) => document.querySelector<HTMLElement>(`[role="group"][aria-label="${label}"]`);
+    for (const label of ["Looks", "Colour", "Shape", "Eyes"]) expect(group(label)).not.toBeNull();
+    expect(group("Looks")!.querySelector('[aria-label="Classic pebble"]')?.getAttribute("aria-pressed")).toBe("true");
+    expect(group("Shape")!.querySelector('[aria-label="Circle"]')?.getAttribute("aria-pressed")).toBe("true");
+    expect(group("Colour")!.querySelector('[aria-label="Colour #2F8C86"]')?.getAttribute("aria-pressed")).toBe("true");
+    await click(group("Shape")!.querySelector('[aria-label="Leaf"]'));
+    expect(group("Shape")!.querySelector('[aria-label="Leaf"]')?.getAttribute("aria-pressed")).toBe("true");
+    expect(group("Shape")!.querySelector('[aria-label="Circle"]')?.getAttribute("aria-pressed")).toBe("false");
+  });
+  it("Shuffle redraws the face with a new look and says which", async () => {
+    await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="regular" onClose={() => {}} />);
+    const chosen = () => [...document.querySelectorAll<HTMLElement>('.tk-swatches [aria-pressed="true"], .tk-shapes [aria-pressed="true"], .tk-seg [aria-pressed="true"]')].map((b) => b.getAttribute("aria-label") ?? b.textContent).join("|");
+    const said = () => document.querySelector('[data-testid="trunk-shuffled"]');
+    const was = chosen();
+    expect(said()?.getAttribute("role")).toBe("status");
+    expect(said()?.textContent).toBe("");
+    await click(byText("Shuffle"));
+    expect(chosen()).not.toBe(was);
+    expect(said()?.textContent).toMatch(/^Shuffled: (Circle|Stone|Leaf|Acorn|Shield), (round|wide|sleepy) eyes, colour #[0-9A-F]{6}\.$/);
+    expect(document.querySelector(".tk-dialog, [role=dialog]")?.textContent).toContain(said()!.textContent!);
+    // A Trunk wearing a character shuffles to another character, named the same way.
+    await act(async () => root!.unmount()); root = null; document.body.innerHTML = "";
+    await mount(<TrunkEditor engine={engine(fake())} agentId="birch" level="regular" onClose={() => {}} />);
+    const look = () => document.querySelector('.tk-looks [aria-pressed="true"]')?.getAttribute("aria-label");
+    expect(look()).toBe("Ember");
+    await click(byText("Shuffle"));
+    expect(look()).not.toBe("Ember");
+    expect(said()?.textContent).toBe(`Shuffled: ${look()!.replace(/, new$/, "")}.`);
   });
   it("keeps Save off for a window without the owner's rights", async () => {
     await mount(<TrunkEditor engine={engine(fake(), [])} agentId="oak" level="regular" onClose={() => {}} />);
@@ -318,7 +348,28 @@ describe("Trunk profile and studio", () => {
     expect(document.body.textContent).toContain("ID birch");
     await click(document.querySelector('[aria-label="Morning on or off"]'));
     expect(request).toHaveBeenCalledWith("cron.update", { id: "j1", patch: { enabled: false } });
-    expect(byText("Pause Birch").getAttribute("aria-disabled")).toBe("true");
+    // Pause is not built yet, so the profile shows no Pause control at all rather than a live-looking one.
+    expect(document.querySelector(".tk-pf-pause")).toBeNull();
+  });
+  it("does not name a model that is not usable on the Juniper card", async () => {
+    const request = fake({
+      "agents.list": { defaultId: "oak", mainKey: "main", agents: [{ id: "oak", identity: { name: "Juniper" }, model: { primary: "openai/gpt-6-astra" } }] },
+      "models.list": { models: [] },
+      "sessions.list": { sessions: [] },
+    });
+    await mount(<TrunkProfile engine={engine(request)} agentId="oak" level="regular" onClose={() => {}} />);
+    expect(document.body.textContent).toContain("No model is set up");
+    expect(document.body.textContent).not.toMatch(/gpt-6-astra/i);
+  });
+  it("maps a missing inference route to connect a model, never the raw error", async () => {
+    const request = vi.fn(() => Promise.reject(new Error("Branch Agent could not verify a usable inference route. Check model setup and try again.")));
+    await mount(<TrunkStudio engine={engine(request)} onClose={() => {}} />);
+    const box = document.querySelector("textarea")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(box, "Watch renewals"); box.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click(byText("Propose it"));
+    expect(document.body.textContent).toContain("Connect a model to get answers");
+    expect(document.body.textContent).not.toContain("could not verify a usable inference route");
+    expect([...document.querySelectorAll('[data-testid="connect-model"] button')].map((b) => b.textContent)).toEqual(["Connect a model"]);
   });
   it("asks Branch through branch.chat and shows its reply", async () => {
     const request = vi.fn(() => Promise.resolve({ sessionId: "s", reply: "Here is my proposal.", action: "none", needsApproval: true }));
@@ -361,6 +412,27 @@ describe("Trunk profile and studio", () => {
 });
 
 describe("Trunk tools rows", () => {
+  it("saves the shown model when the saved one is not in the usable list", async () => {
+    const request = fake({
+      "agents.list": {
+        defaultId: "oak",
+        mainKey: "main",
+        agents: [{ id: "oak", identity: { name: "Oak", theme: "Helps" }, model: { primary: "openai/gpt-6-astra" } }],
+      },
+      "models.list": { models: [{ id: "gemma", provider: "ollama", name: "Gemma", available: true }] },
+    });
+    await mount(<TrunkEditor engine={engine(request)} agentId="oak" level="regular" onClose={() => {}} />);
+    await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[0], "Juniper");
+    await click(byText("What it may do"));
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    const pick = document.querySelector<HTMLSelectElement>('select[aria-label="Which model"]')!;
+    expect(pick.value).toBe("ollama/gemma");
+    expect(pick.selectedOptions[0]?.textContent).toBe("Gemma");
+    expect(document.body.textContent).not.toMatch(/gpt-6-astra/i);
+    await click(byText("Save"));
+    expect(request).toHaveBeenCalledWith("agents.update", { agentId: "oak", name: "Juniper", model: "ollama/gemma" });
+  });
+
   it("shows the browser off when a legacy deny lists it, even with the browser switch on", async () => {
     const config = { hash: "h1", valid: true, config: { agents: { entries: { birch: { toolsets: { browser: true }, tools: { deny: ["browser"] } } } } } };
     const catalog = {

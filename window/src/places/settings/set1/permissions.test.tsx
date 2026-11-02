@@ -45,16 +45,16 @@ describe("Settings › Permissions", () => {
   it("shows the engine's mode and the Regular sections in the preview's order", async () => {
     const { engine } = engineOf();
     await render(engine);
-    expect(heads()).toEqual(["This computer", "Access", "Without asking, Trunks may…", "Locks and records", "Pinned settings"]);
+    expect(heads()).toEqual(["This computer", "Access"]);
     expect(host.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain("Full access");
     expect(host.textContent).not.toContain("Work style");
-    expect(button("Plan first").disabled).toBe(true);
+    expect(button("Plan first")).toBeUndefined();
   });
 
   it("adds the Advanced and Technical sections in place", async () => {
     const { engine } = engineOf();
     await render(engine, 1);
-    expect(heads()).toEqual(["This computer", "Access", "Without asking, Trunks may…", "Locks and records", "Pinned settings", "Rules and checks", "Sandbox", "Privacy", "Your terminal", "Approvals", "Guards", "Locks"]);
+    expect(heads()).toEqual(["This computer", "Access", "Locks and records", "Rules and checks", "Sandbox", "Privacy", "Your terminal", "Approvals", "Guards"]);
     await render(engine, 2);
     expect(heads()).toContain("Rules and checks");
     expect(heads()).toContain("Sandbox");
@@ -135,13 +135,13 @@ describe("Settings › Permissions", () => {
     expect(vi.mocked(notify)).toHaveBeenCalledWith(expect.stringContaining("Only the owner can switch Lockdown off."), { tone: "bad" });
   });
 
-  it("Access arrows select a mode and show disabled reasons inline", async () => {
+  it("Access arrows select a mode; a mode this version lacks is not offered", async () => {
     const { engine, request } = engineOf();
     await render(engine);
     const group = host.querySelector<HTMLElement>('[role="radiogroup"][aria-label="Access"]')!;
     const selected = group.querySelector<HTMLButtonElement>('[role="radio"][aria-checked="true"]')!;
     expect(selected.textContent).toContain("Full access");
-    expect(button("Plan first").textContent).toContain("Plan first isn't available with this version of Branch.");
+    expect(button("Plan first")).toBeUndefined();
     await act(async () => selected.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
     expect(document.activeElement?.textContent).toContain("Auto");
     expect(patchOf(request)).toEqual({ tools: { exec: { mode: "auto", security: null, ask: null } } });
@@ -166,13 +166,12 @@ describe("Settings › Permissions", () => {
     expect(set[1].file.defaults).toEqual({ security: "allowlist" });
   });
 
-  it("the empty rules list uses the empty line, and greyed rows hide developer notes", async () => {
+  it("the empty rules list uses the empty line, and greyed rows are not drawn", async () => {
     const { engine } = engineOf({ "exec.approvals.get": { ...SNAP, file: { version: 1 } } });
     await render(engine, 1);
     expect(host.textContent).toContain("No rules yet. Everything follows the mode.");
-    const lock = host.querySelector('[data-row="App lock"]')!;
-    expect(lock.getAttribute("aria-disabled")).toBe("true");
-    expect(lock.textContent).not.toContain("The engine has no app lock or PIN yet.");
+    expect(host.querySelector('[data-row="App lock"]')).toBeNull();
+    expect(host.textContent).not.toContain("The engine has no app lock or PIN yet.");
   });
 
   it("Stop a Trunk that repeats itself turns off by removing the key, keeping the engine's own guard", async () => {

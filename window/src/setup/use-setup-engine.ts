@@ -1,10 +1,10 @@
 // What setup reads from and writes to the engine (DESIGN-SPEC §4.8.1): detect, test, chat apps, the health check,
 // and the setup record. Every result shown comes from one of these calls; nothing finishes on a timer.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { createJob, JOBS as JOB_FILES } from "../places/customize/jobs-data";
 import { saveConfig, type ConfigSnapshot } from "../places/settings/adapter";
-import { firstOn, knownSetup, readDetected, readTest, setupRecord, type Check, type Detected, type Known, type SetupChoices, type TestResult } from "./setup-model";
+import { firstOn, knownSetup, readDetected, readTest, setupRecord, type Candidate, type Check, type Detected, type Known, type SetupChoices, type TestResult } from "./setup-model";
 import type { ChatApp } from "./steps-later";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
@@ -17,15 +17,19 @@ const modelProblem = (error: string) => /no agent model|branch onboard|not confi
 export function useDetected(engine: WindowEngine) {
   const [detected, setDetected] = useState<Detected | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const looking = useRef(0);
   const load = useCallback(() => {
     setError(null);
+    looking.current += 1;
     engine.request("branch.setup.detect", engine.agentId ? { agentId: engine.agentId } : {}).then(
       (r) => setDetected(readDetected(r)),
       () => setError("Couldn’t look for models. Try again."),
-    );
+    ).finally(() => { looking.current -= 1; });
   }, [engine]);
   useEffect(load, [load]);
-  return { detected, error, reload: load };
+  // refresh looks again only when no detect is already running (Your models re-checks on window focus, #589).
+  const refresh = useCallback(() => { if (!looking.current) load(); }, [load]);
+  return { detected, error, reload: load, refresh };
 }
 
 /** The real config (config.get), read once, as what setup already knows about this Branch. */
@@ -39,17 +43,24 @@ export function useKnown(engine: WindowEngine, detected: Detected | null, trunkN
   return useMemo(() => (config === null ? null : knownSetup(config, detected, names ? names.split("|") : [])), [config, detected, names]);
 }
 
+/** What Say hello tests: "current" (it only verifies the model already set up), the connection it activates, or null
+ *  when nothing is switched on. Setup steps that prepare that model (Get Codex, #589) ask about this one only. */
+export function helloTarget(detected: Detected, off: string[], inUse: string | null): Candidate | "current" | null {
+  const configured = detected.candidates.find((c) => c.kind === "existing-model");
+  const keepCurrent = Boolean(inUse || configured) && !(configured && off.includes(configured.key));
+  return keepCurrent ? "current" : firstOn(detected, off);
+}
+
 /** "Say hello to test it". With a model already set up (and its row left on) it only verifies that model, so the
  *  default never changes behind the person's back. Otherwise it activates the first switched-on connection: the
  *  engine live-tests it and keeps it as the default only if it answers. */
 export async function testModel(engine: WindowEngine, detected: Detected, off: string[], inUse: string | null): Promise<TestResult> {
   const agent = engine.agentId ? { agentId: engine.agentId } : {};
-  const configured = detected.candidates.find((c) => c.kind === "existing-model");
-  const keepCurrent = Boolean(inUse || configured) && !(configured && off.includes(configured.key));
-  const pick = keepCurrent ? null : firstOn(detected, off);
-  if (!keepCurrent && !pick) {
+  const target = helloTarget(detected, off, inUse);
+  if (!target) {
     return { ok: false, error: "Switch on a connection first." };
   }
+  const pick = target === "current" ? null : target;
   try {
     if (!pick || pick.kind === "existing-model") {
       const result = readTest(await engine.request("branch.setup.verify", agent));

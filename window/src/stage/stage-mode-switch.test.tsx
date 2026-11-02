@@ -64,15 +64,13 @@ const switchPath = () => {
   return path;
 };
 
-describe("Computer / Browser switch position (DA-70)", () => {
-  it("sits at the top left of the stage body, outside the header controls", async () => {
+describe("Computer / Browser switch position (DA-70, #1103)", () => {
+  it("sits in the stage header after the status, with no bar of its own (#1103)", async () => {
     await render("Computer");
     const sw = container.querySelector('[role="group"][aria-label="Show"]')!;
-    expect(sw.closest(".st7-top")).toBeNull();
-    const row = sw.parentElement!;
-    expect(row.className).toBe("st7-mode");
-    expect(row.firstElementChild).toBe(sw);
-    expect(row.previousElementSibling?.className).toBe("st7-top");
+    expect(sw.parentElement!.className).toBe("st7-top");
+    expect(sw.previousElementSibling?.className).toMatch(/^stage-status-st/);
+    expect(container.querySelector(".st7-mode")).toBeNull();
   });
   it("keeps the same place in the Computer and Browser stages, working or not", async () => {
     await render("Computer");
@@ -83,6 +81,6 @@ describe("Computer / Browser switch position (DA-70)", () => {
     expect(switchPath()).toEqual(computer);
     await render("Computer", true);
     expect(switchPath()).toEqual(computer);
-    expect(computer).toEqual(["st7-mode#1", "st7-sw#0"]);
+    expect(computer).toEqual(["st7-top#0", "st7-sw#3"]);
   });
 });

@@ -1,0 +1,6 @@
+engine:extensions/mistral/api.test.ts
+engine:extensions/mistral/media-understanding-provider.test.ts
+engine:extensions/mistral/memory-embedding-adapter.test.ts
+engine:extensions/mistral/model-definitions.test.ts
+engine:extensions/mistral/onboard.test.ts
+engine:extensions/mistral/realtime-transcription-provider.test.ts

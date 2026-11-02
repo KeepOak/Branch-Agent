@@ -1,0 +1,17 @@
+engine:src/audit/audit-config.test.ts
+engine:src/audit/audit-event-store.message.test.ts
+engine:src/audit/audit-event-writer.lifecycle.test.ts
+engine:src/audit/audit-event-writer.test.ts
+engine:src/audit/audit-event-writer.worker.test.ts
+engine:src/audit/audit-events.test.ts
+engine:src/audit/audit-recorder.test.ts
+engine:src/audit/execution-decision-cursors.test.ts
+engine:src/audit/execution-decision-facts.test.ts
+engine:src/audit/execution-decision-work.test.ts
+engine:src/audit/execution-identity-admission.test.ts
+engine:src/audit/execution-identity-context.spawn-lineage.test.ts
+engine:src/audit/execution-identity-context.test.ts
+engine:src/audit/execution-owner-binding.test.ts
+engine:src/audit/execution-owner-lifecycle-receipts.test.ts
+engine:src/audit/message-audit-events.test.ts
+engine:src/audit/message-delivery-progress-store.test.ts

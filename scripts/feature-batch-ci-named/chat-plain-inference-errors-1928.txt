@@ -1,0 +1,3 @@
+engine:src/system-agent/inference-error.test.ts
+engine:packages/gateway-protocol/src/system-agent-error-details.test.ts
+engine:src/gateway/server-methods/system-agent.test.ts

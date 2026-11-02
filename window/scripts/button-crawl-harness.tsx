@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { Contact } from '@branch/gateway-protocol';
 import { historyToBlocks } from '../src/thread/history';
 import { WindowShell } from '../src/shell/WindowShell';
-import { R1Window, SETTINGS_PLACE } from '../src/screens/frame/R1Window';
+import { R1Window } from '../src/screens/frame/R1Window';
 import { PAGES as R1_PAGES_SPEC, pageShown, type PageId, type Level } from '../src/screens/settings/nav';
 import { dismiss, getToasts } from '../src/shell/notify';
 import { PLACES, type Route } from '../src/places-nav/routes';
@@ -15,11 +15,12 @@ import '../src/shell/shell.css';
 import '../src/shell/frame.css';
 import '../src/shell/controls.css';
 import { createCrawlCapture } from './button-crawl-capture';
-import { applyApprovalsSet, applyConfigPatch, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshPrefs, freshVoice, voiceProviders, voiceStatus, type CrawlApprovals, type CrawlConfig, type CrawlPrefs, type CrawlVoice } from './button-crawl-state';
+import { disabledWithoutReason } from './button-crawl-reason';
+import { applyApprovalsSet, applyConfigPatch, applyOutsideSet, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshOutside, freshPrefs, freshVoice, voiceProviders, voiceStatus, type CrawlApprovals, type CrawlConfig, type CrawlOutside, type CrawlPrefs, type CrawlVoice } from './button-crawl-state';
 
 type Call = { method: string; ok: boolean; error?: string };
 // The request params the mock reads. Path and method are the browser route's (browser-request.ts:567).
-type CrawlParams = { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown>; file?: Record<string, unknown>; baseHash?: string; provider?: string; probe?: boolean; method?: string; path?: string };
+type CrawlParams = { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown>; file?: Record<string, unknown>; baseHash?: string; provider?: string; probe?: boolean; method?: string; path?: string; enabled?: boolean; id?: string; revoked?: boolean; mayDriveWindow?: boolean };
 // The window under test. The shipped app opens R1 (R1Window) unless the Classic escape is set, so R1 is the default
 // and Classic is crawled only with ?window=classic (see crawl.mjs BUTTON_CRAWL_WINDOW).
 const WINDOW_KIND: 'r1' | 'classic' = new URLSearchParams(location.search).get('window') === 'classic' ? 'classic' : 'r1';
@@ -78,12 +79,10 @@ const SELECTOR = [
   '[role="tab"]', '[role="switch"]', 'input[type="checkbox"]', '.chip', '.ib',
 ].join(',');
 
-// Every R1 Settings page at each level it is shown at. A page that is a place (Customize, Automations, Memory &
-// documents) opens that place, so the place screens cover it and it is not repeated here.
+// Every R1 Settings page at each level it is shown at.
 const LEVEL_WORD_LIST: LevelWord[] = ['regular', 'advanced', 'technical'];
 function r1SettingsScreens() {
   return Object.keys(R1_PAGES_SPEC)
-    .filter((page) => !(page in SETTINGS_PLACE))
     .flatMap((page) => LEVEL_WORD_LIST
       .filter((word) => pageShown(page as PageId, LEVEL_OF[word]))
       .map((word) => ({ page, level: word })));
@@ -148,6 +147,7 @@ let prefs: CrawlPrefs = freshPrefs();
 let browserRunning = false;
 let approvals: CrawlApprovals = freshApprovals();
 let voice: CrawlVoice = freshVoice();
+let outside: CrawlOutside = freshOutside();
 
 function request(method: string, params: CrawlParams | undefined) {
   const started = performance.now();
@@ -176,6 +176,11 @@ function respond(method: string, params: CrawlParams | undefined) {
     return { messages: MESSAGES[key] ?? [], sessionId: `sess-${key}` };
   }
   if (method === 'contacts.list') return { contacts: CONTACTS };
+  if (method === 'contacts.outside.list') return outside;
+  if (method === 'contacts.outside.set') {
+    outside = applyOutsideSet(outside, params ?? {});
+    return { ok: true };
+  }
   if (method === 'contacts.topics') return { topics: [] };
   if (method === 'rooms.list') return { rooms: [] };
   if (method === 'a2a.peers.list') return { peers: [] };
@@ -241,6 +246,7 @@ function respond(method: string, params: CrawlParams | undefined) {
 // crawl never clicks it. canopy.cards.list is left out on purpose: Canopy is off by default, so its controls stay Coming.
 const ADVERTISED_METHODS = [
   'agents.list', 'sessions.list', 'sessions.describe', 'sessions.subscribe', 'sessions.preview', 'sessions.search',
+  'contacts.outside.list', 'contacts.outside.set',
   'sessions.branches.list', 'sessions.diff', 'chat.history', 'contacts.list', 'contacts.topics', 'rooms.list', 'a2a.peers.list',
   'config.get', 'config.patch', 'tts.status', 'tts.enable', 'tts.disable', 'tts.providers', 'tts.setProvider',
   'doctor.memory.status', 'exec.approvals.get', 'exec.approvals.set', 'exec.approval.list', 'plugin.approval.list',
@@ -356,7 +362,7 @@ function collect(overlay = false) {
   const root = overlay ? document.querySelector('[role="menu"], [role="dialog"], [role="alertdialog"]') : document;
   if (!root) return [];
   const seen = new Map<string, number>();
-  const elements: { name: string; href: string; disabled: boolean; selected: boolean; occurrence: number; region: string }[] = [];
+  const elements: { name: string; href: string; disabled: boolean; noReason: boolean; selected: boolean; occurrence: number; region: string }[] = [];
   for (const el of root.querySelectorAll(SELECTOR)) {
     if (!visible(el)) continue;
     const region = regionOf(el);
@@ -371,6 +377,8 @@ function collect(overlay = false) {
       name,
       href: el instanceof HTMLAnchorElement ? el.href : '',
       disabled: control.disabled === true || el.getAttribute('aria-disabled') === 'true',
+      // Greyed with no visible line that says why (button-crawl-reason.ts); a tooltip alone does not count.
+      noReason: disabledWithoutReason(el, visible),
       // A tab, or a radio option that is already the chosen value, has nothing to change: clicking it is a no-op
       // by design, so the crawl skips it ("already-selected") instead of calling it dead.
       // A menu's radio choice that is already chosen (a scope, a sort) has nothing to change, like a tab that is open.
@@ -476,8 +484,18 @@ function viewText() {
 function controlState(el: Element) {
   const pressed = el.getAttribute('aria-pressed');
   const checked = el.getAttribute('aria-checked');
+  const expanded = el.getAttribute('aria-expanded');
   const input = el instanceof HTMLInputElement ? String(el.checked) : '';
-  return [pressed, checked, input].join('|');
+  return [pressed, checked, input, expanded].join('|');
+}
+
+// The content a disclosure shows or hides (aria-controls): hidden, or its text when shown. Empty when the control names none.
+function controlledState(el: Element | null) {
+  const id = el?.getAttribute('aria-controls');
+  if (!id) return '';
+  const panel = document.getElementById(id);
+  if (!panel) return 'missing';
+  return panel.hidden ? 'hidden' : `shown:${(panel.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 400)}`;
 }
 
 // Scroll positions inside the main content only (the sidebar and the window itself are not measured). A scroll is a
@@ -517,6 +535,7 @@ function surface() {
     unimplemented: /\b(coming soon|not implemented|not yet implemented|placeholder)\b/i.test(mainText),
     blank: mainText.length < 12,
     control: target instanceof HTMLElement ? controlState(target) : '',
+    controlled: target instanceof HTMLElement ? controlledState(target) : '',
     focus: document.activeElement instanceof HTMLElement
       && document.activeElement !== target
       && document.activeElement !== document.body
@@ -572,6 +591,7 @@ function resetMockEngine() {
   prefs = freshPrefs();
   approvals = freshApprovals();
   voice = freshVoice();
+  outside = freshOutside();
   browserRunning = false;
   calls.length = 0;
   historyMoves = 0;

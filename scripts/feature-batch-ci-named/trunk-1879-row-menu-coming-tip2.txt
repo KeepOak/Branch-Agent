@@ -1,0 +1,3 @@
+window:src/screens/sidebar/coming.test.tsx
+window:src/screens/sidebar/menus.test.tsx
+window:src/screens/sidebar/row-menu.test.ts

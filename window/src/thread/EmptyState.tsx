@@ -2,6 +2,8 @@
 // model, the line "Please connect a model, or click here to set up a local model." is the composer's (NoModelLine),
 // so it shows once, on every conversation, not twice on an empty one.
 import { useEffect, useState } from "react";
+import { ConnectModelNotice } from "../composer/ConnectModelNotice";
+import { useComposerShowsConnect } from "../composer/connect-shown";
 import { currentModelRef } from "../composer/model";
 import { hasNoModel, useConversation } from "../composer/useConversation";
 import { Face } from "../face/Face";
@@ -88,13 +90,17 @@ function Starters({ onStart }: { onStart: (text: string) => void }) {
 }
 
 export function EmptyState({ onOpenSession, onStart }: { onOpenSession?: (key: string) => void; onStart?: (text: string) => void }) {
-  const { name } = useThread();
+  const { name, engine } = useThread();
+  const conv = useConversation(engine);
+  const noModel = conv.loaded && hasNoModel(conv, currentModelRef(conv.row, conv.defaults));
   const recent = useRecent(Boolean(onOpenSession));
+  // After a held Send the composer shows Connect a model with its button; this copy steps aside then.
+  const composerShows = useComposerShowsConnect(engine?.sessionKey);
   return (
-    <div className="empty" data-testid="empty-state">
+    <div className={noModel ? "empty empty-nomodel" : "empty"} data-testid="empty-state">
       <Face size={150} label={name} state="idle" reactive />
       <h1 className="empty-title">What should {name} do?</h1>
-      {onStart ? <Starters onStart={onStart} /> : null}
+      {noModel ? composerShows ? null : <ConnectModelNotice className="empty-connect" /> : onStart ? <Starters onStart={onStart} /> : null}
       {onOpenSession && recent.length ? (
         <div className="recent">
           <div className="section-label">Recent</div>

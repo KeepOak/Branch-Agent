@@ -23,6 +23,7 @@ import { withDeferredPluginDoctorMigrations } from "../plugins/doctor-contract-r
 import { createPluginCache, getPluginCache, withPluginCache } from "../plugins/plugin-cache.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import {
+  agentDatabaseRefusalsNeedingRepair,
   listAgentDatabaseAdmissionRefusals,
   readAgentDatabaseAdmissionRefusal,
 } from "../state/agent-database-admission.js";
@@ -413,10 +414,13 @@ async function assertStartupStateReady(params: {
     undefined,
     () => ({ targetCount: targets.length }),
   );
+  // A boot warning lasts until restart, so record only refusals that need a repair. Pending
+  // inspections finish in the background; a lasting "need attention" row for them sent users to
+  // run doctor --fix by hand on installs that had already recovered (#1971).
   recordStartupMigrationWarnings(
-    listAgentDatabaseAdmissionRefusals({ env: params.env }).map(
-      (refusal) => `${refusal.reason}\n${refusal.repairHint}`,
-    ),
+    agentDatabaseRefusalsNeedingRepair(
+      listAgentDatabaseAdmissionRefusals({ env: params.env }),
+    ).map((refusal) => `${refusal.reason}\n${refusal.repairHint}`),
   );
   if (workspace.status === "rejected") throw workspace.reason;
 }

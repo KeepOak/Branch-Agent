@@ -1,7 +1,8 @@
 # Preview button map
 
-Unique clickable controls in `design/spec-v23` (the design preview) and where they go in `window/`.
-This is the expected-destination list for a click-every-button tester.
+Historical map of unique clickable controls in `design/spec-v23` (superseded Oct 18, 2026; not the parity target) and where they go in `window/`.
+The current design target is the owner's latest Branch App Preview, kept privately and never committed; parity briefs paste only the slices they need.
+This file remains the expected-destination list for a click-every-button tester of the old snapshot.
 
 Each JSON entry has `id`, `screen`, `label`, `previewAction`, `appFile`, `appComponent`, `appAction`, `status`.
 Statuses: `same` (app matches the preview), `different` (exists but destination or behaviour differs), `missing` (the preview has it, the app doesn't), `extra` (exists in the app, not in the preview), `dead` (app control does nothing / only a toast), `unknown` (could not determine statically).
@@ -192,9 +193,9 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 | `cz-tab-skills` | Skills | different | Shows skill toggles. | Skills live under Tools, not a top-level Customize tab. |
 | `cz-tab-plugins` | Plugins | different | Shows plugin toggles. | Plugins live under Tools. |
 | `cz-tab-connections` | Connections | different | Shows app connections. | Connectors live under Tools. |
-| `cz-tab-channels` | Channels | different | Shows chat apps + pair a phone. | Tab label is Chat apps. |
+| `cz-tab-channels` | Channels | different | Shows chat apps + pair a phone. | Customize has no Chat apps tab; chat apps live in Settings › Chat apps. |
 | `cz-pause-trunk` | Pause | different | Pauses or resumes that Trunk. | Pause is missing or greyed (no engine method). |
-| `cz-channel-setup` | Set up | different | Toasts a two-minute setup stub, or Manage if already connected. | Starts the real chat-app setup / manage flow. |
+| `cz-channel-setup` | Set up | different | Toasts a two-minute setup stub, or Manage if already connected. | Starts the real chat-app setup / manage flow, in Settings › Chat apps. |
 | `cz-connect` | Connect | different | Toasts sign-in-on-their-site, or Manage if connected. | Starts the connector sign-in / manage flow. |
 
 ### settings

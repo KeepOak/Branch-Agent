@@ -8,6 +8,7 @@ import { ConnectErrorDetailCodes } from "../../../../packages/gateway-protocol/s
 import { ErrorCodes, PROTOCOL_VERSION } from "../../../../packages/gateway-protocol/src/index.js";
 import { getRuntimeConfig } from "../../../config/io.js";
 import { captureAuthenticatedNodePairingState } from "../../../infra/device-pairing-node-state.js";
+import { displayHostname } from "../../../infra/machine-name.js";
 import { compareBranchReleaseVersions } from "../../../infra/npm-registry-spec.js";
 import { upsertPresence } from "../../../infra/system-presence.js";
 import { loadVoiceWakeRoutingConfig } from "../../../infra/voicewake-routing.js";
@@ -74,6 +75,11 @@ type AuthenticatedNodePairingAdmission = NonNullable<
 > & {
   authenticated: { nodeId: string; publicKey: string; token: string };
 };
+
+/** Presence host: the client's own name, else its id, else this machine (the tour placeholder when set). */
+export function presenceHostForClient(client: { displayName?: string; id?: string }): string {
+  return client.displayName ?? client.id ?? displayHostname(os.hostname());
+}
 
 export async function attachAuthenticatedGatewayConnect(
   context: GatewayConnectPhaseContext,
@@ -579,7 +585,7 @@ export async function attachAuthenticatedGatewayConnect(
       presenceKey,
       {
         connectionId: connId,
-        host: connectParams.client.displayName ?? connectParams.client.id ?? os.hostname(),
+        host: presenceHostForClient(connectParams.client),
         clientId: connectParams.client.id,
         ip: isLocalClient ? undefined : reportedClientIp,
         version: connectParams.client.version,

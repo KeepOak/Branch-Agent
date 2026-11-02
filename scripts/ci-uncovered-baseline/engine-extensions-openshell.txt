@@ -1,0 +1,9 @@
+engine:extensions/openshell/index.test.ts
+engine:extensions/openshell/src/backend.e2e.test-support.test.ts
+engine:extensions/openshell/src/backend.exec-workdir.test.ts
+engine:extensions/openshell/src/backend.remote-seed.test.ts
+engine:extensions/openshell/src/config.test.ts
+engine:extensions/openshell/src/fs-bridge%2Elocal-preflight.test.ts
+engine:extensions/openshell/src/mirror.test.ts
+engine:extensions/openshell/src/openshell-core.test.ts
+engine:extensions/openshell/src/openshell-mirror-fs-bridge.test.ts

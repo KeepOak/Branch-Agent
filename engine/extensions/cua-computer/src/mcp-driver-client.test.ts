@@ -140,7 +140,24 @@ function sessionState(scope: "window" | "desktop") {
   });
 }
 
-describe.runIf(process.platform !== "win32")("CUA MCP proxy transport", () => {
+describe.runIf(process.platform !== "win32")("CUA MCP proxy fixture", () => {
+  // The fixture is spawned directly, so git must keep mode 100755 on it. Without the bit the
+  // transport cases fail with spawn EACCES; this names the cause and the fix instead.
+  it("keeps the bundled proxy fixture executable", async () => {
+    const binaryPath = fileURLToPath(new URL("../test/fixtures/mcp-proxy.cjs", import.meta.url));
+    const { mode } = await fs.stat(binaryPath);
+    expect(
+      mode & 0o111,
+      "test/fixtures/mcp-proxy.cjs lost its executable bit: run `git update-index --chmod=+x` on it",
+    ).not.toBe(0);
+  });
+});
+
+// The transport cases spawn the proxy through the real owned-stdio supervisor. On Linux that
+// supervisor needs the built native process owner, which a source (Vitest) run cannot load, so
+// every case fails with "native owner closed without kernel descendant extinction". The MCP
+// proxy endpoint is only resolved on macOS hosts, so these run on macOS; the guard runs on Linux.
+describe.runIf(process.platform === "darwin")("CUA MCP proxy transport", () => {
   it.each([
     {
       outcome: "verified activation",
@@ -729,5 +746,78 @@ describe.runIf(process.platform !== "win32")("CUA MCP proxy transport", () => {
     );
     expect(driver.isAvailable()).toBe(false);
     await driver.dispose();
+  });
+
+  describe("proxy exit (#1948)", () => {
+    async function crashingDriver(crashes: number, crashOn = "crash_proxy") {
+      const endpoint = await createFakeEndpoint((request, fake) => {
+        if (request.method === "initialize") {
+          fake.respond(request, { protocolVersion: "2025-06-18" });
+        } else if (request.params?.name === "start_session") {
+          fake.respond(request, sessionState("window"));
+        } else if (request.params?.name === "click") {
+          fake.respond(
+            request,
+            toolResult({
+              effect: "confirmed",
+              route: "accessibility",
+              delivery: { mode: "background", delivered_count: 1 },
+              evidence: [{ kind: "value_readback" }],
+            }),
+          );
+        } else if (request.method === "tools/call") {
+          fake.respond(request, toolResult({ windows: [] }));
+        }
+      });
+      const budgetFile = path.join(path.dirname(endpoint.socketPath), "crashes");
+      await fs.writeFile(budgetFile, String(crashes));
+      const driver = createCuaMcpDriver({
+        ...endpoint,
+        binaryPath: fileURLToPath(new URL("../test/fixtures/mcp-proxy-crash.cjs", import.meta.url)),
+        env: { ...process.env, BRANCH_TEST_CRASH_FILE: budgetFile, BRANCH_TEST_CRASH_ON: crashOn },
+      });
+      onTestFinished(() => driver.dispose().catch(() => undefined));
+      return { endpoint, driver };
+    }
+
+    const toolCalls = (endpoint: { requests: RpcRequest[] }, name: string) =>
+      endpoint.requests.filter((request) => request.params?.name === name);
+
+    it("restarts the proxy once after a non-zero exit and retries the call", async () => {
+      const { endpoint, driver } = await crashingDriver(1, '"name":"screenshot"');
+      const result = await driver.callTool("screenshot", {});
+      expect(result.isError).toBe(false);
+      expect(endpoint.requests.filter((request) => request.method === "initialize")).toHaveLength(2);
+      expect(toolCalls(endpoint, "screenshot")).toHaveLength(1);
+      expect(driver.isAvailable()).toBe(true);
+    });
+
+    it("restarts the proxy but doesn't resend a click whose request already reached it", async () => {
+      const { endpoint, driver } = await crashingDriver(1, '"name":"click"');
+      const failure = driver.click({ x: 1, y: 2, button: ClickButton.Left, count: 1 });
+      await expect(failure).rejects.toThrow(
+        /^COMPUTER_DRIVER_UNAVAILABLE: Computer control stopped unexpectedly while this action was running, so Branch restarted it but didn't repeat the action\..*\(CUA MCP proxy exited \(1\): fixture proxy crashed\)$/s,
+      );
+      await vi.waitFor(() => expect(driver.isAvailable()).toBe(true));
+      expect(endpoint.requests.filter((request) => request.method === "initialize")).toHaveLength(2);
+      expect(toolCalls(endpoint, "click")).toHaveLength(0);
+    });
+
+    it("retries a click whose request never reached the proxy", async () => {
+      const { endpoint, driver } = await crashingDriver(1, '"name":"start_session"');
+      const result = await driver.click({ x: 1, y: 2, button: ClickButton.Left, count: 1 });
+      expect(result.isError).toBe(false);
+      expect(endpoint.requests.filter((request) => request.method === "initialize")).toHaveLength(2);
+      expect(toolCalls(endpoint, "click")).toHaveLength(1);
+    });
+
+    it("fails with a plain message that keeps the exit code and stderr when the restart also exits", async () => {
+      const { endpoint, driver } = await crashingDriver(2, '"name":"screenshot"');
+      const failure = driver.callTool("screenshot", {});
+      await expect(failure).rejects.toThrow(
+        /^COMPUTER_DRIVER_UNAVAILABLE: Computer control stopped unexpectedly and restarting it didn't help\..*\(CUA MCP proxy exited \(1\): fixture proxy crashed\)$/s,
+      );
+      expect(endpoint.requests.filter((request) => request.method === "initialize")).toHaveLength(2);
+    });
   });
 });

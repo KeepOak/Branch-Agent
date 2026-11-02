@@ -1,5 +1,6 @@
 // Files, pictures and long pasted text in the draft (DESIGN-SPEC §4.3.7 File chips, Pasted text chip), sent with
 // chat.send's `attachments` as OpenClaw's browser UI does (ui/src/pages/chat/attachment-api.ts).
+import { plainError } from "../shell/plain-error";
 export type DraftFile = {
   id: string;
   kind: "file" | "text";
@@ -104,6 +105,6 @@ export async function readDraftFile(id: string, file: File, origin: DraftFile["o
     const content = toBase64(bytes);
     return { ...base, content, ...(isImage(mimeType) ? { preview: `data:${mimeType};base64,${content}` } : {}) };
   } catch (error) {
-    return { ...base, problem: `Couldn't attach: ${base.fileName}`, detail: error instanceof Error ? error.message : String(error) };
+    return { ...base, problem: `Couldn't attach: ${base.fileName}`, detail: plainError(error) };
   }
 }

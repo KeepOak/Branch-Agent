@@ -806,6 +806,76 @@ describe("device bootstrap tokens", () => {
     });
   });
 
+  it("expires a browser-owner code issued with a 120 second TTL after 120 seconds", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-14T12:00:00Z"));
+    const baseDir = await createTempDir();
+    const issuedAt = Date.now();
+    const issued = await issueDeviceBootstrapToken({
+      baseDir,
+      profile: CONTROL_UI_OWNER_BOOTSTRAP_PROFILE,
+      ttlMs: 120_000,
+    });
+    expect(issued.expiresAtMs).toBe(issuedAt + 120_000);
+    expect(loadDeviceBootstrapTokenRecords(baseDir)[issued.token]).toMatchObject({ ts: issuedAt });
+    const owner = { role: "operator", scopes: [...CONTROL_UI_OWNER_BOOTSTRAP_OPERATOR_SCOPES] };
+
+    vi.setSystemTime(issued.expiresAtMs);
+    await expect(verifyBootstrapToken(baseDir, issued.token, owner)).resolves.toEqual({ ok: true });
+    vi.setSystemTime(issued.expiresAtMs + 1);
+    await expect(verifyBootstrapToken(baseDir, issued.token, owner)).resolves.toEqual({
+      ok: false,
+      reason: "bootstrap_token_invalid",
+    });
+  });
+
+  it("clamps requested bootstrap TTLs and never extends the default", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-14T12:00:00Z"));
+    const baseDir = await createTempDir();
+    const now = Date.now();
+    await expect(issueDeviceBootstrapToken({ baseDir, ttlMs: 60 * 60 * 1000 })).resolves.toMatchObject(
+      { expiresAtMs: now + 10 * 60 * 1000 },
+    );
+    await expect(issueDeviceBootstrapToken({ baseDir, ttlMs: 1 })).resolves.toMatchObject({
+      expiresAtMs: now + 30 * 1000,
+    });
+    await expect(
+      issueDeviceBootstrapToken({ baseDir, ttlMs: Number.NaN }),
+    ).resolves.toMatchObject({ expiresAtMs: now + 10 * 60 * 1000 });
+    const setup = await issueDevicePairSetupBootstrapToken({
+      baseDir,
+      profile: NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE,
+    });
+    expect(setup.expiresAtMs).toBe(now + 10 * 60 * 1000);
+  });
+
+  it("rejects a second use of a consumed browser-owner code", async () => {
+    const baseDir = await createTempDir();
+    const issued = await issueDeviceBootstrapToken({
+      baseDir,
+      profile: CONTROL_UI_OWNER_BOOTSTRAP_PROFILE,
+      ttlMs: 120_000,
+    });
+    const owner = { role: "operator", scopes: [...CONTROL_UI_OWNER_BOOTSTRAP_OPERATOR_SCOPES] };
+    await expect(verifyBootstrapToken(baseDir, issued.token, owner)).resolves.toEqual({ ok: true });
+    // Another browser cannot take over a code already bound to the first one.
+    await expect(
+      verifyBootstrapToken(baseDir, issued.token, {
+        ...owner,
+        deviceId: "device-456",
+        publicKey: "public-key-456",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "bootstrap_token_invalid" });
+    // The gateway consumes the code after the first hello; any later use fails.
+    await consumeBootstrapToken(baseDir, issued.token);
+    await expect(verifyBootstrapToken(baseDir, issued.token, owner)).resolves.toEqual({
+      ok: false,
+      reason: "bootstrap_token_invalid",
+    });
+    await expect(consumeBootstrapToken(baseDir, issued.token)).resolves.toBeNull();
+  });
+
   it("revokes a specific bootstrap token", async () => {
     const baseDir = await createTempDir();
     const first = await issueDeviceBootstrapToken({ baseDir });

@@ -13,6 +13,10 @@ export type ModeRow = {
   gap?: string;
 };
 
+/** Shown wherever Plan first is off. The engine has no such mode, so this is Coming,
+ *  not something an update of Branch turns on (#1811). */
+export const PLAN_FIRST_REASON = "Plan first comes in a later update.";
+
 export const MODE_ROWS: readonly ModeRow[] = [
   {
     engine: "workspace",
@@ -31,7 +35,7 @@ export const MODE_ROWS: readonly ModeRow[] = [
     name: "Plan first",
     icon: "plan",
     line: "Writes a plan and waits for your OK before doing anything.",
-    gap: "Plan first isn't available with this version of Branch.",
+    gap: PLAN_FIRST_REASON,
   },
   {
     engine: "read-only",
@@ -43,9 +47,15 @@ export const MODE_ROWS: readonly ModeRow[] = [
     engine: "full",
     name: "Full access",
     icon: "unlock",
-    line: "Does anything on this computer without asking: files, commands, the internet. Seeing the screen and using the mouse is a separate switch in Settings › Computer & browser.",
+    line: "Does anything on this computer without asking: files, commands, the internet. Seeing the screen and using the mouse is a separate switch in Settings › Browser & screen.",
   },
 ];
+
+/** The modes Branch offers: one the engine doesn't have yet stays out of sight instead of greyed (#1769), and it
+ *  shows again once its row names an engine mode. */
+export function offeredModeRows(rows: readonly ModeRow[] = MODE_ROWS): readonly ModeRow[] {
+  return rows.filter((row) => row.engine !== null);
+}
 
 export const FULL_ACCESS_BLOCKED = "Only the owner can give full access. People on this computer and chat apps never can.";
 

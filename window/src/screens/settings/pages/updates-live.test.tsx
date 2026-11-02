@@ -21,8 +21,8 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 
 const PREVIEW_CARDS = ["Updating", "Branch on your other devices", "Before you install", "Reports", "In your editors and notes", "Achievements", "Shortcuts, guide & apps", "About", "Privacy", "Remove Branch"];
-const METHODS = ["config.get", "config.patch", "config.schema", "users.prefs.get", "update.status", "update.run", "status", "system.info"];
-function engineOf() {
+const METHODS = ["config.get", "config.patch", "config.schema", "users.prefs.get", "update.status", "update.run", "status", "system.info", "sessions.search"];
+function engineOf(methods = METHODS) {
   const request = vi.fn(async (method: string) => {
     if (method === "config.get") return { hash: "h1", valid: true, config: {} };
     if (method === "config.schema") return { schema: {}, uiHints: {} };
@@ -30,7 +30,7 @@ function engineOf() {
     if (method === "update.status") return { schedule: { autoEnabled: false }, effectiveChannel: "stable" };
     return {};
   });
-  const engine = { request, onEvent: () => () => undefined, sessionKey: "s", agentId: "main", scopes: ["operator.admin"], features: { methods: METHODS, events: [] } } as unknown as WindowEngine;
+  const engine = { request, onEvent: () => () => undefined, sessionKey: "s", agentId: "main", scopes: ["operator.admin"], features: { methods, events: [] } } as unknown as WindowEngine;
   return { engine, request };
 }
 const settle = () => act(async () => { for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0)); });
@@ -85,13 +85,30 @@ describe("Updates & about: the rows that open or jump", () => {
   const rowButton = (text: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(text));
   afterEach(() => { delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView; });
 
-  it("Find anything asks the window to open the palette", async () => {
+  it("Find anything asks the window to open the palette when the engine can search", async () => {
     await mount();
+    const button = rowButton("Find anything");
+    expect(button?.getAttribute("aria-disabled")).toBeNull();
+    expect(button?.dataset.need).toBe("sessions.search");
     const opened = vi.fn();
     window.addEventListener(FIND_ANYTHING_EVENT, opened);
-    await click(rowButton("Find anything"));
+    await click(button);
     window.removeEventListener(FIND_ANYTHING_EVENT, opened);
     expect(opened).toHaveBeenCalledTimes(1);
+  });
+
+  it("Find anything stays Coming when the engine has no search", async () => {
+    const env = engineOf(METHODS.filter((method) => method !== "sessions.search"));
+    await act(async () => root.render(<SettingsFrame engine={env.engine} page="updates" pages={R1_PAGES} />));
+    await settle();
+    const button = rowButton("Find anything");
+    expect(button?.getAttribute("aria-disabled")).toBe("true");
+    expect(button?.getAttribute("data-coming")).toBe("Coming in a later update.");
+    const opened = vi.fn();
+    window.addEventListener(FIND_ANYTHING_EVENT, opened);
+    await click(button);
+    window.removeEventListener(FIND_ANYTHING_EVENT, opened);
+    expect(opened).not.toHaveBeenCalled();
   });
 
   it("Get the apps is a jump that scrolls to its section", async () => {

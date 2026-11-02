@@ -1,0 +1,3 @@
+window:src/face/appearance.test.ts
+window:src/face/cap.test.ts
+window:src/face/look-prefs.test.tsx

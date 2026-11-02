@@ -1,0 +1,14 @@
+engine:extensions/twitch/src/actions.test.ts
+engine:extensions/twitch/src/client-manager-registry.test.ts
+engine:extensions/twitch/src/config-schema.test.ts
+engine:extensions/twitch/src/config.test.ts
+engine:extensions/twitch/src/outbound.test.ts
+engine:extensions/twitch/src/plugin.lifecycle.test.ts
+engine:extensions/twitch/src/plugin.test.ts
+engine:extensions/twitch/src/probe.test.ts
+engine:extensions/twitch/src/resolver.test.ts
+engine:extensions/twitch/src/send.test.ts
+engine:extensions/twitch/src/setup-surface.test.ts
+engine:extensions/twitch/src/status.test.ts
+engine:extensions/twitch/src/twitch-ingress.test.ts
+engine:extensions/twitch/src/utils/markdown.test.ts

@@ -402,6 +402,9 @@ function agentDatabaseNeedsTranscriptDirectiveMigration(params: {
   }
 }
 
+const AGENT_DATABASE_IN_USE_WARNING =
+  "Historical transcript directive migration deferred: an agent database is in use by a running Branch process. It runs on a later branch doctor --fix after Branch is closed.";
+
 /** Doctor normalization of historical inline assistant directives into typed delivery facts. */
 export async function migrateHistoricalTranscriptDirectives(
   params: {
@@ -464,6 +467,11 @@ export async function migrateHistoricalTranscriptDirectives(
               );
             }
           } catch (error) {
+            if (error instanceof BranchAgentDatabaseLeaseActiveError) {
+              warnings.push(AGENT_DATABASE_IN_USE_WARNING);
+              recoverableWarningCount += 1;
+              continue;
+            }
             warnings.push(
               `Skipped historical transcript directive migration for ${target.path}: ${String(error)}`,
             );
@@ -472,7 +480,14 @@ export async function migrateHistoricalTranscriptDirectives(
       });
     }
   } catch (error) {
-    warnings.push(`Skipped historical transcript directive migration: ${String(error)}`);
+    if (error instanceof BranchAgentDatabaseLeaseActiveError) {
+      // A running app or gateway holds an agent database. Maintenance refused
+      // before any write, so this is a normal deferral, not a doctor failure.
+      warnings.push(AGENT_DATABASE_IN_USE_WARNING);
+      recoverableWarningCount += 1;
+    } else {
+      warnings.push(`Skipped historical transcript directive migration: ${String(error)}`);
+    }
   }
   return {
     changes,

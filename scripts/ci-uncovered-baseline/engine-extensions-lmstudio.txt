@@ -1,0 +1,13 @@
+engine:extensions/lmstudio/index.test.ts
+engine:extensions/lmstudio/provider-policy-api.test.ts
+engine:extensions/lmstudio/src/embedding-provider.integration.test.ts
+engine:extensions/lmstudio/src/embedding-provider.test.ts
+engine:extensions/lmstudio/src/models.fetch.test.ts
+engine:extensions/lmstudio/src/models.load-error.test.ts
+engine:extensions/lmstudio/src/models.test.ts
+engine:extensions/lmstudio/src/runtime.test.ts
+engine:extensions/lmstudio/src/setup-url.test.ts
+engine:extensions/lmstudio/src/setup.test.ts
+engine:extensions/lmstudio/src/stream.instances.test.ts
+engine:extensions/lmstudio/src/stream.test.ts
+engine:extensions/lmstudio/tool-capabilities.test.ts

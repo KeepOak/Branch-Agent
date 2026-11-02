@@ -372,6 +372,21 @@ export function listAgentDatabaseAdmissionRefusals(
   return [...(refusalsByState.get(stateKey(options))?.refusals.values() ?? [])];
 }
 
+/**
+ * Refusals the user must act on. A pending inspection finishes on its own after the listener
+ * binds (or turns into a failed refusal), so it is not a startup migration that needs repair;
+ * it counts only once its preparation stopped retrying ("needs-attention").
+ */
+export function agentDatabaseRefusalsNeedingRepair(
+  refusals: readonly AgentDatabaseAdmissionRefusal[],
+): AgentDatabaseAdmissionRefusal[] {
+  return refusals.filter(
+    (refusal) =>
+      refusal.code !== "agent-database-inspection-pending" ||
+      refusal.preparation?.state === "needs-attention",
+  );
+}
+
 export class AgentDatabaseAdmissionError extends Error {
   constructor(readonly refusal: AgentDatabaseAdmissionRefusal) {
     super(

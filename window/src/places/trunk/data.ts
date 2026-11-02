@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { readModels, type ModelChoice } from "../../composer/model";
-import { errorText, readConfig, readRoster, rec, str, type ConfigSnapshot, type Roster } from "./model";
+import { plainError } from "../../shell/plain-error";
+import { readConfig, readRoster, rec, str, type ConfigSnapshot, type Roster } from "./model";
 import { STALL_TEXT, stallAfter } from "../settings/stall";
 
 export type Computer = { id: string; name: string; platform: string; connected: boolean };
@@ -25,7 +26,7 @@ export async function loadTrunkData(engine: WindowEngine): Promise<TrunkData> {
   ]);
   if (roster.status === "rejected") throw roster.reason;
   if (config.status === "rejected") throw config.reason;
-  const partial = [models, nodes].filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => errorText(r.reason));
+  const partial = [models, nodes].filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => plainError(r.reason));
   return {
     roster: readRoster(roster.value),
     snap: readConfig(config.value),
@@ -46,7 +47,7 @@ export function useLoad<T>(load: () => Promise<T>, key: string) {
     const stop = stallAfter(() => { if (current) setState((s) => (s.data ? s : { ...s, loading: false, error: STALL_TEXT })); });
     load().then(
       (data) => { stop(); if (current) setState({ data, loading: false, error: null }); },
-      (error: unknown) => { stop(); if (current) setState((s) => ({ ...s, loading: false, error: errorText(error) })); },
+      (error: unknown) => { stop(); if (current) setState((s) => ({ ...s, loading: false, error: plainError(error) })); },
     );
     return () => { current = false; };
     // `load` is re-created each render; `key` names what it reads.

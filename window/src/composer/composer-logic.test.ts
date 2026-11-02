@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { formatSize, pastedTitle, preparingLine, sizeProblem, toChatAttachments, type DraftFile } from "./attachments";
 import { caretOnEdge, step, userTexts } from "./drafts";
 import { replaceToken, skillTokenAt, tokenAt } from "./mention";
-import { blockedReason, FULL_ACCESS_BLOCKED, MODE_ROWS, nextMode } from "./mode";
-import { chipLabel, composerChipLabel, currentModelRef, currentThinking, groupModels, readModels } from "./model";
+import { blockedReason, FULL_ACCESS_BLOCKED, MODE_ROWS, nextMode, PLAN_FIRST_REASON } from "./mode";
+import { navPage } from "../screens/settings/nav";
+import { chipLabel, composerChipLabel, currentModelRef, currentThinking, groupModels, readModels, usableModelName } from "./model";
 import { chipWords, enqueue, moveUp, nextToSend, mark, remove, reword, type QueueItem } from "./queue";
 import { buildExtras, firstSendEcho, planSend, sendTooltip, shouldKeepFirstSendEcho } from "./sending";
 import { argQuery, filterCommands, readCommands, slashQuery } from "./slash";
@@ -16,13 +17,21 @@ describe("permission modes", () => {
   });
   it("says Full access does not include seeing the screen", () => {
     expect(MODE_ROWS[4].line).toMatch(/Does anything on this computer without asking: files, commands, the internet/);
-    expect(MODE_ROWS[4].line).toMatch(/separate switch in Settings › Computer & browser/);
+    expect(MODE_ROWS[4].line).toMatch(/separate switch in Settings › Browser & screen/);
+    expect(MODE_ROWS[4].line).toContain(`Settings › ${navPage("browser")?.title}.`);
+    expect(MODE_ROWS[4].line).not.toMatch(/Computer & browser/);
     expect(MODE_ROWS[4].line).not.toMatch(/Computer Control/);
   });
   it("blocks Full access for anyone but the owner, and Plan first as an engine gap", () => {
     expect(blockedReason(MODE_ROWS[4], false)).toBe(FULL_ACCESS_BLOCKED);
     expect(blockedReason(MODE_ROWS[4], true)).toBeNull();
-    expect(blockedReason(MODE_ROWS[2], true)).toMatch(/Plan first isn't available/);
+    expect(blockedReason(MODE_ROWS[2], true)).toBe(PLAN_FIRST_REASON);
+  });
+  it("says Plan first comes later, never that updating Branch turns it on", () => {
+    expect(PLAN_FIRST_REASON).toBe("Plan first comes in a later update.");
+    expect(PLAN_FIRST_REASON).not.toMatch(/Update Branch/i);
+    expect(MODE_ROWS[2].gap).toBe(PLAN_FIRST_REASON);
+    expect(blockedReason(MODE_ROWS[2], true)).toBe("Plan first comes in a later update.");
   });
   it("Shift+Tab never lands on a blocked mode", () => {
     expect(nextMode("guarded", true)).toBe("read-only");
@@ -52,6 +61,9 @@ describe("model chip", () => {
     expect(composerChipLabel(undefined, "medium", true)).toBe("No model");
     expect(composerChipLabel(undefined, "medium", false)).toBe("");
     expect(composerChipLabel({ ...connected, available: false }, "medium", true)).toBe("No model");
+    expect(usableModelName("openai/gpt-6-astra", [])).toBe("No model is set up");
+    expect(usableModelName("openai/gpt-6-astra", [{ ref: "openai/gpt-6-astra", name: "GPT-6 Astra", available: false }])).toBe("No model is set up");
+    expect(usableModelName("openai/gpt-6-astra", [connected])).toBe("GPT-6 Astra");
   });
   it("uses the session's model, else the engine's default; never an invented one", () => {
     expect(currentModelRef({ model: "m", modelProvider: "p" }, {})).toBe("p/m");

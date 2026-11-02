@@ -98,12 +98,12 @@ describe("place engine contracts", () => {
 });
 
 describe("preview topology and supported followup operations", () => {
-  it("matches the canonical Customize tabs and uses actual Trunk faces and job cards", async () => {
+  it("keeps only Tools in Customize without the old Trunk list or job cards", async () => {
     const request = vi.fn(() => Promise.resolve({ defaultId: "main", mainKey: "main", agents: [{ id: "main", name: "Sapling", identity: { theme: "General help" } }] }));
     await mount(<CustomizePlace engine={engine(request)} facts={{ running: 0, waiting: 0 }} openConversation={() => {}} openPlace={() => {}} level="regular" />);
-    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Trunks", "Tools", "Chat apps"]);
-    expect(host.querySelector('[aria-label="Sapling"]')?.getAttribute("data-face-size")).toBe("36");
-    expect(host.querySelectorAll('[aria-label^="Use this job:"]')).toHaveLength(6);
+    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Tools"]);
+    expect(host.querySelector(".tk-row")).toBeNull();
+    expect(host.querySelectorAll('[aria-label^="Use this job:"]')).toHaveLength(0);
   });
   it("creates a real job Trunk and preserves the source instructions with version checks", async () => {
     const request = vi.fn((method: string) => Promise.resolve(method === "agents.create" ? { ok: true, agentId: "research" } : method === "agents.list" ? { agents: [{ id: "research" }] } : method === "agents.files.get" ? { file: { content: "Source defaults", hash: "original" } } : { ok: true }));

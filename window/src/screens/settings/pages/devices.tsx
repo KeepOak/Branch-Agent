@@ -2,12 +2,23 @@
 // own section data (set2/computer-more.tsx), its top blocks (set2/computer.tsx), On this computer (set1/local*.tsx) and
 // the Everywhere tiles (customize/everywhere.tsx). Each Classic row becomes an R1 row on its card (spec-rows.tsx); a
 // row Classic left out because Branch can't do it yet is a Coming row in its own words.
+import type { WindowEngine } from "../../../connect/engine";
+import { CustomizeLevelContext } from "../../../places/customize/common";
 import { EverywhereTab } from "../../../places/customize/everywhere";
+import { LEVEL_WORD } from "../level-now";
+import { useLevel } from "../SettingsFrame";
 import "../../../places/customize/customize.css";
 import { DEVICE_SECS as S, type SecSpec, type Spec } from "../../../places/settings/set2/computer-more";
 import { ComputerBlock } from "../../../places/settings/set2/computer";
 import { LocalBlock } from "../../../places/settings/set1/local";
 import { specPage } from "./spec-rows";
+
+/** The Everywhere tiles at the level in use: a Coming tile action (Connect keepoak.com, Get the snippet) shows only at
+ *  Technical, as it does in Customize (customize/common.tsx Grey). */
+function Everywhere({ engine, openChannels }: { engine: WindowEngine; openChannels: () => void }) {
+  const [level] = useLevel(engine);
+  return <CustomizeLevelContext.Provider value={LEVEL_WORD[level]}><EverywhereTab engine={engine} openChannels={openChannels} /></CustomizeLevelContext.Provider>;
+}
 
 /** A block of Classic's page as a section of its own, drawn as one bare row. */
 const block = (t: string, lv: 0 | 1 | 2, body: SecSpec["body"]): SecSpec => ({ t, lv, body });
@@ -38,7 +49,7 @@ const PAIR_HERE: SecSpec = { t: "Lend this computer", lv: 0, rows: [
 
 const PLAN: [string, SecSpec[]][] = [
   ["Everywhere", [
-    block("Everywhere", 0, (c) => <div className="cz"><EverywhereTab engine={c.engine} openChannels={() => c.props.openSettings?.("chatapps")} /></div>),
+    block("Everywhere", 0, (c) => <div className="cz"><Everywhere engine={c.engine} openChannels={() => c.props.openSettings?.("chatapps")} /></div>),
     block("Recommended for you", 0, (c) => <LocalBlock {...c.props} part="recommended" />),
   ]],
   ["Computers they may use", [

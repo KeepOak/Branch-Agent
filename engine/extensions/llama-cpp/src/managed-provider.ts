@@ -33,7 +33,12 @@ import {
 } from "./external-server/setup.js";
 import { wrapLlamaServerStream } from "./external-server/stream.js";
 import { ensureManagedLlamaServerForChat, reconcileManagedLlamaServer } from "./managed-server.js";
-import { detectLlamaCppSetup, prepareLlamaCppSetup, runLlamaCppSetup } from "./setup.js";
+import {
+  detectLlamaCppSetup,
+  prepareLlamaCppSetup,
+  runLlamaCppMemorySetup,
+  runLlamaCppSetup,
+} from "./setup.js";
 
 function wrapLlamaCppStream(ctx: ProviderWrapStreamFnContext): StreamFn | undefined {
   const inner = wrapLlamaServerStream(ctx);
@@ -81,6 +86,24 @@ export function registerLlamaCppProvider(api: BranchPluginApi): void {
           prepare: prepareLlamaCppSetup,
         },
         run: runLlamaCppSetup,
+      },
+      {
+        id: "memory",
+        label: "Meaning-search model",
+        hint: "Download the small model that searches memories by meaning. Your chat model stays the same.",
+        kind: "custom",
+        wizard: {
+          choiceId: "llama-cpp-memory",
+          choiceLabel: "Meaning-search model",
+          choiceHint:
+            "Download the small on-this-computer model that searches memories by meaning. Your chat model stays the same.",
+          groupId: LLAMA_CPP_PROVIDER_ID,
+          groupLabel: "Local llama.cpp",
+          groupHint: "Managed or external llama.cpp server",
+          methodId: "memory",
+          assistantVisibility: "detected-only",
+        },
+        run: runLlamaCppMemorySetup,
       },
       {
         id: "existing-server",

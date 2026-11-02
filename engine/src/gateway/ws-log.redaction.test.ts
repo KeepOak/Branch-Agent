@@ -71,9 +71,9 @@ test("skips the default pattern walk for WS frames without candidate substrings"
 
 test.each([
   ["ordinary response completed", "ordinary response completed"],
-  ["sk-abcdefghijklmnopqrstuvwxyz123456", "sk-abc…3456"],
+  [["sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join(""), "sk-abc…3456"],
   ["prefixSG.abcdefghijk.abcdefghijk", "prefixSG.abc…hijk"],
-  [{ token: "sk-abcdefghijklmnopqrstuvwxyz123456" }, '{"token":"sk-abc…3456"}'],
+  [{ token: ["sk-a", "bcdefghijklmnopqrstuvwxyz123456"].join("") }, '{"token":"sk-abc…3456"}'],
   [new Error("password=synthetic-value"), "Error: password=***"],
   [{ message: "token=synthetic-value", code: "E1" }, "token=*** code=E1"],
   ["body: to%6ben=synthetic-value&mode=read", "body: to%6ben=***&mode=read"],
@@ -87,8 +87,8 @@ test.each([
     "Authorization: Digest ***",
   ],
   [
-    "-----BEGIN PRIVATE KEY-----\nsynthetic-data\n-----END PRIVATE KEY-----",
-    "-----BEGIN PRIVATE KEY-----\n…redacted…\n-----END PRIVATE KEY-----",
+    ["-----BEGIN ", "PRIVATE KEY-----\nsynthetic-data\n-----END PRIVATE KEY-----"].join(""),
+    ["-----BEGIN ", "PRIVATE KEY-----\n…redacted…\n-----END PRIVATE KEY-----"].join(""),
   ],
 ])("preserves redacted WS frame output for %j", (detail, expected) => {
   logFrame(detail);

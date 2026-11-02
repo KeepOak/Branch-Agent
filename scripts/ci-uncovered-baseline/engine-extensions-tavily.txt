@@ -1,0 +1,4 @@
+engine:extensions/tavily/src/config.test.ts
+engine:extensions/tavily/src/tavily-client.test.ts
+engine:extensions/tavily/src/tavily-search.cache.test.ts
+engine:extensions/tavily/src/tavily-tools.test.ts

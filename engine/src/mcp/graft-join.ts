@@ -5,11 +5,13 @@
 // for a Branch on the same computer unless gateway.nodes.pairing.autoApproveLocal is false; otherwise
 // `branch devices approve <id>`), and hands back a device token this Branch keeps. `branch graft --host <url>`
 // then works with the host as that device.
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readPairingConnectErrorDetails } from "../../packages/gateway-protocol/src/connect-error-details.js";
 import { resolveStateDir } from "../config/paths.js";
+import { displayHostname } from "../infra/machine-name.js";
 import type { OutsideAgentIdentity } from "./trunk-tools.js";
 import { listAgentEntries } from "../agents/agent-scope.js";
 
@@ -21,8 +23,31 @@ const RETRY_MS = 3_000;
 
 /** An outside identity a grafted Branch says hello as (contacts.outside.hello accepts kind and via). */
 export type GraftIdentity = OutsideAgentIdentity & { kind?: "branch" | "trunk"; via?: string };
-/** `url` is the address the link starts with; `urls` are the host's other addresses, tried in order when it fails. */
-export type GraftLink = { url: string; urls?: string[]; tlsFingerprint?: string; name: string; joinedAt: number };
+/**
+ * `url` is the address the link starts with; `urls` are the host's other addresses, tried in order when it fails.
+ * `hostName` is the host's mDNS name (`<host>.local`), learned while connected; when the host gets a new LAN address
+ * the link finds it again by that name and saves the new `url` (#2100). `joinedUrl` is the address the link was
+ * joined with, kept once the link has moved. `id` is written once at join time and never changes, so a moved link
+ * stays the same link and a host later joined at the moved link's old address is a different one (graftLinkKey).
+ */
+export type GraftLink = {
+  id?: string;
+  url: string;
+  urls?: string[];
+  tlsFingerprint?: string;
+  name: string;
+  joinedAt: number;
+  hostName?: string;
+  joinedUrl?: string;
+};
+
+/**
+ * A saved link's lasting identity: its join id, the same after the host moved and different for every join. A link
+ * saved before join ids existed falls back to the address it was joined with.
+ */
+export function graftLinkKey(link: GraftLink): string {
+  return link.id ?? link.joinedUrl ?? link.url;
+}
 export type ConnectOutcome =
   | { ok: true; deviceId?: string; scopes: string[] }
   | { ok: false; pendingRequestId?: string; message: string };
@@ -35,7 +60,7 @@ const slug = (value: string) =>
     .replace(/^-+|-+$/g, "");
 
 /** This Branch as its host sees it: an outside agent of kind "branch" named after this Branch. */
-export function graftBranchIdentity(name: string, where = os.hostname()): GraftIdentity {
+export function graftBranchIdentity(name: string, where = displayHostname(os.hostname())): GraftIdentity {
   // "Studio Laptop" -> branch-studio-laptop; "Branch B" -> branch-b (never "branch-branch-b").
   const rest = slug(name)
     .replace(/^branch(?:-|$)/, "")
@@ -122,21 +147,52 @@ export function readGraftLinks(env?: NodeJS.ProcessEnv): GraftLink[] {
   }
 }
 
-/** Remember the host (its address only; the device token stays in the device-auth store). */
-export function saveGraftLink(link: GraftLink, env?: NodeJS.ProcessEnv): void {
+function writeGraftLinks(rows: GraftLink[], env?: NodeJS.ProcessEnv): void {
   const file = linksFile(env);
-  const rows = [link, ...readGraftLinks(env).filter((row) => row.url !== link.url)];
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(rows, null, 2)}\n`);
   fs.renameSync(tmp, file);
 }
 
-/** The saved host to connect to: the one named (by URL), else the only one. */
+/**
+ * Remember a joined host (its address only; the device token stays in the device-auth store) under a new join id.
+ * A host joined again at the same address replaces its old row.
+ */
+export function saveGraftLink(link: GraftLink, env?: NodeJS.ProcessEnv): GraftLink {
+  const saved = link.id ? link : { ...link, id: randomUUID() };
+  writeGraftLinks([saved, ...readGraftLinks(env).filter((row) => row.url !== saved.url)], env);
+  return saved;
+}
+
+/**
+ * The link learned its host's name or followed the host to a new address: save it in place of its own row (same
+ * graftLinkKey). A host forgotten meanwhile (disconnected in Settings) stays forgotten.
+ */
+export function replaceGraftLink(link: GraftLink, env?: NodeJS.ProcessEnv): void {
+  const key = graftLinkKey(link);
+  const rows = readGraftLinks(env);
+  if (!rows.some((row) => graftLinkKey(row) === key)) {
+    return;
+  }
+  writeGraftLinks(
+    rows
+      .filter((row) => graftLinkKey(row) === key || row.url !== link.url)
+      .map((row) => (graftLinkKey(row) === key ? link : row)),
+    env,
+  );
+}
+
+/**
+ * The saved host to connect to: the one named (by its current URL first, then the URL it was joined with, then its
+ * host name), else the only one.
+ */
 export function resolveGraftLink(host: string, env?: NodeJS.ProcessEnv): GraftLink {
   const links = readGraftLinks(env);
   const match =
     links.find((row) => row.url === host) ??
+    links.find((row) => row.joinedUrl === host) ??
+    links.find((row) => row.hostName === host) ??
     (host === "" && links.length === 1 ? links[0] : undefined);
   if (!match) {
     throw new Error(
@@ -247,10 +303,8 @@ export async function graftHostOptions(
 
 /** Forget a host that disconnected this Branch (its pairing is gone there). */
 export function forgetGraftLink(url: string, env?: NodeJS.ProcessEnv): void {
-  const file = linksFile(env);
-  const rows = readGraftLinks(env).filter((row) => row.url !== url);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(rows, null, 2)}\n`);
-  fs.renameSync(tmp, file);
+  writeGraftLinks(
+    readGraftLinks(env).filter((row) => row.url !== url),
+    env,
+  );
 }

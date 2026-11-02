@@ -553,6 +553,14 @@ async function runGatewayCommandOnce(
     } catch (error) {
       gatewayLog.warn(`Could not migrate the seeded dev Trunk: ${String(error)}`);
     }
+    try {
+      const { persistImplicitOnboardingTrunkAtStartup } = await import(
+        "../../agents/implicit-main-agent.js"
+      );
+      await persistImplicitOnboardingTrunkAtStartup();
+    } catch (error) {
+      gatewayLog.warn(`Could not persist the onboarding Trunk: ${String(error)}`);
+    }
   }
   // Assign legacy Trunk faces before the startup snapshot is captured, so the
   // gateway and the published config both see the same one-time migration.
@@ -1037,7 +1045,9 @@ async function runGatewayCommandOnce(
         home: process.env.BRANCH_HOME?.trim() || (await import("node:os")).homedir(),
         gatewayPort: port,
       });
-      if (next.decision.outcome !== "start") return false;
+      if (next.decision.outcome !== "start") {
+        return false;
+      }
       hostRendezvous = next;
       return true;
     },

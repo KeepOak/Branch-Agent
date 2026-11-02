@@ -3,13 +3,14 @@
 // Pause / Make default / Edit. It loads its own data, so any place (the thread header too) can open it by id.
 // "What it can do" (parity row 16, owner placement 2026-10-14) re-hosts the Classic list from shell/CanDo.tsx as a section.
 import { useState, type ReactNode } from "react";
+import { usableModelName } from "../../composer/model";
 import { safeStorage, saveDraft } from "../../composer/drafts";
 import { CAN_DO, type CanDoGo } from "../../shell/CanDo";
 import { PairDialog } from "../customize/pairing";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
-import { Coming } from "../../glass/coming";
 import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
+import { menuAtLevel } from "../../shell/menu-level";
 import { Icon } from "../../shell/icons";
 import { notify } from "../../shell/notify";
 import { Switch } from "../../shell/Popover";
@@ -26,11 +27,11 @@ import { ShareTrunkDialog } from "./ShareTrunk";
 import { TrunkFace } from "./TrunkFace";
 import { LineIcon } from "./TrunkFace";
 import { TrunkFiles } from "./TrunkFiles";
+import { requestCustomize } from "../customize/r1-request";
 import { Layer } from "./layer";
 import "./trunk.css";
 
-// Pausing and the seed actions have no engine call yet, so they stay greyed with their reason (the Coming state).
-const PAUSE_WHY = "Pause comes in a later update.";
+// Pausing has no engine call yet, so the profile shows no Pause control until it does. Seed actions stay greyed with their reason.
 
 export type TrunkProfileProps = {
   engine: WindowEngine;
@@ -74,7 +75,8 @@ function Head({ row, data, isDefault, level }: { row: TrunkRow; data: ProfileDat
   </>;
 }
 
-function Automations({ engine, data, reload }: { engine: WindowEngine; data: ProfileData; reload: () => void }) {
+/** Its automations with an on/off switch each (cron.update); the R1 details panel re-hosts this list as its routines. */
+export function Automations({ engine, data, reload }: { engine: WindowEngine; data: Pick<ProfileData, "automations">; reload: () => void }) {
   const [error, setError] = useState<string | null>(null);
   if (!data.automations?.length) return null;
   const toggle = (id: string, enabled: boolean) => engine.request("cron.update", { id, patch: { enabled } }).then(reload, (e: unknown) => setError(errorText(e)));
@@ -88,14 +90,14 @@ function Automations({ engine, data, reload }: { engine: WindowEngine; data: Pro
 function Rows({ row, data, level, edit, openPlace, showFiles }: { row: TrunkRow; data: ProfileData; level: Level; edit: (t: EditorTab) => void; openPlace?: (p: PlaceId) => void; showFiles: () => void }) {
   const may = readMay(data.snap, row.id);
   const where = may.startOn === "this" ? "This computer" : data.computers.find((c) => c.id === may.startOn)?.name || may.startOn;
-  const model = data.models.find((m) => m.ref === row.model)?.name || row.model.split("/").pop() || "Default model";
+  const model = usableModelName(row.model, data.models);
   const mayLine = [may.read ? "Reads your files" : "Only its own folder", may.browse ? "uses the browser" : "no browser"].join(" · ");
   return (
     <div className="tk-rows">
       <Row icon={<Icon name="monitor" small />} label="Its computer" value={where} onClick={() => edit("computers")} />
       <Row icon={<LineIcon name="spark" />} label="Model" value={model} onClick={() => edit("may")} />
       <Row icon={<LineIcon name="shield" />} label="May do" value={mayLine} onClick={() => edit("may")} />
-      <Row icon={<LineIcon name="plug" />} label="Its tools" value="Customize › Tools" onClick={openPlace && (() => openPlace("customize"))} />
+      <Row icon={<LineIcon name="plug" />} label="Its tools" value="" onClick={openPlace && (() => { requestCustomize({ kind: "Toolsets" }); openPlace("customize"); })} />
       <Row icon={<Icon name="book" small />} label="What it remembers" value={data.facts === null ? "Library › Memory" : data.facts === 1 ? "1 fact" : `${data.facts} facts`} onClick={openPlace && (() => openPlace("library"))} />
       {shows(level, "advanced") && <Row icon={<LineIcon name="spark" />} label="Skills it may use" value={skillsLine(data, row.id)} onClick={openPlace && (() => openPlace("customize"))} />}
       {shows(level, "technical") && <Row icon={<Icon name="folder" small />} label="Its folder" value={row.workspace || "Not reported"} mono onClick={showFiles} />}
@@ -166,7 +168,6 @@ function ProfileBody({ engine, level, onClose, openPlace, openSettings, openConv
   ];
   const openMore = (e: { currentTarget: HTMLElement }) => { const r = e.currentTarget.getBoundingClientRect(); setMore({ x: r.left, y: r.bottom + 4 }); };
   const footer = <>
-    <Coming need="agents.pause" unwired reason={PAUSE_WHY}><button type="button" className="btn ghost tk-pf-pause">Pause {row.name}</button></Coming>
     {!isDefault && <button type="button" className="btn ghost" disabled={!!block || !write} title={block || (write ? undefined : WRITE_WHY)} onClick={() => void toDefault()}>Make default</button>}
     <button type="button" className="btn ghost" aria-label={`More for ${row.name}`} aria-haspopup="menu" onClick={openMore}>⋯</button>
     <button type="button" className="btn pri" onClick={() => edit("look")}>Edit {row.name}</button>
@@ -178,12 +179,11 @@ function ProfileBody({ engine, level, onClose, openPlace, openSettings, openConv
         <Rows row={row} data={data} level={level} edit={edit} openPlace={openPlace && ((p) => { onClose(); openPlace(p); })} showFiles={() => setFiles(!files)} />
         {files && shows(level, "technical") && <TrunkFiles engine={engine} agentId={row.id} />}
         <Automations engine={engine} data={data} reload={reload} />
-        <p className="tk-hint tk-why">{PAUSE_WHY}</p>
         <CanDo reach={reach} go={go} />
         {data.notes.map((n) => <p key={n} className="tk-hint" role="status">{n}</p>)}
         {error && <p className="tk-error" role="alert">{error}</p>}
       </div>
-      {more && <Menu at={more} label={`More for ${row.name}`} testid="trunk-more" onClose={() => setMore(null)} items={moreItems} />}
+      {more && <Menu at={more} label={`More for ${row.name}`} testid="trunk-more" onClose={() => setMore(null)} items={menuAtLevel(moreItems, shows(level, "technical"))} />}
     </Dialog></Layer>
   );
 }

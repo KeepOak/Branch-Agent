@@ -60,6 +60,7 @@ it.each([403, 429])(
       message: expect.stringContaining(`HTTP ${httpStatus}`),
     });
     expect(JSON.stringify(result)).toContain(httpStatus === 429 ? "quota" : "credentials");
+    expect(JSON.stringify(result)).not.toMatch(/openclaw/i);
     expect(JSON.stringify(result)).not.toContain("private upstream diagnostic");
     expect(JSON.stringify(result)).not.toContain(API_KEY);
   },

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
@@ -8,8 +9,10 @@ import { smokeProductionEngine } from "./production-engine-smoke.mjs";
 import { assertTrackedSourceClean } from "./release-source-freeze.mjs";
 import { assertHoistedDeployment, extractProductionArchive, productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
 import { makeComponentRelease } from "./make-component-release.mjs";
-import { formatPayload, measurePayload, payloadBudgetProblems, pruneCodexPlatformPackages, pruneProductionDependencies } from "./release-payload.mjs";
+import { formatPayload, measurePayload, payloadBudgetProblems, pruneCodexPlatformPackages, pruneComputerUseDriver, pruneProductionDependencies }
+  from "./release-payload.mjs";
 import { installLinuxLauncher } from "./linux-launcher.mjs";
+import { WINDOWS_LAUNCHER_RESOURCE, windowsLauncherCompileArgs, windowsLauncherCompiler, windowsLauncherSource } from "./windows-launcher.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { MAC_ADHOC_NOTICE, macSignCommand, macSigningPlan } from "./mac-release-signing.mjs";
 import { engineRoot, windowRoot, toolingRoot, repoRoot, gitHead, run, preparePnpm,
@@ -51,7 +54,7 @@ async function prepareWindow(pnpm) {
   await run(process.execPath, [join(windowRoot, "node_modules/vite/bin/vite.js"), "build"], windowRoot);
 }
 
-async function deployEngine(pnpm, scratch, identity, macSigning) {
+async function deployEngine(pnpm, scratch, identity) {
   // Runtime-only package build: the engine component never loads declarations, which were ~75% of build time.
   await run(pnpm, ["build:package"], engineRoot, { ...process.env, BRANCH_RUN_NODE_SKIP_DTS_BUILD: "1" });
   const metadata = JSON.parse(await readFile(join(engineRoot, "dist/build-info.json"), "utf8"));
@@ -66,11 +69,10 @@ async function deployEngine(pnpm, scratch, identity, macSigning) {
   // Codex's platform package (~318 MiB) never ships: Codex turns use the Codex the person installs.
   const codex = await pruneCodexPlatformPackages(deployment);
   console.log(`Removed the Codex platform package (${codex.packages.join(", ") || "none"}; ${(codex.bytes / 1048576).toFixed(1)} MiB); Codex runs from the person's own install`);
-  if (identity.platform === "darwin") {
-    const binary = join(deployment, "cua-driver");
-    await run("bash", [join(engineRoot, "scripts/stage-cua-driver-macos.sh"), binary]);
-    await run(...macSignCommand(macSigning, binary));
-  }
+  // Computer use is fetched the first time it is turned on, verified against the pins in the plugin's package.json
+  // (cuaDriverDownloads), so the driver is neither staged nor shipped (~115 MiB on macOS).
+  const computerUse = await pruneComputerUseDriver(deployment);
+  console.log(`Removed the computer-use driver, fetched on first use (${computerUse.files} files, ${(computerUse.bytes / 1048576).toFixed(1)} MiB)`);
   assert.equal(JSON.parse(await readFile(join(deployment, "dist/build-info.json"), "utf8")).commit, identity.commit);
   assert(!(await readdir(deployment)).includes("src"), "Production deployment must not be an unbuilt source checkout");
   // The Codex harness ships in every release: its plugin build, its launcher and runtime packages.
@@ -78,10 +80,33 @@ async function deployEngine(pnpm, scratch, identity, macSigning) {
   for (const file of ["dist/extensions/codex/branch.plugin.json", "node_modules/@openai/codex/package.json", "node_modules/@openai/codex/bin/codex.js", "node_modules/smol-toml/package.json"]) {
     assert((await stat(join(deployment, file))).isFile(), `Production deployment is missing ${file}`);
   }
+  // Computer use ships its plugin and the pins it downloads with; the desktop app checks the download against them.
+  for (const file of ["dist/extensions/cua-computer/branch.plugin.json", "dist/extensions/cua-computer/package.json"]) {
+    assert((await stat(join(deployment, file))).isFile(), `Production deployment is missing ${file}`);
+  }
+  const computerUsePins = JSON.parse(await readFile(join(deployment, "dist/extensions/cua-computer/package.json"), "utf8"));
+  assert(computerUsePins.cuaDriverDownloads?.packages?.["@trycua/cua-driver"] && computerUsePins.cuaDriverArtifacts?.["darwin-universal-binary"]?.files?.["cua-driver"],
+    "The cua-computer plugin is missing its computer-use download pins");
   const payload = await measurePayload(deployment);
   console.log(formatPayload(payload));
   assert.deepEqual(payloadBudgetProblems(payload), [], "Engine payload is over its size budget");
   return deployment;
+}
+
+/**
+ * The stable Windows launcher (windows-launcher.mjs), compiled with the C# compiler that ships with Windows into the
+ * package's resources/. The installer and the desktop app copy it to the install root, where every shortcut points.
+ * Compiled without an icon (csc rejects the PNG-compressed branch.ico and fails the Windows build), then stamped.
+ */
+async function buildWindowsLauncher(resources, scratch) {
+  const source = join(scratch, "branch-launcher.cs");
+  await writeFile(source, windowsLauncherSource());
+  const out = join(resources, WINDOWS_LAUNCHER_RESOURCE);
+  await run(windowsLauncherCompiler(process.env, existsSync), windowsLauncherCompileArgs({ source, out }), scratch);
+  assert.ok(existsSync(out), `The Windows launcher was not built: ${out}`);
+  // Loaded only here, on the Windows release build: resedit is a build-only dev dependency that tests never import.
+  const { stampWindowsLauncherIcon } = await import("./windows-launcher-icon.mjs");
+  await stampWindowsLauncherIcon(out, join(desktopRoot, "assets/branch.ico"));
 }
 
 async function packageDesktop(scratch, output, identity, macSigning) {
@@ -111,6 +136,7 @@ async function packageDesktop(scratch, output, identity, macSigning) {
   if (identity.platform === "linux") await installLinuxLauncher(app);
   const resources = identity.platform === "darwin" ? join(app, `${MAC_ARCHIVE_BUNDLE_FOLDER}/Contents/Resources`) : join(app, "resources");
   let node = await bundleNode(resources, undefined, identity);
+  if (identity.platform === "win32") await buildWindowsLauncher(resources, scratch);
   // Outside app.asar so a fresh package can prove its executable already has the Keeper icon.
   await writeFile(join(resources, "keeper-icon-revision"), "keeper-v1\n");
   // The desktop update component: app.asar alone, plus the whole app (the bootstrap package) for Electron changes.
@@ -145,7 +171,7 @@ export async function buildRelease(mode, output, windowDirectory) {
   assert(["window", "components"].includes(mode), "Usage: release-build.mjs window|components output [built-window]");
   const identity = await releaseIdentity();
   // Read before the long build: a partial signing identity fails here, naming what is missing.
-  const macSigning = mode === "components" && identity.platform === "darwin" ? macSigningPlan() : undefined;
+  const macSigning = mode === "components" && identity.platform === "darwin" ? macSigningPlan(process.env, identity) : undefined;
   if (macSigning?.signing === "adhoc") console.log(MAC_ADHOC_NOTICE);
   const scratch = await scratchRoot();
   const pnpm = await preparePnpm(scratch);
@@ -158,7 +184,7 @@ export async function buildRelease(mode, output, windowDirectory) {
     assert(windowDirectory, "Components require the shared tested renderer build");
     // The named feature suites already gate every pull request and main push (feature-batch-checks.yml).
     await prepareEngine(pnpm);
-    const engine = await deployEngine(pnpm, scratch, identity, macSigning);
+    const engine = await deployEngine(pnpm, scratch, identity);
     // Packaged first, so the manifest's desktop component is the same app.asar as the bootstrap package.
     const { nodePath, desktop, ...runtime } = await packageDesktop(scratch, output, identity, macSigning);
     await waitForSharedWindow();

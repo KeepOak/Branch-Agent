@@ -1,0 +1,1 @@
+window:src/shell/GetApps.plain-error.test.tsx

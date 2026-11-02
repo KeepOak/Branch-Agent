@@ -14,9 +14,17 @@ describe("Yes and No only under a yes/no question", () => {
     expect(chips("Do you want the short version or the full one?")).toEqual([]);
   });
 
+  it("offers none under a request addressed to you", () => {
+    expect(chips("Can you check the numbers before I send it?")).toEqual([]);
+    expect(chips("Could you elaborate?")).toEqual([]);
+    expect(isYesNoQuestion("Would you share the logs?")).toBe(false);
+    expect(isYesNoQuestion("Ready?")).toBe(false);
+    expect(isYesNoQuestion("Ready to ship?")).toBe(true);
+  });
+
   it("offers Yes and No under a yes/no question", () => {
     expect(chips("I drafted the reply. Is that okay?")).toEqual(["Yes", "No"]);
-    expect(chips("Can you check the numbers before I send it?")).toEqual(["Yes", "No"]);
+    expect(chips("Did you check the numbers before I sent it?")).toEqual(["Yes", "No"]);
     expect(chips("So, should we keep the old name?")).toEqual(["Yes", "No"]);
     expect(chips("I'll merge it after the checks, sound good?")).toEqual(["Yes", "No"]);
   });

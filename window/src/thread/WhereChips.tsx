@@ -13,6 +13,7 @@ import { Popover } from "../shell/Popover";
 import { describePlacement, listComputers, placementComputer, type Computer, type Placement } from "../stage/computers";
 import { moveConversation } from "../stage/ComputerPicker";
 import "./empty.css";
+import { plainError } from "../shell/plain-error";
 
 type Project = { id: string; name: string };
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
@@ -100,7 +101,7 @@ export function WhereChips(p: Props) {
           <Icon name="down" small />
         </button>
       ) : null}
-      {error ? <p className="where-err" role="alert">{error}</p> : null}
+      {error ? <p className="where-err" role="alert">{plainError(error)}</p> : null}
       {open?.kind === "comp" ? (
         <Popover at={open.at} onClose={() => setOpen(null)} label="Where it works" testid="where-comp">
           <div className="ph">Where it works</div>

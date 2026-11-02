@@ -2,6 +2,7 @@ import {
   readSystemAgentSessionInvalidatedErrorDetails,
   readSystemAgentInferenceUnavailableErrorDetails,
   type SystemAgentChatParams,
+  type SystemAgentErrorFixAction,
 } from "@branch/gateway-protocol";
 import type { SystemAgentPluginReference } from "@branch/gateway-protocol/system-agent-context";
 import { inferBasePathFromPathname, routeIdFromPath } from "../../app-route-paths.ts";
@@ -41,14 +42,31 @@ export function hasCustodianUserInput(params: SystemAgentChatParams): boolean {
   );
 }
 
+/**
+ * The fix for the error on screen. A fix is bound to the one error sentence it
+ * was offered for, so a later or cleared error drops it.
+ */
+export function custodianFixAction(
+  fix: { error: string; action?: SystemAgentErrorFixAction } | null,
+  error: string | null,
+): SystemAgentErrorFixAction | null {
+  return fix?.action && error !== null && fix.error === error ? fix.action : null;
+}
+
 export function custodianFailure(error: unknown): {
   inferenceUnavailable: boolean;
   sessionInvalidated: boolean;
+  /** The fix the Gateway named for this failure, so the chat offers what the sentence says. */
+  action?: SystemAgentErrorFixAction;
 } {
   const details =
     error && typeof error === "object" ? (error as { details?: unknown }).details : undefined;
+  const inference = readSystemAgentInferenceUnavailableErrorDetails(details);
+  const invalidated = readSystemAgentSessionInvalidatedErrorDetails(details);
+  const action = inference?.action ?? invalidated?.action;
   return {
-    inferenceUnavailable: readSystemAgentInferenceUnavailableErrorDetails(details) !== undefined,
-    sessionInvalidated: readSystemAgentSessionInvalidatedErrorDetails(details) !== undefined,
+    inferenceUnavailable: inference !== undefined,
+    sessionInvalidated: invalidated !== undefined,
+    ...(action ? { action } : {}),
   };
 }

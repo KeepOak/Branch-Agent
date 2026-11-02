@@ -1,0 +1,1 @@
+window:src/places/customize/toolsets-setup.test.tsx

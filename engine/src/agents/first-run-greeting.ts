@@ -123,6 +123,8 @@ export function scheduleFirstRunGreeting(params: {
   getConfig: () => BranchConfig;
   warn: (message: string) => void;
   seed?: typeof seedFirstRunGreeting;
+  /** Whether a model can answer yet. Without one the Trunk stays quiet instead of looking like it works (#1769). */
+  modelReady?: () => Promise<boolean>;
 }): void {
   if (!shouldSeedFirstRunGreeting(params.result)) {
     return;
@@ -131,6 +133,9 @@ export function scheduleFirstRunGreeting(params: {
   const seed = params.seed ?? seedFirstRunGreeting;
   const greeting = (async () => {
     try {
+      if (params.modelReady && !(await params.modelReady())) {
+        return;
+      }
       const outcome = await seed({ cfg: params.getConfig(), agentId });
       if (outcome === "failed") {
         params.warn(`agent ${agentId} first-run greeting was not saved`);

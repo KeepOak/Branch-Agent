@@ -3,6 +3,7 @@
 // rows from it and the settings search lists them from it, so the two can't drift.
 // TODO(engine-lane): TODO(desktop-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Keep, Lv, Opt, RowEntry } from "../kit";
+import { trayCard, trayMenuLabel } from "../../../screens/settings/tray-words";
 
 type Kind = "sw" | "seg" | "pick";
 export type RowSpec = { sec: string; group?: string; title: string; key: string; kind: Kind; def: string | boolean; sub?: string; help?: string; opts?: Opt[]; lv?: Lv; keep?: Keep; off?: string };
@@ -22,6 +23,8 @@ const ROWS: RowSpec[] = [
   { sec: "Background", title: "Behind the glass", key: "bg", kind: "seg", def: "none", keep: "everywhere", sub: "The grove and the oak wear the theme’s colours. A scrim in the theme’s own colour keeps text readable.",
     opts: o([["none", "None"], ["painted", "Painted grove"], ["grove", "The grove"], ["oak3d", "The oak in 3D"], ["rings", "Growth rings"], ["own", "Your own"]], { own: "Branch can’t keep a file of your own as a background yet." }) },
   { sec: "Background", title: "Season", key: "season", kind: "seg", def: "auto", keep: "everywhere", sub: "Fireflies in summer, petals in spring, leaves in autumn, snow in winter.", opts: o([["auto", "By the date"], ["spring", "Spring"], ["summer", "Summer"], ["autumn", "Autumn"], ["winter", "Winter"]]) },
+  { sec: "Reading", title: "Interface scale", key: "scale", kind: "seg", def: "100", keep: "device", sub: "Makes everything in the window bigger or smaller. Ctrl with + or − does it too; Ctrl 0 puts it back.", opts: o([["90", "90%"], ["100", "100%"], ["110", "110%"], ["125", "125%"], ["150", "150%"], ["175", "175%"]]) },
+  { sec: "Reading", title: "Conversation text size", key: "chatSize", kind: "seg", def: "100", keep: "device", sub: "Messages and the box you type in, on top of the interface scale. The list and the controls stay the same size.", opts: o([["90", "90%"], ["100", "100%"], ["110", "110%"], ["125", "125%"], ["150", "150%"], ["175", "175%"]]) },
   { sec: "Reading", title: "Text size", key: "size", kind: "seg", def: "Regular", keep: "device", sub: "Changes every screen.", opts: o([["small", "Small"], ["Regular", "Regular"], ["large", "Large"], ["larger", "Larger"], ["largest", "Largest"]]) },
   { sec: "The pet", title: "Pet sounds", key: "petSounds", kind: "sw", def: false, keep: "everywhere", sub: "A tiny sound when you pat it.", help: "Off until you turn it on." },
   { sec: "What’s shown", title: "The usage ring", key: "show.usage", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
@@ -54,7 +57,7 @@ const OTHER: [string, string, Lv][] = [
   ["Light or dark", "Match this computer", 0], ["Theme", "Theme", 0], ["Theme", "Accent colour", 0], ["Agents", "Show the agent beside the conversation", 0],
   ["Background", "Painted scenes", 0], ["Background", "How much the theme covers it", 0], ["Background", "See-through panels", 0], ["Background", "Preview", 0],
   ["Reading", "Interface font", 1], ["Reading", "Conversation font", 1], ["The pet", "Pet", 0], ["The pet", "Name", 0], ["The pet", "Pets you’ve had", 0],
-  ["Language", "Language", 0], ["Tray", "Tray menu", 0], ["Window", "Customize layout", 0],
+  ["Language", "Language", 0], [trayCard(), trayMenuLabel(), 0], ["Window", "Customize layout", 0],
   ["Pictures around Branch", "Pictures around Branch", 1],
   ["Window, technical", "Window frame", 2], ["The list", "Ask before deleting a conversation", 1],
 ];

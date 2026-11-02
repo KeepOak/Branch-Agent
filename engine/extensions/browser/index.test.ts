@@ -480,15 +480,23 @@ describe("browser plugin", () => {
     const { api, registerGatewayMethod } = createApi();
     registerBrowserPlugin(api);
 
-    expect(registerGatewayMethod).toHaveBeenCalledTimes(2);
-    expect(mockCallArg(registerGatewayMethod)).toBe("browser.request");
+    // Exactly these gateway methods, in registration order, each with its scope.
+    expect(registerGatewayMethod.mock.calls.map((call) => [call[0], call[2]])).toEqual([
+      ["browser.request", { scope: "operator.admin" }],
+      ["browser.guest.host", { scope: "operator.write" }],
+      ["browser.guest.respond", { scope: "operator.write" }],
+      [
+        "browser.dashboard.request",
+        {
+          scope: "operator.write",
+          sessionAccess: { mode: "write", allowOwnSessionScope: true, requiredTool: "browser" },
+        },
+      ],
+    ]);
     const handler = mockCallArg(registerGatewayMethod, 0, 1) as (request: {
       method: string;
     }) => unknown;
     expect(typeof handler).toBe("function");
-    expect(mockCallArg(registerGatewayMethod, 0, 2)).toEqual({
-      scope: "operator.admin",
-    });
     await handler({ method: "browser.request" });
     expect(runtimeApiMocks.handleBrowserGatewayRequest).toHaveBeenCalledWith({
       method: "browser.request",

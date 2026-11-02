@@ -22,7 +22,7 @@ import {
 } from "./runtime-shared.js";
 import { isRecord } from "./shared.js";
 
-const DEFAULT_MEMORY_EMBEDDING_PROVIDER = "openai";
+const DEFAULT_MEMORY_EMBEDDING_PROVIDER = "local";
 
 function resolveMemoryEmbeddingProviderContract(params: {
   config: BranchConfig;

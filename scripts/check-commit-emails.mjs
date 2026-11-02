@@ -1,6 +1,7 @@
 // Fail pull request commits dated at or after the cutoff whose author, committer,
 // or Co-authored-by address is not a GitHub noreply or cursoragent@cursor.com.
 // The report never prints a full personal email; only a short SHA, field, and masked domain.
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { httpStatusOf, isRateLimitError, isTransientGitHubError } from './merge-gate-rate-limit.mjs';
@@ -187,16 +188,87 @@ export function apiFailureLine(error, prNumber) {
   return `GitHub API ${label} while reading commits for PR #${prNumber}; ${why}. Not a commit-email failure.`;
 }
 
-export function runCommitEmailCheck({ repo, prNumber, token, api = createEmailCheckApi() }) {
+// The workflow fetches the PR head into this ref before the email step. Reading it costs no REST quota.
+export const LOCAL_PR_HEAD_REF = 'refs/remotes/pr/head';
+const FIELD = '\x1f';
+const RECORD = '\x1e';
+
+export function parseGitLogRecords(raw) {
+  return String(raw ?? '').split(RECORD).map((chunk) => chunk.replace(/^\n/, '')).filter(Boolean).map((chunk) => {
+    const [sha, authorEmail, committerEmail, committerDate, ...rest] = chunk.split(FIELD);
+    return {
+      sha,
+      commit: {
+        message: rest.join(FIELD),
+        author: { email: authorEmail },
+        committer: { email: committerEmail, date: committerDate },
+      },
+    };
+  });
+}
+
+// Commits on the PR head that are not on the PR's base: the same set GitHub lists. The checkout is the default
+// branch, which can be ahead of or behind the PR base, so HEAD is never used as the range start.
+export function localPrRange({ baseSha, headRef = LOCAL_PR_HEAD_REF, exec = execFileSync } = {}) {
+  const base = String(baseSha ?? '').trim();
+  if (!/^[0-9a-f]{7,64}$/i.test(base)) {
+    throw Object.assign(new Error('PR_BASE_SHA is missing or not a commit sha'), { missingBase: true });
+  }
+  const git = (args) => String(exec('git', args, { encoding: 'utf8', windowsHide: true }) ?? '').trim();
+  try {
+    git(['rev-parse', '--verify', '--quiet', `${base}^{commit}`]);
+  } catch {
+    throw Object.assign(new Error('PR base commit is not in the local history'), { missingBase: true });
+  }
+  let start = base;
+  try {
+    start = git(['merge-base', base, headRef]) || base;
+  } catch {
+    start = base;
+  }
+  return `${start}..${headRef}`;
+}
+
+export function readLocalPrCommits({
+  baseSha = process.env.PR_BASE_SHA, headRef = LOCAL_PR_HEAD_REF, exec = execFileSync,
+} = {}) {
+  const range = localPrRange({ baseSha, headRef, exec });
+  const raw = exec('git', [
+    'log', '--no-color', `--format=%H${FIELD}%ae${FIELD}%ce${FIELD}%cI${FIELD}%B${RECORD}`, range,
+  ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true });
+  return parseGitLogRecords(raw);
+}
+
+// Only a rate limit (or a spent wait budget) falls back. A real 403/404 still fails the check.
+export function shouldUseLocalHistory(error) {
+  return Boolean(error?.budgetExhausted) || isRateLimitError(error);
+}
+
+export function runCommitEmailCheck({
+  repo, prNumber, token, api = createEmailCheckApi(), readLocal = readLocalPrCommits,
+}) {
   let commits;
+  let source = 'the API';
   try {
     commits = fetchPrCommitsWithApi({ repo, prNumber, token, api });
   } catch (error) {
-    return { exitCode: 2, lines: [apiFailureLine(error, prNumber)] };
+    if (!readLocal || !shouldUseLocalHistory(error)) {
+      return { exitCode: 2, lines: [apiFailureLine(error, prNumber)] };
+    }
+    try {
+      commits = readLocal();
+    } catch (localError) {
+      const why = localError?.missingBase ? ` ${localError.message}.` : '';
+      return { exitCode: 2, lines: [`${apiFailureLine(error, prNumber)} The local PR history was not available either.${why}`] };
+    }
+    if (!Array.isArray(commits) || commits.length === 0) {
+      return { exitCode: 2, lines: [`${apiFailureLine(error, prNumber)} The local PR history had no commits, so nothing was checked.`] };
+    }
+    source = 'local git history (GitHub API rate-limited)';
   }
   const failures = evaluateCommits(commits);
   if (failures.length === 0) {
-    return { exitCode: 0, lines: [`Checked ${commits.length} commit(s); all in-scope addresses are allowed.`] };
+    return { exitCode: 0, lines: [`Checked ${commits.length} commit(s) from ${source}; all in-scope addresses are allowed.`] };
   }
   return { exitCode: 1, lines: [formatReport(failures)] };
 }

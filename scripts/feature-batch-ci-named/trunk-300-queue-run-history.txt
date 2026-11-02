@@ -1,0 +1,3 @@
+engine:src/agents/trunk-queue.test.ts
+engine:src/gateway/server-methods/chat-send-retry.test.ts
+engine:src/sessions/user-turn-transcript.overload.test.ts

@@ -7,6 +7,7 @@ import { t } from "../../../i18n/index.ts";
 import type { MessageGroup, ToolCard } from "../../../lib/chat/chat-types.ts";
 import { messageClientSourcesLabel } from "../../../lib/chat/message-client-source.ts";
 import { normalizeRoleForGrouping } from "../../../lib/chat/message-normalizer.ts";
+import { isSharedOwnerSender } from "../../../lib/chat/sender-label.ts";
 import {
   readToolApprovalReviewOutcome,
   readToolApprovalReviews,
@@ -549,9 +550,14 @@ export function renderMessageGroup(group: MessageGroup, options: RenderMessageGr
               avatar: opts.assistantAvatar ?? null,
               textAvatar: opts.assistantTextAvatar,
             },
-            // Missing historical attribution is not evidence that the viewer sent it.
-            isOwnGroup
-              ? { name: opts.userName ?? null, avatar: opts.userAvatar ?? null }
+            // Missing historical attribution is not evidence that the viewer sent it; the owner's
+            // key is the person on this computer, so it counts as their own (#1933).
+            isOwnGroup || isSharedOwnerSender(group.sender)
+              ? {
+                  id: opts.userId ?? null,
+                  name: opts.userName ?? null,
+                  avatar: opts.userAvatar ?? null,
+                }
               : undefined,
             group.sender,
           )

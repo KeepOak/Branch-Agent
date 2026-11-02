@@ -399,13 +399,13 @@ export function ToolsTech({ engine, config, base }: Ctx) {
 
 /* ───────────── System ───────────── */
 
-const SYS_OFF: OffRow[] = [["Portable mode", "Data beside the program, for a USB stick. Off until you choose: developer plumbing.", APP, "sw"]];
+// No Portable mode row: neither the Branch app nor the engine can keep data beside the program, so there is nothing to turn on.
 const SYS_OFF2: OffRow[] = [["Status line", "", APP, "seg:Default|Minimal|My script"]];
 const SYS_OFF3: OffRow[] = [
   ["Is Branch keeping up", "Warns when the engine stalls for a second or more.", ne("stall warning"), "sw"],
   ["Save task trajectories", "Every step as JSON Lines, for analysis. Off until you choose: it uses disk.", ne("trajectory switch; branch sessions export-trajectory exports a conversation’s steps"), "sw"],
 ];
-rowsOf("System", [...titles(SYS_OFF), "Send metrics with OpenTelemetry", "Detailed logs for", "Cache trace", "Diagnostics", ...titles(SYS_OFF2), "Find Branch on other computers nearby", "What it tells the network", "Find it across networks", "Plan finding it across networks", "Set up finding it across networks", ...titles(SYS_OFF3)]);
+rowsOf("System", ["Send metrics with OpenTelemetry", "Detailed logs for", "Cache trace", "Diagnostics", ...titles(SYS_OFF2), "Find Branch on other computers nearby", "What it tells the network", "Find it across networks", "Plan finding it across networks", "Set up finding it across networks", ...titles(SYS_OFF3)]);
 
 function Flags({ config }: Ctx) {
   const raw = config.get("diagnostics.flags");
@@ -430,7 +430,6 @@ export function SystemSec(ctx: Ctx) {
   const domain = str(config.get("discovery.wideArea.domain"));
   return (
     <Sec title="System">
-      <Greyed rows={SYS_OFF} />
       <Ctl title="Send metrics with OpenTelemetry" sub={`${str(otel.endpoint) || "No address set yet"}. Off until you choose: it sends data outside Branch.`}>
         <Switch label="Send metrics with OpenTelemetry" checked={otel.enabled === true} disabled={config.loading} onChange={(on) => { void config.set("diagnostics.otel.enabled", on); if (on) void config.set("plugins.entries.diagnostics-otel.enabled", true); }} />
       </Ctl>
@@ -557,7 +556,7 @@ export function Widgets({ config }: Ctx) {
   const mode = str(config.get("gateway.controlUi.embedSandbox")) || "scripts";
   return (
     <Sec title="Widgets">
-      <Ctl title="What widgets may run" sub="Choose what a widget’s sealed frame may access." help="Widgets run their own buttons in a sealed frame that can’t reach this page. Nothing: no scripts, drawing only. Trusted: also same-site privileges, for pages that need them.">
+      <Ctl title="What widgets may run" sub="Choose what a widget’s safe frame may access." help="Widgets run their own buttons in a safe frame that can’t reach this page. Nothing: no scripts, drawing only. Trusted: also same-site privileges, for pages that need them.">
         <Seg label="What widgets may run" value={mode} disabled={config.loading} onChange={(v) => void config.set("gateway.controlUi.embedSandbox", v === "scripts" ? null : v)} options={[{ id: "strict", label: "Nothing" }, { id: "scripts", label: "Their own scripts" }, { id: "trusted", label: "Trusted" }]} />
       </Ctl>
       <Ctl title="Widgets may load outside pages" sub="Lets a widget frame show any outside http or https page." help="Lets a widget frame show any outside http or https page. Off until you choose: a widget could show any website inside Branch.">
@@ -569,7 +568,7 @@ export function Widgets({ config }: Ctx) {
 
 const OTHER_OFF: OffRow[] = [
   ["Share tools with other assistants", "Only the tools you pick are listed or callable, as a tool server or to other agents. Off until you choose: nothing is shared.", ne("shared tool list"), "sw"],
-  ["Share a skill without showing it", "Others get its name, its form and its answers, never its instructions; trust tiers decide who, and a misuse revokes it.", ne("sealed skill sharing"), "sw"],
+  ["Share a skill without showing it", "Others get its name, its form and its answers, never its instructions; trust tiers decide who, and a misuse revokes it.", ne("safe skill sharing"), "sw"],
   ["Approvals show in the app that called", "When another app uses Branch’s tools, a risky step asks there.", ne("approval forwarding"), "sw"],
 ];
 rowsOf("Other programs and assistants", ["A chat address other apps understand", "Its address", ...titles(OTHER_OFF)]);

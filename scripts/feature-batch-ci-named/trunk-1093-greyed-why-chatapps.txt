@@ -1,0 +1,2 @@
+window:src/screens/chatapps/ChatApps.test.tsx
+window:src/places/settings/set1/chatapps-manage.test.tsx

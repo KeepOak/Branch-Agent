@@ -1,0 +1,1 @@
+engine:extensions/code-mode-quickjs/src/worker-lifecycle.test.ts

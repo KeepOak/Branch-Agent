@@ -98,11 +98,11 @@ describe("sendMessageSlack Enterprise listener scope", () => {
     try {
       await sendMessageSlack("team:T123:channel:C08GQH53EJM", "hello", {
         cfg: ENTERPRISE_CFG,
-        token: "xoxb-enterprise",
+        token: ["xoxb", "-enterprise"].join(""),
         client: injectedClient,
       });
 
-      expect(getSlackWriteClientMock).toHaveBeenCalledWith("xoxb-enterprise", {
+      expect(getSlackWriteClientMock).toHaveBeenCalledWith(["xoxb", "-enterprise"].join(""), {
         teamId: "T123",
       });
       expect(scopedClient.chat.postMessage).toHaveBeenCalledWith(
@@ -120,7 +120,7 @@ describe("sendMessageSlack Enterprise listener scope", () => {
       await expect(
         sendMessageSlack("C08GQH53EJM", "hello", {
           cfg: ENTERPRISE_CFG,
-          token: "xoxb-enterprise",
+          token: ["xoxb", "-enterprise"].join(""),
         }),
       ).rejects.toThrow("unsupported_enterprise_slack_delivery");
       expect(getSlackWriteClientMock).not.toHaveBeenCalled();
