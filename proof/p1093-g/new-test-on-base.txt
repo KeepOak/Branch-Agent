@@ -1,0 +1,95 @@
+✖ nothing running and nothing readable: the staged update applies on its own after the unknown wait (1.828792ms)
+✖ while it waits, the log says plainly what it waits for and when it applies anyway (0.227583ms)
+✔ a run in flight keeps the update waiting however long approvals stay unknown (0.422959ms)
+✔ a streaming reply keeps the update waiting however long approvals stay unknown (0.347167ms)
+✔ a known pending approval or unsaved draft is never timed out (0.929459ms)
+✖ a run during the unknown wait starts the 10 minutes again (0.262584ms)
+✖ a staged desktop app that relaunches also applies after the unknown wait (0.148208ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 3
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 46.144292
+
+✖ failing tests:
+
+test at scripts/auto-apply-unknown-idle.test.mjs:35:1
+✖ nothing running and nothing readable: the staged update applies on its own after the unknown wait (1.828792ms)
+  AssertionError [ERR_ASSERTION]: auto-apply: waiting for 0 active runs, unknown approvals, unknown draft files; retrying in 30s
+  + actual - expected
+  
+  + []
+  - [
+  -   {
+  -     drain: false,
+  -     handoffOnly: false,
+  -     version: 'next'
+  -   }
+  - ]
+  
+      at TestContext.<anonymous> (file://repo/desktop/scripts/auto-apply-unknown-idle.test.mjs:38:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [],
+    expected: [ { version: 'next', handoffOnly: false, drain: false } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/auto-apply-unknown-idle.test.mjs:41:1
+✖ while it waits, the log says plainly what it waits for and when it applies anyway (0.227583ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /no window could report approvals or drafts/. Input:
+  
+  'auto-apply: waiting for 0 active runs, unknown approvals, unknown draft files; retrying in 30s'
+  
+      at TestContext.<anonymous> (file://repo/desktop/scripts/auto-apply-unknown-idle.test.mjs:47:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'auto-apply: waiting for 0 active runs, unknown approvals, unknown draft files; retrying in 30s',
+    expected: /no window could report approvals or drafts/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at scripts/auto-apply-unknown-idle.test.mjs:79:1
+✖ a run during the unknown wait starts the 10 minutes again (0.262584ms)
+  AssertionError [ERR_ASSERTION]: auto-apply: waiting for 0 active runs, unknown approvals, unknown draft files; retrying in 30s
+  auto-apply: waiting for 1 active runs, unknown approvals, unknown draft files; retrying in 30s
+  auto-apply: waiting for 0 active runs, unknown approvals, unknown draft files; retrying in 30s
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://repo/desktop/scripts/auto-apply-unknown-idle.test.mjs:88:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/auto-apply-unknown-idle.test.mjs:91:1
+✖ a staged desktop app that relaunches also applies after the unknown wait (0.148208ms)
+  AssertionError [ERR_ASSERTION]: auto-apply: waiting for 0 active runs, unknown approvals, unknown draft files; retrying in 30s
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://repo/desktop/scripts/auto-apply-unknown-idle.test.mjs:94:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

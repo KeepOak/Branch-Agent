@@ -1,0 +1,15 @@
+✔ nothing running and nothing readable: the staged update applies on its own after the unknown wait (1.497459ms)
+✔ while it waits, the log says plainly what it waits for and when it applies anyway (0.309792ms)
+✔ a run in flight keeps the update waiting however long approvals stay unknown (0.41325ms)
+✔ a streaming reply keeps the update waiting however long approvals stay unknown (0.324291ms)
+✔ a known pending approval or unsaved draft is never timed out (0.894125ms)
+✔ a run during the unknown wait starts the 10 minutes again (0.197667ms)
+✔ a staged desktop app that relaunches also applies after the unknown wait (0.132333ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 48.867625
