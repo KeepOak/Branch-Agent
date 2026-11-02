@@ -79,6 +79,21 @@ export function turnWaiting(activity: UpdateActivity): boolean {
   return Boolean(activity.streaming) || activity.pendingApprovals !== 0 || activity.unsavedDraftFiles !== false;
 }
 
+/**
+ * No run in flight, no reply streaming, and no window can report approvals or drafts (closed to the tray, or not
+ * answering): after this long the unknown counts as none and the staged update applies at the usual gap. An approval the
+ * engine still waits on keeps its run in flight, so it holds the update through activeRuns. A known pending approval or
+ * unsaved draft never times out.
+ */
+export const AUTO_APPLY_UNKNOWN_IDLE_MS = 10 * 60_000;
+
+/** Nothing runs or streams and nothing is known to wait; only the window's approval or draft counts are unknown. */
+export function onlyWindowUnknown(activity: UpdateActivity): boolean {
+  return activity.activeRuns === 0 && !activity.streaming
+    && (activity.pendingApprovals === null || activity.unsavedDraftFiles === null)
+    && (activity.pendingApprovals ?? 0) === 0 && activity.unsavedDraftFiles !== true;
+}
+
 function waitingLine(activity: UpdateActivity, extra = ""): string {
   const approvals = activity.pendingApprovals === null ? "unknown" : String(activity.pendingApprovals);
   const drafts = activity.unsavedDraftFiles === null ? ", unknown draft files"
@@ -244,6 +259,9 @@ export function createAutoApplyUpdate(options: {
   let handoffFailedAt: number | undefined;
   /** The version whose pending-over-cap line is already in the log, so each tick does not repeat it. */
   let cappedNoted: string | undefined;
+  /** Since when nothing has run and only the window's counts were unknown; reset by any run, stream or known count. */
+  let unknownSince: number | undefined;
+  let unknownNoted: string | undefined;
   const now = options.now ?? Date.now;
   const retryIn = (): string => `retrying in ${Math.max(1, Math.round(AUTO_APPLY_POLL_MS / 1000))}s`;
   const decision = (line: string) => {
@@ -270,6 +288,8 @@ export function createAutoApplyUpdate(options: {
     checkFailures = 0; silentNoted = false;
     lastSampleAt = now();
     if (activity.activeRuns > 0) lastRunSeenAt = lastSampleAt;
+    if (onlyWindowUnknown(activity)) unknownSince ??= lastSampleAt;
+    else unknownSince = undefined;
     return activity;
   };
   /** Notes runs in flight from the engine alone when it can, so a window that is not ready never blocks the update. */
@@ -358,13 +378,26 @@ export function createAutoApplyUpdate(options: {
           decision(`handoff unavailable; falling back to idle drain for ${version}`);
         }
       }
+      // Unknown window counts with nothing running wait AUTO_APPLY_UNKNOWN_IDLE_MS, then count as none.
+      const unknownTimedOut = (activity: UpdateActivity) => onlyWindowUnknown(activity) && unknownSince !== undefined
+        && now() - unknownSince >= AUTO_APPLY_UNKNOWN_IDLE_MS;
       // A relaunch stops every run the app owns: any run in flight holds it off and resets the gap.
-      const busy = (activity: UpdateActivity) => turnWaiting(activity) || (relaunch && activity.activeRuns > 0);
+      const busy = (activity: UpdateActivity) => (turnWaiting(activity) && !unknownTimedOut(activity))
+        || (relaunch && activity.activeRuns > 0);
       const activity = await readActivity();
       if (busy(activity)) {
         idleSince = undefined;
-        defer(waitingLine(activity, batched ? `; deferring ${version} until a gap in Trunk work` : ""));
+        const unknownWait = onlyWindowUnknown(activity)
+          ? `; no window could report approvals or drafts, so ${version} applies once nothing has run for ${Math.round(AUTO_APPLY_UNKNOWN_IDLE_MS / 60_000)} minutes`
+          : "";
+        // The line names the wait once; the usual retry note is left off so it does not repeat every check.
+        if (unknownWait) decision(waitingLine(activity, unknownWait));
+        else defer(waitingLine(activity, batched ? `; deferring ${version} until a gap in Trunk work` : ""));
         return;
+      }
+      if (unknownTimedOut(activity) && unknownNoted !== version) {
+        unknownNoted = version;
+        options.log(`auto-apply: approvals and drafts unknown for ${Math.round(AUTO_APPLY_UNKNOWN_IDLE_MS / 60_000)} minutes with nothing running; counting them as none for ${version}`);
       }
       idleSince ??= now();
       if (now() - idleSince < AUTO_APPLY_GAP_MS) {
