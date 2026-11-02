@@ -97,4 +97,16 @@ describe("FreeModelSetup download failure", () => {
       FREE_MODEL_FAILED,
     );
   });
+
+  it.each([
+    "network error while loading the wizard",
+    "wizard step timed out",
+    "fetch failed",
+    "gateway request failed: HTTP 503",
+    "EACCES: permission denied, open '/config/branch.json'",
+  ])("keeps the generic line for a wizard error outside the managed setup: %s", async (error) => {
+    const shown = await failDownload(error);
+    expect(shown).toBe(FREE_MODEL_FAILED);
+    expect(shown).not.toContain("Download failed:");
+  });
 });

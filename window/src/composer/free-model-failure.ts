@@ -44,9 +44,12 @@ const MANAGED_SETUP_FAILED = /Managed llama\.cpp setup failed/i;
 
 /** One plain line for a failed free model download, or undefined when the error isn't one. */
 export function plainFreeModelFailure(message: string): string | undefined {
+  // Only the managed setup wraps download errors. Any other wizard error keeps the generic line,
+  // even when it mentions a network problem or a timeout.
+  if (!MANAGED_SETUP_FAILED.test(message)) return undefined;
   for (const [reason, pattern] of PATTERNS) {
     if (pattern.test(message))
       return FREE_MODEL_DOWNLOAD_FAILED + " " + FREE_MODEL_FAILURE_REASONS[reason];
   }
-  return MANAGED_SETUP_FAILED.test(message) ? FREE_MODEL_SETUP_STOPPED : undefined;
+  return FREE_MODEL_SETUP_STOPPED;
 }
