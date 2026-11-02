@@ -2,19 +2,19 @@
 // The engine's error names files, hosts and HTTP codes, so only the kind of failure is shown, never the raw text.
 
 /** First words of every download failure line. */
-export const FREE_MODEL_DOWNLOAD_FAILED = "The free model didn’t download.";
+export const FREE_MODEL_DOWNLOAD_FAILED = "Download failed:";
 /** The engine's managed setup failed, but its error matches none of the known reasons below. */
-export const FREE_MODEL_SETUP_STOPPED = "Setting up the free model stopped before it finished.";
+export const FREE_MODEL_SETUP_STOPPED = "Free model setup stopped before it finished.";
 
 export const FREE_MODEL_FAILURE_REASONS = {
-  disk: "This computer ran out of disk space.",
-  permission: "Branch wasn’t allowed to save it on this computer.",
-  integrity: "The downloaded file didn’t match what was expected, so Branch didn’t use it.",
-  refused: "The download server turned the request down.",
-  missing: "The download server doesn’t have the file right now.",
-  server: "The download server had a problem. Try again in a few minutes.",
-  timeout: "It took too long and stopped.",
-  offline: "Branch couldn’t reach the download server. Check your internet connection.",
+  disk: "this computer is out of disk space.",
+  permission: "Branch couldn’t save the file on this computer.",
+  integrity: "the file didn’t check out, so Branch didn’t use it.",
+  refused: "the download server turned the request down.",
+  missing: "the download server doesn’t have the file right now.",
+  server: "the download server had a problem. Try again later.",
+  timeout: "it took too long and stopped.",
+  offline: "Branch couldn’t reach the server. Check your internet.",
 } as const;
 
 type Reason = keyof typeof FREE_MODEL_FAILURE_REASONS;

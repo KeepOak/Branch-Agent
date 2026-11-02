@@ -56,30 +56,30 @@ async function failDownload(error: string) {
 
 describe("FreeModelSetup download failure", () => {
   it.each([
-    ["fetch failed", "Branch couldn’t reach the download server. Check your internet connection."],
+    ["fetch failed", "Branch couldn’t reach the server. Check your internet."],
     [
       "getaddrinfo ENOTFOUND huggingface.co",
-      "Branch couldn’t reach the download server. Check your internet connection.",
+      "Branch couldn’t reach the server. Check your internet.",
     ],
-    ["ENOSPC: no space left on device, write", "This computer ran out of disk space."],
+    ["ENOSPC: no space left on device, write", "this computer is out of disk space."],
     [
       "download failed: HTTP 503 Service Unavailable",
-      "The download server had a problem. Try again in a few minutes.",
+      "the download server had a problem. Try again later.",
     ],
-    ["download failed: HTTP 404 Not Found", "The download server doesn’t have the file right now."],
-    ["download failed: HTTP 403 Forbidden", "The download server turned the request down."],
+    ["download failed: HTTP 404 Not Found", "the download server doesn’t have the file right now."],
+    ["download failed: HTTP 403 Forbidden", "the download server turned the request down."],
     [
       "download SHA-256 mismatch: expected abc, got def",
-      "The downloaded file didn’t match what was expected, so Branch didn’t use it.",
+      "the file didn’t check out, so Branch didn’t use it.",
     ],
-    ["The operation was aborted due to timeout", "It took too long and stopped."],
+    ["The operation was aborted due to timeout", "it took too long and stopped."],
     [
       "EACCES: permission denied, open '/models/x.gguf.part'",
-      "Branch wasn’t allowed to save it on this computer.",
+      "Branch couldn’t save the file on this computer.",
     ],
   ])("says why next to Try again and Cancel: %s", async (detail, reason) => {
     const shown = await failDownload(MANAGED + detail);
-    expect(shown).toBe("The free model didn’t download. " + reason);
+    expect(shown).toBe("Download failed: " + reason);
     expect(shown).not.toContain("\n");
     expect(shown).not.toMatch(/HTTP|llama|doctor|ENO|EACCES|huggingface|gguf|mismatch/i);
     expect(button("Try again")).toBeTruthy();
@@ -88,7 +88,7 @@ describe("FreeModelSetup download failure", () => {
 
   it("says the setup stopped when the engine's reason is not a known download failure", async () => {
     const shown = await failDownload(MANAGED + "llama-server exited with code 1");
-    expect(shown).toBe("Setting up the free model stopped before it finished.");
+    expect(shown).toBe("Free model setup stopped before it finished.");
     expect(shown).not.toBe(FREE_MODEL_FAILED);
   });
 
