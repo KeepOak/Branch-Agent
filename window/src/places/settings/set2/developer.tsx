@@ -399,13 +399,13 @@ export function ToolsTech({ engine, config, base }: Ctx) {
 
 /* ───────────── System ───────────── */
 
-const SYS_OFF: OffRow[] = [["Portable mode", "Data beside the program, for a USB stick. Off until you choose: developer plumbing.", APP, "sw"]];
+// No Portable mode row: neither the Branch app nor the engine can keep data beside the program, so there is nothing to turn on.
 const SYS_OFF2: OffRow[] = [["Status line", "", APP, "seg:Default|Minimal|My script"]];
 const SYS_OFF3: OffRow[] = [
   ["Is Branch keeping up", "Warns when the engine stalls for a second or more.", ne("stall warning"), "sw"],
   ["Save task trajectories", "Every step as JSON Lines, for analysis. Off until you choose: it uses disk.", ne("trajectory switch; branch sessions export-trajectory exports a conversation’s steps"), "sw"],
 ];
-rowsOf("System", [...titles(SYS_OFF), "Send metrics with OpenTelemetry", "Detailed logs for", "Cache trace", "Diagnostics", ...titles(SYS_OFF2), "Find Branch on other computers nearby", "What it tells the network", "Find it across networks", "Plan finding it across networks", "Set up finding it across networks", ...titles(SYS_OFF3)]);
+rowsOf("System", ["Send metrics with OpenTelemetry", "Detailed logs for", "Cache trace", "Diagnostics", ...titles(SYS_OFF2), "Find Branch on other computers nearby", "What it tells the network", "Find it across networks", "Plan finding it across networks", "Set up finding it across networks", ...titles(SYS_OFF3)]);
 
 function Flags({ config }: Ctx) {
   const raw = config.get("diagnostics.flags");
@@ -430,7 +430,6 @@ export function SystemSec(ctx: Ctx) {
   const domain = str(config.get("discovery.wideArea.domain"));
   return (
     <Sec title="System">
-      <Greyed rows={SYS_OFF} />
       <Ctl title="Send metrics with OpenTelemetry" sub={`${str(otel.endpoint) || "No address set yet"}. Off until you choose: it sends data outside Branch.`}>
         <Switch label="Send metrics with OpenTelemetry" checked={otel.enabled === true} disabled={config.loading} onChange={(on) => { void config.set("diagnostics.otel.enabled", on); if (on) void config.set("plugins.entries.diagnostics-otel.enabled", true); }} />
       </Ctl>
