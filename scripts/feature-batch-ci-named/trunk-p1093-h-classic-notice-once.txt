@@ -1,0 +1,2 @@
+window:src/composer/classic-connect-once.test.tsx
+window:src/composer/send-blocked.test.tsx

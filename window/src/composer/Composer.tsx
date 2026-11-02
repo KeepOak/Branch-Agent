@@ -26,6 +26,7 @@ import { Drawer } from "./SlashDrawer";
 import { useBackground } from "./useBackground";
 import { CONNECT_MODEL_ANSWERS, isNoUsableModelError } from "./connect-model";
 import { ConnectModelNotice } from "./ConnectModelNotice";
+import { markComposerConnect } from "./connect-shown";
 import { FreeModelSetup } from "./FreeModelSetup";
 import { FREE_MODEL_READY } from "./no-key-default";
 import { hasNoModel, stillLoadingModels, useConversation } from "./useConversation";
@@ -467,6 +468,15 @@ export function Composer(props: Props) {
   }, [engine, engine?.sessionKey, working, row.updatedAt]);
   const cost = usageCost && usageCost.key === engine?.sessionKey ? usageCost.value : undefined;
   const temporary = props.draftTemporary === true || row.incognito === true;
+  // A held send with no model shows Connect a model here, with its button. The empty state then leaves its copy out,
+  // and the plain no-model line above steps aside, so the notice shows once.
+  const holdsConnect = Boolean(problem && isNoUsableModelError(problem));
+  const connectKey = props.draftAgentId ? null : engine?.sessionKey ?? null;
+  useEffect(() => {
+    if (!connectKey) return;
+    markComposerConnect(connectKey, holdsConnect);
+    return () => markComposerConnect(connectKey, false);
+  }, [connectKey, holdsConnect]);
 
   return (
     <div
@@ -482,7 +492,7 @@ export function Composer(props: Props) {
     >
       {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
       {noModel && engine ? <FreeModelSetup engine={engine} onReady={() => void conv.reload()} /> : null}
-      {noModel ? <NoModelLine onOpen={onOpen} error={conv.noKeyError} onRetry={() => void conv.retryNoKey()} /> : null}
+      {noModel && !(holdsConnect && !conv.noKeyError) ? <NoModelLine onOpen={onOpen} error={conv.noKeyError} onRetry={() => void conv.retryNoKey()} /> : null}
       {conversationProblem ? <p className={isPreparationPending(conversationProblem) ? "c-note" : "c-note bad"} role={isPreparationPending(conversationProblem) ? "status" : "alert"}>{isPreparationPending(conversationProblem) ? preparationLabel(trunkName) : shortReason(conversationProblem)}</p> : null}
       {problem && isNoUsableModelError(problem) ? (
         <div role="alert" data-testid="hold-connect-model"><ConnectModelNotice onOpen={onOpen} className="c-note bad c-nomodel" /></div>

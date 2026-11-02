@@ -3,6 +3,7 @@
 // so it shows once, on every conversation, not twice on an empty one.
 import { useEffect, useState } from "react";
 import { ConnectModelNotice } from "../composer/ConnectModelNotice";
+import { useComposerShowsConnect } from "../composer/connect-shown";
 import { currentModelRef } from "../composer/model";
 import { hasNoModel, useConversation } from "../composer/useConversation";
 import { Face } from "../face/Face";
@@ -93,11 +94,13 @@ export function EmptyState({ onOpenSession, onStart }: { onOpenSession?: (key: s
   const conv = useConversation(engine);
   const noModel = conv.loaded && hasNoModel(conv, currentModelRef(conv.row, conv.defaults));
   const recent = useRecent(Boolean(onOpenSession));
+  // After a held Send the composer shows Connect a model with its button; this copy steps aside then.
+  const composerShows = useComposerShowsConnect(engine?.sessionKey);
   return (
     <div className={noModel ? "empty empty-nomodel" : "empty"} data-testid="empty-state">
       <Face size={150} label={name} state="idle" reactive />
       <h1 className="empty-title">What should {name} do?</h1>
-      {noModel ? <ConnectModelNotice className="empty-connect" /> : onStart ? <Starters onStart={onStart} /> : null}
+      {noModel ? composerShows ? null : <ConnectModelNotice className="empty-connect" /> : onStart ? <Starters onStart={onStart} /> : null}
       {onOpenSession && recent.length ? (
         <div className="recent">
           <div className="section-label">Recent</div>
