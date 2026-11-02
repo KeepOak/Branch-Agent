@@ -4,6 +4,7 @@
 // the count stays the same (owner Q93). Toasts and banners are held while it runs and show when it ends (rule 2). No
 // mascot on the card (rule 5). R1 re-hosts it with its own cards and clear glass (screens/onboarding/R1Tour.tsx).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { findAnythingKeys, onMac, shownInline } from "./keymap";
 import { coachCardPlace, overlaps, type Box } from "./walkthrough-place";
 import "./walkthrough.css";
 
@@ -42,7 +43,7 @@ export function tourCards(defaultName: string): Card[] {
     { title: "What each account has left", target: "[data-testid=sb-usage]", prep: () => sidePanel(false), text: "The ring shows the account used next. Click it for every plan’s 5-hour, daily and weekly limits." },
     { title: "The gateway", target: "[data-testid=sb-gateway]", text: "Keeps your Trunks running when Branch is closed, and starts Branch again if it ever stops." },
     { title: "Seven places", target: "nav.places", side: true, text: "Overview at a glance, Canopy to watch and steer all the work at once, Inbox for what needs you, Automations for work on its own, Library for what it remembers and made, People for who uses Branch, Customize for Trunks, skills and chat apps." },
-    { title: "Search everything", target: "[data-testid=search]", side: true, text: "Chats, Trunk names, words inside messages and past sessions, as you type. Ctrl F finds words in a conversation; Ctrl K opens every command." },
+    { title: "Search everything", target: "[data-testid=search]", side: true, text: `Chats, Trunk names, words inside messages and past sessions, as you type. ${shownInline("Ctrl F", onMac())} finds words in a conversation; ${findAnythingKeys()} opens every command.` },
     { title: "Settings, your way", target: "[data-testid=gear]", side: true, text: "Regular, Advanced or Technical: just the essentials, or every file, port and raw key." },
     { title: "Models on this computer", target: ".lm-grid-k", prep: settings("local"), text: "Branch looks at your memory and graphics card and only offers what fits. One click installs it; it runs free and private." },
     { title: "Every chat app", target: ".r1-ca-surface", prep: settings("chatapps"), text: "Each has its own setup: paste the code it gives you, let Branch check it, then allow the connection." },

@@ -2,8 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import { PETS, PIXEL, PixelPet } from "../places/settings/set1/appearance-pet";
 import { Menu, type MenuItem } from "./Menu";
+import { findAnythingKeys } from "./keymap";
 
-const TIPS = ["Type @ to call a Trunk into any conversation.", "Ctrl K finds anything, even settings.", "Hover anything to see what it does.", "The ring bottom right shows what each account has left."];
+const TIPS = ["Type @ to call a Trunk into any conversation.", `${findAnythingKeys()} finds anything, even settings.`, "Hover anything to see what it does.", "The ring bottom right shows what each account has left."];
 const STEP_MS = 360;
 const SAY_MS = 6500;
 

@@ -13,6 +13,7 @@ import { useSidebarPointerDrag, type DropZone, type SidebarDrop } from "../../sh
 import { FOLDERS, folderCount, rowTime, type Folder, type SideRow } from "./model";
 import { FIND_ANYTHING_EVENT } from "../find/find-event";
 import { pinAxis, pinKey } from "./pin-order";
+import { findAnythingKeys } from "../../shell/keymap";
 
 const svg = (body: ReactNode, size = 16) => <svg className="r1sb-i" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">{body}</svg>;
 export const icons = {
@@ -182,13 +183,13 @@ export function TopCapsules({ searchRef, plusRef, ...p }: Capsules) {
   // Owner item 7 on touch: in the rail, the first tap on + drops the capsule stack; the next tap opens the menu.
   const rail = () => Boolean(document.querySelector(".r1-frame[data-wide='false']")) && !matchMedia("(max-width: 760px)").matches;
   return <div className="r1sb-caps" data-tap={tapOpen || undefined} onPointerLeave={() => setTapOpen(false)}>
-    <label className="r1sb-cap r1sb-search" data-keep={p.query ? "" : undefined} title="Search · Ctrl K">
+    <label className="r1sb-cap r1sb-search" data-keep={p.query ? "" : undefined} title={`Search · ${findAnythingKeys()}`}>
       <Coming engine={p.engine} need="sessions.search" where="Find anything">
         <button type="button" className="r1sb-mag" aria-label="Find anything" title="Find anything" onMouseDown={event => event.preventDefault()} onClick={event => { event.preventDefault(); event.stopPropagation(); window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)); }}>{icons.search}</button>
       </Coming>
       <input ref={searchRef} type="search" data-local="" aria-label="Search chats, Trunks, messages and past sessions" placeholder="Search" value={p.query}
         onChange={event => p.onQuery(event.target.value)} onKeyDown={event => { if (event.key === "Escape" && p.query) { event.stopPropagation(); p.onQuery(""); } }} />
-      <kbd>Ctrl K</kbd>
+      <kbd>{findAnythingKeys()}</kbd>
     </label>
     <button type="button" className="r1sb-cap" data-local="" aria-label="Settings" title="Settings · Ctrl ," onClick={p.onSettings}>{icons.gear}</button>
     <button type="button" className="r1sb-cap" data-local="" aria-label="Grove" title="Grove: all your Trunks at a glance" onClick={p.onGrove}>{icons.grove}</button>

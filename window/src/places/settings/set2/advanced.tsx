@@ -15,6 +15,7 @@ import {
 } from "./advanced-more";
 import { ConvDialog, EverythingElse, HealthDialog, HooksSec, LogsDialog, MigrateDialog, SectionDialog, WebSearchDialog } from "./advanced-tech";
 import { SetupDialog } from "../set1/local-setup";
+import { findAnythingKeys } from "../../../shell/keymap";
 import "./advanced.css";
 
 const MEMORY_MODEL_LEDE = "This downloads the small meaning-search model (about 0.3 GB) onto this computer. Your chat model stays the same. Branch asks before it starts.";
@@ -447,7 +448,7 @@ export const NETWORK: SecSpec = { title: "Network", lv: 2, rows: [
   { t: "Traffic to this computer", k: "proxy.loopbackMode", kind: "seg", def: "gateway-only", opts: [{ id: "gateway-only", label: "Skip the proxy" }, { id: "proxy", label: "Through the proxy" }, { id: "block", label: "Block" }] },
   { t: "Check it", draw: () => <CodeRow title="Check it" code="branch proxy validate" /> },
 ] };
-export const ELSE: SecSpec = { title: "Everything else", lv: 2, rows: ["Text to speech", "Attachments", "Messages", "Talk", "Web", "Media", "Ctrl K to find anything"].map((t) => ({ t })), whole: (c) => <EverythingElse c={c} /> };
+export const ELSE: SecSpec = { title: "Everything else", lv: 2, rows: ["Text to speech", "Attachments", "Messages", "Talk", "Web", "Media", `${findAnythingKeys()} to find anything`].map((t) => ({ t })), whole: (c) => <EverythingElse c={c} /> };
 export const HEALTH: SecSpec = { title: "Health", lv: 2, rows: [
   { t: "Health", draw: (c) => <DialogRow t="Health" s="Readouts only; nothing to set." btn="See readouts" open={(close) => <HealthDialog engine={c.engine} onClose={close} />} /> },
   btnOff("Errors that say how to fix them", "When a service refuses, the message says what to do, not only the code.", "Show one", "Built into the engine’s error messages; nothing to set."),
