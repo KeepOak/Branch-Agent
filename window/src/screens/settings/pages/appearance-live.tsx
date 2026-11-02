@@ -30,9 +30,10 @@ type Look = ReturnType<typeof useLook>;
 const lookCalls = (look: Look): string[] => (look.snap.where === "device" ? [] : ["users.prefs.set"]);
 
 /** One control and the calls it makes: through Coming when it makes some, else marked data-local. `hidden`: while this
- *  engine lacks a call the control is Coming, and is not drawn (below Technical, rows.ts COMING_FROM). */
-export function Needs({ engine, need, where, hidden, children }: { engine: WindowEngine; need: string[]; where: string; hidden?: boolean; children: ReactElement }) {
-  return need.length ? <Coming engine={engine} need={need} where={where} hidden={hidden}>{children}</Coming> : cloneElement(children, { "data-local": "" } as Record<string, unknown>);
+ *  engine lacks a call the control is Coming, and is not drawn (below Technical, rows.ts COMING_FROM). `reason`: the
+ *  plain line the greyed control shows instead of the generic Coming wording, when the page knows why the call is missing. */
+export function Needs({ engine, need, where, hidden, reason, children }: { engine: WindowEngine; need: string[]; where: string; hidden?: boolean; reason?: string; children: ReactElement }) {
+  return need.length ? <Coming engine={engine} need={need} where={where} hidden={hidden} reason={reason}>{children}</Coming> : cloneElement(children, { "data-local": "" } as Record<string, unknown>);
 }
 
 /** A failed change, on its own pill under the control. */

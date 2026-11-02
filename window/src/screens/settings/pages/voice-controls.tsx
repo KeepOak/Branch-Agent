@@ -21,6 +21,7 @@ import { copyAndSay } from "../../../shell/clipboard";
 import { VOICE_CODE } from "./voice";
 import { useLevel } from "../SettingsFrame";
 import { COMING_FROM } from "../rows";
+import { availability } from "../../../connect/capabilities";
 
 const Line = ({ children, bad, id }: { children: ReactNode; bad?: boolean; id?: string }) => <small id={id} className={"r1s-msg g-label" + (bad ? " r1s-bad" : "")} role={bad ? "status" : undefined} data-lines>{children}</small>;
 /** Why a greyed control is greyed (Private #1093): one visible line the control names with aria-describedby. */
@@ -308,14 +309,18 @@ export function LiveServices({ engine, row }: SlotControlProps) {
   </>;
 }
 
-/** Test call: rings your own number (voicecall.initiate); needs Phone calls on. */
+/** The test call's call comes from the Phone calls plugin, so this engine lacks it while Phone calls is off or not started. */
+const CALLS_OFF = "Turn on Phone calls first.";
+const CALLS_NOT_STARTED = "Phone calls is on but has not started yet. It starts the next time Branch restarts.";
+/** Test call: rings your own number (voicecall.initiate); needs Phone calls on. Greyed, it says which of the two it waits for. */
 export function TestCall({ engine, row }: SlotControlProps) {
   const cfg = useConfig(engine);
   const [failed, run] = useFailure();
   const on = cfg.get("plugins.entries.voice-call.enabled") === true;
-  const w = useWhy(on ? "" : cfg.loading ? LOADING : "Turn on Phone calls first.");
+  const started = availability(engine, "voicecall.initiate") !== "no";
+  const w = useWhy(on ? (started ? "" : CALLS_NOT_STARTED) : cfg.loading ? LOADING : CALLS_OFF);
   return <>
-    <Needs engine={engine} need={["voicecall.initiate"]} where={row.label ?? ""}><Btn disabled={!on} aria-describedby={w.describedBy} onClick={() => void run(async () => { await engine.request("voicecall.initiate", { message: "This is a test call from Branch.", mode: "notify" }); })}>Call me</Btn></Needs>
+    <Needs engine={engine} need={["voicecall.initiate"]} where={row.label ?? ""} reason={w.why || CALLS_OFF}><Btn disabled={!on} aria-describedby={w.describedBy} onClick={() => void run(async () => { await engine.request("voicecall.initiate", { message: "This is a test call from Branch.", mode: "notify" }); })}>Call me</Btn></Needs>
     {w.line()}
     <Failed text={failed} />
   </>;
