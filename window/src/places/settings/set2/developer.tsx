@@ -400,12 +400,12 @@ export function ToolsTech({ engine, config, base }: Ctx) {
 /* ───────────── System ───────────── */
 
 // No Portable mode row: neither the Branch app nor the engine can keep data beside the program, so there is nothing to turn on.
-const SYS_OFF2: OffRow[] = [["Status line", "", APP, "seg:Default|Minimal|My script"]];
+// No Status line row: neither the Branch app nor the engine has a status line style to choose, so there is nothing to set.
 const SYS_OFF3: OffRow[] = [
   ["Is Branch keeping up", "Warns when the engine stalls for a second or more.", ne("stall warning"), "sw"],
   ["Save task trajectories", "Every step as JSON Lines, for analysis. Off until you choose: it uses disk.", ne("trajectory switch; branch sessions export-trajectory exports a conversation’s steps"), "sw"],
 ];
-rowsOf("System", ["Send metrics with OpenTelemetry", "Detailed logs for", "Cache trace", "Diagnostics", ...titles(SYS_OFF2), "Find Branch on other computers nearby", "What it tells the network", "Find it across networks", "Plan finding it across networks", "Set up finding it across networks", ...titles(SYS_OFF3)]);
+rowsOf("System", ["Send metrics with OpenTelemetry", "Detailed logs for", "Cache trace", "Diagnostics", "Find Branch on other computers nearby", "What it tells the network", "Find it across networks", "Plan finding it across networks", "Set up finding it across networks", ...titles(SYS_OFF3)]);
 
 function Flags({ config }: Ctx) {
   const raw = config.get("diagnostics.flags");
@@ -436,7 +436,6 @@ export function SystemSec(ctx: Ctx) {
       <Flags {...ctx} />
       <Ctl title="Cache trace" sub="Records cache decisions; turn it off when done."><Switch label="Cache trace" checked={config.get("diagnostics.cacheTrace.enabled") === true} disabled={config.loading} onChange={(on) => void config.set("diagnostics.cacheTrace.enabled", on)} /></Ctl>
       <Ctl title="Diagnostics" sub="Turn off only where every bit of disk and processor counts."><Switch label="Diagnostics" checked={config.get("diagnostics.enabled") !== false} disabled={config.loading} onChange={(on) => void config.set("diagnostics.enabled", on)} /></Ctl>
-      <Greyed rows={SYS_OFF2} />
       <Ctl title="Find Branch on other computers nearby" sub="Tools and models on your network."><Switch label="Find Branch on other computers nearby" checked={mdns !== "off"} disabled={config.loading} onChange={(on) => void config.set("discovery.mdns.mode", on ? null : "off")} /></Ctl>
       <Ctl title="What it tells the network" sub="Name only is enough for most homes." help="Name only is enough for most homes. Turning the switch above off stops it telling the network anything.">
         <Seg label="What it tells the network" value={mdns === "full" ? "full" : "minimal"} disabled={config.loading || mdns === "off"} onChange={(v) => void config.set("discovery.mdns.mode", v === "minimal" ? null : v)} options={[{ id: "minimal", label: "Name only" }, { id: "full", label: "Name, command path and SSH port" }]} />
