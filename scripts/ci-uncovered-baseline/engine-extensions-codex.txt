@@ -245,7 +245,6 @@ engine:extensions/codex/src/app-server/run-attempt.steering.test.ts
 engine:extensions/codex/src/app-server/run-attempt.subscription.test.ts
 engine:extensions/codex/src/app-server/run-attempt.test.ts
 engine:extensions/codex/src/app-server/run-attempt.turn-events.test.ts
-engine:extensions/codex/src/app-server/run-attempt.turn-watches.test.ts
 engine:extensions/codex/src/app-server/run-attempt.usage-limits.test.ts
 engine:extensions/codex/src/app-server/run-attempt.vision-tools.test.ts
 engine:extensions/codex/src/app-server/run-attempt.workspace-snapshot.test.ts
