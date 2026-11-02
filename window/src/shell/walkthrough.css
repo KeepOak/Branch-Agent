@@ -35,6 +35,15 @@
   transition: top 0.3s, left 0.3s;
   pointer-events: auto;
 }
+/* A card squeezed between a mascot and the window's edge: its text scrolls, its buttons stay in view. */
+.tour-card.tight {
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  overflow: hidden;
+}
+.tour-card.tight p {
+  min-height: 0;
+  overflow-y: auto;
+}
 .tour-card .n {
   font: 500 10.5px var(--mono);
   color: var(--accent-ink);

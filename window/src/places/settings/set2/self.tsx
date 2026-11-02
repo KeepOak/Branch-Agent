@@ -335,7 +335,7 @@ function YourSettings({ engine, config }: Ctx) {
       <Ctl title="Where files are kept" sub="Attachments and what Trunks make." off="Needs the engine to keep files somewhere else.">
         <Pick label="Where files are kept" value="local" onChange={() => undefined} options={[{ id: "local", label: "This computer" }, { id: "s3", label: "Amazon S3" }, { id: "gcs", label: "Google Cloud Storage" }, { id: "azure", label: "Azure Blob" }]} />
       </Ctl>
-      <Ctl title="Where your data lives" sub="Moves conversations, memory and settings together." help="Moves conversations, memory and settings together. Portable mode (Developer) keeps them beside the program." off={MOVE_WHY}>
+      <Ctl title="Where your data lives" sub="Moves conversations, memory and settings together." help="Moves conversations, memory and settings together." off={MOVE_WHY}>
         {str(sys.diskPath) ? <code className="s2-code">{str(sys.diskPath)}</code> : null}<Btn sm disabled>Move…</Btn>
       </Ctl>
       <Ctl title="Put Branch on a USB stick" sub="Runs on Mac, Windows or Linux from the stick." off="Writing a copy to a USB stick needs the Branch app."><Btn sm disabled>Make one</Btn></Ctl>
