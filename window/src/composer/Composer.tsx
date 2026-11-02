@@ -469,9 +469,10 @@ export function Composer(props: Props) {
   const cost = usageCost && usageCost.key === engine?.sessionKey ? usageCost.value : undefined;
   const temporary = props.draftTemporary === true || row.incognito === true;
   // A held send with no model shows Connect a model here, with its button. The empty state then leaves its copy out,
-  // and the plain no-model line above steps aside, so the notice shows once.
+  // and the plain no-model line above steps aside, so the notice shows once. A new-topic draft's empty state reads the
+  // draft engine's key, so a draft marks that key too.
   const holdsConnect = Boolean(problem && isNoUsableModelError(problem));
-  const connectKey = props.draftAgentId ? null : engine?.sessionKey ?? null;
+  const connectKey = engine?.sessionKey ?? null;
   useEffect(() => {
     if (!connectKey) return;
     markComposerConnect(connectKey, holdsConnect);
@@ -492,7 +493,7 @@ export function Composer(props: Props) {
     >
       {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
       {noModel && engine ? <FreeModelSetup engine={engine} onReady={() => void conv.reload()} /> : null}
-      {noModel && !(holdsConnect && !conv.noKeyError) ? <NoModelLine onOpen={onOpen} error={conv.noKeyError} onRetry={() => void conv.retryNoKey()} /> : null}
+      {noModel && !(holdsConnect && !conv.noKeyError) ? <NoModelLine onOpen={onOpen} error={conv.noKeyError} onRetry={() => void conv.retryNoKey()} held={holdsConnect} /> : null}
       {conversationProblem ? <p className={isPreparationPending(conversationProblem) ? "c-note" : "c-note bad"} role={isPreparationPending(conversationProblem) ? "status" : "alert"}>{isPreparationPending(conversationProblem) ? preparationLabel(trunkName) : shortReason(conversationProblem)}</p> : null}
       {problem && isNoUsableModelError(problem) ? (
         <div role="alert" data-testid="hold-connect-model"><ConnectModelNotice onOpen={onOpen} className="c-note bad c-nomodel" /></div>
@@ -776,10 +777,12 @@ function ToolButton({ refEl, icon, label, tip, open, onClick, disabled, testId }
 }
 
 /** Suggestion while a free local model is getting ready; after a failure, the reason plus Try again. */
-function NoModelLine({ onOpen, error, onRetry }: { onOpen?: (target: OpenTarget) => void; error?: string | null; onRetry?: () => void }) {
+function NoModelLine({ onOpen, error, onRetry, held }: { onOpen?: (target: OpenTarget) => void; error?: string | null; onRetry?: () => void; held?: boolean }) {
+  // While a held send shows the Connect a model notice, a free model error keeps its Try again but not those words again.
+  const words = error ? (held && isNoUsableModelError(error) ? null : error) : CONNECT_MODEL_ANSWERS;
   return (
     <p className="c-nomodel" data-testid="no-model" role={error ? "alert" : undefined}>
-      {error ?? CONNECT_MODEL_ANSWERS}{" "}
+      {words}{words ? " " : null}
       {error ? <button type="button" className="c-link" onClick={onRetry}>Try again</button> : null}
       {error ? " · " : null}
       <button type="button" className="c-link" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => onOpen?.("settings/accounts/add")}>Add an account</button>

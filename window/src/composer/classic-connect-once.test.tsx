@@ -30,7 +30,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function mount() {
+async function mount(opts: { draft?: boolean } = {}) {
   const model = "openai/gpt-6-astra";
   const request = vi.fn(async (method: string) => {
     if (method === "agents.list")
@@ -57,7 +57,7 @@ async function mount() {
     return {};
   });
   const engine: WindowEngine = {
-    sessionKey: "agent:main:empty",
+    sessionKey: opts.draft ? "agent:main:main" : "agent:main:empty",
     agentId: "main",
     request: request as unknown as WindowEngine["request"],
     onEvent: () => () => undefined,
@@ -87,6 +87,7 @@ async function mount() {
           onStop={vi.fn()}
           engine={engine}
           onOpen={vi.fn()}
+          draftAgentId={opts.draft ? "main" : undefined}
         />
       </ThreadContext.Provider>,
     ),
@@ -165,6 +166,16 @@ describe("Classic empty conversation with no model shows one Connect a model not
     });
     await settle();
     expect(onSend).not.toHaveBeenCalled();
+    expectOneHeldNotice(host);
+  });
+
+  it("in a new-topic draft, a held Send shows the reason once too", async () => {
+    const { host, onSend } = await mount({ draft: true });
+    const box = await type(host, "Hello, can you help me plan my week?");
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Send"]')!.click());
+    await settle();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(box.value).toBe("Hello, can you help me plan my week?");
     expectOneHeldNotice(host);
   });
 });
