@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Coming } from "../glass/coming";
 import { useWizard, type WizardStep } from "../places/settings/use-wizard";
 import type { WindowEngine } from "./engine";
+import { plainFreeModelFailure } from "./free-model-failure";
 import { plainFreeModelQuestion } from "./free-model-question";
 import { plainFreeModelSkip, skippedFreeModelReason } from "./free-model-skip";
 import { FREE_MODEL_FAILED, NO_KEY_DEFAULT_KIND } from "./no-key-default";
@@ -23,7 +24,8 @@ type Props = {
 function friendlyWizardError(message: string): string {
   if (/sign-in was cancelled/i.test(message)) return FREE_MODEL_CANCELLED;
   if (message === "A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster.") return message;
-  return FREE_MODEL_FAILED;
+  // A failed download says what went wrong next to Try again, not only the generic line.
+  return plainFreeModelFailure(message) ?? FREE_MODEL_FAILED;
 }
 
 function plainFreeModelStep(step: WizardStep): string {
