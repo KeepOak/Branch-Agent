@@ -19,9 +19,9 @@ import {
 import { nextModeOf, nextSub, restingOf, setNextMode, setTrunkAccount, shortId, sourceLine, trunkChoices } from "../../../places/settings/set1/accounts-more";
 import { key, moveToTop, PAUSE_OFF, RENAME_LATER, signOutAll } from "../../../places/settings/set1/accounts-select";
 import { AddAccountDialog, type AddStart } from "../../../places/settings/set1/add-account";
-import { APPS, appSub, foundState, PILL, type App } from "../../../places/settings/set1/coding-apps";
+import { APPS, appStatusLine, appStatusOf, appSub, foundState, STATUS_PILL, type App } from "../../../places/settings/set1/coding-app-status";
 import { CODEX_DOWNLOAD_METHOD, codexDownloadOffered, useCodexDownload } from "../../../places/settings/set1/codex-get";
-import { appChatModels, modelsOf } from "../../../places/settings/set1/models-data";
+import { modelsOf } from "../../../places/settings/set1/models-data";
 import { PickOwn } from "../../../places/settings/set1/own-accounts";
 import { Logo, serviceName } from "../../../places/settings/set1/service";
 import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
@@ -485,8 +485,6 @@ function openAddAccount(provider: string) {
   window.dispatchEvent(new Event("branch:open-add-account"));
 }
 
-/** The engine's model runtime for a coding app whose sign-in can answer chats; Codex is a plugin with its own switch. */
-const RUNTIME: Readonly<Record<string, string>> = { "claude-cli": "claude-cli", "gemini-cli": "google-gemini-cli" };
 /** The engine's model list as Models reads it: the household view names the default Trunk (Models: scope || agentId),
  *  since with several Trunks the engine refuses a models.list that names none. */
 const useModelList = (engine: WindowEngine) => useRead(engine, "models.list", { includeDetails: true, ...agentOf(engine) });
@@ -505,11 +503,10 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
   const codex = useCodexDownload(engine, offer);
   const getting = offer ? codex.view : undefined;
   const usable = f.state === "ready" || getting?.ready === true;
-  // Models reads models.list: a ready app with no model there for chats is a coding app only, not "Models ready".
+  // One status with Settings › Coding, Models and the first-run step: detect, then models.list for chats.
   const models = useModelList(engine);
-  const runtime = RUNTIME[app.kind];
-  const appOnly = Boolean(runtime) && f.state === "ready" && models.data !== undefined && !appChatModels(modelsOf(models.data), runtime).length;
-  const word = detect.error ? "Couldn’t check" : detect.loading ? "Looking…" : appOnly ? "Connected" : PILL[f.state][1];
+  const status = appStatusOf(app, f, models.data !== undefined ? modelsOf(models.data) : undefined);
+  const word = detect.error ? "Couldn’t check" : detect.loading ? "Looking…" : STATUS_PILL[status.state][1];
   const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
   const pluginOn = app.plugin ? record(record(record(config.plugins).entries)[app.plugin]).enabled === true : f.state === "ready";
   // A failed check (#1850): one plain sentence at Regular and Advanced, the exact words at Technical. A sign-in failure
@@ -518,7 +515,7 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
   const signInFailed = Boolean(why && SIGN_IN_ERROR.test(why));
   const signIn = signInFailed && app.plugin === "codex";
   const failLine = !why ? "" : level >= 2 ? why : signInFailed && !signIn ? `Open ${app.name} on this computer and sign in there, then choose Check again.` : plainError(why, true);
-  const sub = codex.prompt ? codex.prompt : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detect.loading ? "Looking on this computer…" : appOnly ? `${app.name} is a coding app on this computer, not a model for chats.` : appSub(app, f, pluginOn);
+  const sub = codex.prompt ? codex.prompt : getting?.line ? getting.line : getting?.ready ? appSub(app, { state: "ready" }, pluginOn) : detect.loading ? "Looking on this computer…" : appStatusLine(app, status, pluginOn);
   return <>
     <div className="r1s-item">
       <Logo id={app.brand} size={22} />

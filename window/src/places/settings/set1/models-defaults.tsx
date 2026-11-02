@@ -2,13 +2,14 @@
 // what, and the fallback lists; plus the Defaults-only Advanced and Technical sections. Saves at once.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useId, useState } from "react";
-import { record, text, visible } from "../adapter";
+import { record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Ctl, Empty, Hint, LinkBtn, Pick, Sec, Seg, Switch, useSaveRunner, type Opt } from "../kit";
 import { Logo } from "./service";
 import { appChatModels, connectionsOf, fallbacksOf, modelOpts, plainThinking, refOf, type Connection, type ModelsCtx } from "./models-data";
 import { useLevel } from "../kit";
 import { showsInternals } from "../internals";
+import { APPS, appStatus, CHAT_RUNTIME, notForChats, type App } from "./coding-app-status";
 
 const PREF = "branch.models.connectionDefaults";
 /** Coming: a separate planning model is not in the engine yet. Survives shownWhy (not a dev note) and Ctl hides the row below Technical. */
@@ -47,7 +48,10 @@ function connectionsWithApps(models: ModelsCtx["models"], providers: ModelsCtx["
 export function DefaultsTab({ m, openSettings }: { m: ModelsCtx; openSettings?: (page: string) => void }) {
   const conns = connectionsWithApps(m.models, m.providers);
   const defs = useConnectionDefaults(m);
-  if (!conns.length) return <NoModelYet openSettings={openSettings} />;
+  // The coding apps Accounts and Settings › Coding show as connected but not for chats, named here in the same words.
+  const detect = useResource<RecordValue>(m.engine, "branch.setup.detect", m.agent);
+  const apps = m.catalog.data ? APPS.filter((app) => CHAT_RUNTIME[app.kind] && appStatus(app, detect.data, m.models).state === "connected") : [];
+  if (!conns.length) return <NoModelYet openSettings={openSettings} apps={apps} />;
   return (
     <>
       <Sec title="Each connection’s default">
@@ -60,14 +64,14 @@ export function DefaultsTab({ m, openSettings }: { m: ModelsCtx; openSettings?: 
 }
 
 /** No model yet (#1769, #553): both ways to get one, each with the button that opens it. */
-function NoModelYet({ openSettings }: { openSettings?: (page: string) => void }) {
+function NoModelYet({ openSettings, apps = [] }: { openSettings?: (page: string) => void; apps?: App[] }) {
   const addAccount = () => {
     sessionStorage.setItem("branch.openAddAccount", "1");
     openSettings?.("accounts");
   };
   return (
     <Empty>
-      No model set up yet. Add an account to use a service like Claude or ChatGPT, or use a model on this computer: free, private, and no account needed.
+      No model set up yet.{apps.map((app) => " " + notForChats(app)).join("")} Add an account to use a service like Claude or ChatGPT, or use a model on this computer: free, private, and no account needed.
       <span className="acts">
         <Btn pri disabled={!openSettings} onClick={addAccount}>Add an account</Btn>
         <Btn disabled={!openSettings} onClick={() => openSettings?.("local")}>Use a model on this computer</Btn>
