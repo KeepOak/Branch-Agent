@@ -43,3 +43,15 @@ export function isComingWhy(why: string | undefined | null): boolean {
 export function shownWhy(why: string | undefined | null): string | undefined {
   return why && !isDevNote(why) ? why : undefined;
 }
+
+/** Rows next to each other that carry the same reason, in order, so a shared reason can be said once above them.
+ *  A row with no reason is always on its own. */
+export function sameWhyRuns<T>(rows: T[], why: (row: T) => string | undefined): T[][] {
+  const runs: T[][] = [];
+  for (const row of rows) {
+    const last = runs[runs.length - 1];
+    const w = why(row);
+    if (last && w && why(last[0]) === w) last.push(row); else runs.push([row]);
+  }
+  return runs;
+}
