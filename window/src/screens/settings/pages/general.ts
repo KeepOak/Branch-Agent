@@ -173,8 +173,11 @@ const ROWS_AS_DRAWN: Row[] = [
 
   { id: "general.clipboard.keep", page: "general", card: "Clipboard history", label: "Keep after restart", help: "Off until you choose: copied text would be written to disk.", level: 1, control: "toggle", source: no("a clipboard history") },
 
+  // The shortcut's page control is only a Coming Change button, so, like Cover now below, the row is Coming by its source
+  // and shows only at Technical (rows.ts COMING_FROM).
+  { id: "general.quick-ask.shortcut", page: "general", card: "Quick ask", label: "Quick ask shortcut", help: "Escape keeps the old keys.", level: 1, control: "custom",
+    source: { kind: "coming", need: "desktop: a quick ask shortcut", reason: "Changing the quick ask shortcut comes in a later update." } },
   { id: "general.quick-ask.anywhere", page: "general", card: "Quick ask", label: "Quick ask from anywhere", help: "A small box over any app.", level: 1, control: "toggle", source: no("quick ask over other apps") },
-  { id: "general.quick-ask.shortcut", page: "general", card: "Quick ask", label: "Quick ask shortcut", help: "Escape keeps the old keys.", level: 1, control: "custom", source: slot(["desktop: a quick ask shortcut"], "Changing the quick ask shortcut comes in a later update.") },
 
   { id: "general.controllers.pad", page: "general", card: "Controllers", label: "Use a gamepad or macro pad", help: "Buttons answer and steer Trunks; a keypad’s lights show who needs you.", level: 1, control: "toggle", source: no("controllers") },
 

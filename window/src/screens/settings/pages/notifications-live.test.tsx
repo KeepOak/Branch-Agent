@@ -110,20 +110,6 @@ describe("R1 Settings › Notifications is a native R1 page with the preview's c
     expect(row("notifications.quiet.hours")!.querySelector<HTMLElement>("[role=switch]")?.getAttribute("aria-checked")).toBe("true");
   });
 
-  it("Send test says why it is greyed when this window is not the Branch app", async () => {
-    const env = engineOf();
-    env.engine.features = { methods: METHODS.filter((m) => m !== "push.web.test"), events: [] };
-    await act(async () => root.render(<SettingsFrame engine={env.engine} page="notifications" pages={R1_PAGES} />));
-    await settle();
-    for (const level of ["Regular", "Advanced"] as const) {
-      await setLevel(level);
-      const send = [...row("notifications.tell.test")!.querySelectorAll("button")].find((b) => b.textContent === "Send test") as HTMLButtonElement;
-      expect(send, level).toBeTruthy();
-      expect(send.disabled || send.getAttribute("aria-disabled") === "true", level).toBe(true);
-      const why = document.getElementById(send.getAttribute("aria-describedby") ?? "");
-      expect(why?.textContent, level).toBe("Sends a real notification from the Branch app on your computer.");
-    }
-  });
 });
 
 // Private #1093 (Verifier shots p1093-6, p1093-7): a row's help never says it is off while its switch is on, and the

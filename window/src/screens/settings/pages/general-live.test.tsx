@@ -47,8 +47,8 @@ it("draws the preview's General cards at each level, and Pinned only once a row 
   expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing"]);
   await remount();
   await mount(engine, "advanced");
-  // Clipboard history and Controllers wait for a later update: they show with every Coming row, at Technical (Private #1093 item 4).
-  expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "Quick ask"]);
+  // Clipboard history, Quick ask and Controllers wait for a later update: they show with every Coming row, at Technical (Private #1093 item 4).
+  expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns"]);
   await remount();
   await mount(engine, "technical");
   expect(cards()).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "History repair", "Waiting line", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"]);

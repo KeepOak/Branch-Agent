@@ -8,7 +8,9 @@ import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
 import { useOperation, useResource } from "../library/data";
 import { num, rec, recs, rows, str, strs, type Row } from "./data";
-import { Avatar, Empty, Glyph, Section, Seg, Status, Sw } from "./ui";
+import { Avatar, Empty, Glyph, Section, Seg, Sw } from "./ui";
+import { Status } from "./plain-status";
+import { plainError } from "../../shell/plain-error";
 
 const SNAPSHOTS_OFF = "Needs the engine's snapshot inbox.";
 const OPEN = new Set(["shared", "read-only", "suggest"]);
@@ -57,7 +59,7 @@ function LinkRow({ engine, row, made, onStopped }: { engine: WindowEngine; row: 
   const op = useOperation(engine);
   return <div className="pp-prow">
     <span className="pp-tile"><Icon name="globe" small /></span>
-    <span className="grow"><b>{row.title} <span className="pp-tag">A copy</span></b><small>Anyone with the link can read it · made {new Date(made).toLocaleDateString()}</small>{op.error && <small role="alert" className="pp-error">{op.error}</small>}</span>
+    <span className="grow"><b>{row.title} <span className="pp-tag">A copy</span></b><small>Anyone with the link can read it · made {new Date(made).toLocaleDateString()}</small>{op.error && <small role="alert" className="pp-error">{plainError(op.error)}</small>}</span>
     <button type="button" className="btn ghost sm" disabled={op.busy || !row.sessionId} title={row.sessionId ? undefined : "The engine did not give this conversation's id."} onClick={() => void op.run("session.publicShare.set", { sessionKey: row.key, expectedSessionId: row.sessionId, enabled: false }, onStopped)}>Stop this link</button>
   </div>;
 }
@@ -102,7 +104,7 @@ function ManageDialog({ engine, row, onClose, onChanged }: { engine: WindowEngin
         {addable.length > 0 && <AddMember options={addable.map(i => ({ id: str(i.id), name: str(i.displayName) || str(i.label) || str(i.id) }))} busy={op.busy} add={id => void op.run("session.members.add", { sessionKey: row.key, identityId: id }, after)} />}
         <p className="pp-hint" style={{ margin: 0 }}>They see who started it, who owns it, and who else is in it. Their drafts stay private until they send.</p>
       </>}
-      {op.error && <p role="alert" className="pp-error">{op.error}</p>}
+      {op.error && <p role="alert" className="pp-error">{plainError(op.error)}</p>}
     </div>
   </Dialog>;
 }

@@ -4,7 +4,8 @@ import { Face } from "../../face/Face";
 import type { WindowEngine } from "../../connect/engine";
 import { useResource } from "../library/data";
 import { num, recs, rows, str, trunkNames, type Row } from "./data";
-import { Empty, Status } from "./ui";
+import { Empty } from "./ui";
+import { Status } from "./plain-status";
 
 type Member = { key: string; status: string };
 type Team = { row: Row; round: number; members: Member[] };
