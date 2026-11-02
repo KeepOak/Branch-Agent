@@ -1,8 +1,8 @@
 // Desktop controls bridge: every OS call is a fake, so nothing on this computer changes.
 import assert from "node:assert/strict";
-import { chmod, copyFile, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdtemp, mkdir, readdir, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
@@ -10,7 +10,7 @@ import test from "node:test";
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 if (!dist) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to current strict-compiled source");
 const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, releaseDownloadUrl, RELEASE_DOWNLOADS, RELEASE_PAGES,
-  branchPosixShim, branchCommandOwner, posixBranchCommand, BRANCH_COMMAND_MARKER, LEGACY_BRANCH_COMMAND_MARKER, appRemoval, appRemovalPlan, APP_REMOVAL_KEEPS } =
+  branchPosixShim, branchCommandOwner, branchCommandTarget, posixBranchCommand, BRANCH_COMMAND_MARKER, LEGACY_BRANCH_COMMAND_MARKER, appRemoval, appRemovalPlan, APP_REMOVAL_KEEPS } =
   await import(pathToFileURL(join(dist, "desktop-controls.js")));
 
 async function fixture(run) {
@@ -653,6 +653,131 @@ test("the macOS and Linux branch command installs, refreshes and removes only it
     assert.equal(branchCommandOwner(command), "other", "a link is never followed or replaced");
     await assert.rejects(cli.install(), /another program's branch command/);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+// The guard: every folder below is made in tmpdir(); "the real home" stands for what os.userInfo() names.
+async function guardLayout() {
+  const root = await mkdtemp(join(tmpdir(), "branch-command-guard-"));
+  const realHome = join(root, "real-home"), data = join(root, "data"), tmp = join(root, "tmp");
+  await mkdir(join(realHome, ".local", "bin"), { recursive: true });
+  await mkdir(data);
+  await mkdir(tmp);
+  const cfg = { dataDir: data, engineDir: join(root, "engine"), nodePath: process.execPath, gatewayPort: 19031 };
+  const owned = ["#!/bin/sh", BRANCH_COMMAND_MARKER, "# The owner's own copy.", ""].join("\n");
+  return { root, realHome, data, tmp, cfg, owned };
+}
+const REFUSED = /^Branch left \S+ alone: a test or temp data folder may not write the owner's branch command$/;
+const refused = { message: REFUSED };
+
+test("a test never rewrites or removes the real user's branch command", posixOnly, async () => {
+  const { root, realHome, data, tmp, cfg, owned } = await guardLayout();
+  try {
+    const target = branchCommandTarget({ dataDir: data, env: { BRANCH_DESKTOP_TEST_DIST: join(root, "dist") }, home: realHome, realHome, tmp });
+    assert.equal(target.file, join(realHome, ".local", "bin", "branch"));
+    assert.match(target.refusal, REFUSED);
+    assert.ok(target.refusal.includes(target.file), "the refusal names the file it left alone");
+    await writeFile(target.file, owned, { mode: 0o755 });
+    const cli = posixBranchCommand(target.file, () => branchPosixShim(cfg), target.refusal);
+    assert.throws(() => cli.refresh(), refused);
+    await assert.rejects(cli.install(), refused);
+    await assert.rejects(cli.uninstall(), refused);
+    assert.equal(await readFile(target.file, "utf8"), owned, "the owner's app-owned command stays byte for byte");
+    assert.deepEqual(await readdir(dirname(target.file)), ["branch"], "no temporary file is left beside it");
+    for (const env of [{ BRANCH_DESKTOP_TEST: "1" }, { NODE_TEST_CONTEXT: "child-v8" }]) {
+      assert.match(branchCommandTarget({ dataDir: data, env, home: realHome, realHome, tmp }).refusal, REFUSED, JSON.stringify(env));
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("a data folder in the temp folder never writes the real user's branch command, even with no test signal", posixOnly, async () => {
+  const { root, realHome, cfg, owned } = await guardLayout();
+  try {
+    // On macOS the temp folder is /var/... and its real path /private/var/...: either spelling is caught.
+    const real = await realpath(root);
+    for (const [dataDir, tmp] of [[join(root, "data"), root], [join(real, "data"), root], [join(root, "data", "not-made-yet"), real]]) {
+      const target = branchCommandTarget({ dataDir, env: {}, home: realHome, realHome, tmp });
+      assert.match(target.refusal ?? "", REFUSED, dataDir);
+    }
+    const target = branchCommandTarget({ dataDir: cfg.dataDir, env: {}, home: realHome, realHome, tmp: root });
+    await writeFile(target.file, owned, { mode: 0o755 });
+    const cli = posixBranchCommand(target.file, () => branchPosixShim(cfg), target.refusal);
+    assert.throws(() => cli.refresh(), refused);
+    await assert.rejects(cli.install(), refused);
+    assert.equal(await readFile(target.file, "utf8"), owned);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("a test with its own HOME writes the branch command there as usual", posixOnly, async () => {
+  const { root, realHome, data, tmp, cfg, owned } = await guardLayout();
+  try {
+    const home = join(root, "test-home");
+    const target = branchCommandTarget({ dataDir: data, env: { BRANCH_DESKTOP_TEST_DIST: join(root, "dist"), NODE_TEST_CONTEXT: "child-v8" }, home, realHome, tmp: root });
+    assert.deepEqual(target, { file: join(home, ".local", "bin", "branch"), refusal: undefined });
+    const cli = posixBranchCommand(target.file, () => branchPosixShim(cfg), target.refusal);
+    await cli.install();
+    assert.equal(await readFile(target.file, "utf8"), branchPosixShim(cfg));
+    await writeFile(target.file, owned);
+    cli.refresh();
+    assert.equal(await readFile(target.file, "utf8"), branchPosixShim(cfg), "launch rewrites the app's own command");
+    await cli.uninstall();
+    assert.equal(branchCommandOwner(target.file), "none");
+    assert.deepEqual(await readdir(join(realHome, ".local", "bin")), [], "the real home is never touched");
+    assert.ok(tmp);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("the app itself (real home, its own data folder, no test signal) writes the branch command", posixOnly, async () => {
+  const { root, realHome, data, tmp, cfg, owned } = await guardLayout();
+  try {
+    const target = branchCommandTarget({ dataDir: data, env: {}, home: realHome, realHome, tmp });
+    assert.deepEqual(target, { file: join(realHome, ".local", "bin", "branch"), refusal: undefined });
+    const cli = posixBranchCommand(target.file, () => branchPosixShim(cfg), target.refusal);
+    await writeFile(target.file, owned, { mode: 0o755 });
+    cli.refresh();
+    assert.equal(await readFile(target.file, "utf8"), branchPosixShim(cfg));
+    await cli.uninstall();
+    assert.equal(await cli.installed(), false);
+    await cli.install();
+    assert.equal(await cli.installed(), true);
+    assert.equal((await stat(target.file)).mode & 0o111, 0o111);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("a refused or failed launch refresh goes to the app's log and never stops the launch", async () => fixture(async ({ deps }) => {
+  const lines = [];
+  deps.log = line => lines.push(line);
+  deps.cli.refresh = () => { throw new Error("Branch left x alone: a test or temp data folder may not write the owner's branch command"); };
+  assert.doesNotThrow(() => createDesktopControls(deps).apply());
+  assert.deepEqual(lines, ["branch command not refreshed: Branch left x alone: a test or temp data folder may not write the owner's branch command"]);
+}));
+
+test("the app's OS wiring leaves the real user's command alone in a test and writes the refusal to desktop.log", posixOnly, async () => {
+  const { root, realHome, cfg, owned } = await guardLayout();
+  const { createRequire } = await import("node:module");
+  const require = createRequire(import.meta.url), Module = require("node:module"), originalLoad = Module._load, os = require("node:os");
+  const originalUserInfo = os.userInfo, previousHome = process.env.HOME;
+  Module._load = function (request, ...rest) {
+    return request === "electron" ? { nativeImage: {}, shell: {} } : originalLoad.call(this, request, ...rest);
+  };
+  os.userInfo = (...args) => ({ ...originalUserInfo(...args), homedir: realHome });
+  process.env.HOME = realHome;
+  try {
+    const command = join(realHome, ".local", "bin", "branch");
+    await writeFile(command, owned, { mode: 0o755 });
+    const { desktopOs } = require(join(dist, "desktop-os.js"));
+    const deps = desktopOs({ getLoginItemSettings: () => ({ openAtLogin: false }) }, cfg, () => undefined, "icon.png");
+    assert.doesNotThrow(() => createDesktopControls(deps).apply());
+    assert.equal(await readFile(command, "utf8"), owned);
+    assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"),
+      /branch command not refreshed: Branch left \S+ alone: a test or temp data folder may not write the owner's branch command\n$/);
+  } finally {
+    Module._load = originalLoad;
+    // Later tests load these with their own Electron fake.
+    for (const name of ["desktop-os.js", "resident-window.js"]) delete require.cache[join(dist, name)];
+    os.userInfo = originalUserInfo;
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("user Path edits add once and remove case-insensitively", () => {

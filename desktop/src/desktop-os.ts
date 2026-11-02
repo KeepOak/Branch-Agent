@@ -3,11 +3,11 @@
 import { nativeImage, shell, type App, type Tray } from "electron";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { DesktopConfig } from "./config";
-import { appRemoval, branchPosixShim, branchShim, branchShShim, editUserPath, pathHas, posixBranchCommand, ringBitmap, type AppRemoval, type ControlDeps } from "./desktop-controls";
+import { appRemoval, branchCommandTarget, branchPosixShim, branchShim, branchShShim, editUserPath, pathHas, posixBranchCommand, ringBitmap, type AppRemoval, type ControlDeps } from "./desktop-controls";
+import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
 import { menuBarIcon } from "./resident-window";
 
 const run = promisify(execFile);
@@ -54,14 +54,19 @@ export function desktopOs(app: App, cfg: DesktopConfig, tray: () => Tray | undef
   const login = { path: process.execPath, args: [START_IN_TRAY] };
   // branch.cmd for cmd and PowerShell, an extensionless sh script for Git Bash (as npm's cmd-shim writes both).
   const binDir = join(cfg.dataDir, "bin"), shim = join(binDir, "branch.cmd"), shShim = join(binDir, "branch");
+  const command = branchCommandTarget({ dataDir: cfg.dataDir });
   return {
+    log: (line) => {
+      try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} ${line}\n`, BRANCH_LOG_LIMITS); } catch { /* logging never stops the app */ }
+    },
     settingsFile: join(cfg.dataDir, "desktop-settings.json"),
     login: {
       get: () => app.getLoginItemSettings(login).openAtLogin,
       set: (on) => app.setLoginItemSettings({ ...login, openAtLogin: on }),
     },
     // macOS and Linux: ~/.local/bin/branch, where the earlier installer put its command (refresh repairs that one).
-    cli: process.platform !== "win32" ? posixBranchCommand(join(homedir(), ".local", "bin", "branch"), () => branchPosixShim(cfg)) : {
+    // A test or temp data folder never writes the real user's command (branchCommandTarget).
+    cli: process.platform !== "win32" ? posixBranchCommand(command.file, () => branchPosixShim(cfg), command.refusal) : {
       installed: async () => existsSync(shim) && pathHas(await readUserPath(), binDir),
       install: async () => {
         mkdirSync(binDir, { recursive: true });

@@ -3,9 +3,10 @@
 // when nobody is signed in (Linux linger),
 // the branch command on PATH, the tray's usage ring and the "Get it" download pages. Every OS call is injected, so the
 // tests use fakes and never change this computer's startup, power or PATH settings.
-import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { chmodSync, lstatSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { saveUnlessDiskFull } from "./disk-full";
-import { dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { RELEASE_REPOSITORY } from "./component-update-manifest";
 import { isOwnedComponentWindow } from "./component-update-ipc";
 
@@ -183,6 +184,8 @@ export interface ControlDeps {
   /** Writes the settings file; tests inject a failing one. */
   writeFile?: (path: string, text: string) => void;
   onChange?: (settings: DesktopSettings) => void;
+  /** One line for the app's log (desktop.log). */
+  log?: (line: string) => void;
 }
 
 export interface DesktopControls {
@@ -277,7 +280,8 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
     },
     apply: () => {
       // An update can move the bundled node; the branch command (and agents registered with it) must keep working.
-      try { deps.cli.refresh?.(); } catch { /* a locked or read-only shim keeps its old copy */ }
+      // A locked or read-only shim keeps its old copy, and so does a refused one; either way the log says why.
+      try { deps.cli.refresh?.(); } catch (error) { deps.log?.(`branch command not refreshed: ${error instanceof Error ? error.message : String(error)}`); }
     },
     dispose: () => undefined,
   };
@@ -553,9 +557,38 @@ export function branchCommandOwner(file: string): "app" | "installer" | "other" 
   }
 }
 
-/** The macOS and Linux branch command at `file` (~/.local/bin/branch). Someone else's file there is never touched. */
-export function posixBranchCommand(file: string, shim: () => string): ControlDeps["cli"] {
+/** The path with every existing part resolved (on macOS /var is /private/var); a missing tail is kept as written. */
+function realPath(path: string): string {
+  try { return realpathSync(path); } catch {
+    const up = dirname(path);
+    return up === path ? path : join(realPath(up), basename(path));
+  }
+}
+const inside = (child: string, parent: string): boolean => {
+  const rel = relative(realPath(parent), realPath(child));
+  return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+};
+
+/** Where the macOS and Linux branch command goes (~/.local/bin/branch, with HOME winning), and why it may not be
+ *  written there. A test or a scratch copy (a test signal in the environment, or a data folder in the temp folder)
+ *  may never write the real user's command; it can still write one under its own HOME. */
+export function branchCommandTarget(o: { dataDir: string; env?: NodeJS.ProcessEnv; home?: string; realHome?: string; tmp?: string }):
+  { file: string; refusal: string | undefined } {
+  const env = o.env ?? process.env, home = o.home ?? homedir();
+  const file = join(home, ".local", "bin", "branch");
+  let realHome = o.realHome;
+  // userInfo ignores HOME; a user with no passwd entry keeps the guard on the HOME folder itself.
+  if (realHome === undefined) { try { realHome = userInfo().homedir; } catch { realHome = homedir(); } }
+  const test = Boolean(env.BRANCH_DESKTOP_TEST_DIST || env.BRANCH_DESKTOP_TEST === "1" || env.NODE_TEST_CONTEXT);
+  const refused = realPath(home) === realPath(realHome) && (test || inside(o.dataDir, o.tmp ?? tmpdir()));
+  return { file, refusal: refused ? `Branch left ${file} alone: a test or temp data folder may not write the owner's branch command` : undefined };
+}
+
+/** The macOS and Linux branch command at `file` (~/.local/bin/branch). Someone else's file there is never touched,
+ *  and a `refusal` (branchCommandTarget) leaves the file as it is and throws it. */
+export function posixBranchCommand(file: string, shim: () => string, refusal?: string): ControlDeps["cli"] {
   const write = (): void => {
+    if (refusal) throw new Error(refusal);
     mkdirSync(dirname(file), { recursive: true });
     const next = `${file}.${process.pid}.tmp`;
     writeFileSync(next, shim(), { mode: 0o755 });
@@ -568,7 +601,12 @@ export function posixBranchCommand(file: string, shim: () => string): ControlDep
       if (branchCommandOwner(file) === "other") throw new Error(`${file} is another program's branch command, so Branch left it as it is`);
       write();
     },
-    uninstall: async () => { if (branchCommandOwner(file) !== "other") rmSync(file, { force: true }); },
+    uninstall: async () => {
+      const owner = branchCommandOwner(file);
+      if (owner === "other" || owner === "none") return;
+      if (refusal) throw new Error(refusal);
+      rmSync(file, { force: true });
+    },
     // Also repairs the earlier installer's command, which points into a dist/cli.js the packaged app no longer has.
     refresh: () => { if (["app", "installer"].includes(branchCommandOwner(file))) write(); },
   };
