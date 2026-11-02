@@ -29,7 +29,7 @@ function fixture(extra = {}) {
   const run = async ms => {
     for (let spent = 0; spent <= ms; spent += AUTO_APPLY_POLL_MS) { await controller.tick(); now += AUTO_APPLY_POLL_MS; }
   };
-  return { controller, restarts, logs, run, set: value => { activity = { ...activity, ...value }; } };
+  return { controller, restarts, logs, run, advance: ms => { now += ms; }, set: value => { activity = { ...activity, ...value }; } };
 }
 
 test("nothing running and nothing readable: the staged update applies on its own after the unknown wait", async () => {
@@ -117,6 +117,47 @@ test("time with auto-apply off does not count toward the unknown wait", async ()
   on = true;
   await f.run(UNKNOWN_IDLE_MS - 2 * AUTO_APPLY_POLL_MS);
   assert.deepEqual(f.restarts, [], "applied before auto-apply had been back on for a full 10 minutes");
+  await f.run(4 * AUTO_APPLY_GAP_MS);
+  assert.equal(f.restarts.length, 1, f.logs.join("\n"));
+});
+
+test("10+ minutes under the update lock do not count toward the unknown wait", async () => {
+  let holder;
+  const f = fixture({ busy: () => holder });
+  await f.run(UNKNOWN_IDLE_MS - 4 * AUTO_APPLY_POLL_MS);
+  holder = "crash recovery";
+  await f.run(UNKNOWN_IDLE_MS + 2 * AUTO_APPLY_POLL_MS);
+  holder = undefined;
+  await f.run(UNKNOWN_IDLE_MS - 2 * AUTO_APPLY_POLL_MS);
+  assert.deepEqual(f.restarts, [], "applied before the window had been watched for a full 10 minutes after the lock");
+  await f.run(4 * AUTO_APPLY_GAP_MS);
+  assert.equal(f.restarts.length, 1, f.logs.join("\n"));
+});
+
+test("10+ minutes of failed-check back-off do not count toward the unknown wait", async () => {
+  let failing = false;
+  const health = () => {
+    if (failing) throw new Error("probe timed out");
+    return { diskFree: 1, memoryFree: 1 };
+  };
+  const f = fixture({ health });
+  await f.run(UNKNOWN_IDLE_MS - 4 * AUTO_APPLY_POLL_MS);
+  failing = true;
+  await f.run(UNKNOWN_IDLE_MS + 2 * AUTO_APPLY_POLL_MS);
+  assert.ok(f.logs.some(entry => /retrying in 300 s/.test(entry)), "the back-off reached its cap: " + f.logs.join("\n"));
+  failing = false;
+  await f.run(UNKNOWN_IDLE_MS - 2 * AUTO_APPLY_POLL_MS);
+  assert.deepEqual(f.restarts, [], "applied before the window had been watched for a full 10 minutes after the back-off");
+  await f.run(mod.AUTO_APPLY_CHECK_BACKOFF_MAX_MS + 4 * AUTO_APPLY_GAP_MS);
+  assert.equal(f.restarts.length, 1, f.logs.join("\n"));
+});
+
+test("a stretch with no check at all (a sleeping machine) restarts the unknown wait", async () => {
+  const f = fixture();
+  await f.run(UNKNOWN_IDLE_MS - 4 * AUTO_APPLY_POLL_MS);
+  f.advance(UNKNOWN_IDLE_MS + 5 * 60_000);
+  await f.run(UNKNOWN_IDLE_MS - 2 * AUTO_APPLY_POLL_MS);
+  assert.deepEqual(f.restarts, [], "the unwatched stretch counted toward the wait");
   await f.run(4 * AUTO_APPLY_GAP_MS);
   assert.equal(f.restarts.length, 1, f.logs.join("\n"));
 });

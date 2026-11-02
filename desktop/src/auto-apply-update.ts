@@ -102,6 +102,11 @@ function waitingLine(activity: UpdateActivity, extra = ""): string {
 }
 
 export const AUTO_APPLY_POLL_MS = 30_000;
+/**
+ * The unknown wait counts only time the window was actually watched. Unknown samples further apart than this (a
+ * sleeping machine, a stalled timer) leave a stretch nobody looked at, so the wait starts again from the later one.
+ */
+export const AUTO_APPLY_UNKNOWN_SAMPLE_GAP_MS = 2 * AUTO_APPLY_POLL_MS;
 /** A gap: no turn streams, no approval waits and no draft is unsaved for this long (Private #1047). */
 export const AUTO_APPLY_GAP_MS = 30_000;
 export const AUTO_APPLY_RETRY_MS = 60_000;
@@ -262,6 +267,13 @@ export function createAutoApplyUpdate(options: {
   /** Since when nothing has run and only the window's counts were unknown; reset by any run, stream or known count. */
   let unknownSince: number | undefined;
   let unknownNoted: string | undefined;
+  /** The last sample that saw only the window's counts unknown; a longer gap than the limit restarts the wait. */
+  let lastUnknownAt: number | undefined;
+  /**
+   * A tick that returns without reading the window (nothing pending, auto-apply off, a retry wait, the update lock, a
+   * health refusal, the Trunk-work batch, a failed check) leaves a stretch nobody watched: the unknown wait starts over.
+   */
+  const unwatched = () => { unknownSince = undefined; unknownNoted = undefined; lastUnknownAt = undefined; };
   const now = options.now ?? Date.now;
   const retryIn = (): string => `retrying in ${Math.max(1, Math.round(AUTO_APPLY_POLL_MS / 1000))}s`;
   const decision = (line: string) => {
@@ -283,13 +295,17 @@ export function createAutoApplyUpdate(options: {
       }
       lastSampleAt = now();
       if (runs > 0) lastRunSeenAt = lastSampleAt;
+      unwatched();
       return { activeRuns: runs, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false };
     }
     checkFailures = 0; silentNoted = false;
     lastSampleAt = now();
     if (activity.activeRuns > 0) lastRunSeenAt = lastSampleAt;
-    if (onlyWindowUnknown(activity)) unknownSince ??= lastSampleAt;
-    else unknownSince = undefined;
+    if (onlyWindowUnknown(activity)) {
+      const unwatchedGap = lastUnknownAt === undefined || lastSampleAt - lastUnknownAt > AUTO_APPLY_UNKNOWN_SAMPLE_GAP_MS;
+      if (unwatchedGap) unknownSince = lastSampleAt;
+      lastUnknownAt = lastSampleAt;
+    } else { unknownSince = undefined; lastUnknownAt = undefined; }
     return activity;
   };
   /** Notes runs in flight from the engine alone when it can, so a window that is not ready never blocks the update. */
@@ -320,7 +336,7 @@ export function createAutoApplyUpdate(options: {
         else if (heldVersion === undefined) pendingSince = now();
         handoffFailedAt = undefined;
         // A new version starts its own unknown wait; time counted for an earlier one does not carry over.
-        unknownSince = undefined; unknownNoted = undefined;
+        unwatched();
         heldVersion = version ?? undefined;
       }
       if (!version || !options.enabled() || appliedVersion === version) {
@@ -332,13 +348,14 @@ export function createAutoApplyUpdate(options: {
           await noteRuns().catch(() => undefined);
         }
         // Nothing here reads the window, so runs or drafts may come and go unseen: the unknown wait starts over.
-        unknownSince = undefined; unknownNoted = undefined;
+        unwatched();
         return;
       }
-      if (now() < retryAfter) return;
+      if (now() < retryAfter) { unwatched(); return; }
       const holder = options.busy?.();
       if (holder) {
         idleSince = undefined;
+        unwatched();
         decision(`waiting; ${holder} in progress; ${version} applies once it ends`);
         return;
       }
@@ -346,6 +363,7 @@ export function createAutoApplyUpdate(options: {
       const refusal = health && updateHealthRefusal(health);
       if (refusal) {
         idleSince = undefined;
+        unwatched();
         defer(`not starting ${version}: ${refusal}`);
         return;
       }
@@ -361,6 +379,7 @@ export function createAutoApplyUpdate(options: {
       const batched = !security && !capped && runningTrunkWork();
       if (batched && lastAppliedAt !== undefined && now() - lastAppliedAt < TRUNK_UPDATE_MIN_INTERVAL_MS) {
         idleSince = undefined;
+        unwatched();
         defer(`batching ${version} with Trunk work; the last update applied under an hour ago`);
         return;
       }
@@ -450,6 +469,7 @@ export function createAutoApplyUpdate(options: {
       }
     } catch (error) {
       idleSince = undefined;
+      unwatched();
       // A failed check is unknown, not "off": the setting stays on, and the next check waits a little longer.
       checkFailures++;
       const wait = Math.min(AUTO_APPLY_POLL_MS * 2 ** (checkFailures - 1), AUTO_APPLY_CHECK_BACKOFF_MAX_MS);
