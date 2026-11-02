@@ -6,6 +6,7 @@ import { Btn, Ctl, Pick, Sec, Seg, Switch, useLevel, useSaveRunner, type Opt } f
 import { DESKTOP, READING_MORE, rowOf, rowsOf, type RowSpec } from "./appearance-rows";
 import { sceneFile, type useLook } from "./appearance-store";
 import { LANGUAGES } from "../../../i18n/language";
+import { trayCard, trayMenuHelp, trayMenuLabel } from "../../../screens/settings/tray-words";
 
 export type Look = ReturnType<typeof useLook>;
 
@@ -173,8 +174,8 @@ export function LanguageSec({ look }: { look: Look }) {
 
 export function TraySec() {
   return (
-    <Sec title="Tray">
-      <Ctl title="Tray menu" sub="What Branch puts in the tray: its icon and menu." off={DESKTOP}><Btn sm>Open</Btn></Ctl>
+    <Sec title={trayCard()}>
+      <Ctl title={trayMenuLabel()} sub={trayMenuHelp()} off={DESKTOP}><Btn sm>Open</Btn></Ctl>
     </Sec>
   );
 }
