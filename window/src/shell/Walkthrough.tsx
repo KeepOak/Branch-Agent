@@ -77,6 +77,20 @@ function sidebarBox(): Box | null {
   return null;
 }
 
+/** The mascots a card keeps off: the Trunk's face on an empty conversation, its character and the pet. */
+const MASCOTS = "[data-testid=empty-chat] > :first-child, .character-panel, .r1-pet-rim .petbox, .keeper .petbox";
+
+/** Each mascot's whole box, kept to the part inside the window. */
+function mascotBoxes(): Box[] {
+  const boxes: Box[] = [];
+  for (const el of document.querySelectorAll<HTMLElement>(MASCOTS)) {
+    const r = el.getBoundingClientRect();
+    const left = Math.max(0, r.left), top = Math.max(0, r.top), right = Math.min(innerWidth, r.right), bottom = Math.min(innerHeight, r.bottom);
+    if (right - left >= 2 && bottom - top >= 2) boxes.push({ left, top, width: right - left, height: bottom - top });
+  }
+  return boxes;
+}
+
 /** The target's spotlight box (6 px around it, kept inside the window), if it is on screen. */
 function boxOf(selector: string | null): Box | null {
   const el = selector ? document.querySelector<HTMLElement>(selector) : null;
@@ -114,7 +128,7 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
   const [i, setI] = useState(0);
   const [ended, setEnded] = useState(false);
   const [box, setBox] = useState<Box | null>(null);
-  const [pos, setPos] = useState<{ top: number; left: number; maxWidth?: number }>({ top: 0, left: 0 });
+  const [pos, setPos] = useState<{ top: number; left: number; maxWidth?: number; maxHeight?: number }>({ top: 0, left: 0 });
   const card = useRef<HTMLDivElement>(null);
   const last = i === cards.length - 1;
   const place = useCallback(() => {
@@ -122,12 +136,13 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
     const side = sidebarBox();
     // A hole in the sidebar would dim and cover the rest of it, unless the card opts in. The card still sits beside the control.
     setBox(target && side && overlaps(target, side) && !cards[i].sidebarSpot ? null : target);
-    setPos(coachCardPlace(
-      target,
-      { width: card.current?.offsetWidth || 340, height: card.current?.offsetHeight || 200 },
-      { width: innerWidth, height: innerHeight },
-      side,
-    ));
+    // The card's full height, not the squeezed one from a smaller window.
+    const el = card.current;
+    const held = el?.style.maxHeight ?? "";
+    if (el) el.style.maxHeight = "";
+    const size = { width: el?.offsetWidth || 340, height: el?.offsetHeight || 200 };
+    if (el) el.style.maxHeight = held;
+    setPos(coachCardPlace(target, size, { width: innerWidth, height: innerHeight }, side, mascotBoxes()));
   }, [cards, i]);
   useLayoutEffect(() => {
     try {
@@ -180,7 +195,7 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
       }}
     >
       <div className={box ? "tour-spot" : "tour-spot none"} style={box ?? undefined} />
-      <div ref={card} className={clear ? "tour-card g-clear" : "tour-card"} role="dialog" aria-live="polite" aria-label="Walkthrough" style={pos}>
+      <div ref={card} className={["tour-card", clear ? "g-clear" : "", pos.maxHeight ? "tight" : ""].filter(Boolean).join(" ")} role="dialog" aria-live="polite" aria-label="Walkthrough" style={pos}>
         <span className={pill("n")}>
           {i + 1} of {cards.length}
         </span>
