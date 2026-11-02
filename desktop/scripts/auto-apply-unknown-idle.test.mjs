@@ -93,3 +93,41 @@ test("a staged desktop app that relaunches also applies after the unknown wait",
   await f.run(UNKNOWN_IDLE_MS + 2 * AUTO_APPLY_GAP_MS);
   assert.equal(f.restarts.length, 1, f.logs.join("\n"));
 });
+
+test("unknown counts with no update pending do not shorten the wait for the next update", async () => {
+  let version = "first";
+  const f = fixture({ pendingVersion: async () => version });
+  await f.run(UNKNOWN_IDLE_MS - 4 * AUTO_APPLY_POLL_MS);
+  assert.deepEqual(f.restarts, []);
+  version = null;
+  await f.run(UNKNOWN_IDLE_MS + 2 * AUTO_APPLY_POLL_MS);
+  version = "second";
+  await f.run(UNKNOWN_IDLE_MS - 2 * AUTO_APPLY_POLL_MS);
+  assert.deepEqual(f.restarts, [], "applied before the new update had waited a full 10 minutes");
+  await f.run(4 * AUTO_APPLY_GAP_MS);
+  assert.deepEqual(f.restarts, [{ version: "second", handoffOnly: false, drain: false }], f.logs.join("\n"));
+});
+
+test("time with auto-apply off does not count toward the unknown wait", async () => {
+  let on = true;
+  const f = fixture({ enabled: () => on });
+  await f.run(UNKNOWN_IDLE_MS - 4 * AUTO_APPLY_POLL_MS);
+  on = false;
+  await f.run(UNKNOWN_IDLE_MS + 2 * AUTO_APPLY_POLL_MS);
+  on = true;
+  await f.run(UNKNOWN_IDLE_MS - 2 * AUTO_APPLY_POLL_MS);
+  assert.deepEqual(f.restarts, [], "applied before auto-apply had been back on for a full 10 minutes");
+  await f.run(4 * AUTO_APPLY_GAP_MS);
+  assert.equal(f.restarts.length, 1, f.logs.join("\n"));
+});
+
+test("a newer update that replaces a waiting one starts the 10 minutes again", async () => {
+  let version = "first";
+  const f = fixture({ pendingVersion: async () => version });
+  await f.run(UNKNOWN_IDLE_MS - 4 * AUTO_APPLY_POLL_MS);
+  version = "second";
+  await f.run(UNKNOWN_IDLE_MS - 2 * AUTO_APPLY_POLL_MS);
+  assert.deepEqual(f.restarts, [], "the replacement reused the earlier update's wait");
+  await f.run(4 * AUTO_APPLY_GAP_MS);
+  assert.deepEqual(f.restarts, [{ version: "second", handoffOnly: false, drain: false }], f.logs.join("\n"));
+});

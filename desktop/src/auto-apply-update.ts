@@ -298,7 +298,7 @@ export function createAutoApplyUpdate(options: {
     if (!options.activeRuns) { await readActivity(); return; }
     const runs = await options.activeRuns();
     lastSampleAt = now();
-    if (runs > 0) lastRunSeenAt = lastSampleAt;
+    if (runs > 0) { lastRunSeenAt = lastSampleAt; unknownSince = undefined; }
   };
   const runningTrunkWork = () => options.trunkWork?.() ?? (lastRunSeenAt !== undefined && now() - lastRunSeenAt < TRUNK_WORK_WINDOW_MS);
   const applied = async (version: string) => {
@@ -319,6 +319,8 @@ export function createAutoApplyUpdate(options: {
         if (!version) pendingSince = undefined;
         else if (heldVersion === undefined) pendingSince = now();
         handoffFailedAt = undefined;
+        // A new version starts its own unknown wait; time counted for an earlier one does not carry over.
+        unknownSince = undefined; unknownNoted = undefined;
         heldVersion = version ?? undefined;
       }
       if (!version || !options.enabled() || appliedVersion === version) {
@@ -329,6 +331,8 @@ export function createAutoApplyUpdate(options: {
         if (!options.trunkWork && options.activeRuns && (lastSampleAt === undefined || now() - lastSampleAt >= TRUNK_WORK_SAMPLE_MS)) {
           await noteRuns().catch(() => undefined);
         }
+        // Nothing here reads the window, so runs or drafts may come and go unseen: the unknown wait starts over.
+        unknownSince = undefined; unknownNoted = undefined;
         return;
       }
       if (now() < retryAfter) return;
