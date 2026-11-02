@@ -309,16 +309,17 @@ export function LiveServices({ engine, row }: SlotControlProps) {
   </>;
 }
 
-/** The test call's call comes from the Phone calls plugin, so this engine lacks it while Phone calls is off or not started. */
+/** The test call's call comes from the Phone calls plugin. With Phone calls on, this engine can still lack it for reasons a
+ *  restart may not fix (the plugin left out of the allowed plugins, an older engine), so the line says what is known and promises no cure. */
 const CALLS_OFF = "Turn on Phone calls first.";
-const CALLS_NOT_STARTED = "Phone calls is on but has not started yet. It starts the next time Branch restarts.";
-/** Test call: rings your own number (voicecall.initiate); needs Phone calls on. Greyed, it says which of the two it waits for. */
+const CALLS_UNOFFERED = "Phone calls is on, but this engine doesn't offer calls yet.";
+/** Test call: rings your own number (voicecall.initiate); needs Phone calls on. Greyed, it says whether Phone calls is off or on without the call. */
 export function TestCall({ engine, row }: SlotControlProps) {
   const cfg = useConfig(engine);
   const [failed, run] = useFailure();
   const on = cfg.get("plugins.entries.voice-call.enabled") === true;
-  const started = availability(engine, "voicecall.initiate") !== "no";
-  const w = useWhy(on ? (started ? "" : CALLS_NOT_STARTED) : cfg.loading ? LOADING : CALLS_OFF);
+  const offered = availability(engine, "voicecall.initiate") !== "no";
+  const w = useWhy(on ? (offered ? "" : CALLS_UNOFFERED) : cfg.loading ? LOADING : CALLS_OFF);
   return <>
     <Needs engine={engine} need={["voicecall.initiate"]} where={row.label ?? ""} reason={w.why || CALLS_OFF}><Btn disabled={!on} aria-describedby={w.describedBy} onClick={() => void run(async () => { await engine.request("voicecall.initiate", { message: "This is a test call from Branch.", mode: "notify" }); })}>Call me</Btn></Needs>
     {w.line()}

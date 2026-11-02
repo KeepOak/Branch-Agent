@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // Settings › Voice & calls › Test call: while this engine has no call to place a test call, the greyed Call me button said
-// only "Coming in a later update." at every level. It now says the plain reason: Phone calls is off, or on but not started.
+// only "Coming in a later update." at every level. It now says the plain reason: Phone calls is off, or on while this engine doesn't offer calls.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,13 +59,15 @@ describe("Settings › Voice & calls › Test call: why Call me is greyed", () =
     expect(host.querySelector('[data-row="voice.calls.test"]')?.textContent ?? "").not.toMatch(LATER);
   });
 
-  it("says Phone calls has not started yet when it is on but the call is missing", async () => {
+  it("says this engine doesn't offer calls yet, without promising a restart, when Phone calls is on but the call is missing", async () => {
     await mount("Advanced", { phoneOn: true, calls: false });
     const button = callMe();
     expect(button).toBeTruthy();
     expect(button!.getAttribute("aria-disabled")).toBe("true");
-    expect(button!.getAttribute("title")).toBe("Phone calls is on but has not started yet. It starts the next time Branch restarts.");
-    expect(host.querySelector('[data-row="voice.calls.test"]')?.textContent ?? "").toContain("has not started yet");
+    expect(button!.getAttribute("title")).toBe("Phone calls is on, but this engine doesn't offer calls yet.");
+    const text = host.querySelector('[data-row="voice.calls.test"]')?.textContent ?? "";
+    expect(text).toContain("Phone calls is on, but this engine doesn't offer calls yet.");
+    expect(text).not.toMatch(/restart/i);
   });
 
   it("is a working button with no reason when Phone calls is on and running", async () => {
