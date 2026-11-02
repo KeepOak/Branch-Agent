@@ -1,4 +1,5 @@
 window:src/places/settings/set1/coding-apps-check-again.test.tsx
+window:src/screens/onboarding/claude-code-row-off.test.tsx
 window:src/screens/settings/pages/accounts-models-agree.test.tsx
 window:src/screens/settings/pages/accounts-models-scope.test.tsx
 window:src/screens/settings/pages/claude-code-one-status.test.tsx

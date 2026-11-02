@@ -106,7 +106,7 @@ export function Models({ engine, off, onOff, hello, onHello, onExamples }: Props
           {rows.map((c) => (
             <div className="r1-ob-row" key={c.key}>
               <Logo id={logoId(c)} name={c.label} size={30} />
-              <span className="r1-ob-grow"><b>{c.label}</b><small>{foundLine(c, chatModels)}</small></span>
+              <span className="r1-ob-grow"><b>{c.label}</b><small>{foundLine(c, chatModels, !off.includes(c.key))}</small></span>
               <button type="button" role="switch" className="r1-ob-switch" data-local aria-checked={!off.includes(c.key)} aria-label={`Use ${c.label}`} onClick={() => { onOff(toggle(off, c.key)); onHello(null); }} />
             </div>
           ))}

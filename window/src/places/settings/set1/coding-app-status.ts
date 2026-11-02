@@ -45,11 +45,12 @@ export function appStatusLine(app: App, s: AppStatus, on: boolean): string {
   return appSub(app, { state: s.state, reason: s.reason }, on);
 }
 /** A found connection's line on the first-run Your models step. A coding app that can answer chats reads its one
- *  status there too, instead of the engine's own install note; any other connection keeps the engine's words. */
-export function foundLine(c: { kind: string; detail: string; signedOut: boolean }, models: Model[] | undefined): string {
+ *  status there too, instead of the engine's own install note; any other connection keeps the engine's words. on is
+ *  the row's own switch, so a row switched off never reads "On because ...". */
+export function foundLine(c: { kind: string; detail: string; signedOut: boolean }, models: Model[] | undefined, on: boolean): string {
   const app = APPS.find((a) => a.kind === c.kind);
   if (!app || !CHAT_RUNTIME[app.kind]) return c.signedOut ? `${c.detail} · signed out` : c.detail;
-  return appStatusLine(app, appStatusOf(app, { state: c.signedOut ? "signin" : "ready" }, models), true);
+  return appStatusLine(app, appStatusOf(app, { state: c.signedOut ? "signin" : "ready" }, models), on);
 }
 export const notForChats = (app: App): string => `${app.name} is connected on this computer, but it isn’t set up as a model for chats yet.`;
 
