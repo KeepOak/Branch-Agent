@@ -77,16 +77,48 @@ function sidebarBox(): Box | null {
   return null;
 }
 
+/** The roaming pet. It walks a step every 360 ms, so the card checks it again each time it moves. */
+const PETS = ".r1-pet-rim .petbox, .keeper .petbox";
 /** The mascots a card keeps off: the Trunk's face on an empty conversation, its character and the pet. */
-const MASCOTS = "[data-testid=empty-chat] > :first-child, .character-panel, .r1-pet-rim .petbox, .keeper .petbox";
+const MASCOTS = "[data-testid=empty-chat] > :first-child, .character-panel, " + PETS;
+/** How far the pet walks in one step at most, kept on each side of it so the card stays off its next step too. */
+const PET_STEP = 12;
+/** Points checked across a mascot (a 5 x 5 grid); it counts when at least half of them show. */
+const GRID = 5;
 
-/** Each mascot's whole box, kept to the part inside the window. */
-function mascotBoxes(): Box[] {
+/** True when this point of the mascot shows: inside every box that clips it, and nothing but the walkthrough lies on top. */
+function showsAt(el: HTMLElement, clips: Box[], x: number, y: number): boolean {
+  if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return false;
+  if (clips.some((c) => x < c.left || x > c.left + c.width || y < c.top || y > c.top + c.height)) return false;
+  if (typeof document.elementsFromPoint !== "function") return true;
+  const top = document.elementsFromPoint(x, y).find((hit) => !hit.closest(".tour-layer"));
+  // the mascot, a part of it, or (when the mascot lets clicks through) what it sits on
+  return !top || el.contains(top) || top.contains(el);
+}
+
+/** Each mascot's whole box, kept to the part inside the window. A mascot that mostly doesn't show (scrolled under the
+ * header, covered by a bar) is left out, so the card isn't squeezed to keep off something nobody can see. */
+function mascotBoxes(selector = MASCOTS): Box[] {
   const boxes: Box[] = [];
-  for (const el of document.querySelectorAll<HTMLElement>(MASCOTS)) {
+  for (const el of document.querySelectorAll<HTMLElement>(selector)) {
     const r = el.getBoundingClientRect();
-    const left = Math.max(0, r.left), top = Math.max(0, r.top), right = Math.min(innerWidth, r.right), bottom = Math.min(innerHeight, r.bottom);
-    if (right - left >= 2 && bottom - top >= 2) boxes.push({ left, top, width: right - left, height: bottom - top });
+    const pad = el.matches(PETS) ? PET_STEP : 0;
+    const left = Math.max(0, r.left - pad), top = Math.max(0, r.top), right = Math.min(innerWidth, r.right + pad), bottom = Math.min(innerHeight, r.bottom);
+    if (right - left < 2 || bottom - top < 2) continue;
+    const clips: Box[] = [];
+    for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
+      const style = getComputedStyle(up);
+      if (![style.overflow, style.overflowX, style.overflowY].some((value) => value && value !== "visible")) continue;
+      const c = up.getBoundingClientRect();
+      if (c.width > 0 && c.height > 0) clips.push({ left: c.left, top: c.top, width: c.width, height: c.height });
+    }
+    let shown = 0;
+    for (let row = 0; row < GRID; row++) {
+      for (let col = 0; col < GRID; col++) {
+        if (showsAt(el, clips, r.left + (r.width * (col + 0.5)) / GRID, r.top + (r.height * (row + 0.5)) / GRID)) shown++;
+      }
+    }
+    if (shown * 2 >= GRID * GRID) boxes.push({ left, top, width: right - left, height: bottom - top });
   }
   return boxes;
 }
@@ -130,6 +162,8 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
   const [box, setBox] = useState<Box | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number; maxWidth?: number; maxHeight?: number }>({ top: 0, left: 0 });
   const card = useRef<HTMLDivElement>(null);
+  /** The card's box as last placed, so a moving pet can be checked against it. */
+  const drawn = useRef<Box | null>(null);
   const last = i === cards.length - 1;
   const place = useCallback(() => {
     const target = boxOf(cards[i].target);
@@ -142,7 +176,10 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
     if (el) el.style.maxHeight = "";
     const size = { width: el?.offsetWidth || 340, height: el?.offsetHeight || 200 };
     if (el) el.style.maxHeight = held;
-    setPos(coachCardPlace(target, size, { width: innerWidth, height: innerHeight }, side, mascotBoxes()));
+    const next = coachCardPlace(target, size, { width: innerWidth, height: innerHeight }, side, mascotBoxes());
+    drawn.current = { top: next.top, left: next.left, width: Math.min(size.width, next.maxWidth), height: Math.min(size.height, next.maxHeight ?? size.height) };
+    // the same spot again (the pet still walking under a card that has nowhere else to go) changes nothing
+    setPos((was) => (was.top === next.top && was.left === next.left && was.maxWidth === next.maxWidth && was.maxHeight === next.maxHeight ? was : next));
   }, [cards, i]);
   useLayoutEffect(() => {
     try {
@@ -168,6 +205,16 @@ export function Walkthrough({ defaultName, onClose, cards: given, clear }: Walkt
       document.documentElement.classList.remove("touring");
       removeEventListener("resize", place);
     };
+  }, [place]);
+  useEffect(() => {
+    // The pet keeps walking while the walkthrough runs: when a step takes it into the card, the card moves off it.
+    const observer = new MutationObserver((records) => {
+      if (!records.some((record) => record.target instanceof Element && record.target.matches(PETS))) return;
+      const at = drawn.current;
+      if (at && mascotBoxes(PETS).some((pet) => overlaps(pet, at))) place();
+    });
+    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["style", "class"] });
+    return () => observer.disconnect();
   }, [place]);
   useEffect(() => (card.current?.querySelector<HTMLButtonElement>("[data-next]") ?? card.current?.querySelector<HTMLButtonElement>("button"))?.focus({ preventScroll: true }), [i]);
   useEffect(() => () => {

@@ -6,8 +6,9 @@ const GAP = 12;
 const EDGE = 12;
 /** Space kept between a squeezed card and what it stays off. */
 const SQUEEZE_GAP = 8;
-/** A squeezed card shorter than this would not show its buttons and a line of text, so the card keeps its full height. */
-const MIN_SQUEEZED = 96;
+/** A squeezed card shorter than this would not show its buttons and a line of text (its padding, count, title, one
+ * line, dots and buttons come to about 150 px), so the card keeps its full height. */
+const MIN_SQUEEZED = 150;
 
 /** True when two boxes overlap. Used so a spotlight in the sidebar is skipped. */
 export function overlaps(a: Box, b: Box): boolean {
@@ -102,6 +103,8 @@ export function coachCardPlace(
       if (!best || rows.length > best.length) best = { ...rows, left };
     }
     if (best && best.length >= MIN_SQUEEZED) return { top: best.top, left: best.left, maxWidth, maxHeight: Math.floor(best.length) };
+    // Nothing keeps off the mascots and still shows the buttons: the card sits where it would without them.
+    return coachCardPlace(target, size, view, sidebar);
   }
   return { top: EDGE, left: Math.min(minLeft, Math.max(EDGE, width - cardWidth - EDGE)), maxWidth };
 }
