@@ -6,6 +6,7 @@ import { UpdatesBlock } from "../../../places/settings/set2/updates";
 import { ShortcutsDialog } from "../../../shell/ShortcutsDialog";
 import { QUICK_ASK_EVENT } from "../../quickask/QuickAskHost";
 import { FIND_ANYTHING_EVENT } from "../../find/find-event";
+import { findAnythingKeys } from "../../../shell/keymap";
 import { Coming } from "../../../glass/coming";
 import type { SlotControlProps } from "../slots";
 import { ClassicBlock } from "./spec-rows";
@@ -43,7 +44,7 @@ export function ShortcutButtons({ engine }: SlotControlProps) {
     {btn("Show the welcome tour", () => window.dispatchEvent(new CustomEvent(TOUR_EVENT)))}
     {btn("Get the apps", () => document.getElementById("sec-updates-Branch on your other devices")?.scrollIntoView({ block: "start" }), undefined, true)}
     <Coming engine={engine} need="sessions.search" where="Find anything">
-      {btn("Find anything", () => window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)), "Ctrl K")}
+      {btn("Find anything", () => window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)), findAnythingKeys())}
     </Coming>
     {btn("Collapse the list to faces", () => document.querySelector<HTMLButtonElement>(".r1-side-top button")?.click(), "Ctrl B")}
     {btn("Quick ask", () => window.dispatchEvent(new CustomEvent(QUICK_ASK_EVENT)))}

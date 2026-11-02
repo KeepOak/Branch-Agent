@@ -1,0 +1,1 @@
+window:src/screens/sidebar/mac-find-keys.test.tsx

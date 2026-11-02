@@ -5,6 +5,7 @@
 import { useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { Icon } from "../../../shell/icons";
+import { findAnythingKeys } from "../../../shell/keymap";
 import { Ctl, Hint, Page, Sec, Switch, Tabs, useLevel, useSaveRunner, type Lv, type RowEntry } from "../kit";
 import { DEFAULT_PET, PETS, PIXEL, PixelPet, petsHad } from "../set1/appearance-pet";
 import { useLook } from "../set1/appearance-store";
@@ -37,7 +38,7 @@ export const BADGES: Badge[] = [
     ["Signed in with ChatGPT", "Use your ChatGPT account with Branch."],
     ["Keeps itself fresh", "Let Branch update by itself."],
     ["Stays up late", "Keep Branch running in the background."],
-    ["Found the palette", "Open Find anything with Ctrl K."],
+    ["Found the palette", `Open Find anything with ${findAnythingKeys()}.`],
     ["Walkthrough guide", "Finish the guided walkthrough."],
     ["Asked first", "Use \"Check with me\"."],
     ["Temporary", "Have a temporary conversation."],

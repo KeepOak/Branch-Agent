@@ -6,6 +6,7 @@ import { isNewerBranchVersion, versionParts } from "../connect/branch-version";
 import { installOnComputer } from "../connect/desktop-component-updates";
 import { Dialog } from "./Dialog";
 import { Icon, type IconName } from "./icons";
+import { findAnythingKeys } from "./keymap";
 import type { UpdateInfo } from "./status-data";
 import "./whats-new.css";
 
@@ -97,7 +98,7 @@ export function installedRows(go: { setup: () => void; shortcuts: () => void; pa
       { icon: "menu", title: "Shortcuts you choose", line: "Click a shortcut, then press the keys you want.", run: go.shortcuts },
     ],
     Better: [
-      { icon: "search", title: "Find anything", line: "Conversations, places, settings and commands from one box. Ctrl K.", run: go.palette },
+      { icon: "search", title: "Find anything", line: `Conversations, places, settings and commands from one box. ${findAnythingKeys()}.`, run: go.palette },
       { icon: "users", title: "Accounts sign in from Settings", line: "Add an account and set the order Branch uses them in.", run: () => go.settings("accounts") },
     ],
     Fixed: [],
