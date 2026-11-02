@@ -1,0 +1,2 @@
+window:src/shell/walkthrough-mascot-live.test.tsx
+window:src/shell/walkthrough-mascot.test.tsx
