@@ -1,0 +1,3 @@
+# No engine or window tests. This branch adds one desktop test, run by the node --test steps in
+# .github/workflows/desktop-checks.yml:
+# desktop/scripts/auto-apply-unknown-idle.test.mjs

@@ -6,7 +6,8 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Pill, Sec, Seg, Switch, Tabs, Val, useAsk, useConfig } from "../kit";
+import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Pill, Sec, Seg, SharedWhy, Switch, Tabs, Val, useAsk, useConfig } from "../kit";
+import { isComingWhy, sameWhyRuns, shownWhy } from "../../../shell/shown-why";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
@@ -42,8 +43,12 @@ function offCtl(kind: string | undefined, title: string): ReactNode {
   if (k === "code") return <code className="s2-code">{rest}</code>;
   return <Val>{rest}</Val>;
 }
+const offRow = ([t, sub, off, c]: OffRow) => <Ctl key={t} title={t} sub={sub || undefined} off={off}>{offCtl(c, t)}</Ctl>;
 export function Greyed({ rows }: { rows: OffRow[] }) {
-  return <>{rows.map(([t, sub, off, c]) => <Ctl key={t} title={t} sub={sub || undefined} off={off}>{offCtl(c, t)}</Ctl>)}</>;
+  return <>{sameWhyRuns(rows, (r) => r[2]).flatMap((run) => {
+    const why = run[0][2];
+    return run.length > 1 && shownWhy(why) && !isComingWhy(why) ? [<SharedWhy key={run[0][0]} why={why}>{run.map(offRow)}</SharedWhy>] : run.map(offRow);
+  })}</>;
 }
 /** [section, row titles] for the row search; every row on this page is Technical. */
 export const SEC_ROWS = new Map<string, [string, string[]]>();
@@ -283,8 +288,8 @@ const MORE_OFF: OffRow[] = [
   ["Tell me when one repeats", "When the same error keeps coming back, it shows in Inbox.", ne("repeated-error alerts"), "sw"],
   ["How the last start went", "Each start phase and its time, and how Branch is doing at rest.", ne("start-up timeline"), "btn:Show"],
   ["Show frame rate", "A small meter in the corner of this window while you look for slow screens.", APP, "sw"],
-  ["Database shell", "A SQL prompt on the conversation store. Stop the Gateway first for anything that writes.", "The branch command has no database shell yet."],
   ["Developer tools", "Network, console and the window’s state.", APP, "btn:Open"],
+  ["Database shell", "A SQL prompt on the conversation store. Stop the Gateway first for anything that writes.", "The branch command has no database shell yet."],
   ["Repair the branch command", "For when typing branch in a terminal stopped working.", "The Branch app’s installer repairs it.", "btn:Repair"],
 ];
 rowsOf("Troubleshooting, more", ["A summary for a bug report", "Where each setting comes from", "Warnings since the start", ...titles(MORE_OFF.slice(0, 2)), "Look into a problem", ...titles(MORE_OFF.slice(2))]);
