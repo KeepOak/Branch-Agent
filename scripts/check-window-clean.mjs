@@ -68,6 +68,12 @@ const PRODUCT_NAME_RE = /\b(?:open[\s_-]?claw|crustaceans?|crabboxes|crabbox|cla
 
 const COLOR_RE = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![0-9a-fA-F])|\b(?:rgba?|hsla?)\s*\(/gi;
 
+// All-digit #123 / #1771 matches the hex colour shape but is often a PR or issue number.
+const ALL_DIGIT_HEX = /^#(?:[0-9]{8}|[0-9]{6}|[0-9]{3,4})$/;
+const ISSUE_REF_BEFORE = /\b(?:pr|issue|issues|fix(?:e[sd])?|close[sd]?|resolve[sd]?|private|pull(?:[\s-]?request)?)\b\s*$/i;
+const GITHUB_URL_BEFORE = /(?:github\.com\/\S*|(?:\/(?:issues|pull|discussions|commit)\/)\d*)$/i;
+const STYLE_COLOR_BEFORE = /(?:color|background|fill|stroke|shadow|outline|border)\s*[:=]\s*\{?\s*$/i;
+
 const WIDE_FONT_KEYWORD = /^(?:inherit|initial|unset|revert|revert-layer)$/i;
 
 const USER_FACING_BEFORE = /(?:aria-label|aria-description|aria-placeholder|aria-valuetext|title|placeholder|alt|label|heading|hint|description|subtitle|caption|tooltip|content)\s*[:=]\s*\{?\s*$/i;
@@ -410,6 +416,50 @@ function colorHits(value) {
   return hits;
 }
 
+function hexSourceIndex(source, token, sourceIndex, itemStart) {
+  if (source.startsWith(token, sourceIndex)) return sourceIndex;
+  if (itemStart >= 0) {
+    const at = source.indexOf(token, itemStart);
+    if (at !== -1) return at;
+  }
+  return sourceIndex;
+}
+
+function prefixLooksLikeIssueRef(prefix) {
+  return ISSUE_REF_BEFORE.test(prefix) || GITHUB_URL_BEFORE.test(prefix);
+}
+
+function valueLooksLikeComment(value, index) {
+  const lineStart = value.lastIndexOf('\n', Math.max(0, index - 1)) + 1;
+  return /(?:^|[^:*])\/\/|\/\*|^\s*\*/.test(value.slice(lineStart, index));
+}
+
+// Skip #1771 / #1096 when they are issue or PR references, not colours.
+// 3- and 6-digit all-decimal values stay colours in CSS and style properties (color: #333).
+function isHexColorReference(token, {
+  value = '',
+  index = 0,
+  before = '',
+  source = '',
+  sourceIndex = 0,
+  itemStart = 0,
+  comments = [],
+} = {}) {
+  if (!ALL_DIGIT_HEX.test(token)) return false;
+  if (STYLE_COLOR_BEFORE.test(String(before).slice(-80))) return false;
+  const valuePrefix = String(value).slice(Math.max(0, index - 64), index);
+  if (prefixLooksLikeIssueRef(valuePrefix) || prefixLooksLikeIssueRef(String(before).slice(-64))) return true;
+  // "(#1771)" in the string itself. A call like paint("#000000") keeps the '(' in `before`, not here.
+  if (/\(\s*$/.test(valuePrefix)) return true;
+  if (valueLooksLikeComment(value, index)) return true;
+  if (source) {
+    const at = hexSourceIndex(source, token, sourceIndex, itemStart);
+    if (inSpan(comments, at) || prefixLooksLikeIssueRef(source.slice(Math.max(0, at - 64), at))) return true;
+  }
+  // Four- and eight-digit all-decimal tokens are issue numbers in strings (#1771), not colours.
+  return token.length === 5 || token.length === 9;
+}
+
 function walkCssRules(css, visit) {
   const text = stripCssComments(css);
   const stack = [];
@@ -483,6 +533,7 @@ function codeThemeFindings(file, text) {
   const findings = [];
   if (THEME_TOKEN_FILES.has(file) || file.endsWith('.css')) return findings;
   const { strings } = collectVisible(text);
+  const comments = commentSpans(text);
   for (const item of strings) {
     const before = item.before.slice(-80);
     const fontKey = /(?:font-family|fontFamily)\s*[:=]\s*\{?\s*$/i.test(before);
@@ -506,6 +557,15 @@ function codeThemeFindings(file, text) {
       }
     }
     for (const hit of colorHits(item.value)) {
+      if (isHexColorReference(hit[0], {
+        value: item.value,
+        index: hit.index,
+        before,
+        source: text,
+        sourceIndex: item.index + hit.index,
+        itemStart: item.index,
+        comments,
+      })) continue;
       pushFinding(findings, {
         category: 'theme',
         file,
