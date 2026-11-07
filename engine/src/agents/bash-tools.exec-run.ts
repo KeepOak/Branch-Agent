@@ -28,6 +28,7 @@ import { captureBranchStateReadWorkerContext } from "../state/branch-state-worke
 import { captureAgentToolSourceExecutionGuard } from "./agent-tool-source-execution-guard.js";
 import { markBackgrounded } from "./bash-process-registry.js";
 import { describeExecTool } from "./bash-tools.descriptions.js";
+import { resolveExecApprovalBypassWithFloor } from "./bash-tools.exec-approval-bypass.js";
 import { processGatewayAllowlist } from "./bash-tools.exec-host-gateway.js";
 import { executeNodeHostCommand } from "./bash-tools.exec-host-node.js";
 import { ExecProcessPreflightError } from "./bash-tools.exec-launch.js";
@@ -337,23 +338,19 @@ export function createExecTool(
       ) {
         throw new Error(`exec denied: host=${host} security=deny`);
       }
-      const hostPolicyAllowsFullBypass =
-        (approvalPolicy?.security ?? "full") === "full" && (approvalPolicy?.ask ?? "off") === "off";
-      const modePolicyAllowsFullBypass = modePolicy.security === "full" && modePolicy.ask === "off";
-      // Explicit full-session authority is the sole exception to host approval floors.
       const requestedAsk = normalizeExecAsk(params.ask);
       const hostAsk = maxAsk(modePolicy.ask, approvalPolicy?.ask ?? modePolicy.ask);
       const trustedAsk = defaults?.messageProvider && hostAsk === "off" ? undefined : requestedAsk;
-      let ask = maxAsk(hostAsk, trustedAsk ?? hostAsk);
-      const bypassApprovals =
-        (defaults?.bypassHostApprovalFloors === true && modePolicy.ask === "off") ||
-        (elevatedRequested &&
-          elevatedMode === "full" &&
-          modePolicyAllowsFullBypass &&
-          hostPolicyAllowsFullBypass);
-      if (bypassApprovals) {
-        ask = "off";
-      }
+      const { ask, bypassApprovals } = await resolveExecApprovalBypassWithFloor({
+        command: params.command,
+        host,
+        ask: maxAsk(hostAsk, trustedAsk ?? hostAsk),
+        warnings,
+        elevatedMode,
+        modePolicy,
+        approvalPolicy,
+        floorContext: { defaults, agentId, toolCallId },
+      });
       const autoReview = modePolicy.autoReview && ask === modePolicy.ask && !bypassApprovals;
 
       const sandbox = host === "sandbox" ? defaults?.sandbox : undefined;

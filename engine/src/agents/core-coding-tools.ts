@@ -28,9 +28,9 @@ import {
 import type { AnyAgentTool } from "./agent-tools.types.js";
 import type { ApplyPatchContainmentSource } from "./apply-patch-containment-hint.js";
 import { createApplyPatchTool } from "./apply-patch.js";
-import { createFileReadLedger } from "./file-read-ledger.js";
 import type { ExecToolDefaults } from "./bash-tools.exec-types.js";
 import type { ProcessToolDefaults } from "./bash-tools.process.js";
+import { createFileReadLedger } from "./file-read-ledger.js";
 import type { ImageSanitizationLimits } from "./image-sanitization.js";
 import { createLazyExecTool } from "./lazy-exec-tool.js";
 import { createLazyProcessTool } from "./lazy-process-tool.js";
@@ -40,6 +40,7 @@ import { wrapToolsWithProjectInstructions } from "./project-instructions.js";
 import type { SandboxContext } from "./sandbox.js";
 import { buildSandboxFsMounts } from "./sandbox/fs-paths.js";
 import { resolveReadOnlyWorkspaceSkillMounts } from "./sandbox/workspace-mounts.js";
+import { sandboxHasWritableHostMounts } from "./sandbox/writable-host-mounts.js";
 import { createLsTool, type LsOperations } from "./sessions/tools/ls.js";
 import { createReadTool } from "./sessions/tools/read.js";
 import { resolveToolResultBudget } from "./tool-result-limits.js";
@@ -456,6 +457,7 @@ export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgent
                 sandbox.backend,
               ),
               workdirRoots: sandbox.backend?.workdirRoots,
+              hostPathsWritable: sandboxHasWritableHostMounts(sandbox),
               readOnlyWorkspaceSkillMounts,
               env: sandbox.backend?.env ?? sandbox.docker.env,
               prepareProcessCleanup: sandbox.backend?.prepareProcessCleanup?.bind(sandbox.backend),
